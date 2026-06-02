@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atelier · Add dark mode toggle</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app no-sidebar">
+  <div class="main">
+    <header class="header workspace-header">
+      <div class="workspace-titlebar">
+        <span class="crumb"><a href="workspaces.html">Workspaces</a> ›</span>
+        <h1>Add dark mode toggle</h1>
+      </div>
+      <div class="workspace-tabs" id="tabs">
+        <button class="tab active" data-tab="agent">◈ Agent</button>
+        <button class="tab closable" data-tab="terminal-1">▣ Terminal <span class="tab-close" data-close="terminal-1">×</span></button>
+        <button class="tab" data-tab="code">⌘ Code</button>
+        <button class="tab" data-tab="diffs">▧ Diffs</button>
+        <button class="tab muted" id="add-terminal" type="button">+ Terminal</button>
+        <button class="tab muted" id="add-agent" type="button">+ Agent</button>
+      </div>
+    </header>
+
+    <div class="body wide workspace-body">
+      <section class="tab-pane active" data-pane="agent">
+        <div class="workspace-wide">
+          <div class="chat">
+            <div class="rewind-marker">
+              <div class="rewind-line"></div>
+              <button class="rewind-action" type="button" data-rewind-before="first-user">Rewind here</button>
+            </div>
+
+            <div class="turn-group">
+              <div class="msg user"><div class="bubble"><p>Add a dark mode toggle to the settings page. Persist in localStorage and respect prefers-color-scheme on first load.</p></div></div>
+              <details class="activity-fold">
+                <summary><span class="activity-dots"><i></i><i></i><i></i></span><span>internal activity: thinking, 2 tools</span></summary>
+                <div class="hidden-events">
+                  <div class="msg thinking"><div class="bubble"><p>Checked the app structure, found the existing settings route, and looked for an existing theme provider before adding anything new.</p></div></div>
+                  <div class="msg toolcall"><div class="bubble"><code>rg "Settings|theme|localStorage" src</code><span class="tool-result">12 matches</span></div></div>
+                  <div class="msg toolcall"><div class="bubble"><code>read src/pages/Settings.tsx</code><span class="tool-result">ok</span></div></div>
+                </div>
+              </details>
+              <div class="msg agent"><div class="bubble"><p>I found the settings page and there isn’t an existing theme provider, so I’ll add a small hook plus document-level theme attributes rather than introducing a larger state library.</p></div></div>
+            </div>
+
+            <div class="rewind-marker">
+              <div class="rewind-line"></div>
+              <button class="rewind-action" type="button" data-rewind-before="second-user">Rewind here</button>
+            </div>
+
+            <div class="turn-group">
+              <div class="msg user"><div class="bubble"><p>Make sure it doesn’t flash the wrong theme on first load. I’d rather have a tiny inline script than wait for React hydration.</p></div></div>
+              <details class="activity-fold">
+                <summary><span class="activity-dots"><i></i><i></i><i></i></span><span>internal activity: thinking, 3 tools</span></summary>
+                <div class="hidden-events">
+                  <div class="msg thinking"><div class="bubble"><p>Decided to initialize the document attribute before React starts, then let the hook own later changes and persistence.</p></div></div>
+                  <div class="msg toolcall"><div class="bubble"><code>edit index.html</code><span class="tool-result">+14</span></div></div>
+                  <div class="msg toolcall"><div class="bubble"><code>write src/hooks/useTheme.ts</code><span class="tool-result">created</span></div></div>
+                  <div class="msg toolcall"><div class="bubble"><code>npm run typecheck</code><span class="tool-result">passed</span></div></div>
+                </div>
+              </details>
+              <div class="msg agent"><div class="bubble"><p>Good call. I added a tiny pre-hydration script in <code>index.html</code> so the initial theme is applied before React loads, then the hook keeps localStorage and UI state in sync.</p></div></div>
+            </div>
+
+            <div class="rewind-marker">
+              <div class="rewind-line"></div>
+              <button class="rewind-action" type="button" data-rewind-before="third-user">Rewind here</button>
+            </div>
+
+            <div class="turn-group">
+              <div class="msg user"><div class="bubble"><p>Can you also generate a quick screenshot comparison and start the dev server so I can inspect it here?</p></div></div>
+              <details class="activity-fold">
+                <summary><span class="activity-dots"><i></i><i></i><i></i></span><span>internal activity: thinking, 4 tools</span></summary>
+                <div class="hidden-events">
+                  <div class="msg thinking"><div class="bubble"><p>Needed to run the app, capture both theme states, and verify that the settings page still builds after wiring the switch.</p></div></div>
+                  <div class="msg toolcall"><div class="bubble"><code>edit src/pages/Settings.tsx</code><span class="tool-result">+18 −3</span></div></div>
+                  <div class="msg toolcall"><div class="bubble"><code>npm run build</code><span class="tool-result">passed</span></div></div>
+                  <div class="msg toolcall"><div class="bubble"><code>npm run dev -- --host 0.0.0.0</code><span class="tool-result">port 5173</span></div></div>
+                  <div class="msg toolcall"><div class="bubble"><code>node scripts/capture-theme-demo.mjs</code><span class="tool-result">3 artifacts</span></div></div>
+                </div>
+              </details>
+              <div class="msg agent">
+                <div class="bubble">
+                  <p>Done — I committed the dark-mode change in <code>webshop-frontend</code> as 2 commits. The dev server, generated comparison image, and demo video are embedded below.</p>
+
+                  <div class="inline-preview">
+                    <div class="pv-bar"><span class="b" style="background:#ff6058"></span><span class="b" style="background:#ffbd2e"></span><span class="b" style="background:#28ca42"></span><span class="pv-url">/workspaces/a7f3/ports/5173/settings</span><button class="pv-open" type="button">Open ↗</button></div>
+                    <iframe title="Settings preview" src="about:blank"></iframe>
+                  </div>
+
+                  <figure class="fs-artifact image-artifact">
+                    <div class="artifact-chrome"><span>image</span><code>/tmp/agent-artifacts/settings-theme-comparison.png</code></div>
+                    <div class="fake-image">Settings page — light/dark toggle comparison</div>
+                  </figure>
+
+                  <figure class="fs-artifact video-artifact">
+                    <div class="artifact-chrome"><span>video</span><code>/tmp/agent-artifacts/theme-toggle-demo.mp4</code></div>
+                    <div class="fake-video"><div class="play">▶</div><div>Demo video player</div><div class="video-controls"><span></span></div></div>
+                  </figure>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="composer">
+            <textarea placeholder="Reply to the agent…">Looks good — make the toggle a switch instead of a button.</textarea>
+            <div class="row2">
+              <span class="dropdown">sonnet-4.5 ▾</span>
+              <span class="dropdown">Thinking: Medium ▾</span>
+              <span class="spacer"></span>
+              <button class="btn primary sm">Send ↵</button>
+            </div>
+          </div>
+
+          <div class="agent-tools">
+            <button class="btn" id="new-workspace">New workspace</button>
+            <button class="btn">Review</button>
+            <button class="btn primary">Merge ▾</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-pane" data-pane="terminal-1">
+        <div class="terminal-pane">
+          <div class="terminal-bar">terminal · /work/webshop-frontend</div>
+          <pre>$ npm run dev
+  VITE v6.0.0 ready in 421 ms
+  ➜ Local:   http://localhost:5173/
+$ git status --short
+$</pre>
+        </div>
+      </section>
+
+      <section class="tab-pane" data-pane="code">
+        <div class="code-pane" id="code-pane">
+          <div class="code-sidebar"><b>SSH: workspace a7f3</b><button class="file-item active" data-file="Settings.tsx">src/pages/Settings.tsx</button><button class="file-item" data-file="useTheme.ts">src/hooks/useTheme.ts</button><button class="file-item" data-file="theme.css">tokens/theme.css</button></div>
+          <div class="code-editor">
+            <div class="code-tabs"><span id="active-file">Settings.tsx</span><em>Monaco over dummy workspace filesystem</em><button class="btn sm" id="fullscreen-code" type="button">Fullscreen</button></div>
+            <div id="monaco-editor"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-pane" data-pane="diffs">
+        <div class="diffs-workspace">
+          <article class="repo-diff-view" data-repo="webshop">
+            <div class="repo-diff-toolbar">
+              <div><b>webshop-frontend</b><small>2 commits · base a3f9c1 → HEAD · 3 files</small></div>
+              <label>From <select data-range="from"><option>a3f9c1 base</option><option>81dc2e1 feat: useTheme hook</option></select></label>
+              <label>To <select data-range="to"><option>HEAD</option><option>81dc2e1 feat: useTheme hook</option><option>2f7a90c feat: settings toggle</option></select></label>
+            </div>
+            <div class="pierre-diff-list" id="diff-webshop"></div>
+          </article>
+
+          <article class="repo-diff-view" data-repo="tokens">
+            <div class="repo-diff-toolbar">
+              <div><b>design-tokens</b><small>1 commit · base 44e120 → HEAD · 2 files</small></div>
+              <label>From <select data-range="from"><option>44e120 base</option></select></label>
+              <label>To <select data-range="to"><option>HEAD</option><option>9bc2aa update theme vars</option></select></label>
+            </div>
+            <div class="pierre-diff-list" id="diff-tokens"></div>
+          </article>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<dialog id="new-workspace-modal" class="modal">
+  <form method="dialog">
+    <h2>New workspace</h2>
+    <p>Start a new workspace with an agent seeded by this initial prompt.</p>
+    <textarea autofocus placeholder="Initial user prompt…"></textarea>
+    <div class="modal-actions"><button class="btn">Cancel</button><button class="btn primary" value="ok">OK</button></div>
+  </form>
+</dialog>
+
+<dialog id="rewind-modal" class="modal rewind-modal">
+  <form method="dialog">
+    <h2>Go back to right before this message</h2>
+    <p>This starts a fresh workspace from the visible cut line. The workspace filesystem stays at the selected point; conversation context can be discarded or summarized.</p>
+    <textarea placeholder="custom summarization isntructions"></textarea>
+    <div class="modal-actions"><button class="btn" value="cancel">Cancel</button><button class="btn" value="no-summary">No summary</button><button class="btn primary" value="summary">Summary</button></div>
+  </form>
+</dialog>
+
+<script type="module">
+  const tabs = document.getElementById('tabs');
+  const body = document.querySelector('.body.wide');
+  let terminalCount = 1;
+  let agentCount = 1;
+  let diffsRendered = false;
+  let monacoStarted = false;
+  let monacoEditor;
+  const dummyFiles = {
+    'Settings.tsx': `import { useTheme } from '../hooks/useTheme';\n\nexport function Settings() {\n  const { theme, setTheme } = useTheme();\n  return (\n    <label className="switch">\n      <input type="checkbox" checked={theme === 'dark'} onChange={e => setTheme(e.target.checked ? 'dark' : 'light')} />\n      Dark mode\n    </label>\n  );\n}\n`,
+    'useTheme.ts': `export function useTheme() {\n  const stored = localStorage.getItem('theme');\n  const initial = stored ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');\n  return { theme: initial, setTheme: value => localStorage.setItem('theme', value) };\n}\n`,
+    'theme.css': `:root {\n  --bg: #ffffff;\n  --fg: #111827;\n}\n\n[data-theme="dark"] {\n  --bg: #0f172a;\n  --fg: #e5e7eb;\n}\n`
+  };
+
+  function activate(name) {
+    document.querySelectorAll('.tab[data-tab]').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === name));
+    document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.toggle('active', pane.dataset.pane === name));
+    if (name === 'diffs' && !diffsRendered) renderPierreDiffs();
+    if (name === 'code') startMonaco();
+  }
+
+  function closeTab(name) {
+    document.querySelector(`.tab[data-tab="${name}"]`)?.remove();
+    document.querySelector(`.tab-pane[data-pane="${name}"]`)?.remove();
+    activate('agent');
+  }
+
+  tabs.addEventListener('click', (event) => {
+    const close = event.target.closest('[data-close]');
+    if (close) { event.stopPropagation(); closeTab(close.dataset.close); return; }
+    const tab = event.target.closest('[data-tab]');
+    if (tab) activate(tab.dataset.tab);
+  });
+
+  document.getElementById('add-terminal').addEventListener('click', () => {
+    terminalCount += 1;
+    const id = `terminal-${terminalCount}`;
+    const button = document.createElement('button');
+    button.className = 'tab closable';
+    button.dataset.tab = id;
+    button.innerHTML = `▣ Terminal ${terminalCount} <span class="tab-close" data-close="${id}">×</span>`;
+    tabs.insertBefore(button, document.getElementById('add-terminal'));
+    body.insertAdjacentHTML('beforeend', `<section class="tab-pane" data-pane="${id}"><div class="terminal-pane"><div class="terminal-bar">terminal ${terminalCount} · /work</div><pre>$ echo "dummy terminal ${terminalCount}"
+workspace a7f3 is alive
+$</pre></div></section>`);
+    activate(id);
+  });
+
+  document.getElementById('add-agent').addEventListener('click', () => {
+    agentCount += 1;
+    const id = `agent-${agentCount}`;
+    const button = document.createElement('button');
+    button.className = 'tab closable';
+    button.dataset.tab = id;
+    button.innerHTML = `◈ Agent ${agentCount} <span class="tab-close" data-close="${id}">×</span>`;
+    tabs.insertBefore(button, document.getElementById('add-terminal'));
+    body.insertAdjacentHTML('beforeend', `<section class="tab-pane" data-pane="${id}"><div class="workspace-wide"><div class="chat"><div class="msg agent"><div class="bubble"><p>Dummy secondary agent attached to the same workspace. It can inspect the same checkout, terminal state, and generated artifacts.</p></div></div></div></div></section>`);
+    activate(id);
+  });
+
+  document.getElementById('new-workspace').addEventListener('click', () => document.getElementById('new-workspace-modal').showModal());
+  document.querySelectorAll('[data-rewind-before]').forEach(button => button.addEventListener('click', () => document.getElementById('rewind-modal').showModal()));
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  }
+
+  async function startMonaco() {
+    if (monacoStarted) { setTimeout(() => monacoEditor?.layout(), 0); return; }
+    monacoStarted = true;
+    await loadScript('https://cdn.jsdelivr.net/npm/monaco-editor@0.49.0/min/vs/loader.js');
+    window.require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.49.0/min/vs' } });
+    window.require(['vs/editor/editor.main'], () => {
+      monacoEditor = monaco.editor.create(document.getElementById('monaco-editor'), {
+        value: dummyFiles['Settings.tsx'],
+        language: 'typescript',
+        theme: 'vs-dark',
+        minimap: { enabled: true },
+        automaticLayout: true,
+        fontSize: 13
+      });
+    });
+  }
+
+  document.querySelectorAll('.file-item').forEach(button => button.addEventListener('click', () => {
+    document.querySelectorAll('.file-item').forEach(b => b.classList.remove('active'));
+    button.classList.add('active');
+    document.getElementById('active-file').textContent = button.dataset.file;
+    const ext = button.dataset.file.split('.').pop();
+    monacoEditor?.setValue(dummyFiles[button.dataset.file]);
+    if (monacoEditor) monaco.editor.setModelLanguage(monacoEditor.getModel(), ext === 'css' ? 'css' : 'typescript');
+  }));
+
+  document.getElementById('fullscreen-code').addEventListener('click', async () => {
+    const pane = document.getElementById('code-pane');
+    if (!document.fullscreenElement) await pane.requestFullscreen(); else await document.exitFullscreen();
+    setTimeout(() => monacoEditor?.layout(), 100);
+  });
+
+  function fileDiff(root, FileDiff, oldFile, newFile) {
+    const host = document.createElement('div');
+    host.className = 'pierre-diff';
+    root.appendChild(host);
+    const diff = new FileDiff({ hunkSeparators: 'line-info-basic' });
+    diff.render({ oldFile, newFile, containerWrapper: host });
+  }
+
+  async function renderPierreDiffs() {
+    diffsRendered = true;
+    try {
+      const { FileDiff } = await import('https://esm.sh/@pierre/diffs@latest');
+      const webshopTo = document.querySelector('[data-repo="webshop"] [data-range="to"]').selectedIndex;
+      const tokensTo = document.querySelector('[data-repo="tokens"] [data-range="to"]').selectedIndex;
+      const webshop = document.getElementById('diff-webshop');
+      const tokens = document.getElementById('diff-tokens');
+      webshop.replaceChildren();
+      tokens.replaceChildren();
+
+      fileDiff(webshop, FileDiff,
+        { name: 'src/pages/Settings.tsx', contents: `export function Settings() {\n  return <button>Save</button>;\n}\n` },
+        { name: 'src/pages/Settings.tsx', contents: webshopTo === 1 ? `import { useTheme } from '../hooks/useTheme';\nexport function Settings() {\n  const { theme } = useTheme();\n  return <main data-theme={theme}><button>Save</button></main>;\n}\n` : `import { useTheme } from '../hooks/useTheme';\nexport function Settings() {\n  const { theme, setTheme } = useTheme();\n  return <label className="switch"><input type="checkbox" checked={theme === 'dark'} onChange={e => setTheme(e.target.checked ? 'dark' : 'light')} />Dark mode</label>;\n}\n` });
+      fileDiff(webshop, FileDiff,
+        { name: 'src/hooks/useTheme.ts', contents: `export function useTheme() {\n  return { theme: 'light' };\n}\n` },
+        { name: 'src/hooks/useTheme.ts', contents: `export function useTheme() {\n  const stored = localStorage.getItem('theme');\n  const initial = stored ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');\n  return { theme: initial, setTheme: value => localStorage.setItem('theme', value) };\n}\n` });
+      fileDiff(webshop, FileDiff,
+        { name: 'src/styles/theme.css', contents: `.settings { color: #111827; }\n` },
+        { name: 'src/styles/theme.css', contents: `.settings { color: var(--fg); background: var(--bg); }\n.switch { display: inline-flex; gap: 8px; }\n` });
+
+      fileDiff(tokens, FileDiff,
+        { name: 'tokens/theme.css', contents: `:root {\n  --bg: #ffffff;\n  --fg: #111827;\n}\n` },
+        { name: 'tokens/theme.css', contents: tokensTo === 1 ? `:root {\n  --bg: #ffffff;\n  --fg: #111827;\n}\n[data-theme="dark"] {\n  --bg: #020617;\n  --fg: #f8fafc;\n  --accent: #60a5fa;\n}\n` : `:root {\n  --bg: #ffffff;\n  --fg: #111827;\n}\n[data-theme="dark"] {\n  --bg: #0f172a;\n  --fg: #e5e7eb;\n}\n` });
+      fileDiff(tokens, FileDiff,
+        { name: 'tokens/index.ts', contents: `export const theme = ['bg', 'fg'];\n` },
+        { name: 'tokens/index.ts', contents: `export const theme = ['bg', 'fg', 'accent'];\nexport const modes = ['light', 'dark'];\n` });
+    } catch (error) {
+      document.querySelectorAll('.pierre-diff-list').forEach(el => {
+        el.innerHTML = `<div class="diff-fallback">Could not load @pierre/diffs from CDN. The real app would bundle it locally.<br><code>${error.message}</code></div>`;
+      });
+    }
+  }
+
+  document.querySelectorAll('[data-range]').forEach(select => {
+    select.addEventListener('change', () => {
+      const view = select.closest('.repo-diff-view');
+      view.classList.add('range-changed');
+      setTimeout(() => view.classList.remove('range-changed'), 350);
+      if (diffsRendered) renderPierreDiffs();
+    });
+  });
+</script>
+</body>
+</html>
