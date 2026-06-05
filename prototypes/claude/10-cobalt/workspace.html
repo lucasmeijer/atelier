@@ -115,10 +115,17 @@
             </div>
           </div>
 
+          <div class="integration-status conflict">
+            <div>
+              <strong>4 commits behind main, 3 conflicts</strong>
+              <span>Main moved while this agent was working. Rebase before merging.</span>
+            </div>
+            <button class="btn primary sm" type="button">Ask agent to rebase ontop of main</button>
+          </div>
+
           <div class="agent-tools">
             <button class="btn" id="new-workspace">New workspace</button>
             <button class="btn">Review</button>
-            <button class="btn primary">Merge ▾</button>
           </div>
         </div>
       </section>
@@ -147,19 +154,24 @@ $</pre>
       <section class="tab-pane" data-pane="diffs">
         <div class="diffs-workspace">
           <article class="repo-diff-view" data-repo="webshop">
-            <div class="repo-diff-toolbar">
-              <div><b>webshop-frontend</b><small>2 commits · base a3f9c1 → HEAD · 3 files</small></div>
-              <label>From <select data-range="from"><option>a3f9c1 base</option><option>81dc2e1 feat: useTheme hook</option></select></label>
-              <label>To <select data-range="to"><option>HEAD</option><option>81dc2e1 feat: useTheme hook</option><option>2f7a90c feat: settings toggle</option></select></label>
+            <div class="repo-diff-toolbar range-toolbar">
+              <div><b>webshop-frontend</b></div>
+              <div class="commit-picker" data-range-picker="webshop" data-from-boundary="1" data-to-boundary="3" data-max="2">
+                <button class="range-line to" type="button" data-handle="to"><span>To here</span></button>
+                <button class="range-line from" type="button" data-handle="from"><span>From here</span></button>
+                <button class="commit-row" type="button" data-commit-index="2"><span class="commit-dot"></span><span class="commit-hash">2f7a90c</span><span class="commit-copy"><strong>feat: settings toggle</strong><small>Wire the Settings page switch to persisted theme state.</small></span><em><span class="add">+2</span> <span class="del">−1</span> files</em></button>
+                <button class="commit-row" type="button" data-commit-index="1"><span class="commit-dot"></span><span class="commit-hash">81dc2e1</span><span class="commit-copy"><strong>feat: useTheme hook</strong><small>Add pre-hydration theme detection and localStorage persistence.</small></span><em><span class="add">+1</span> file</em></button>
+              </div>
             </div>
             <div class="pierre-diff-list" id="diff-webshop"></div>
           </article>
 
           <article class="repo-diff-view" data-repo="tokens">
-            <div class="repo-diff-toolbar">
-              <div><b>design-tokens</b><small>1 commit · base 44e120 → HEAD · 2 files</small></div>
-              <label>From <select data-range="from"><option>44e120 base</option></select></label>
-              <label>To <select data-range="to"><option>HEAD</option><option>9bc2aa update theme vars</option></select></label>
+            <div class="repo-diff-toolbar range-toolbar">
+              <div><b>design-tokens</b></div>
+              <div class="commit-picker compact single-commit" data-range-picker="tokens" data-from-boundary="1" data-to-boundary="2" data-max="1">
+                <button class="commit-row" type="button" data-commit-index="1"><span class="commit-dot"></span><span class="commit-hash">9bc2aa</span><span class="commit-copy"><strong>update theme vars</strong><small>Add dark-mode token values and export available theme modes.</small></span><em><span class="add">+2</span> files</em></button>
+              </div>
             </div>
             <div class="pierre-diff-list" id="diff-tokens"></div>
           </article>
@@ -204,7 +216,10 @@ $</pre>
   function activate(name) {
     document.querySelectorAll('.tab[data-tab]').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === name));
     document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.toggle('active', pane.dataset.pane === name));
-    if (name === 'diffs' && !diffsRendered) renderPierreDiffs();
+    if (name === 'diffs') {
+      document.querySelectorAll('[data-range-picker]').forEach(updatePicker);
+      if (!diffsRendered) renderPierreDiffs();
+    }
     if (name === 'code') startMonaco();
   }
 
@@ -300,33 +315,50 @@ $</pre></div></section>`);
     diff.render({ oldFile, newFile, containerWrapper: host });
   }
 
+  const webshopVersions = {
+    settings: [
+      `export function Settings() {\n  return <button>Save</button>;\n}\n`,
+      `import { useTheme } from '../hooks/useTheme';\nexport function Settings() {\n  const { theme } = useTheme();\n  return <main data-theme={theme}><button>Save</button></main>;\n}\n`,
+      `import { useTheme } from '../hooks/useTheme';\nexport function Settings() {\n  const { theme, setTheme } = useTheme();\n  return <label className="switch"><input type="checkbox" checked={theme === 'dark'} onChange={e => setTheme(e.target.checked ? 'dark' : 'light')} />Dark mode</label>;\n}\n`
+    ],
+    hook: [
+      `export function useTheme() {\n  return { theme: 'light' };\n}\n`,
+      `export function useTheme() {\n  const stored = localStorage.getItem('theme');\n  const initial = stored ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');\n  return { theme: initial, setTheme: value => localStorage.setItem('theme', value) };\n}\n`,
+      `export function useTheme() {\n  const stored = localStorage.getItem('theme');\n  const initial = stored ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');\n  return { theme: initial, setTheme: value => localStorage.setItem('theme', value) };\n}\n`
+    ],
+    css: [`.settings { color: #111827; }\n`, `.settings { color: var(--fg); background: var(--bg); }\n`, `.settings { color: var(--fg); background: var(--bg); }\n.switch { display: inline-flex; gap: 8px; }\n`]
+  };
+  const tokenVersions = {
+    theme: [`:root {\n  --bg: #ffffff;\n  --fg: #111827;\n}\n`, `:root {\n  --bg: #ffffff;\n  --fg: #111827;\n}\n[data-theme="dark"] {\n  --bg: #020617;\n  --fg: #f8fafc;\n  --accent: #60a5fa;\n}\n`],
+    index: [`export const theme = ['bg', 'fg'];\n`, `export const theme = ['bg', 'fg', 'accent'];\nexport const modes = ['light', 'dark'];\n`]
+  };
+
+  function pickerState(repo) {
+    const picker = document.querySelector(`[data-range-picker="${repo}"]`);
+    return { from: Number(picker.dataset.fromBoundary), to: Number(picker.dataset.toBoundary) };
+  }
+
   async function renderPierreDiffs() {
     diffsRendered = true;
     try {
       const { FileDiff } = await import('https://esm.sh/@pierre/diffs@latest');
-      const webshopTo = document.querySelector('[data-repo="webshop"] [data-range="to"]').selectedIndex;
-      const tokensTo = document.querySelector('[data-repo="tokens"] [data-range="to"]').selectedIndex;
+      const webshopRange = pickerState('webshop');
+      const tokenRange = pickerState('tokens');
+      const webshopFrom = webshopRange.from - 1;
+      const webshopTo = webshopRange.to - 1;
+      const tokenFrom = tokenRange.from - 1;
+      const tokenTo = tokenRange.to - 1;
       const webshop = document.getElementById('diff-webshop');
       const tokens = document.getElementById('diff-tokens');
       webshop.replaceChildren();
       tokens.replaceChildren();
 
-      fileDiff(webshop, FileDiff,
-        { name: 'src/pages/Settings.tsx', contents: `export function Settings() {\n  return <button>Save</button>;\n}\n` },
-        { name: 'src/pages/Settings.tsx', contents: webshopTo === 1 ? `import { useTheme } from '../hooks/useTheme';\nexport function Settings() {\n  const { theme } = useTheme();\n  return <main data-theme={theme}><button>Save</button></main>;\n}\n` : `import { useTheme } from '../hooks/useTheme';\nexport function Settings() {\n  const { theme, setTheme } = useTheme();\n  return <label className="switch"><input type="checkbox" checked={theme === 'dark'} onChange={e => setTheme(e.target.checked ? 'dark' : 'light')} />Dark mode</label>;\n}\n` });
-      fileDiff(webshop, FileDiff,
-        { name: 'src/hooks/useTheme.ts', contents: `export function useTheme() {\n  return { theme: 'light' };\n}\n` },
-        { name: 'src/hooks/useTheme.ts', contents: `export function useTheme() {\n  const stored = localStorage.getItem('theme');\n  const initial = stored ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');\n  return { theme: initial, setTheme: value => localStorage.setItem('theme', value) };\n}\n` });
-      fileDiff(webshop, FileDiff,
-        { name: 'src/styles/theme.css', contents: `.settings { color: #111827; }\n` },
-        { name: 'src/styles/theme.css', contents: `.settings { color: var(--fg); background: var(--bg); }\n.switch { display: inline-flex; gap: 8px; }\n` });
+      fileDiff(webshop, FileDiff, { name: 'src/pages/Settings.tsx', contents: webshopVersions.settings[webshopFrom] }, { name: 'src/pages/Settings.tsx', contents: webshopVersions.settings[webshopTo] });
+      fileDiff(webshop, FileDiff, { name: 'src/hooks/useTheme.ts', contents: webshopVersions.hook[webshopFrom] }, { name: 'src/hooks/useTheme.ts', contents: webshopVersions.hook[webshopTo] });
+      fileDiff(webshop, FileDiff, { name: 'src/styles/theme.css', contents: webshopVersions.css[webshopFrom] }, { name: 'src/styles/theme.css', contents: webshopVersions.css[webshopTo] });
 
-      fileDiff(tokens, FileDiff,
-        { name: 'tokens/theme.css', contents: `:root {\n  --bg: #ffffff;\n  --fg: #111827;\n}\n` },
-        { name: 'tokens/theme.css', contents: tokensTo === 1 ? `:root {\n  --bg: #ffffff;\n  --fg: #111827;\n}\n[data-theme="dark"] {\n  --bg: #020617;\n  --fg: #f8fafc;\n  --accent: #60a5fa;\n}\n` : `:root {\n  --bg: #ffffff;\n  --fg: #111827;\n}\n[data-theme="dark"] {\n  --bg: #0f172a;\n  --fg: #e5e7eb;\n}\n` });
-      fileDiff(tokens, FileDiff,
-        { name: 'tokens/index.ts', contents: `export const theme = ['bg', 'fg'];\n` },
-        { name: 'tokens/index.ts', contents: `export const theme = ['bg', 'fg', 'accent'];\nexport const modes = ['light', 'dark'];\n` });
+      fileDiff(tokens, FileDiff, { name: 'tokens/theme.css', contents: tokenVersions.theme[tokenFrom] }, { name: 'tokens/theme.css', contents: tokenVersions.theme[tokenTo] });
+      fileDiff(tokens, FileDiff, { name: 'tokens/index.ts', contents: tokenVersions.index[tokenFrom] }, { name: 'tokens/index.ts', contents: tokenVersions.index[tokenTo] });
     } catch (error) {
       document.querySelectorAll('.pierre-diff-list').forEach(el => {
         el.innerHTML = `<div class="diff-fallback">Could not load @pierre/diffs from CDN. The real app would bundle it locally.<br><code>${error.message}</code></div>`;
@@ -334,13 +366,64 @@ $</pre></div></section>`);
     }
   }
 
-  document.querySelectorAll('[data-range]').forEach(select => {
-    select.addEventListener('change', () => {
-      const view = select.closest('.repo-diff-view');
-      view.classList.add('range-changed');
-      setTimeout(() => view.classList.remove('range-changed'), 350);
-      if (diffsRendered) renderPierreDiffs();
-    });
+  const commitLabels = {
+    webshop: ['base a3f9c1', '81dc2e1 feat: useTheme hook', '2f7a90c feat: settings toggle'],
+    tokens: ['base 44e120', '9bc2aa update theme vars']
+  };
+
+  function boundaryY(picker, boundary) {
+    const rows = [...picker.querySelectorAll('.commit-row')];
+    const rowForCommit = index => rows.find(row => Number(row.dataset.commitIndex) === index);
+    const maxBoundary = Number(picker.dataset.max) + 1;
+    if (boundary >= maxBoundary) return rows[0].offsetTop;
+    if (boundary <= 1) {
+      const oldest = rowForCommit(1) ?? rows[rows.length - 1];
+      return oldest.offsetTop + oldest.offsetHeight;
+    }
+    const newer = rowForCommit(boundary);
+    const older = rowForCommit(boundary - 1);
+    return newer && older ? (newer.offsetTop + newer.offsetHeight + older.offsetTop) / 2 : rows[0].offsetTop;
+  }
+
+  function updatePicker(picker) {
+    const from = Number(picker.dataset.fromBoundary);
+    const to = Number(picker.dataset.toBoundary);
+    picker.querySelector('.range-line.from')?.style.setProperty('top', `${boundaryY(picker, from)}px`);
+    picker.querySelector('.range-line.to')?.style.setProperty('top', `${boundaryY(picker, to)}px`);
+    // Range state is represented only by the two draggable lines around the commit log.
+  }
+
+  function setPickerRange(picker, from, to) {
+    const maxBoundary = Number(picker.dataset.max) + 1;
+    picker.dataset.fromBoundary = Math.max(1, Math.min(maxBoundary - 1, from));
+    picker.dataset.toBoundary = Math.max(Number(picker.dataset.fromBoundary) + 1, Math.min(maxBoundary, to));
+    updatePicker(picker);
+    if (diffsRendered) renderPierreDiffs();
+  }
+
+  document.querySelectorAll('[data-range-picker]').forEach(picker => {
+    updatePicker(picker);
+    picker.querySelectorAll('.commit-row').forEach(row => row.addEventListener('click', () => {
+      const index = Number(row.dataset.commitIndex);
+      if (Number(picker.dataset.max) > 1) setPickerRange(picker, index, index + 1);
+    }));
+    picker.querySelectorAll('.range-line').forEach(handle => handle.addEventListener('pointerdown', event => {
+      event.preventDefault();
+      handle.setPointerCapture(event.pointerId);
+      const move = moveEvent => {
+        const maxBoundary = Number(picker.dataset.max) + 1;
+        const y = moveEvent.clientY - picker.getBoundingClientRect().top;
+        let nearest = 1;
+        for (let boundary = 1; boundary <= maxBoundary; boundary += 1) {
+          if (Math.abs(boundaryY(picker, boundary) - y) < Math.abs(boundaryY(picker, nearest) - y)) nearest = boundary;
+        }
+        if (handle.dataset.handle === 'from') setPickerRange(picker, Math.min(nearest, Number(picker.dataset.toBoundary) - 1), Number(picker.dataset.toBoundary));
+        else setPickerRange(picker, Number(picker.dataset.fromBoundary), Math.max(nearest, Number(picker.dataset.fromBoundary) + 1));
+      };
+      const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', up);
+    }));
   });
 </script>
 </body>
