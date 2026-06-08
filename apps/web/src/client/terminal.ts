@@ -80,7 +80,8 @@ async function startTerminal(workspaceId: string, title: string): Promise<void> 
   fit.observeResize();
 
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  const ws = new WebSocket(`${protocol}//${location.host}/workspaces/${encodeURIComponent(workspaceId)}/terminals/${encodeURIComponent(title)}/ws?cols=${term.cols}&rows=${term.rows}`);
+  const tabId = `terminal:${title}`;
+  const ws = new WebSocket(`${protocol}//${location.host}/workspaces/${encodeURIComponent(workspaceId)}/tabs/${encodeURIComponent(tabId)}/ws?cols=${term.cols}&rows=${term.rows}`);
 
   term.onData((data) => {
     if (ws.readyState === WebSocket.OPEN) ws.send(data);
