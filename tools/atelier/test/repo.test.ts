@@ -12,9 +12,18 @@ import {
   type WorkspaceRepoListResult,
   type WorkspaceRepoMergeabilityResult,
   type WorkspaceRepoPushResult,
+  type WorkspaceRepoWorkingTreeStatus,
 } from "./helpers.ts";
 
 setDefaultTimeout(120_000);
+
+const emptyWorkingTree: WorkspaceRepoWorkingTreeStatus = {
+  stagedFiles: [],
+  addedFiles: [],
+  modifiedFiles: [],
+  removedFiles: [],
+  untrackedFiles: [],
+};
 
 let sharedWorkspaceId: string;
 
@@ -219,7 +228,7 @@ describe("atelier workspace repo", () => {
       await runAtelier(["workspace", workspaceId, "repo", "mergeability", "equal"]),
     );
 
-    expect(result).toEqual({ state: "nothing_to_push", behind: 0 });
+    expect(result).toEqual({ state: "nothing_to_push", behind: 0, workingTree: emptyWorkingTree });
   });
 
   test("workspace <id> repo mergeability <repo> returns can_push for local commits and no upstream changes", async () => {
@@ -230,7 +239,51 @@ describe("atelier workspace repo", () => {
       await runAtelier(["workspace", workspaceId, "repo", "mergeability", "local-only"]),
     );
 
-    expect(result).toEqual({ state: "can_push", ahead: 1, behind: 0 });
+    expect(result).toEqual({ state: "can_push", ahead: 1, behind: 0, workingTree: emptyWorkingTree });
+  });
+
+  test("workspace <id> repo mergeability <repo> includes staged, added, modified, removed, and untracked files", async () => {
+    const workspaceId = getWorkspaceId();
+    await execScript(workspaceId, `
+      ${setupBaseRepoScript("dirty")}
+      cd /workspace/repos/dirty
+      printf 'tracked\n' > modified.txt
+      git add modified.txt
+      git commit -m 'add modified fixture' >/dev/null
+      printf 'staged\n' > staged.txt
+      git add staged.txt
+      printf 'modified\n' > modified.txt
+      rm file.txt
+      printf 'untracked\n' > untracked.txt
+    `);
+
+    const result = expectSuccess<WorkspaceRepoMergeabilityResult>(
+      await runAtelier(["workspace", workspaceId, "repo", "mergeability", "dirty"]),
+    );
+
+    expect(result.workingTree).toEqual({
+      stagedFiles: ["staged.txt"],
+      addedFiles: ["staged.txt"],
+      modifiedFiles: ["modified.txt"],
+      removedFiles: ["file.txt"],
+      untrackedFiles: ["untracked.txt"],
+    });
+  });
+
+  test("workspace <id> repo mergeability <repo> returns can_push for local deletion with no upstream changes", async () => {
+    const workspaceId = getWorkspaceId();
+    await execScript(workspaceId, `
+      ${setupBaseRepoScript("local-delete")}
+      cd /workspace/repos/local-delete
+      git rm tsconfig.json >/dev/null 2>&1 || git rm file.txt >/dev/null
+      git commit -m 'delete file' >/dev/null
+    `);
+
+    const result = expectSuccess<WorkspaceRepoMergeabilityResult>(
+      await runAtelier(["workspace", workspaceId, "repo", "mergeability", "local-delete"]),
+    );
+
+    expect(result).toEqual({ state: "can_push", ahead: 1, behind: 0, workingTree: emptyWorkingTree });
   });
 
   test("workspace <id> repo mergeability <repo> returns can_push for local commits plus non-conflicting upstream commits", async () => {
@@ -245,7 +298,7 @@ describe("atelier workspace repo", () => {
       await runAtelier(["workspace", workspaceId, "repo", "mergeability", "no-conflict"]),
     );
 
-    expect(result).toEqual({ state: "can_push", ahead: 1, behind: 1 });
+    expect(result).toEqual({ state: "can_push", ahead: 1, behind: 1, workingTree: emptyWorkingTree });
   });
 
   test("workspace <id> repo mergeability <repo> returns has_conflicts for local and upstream commits changing the same line", async () => {
@@ -260,7 +313,7 @@ describe("atelier workspace repo", () => {
       await runAtelier(["workspace", workspaceId, "repo", "mergeability", "conflict"]),
     );
 
-    expect(result).toEqual({ state: "has_conflicts", ahead: 1, behind: 1, conflictCount: 1 });
+    expect(result).toEqual({ state: "has_conflicts", ahead: 1, behind: 1, conflictCount: 1, workingTree: emptyWorkingTree });
   });
 
   test("workspace <id> repo mergeability <repo> returns fetch_failed when git fetch cannot fetch upstream", async () => {

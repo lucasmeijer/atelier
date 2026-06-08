@@ -86,6 +86,17 @@ describe("atelier workspace", () => {
     expect(exec.stdout).toContain("user.email lucas@lucasmeijer.com");
   });
 
+  test("new starts a default tmux terminal session", async () => {
+    const created = expectSuccess<WorkspaceNewResult>(await runAtelier(["workspace", "new"]));
+
+    const exec = expectSuccess<WorkspaceExecResult>(
+      await runAtelier(["workspace", "exec", created.id, "--", "tmux", "list-sessions", "-F", "#S"]),
+    );
+
+    expect(exec.exitCode).toBe(0);
+    expect(exec.stdout.trim().split(/\n+/)).toEqual(["Terminal 1"]);
+  });
+
   test("exec returns child command failure as a successful atelier result", async () => {
     const created = expectSuccess<WorkspaceNewResult>(await runAtelier(["workspace", "new"]));
 

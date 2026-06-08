@@ -256,6 +256,10 @@ a { color: inherit; text-decoration: none; }
 .repo-row { display: grid; grid-template-columns: 32px 1fr auto auto; gap: 12px; align-items: center; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--line); width: 100%; background: transparent; color: inherit; font: inherit; text-align: left; }
 .repo-row:last-child { border-bottom: none; }
 .repo-row small { display: block; color: var(--muted); margin-top: 2px; }
+.clone-repo-list .row { grid-template-columns: 16px 1fr 16px; }
+.clone-managed-repo-row.disabled { color: var(--muted-2); cursor: not-allowed; background: #fff; }
+.clone-managed-repo-row.disabled:hover { background: #fff; }
+.clone-managed-repo-row.disabled .r-title { color: var(--muted); }
 .pill-status { display: inline-flex; align-items: center; gap: 7px; }
 .top-stat { font-size: 12px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; }
 .top-stat b { color: var(--text); }
@@ -283,6 +287,12 @@ a { color: inherit; text-decoration: none; }
 .repo-identity b { font-size: 13px; font-weight: 650; }
 .repo-identity small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .repo-dot { width: 9px; height: 9px; border-radius: 50%; align-self: center; }
+.git-status-badges { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+.git-status-badge { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 700; line-height: 1.5; background: var(--bg); color: var(--muted); }
+.git-status-badge.ahead, .git-status-badge.added { background: var(--green-soft); border-color: var(--green-soft); color: var(--green); }
+.git-status-badge.behind, .git-status-badge.modified { background: var(--amber-soft); border-color: var(--amber-soft); color: var(--amber); }
+.git-status-badge.removed, .git-status-badge.conflict { background: var(--red-soft); border-color: var(--red-soft); color: var(--red); }
+.git-status-badge.untracked { background: var(--bg); border-color: var(--line); color: var(--muted); }
 .git-status-row.clean { background: linear-gradient(180deg, #fff, rgba(226,244,234,.45)); }
 .git-status-row.clean .repo-dot { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
 .git-status-row.rebase { background: linear-gradient(180deg, #fff, rgba(247,239,216,.68)); }
@@ -296,12 +306,17 @@ a { color: inherit; text-decoration: none; }
 .status-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line-2); border-top-color: var(--muted); animation: spin .8s linear infinite; }
 .git-status-row.idle { background: #fff; }
 .git-status-row.idle .repo-dot { background: var(--muted-2); box-shadow: 0 0 0 3px var(--bg); }
+button.git-status-row { width: 100%; border-left: 0; border-right: 0; border-top: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.git-status-row:hover { background: var(--accent-soft); color: var(--accent); }
+.clone-plus { color: var(--muted); font-weight: 700; font-size: 15px; line-height: 1; align-self: center; text-align: center; }
+.clone-row { color: var(--muted); background: rgba(37,99,235,.03); }
+.clone-row:hover .clone-plus, .clone-managed-repo-row:hover .clone-plus { color: var(--accent); }
 @keyframes pulse-dot { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 .btn:disabled { cursor: not-allowed; opacity: .48; }
 .modal { width: min(560px, calc(100vw - 40px)); border: 1px solid var(--line-2); border-radius: 14px; padding: 0; box-shadow: 0 24px 80px rgba(19,26,38,.24); margin: auto; position: fixed; inset: 0; }
 .modal::backdrop { background: rgba(15,23,42,.35); }
-.modal form { padding: 18px; }
+.modal form, .modal-content { padding: 18px; }
 .modal h2 { font-size: 17px; margin-bottom: 4px; }
 .modal p { color: var(--muted); margin-bottom: 12px; }
 .modal textarea { width: 100%; min-height: 130px; resize: vertical; border: 1px solid var(--line-2); border-radius: 10px; padding: 10px; font: inherit; }

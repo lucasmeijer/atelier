@@ -39,6 +39,7 @@ export {
   type WorkspaceRepoListResult,
   type WorkspaceRepoMergeabilityResult,
   type WorkspaceRepoPushResult,
+  type WorkspaceRepoWorkingTreeStatus,
   type WorkspaceTerminalCreateResult,
   type WorkspaceTerminalListResult,
 } from "./workspace.ts";

@@ -3,6 +3,7 @@ import type { ServerWebSocket } from "bun";
 import {
   AtelierCoreError,
   addManagedRepo,
+  cloneManagedRepoIntoWorkspace,
   createWorkspace,
   createWorkspaceTerminal,
   deleteWorkspace,
@@ -12,6 +13,7 @@ import {
   listWorkspaceTerminals,
   listWorkspaces,
   listWorkspaceRepos,
+  pushWorkspaceRepo,
   setWorkspaceTitle,
   type WorkspaceRepoMergeabilityResult,
 } from "@atelier/core";
@@ -122,6 +124,39 @@ function addManagedRepoModal(): string {
 </dialog>`;
 }
 
+function cloneManagedRepoModal(id: string, managedRepos: Array<{ name: string; remoteUrl: string | null }>, workspaceRepos: string[]): string {
+  const workspaceRepoNames = new Set(workspaceRepos);
+  const repoButtons = managedRepos.map((repo) => {
+    const worktreeName = repo.name.endsWith(".git") ? repo.name.slice(0, -4) : repo.name;
+    const alreadyInWorkspace = workspaceRepoNames.has(worktreeName) || workspaceRepoNames.has(repo.name);
+    if (alreadyInWorkspace) {
+      return `<div class="row clone-managed-repo-row disabled">
+        <span></span>
+        <div><div class="r-title">${escapeHtml(worktreeName)}</div><div class="r-sub">Already in workspace</div></div>
+        <span></span>
+      </div>`;
+    }
+    return `<form method="post" action="/workspaces/${encodeURIComponent(id)}/clone-managed-repo" class="contents">
+      <input type="hidden" name="repo" value="${escapeHtml(repo.name)}">
+      <button class="row ghost-row clone-managed-repo-row" type="submit">
+        <span class="clone-plus">+</span>
+        <div><div class="r-title">${escapeHtml(worktreeName)}</div></div>
+        <span></span>
+      </button>
+    </form>`;
+  }).join("");
+
+  return `<dialog id="clone-managed-repo-modal" class="modal" data-controller="modal">
+    <div class="modal-content">
+      <p>Select a managed repository to clone into this workspace.</p>
+      <div class="repo-list compact clone-repo-list">
+        ${repoButtons || `<div class="row"><span></span><div><div class="r-title">No managed repositories</div><div class="r-sub">Add one from the Workspaces page first.</div></div><span></span></div>`}
+      </div>
+      <div class="modal-actions"><button class="btn" type="button" data-action="modal#close">Cancel</button></div>
+    </div>
+  </dialog>`;
+}
+
 async function workspacesPage(): Promise<Response> {
   const [{ workspaces }, { repos: managedRepos }] = await Promise.all([listWorkspaces(), listManagedRepos()]);
   const rows = workspaces.map((workspace) => workspaceRow(workspace.id, workspace.title || `Workspace ${workspace.id}`)).join("");
@@ -219,6 +254,13 @@ async function createManagedRepoFromForm(request: Request, url: URL): Promise<Re
   return Response.redirect(new URL("/workspaces", url).toString(), 303);
 }
 
+async function cloneManagedRepoIntoWorkspaceFromForm(id: string, request: Request, url: URL): Promise<Response> {
+  const formData = await request.formData();
+  const repo = String(formData.get("repo") ?? "");
+  await cloneManagedRepoIntoWorkspace(id, repo);
+  return Response.redirect(new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString(), 303);
+}
+
 async function getWorkspaceTitle(id: string): Promise<string> {
   const { workspaces } = await listWorkspaces();
   const workspace = workspaces.find((candidate) => candidate.id === id);
@@ -285,7 +327,8 @@ function initializingTerminalFooterAction(id: string, token: string): string {
 }
 
 async function workspacePage(id: string): Promise<Response> {
-  const [{ repos }, title, { terminals }] = await Promise.all([listWorkspaceRepos(id), getWorkspaceTitle(id), listWorkspaceTerminals(id)]);
+  const [{ repos }, title, { terminals }, { repos: managedRepos }] = await Promise.all([listWorkspaceRepos(id), getWorkspaceTitle(id), listWorkspaceTerminals(id), listManagedRepos()]);
+  const initialTerminalTitle = terminals[0]?.title;
   const terminalTabs = terminals.map((terminal) => terminalTab(id, terminal.title)).join("");
   const terminalPanes = terminals.map((terminal) => terminalPane(id, terminal.title)).join("");
   const terminalFooterActions = terminals.map((terminal) => terminalFooterAction(id, terminal.title)).join("");
@@ -298,6 +341,7 @@ async function workspacePage(id: string): Promise<Response> {
       </div>
     </turbo-frame>`;
   }).join("") || `<div class="git-status-row idle"><div class="repo-identity"><span class="repo-dot"></span><b>No repos</b><small>No git repositories found under /workspace.</small></div></div>`;
+  const cloneRepoRow = `<button class="git-status-row clone-row" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="clone-managed-repo-modal"><div class="repo-identity"><span class="clone-plus">+</span><small>Clone a managed repository into this workspace.</small></div><span></span></button>`;
 
   return response(layout(title, `<div class="app no-sidebar">
   <div class="main">
@@ -321,7 +365,7 @@ async function workspacePage(id: string): Promise<Response> {
         <section class="tab-pane active" data-tab-pane="agent">
           <div class="workspace-wide">
             <div class="chat empty-chat">
-              <div class="msg agent"><div class="bubble"><p>This workspace is ready. Use + Terminal to open a persistent tmux shell.</p></div></div>
+              <div class="msg agent"><div class="bubble"><p>${initialTerminalTitle ? `This workspace is ready. ${escapeHtml(initialTerminalTitle)} is already running in tmux.` : "This workspace is ready. Use + Terminal to open a persistent tmux shell."}</p></div></div>
             </div>
             <div class="composer">
               <textarea placeholder="Reply to the agent…" disabled></textarea>
@@ -349,24 +393,55 @@ async function workspacePage(id: string): Promise<Response> {
         <section class="git-status-widget" aria-label="Git integration status">
           <div class="git-status-head"><strong>Git status</strong></div>
           ${repoRows}
+          ${cloneRepoRow}
         </section>
       </div>
     </div>
   </div>
-</div>`));
+</div>
+${cloneManagedRepoModal(id, managedRepos, repos)}`));
 }
 
-function mergeabilityRow(repo: string, result: WorkspaceRepoMergeabilityResult): string {
+function statusBadge(className: string, label: string, title: string): string {
+  return `<span class="git-status-badge ${className}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
+}
+
+function commitBadges(result: WorkspaceRepoMergeabilityResult): string[] {
+  const badges: string[] = [];
+  if ("ahead" in result && result.ahead > 0) badges.push(statusBadge("ahead", `↑${result.ahead}`, `${result.ahead} commits ahead`));
+  if ("behind" in result && result.behind > 0) badges.push(statusBadge("behind", `↓${result.behind}`, `${result.behind} commits behind`));
+  return badges;
+}
+
+function workingTreeBadges(result: WorkspaceRepoMergeabilityResult): string[] {
+  return [
+    result.workingTree.addedFiles.length > 0 ? statusBadge("added", `+${result.workingTree.addedFiles.length}`, `${result.workingTree.addedFiles.length} added files`) : "",
+    result.workingTree.removedFiles.length > 0 ? statusBadge("removed", `-${result.workingTree.removedFiles.length}`, `${result.workingTree.removedFiles.length} removed files`) : "",
+    result.workingTree.modifiedFiles.length > 0 ? statusBadge("modified", `~${result.workingTree.modifiedFiles.length}`, `${result.workingTree.modifiedFiles.length} modified files`) : "",
+    result.workingTree.untrackedFiles.length > 0 ? statusBadge("untracked", `?${result.workingTree.untrackedFiles.length}`, `${result.workingTree.untrackedFiles.length} untracked files`) : "",
+  ].filter(Boolean);
+}
+
+function repoStatusBadges(result: WorkspaceRepoMergeabilityResult): string {
+  const badges = result.state === "has_conflicts"
+    ? [...commitBadges(result), statusBadge("conflict", `⚠${result.conflictCount}`, `${result.conflictCount} conflicts`)]
+    : result.state === "fetch_failed"
+      ? [statusBadge("conflict", "fetch failed", "Could not fetch upstream"), ...workingTreeBadges(result)]
+      : [...commitBadges(result), ...workingTreeBadges(result)];
+  return badges.length > 0 ? `<span class="git-status-badges">${badges.join("")}</span>` : `<small>clean</small>`;
+}
+
+function mergeabilityRow(id: string, repo: string, result: WorkspaceRepoMergeabilityResult): string {
   const name = escapeHtml(repo);
   switch (result.state) {
     case "can_push":
-      return `<div class="git-status-row clean"><div class="repo-identity"><span class="repo-dot"></span><b>${name}</b><small>${result.behind} commits behind, no conflicts. ${result.ahead} commits ahead.</small></div><button class="btn primary sm" type="button" disabled>Push</button></div>`;
+      return `<div class="git-status-row clean"><div class="repo-identity"><span class="repo-dot"></span><b>${name}</b>${repoStatusBadges(result)}</div><form method="post" action="/workspaces/${encodeURIComponent(id)}/repos/${encodeURIComponent(repo)}/push"><button class="btn primary sm" type="submit">Push to atelier</button></form></div>`;
     case "has_conflicts":
-      return `<div class="git-status-row rebase"><div class="repo-identity"><span class="repo-dot"></span><b>${name}</b><small>${result.behind} commits behind, ${result.conflictCount} conflicts. ${result.ahead} commits ahead.</small></div><button class="btn sm fix-rebase" type="button" disabled>Ask agent to rebase</button></div>`;
+      return `<div class="git-status-row rebase"><div class="repo-identity"><span class="repo-dot"></span><b>${name}</b>${repoStatusBadges(result)}</div><button class="btn sm fix-rebase" type="button" disabled>Ask agent to rebase</button></div>`;
     case "fetch_failed":
-      return `<div class="git-status-row fetch-failed"><div class="repo-identity"><span class="repo-dot"></span><b>${name}</b><small title="${escapeHtml(result.message)}">Could not fetch upstream. Push status unknown.</small></div><button class="btn sm" type="button" disabled>Retry fetch</button></div>`;
+      return `<div class="git-status-row fetch-failed"><div class="repo-identity"><span class="repo-dot"></span><b>${name}</b>${repoStatusBadges(result)}</div><button class="btn sm" type="button" disabled>Retry fetch</button></div>`;
     case "nothing_to_push":
-      return `<div class="git-status-row idle"><div class="repo-identity"><span class="repo-dot"></span><b>${name}</b><small>${result.behind} commits behind, nothing to push.</small></div></div>`;
+      return `<div class="git-status-row idle"><div class="repo-identity"><span class="repo-dot"></span><b>${name}</b>${repoStatusBadges(result)}</div></div>`;
   }
   const exhaustive: never = result;
   return exhaustive;
@@ -376,10 +451,27 @@ async function mergeabilityFrame(id: string, repo: string): Promise<Response> {
   const frameId = domId("repo_mergeability", id, repo);
   try {
     const result = await getWorkspaceRepoMergeability(id, repo);
-    return response(`<turbo-frame id="${frameId}">${mergeabilityRow(repo, result)}</turbo-frame>`);
+    return response(`<turbo-frame id="${frameId}">${mergeabilityRow(id, repo, result)}</turbo-frame>`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return response(`<turbo-frame id="${frameId}"><div class="git-status-row fetch-failed"><div class="repo-identity"><span class="repo-dot"></span><b>${escapeHtml(repo)}</b><small title="${escapeHtml(message)}">Could not check mergeability.</small></div><button class="btn sm" type="button" disabled>Retry fetch</button></div></turbo-frame>`);
+  }
+}
+
+async function pushRepoEndpoint(id: string, repo: string, request: Request): Promise<Response> {
+  const frameId = domId("repo_mergeability", id, repo);
+  try {
+    const pushed = await pushWorkspaceRepo(id, repo);
+    if (pushed.state === "failed") {
+      return response(`<turbo-frame id="${frameId}"><div class="git-status-row fetch-failed"><div class="repo-identity"><span class="repo-dot"></span><b>${escapeHtml(repo)}</b><small title="${escapeHtml(pushed.message)}">Push failed.</small></div><button class="btn sm" type="button" disabled>Retry fetch</button></div></turbo-frame>`, { status: 500 });
+    }
+    const result = await getWorkspaceRepoMergeability(id, repo);
+    const body = `<turbo-frame id="${frameId}">${mergeabilityRow(id, repo, result)}</turbo-frame>`;
+    if (wantsTurboStream(request)) return turboStreamResponse(`<turbo-stream action="replace" target="${frameId}"><template>${body}</template></turbo-stream>`);
+    return response(body);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return response(`<turbo-frame id="${frameId}"><div class="git-status-row fetch-failed"><div class="repo-identity"><span class="repo-dot"></span><b>${escapeHtml(repo)}</b><small title="${escapeHtml(message)}">Push failed.</small></div><button class="btn sm" type="button" disabled>Retry fetch</button></div></turbo-frame>`, { status: 500 });
   }
 }
 
@@ -636,6 +728,12 @@ Bun.serve<TerminalSocketData>({
       const terminalsMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/terminals$/);
       if (terminalsMatch && request.method === "GET") return await listTerminalsEndpoint(decodeURIComponent(terminalsMatch[1]));
       if (terminalsMatch && request.method === "POST") return await createTerminalEndpoint(decodeURIComponent(terminalsMatch[1]), request);
+
+      const cloneManagedRepoMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/clone-managed-repo$/);
+      if (cloneManagedRepoMatch && request.method === "POST") return await cloneManagedRepoIntoWorkspaceFromForm(decodeURIComponent(cloneManagedRepoMatch[1]), request, url);
+
+      const repoPushMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/push$/);
+      if (repoPushMatch && request.method === "POST") return await pushRepoEndpoint(decodeURIComponent(repoPushMatch[1]), decodeURIComponent(repoPushMatch[2]), request);
 
       const terminalDeleteMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/terminals\/([^/]+)\/delete$/);
       if (terminalDeleteMatch && request.method === "POST") return await deleteTerminalEndpoint(decodeURIComponent(terminalDeleteMatch[1]), decodeURIComponent(terminalDeleteMatch[2]), request);

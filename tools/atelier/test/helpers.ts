@@ -45,11 +45,19 @@ export interface WorkspaceRepoListResult {
   repos: string[];
 }
 
+export interface WorkspaceRepoWorkingTreeStatus {
+  stagedFiles: string[];
+  addedFiles: string[];
+  modifiedFiles: string[];
+  removedFiles: string[];
+  untrackedFiles: string[];
+}
+
 export type WorkspaceRepoMergeabilityResult =
-  | { state: "can_push"; ahead: number; behind: number }
-  | { state: "has_conflicts"; ahead: number; behind: number; conflictCount: number }
-  | { state: "fetch_failed"; message: string }
-  | { state: "nothing_to_push"; behind: number };
+  | { state: "can_push"; ahead: number; behind: number; workingTree: WorkspaceRepoWorkingTreeStatus }
+  | { state: "has_conflicts"; ahead: number; behind: number; conflictCount: number; workingTree: WorkspaceRepoWorkingTreeStatus }
+  | { state: "fetch_failed"; message: string; workingTree: WorkspaceRepoWorkingTreeStatus }
+  | { state: "nothing_to_push"; behind: number; workingTree: WorkspaceRepoWorkingTreeStatus };
 
 export type WorkspaceRepoPushResult =
   | { state: "pushed" }

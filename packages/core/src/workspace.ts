@@ -64,11 +64,19 @@ export interface WorkspaceCloneResult {
   referencePath: string;
 }
 
+export interface WorkspaceRepoWorkingTreeStatus {
+  stagedFiles: string[];
+  addedFiles: string[];
+  modifiedFiles: string[];
+  removedFiles: string[];
+  untrackedFiles: string[];
+}
+
 export type WorkspaceRepoMergeabilityResult =
-  | { state: "can_push"; ahead: number; behind: number }
-  | { state: "has_conflicts"; ahead: number; behind: number; conflictCount: number }
-  | { state: "fetch_failed"; message: string }
-  | { state: "nothing_to_push"; behind: number };
+  | { state: "can_push"; ahead: number; behind: number; workingTree: WorkspaceRepoWorkingTreeStatus }
+  | { state: "has_conflicts"; ahead: number; behind: number; conflictCount: number; workingTree: WorkspaceRepoWorkingTreeStatus }
+  | { state: "fetch_failed"; message: string; workingTree: WorkspaceRepoWorkingTreeStatus }
+  | { state: "nothing_to_push"; behind: number; workingTree: WorkspaceRepoWorkingTreeStatus };
 
 export type WorkspaceRepoPushResult =
   | { state: "pushed" }
@@ -171,6 +179,7 @@ export async function createWorkspace(): Promise<WorkspaceNewResult> {
   await requireDocker(["rename", fullId, `atelier-${id}`]);
   await requireDocker(["exec", "--user", "atelier", id, "git", "config", "--global", "user.name", "Lucas Meijer"]);
   await requireDocker(["exec", "--user", "atelier", id, "git", "config", "--global", "user.email", "lucas@lucasmeijer.com"]);
+  await createWorkspaceTerminal(id);
 
   return { id };
 }
@@ -197,16 +206,53 @@ export async function listWorkspaces(): Promise<WorkspaceListResult> {
 
 function parsePorcelainPaths(output: string): string[] {
   const paths: string[] = [];
-  const entries = output.split("\0").filter(Boolean);
-  for (let index = 0; index < entries.length; index += 1) {
-    const entry = entries[index];
-    if (entry.length < 4) continue;
-    const indexStatus = entry[0];
-    const worktreeStatus = entry[1];
-    paths.push(entry.slice(3));
+  for (const entry of parsePorcelainEntries(output)) paths.push(entry.path);
+  return paths;
+}
+
+function parsePorcelainEntries(output: string): Array<{ indexStatus: string; worktreeStatus: string; path: string }> {
+  const entries: Array<{ indexStatus: string; worktreeStatus: string; path: string }> = [];
+  const records = output.split("\0").filter(Boolean);
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (record.length < 4) continue;
+    const indexStatus = record[0];
+    const worktreeStatus = record[1];
+    entries.push({ indexStatus, worktreeStatus, path: record.slice(3) });
     if (indexStatus === "R" || indexStatus === "C" || worktreeStatus === "R" || worktreeStatus === "C") index += 1;
   }
-  return paths;
+  return entries;
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return Array.from(new Set(values)).sort();
+}
+
+function parseWorkingTreeStatus(output: string): WorkspaceRepoWorkingTreeStatus {
+  const stagedFiles: string[] = [];
+  const addedFiles: string[] = [];
+  const modifiedFiles: string[] = [];
+  const removedFiles: string[] = [];
+  const untrackedFiles: string[] = [];
+
+  for (const entry of parsePorcelainEntries(output)) {
+    if (entry.indexStatus === "?" && entry.worktreeStatus === "?") {
+      untrackedFiles.push(entry.path);
+      continue;
+    }
+    if (entry.indexStatus !== " " && entry.indexStatus !== "?") stagedFiles.push(entry.path);
+    if (entry.indexStatus === "A") addedFiles.push(entry.path);
+    if (entry.indexStatus === "M" || entry.worktreeStatus === "M") modifiedFiles.push(entry.path);
+    if (entry.indexStatus === "D" || entry.worktreeStatus === "D") removedFiles.push(entry.path);
+  }
+
+  return {
+    stagedFiles: uniqueSorted(stagedFiles),
+    addedFiles: uniqueSorted(addedFiles),
+    modifiedFiles: uniqueSorted(modifiedFiles),
+    removedFiles: uniqueSorted(removedFiles),
+    untrackedFiles: uniqueSorted(untrackedFiles),
+  };
 }
 
 function parseOutgoingCommits(output: string): Array<{ hash: string; subject: string }> {
@@ -352,9 +398,13 @@ async function calculateMergeability(id: string, repo: string): Promise<Workspac
   const path = repoPath(repo);
   const quotedPath = shellQuote(path);
 
+  const status = await execShellAsAtelier(id, `git -C ${quotedPath} status --porcelain=v1 -z`);
+  if (status.exitCode !== 0) throw new AtelierCoreError("git_error", status.stderr.trim() || `could not check status for ${repo}`);
+  const workingTree = parseWorkingTreeStatus(status.stdout);
+
   const fetched = await execShellAsAtelier(id, `git -C ${quotedPath} fetch`);
   if (fetched.exitCode !== 0) {
-    return { state: "fetch_failed", message: (fetched.stderr || fetched.stdout).trim() };
+    return { state: "fetch_failed", message: (fetched.stderr || fetched.stdout).trim(), workingTree };
   }
 
   const upstream = await execShellAsAtelier(id, `git -C ${quotedPath} rev-parse --verify '@{upstream}'`);
@@ -370,7 +420,8 @@ async function calculateMergeability(id: string, repo: string): Promise<Workspac
     throw new AtelierCoreError("git_error", `could not parse ahead/behind for ${repo}`);
   }
 
-  if (ahead === 0) return { state: "nothing_to_push", behind };
+  if (ahead === 0) return { state: "nothing_to_push", behind, workingTree };
+  if (behind === 0) return { state: "can_push", ahead, behind, workingTree };
 
   const mergeCheck = await execShellAsAtelier(id, `
     set -u
@@ -392,10 +443,10 @@ async function calculateMergeability(id: string, repo: string): Promise<Workspac
   if (mergeCheck.exitCode !== 0) throw new AtelierCoreError("git_error", mergeCheck.stderr.trim() || `could not calculate mergeability for ${repo}`);
 
   const output = mergeCheck.stdout.trim();
-  if (output === "clean") return { state: "can_push", ahead, behind };
+  if (output === "clean") return { state: "can_push", ahead, behind, workingTree }; 
 
   const match = output.match(/^conflicts\s+(\d+)$/);
-  if (match) return { state: "has_conflicts", ahead, behind, conflictCount: Number(match[1]) };
+  if (match) return { state: "has_conflicts", ahead, behind, conflictCount: Number(match[1]), workingTree };
 
   throw new AtelierCoreError("git_error", `could not parse mergeability for ${repo}`);
 }
