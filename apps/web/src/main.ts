@@ -5,6 +5,7 @@ import {
   addManagedRepo,
   createWorkspace,
   createWorkspaceTerminal,
+  deleteWorkspace,
   deleteWorkspaceTerminal,
   getWorkspaceRepoMergeability,
   listManagedRepos,
@@ -57,6 +58,51 @@ function layout(title: string, body: string): string {
     const opener = event.target.closest('[data-open-add-managed-repo]');
     if (opener) document.getElementById('add-managed-repo-modal')?.showModal();
   });
+  function renderDeleteBlockedModal(workspaceId, details) {
+    document.getElementById('delete-workspace-modal')?.remove();
+    const issues = details?.issues || [];
+    const content = issues.map(issue => '<section class="delete-issue"><h3>' + escapeHtmlClient(issue.repo) + '</h3>' +
+      (issue.uncommittedPaths?.length ? '<h4>Uncommitted/staged paths</h4><ul>' + issue.uncommittedPaths.map(path => '<li><code>' + escapeHtmlClient(path) + '</code></li>').join('') + '</ul>' : '') +
+      (issue.outgoingCommits?.length ? '<h4>Unpushed commits</h4><ul>' + issue.outgoingCommits.map(commit => '<li><code>' + escapeHtmlClient((commit.hash || '').slice(0, 12)) + '</code> ' + escapeHtmlClient(commit.subject || '') + '</li>').join('') + '</ul>' : '') +
+      '</section>').join('');
+    document.body.insertAdjacentHTML('beforeend', '<dialog id="delete-workspace-modal" class="modal delete-modal"><form method="dialog"><h2>Workspace has uncommitted changes</h2><p>Deleting this workspace would discard local changes or commits that have not been pushed.</p>' + content + '<div class="modal-actions"><button class="btn" value="cancel">Cancel</button><button class="btn danger" value="force" data-force-delete-workspace="' + escapeHtmlClient(workspaceId) + '">Force delete</button></div></form></dialog>');
+    document.getElementById('delete-workspace-modal')?.showModal();
+  }
+  function escapeHtmlClient(value) {
+    return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+  }
+  async function deleteWorkspaceClient(workspaceId, force, button) {
+    const row = button?.closest('.workspace-row');
+    if (button) button.disabled = true;
+    const response = await fetch('/workspaces/' + encodeURIComponent(workspaceId) + '/delete' + (force ? '?force=1' : ''), { method: 'POST', headers: { accept: 'text/vnd.turbo-stream.html, application/json' } });
+    if (response.ok) {
+      const text = await response.text();
+      if (text.trim() && window.Turbo?.renderStreamMessage) window.Turbo.renderStreamMessage(text);
+      else row?.remove();
+      if (!row) location.href = '/workspaces';
+      return;
+    }
+    if (button) button.disabled = false;
+    const body = await response.json().catch(() => ({}));
+    if (response.status === 409 && body?.error?.code === 'workspace_delete_blocked') {
+      renderDeleteBlockedModal(workspaceId, body.error.details);
+      return;
+    }
+    alert(body?.error?.message || 'Could not delete workspace.');
+  }
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-delete-workspace]');
+    if (!button || button.disabled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    deleteWorkspaceClient(button.dataset.deleteWorkspace, false, button);
+  });
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-force-delete-workspace]');
+    if (!button || button.disabled) return;
+    event.preventDefault();
+    deleteWorkspaceClient(button.dataset.forceDeleteWorkspace, true, button);
+  });
   document.addEventListener('input', event => {
     if (!event.target.matches('.global-filter')) return;
     const q = event.target.value.toLowerCase();
@@ -100,17 +146,17 @@ async function workspacesPage(): Promise<Response> {
   const [{ workspaces }, { repos: managedRepos }] = await Promise.all([listWorkspaces(), listManagedRepos()]);
   const rows = workspaces.map((workspace) => {
     const title = workspace.title || `Workspace ${workspace.id}`;
-    return `<a class="row" href="/workspaces/${encodeURIComponent(workspace.id)}">
+    return `<div class="row workspace-row" id="${domId("workspace_row", workspace.id)}">
       <span class="dot run"></span>
-      <div><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">${escapeHtml(workspace.id)}</div></div>
-      <span class="r-proj">View repos</span>
-    </a>`;
+      <a class="row-main" href="/workspaces/${encodeURIComponent(workspace.id)}"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">${escapeHtml(workspace.id)}</div></a>
+      <span class="row-actions"><button class="btn danger sm" type="button" data-delete-workspace="${escapeHtml(workspace.id)}">Delete</button></span>
+    </div>`;
   }).join("");
 
   const newWorkspaceRow = `<form class="contents" method="post" action="/workspaces"><button class="row ghost-row" type="submit">
     <span></span>
     <div><div class="r-title">+ New workspace</div><div class="r-sub">Start a fresh empty workspace</div></div>
-    <span class="r-proj">configure later</span>
+    <span></span>
   </button></form>`;
 
   const managedRepoRows = managedRepos.map((repo) => `<div class="row managed-repo-row">
@@ -133,7 +179,7 @@ async function workspacesPage(): Promise<Response> {
         <input class="search global-filter" placeholder="Filter workspaces…">
       </div>
       <div class="table">
-        <div class="row head"><span></span><span>Workspace</span><span></span></div>
+        <div class="row head"><span></span><span>Workspace</span><span>Actions</span></div>
         ${rows || `<div class="row"><span></span><div><div class="r-title">No workspaces</div><div class="r-sub">Create one below.</div></div><span></span></div>`}
         ${newWorkspaceRow}
       </div>
@@ -242,6 +288,7 @@ async function workspacePage(id: string): Promise<Response> {
         <button class="tab muted" data-tab="code" type="button">⌘ Code</button>
         <button class="tab muted" data-tab="commits" type="button">▧ Commits</button>
       </div>
+      <div class="header-actions"><button class="btn danger sm" type="button" data-delete-workspace="${escapeHtml(id)}">Delete workspace</button></div>
     </header>
 
     <div class="body wide workspace-body">
@@ -316,6 +363,12 @@ function jsonResponse(body: unknown, init: HtmlResponseInit = {}): Response {
   return new Response(JSON.stringify(body), { ...init, headers });
 }
 
+function turboStreamResponse(body: string, init: HtmlResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set("content-type", "text/vnd.turbo-stream.html; charset=utf-8");
+  return new Response(body, { ...init, headers });
+}
+
 async function listTerminalsEndpoint(id: string): Promise<Response> {
   return jsonResponse(await listWorkspaceTerminals(id));
 }
@@ -324,9 +377,30 @@ async function createTerminalEndpoint(id: string): Promise<Response> {
   return jsonResponse(await createWorkspaceTerminal(id), { status: 201 });
 }
 
+function errorJsonResponse(error: unknown, status = 500): Response {
+  if (error instanceof AtelierCoreError) {
+    return jsonResponse({ ok: false, error: { code: error.code, message: error.message, details: error.details } }, { status });
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return jsonResponse({ ok: false, error: { code: "internal_error", message } }, { status });
+}
+
 async function deleteTerminalEndpoint(id: string, title: string): Promise<Response> {
   await deleteWorkspaceTerminal(id, title);
   return jsonResponse(null);
+}
+
+async function deleteWorkspaceEndpoint(id: string, force: boolean, request: Request): Promise<Response> {
+  try {
+    await deleteWorkspace(id, { force });
+    if (request.headers.get("accept")?.includes("text/vnd.turbo-stream.html")) {
+      return turboStreamResponse(`<turbo-stream action="remove" target="${domId("workspace_row", id)}"></turbo-stream>`);
+    }
+    return jsonResponse({ ok: true, result: null });
+  } catch (error) {
+    const status = error instanceof AtelierCoreError && error.code === "workspace_delete_blocked" ? 409 : 500;
+    return errorJsonResponse(error, status);
+  }
 }
 
 interface TerminalSocketData {
@@ -469,6 +543,9 @@ Bun.serve<TerminalSocketData>({
 
       const terminalDeleteMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/terminals\/([^/]+)\/delete$/);
       if (terminalDeleteMatch && request.method === "POST") return await deleteTerminalEndpoint(decodeURIComponent(terminalDeleteMatch[1]), decodeURIComponent(terminalDeleteMatch[2]));
+
+      const workspaceDeleteMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/delete$/);
+      if (workspaceDeleteMatch && request.method === "POST") return await deleteWorkspaceEndpoint(decodeURIComponent(workspaceDeleteMatch[1]), url.searchParams.get("force") === "1", request);
 
       const params = routeParams(url.pathname);
       if (params?.route === "workspace") return await workspacePage(params.id);

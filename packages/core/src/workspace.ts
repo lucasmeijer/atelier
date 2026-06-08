@@ -42,6 +42,21 @@ export interface WorkspaceTerminalCreateResult {
   title: string;
 }
 
+export interface WorkspaceDeleteSafetyIssue {
+  repo: string;
+  uncommittedPaths: string[];
+  outgoingCommits: Array<{ hash: string; subject: string }>;
+}
+
+export interface WorkspaceDeleteBlockedDetails {
+  workspaceId: string;
+  issues: WorkspaceDeleteSafetyIssue[];
+}
+
+export interface DeleteWorkspaceOptions {
+  force?: boolean;
+}
+
 export interface WorkspaceCloneResult {
   repo: string;
   path: string;
@@ -154,6 +169,8 @@ export async function createWorkspace(): Promise<WorkspaceNewResult> {
   const fullId = created.stdout.trim();
   const id = fullId.slice(0, 8);
   await requireDocker(["rename", fullId, `atelier-${id}`]);
+  await requireDocker(["exec", "--user", "atelier", id, "git", "config", "--global", "user.name", "Lucas Meijer"]);
+  await requireDocker(["exec", "--user", "atelier", id, "git", "config", "--global", "user.email", "lucas@lucasmeijer.com"]);
 
   return { id };
 }
@@ -178,8 +195,85 @@ export async function listWorkspaces(): Promise<WorkspaceListResult> {
   return { workspaces };
 }
 
-export async function deleteWorkspace(id: string): Promise<null> {
+function parsePorcelainPaths(output: string): string[] {
+  const paths: string[] = [];
+  const entries = output.split("\0").filter(Boolean);
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (entry.length < 4) continue;
+    const indexStatus = entry[0];
+    const worktreeStatus = entry[1];
+    paths.push(entry.slice(3));
+    if (indexStatus === "R" || indexStatus === "C" || worktreeStatus === "R" || worktreeStatus === "C") index += 1;
+  }
+  return paths;
+}
+
+function parseOutgoingCommits(output: string): Array<{ hash: string; subject: string }> {
+  return output.split("\x1e").map((record) => record.trim()).filter(Boolean).map((record) => {
+    const separatorIndex = record.indexOf("\x1f");
+    if (separatorIndex === -1) return { hash: record, subject: "" };
+    return { hash: record.slice(0, separatorIndex), subject: record.slice(separatorIndex + 1) };
+  });
+}
+
+function formatDeleteBlockedMessage(id: string, issues: WorkspaceDeleteSafetyIssue[]): string {
+  const lines = [`workspace ${id} has uncommitted changes or unpushed commits:`];
+  for (const issue of issues) {
+    lines.push(`- ${issue.repo}`);
+    if (issue.uncommittedPaths.length > 0) {
+      lines.push("  uncommitted/staged paths:");
+      for (const path of issue.uncommittedPaths) lines.push(`    - ${path}`);
+    }
+    if (issue.outgoingCommits.length > 0) {
+      lines.push("  unpushed commits:");
+      for (const commit of issue.outgoingCommits) lines.push(`    - ${commit.hash.slice(0, 12)} ${commit.subject}`.trimEnd());
+    }
+  }
+  lines.push("use --force to delete anyway");
+  return lines.join("\n");
+}
+
+export async function inspectWorkspaceDeleteSafety(id: string): Promise<WorkspaceDeleteBlockedDetails> {
   await resolveWorkspace(id);
+  const repos = await listRepos(id);
+  const issues: WorkspaceDeleteSafetyIssue[] = [];
+
+  for (const repo of repos) {
+    const path = repoPath(repo);
+    const quotedPath = shellQuote(path);
+    const status = await execShellAsAtelier(id, `git -C ${quotedPath} status --porcelain=v1 -z`);
+    if (status.exitCode !== 0) throw new AtelierCoreError("git_error", status.stderr.trim() || `could not check status for ${repo}`);
+
+    await execShellAsAtelier(id, `git -C ${quotedPath} fetch --quiet`);
+    const head = await execShellAsAtelier(id, `git -C ${quotedPath} rev-parse --verify HEAD`);
+    const upstream = head.exitCode === 0 ? await execShellAsAtelier(id, `git -C ${quotedPath} rev-parse --verify '@{upstream}'`) : { exitCode: 1, stdout: "", stderr: "" };
+    const commits = head.exitCode !== 0
+      ? { exitCode: 0, stdout: "", stderr: "" }
+      : upstream.exitCode === 0
+        ? await execShellAsAtelier(id, `git -C ${quotedPath} log --format='%H%x1f%s%x1e' '@{upstream}..HEAD'`)
+        : await execShellAsAtelier(id, `git -C ${quotedPath} log --format='%H%x1f%s%x1e' HEAD --not --remotes`);
+    if (commits.exitCode !== 0) throw new AtelierCoreError("git_error", commits.stderr.trim() || `could not check outgoing commits for ${repo}`);
+
+    const issue: WorkspaceDeleteSafetyIssue = {
+      repo,
+      uncommittedPaths: parsePorcelainPaths(status.stdout),
+      outgoingCommits: parseOutgoingCommits(commits.stdout),
+    };
+    if (issue.uncommittedPaths.length > 0 || issue.outgoingCommits.length > 0) issues.push(issue);
+  }
+
+  return { workspaceId: id, issues };
+}
+
+export async function deleteWorkspace(id: string, options: DeleteWorkspaceOptions = {}): Promise<null> {
+  await resolveWorkspace(id);
+  if (!options.force) {
+    const details = await inspectWorkspaceDeleteSafety(id);
+    if (details.issues.length > 0) {
+      throw new AtelierCoreError("workspace_delete_blocked", formatDeleteBlockedMessage(id, details.issues), details);
+    }
+  }
   await requireDocker(["rm", "-f", id]);
   return null;
 }
@@ -423,9 +517,11 @@ export async function workspaceCommand(args: string[]): Promise<unknown> {
       if (rest.length !== 0) throw invalidArguments("workspace list takes no arguments");
       return await listWorkspaces();
     case "delete": {
-      const id = requireArg(rest[0], "workspace id");
-      if (rest.length !== 1) throw invalidArguments("usage: atelier workspace delete <workspace-id>");
-      return await deleteWorkspace(id);
+      const force = rest.includes("--force");
+      const ids = rest.filter((arg) => arg !== "--force");
+      const id = requireArg(ids[0], "workspace id");
+      if (ids.length !== 1) throw invalidArguments("usage: atelier workspace delete [--force] <workspace-id>");
+      return await deleteWorkspace(id, { force });
     }
     case "title": {
       const id = requireArg(rest[0], "workspace id");

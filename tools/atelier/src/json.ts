@@ -1,6 +1,7 @@
 export interface AtelierError {
   code: string;
   message: string;
+  details?: unknown;
 }
 
 export function writeSuccess<T>(result: T): void {

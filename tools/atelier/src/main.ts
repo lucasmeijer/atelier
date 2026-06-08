@@ -29,7 +29,7 @@ try {
   await main(Bun.argv.slice(2));
 } catch (error) {
   if (error instanceof AtelierCoreError) {
-    writeError({ code: error.code, message: error.message });
+    writeError({ code: error.code, message: error.message, details: error.details });
   } else {
     const message = error instanceof Error ? error.message : String(error);
     writeError({ code: "internal_error", message });

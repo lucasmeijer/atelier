@@ -48,6 +48,8 @@ a { color: inherit; text-decoration: none; }
 .btn:hover { border-color: var(--muted-2); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.primary:hover { background: #1d4fd0; }
+.btn.danger { border-color: var(--red-soft); color: var(--red); }
+.btn.danger:hover { border-color: var(--red); background: var(--red-soft); }
 .btn.sm { padding: 5px 10px; font-size: 12px; }
 
 .body { padding: 24px 14px; max-width: 1180px; margin: 0 auto; }
@@ -81,6 +83,9 @@ a { color: inherit; text-decoration: none; }
 .row:last-child { border-bottom: none; }
 .row:hover { background: var(--bg); }
 .row.head { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted-2); font-weight: 600; }
+.row-main { display: block; min-width: 0; }
+.row-actions { display: flex; justify-content: flex-end; }
+.header-actions { display: flex; justify-content: flex-end; align-items: center; }
 .ghost-row { cursor: pointer; color: var(--muted); background: rgba(37,99,235,.03); }
 .ghost-row:hover { background: var(--accent-soft); color: var(--accent); }
 .dot { width: 9px; height: 9px; border-radius: 50%; }
@@ -296,6 +301,12 @@ a { color: inherit; text-decoration: none; }
 .modal h2 { font-size: 17px; margin-bottom: 4px; }
 .modal p { color: var(--muted); margin-bottom: 12px; }
 .modal textarea { width: 100%; min-height: 130px; resize: vertical; border: 1px solid var(--line-2); border-radius: 10px; padding: 10px; font: inherit; }
+.delete-modal { width: min(720px, calc(100vw - 40px)); }
+.delete-issue { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 10px 0; background: var(--bg); }
+.delete-issue h3 { font-size: 13px; margin-bottom: 6px; }
+.delete-issue h4 { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; margin: 8px 0 4px; }
+.delete-issue ul { margin-left: 18px; color: var(--text); }
+.delete-issue code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
 
 turbo-frame { display: contents; }

@@ -74,6 +74,18 @@ describe("atelier workspace", () => {
     expect(exec.stderr).toBe("");
   });
 
+  test("new configures default git identity", async () => {
+    const created = expectSuccess<WorkspaceNewResult>(await runAtelier(["workspace", "new"]));
+
+    const exec = expectSuccess<WorkspaceExecResult>(
+      await runAtelier(["workspace", "exec", created.id, "--", "git", "config", "--global", "--get-regexp", "^user\\."]),
+    );
+
+    expect(exec.exitCode).toBe(0);
+    expect(exec.stdout).toContain("user.name Lucas Meijer");
+    expect(exec.stdout).toContain("user.email lucas@lucasmeijer.com");
+  });
+
   test("exec returns child command failure as a successful atelier result", async () => {
     const created = expectSuccess<WorkspaceNewResult>(await runAtelier(["workspace", "new"]));
 
@@ -94,6 +106,26 @@ describe("atelier workspace", () => {
 
     const listed = expectSuccess<WorkspaceListResult>(await runAtelier(["workspace", "list"]));
     expect(listed.workspaces.some((workspace) => workspace.id === created.id)).toBe(false);
+  });
+
+  test("delete fails with uncommitted changes unless forced", async () => {
+    const created = expectSuccess<WorkspaceNewResult>(await runAtelier(["workspace", "new"]));
+    expectSuccess<WorkspaceExecResult>(await runAtelier([
+      "workspace",
+      "exec",
+      created.id,
+      "--",
+      "sh",
+      "-lc",
+      "mkdir -p /workspace/repos/sample && cd /workspace/repos/sample && git init && printf hello > changed.txt",
+    ]));
+
+    const error = expectFailure(await runAtelier(["workspace", "delete", created.id]));
+    expect(error.code).toBe("workspace_delete_blocked");
+    expect(error.message).toContain("changed.txt");
+
+    const deleteResult = expectSuccess<null>(await runAtelier(["workspace", "delete", "--force", created.id]));
+    expect(deleteResult).toBeNull();
   });
 
   test("exec on a deleted workspace returns a JSON error", async () => {
