@@ -2367,7 +2367,13 @@ class WorkspaceTabsController extends Controller {
 }
 
 class TerminalPaneController extends Controller {
-  static values = { workspaceId: String, title: String };
+  static values = { workspaceId: String, title: String, autostart: Boolean };
+  connect() {
+    const pane = this.element.closest(".tab-pane[data-tab-pane]");
+    if (this.autostartValue || pane?.classList.contains("active")) {
+      startTerminal(this.workspaceIdValue, this.titleValue);
+    }
+  }
   disconnect() {
     stopTerminal(this.workspaceIdValue, this.titleValue);
   }

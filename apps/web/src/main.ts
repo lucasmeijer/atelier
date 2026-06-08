@@ -20,6 +20,7 @@ import { atelierName } from "@atelier/shared";
 const port = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "127.0.0.1";
 const pendingWorkspaceCreations = new Map<string, Promise<{ id: string }>>();
+const pendingTerminalCreations = new Map<string, { workspaceId: string; promise: Promise<{ title: string }> }>();
 
 function escapeHtml(value: unknown): string {
   return String(value)
@@ -79,7 +80,7 @@ function workspaceRow(id: string, title: string, state: "ready" | "initializing"
   const initializing = state === "initializing";
   return `<div class="row workspace-row ${initializing ? "initializing" : ""}" id="${domId("workspace_row", id)}">
       <span class="dot ${initializing ? "wait" : "run"}"></span>
-      ${initializing ? `<div class="row-main"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">Initializing workspace…</div></div>` : `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">${escapeHtml(id)}</div></a>`}
+      ${initializing ? `<div class="row-main"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">Initializing workspace…</div></div>` : `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo-frame="_top"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">${escapeHtml(id)}</div></a>`}
       <span class="row-actions">${initializing ? `<span class="status-spinner" aria-label="Initializing"></span>` : deleteWorkspaceForm(id)}</span>
     </div>`;
 }
@@ -252,23 +253,42 @@ async function updateWorkspaceTitleFromForm(id: string, request: Request): Promi
   return response(workspaceTitleFrame(id, title || `Workspace ${id}`));
 }
 
-function terminalTab(id: string, title: string): string {
-  return `<span id="${domId("terminal_tab", id, title)}" class="tab closable muted" data-tab="terminal:${escapeHtml(title)}" data-terminal-title="${escapeHtml(title)}" data-action="click->workspace-tabs#activate" data-workspace-tabs-tab-param="terminal:${escapeHtml(title)}" role="button" tabindex="0">▣ ${escapeHtml(title)} <form class="contents" method="post" action="/workspaces/${encodeURIComponent(id)}/terminals/${encodeURIComponent(title)}/delete"><button class="tab-close" data-action="click->workspace-tabs#stopPropagation" title="Close terminal" type="submit">×</button></form></span>`;
+function terminalTab(id: string, title: string, options: { active?: boolean } = {}): string {
+  return `<span id="${domId("terminal_tab", id, title)}" class="tab ${options.active ? "active" : "muted"}" data-tab="terminal:${escapeHtml(title)}" data-terminal-title="${escapeHtml(title)}" data-action="click->workspace-tabs#activate" data-workspace-tabs-tab-param="terminal:${escapeHtml(title)}" role="button" tabindex="0">▣ ${escapeHtml(title)}</span>`;
 }
 
-function terminalPane(id: string, title: string): string {
-  return `<section id="${domId("terminal_pane", id, title)}" class="tab-pane" data-tab-pane="terminal:${escapeHtml(title)}">
-    <div class="terminal-pane" data-controller="terminal-pane" data-terminal-pane-workspace-id-value="${escapeHtml(id)}" data-terminal-pane-title-value="${escapeHtml(title)}" data-terminal-title="${escapeHtml(title)}">
+function initializingTerminalTab(id: string, token: string): string {
+  return `<turbo-frame id="${domId("terminal_tab", id, token)}" src="/workspaces/${encodeURIComponent(id)}/terminal-creations/${encodeURIComponent(token)}/tab"><span class="tab closable active" data-tab="terminal:${escapeHtml(token)}" data-terminal-title="${escapeHtml(token)}" role="button" tabindex="0">▣ Initializing… <span class="status-spinner" aria-label="Initializing terminal"></span></span></turbo-frame>`;
+}
+
+function terminalPane(id: string, title: string, options: { autostart?: boolean; active?: boolean } = {}): string {
+  return `<section id="${domId("terminal_pane", id, title)}" class="tab-pane ${options.active ? "active" : ""}" data-tab-pane="terminal:${escapeHtml(title)}">
+    <div class="terminal-pane" data-controller="terminal-pane" data-terminal-pane-workspace-id-value="${escapeHtml(id)}" data-terminal-pane-title-value="${escapeHtml(title)}" data-terminal-pane-autostart-value="${options.autostart ? "true" : "false"}" data-terminal-title="${escapeHtml(title)}">
       <div class="terminal-bar">${escapeHtml(title)} · tmux</div>
       <div class="ghostty-terminal" tabindex="0"></div>
     </div>
   </section>`;
 }
 
+function terminalFooterAction(id: string, title: string, options: { active?: boolean } = {}): string {
+  return `<section id="${domId("terminal_footer", id, title)}" class="tab-pane ${options.active ? "active" : ""}" data-tab-pane="terminal:${escapeHtml(title)}">
+    <form method="post" action="/workspaces/${encodeURIComponent(id)}/terminals/${encodeURIComponent(title)}/delete"><button class="btn danger sm" type="submit">Delete terminal</button></form>
+  </section>`;
+}
+
+function initializingTerminalPane(id: string, token: string): string {
+  return `<turbo-frame id="${domId("terminal_creation", id, token)}" src="/workspaces/${encodeURIComponent(id)}/terminal-creations/${encodeURIComponent(token)}/pane"><section id="${domId("terminal_pane", id, token)}" class="tab-pane active" data-tab-pane="terminal:${escapeHtml(token)}"><div class="terminal-pane terminal-initializing"><div class="terminal-bar">Initializing terminal…</div><div class="terminal-loading"><span class="status-spinner" aria-label="Initializing terminal"></span><span>Starting tmux session…</span></div></div></section></turbo-frame>`;
+}
+
+function initializingTerminalFooterAction(id: string, token: string): string {
+  return `<turbo-frame id="${domId("terminal_footer", id, token)}" src="/workspaces/${encodeURIComponent(id)}/terminal-creations/${encodeURIComponent(token)}/footer"><section class="tab-pane active" data-tab-pane="terminal:${escapeHtml(token)}"><span class="terminal-footer-muted">Terminal actions available when ready…</span></section></turbo-frame>`;
+}
+
 async function workspacePage(id: string): Promise<Response> {
   const [{ repos }, title, { terminals }] = await Promise.all([listWorkspaceRepos(id), getWorkspaceTitle(id), listWorkspaceTerminals(id)]);
   const terminalTabs = terminals.map((terminal) => terminalTab(id, terminal.title)).join("");
   const terminalPanes = terminals.map((terminal) => terminalPane(id, terminal.title)).join("");
+  const terminalFooterActions = terminals.map((terminal) => terminalFooterAction(id, terminal.title)).join("");
   const repoRows = repos.map((repo) => {
     const frameId = domId("repo_mergeability", id, repo);
     return `<turbo-frame id="${frameId}" src="/workspaces/${encodeURIComponent(id)}/repos/${encodeURIComponent(repo)}/mergeability">
@@ -320,6 +340,7 @@ async function workspacePage(id: string): Promise<Response> {
       </div>
 
       <div class="workspace-footer">
+        <div class="terminal-footer-actions" id="terminal_footer_actions">${terminalFooterActions}</div>
         <div class="agent-tools">
           <form method="post" action="/workspaces" data-turbo="false"><button class="btn" type="submit">New workspace</button></form>
           <button class="btn" disabled>Review</button>
@@ -378,12 +399,57 @@ async function listTerminalsEndpoint(id: string): Promise<Response> {
   return jsonResponse(await listWorkspaceTerminals(id));
 }
 
-async function createTerminalEndpoint(id: string, request: Request): Promise<Response> {
-  const terminal = await createWorkspaceTerminal(id);
-  if (wantsTurboStream(request)) {
-    return turboStreamResponse(`<turbo-stream action="before" target="add_terminal_form"><template>${terminalTab(id, terminal.title)}</template></turbo-stream><turbo-stream action="append" target="workspace_panes"><template>${terminalPane(id, terminal.title)}</template></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="activate-tab" data-activate-tab-tab-value="terminal:${escapeHtml(terminal.title)}"></div></template></turbo-stream>`, { status: 201 });
+function createTerminalInitializingStream(id: string): Response {
+  const token = `initializing_${crypto.randomUUID()}`;
+  const promise = createWorkspaceTerminal(id);
+  pendingTerminalCreations.set(token, { workspaceId: id, promise });
+  promise.finally(() => setTimeout(() => pendingTerminalCreations.delete(token), 30_000));
+  return turboStreamResponse(`<turbo-stream action="before" target="add_terminal_form"><template>${initializingTerminalTab(id, token)}</template></turbo-stream><turbo-stream action="append" target="workspace_panes"><template>${initializingTerminalPane(id, token)}</template></turbo-stream><turbo-stream action="append" target="terminal_footer_actions"><template>${initializingTerminalFooterAction(id, token)}</template></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="activate-tab" data-activate-tab-tab-value="terminal:${escapeHtml(token)}"></div></template></turbo-stream>`, { status: 202 });
+}
+
+async function terminalCreationTabFrame(id: string, token: string): Promise<Response> {
+  const pending = pendingTerminalCreations.get(token);
+  const frameId = domId("terminal_tab", id, token);
+  if (!pending || pending.workspaceId !== id) return response(`<turbo-frame id="${frameId}"><span class="tab closable active">Terminal creation failed</span></turbo-frame>`, { status: 404 });
+  try {
+    const terminal = await pending.promise;
+    return response(`<turbo-frame id="${frameId}">${terminalTab(id, terminal.title, { active: true })}</turbo-frame>`);
+  } catch {
+    return response(`<turbo-frame id="${frameId}"><span class="tab closable active">Terminal creation failed</span></turbo-frame>`, { status: 500 });
   }
-  return jsonResponse(terminal, { status: 201 });
+}
+
+async function terminalCreationFooterFrame(id: string, token: string): Promise<Response> {
+  const pending = pendingTerminalCreations.get(token);
+  const frameId = domId("terminal_footer", id, token);
+  if (!pending || pending.workspaceId !== id) return response(`<turbo-frame id="${frameId}"></turbo-frame>`, { status: 404 });
+  try {
+    const terminal = await pending.promise;
+    return response(`<turbo-frame id="${frameId}">${terminalFooterAction(id, terminal.title, { active: true })}</turbo-frame>`);
+  } catch {
+    return response(`<turbo-frame id="${frameId}"></turbo-frame>`, { status: 500 });
+  }
+}
+
+async function terminalCreationPaneFrame(id: string, token: string): Promise<Response> {
+  const pending = pendingTerminalCreations.get(token);
+  const frameId = domId("terminal_creation", id, token);
+  if (!pending || pending.workspaceId !== id) {
+    return response(`<turbo-frame id="${frameId}"><section class="tab-pane active" data-tab-pane="terminal:${escapeHtml(token)}"><div class="terminal-pane terminal-initializing"><div class="terminal-bar">Terminal creation failed</div><div class="terminal-loading">Terminal creation not found.</div></div></section></turbo-frame>`, { status: 404 });
+  }
+
+  try {
+    const terminal = await pending.promise;
+    return response(`<turbo-frame id="${frameId}">${terminalPane(id, terminal.title, { autostart: true, active: true })}</turbo-frame>`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return response(`<turbo-frame id="${frameId}"><section class="tab-pane active" data-tab-pane="terminal:${escapeHtml(token)}"><div class="terminal-pane terminal-initializing"><div class="terminal-bar">Terminal creation failed</div><div class="terminal-loading">${escapeHtml(message)}</div></div></section></turbo-frame>`, { status: 500 });
+  }
+}
+
+async function createTerminalEndpoint(id: string, request: Request): Promise<Response> {
+  if (wantsTurboStream(request)) return createTerminalInitializingStream(id);
+  return jsonResponse(await createWorkspaceTerminal(id), { status: 201 });
 }
 
 function errorJsonResponse(error: unknown, status = 500): Response {
@@ -397,7 +463,7 @@ function errorJsonResponse(error: unknown, status = 500): Response {
 async function deleteTerminalEndpoint(id: string, title: string, request: Request): Promise<Response> {
   await deleteWorkspaceTerminal(id, title);
   if (wantsTurboStream(request)) {
-    return turboStreamResponse(`<turbo-stream action="remove" target="${domId("terminal_tab", id, title)}"></turbo-stream><turbo-stream action="remove" target="${domId("terminal_pane", id, title)}"></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="activate-tab" data-activate-tab-tab-value="agent"></div></template></turbo-stream>`);
+    return turboStreamResponse(`<turbo-stream action="remove" target="${domId("terminal_tab", id, title)}"></turbo-stream><turbo-stream action="remove" target="${domId("terminal_pane", id, title)}"></turbo-stream><turbo-stream action="remove" target="${domId("terminal_footer", id, title)}"></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="activate-tab" data-activate-tab-tab-value="agent"></div></template></turbo-stream>`);
   }
   return jsonResponse(null);
 }
@@ -557,6 +623,15 @@ Bun.serve<TerminalSocketData>({
       const titleMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/title$/);
       if (titleMatch && request.method === "GET") return await workspaceTitleShowFrame(decodeURIComponent(titleMatch[1]));
       if (titleMatch && request.method === "POST") return await updateWorkspaceTitleFromForm(decodeURIComponent(titleMatch[1]), request);
+
+      const terminalCreationTabMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/terminal-creations\/([^/]+)\/tab$/);
+      if (terminalCreationTabMatch && request.method === "GET") return await terminalCreationTabFrame(decodeURIComponent(terminalCreationTabMatch[1]), decodeURIComponent(terminalCreationTabMatch[2]));
+
+      const terminalCreationPaneMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/terminal-creations\/([^/]+)\/pane$/);
+      if (terminalCreationPaneMatch && request.method === "GET") return await terminalCreationPaneFrame(decodeURIComponent(terminalCreationPaneMatch[1]), decodeURIComponent(terminalCreationPaneMatch[2]));
+
+      const terminalCreationFooterMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/terminal-creations\/([^/]+)\/footer$/);
+      if (terminalCreationFooterMatch && request.method === "GET") return await terminalCreationFooterFrame(decodeURIComponent(terminalCreationFooterMatch[1]), decodeURIComponent(terminalCreationFooterMatch[2]));
 
       const terminalsMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/terminals$/);
       if (terminalsMatch && request.method === "GET") return await listTerminalsEndpoint(decodeURIComponent(terminalsMatch[1]));

@@ -146,10 +146,18 @@ class WorkspaceTabsController extends Controller {
 }
 
 class TerminalPaneController extends Controller {
-  static values = { workspaceId: String, title: String };
+  static values = { workspaceId: String, title: String, autostart: Boolean };
   declare readonly element: HTMLElement;
   declare readonly workspaceIdValue: string;
   declare readonly titleValue: string;
+  declare readonly autostartValue: boolean;
+
+  connect(): void {
+    const pane = this.element.closest<HTMLElement>(".tab-pane[data-tab-pane]");
+    if (this.autostartValue || pane?.classList.contains("active")) {
+      void startTerminal(this.workspaceIdValue, this.titleValue);
+    }
+  }
 
   disconnect(): void {
     stopTerminal(this.workspaceIdValue, this.titleValue);
