@@ -1,0 +1,19 @@
+{
+  "name": "atelier",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tools/*"
+  ],
+  "scripts": {
+    "check": "bunx tsc --noEmit -p tsconfig.json",
+    "test": "bun test",
+    "atelier": "bun run tools/atelier/src/main.ts"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "latest"
+  }
+}

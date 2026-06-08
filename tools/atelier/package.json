@@ -1,0 +1,8 @@
+{
+  "name": "@atelier/cli",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "atelier": "./src/main.ts"
+  }
+}
