@@ -19,7 +19,7 @@ import {
 } from "@atelier/core";
 import { atelierName } from "@atelier/shared";
 
-const port = Number(process.env.PORT ?? 3000);
+const requestedPort = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "127.0.0.1";
 const pendingWorkspaceCreations = new Map<string, Promise<{ id: string }>>();
 
@@ -317,10 +317,19 @@ function initializingTerminalTab(id: string, token: string): string {
   return `<span id="${domId("terminal_tab", id, token)}" class="tab closable active" data-tab="terminal:${escapeHtml(token)}" data-terminal-title="${escapeHtml(token)}" role="button" tabindex="0">▣ Initializing… <span class="status-spinner" aria-label="Initializing terminal"></span></span>`;
 }
 
+function terminalThemeOptions(): string {
+  return [
+    ["tokyo-night", "Tokyo Night"],
+    ["dracula", "Dracula"],
+    ["catppuccin-mocha", "Catppuccin Mocha"],
+    ["nord", "Nord"],
+  ].map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+}
+
 function terminalPane(id: string, title: string, options: { autostart?: boolean; active?: boolean } = {}): string {
   return `<section id="${domId("terminal_pane", id, title)}" class="tab-pane ${options.active ? "active" : ""}" data-tab-pane="terminal:${escapeHtml(title)}">
     <div class="terminal-pane" data-controller="terminal-pane" data-terminal-pane-workspace-id-value="${escapeHtml(id)}" data-terminal-pane-title-value="${escapeHtml(title)}" data-terminal-pane-autostart-value="${options.autostart ? "true" : "false"}" data-terminal-title="${escapeHtml(title)}">
-      <div class="terminal-bar">${escapeHtml(title)} · tmux</div>
+      <div class="terminal-bar"><span>${escapeHtml(title)} · tmux</span><label class="terminal-theme-picker">Theme <select data-controller="terminal-theme" data-terminal-theme-select data-action="change->terminal-theme#change">${terminalThemeOptions()}</select></label></div>
       <div class="ghostty-terminal" tabindex="0"></div>
     </div>
   </section>`;
@@ -673,9 +682,16 @@ function routeParams(pathname: string):
   return undefined;
 }
 
-Bun.serve<TerminalSocketData>({
-  hostname,
-  port,
+const maxPortAttempts = 100;
+let serverPort = 0;
+
+for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
+  const port = requestedPort === 0 ? 0 : requestedPort + attempt;
+
+  try {
+    const server = Bun.serve<TerminalSocketData>({
+      hostname,
+      port,
   async fetch(request, server) {
     const url = new URL(request.url);
     const staticResponse = await serveStatic(url.pathname);
@@ -739,6 +755,15 @@ Bun.serve<TerminalSocketData>({
       ws.data.pty?.kill();
     },
   },
-});
+    });
+    serverPort = server.port ?? port;
+    break;
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code !== "EADDRINUSE" || requestedPort === 0) throw error;
+  }
+}
 
-console.log(`${atelierName} web listening on http://${hostname}:${port}`);
+if (serverPort === 0) throw new Error(`No available port found from ${requestedPort} through ${requestedPort + maxPortAttempts - 1}`);
+
+console.log(`${atelierName} web listening on http://${hostname}:${serverPort}`);
