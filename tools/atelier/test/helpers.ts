@@ -56,13 +56,14 @@ export type WorkspaceRepoPushResult =
   | { state: "skipped"; reason: "nothing_to_push" | "has_conflicts" | "fetch_failed" }
   | { state: "failed"; message: string };
 
-export async function runAtelier(args: string[], options: { namespace?: string } = {}): Promise<CliResult> {
+export async function runAtelier(args: string[], options: { namespace?: string; dataDir?: string } = {}): Promise<CliResult> {
   const proc = Bun.spawn(["bun", "run", "tools/atelier/src/main.ts", ...args], {
     stdout: "pipe",
     stderr: "pipe",
     env: {
       ...process.env,
       ATELIER_NAMESPACE: options.namespace ?? testNamespace,
+      ...(options.dataDir ? { ATELIER_DATA_DIR: options.dataDir } : {}),
     },
   });
 

@@ -5,6 +5,17 @@ export {
 } from "./errors.ts";
 
 export {
+  addManagedRepo,
+  defaultDataDir,
+  listManagedRepos,
+  managedReposDir,
+  type AddManagedRepoResult,
+  type ManagedRepoListResult,
+  type ManagedRepoSummary,
+} from "./managed-repo.ts";
+
+export {
+  cloneManagedRepoIntoWorkspace,
   createWorkspace,
   deleteWorkspace,
   execWorkspace,
@@ -14,6 +25,7 @@ export {
   pushWorkspaceRepo,
   setWorkspaceTitle,
   workspaceCommand,
+  type WorkspaceCloneResult,
   type WorkspaceExecResult,
   type WorkspaceListResult,
   type WorkspaceNewResult,

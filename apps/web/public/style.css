@@ -309,3 +309,7 @@ a.btn { text-decoration: none; }
 
 .contents { display: contents; }
 .agent-tools form { display: contents; }
+
+.modal-input { width: 100%; border: 1px solid var(--line-2); border-radius: 10px; padding: 10px; font: inherit; }
+.modal-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.managed-repos-table .r-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

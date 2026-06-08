@@ -1,7 +1,9 @@
 import {
   AtelierCoreError,
+  addManagedRepo,
   createWorkspace,
   getWorkspaceRepoMergeability,
+  listManagedRepos,
   listWorkspaces,
   listWorkspaceRepos,
   setWorkspaceTitle,
@@ -45,6 +47,10 @@ function layout(title: string, body: string): string {
 </head>
 <body>${body}
 <script>
+  document.addEventListener('click', event => {
+    const opener = event.target.closest('[data-open-add-managed-repo]');
+    if (opener) document.getElementById('add-managed-repo-modal')?.showModal();
+  });
   document.addEventListener('input', event => {
     if (!event.target.matches('.global-filter')) return;
     const q = event.target.value.toLowerCase();
@@ -64,8 +70,22 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
   return new Response(file, { headers: { "content-type": "text/css; charset=utf-8" } });
 }
 
+function addManagedRepoModal(): string {
+  return `<dialog id="add-managed-repo-modal" class="modal">
+  <form method="post" action="/managed-repos">
+    <h2>Add managed repository</h2>
+    <p>Create a bare clone in Atelier's data directory.</p>
+    <input class="modal-input" name="gitUrl" type="url" placeholder="https://github.com/org/repo.git" required autofocus>
+    <div class="modal-actions">
+      <button class="btn" type="button" onclick="this.closest('dialog').close()">Cancel</button>
+      <button class="btn primary" type="submit">Add repository</button>
+    </div>
+  </form>
+</dialog>`;
+}
+
 async function workspacesPage(): Promise<Response> {
-  const { workspaces } = await listWorkspaces();
+  const [{ workspaces }, { repos: managedRepos }] = await Promise.all([listWorkspaces(), listManagedRepos()]);
   const rows = workspaces.map((workspace) => {
     const title = workspace.title || `Workspace ${workspace.id}`;
     return `<a class="row" href="/workspaces/${encodeURIComponent(workspace.id)}">
@@ -81,6 +101,18 @@ async function workspacesPage(): Promise<Response> {
     <span class="r-proj">configure later</span>
   </button></form>`;
 
+  const managedRepoRows = managedRepos.map((repo) => `<div class="row managed-repo-row">
+    <span></span>
+    <div><div class="r-title">${escapeHtml(repo.name)}</div><div class="r-sub">${escapeHtml(repo.remoteUrl ?? "remote unknown")}</div></div>
+    <span></span>
+  </div>`).join("");
+
+  const addManagedRepoRow = `<button class="row ghost-row" type="button" data-open-add-managed-repo>
+    <span></span>
+    <div><div class="r-title">+ Add managed repository</div><div class="r-sub">Create a bare clone in the Atelier data directory</div></div>
+    <span></span>
+  </button>`;
+
   return response(layout("Workspaces", `<div class="app no-sidebar">
   <div class="main">
     <header class="header"><h1>${escapeHtml(atelierName)} · Workspaces</h1></header>
@@ -93,14 +125,34 @@ async function workspacesPage(): Promise<Response> {
         ${rows || `<div class="row"><span></span><div><div class="r-title">No workspaces</div><div class="r-sub">Create one below.</div></div><span></span></div>`}
         ${newWorkspaceRow}
       </div>
+
+      <section class="host-repos">
+        <div class="section-head">
+          <div>
+            <h2>Managed repositories</h2>
+          </div>
+        </div>
+        <div class="table managed-repos-table">
+          ${managedRepoRows || `<div class="row"><span></span><div><div class="r-title">No managed repositories</div><div class="r-sub">Add one below.</div></div><span></span></div>`}
+          ${addManagedRepoRow}
+        </div>
+      </section>
     </div>
   </div>
-</div>`));
+</div>
+${addManagedRepoModal()}`));
 }
 
 async function createWorkspaceFromForm(_request: Request, url: URL): Promise<Response> {
   const created = await createWorkspace();
   return Response.redirect(new URL(`/workspaces/${encodeURIComponent(created.id)}`, url).toString(), 303);
+}
+
+async function createManagedRepoFromForm(request: Request, url: URL): Promise<Response> {
+  const formData = await request.formData();
+  const gitUrl = String(formData.get("gitUrl") ?? "");
+  await addManagedRepo(gitUrl);
+  return Response.redirect(new URL("/workspaces", url).toString(), 303);
 }
 
 async function getWorkspaceTitle(id: string): Promise<string> {
@@ -262,6 +314,7 @@ Bun.serve({
       if (url.pathname === "/") return Response.redirect(new URL("/workspaces", url).toString(), 302);
       if (url.pathname === "/workspaces" && request.method === "GET") return await workspacesPage();
       if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceFromForm(request, url);
+      if (url.pathname === "/managed-repos" && request.method === "POST") return await createManagedRepoFromForm(request, url);
 
       const titleEditMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/title\/edit$/);
       if (titleEditMatch && request.method === "GET") return await workspaceTitleEditFrame(decodeURIComponent(titleEditMatch[1]));

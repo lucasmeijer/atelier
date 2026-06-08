@@ -1,10 +1,14 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { requireDocker, runDocker } from "./docker.ts";
 import { AtelierCoreError, invalidArguments } from "./errors.ts";
+import { listManagedRepos, managedReposDir } from "./managed-repo.ts";
 
 const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
 const titlePath = "/.atelier/title";
-const workspaceRoot = "/workspace";
+const workspaceRoot = "/workspace/repos";
+const atelierReposRoot = "/atelier/repos";
 const defaultWorkspaceImage = "ghcr.io/lucasmeijer/atelier-workspace:latest";
 
 export interface WorkspaceNewResult {
@@ -27,6 +31,14 @@ export interface WorkspaceExecResult {
 
 export interface WorkspaceRepoListResult {
   repos: string[];
+}
+
+
+export interface WorkspaceCloneResult {
+  repo: string;
+  path: string;
+  remoteUrl: string;
+  referencePath: string;
 }
 
 export type WorkspaceRepoMergeabilityResult =
@@ -59,6 +71,14 @@ function shellQuote(value: string): string {
 
 function repoPath(repo: string): string {
   return `${workspaceRoot}/${repo}`;
+}
+
+function bareRepoName(repo: string): string {
+  return repo.endsWith(".git") ? repo : `${repo}.git`;
+}
+
+function worktreeRepoName(repo: string): string {
+  return repo.endsWith(".git") ? repo.slice(0, -4) : repo;
 }
 
 function validateRepoName(repo: string): void {
@@ -98,6 +118,13 @@ async function readTitle(id: string): Promise<string | null> {
 }
 
 export async function createWorkspace(): Promise<WorkspaceNewResult> {
+  const reposDir = managedReposDir();
+  try {
+    await mkdir(reposDir, { recursive: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new AtelierCoreError("data_dir_unavailable", `could not create Atelier repos directory ${reposDir}: ${message}`);
+  }
 
   const created = await requireDocker([
     "run",
@@ -106,12 +133,14 @@ export async function createWorkspace(): Promise<WorkspaceNewResult> {
     `${workspaceTypeLabel}=workspace`,
     "--label",
     `${namespaceLabel}=${namespace()}`,
+    "--mount",
+    `type=bind,src=${reposDir},dst=${atelierReposRoot}`,
     "--user",
     "root",
     workspaceImage(),
     "sh",
     "-lc",
-    "mkdir -p /.atelier /workspace; chown -R atelier:atelier /.atelier /workspace; sleep infinity",
+    "mkdir -p /.atelier /workspace/repos; chown -R atelier:atelier /.atelier /workspace; sleep infinity",
   ]);
 
   const fullId = created.stdout.trim();
@@ -180,10 +209,40 @@ async function ensureRepo(id: string, repo: string): Promise<void> {
 }
 
 async function listRepos(id: string): Promise<string[]> {
-  const script = `find ${shellQuote(workspaceRoot)} -mindepth 1 -maxdepth 1 -type d ! -name '.*' -exec sh -c 'for dir do git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 && basename "$dir"; done' sh {} + | sort`;
+  const script = `mkdir -p ${shellQuote(workspaceRoot)} && find ${shellQuote(workspaceRoot)} -mindepth 1 -maxdepth 1 -type d ! -name '.*' -exec sh -c 'for dir do git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 && basename "$dir"; done' sh {} + | sort`;
   const result = await execShellAsAtelier(id, script);
   if (result.exitCode !== 0) throw new AtelierCoreError("git_error", result.stderr.trim() || "could not list repos");
   return result.stdout.trim().split(/\n+/).filter(Boolean);
+}
+
+export async function cloneManagedRepoIntoWorkspace(id: string, repo: string): Promise<WorkspaceCloneResult> {
+  validateRepoName(repo);
+  await resolveWorkspace(id);
+
+  const bareName = bareRepoName(repo);
+  const worktreeName = worktreeRepoName(repo);
+  const managed = (await listManagedRepos()).repos.find((candidate) => candidate.name === bareName || candidate.name === repo);
+  if (!managed) throw new AtelierCoreError("managed_repo_not_found", `managed repo not found: ${repo}`);
+  const targetPath = repoPath(worktreeName);
+  const referencePath = join(atelierReposRoot, managed.name);
+  const result = await execShellAsAtelier(
+    id,
+    `set -e
+      mkdir -p ${shellQuote(workspaceRoot)}
+      if [ -e ${shellQuote(targetPath)} ]; then
+        printf 'repo already exists: %s\n' ${shellQuote(worktreeName)} >&2
+        exit 17
+      fi
+      git clone --reference ${shellQuote(referencePath)} ${shellQuote(referencePath)} ${shellQuote(targetPath)}
+    `,
+  );
+  if (result.exitCode !== 0) {
+    const message = (result.stderr || result.stdout).trim();
+    if (message.includes("File exists")) throw new AtelierCoreError("repo_already_exists", `repo already exists: ${worktreeName}`);
+    throw new AtelierCoreError("git_clone_failed", message || `could not clone ${repo}`);
+  }
+
+  return { repo: worktreeName, path: targetPath, remoteUrl: referencePath, referencePath };
 }
 
 async function calculateMergeability(id: string, repo: string): Promise<WorkspaceRepoMergeabilityResult> {
@@ -331,6 +390,12 @@ export async function workspaceCommand(args: string[]): Promise<unknown> {
       return await execWorkspace(id, rest.slice(separatorIndex + 1));
     }
     default:
+      if (args[1] === "clone") {
+        const id = requireArg(args[0], "workspace id");
+        const repo = requireArg(args[2], "repo name");
+        if (args.length !== 3) throw invalidArguments("usage: atelier workspace <workspace-id> clone <repo>");
+        return await cloneManagedRepoIntoWorkspace(id, repo);
+      }
       return await workspaceRepoCommand(args);
   }
 }

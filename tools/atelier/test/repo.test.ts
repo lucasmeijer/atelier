@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   expectFailure,
@@ -15,8 +18,25 @@ setDefaultTimeout(120_000);
 
 let sharedWorkspaceId: string;
 
+interface WorkspaceCloneResult {
+  repo: string;
+  path: string;
+  remoteUrl: string;
+  referencePath: string;
+}
+
 async function newWorkspace(): Promise<string> {
   return expectSuccess<WorkspaceNewResult>(await runAtelier(["workspace", "new"])).id;
+}
+
+async function hostGit(args: string[]): Promise<void> {
+  const proc = Bun.spawn(["git", ...args], { stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (exitCode !== 0) throw new Error(`git ${args.join(" ")} failed\n${stdout}\n${stderr}`);
 }
 
 function getWorkspaceId(): string {
@@ -45,10 +65,10 @@ function setupBaseRepoScript(repo: string): string {
   return `
     set -e
     ${gitIdentityScript()}
-    mkdir -p /workspace/.test-remotes /workspace/.test-clones
+    mkdir -p /workspace/.test-remotes /workspace/.test-clones /workspace/repos
     git init --bare /workspace/.test-remotes/${repo}.git >/dev/null
-    git clone /workspace/.test-remotes/${repo}.git /workspace/${repo} >/dev/null 2>&1
-    cd /workspace/${repo}
+    git clone /workspace/.test-remotes/${repo}.git /workspace/repos/${repo} >/dev/null 2>&1
+    cd /workspace/repos/${repo}
     echo base > file.txt
     git add file.txt
     git commit -m base >/dev/null
@@ -60,7 +80,7 @@ function setupBaseRepoScript(repo: string): string {
 function addLocalCommitScript(repo: string, file: string, content: string, message = "local change"): string {
   return `
     set -e
-    cd /workspace/${repo}
+    cd /workspace/repos/${repo}
     printf '%s\\n' ${JSON.stringify(content)} > ${file}
     git add ${file}
     git commit -m ${JSON.stringify(message)} >/dev/null
@@ -87,7 +107,7 @@ describe("atelier workspace repo", () => {
   });
 
   beforeEach(async () => {
-    await execScript(sharedWorkspaceId, "find /workspace -mindepth 1 -maxdepth 1 -exec rm -rf {} +");
+    await execScript(sharedWorkspaceId, "rm -rf /workspace/repos /workspace/.test-remotes /workspace/.test-clones; mkdir -p /workspace/repos");
   });
 
   afterAll(async () => {
@@ -119,7 +139,7 @@ describe("atelier workspace repo", () => {
 
   test("workspace <id> repo list ignores non-git directories under /workspace", async () => {
     const workspaceId = getWorkspaceId();
-    await execScript(workspaceId, `${setupBaseRepoScript("alpha")} mkdir -p /workspace/not-a-repo`);
+    await execScript(workspaceId, `${setupBaseRepoScript("alpha")} mkdir -p /workspace/repos/not-a-repo`);
 
     const result = expectSuccess<WorkspaceRepoListResult>(
       await runAtelier(["workspace", workspaceId, "repo", "list"]),
@@ -128,12 +148,52 @@ describe("atelier workspace repo", () => {
     expect(result.repos).toEqual(["alpha"]);
   });
 
+  test("workspace <id> clone <repo> clones a managed repo into /workspace/repos", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "atelier-clone-data-"));
+    const reposDir = join(dataDir, "repos");
+    const barePath = join(reposDir, "alpha.git");
+    await mkdir(reposDir, { recursive: true });
+    await hostGit(["init", "--bare", barePath]);
+    await hostGit(["--git-dir", barePath, "symbolic-ref", "HEAD", "refs/heads/main"]);
+    await hostGit(["--git-dir", barePath, "config", "remote.origin.url", "/atelier/repos/alpha.git"]);
+
+    const workspace = expectSuccess<WorkspaceNewResult>(await runAtelier(["workspace", "new"], { dataDir }));
+    try {
+      const cloned = expectSuccess<WorkspaceCloneResult>(
+        await runAtelier(["workspace", workspace.id, "clone", "alpha"], { dataDir }),
+      );
+      expect(cloned.repo).toBe("alpha");
+      expect(cloned.path).toBe("/workspace/repos/alpha");
+      expect(cloned.remoteUrl).toBe("/atelier/repos/alpha.git");
+      expect(cloned.referencePath).toBe("/atelier/repos/alpha.git");
+
+      const origin = await execScript(workspace.id, "git -C /workspace/repos/alpha remote get-url origin");
+      expect(origin.stdout.trim()).toBe("/atelier/repos/alpha.git");
+
+      await execScript(workspace.id, `
+        ${gitIdentityScript()}
+        cd /workspace/repos/alpha
+        echo hello > README.md
+        git add README.md
+        git commit -m initial >/dev/null
+        git push -u origin main >/dev/null 2>&1
+      `);
+
+      const listed = expectSuccess<WorkspaceRepoListResult>(
+        await runAtelier(["workspace", workspace.id, "repo", "list"], { dataDir }),
+      );
+      expect(listed.repos).toEqual(["alpha"]);
+    } finally {
+      await runAtelier(["workspace", "delete", workspace.id], { dataDir });
+    }
+  });
+
   test("workspace <id> repo list ignores hidden test/helper directories under /workspace", async () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `
       ${setupBaseRepoScript("alpha")}
-      mkdir -p /workspace/.hidden
-      git init /workspace/.hidden >/dev/null
+      mkdir -p /workspace/repos/.hidden
+      git init /workspace/repos/.hidden >/dev/null
     `);
 
     const result = expectSuccess<WorkspaceRepoListResult>(
@@ -207,7 +267,7 @@ describe("atelier workspace repo", () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `
       ${setupBaseRepoScript("broken-fetch")}
-      cd /workspace/broken-fetch
+      cd /workspace/repos/broken-fetch
       git remote set-url origin /workspace/.test-remotes/missing.git
     `);
 
@@ -304,7 +364,7 @@ describe("atelier workspace repo", () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `
       ${setupBaseRepoScript("push-fetch-failed")}
-      cd /workspace/push-fetch-failed
+      cd /workspace/repos/push-fetch-failed
       git remote set-url origin /workspace/.test-remotes/missing.git
     `);
 
