@@ -44,7 +44,7 @@ Atelier needs to know these paths because:
 - `managed-repos/` is scanned by Atelier and mounted read-only into workspace containers.
 - `workspace-control/<control-key>/` is created/read/written by Atelier and mounted read/write as `/.atelier` in workspace containers.
 
-Workspace worktrees under `/workspace` are not host-mounted in the first version, so Atelier does not need a host path for them.
+Workspace worktrees under `/repos` are not host-mounted in the first version, so Atelier does not need a host path for them.
 
 ## Managed repos
 

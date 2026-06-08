@@ -7,7 +7,7 @@ It extends `mcr.microsoft.com/devcontainers/base:ubuntu-24.04` and adds:
 - `tmux`
 - recent ncurses terminfo, including `xterm-ghostty`
 - `/etc/tmux.conf` configured for `xterm-ghostty` + RGB
-- the `atelier` user and `/workspace` / `/.atelier` directories
+- the `atelier` user and `/repos` / `/.atelier` directories
 
 Build locally:
 

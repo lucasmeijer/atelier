@@ -7,8 +7,8 @@ import { listManagedRepos, managedReposDir } from "./managed-repo.ts";
 const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
 const titlePath = "/.atelier/title";
-const workspaceRoot = "/workspace/repos";
-const terminalRoot = "/workspace";
+const workspaceRoot = "/repos";
+const terminalRoot = "/repos";
 const atelierReposRoot = "/atelier/repos";
 const defaultWorkspaceImage = "ghcr.io/lucasmeijer/atelier-workspace:latest";
 
@@ -134,11 +134,24 @@ async function inspectLabels(id: string): Promise<Record<string, string>> {
   return trimmed && trimmed !== "null" ? JSON.parse(trimmed) as Record<string, string> : {};
 }
 
+async function ensureWorkspaceFilesystem(id: string): Promise<void> {
+  const result = await runDocker(["exec", "--user", "root", id, "sh", "-lc", `
+    set -e
+    if [ ! -e ${shellQuote(workspaceRoot)} ] && [ -d /workspace/repos ]; then
+      mv /workspace/repos ${shellQuote(workspaceRoot)}
+    fi
+    mkdir -p ${shellQuote(workspaceRoot)} /.atelier
+    chown -R atelier:atelier ${shellQuote(workspaceRoot)} /.atelier
+  `]);
+  if (result.exitCode !== 0) throw new AtelierCoreError("workspace_repair_failed", result.stderr.trim() || result.stdout.trim() || `could not prepare workspace filesystem for ${id}`);
+}
+
 async function resolveWorkspace(id: string): Promise<string> {
   const labels = await inspectLabels(id);
   if (labels[workspaceTypeLabel] !== "workspace" || labels[namespaceLabel] !== namespace()) {
     throw new AtelierCoreError("workspace_not_found", `workspace not found: ${id}`);
   }
+  await ensureWorkspaceFilesystem(id);
   return id;
 }
 
@@ -171,7 +184,7 @@ export async function createWorkspace(): Promise<WorkspaceNewResult> {
     workspaceImage(),
     "sh",
     "-lc",
-    "mkdir -p /.atelier /workspace/repos; chown -R atelier:atelier /.atelier /workspace; sleep infinity",
+    "mkdir -p /.atelier /repos; chown -R atelier:atelier /.atelier /repos; sleep infinity",
   ]);
 
   const fullId = created.stdout.trim();

@@ -74,10 +74,10 @@ function setupBaseRepoScript(repo: string): string {
   return `
     set -e
     ${gitIdentityScript()}
-    mkdir -p /workspace/.test-remotes /workspace/.test-clones /workspace/repos
-    git init --bare /workspace/.test-remotes/${repo}.git >/dev/null
-    git clone /workspace/.test-remotes/${repo}.git /workspace/repos/${repo} >/dev/null 2>&1
-    cd /workspace/repos/${repo}
+    mkdir -p /tmp/atelier-test-remotes /tmp/atelier-test-clones /repos
+    git init --bare /tmp/atelier-test-remotes/${repo}.git >/dev/null
+    git clone /tmp/atelier-test-remotes/${repo}.git /repos/${repo} >/dev/null 2>&1
+    cd /repos/${repo}
     echo base > file.txt
     git add file.txt
     git commit -m base >/dev/null
@@ -89,7 +89,7 @@ function setupBaseRepoScript(repo: string): string {
 function addLocalCommitScript(repo: string, file: string, content: string, message = "local change"): string {
   return `
     set -e
-    cd /workspace/repos/${repo}
+    cd /repos/${repo}
     printf '%s\\n' ${JSON.stringify(content)} > ${file}
     git add ${file}
     git commit -m ${JSON.stringify(message)} >/dev/null
@@ -100,9 +100,9 @@ function addRemoteCommitScript(repo: string, file: string, content: string, mess
   return `
     set -e
     ${gitIdentityScript()}
-    rm -rf /workspace/.test-clones/${repo}-updater
-    git clone /workspace/.test-remotes/${repo}.git /workspace/.test-clones/${repo}-updater >/dev/null 2>&1
-    cd /workspace/.test-clones/${repo}-updater
+    rm -rf /tmp/atelier-test-clones/${repo}-updater
+    git clone /tmp/atelier-test-remotes/${repo}.git /tmp/atelier-test-clones/${repo}-updater >/dev/null 2>&1
+    cd /tmp/atelier-test-clones/${repo}-updater
     printf '%s\\n' ${JSON.stringify(content)} > ${file}
     git add ${file}
     git commit -m ${JSON.stringify(message)} >/dev/null
@@ -116,7 +116,7 @@ describe("atelier workspace repo", () => {
   });
 
   beforeEach(async () => {
-    await execScript(sharedWorkspaceId, "rm -rf /workspace/repos /workspace/.test-remotes /workspace/.test-clones; mkdir -p /workspace/repos");
+    await execScript(sharedWorkspaceId, "find /repos -mindepth 1 -maxdepth 1 -exec rm -rf {} +; rm -rf /tmp/atelier-test-remotes /tmp/atelier-test-clones; mkdir -p /repos");
   });
 
   afterAll(async () => {
@@ -125,7 +125,7 @@ describe("atelier workspace repo", () => {
     }
   });
 
-  test("workspace <id> repo list returns an empty repo list when /workspace has no git repos", async () => {
+  test("workspace <id> repo list returns an empty repo list when /repos has no git repos", async () => {
     const workspaceId = getWorkspaceId();
 
     const result = expectSuccess<WorkspaceRepoListResult>(
@@ -135,7 +135,7 @@ describe("atelier workspace repo", () => {
     expect(result).toEqual({ repos: [] });
   });
 
-  test("workspace <id> repo list returns direct child git repos under /workspace", async () => {
+  test("workspace <id> repo list returns direct child git repos under /repos", async () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `${setupBaseRepoScript("alpha")} ${setupBaseRepoScript("beta")}`);
 
@@ -146,9 +146,9 @@ describe("atelier workspace repo", () => {
     expect(result.repos).toEqual(["alpha", "beta"]);
   });
 
-  test("workspace <id> repo list ignores non-git directories under /workspace", async () => {
+  test("workspace <id> repo list ignores non-git directories under /repos", async () => {
     const workspaceId = getWorkspaceId();
-    await execScript(workspaceId, `${setupBaseRepoScript("alpha")} mkdir -p /workspace/repos/not-a-repo`);
+    await execScript(workspaceId, `${setupBaseRepoScript("alpha")} mkdir -p /repos/not-a-repo`);
 
     const result = expectSuccess<WorkspaceRepoListResult>(
       await runAtelier(["workspace", workspaceId, "repo", "list"]),
@@ -157,7 +157,7 @@ describe("atelier workspace repo", () => {
     expect(result.repos).toEqual(["alpha"]);
   });
 
-  test("workspace <id> clone <repo> clones a managed repo into /workspace/repos", async () => {
+  test("workspace <id> clone <repo> clones a managed repo into /repos", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "atelier-clone-data-"));
     const reposDir = join(dataDir, "repos");
     const barePath = join(reposDir, "alpha.git");
@@ -172,16 +172,16 @@ describe("atelier workspace repo", () => {
         await runAtelier(["workspace", workspace.id, "clone", "alpha"], { dataDir }),
       );
       expect(cloned.repo).toBe("alpha");
-      expect(cloned.path).toBe("/workspace/repos/alpha");
+      expect(cloned.path).toBe("/repos/alpha");
       expect(cloned.remoteUrl).toBe("/atelier/repos/alpha.git");
       expect(cloned.referencePath).toBe("/atelier/repos/alpha.git");
 
-      const origin = await execScript(workspace.id, "git -C /workspace/repos/alpha remote get-url origin");
+      const origin = await execScript(workspace.id, "git -C /repos/alpha remote get-url origin");
       expect(origin.stdout.trim()).toBe("/atelier/repos/alpha.git");
 
       await execScript(workspace.id, `
         ${gitIdentityScript()}
-        cd /workspace/repos/alpha
+        cd /repos/alpha
         echo hello > README.md
         git add README.md
         git commit -m initial >/dev/null
@@ -197,12 +197,12 @@ describe("atelier workspace repo", () => {
     }
   });
 
-  test("workspace <id> repo list ignores hidden test/helper directories under /workspace", async () => {
+  test("workspace <id> repo list ignores hidden test/helper directories under /repos", async () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `
       ${setupBaseRepoScript("alpha")}
-      mkdir -p /workspace/repos/.hidden
-      git init /workspace/repos/.hidden >/dev/null
+      mkdir -p /repos/.hidden
+      git init /repos/.hidden >/dev/null
     `);
 
     const result = expectSuccess<WorkspaceRepoListResult>(
@@ -246,7 +246,7 @@ describe("atelier workspace repo", () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `
       ${setupBaseRepoScript("dirty")}
-      cd /workspace/repos/dirty
+      cd /repos/dirty
       printf 'tracked\n' > modified.txt
       git add modified.txt
       git commit -m 'add modified fixture' >/dev/null
@@ -274,7 +274,7 @@ describe("atelier workspace repo", () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `
       ${setupBaseRepoScript("local-delete")}
-      cd /workspace/repos/local-delete
+      cd /repos/local-delete
       git rm tsconfig.json >/dev/null 2>&1 || git rm file.txt >/dev/null
       git commit -m 'delete file' >/dev/null
     `);
@@ -320,8 +320,8 @@ describe("atelier workspace repo", () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `
       ${setupBaseRepoScript("broken-fetch")}
-      cd /workspace/repos/broken-fetch
-      git remote set-url origin /workspace/.test-remotes/missing.git
+      cd /repos/broken-fetch
+      git remote set-url origin /tmp/atelier-test-remotes/missing.git
     `);
 
     const result = expectSuccess<WorkspaceRepoMergeabilityResult>(
@@ -375,7 +375,7 @@ describe("atelier workspace repo", () => {
     const result = expectSuccess<WorkspaceRepoPushResult>(
       await runAtelier(["workspace", workspaceId, "repo", "push", "push-local"]),
     );
-    const count = await execScript(workspaceId, "git --git-dir=/workspace/.test-remotes/push-local.git rev-list --count main");
+    const count = await execScript(workspaceId, "git --git-dir=/tmp/atelier-test-remotes/push-local.git rev-list --count main");
 
     expect(result).toEqual({ state: "pushed" });
     expect(count.stdout.trim()).toBe("2");
@@ -392,7 +392,7 @@ describe("atelier workspace repo", () => {
     const result = expectSuccess<WorkspaceRepoPushResult>(
       await runAtelier(["workspace", workspaceId, "repo", "push", "push-rebase"]),
     );
-    const count = await execScript(workspaceId, "git --git-dir=/workspace/.test-remotes/push-rebase.git rev-list --count main");
+    const count = await execScript(workspaceId, "git --git-dir=/tmp/atelier-test-remotes/push-rebase.git rev-list --count main");
 
     expect(result).toEqual({ state: "pushed" });
     expect(count.stdout.trim()).toBe("3");
@@ -417,8 +417,8 @@ describe("atelier workspace repo", () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `
       ${setupBaseRepoScript("push-fetch-failed")}
-      cd /workspace/repos/push-fetch-failed
-      git remote set-url origin /workspace/.test-remotes/missing.git
+      cd /repos/push-fetch-failed
+      git remote set-url origin /tmp/atelier-test-remotes/missing.git
     `);
 
     const result = expectSuccess<WorkspaceRepoPushResult>(

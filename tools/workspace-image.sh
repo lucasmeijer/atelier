@@ -52,7 +52,7 @@ rm -rf /tmp/atelier-tmux-test
 mkdir -p /tmp/atelier-tmux-test
 chown atelier:atelier /tmp/atelier-tmux-test
 
-su atelier -c "tmux -S /tmp/atelier-tmux-test/socket new-session -d -s 'Terminal 1' -c /workspace 'printf \"%s %s\\n\" \"\$TERM\" \"\$COLORTERM\" > /tmp/atelier-tmux-test/pane-env; exec /bin/bash'"
+su atelier -c "tmux -S /tmp/atelier-tmux-test/socket new-session -d -s 'Terminal 1' -c /repos 'printf \"%s %s\\n\" \"\$TERM\" \"\$COLORTERM\" > /tmp/atelier-tmux-test/pane-env; exec /bin/bash'"
 su atelier -c "tmux -S /tmp/atelier-tmux-test/socket list-sessions -F '#S #{session_attached} #{session_windows}'"
 test "$(su atelier -c "tmux -S /tmp/atelier-tmux-test/socket show-options -gqv extended-keys")" = "on"
 su atelier -c "command -v pi >/dev/null && pi --version >/dev/null"

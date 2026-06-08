@@ -384,7 +384,7 @@ async function workspacePage(id: string): Promise<Response> {
         <span class="status-spinner" aria-label="Checking"></span>
       </div>
     </turbo-frame>`;
-  }).join("") || `<div class="git-status-row idle"><div class="repo-identity"><span class="repo-dot"></span><b>No repos</b><small>No git repositories found under /workspace.</small></div></div>`;
+  }).join("") || `<div class="git-status-row idle"><div class="repo-identity"><span class="repo-dot"></span><b>No repos</b><small>No git repositories found under /repos.</small></div></div>`;
   const cloneRepoRow = `<button class="git-status-row clone-row" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="clone-managed-repo-modal"><div class="repo-identity"><span class="clone-plus">+</span><small>Clone a managed repository into this workspace.</small></div><span></span></button>`;
 
   return response(layout(title, `<div class="app no-sidebar">
@@ -610,7 +610,7 @@ function openTerminalPty(ws: ServerWebSocket<TerminalSocketData>): void {
   const args = [
     "exec", "-it",
     "--user", "atelier",
-    "--workdir", "/workspace",
+    "--workdir", "/repos",
     "-e", "TERM=xterm-ghostty",
     "-e", "COLORTERM=truecolor",
     data.workspaceId,

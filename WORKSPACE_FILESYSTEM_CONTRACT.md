@@ -12,13 +12,13 @@ Inside every Atelier workspace container:
 
 ```text
 /.atelier/    Atelier control/data directory, host-mounted read/write
-/workspace/   normal working directory for agents and tools
+/repos/   normal working directory for agents and tools
 ```
 
 Agents should normally work under:
 
 ```text
-/workspace
+/repos
 ```
 
 Managed repositories should be cloned only through:
@@ -34,7 +34,7 @@ Atelier creates a host-side control directory for each workspace and mounts it a
 Example host layout:
 
 ```text
-$ATELIER_DATA_DIR/workspace-control/<control-key>/
+$ATELIER_DATA_DIR/repos-control/<control-key>/
   agent_tree.jsonl
   title
   tools/
@@ -90,7 +90,7 @@ This uses Pi's JSONL session tree format.
 Example:
 
 ```jsonl
-{"type":"session","version":3,"id":"...","timestamp":"2026-06-02T12:00:00.000Z","cwd":"/workspace"}
+{"type":"session","version":3,"id":"...","timestamp":"2026-06-02T12:00:00.000Z","cwd":"/repos"}
 ```
 
 ### `/.atelier/title`
@@ -207,37 +207,37 @@ No durable semantics.
 
 ## Managed repo working trees
 
-Managed repo working trees live under `/workspace`.
+Managed repo working trees live under `/repos`.
 
 Default clone destination:
 
 ```text
-/workspace/<managed-repo-name>
+/repos/<managed-repo-name>
 ```
 
 Example:
 
 ```text
-/workspace/webshop-frontend/
-/workspace/design-tokens/
+/repos/webshop-frontend/
+/repos/design-tokens/
 ```
 
 This keeps paths natural for agents:
 
 ```text
-/workspace/webshop-frontend/src/App.tsx
+/repos/webshop-frontend/src/App.tsx
 ```
 
-Atelier discovers cloned managed repos by scanning `/workspace` for Git working trees and checking whether they are clones of managed repos.
+Atelier discovers cloned managed repos by scanning `/repos` for Git working trees and checking whether they are clones of managed repos.
 
-A Git working tree under `/workspace` is considered a managed repo clone if:
+A Git working tree under `/repos` is considered a managed repo clone if:
 
-1. it is inside `/workspace`,
+1. it is inside `/repos`,
 2. it is not inside `/.atelier`,
 3. it has a configured remote that points at a repo under `/.atelier/readonly-hostmounted-repos`, and
 4. the target bare repo basename corresponds to a managed repo name.
 
-The initial implementation may scan only shallow paths, for example direct children of `/workspace`, and can expand later if needed. It should ignore obvious dependency/cache directories such as `node_modules`, `.venv`, `vendor`, `.cache`, and nested `.git` directories inside already-discovered repos.
+The initial implementation may scan only shallow paths, for example direct children of `/repos`, and can expand later if needed. It should ignore obvious dependency/cache directories such as `node_modules`, `.venv`, `vendor`, `.cache`, and nested `.git` directories inside already-discovered repos.
 
 No separate persisted workspace repo manifest is required in the first version.
 
@@ -254,15 +254,15 @@ atelier clone <managed-repo-name> [--path <path>]
 Default destination:
 
 ```text
-/workspace/<managed-repo-name>
+/repos/<managed-repo-name>
 ```
 
 Behavior:
 
 1. verify it is running inside an Atelier workspace by checking `/.atelier`
 2. verify the managed bare repo exists at `/.atelier/readonly-hostmounted-repos/<name>.git`
-3. clone into `/workspace/<name>` by default, or the explicit `--path`
-4. keep the clone inside `/workspace`
+3. clone into `/repos/<name>` by default, or the explicit `--path`
+4. keep the clone inside `/repos`
 5. configure the clone's remote to point at the managed repo using a read-only/local path where possible
 6. fail clearly if destination already exists or the managed repo is unknown
 
@@ -272,12 +272,12 @@ Initial implementation may shell out to Git, for example:
 git clone \
   --reference /.atelier/readonly-hostmounted-repos/webshop-frontend.git \
   /.atelier/readonly-hostmounted-repos/webshop-frontend.git \
-  /workspace/webshop-frontend
+  /repos/webshop-frontend
 ```
 
 Use `--reference`, not `--reference-if-able`. If the reference clone does not work, that is a bug in Atelier's workspace setup.
 
-The exact clone implementation may change, but the public contract remains `atelier clone <name>` and the default resulting clone path remains `/workspace/<name>`.
+The exact clone implementation may change, but the public contract remains `atelier clone <name>` and the default resulting clone path remains `/repos/<name>`.
 
 ## Git diff base
 
@@ -315,7 +315,7 @@ Persisted workspace state in the first version is intentionally minimal:
 - workspace title: `/.atelier/title`, or `unnamed` if absent
 - conversation/tree/agent branches: `/.atelier/agent_tree.jsonl`
 - active/named agents: Pi `custom` entries with `customType: "atelier.agent"`
-- cloned managed repos: discovered by scanning `/workspace` for Git working trees whose remotes point at `/.atelier/readonly-hostmounted-repos/*.git`
+- cloned managed repos: discovered by scanning `/repos` for Git working trees whose remotes point at `/.atelier/readonly-hostmounted-repos/*.git`
 - managed repo metadata: derived from bare Git repos under `/.atelier/readonly-hostmounted-repos/*.git`
 
 There is no separate workspace database record, repo manifest, stored clone base SHA, or `workspace_info.json` in the first version.

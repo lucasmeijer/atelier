@@ -128,7 +128,7 @@ describe("atelier workspace", () => {
       "--",
       "sh",
       "-lc",
-      "mkdir -p /workspace/repos/sample && cd /workspace/repos/sample && git init && printf hello > changed.txt",
+      "mkdir -p /repos/sample && cd /repos/sample && git init && printf hello > changed.txt",
     ]));
 
     const error = expectFailure(await runAtelier(["workspace", "delete", created.id]));

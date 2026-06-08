@@ -67,10 +67,10 @@ RUN printf '%s\n' \
     > /etc/tmux.conf
 
 RUN id -u atelier >/dev/null 2>&1 || useradd --create-home --shell /bin/bash atelier \
- && mkdir -p /.atelier /workspace \
- && chown -R atelier:atelier /.atelier /workspace
+ && mkdir -p /.atelier /repos \
+ && chown -R atelier:atelier /.atelier /repos
 
 ENV TERM=xterm-ghostty \
     COLORTERM=truecolor
 
-WORKDIR /workspace
+WORKDIR /repos
