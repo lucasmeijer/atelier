@@ -2,6 +2,17 @@
 
 import { init, Terminal, FitAddon } from "ghostty-web";
 
+declare global {
+  interface Window {
+    Stimulus: {
+      Application: { start(): { register(identifier: string, controllerConstructor: unknown): void; getControllerForElementAndIdentifier(element: Element, identifier: string): unknown } };
+      Controller: new (...args: unknown[]) => { element: Element };
+    };
+  }
+}
+
+const { Application, Controller } = window.Stimulus;
+
 interface TerminalState {
   term: Terminal;
   ws: WebSocket;
@@ -13,10 +24,6 @@ const terminals = new Map<string, TerminalState>();
 
 function terminalKey(workspaceId: string, title: string): string {
   return `${workspaceId}\u0000${title}`;
-}
-
-function tabId(title: string): string {
-  return `terminal-${title.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 }
 
 function terminalTheme() {
@@ -93,109 +100,125 @@ async function startTerminal(workspaceId: string, title: string): Promise<void> 
 }
 
 function stopTerminal(workspaceId: string, title: string): void {
-  const state = terminals.get(terminalKey(workspaceId, title));
+  const key = terminalKey(workspaceId, title);
+  const state = terminals.get(key);
   if (!state) return;
   state.ws.close();
   state.fit.dispose();
   state.term.dispose();
-  terminals.delete(terminalKey(workspaceId, title));
+  terminals.delete(key);
 }
 
-function activateTab(root: HTMLElement, tabName: string): void {
-  root.querySelectorAll<HTMLElement>(".tab[data-tab]").forEach((tab) => {
-    tab.classList.toggle("active", tab.dataset.tab === tabName);
-    tab.classList.toggle("muted", tab.dataset.tab !== tabName);
-  });
-  document.querySelectorAll<HTMLElement>(".tab-pane[data-tab-pane]").forEach((pane) => {
-    pane.classList.toggle("active", pane.dataset.tabPane === tabName);
-  });
+class WorkspaceTabsController extends Controller {
+  static values = { workspaceId: String };
+  declare readonly element: HTMLElement;
+  declare readonly workspaceIdValue: string;
 
-  if (tabName.startsWith("terminal:")) {
-    const workspaceId = root.dataset.workspaceId;
-    const title = tabName.slice("terminal:".length);
-    if (workspaceId) void startTerminal(workspaceId, title);
+  connect(): void {
+    const activeTerminal = document.querySelector<HTMLElement>(".tab-pane.active[data-tab-pane^='terminal:']");
+    const title = activeTerminal?.dataset.tabPane?.slice("terminal:".length);
+    if (title) void startTerminal(this.workspaceIdValue, title);
+  }
+
+  activate(event: Event & { params?: { tab?: string } }): void {
+    const tabName = event.params?.tab ?? (event.currentTarget instanceof HTMLElement ? event.currentTarget.dataset.tab : undefined);
+    if (!tabName) return;
+    this.activateTab(tabName);
+  }
+
+  stopPropagation(event: Event): void {
+    event.stopPropagation();
+  }
+
+  activateTab(tabName: string): void {
+    this.element.querySelectorAll<HTMLElement>(".tab[data-tab]").forEach((tab) => {
+      tab.classList.toggle("active", tab.dataset.tab === tabName);
+      tab.classList.toggle("muted", tab.dataset.tab !== tabName);
+    });
+    document.querySelectorAll<HTMLElement>(".tab-pane[data-tab-pane]").forEach((pane) => {
+      pane.classList.toggle("active", pane.dataset.tabPane === tabName);
+    });
+
+    if (tabName.startsWith("terminal:")) {
+      void startTerminal(this.workspaceIdValue, tabName.slice("terminal:".length));
+    }
   }
 }
 
-function terminalTabHtml(title: string): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.className = "tab closable muted";
-  button.type = "button";
-  button.dataset.tab = `terminal:${title}`;
-  button.dataset.terminalTitle = title;
-  button.innerHTML = `▣ ${escapeHtml(title)} <span class="tab-close" data-close-terminal title="Close terminal">×</span>`;
-  return button;
+class TerminalPaneController extends Controller {
+  static values = { workspaceId: String, title: String };
+  declare readonly element: HTMLElement;
+  declare readonly workspaceIdValue: string;
+  declare readonly titleValue: string;
+
+  disconnect(): void {
+    stopTerminal(this.workspaceIdValue, this.titleValue);
+  }
 }
 
-function terminalPaneHtml(title: string): HTMLElement {
-  const section = document.createElement("section");
-  section.className = "tab-pane";
-  section.dataset.tabPane = `terminal:${title}`;
-  section.innerHTML = `<div class="terminal-pane" data-terminal-title="${escapeHtml(title)}"><div class="terminal-bar">${escapeHtml(title)} · tmux</div><div class="ghostty-terminal" tabindex="0"></div></div>`;
-  return section;
+class ActivateTabController extends Controller {
+  static values = { tab: String };
+  declare readonly element: HTMLElement;
+  declare readonly tabValue: string;
+
+  connect(): void {
+    const tabs = document.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]');
+    const controller = tabs ? application.getControllerForElementAndIdentifier(tabs, "workspace-tabs") as WorkspaceTabsController | null : null;
+    controller?.activateTab(this.tabValue);
+    this.element.remove();
+  }
 }
 
-function escapeHtml(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+class ModalController extends Controller {
+  static values = { autoShow: Boolean };
+  declare readonly element: HTMLDialogElement;
+  declare readonly autoShowValue: boolean;
+
+  connect(): void {
+    if (this.autoShowValue && !this.element.open) this.element.showModal();
+  }
+
+  close(): void {
+    this.element.close();
+  }
 }
 
-async function createTerminal(root: HTMLElement): Promise<void> {
-  const workspaceId = root.dataset.workspaceId;
-  if (!workspaceId) return;
-  const response = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/terminals`, { method: "POST", headers: { accept: "application/json" } });
-  if (!response.ok) throw new Error(await response.text());
-  const { title } = await response.json() as { title: string };
+class ModalOpenerController extends Controller {
+  static values = { targetId: String };
+  declare readonly element: HTMLElement;
+  declare readonly targetIdValue: string;
 
-  const addButton = root.querySelector<HTMLElement>("#add-terminal");
-  addButton?.before(terminalTabHtml(title));
-  document.querySelector<HTMLElement>(".workspace-panes")?.append(terminalPaneHtml(title));
-  activateTab(root, `terminal:${title}`);
+  open(): void {
+    const dialog = document.getElementById(this.targetIdValue) as HTMLDialogElement | null;
+    if (dialog && !dialog.open) dialog.showModal();
+  }
 }
 
-async function deleteTerminal(root: HTMLElement, title: string): Promise<void> {
-  const workspaceId = root.dataset.workspaceId;
-  if (!workspaceId) return;
-  const response = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/terminals/${encodeURIComponent(title)}/delete`, { method: "POST" });
-  if (!response.ok && response.status !== 404) throw new Error(await response.text());
+class RedirectController extends Controller {
+  static values = { url: String };
+  declare readonly element: HTMLElement;
+  declare readonly urlValue: string;
 
-  stopTerminal(workspaceId, title);
-  Array.from(root.querySelectorAll<HTMLElement>(".tab[data-terminal-title]")).find((tab) => tab.dataset.terminalTitle === title)?.remove();
-  Array.from(document.querySelectorAll<HTMLElement>(".tab-pane[data-tab-pane]")).find((pane) => pane.dataset.tabPane === `terminal:${title}`)?.remove();
-  activateTab(root, "agent");
+  connect(): void {
+    location.href = this.urlValue;
+  }
 }
 
-function bootWorkspaceTerminals(): void {
-  const root = document.querySelector<HTMLElement>(".workspace-tabs[data-workspace-id]");
-  if (!root || root.dataset.terminalBooted === "true") return;
-  root.dataset.terminalBooted = "true";
-
-  root.addEventListener("click", (event) => {
-    const target = event.target as HTMLElement;
-    const close = target.closest<HTMLElement>("[data-close-terminal]");
-    if (close) {
-      event.stopPropagation();
-      const tab = close.closest<HTMLElement>(".tab[data-terminal-title]");
-      const title = tab?.dataset.terminalTitle;
-      if (title) void deleteTerminal(root, title).catch((error) => alert(error instanceof Error ? error.message : String(error)));
-      return;
-    }
-
-    const add = target.closest<HTMLElement>("#add-terminal");
-    if (add) {
-      void createTerminal(root).catch((error) => alert(error instanceof Error ? error.message : String(error)));
-      return;
-    }
-
-    const tab = target.closest<HTMLElement>(".tab[data-tab]");
-    if (tab?.dataset.tab) activateTab(root, tab.dataset.tab);
-  });
-
-  document.querySelectorAll<HTMLElement>(".tab-pane.active[data-tab-pane^='terminal:']").forEach((pane) => {
-    const title = pane.dataset.tabPane?.slice("terminal:".length);
-    const workspaceId = root.dataset.workspaceId;
-    if (workspaceId && title) void startTerminal(workspaceId, title);
-  });
+class GlobalFilterController extends Controller {
+  declare readonly element: HTMLInputElement;
+  filter(): void {
+    const q = this.element.value.toLowerCase();
+    document.querySelectorAll<HTMLElement>(".table .row:not(.head)").forEach((row) => {
+      row.style.display = row.textContent?.toLowerCase().includes(q) ? "" : "none";
+    });
+  }
 }
 
-document.addEventListener("DOMContentLoaded", bootWorkspaceTerminals);
-document.addEventListener("turbo:load", bootWorkspaceTerminals);
+const application = Application.start();
+application.register("workspace-tabs", WorkspaceTabsController);
+application.register("terminal-pane", TerminalPaneController);
+application.register("activate-tab", ActivateTabController);
+application.register("modal", ModalController);
+application.register("modal-opener", ModalOpenerController);
+application.register("redirect", RedirectController);
+application.register("global-filter", GlobalFilterController);

@@ -2244,6 +2244,7 @@ For tests, pass a Ghostty instance directly:
 }
 
 // src/client/terminal.ts
+var { Application, Controller } = window.Stimulus;
 var ghosttyReady;
 var terminals = new Map;
 function terminalKey(workspaceId, title) {
@@ -2324,104 +2325,104 @@ async function startTerminal(workspaceId, title) {
   term.focus();
 }
 function stopTerminal(workspaceId, title) {
-  const state = terminals.get(terminalKey(workspaceId, title));
+  const key = terminalKey(workspaceId, title);
+  const state = terminals.get(key);
   if (!state)
     return;
   state.ws.close();
   state.fit.dispose();
   state.term.dispose();
-  terminals.delete(terminalKey(workspaceId, title));
+  terminals.delete(key);
 }
-function activateTab(root, tabName) {
-  root.querySelectorAll(".tab[data-tab]").forEach((tab) => {
-    tab.classList.toggle("active", tab.dataset.tab === tabName);
-    tab.classList.toggle("muted", tab.dataset.tab !== tabName);
-  });
-  document.querySelectorAll(".tab-pane[data-tab-pane]").forEach((pane) => {
-    pane.classList.toggle("active", pane.dataset.tabPane === tabName);
-  });
-  if (tabName.startsWith("terminal:")) {
-    const workspaceId = root.dataset.workspaceId;
-    const title = tabName.slice("terminal:".length);
-    if (workspaceId)
-      startTerminal(workspaceId, title);
+
+class WorkspaceTabsController extends Controller {
+  static values = { workspaceId: String };
+  connect() {
+    const activeTerminal = document.querySelector(".tab-pane.active[data-tab-pane^='terminal:']");
+    const title = activeTerminal?.dataset.tabPane?.slice("terminal:".length);
+    if (title)
+      startTerminal(this.workspaceIdValue, title);
+  }
+  activate(event) {
+    const tabName = event.params?.tab ?? (event.currentTarget instanceof HTMLElement ? event.currentTarget.dataset.tab : undefined);
+    if (!tabName)
+      return;
+    this.activateTab(tabName);
+  }
+  stopPropagation(event) {
+    event.stopPropagation();
+  }
+  activateTab(tabName) {
+    this.element.querySelectorAll(".tab[data-tab]").forEach((tab) => {
+      tab.classList.toggle("active", tab.dataset.tab === tabName);
+      tab.classList.toggle("muted", tab.dataset.tab !== tabName);
+    });
+    document.querySelectorAll(".tab-pane[data-tab-pane]").forEach((pane) => {
+      pane.classList.toggle("active", pane.dataset.tabPane === tabName);
+    });
+    if (tabName.startsWith("terminal:")) {
+      startTerminal(this.workspaceIdValue, tabName.slice("terminal:".length));
+    }
   }
 }
-function terminalTabHtml(title) {
-  const button = document.createElement("button");
-  button.className = "tab closable muted";
-  button.type = "button";
-  button.dataset.tab = `terminal:${title}`;
-  button.dataset.terminalTitle = title;
-  button.innerHTML = `▣ ${escapeHtml(title)} <span class="tab-close" data-close-terminal title="Close terminal">×</span>`;
-  return button;
+
+class TerminalPaneController extends Controller {
+  static values = { workspaceId: String, title: String };
+  disconnect() {
+    stopTerminal(this.workspaceIdValue, this.titleValue);
+  }
 }
-function terminalPaneHtml(title) {
-  const section = document.createElement("section");
-  section.className = "tab-pane";
-  section.dataset.tabPane = `terminal:${title}`;
-  section.innerHTML = `<div class="terminal-pane" data-terminal-title="${escapeHtml(title)}"><div class="terminal-bar">${escapeHtml(title)} · tmux</div><div class="ghostty-terminal" tabindex="0"></div></div>`;
-  return section;
+
+class ActivateTabController extends Controller {
+  static values = { tab: String };
+  connect() {
+    const tabs = document.querySelector('[data-controller~="workspace-tabs"]');
+    const controller = tabs ? application.getControllerForElementAndIdentifier(tabs, "workspace-tabs") : null;
+    controller?.activateTab(this.tabValue);
+    this.element.remove();
+  }
 }
-function escapeHtml(value) {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+
+class ModalController extends Controller {
+  static values = { autoShow: Boolean };
+  connect() {
+    if (this.autoShowValue && !this.element.open)
+      this.element.showModal();
+  }
+  close() {
+    this.element.close();
+  }
 }
-async function createTerminal(root) {
-  const workspaceId = root.dataset.workspaceId;
-  if (!workspaceId)
-    return;
-  const response = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/terminals`, { method: "POST", headers: { accept: "application/json" } });
-  if (!response.ok)
-    throw new Error(await response.text());
-  const { title } = await response.json();
-  const addButton = root.querySelector("#add-terminal");
-  addButton?.before(terminalTabHtml(title));
-  document.querySelector(".workspace-panes")?.append(terminalPaneHtml(title));
-  activateTab(root, `terminal:${title}`);
+
+class ModalOpenerController extends Controller {
+  static values = { targetId: String };
+  open() {
+    const dialog = document.getElementById(this.targetIdValue);
+    if (dialog && !dialog.open)
+      dialog.showModal();
+  }
 }
-async function deleteTerminal(root, title) {
-  const workspaceId = root.dataset.workspaceId;
-  if (!workspaceId)
-    return;
-  const response = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/terminals/${encodeURIComponent(title)}/delete`, { method: "POST" });
-  if (!response.ok && response.status !== 404)
-    throw new Error(await response.text());
-  stopTerminal(workspaceId, title);
-  Array.from(root.querySelectorAll(".tab[data-terminal-title]")).find((tab) => tab.dataset.terminalTitle === title)?.remove();
-  Array.from(document.querySelectorAll(".tab-pane[data-tab-pane]")).find((pane) => pane.dataset.tabPane === `terminal:${title}`)?.remove();
-  activateTab(root, "agent");
+
+class RedirectController extends Controller {
+  static values = { url: String };
+  connect() {
+    location.href = this.urlValue;
+  }
 }
-function bootWorkspaceTerminals() {
-  const root = document.querySelector(".workspace-tabs[data-workspace-id]");
-  if (!root || root.dataset.terminalBooted === "true")
-    return;
-  root.dataset.terminalBooted = "true";
-  root.addEventListener("click", (event) => {
-    const target = event.target;
-    const close = target.closest("[data-close-terminal]");
-    if (close) {
-      event.stopPropagation();
-      const tab2 = close.closest(".tab[data-terminal-title]");
-      const title = tab2?.dataset.terminalTitle;
-      if (title)
-        deleteTerminal(root, title).catch((error) => alert(error instanceof Error ? error.message : String(error)));
-      return;
-    }
-    const add = target.closest("#add-terminal");
-    if (add) {
-      createTerminal(root).catch((error) => alert(error instanceof Error ? error.message : String(error)));
-      return;
-    }
-    const tab = target.closest(".tab[data-tab]");
-    if (tab?.dataset.tab)
-      activateTab(root, tab.dataset.tab);
-  });
-  document.querySelectorAll(".tab-pane.active[data-tab-pane^='terminal:']").forEach((pane) => {
-    const title = pane.dataset.tabPane?.slice("terminal:".length);
-    const workspaceId = root.dataset.workspaceId;
-    if (workspaceId && title)
-      startTerminal(workspaceId, title);
-  });
+
+class GlobalFilterController extends Controller {
+  filter() {
+    const q2 = this.element.value.toLowerCase();
+    document.querySelectorAll(".table .row:not(.head)").forEach((row) => {
+      row.style.display = row.textContent?.toLowerCase().includes(q2) ? "" : "none";
+    });
+  }
 }
-document.addEventListener("DOMContentLoaded", bootWorkspaceTerminals);
-document.addEventListener("turbo:load", bootWorkspaceTerminals);
+var application = Application.start();
+application.register("workspace-tabs", WorkspaceTabsController);
+application.register("terminal-pane", TerminalPaneController);
+application.register("activate-tab", ActivateTabController);
+application.register("modal", ModalController);
+application.register("modal-opener", ModalOpenerController);
+application.register("redirect", RedirectController);
+application.register("global-filter", GlobalFilterController);
