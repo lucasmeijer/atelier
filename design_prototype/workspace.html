@@ -18,7 +18,7 @@
         <button class="tab active" data-tab="agent">◈ Agent</button>
         <button class="tab closable" data-tab="terminal-1">▣ Terminal <span class="tab-close" data-close="terminal-1">×</span></button>
         <button class="tab" data-tab="code">⌘ Code</button>
-        <button class="tab" data-tab="diffs">▧ Diffs</button>
+        <button class="tab" data-tab="diffs">▧ Commits</button>
         <button class="tab muted" id="add-terminal" type="button">+ Terminal</button>
         <button class="tab muted" id="add-agent" type="button">+ Agent</button>
       </div>
@@ -115,18 +115,6 @@
             </div>
           </div>
 
-          <div class="integration-status conflict">
-            <div>
-              <strong>4 commits behind main, 3 conflicts</strong>
-              <span>Main moved while this agent was working. Rebase before merging.</span>
-            </div>
-            <button class="btn primary sm" type="button">Ask agent to rebase ontop of main</button>
-          </div>
-
-          <div class="agent-tools">
-            <button class="btn" id="new-workspace">New workspace</button>
-            <button class="btn">Review</button>
-          </div>
         </div>
       </section>
 
@@ -156,9 +144,11 @@ $</pre>
           <article class="repo-diff-view" data-repo="webshop">
             <div class="repo-diff-toolbar range-toolbar">
               <div><b>webshop-frontend</b></div>
-              <div class="commit-picker" data-range-picker="webshop" data-from-boundary="1" data-to-boundary="3" data-max="2">
+              <div class="commit-picker" data-range-picker="webshop" data-from-boundary="1" data-to-boundary="3" data-max="4">
                 <button class="range-line to" type="button" data-handle="to"><span>To here</span></button>
                 <button class="range-line from" type="button" data-handle="from"><span>From here</span></button>
+                <button class="commit-row synthetic unstaged" type="button" data-commit-index="4"><span class="commit-dot"></span><span class="commit-hash">worktree</span><span class="commit-copy"><strong>Uncommitted changes</strong><small>2 modified files not yet staged.</small></span><em><span class="add">+14</span> <span class="del">−4</span></em></button>
+                <button class="commit-row synthetic staged" type="button" data-commit-index="3"><span class="commit-dot"></span><span class="commit-hash">staged</span><span class="commit-copy"><strong>Staged changes</strong><small>No files staged in this clone.</small></span><em>empty</em></button>
                 <button class="commit-row" type="button" data-commit-index="2"><span class="commit-dot"></span><span class="commit-hash">2f7a90c</span><span class="commit-copy"><strong>feat: settings toggle</strong><small>Wire the Settings page switch to persisted theme state.</small></span><em><span class="add">+2</span> <span class="del">−1</span> files</em></button>
                 <button class="commit-row" type="button" data-commit-index="1"><span class="commit-dot"></span><span class="commit-hash">81dc2e1</span><span class="commit-copy"><strong>feat: useTheme hook</strong><small>Add pre-hydration theme detection and localStorage persistence.</small></span><em><span class="add">+1</span> file</em></button>
               </div>
@@ -169,7 +159,11 @@ $</pre>
           <article class="repo-diff-view" data-repo="tokens">
             <div class="repo-diff-toolbar range-toolbar">
               <div><b>design-tokens</b></div>
-              <div class="commit-picker compact single-commit" data-range-picker="tokens" data-from-boundary="1" data-to-boundary="2" data-max="1">
+              <div class="commit-picker compact single-commit" data-range-picker="tokens" data-from-boundary="1" data-to-boundary="2" data-max="3">
+                <button class="range-line to" type="button" data-handle="to"><span>To here</span></button>
+                <button class="range-line from" type="button" data-handle="from"><span>From here</span></button>
+                <button class="commit-row synthetic staged" type="button" data-commit-index="3"><span class="commit-dot"></span><span class="commit-hash">staged</span><span class="commit-copy"><strong>Staged changes</strong><small>1 staged file waiting to be committed.</small></span><em><span class="add">+9</span> <span class="del">−2</span></em></button>
+                <button class="commit-row synthetic unstaged" type="button" data-commit-index="2"><span class="commit-dot"></span><span class="commit-hash">worktree</span><span class="commit-copy"><strong>Uncommitted changes</strong><small>No unstaged changes.</small></span><em>empty</em></button>
                 <button class="commit-row" type="button" data-commit-index="1"><span class="commit-dot"></span><span class="commit-hash">9bc2aa</span><span class="commit-copy"><strong>update theme vars</strong><small>Add dark-mode token values and export available theme modes.</small></span><em><span class="add">+2</span> files</em></button>
               </div>
             </div>
@@ -177,6 +171,44 @@ $</pre>
           </article>
         </div>
       </section>
+
+      <div class="workspace-footer">
+        <div class="agent-tools">
+          <button class="btn" id="new-workspace">New workspace</button>
+          <button class="btn">Review</button>
+        </div>
+
+        <section class="git-status-widget" aria-label="Git integration status">
+          <div class="git-status-head">
+            <strong>Git status</strong>
+
+          </div>
+
+          <div class="git-status-row clean">
+            <div class="repo-identity"><span class="repo-dot"></span><b>webshop-frontend</b><small>18 commits behind, no conflicts. 2 uncommitted files.</small></div>
+            <button class="btn primary sm" type="button">Push</button>
+          </div>
+
+          <div class="git-status-row rebase">
+            <div class="repo-identity"><span class="repo-dot"></span><b>design-tokens</b><small>3 commits behind, 8 conflicts. 1 staged file.</small></div>
+            <button class="btn sm fix-rebase" type="button">Ask agent to rebase</button>
+          </div>
+
+          <div class="git-status-row fetch-failed">
+            <div class="repo-identity"><span class="repo-dot"></span><b>docs-site</b><small>Could not fetch origin/main. Push status unknown.</small></div>
+            <button class="btn sm" type="button">Retry fetch</button>
+          </div>
+
+          <div class="git-status-row fetching">
+            <div class="repo-identity"><span class="repo-dot"></span><b>api-server</b><small>Fetching origin/main…</small></div>
+            <span class="status-spinner" aria-label="Checking"></span>
+          </div>
+
+          <div class="git-status-row idle">
+            <div class="repo-identity"><span class="repo-dot"></span><b>marketing-site</b><small>0 commits ahead, nothing to push.</small></div>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </div>
@@ -214,8 +246,14 @@ $</pre>
   };
 
   function activate(name) {
+    document.body.dataset.activeTab = name;
     document.querySelectorAll('.tab[data-tab]').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === name));
     document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.toggle('active', pane.dataset.pane === name));
+    document.querySelectorAll('.fix-rebase').forEach(button => {
+      button.disabled = !name.startsWith('agent');
+      if (button.disabled) button.setAttribute('aria-label', 'Ask agent to rebase is only available from an agent tab');
+      else button.removeAttribute('aria-label');
+    });
     if (name === 'diffs') {
       document.querySelectorAll('[data-range-picker]').forEach(updatePicker);
       if (!diffsRendered) renderPierreDiffs();
@@ -344,10 +382,10 @@ $</pre></div></section>`);
       const { FileDiff } = await import('https://esm.sh/@pierre/diffs@latest');
       const webshopRange = pickerState('webshop');
       const tokenRange = pickerState('tokens');
-      const webshopFrom = webshopRange.from - 1;
-      const webshopTo = webshopRange.to - 1;
-      const tokenFrom = tokenRange.from - 1;
-      const tokenTo = tokenRange.to - 1;
+      const webshopFrom = Math.min(webshopRange.from - 1, webshopVersions.settings.length - 1);
+      const webshopTo = Math.min(webshopRange.to - 1, webshopVersions.settings.length - 1);
+      const tokenFrom = Math.min(tokenRange.from - 1, tokenVersions.theme.length - 1);
+      const tokenTo = Math.min(tokenRange.to - 1, tokenVersions.theme.length - 1);
       const webshop = document.getElementById('diff-webshop');
       const tokens = document.getElementById('diff-tokens');
       webshop.replaceChildren();
@@ -372,7 +410,7 @@ $</pre></div></section>`);
   };
 
   function boundaryY(picker, boundary) {
-    const rows = [...picker.querySelectorAll('.commit-row')];
+    const rows = [...picker.querySelectorAll('.commit-row[data-commit-index]')];
     const rowForCommit = index => rows.find(row => Number(row.dataset.commitIndex) === index);
     const maxBoundary = Number(picker.dataset.max) + 1;
     if (boundary >= maxBoundary) return rows[0].offsetTop;
@@ -401,9 +439,11 @@ $</pre></div></section>`);
     if (diffsRendered) renderPierreDiffs();
   }
 
+  activate('agent');
+
   document.querySelectorAll('[data-range-picker]').forEach(picker => {
     updatePicker(picker);
-    picker.querySelectorAll('.commit-row').forEach(row => row.addEventListener('click', () => {
+    picker.querySelectorAll('.commit-row[data-commit-index]').forEach(row => row.addEventListener('click', () => {
       const index = Number(row.dataset.commitIndex);
       if (Number(picker.dataset.max) > 1) setPickerRange(picker, index, index + 1);
     }));
