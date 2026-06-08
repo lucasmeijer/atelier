@@ -1,0 +1,7 @@
+[install]
+# Save newly added direct dependencies as exact versions instead of ranges.
+exact = true
+
+# Normal installs must not change bun.lock. Dependency changes require an explicit
+# update/add command with --no-frozen-lockfile and a reviewed package/lockfile diff.
+frozenLockfile = true
