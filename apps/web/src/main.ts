@@ -402,11 +402,6 @@ async function workspacePage(id: string): Promise<Response> {
 
       <div class="workspace-footer">
         <div class="terminal-footer-actions" id="terminal_footer_actions">${terminalFooterActions}</div>
-        <div class="agent-tools">
-          <form method="post" action="/workspaces" data-turbo="false"><button class="btn" type="submit">New workspace</button></form>
-          <button class="btn" disabled>Review</button>
-        </div>
-
         <section class="git-status-widget" aria-label="Git integration status">
           <div class="git-status-head"><strong>Git status</strong></div>
           ${repoRows}

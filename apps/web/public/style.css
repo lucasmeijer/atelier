@@ -277,7 +277,6 @@ a { color: inherit; text-decoration: none; }
 #monaco-editor { flex: 1; min-height: 0; }
 
 .workspace-footer { max-width: 940px; margin: 22px auto 0; }
-.agent-tools { display: flex; justify-content: center; align-items: center; gap: 8px; margin: 0 auto; padding: 8px; width: fit-content; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.72); box-shadow: 0 4px 12px rgba(19,26,38,.05); }
 .git-status-widget { width: fit-content; max-width: 100%; margin: 12px auto 0; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.84); box-shadow: 0 4px 12px rgba(19,26,38,.05); }
 .git-status-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .git-status-head strong { color: var(--text); font-size: 13px; }
@@ -338,8 +337,6 @@ a.btn { text-decoration: none; }
 .workspace-title-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 .contents { display: contents; }
-.agent-tools form { display: contents; }
-
 .modal-input { width: 100%; border: 1px solid var(--line-2); border-radius: 10px; padding: 10px; font: inherit; }
 .modal-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .managed-repos-table .r-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
