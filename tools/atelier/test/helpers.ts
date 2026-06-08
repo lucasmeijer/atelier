@@ -41,6 +41,21 @@ export interface WorkspaceExecResult {
   durationMs: number;
 }
 
+export interface WorkspaceRepoListResult {
+  repos: string[];
+}
+
+export type WorkspaceRepoMergeabilityResult =
+  | { state: "can_push"; ahead: number; behind: number }
+  | { state: "has_conflicts"; ahead: number; behind: number; conflictCount: number }
+  | { state: "fetch_failed"; message: string }
+  | { state: "nothing_to_push"; behind: number };
+
+export type WorkspaceRepoPushResult =
+  | { state: "pushed" }
+  | { state: "skipped"; reason: "nothing_to_push" | "has_conflicts" | "fetch_failed" }
+  | { state: "failed"; message: string };
+
 export async function runAtelier(args: string[], options: { namespace?: string } = {}): Promise<CliResult> {
   const proc = Bun.spawn(["bun", "run", "tools/atelier/src/main.ts", ...args], {
     stdout: "pipe",

@@ -22,7 +22,7 @@ describe("atelier workspace", () => {
     const created = expectSuccess<WorkspaceNewResult>(await runAtelier(["workspace", "new"]));
 
     expect(typeof created.id).toBe("string");
-    expect(created.id.length).toBeGreaterThan(0);
+    expect(created.id).toMatch(/^[0-9a-f]{8}$/);
 
     const listed = expectSuccess<WorkspaceListResult>(await runAtelier(["workspace", "list"]));
     expect(listed.workspaces).toContainEqual({ id: created.id, title: null });
