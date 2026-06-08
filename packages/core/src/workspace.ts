@@ -5,6 +5,7 @@ const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
 const titlePath = "/.atelier/title";
 const workspaceRoot = "/workspace";
+const defaultWorkspaceImage = "ghcr.io/lucasmeijer/atelier-workspace:latest";
 
 export interface WorkspaceNewResult {
   id: string;
@@ -41,6 +42,10 @@ export type WorkspaceRepoPushResult =
 
 function namespace(): string {
   return process.env.ATELIER_NAMESPACE || "default";
+}
+
+function workspaceImage(): string {
+  return process.env.ATELIER_WORKSPACE_IMAGE || defaultWorkspaceImage;
 }
 
 function requireArg(value: string | undefined, name: string): string {
@@ -103,10 +108,10 @@ export async function createWorkspace(): Promise<WorkspaceNewResult> {
     `${namespaceLabel}=${namespace()}`,
     "--user",
     "root",
-    "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+    workspaceImage(),
     "sh",
     "-lc",
-    "id -u atelier >/dev/null 2>&1 || useradd --create-home --shell /bin/bash atelier; mkdir -p /.atelier /workspace; chown -R atelier:atelier /.atelier /workspace; sleep infinity",
+    "mkdir -p /.atelier /workspace; chown -R atelier:atelier /.atelier /workspace; sleep infinity",
   ]);
 
   const fullId = created.stdout.trim();
