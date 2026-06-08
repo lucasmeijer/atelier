@@ -1,9 +1,15 @@
 {
   "compilerOptions": {
     "target": "ES2023",
+    "ignoreDeprecations": "6.0",
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "lib": ["ES2023"],
+    "baseUrl": ".",
+    "paths": {
+      "@atelier/core": ["packages/core/src/index.ts"],
+      "@atelier/shared": ["packages/shared/src/index.ts"]
+    },
     "types": ["bun-types"],
     "strict": true,
     "noEmit": true,

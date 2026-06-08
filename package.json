@@ -11,7 +11,8 @@
     "check": "bunx tsc --noEmit -p tsconfig.json",
     "test": "bun test",
     "ci": "bun ci && bun run check && bun test",
-    "atelier": "bun run tools/atelier/src/main.ts"
+    "atelier": "bun run tools/atelier/src/main.ts",
+    "web": "bun --hot run apps/web/src/main.ts"
   },
   "devDependencies": {
     "bun-types": "1.3.14",

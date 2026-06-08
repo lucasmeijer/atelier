@@ -2,7 +2,11 @@
   "name": "@atelier/web",
   "private": true,
   "type": "module",
+  "scripts": {
+    "dev": "bun run src/main.ts"
+  },
   "dependencies": {
+    "@atelier/core": "workspace:*",
     "@atelier/shared": "workspace:*"
   }
 }

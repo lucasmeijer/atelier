@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { CliError, invalidArguments, writeError } from "./json.ts";
-import { workspaceCommand } from "./workspace.ts";
+import { AtelierCoreError, invalidArguments, workspaceCommand } from "@atelier/core";
+import { writeError, writeSuccess } from "./json.ts";
 
 function usage(): string {
   return `atelier [--help]\n\nAtelier command-line tool.\n\nOptions:\n  -h, --help    Show this help\n`;
@@ -18,7 +18,7 @@ async function main(argv: string[]): Promise<void> {
       process.stdout.write(usage());
       return;
     case "workspace":
-      await workspaceCommand(rest);
+      writeSuccess(await workspaceCommand(rest));
       return;
     default:
       throw invalidArguments(`unknown command: ${command}`);
@@ -28,7 +28,7 @@ async function main(argv: string[]): Promise<void> {
 try {
   await main(Bun.argv.slice(2));
 } catch (error) {
-  if (error instanceof CliError) {
+  if (error instanceof AtelierCoreError) {
     writeError({ code: error.code, message: error.message });
   } else {
     const message = error instanceof Error ? error.message : String(error);

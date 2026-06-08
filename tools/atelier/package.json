@@ -4,5 +4,8 @@
   "type": "module",
   "bin": {
     "atelier": "./src/main.ts"
+  },
+  "dependencies": {
+    "@atelier/core": "workspace:*"
   }
 }
