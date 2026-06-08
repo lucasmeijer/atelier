@@ -120,12 +120,8 @@
 
       <section class="tab-pane" data-pane="terminal-1">
         <div class="terminal-pane">
-          <div class="terminal-bar">terminal · /work/webshop-frontend</div>
-          <pre>$ npm run dev
-  VITE v6.0.0 ready in 421 ms
-  ➜ Local:   http://localhost:5173/
-$ git status --short
-$</pre>
+          <div class="terminal-bar">terminal · /work/webshop-frontend · fake shell</div>
+          <div class="ghostty-terminal" data-fake-terminal="terminal-1" aria-label="Fake terminal"></div>
         </div>
       </section>
 
@@ -231,7 +227,10 @@ $</pre>
   </form>
 </dialog>
 
-<script type="module">
+<script src="vendor/ghostty-web/ghostty-web.umd.js"></script>
+<script>
+  const { init: initGhosttyWeb, Terminal: GhosttyWebTerminal } = window.GhosttyWeb;
+
   const tabs = document.getElementById('tabs');
   const body = document.querySelector('.body.wide');
   let terminalCount = 1;
@@ -239,6 +238,8 @@ $</pre>
   let diffsRendered = false;
   let monacoStarted = false;
   let monacoEditor;
+  let ghosttyReady;
+  const fakeTerminals = new Map();
   const dummyFiles = {
     'Settings.tsx': `import { useTheme } from '../hooks/useTheme';\n\nexport function Settings() {\n  const { theme, setTheme } = useTheme();\n  return (\n    <label className="switch">\n      <input type="checkbox" checked={theme === 'dark'} onChange={e => setTheme(e.target.checked ? 'dark' : 'light')} />\n      Dark mode\n    </label>\n  );\n}\n`,
     'useTheme.ts': `export function useTheme() {\n  const stored = localStorage.getItem('theme');\n  const initial = stored ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');\n  return { theme: initial, setTheme: value => localStorage.setItem('theme', value) };\n}\n`,
@@ -259,6 +260,7 @@ $</pre>
       if (!diffsRendered) renderPierreDiffs();
     }
     if (name === 'code') startMonaco();
+    if (name.startsWith('terminal-')) startFakeTerminal(name);
   }
 
   function closeTab(name) {
@@ -282,9 +284,7 @@ $</pre>
     button.dataset.tab = id;
     button.innerHTML = `▣ Terminal ${terminalCount} <span class="tab-close" data-close="${id}">×</span>`;
     tabs.insertBefore(button, document.getElementById('add-terminal'));
-    body.insertAdjacentHTML('beforeend', `<section class="tab-pane" data-pane="${id}"><div class="terminal-pane"><div class="terminal-bar">terminal ${terminalCount} · /work</div><pre>$ echo "dummy terminal ${terminalCount}"
-workspace a7f3 is alive
-$</pre></div></section>`);
+    body.insertAdjacentHTML('beforeend', `<section class="tab-pane" data-pane="${id}"><div class="terminal-pane"><div class="terminal-bar">terminal ${terminalCount} · /work · fake shell</div><div class="ghostty-terminal" data-fake-terminal="${id}" aria-label="Fake terminal ${terminalCount}"></div></div></section>`);
     activate(id);
   });
 
@@ -311,6 +311,88 @@ $</pre></div></section>`);
       script.onerror = reject;
       document.head.appendChild(script);
     });
+  }
+
+  function terminalSizeFor(host) {
+    const width = Math.max(640, host.clientWidth || 900);
+    return { cols: Math.max(60, Math.floor((width - 24) / 8)), rows: 24 };
+  }
+
+  function printable(data) {
+    return data.length === 1 && data >= ' ' && data !== '\x7f';
+  }
+
+  async function startFakeTerminal(id) {
+    if (fakeTerminals.has(id)) return;
+    const host = document.querySelector(`[data-fake-terminal="${id}"]`);
+    if (!host) return;
+
+    ghosttyReady ??= initGhosttyWeb();
+    await ghosttyReady;
+
+    const size = terminalSizeFor(host);
+    const term = new GhosttyWebTerminal({
+      cols: size.cols,
+      rows: size.rows,
+      cursorBlink: true,
+      fontSize: 13,
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+      scrollback: 1000,
+      theme: {
+        background: '#0f172a',
+        foreground: '#dbeafe',
+        cursor: '#bfdbfe',
+        black: '#0f172a',
+        red: '#f87171',
+        green: '#34d399',
+        yellow: '#fbbf24',
+        blue: '#60a5fa',
+        magenta: '#c084fc',
+        cyan: '#22d3ee',
+        white: '#dbeafe',
+        brightBlack: '#64748b',
+        brightRed: '#fca5a5',
+        brightGreen: '#86efac',
+        brightYellow: '#fde68a',
+        brightBlue: '#93c5fd',
+        brightMagenta: '#d8b4fe',
+        brightCyan: '#67e8f9',
+        brightWhite: '#f8fafc'
+      }
+    });
+
+    let line = '';
+    const prompt = '$ ';
+    const writePrompt = () => term.write(prompt);
+
+    term.open(host);
+    term.write('Atelier fake shell — type anything and press enter.\r\n');
+    writePrompt();
+
+    term.onData(data => {
+      if (data.startsWith('\x1b')) return;
+      for (const char of data) {
+        if (char === '\r' || char === '\n') {
+          term.write(`\r\n${line}!\r\n`);
+          line = '';
+          writePrompt();
+        } else if (char === '\x7f' || char === '\b') {
+          if (line.length > 0) {
+            line = line.slice(0, -1);
+            term.write('\b \b');
+          }
+        } else if (char === '\x03') {
+          term.write('^C\r\n');
+          line = '';
+          writePrompt();
+        } else if (printable(char)) {
+          line += char;
+          term.write(char);
+        }
+      }
+    });
+
+    fakeTerminals.set(id, term);
   }
 
   async function startMonaco() {
