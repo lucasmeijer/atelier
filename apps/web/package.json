@@ -3,10 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run src/main.ts"
+    "build:client": "bun build src/client/terminal.ts --outdir public --format esm --target browser && bun -e \"await Bun.write('public/ghostty-vt.wasm', Bun.file(new URL(import.meta.resolve('ghostty-web/ghostty-vt.wasm'))))\"",
+    "dev": "bun run build:client && bun run src/main.ts"
   },
   "dependencies": {
     "@atelier/core": "workspace:*",
-    "@atelier/shared": "workspace:*"
+    "@atelier/shared": "workspace:*",
+    "@zenyr/bun-pty": "^0.4.4",
+    "ghostty-web": "^0.4.0"
   }
 }
