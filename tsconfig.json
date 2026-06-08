@@ -4,7 +4,7 @@
     "ignoreDeprecations": "6.0",
     "module": "Preserve",
     "moduleResolution": "Bundler",
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "DOM"],
     "baseUrl": ".",
     "paths": {
       "@atelier/core": ["packages/core/src/index.ts"],
