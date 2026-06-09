@@ -66,8 +66,10 @@ ruby --version
 infocmp -x xterm-ghostty >/dev/null
 colors="$(TERM=xterm-ghostty tput colors)"
 test "$colors" -ge 256
+test "${LANG:-}" = "C.UTF-8"
+test "${LC_ALL:-}" = "C.UTF-8"
 
-export TERM=xterm-ghostty COLORTERM=truecolor
+export TERM=xterm-ghostty COLORTERM=truecolor LANG=C.UTF-8 LC_ALL=C.UTF-8
 rm -rf /tmp/atelier-tmux-test
 mkdir -p /tmp/atelier-tmux-test
 chown atelier:atelier /tmp/atelier-tmux-test
@@ -80,7 +82,7 @@ su atelier -c "command -v pi >/dev/null && pi --version >/dev/null"
 test "$(cat /tmp/atelier-tmux-test/pane-env)" = "xterm-ghostty truecolor"
 su atelier -c "tmux -S /tmp/atelier-tmux-test/socket kill-session -t 'Terminal 1'"
 
-echo "verified: pi, Node.js, npm, ripgrep, fd, cmatrix, tmux, Python, CMake, Clang, GCC, Ninja, .NET SDK, Go, Bazel, Ruby, extended-keys, xterm-ghostty terminfo, 256-color tput, and tmux pane TERM=xterm-ghostty"
+echo "verified: pi, Node.js, npm, ripgrep, fd, cmatrix, tmux, Python, CMake, Clang, GCC, Ninja, .NET SDK, Go, Bazel, Ruby, UTF-8 locale, extended-keys, xterm-ghostty terminfo, 256-color tput, and tmux pane TERM=xterm-ghostty"
 VERIFY
 }
 

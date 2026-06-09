@@ -43,6 +43,8 @@ export function openTerminalSocket(ws: ServerWebSocket<TerminalSocketData>): voi
     "--workdir", "/repos",
     "-e", "TERM=xterm-ghostty",
     "-e", "COLORTERM=truecolor",
+    "-e", "LANG=C.UTF-8",
+    "-e", "LC_ALL=C.UTF-8",
     data.workspaceId,
     "tmux", "attach-session", "-t", data.title,
   ];
@@ -51,7 +53,7 @@ export function openTerminalSocket(ws: ServerWebSocket<TerminalSocketData>): voi
       name: "xterm-ghostty",
       cols: data.cols,
       rows: data.rows,
-      env: { ...process.env, TERM: "xterm-ghostty", COLORTERM: "truecolor" },
+      env: { ...process.env, TERM: "xterm-ghostty", COLORTERM: "truecolor", LANG: "C.UTF-8", LC_ALL: "C.UTF-8" },
     });
     data.pty = pty;
     pty.onData((chunk) => {

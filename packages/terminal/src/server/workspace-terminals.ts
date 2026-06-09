@@ -34,7 +34,7 @@ export async function createWorkspaceTerminal(id: string): Promise<WorkspaceTerm
 
   const result = await execWorkspaceShell(
     id,
-    `TERM=xterm-ghostty COLORTERM=truecolor tmux new-session -d -s ${shellQuote(title)} -c ${shellQuote(terminalRoot)} /bin/bash`,
+    `TERM=xterm-ghostty COLORTERM=truecolor tmux new-session -e LANG=C.UTF-8 -e LC_ALL=C.UTF-8 -d -s ${shellQuote(title)} -c ${shellQuote(terminalRoot)} /bin/bash`,
   );
   if (result.exitCode !== 0) throw new AtelierCoreError("terminal_create_failed", result.stderr.trim() || `could not create terminal: ${title}`);
 

@@ -12,6 +12,7 @@ const titlePath = "/.atelier/title";
 const workspaceRoot = "/repos";
 const atelierReposRoot = "/atelier/repos";
 const defaultWorkspaceImage = "ghcr.io/lucasmeijer/atelier-workspace:latest";
+const workspaceUtf8Environment = ["--env", "LANG=C.UTF-8", "--env", "LC_ALL=C.UTF-8"];
 
 export interface WorkspaceNewResult {
   id: string;
@@ -176,6 +177,7 @@ export async function execWorkspaceCommand(
     "exec",
     "--user",
     options.user ?? "atelier",
+    ...workspaceUtf8Environment,
     "--workdir",
     options.workdir ?? workspaceRoot,
     resolved,
@@ -213,6 +215,7 @@ export async function createWorkspace(): Promise<WorkspaceNewResult> {
     `${namespaceLabel}=${namespace()}`,
     "--mount",
     `type=bind,src=${dockerHostReposDir},dst=${atelierReposRoot}`,
+    ...workspaceUtf8Environment,
     "--user",
     "root",
     workspaceImage(),

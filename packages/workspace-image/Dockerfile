@@ -91,6 +91,8 @@ RUN id -u atelier >/dev/null 2>&1 || useradd --create-home --shell /bin/bash ate
  && chown -R atelier:atelier /.atelier /repos
 
 ENV TERM=xterm-ghostty \
-    COLORTERM=truecolor
+    COLORTERM=truecolor \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
 
 WORKDIR /repos
