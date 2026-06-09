@@ -86,9 +86,10 @@ export function createAgentChatController(Controller: StimulusControllerConstruc
   };
 }
 
-export function startAgentTab(application: StimulusApplication, tabName: string): void {
+export function startAgentTab(application: StimulusApplication, tabName: string, workspaceId?: string): void {
   if (!tabName.startsWith("agent:")) return;
-  const pane = document.querySelector<HTMLElement>(`.tab-pane[data-tab-pane="${CSS.escape(tabName)}"] [data-controller~="agent-chat"]`);
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>(`.tab-pane[data-tab-pane="${CSS.escape(tabName)}"] [data-controller~="agent-chat"]`));
+  const pane = workspaceId ? candidates.find((candidate) => candidate.dataset.agentChatWorkspaceIdValue === workspaceId) : candidates[0];
   const controller = pane ? application.getControllerForElementAndIdentifier(pane, "agent-chat") as AgentChatControllerInstance | null : null;
   controller?.start();
 }

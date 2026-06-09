@@ -1,3 +1,4 @@
+import type { WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { createWorkspaceTerminal, deleteWorkspaceTerminal, listWorkspaceTerminals, type WorkspaceTerminalListResult } from "./workspace-terminals.ts";
 import {
   domId,
@@ -8,7 +9,6 @@ import {
   renderTerminalFooterAction,
   renderTerminalPane,
   renderTerminalTab,
-  type TerminalWorkspaceTab,
 } from "./render.ts";
 
 export type HtmlResponseInit = Omit<ResponseInit, "headers"> & { headers?: Record<string, string> };
@@ -33,17 +33,44 @@ export async function listTerminalTabs(workspaceId: string): Promise<WorkspaceTe
   return (await listWorkspaceTerminals(workspaceId)).terminals;
 }
 
-export function renderWorkspaceTerminalTabs(workspaceId: string, terminals: WorkspaceTerminalListResult["terminals"]): TerminalWorkspaceTab[] {
+export function renderWorkspaceTerminalTabs(workspaceId: string, terminals: WorkspaceTerminalListResult["terminals"]): WorkspaceTabContribution[] {
   return terminals.map((terminal) => ({
     key: `terminal:${terminal.title}`,
     tabHtml: renderTerminalTab(workspaceId, terminal.title),
     paneHtml: renderTerminalPane(workspaceId, terminal.title),
     footerHtml: renderTerminalFooterAction(workspaceId, terminal.title),
+    preload: "eager",
   }));
 }
 
+export const terminalWorkspaceModule: WorkspaceModule = {
+  id: "terminal",
+  async attachToWorkspace({ workspaceId }) {
+    const { terminals } = await listWorkspaceTerminals(workspaceId);
+    return {
+      tabs: renderWorkspaceTerminalTabs(workspaceId, terminals),
+      tabActions: [{
+        key: "terminal:create",
+        html: `<form class="contents" id="${escapeHtml(addTerminalFormId(workspaceId))}" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/terminals"><button class="tab muted" type="submit">+ Terminal</button></form>`,
+      }],
+    };
+  },
+};
+
 export async function listTerminalsEndpoint(workspaceId: string): Promise<Response> {
   return jsonResponse(await listWorkspaceTerminals(workspaceId));
+}
+
+function addTerminalFormId(workspaceId: string): string {
+  return `add_terminal_form_${workspaceId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+
+function workspacePanesId(workspaceId: string): string {
+  return `workspace_panes_${workspaceId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+
+function terminalFooterActionsId(workspaceId: string): string {
+  return `terminal_footer_actions_${workspaceId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 }
 
 function terminalCreationStream(workspaceId: string): Response {
@@ -52,7 +79,7 @@ function terminalCreationStream(workspaceId: string): Response {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const write = (chunk: string) => controller.enqueue(encoder.encode(chunk));
-      write(`<turbo-stream action="before" target="add_terminal_form"><template>${renderInitializingTerminalTab(workspaceId, token)}</template></turbo-stream><turbo-stream action="append" target="workspace_panes"><template>${renderInitializingTerminalPane(workspaceId, token)}</template></turbo-stream><turbo-stream action="append" target="terminal_footer_actions"><template>${renderInitializingTerminalFooterAction(workspaceId, token)}</template></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="activate-tab" data-activate-tab-tab-value="terminal:${escapeHtml(token)}"></div></template></turbo-stream>`);
+      write(`<turbo-stream action="before" target="${escapeHtml(addTerminalFormId(workspaceId))}"><template>${renderInitializingTerminalTab(workspaceId, token)}</template></turbo-stream><turbo-stream action="append" target="${escapeHtml(workspacePanesId(workspaceId))}"><template>${renderInitializingTerminalPane(workspaceId, token)}</template></turbo-stream><turbo-stream action="append" target="${escapeHtml(terminalFooterActionsId(workspaceId))}"><template>${renderInitializingTerminalFooterAction(workspaceId, token)}</template></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="activate-tab" data-activate-tab-tab-value="terminal:${escapeHtml(token)}"></div></template></turbo-stream>`);
       try {
         const terminal = await createWorkspaceTerminal(workspaceId);
         write(`<turbo-stream action="replace" target="${domId("terminal_tab", workspaceId, token)}"><template>${renderTerminalTab(workspaceId, terminal.title, { active: true })}</template></turbo-stream><turbo-stream action="replace" target="${domId("terminal_pane", workspaceId, token)}"><template>${renderTerminalPane(workspaceId, terminal.title, { autostart: true, active: true })}</template></turbo-stream><turbo-stream action="replace" target="${domId("terminal_footer", workspaceId, token)}"><template>${renderTerminalFooterAction(workspaceId, terminal.title, { active: true })}</template></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="activate-tab" data-activate-tab-tab-value="terminal:${escapeHtml(terminal.title)}"></div></template></turbo-stream>`);

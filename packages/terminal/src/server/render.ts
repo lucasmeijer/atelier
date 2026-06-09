@@ -11,13 +11,6 @@ export function domId(...parts: string[]): string {
   return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
-export interface TerminalWorkspaceTab {
-  key: string;
-  tabHtml: string;
-  paneHtml: string;
-  footerHtml: string;
-}
-
 export function terminalTabKey(title: string): string {
   return `terminal:${title}`;
 }

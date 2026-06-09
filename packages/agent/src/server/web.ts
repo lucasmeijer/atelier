@@ -1,11 +1,6 @@
+import type { WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { createNextWorkspaceAgent, ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
 import { escapeHtml, renderAgentPane, renderAgentTab } from "./render.ts";
-
-export interface AgentWorkspaceTab {
-  key: string;
-  tabHtml: string;
-  paneHtml: string;
-}
 
 type HtmlResponseInit = Omit<ResponseInit, "headers"> & { headers?: Record<string, string> };
 
@@ -30,16 +25,39 @@ export async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<
   return agents.length > 0 ? agents : [await ensureDefaultWorkspaceAgent(workspaceId)];
 }
 
-export function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[]): AgentWorkspaceTab[] {
+export function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[]): WorkspaceTabContribution[] {
   return agents.map((agent, index) => ({
     key: `agent:${agent.label}`,
     tabHtml: renderAgentTab(workspaceId, agent, { active: index === 0 }),
     paneHtml: renderAgentPane(workspaceId, agent, { active: index === 0, autostart: index === 0 }),
+    preload: "eager",
   }));
 }
 
+export const agentWorkspaceModule: WorkspaceModule = {
+  id: "agent",
+  async attachToWorkspace({ workspaceId }) {
+    const agents = await listOrCreateWorkspaceAgents(workspaceId);
+    return {
+      tabs: renderWorkspaceAgentTabs(workspaceId, agents),
+      tabActions: [{
+        key: "agent:create",
+        html: `<form class="contents" id="${escapeHtml(addAgentFormId(workspaceId))}" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/agents"><button class="tab muted" type="submit">+ Agent</button></form>`,
+      }],
+    };
+  },
+};
+
+function addAgentFormId(workspaceId: string): string {
+  return `add_agent_form_${workspaceId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+
+function workspacePanesId(workspaceId: string): string {
+  return `workspace_panes_${workspaceId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+
 function renderAgentCreationStream(workspaceId: string, agent: WorkspaceAgentInfo): Response {
-  return turboStreamResponse(`<turbo-stream action="before" target="add_agent_form"><template>${renderAgentTab(workspaceId, agent, { active: true })}</template></turbo-stream><turbo-stream action="append" target="workspace_panes"><template>${renderAgentPane(workspaceId, agent, { active: true, autostart: true })}</template></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="activate-tab" data-activate-tab-tab-value="agent:${escapeHtml(agent.label)}"></div></template></turbo-stream>`, { status: 201 });
+  return turboStreamResponse(`<turbo-stream action="before" target="${escapeHtml(addAgentFormId(workspaceId))}"><template>${renderAgentTab(workspaceId, agent, { active: true })}</template></turbo-stream><turbo-stream action="append" target="${escapeHtml(workspacePanesId(workspaceId))}"><template>${renderAgentPane(workspaceId, agent, { active: true, autostart: true })}</template></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="activate-tab" data-activate-tab-tab-value="agent:${escapeHtml(agent.label)}"></div></template></turbo-stream>`, { status: 201 });
 }
 
 export async function createAgentEndpoint(workspaceId: string, request: Request): Promise<Response> {

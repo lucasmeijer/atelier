@@ -17,7 +17,6 @@ export {
   renderTerminalTab,
   renderTerminalThemeOptions,
   terminalTabKey,
-  type TerminalWorkspaceTab,
 } from "./render.ts";
 export {
   createTerminalEndpoint,
@@ -26,6 +25,7 @@ export {
   listTerminalTabs,
   listTerminalsEndpoint,
   renderWorkspaceTerminalTabs,
+  terminalWorkspaceModule,
   turboStreamResponse,
   wantsTurboStream,
 } from "./web.ts";

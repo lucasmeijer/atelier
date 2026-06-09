@@ -158,7 +158,7 @@ function reloadOpenTerminals(): void {
 
   for (const { workspaceId, title } of openTerminals) {
     stopTerminal(workspaceId, title);
-    const pane = Array.from(document.querySelectorAll<HTMLElement>(".terminal-pane[data-terminal-title]")).find((candidate) => candidate.dataset.terminalTitle === title);
+    const pane = findTerminalPane(workspaceId, title);
     pane?.querySelector<HTMLElement>(".ghostty-terminal")?.replaceChildren();
     void startTerminal(workspaceId, title);
   }
@@ -168,9 +168,15 @@ export function initializeTerminalTheme(): void {
   applyTerminalChromeTheme(terminalTheme());
 }
 
+function findTerminalPane(workspaceId: string, title: string): HTMLElement | undefined {
+  return Array.from(document.querySelectorAll<HTMLElement>(".terminal-pane[data-terminal-title]")).find((candidate) =>
+    candidate.dataset.terminalTitle === title && candidate.dataset.terminalPaneWorkspaceIdValue === workspaceId
+  );
+}
+
 export async function startTerminal(workspaceId: string, title: string): Promise<void> {
   const key = terminalKey(workspaceId, title);
-  const pane = Array.from(document.querySelectorAll<HTMLElement>(".terminal-pane[data-terminal-title]")).find((candidate) => candidate.dataset.terminalTitle === title);
+  const pane = findTerminalPane(workspaceId, title);
   const host = pane?.querySelector<HTMLElement>(".ghostty-terminal");
   if (!host) return;
 
