@@ -1,0 +1,16 @@
+{
+  "name": "@atelier/agent",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/server/index.ts",
+    "./server": "./src/server/index.ts",
+    "./client": "./src/client/index.ts",
+    "./shared": "./src/shared/index.ts"
+  },
+  "dependencies": {
+    "@atelier/core": "workspace:*",
+    "@earendil-works/pi-coding-agent": "^0.79.0",
+    "typebox": "^1.0.57"
+  }
+}

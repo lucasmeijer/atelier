@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 
+import { createAgentChatController, startAgentTab } from "@atelier/agent/client";
 import { init, Terminal, FitAddon } from "ghostty-web";
 
 declare global {
@@ -271,6 +272,7 @@ class WorkspaceTabsController extends Controller {
     if (tabName.startsWith("terminal:")) {
       void startTerminal(this.workspaceIdValue, tabName.slice("terminal:".length));
     }
+    startAgentTab(application, tabName);
   }
 }
 
@@ -368,6 +370,7 @@ const application = Application.start();
 application.register("workspace-tabs", WorkspaceTabsController);
 application.register("terminal-pane", TerminalPaneController);
 application.register("terminal-theme", TerminalThemeController);
+application.register("agent-chat", createAgentChatController(Controller));
 application.register("activate-tab", ActivateTabController);
 application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);

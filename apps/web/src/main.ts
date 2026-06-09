@@ -1,6 +1,17 @@
 import { spawn, type IPty } from "@zenyr/bun-pty";
 import type { ServerWebSocket } from "bun";
 import {
+  closeAgentSocket,
+  createAgentEndpoint,
+  ensureDefaultWorkspaceAgent,
+  handleAgentSocketMessage,
+  listOrCreateWorkspaceAgents,
+  openAgentSocket,
+  renderWorkspaceAgentTabs,
+  validateAgentSocket,
+  type AgentSocketData,
+} from "@atelier/agent/server";
+import {
   AtelierCoreError,
   addManagedRepo,
   cloneManagedRepoIntoWorkspace,
@@ -22,6 +33,12 @@ import { atelierName } from "@atelier/shared";
 const requestedPort = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "127.0.0.1";
 const pendingWorkspaceCreations = new Map<string, Promise<{ id: string }>>();
+
+async function createWorkspaceWithDefaultAgent(): Promise<{ id: string }> {
+  const created = await createWorkspace();
+  await ensureDefaultWorkspaceAgent(created.id);
+  return created;
+}
 
 function escapeHtml(value: unknown): string {
   return String(value)
@@ -57,7 +74,7 @@ function layout(title: string, body: string): string {
   import { Application, Controller } from "https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/+esm";
   window.Stimulus = { Application, Controller };
 </script>
-<script type="module" src="/terminal.js"></script>
+<script type="module" src="/workspace.js"></script>
 </head>
 <body id="body">${body}
 </body>
@@ -67,7 +84,7 @@ function layout(title: string, body: string): string {
 async function serveStatic(pathname: string): Promise<Response | undefined> {
   const staticFiles: Record<string, { url: URL; contentType: string }> = {
     "/style.css": { url: new URL("../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
-    "/terminal.js": { url: new URL("../public/terminal.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
+    "/workspace.js": { url: new URL("../public/workspace.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
     "/ghostty-vt.wasm": { url: new URL("../public/ghostty-vt.wasm", import.meta.url), contentType: "application/wasm" },
   };
   const entry = staticFiles[pathname];
@@ -222,7 +239,7 @@ function workspaceInitializingFrame(token: string): string {
 
 function workspaceCreateStream(): Response {
   const token = `initializing_${crypto.randomUUID()}`;
-  pendingWorkspaceCreations.set(token, createWorkspace());
+  pendingWorkspaceCreations.set(token, createWorkspaceWithDefaultAgent());
   return turboStreamResponse(`<turbo-stream action="remove" target="no_workspaces_row"></turbo-stream><turbo-stream action="append" target="workspaces_table_rows"><template>${workspaceInitializingFrame(token)}</template></turbo-stream>`);
 }
 
@@ -242,7 +259,7 @@ async function workspaceCreationFrame(token: string): Promise<Response> {
 
 async function createWorkspaceFromForm(request: Request, url: URL): Promise<Response> {
   if (wantsTurboStream(request)) return workspaceCreateStream();
-  const created = await createWorkspace();
+  const created = await createWorkspaceWithDefaultAgent();
   return Response.redirect(new URL(`/workspaces/${encodeURIComponent(created.id)}`, url).toString(), 303);
 }
 
@@ -350,22 +367,8 @@ function initializingTerminalFooterAction(id: string, token: string): string {
 }
 
 async function workspacePage(id: string): Promise<Response> {
-  const [{ repos }, title, { terminals }, { repos: managedRepos }] = await Promise.all([listWorkspaceRepos(id), getWorkspaceTitle(id), listWorkspaceTerminals(id), listManagedRepos()]);
-  const initialTerminalTitle = terminals[0]?.title;
-  const agentTab = staticWorkspaceTab("agent", "◈ Agent", `<div class="workspace-wide">
-            <div class="chat empty-chat">
-              <div class="msg agent"><div class="bubble"><p>${initialTerminalTitle ? `This workspace is ready. ${escapeHtml(initialTerminalTitle)} is already running in tmux.` : "This workspace is ready. Use + Terminal to open a persistent tmux shell."}</p></div></div>
-            </div>
-            <div class="composer">
-              <textarea placeholder="Reply to the agent…" disabled></textarea>
-              <div class="row2">
-                <span class="dropdown">sonnet-4.5 ▾</span>
-                <span class="dropdown">Thinking: Medium ▾</span>
-                <span class="spacer"></span>
-                <button class="btn primary sm" disabled>Send ↵</button>
-              </div>
-            </div>
-          </div>`, { active: true });
+  const [{ repos }, title, { terminals }, { repos: managedRepos }, agents] = await Promise.all([listWorkspaceRepos(id), getWorkspaceTitle(id), listWorkspaceTerminals(id), listManagedRepos(), listOrCreateWorkspaceAgents(id)]);
+  const agentTabEntries = renderWorkspaceAgentTabs(id, agents);
   const terminalTabEntries: WorkspaceTab[] = terminals.map((terminal) => ({
     key: `terminal:${terminal.title}`,
     tabHtml: terminalTab(id, terminal.title),
@@ -374,7 +377,7 @@ async function workspacePage(id: string): Promise<Response> {
   }));
   const codeTab = staticWorkspaceTab("code", "⌘ Code", `<div class="workspace-wide"><div class="panel"><div class="pad">Code pane will be wired up in a later slice.</div></div></div>`);
   const commitsTab = staticWorkspaceTab("commits", "▧ Commits", `<div class="workspace-wide"><div class="panel"><div class="pad">Commits pane will be wired up in a later slice.</div></div></div>`);
-  const workspaceTabs = [agentTab, ...terminalTabEntries, codeTab, commitsTab];
+  const workspaceTabs = [...agentTabEntries, ...terminalTabEntries, codeTab, commitsTab];
   const terminalFooterActions = terminalTabEntries.map((tab) => tab.footerHtml ?? "").join("");
   const repoRows = repos.map((repo) => {
     const frameId = domId("repo_mergeability", id, repo);
@@ -395,7 +398,8 @@ async function workspacePage(id: string): Promise<Response> {
         ${workspaceTitleFrame(id, title)}
       </div>
       <div class="workspace-tabs" id="tabs" data-controller="workspace-tabs" data-workspace-tabs-workspace-id-value="${escapeHtml(id)}">
-        ${agentTab.tabHtml}
+        ${agentTabEntries.map((tab) => tab.tabHtml).join("")}
+        <form class="contents" id="add_agent_form" method="post" action="/workspaces/${encodeURIComponent(id)}/agents"><button class="tab muted" id="add-agent" type="submit">+ Agent</button></form>
         ${terminalTabEntries.map((tab) => tab.tabHtml).join("")}
         <form class="contents" id="add_terminal_form" method="post" action="/workspaces/${encodeURIComponent(id)}/terminals"><button class="tab muted" id="add-terminal" type="submit">+ Terminal</button></form>
         ${codeTab.tabHtml}
@@ -582,9 +586,15 @@ interface TerminalSocketData {
   pty?: IPty;
 }
 
+type SocketData = TerminalSocketData | AgentSocketData;
+
 function parsePositiveInteger(value: string | null, fallback: number): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 && parsed <= 1000 ? parsed : fallback;
+}
+
+async function validateSocket(url: URL): Promise<SocketData | undefined> {
+  return (await validateAgentSocket(url)) ?? (await validateTerminalSocket(url));
 }
 
 async function validateTerminalSocket(url: URL): Promise<TerminalSocketData | undefined> {
@@ -658,7 +668,7 @@ function handleTerminalSocketMessage(ws: ServerWebSocket<TerminalSocketData>, me
 }
 
 function errorPage(error: unknown): Response {
-  const status = error instanceof AtelierCoreError && ["workspace_not_found", "repo_not_found", "terminal_not_found"].includes(error.code) ? 404 : 500;
+  const status = error instanceof AtelierCoreError && ["workspace_not_found", "repo_not_found", "terminal_not_found", "agent_not_found"].includes(error.code) ? 404 : 500;
   const message = error instanceof Error ? error.message : String(error);
   return response(layout("Error", `<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p><a class="btn" href="/workspaces">Back to workspaces</a></p></div></div></div>`), { status });
 }
@@ -689,7 +699,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
   const port = requestedPort === 0 ? 0 : requestedPort + attempt;
 
   try {
-    const server = Bun.serve<TerminalSocketData>({
+    const server = Bun.serve<SocketData>({
       hostname,
       port,
   async fetch(request, server) {
@@ -699,7 +709,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
 
     try {
       if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
-        const socketData = await validateTerminalSocket(url);
+        const socketData = await validateSocket(url);
         if (!socketData) return response("not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
         if (server.upgrade(request, { data: socketData })) return undefined;
         return response("websocket upgrade failed", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });
@@ -718,6 +728,9 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       const titleMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/title$/);
       if (titleMatch && request.method === "GET") return await workspaceTitleShowFrame(decodeURIComponent(titleMatch[1]));
       if (titleMatch && request.method === "POST") return await updateWorkspaceTitleFromForm(decodeURIComponent(titleMatch[1]), request);
+
+      const agentsMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/agents$/);
+      if (agentsMatch && request.method === "POST") return await createAgentEndpoint(decodeURIComponent(agentsMatch[1]), request);
 
       const terminalsMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/terminals$/);
       if (terminalsMatch && request.method === "GET") return await listTerminalsEndpoint(decodeURIComponent(terminalsMatch[1]));
@@ -746,13 +759,16 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
   },
   websocket: {
     open(ws) {
-      if (ws.data.kind === "terminal") openTerminalPty(ws);
+      if (ws.data.kind === "terminal") openTerminalPty(ws as ServerWebSocket<TerminalSocketData>);
+      if (ws.data.kind === "agent") void openAgentSocket(ws as ServerWebSocket<AgentSocketData>);
     },
     message(ws, message) {
-      if (ws.data.kind === "terminal") handleTerminalSocketMessage(ws, message);
+      if (ws.data.kind === "terminal") handleTerminalSocketMessage(ws as ServerWebSocket<TerminalSocketData>, message);
+      if (ws.data.kind === "agent") void handleAgentSocketMessage(ws as ServerWebSocket<AgentSocketData>, message);
     },
     close(ws) {
-      ws.data.pty?.kill();
+      if (ws.data.kind === "terminal") ws.data.pty?.kill();
+      if (ws.data.kind === "agent") closeAgentSocket(ws as ServerWebSocket<AgentSocketData>);
     },
   },
     });

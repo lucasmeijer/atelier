@@ -121,6 +121,10 @@ a { color: inherit; text-decoration: none; }
 .history-collapsed { display: none; flex-direction: column; gap: 12px; }
 .history-collapsed.open { display: flex; }
 .chat { display: flex; flex-direction: column; gap: 16px; }
+.agent-pane .chat { max-height: 62vh; overflow: auto; padding-right: 4px; }
+.agent-text, .agent-thinking-text { white-space: pre-wrap; }
+.agent-notice { margin: 10px auto; max-width: 940px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
+.agent-notice.error { border-color: var(--red-soft); background: var(--red-soft); color: var(--red); }
 .turn-group { display: flex; flex-direction: column; gap: 0; padding: 0; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.55); box-shadow: 0 4px 14px rgba(19,26,38,.035); overflow: hidden; }
 .turn-group > .msg.user .bubble { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: var(--panel); padding: 12px 14px; }
 .turn-group > .msg.agent .bubble { border: 0; border-top: 1px solid var(--line); border-radius: 0; background: #eef4ff; padding: 14px 16px; }

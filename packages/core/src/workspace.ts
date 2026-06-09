@@ -30,6 +30,12 @@ export interface WorkspaceExecResult {
   durationMs: number;
 }
 
+export interface WorkspaceCommandOptions {
+  workdir?: string;
+  user?: "atelier" | "root";
+  stdin?: string;
+}
+
 export interface WorkspaceRepoListResult {
   repos: string[];
 }
@@ -159,6 +165,35 @@ async function readTitle(id: string): Promise<string | null> {
   const result = await runDocker(["exec", id, "cat", titlePath]);
   if (result.exitCode !== 0) return null;
   return result.stdout.replace(/\n$/, "");
+}
+
+export async function execWorkspaceCommand(
+  id: string,
+  command: string[],
+  options: WorkspaceCommandOptions = {},
+): Promise<WorkspaceExecResult> {
+  if (command.length === 0) throw invalidArguments("command is required");
+  const resolved = await resolveWorkspace(id);
+  const startedAt = Date.now();
+  const dockerArgs = [
+    "exec",
+    "--user",
+    options.user ?? "atelier",
+    "--workdir",
+    options.workdir ?? workspaceRoot,
+    resolved,
+    ...command,
+  ];
+  const result = await runDocker(dockerArgs, { stdin: options.stdin });
+  return { ...result, durationMs: Date.now() - startedAt };
+}
+
+export async function execWorkspaceShell(
+  id: string,
+  script: string,
+  options: WorkspaceCommandOptions = {},
+): Promise<WorkspaceExecResult> {
+  return await execWorkspaceCommand(id, ["sh", "-lc", script], options);
 }
 
 export async function createWorkspace(): Promise<WorkspaceNewResult> {

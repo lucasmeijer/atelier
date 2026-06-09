@@ -1,3 +1,4 @@
 node_modules/
 .atelier-data/
 .DS_Store
+apps/web/public/*.js
