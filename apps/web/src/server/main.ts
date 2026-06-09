@@ -1,10 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import {
   closeAgentSocket,
   createAgentEndpoint,
+  createNextWorkspaceAgent,
   agentWorkspaceModule,
   ensureDefaultWorkspaceAgent,
   handleAgentSocketMessage,
@@ -30,6 +28,7 @@ import {
 import {
   closeTerminalSocket,
   createTerminalEndpoint,
+  createWorkspaceTerminal,
   deleteTerminalEndpoint,
   handleTerminalSocketMessage,
   listTerminalsEndpoint,
@@ -48,52 +47,18 @@ const pendingWorkspaceCreations = new Map<string, Promise<{ id: string }>>();
 const atelierEvents = createAtelierEventBus();
 registerTerminalEvents(atelierEvents);
 
-interface WorkspaceViewState {
+interface WorkspaceGroupState {
+  id: string;
+  tabs: string[];
   activeTab?: string;
+  size: number;
 }
 
-function defaultDataDir(): string {
-  return process.env.ATELIER_DATA_DIR || join(homedir(), ".atelier");
+interface WorkspaceLayoutState {
+  groups: WorkspaceGroupState[];
 }
 
-function workspaceViewStatePath(): string {
-  return join(defaultDataDir(), "view-state", "workspaces.json");
-}
-
-let workspaceViewStateCache: Record<string, WorkspaceViewState> | undefined;
-
-async function readWorkspaceViewStates(): Promise<Record<string, WorkspaceViewState>> {
-  if (workspaceViewStateCache) return workspaceViewStateCache;
-  try {
-    const parsed = JSON.parse(await readFile(workspaceViewStatePath(), "utf8"));
-    workspaceViewStateCache = parsed && typeof parsed === "object" ? parsed as Record<string, WorkspaceViewState> : {};
-  } catch {
-    workspaceViewStateCache = {};
-  }
-  return workspaceViewStateCache;
-}
-
-async function getWorkspaceViewState(workspaceId: string): Promise<WorkspaceViewState> {
-  return (await readWorkspaceViewStates())[workspaceId] ?? {};
-}
-
-async function setWorkspaceViewState(workspaceId: string, patch: WorkspaceViewState): Promise<WorkspaceViewState> {
-  const states = await readWorkspaceViewStates();
-  const next = { ...(states[workspaceId] ?? {}), ...patch };
-  states[workspaceId] = next;
-  const path = workspaceViewStatePath();
-  await mkdir(join(path, ".."), { recursive: true });
-  await writeFile(path, `${JSON.stringify(states, null, 2)}\n`);
-  return next;
-}
-
-async function deleteWorkspaceViewState(workspaceId: string): Promise<void> {
-  const states = await readWorkspaceViewStates();
-  delete states[workspaceId];
-  const path = workspaceViewStatePath();
-  await mkdir(join(path, ".."), { recursive: true });
-  await writeFile(path, `${JSON.stringify(states, null, 2)}\n`);
-}
+const workspaceLayouts = new Map<string, WorkspaceLayoutState>();
 
 async function createWorkspaceWithDefaultAgent(): Promise<{ id: string }> {
   const created = await createWorkspace();
@@ -148,8 +113,8 @@ function layout(title: string, body: string): string {
 
 async function serveStatic(pathname: string): Promise<Response | undefined> {
   const staticFiles: Record<string, { url: URL; contentType: string }> = {
-    "/style.css": { url: new URL("../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
-    "/workspace.js": { url: new URL("../public/workspace.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
+    "/style.css": { url: new URL("../../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
+    "/workspace.js": { url: new URL("../../public/workspace.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
     ...terminalStaticFiles,
   };
   const entry = staticFiles[pathname];
@@ -159,22 +124,23 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
   return new Response(file, { headers: { "content-type": entry.contentType } });
 }
 
+function workspaceSidebarTitleFrame(id: string, title: string): string {
+  const frameId = domId("workspace_sidebar_title", id);
+  return `<turbo-frame id="${frameId}" class="workspace-row-title-frame">
+    <a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-action="workspace-list#select"><div class="r-title">${escapeHtml(title)}</div></a>
+    <a class="workspace-row-edit" href="/workspaces/${encodeURIComponent(id)}/sidebar-title/edit" data-turbo-frame="${frameId}" title="Rename workspace">✎</a>
+  </turbo-frame>`;
+}
+
 function workspaceRow(id: string, title: string, state: "ready" | "initializing" = "ready", options: { active?: boolean } = {}): string {
   const initializing = state === "initializing";
   return `<div class="row workspace-row ${initializing ? "initializing" : ""} ${options.active ? "active" : ""}" id="${domId("workspace_row", id)}" data-workspace-id="${escapeHtml(id)}">
       <span class="dot ${initializing ? "wait" : "run"}"></span>
-      ${initializing ? `<div class="row-main"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">Initializing workspace…</div></div><span class="row-actions"><span class="status-spinner" aria-label="Initializing"></span></span>` : `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-action="workspace-list#select"><div class="r-title">${escapeHtml(title)}</div></a>`}
+      ${initializing ? `<div class="row-main"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">Initializing workspace…</div></div><span class="row-actions"><span class="status-spinner" aria-label="Initializing"></span></span>` : `${workspaceSidebarTitleFrame(id, title)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#delete"><input type="hidden" name="selected" value="${options.active ? "1" : "0"}"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form>`}
     </div>`;
 }
 
-function deleteWorkspaceForm(id: string, returnTo?: string): string {
-  return `<form class="contents" method="post" action="/workspaces/${encodeURIComponent(id)}/delete">
-    ${returnTo ? `<input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}"><input type="hidden" name="selected" value="1">` : ""}
-    <button class="btn danger sm" type="submit">Delete</button>
-  </form>`;
-}
-
-function deleteBlockedModal(id: string, details: unknown, returnTo = ""): string {
+function deleteBlockedModal(id: string, details: unknown, options: { returnTo?: string; selected?: boolean } = {}): string {
   const issues = (details && typeof details === "object" && "issues" in details && Array.isArray((details as { issues?: unknown }).issues)) ? (details as { issues: Array<{ repo?: unknown; uncommittedPaths?: unknown; outgoingCommits?: unknown }> }).issues : [];
   const issueHtml = issues.map((issue) => {
     const paths = Array.isArray(issue.uncommittedPaths) ? issue.uncommittedPaths : [];
@@ -186,7 +152,7 @@ function deleteBlockedModal(id: string, details: unknown, returnTo = ""): string
   }).join("");
   return `<dialog id="delete-workspace-modal" class="modal delete-modal" data-controller="modal" data-modal-auto-show-value="true">
     <form method="dialog"><h2>Workspace has uncommitted changes</h2><p>Deleting this workspace would discard local changes or commits that have not been pushed.</p>${issueHtml}<div class="modal-actions"><button class="btn" value="cancel">Cancel</button><button class="btn danger" value="force" form="force-delete-workspace-form">Force delete</button></div></form>
-    <form id="force-delete-workspace-form" method="post" action="/workspaces/${encodeURIComponent(id)}/delete?force=1">${returnTo ? `<input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}"><input type="hidden" name="selected" value="1">` : ""}</form>
+    <form id="force-delete-workspace-form" method="post" action="/workspaces/${encodeURIComponent(id)}/delete?force=1">${options.returnTo ? `<input type="hidden" name="returnTo" value="${escapeHtml(options.returnTo)}">` : ""}${options.selected ? `<input type="hidden" name="selected" value="1">` : ""}</form>
   </dialog>`;
 }
 
@@ -202,39 +168,6 @@ function addManagedRepoModal(): string {
     </div>
   </form>
 </dialog>`;
-}
-
-function cloneManagedRepoModal(id: string, managedRepos: Array<{ name: string; remoteUrl: string | null }>, workspaceRepos: string[]): string {
-  const workspaceRepoNames = new Set(workspaceRepos);
-  const repoButtons = managedRepos.map((repo) => {
-    const worktreeName = repo.name.endsWith(".git") ? repo.name.slice(0, -4) : repo.name;
-    const alreadyInWorkspace = workspaceRepoNames.has(worktreeName) || workspaceRepoNames.has(repo.name);
-    if (alreadyInWorkspace) {
-      return `<div class="row clone-managed-repo-row disabled">
-        <span></span>
-        <div><div class="r-title">${escapeHtml(worktreeName)}</div><div class="r-sub">Already in workspace</div></div>
-        <span></span>
-      </div>`;
-    }
-    return `<form method="post" action="/workspaces/${encodeURIComponent(id)}/clone-managed-repo" class="contents">
-      <input type="hidden" name="repo" value="${escapeHtml(repo.name)}">
-      <button class="row ghost-row clone-managed-repo-row" type="submit">
-        <span class="clone-plus">+</span>
-        <div><div class="r-title">${escapeHtml(worktreeName)}</div></div>
-        <span></span>
-      </button>
-    </form>`;
-  }).join("");
-
-  return `<dialog id="${domId("clone_managed_repo_modal", id)}" class="modal" data-controller="modal">
-    <div class="modal-content">
-      <p>Select a managed repository to clone into this workspace.</p>
-      <div class="repo-list compact clone-repo-list">
-        ${repoButtons || `<div class="row"><span></span><div><div class="r-title">No managed repositories</div><div class="r-sub">Add one from the Workspaces page first.</div></div><span></span></div>`}
-      </div>
-      <div class="modal-actions"><button class="btn" type="button" data-action="modal#close">Cancel</button></div>
-    </div>
-  </dialog>`;
 }
 
 async function renderWorkspaceSidebar(selectedId?: string): Promise<string> {
@@ -374,30 +307,25 @@ async function getWorkspaceTitle(id: string): Promise<string> {
   return workspace?.title || `Workspace ${id}`;
 }
 
-function workspaceTitleFrame(id: string, title: string): string {
-  const frameId = domId("workspace_title", id);
-  return `<turbo-frame id="${frameId}"><h1><a class="editable-title" href="/workspaces/${encodeURIComponent(id)}/title/edit" data-turbo-frame="${frameId}" title="Edit workspace title">${escapeHtml(title)}</a></h1></turbo-frame>`;
-}
-
-async function workspaceTitleEditFrame(id: string): Promise<Response> {
+async function workspaceSidebarTitleEditFrame(id: string): Promise<Response> {
   const title = await getWorkspaceTitle(id);
-  const frameId = domId("workspace_title", id);
-  return response(`<turbo-frame id="${frameId}">
-    <form class="workspace-title-form" method="post" action="/workspaces/${encodeURIComponent(id)}/title" data-controller="workspace-title-edit" data-workspace-title-edit-cancel-url-value="/workspaces/${encodeURIComponent(id)}/title" data-action="keydown->workspace-title-edit#keydown">
+  const frameId = domId("workspace_sidebar_title", id);
+  return response(`<turbo-frame id="${frameId}" class="workspace-row-title-frame">
+    <form class="workspace-sidebar-title-form" method="post" action="/workspaces/${encodeURIComponent(id)}/sidebar-title" data-controller="workspace-title-edit" data-workspace-title-edit-cancel-url-value="/workspaces/${encodeURIComponent(id)}/sidebar-title" data-action="keydown->workspace-title-edit#keydown">
       <input name="title" value="${escapeHtml(title)}" aria-label="Workspace title" autofocus>
     </form>
   </turbo-frame>`);
 }
 
-async function workspaceTitleShowFrame(id: string): Promise<Response> {
-  return response(workspaceTitleFrame(id, await getWorkspaceTitle(id)));
+async function workspaceSidebarTitleShowFrame(id: string): Promise<Response> {
+  return response(workspaceSidebarTitleFrame(id, await getWorkspaceTitle(id)));
 }
 
-async function updateWorkspaceTitleFromForm(id: string, request: Request): Promise<Response> {
+async function updateWorkspaceSidebarTitleFromForm(id: string, request: Request): Promise<Response> {
   const formData = await request.formData();
   const title = String(formData.get("title") ?? "").trim();
   await setWorkspaceTitle(id, title);
-  return response(workspaceTitleFrame(id, title || `Workspace ${id}`));
+  return response(workspaceSidebarTitleFrame(id, title || `Workspace ${id}`));
 }
 
 function staticWorkspaceTab(key: string, label: string, paneHtml: string, options: { active?: boolean } = {}): WorkspaceTabContribution {
@@ -427,50 +355,99 @@ async function attachWorkspaceModules(workspaceId: string): Promise<WorkspaceAtt
   return await Promise.all(workspaceModules.map((module) => module.attachToWorkspace({ workspaceId })));
 }
 
+function tabLabel(tab: WorkspaceTabContribution): string {
+  const html = tab.tabHtml;
+  const closeIndex = html.lastIndexOf("</");
+  const openIndex = closeIndex > 0 ? html.lastIndexOf(">", closeIndex) : html.lastIndexOf(">");
+  const text = openIndex >= 0 ? html.slice(openIndex + 1, closeIndex > openIndex ? closeIndex : undefined) : html;
+  return text.replace(/<[^>]+>/g, "").replace(/^\s*[+◈⌘▧▣]\s*/, "").trim() || tab.key;
+}
+
+function workspaceGroupsId(workspaceId: string): string {
+  return domId("workspace_groups", workspaceId);
+}
+
+function normalizeWorkspaceLayout(workspaceId: string, tabs: WorkspaceTabContribution[]): WorkspaceLayoutState {
+  const keys = tabs.map((tab) => tab.key);
+  const keySet = new Set(keys);
+  let layout = workspaceLayouts.get(workspaceId);
+  if (!layout || layout.groups.length === 0) {
+    layout = { groups: [{ id: crypto.randomUUID(), tabs: [...keys], activeTab: keys[0], size: 1 }] };
+    workspaceLayouts.set(workspaceId, layout);
+    return layout;
+  }
+  const assigned = new Set(layout.groups.flatMap((group) => group.tabs));
+  const missing = keys.filter((key) => !assigned.has(key));
+  layout.groups[0]?.tabs.push(...missing);
+  for (const group of layout.groups) {
+    group.tabs = group.tabs.filter((key) => keySet.has(key));
+    if (!group.activeTab || !group.tabs.includes(group.activeTab)) group.activeTab = group.tabs[0];
+  }
+  normalizeGroupSizes(layout);
+  return layout;
+}
+
+function normalizeGroupSizes(layout: WorkspaceLayoutState): void {
+  const total = layout.groups.reduce((sum, group) => sum + (Number.isFinite(group.size) && group.size > 0 ? group.size : 1), 0) || 1;
+  for (const group of layout.groups) group.size = (Number.isFinite(group.size) && group.size > 0 ? group.size : 1) / total;
+}
+
+function renderTabPane(tab: WorkspaceTabContribution, active: boolean): string {
+  if (!tab.paneHtml) return "";
+  return tab.paneHtml.replace(/class="tab-pane([^\"]*)"/, (_match, classes: string) => {
+    const classList = String(classes).replace(/\bactive\b/g, "").trim();
+    return `class="tab-pane${classList ? ` ${classList}` : ""}${active ? " active" : ""}"`;
+  });
+}
+
+function renderWorkspaceGroups(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {
+  const layout = normalizeWorkspaceLayout(workspaceId, tabs);
+  const tabByKey = new Map(tabs.map((tab) => [tab.key, tab]));
+  const actions = attachments.flatMap((attachment) => attachment.tabActions ?? []);
+  const actionMenu = (group: WorkspaceGroupState, index: number) => `<details class="group-add-menu"><summary class="group-icon-btn" title="Add tab or group">+</summary><div class="group-menu-panel">
+      ${actions.map((action) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/actions/${encodeURIComponent(action.key)}"><button type="submit">${escapeHtml(tabLabel({ key: action.key, tabHtml: action.html }))}</button></form>`).join("")}
+      <form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/split"><button type="submit">New Group</button></form>
+      ${layout.groups.length > 1 && index > 0 ? `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/close"><button type="submit">Close Group</button></form>` : ""}
+    </div></details>`;
+  const groups = layout.groups.map((group, index) => {
+    const activeTab = group.activeTab && group.tabs.includes(group.activeTab) ? group.activeTab : group.tabs[0];
+    const headers = group.tabs.map((key, tabIndex) => {
+      const tab = tabByKey.get(key);
+      if (!tab) return "";
+      return `<button class="group-tab ${key === activeTab ? "active" : "muted"}" draggable="true" data-tab="${escapeHtml(key)}" data-action="click->workspace-tabs#activate dragstart->workspace-groups#dragStart dragend->workspace-groups#dragEnd dragover->workspace-groups#dragOver drop->workspace-groups#drop" data-workspace-tabs-tab-param="${escapeHtml(key)}" data-group-id="${escapeHtml(group.id)}" data-tab-index="${tabIndex}" type="button">${escapeHtml(tabLabel(tab))}</button>`;
+    }).join("");
+    const panes = group.tabs.map((key) => {
+      const tab = tabByKey.get(key);
+      return tab ? renderTabPane(tab, key === activeTab) : "";
+    }).join("");
+    const empty = group.tabs.length === 0;
+    return `<section class="workspace-group" data-group-id="${escapeHtml(group.id)}" data-workspace-groups-target="group" style="--group-size:${group.size}">
+      <div class="group-tabbar" data-controller="workspace-tabs" data-workspace-tabs-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-tabs-group-id-value="${escapeHtml(group.id)}" data-workspace-tabs-initial-tab-value="${escapeHtml(activeTab ?? "")}" data-action="dragover->workspace-groups#dragOver drop->workspace-groups#drop">
+        <div class="group-tabs">${headers}</div>${actionMenu(group, index)}
+      </div>
+      <div class="workspace-panes" id="${domId("workspace_panes", workspaceId, group.id)}">${empty ? `<div class="empty-group"><p>This group is empty.</p>${layout.groups.length > 1 ? `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/remove"><button class="btn sm" type="submit">Remove Empty Group</button></form>` : ""}</div>` : panes}</div>
+    </section>${index < layout.groups.length - 1 ? `<div class="group-resizer" data-action="pointerdown->workspace-groups#startResize" data-resizer-index="${index}" role="separator" aria-orientation="vertical"></div>` : ""}`;
+  }).join("");
+  return `<div class="workspace-groups" id="${workspaceGroupsId(workspaceId)}" data-controller="workspace-groups" data-workspace-groups-workspace-id-value="${escapeHtml(workspaceId)}">${groups}</div>`;
+}
+
+async function workspaceTabsAndAttachments(workspaceId: string): Promise<{ attachments: WorkspaceAttachment[]; tabs: WorkspaceTabContribution[] }> {
+  const attachments = await attachWorkspaceModules(workspaceId);
+  return { attachments, tabs: attachments.flatMap((attachment) => attachment.tabs ?? []) };
+}
+
+async function renderWorkspaceGroupsFor(workspaceId: string): Promise<string> {
+  const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
+  return renderWorkspaceGroups(workspaceId, tabs, attachments);
+}
+
 async function workspaceDetailContent(id: string): Promise<string> {
-  const [{ repos }, title, { repos: managedRepos }, moduleAttachments, viewState] = await Promise.all([listWorkspaceRepos(id), getWorkspaceTitle(id), listManagedRepos(), attachWorkspaceModules(id), getWorkspaceViewState(id)]);
-  const workspaceTabs = moduleAttachments.flatMap((attachment) => attachment.tabs ?? []);
-  const initialTab = viewState.activeTab && workspaceTabs.some((tab) => tab.key === viewState.activeTab) ? viewState.activeTab : workspaceTabs[0]?.key;
-  const tabBarHtml = moduleAttachments.map((attachment) => `${(attachment.tabs ?? []).map((tab) => tab.tabHtml).join("")}${(attachment.tabActions ?? []).map((action) => action.html).join("")}`).join("");
-  const terminalFooterActions = workspaceTabs.map((tab) => tab.footerHtml ?? "").join("");
-  const repoRows = repos.map((repo) => {
-    const frameId = domId("repo_mergeability", id, repo);
-    return `<turbo-frame id="${frameId}" src="/workspaces/${encodeURIComponent(id)}/repos/${encodeURIComponent(repo)}/mergeability">
-      <div class="git-status-row fetching">
-        <div class="repo-identity"><span class="repo-dot"></span><b>${escapeHtml(repo)}</b><small>Fetching origin and checking mergeability…</small></div>
-        <span class="status-spinner" aria-label="Checking"></span>
-      </div>
-    </turbo-frame>`;
-  }).join("") || `<div class="git-status-row idle"><div class="repo-identity"><span class="repo-dot"></span><b>No repos</b><small>No git repositories found under /repos.</small></div></div>`;
-  const cloneRepoRow = `<button class="git-status-row clone-row" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="${domId("clone_managed_repo_modal", id)}"><div class="repo-identity"><span class="clone-plus">+</span><small>Clone a managed repository into this workspace.</small></div><span></span></button>`;
-
+  const { attachments, tabs } = await workspaceTabsAndAttachments(id);
   return `<div class="main workspace-detail-main" data-workspace-id="${escapeHtml(id)}">
-    <header class="header workspace-header">
-      <div class="workspace-titlebar">
-        ${workspaceTitleFrame(id, title)}
-      </div>
-      <div class="workspace-tabs" id="tabs" data-controller="workspace-tabs" data-workspace-tabs-workspace-id-value="${escapeHtml(id)}" data-workspace-tabs-initial-tab-value="${escapeHtml(initialTab ?? "")}">
-        ${tabBarHtml}
-      </div>
-      <div class="header-actions">${deleteWorkspaceForm(id, "/")}</div>
-    </header>
-
     <div class="body wide workspace-body">
-      <div class="workspace-panes" id="${domId("workspace_panes", id)}">
-        ${workspaceTabs.map((tab) => tab.paneHtml ?? "").join("")}
-      </div>
-
-      <div class="workspace-footer">
-        <div class="terminal-footer-actions" id="${domId("terminal_footer_actions", id)}">${terminalFooterActions}</div>
-        <section class="git-status-widget" aria-label="Git integration status">
-          <div class="git-status-head"><strong>Git status</strong></div>
-          ${repoRows}
-          ${cloneRepoRow}
-        </section>
-      </div>
+      ${renderWorkspaceGroups(id, tabs, attachments)}
     </div>
-</div>
-${cloneManagedRepoModal(id, managedRepos, repos)}`;
+</div>`;
 }
 
 async function workspaceDetailResidentHtml(id: string, options: { active?: boolean } = {}): Promise<string> {
@@ -574,10 +551,98 @@ function turboStreamResponse(body: string, init: HtmlResponseInit = {}): Respons
   return new Response(body, { ...init, headers });
 }
 
+async function replaceWorkspaceGroupsStream(workspaceId: string): Promise<Response> {
+  return turboStreamResponse(`<turbo-stream action="replace" target="${workspaceGroupsId(workspaceId)}"><template>${await renderWorkspaceGroupsFor(workspaceId)}</template></turbo-stream>`);
+}
+
+async function workspaceLayoutFor(workspaceId: string): Promise<WorkspaceLayoutState> {
+  return normalizeWorkspaceLayout(workspaceId, (await workspaceTabsAndAttachments(workspaceId)).tabs);
+}
+
+async function splitWorkspaceGroupEndpoint(workspaceId: string, groupId: string): Promise<Response> {
+  const layout = await workspaceLayoutFor(workspaceId);
+  const index = layout.groups.findIndex((group) => group.id === groupId);
+  const insertAt = index >= 0 ? index + 1 : layout.groups.length;
+  layout.groups.splice(insertAt, 0, { id: crypto.randomUUID(), tabs: [], size: 1 });
+  normalizeGroupSizes(layout);
+  return replaceWorkspaceGroupsStream(workspaceId);
+}
+
+async function removeWorkspaceGroupEndpoint(workspaceId: string, groupId: string): Promise<Response> {
+  const layout = await workspaceLayoutFor(workspaceId);
+  const index = layout.groups.findIndex((group) => group.id === groupId);
+  if (index >= 0 && layout.groups.length > 1 && layout.groups[index]?.tabs.length === 0) layout.groups.splice(index, 1);
+  normalizeGroupSizes(layout);
+  return replaceWorkspaceGroupsStream(workspaceId);
+}
+
+async function closeWorkspaceGroupEndpoint(workspaceId: string, groupId: string): Promise<Response> {
+  const layout = await workspaceLayoutFor(workspaceId);
+  const index = layout.groups.findIndex((group) => group.id === groupId);
+  if (index > 0 && layout.groups.length > 1) {
+    const [closed] = layout.groups.splice(index, 1);
+    const left = layout.groups[index - 1];
+    if (closed && left) {
+      left.tabs.push(...closed.tabs.filter((tab) => !left.tabs.includes(tab)));
+      left.activeTab = closed.activeTab ?? left.activeTab;
+    }
+  }
+  normalizeGroupSizes(layout);
+  return replaceWorkspaceGroupsStream(workspaceId);
+}
+
+async function workspaceGroupActionEndpoint(workspaceId: string, groupId: string, actionKey: string): Promise<Response> {
+  let createdKey: string | undefined;
+  if (actionKey === "agent:create") createdKey = `agent:${(await createNextWorkspaceAgent(workspaceId)).label}`;
+  if (actionKey === "terminal:create") createdKey = `terminal:${(await createWorkspaceTerminal(workspaceId)).title}`;
+  const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
+  const layout = normalizeWorkspaceLayout(workspaceId, tabs);
+  const group = layout.groups.find((candidate) => candidate.id === groupId) ?? layout.groups[0];
+  if (createdKey && group && !group.tabs.includes(createdKey)) {
+    for (const candidate of layout.groups) candidate.tabs = candidate.tabs.filter((tab) => tab !== createdKey);
+    group.tabs.push(createdKey);
+    group.activeTab = createdKey;
+  }
+  return turboStreamResponse(`<turbo-stream action="replace" target="${workspaceGroupsId(workspaceId)}"><template>${renderWorkspaceGroups(workspaceId, tabs, attachments)}</template></turbo-stream>`);
+}
+
+async function moveWorkspaceTabEndpoint(workspaceId: string, request: Request): Promise<Response> {
+  const body = await request.json().catch(() => undefined) as { tab?: unknown; fromGroup?: unknown; toGroup?: unknown; toIndex?: unknown } | undefined;
+  const tab = typeof body?.tab === "string" ? body.tab : "";
+  const toGroupId = typeof body?.toGroup === "string" ? body.toGroup : "";
+  const layout = await workspaceLayoutFor(workspaceId);
+  const source = layout.groups.find((group) => group.tabs.includes(tab));
+  const target = layout.groups.find((group) => group.id === toGroupId);
+  if (tab && target) {
+    const wasActive = source?.activeTab === tab;
+    if (source) {
+      const oldIndex = source.tabs.indexOf(tab);
+      source.tabs = source.tabs.filter((key) => key !== tab);
+      if (wasActive) source.activeTab = source.tabs[Math.max(0, oldIndex - 1)] ?? source.tabs[0];
+    }
+    const toIndex = typeof body?.toIndex === "number" && Number.isFinite(body.toIndex) ? Math.max(0, Math.min(body.toIndex, target.tabs.length)) : target.tabs.length;
+    target.tabs.splice(toIndex, 0, tab);
+    target.activeTab = tab;
+  }
+  return replaceWorkspaceGroupsStream(workspaceId);
+}
+
+async function resizeWorkspaceGroupsEndpoint(workspaceId: string, request: Request): Promise<Response> {
+  const body = await request.json().catch(() => undefined) as { sizes?: unknown } | undefined;
+  const sizes = Array.isArray(body?.sizes) ? body.sizes.map(Number).filter((size) => Number.isFinite(size) && size > 0) : [];
+  const layout = await workspaceLayoutFor(workspaceId);
+  if (sizes.length === layout.groups.length) layout.groups.forEach((group, index) => { group.size = sizes[index] ?? 1; });
+  normalizeGroupSizes(layout);
+  return jsonResponse({ ok: true });
+}
+
 async function updateWorkspaceViewStateEndpoint(id: string, request: Request): Promise<Response> {
-  const body = await request.json().catch(() => undefined) as { activeTab?: unknown } | undefined;
+  const body = await request.json().catch(() => undefined) as { activeTab?: unknown; groupId?: unknown } | undefined;
   const activeTab = typeof body?.activeTab === "string" ? body.activeTab : undefined;
-  return jsonResponse(await setWorkspaceViewState(id, { activeTab }));
+  const groupId = typeof body?.groupId === "string" ? body.groupId : undefined;
+  const group = groupId ? workspaceLayouts.get(id)?.groups.find((candidate) => candidate.id === groupId) : undefined;
+  if (activeTab && group?.tabs.includes(activeTab)) group.activeTab = activeTab;
+  return jsonResponse({ ok: true });
 }
 
 function errorJsonResponse(error: unknown, status = 500): Response {
@@ -594,7 +659,7 @@ async function deleteWorkspaceEndpoint(id: string, force: boolean, request: Requ
   const selected = formData?.get("selected") === "1";
   try {
     await deleteWorkspace(id, { force });
-    await deleteWorkspaceViewState(id);
+    workspaceLayouts.delete(id);
     if (wantsTurboStream(request)) {
       if (selected) {
         const { workspaces } = await listWorkspaces();
@@ -609,7 +674,7 @@ async function deleteWorkspaceEndpoint(id: string, force: boolean, request: Requ
   } catch (error) {
     const status = error instanceof AtelierCoreError && error.code === "workspace_delete_blocked" ? 409 : 500;
     if (wantsTurboStream(request) && error instanceof AtelierCoreError && error.code === "workspace_delete_blocked") {
-      return turboStreamResponse(`<turbo-stream action="remove" target="delete-workspace-modal"></turbo-stream><turbo-stream action="append" target="body"><template>${deleteBlockedModal(id, error.details, returnTo)}</template></turbo-stream>`);
+      return turboStreamResponse(`<turbo-stream action="remove" target="delete-workspace-modal"></turbo-stream><turbo-stream action="append" target="body"><template>${deleteBlockedModal(id, error.details, { returnTo, selected })}</template></turbo-stream>`);
     }
     return errorJsonResponse(error, status);
   }
@@ -676,15 +741,33 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       const workspaceCreationMatch = url.pathname.match(/^\/workspace-creations\/([^/]+)$/);
       if (workspaceCreationMatch && request.method === "GET") return await workspaceCreationFrame(decodeURIComponent(workspaceCreationMatch[1]));
 
-      const titleEditMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/title\/edit$/);
-      if (titleEditMatch && request.method === "GET") return await workspaceTitleEditFrame(decodeURIComponent(titleEditMatch[1]));
+      const titleEditMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/sidebar-title\/edit$/);
+      if (titleEditMatch && request.method === "GET") return await workspaceSidebarTitleEditFrame(decodeURIComponent(titleEditMatch[1]));
 
-      const titleMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/title$/);
-      if (titleMatch && request.method === "GET") return await workspaceTitleShowFrame(decodeURIComponent(titleMatch[1]));
-      if (titleMatch && request.method === "POST") return await updateWorkspaceTitleFromForm(decodeURIComponent(titleMatch[1]), request);
+      const titleMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/sidebar-title$/);
+      if (titleMatch && request.method === "GET") return await workspaceSidebarTitleShowFrame(decodeURIComponent(titleMatch[1]));
+      if (titleMatch && request.method === "POST") return await updateWorkspaceSidebarTitleFromForm(decodeURIComponent(titleMatch[1]), request);
 
       const viewStateMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/view-state$/);
       if (viewStateMatch && request.method === "POST") return await updateWorkspaceViewStateEndpoint(decodeURIComponent(viewStateMatch[1]), request);
+
+      const groupActionMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/actions\/([^/]+)$/);
+      if (groupActionMatch && request.method === "POST") return await workspaceGroupActionEndpoint(decodeURIComponent(groupActionMatch[1]), decodeURIComponent(groupActionMatch[2]), decodeURIComponent(groupActionMatch[3]));
+
+      const groupSplitMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/split$/);
+      if (groupSplitMatch && request.method === "POST") return await splitWorkspaceGroupEndpoint(decodeURIComponent(groupSplitMatch[1]), decodeURIComponent(groupSplitMatch[2]));
+
+      const groupRemoveMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/remove$/);
+      if (groupRemoveMatch && request.method === "POST") return await removeWorkspaceGroupEndpoint(decodeURIComponent(groupRemoveMatch[1]), decodeURIComponent(groupRemoveMatch[2]));
+
+      const groupCloseMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/close$/);
+      if (groupCloseMatch && request.method === "POST") return await closeWorkspaceGroupEndpoint(decodeURIComponent(groupCloseMatch[1]), decodeURIComponent(groupCloseMatch[2]));
+
+      const tabMoveMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/layout\/move-tab$/);
+      if (tabMoveMatch && request.method === "POST") return await moveWorkspaceTabEndpoint(decodeURIComponent(tabMoveMatch[1]), request);
+
+      const groupResizeMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/layout\/resize$/);
+      if (groupResizeMatch && request.method === "POST") return await resizeWorkspaceGroupsEndpoint(decodeURIComponent(groupResizeMatch[1]), request);
 
       const agentsMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/agents$/);
       if (agentsMatch && request.method === "POST") return await createAgentEndpoint(decodeURIComponent(agentsMatch[1]), request);

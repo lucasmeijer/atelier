@@ -41,4 +41,4 @@ COPY --from=build /app /app
 
 EXPOSE 3000
 
-CMD ["bun", "run", "apps/web/src/main.ts"]
+CMD ["bun", "run", "apps/web/src/server/main.ts"]

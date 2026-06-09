@@ -9,6 +9,7 @@ declare global {
       Application: { start(): { register(identifier: string, controllerConstructor: unknown): void; getControllerForElementAndIdentifier(element: Element, identifier: string): unknown } };
       Controller: new (...args: unknown[]) => { element: Element };
     };
+    Turbo?: { renderStreamMessage(html: string): void };
   }
 }
 
@@ -17,9 +18,10 @@ const { Application, Controller } = window.Stimulus;
 initializeTerminalTheme();
 
 class WorkspaceTabsController extends Controller {
-  static values = { workspaceId: String, initialTab: String };
+  static values = { workspaceId: String, groupId: String, initialTab: String };
   declare readonly element: HTMLElement;
   declare readonly workspaceIdValue: string;
+  declare readonly groupIdValue: string;
   declare readonly initialTabValue: string;
   declare readonly hasInitialTabValue: boolean;
 
@@ -50,11 +52,11 @@ class WorkspaceTabsController extends Controller {
   activateTab(tabName: string, options: { persist?: boolean } = {}): void {
     this.ensurePane(tabName);
 
-    this.element.querySelectorAll<HTMLElement>(".tab[data-tab]").forEach((tab) => {
+    this.element.querySelectorAll<HTMLElement>(".group-tab[data-tab]").forEach((tab) => {
       tab.classList.toggle("active", tab.dataset.tab === tabName);
       tab.classList.toggle("muted", tab.dataset.tab !== tabName);
     });
-    this.root.querySelectorAll<HTMLElement>(".tab-pane[data-tab-pane]").forEach((pane) => {
+    this.group.querySelectorAll<HTMLElement>(".tab-pane[data-tab-pane]").forEach((pane) => {
       pane.classList.toggle("active", pane.dataset.tabPane === tabName);
     });
 
@@ -63,11 +65,15 @@ class WorkspaceTabsController extends Controller {
     if (options.persist !== false) void this.persistActiveTab(tabName);
   }
 
+  private get group(): ParentNode & Element {
+    return this.element.closest(".workspace-group") ?? this.root as ParentNode & Element;
+  }
+
   private ensurePane(tabName: string): void {
-    if (this.root.querySelector<HTMLElement>(`.tab-pane[data-tab-pane="${CSS.escape(tabName)}"]`)) return;
-    const tab = this.element.querySelector<HTMLElement>(`.tab[data-tab="${CSS.escape(tabName)}"]`);
+    if (this.group.querySelector<HTMLElement>(`.tab-pane[data-tab-pane="${CSS.escape(tabName)}"]`)) return;
+    const tab = this.element.querySelector<HTMLElement>(`.group-tab[data-tab="${CSS.escape(tabName)}"]`);
     const paneUrl = tab?.dataset.workspacePaneUrl;
-    const panes = this.root.querySelector<HTMLElement>(".workspace-panes");
+    const panes = this.group.querySelector<HTMLElement>(".workspace-panes");
     if (!paneUrl || !panes) return;
 
     const placeholder = document.createElement("section");
@@ -86,12 +92,132 @@ class WorkspaceTabsController extends Controller {
     await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/view-state`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ activeTab: tabName }),
+      body: JSON.stringify({ activeTab: tabName, groupId: this.groupIdValue }),
     }).catch(() => undefined);
   }
 
   private escapeHtml(value: string): string {
     return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+  }
+}
+
+class WorkspaceGroupsController extends Controller {
+  static targets = ["group"];
+  static values = { workspaceId: String };
+  declare readonly element: HTMLElement;
+  declare readonly groupTargets: HTMLElement[];
+  declare readonly workspaceIdValue: string;
+  private dragged?: { tab: string; fromGroup: string };
+  private resize?: { index: number; startX: number; sizes: number[]; totalWidth: number };
+
+  dragStart(event: DragEvent): void {
+    const tab = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    const tabName = tab?.dataset.tab;
+    const groupId = tab?.dataset.groupId;
+    if (!tabName || !groupId) return;
+    this.dragged = { tab: tabName, fromGroup: groupId };
+    event.dataTransfer?.setData("text/plain", tabName);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  }
+
+  dragEnd(): void {
+    this.dragged = undefined;
+    this.clearDropTargets();
+  }
+
+  dragOver(event: DragEvent): void {
+    if (!this.dragged) return;
+    event.preventDefault();
+    this.highlightDropTarget(event);
+  }
+
+  async drop(event: DragEvent): Promise<void> {
+    if (!this.dragged) return;
+    event.preventDefault();
+    const target = event.target instanceof HTMLElement ? event.target : event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    const group = target?.closest<HTMLElement>(".workspace-group");
+    const toGroup = group?.dataset.groupId;
+    if (!toGroup) return;
+    const targetTab = target?.closest<HTMLElement>(".group-tab[data-tab]");
+    const baseIndex = targetTab ? Number(targetTab.dataset.tabIndex ?? 0) : group.querySelectorAll(".group-tab[data-tab]").length;
+    const after = targetTab?.classList.contains("drop-after") ? 1 : 0;
+    let toIndex = baseIndex + after;
+    const fromIndex = this.dragged.fromGroup === toGroup ? Number(this.element.querySelector<HTMLElement>(`.group-tab[data-tab="${CSS.escape(this.dragged.tab)}"]`)?.dataset.tabIndex ?? -1) : -1;
+    if (fromIndex >= 0 && fromIndex < toIndex) toIndex -= 1;
+    this.clearDropTargets();
+    await this.renderStream(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/layout/move-tab`, { tab: this.dragged.tab, fromGroup: this.dragged.fromGroup, toGroup, toIndex });
+    this.dragged = undefined;
+  }
+
+  startResize(event: PointerEvent): void {
+    const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    const index = Number(handle?.dataset.resizerIndex ?? -1);
+    if (index < 0) return;
+    this.resize = { index, startX: event.clientX, sizes: this.sizes(), totalWidth: this.element.getBoundingClientRect().width };
+    handle?.setPointerCapture(event.pointerId);
+    window.addEventListener("pointermove", this.pointerMove);
+    window.addEventListener("pointerup", this.pointerUp, { once: true });
+  }
+
+  private pointerMove = (event: PointerEvent): void => {
+    if (!this.resize) return;
+    const { index, startX, sizes, totalWidth } = this.resize;
+    const delta = (event.clientX - startX) / Math.max(totalWidth, 1);
+    const next = [...sizes];
+    next[index] = Math.max(0.08, (next[index] ?? 0) + delta);
+    next[index + 1] = Math.max(0.08, (next[index + 1] ?? 0) - delta);
+    this.applySizes(next);
+  };
+
+  private pointerUp = async (): Promise<void> => {
+    window.removeEventListener("pointermove", this.pointerMove);
+    const sizes = this.sizes();
+    this.resize = undefined;
+    await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/layout/resize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sizes }),
+    }).catch(() => undefined);
+  };
+
+  private highlightDropTarget(event: DragEvent): void {
+    this.clearDropTargets();
+    const target = event.target instanceof HTMLElement ? event.target : event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    const group = target?.closest<HTMLElement>(".workspace-group");
+    if (!group) return;
+    group.classList.add("drop-target");
+    const tab = target?.closest<HTMLElement>(".group-tab[data-tab]");
+    if (tab) {
+      const rect = tab.getBoundingClientRect();
+      tab.classList.add(event.clientX > rect.left + rect.width / 2 ? "drop-after" : "drop-before");
+      return;
+    }
+    const tabs = [...group.querySelectorAll<HTMLElement>(".group-tab[data-tab]")];
+    const nearest = tabs.find((candidate) => event.clientX < candidate.getBoundingClientRect().left + candidate.getBoundingClientRect().width / 2);
+    if (nearest) nearest.classList.add("drop-before");
+    else tabs.at(-1)?.classList.add("drop-after");
+  }
+
+  private clearDropTargets(): void {
+    this.element.querySelectorAll<HTMLElement>(".drop-target,.drop-before,.drop-after").forEach((element) => element.classList.remove("drop-target", "drop-before", "drop-after"));
+  }
+
+  private sizes(): number[] {
+    return this.groupTargets.map((group) => Number.parseFloat(getComputedStyle(group).getPropertyValue("--group-size")) || 1);
+  }
+
+  private applySizes(sizes: number[]): void {
+    const total = sizes.reduce((sum, size) => sum + size, 0) || 1;
+    this.groupTargets.forEach((group, index) => group.style.setProperty("--group-size", String((sizes[index] ?? 1) / total)));
+  }
+
+  private async renderStream(url: string, body: unknown): Promise<void> {
+    const html = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "text/vnd.turbo-stream.html" },
+      body: JSON.stringify(body),
+    }).then((response) => response.text());
+    window.Turbo?.renderStreamMessage(html);
   }
 }
 
@@ -101,7 +227,7 @@ class ActivateTabController extends Controller {
   declare readonly tabValue: string;
 
   connect(): void {
-    const tabs = document.querySelector<HTMLElement>('.workspace-detail-resident.active [data-controller~="workspace-tabs"], [data-controller~="workspace-tabs"]');
+    const tabs = document.querySelector<HTMLElement>('.workspace-detail-resident.active .group-tab.active')?.closest<HTMLElement>('[data-controller~="workspace-tabs"]') ?? document.querySelector<HTMLElement>('.workspace-detail-resident.active [data-controller~="workspace-tabs"], [data-controller~="workspace-tabs"]');
     const controller = tabs ? application.getControllerForElementAndIdentifier(tabs, "workspace-tabs") as WorkspaceTabsController | null : null;
     controller?.activateTab(this.tabValue);
     this.element.remove();
@@ -207,7 +333,7 @@ class WorkspaceResidencyController extends Controller {
     resident.dataset.lastActivatedAt = String(Date.now());
     const tabs = resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]');
     const controller = tabs ? application.getControllerForElementAndIdentifier(tabs, "workspace-tabs") as WorkspaceTabsController | null : null;
-    const activeTab = tabs?.querySelector<HTMLElement>(".tab.active[data-tab]")?.dataset.tab;
+    const activeTab = tabs?.querySelector<HTMLElement>(".group-tab.active[data-tab]")?.dataset.tab;
     if (activeTab) controller?.activateTab(activeTab, { persist: false });
   }
 
@@ -224,6 +350,13 @@ class WorkspaceResidencyController extends Controller {
 }
 
 class WorkspaceListController extends Controller {
+  delete(event: Event): void {
+    const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
+    const row = form?.closest<HTMLElement>(".workspace-row");
+    const selected = form?.querySelector<HTMLInputElement>('input[name="selected"]');
+    if (selected) selected.value = row?.classList.contains("active") ? "1" : "0";
+  }
+
   select(event: Event): void {
     const link = event.currentTarget instanceof HTMLAnchorElement ? event.currentTarget : null;
     const row = link?.closest<HTMLElement>(".workspace-row") ?? null;
@@ -263,6 +396,7 @@ class WorkspaceTitleEditController extends Controller {
 
 const application = Application.start();
 application.register("workspace-tabs", WorkspaceTabsController);
+application.register("workspace-groups", WorkspaceGroupsController);
 application.register("workspace-residency", WorkspaceResidencyController);
 application.register("terminal-pane", createTerminalPaneController(Controller));
 application.register("terminal-theme", createTerminalThemeController(Controller));
