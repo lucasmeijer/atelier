@@ -9,8 +9,6 @@ export interface WorkspaceTabContribution {
   tabHtml: string;
   /** Eager tabs include their pane HTML in the workspace detail response. */
   paneHtml?: string;
-  /** Lazy tabs can point at a server-rendered pane endpoint fetched on first activation. */
-  paneUrl?: string;
 }
 
 export interface WorkspaceTabActionContribution {

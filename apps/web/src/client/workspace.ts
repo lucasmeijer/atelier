@@ -51,8 +51,6 @@ class WorkspaceTabsController extends Controller {
   }
 
   activateTab(tabName: string, options: { persist?: boolean } = {}): void {
-    this.ensurePane(tabName);
-
     this.element.querySelectorAll<HTMLElement>(".group-tab[data-tab]").forEach((tab) => {
       tab.classList.toggle("active", tab.dataset.tab === tabName);
       tab.classList.toggle("muted", tab.dataset.tab !== tabName);
@@ -70,35 +68,12 @@ class WorkspaceTabsController extends Controller {
     return this.element.closest(".workspace-group") ?? this.root as ParentNode & Element;
   }
 
-  private ensurePane(tabName: string): void {
-    if (this.group.querySelector<HTMLElement>(`.tab-pane[data-tab-pane="${CSS.escape(tabName)}"]`)) return;
-    const tab = this.element.querySelector<HTMLElement>(`.group-tab[data-tab="${CSS.escape(tabName)}"]`);
-    const paneUrl = tab?.dataset.workspacePaneUrl;
-    const panes = this.group.querySelector<HTMLElement>(".workspace-panes");
-    if (!paneUrl || !panes) return;
-
-    const placeholder = document.createElement("section");
-    placeholder.className = "tab-pane active";
-    placeholder.dataset.tabPane = tabName;
-    placeholder.innerHTML = `<div class="workspace-wide"><div class="panel"><div class="pad"><span class="status-spinner" aria-label="Loading"></span> Loading…</div></div></div>`;
-    panes.appendChild(placeholder);
-
-    fetch(paneUrl, { headers: { "Accept": "text/html" } })
-      .then((response) => response.ok ? response.text() : Promise.reject(new Error(`HTTP ${response.status}`)))
-      .then((html) => { placeholder.outerHTML = html; this.activateTab(tabName); })
-      .catch((error) => { placeholder.innerHTML = `<div class="workspace-wide"><div class="panel"><div class="pad">Could not load tab: ${this.escapeHtml(error instanceof Error ? error.message : String(error))}</div></div></div>`; });
-  }
-
   private async persistActiveTab(tabName: string): Promise<void> {
     await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/view-state`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ activeTab: tabName, groupId: this.groupIdValue }),
     }).catch(() => undefined);
-  }
-
-  private escapeHtml(value: string): string {
-    return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
   }
 }
 
