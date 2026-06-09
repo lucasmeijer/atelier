@@ -1,0 +1,167 @@
+import { describe, expect, setDefaultTimeout, test, beforeAll, afterAll } from "bun:test";
+import {
+  AtelierCoreError,
+  createWorkspace,
+  deleteWorkspace,
+  execWorkspace,
+  listWorkspaces,
+  setWorkspaceTitle,
+  workspaceCommand,
+  type WorkspaceExecResult,
+} from "../src/index.ts";
+import { cleanupNamespace, createTestNamespace } from "./helpers.ts";
+
+setDefaultTimeout(30_000);
+
+const testNamespace = createTestNamespace("test-core-workspace");
+
+async function expectCoreError(action: () => Promise<unknown>): Promise<AtelierCoreError> {
+  try {
+    await action();
+  } catch (error) {
+    expect(error).toBeInstanceOf(AtelierCoreError);
+    return error as AtelierCoreError;
+  }
+  throw new Error("expected AtelierCoreError");
+}
+
+beforeAll(async () => {
+  process.env.ATELIER_NAMESPACE = testNamespace;
+  await cleanupNamespace(testNamespace);
+});
+
+afterAll(async () => {
+  await cleanupNamespace(testNamespace);
+});
+
+describe("core workspaces", () => {
+  test("listWorkspaces returns an empty list in a clean namespace", async () => {
+    expect(await listWorkspaces()).toEqual({ workspaces: [] });
+  });
+
+  test("createWorkspace creates a workspace and listWorkspaces includes it with no title", async () => {
+    const created = await createWorkspace();
+
+    expect(created.id).toMatch(/^[0-9a-f]{8}$/);
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
+  });
+
+  test("setWorkspaceTitle sets the workspace title and listWorkspaces reflects it", async () => {
+    const created = await createWorkspace();
+
+    expect(await setWorkspaceTitle(created.id, "Add dark mode toggle")).toBeNull();
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: "Add dark mode toggle" });
+  });
+
+  test("execWorkspace captures stdout, stderr, exit code, and duration", async () => {
+    const created = await createWorkspace();
+
+    const exec = await execWorkspace(created.id, ["sh", "-c", "printf hello && printf error >&2"]);
+
+    expect(exec.exitCode).toBe(0);
+    expect(exec.stdout).toBe("hello");
+    expect(exec.stderr).toBe("error");
+    expect(exec.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  test("execWorkspace runs commands as the non-root atelier user", async () => {
+    const created = await createWorkspace();
+
+    const exec = await execWorkspace(created.id, ["whoami"]);
+
+    expect(exec.exitCode).toBe(0);
+    expect(exec.stdout.trim()).toBe("atelier");
+    expect(exec.stderr).toBe("");
+  });
+
+  test("createWorkspace configures default git identity", async () => {
+    const created = await createWorkspace();
+
+    const exec = await execWorkspace(created.id, ["git", "config", "--global", "--get-regexp", "^user\\."]);
+
+    expect(exec.exitCode).toBe(0);
+    expect(exec.stdout).toContain("user.name Lucas Meijer");
+    expect(exec.stdout).toContain("user.email lucas@lucasmeijer.com");
+  });
+
+  test("execWorkspace returns child command failure as a successful exec result", async () => {
+    const created = await createWorkspace();
+
+    const exec = await execWorkspace(created.id, ["sh", "-c", "exit 7"]);
+
+    expect(exec.exitCode).toBe(7);
+    expect(exec.stdout).toBe("");
+    expect(exec.stderr).toBe("");
+    expect(exec.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  test("deleteWorkspace removes the workspace", async () => {
+    const created = await createWorkspace();
+
+    expect(await deleteWorkspace(created.id)).toBeNull();
+    expect((await listWorkspaces()).workspaces.some((workspace) => workspace.id === created.id)).toBe(false);
+  });
+
+  test("deleteWorkspace fails with uncommitted changes unless forced", async () => {
+    const created = await createWorkspace();
+    const setup = await execWorkspace(created.id, ["sh", "-lc", "mkdir -p /repos/sample && cd /repos/sample && git init && printf hello > changed.txt"]);
+    expect(setup.exitCode).toBe(0);
+
+    const error = await expectCoreError(() => deleteWorkspace(created.id));
+    expect(error.code).toBe("workspace_delete_blocked");
+    expect(error.message).toContain("changed.txt");
+
+    expect(await deleteWorkspace(created.id, { force: true })).toBeNull();
+  });
+
+  test("execWorkspace on a deleted workspace throws workspace_not_found", async () => {
+    const created = await createWorkspace();
+    await deleteWorkspace(created.id);
+
+    const error = await expectCoreError(() => execWorkspace(created.id, ["echo", "hello"]));
+    expect(error.code).toBe("workspace_not_found");
+  });
+
+  test("workspace ids are scoped to ATELIER_NAMESPACE", async () => {
+    const currentNamespace = process.env.ATELIER_NAMESPACE;
+    const otherNamespace = `${testNamespace}-other`;
+    process.env.ATELIER_NAMESPACE = otherNamespace;
+    const created = await createWorkspace();
+
+    try {
+      process.env.ATELIER_NAMESPACE = currentNamespace;
+      expect((await listWorkspaces()).workspaces.some((workspace) => workspace.id === created.id)).toBe(false);
+
+      process.env.ATELIER_NAMESPACE = otherNamespace;
+      expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
+
+      process.env.ATELIER_NAMESPACE = currentNamespace;
+      const error = await expectCoreError(() => deleteWorkspace(created.id));
+      expect(error.code).toBe("workspace_not_found");
+    } finally {
+      process.env.ATELIER_NAMESPACE = otherNamespace;
+      await deleteWorkspace(created.id).catch(() => null);
+      await cleanupNamespace(otherNamespace);
+      process.env.ATELIER_NAMESPACE = currentNamespace;
+    }
+  });
+
+  test("workspaceCommand rejects invalid workspace list arguments", async () => {
+    const error = await expectCoreError(() => workspaceCommand(["list", "unexpected"]));
+    expect(error.code).toBe("invalid_arguments");
+  });
+
+  test("workspaceCommand exec rejects missing command separator", async () => {
+    const created = await createWorkspace();
+
+    const error = await expectCoreError(() => workspaceCommand(["exec", created.id, "echo", "hello"]));
+    expect(error.code).toBe("invalid_arguments");
+  });
+
+  test("workspaceCommand exec rejects an empty command", async () => {
+    const created = await createWorkspace();
+
+    const error = await expectCoreError(() => workspaceCommand(["exec", created.id, "--"]));
+    expect(error.code).toBe("invalid_arguments");
+  });
+});

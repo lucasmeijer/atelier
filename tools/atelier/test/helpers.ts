@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect } from "bun:test";
+import { cleanupNamespace as cleanupCoreNamespace, createTestNamespace } from "../../../packages/core/test/helpers.ts";
 
-export const testNamespace = `test-${crypto.randomUUID()}`;
+export const testNamespace = createTestNamespace();
 
 export interface CliResult {
   stdout: string;
@@ -109,32 +110,8 @@ export function expectFailure(result: CliResult): JsonFailure["error"] {
   return body.error;
 }
 
-async function docker(args: string[]): Promise<CliResult> {
-  const proc = Bun.spawn(["docker", ...args], { stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { stdout, stderr, exitCode };
-}
-
 export async function cleanupNamespace(namespace = testNamespace): Promise<void> {
-  const listed = await docker([
-    "ps",
-    "-aq",
-    "--filter",
-    "label=com.atelier.type=workspace",
-    "--filter",
-    `label=com.atelier.namespace=${namespace}`,
-  ]);
-
-  if (listed.exitCode !== 0) return;
-
-  const containerIds = listed.stdout.trim().split(/\s+/).filter(Boolean);
-  if (containerIds.length === 0) return;
-
-  await docker(["rm", "-f", ...containerIds]);
+  await cleanupCoreNamespace(namespace);
 }
 
 beforeAll(async () => {
