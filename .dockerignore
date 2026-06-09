@@ -1,0 +1,7 @@
+.git
+node_modules
+**/node_modules
+.DS_Store
+.env
+*.log
+apps/web/public/workspace.js.map

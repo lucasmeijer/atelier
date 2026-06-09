@@ -1,0 +1,115 @@
+import { existsSync, readFileSync } from "node:fs";
+import { hostname } from "node:os";
+import { join } from "node:path";
+import { runDocker } from "./docker.ts";
+import { defaultDataDir } from "./managed-repo.ts";
+
+export interface AtelierRuntimeContext {
+  /** Path as seen by the Atelier process itself. Use this for normal Atelier file IO. */
+  atelierDataDir: string;
+  /** Same directory as seen by the Docker daemon. Use this for Docker bind mount sources. */
+  dockerHostAtelierDataDir: string;
+  /** Diagnostic flag; application code should generally rely on the two paths above instead. */
+  runningInContainer: boolean;
+}
+
+interface DockerMount {
+  Type?: string;
+  Source?: string;
+  Destination?: string;
+}
+
+let cachedRuntimeContext: { atelierDataDir: string; context: Promise<AtelierRuntimeContext> } | undefined;
+
+export function atelierDataPath(context: AtelierRuntimeContext, ...segments: string[]): string {
+  return join(context.atelierDataDir, ...segments);
+}
+
+export function dockerHostAtelierDataPath(context: AtelierRuntimeContext, ...segments: string[]): string {
+  return join(context.dockerHostAtelierDataDir, ...segments);
+}
+
+export function getAtelierRuntimeContext(): Promise<AtelierRuntimeContext> {
+  const atelierDataDir = defaultDataDir();
+  if (!cachedRuntimeContext || cachedRuntimeContext.atelierDataDir !== atelierDataDir) {
+    cachedRuntimeContext = { atelierDataDir, context: discoverAtelierRuntimeContext(atelierDataDir) };
+  }
+  return cachedRuntimeContext.context;
+}
+
+export function resetAtelierRuntimeContextForTests(): void {
+  cachedRuntimeContext = undefined;
+}
+
+export async function discoverAtelierRuntimeContext(atelierDataDir = defaultDataDir()): Promise<AtelierRuntimeContext> {
+  if (!probablyRunningInContainer()) {
+    return { atelierDataDir, dockerHostAtelierDataDir: atelierDataDir, runningInContainer: false };
+  }
+
+  const mounts = await inspectSelfContainerMounts();
+  const dockerHostAtelierDataDir = mounts ? translateContainerPathToDockerHostPath(atelierDataDir, mounts) ?? atelierDataDir : atelierDataDir;
+  return { atelierDataDir, dockerHostAtelierDataDir, runningInContainer: true };
+}
+
+function probablyRunningInContainer(): boolean {
+  if (existsSync("/.dockerenv")) return true;
+  return ["/proc/self/cgroup", "/proc/1/cgroup", "/proc/self/mountinfo"].some((path) => {
+    try {
+      const text = readFileSync(path, "utf8");
+      return /docker|containerd|kubepods|podman|containers\//i.test(text);
+    } catch {
+      return false;
+    }
+  });
+}
+
+async function inspectSelfContainerMounts(): Promise<DockerMount[] | undefined> {
+  const candidates = containerIdCandidates();
+  for (const id of candidates) {
+    const inspected = await runDocker(["inspect", "--format", "{{json .Mounts}}", id]).catch(() => undefined);
+    if (!inspected || inspected.exitCode !== 0) continue;
+
+    try {
+      const parsed = JSON.parse(inspected.stdout.trim()) as unknown;
+      if (Array.isArray(parsed)) return parsed as DockerMount[];
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return undefined;
+}
+
+function containerIdCandidates(): string[] {
+  const candidates = new Set<string>();
+  if (process.env.ATELIER_CONTAINER_ID) candidates.add(process.env.ATELIER_CONTAINER_ID);
+  if (process.env.HOSTNAME) candidates.add(process.env.HOSTNAME);
+  candidates.add(hostname());
+
+  for (const path of ["/proc/self/cgroup", "/proc/1/cgroup", "/proc/self/mountinfo"]) {
+    try {
+      const text = readFileSync(path, "utf8");
+      for (const match of text.matchAll(/[0-9a-f]{64}/gi)) candidates.add(match[0]);
+    } catch {
+      // Ignore unreadable proc files.
+    }
+  }
+
+  return [...candidates].filter(Boolean);
+}
+
+function translateContainerPathToDockerHostPath(containerPath: string, mounts: DockerMount[]): string | undefined {
+  const matchingMounts = mounts
+    .filter((mount): mount is Required<Pick<DockerMount, "Source" | "Destination">> => Boolean(mount.Source && mount.Destination))
+    .filter((mount) => pathIsAtOrWithin(containerPath, mount.Destination!))
+    .sort((a, b) => b.Destination.length - a.Destination.length);
+
+  const match = matchingMounts[0];
+  if (!match) return undefined;
+
+  const suffix = containerPath.slice(match.Destination.length);
+  return join(match.Source, suffix);
+}
+
+function pathIsAtOrWithin(path: string, parent: string): boolean {
+  return path === parent || path.startsWith(parent.endsWith("/") ? parent : `${parent}/`);
+}

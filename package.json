@@ -13,6 +13,10 @@
     "ci": "bun ci && bun run check && bun test",
     "atelier": "bun run tools/atelier/src/main.ts",
     "web": "bun run --cwd apps/web build:client && bun --hot run apps/web/src/main.ts",
+    "web-container:build": "tools/atelier-web-container.sh build",
+    "web-container:run": "tools/atelier-web-container.sh run",
+    "web-container:stop": "tools/atelier-web-container.sh stop",
+    "web-container:logs": "tools/atelier-web-container.sh logs",
     "workspace-image:build": "tools/workspace-image.sh build",
     "workspace-image:verify": "tools/workspace-image.sh verify",
     "workspace-image:publish": "tools/workspace-image.sh publish"

@@ -4,6 +4,7 @@ import { requireDocker, runDocker } from "./docker.ts";
 import { AtelierCoreError, invalidArguments } from "./errors.ts";
 import type { AtelierEventBus } from "./events.ts";
 import { listManagedRepos, managedReposDir } from "./managed-repo.ts";
+import { dockerHostAtelierDataPath, getAtelierRuntimeContext } from "./runtime-context.ts";
 
 const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
@@ -193,7 +194,9 @@ export async function execWorkspaceShell(
 }
 
 export async function createWorkspace(): Promise<WorkspaceNewResult> {
-  const reposDir = managedReposDir();
+  const runtimeContext = await getAtelierRuntimeContext();
+  const reposDir = managedReposDir(runtimeContext.atelierDataDir);
+  const dockerHostReposDir = dockerHostAtelierDataPath(runtimeContext, "repos");
   try {
     await mkdir(reposDir, { recursive: true });
   } catch (error) {
@@ -209,7 +212,7 @@ export async function createWorkspace(): Promise<WorkspaceNewResult> {
     "--label",
     `${namespaceLabel}=${namespace()}`,
     "--mount",
-    `type=bind,src=${reposDir},dst=${atelierReposRoot}`,
+    `type=bind,src=${dockerHostReposDir},dst=${atelierReposRoot}`,
     "--user",
     "root",
     workspaceImage(),

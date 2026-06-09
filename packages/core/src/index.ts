@@ -24,6 +24,15 @@ export {
 } from "./managed-repo.ts";
 
 export {
+  atelierDataPath,
+  discoverAtelierRuntimeContext,
+  dockerHostAtelierDataPath,
+  getAtelierRuntimeContext,
+  resetAtelierRuntimeContextForTests,
+  type AtelierRuntimeContext,
+} from "./runtime-context.ts";
+
+export {
   cloneManagedRepoIntoWorkspace,
   createWorkspace,
   deleteWorkspace,
