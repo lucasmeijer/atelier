@@ -3,6 +3,7 @@ import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import type { AgentClientMessage } from "../shared/protocol.ts";
 import { getWorkspaceAgentRuntime } from "./runtime.ts";
 import { listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
+import { maybeNameWorkspaceFromAgentPrompt } from "./workspace-title-suggestion.ts";
 
 export interface AgentSocketData {
   kind: "agent";
@@ -47,7 +48,11 @@ export async function handleAgentSocketMessage(ws: ServerWebSocket<AgentSocketDa
   const parsed = JSON.parse(text) as AgentClientMessage;
   const runtime = await getWorkspaceAgentRuntime(ws.data.agent);
   if (parsed.type === "submit") {
-    if (parsed.text.trim()) await options.events?.emit("workspace_user_activity", { workspaceId: ws.data.workspaceId });
+    const trimmed = parsed.text.trim();
+    if (trimmed) {
+      await options.events?.emit("workspace_user_activity", { workspaceId: ws.data.workspaceId });
+      maybeNameWorkspaceFromAgentPrompt(ws.data.workspaceId, [...runtime.userMessages(), trimmed], { events: options.events });
+    }
     await runtime.submit(parsed.text);
   }
   if (parsed.type === "abort") await runtime.abort();

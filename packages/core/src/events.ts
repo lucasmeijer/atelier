@@ -6,9 +6,15 @@ export interface WorkspaceUserActivityEvent {
   workspaceId: string;
 }
 
+export interface WorkspaceTitleChangedEvent {
+  workspaceId: string;
+  title: string;
+}
+
 export interface AtelierEventMap {
   workspace_created: WorkspaceCreatedEvent;
   workspace_user_activity: WorkspaceUserActivityEvent;
+  workspace_title_changed: WorkspaceTitleChangedEvent;
 }
 
 export interface AtelierEventContext {

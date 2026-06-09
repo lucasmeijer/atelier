@@ -256,6 +256,10 @@ atelierEvents.on("workspace_user_activity", ({ workspaceId }) => {
   void markWorkspaceUserActivity(workspaceId).catch((error) => console.error("could not record workspace activity", error));
 });
 
+atelierEvents.on("workspace_title_changed", ({ workspaceId, title }) => {
+  broadcastTurboStream(turboReplaceStream(domId("workspace_sidebar_title", workspaceId), workspaceSidebarTitleFrame(workspaceId, title || `Workspace ${workspaceId}`)));
+});
+
 subscribeWorkspaceTabBusy(({ workspaceId, tabKey, busy }) => setWorkspaceTabBusy(workspaceId, tabKey, busy));
 
 function workspaceSidebarTitleFrame(id: string, title: string): string {

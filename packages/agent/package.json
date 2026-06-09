@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@atelier/core": "workspace:*",
+    "@atelier/pi-config": "workspace:*",
     "@atelier/shared": "workspace:*",
+    "@earendil-works/pi-ai": "^0.79.0",
     "@earendil-works/pi-coding-agent": "^0.79.0",
     "typebox": "^1.0.57"
   }

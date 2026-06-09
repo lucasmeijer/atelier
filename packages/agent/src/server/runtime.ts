@@ -51,6 +51,7 @@ export interface WorkspaceAgentRuntime {
   isStreaming: boolean;
   subscribe(listener: AgentSubscriber): () => void;
   snapshot(): AgentRenderOp;
+  userMessages(): string[];
   submit(text: string): Promise<void>;
   abort(): Promise<void>;
 }
@@ -93,6 +94,10 @@ abstract class BaseRuntime implements WorkspaceAgentRuntime {
 
   snapshot(): AgentRenderOp {
     return { type: "replace_html", target: agentTranscriptId(this.workspaceId, this.label), html: renderAgentTranscript(this.turns.map((turn) => this.renderStoredTurn(turn))) };
+  }
+
+  userMessages(): string[] {
+    return this.turns.map((turn) => turn.userText);
   }
 
   protected broadcast(op: AgentRenderOp): void {
