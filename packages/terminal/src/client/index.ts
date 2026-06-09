@@ -1,6 +1,5 @@
 export {
   createTerminalPaneController,
-  createTerminalThemeController,
   initializeTerminalTheme,
   startTerminal,
   startTerminalTab,
