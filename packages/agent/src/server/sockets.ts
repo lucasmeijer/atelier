@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from "bun";
-import { AtelierCoreError } from "@atelier/core";
+import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import type { AgentClientMessage } from "../shared/protocol.ts";
 import { getWorkspaceAgentRuntime } from "./runtime.ts";
 import { listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
@@ -42,11 +42,14 @@ export async function openAgentSocket(ws: ServerWebSocket<AgentSocketData>): Pro
   }
 }
 
-export async function handleAgentSocketMessage(ws: ServerWebSocket<AgentSocketData>, message: string | Buffer): Promise<void> {
+export async function handleAgentSocketMessage(ws: ServerWebSocket<AgentSocketData>, message: string | Buffer, options: { events?: AtelierEventBus } = {}): Promise<void> {
   const text = typeof message === "string" ? message : message.toString();
   const parsed = JSON.parse(text) as AgentClientMessage;
   const runtime = await getWorkspaceAgentRuntime(ws.data.agent);
-  if (parsed.type === "submit") await runtime.submit(parsed.text);
+  if (parsed.type === "submit") {
+    if (parsed.text.trim()) await options.events?.emit("workspace_user_activity", { workspaceId: ws.data.workspaceId });
+    await runtime.submit(parsed.text);
+  }
   if (parsed.type === "abort") await runtime.abort();
 }
 

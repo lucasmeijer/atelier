@@ -27,6 +27,14 @@ import { createAtelierResourceLoader } from "./system-prompt.ts";
 import { createWorkspaceAgentTools } from "./tools.ts";
 
 export type AgentSubscriber = (op: AgentRenderOp) => void;
+export type WorkspaceTabBusyListener = (event: { workspaceId: string; tabKey: string; busy: boolean }) => void;
+
+const workspaceTabBusyListeners = new Set<WorkspaceTabBusyListener>();
+
+export function subscribeWorkspaceTabBusy(listener: WorkspaceTabBusyListener): () => void {
+  workspaceTabBusyListeners.add(listener);
+  return () => workspaceTabBusyListeners.delete(listener);
+}
 
 interface TurnRecord {
   id: string;
@@ -89,6 +97,12 @@ abstract class BaseRuntime implements WorkspaceAgentRuntime {
 
   protected broadcast(op: AgentRenderOp): void {
     for (const subscriber of this.subscribers) subscriber(op);
+  }
+
+  protected setBusy(busy: boolean): void {
+    if (this.isStreaming === busy) return;
+    this.isStreaming = busy;
+    for (const listener of workspaceTabBusyListeners) listener({ workspaceId: this.workspaceId, tabKey: `agent:${this.label}`, busy });
   }
 
   protected startTurn(userText: string): TurnRecord {
@@ -160,7 +174,7 @@ class FakeWorkspaceAgentRuntime extends BaseRuntime {
       this.addThinking(`\nSteer: ${trimmed}\n`);
       return;
     }
-    this.isStreaming = true;
+    this.setBusy(true);
     this.broadcast({ type: "set_submit_label", label: "Steer" });
     const turn = this.startTurn(trimmed);
     await this.persist({ type: "turn", id: turn.id, userText: trimmed, assistantText: "" });
@@ -174,12 +188,12 @@ class FakeWorkspaceAgentRuntime extends BaseRuntime {
       this.appendAssistant(chunk);
       await this.persist({ type: "assistant_delta", id: turn.id, text: chunk });
     }
-    this.isStreaming = false;
+    this.setBusy(false);
     this.broadcast({ type: "set_submit_label", label: "Send" });
   }
 
   async abort(): Promise<void> {
-    this.isStreaming = false;
+    this.setBusy(false);
     this.broadcast({ type: "set_submit_label", label: "Send" });
   }
 
@@ -223,27 +237,27 @@ class RealWorkspaceAgentRuntime extends BaseRuntime {
       return;
     }
     this.startTurn(trimmed);
-    this.isStreaming = true;
+    this.setBusy(true);
     this.broadcast({ type: "set_submit_label", label: "Steer" });
     void this.session.prompt(trimmed).catch((error: unknown) => {
       this.broadcast({ type: "notice", level: "error", message: error instanceof Error ? error.message : String(error) });
-      this.isStreaming = false;
+      this.setBusy(false);
       this.broadcast({ type: "set_submit_label", label: "Send" });
     });
   }
 
   async abort(): Promise<void> {
     await this.session.abort();
-    this.isStreaming = false;
+    this.setBusy(false);
     this.broadcast({ type: "set_submit_label", label: "Send" });
   }
 
   private handleEvent(event: any): void {
     if (event.type === "agent_start") {
-      this.isStreaming = true;
+      this.setBusy(true);
       this.broadcast({ type: "set_submit_label", label: "Steer" });
     } else if (event.type === "agent_end") {
-      this.isStreaming = false;
+      this.setBusy(false);
       this.broadcast({ type: "set_submit_label", label: "Send" });
     } else if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
       this.appendAssistant(event.assistantMessageEvent.delta ?? "");

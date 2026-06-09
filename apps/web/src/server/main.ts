@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import {
   closeAgentSocket,
@@ -7,6 +9,7 @@ import {
   ensureDefaultWorkspaceAgent,
   handleAgentSocketMessage,
   openAgentSocket,
+  subscribeWorkspaceTabBusy,
   validateAgentSocket,
   type AgentSocketData,
 } from "@atelier/agent/server";
@@ -21,6 +24,7 @@ import {
   addManagedRepo,
   cloneManagedRepoIntoWorkspace,
   createAtelierEventBus,
+  defaultDataDir,
   createWorkspace,
   deleteWorkspace,
   getWorkspaceRepoMergeability,
@@ -116,6 +120,7 @@ function layout(title: string, body: string): string {
 <script type="module" src="/workspace.js"></script>
 </head>
 <body id="body">${body}
+<div data-controller="workspace-events-stream" hidden></div>
 </body>
 </html>`;
 }
@@ -134,6 +139,125 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
   return new Response(file, { headers: { "content-type": entry.contentType } });
 }
 
+type WorkspaceActivityState = Record<string, number>;
+
+let workspaceActivityCache: WorkspaceActivityState | undefined;
+const workspaceEventSubscribers = new Set<(html: string) => void>();
+const workspaceTabBusy = new Map<string, Map<string, boolean>>();
+
+function workspaceActivityPath(): string {
+  return join(defaultDataDir(), "view-state", "workspace-activity.json");
+}
+
+async function readWorkspaceActivity(): Promise<WorkspaceActivityState> {
+  if (workspaceActivityCache) return workspaceActivityCache;
+  try {
+    const parsed = JSON.parse(await readFile(workspaceActivityPath(), "utf8"));
+    workspaceActivityCache = parsed && typeof parsed === "object" ? parsed as WorkspaceActivityState : {};
+  } catch {
+    workspaceActivityCache = {};
+  }
+  return workspaceActivityCache;
+}
+
+async function writeWorkspaceActivity(activity: WorkspaceActivityState): Promise<void> {
+  const path = workspaceActivityPath();
+  await mkdir(dirname(path), { recursive: true });
+  const tempPath = `${path}.tmp`;
+  await writeFile(tempPath, `${JSON.stringify(activity, null, 2)}\n`);
+  await rename(tempPath, path);
+}
+
+async function markWorkspaceUserActivity(workspaceId: string): Promise<void> {
+  const activity = await readWorkspaceActivity();
+  activity[workspaceId] = Date.now();
+  await writeWorkspaceActivity(activity);
+  await broadcastWorkspaceRows();
+}
+
+function workspaceStatusId(workspaceId: string): string {
+  return domId("workspace_status", workspaceId);
+}
+
+function workspaceTabStatusId(workspaceId: string, tabKey: string): string {
+  return domId("workspace_tab_status", workspaceId, tabKey);
+}
+
+function isTabBusy(workspaceId: string, tabKey: string): boolean {
+  return workspaceTabBusy.get(workspaceId)?.get(tabKey) ?? false;
+}
+
+function isWorkspaceBusy(workspaceId: string): boolean {
+  return [...(workspaceTabBusy.get(workspaceId)?.values() ?? [])].some(Boolean);
+}
+
+function renderWorkspaceStatus(workspaceId: string): string {
+  return `<span id="${workspaceStatusId(workspaceId)}" class="workspace-status">${isWorkspaceBusy(workspaceId) ? `<span class="status-spinner sm" aria-label="Workspace busy" title="Workspace busy"></span>` : ""}</span>`;
+}
+
+function renderTabStatus(workspaceId: string, tabKey: string): string {
+  return `<span id="${workspaceTabStatusId(workspaceId, tabKey)}" class="tab-status">${isTabBusy(workspaceId, tabKey) ? `<span class="status-spinner sm" aria-label="Tab busy" title="Tab busy"></span>` : ""}</span>`;
+}
+
+function workspaceStatusStreams(workspaceId: string, tabKey?: string): string {
+  return `${turboReplaceStream(workspaceStatusId(workspaceId), renderWorkspaceStatus(workspaceId))}${tabKey ? turboReplaceStream(workspaceTabStatusId(workspaceId, tabKey), renderTabStatus(workspaceId, tabKey)) : ""}`;
+}
+
+function setWorkspaceTabBusy(workspaceId: string, tabKey: string, busy: boolean): void {
+  let tabs = workspaceTabBusy.get(workspaceId);
+  if (!tabs) {
+    tabs = new Map();
+    workspaceTabBusy.set(workspaceId, tabs);
+  }
+  if ((tabs.get(tabKey) ?? false) === busy) return;
+  if (busy) tabs.set(tabKey, true);
+  else tabs.delete(tabKey);
+  if (tabs.size === 0) workspaceTabBusy.delete(workspaceId);
+  broadcastTurboStream(workspaceStatusStreams(workspaceId, tabKey));
+}
+
+function turboReplaceStream(target: string, html: string): string {
+  return `<turbo-stream action="replace" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
+}
+
+function broadcastTurboStream(html: string): void {
+  for (const subscriber of workspaceEventSubscribers) subscriber(html);
+}
+
+async function broadcastWorkspaceRows(): Promise<void> {
+  broadcastTurboStream(turboReplaceStream("workspaces_table_rows", await renderWorkspaceRows()));
+}
+
+function currentWorkspaceStatusStreams(): string {
+  return [...workspaceTabBusy.entries()].map(([workspaceId, tabs]) => `${workspaceStatusStreams(workspaceId)}${[...tabs.keys()].map((tabKey) => turboReplaceStream(workspaceTabStatusId(workspaceId, tabKey), renderTabStatus(workspaceId, tabKey))).join("")}`).join("");
+}
+
+async function workspaceEventsStream(): Promise<Response> {
+  const encoder = new TextEncoder();
+  let keepalive: ReturnType<typeof setInterval> | undefined;
+  let send: ((html: string) => void) | undefined;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      send = (html: string) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(html)}\n\n`));
+      workspaceEventSubscribers.add(send);
+      const initialStatus = currentWorkspaceStatusStreams();
+      if (initialStatus) send(initialStatus);
+      keepalive = setInterval(() => controller.enqueue(encoder.encode(`: keepalive\n\n`)), 5000);
+    },
+    cancel() {
+      if (send) workspaceEventSubscribers.delete(send);
+      if (keepalive) clearInterval(keepalive);
+    },
+  });
+  return new Response(stream, { headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", "connection": "keep-alive" } });
+}
+
+atelierEvents.on("workspace_user_activity", ({ workspaceId }) => {
+  void markWorkspaceUserActivity(workspaceId).catch((error) => console.error("could not record workspace activity", error));
+});
+
+subscribeWorkspaceTabBusy(({ workspaceId, tabKey, busy }) => setWorkspaceTabBusy(workspaceId, tabKey, busy));
+
 function workspaceSidebarTitleFrame(id: string, title: string): string {
   const frameId = domId("workspace_sidebar_title", id);
   return `<turbo-frame id="${frameId}" class="workspace-row-title-frame">
@@ -145,7 +269,7 @@ function workspaceSidebarTitleFrame(id: string, title: string): string {
 function workspaceRow(id: string, title: string, state: "ready" | "initializing" = "ready", options: { active?: boolean } = {}): string {
   const initializing = state === "initializing";
   return `<div class="row workspace-row ${initializing ? "initializing" : ""} ${options.active ? "active" : ""}" id="${domId("workspace_row", id)}" data-workspace-id="${escapeHtml(id)}">
-      <span class="dot ${initializing ? "wait" : "run"}"></span>
+      ${initializing ? `<span class="dot wait"></span>` : renderWorkspaceStatus(id)}
       ${initializing ? `<div class="row-main"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">Initializing workspace…</div></div><span class="row-actions"><span class="status-spinner" aria-label="Initializing"></span></span>` : `${workspaceSidebarTitleFrame(id, title)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#delete"><input type="hidden" name="selected" value="${options.active ? "1" : "0"}"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form>`}
     </div>`;
 }
@@ -180,9 +304,16 @@ function addManagedRepoModal(): string {
 </dialog>`;
 }
 
+async function renderWorkspaceRows(selectedId?: string): Promise<string> {
+  const [{ workspaces }, activity] = await Promise.all([listWorkspaces(), readWorkspaceActivity()]);
+  return [...workspaces]
+    .sort((a, b) => (activity[b.id] ?? 0) - (activity[a.id] ?? 0))
+    .map((workspace) => workspaceRow(workspace.id, workspace.title || `Workspace ${workspace.id}`, "ready", { active: workspace.id === selectedId }))
+    .join("");
+}
+
 async function renderWorkspaceSidebar(selectedId?: string): Promise<string> {
-  const [{ workspaces }, { repos: managedRepos }] = await Promise.all([listWorkspaces(), listManagedRepos()]);
-  const rows = workspaces.map((workspace) => workspaceRow(workspace.id, workspace.title || `Workspace ${workspace.id}`, "ready", { active: workspace.id === selectedId })).join("");
+  const [{ repos: managedRepos }, rows] = await Promise.all([listManagedRepos(), renderWorkspaceRows(selectedId)]);
 
   const newWorkspaceRow = `<form class="contents" method="post" action="/workspaces"><button class="row ghost-row" type="submit">
     <span></span>
@@ -403,7 +534,7 @@ function renderWorkspaceGroups(workspaceId: string, tabs: WorkspaceTabContributi
     const headers = group.tabs.map((key, tabIndex) => {
       const tab = tabByKey.get(key);
       if (!tab) return "";
-      return `<button class="group-tab ${key === activeTab ? "active" : "muted"}" draggable="true" data-tab="${escapeHtml(key)}" data-action="click->workspace-tabs#activate dragstart->workspace-groups#dragStart dragend->workspace-groups#dragEnd dragover->workspace-groups#dragOver drop->workspace-groups#drop" data-workspace-tabs-tab-param="${escapeHtml(key)}" data-group-id="${escapeHtml(group.id)}" data-tab-index="${tabIndex}" type="button">${escapeHtml(tabLabel(tab))}</button>`;
+      return `<button class="group-tab ${key === activeTab ? "active" : "muted"}" draggable="true" data-tab="${escapeHtml(key)}" data-action="click->workspace-tabs#activate dragstart->workspace-groups#dragStart dragend->workspace-groups#dragEnd dragover->workspace-groups#dragOver drop->workspace-groups#drop" data-workspace-tabs-tab-param="${escapeHtml(key)}" data-group-id="${escapeHtml(group.id)}" data-tab-index="${tabIndex}" type="button"><span>${escapeHtml(tabLabel(tab))}</span>${renderTabStatus(workspaceId, key)}</button>`;
     }).join("");
     const panes = group.tabs.map((key) => {
       const tab = tabByKey.get(key);
@@ -729,6 +860,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
         return response("websocket upgrade failed", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });
       }
       if (url.pathname === "/" && request.method === "GET") return await homePage();
+      if (url.pathname === "/workspace-events/stream" && request.method === "GET") return await workspaceEventsStream();
       if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
       if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceFromForm(request, url);
       if (url.pathname === "/managed-repos" && request.method === "POST") return await createManagedRepoFromForm(request, url);
@@ -805,7 +937,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
     },
     message(ws, message) {
       if (ws.data.kind === "terminal") handleTerminalSocketMessage(ws as ServerWebSocket<TerminalSocketData>, message);
-      if (ws.data.kind === "agent") void handleAgentSocketMessage(ws as ServerWebSocket<AgentSocketData>, message);
+      if (ws.data.kind === "agent") void handleAgentSocketMessage(ws as ServerWebSocket<AgentSocketData>, message, { events: atelierEvents });
     },
     close(ws) {
       if (ws.data.kind === "terminal") closeTerminalSocket(ws as ServerWebSocket<TerminalSocketData>);

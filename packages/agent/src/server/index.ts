@@ -8,7 +8,7 @@ export {
   workspaceAgentsDir,
   type WorkspaceAgentInfo,
 } from "./session-store.ts";
-export { getWorkspaceAgentRuntime, type WorkspaceAgentRuntime } from "./runtime.ts";
+export { getWorkspaceAgentRuntime, subscribeWorkspaceTabBusy, type WorkspaceTabBusyListener, type WorkspaceAgentRuntime } from "./runtime.ts";
 export { closeAgentSocket, handleAgentSocketMessage, openAgentSocket, validateAgentSocket, type AgentSocketData } from "./sockets.ts";
 export {
   agentTabKey,

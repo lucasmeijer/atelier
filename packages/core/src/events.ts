@@ -2,8 +2,13 @@ export interface WorkspaceCreatedEvent {
   workspaceId: string;
 }
 
+export interface WorkspaceUserActivityEvent {
+  workspaceId: string;
+}
+
 export interface AtelierEventMap {
   workspace_created: WorkspaceCreatedEvent;
+  workspace_user_activity: WorkspaceUserActivityEvent;
 }
 
 export interface AtelierEventContext {

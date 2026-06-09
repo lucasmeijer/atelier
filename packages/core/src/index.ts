@@ -5,6 +5,7 @@ export {
   type AtelierEventHandler,
   type AtelierEventMap,
   type WorkspaceCreatedEvent,
+  type WorkspaceUserActivityEvent,
 } from "./events.ts";
 
 export {

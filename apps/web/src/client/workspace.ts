@@ -370,7 +370,18 @@ class WorkspaceResidencyController extends Controller {
   }
 }
 
+function syncActiveWorkspaceRow(): void {
+  const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
+  document.querySelectorAll<HTMLElement>(".workspace-row.active").forEach((row) => row.classList.remove("active"));
+  if (!workspaceId) return;
+  document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(decodeURIComponent(workspaceId))}"]`)?.classList.add("active");
+}
+
 class WorkspaceListController extends Controller {
+  connect(): void {
+    syncActiveWorkspaceRow();
+  }
+
   delete(event: Event): void {
     const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
     const row = form?.closest<HTMLElement>(".workspace-row");
@@ -415,6 +426,24 @@ class WorkspaceTitleEditController extends Controller {
   }
 }
 
+class WorkspaceEventsStreamController extends Controller {
+  private source?: EventSource;
+
+  connect(): void {
+    this.source = new EventSource("/workspace-events/stream");
+    this.source.onmessage = (event) => {
+      const html = JSON.parse(event.data) as string;
+      window.Turbo?.renderStreamMessage(html);
+      queueMicrotask(syncActiveWorkspaceRow);
+    };
+  }
+
+  disconnect(): void {
+    this.source?.close();
+    this.source = undefined;
+  }
+}
+
 const application = Application.start();
 application.register("workspace-tabs", WorkspaceTabsController);
 application.register("workspace-groups", WorkspaceGroupsController);
@@ -431,3 +460,4 @@ application.register("redirect", RedirectController);
 application.register("global-filter", GlobalFilterController);
 application.register("workspace-list", WorkspaceListController);
 application.register("workspace-title-edit", WorkspaceTitleEditController);
+application.register("workspace-events-stream", WorkspaceEventsStreamController);
