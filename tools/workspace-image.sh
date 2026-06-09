@@ -36,6 +36,16 @@ command -v pi >/dev/null
 command -v rg >/dev/null
 command -v fd >/dev/null
 command -v cmatrix >/dev/null
+command -v python >/dev/null
+command -v python3 >/dev/null
+command -v cmake >/dev/null
+command -v clang >/dev/null
+command -v gcc >/dev/null
+command -v ninja >/dev/null
+command -v dotnet >/dev/null
+command -v go >/dev/null
+command -v bazel >/dev/null
+command -v ruby >/dev/null
 tmux -V
 node --version
 npm --version
@@ -43,6 +53,16 @@ pi --version
 rg --version | head -n 1
 fd --version
 cmatrix -V 2>&1 | head -n 1
+python --version
+python3 --version
+cmake --version | head -n 1
+clang --version | head -n 1
+gcc --version | head -n 1
+ninja --version
+dotnet --version
+go version
+bazel version | head -n 1
+ruby --version
 infocmp -x xterm-ghostty >/dev/null
 colors="$(TERM=xterm-ghostty tput colors)"
 test "$colors" -ge 256
@@ -60,7 +80,7 @@ su atelier -c "command -v pi >/dev/null && pi --version >/dev/null"
 test "$(cat /tmp/atelier-tmux-test/pane-env)" = "xterm-ghostty truecolor"
 su atelier -c "tmux -S /tmp/atelier-tmux-test/socket kill-session -t 'Terminal 1'"
 
-echo "verified: pi, Node.js, npm, ripgrep, fd, cmatrix, tmux, extended-keys, xterm-ghostty terminfo, 256-color tput, and tmux pane TERM=xterm-ghostty"
+echo "verified: pi, Node.js, npm, ripgrep, fd, cmatrix, tmux, Python, CMake, Clang, GCC, Ninja, .NET SDK, Go, Bazel, Ruby, extended-keys, xterm-ghostty terminfo, 256-color tput, and tmux pane TERM=xterm-ghostty"
 VERIFY
 }
 

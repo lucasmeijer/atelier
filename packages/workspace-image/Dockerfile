@@ -11,6 +11,15 @@ RUN apt-get update \
       curl \
       git \
       locales \
+      python3 \
+      python-is-python3 \
+      cmake \
+      clang \
+      dotnet-sdk-8.0 \
+      gcc \
+      golang-go \
+      ninja-build \
+      ruby-full \
       ncurses-bin \
       ncurses-term \
       ripgrep \
@@ -20,6 +29,17 @@ RUN apt-get update \
       xz-utils \
  && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
  && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    bazelisk_arch="$(dpkg --print-architecture)"; \
+    case "$bazelisk_arch" in \
+      amd64) bazelisk_arch="amd64" ;; \
+      arm64) bazelisk_arch="arm64" ;; \
+      *) echo "unsupported Bazelisk architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-${bazelisk_arch}" -o /usr/local/bin/bazel; \
+    chmod +x /usr/local/bin/bazel; \
+    bazel version
 
 # Ubuntu 24.04's ncurses database does not reliably include Ghostty's
 # xterm-ghostty entry yet. Compile a newer upstream terminfo database so
