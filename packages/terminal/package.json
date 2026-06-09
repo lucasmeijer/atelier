@@ -11,6 +11,7 @@
   "dependencies": {
     "@atelier/core": "workspace:*",
     "@atelier/shared": "workspace:*",
+    "@fontsource/jetbrains-mono": "5.2.8",
     "@zenyr/bun-pty": "^0.4.4",
     "ghostty-web": "^0.4.0"
   }

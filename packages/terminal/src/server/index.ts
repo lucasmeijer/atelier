@@ -15,7 +15,6 @@ export {
   renderTerminalFooterAction,
   renderTerminalPane,
   renderTerminalTab,
-  renderTerminalThemeOptions,
   terminalTabKey,
 } from "./render.ts";
 export {

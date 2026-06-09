@@ -23,19 +23,9 @@ export function renderInitializingTerminalTab(id: string, token: string): string
   return `<span id="${domId("terminal_tab", id, token)}" class="tab closable active" data-tab="${escapeHtml(terminalTabKey(token))}" data-terminal-title="${escapeHtml(token)}" role="button" tabindex="0">▣ Initializing… <span class="status-spinner" aria-label="Initializing terminal"></span></span>`;
 }
 
-export function renderTerminalThemeOptions(): string {
-  return [
-    ["tokyo-night", "Tokyo Night"],
-    ["dracula", "Dracula"],
-    ["catppuccin-mocha", "Catppuccin Mocha"],
-    ["nord", "Nord"],
-  ].map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
-}
-
 export function renderTerminalPane(id: string, title: string, options: { autostart?: boolean; active?: boolean } = {}): string {
-  return `<section id="${domId("terminal_pane", id, title)}" class="tab-pane ${options.active ? "active" : ""}" data-tab-pane="${escapeHtml(terminalTabKey(title))}">
+  return `<section id="${domId("terminal_pane", id, title)}" class="tab-pane terminal-tab-pane ${options.active ? "active" : ""}" data-tab-pane="${escapeHtml(terminalTabKey(title))}">
     <div class="terminal-pane" data-controller="terminal-pane" data-terminal-pane-workspace-id-value="${escapeHtml(id)}" data-terminal-pane-title-value="${escapeHtml(title)}" data-terminal-pane-autostart-value="${options.autostart ? "true" : "false"}" data-terminal-title="${escapeHtml(title)}">
-      <div class="terminal-bar"><span>${escapeHtml(title)} · tmux</span><label class="terminal-theme-picker">Theme <select data-controller="terminal-theme" data-terminal-theme-select data-action="change->terminal-theme#change">${renderTerminalThemeOptions()}</select></label></div>
       <div class="ghostty-terminal" tabindex="0"></div>
     </div>
   </section>`;

@@ -12,8 +12,7 @@ type StimulusControllerConstructor = new (...args: unknown[]) => { element: Elem
 type TerminalTheme = Record<string, string>;
 type TerminalThemeName = keyof typeof TERMINAL_THEMES;
 
-const TERMINAL_THEME_COOKIE = "atelier_terminal_theme";
-const DEFAULT_TERMINAL_THEME: TerminalThemeName = "tokyo-night";
+const DEFAULT_TERMINAL_THEME: TerminalThemeName = "nord";
 const TERMINAL_THEMES = {
   "tokyo-night": {
     background: "#1a1b26",
@@ -108,25 +107,12 @@ function terminalKey(workspaceId: string, title: string): string {
   return `${workspaceId}\u0000${title}`;
 }
 
-function readCookie(name: string): string | undefined {
-  return document.cookie
-    .split(";")
-    .map((cookie) => cookie.trim())
-    .find((cookie) => cookie.startsWith(`${name}=`))
-    ?.slice(name.length + 1);
-}
-
-function writeCookie(name: string, value: string): void {
-  document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=31536000; Path=/; SameSite=Lax`;
-}
-
 function terminalThemeName(): TerminalThemeName {
-  const value = decodeURIComponent(readCookie(TERMINAL_THEME_COOKIE) ?? "");
-  return value in TERMINAL_THEMES ? value as TerminalThemeName : DEFAULT_TERMINAL_THEME;
+  return DEFAULT_TERMINAL_THEME;
 }
 
 function terminalTheme(): TerminalTheme {
-  return TERMINAL_THEMES[terminalThemeName()];
+  return TERMINAL_THEMES[DEFAULT_TERMINAL_THEME];
 }
 
 function applyTerminalChromeTheme(theme: TerminalTheme): void {
@@ -136,32 +122,6 @@ function applyTerminalChromeTheme(theme: TerminalTheme): void {
   document.documentElement.style.setProperty("--terminal-bar-bg", theme.black);
   document.documentElement.style.setProperty("--terminal-bar-fg", theme.brightBlue ?? theme.foreground);
   document.documentElement.style.setProperty("--terminal-border", theme.brightBlack ?? theme.black);
-}
-
-function applyTerminalTheme(name: TerminalThemeName): void {
-  const theme = TERMINAL_THEMES[name];
-  writeCookie(TERMINAL_THEME_COOKIE, name);
-  applyTerminalChromeTheme(theme);
-
-  document.querySelectorAll<HTMLSelectElement>("[data-terminal-theme-select]").forEach((select) => {
-    select.value = name;
-  });
-
-  reloadOpenTerminals();
-}
-
-function reloadOpenTerminals(): void {
-  const openTerminals = Array.from(terminals.keys()).map((key) => {
-    const [workspaceId, title] = key.split("\u0000");
-    return { workspaceId, title };
-  });
-
-  for (const { workspaceId, title } of openTerminals) {
-    stopTerminal(workspaceId, title);
-    const pane = findTerminalPane(workspaceId, title);
-    pane?.querySelector<HTMLElement>(".ghostty-terminal")?.replaceChildren();
-    void startTerminal(workspaceId, title);
-  }
 }
 
 export function initializeTerminalTheme(): void {
@@ -189,11 +149,12 @@ export async function startTerminal(workspaceId: string, title: string): Promise
 
   ghosttyReady ??= init();
   await ghosttyReady;
+  await document.fonts.load('13px "JetBrains Mono"');
 
   const term = new Terminal({
     cursorBlink: true,
     fontSize: 13,
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
     scrollback: 10000,
     theme: terminalTheme(),
   });
@@ -270,8 +231,7 @@ export function createTerminalThemeController(Controller: StimulusControllerCons
     }
 
     change(): void {
-      const value = this.element.value;
-      if (value in TERMINAL_THEMES) applyTerminalTheme(value as TerminalThemeName);
+      // Theme selection is temporarily disabled; terminals are hardcoded to Nord.
     }
   };
 }
