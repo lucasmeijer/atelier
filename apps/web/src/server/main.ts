@@ -31,6 +31,7 @@ import {
   setWorkspaceTitle,
   type WorkspaceRepoMergeabilityResult,
 } from "@atelier/core";
+import { registerPiConfigEvents } from "@atelier/pi-config/server";
 import {
   closeTerminalSocket,
   createTerminalEndpoint,
@@ -51,6 +52,7 @@ const requestedPort = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "127.0.0.1";
 const pendingWorkspaceCreations = new Map<string, Promise<{ id: string }>>();
 const atelierEvents = createAtelierEventBus();
+registerPiConfigEvents(atelierEvents);
 registerTerminalEvents(atelierEvents);
 
 interface WorkspaceGroupState {

@@ -9,6 +9,7 @@ COPY package.json bun.lock bunfig.toml tsconfig.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/agent/package.json packages/agent/package.json
+COPY packages/pi-config/package.json packages/pi-config/package.json
 COPY packages/terminal/package.json packages/terminal/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY tools/atelier/package.json tools/atelier/package.json
