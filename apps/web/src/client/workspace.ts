@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 
 import { createAgentChatController, startAgentTab } from "@atelier/agent/client";
+import { createContainerHealthController } from "@atelier/container-health/client";
 import { createTerminalPaneController, createTerminalThemeController, initializeTerminalTheme, startTerminal, startTerminalTab } from "@atelier/terminal/client";
 
 declare global {
@@ -401,6 +402,7 @@ application.register("workspace-residency", WorkspaceResidencyController);
 application.register("terminal-pane", createTerminalPaneController(Controller));
 application.register("terminal-theme", createTerminalThemeController(Controller));
 application.register("agent-chat", createAgentChatController(Controller));
+application.register("container-health", createContainerHealthController(Controller));
 application.register("activate-tab", ActivateTabController);
 application.register("remove-workspace-resident", RemoveWorkspaceResidentController);
 application.register("modal", ModalController);

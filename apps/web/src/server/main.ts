@@ -11,6 +11,12 @@ import {
   type AgentSocketData,
 } from "@atelier/agent/server";
 import {
+  containerHealthStaticFiles,
+  containerHealthStreamEndpoint,
+  containerHealthWorkspaceModule,
+  healthPaneEndpoint,
+} from "@atelier/container-health/server";
+import {
   AtelierCoreError,
   addManagedRepo,
   cloneManagedRepoIntoWorkspace,
@@ -99,6 +105,7 @@ function layout(title: string, body: string): string {
 <title>${escapeHtml(atelierName)} · ${escapeHtml(title)}</title>
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/terminal.css">
+<link rel="stylesheet" href="/container-health.css">
 <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.13/dist/turbo.es2017-esm.js"></script>
 <script type="module">
   import { Application, Controller } from "https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/+esm";
@@ -116,6 +123,7 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
     "/style.css": { url: new URL("../../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
     "/workspace.js": { url: new URL("../../public/workspace.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
     ...terminalStaticFiles,
+    ...containerHealthStaticFiles,
   };
   const entry = staticFiles[pathname];
   if (!entry) return undefined;
@@ -349,7 +357,7 @@ const staticWorkspaceModule: WorkspaceModule = {
   },
 };
 
-const workspaceModules: WorkspaceModule[] = [agentWorkspaceModule, terminalWorkspaceModule, staticWorkspaceModule];
+const workspaceModules: WorkspaceModule[] = [agentWorkspaceModule, terminalWorkspaceModule, containerHealthWorkspaceModule, staticWorkspaceModule];
 
 async function attachWorkspaceModules(workspaceId: string): Promise<WorkspaceAttachment[]> {
   return await Promise.all(workspaceModules.map((module) => module.attachToWorkspace({ workspaceId })));
@@ -768,6 +776,12 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
 
       const groupResizeMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/layout\/resize$/);
       if (groupResizeMatch && request.method === "POST") return await resizeWorkspaceGroupsEndpoint(decodeURIComponent(groupResizeMatch[1]), request);
+
+      const healthMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/health$/);
+      if (healthMatch && request.method === "GET") return healthPaneEndpoint(decodeURIComponent(healthMatch[1]));
+
+      const healthStreamMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/health\/stream$/);
+      if (healthStreamMatch && request.method === "GET") return containerHealthStreamEndpoint(decodeURIComponent(healthStreamMatch[1]));
 
       const agentsMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/agents$/);
       if (agentsMatch && request.method === "POST") return await createAgentEndpoint(decodeURIComponent(agentsMatch[1]), request);

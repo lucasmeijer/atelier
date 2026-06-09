@@ -8,6 +8,12 @@ export {
 } from "./events.ts";
 
 export {
+  requireDocker,
+  runDocker,
+  type CommandResult,
+} from "./docker.ts";
+
+export {
   AtelierCoreError,
   invalidArguments,
   type AtelierError,

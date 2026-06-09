@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@atelier/agent": "workspace:*",
+    "@atelier/container-health": "workspace:*",
     "@atelier/core": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/terminal": "workspace:*"

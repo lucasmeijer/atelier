@@ -9,6 +9,9 @@
     "paths": {
       "@atelier/core": ["packages/core/src/index.ts"],
       "@atelier/shared": ["packages/shared/src/index.ts"],
+      "@atelier/container-health/server": ["packages/container-health/src/server/index.ts"],
+      "@atelier/container-health/client": ["packages/container-health/src/client/index.ts"],
+      "@atelier/container-health": ["packages/container-health/src/server/index.ts"],
       "@atelier/terminal/server": ["packages/terminal/src/server/index.ts"],
       "@atelier/terminal/client": ["packages/terminal/src/client/index.ts"],
       "@atelier/terminal": ["packages/terminal/src/index.ts"]
