@@ -1,4 +1,13 @@
 export {
+  createAtelierEventBus,
+  type AtelierEventBus,
+  type AtelierEventContext,
+  type AtelierEventHandler,
+  type AtelierEventMap,
+  type WorkspaceCreatedEvent,
+} from "./events.ts";
+
+export {
   AtelierCoreError,
   invalidArguments,
   type AtelierError,
@@ -30,6 +39,7 @@ export {
   workspaceCommand,
   type DeleteWorkspaceOptions,
   type WorkspaceCloneResult,
+  type WorkspaceCommandContext,
   type WorkspaceCommandOptions,
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceDeleteSafetyIssue,

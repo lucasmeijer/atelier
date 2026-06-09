@@ -14,6 +14,7 @@ import {
   AtelierCoreError,
   addManagedRepo,
   cloneManagedRepoIntoWorkspace,
+  createAtelierEventBus,
   createWorkspace,
   deleteWorkspace,
   getWorkspaceRepoMergeability,
@@ -27,12 +28,12 @@ import {
 import {
   closeTerminalSocket,
   createTerminalEndpoint,
-  createWorkspaceTerminal,
   deleteTerminalEndpoint,
   handleTerminalSocketMessage,
   listTerminalsEndpoint,
   listWorkspaceTerminals,
   openTerminalSocket,
+  registerTerminalEvents,
   renderWorkspaceTerminalTabs,
   terminalStaticFiles,
   validateTerminalSocket,
@@ -43,10 +44,15 @@ import { atelierName } from "@atelier/shared";
 const requestedPort = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "127.0.0.1";
 const pendingWorkspaceCreations = new Map<string, Promise<{ id: string }>>();
+const atelierEvents = createAtelierEventBus();
+registerTerminalEvents(atelierEvents);
 
 async function createWorkspaceWithDefaultAgent(): Promise<{ id: string }> {
   const created = await createWorkspace();
-  await Promise.all([ensureDefaultWorkspaceAgent(created.id), createWorkspaceTerminal(created.id)]);
+  await Promise.all([
+    ensureDefaultWorkspaceAgent(created.id),
+    atelierEvents.emit("workspace_created", { workspaceId: created.id }),
+  ]);
   return created;
 }
 

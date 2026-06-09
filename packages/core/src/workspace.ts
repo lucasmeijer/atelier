@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { requireDocker, runDocker } from "./docker.ts";
 import { AtelierCoreError, invalidArguments } from "./errors.ts";
+import type { AtelierEventBus } from "./events.ts";
 import { listManagedRepos, managedReposDir } from "./managed-repo.ts";
 
 const workspaceTypeLabel = "com.atelier.type";
@@ -33,6 +34,10 @@ export interface WorkspaceCommandOptions {
   workdir?: string;
   user?: "atelier" | "root";
   stdin?: string;
+}
+
+export interface WorkspaceCommandContext {
+  events?: AtelierEventBus;
 }
 
 export interface WorkspaceRepoListResult {
@@ -554,13 +559,16 @@ async function workspaceRepoCommand(args: string[]): Promise<unknown> {
   }
 }
 
-export async function workspaceCommand(args: string[]): Promise<unknown> {
+export async function workspaceCommand(args: string[], context: WorkspaceCommandContext = {}): Promise<unknown> {
   const [subcommand, ...rest] = args;
 
   switch (subcommand) {
-    case "new":
+    case "new": {
       if (rest.length !== 0) throw invalidArguments("workspace new takes no arguments");
-      return await createWorkspace();
+      const created = await createWorkspace();
+      await context.events?.emit("workspace_created", { workspaceId: created.id });
+      return created;
+    }
     case "list":
       if (rest.length !== 0) throw invalidArguments("workspace list takes no arguments");
       return await listWorkspaces();

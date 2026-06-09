@@ -1,4 +1,4 @@
-export { workspaceCommandWithTerminals } from "./cli.ts";
+export { registerTerminalEvents } from "./events.ts";
 export {
   createWorkspaceTerminal,
   deleteWorkspaceTerminal,

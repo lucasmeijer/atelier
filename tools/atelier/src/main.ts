@@ -1,7 +1,10 @@
 #!/usr/bin/env bun
-import { AtelierCoreError, invalidArguments } from "@atelier/core";
-import { workspaceCommandWithTerminals } from "@atelier/terminal/server";
+import { AtelierCoreError, createAtelierEventBus, invalidArguments, workspaceCommand } from "@atelier/core";
+import { registerTerminalEvents } from "@atelier/terminal/server";
 import { writeError, writeSuccess } from "./json.ts";
+
+const atelierEvents = createAtelierEventBus();
+registerTerminalEvents(atelierEvents);
 
 function usage(): string {
   return `atelier [--help]\n\nAtelier command-line tool.\n\nOptions:\n  -h, --help    Show this help\n`;
@@ -19,7 +22,7 @@ async function main(argv: string[]): Promise<void> {
       process.stdout.write(usage());
       return;
     case "workspace":
-      writeSuccess(await workspaceCommandWithTerminals(rest));
+      writeSuccess(await workspaceCommand(rest, { events: atelierEvents }));
       return;
     default:
       throw invalidArguments(`unknown command: ${command}`);
