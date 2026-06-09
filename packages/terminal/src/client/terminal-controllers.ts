@@ -102,6 +102,7 @@ const TERMINAL_THEMES = {
 
 let ghosttyReady: Promise<void> | undefined;
 const terminals = new Map<string, TerminalState>();
+const startingTerminals = new Set<string>();
 
 function terminalKey(workspaceId: string, title: string): string {
   return `${workspaceId}\u0000${title}`;
@@ -146,43 +147,60 @@ export async function startTerminal(workspaceId: string, title: string): Promise
     existing.fit.fit();
     return;
   }
+  if (startingTerminals.has(key)) return;
+  startingTerminals.add(key);
 
   ghosttyReady ??= init();
-  await ghosttyReady;
-  await document.fonts.load('13px "JetBrains Mono"');
+  try {
+    await ghosttyReady;
+    await document.fonts.load('13px "JetBrains Mono"');
+  } catch (error) {
+    startingTerminals.delete(key);
+    throw error;
+  }
+  if (terminals.has(key)) {
+    startingTerminals.delete(key);
+    return;
+  }
 
-  const term = new Terminal({
-    cursorBlink: true,
-    fontSize: 13,
-    fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-    scrollback: 10000,
-    theme: terminalTheme(),
-  });
-  const fit = new FitAddon();
-  term.loadAddon(fit);
-  term.open(host);
-  fit.fit();
-  fit.observeResize();
+  try {
+    const term = new Terminal({
+      cursorBlink: true,
+      fontSize: 13,
+      fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      scrollback: 10000,
+      theme: terminalTheme(),
+    });
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    term.open(host);
+    fit.fit();
+    fit.observeResize();
 
-  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  const tabId = `terminal:${title}`;
-  const ws = new WebSocket(`${protocol}//${location.host}/workspaces/${encodeURIComponent(workspaceId)}/tabs/${encodeURIComponent(tabId)}/ws?cols=${term.cols}&rows=${term.rows}`);
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const tabId = `terminal:${title}`;
+    const ws = new WebSocket(`${protocol}//${location.host}/workspaces/${encodeURIComponent(workspaceId)}/tabs/${encodeURIComponent(tabId)}/ws?cols=${term.cols}&rows=${term.rows}`);
 
-  term.onData((data) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(data);
-  });
-  term.onResize((size) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "resize", cols: size.cols, rows: size.rows }));
-  });
-  ws.onmessage = (event) => {
-    if (typeof event.data === "string") term.write(event.data);
-    else event.data.arrayBuffer().then((buffer: ArrayBuffer) => term.write(new Uint8Array(buffer)));
-  };
-  ws.onclose = () => term.write("\r\n\x1b[31m[terminal disconnected]\x1b[0m\r\n");
-  ws.onerror = () => term.write("\r\n\x1b[31m[terminal websocket error]\x1b[0m\r\n");
+    term.onData((data) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(data);
+    });
+    term.onResize((size) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "resize", cols: size.cols, rows: size.rows }));
+    });
+    ws.onmessage = (event) => {
+      if (typeof event.data === "string") term.write(event.data);
+      else event.data.arrayBuffer().then((buffer: ArrayBuffer) => term.write(new Uint8Array(buffer)));
+    };
+    ws.onclose = () => term.write("\r\n\x1b[31m[terminal disconnected]\x1b[0m\r\n");
+    ws.onerror = () => term.write("\r\n\x1b[31m[terminal websocket error]\x1b[0m\r\n");
 
-  terminals.set(key, { term, ws, fit });
-  term.focus();
+    terminals.set(key, { term, ws, fit });
+    startingTerminals.delete(key);
+    term.focus();
+  } catch (error) {
+    startingTerminals.delete(key);
+    throw error;
+  }
 }
 
 export function stopTerminal(workspaceId: string, title: string): void {
@@ -195,6 +213,7 @@ export function stopTerminal(workspaceId: string, title: string): void {
   state.fit.dispose();
   state.term.dispose();
   terminals.delete(key);
+  startingTerminals.delete(key);
 }
 
 export function startTerminalTab(workspaceId: string, tabName: string): void {
