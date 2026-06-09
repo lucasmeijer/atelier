@@ -336,28 +336,7 @@ async function updateWorkspaceSidebarTitleFromForm(id: string, request: Request)
   return response(workspaceSidebarTitleFrame(id, title || `Workspace ${id}`));
 }
 
-function staticWorkspaceTab(key: string, label: string, paneHtml: string, options: { active?: boolean } = {}): WorkspaceTabContribution {
-  return {
-    key,
-    tabHtml: `<button class="tab ${options.active ? "active" : "muted"}" data-tab="${escapeHtml(key)}" data-action="click->workspace-tabs#activate" data-workspace-tabs-tab-param="${escapeHtml(key)}" type="button">${escapeHtml(label)}</button>`,
-    paneHtml: `<section class="tab-pane ${options.active ? "active" : ""}" data-tab-pane="${escapeHtml(key)}">${paneHtml}</section>`,
-    preload: "eager",
-  };
-}
-
-const staticWorkspaceModule: WorkspaceModule = {
-  id: "workspace-static",
-  attachToWorkspace() {
-    return {
-      tabs: [
-        staticWorkspaceTab("code", "⌘ Code", `<div class="workspace-wide"><div class="panel"><div class="pad">Code pane will be wired up in a later slice.</div></div></div>`),
-        staticWorkspaceTab("commits", "▧ Commits", `<div class="workspace-wide"><div class="panel"><div class="pad">Commits pane will be wired up in a later slice.</div></div></div>`),
-      ],
-    };
-  },
-};
-
-const workspaceModules: WorkspaceModule[] = [agentWorkspaceModule, terminalWorkspaceModule, containerHealthWorkspaceModule, staticWorkspaceModule];
+const workspaceModules: WorkspaceModule[] = [agentWorkspaceModule, terminalWorkspaceModule, containerHealthWorkspaceModule];
 
 async function attachWorkspaceModules(workspaceId: string): Promise<WorkspaceAttachment[]> {
   return await Promise.all(workspaceModules.map((module) => module.attachToWorkspace({ workspaceId })));
