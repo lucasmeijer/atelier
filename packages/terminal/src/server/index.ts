@@ -9,20 +9,13 @@ export {
 export {
   domId,
   escapeHtml,
-  renderInitializingTerminalFooterAction,
-  renderInitializingTerminalPane,
-  renderInitializingTerminalTab,
-  renderTerminalFooterAction,
   renderTerminalPane,
   renderTerminalTab,
   terminalTabKey,
 } from "./render.ts";
 export {
-  createTerminalEndpoint,
   deleteTerminalEndpoint,
   jsonResponse,
-  listTerminalTabs,
-  listTerminalsEndpoint,
   renderWorkspaceTerminalTabs,
   terminalWorkspaceModule,
   turboStreamResponse,
