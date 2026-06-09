@@ -18,7 +18,6 @@ export function renderHealthTab(workspaceId: string): WorkspaceTabContribution {
     key: "health",
     tabHtml: `<button class="tab muted" data-tab="health" data-action="click->workspace-tabs#activate" data-workspace-tabs-tab-param="health" type="button">Health</button>`,
     paneHtml: `<section class="tab-pane" data-tab-pane="health">${renderHealthPane(workspaceId)}</section>`,
-    preload: "eager",
   };
 }
 

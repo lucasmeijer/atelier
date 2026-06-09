@@ -38,8 +38,6 @@ export function renderWorkspaceTerminalTabs(workspaceId: string, terminals: Work
     key: `terminal:${terminal.title}`,
     tabHtml: renderTerminalTab(workspaceId, terminal.title),
     paneHtml: renderTerminalPane(workspaceId, terminal.title),
-    footerHtml: renderTerminalFooterAction(workspaceId, terminal.title),
-    preload: "eager",
   }));
 }
 

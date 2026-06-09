@@ -30,7 +30,6 @@ export function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceA
     key: `agent:${agent.label}`,
     tabHtml: renderAgentTab(workspaceId, agent, { active: index === 0 }),
     paneHtml: renderAgentPane(workspaceId, agent, { active: index === 0, autostart: index === 0 }),
-    preload: "eager",
   }));
 }
 
