@@ -15,10 +15,6 @@ export function terminalTabKey(title: string): string {
   return `terminal:${title}`;
 }
 
-export function renderTerminalTab(id: string, title: string, options: { active?: boolean } = {}): string {
-  return `<span id="${domId("terminal_tab", id, title)}" class="tab ${options.active ? "active" : "muted"}" data-tab="${escapeHtml(terminalTabKey(title))}" data-terminal-title="${escapeHtml(title)}" data-action="click->workspace-tabs#activate" data-workspace-tabs-tab-param="${escapeHtml(terminalTabKey(title))}" role="button" tabindex="0">▣ ${escapeHtml(title)}</span>`;
-}
-
 export function renderTerminalPane(id: string, title: string, options: { autostart?: boolean; active?: boolean } = {}): string {
   return `<section id="${domId("terminal_pane", id, title)}" class="tab-pane terminal-tab-pane ${options.active ? "active" : ""}" data-tab-pane="${escapeHtml(terminalTabKey(title))}">
     <div class="terminal-pane" data-controller="terminal-pane" data-terminal-pane-workspace-id-value="${escapeHtml(id)}" data-terminal-pane-title-value="${escapeHtml(title)}" data-terminal-pane-autostart-value="${options.autostart ? "true" : "false"}" data-terminal-title="${escapeHtml(title)}">

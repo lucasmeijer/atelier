@@ -17,11 +17,6 @@ export function agentTabKey(label: string): string {
   return `agent:${label}`;
 }
 
-export function renderAgentTab(workspaceId: string, agent: WorkspaceAgentInfo, options: { active?: boolean } = {}): string {
-  const key = agentTabKey(agent.label);
-  return `<span id="${domId("agent_tab", workspaceId, agent.label)}" class="tab ${options.active ? "active" : "muted"}" data-tab="${escapeHtml(key)}" data-agent-label="${escapeHtml(agent.label)}" data-action="click->workspace-tabs#activate" data-workspace-tabs-tab-param="${escapeHtml(key)}" role="button" tabindex="0">◈ ${escapeHtml(agent.label)}</span>`;
-}
-
 export function renderAgentPane(workspaceId: string, agent: WorkspaceAgentInfo, options: { active?: boolean; autostart?: boolean } = {}): string {
   const key = agentTabKey(agent.label);
   const transcriptId = agentTranscriptId(workspaceId, agent.label);

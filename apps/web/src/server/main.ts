@@ -464,11 +464,7 @@ async function attachWorkspaceModules(workspaceId: string): Promise<WorkspaceAtt
 }
 
 function tabLabel(tab: WorkspaceTabContribution): string {
-  const html = tab.tabHtml;
-  const closeIndex = html.lastIndexOf("</");
-  const openIndex = closeIndex > 0 ? html.lastIndexOf(">", closeIndex) : html.lastIndexOf(">");
-  const text = openIndex >= 0 ? html.slice(openIndex + 1, closeIndex > openIndex ? closeIndex : undefined) : html;
-  return text.replace(/<[^>]+>/g, "").replace(/^\s*[+◈⌘▧▣]\s*/, "").trim() || tab.key;
+  return tab.label || tab.key;
 }
 
 function workspaceGroupsId(workspaceId: string): string {

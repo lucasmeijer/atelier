@@ -13,7 +13,6 @@ export { closeAgentSocket, handleAgentSocketMessage, openAgentSocket, validateAg
 export {
   agentTabKey,
   renderAgentPane,
-  renderAgentTab,
 } from "./render.ts";
 export { agentWorkspaceModule, listOrCreateWorkspaceAgents, renderWorkspaceAgentTabs } from "./web.ts";
 export { applyExactEdits, createWorkspaceAgentTools, normalizeWorkspacePath } from "./tools.ts";

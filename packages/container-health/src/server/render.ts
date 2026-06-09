@@ -16,7 +16,7 @@ export function domId(...parts: string[]): string {
 export function renderHealthTab(workspaceId: string): WorkspaceTabContribution {
   return {
     key: "health",
-    tabHtml: `<button class="tab muted" data-tab="health" data-action="click->workspace-tabs#activate" data-workspace-tabs-tab-param="health" type="button">Health</button>`,
+    label: "Health",
     paneHtml: `<section class="tab-pane" data-tab-pane="health">${renderHealthPane(workspaceId)}</section>`,
   };
 }

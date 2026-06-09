@@ -10,7 +10,6 @@ export {
   domId,
   escapeHtml,
   renderTerminalPane,
-  renderTerminalTab,
   terminalTabKey,
 } from "./render.ts";
 export {

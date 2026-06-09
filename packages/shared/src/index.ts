@@ -6,7 +6,7 @@ export interface WorkspaceAttachContext {
 
 export interface WorkspaceTabContribution {
   key: string;
-  tabHtml: string;
+  label: string;
   /** Eager tabs include their pane HTML in the workspace detail response. */
   paneHtml?: string;
 }
