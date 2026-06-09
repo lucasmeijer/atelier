@@ -15,5 +15,5 @@ export {
   renderAgentPane,
   renderAgentTab,
 } from "./render.ts";
-export { agentWorkspaceModule, createAgentEndpoint, listOrCreateWorkspaceAgents, renderWorkspaceAgentTabs } from "./web.ts";
+export { agentWorkspaceModule, listOrCreateWorkspaceAgents, renderWorkspaceAgentTabs } from "./web.ts";
 export { applyExactEdits, createWorkspaceAgentTools, normalizeWorkspacePath } from "./tools.ts";

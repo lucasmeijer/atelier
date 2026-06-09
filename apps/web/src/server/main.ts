@@ -3,7 +3,6 @@ import { dirname, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import {
   closeAgentSocket,
-  createAgentEndpoint,
   createNextWorkspaceAgent,
   agentWorkspaceModule,
   ensureDefaultWorkspaceAgent,
@@ -890,9 +889,6 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
 
       const healthStreamMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/health\/stream$/);
       if (healthStreamMatch && request.method === "GET") return containerHealthStreamEndpoint(decodeURIComponent(healthStreamMatch[1]));
-
-      const agentsMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/agents$/);
-      if (agentsMatch && request.method === "POST") return await createAgentEndpoint(decodeURIComponent(agentsMatch[1]), request);
 
       const terminalsMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/terminals$/);
       if (terminalsMatch && request.method === "GET") return await listTerminalsEndpoint(decodeURIComponent(terminalsMatch[1]));
