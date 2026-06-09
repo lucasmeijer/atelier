@@ -163,8 +163,7 @@ function workspaceRow(id: string, title: string, state: "ready" | "initializing"
   const initializing = state === "initializing";
   return `<div class="row workspace-row ${initializing ? "initializing" : ""} ${options.active ? "active" : ""}" id="${domId("workspace_row", id)}" data-workspace-id="${escapeHtml(id)}">
       <span class="dot ${initializing ? "wait" : "run"}"></span>
-      ${initializing ? `<div class="row-main"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">Initializing workspace…</div></div>` : `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-action="workspace-list#select"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">${escapeHtml(id)}</div></a>`}
-      <span class="row-actions">${initializing ? `<span class="status-spinner" aria-label="Initializing"></span>` : deleteWorkspaceForm(id)}</span>
+      ${initializing ? `<div class="row-main"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">Initializing workspace…</div></div><span class="row-actions"><span class="status-spinner" aria-label="Initializing"></span></span>` : `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-action="workspace-list#select"><div class="r-title">${escapeHtml(title)}</div></a>`}
     </div>`;
 }
 
@@ -244,7 +243,7 @@ async function renderWorkspaceSidebar(selectedId?: string): Promise<string> {
 
   const newWorkspaceRow = `<form class="contents" method="post" action="/workspaces"><button class="row ghost-row" type="submit">
     <span></span>
-    <div><div class="r-title">+ New workspace</div><div class="r-sub">Start a fresh empty workspace</div></div>
+    <div><div class="r-title">+ New workspace</div></div>
     <span></span>
   </button></form>`;
 
@@ -266,7 +265,6 @@ async function renderWorkspaceSidebar(selectedId?: string): Promise<string> {
       <input class="search global-filter" placeholder="Filter…" data-controller="global-filter" data-action="input->global-filter#filter">
     </div>
     <div class="table workspace-sidebar-table">
-      <div class="row head"><span></span><span>Workspace</span><span>Actions</span></div>
       <div id="workspaces_table_rows">${rows || `<div class="row" id="no_workspaces_row"><span></span><div><div class="r-title">No workspaces</div><div class="r-sub">Create one below.</div></div><span></span></div>`}</div>
       ${newWorkspaceRow}
     </div>
