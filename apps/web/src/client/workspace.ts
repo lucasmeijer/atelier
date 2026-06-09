@@ -117,12 +117,14 @@ class WorkspaceGroupsController extends Controller {
     const groupId = tab?.dataset.groupId;
     if (!tabName || !groupId) return;
     this.dragged = { tab: tabName, fromGroup: groupId };
+    this.element.classList.add("dragging-tab");
     event.dataTransfer?.setData("text/plain", tabName);
     if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
   }
 
   dragEnd(): void {
     this.dragged = undefined;
+    this.element.classList.remove("dragging-tab");
     this.clearDropTargets();
   }
 
@@ -132,10 +134,22 @@ class WorkspaceGroupsController extends Controller {
     this.highlightDropTarget(event);
   }
 
+  dragLeave(event: DragEvent): void {
+    const target = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    if (target?.matches("[data-new-group-drop-zone]")) target.classList.remove("drop-target");
+  }
+
   async drop(event: DragEvent): Promise<void> {
     if (!this.dragged) return;
     event.preventDefault();
     const target = event.target instanceof HTMLElement ? event.target : event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    if (target?.closest<HTMLElement>("[data-new-group-drop-zone]")) {
+      this.clearDropTargets();
+      await this.renderStream(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/layout/move-tab`, { tab: this.dragged.tab, fromGroup: this.dragged.fromGroup, newGroup: true });
+      this.dragged = undefined;
+      this.element.classList.remove("dragging-tab");
+      return;
+    }
     const group = target?.closest<HTMLElement>(".workspace-group");
     const toGroup = group?.dataset.groupId;
     if (!toGroup) return;
@@ -148,6 +162,7 @@ class WorkspaceGroupsController extends Controller {
     this.clearDropTargets();
     await this.renderStream(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/layout/move-tab`, { tab: this.dragged.tab, fromGroup: this.dragged.fromGroup, toGroup, toIndex });
     this.dragged = undefined;
+    this.element.classList.remove("dragging-tab");
   }
 
   startResize(event: PointerEvent): void {
@@ -184,6 +199,11 @@ class WorkspaceGroupsController extends Controller {
   private highlightDropTarget(event: DragEvent): void {
     this.clearDropTargets();
     const target = event.target instanceof HTMLElement ? event.target : event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    const newGroupDropZone = target?.closest<HTMLElement>("[data-new-group-drop-zone]");
+    if (newGroupDropZone) {
+      newGroupDropZone.classList.add("drop-target");
+      return;
+    }
     const group = target?.closest<HTMLElement>(".workspace-group");
     if (!group) return;
     group.classList.add("drop-target");

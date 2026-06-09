@@ -413,6 +413,7 @@ function renderWorkspaceGroups(workspaceId: string, tabs: WorkspaceTabContributi
         <div class="group-tabs">${headers}</div>${actionMenu(group, index)}
       </div>
       <div class="workspace-panes" id="${domId("workspace_panes", workspaceId, group.id)}">${empty ? `<div class="empty-group"><p>This group is empty.</p>${layout.groups.length > 1 ? `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/remove"><button class="btn sm" type="submit">Remove Empty Group</button></form>` : ""}</div>` : panes}</div>
+      ${index === layout.groups.length - 1 ? `<div class="new-group-drop-zone" data-new-group-drop-zone="true" data-action="dragover->workspace-groups#dragOver dragleave->workspace-groups#dragLeave drop->workspace-groups#drop" title="Drop here to create a new group" aria-label="Drop tab here to create a new group"></div>` : ""}
     </section>${index < layout.groups.length - 1 ? `<div class="group-resizer" data-action="pointerdown->workspace-groups#startResize" data-resizer-index="${index}" role="separator" aria-orientation="vertical"></div>` : ""}`;
   }).join("");
   return `<div class="workspace-groups" id="${workspaceGroupsId(workspaceId)}" data-controller="workspace-groups" data-workspace-groups-workspace-id-value="${escapeHtml(workspaceId)}">${groups}</div>`;
@@ -594,12 +595,16 @@ async function workspaceGroupActionEndpoint(workspaceId: string, groupId: string
 }
 
 async function moveWorkspaceTabEndpoint(workspaceId: string, request: Request): Promise<Response> {
-  const body = await request.json().catch(() => undefined) as { tab?: unknown; fromGroup?: unknown; toGroup?: unknown; toIndex?: unknown } | undefined;
+  const body = await request.json().catch(() => undefined) as { tab?: unknown; fromGroup?: unknown; toGroup?: unknown; toIndex?: unknown; newGroup?: unknown } | undefined;
   const tab = typeof body?.tab === "string" ? body.tab : "";
   const toGroupId = typeof body?.toGroup === "string" ? body.toGroup : "";
   const layout = await workspaceLayoutFor(workspaceId);
   const source = layout.groups.find((group) => group.tabs.includes(tab));
-  const target = layout.groups.find((group) => group.id === toGroupId);
+  let target = layout.groups.find((group) => group.id === toGroupId);
+  if (tab && body?.newGroup === true && source) {
+    target = { id: crypto.randomUUID(), tabs: [], size: 1 };
+    layout.groups.push(target);
+  }
   if (tab && target) {
     const wasActive = source?.activeTab === tab;
     if (source) {
@@ -610,6 +615,7 @@ async function moveWorkspaceTabEndpoint(workspaceId: string, request: Request): 
     const toIndex = typeof body?.toIndex === "number" && Number.isFinite(body.toIndex) ? Math.max(0, Math.min(body.toIndex, target.tabs.length)) : target.tabs.length;
     target.tabs.splice(toIndex, 0, tab);
     target.activeTab = tab;
+    normalizeGroupSizes(layout);
   }
   return replaceWorkspaceGroupsStream(workspaceId);
 }
