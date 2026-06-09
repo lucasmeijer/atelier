@@ -371,10 +371,12 @@ class WorkspaceResidencyController extends Controller {
 }
 
 function syncActiveWorkspaceRow(): void {
-  const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
+  const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1]
+    ?? document.querySelector<HTMLElement>(".workspace-detail-resident.active[data-workspace-id]")?.dataset.workspaceId;
   document.querySelectorAll<HTMLElement>(".workspace-row.active").forEach((row) => row.classList.remove("active"));
   if (!workspaceId) return;
-  document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(decodeURIComponent(workspaceId))}"]`)?.classList.add("active");
+  const decodedWorkspaceId = workspaceId === decodeURIComponent(workspaceId) ? workspaceId : decodeURIComponent(workspaceId);
+  document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(decodedWorkspaceId)}"]`)?.classList.add("active");
 }
 
 class WorkspaceListController extends Controller {
