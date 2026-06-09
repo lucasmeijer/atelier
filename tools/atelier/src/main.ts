@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-import { AtelierCoreError, invalidArguments, workspaceCommand } from "@atelier/core";
+import { AtelierCoreError, invalidArguments } from "@atelier/core";
+import { workspaceCommandWithTerminals } from "@atelier/terminal/server";
 import { writeError, writeSuccess } from "./json.ts";
 
 function usage(): string {
@@ -18,7 +19,7 @@ async function main(argv: string[]): Promise<void> {
       process.stdout.write(usage());
       return;
     case "workspace":
-      writeSuccess(await workspaceCommand(rest));
+      writeSuccess(await workspaceCommandWithTerminals(rest));
       return;
     default:
       throw invalidArguments(`unknown command: ${command}`);

@@ -15,8 +15,7 @@
         "@atelier/agent": "workspace:*",
         "@atelier/core": "workspace:*",
         "@atelier/shared": "workspace:*",
-        "@zenyr/bun-pty": "^0.4.4",
-        "ghostty-web": "^0.4.0",
+        "@atelier/terminal": "workspace:*",
       },
     },
     "packages/agent": {
@@ -33,6 +32,14 @@
     "packages/shared": {
       "name": "@atelier/shared",
     },
+    "packages/terminal": {
+      "name": "@atelier/terminal",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+        "@zenyr/bun-pty": "^0.4.4",
+        "ghostty-web": "^0.4.0",
+      },
+    },
     "tools/atelier": {
       "name": "@atelier/cli",
       "bin": {
@@ -40,6 +47,7 @@
       },
       "dependencies": {
         "@atelier/core": "workspace:*",
+        "@atelier/terminal": "workspace:*",
       },
     },
   },
@@ -53,6 +61,8 @@
     "@atelier/core": ["@atelier/core@workspace:packages/core"],
 
     "@atelier/shared": ["@atelier/shared@workspace:packages/shared"],
+
+    "@atelier/terminal": ["@atelier/terminal@workspace:packages/terminal"],
 
     "@atelier/web": ["@atelier/web@workspace:apps/web"],
 

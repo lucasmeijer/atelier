@@ -8,7 +8,10 @@
     "baseUrl": ".",
     "paths": {
       "@atelier/core": ["packages/core/src/index.ts"],
-      "@atelier/shared": ["packages/shared/src/index.ts"]
+      "@atelier/shared": ["packages/shared/src/index.ts"],
+      "@atelier/terminal/server": ["packages/terminal/src/server/index.ts"],
+      "@atelier/terminal/client": ["packages/terminal/src/client/index.ts"],
+      "@atelier/terminal": ["packages/terminal/src/index.ts"]
     },
     "types": ["bun-types"],
     "strict": true,

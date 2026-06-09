@@ -6,6 +6,7 @@
     "atelier": "./src/main.ts"
   },
   "dependencies": {
-    "@atelier/core": "workspace:*"
+    "@atelier/core": "workspace:*",
+    "@atelier/terminal": "workspace:*"
   }
 }

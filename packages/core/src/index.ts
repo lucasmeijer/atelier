@@ -17,15 +17,12 @@ export {
 export {
   cloneManagedRepoIntoWorkspace,
   createWorkspace,
-  createWorkspaceTerminal,
   deleteWorkspace,
-  deleteWorkspaceTerminal,
   execWorkspace,
   execWorkspaceCommand,
   execWorkspaceShell,
   inspectWorkspaceDeleteSafety,
   getWorkspaceRepoMergeability,
-  listWorkspaceTerminals,
   listWorkspaces,
   listWorkspaceRepos,
   pushWorkspaceRepo,
@@ -43,6 +40,4 @@ export {
   type WorkspaceRepoMergeabilityResult,
   type WorkspaceRepoPushResult,
   type WorkspaceRepoWorkingTreeStatus,
-  type WorkspaceTerminalCreateResult,
-  type WorkspaceTerminalListResult,
 } from "./workspace.ts";

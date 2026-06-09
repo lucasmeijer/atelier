@@ -1,4 +1,3 @@
-import { spawn, type IPty } from "@zenyr/bun-pty";
 import type { ServerWebSocket } from "bun";
 import {
   closeAgentSocket,
@@ -16,18 +15,29 @@ import {
   addManagedRepo,
   cloneManagedRepoIntoWorkspace,
   createWorkspace,
-  createWorkspaceTerminal,
   deleteWorkspace,
-  deleteWorkspaceTerminal,
   getWorkspaceRepoMergeability,
   listManagedRepos,
-  listWorkspaceTerminals,
   listWorkspaces,
   listWorkspaceRepos,
   pushWorkspaceRepo,
   setWorkspaceTitle,
   type WorkspaceRepoMergeabilityResult,
 } from "@atelier/core";
+import {
+  closeTerminalSocket,
+  createTerminalEndpoint,
+  createWorkspaceTerminal,
+  deleteTerminalEndpoint,
+  handleTerminalSocketMessage,
+  listTerminalsEndpoint,
+  listWorkspaceTerminals,
+  openTerminalSocket,
+  renderWorkspaceTerminalTabs,
+  terminalStaticFiles,
+  validateTerminalSocket,
+  type TerminalSocketData,
+} from "@atelier/terminal/server";
 import { atelierName } from "@atelier/shared";
 
 const requestedPort = Number(process.env.PORT ?? 3000);
@@ -36,7 +46,7 @@ const pendingWorkspaceCreations = new Map<string, Promise<{ id: string }>>();
 
 async function createWorkspaceWithDefaultAgent(): Promise<{ id: string }> {
   const created = await createWorkspace();
-  await ensureDefaultWorkspaceAgent(created.id);
+  await Promise.all([ensureDefaultWorkspaceAgent(created.id), createWorkspaceTerminal(created.id)]);
   return created;
 }
 
@@ -69,6 +79,7 @@ function layout(title: string, body: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(atelierName)} · ${escapeHtml(title)}</title>
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/terminal.css">
 <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.13/dist/turbo.es2017-esm.js"></script>
 <script type="module">
   import { Application, Controller } from "https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/+esm";
@@ -85,7 +96,7 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
   const staticFiles: Record<string, { url: URL; contentType: string }> = {
     "/style.css": { url: new URL("../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
     "/workspace.js": { url: new URL("../public/workspace.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
-    "/ghostty-vt.wasm": { url: new URL("../public/ghostty-vt.wasm", import.meta.url), contentType: "application/wasm" },
+    ...terminalStaticFiles,
   };
   const entry = staticFiles[pathname];
   if (!entry) return undefined;
@@ -326,55 +337,10 @@ function staticWorkspaceTab(key: string, label: string, paneHtml: string, option
   };
 }
 
-function terminalTab(id: string, title: string, options: { active?: boolean } = {}): string {
-  return `<span id="${domId("terminal_tab", id, title)}" class="tab ${options.active ? "active" : "muted"}" data-tab="terminal:${escapeHtml(title)}" data-terminal-title="${escapeHtml(title)}" data-action="click->workspace-tabs#activate" data-workspace-tabs-tab-param="terminal:${escapeHtml(title)}" role="button" tabindex="0">▣ ${escapeHtml(title)}</span>`;
-}
-
-function initializingTerminalTab(id: string, token: string): string {
-  return `<span id="${domId("terminal_tab", id, token)}" class="tab closable active" data-tab="terminal:${escapeHtml(token)}" data-terminal-title="${escapeHtml(token)}" role="button" tabindex="0">▣ Initializing… <span class="status-spinner" aria-label="Initializing terminal"></span></span>`;
-}
-
-function terminalThemeOptions(): string {
-  return [
-    ["tokyo-night", "Tokyo Night"],
-    ["dracula", "Dracula"],
-    ["catppuccin-mocha", "Catppuccin Mocha"],
-    ["nord", "Nord"],
-  ].map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
-}
-
-function terminalPane(id: string, title: string, options: { autostart?: boolean; active?: boolean } = {}): string {
-  return `<section id="${domId("terminal_pane", id, title)}" class="tab-pane ${options.active ? "active" : ""}" data-tab-pane="terminal:${escapeHtml(title)}">
-    <div class="terminal-pane" data-controller="terminal-pane" data-terminal-pane-workspace-id-value="${escapeHtml(id)}" data-terminal-pane-title-value="${escapeHtml(title)}" data-terminal-pane-autostart-value="${options.autostart ? "true" : "false"}" data-terminal-title="${escapeHtml(title)}">
-      <div class="terminal-bar"><span>${escapeHtml(title)} · tmux</span><label class="terminal-theme-picker">Theme <select data-controller="terminal-theme" data-terminal-theme-select data-action="change->terminal-theme#change">${terminalThemeOptions()}</select></label></div>
-      <div class="ghostty-terminal" tabindex="0"></div>
-    </div>
-  </section>`;
-}
-
-function terminalFooterAction(id: string, title: string, options: { active?: boolean } = {}): string {
-  return `<section id="${domId("terminal_footer", id, title)}" class="tab-pane ${options.active ? "active" : ""}" data-tab-pane="terminal:${escapeHtml(title)}">
-    <form method="post" action="/workspaces/${encodeURIComponent(id)}/terminals/${encodeURIComponent(title)}/delete"><button class="btn danger sm" type="submit">Delete terminal</button></form>
-  </section>`;
-}
-
-function initializingTerminalPane(id: string, token: string): string {
-  return `<section id="${domId("terminal_pane", id, token)}" class="tab-pane active" data-tab-pane="terminal:${escapeHtml(token)}"><div class="terminal-pane terminal-initializing"><div class="terminal-bar">Initializing terminal…</div><div class="terminal-loading"><span class="status-spinner" aria-label="Initializing terminal"></span><span>Starting tmux session…</span></div></div></section>`;
-}
-
-function initializingTerminalFooterAction(id: string, token: string): string {
-  return `<section id="${domId("terminal_footer", id, token)}" class="tab-pane active" data-tab-pane="terminal:${escapeHtml(token)}"><span class="terminal-footer-muted">Terminal actions available when ready…</span></section>`;
-}
-
 async function workspacePage(id: string): Promise<Response> {
   const [{ repos }, title, { terminals }, { repos: managedRepos }, agents] = await Promise.all([listWorkspaceRepos(id), getWorkspaceTitle(id), listWorkspaceTerminals(id), listManagedRepos(), listOrCreateWorkspaceAgents(id)]);
   const agentTabEntries = renderWorkspaceAgentTabs(id, agents);
-  const terminalTabEntries: WorkspaceTab[] = terminals.map((terminal) => ({
-    key: `terminal:${terminal.title}`,
-    tabHtml: terminalTab(id, terminal.title),
-    paneHtml: terminalPane(id, terminal.title),
-    footerHtml: terminalFooterAction(id, terminal.title),
-  }));
+  const terminalTabEntries: WorkspaceTab[] = renderWorkspaceTerminalTabs(id, terminals);
   const codeTab = staticWorkspaceTab("code", "⌘ Code", `<div class="workspace-wide"><div class="panel"><div class="pad">Code pane will be wired up in a later slice.</div></div></div>`);
   const commitsTab = staticWorkspaceTab("commits", "▧ Commits", `<div class="workspace-wide"><div class="panel"><div class="pad">Commits pane will be wired up in a later slice.</div></div></div>`);
   const workspaceTabs = [...agentTabEntries, ...terminalTabEntries, codeTab, commitsTab];
@@ -512,50 +478,12 @@ function turboStreamResponse(body: string, init: HtmlResponseInit = {}): Respons
   return new Response(body, { ...init, headers });
 }
 
-async function listTerminalsEndpoint(id: string): Promise<Response> {
-  return jsonResponse(await listWorkspaceTerminals(id));
-}
-
-function terminalCreationStream(id: string): Response {
-  const token = `initializing_${crypto.randomUUID()}`;
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const write = (chunk: string) => controller.enqueue(encoder.encode(chunk));
-      write(`<turbo-stream action="before" target="add_terminal_form"><template>${initializingTerminalTab(id, token)}</template></turbo-stream><turbo-stream action="append" target="workspace_panes"><template>${initializingTerminalPane(id, token)}</template></turbo-stream><turbo-stream action="append" target="terminal_footer_actions"><template>${initializingTerminalFooterAction(id, token)}</template></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="activate-tab" data-activate-tab-tab-value="terminal:${escapeHtml(token)}"></div></template></turbo-stream>`);
-      try {
-        const terminal = await createWorkspaceTerminal(id);
-        write(`<turbo-stream action="replace" target="${domId("terminal_tab", id, token)}"><template>${terminalTab(id, terminal.title, { active: true })}</template></turbo-stream><turbo-stream action="replace" target="${domId("terminal_pane", id, token)}"><template>${terminalPane(id, terminal.title, { autostart: true, active: true })}</template></turbo-stream><turbo-stream action="replace" target="${domId("terminal_footer", id, token)}"><template>${terminalFooterAction(id, terminal.title, { active: true })}</template></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="activate-tab" data-activate-tab-tab-value="terminal:${escapeHtml(terminal.title)}"></div></template></turbo-stream>`);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        write(`<turbo-stream action="replace" target="${domId("terminal_tab", id, token)}"><template><span id="${domId("terminal_tab", id, token)}" class="tab active">Terminal creation failed</span></template></turbo-stream><turbo-stream action="replace" target="${domId("terminal_pane", id, token)}"><template><section id="${domId("terminal_pane", id, token)}" class="tab-pane active" data-tab-pane="terminal:${escapeHtml(token)}"><div class="terminal-pane terminal-initializing"><div class="terminal-bar">Terminal creation failed</div><div class="terminal-loading">${escapeHtml(message)}</div></div></section></template></turbo-stream>`);
-      } finally {
-        controller.close();
-      }
-    },
-  });
-  return new Response(stream, { status: 202, headers: { "content-type": "text/vnd.turbo-stream.html; charset=utf-8" } });
-}
-
-async function createTerminalEndpoint(id: string, request: Request): Promise<Response> {
-  if (wantsTurboStream(request)) return terminalCreationStream(id);
-  return jsonResponse(await createWorkspaceTerminal(id), { status: 201 });
-}
-
 function errorJsonResponse(error: unknown, status = 500): Response {
   if (error instanceof AtelierCoreError) {
     return jsonResponse({ ok: false, error: { code: error.code, message: error.message, details: error.details } }, { status });
   }
   const message = error instanceof Error ? error.message : String(error);
   return jsonResponse({ ok: false, error: { code: "internal_error", message } }, { status });
-}
-
-async function deleteTerminalEndpoint(id: string, title: string, request: Request): Promise<Response> {
-  await deleteWorkspaceTerminal(id, title);
-  if (wantsTurboStream(request)) {
-    return turboStreamResponse(`<turbo-stream action="remove" target="${domId("terminal_tab", id, title)}"></turbo-stream><turbo-stream action="remove" target="${domId("terminal_pane", id, title)}"></turbo-stream><turbo-stream action="remove" target="${domId("terminal_footer", id, title)}"></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="activate-tab" data-activate-tab-tab-value="agent"></div></template></turbo-stream>`);
-  }
-  return jsonResponse(null);
 }
 
 async function deleteWorkspaceEndpoint(id: string, force: boolean, request: Request): Promise<Response> {
@@ -577,94 +505,10 @@ async function deleteWorkspaceEndpoint(id: string, force: boolean, request: Requ
   }
 }
 
-interface TerminalSocketData {
-  kind: "terminal";
-  workspaceId: string;
-  title: string;
-  cols: number;
-  rows: number;
-  pty?: IPty;
-}
-
 type SocketData = TerminalSocketData | AgentSocketData;
-
-function parsePositiveInteger(value: string | null, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 && parsed <= 1000 ? parsed : fallback;
-}
 
 async function validateSocket(url: URL): Promise<SocketData | undefined> {
   return (await validateAgentSocket(url)) ?? (await validateTerminalSocket(url));
-}
-
-async function validateTerminalSocket(url: URL): Promise<TerminalSocketData | undefined> {
-  const match = url.pathname.match(/^\/workspaces\/([^/]+)\/tabs\/([^/]+)\/ws$/);
-  if (!match) return undefined;
-  const workspaceId = decodeURIComponent(match[1]);
-  const tabId = decodeURIComponent(match[2]);
-  if (!tabId.startsWith("terminal:")) return undefined;
-  const title = tabId.slice("terminal:".length);
-  const { terminals } = await listWorkspaceTerminals(workspaceId);
-  if (!terminals.some((terminal) => terminal.title === title)) throw new AtelierCoreError("terminal_not_found", `terminal not found: ${title}`);
-  return {
-    kind: "terminal",
-    workspaceId,
-    title,
-    cols: parsePositiveInteger(url.searchParams.get("cols"), 80),
-    rows: parsePositiveInteger(url.searchParams.get("rows"), 24),
-  };
-}
-
-function openTerminalPty(ws: ServerWebSocket<TerminalSocketData>): void {
-  const data = ws.data;
-  const args = [
-    "exec", "-it",
-    "--user", "atelier",
-    "--workdir", "/repos",
-    "-e", "TERM=xterm-ghostty",
-    "-e", "COLORTERM=truecolor",
-    data.workspaceId,
-    "tmux", "attach-session", "-t", data.title,
-  ];
-  try {
-    const pty = spawn("docker", args, {
-      name: "xterm-ghostty",
-      cols: data.cols,
-      rows: data.rows,
-      env: { ...process.env, TERM: "xterm-ghostty", COLORTERM: "truecolor" },
-    });
-    data.pty = pty;
-    pty.onData((chunk) => {
-      setTimeout(() => {
-        try {
-          ws.send(chunk);
-        } catch {
-          // Socket closed between PTY output and scheduled send.
-        }
-      }, 0);
-    });
-    pty.onExit(() => ws.close());
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ws.send(`\r\n\x1b[31m[terminal failed to start: ${message}]\x1b[0m\r\n`);
-    ws.close();
-  }
-}
-
-function handleTerminalSocketMessage(ws: ServerWebSocket<TerminalSocketData>, message: string | Buffer): void {
-  const text = typeof message === "string" ? message : message.toString();
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    if (parsed && typeof parsed === "object" && (parsed as { type?: unknown }).type === "resize") {
-      const cols = Number((parsed as { cols?: unknown }).cols);
-      const rows = Number((parsed as { rows?: unknown }).rows);
-      if (Number.isInteger(cols) && Number.isInteger(rows) && cols > 0 && rows > 0) ws.data.pty?.resize(cols, rows);
-      return;
-    }
-  } catch {
-    // Raw terminal input is not JSON.
-  }
-  ws.data.pty?.write(text);
 }
 
 function errorPage(error: unknown): Response {
@@ -759,7 +603,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
   },
   websocket: {
     open(ws) {
-      if (ws.data.kind === "terminal") openTerminalPty(ws as ServerWebSocket<TerminalSocketData>);
+      if (ws.data.kind === "terminal") openTerminalSocket(ws as ServerWebSocket<TerminalSocketData>);
       if (ws.data.kind === "agent") void openAgentSocket(ws as ServerWebSocket<AgentSocketData>);
     },
     message(ws, message) {
@@ -767,7 +611,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       if (ws.data.kind === "agent") void handleAgentSocketMessage(ws as ServerWebSocket<AgentSocketData>, message);
     },
     close(ws) {
-      if (ws.data.kind === "terminal") ws.data.pty?.kill();
+      if (ws.data.kind === "terminal") closeTerminalSocket(ws as ServerWebSocket<TerminalSocketData>);
       if (ws.data.kind === "agent") closeAgentSocket(ws as ServerWebSocket<AgentSocketData>);
     },
   },

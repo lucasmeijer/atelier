@@ -1,0 +1,16 @@
+{
+  "name": "@atelier/terminal",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/server/index.ts",
+    "./server": "./src/server/index.ts",
+    "./client": "./src/client/index.ts",
+    "./shared": "./src/shared/index.ts"
+  },
+  "dependencies": {
+    "@atelier/core": "workspace:*",
+    "@zenyr/bun-pty": "^0.4.4",
+    "ghostty-web": "^0.4.0"
+  }
+}
