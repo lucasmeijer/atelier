@@ -63,13 +63,13 @@ dotnet --version
 go version
 bazel version | head -n 1
 ruby --version
-infocmp -x xterm-ghostty >/dev/null
-colors="$(TERM=xterm-ghostty tput colors)"
+infocmp -x xterm-256color >/dev/null
+colors="$(TERM=xterm-256color tput colors)"
 test "$colors" -ge 256
 test "${LANG:-}" = "C.UTF-8"
 test "${LC_ALL:-}" = "C.UTF-8"
 
-export TERM=xterm-ghostty COLORTERM=truecolor LANG=C.UTF-8 LC_ALL=C.UTF-8
+export TERM=xterm-256color COLORTERM=truecolor LANG=C.UTF-8 LC_ALL=C.UTF-8
 rm -rf /tmp/atelier-tmux-test
 mkdir -p /tmp/atelier-tmux-test
 chown atelier:atelier /tmp/atelier-tmux-test
@@ -77,12 +77,13 @@ chown atelier:atelier /tmp/atelier-tmux-test
 su atelier -c "tmux -S /tmp/atelier-tmux-test/socket new-session -d -s 'Terminal 1' -c /repos 'printf \"%s %s\\n\" \"\$TERM\" \"\$COLORTERM\" > /tmp/atelier-tmux-test/pane-env; exec /bin/bash'"
 su atelier -c "tmux -S /tmp/atelier-tmux-test/socket list-sessions -F '#S #{session_attached} #{session_windows}'"
 test "$(su atelier -c "tmux -S /tmp/atelier-tmux-test/socket show-options -gqv extended-keys")" = "on"
+test "$(su atelier -c "tmux -S /tmp/atelier-tmux-test/socket show-options -gqv allow-passthrough")" = "on"
 su atelier -c "command -v pi >/dev/null && pi --version >/dev/null"
 
-test "$(cat /tmp/atelier-tmux-test/pane-env)" = "xterm-ghostty truecolor"
+test "$(cat /tmp/atelier-tmux-test/pane-env)" = "xterm-256color truecolor"
 su atelier -c "tmux -S /tmp/atelier-tmux-test/socket kill-session -t 'Terminal 1'"
 
-echo "verified: pi, Node.js, npm, ripgrep, fd, cmatrix, tmux, Python, CMake, Clang, GCC, Ninja, .NET SDK, Go, Bazel, Ruby, UTF-8 locale, extended-keys, xterm-ghostty terminfo, 256-color tput, and tmux pane TERM=xterm-ghostty"
+echo "verified: pi, Node.js, npm, ripgrep, fd, cmatrix, tmux, Python, CMake, Clang, GCC, Ninja, .NET SDK, Go, Bazel, Ruby, UTF-8 locale, extended-keys, tmux passthrough, xterm-256color terminfo, 256-color tput, and tmux pane TERM=xterm-256color"
 VERIFY
 }
 

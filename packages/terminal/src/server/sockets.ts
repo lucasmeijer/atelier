@@ -12,6 +12,32 @@ export interface TerminalSocketData {
   pty?: IPty;
 }
 
+export type TerminalTabBusyListener = (event: { workspaceId: string; tabKey: string; busy: boolean }) => void;
+
+const terminalTabBusyListeners = new Set<TerminalTabBusyListener>();
+const terminalTabBusy = new Map<string, boolean>();
+
+export function subscribeTerminalTabBusy(listener: TerminalTabBusyListener): () => void {
+  terminalTabBusyListeners.add(listener);
+  return () => terminalTabBusyListeners.delete(listener);
+}
+
+function terminalTabKey(title: string): string {
+  return `terminal:${title}`;
+}
+
+function terminalBusyKey(workspaceId: string, title: string): string {
+  return `${workspaceId}\u0000${title}`;
+}
+
+function setTerminalTabBusy(workspaceId: string, title: string, busy: boolean): void {
+  const key = terminalBusyKey(workspaceId, title);
+  if ((terminalTabBusy.get(key) ?? false) === busy) return;
+  if (busy) terminalTabBusy.set(key, true);
+  else terminalTabBusy.delete(key);
+  for (const listener of terminalTabBusyListeners) listener({ workspaceId, tabKey: terminalTabKey(title), busy });
+}
+
 function parsePositiveInteger(value: string | null, fallback: number): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 && parsed <= 1000 ? parsed : fallback;
@@ -41,7 +67,7 @@ export function openTerminalSocket(ws: ServerWebSocket<TerminalSocketData>): voi
     "exec", "-it",
     "--user", "atelier",
     "--workdir", "/repos",
-    "-e", "TERM=xterm-ghostty",
+    "-e", "TERM=xterm-256color",
     "-e", "COLORTERM=truecolor",
     "-e", "LANG=C.UTF-8",
     "-e", "LC_ALL=C.UTF-8",
@@ -50,10 +76,10 @@ export function openTerminalSocket(ws: ServerWebSocket<TerminalSocketData>): voi
   ];
   try {
     const pty = spawn("docker", args, {
-      name: "xterm-ghostty",
+      name: "xterm-256color",
       cols: data.cols,
       rows: data.rows,
-      env: { ...process.env, TERM: "xterm-ghostty", COLORTERM: "truecolor", LANG: "C.UTF-8", LC_ALL: "C.UTF-8" },
+      env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", LANG: "C.UTF-8", LC_ALL: "C.UTF-8" },
     });
     data.pty = pty;
     pty.onData((chunk) => {
@@ -83,6 +109,11 @@ export function handleTerminalSocketMessage(ws: ServerWebSocket<TerminalSocketDa
       if (Number.isInteger(cols) && Number.isInteger(rows) && cols > 0 && rows > 0) ws.data.pty?.resize(cols, rows);
       return;
     }
+    if (parsed && typeof parsed === "object" && (parsed as { type?: unknown }).type === "progress") {
+      const state = Number((parsed as { state?: unknown }).state);
+      if (Number.isInteger(state) && state >= 0 && state <= 4) setTerminalTabBusy(ws.data.workspaceId, ws.data.title, state !== 0);
+      return;
+    }
   } catch {
     // Raw terminal input is not JSON.
   }
@@ -90,5 +121,6 @@ export function handleTerminalSocketMessage(ws: ServerWebSocket<TerminalSocketDa
 }
 
 export function closeTerminalSocket(ws: ServerWebSocket<TerminalSocketData>): void {
+  setTerminalTabBusy(ws.data.workspaceId, ws.data.title, false);
   ws.data.pty?.kill();
 }

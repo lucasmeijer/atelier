@@ -45,6 +45,7 @@ import {
   listTerminalsEndpoint,
   openTerminalSocket,
   registerTerminalEvents,
+  subscribeTerminalTabBusy,
   terminalStaticFiles,
   terminalWorkspaceModule,
   validateTerminalSocket,
@@ -261,6 +262,7 @@ atelierEvents.on("workspace_title_changed", ({ workspaceId, title }) => {
 });
 
 subscribeWorkspaceTabBusy(({ workspaceId, tabKey, busy }) => setWorkspaceTabBusy(workspaceId, tabKey, busy));
+subscribeTerminalTabBusy(({ workspaceId, tabKey, busy }) => setWorkspaceTabBusy(workspaceId, tabKey, busy));
 
 function workspaceSidebarTitleFrame(id: string, title: string): string {
   const frameId = domId("workspace_sidebar_title", id);

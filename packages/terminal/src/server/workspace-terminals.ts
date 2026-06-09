@@ -1,6 +1,7 @@
 import { execWorkspaceShell, AtelierCoreError } from "@atelier/core";
 
 const terminalRoot = "/repos";
+const terminalEnvironment = "LANG=C.UTF-8 LC_ALL=C.UTF-8 TERM=xterm-256color COLORTERM=truecolor";
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
@@ -34,7 +35,7 @@ export async function createWorkspaceTerminal(id: string): Promise<WorkspaceTerm
 
   const result = await execWorkspaceShell(
     id,
-    `TERM=xterm-ghostty COLORTERM=truecolor tmux new-session -e LANG=C.UTF-8 -e LC_ALL=C.UTF-8 -d -s ${shellQuote(title)} -c ${shellQuote(terminalRoot)} /bin/bash`,
+    `${terminalEnvironment} tmux set-option -g allow-passthrough on \\; set-environment -g LANG C.UTF-8 \\; set-environment -g LC_ALL C.UTF-8 \\; set-environment -g TERM xterm-256color \\; set-environment -g COLORTERM truecolor \\; new-session -d -s ${shellQuote(title)} -c ${shellQuote(terminalRoot)} /bin/bash`,
   );
   if (result.exitCode !== 0) throw new AtelierCoreError("terminal_create_failed", result.stderr.trim() || `could not create terminal: ${title}`);
 

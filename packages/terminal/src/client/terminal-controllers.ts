@@ -1,11 +1,16 @@
 /// <reference lib="dom" />
 
-import { init, Terminal, FitAddon } from "ghostty-web";
+import { FitAddon } from "@xterm/addon-fit";
+import { ProgressAddon } from "@xterm/addon-progress";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { Terminal } from "@xterm/xterm";
 
 export interface TerminalState {
   term: Terminal;
   ws: WebSocket;
   fit: FitAddon;
+  progressSubscription: { dispose(): void };
+  resizeObserver: ResizeObserver;
 }
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
@@ -100,7 +105,6 @@ const TERMINAL_THEMES = {
   },
 } as const satisfies Record<string, TerminalTheme>;
 
-let ghosttyReady: Promise<void> | undefined;
 const terminals = new Map<string, TerminalState>();
 const startingTerminals = new Set<string>();
 
@@ -138,7 +142,7 @@ function findTerminalPane(workspaceId: string, title: string): HTMLElement | und
 export async function startTerminal(workspaceId: string, title: string): Promise<void> {
   const key = terminalKey(workspaceId, title);
   const pane = findTerminalPane(workspaceId, title);
-  const host = pane?.querySelector<HTMLElement>(".ghostty-terminal");
+  const host = pane?.querySelector<HTMLElement>(".xterm-terminal");
   if (!host) return;
 
   const existing = terminals.get(key);
@@ -150,9 +154,7 @@ export async function startTerminal(workspaceId: string, title: string): Promise
   if (startingTerminals.has(key)) return;
   startingTerminals.add(key);
 
-  ghosttyReady ??= init();
   try {
-    await ghosttyReady;
     await document.fonts.load('13px "JetBrains Mono"');
   } catch (error) {
     startingTerminals.delete(key);
@@ -165,6 +167,7 @@ export async function startTerminal(workspaceId: string, title: string): Promise
 
   try {
     const term = new Terminal({
+      allowProposedApi: true,
       cursorBlink: true,
       fontSize: 13,
       fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -172,14 +175,23 @@ export async function startTerminal(workspaceId: string, title: string): Promise
       theme: terminalTheme(),
     });
     const fit = new FitAddon();
+    const progress = new ProgressAddon();
+    const unicode11 = new Unicode11Addon();
     term.loadAddon(fit);
+    term.loadAddon(progress);
+    term.loadAddon(unicode11);
+    term.unicode.activeVersion = "11";
     term.open(host);
     fit.fit();
-    fit.observeResize();
+    const resizeObserver = new ResizeObserver(() => fit.fit());
+    resizeObserver.observe(host);
 
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const tabId = `terminal:${title}`;
     const ws = new WebSocket(`${protocol}//${location.host}/workspaces/${encodeURIComponent(workspaceId)}/tabs/${encodeURIComponent(tabId)}/ws?cols=${term.cols}&rows=${term.rows}`);
+    const progressSubscription = progress.onChange(({ state, value }) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "progress", state, value }));
+    });
 
     term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(data);
@@ -194,7 +206,7 @@ export async function startTerminal(workspaceId: string, title: string): Promise
     ws.onclose = () => term.write("\r\n\x1b[31m[terminal disconnected]\x1b[0m\r\n");
     ws.onerror = () => term.write("\r\n\x1b[31m[terminal websocket error]\x1b[0m\r\n");
 
-    terminals.set(key, { term, ws, fit });
+    terminals.set(key, { term, ws, fit, progressSubscription, resizeObserver });
     startingTerminals.delete(key);
     term.focus();
   } catch (error) {
@@ -210,6 +222,8 @@ export function stopTerminal(workspaceId: string, title: string): void {
   state.ws.onclose = null;
   state.ws.onerror = null;
   state.ws.close();
+  state.progressSubscription.dispose();
+  state.resizeObserver.disconnect();
   state.fit.dispose();
   state.term.dispose();
   terminals.delete(key);

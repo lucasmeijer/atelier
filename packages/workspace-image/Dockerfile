@@ -80,17 +80,18 @@ RUN curl -fsSL https://pi.dev/install.sh | sh \
  && pi --version
 
 RUN printf '%s\n' \
-      'set -g default-terminal "xterm-ghostty"' \
-      'set -as terminal-features ",xterm-ghostty:RGB"' \
+      'set -g default-terminal "xterm-256color"' \
+      'set -as terminal-features ",xterm-256color:RGB"' \
       'set -g focus-events on' \
       'set -g extended-keys on' \
+      'set -g allow-passthrough on' \
     > /etc/tmux.conf
 
 RUN id -u atelier >/dev/null 2>&1 || useradd --create-home --shell /bin/bash atelier \
  && mkdir -p /.atelier /repos \
  && chown -R atelier:atelier /.atelier /repos
 
-ENV TERM=xterm-ghostty \
+ENV TERM=xterm-256color \
     COLORTERM=truecolor \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8

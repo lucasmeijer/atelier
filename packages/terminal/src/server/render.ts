@@ -26,7 +26,7 @@ export function renderInitializingTerminalTab(id: string, token: string): string
 export function renderTerminalPane(id: string, title: string, options: { autostart?: boolean; active?: boolean } = {}): string {
   return `<section id="${domId("terminal_pane", id, title)}" class="tab-pane terminal-tab-pane ${options.active ? "active" : ""}" data-tab-pane="${escapeHtml(terminalTabKey(title))}">
     <div class="terminal-pane" data-controller="terminal-pane" data-terminal-pane-workspace-id-value="${escapeHtml(id)}" data-terminal-pane-title-value="${escapeHtml(title)}" data-terminal-pane-autostart-value="${options.autostart ? "true" : "false"}" data-terminal-title="${escapeHtml(title)}">
-      <div class="ghostty-terminal" tabindex="0"></div>
+      <div class="xterm-terminal" tabindex="0"></div>
     </div>
   </section>`;
 }

@@ -33,6 +33,8 @@ export {
   closeTerminalSocket,
   handleTerminalSocketMessage,
   openTerminalSocket,
+  subscribeTerminalTabBusy,
   validateTerminalSocket,
   type TerminalSocketData,
+  type TerminalTabBusyListener,
 } from "./sockets.ts";
