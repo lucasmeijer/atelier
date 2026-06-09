@@ -302,7 +302,7 @@ function addManagedRepoModal(): string {
   <form method="post" action="/managed-repos">
     <h2>Add managed repository</h2>
     <p>Create a bare clone in Atelier's data directory.</p>
-    <input class="modal-input" name="gitUrl" type="url" placeholder="https://github.com/org/repo.git" required autofocus>
+    <input class="modal-input" name="gitUrl" type="text" placeholder="https://github.com/org/repo.git or /path/to/repo" required autofocus>
     <div class="modal-actions">
       <button class="btn" type="button" data-action="modal#close">Cancel</button>
       <button class="btn primary" type="submit">Add repository</button>
