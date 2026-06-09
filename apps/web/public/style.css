@@ -359,7 +359,8 @@ a.btn { text-decoration: none; }
 .workspace-detail-main .header.workspace-header { grid-template-columns: minmax(160px, 240px) minmax(0, 1fr) auto; gap: 12px; }
 .workspace-detail-main .workspace-tabs { justify-content: flex-start; min-width: 0; }
 .workspace-detail-main .workspace-titlebar { min-width: 0; overflow: hidden; }
-.workspace-detail-main .workspace-titlebar turbo-frame { display: block; min-width: 0; max-width: 100%; }
-.workspace-detail-main .workspace-titlebar h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.workspace-detail-main .workspace-title-form { min-width: 0; max-width: 100%; }
-.workspace-detail-main .workspace-title-form input { flex: 1; min-width: 0; width: auto; }
+.workspace-detail-main .workspace-titlebar turbo-frame { display: flex; align-items: center; min-width: 0; max-width: 100%; height: 28px; }
+.workspace-detail-main .workspace-titlebar h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 28px; }
+.workspace-detail-main .workspace-titlebar .editable-title { display: inline-flex; align-items: center; height: 28px; }
+.workspace-detail-main .workspace-title-form { min-width: 0; max-width: 100%; height: 28px; align-items: center; }
+.workspace-detail-main .workspace-title-form input { flex: 1; min-width: 0; width: auto; height: 28px; padding: 3px 5px; font-size: 13px; }

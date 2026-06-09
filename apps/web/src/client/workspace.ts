@@ -248,6 +248,19 @@ class GlobalFilterController extends Controller {
   }
 }
 
+class WorkspaceTitleEditController extends Controller {
+  static values = { cancelUrl: String };
+  declare readonly element: HTMLFormElement;
+  declare readonly cancelUrlValue: string;
+
+  keydown(event: KeyboardEvent): void {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    const frame = this.element.closest("turbo-frame");
+    if (frame) frame.setAttribute("src", this.cancelUrlValue);
+  }
+}
+
 const application = Application.start();
 application.register("workspace-tabs", WorkspaceTabsController);
 application.register("workspace-residency", WorkspaceResidencyController);
@@ -261,3 +274,4 @@ application.register("modal-opener", ModalOpenerController);
 application.register("redirect", RedirectController);
 application.register("global-filter", GlobalFilterController);
 application.register("workspace-list", WorkspaceListController);
+application.register("workspace-title-edit", WorkspaceTitleEditController);

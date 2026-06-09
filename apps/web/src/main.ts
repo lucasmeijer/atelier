@@ -383,10 +383,8 @@ async function workspaceTitleEditFrame(id: string): Promise<Response> {
   const title = await getWorkspaceTitle(id);
   const frameId = domId("workspace_title", id);
   return response(`<turbo-frame id="${frameId}">
-    <form class="workspace-title-form" method="post" action="/workspaces/${encodeURIComponent(id)}/title">
+    <form class="workspace-title-form" method="post" action="/workspaces/${encodeURIComponent(id)}/title" data-controller="workspace-title-edit" data-workspace-title-edit-cancel-url-value="/workspaces/${encodeURIComponent(id)}/title" data-action="keydown->workspace-title-edit#keydown">
       <input name="title" value="${escapeHtml(title)}" aria-label="Workspace title" autofocus>
-      <button class="btn sm primary" type="submit">Save</button>
-      <a class="btn sm" href="/workspaces/${encodeURIComponent(id)}/title" data-turbo-frame="${frameId}">Cancel</a>
     </form>
   </turbo-frame>`);
 }
