@@ -15,7 +15,7 @@ export interface WorkspaceTabContribution {
 
 export interface WorkspaceTabActionContribution {
   key: string;
-  html: string;
+  label: string;
 }
 
 export interface WorkspaceAttachment {

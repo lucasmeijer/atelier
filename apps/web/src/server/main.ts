@@ -517,7 +517,7 @@ function renderWorkspaceGroups(workspaceId: string, tabs: WorkspaceTabContributi
   const tabByKey = new Map(tabs.map((tab) => [tab.key, tab]));
   const actions = attachments.flatMap((attachment) => attachment.tabActions ?? []);
   const actionMenu = (group: WorkspaceGroupState, index: number) => `<details class="group-add-menu"><summary class="group-icon-btn" title="Add tab or group">+</summary><div class="group-menu-panel">
-      ${actions.map((action) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/actions/${encodeURIComponent(action.key)}"><button type="submit">${escapeHtml(tabLabel({ key: action.key, tabHtml: action.html }))}</button></form>`).join("")}
+      ${actions.map((action) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/actions/${encodeURIComponent(action.key)}"><button type="submit">${escapeHtml(action.label)}</button></form>`).join("")}
       <form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/split"><button type="submit">New Group</button></form>
       ${layout.groups.length > 1 && index > 0 ? `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/close"><button type="submit">Close Group</button></form>` : ""}
     </div></details>`;

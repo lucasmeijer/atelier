@@ -39,10 +39,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
     const agents = await listOrCreateWorkspaceAgents(workspaceId);
     return {
       tabs: renderWorkspaceAgentTabs(workspaceId, agents),
-      tabActions: [{
-        key: "agent:create",
-        html: `<form class="contents" id="${escapeHtml(addAgentFormId(workspaceId))}" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/agents"><button class="tab muted" type="submit">+ Agent</button></form>`,
-      }],
+      tabActions: [{ key: "agent:create", label: "New Agent" }],
     };
   },
 };

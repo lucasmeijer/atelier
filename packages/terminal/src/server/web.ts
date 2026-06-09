@@ -47,10 +47,7 @@ export const terminalWorkspaceModule: WorkspaceModule = {
     const { terminals } = await listWorkspaceTerminals(workspaceId);
     return {
       tabs: renderWorkspaceTerminalTabs(workspaceId, terminals),
-      tabActions: [{
-        key: "terminal:create",
-        html: `<form class="contents" id="${escapeHtml(addTerminalFormId(workspaceId))}" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/terminals"><button class="tab muted" type="submit">+ Terminal</button></form>`,
-      }],
+      tabActions: [{ key: "terminal:create", label: "New Terminal" }],
     };
   },
 };
