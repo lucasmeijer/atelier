@@ -90,12 +90,27 @@ class ModalOpenerController extends Controller {
 }
 
 class RedirectController extends Controller {
-  static values = { url: String };
+  static values = { url: String, mode: String };
   declare readonly element: HTMLElement;
   declare readonly urlValue: string;
+  declare readonly modeValue: string;
 
   connect(): void {
+    if (this.modeValue === "replace") {
+      history.pushState({}, "", this.urlValue);
+      this.element.remove();
+      return;
+    }
     location.href = this.urlValue;
+  }
+}
+
+class WorkspaceListController extends Controller {
+  select(event: Event): void {
+    const row = event.currentTarget instanceof HTMLElement ? event.currentTarget.closest<HTMLElement>(".workspace-row") : null;
+    if (!row) return;
+    this.element.querySelectorAll<HTMLElement>(".workspace-row.active").forEach((activeRow) => activeRow.classList.remove("active"));
+    row.classList.add("active");
   }
 }
 
@@ -119,3 +134,4 @@ application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);
 application.register("redirect", RedirectController);
 application.register("global-filter", GlobalFilterController);
+application.register("workspace-list", WorkspaceListController);

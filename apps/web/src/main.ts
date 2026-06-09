@@ -111,18 +111,18 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
   return new Response(file, { headers: { "content-type": entry.contentType } });
 }
 
-function workspaceRow(id: string, title: string, state: "ready" | "initializing" = "ready"): string {
+function workspaceRow(id: string, title: string, state: "ready" | "initializing" = "ready", options: { active?: boolean } = {}): string {
   const initializing = state === "initializing";
-  return `<div class="row workspace-row ${initializing ? "initializing" : ""}" id="${domId("workspace_row", id)}">
+  return `<div class="row workspace-row ${initializing ? "initializing" : ""} ${options.active ? "active" : ""}" id="${domId("workspace_row", id)}" data-workspace-id="${escapeHtml(id)}">
       <span class="dot ${initializing ? "wait" : "run"}"></span>
-      ${initializing ? `<div class="row-main"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">Initializing workspace…</div></div>` : `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo-frame="_top"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">${escapeHtml(id)}</div></a>`}
+      ${initializing ? `<div class="row-main"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">Initializing workspace…</div></div>` : `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo-frame="workspace_detail" data-action="workspace-list#select"><div class="r-title">${escapeHtml(title)}</div><div class="r-sub">${escapeHtml(id)}</div></a>`}
       <span class="row-actions">${initializing ? `<span class="status-spinner" aria-label="Initializing"></span>` : deleteWorkspaceForm(id)}</span>
     </div>`;
 }
 
 function deleteWorkspaceForm(id: string, returnTo?: string): string {
   return `<form class="contents" method="post" action="/workspaces/${encodeURIComponent(id)}/delete">
-    ${returnTo ? `<input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">` : ""}
+    ${returnTo ? `<input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}"><input type="hidden" name="selected" value="1">` : ""}
     <button class="btn danger sm" type="submit">Delete</button>
   </form>`;
 }
@@ -139,7 +139,7 @@ function deleteBlockedModal(id: string, details: unknown, returnTo = ""): string
   }).join("");
   return `<dialog id="delete-workspace-modal" class="modal delete-modal" data-controller="modal" data-modal-auto-show-value="true">
     <form method="dialog"><h2>Workspace has uncommitted changes</h2><p>Deleting this workspace would discard local changes or commits that have not been pushed.</p>${issueHtml}<div class="modal-actions"><button class="btn" value="cancel">Cancel</button><button class="btn danger" value="force" form="force-delete-workspace-form">Force delete</button></div></form>
-    <form id="force-delete-workspace-form" method="post" action="/workspaces/${encodeURIComponent(id)}/delete?force=1">${returnTo ? `<input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">` : ""}</form>
+    <form id="force-delete-workspace-form" method="post" action="/workspaces/${encodeURIComponent(id)}/delete?force=1">${returnTo ? `<input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}"><input type="hidden" name="selected" value="1">` : ""}</form>
   </dialog>`;
 }
 
@@ -190,9 +190,9 @@ function cloneManagedRepoModal(id: string, managedRepos: Array<{ name: string; r
   </dialog>`;
 }
 
-async function workspacesPage(): Promise<Response> {
+async function renderWorkspaceSidebar(selectedId?: string): Promise<string> {
   const [{ workspaces }, { repos: managedRepos }] = await Promise.all([listWorkspaces(), listManagedRepos()]);
-  const rows = workspaces.map((workspace) => workspaceRow(workspace.id, workspace.title || `Workspace ${workspace.id}`)).join("");
+  const rows = workspaces.map((workspace) => workspaceRow(workspace.id, workspace.title || `Workspace ${workspace.id}`, "ready", { active: workspace.id === selectedId })).join("");
 
   const newWorkspaceRow = `<form class="contents" method="post" action="/workspaces"><button class="row ghost-row" type="submit">
     <span></span>
@@ -212,34 +212,43 @@ async function workspacesPage(): Promise<Response> {
     <span></span>
   </button>`;
 
-  return response(layout("Workspaces", `<div class="app no-sidebar">
-  <div class="main">
-    <header class="header"><h1>${escapeHtml(atelierName)} · Workspaces</h1></header>
-    <div class="body">
-      <div class="toolbar">
-        <input class="search global-filter" placeholder="Filter workspaces…" data-controller="global-filter" data-action="input->global-filter#filter">
-      </div>
-      <div class="table">
-        <div class="row head"><span></span><span>Workspace</span><span>Actions</span></div>
-        <div id="workspaces_table_rows">${rows || `<div class="row" id="no_workspaces_row"><span></span><div><div class="r-title">No workspaces</div><div class="r-sub">Create one below.</div></div><span></span></div>`}</div>
-        ${newWorkspaceRow}
-      </div>
-
-      <section class="host-repos">
-        <div class="section-head">
-          <div>
-            <h2>Managed repositories</h2>
-          </div>
-        </div>
-        <div class="table managed-repos-table">
-          ${managedRepoRows || `<div class="row"><span></span><div><div class="r-title">No managed repositories</div><div class="r-sub">Add one below.</div></div><span></span></div>`}
-          ${addManagedRepoRow}
-        </div>
-      </section>
+  return `<turbo-frame id="workspace_sidebar" data-controller="workspace-list">
+    <div class="sidebar-header">
+      <h1>${escapeHtml(atelierName)}</h1>
+      <input class="search global-filter" placeholder="Filter…" data-controller="global-filter" data-action="input->global-filter#filter">
     </div>
+    <div class="table workspace-sidebar-table">
+      <div class="row head"><span></span><span>Workspace</span><span>Actions</span></div>
+      <div id="workspaces_table_rows">${rows || `<div class="row" id="no_workspaces_row"><span></span><div><div class="r-title">No workspaces</div><div class="r-sub">Create one below.</div></div><span></span></div>`}</div>
+      ${newWorkspaceRow}
+    </div>
+
+    <section class="host-repos sidebar-host-repos">
+      <div class="section-head"><div><h2>Managed repositories</h2></div></div>
+      <div class="table managed-repos-table">
+        ${managedRepoRows || `<div class="row"><span></span><div><div class="r-title">No managed repositories</div><div class="r-sub">Add one below.</div></div><span></span></div>`}
+        ${addManagedRepoRow}
+      </div>
+    </section>
+  </turbo-frame>`;
+}
+
+function renderWorkspaceEmptyDetail(): string {
+  return `<turbo-frame id="workspace_detail"><div class="main"><header class="header"><h1>Select a workspace</h1></header><div class="body"><div class="panel"><div class="pad">Create or select a workspace to begin.</div></div></div></div></turbo-frame>`;
+}
+
+async function renderWorkspaceShell(selectedId?: string): Promise<string> {
+  const detail = selectedId ? await workspaceDetailFrameHtml(selectedId) : renderWorkspaceEmptyDetail();
+  return `<div class="app workspace-shell">
+    <aside class="workspace-shell-sidebar">${await renderWorkspaceSidebar(selectedId)}</aside>
+    <main class="workspace-shell-main">${detail}</main>
   </div>
-</div>
-${addManagedRepoModal()}`));
+  ${addManagedRepoModal()}`;
+}
+
+async function homePage(): Promise<Response> {
+  const { workspaces } = await listWorkspaces();
+  return response(layout("Workspaces", await renderWorkspaceShell(workspaces[0]?.id)));
 }
 
 function wantsTurboStream(request: Request): boolean {
@@ -251,13 +260,28 @@ function workspaceCreationFrameId(token: string): string {
 }
 
 function workspaceInitializingFrame(token: string): string {
-  return `<turbo-frame id="${workspaceCreationFrameId(token)}" src="/workspace-creations/${encodeURIComponent(token)}">${workspaceRow(token, "New workspace", "initializing")}</turbo-frame>`;
+  return `<turbo-frame id="${workspaceCreationFrameId(token)}">${workspaceRow(token, "New workspace", "initializing")}</turbo-frame>`;
 }
 
 function workspaceCreateStream(): Response {
   const token = `initializing_${crypto.randomUUID()}`;
-  pendingWorkspaceCreations.set(token, createWorkspaceWithDefaultAgent());
-  return turboStreamResponse(`<turbo-stream action="remove" target="no_workspaces_row"></turbo-stream><turbo-stream action="append" target="workspaces_table_rows"><template>${workspaceInitializingFrame(token)}</template></turbo-stream>`);
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const write = (chunk: string) => controller.enqueue(encoder.encode(chunk));
+      write(`<turbo-stream action="remove" target="no_workspaces_row"></turbo-stream><turbo-stream action="append" target="workspaces_table_rows"><template>${workspaceInitializingFrame(token)}</template></turbo-stream>`);
+      try {
+        const created = await createWorkspaceWithDefaultAgent();
+        write(`<turbo-stream action="replace" target="workspace_sidebar"><template>${await renderWorkspaceSidebar(created.id)}</template></turbo-stream><turbo-stream action="replace" target="workspace_detail"><template>${await workspaceDetailFrameHtml(created.id)}</template></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="redirect" data-redirect-url-value="/" data-redirect-mode-value="replace"></div></template></turbo-stream>`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        write(`<turbo-stream action="replace" target="${workspaceCreationFrameId(token)}"><template><div class="row"><span class="dot err"></span><div><div class="r-title">Workspace creation failed</div><div class="r-sub">${escapeHtml(message)}</div></div><span></span></div></template></turbo-stream>`);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+  return new Response(stream, { status: 202, headers: { "content-type": "text/vnd.turbo-stream.html; charset=utf-8" } });
 }
 
 async function workspaceCreationFrame(token: string): Promise<Response> {
@@ -277,14 +301,14 @@ async function workspaceCreationFrame(token: string): Promise<Response> {
 async function createWorkspaceFromForm(request: Request, url: URL): Promise<Response> {
   if (wantsTurboStream(request)) return workspaceCreateStream();
   const created = await createWorkspaceWithDefaultAgent();
-  return Response.redirect(new URL(`/workspaces/${encodeURIComponent(created.id)}`, url).toString(), 303);
+  return Response.redirect(new URL("/", url).toString(), 303);
 }
 
 async function createManagedRepoFromForm(request: Request, url: URL): Promise<Response> {
   const formData = await request.formData();
   const gitUrl = String(formData.get("gitUrl") ?? "");
   await addManagedRepo(gitUrl);
-  return Response.redirect(new URL("/workspaces", url).toString(), 303);
+  return Response.redirect(new URL("/", url).toString(), 303);
 }
 
 async function cloneManagedRepoIntoWorkspaceFromForm(id: string, request: Request, url: URL): Promise<Response> {
@@ -343,7 +367,7 @@ function staticWorkspaceTab(key: string, label: string, paneHtml: string, option
   };
 }
 
-async function workspacePage(id: string): Promise<Response> {
+async function workspaceDetailContent(id: string): Promise<string> {
   const [{ repos }, title, { terminals }, { repos: managedRepos }, agents] = await Promise.all([listWorkspaceRepos(id), getWorkspaceTitle(id), listWorkspaceTerminals(id), listManagedRepos(), listOrCreateWorkspaceAgents(id)]);
   const agentTabEntries = renderWorkspaceAgentTabs(id, agents);
   const terminalTabEntries: WorkspaceTab[] = renderWorkspaceTerminalTabs(id, terminals);
@@ -362,11 +386,9 @@ async function workspacePage(id: string): Promise<Response> {
   }).join("") || `<div class="git-status-row idle"><div class="repo-identity"><span class="repo-dot"></span><b>No repos</b><small>No git repositories found under /repos.</small></div></div>`;
   const cloneRepoRow = `<button class="git-status-row clone-row" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="clone-managed-repo-modal"><div class="repo-identity"><span class="clone-plus">+</span><small>Clone a managed repository into this workspace.</small></div><span></span></button>`;
 
-  return response(layout(title, `<div class="app no-sidebar">
-  <div class="main">
+  return `<div class="main workspace-detail-main">
     <header class="header workspace-header">
       <div class="workspace-titlebar">
-        <span class="crumb"><a href="/workspaces">Workspaces</a> ›</span>
         ${workspaceTitleFrame(id, title)}
       </div>
       <div class="workspace-tabs" id="tabs" data-controller="workspace-tabs" data-workspace-tabs-workspace-id-value="${escapeHtml(id)}">
@@ -377,7 +399,7 @@ async function workspacePage(id: string): Promise<Response> {
         ${codeTab.tabHtml}
         ${commitsTab.tabHtml}
       </div>
-      <div class="header-actions">${deleteWorkspaceForm(id, "/workspaces")}</div>
+      <div class="header-actions">${deleteWorkspaceForm(id, "/")}</div>
     </header>
 
     <div class="body wide workspace-body">
@@ -394,10 +416,19 @@ async function workspacePage(id: string): Promise<Response> {
         </section>
       </div>
     </div>
-  </div>
 </div>
-${cloneManagedRepoModal(id, managedRepos, repos)}`));
+${cloneManagedRepoModal(id, managedRepos, repos)}`;
 }
+
+async function workspaceDetailFrameHtml(id: string): Promise<string> {
+  return `<turbo-frame id="workspace_detail">${await workspaceDetailContent(id)}</turbo-frame>`;
+}
+
+async function workspacePage(id: string, request: Request): Promise<Response> {
+  if (request.headers.get("Turbo-Frame") === "workspace_detail") return response(await workspaceDetailFrameHtml(id));
+  return response(layout(await getWorkspaceTitle(id), await renderWorkspaceShell(id)));
+}
+
 
 function statusBadge(className: string, label: string, title: string): string {
   return `<span class="git-status-badge ${className}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
@@ -495,11 +526,18 @@ function errorJsonResponse(error: unknown, status = 500): Response {
 async function deleteWorkspaceEndpoint(id: string, force: boolean, request: Request): Promise<Response> {
   const formData = await request.formData().catch(() => undefined);
   const returnTo = formData ? String(formData.get("returnTo") ?? "") : "";
+  const selected = formData?.get("selected") === "1";
   try {
     await deleteWorkspace(id, { force });
     if (wantsTurboStream(request)) {
-      const redirect = returnTo ? `<turbo-stream action="append" target="body"><template><div data-controller="redirect" data-redirect-url-value="${escapeHtml(returnTo)}"></div></template></turbo-stream>` : "";
-      return turboStreamResponse(`<turbo-stream action="remove" target="delete-workspace-modal"></turbo-stream><turbo-stream action="remove" target="${domId("workspace_row", id)}"></turbo-stream>${redirect}`);
+      if (selected) {
+        const { workspaces } = await listWorkspaces();
+        const nextId = workspaces[0]?.id;
+        const nextDetail = nextId ? await workspaceDetailFrameHtml(nextId) : renderWorkspaceEmptyDetail();
+        const nextUrl = "/";
+        return turboStreamResponse(`<turbo-stream action="remove" target="delete-workspace-modal"></turbo-stream><turbo-stream action="replace" target="workspace_sidebar"><template>${await renderWorkspaceSidebar(nextId)}</template></turbo-stream><turbo-stream action="replace" target="workspace_detail"><template>${nextDetail}</template></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="redirect" data-redirect-url-value="${escapeHtml(nextUrl)}" data-redirect-mode-value="replace"></div></template></turbo-stream>`);
+      }
+      return turboStreamResponse(`<turbo-stream action="remove" target="delete-workspace-modal"></turbo-stream><turbo-stream action="remove" target="${domId("workspace_row", id)}"></turbo-stream>`);
     }
     return jsonResponse({ ok: true, result: null });
   } catch (error) {
@@ -520,7 +558,7 @@ async function validateSocket(url: URL): Promise<SocketData | undefined> {
 function errorPage(error: unknown): Response {
   const status = error instanceof AtelierCoreError && ["workspace_not_found", "repo_not_found", "terminal_not_found", "agent_not_found"].includes(error.code) ? 404 : 500;
   const message = error instanceof Error ? error.message : String(error);
-  return response(layout("Error", `<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p><a class="btn" href="/workspaces">Back to workspaces</a></p></div></div></div>`), { status });
+  return response(layout("Error", `<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p><a class="btn" href="/">Back home</a></p></div></div></div>`), { status });
 }
 
 function routeParams(pathname: string):
@@ -564,8 +602,8 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
         if (server.upgrade(request, { data: socketData })) return undefined;
         return response("websocket upgrade failed", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });
       }
-      if (url.pathname === "/") return Response.redirect(new URL("/workspaces", url).toString(), 302);
-      if (url.pathname === "/workspaces" && request.method === "GET") return await workspacesPage();
+      if (url.pathname === "/" && request.method === "GET") return await homePage();
+      if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
       if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceFromForm(request, url);
       if (url.pathname === "/managed-repos" && request.method === "POST") return await createManagedRepoFromForm(request, url);
 
@@ -599,7 +637,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       if (workspaceDeleteMatch && request.method === "POST") return await deleteWorkspaceEndpoint(decodeURIComponent(workspaceDeleteMatch[1]), url.searchParams.get("force") === "1", request);
 
       const params = routeParams(url.pathname);
-      if (params?.route === "workspace") return await workspacePage(params.id);
+      if (params?.route === "workspace") return await workspacePage(params.id, request);
       if (params?.route === "mergeability") return await mergeabilityFrame(params.id, params.repo);
 
       return response("not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
