@@ -61,7 +61,7 @@ export function agentActivityEventsId(workspaceId: string, label: string, turnId
 }
 
 export function renderAgentTranscript(turns: string[]): string {
-  return turns.join("") || `<div class="msg agent agent-empty"><div class="bubble"><p>This agent operates in the workspace container with cwd <code>/repos</code>.</p></div></div>`;
+  return turns.join("");
 }
 
 export function renderTurnGroupShell(workspaceId: string, label: string, turnId: string, userText: string, assistantText = ""): string {
