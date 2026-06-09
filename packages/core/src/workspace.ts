@@ -379,20 +379,7 @@ export async function setWorkspaceTitle(id: string, title: string): Promise<null
 
 export async function execWorkspace(id: string, command: string[]): Promise<WorkspaceExecResult> {
   if (command.length === 0) throw invalidArguments("workspace exec requires a command");
-
-  await resolveWorkspace(id);
-
-  const started = performance.now();
-  const result = await execAsAtelier(id, command);
-  const durationMs = Math.round(performance.now() - started);
-
-  const execResult: WorkspaceExecResult = {
-    exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    durationMs,
-  };
-  return execResult;
+  return await execWorkspaceCommand(id, command);
 }
 
 async function ensureRepo(id: string, repo: string): Promise<void> {
