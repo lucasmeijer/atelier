@@ -38,7 +38,6 @@ import { registerPiConfigEvents } from "@atelier/pi-config/server";
 import {
   closeTerminalSocket,
   createWorkspaceTerminal,
-  deleteTerminalEndpoint,
   handleTerminalSocketMessage,
   openTerminalSocket,
   registerTerminalEvents,
@@ -893,9 +892,6 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
 
       const repoPushMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/push$/);
       if (repoPushMatch && request.method === "POST") return await pushRepoEndpoint(decodeURIComponent(repoPushMatch[1]), decodeURIComponent(repoPushMatch[2]), request);
-
-      const terminalDeleteMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/terminals\/([^/]+)\/delete$/);
-      if (terminalDeleteMatch && request.method === "POST") return await deleteTerminalEndpoint(decodeURIComponent(terminalDeleteMatch[1]), decodeURIComponent(terminalDeleteMatch[2]), request);
 
       const workspaceDeleteMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/delete$/);
       if (workspaceDeleteMatch && request.method === "POST") return await deleteWorkspaceEndpoint(decodeURIComponent(workspaceDeleteMatch[1]), url.searchParams.get("force") === "1", request);

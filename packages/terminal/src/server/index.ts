@@ -14,12 +14,8 @@ export {
   terminalTabKey,
 } from "./render.ts";
 export {
-  deleteTerminalEndpoint,
-  jsonResponse,
   renderWorkspaceTerminalTabs,
   terminalWorkspaceModule,
-  turboStreamResponse,
-  wantsTurboStream,
 } from "./web.ts";
 export { terminalStaticFiles } from "./static.ts";
 export {
