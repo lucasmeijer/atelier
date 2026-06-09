@@ -55,7 +55,6 @@ import { atelierName, type WorkspaceAttachment, type WorkspaceModule, type Works
 
 const requestedPort = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "127.0.0.1";
-const pendingWorkspaceCreations = new Map<string, Promise<{ id: string }>>();
 const atelierEvents = createAtelierEventBus();
 registerPiConfigEvents(atelierEvents);
 registerTerminalEvents(atelierEvents);
@@ -413,20 +412,6 @@ function workspaceCreateStream(): Response {
     }
   })();
   return turboStreamResponse(`<turbo-stream action="remove" target="no_workspaces_row"></turbo-stream><turbo-stream action="prepend" target="workspaces_table_rows"><template>${workspaceInitializingFrame(token)}</template></turbo-stream>`, { status: 202 });
-}
-
-async function workspaceCreationFrame(token: string): Promise<Response> {
-  const pending = pendingWorkspaceCreations.get(token);
-  if (!pending) return response(`<turbo-frame id="${workspaceCreationFrameId(token)}"><div class="row"><span class="dot err"></span><div><div class="r-title">Workspace creation not found</div><div class="r-sub">Try creating another workspace.</div></div><span></span></div></turbo-frame>`, { status: 404 });
-  try {
-    const created = await pending;
-    return response(`<turbo-frame id="${workspaceCreationFrameId(token)}">${workspaceRow(created.id, `Workspace ${created.id}`)}</turbo-frame>`);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return response(`<turbo-frame id="${workspaceCreationFrameId(token)}"><div class="row"><span class="dot err"></span><div><div class="r-title">Workspace creation failed</div><div class="r-sub">${escapeHtml(message)}</div></div><span></span></div></turbo-frame>`, { status: 500 });
-  } finally {
-    pendingWorkspaceCreations.delete(token);
-  }
 }
 
 async function createWorkspaceFromForm(request: Request, url: URL): Promise<Response> {
@@ -871,9 +856,6 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
       if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceFromForm(request, url);
       if (url.pathname === "/managed-repos" && request.method === "POST") return await createManagedRepoFromForm(request, url);
-
-      const workspaceCreationMatch = url.pathname.match(/^\/workspace-creations\/([^/]+)$/);
-      if (workspaceCreationMatch && request.method === "GET") return await workspaceCreationFrame(decodeURIComponent(workspaceCreationMatch[1]));
 
       const titleEditMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/sidebar-title\/edit$/);
       if (titleEditMatch && request.method === "GET") return await workspaceSidebarTitleEditFrame(decodeURIComponent(titleEditMatch[1]));
