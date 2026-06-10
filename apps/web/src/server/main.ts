@@ -403,8 +403,6 @@ function workspaceCreateStream(): Response {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       broadcastTurboStream(`<turbo-stream action="replace" target="${workspaceCreationFrameId(token)}"><template><div class="row"><span class="dot err"></span><div><div class="r-title">Workspace creation failed</div><div class="r-sub">${escapeHtml(message)}</div></div><span></span></div></template></turbo-stream>`);
-    } finally {
-      pendingWorkspaceCreations.delete(token);
     }
   })();
   return turboStreamResponse(`<turbo-stream action="remove" target="no_workspaces_row"></turbo-stream><turbo-stream action="prepend" target="workspaces_table_rows"><template>${workspaceInitializingFrame(token)}</template></turbo-stream>`, { status: 202 });
