@@ -221,14 +221,12 @@ export async function createWorkspace(): Promise<WorkspaceNewResult> {
     workspaceImage(),
     "sh",
     "-lc",
-    "mkdir -p /.atelier /repos; chown -R atelier:atelier /.atelier /repos; sleep infinity",
+    "mkdir -p /.atelier /repos; chown -R atelier:atelier /.atelier /repos; git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; chown atelier:atelier /home/atelier/.gitconfig; sleep infinity",
   ]);
 
   const fullId = created.stdout.trim();
   const id = fullId.slice(0, 8);
   await requireDocker(["rename", fullId, `atelier-${id}`]);
-  await requireDocker(["exec", "--user", "atelier", id, "git", "config", "--global", "user.name", "Lucas Meijer"]);
-  await requireDocker(["exec", "--user", "atelier", id, "git", "config", "--global", "user.email", "lucas@lucasmeijer.com"]);
   return { id };
 }
 

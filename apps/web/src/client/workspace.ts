@@ -302,6 +302,7 @@ class RedirectController extends Controller {
   connect(): void {
     if (this.modeValue === "replace") {
       history.pushState({}, "", this.urlValue);
+      syncActiveWorkspaceRow();
       this.element.remove();
       return;
     }

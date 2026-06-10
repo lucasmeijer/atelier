@@ -77,6 +77,7 @@ async function createWorkspaceWithDefaultAgent(): Promise<{ id: string }> {
   const created = await createWorkspace();
   await Promise.all([
     ensureDefaultWorkspaceAgent(created.id),
+    markWorkspaceUserActivity(created.id, { broadcast: false }),
     atelierEvents.emit("workspace_created", { workspaceId: created.id }),
   ]);
   return created;
@@ -169,11 +170,16 @@ async function writeWorkspaceActivity(activity: WorkspaceActivityState): Promise
   await rename(tempPath, path);
 }
 
-async function markWorkspaceUserActivity(workspaceId: string): Promise<void> {
+async function markWorkspaceUserActivity(workspaceId: string, options: { broadcast?: boolean } = {}): Promise<void> {
   const activity = await readWorkspaceActivity();
   activity[workspaceId] = Date.now();
   await writeWorkspaceActivity(activity);
-  await broadcastWorkspaceRows();
+  if (options.broadcast !== false) await broadcastWorkspaceRows();
+}
+
+async function listWorkspacesByRecentActivity(): Promise<Awaited<ReturnType<typeof listWorkspaces>>["workspaces"]> {
+  const [{ workspaces }, activity] = await Promise.all([listWorkspaces(), readWorkspaceActivity()]);
+  return [...workspaces].sort((a, b) => (activity[b.id] ?? 0) - (activity[a.id] ?? 0));
 }
 
 function workspaceStatusId(workspaceId: string): string {
@@ -311,9 +317,8 @@ function addManagedRepoModal(): string {
 }
 
 async function renderWorkspaceRows(selectedId?: string): Promise<string> {
-  const [{ workspaces }, activity] = await Promise.all([listWorkspaces(), readWorkspaceActivity()]);
-  return [...workspaces]
-    .sort((a, b) => (activity[b.id] ?? 0) - (activity[a.id] ?? 0))
+  const workspaces = await listWorkspacesByRecentActivity();
+  return workspaces
     .map((workspace) => workspaceRow(workspace.id, workspace.title || `Workspace ${workspace.id}`, "ready", { active: workspace.id === selectedId }))
     .join("");
 }
@@ -377,7 +382,7 @@ async function renderWorkspaceShell(selectedId?: string): Promise<string> {
 }
 
 async function homePage(): Promise<Response> {
-  const { workspaces } = await listWorkspaces();
+  const workspaces = await listWorkspacesByRecentActivity();
   return response(layout("Workspaces", await renderWorkspaceShell(workspaces[0]?.id)));
 }
 
@@ -390,28 +395,24 @@ function workspaceCreationFrameId(token: string): string {
 }
 
 function workspaceInitializingFrame(token: string): string {
-  return `<turbo-frame id="${workspaceCreationFrameId(token)}">${workspaceRow(token, "New workspace", "initializing")}</turbo-frame>`;
+  return `<turbo-frame id="${workspaceCreationFrameId(token)}">${workspaceRow(token, "Initializing", "initializing", { active: true })}</turbo-frame>`;
 }
 
 function workspaceCreateStream(): Response {
   const token = `initializing_${crypto.randomUUID()}`;
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const write = (chunk: string) => controller.enqueue(encoder.encode(chunk));
-      write(`<turbo-stream action="remove" target="no_workspaces_row"></turbo-stream><turbo-stream action="append" target="workspaces_table_rows"><template>${workspaceInitializingFrame(token)}</template></turbo-stream>`);
-      try {
-        const created = await createWorkspaceWithDefaultAgent();
-        write(`<turbo-stream action="replace" target="workspace_sidebar"><template>${await renderWorkspaceSidebar(created.id)}</template></turbo-stream><turbo-stream action="replace" target="workspace_detail"><template>${await workspaceDetailHostHtml(created.id)}</template></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="redirect" data-redirect-url-value="/" data-redirect-mode-value="replace"></div></template></turbo-stream>`);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        write(`<turbo-stream action="replace" target="${workspaceCreationFrameId(token)}"><template><div class="row"><span class="dot err"></span><div><div class="r-title">Workspace creation failed</div><div class="r-sub">${escapeHtml(message)}</div></div><span></span></div></template></turbo-stream>`);
-      } finally {
-        controller.close();
-      }
-    },
-  });
-  return new Response(stream, { status: 202, headers: { "content-type": "text/vnd.turbo-stream.html; charset=utf-8" } });
+  void (async () => {
+    try {
+      const created = await createWorkspaceWithDefaultAgent();
+      const workspaceUrl = `/workspaces/${encodeURIComponent(created.id)}`;
+      broadcastTurboStream(`<turbo-stream action="replace" target="${workspaceCreationFrameId(token)}"><template>${workspaceRow(created.id, `Workspace ${created.id}`, "ready", { active: true })}</template></turbo-stream><turbo-stream action="replace" target="workspace_sidebar"><template>${await renderWorkspaceSidebar(created.id)}</template></turbo-stream><turbo-stream action="replace" target="workspace_detail"><template>${await workspaceDetailHostHtml(created.id)}</template></turbo-stream><turbo-stream action="append" target="body"><template><div data-controller="redirect" data-redirect-url-value="${workspaceUrl}" data-redirect-mode-value="replace"></div></template></turbo-stream>`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      broadcastTurboStream(`<turbo-stream action="replace" target="${workspaceCreationFrameId(token)}"><template><div class="row"><span class="dot err"></span><div><div class="r-title">Workspace creation failed</div><div class="r-sub">${escapeHtml(message)}</div></div><span></span></div></template></turbo-stream>`);
+    } finally {
+      pendingWorkspaceCreations.delete(token);
+    }
+  })();
+  return turboStreamResponse(`<turbo-stream action="remove" target="no_workspaces_row"></turbo-stream><turbo-stream action="prepend" target="workspaces_table_rows"><template>${workspaceInitializingFrame(token)}</template></turbo-stream>`, { status: 202 });
 }
 
 async function workspaceCreationFrame(token: string): Promise<Response> {
@@ -794,7 +795,7 @@ async function deleteWorkspaceEndpoint(id: string, force: boolean, request: Requ
     workspaceLayouts.delete(id);
     if (wantsTurboStream(request)) {
       if (selected) {
-        const { workspaces } = await listWorkspaces();
+        const workspaces = await listWorkspacesByRecentActivity();
         const nextId = workspaces[0]?.id;
         const nextDetail = nextId ? await workspaceDetailHostHtml(nextId) : renderWorkspaceEmptyDetail();
         const nextUrl = "/";
