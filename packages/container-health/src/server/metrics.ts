@@ -1,4 +1,4 @@
-import { AtelierCoreError, execWorkspaceShell, listWorkspaces, runDocker } from "@atelier/core";
+import { AtelierCoreError, execWorkspaceShell, listWorkspaces, runDocker, workspaceContainerName } from "@atelier/core";
 import type { FactView, HealthSummaryView, ProcessView } from "./render.ts";
 
 export interface HealthSnapshot {
@@ -64,7 +64,7 @@ async function ensureWorkspace(workspaceId: string): Promise<void> {
 }
 
 async function collectDockerStats(workspaceId: string, previous?: PreviousCounters): Promise<{ summary: HealthSummaryView; counters: PreviousCounters }> {
-  const result = await runDocker(["stats", workspaceId, "--no-stream", "--format", "{{json .}}"]);
+  const result = await runDocker(["stats", workspaceContainerName(workspaceId), "--no-stream", "--format", "{{json .}}"]);
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || "docker stats failed");
   const raw = JSON.parse(result.stdout.trim()) as Record<string, string>;
   const memory = parseUsageLimit(raw.MemUsage ?? "");
@@ -119,7 +119,7 @@ function parseProcessLine(line: string): ProcessView | undefined {
 }
 
 async function collectFacts(workspaceId: string): Promise<FactView> {
-  const result = await runDocker(["inspect", workspaceId, "--format", "{{json .}}"]);
+  const result = await runDocker(["inspect", workspaceContainerName(workspaceId), "--format", "{{json .}}"]);
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || "docker inspect failed");
   const raw = JSON.parse(result.stdout.trim()) as { Name?: string; Config?: { Image?: string }; State?: { Status?: string; StartedAt?: string; RestartCount?: number } };
   return {

@@ -87,8 +87,18 @@ export type WorkspaceRepoPushResult =
   | { state: "skipped"; reason: "nothing_to_push" | "has_conflicts" | "fetch_failed" }
   | { state: "failed"; message: string };
 
+const workspaceIdLabel = "com.atelier.workspace-id";
+
 function namespace(): string {
   return process.env.ATELIER_NAMESPACE || "default";
+}
+
+export function generateWorkspaceId(): string {
+  return crypto.randomUUID().replaceAll("-", "").slice(0, 8);
+}
+
+export function workspaceContainerName(id: string): string {
+  return `atelier-${id}`;
 }
 
 function workspaceImage(): string {
@@ -123,7 +133,7 @@ function validateRepoName(repo: string): void {
 }
 
 async function execAsAtelier(id: string, command: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  return await runDocker(["exec", "--user", "atelier", id, ...command]);
+  return await runDocker(["exec", "--user", "atelier", workspaceContainerName(id), ...command]);
 }
 
 async function execShellAsAtelier(id: string, script: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
@@ -131,7 +141,7 @@ async function execShellAsAtelier(id: string, script: string): Promise<{ exitCod
 }
 
 async function inspectLabels(id: string): Promise<Record<string, string>> {
-  const inspected = await runDocker(["inspect", "--format", "{{json .Config.Labels}}", id]);
+  const inspected = await runDocker(["inspect", "--format", "{{json .Config.Labels}}", workspaceContainerName(id)]);
   if (inspected.exitCode !== 0) throw new AtelierCoreError("workspace_not_found", `workspace not found: ${id}`);
 
   const trimmed = inspected.stdout.trim();
@@ -139,7 +149,7 @@ async function inspectLabels(id: string): Promise<Record<string, string>> {
 }
 
 async function ensureWorkspaceFilesystem(id: string): Promise<void> {
-  const result = await runDocker(["exec", "--user", "root", id, "sh", "-lc", `
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `
     set -e
     if [ ! -e ${shellQuote(workspaceRoot)} ] && [ -d /workspace/repos ]; then
       mv /workspace/repos ${shellQuote(workspaceRoot)}
@@ -159,8 +169,8 @@ async function resolveWorkspace(id: string): Promise<string> {
   return id;
 }
 
-async function readTitle(id: string): Promise<string | null> {
-  const result = await runDocker(["exec", id, "cat", titlePath]);
+async function readTitle(containerRef: string): Promise<string | null> {
+  const result = await runDocker(["exec", containerRef, "cat", titlePath]);
   if (result.exitCode !== 0) return null;
   return result.stdout.replace(/\n$/, "");
 }
@@ -180,7 +190,7 @@ export async function execWorkspaceCommand(
     ...workspaceUtf8Environment,
     "--workdir",
     options.workdir ?? workspaceRoot,
-    resolved,
+    workspaceContainerName(resolved),
     ...command,
   ];
   const result = await runDocker(dockerArgs, { stdin: options.stdin });
@@ -195,7 +205,13 @@ export async function execWorkspaceShell(
   return await execWorkspaceCommand(id, ["sh", "-lc", script], options);
 }
 
-export async function createWorkspace(): Promise<WorkspaceNewResult> {
+export interface CreateWorkspaceOptions {
+  id?: string;
+}
+
+export async function createWorkspace(options: CreateWorkspaceOptions = {}): Promise<WorkspaceNewResult> {
+  const id = options.id ?? generateWorkspaceId();
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id)) throw invalidArguments(`invalid workspace id: ${id}`);
   const runtimeContext = await getAtelierRuntimeContext();
   const reposDir = managedReposDir(runtimeContext.atelierDataDir);
   const dockerHostReposDir = dockerHostAtelierDataPath(runtimeContext, "repos");
@@ -206,13 +222,17 @@ export async function createWorkspace(): Promise<WorkspaceNewResult> {
     throw new AtelierCoreError("data_dir_unavailable", `could not create Atelier repos directory ${reposDir}: ${message}`);
   }
 
-  const created = await requireDocker([
+  await requireDocker([
     "run",
     "-d",
+    "--name",
+    workspaceContainerName(id),
     "--label",
     `${workspaceTypeLabel}=workspace`,
     "--label",
     `${namespaceLabel}=${namespace()}`,
+    "--label",
+    `${workspaceIdLabel}=${id}`,
     "--mount",
     `type=bind,src=${dockerHostReposDir},dst=${atelierReposRoot}`,
     ...workspaceUtf8Environment,
@@ -224,9 +244,6 @@ export async function createWorkspace(): Promise<WorkspaceNewResult> {
     "mkdir -p /.atelier /repos; chown -R atelier:atelier /.atelier /repos; git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; chown atelier:atelier /home/atelier/.gitconfig; sleep infinity",
   ]);
 
-  const fullId = created.stdout.trim();
-  const id = fullId.slice(0, 8);
-  await requireDocker(["rename", fullId, `atelier-${id}`]);
   return { id };
 }
 
@@ -234,17 +251,23 @@ export async function listWorkspaces(): Promise<WorkspaceListResult> {
 
   const listed = await requireDocker([
     "ps",
-    "-aq",
+    "-a",
     "--filter",
     `label=${workspaceTypeLabel}=workspace`,
     "--filter",
     `label=${namespaceLabel}=${namespace()}`,
+    "--format",
+    `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}`,
   ]);
 
-  const ids = listed.stdout.trim().split(/\s+/).filter(Boolean).map((id) => id.slice(0, 8));
   const workspaces: WorkspaceListResult["workspaces"] = [];
-  for (const id of ids) {
-    workspaces.push({ id, title: await readTitle(id) });
+  for (const line of listed.stdout.trim().split(/\n+/).filter(Boolean)) {
+    const [containerId, labelledId] = line.split("\t");
+    if (!containerId) continue;
+    // Workspaces created before app-generated ids carry no workspace-id label;
+    // their id is the 8-char container id prefix (their container is named atelier-<prefix>).
+    const id = labelledId?.trim() || containerId.slice(0, 8);
+    workspaces.push({ id, title: await readTitle(containerId) });
   }
 
   return { workspaces };
@@ -366,14 +389,14 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
       throw new AtelierCoreError("workspace_delete_blocked", formatDeleteBlockedMessage(id, details.issues), details);
     }
   }
-  await requireDocker(["rm", "-f", id]);
+  await requireDocker(["rm", "-f", workspaceContainerName(id)]);
   return null;
 }
 
 export async function setWorkspaceTitle(id: string, title: string): Promise<null> {
   await resolveWorkspace(id);
 
-  await requireDocker(["exec", "-i", id, "sh", "-c", `mkdir -p /.atelier && cat > ${titlePath}`], { stdin: title });
+  await requireDocker(["exec", "-i", workspaceContainerName(id), "sh", "-c", `mkdir -p /.atelier && cat > ${titlePath}`], { stdin: title });
   return null;
 }
 

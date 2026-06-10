@@ -9,7 +9,8 @@ import {
   workspaceCommand,
   type WorkspaceExecResult,
 } from "../src/index.ts";
-import { cleanupNamespace, createTestNamespace } from "./helpers.ts";
+import { generateWorkspaceId, workspaceContainerName } from "../src/index.ts";
+import { cleanupNamespace, createTestNamespace, docker } from "./helpers.ts";
 
 setDefaultTimeout(30_000);
 
@@ -163,5 +164,39 @@ describe("core workspaces", () => {
 
     const error = await expectCoreError(() => workspaceCommand(["exec", created.id, "--"]));
     expect(error.code).toBe("invalid_arguments");
+  });
+
+  test("createWorkspace uses the supplied app-generated id for container name and label", async () => {
+    const id = generateWorkspaceId();
+
+    const created = await createWorkspace({ id });
+    expect(created.id).toBe(id);
+
+    const inspected = await docker(["inspect", "--format", `{{.Name}}\t{{index .Config.Labels "com.atelier.workspace-id"}}`, workspaceContainerName(id)]);
+    expect(inspected.exitCode).toBe(0);
+    expect(inspected.stdout.trim()).toBe(`/${workspaceContainerName(id)}\t${id}`);
+
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id, title: null });
+  });
+
+  test("listWorkspaces falls back to the container id prefix for legacy containers without a workspace-id label", async () => {
+    const image = process.env.ATELIER_WORKSPACE_IMAGE || "ghcr.io/lucasmeijer/atelier-workspace:latest";
+    const run = await docker([
+      "run", "-d",
+      "--label", "com.atelier.type=workspace",
+      "--label", `com.atelier.namespace=${testNamespace}`,
+      image,
+      "sleep", "infinity",
+    ]);
+    expect(run.exitCode).toBe(0);
+    const fullId = run.stdout.trim();
+    const legacyId = fullId.slice(0, 8);
+    // Legacy createWorkspace renamed containers to atelier-<id prefix>.
+    expect((await docker(["rename", fullId, workspaceContainerName(legacyId)])).exitCode).toBe(0);
+
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: legacyId, title: null });
+    // And the legacy workspace stays operable through the container-name convention.
+    expect(await setWorkspaceTitle(legacyId, "Legacy")).toBeNull();
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: legacyId, title: "Legacy" });
   });
 });

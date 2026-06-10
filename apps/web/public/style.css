@@ -384,6 +384,13 @@ a.btn { text-decoration: none; }
 .workspace-shell-main { min-width: 0; height: 100vh; overflow: auto; }
 .workspace-shell-main > turbo-frame, #workspace_detail { display: block; min-height: 100%; }
 .workspace-detail-host { min-height: 100%; }
+.workspace-detail-empty[hidden], .workspace-detail-loading[hidden] { display: none; }
+.workspace-row[data-phase="ready"] { cursor: pointer; }
+.workspace-row.pending-delete { opacity: .55; }
+.workspace-row.pending-delete .row-main, .workspace-row.pending-delete a { pointer-events: none; }
+.workspace-row.starting { opacity: .75; }
+.workspace-row.failed .r-sub { color: var(--red); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-boot-pad { display: flex; align-items: center; gap: 10px; }
 .workspace-detail-resident { display: none; min-height: 100%; }
 .workspace-detail-resident.active { display: block; }
 .workspace-detail-main { min-height: 100%; }
@@ -391,6 +398,11 @@ a.btn { text-decoration: none; }
 .sidebar-header h1 { font-size: 16px; font-weight: 700; letter-spacing: -.3px; }
 .workspace-sidebar-table, .sidebar-host-repos .table { border-left: 0; border-right: 0; border-radius: 0; }
 .workspace-sidebar-table .row, .sidebar-host-repos .row { grid-template-columns: 16px minmax(0, 1fr) auto; padding-left: 14px; padding-right: 14px; }
+/* Workspace rows keep a constant height in every state: ready, starting,
+   deleting, failed, title-edit mode, and the ghost "+ New workspace" row. */
+.workspace-sidebar-table .row { height: 42px; padding-top: 0; padding-bottom: 0; box-sizing: border-box; overflow: hidden; }
+.workspace-sidebar-table .r-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.workspace-sidebar-title-form input { padding: 3px 6px; }
 .workspace-sidebar-table .row.head { grid-template-columns: 16px minmax(0, 1fr) auto; }
 .workspace-row.active { background: var(--accent-soft); }
 .workspace-row.active .r-title { color: var(--accent); }

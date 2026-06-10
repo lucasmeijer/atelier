@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { AtelierCoreError, atelierDataPath, execWorkspaceCommand, getAtelierRuntimeContext, runDocker, type AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, atelierDataPath, execWorkspaceCommand, getAtelierRuntimeContext, runDocker, workspaceContainerName, type AtelierEventBus } from "@atelier/core";
 
 const workspacePiConfigDir = "/home/atelier/.pi/agent";
 const seedFilenames = ["auth.json", "settings.json", "models.json"] as const;
@@ -29,7 +29,7 @@ export async function seedWorkspacePiConfig(workspaceId: string): Promise<void> 
   }
 
   for (const file of existingFiles) {
-    const copied = await runDocker(["cp", file.path, `${workspaceId}:${workspacePiConfigDir}/${file.filename}`]);
+    const copied = await runDocker(["cp", file.path, `${workspaceContainerName(workspaceId)}:${workspacePiConfigDir}/${file.filename}`]);
     if (copied.exitCode !== 0) {
       throw new AtelierCoreError("pi_config_seed_failed", copied.stderr.trim() || copied.stdout.trim() || `could not copy ${file.filename} into ${workspaceId}`);
     }

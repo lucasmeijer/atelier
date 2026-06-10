@@ -1,6 +1,6 @@
 import { spawn, type IPty } from "@zenyr/bun-pty";
 import type { ServerWebSocket } from "bun";
-import { AtelierCoreError } from "@atelier/core";
+import { AtelierCoreError, workspaceContainerName } from "@atelier/core";
 import { listWorkspaceTerminals } from "./workspace-terminals.ts";
 
 export interface TerminalSocketData {
@@ -71,7 +71,7 @@ export function openTerminalSocket(ws: ServerWebSocket<TerminalSocketData>): voi
     "-e", "COLORTERM=truecolor",
     "-e", "LANG=C.UTF-8",
     "-e", "LC_ALL=C.UTF-8",
-    data.workspaceId,
+    workspaceContainerName(data.workspaceId),
     "tmux", "attach-session", "-t", data.title,
   ];
   try {

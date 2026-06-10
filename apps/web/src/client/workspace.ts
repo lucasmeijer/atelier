@@ -217,32 +217,6 @@ class WorkspaceGroupsController extends Controller {
   }
 }
 
-class ActivateTabController extends Controller {
-  static values = { tab: String };
-  declare readonly element: HTMLElement;
-  declare readonly tabValue: string;
-
-  connect(): void {
-    const tabs = document.querySelector<HTMLElement>('.workspace-detail-resident.active .group-tab.active')?.closest<HTMLElement>('[data-controller~="workspace-tabs"]') ?? document.querySelector<HTMLElement>('.workspace-detail-resident.active [data-controller~="workspace-tabs"], [data-controller~="workspace-tabs"]');
-    const controller = tabs ? application.getControllerForElementAndIdentifier(tabs, "workspace-tabs") as WorkspaceTabsController | null : null;
-    controller?.activateTab(this.tabValue);
-    this.element.remove();
-  }
-}
-
-class RemoveWorkspaceResidentController extends Controller {
-  static values = { workspaceId: String };
-  declare readonly element: HTMLElement;
-  declare readonly workspaceIdValue: string;
-
-  connect(): void {
-    const residency = document.querySelector<HTMLElement>('[data-controller~="workspace-residency"]');
-    const controller = residency ? application.getControllerForElementAndIdentifier(residency, "workspace-residency") as WorkspaceResidencyController | null : null;
-    controller?.removeWorkspace(this.workspaceIdValue);
-    this.element.remove();
-  }
-}
-
 class ModalController extends Controller {
   static values = { autoShow: Boolean };
   declare readonly element: HTMLDialogElement;
@@ -268,47 +242,83 @@ class ModalOpenerController extends Controller {
   }
 }
 
-class RedirectController extends Controller {
-  static values = { url: String, mode: String };
-  declare readonly element: HTMLElement;
-  declare readonly urlValue: string;
-  declare readonly modeValue: string;
-
-  connect(): void {
-    if (this.modeValue === "replace") {
-      history.pushState({}, "", this.urlValue);
-      syncActiveWorkspaceRow();
-      this.element.remove();
-      return;
-    }
-    location.href = this.urlValue;
-  }
-}
-
 class WorkspaceResidencyController extends Controller {
-  static targets = ["resident"];
+  static targets = ["resident", "empty", "loading"];
   static values = { maxResident: Number };
   declare readonly element: HTMLElement;
   declare readonly residentTargets: HTMLElement[];
+  declare readonly emptyTargets: HTMLElement[];
+  declare readonly loadingTargets: HTMLElement[];
   declare readonly maxResidentValue: number;
+  private selectionSeq = 0;
 
   async selectWorkspace(workspaceId: string, href: string): Promise<void> {
+    // Update the URL first: selection state is derived from it, and stream
+    // broadcasts arriving while the resident loads must not flip selection back.
+    const seq = ++this.selectionSeq;
+    history.pushState({}, "", href);
     const existing = this.residentTargets.find((resident) => resident.dataset.workspaceId === workspaceId);
     if (existing) {
       this.activateResident(existing);
-      history.pushState({}, "", href);
       return;
     }
 
-    const resident = await this.fetchResident(href);
+    // Hide the previous workspace immediately: it must not keep receiving
+    // input (e.g. typing into its agent field) while the new one loads.
+    this.showLoading();
+
+    let resident: HTMLElement;
+    try {
+      resident = await this.fetchResident(href);
+    } catch {
+      if (seq !== this.selectionSeq) return;
+      // Fall back to a full navigation rather than silently staying put.
+      location.href = href;
+      return;
+    }
     this.element.appendChild(resident);
-    this.activateResident(resident);
-    history.pushState({}, "", href);
+    // Only activate if no newer selection happened while we were fetching;
+    // the resident stays cached either way.
+    if (seq === this.selectionSeq) this.activateResident(resident);
     this.evictIfNeeded();
   }
 
+  residentTargetConnected(resident: HTMLElement): void {
+    // Broadcast residents (e.g. the boot placeholder being replaced by the real
+    // detail) arrive without an "active" class; activate them only if this
+    // client is currently looking at that workspace.
+    if (resident.classList.contains("active")) return;
+    const workspaceId = resident.dataset.workspaceId;
+    if (!workspaceId) return;
+    if (location.pathname === `/workspaces/${encodeURIComponent(workspaceId)}`) this.activateResident(resident);
+  }
+
   removeWorkspace(workspaceId: string): void {
-    this.residentTargets.find((resident) => resident.dataset.workspaceId === workspaceId)?.remove();
+    const resident = this.residentTargets.find((candidate) => candidate.dataset.workspaceId === workspaceId);
+    if (!resident) return;
+    const wasActive = resident.classList.contains("active");
+    resident.remove();
+    if (wasActive) this.showEmpty();
+  }
+
+  hasWorkspace(workspaceId: string): boolean {
+    return this.residentTargets.some((resident) => resident.dataset.workspaceId === workspaceId);
+  }
+
+  activeWorkspaceId(): string | undefined {
+    return this.residentTargets.find((resident) => resident.classList.contains("active"))?.dataset.workspaceId;
+  }
+
+  private showEmpty(): void {
+    this.residentTargets.forEach((resident) => resident.classList.remove("active"));
+    this.loadingTargets.forEach((loading) => { loading.hidden = true; });
+    this.emptyTargets.forEach((empty) => { empty.hidden = false; });
+  }
+
+  private showLoading(): void {
+    this.residentTargets.forEach((resident) => resident.classList.remove("active"));
+    this.emptyTargets.forEach((empty) => { empty.hidden = true; });
+    this.loadingTargets.forEach((loading) => { loading.hidden = false; });
   }
 
   private async fetchResident(href: string): Promise<HTMLElement> {
@@ -326,6 +336,8 @@ class WorkspaceResidencyController extends Controller {
   }
 
   private activateResident(resident: HTMLElement): void {
+    this.emptyTargets.forEach((empty) => { empty.hidden = true; });
+    this.loadingTargets.forEach((loading) => { loading.hidden = true; });
     this.residentTargets.forEach((candidate) => candidate.classList.toggle("active", candidate === resident));
     resident.dataset.lastActivatedAt = String(Date.now());
     const tabs = resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]');
@@ -346,38 +358,102 @@ class WorkspaceResidencyController extends Controller {
   }
 }
 
-function syncActiveWorkspaceRow(): void {
-  const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1]
-    ?? document.querySelector<HTMLElement>(".workspace-detail-resident.active[data-workspace-id]")?.dataset.workspaceId;
-  document.querySelectorAll<HTMLElement>(".workspace-row.active").forEach((row) => row.classList.remove("active"));
-  if (!workspaceId) return;
-  const decodedWorkspaceId = workspaceId === decodeURIComponent(workspaceId) ? workspaceId : decodeURIComponent(workspaceId);
-  document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(decodedWorkspaceId)}"]`)?.classList.add("active");
+function residencyController(): WorkspaceResidencyController | null {
+  const residency = document.querySelector<HTMLElement>('[data-controller~="workspace-residency"]');
+  return residency ? application.getControllerForElementAndIdentifier(residency, "workspace-residency") as WorkspaceResidencyController | null : null;
 }
 
+/**
+ * Owns all per-client list state: which row is "active" and the optimistic
+ * pending-delete feedback. Broadcast HTML from the server never carries this.
+ */
 class WorkspaceListController extends Controller {
+  declare readonly element: HTMLElement;
+  private readonly onStreamRender = (event: Event): void => {
+    // Turbo applies stream renders after the next repaint, so wrap the render
+    // callback to re-sync only after the DOM change actually happened.
+    const detail = (event as CustomEvent).detail as { render?: (element: Element) => Promise<void> } | undefined;
+    const original = detail?.render;
+    if (detail && original) {
+      detail.render = async (element: Element) => {
+        await original(element);
+        this.sync();
+      };
+      return;
+    }
+    queueMicrotask(() => this.sync());
+  };
+
   connect(): void {
-    syncActiveWorkspaceRow();
+    document.addEventListener("turbo:before-stream-render", this.onStreamRender);
+    this.sync();
   }
 
-  delete(event: Event): void {
-    const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
-    const row = form?.closest<HTMLElement>(".workspace-row");
-    const selected = form?.querySelector<HTMLInputElement>('input[name="selected"]');
-    if (selected) selected.value = row?.classList.contains("active") ? "1" : "0";
+  disconnect(): void {
+    document.removeEventListener("turbo:before-stream-render", this.onStreamRender);
   }
 
   select(event: Event): void {
     const link = event.currentTarget instanceof HTMLAnchorElement ? event.currentTarget : null;
     const row = link?.closest<HTMLElement>(".workspace-row") ?? null;
     if (!row || !link) return;
+    if (row.dataset.phase !== "ready" || row.classList.contains("pending-delete")) {
+      event.preventDefault();
+      return;
+    }
     event.preventDefault();
-    this.element.querySelectorAll<HTMLElement>(".workspace-row.active").forEach((activeRow) => activeRow.classList.remove("active"));
-    row.classList.add("active");
     const workspaceId = row.dataset.workspaceId;
-    const residency = document.querySelector<HTMLElement>('[data-controller~="workspace-residency"]');
-    const controller = residency ? application.getControllerForElementAndIdentifier(residency, "workspace-residency") as WorkspaceResidencyController | null : null;
-    if (workspaceId) void controller?.selectWorkspace(workspaceId, link.href);
+    if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href);
+    this.markActive(workspaceId);
+  }
+
+  rowClicked(event: Event): void {
+    // Make the whole row clickable, not just the title link.
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (target?.closest("a, button, input, textarea, form")) return;
+    const row = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    row?.querySelector<HTMLAnchorElement>("a.row-main")?.click();
+  }
+
+  deleteStarted(event: Event): void {
+    const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
+    const row = form?.closest<HTMLElement>(".workspace-row");
+    row?.classList.add("pending-delete");
+    const button = form?.querySelector<HTMLButtonElement>("button");
+    if (button) {
+      button.disabled = true;
+      button.innerHTML = `<span class="status-spinner sm" aria-label="Deleting"></span>`;
+    }
+  }
+
+  private currentWorkspaceId(): string | undefined {
+    const fromPath = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
+    if (fromPath) return decodeURIComponent(fromPath);
+    return residencyController()?.activeWorkspaceId();
+  }
+
+  private markActive(workspaceId: string | undefined): void {
+    this.element.querySelectorAll<HTMLElement>(".workspace-row.active").forEach((row) => row.classList.remove("active"));
+    if (!workspaceId) return;
+    this.element.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`)?.classList.add("active");
+  }
+
+  private sync(): void {
+    const workspaceId = this.currentWorkspaceId();
+    if (!workspaceId) {
+      this.markActive(undefined);
+      return;
+    }
+    const row = this.element.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`);
+    if (!row) {
+      // The workspace we were looking at disappeared (deleted here or elsewhere).
+      const residency = residencyController();
+      residency?.removeWorkspace(workspaceId);
+      if (location.pathname === `/workspaces/${encodeURIComponent(workspaceId)}`) history.replaceState({}, "", "/");
+      this.markActive(undefined);
+      return;
+    }
+    this.markActive(workspaceId);
   }
 }
 
@@ -404,24 +480,6 @@ class WorkspaceTitleEditController extends Controller {
   }
 }
 
-class WorkspaceEventsStreamController extends Controller {
-  private source?: EventSource;
-
-  connect(): void {
-    this.source = new EventSource("/workspace-events/stream");
-    this.source.onmessage = (event) => {
-      const html = JSON.parse(event.data) as string;
-      window.Turbo?.renderStreamMessage(html);
-      queueMicrotask(syncActiveWorkspaceRow);
-    };
-  }
-
-  disconnect(): void {
-    this.source?.close();
-    this.source = undefined;
-  }
-}
-
 const application = Application.start();
 application.register("workspace-tabs", WorkspaceTabsController);
 application.register("workspace-groups", WorkspaceGroupsController);
@@ -429,12 +487,8 @@ application.register("workspace-residency", WorkspaceResidencyController);
 application.register("terminal-pane", createTerminalPaneController(Controller));
 application.register("agent-chat", createAgentChatController(Controller));
 application.register("container-health", createContainerHealthController(Controller));
-application.register("activate-tab", ActivateTabController);
-application.register("remove-workspace-resident", RemoveWorkspaceResidentController);
 application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);
-application.register("redirect", RedirectController);
 application.register("global-filter", GlobalFilterController);
 application.register("workspace-list", WorkspaceListController);
 application.register("workspace-title-edit", WorkspaceTitleEditController);
-application.register("workspace-events-stream", WorkspaceEventsStreamController);
