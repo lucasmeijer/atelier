@@ -1,6 +1,15 @@
 /// <reference lib="dom" />
 
-import { createAgentChatController, startAgentTab } from "@atelier/agent/client";
+import {
+  createAgentAttachmentsController,
+  createAgentAutosubmitController,
+  createAgentElapsedController,
+  createAgentNoticeController,
+  createAgentPaneController,
+  createAgentTermController,
+  registerAgentStreamActions,
+  startAgentTab,
+} from "@atelier/agent/client";
 import { createContainerHealthController } from "@atelier/container-health/client";
 import { createTerminalPaneController, initializeTerminalTheme, startTerminal, startTerminalTab } from "@atelier/terminal/client";
 
@@ -17,6 +26,7 @@ declare global {
 const { Application, Controller } = window.Stimulus;
 
 initializeTerminalTheme();
+registerAgentStreamActions();
 
 class WorkspaceTabsController extends Controller {
   static values = { workspaceId: String, groupId: String, initialTab: String };
@@ -270,10 +280,9 @@ class WorkspaceResidencyController extends Controller {
     let resident: HTMLElement;
     try {
       resident = await this.fetchResident(href);
-    } catch {
+    } catch (error) {
       if (seq !== this.selectionSeq) return;
-      // Fall back to a full navigation rather than silently staying put.
-      location.href = href;
+      this.showLoadError(error);
       return;
     }
     this.element.appendChild(resident);
@@ -318,7 +327,22 @@ class WorkspaceResidencyController extends Controller {
   private showLoading(): void {
     this.residentTargets.forEach((resident) => resident.classList.remove("active"));
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
-    this.loadingTargets.forEach((loading) => { loading.hidden = false; });
+    this.loadingTargets.forEach((loading) => {
+      loading.hidden = false;
+      const pad = loading.querySelector<HTMLElement>(".pad");
+      if (pad) pad.innerHTML = `<span class="status-spinner"></span> Loading workspace…`;
+    });
+  }
+
+  private showLoadError(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.residentTargets.forEach((resident) => resident.classList.remove("active"));
+    this.emptyTargets.forEach((empty) => { empty.hidden = true; });
+    this.loadingTargets.forEach((loading) => {
+      loading.hidden = false;
+      const pad = loading.querySelector<HTMLElement>(".pad");
+      if (pad) pad.textContent = `Could not load workspace: ${message}`;
+    });
   }
 
   private async fetchResident(href: string): Promise<HTMLElement> {
@@ -407,6 +431,34 @@ class WorkspaceListController extends Controller {
     this.markActive(workspaceId);
   }
 
+  async createWorkspace(event: Event): Promise<void> {
+    event.preventDefault();
+    const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
+    if (!form) return;
+    const button = form.querySelector<HTMLButtonElement>("button[type='submit']");
+    button?.setAttribute("disabled", "");
+    try {
+      const response = await fetch(form.action, {
+        method: form.method || "POST",
+        headers: { Accept: "text/vnd.turbo-stream.html" },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const html = await response.text();
+      if (html) window.Turbo?.renderStreamMessage(html);
+      const location = response.headers.get("location");
+      if (!location) return;
+      const url = new URL(location, window.location.href);
+      const workspaceId = decodeURIComponent(url.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1] ?? "");
+      if (!workspaceId) return;
+      this.markActive(workspaceId);
+      void residencyController()?.selectWorkspace(workspaceId, url.pathname);
+    } catch (error) {
+      console.error("Could not create workspace", error);
+    } finally {
+      button?.removeAttribute("disabled");
+    }
+  }
+
   rowClicked(event: Event): void {
     // Make the whole row clickable, not just the title link.
     const target = event.target instanceof HTMLElement ? event.target : null;
@@ -485,7 +537,12 @@ application.register("workspace-tabs", WorkspaceTabsController);
 application.register("workspace-groups", WorkspaceGroupsController);
 application.register("workspace-residency", WorkspaceResidencyController);
 application.register("terminal-pane", createTerminalPaneController(Controller));
-application.register("agent-chat", createAgentChatController(Controller));
+application.register("agent-pane", createAgentPaneController(Controller));
+application.register("agent-attachments", createAgentAttachmentsController(Controller));
+application.register("agent-autosubmit", createAgentAutosubmitController(Controller));
+application.register("agent-elapsed", createAgentElapsedController(Controller));
+application.register("agent-notice", createAgentNoticeController(Controller));
+application.register("agent-term", createAgentTermController(Controller));
 application.register("container-health", createContainerHealthController(Controller));
 application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);

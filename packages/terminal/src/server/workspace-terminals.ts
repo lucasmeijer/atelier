@@ -16,9 +16,23 @@ export interface WorkspaceTerminalCreateResult {
 }
 
 export async function listWorkspaceTerminals(id: string): Promise<WorkspaceTerminalListResult> {
-  const result = await execWorkspaceShell(id, "tmux list-sessions -F '#S'");
+  let result;
+  try {
+    result = await execWorkspaceShell(id, "tmux list-sessions -F '#S'");
+  } catch {
+    // Container or docker unavailable: no terminals rather than a hard failure.
+    return { terminals: [] };
+  }
   if (result.exitCode !== 0) return { terminals: [] };
-  return { terminals: result.stdout.trim().split(/\n+/).filter(Boolean).map((title) => ({ title })) };
+  return {
+    terminals: result.stdout
+      .trim()
+      .split(/\n+/)
+      .filter(Boolean)
+      // Agent tool sessions (atelier-agent-*) are internal; never list them as terminal tabs.
+      .filter((title) => !title.startsWith("atelier-agent-"))
+      .map((title) => ({ title })),
+  };
 }
 
 export async function createWorkspaceTerminal(id: string): Promise<WorkspaceTerminalCreateResult> {

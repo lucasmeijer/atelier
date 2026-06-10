@@ -1,104 +1,339 @@
+import { domId, escapeHtml } from "./html.ts";
+import { renderMarkdown } from "./markdown.ts";
+import { rewriteSegment } from "./rewrite.ts";
 import type { WorkspaceAgentInfo } from "./session-store.ts";
+import {
+  formatCost,
+  formatTokens,
+  summarizeSectionStats,
+  type SectionItem,
+  type SectionView,
+  type ToolView,
+} from "./transcript.ts";
 
-export function escapeHtml(value: unknown): string {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-export function domId(...parts: string[]): string {
-  return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
+export interface AgentRenderContext {
+  workspaceId: string;
+  label: string;
 }
 
 export function agentTabKey(label: string): string {
   return `agent:${label}`;
 }
 
-export function renderAgentPane(workspaceId: string, agent: WorkspaceAgentInfo, options: { active?: boolean; autostart?: boolean } = {}): string {
+// ---------------------------------------------------------------------------
+// Dom ids
+// ---------------------------------------------------------------------------
+
+function prefix(ctx: AgentRenderContext): string {
+  return domId("ag", ctx.workspaceId, ctx.label);
+}
+
+export const ids = {
+  pane: (ctx: AgentRenderContext) => `${prefix(ctx)}_pane`,
+  transcript: (ctx: AgentRenderContext) => `${prefix(ctx)}_transcript`,
+  section: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_s`, sid),
+  activity: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_act`, sid),
+  activityBody: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_actbody`, sid),
+  activitySummary: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_actsum`, sid),
+  activityRow: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_actrow`, sid),
+  final: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_final`, sid),
+  item: (ctx: AgentRenderContext, sid: string, n: number) => domId(`${prefix(ctx)}_item`, sid, String(n)),
+  itemText: (ctx: AgentRenderContext, sid: string, n: number) => domId(`${prefix(ctx)}_itemtext`, sid, String(n)),
+  stats: (ctx: AgentRenderContext) => `${prefix(ctx)}_stats`,
+  actions: (ctx: AgentRenderContext) => `${prefix(ctx)}_actions`,
+  attachRow: (ctx: AgentRenderContext) => `${prefix(ctx)}_attach`,
+  chip: (ctx: AgentRenderContext, attachmentId: string) => domId(`${prefix(ctx)}_chip`, attachmentId),
+  notices: (ctx: AgentRenderContext) => `${prefix(ctx)}_notices`,
+};
+
+function agentPath(ctx: AgentRenderContext, suffix: string): string {
+  return `/workspaces/${encodeURIComponent(ctx.workspaceId)}/agents/${encodeURIComponent(ctx.label)}${suffix}`;
+}
+
+function markdown(ctx: AgentRenderContext, text: string): string {
+  return renderMarkdown(text, { rewriteSegment: (segment) => rewriteSegment(ctx.workspaceId, segment) });
+}
+
+// ---------------------------------------------------------------------------
+// Pane
+// ---------------------------------------------------------------------------
+
+export interface AgentModelOption {
+  provider: string;
+  id: string;
+  name: string;
+  selected: boolean;
+}
+
+export interface AgentStatsView {
+  contextPercent: number | null;
+  inputTokens: number;
+  outputTokens: number;
+  cost: number;
+  modelName: string | undefined;
+  provider: string | undefined;
+  thinkingLevel: string;
+  thinkingLevels: string[];
+  models: AgentModelOption[];
+}
+
+export interface AgentPaneState {
+  transcriptHtml: string;
+  busy: boolean;
+  stats: AgentStatsView;
+}
+
+export function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { active?: boolean } = {}): string {
   const key = agentTabKey(agent.label);
-  const transcriptId = agentTranscriptId(workspaceId, agent.label);
-  return `<section id="${domId("agent_pane", workspaceId, agent.label)}" class="tab-pane ${options.active ? "active" : ""}" data-tab-pane="${escapeHtml(key)}">
-    <div class="workspace-wide agent-pane" data-controller="agent-chat" data-agent-chat-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-chat-label-value="${escapeHtml(agent.label)}" data-agent-chat-autostart-value="${options.autostart || options.active ? "true" : "false"}">
-      <div id="${transcriptId}" class="chat agent-transcript" data-agent-chat-target="transcript">${renderAgentTranscript([])}</div>
-      <form class="composer" data-action="submit->agent-chat#submit">
-        <textarea data-agent-chat-target="input" placeholder="Reply to ${escapeHtml(agent.label)}…"></textarea>
-        <div class="row2"><span class="dropdown">Atelier agent</span><span class="spacer"></span><button class="btn primary sm" data-agent-chat-target="submitButton" type="submit">Send</button></div>
-      </form>
+  return `<section id="${domId("agent_pane", ctx.workspaceId, agent.label)}" class="tab-pane agent-tab-pane ${options.active ? "active" : ""}" data-tab-pane="${escapeHtml(key)}">
+    <div class="agent-pane" id="${ids.pane(ctx)}"
+      data-controller="agent-pane agent-attachments"
+      data-agent-pane-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
+      data-agent-pane-label-value="${escapeHtml(ctx.label)}"
+      data-agent-attachments-upload-url-value="${escapeHtml(agentPath(ctx, "/attachments"))}"
+      data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
+      <div class="agent-transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
+      <div class="agent-promptwrap">
+        <div class="agent-promptbox">
+          <form method="post" action="${escapeHtml(agentPath(ctx, "/messages"))}" data-agent-pane-target="form" data-action="turbo:submit-end->agent-pane#submitted click->agent-pane#focusInput">
+            <div class="agent-attach-row" id="${ids.attachRow(ctx)}" data-agent-attachments-target="row"></div>
+            <textarea class="agent-input" name="text" rows="1" placeholder="Message ${escapeHtml(ctx.label)}… (drop files anywhere)"
+              data-agent-pane-target="input"
+              data-action="keydown->agent-pane#inputKeydown input->agent-pane#autosize"></textarea>
+            <div class="agent-prompt-actions">
+              <span class="agent-drop-hint" data-agent-attachments-target="hint">Drop files to attach</span>
+              <span class="spacer"></span>
+              <span id="${ids.actions(ctx)}">${renderPromptActions(ctx, state.busy)}</span>
+            </div>
+          </form>
+          <div class="agent-statbar" id="${ids.stats(ctx)}">${renderStatsBar(ctx, state.stats)}</div>
+        </div>
+      </div>
+      ${renderRewindDialog(ctx)}
     </div>
   </section>`;
 }
 
-export function agentTranscriptId(workspaceId: string, label: string): string {
-  return domId("agent_transcript", workspaceId, label);
+export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): string {
+  if (!busy) {
+    return `<button class="agent-btn primary" type="submit" name="mode" value="send">Send <kbd>⌘↩</kbd></button>`;
+  }
+  return `<button class="agent-btn steer" type="submit" name="mode" value="steer" title="Deliver between turns, while the agent keeps working">Steer</button>
+<button class="agent-btn primary" type="submit" name="mode" value="followup" title="Deliver after the agent finishes">Follow-up <kbd>⌘↩</kbd></button>`;
 }
 
-export function agentTurnId(workspaceId: string, label: string, turnId: string): string {
-  return domId("agent_turn", workspaceId, label, turnId);
+export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): string {
+  const percent = stats.contextPercent;
+  const meter = percent === null
+    ? ""
+    : `<span class="agent-stat" title="Context window used"><span class="agent-ctx-meter"><i style="width:${Math.min(100, Math.max(0, percent)).toFixed(0)}%"></i></span><b>${percent.toFixed(0)}%</b></span>`;
+  const modelOptions = stats.models.map((model) =>
+    `<option value="${escapeHtml(`${model.provider}::${model.id}`)}"${model.selected ? " selected" : ""}>${escapeHtml(model.name)}</option>`).join("");
+  const thinkingOptions = stats.thinkingLevels.map((level) =>
+    `<option value="${escapeHtml(level)}"${level === stats.thinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("");
+  return `${meter}
+<span class="agent-stat" title="Tokens up (input)">↑ <b>${formatTokens(stats.inputTokens)}</b></span>
+<span class="agent-stat" title="Tokens down (output)">↓ <b>${formatTokens(stats.outputTokens)}</b></span>
+<span class="agent-stat" title="Session cost"><b>${formatCost(stats.cost)}</b></span>
+<span class="agent-stat-right">
+<form method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" data-controller="agent-autosubmit"><select class="agent-sel" name="model" data-action="change->agent-autosubmit#submit" title="Model">${modelOptions || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`}</select></form>
+${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" data-controller="agent-autosubmit"><select class="agent-sel" name="level" data-action="change->agent-autosubmit#submit" title="Thinking level">${thinkingOptions}</select></form>` : ""}
+</span>`;
 }
 
-export function agentTextId(workspaceId: string, label: string, turnId: string): string {
-  return domId("agent_text", workspaceId, label, turnId);
+// ---------------------------------------------------------------------------
+// Transcript / sections
+// ---------------------------------------------------------------------------
+
+export function renderTranscript(ctx: AgentRenderContext, sections: SectionView[]): string {
+  return `<div class="agent-notices" id="${ids.notices(ctx)}"></div>${sections.map((section) => renderSection(ctx, section)).join("")}`;
 }
 
-export function agentActivityId(workspaceId: string, label: string, turnId: string): string {
-  return domId("agent_activity", workspaceId, label, turnId);
-}
-
-export function agentActivitySummaryId(workspaceId: string, label: string, turnId: string): string {
-  return domId("agent_activity_summary", workspaceId, label, turnId);
-}
-
-export function agentActivityEventsId(workspaceId: string, label: string, turnId: string): string {
-  return domId("agent_activity_events", workspaceId, label, turnId);
-}
-
-export function renderAgentTranscript(turns: string[]): string {
-  return turns.join("");
-}
-
-export function renderTurnGroupShell(workspaceId: string, label: string, turnId: string, userText: string, assistantText = ""): string {
-  return `<div id="${agentTurnId(workspaceId, label, turnId)}" class="turn-group">
-    ${renderUserMessage(userText)}
-    ${renderActivityFold(workspaceId, label, turnId)}
-    ${renderAssistantMessageShell(workspaceId, label, turnId, assistantText)}
+export function renderSection(ctx: AgentRenderContext, section: SectionView): string {
+  if (section.summaryNote !== undefined) {
+    return `<div class="agent-section agent-summary-section" id="${ids.section(ctx, section.sid)}" data-sid="${escapeHtml(section.sid)}">
+      <div class="agent-note summary">${markdown(ctx, section.summaryNote)}</div>
+    </div>`;
+  }
+  const hasThinking = section.items.some((item) => item.type === "thinking");
+  const hasActivity = section.items.length > 0 || section.streaming;
+  const summary = section.streaming
+    ? renderActivitySummaryStreaming(ctx, section, section.startedAt ?? Date.now())
+    : `<button class="agent-actsum" type="button" id="${ids.activitySummary(ctx, section.sid)}" data-action="agent-pane#toggleActivity"><span class="agent-chev">▸</span>${escapeHtml(summarizeSectionStats(section.stats, { hasThinking }))}</button>`;
+  return `<div class="agent-section${section.streaming ? " streaming" : ""}" id="${ids.section(ctx, section.sid)}" data-sid="${escapeHtml(section.sid)}">
+    ${section.userEntryId ? renderRewindZone(ctx, section) : ""}
+    ${section.user ? renderUserMessage(ctx, section.user) : ""}
+    <div class="agent-activity" id="${ids.activity(ctx, section.sid)}"${hasActivity ? "" : " hidden"}>
+      <div class="agent-actrow" id="${ids.activityRow(ctx, section.sid)}">${summary}</div>
+      <div class="agent-actbody" id="${ids.activityBody(ctx, section.sid)}">${section.items.map((item, index) => renderItem(ctx, section.sid, index, item, { live: section.streaming && index === section.items.length - 1 })).join("")}</div>
+    </div>
+    <div class="agent-final" id="${ids.final(ctx, section.sid)}">${section.finalText ? renderFinalText(ctx, section.finalText) : ""}</div>
+    ${section.errorMessage ? `<div class="agent-error">${escapeHtml(section.errorMessage)}</div>` : ""}
   </div>`;
 }
 
-export function renderUserMessage(text: string): string {
-  return `<div class="msg user"><div class="bubble"><p>${escapeHtml(text)}</p></div></div>`;
+export function renderActivitySummaryStreaming(ctx: AgentRenderContext, section: SectionView, startedAt: number): string {
+  const hasThinking = section.items.some((item) => item.type === "thinking");
+  const label = section.items.length === 0 ? "working" : summarizeSectionStats(section.stats, { hasThinking });
+  return `<button class="agent-actsum" type="button" id="${ids.activitySummary(ctx, section.sid)}" data-action="agent-pane#toggleActivity"><span class="agent-chev">▸</span>${escapeHtml(label)}</button>
+<form method="post" action="${escapeHtml(agentPath(ctx, "/abort"))}" class="agent-stopform"><button class="agent-stop" type="submit" title="Stop the agent" data-controller="agent-elapsed" data-agent-elapsed-since-value="${startedAt}"><span class="agent-stop-sq"></span><span data-agent-elapsed-target="time">0s</span></button></form>`;
 }
 
-export function renderAssistantMessageShell(workspaceId: string, label: string, turnId: string, text = ""): string {
-  return `<div class="msg agent"><div class="bubble">${renderAssistantTextContainer(workspaceId, label, turnId, text)}</div></div>`;
+function renderRewindZone(ctx: AgentRenderContext, section: SectionView): string {
+  if (!section.userEntryId) return "";
+  return `<div class="agent-rewind-zone"><button class="agent-rewind-btn" type="button"
+    data-action="agent-pane#openRewind"
+    data-entry-id="${escapeHtml(section.userEntryId)}"
+    data-user-text="${escapeHtml(section.user?.text ?? "")}">⟲ Rewind to here</button></div>`;
 }
 
-export function renderAssistantTextContainer(workspaceId: string, label: string, turnId: string, text = ""): string {
-  return `<div id="${agentTextId(workspaceId, label, turnId)}" class="agent-text">${escapeHtml(text)}</div>`;
+export function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images: { mimeType: string; data: string }[] }): string {
+  const images = user.images.length > 0
+    ? `<div class="agent-user-attachments">${user.images.map((image) => `<img src="data:${escapeHtml(image.mimeType)};base64,${escapeHtml(image.data)}" alt="attachment">`).join("")}</div>`
+    : "";
+  return `<div class="agent-user"><div class="agent-user-bubble">${markdown(ctx, user.text)}${images}</div></div>`;
 }
 
-export function renderActivityFold(workspaceId: string, label: string, turnId: string, summary = "internal activity"): string {
-  return `<details id="${agentActivityId(workspaceId, label, turnId)}" class="activity-fold"><summary id="${agentActivitySummaryId(workspaceId, label, turnId)}">${renderActivitySummary(summary)}</summary><div id="${agentActivityEventsId(workspaceId, label, turnId)}" class="hidden-events"></div></details>`;
+export function renderFinalText(ctx: AgentRenderContext, text: string): string {
+  return `<div class="agent-md">${markdown(ctx, text)}</div>`;
 }
 
-export function renderActivitySummary(summary: string): string {
-  return `<span class="activity-dots"><i></i><i></i><i></i></span><span>${escapeHtml(summary)}</span>`;
+// ---------------------------------------------------------------------------
+// Items
+// ---------------------------------------------------------------------------
+
+export function renderItem(ctx: AgentRenderContext, sid: string, index: number, item: SectionItem, options: { live?: boolean } = {}): string {
+  const id = ids.item(ctx, sid, index);
+  if (item.type === "thinking") {
+    return `<div class="agent-item agent-thinking" id="${id}"><div class="agent-thinking-text" id="${ids.itemText(ctx, sid, index)}">${escapeHtml(item.text)}</div></div>`;
+  }
+  if (item.type === "text") {
+    if (options.live) {
+      return `<div class="agent-item agent-itext" id="${id}"><div class="agent-stream-text" id="${ids.itemText(ctx, sid, index)}">${escapeHtml(item.text)}</div></div>`;
+    }
+    return `<div class="agent-item agent-itext" id="${id}"><div class="agent-md">${markdown(ctx, item.text)}</div></div>`;
+  }
+  if (item.type === "note") {
+    return `<div class="agent-item agent-note ${escapeHtml(item.tone)}" id="${id}">${markdown(ctx, item.text)}</div>`;
+  }
+  if (item.tool.status === "streaming") {
+    return renderStreamingToolItem(ctx, sid, index, item.tool.name, item.tool.argsStream ?? "");
+  }
+  return `<div class="agent-item" id="${id}">${renderToolCard(ctx, item.tool)}</div>`;
 }
 
-export function renderThinkingEntry(id: string): string {
-  return `<div class="msg thinking"><div class="bubble"><div id="${escapeHtml(id)}" class="agent-thinking-text"></div></div></div>`;
+/** Streaming placeholders used by the live pipeline (content streamed into the text target). */
+export function renderStreamingThinkingItem(ctx: AgentRenderContext, sid: string, index: number): string {
+  return `<div class="agent-item agent-thinking" id="${ids.item(ctx, sid, index)}"><div class="agent-thinking-text" id="${ids.itemText(ctx, sid, index)}"></div></div>`;
 }
 
-export function renderToolCallEntry(id: string, name: string, status = "running"): string {
-  return `<div id="${escapeHtml(id)}" class="msg toolcall"><div class="bubble"><span>tool</span><code>${escapeHtml(name)}</code><span class="tool-result">${escapeHtml(status)}</span></div></div>`;
+export function renderStreamingTextItem(ctx: AgentRenderContext, sid: string, index: number): string {
+  return `<div class="agent-item agent-itext" id="${ids.item(ctx, sid, index)}"><div class="agent-stream-text" id="${ids.itemText(ctx, sid, index)}"></div></div>`;
 }
 
-export function renderToolResultSummary(name: string, status: string): string {
-  return `<div class="bubble"><span>tool</span><code>${escapeHtml(name)}</code><span class="tool-result">${escapeHtml(status)}</span></div>`;
+export function renderStreamingToolItem(ctx: AgentRenderContext, sid: string, index: number, name: string, argsStream = ""): string {
+  return `<div class="agent-item" id="${ids.item(ctx, sid, index)}"><div class="agent-tool streaming">
+    <div class="agent-tool-head"><span class="agent-tool-glyph run"></span><code class="agent-tool-name">${escapeHtml(name || "tool")}</code><span class="agent-tool-args">composing…</span></div>
+    <pre class="agent-tool-stream" id="${ids.itemText(ctx, sid, index)}">${escapeHtml(argsStream)}</pre>
+  </div></div>`;
+}
+
+export function renderRunningToolCard(ctx: AgentRenderContext, tool: ToolView): string {
+  const argsSummary = toolArgsSummary(tool);
+  const showTerminal = Boolean(tool.tmuxSession && tool.terminalVisible);
+  const terminal = showTerminal
+    ? `<div class="agent-tool-term" data-controller="agent-term"
+        data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
+        data-agent-term-label-value="${escapeHtml(ctx.label)}"
+        data-agent-term-session-value="${escapeHtml(tool.tmuxSession!)}"></div>`
+    : tool.resultText
+      ? `<pre class="agent-tool-stream agent-tool-livestream">${escapeHtml(tool.resultText)}</pre>`
+      : "";
+  const elapsed = tool.startedAt
+    ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/abort"))}" class="agent-stopform"><button class="agent-stop" type="submit" title="Stop" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}"${tool.timeoutSeconds ? ` data-agent-elapsed-max-value="${tool.timeoutSeconds}"` : ""}><span class="agent-stop-sq"></span><span data-agent-elapsed-target="time">0s</span></button></form>`
+    : "";
+  return `<div class="agent-tool running">
+    <div class="agent-tool-head"><span class="agent-tool-glyph run"></span><code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span>${elapsed}</div>
+    ${terminal}
+  </div>`;
+}
+
+const toolResultPreviewLimit = 4000;
+
+export function renderToolCard(ctx: AgentRenderContext, tool: ToolView): string {
+  if (tool.status === "running") return renderRunningToolCard(ctx, tool);
+  const glyph = tool.status === "error" ? `<span class="agent-tool-glyph err">✕</span>` : `<span class="agent-tool-glyph ok">✓</span>`;
+  const argsSummary = toolArgsSummary(tool);
+  const params = toolParamsText(tool);
+  const result = (tool.resultText ?? "").trimEnd();
+  const truncated = result.length > toolResultPreviewLimit;
+  const shown = truncated ? `${result.slice(0, toolResultPreviewLimit)}\n… (${formatTokens(result.length)} chars total)` : result;
+  return `<details class="agent-tool done${tool.status === "error" ? " error" : ""}">
+    <summary class="agent-tool-head">${glyph}<code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span></summary>
+    <div class="agent-tool-detail">
+      ${params ? `<pre class="agent-tool-params">${escapeHtml(params)}</pre>` : ""}
+      ${shown ? `<pre class="agent-tool-result">${escapeHtml(shown)}</pre>` : `<div class="agent-tool-empty">no output</div>`}
+    </div>
+  </details>`;
+}
+
+export function toolArgsSummary(tool: ToolView): string {
+  const args = tool.args as Record<string, unknown> | undefined;
+  if (!args || typeof args !== "object") return "";
+  if (typeof args.command === "string") return args.command.length > 120 ? `${args.command.slice(0, 120)}…` : args.command;
+  if (typeof args.path === "string") return args.path;
+  if (typeof args.file_path === "string") return args.file_path;
+  const json = JSON.stringify(args);
+  return json && json !== "{}" ? (json.length > 120 ? `${json.slice(0, 120)}…` : json) : "";
+}
+
+function toolParamsText(tool: ToolView): string {
+  const args = tool.args as Record<string, unknown> | undefined;
+  if (!args || typeof args !== "object") return "";
+  const keys = Object.keys(args);
+  if (keys.length === 0) return "";
+  // Single string arg that is already shown in the summary: skip params block.
+  if (keys.length === 1 && typeof args[keys[0]] === "string" && toolArgsSummary(tool) === args[keys[0]]) return "";
+  return JSON.stringify(args, null, 2);
+}
+
+// ---------------------------------------------------------------------------
+// Attachments / notices / rewind dialog
+// ---------------------------------------------------------------------------
+
+export function renderAttachmentChip(ctx: AgentRenderContext, attachment: { id: string; name: string; size: number; isImage: boolean }): string {
+  return `<span class="agent-chip" id="${ids.chip(ctx, attachment.id)}">
+    <input type="hidden" name="attachment" value="${escapeHtml(attachment.id)}">
+    <span class="agent-chip-ico">${attachment.isImage ? "🖼" : "📄"}</span>
+    <span class="agent-chip-name">${escapeHtml(attachment.name)}</span>
+    <span class="agent-chip-size">${formatBytes(attachment.size)}</span>
+    <button type="button" class="agent-chip-x" data-action="agent-attachments#remove" data-attachment-id="${escapeHtml(attachment.id)}" data-chip-id="${ids.chip(ctx, attachment.id)}">✕</button>
+  </span>`;
 }
 
 export function renderNotice(level: "info" | "error", message: string): string {
-  return `<div class="agent-notice ${escapeHtml(level)}">${escapeHtml(message)}</div>`;
+  return `<div class="agent-noticeline ${escapeHtml(level)}" data-controller="agent-notice">${escapeHtml(message)}</div>`;
+}
+
+function renderRewindDialog(ctx: AgentRenderContext): string {
+  return `<dialog class="agent-rewind-dialog" data-agent-pane-target="rewindDialog">
+    <form method="post" action="${escapeHtml(agentPath(ctx, "/rewind"))}" data-action="turbo:submit-start->agent-pane#rewindSubmitted">
+      <h2>⟲ Rewind conversation</h2>
+      <p class="agent-rewind-sub">Everything from <b data-agent-pane-target="rewindPreview"></b> onward is removed from the active branch. Files in the workspace are not changed.</p>
+      <input type="hidden" name="entry" value="" data-agent-pane-target="rewindEntry">
+      <label class="agent-rewind-opt"><input type="radio" name="rewindMode" value="discard" checked> <span><span class="t">Discard the tail</span><span class="d">Just go back. The branch stays in the session file.</span></span></label>
+      <label class="agent-rewind-opt"><input type="radio" name="rewindMode" value="summary"> <span><span class="t">Replace with an AI summary</span><span class="d">A generated summary of the discarded turns is kept as context.</span></span></label>
+      <label class="agent-rewind-opt"><input type="radio" name="rewindMode" value="custom"> <span><span class="t">Replace with custom text</span><span class="d">Write your own note about what happened.</span><textarea name="note" rows="2" placeholder="e.g. We tried X; abandoned because…" data-action="focus->agent-pane#rewindPickCustom"></textarea></span></label>
+      <div class="agent-rewind-actions">
+        <button class="agent-btn" type="button" data-action="agent-pane#closeRewind">Cancel</button>
+        <button class="agent-btn primary" type="submit">Rewind</button>
+      </div>
+    </form>
+  </dialog>`;
+}
+
+function formatBytes(size: number): string {
+  if (size >= 1_000_000) return `${(size / 1_000_000).toFixed(1)} MB`;
+  if (size >= 1000) return `${Math.round(size / 1000)} KB`;
+  return `${size} B`;
 }

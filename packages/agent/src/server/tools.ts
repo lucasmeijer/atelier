@@ -1,12 +1,12 @@
 import { dirname, posix } from "node:path";
 import { execWorkspaceCommand, execWorkspaceShell } from "@atelier/core";
 import {
-  createBashToolDefinition,
   createEditToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { createTmuxBashTool } from "./bash-tmux.ts";
 
 const workspaceRoot = "/repos";
 const maxReadBytes = 200_000;
@@ -86,15 +86,6 @@ export function createWorkspaceAgentTools(workspaceId: string): ToolDefinition<a
       access: (path) => accessFile(workspaceId, normalizeWorkspacePath(path)),
     },
   });
-  const bash = createBashToolDefinition(workspaceRoot, {
-    operations: {
-      exec: async (command, _cwd, options) => {
-        const result = await execWorkspaceShell(workspaceId, command, { workdir: workspaceRoot });
-        const output = `${result.stdout}${result.stderr}`;
-        if (output) options.onData(Buffer.from(output));
-        return { exitCode: result.exitCode };
-      },
-    },
-  });
+  const bash = createTmuxBashTool(workspaceId);
   return [read, write, edit, bash];
 }

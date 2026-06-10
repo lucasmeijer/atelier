@@ -1,6 +1,7 @@
 import {
   createNextWorkspaceAgent,
   agentWorkspaceModule,
+  handleAgentRequest,
 } from "@atelier/agent/server";
 import {
   containerHealthStreamEndpoint,
@@ -10,6 +11,7 @@ import {
 import {
   AtelierCoreError,
   addManagedRepo,
+  type AtelierEventBus,
   cloneManagedRepoIntoWorkspace,
   generateWorkspaceId,
   getWorkspaceRepoMergeability,
@@ -32,6 +34,8 @@ export interface WebAppDeps {
   registry: WorkspaceRegistry;
   hub: StreamHub;
   layouts: WorkspaceLayoutStore;
+  /** Event bus passed through to the agent module routes. */
+  events?: AtelierEventBus;
   /** Create the container + default agent etc. for an already-registered workspace id. */
   provisionWorkspace(id: string): Promise<void>;
   inspectDeleteSafety(id: string): Promise<WorkspaceDeleteBlockedDetails>;
@@ -131,7 +135,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function workspaceSidebarTitleFrame(id: string, title: string): string {
     const frameId = domId("workspace_sidebar_title", id);
     return `<turbo-frame id="${frameId}" class="workspace-row-title-frame">
-    <a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-action="workspace-list#select"><div class="r-title">${escapeHtml(title)}</div></a>
+    <a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"><div class="r-title">${escapeHtml(title)}</div></a>
     <a class="workspace-row-edit" href="/workspaces/${encodeURIComponent(id)}/sidebar-title/edit" data-turbo-frame="${frameId}" title="Rename workspace">✎</a>
   </turbo-frame>`;
   }
@@ -205,6 +209,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 <title>${escapeHtml(atelierName)} · ${escapeHtml(title)}</title>
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/terminal.css">
+<link rel="stylesheet" href="/agent.css">
 <link rel="stylesheet" href="/container-health.css">
 <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.13/dist/turbo.es2017-esm.js"></script>
 <script type="module">
@@ -236,10 +241,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   async function renderWorkspaceSidebar(): Promise<string> {
     const { repos: managedRepos } = await listManagedRepos();
 
-    // data-turbo-frame="_top": this form lives inside the workspace_sidebar frame;
-    // without it Turbo would confine the 303 redirect to the frame and the new
-    // workspace would never be navigated to (and thus never selected).
-    const newWorkspaceRow = `<form class="contents" method="post" action="/workspaces" data-turbo-frame="_top"><button class="row ghost-row" type="submit">
+    // JavaScript submits this as a Turbo Stream and then switches the resident
+    // client-side. Without JavaScript, the endpoint still falls back to a 303.
+    const newWorkspaceRow = `<form class="contents" method="post" action="/workspaces" data-turbo="false" data-action="submit->workspace-list#createWorkspace"><button class="row ghost-row" type="submit">
     <span></span>
     <div><div class="r-title">+ New workspace</div></div>
     <span></span>
@@ -408,7 +412,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // Create / delete / dismiss
   // ---------------------------------------------------------------------------
 
-  function createWorkspaceEndpoint(url: URL): Response {
+  function createWorkspaceEndpoint(url: URL, request: Request): Response {
     const id = generateWorkspaceId();
     registry.add(id);
     void (async () => {
@@ -426,7 +430,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         if (entry) hub.broadcast(turboReplaceStream(workspaceBootId(id), workspaceBootResidentHtml(entry)));
       }
     })();
-    return Response.redirect(new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString(), 303);
+    const location = new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString();
+    if (wantsTurboStream(request)) {
+      return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()), { headers: { location } });
+    }
+    return Response.redirect(location, 303);
   }
 
   async function broadcastWorkspaceReady(id: string): Promise<void> {
@@ -697,13 +705,16 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (url.pathname === "/" && request.method === "GET") return await homePage();
     if (url.pathname === "/workspace-events/stream" && request.method === "GET") return hub.sseResponse(initialStatusStreams);
     if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
-    if (url.pathname === "/workspaces" && request.method === "POST") return createWorkspaceEndpoint(url);
+    if (url.pathname === "/workspaces" && request.method === "POST") return createWorkspaceEndpoint(url, request);
     if (url.pathname === "/managed-repos" && request.method === "POST") return await createManagedRepoFromForm(request, url);
 
     const match = (pattern: RegExp): string[] | undefined => {
       const result = url.pathname.match(pattern);
       return result ? result.slice(1).map(decodeURIComponent) : undefined;
     };
+
+    const agentResponse = await handleAgentRequest(request, url, { events: deps.events });
+    if (agentResponse) return agentResponse;
 
     let params: string[] | undefined;
 

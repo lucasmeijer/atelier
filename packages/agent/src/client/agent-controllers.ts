@@ -1,0 +1,409 @@
+/// <reference lib="dom" />
+
+import { Terminal } from "@xterm/xterm";
+
+type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
+
+type StimulusApplication = {
+  getControllerForElementAndIdentifier(element: Element, identifier: string): unknown;
+};
+
+declare global {
+  interface Window {
+    Turbo?: { renderStreamMessage(html: string): void };
+  }
+}
+
+type TurboStreamActionThis = { targetElements: Element[]; templateContent: DocumentFragment };
+
+/** Registers the custom `append_text` turbo-stream action used for token streaming. */
+export function registerAgentStreamActions(): void {
+  const actions = (window.Turbo as unknown as { StreamActions?: Record<string, (this: TurboStreamActionThis) => void> } | undefined)?.StreamActions;
+  if (!actions || actions.append_text) return;
+  actions.append_text = function appendText(this: TurboStreamActionThis) {
+    const text = this.templateContent.textContent ?? "";
+    for (const element of this.targetElements) element.appendChild(document.createTextNode(text));
+  };
+}
+
+export interface AgentPaneControllerInstance {
+  start(): void;
+}
+
+// ---------------------------------------------------------------------------
+// agent-pane: SSE lifecycle, scroll anchoring, prompt behavior, rewind dialog
+// ---------------------------------------------------------------------------
+
+export function createAgentPaneController(Controller: StimulusControllerConstructor) {
+  return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
+    static values = { workspaceId: String, label: String };
+    static targets = ["transcript", "input", "form", "rewindDialog", "rewindEntry", "rewindPreview"];
+    declare readonly element: HTMLElement;
+    declare readonly workspaceIdValue: string;
+    declare readonly labelValue: string;
+    declare readonly transcriptTarget: HTMLElement;
+    declare readonly inputTarget: HTMLTextAreaElement;
+    declare readonly formTarget: HTMLFormElement;
+    declare readonly rewindDialogTarget: HTMLDialogElement;
+    declare readonly rewindEntryTarget: HTMLInputElement;
+    declare readonly rewindPreviewTarget: HTMLElement;
+
+    private source?: EventSource;
+    private stuck = true;
+    private observer?: MutationObserver;
+    private rewindUserText = "";
+    private readonly onScroll = (): void => {
+      const el = this.transcriptTarget;
+      this.stuck = el.scrollTop + el.clientHeight >= el.scrollHeight - 60;
+    };
+    private readonly onKeydown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && this.element.closest(".tab-pane")?.classList.contains("active")) {
+        void fetch(this.path("/abort"), { method: "POST" });
+      }
+    };
+    /** Sections/tools the user explicitly expanded; survives transcript re-renders. */
+    private readonly onBeforeStreamRender = (event: Event): void => {
+      const detail = (event as CustomEvent).detail as { render?: (element: Element) => Promise<void> } | undefined;
+      const original = detail?.render;
+      if (!detail || !original) return;
+      const pane = this.element;
+      detail.render = async (element: Element) => {
+        const openActivities = Array.from(pane.querySelectorAll(".agent-activity.open")).map((node) => node.id).filter(Boolean);
+        const openDetails = Array.from(pane.querySelectorAll("details[open]")).map((node) => (node.closest(".agent-item") as HTMLElement | null)?.id).filter(Boolean) as string[];
+        await original(element);
+        for (const id of openActivities) document.getElementById(id)?.classList.add("open");
+        for (const id of openDetails) document.getElementById(id)?.querySelector("details")?.setAttribute("open", "");
+      };
+    };
+
+    connect(): void {
+      registerAgentStreamActions();
+      this.observer = new MutationObserver(() => {
+        if (this.stuck) {
+          requestAnimationFrame(() => {
+            this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
+          });
+        }
+      });
+      this.observer.observe(this.transcriptTarget, { childList: true, subtree: true, characterData: true });
+      this.transcriptTarget.addEventListener("scroll", this.onScroll);
+      document.addEventListener("keydown", this.onKeydown);
+      document.addEventListener("turbo:before-stream-render", this.onBeforeStreamRender);
+      if (this.element.closest(".tab-pane")?.classList.contains("active")) this.start();
+    }
+
+    disconnect(): void {
+      this.observer?.disconnect();
+      this.transcriptTarget.removeEventListener("scroll", this.onScroll);
+      document.removeEventListener("keydown", this.onKeydown);
+      document.removeEventListener("turbo:before-stream-render", this.onBeforeStreamRender);
+      this.source?.close();
+      this.source = undefined;
+    }
+
+    start(): void {
+      if (this.source && this.source.readyState !== EventSource.CLOSED) return;
+      const source = new EventSource(this.path("/events"));
+      source.onmessage = (event) => {
+        window.Turbo?.renderStreamMessage(event.data);
+      };
+      this.source = source;
+    }
+
+    private path(suffix: string): string {
+      return `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agents/${encodeURIComponent(this.labelValue)}${suffix}`;
+    }
+
+    // ---- prompt box ----
+
+    inputKeydown(event: KeyboardEvent): void {
+      // Enter inserts a newline; ⌘/Ctrl+Enter sends (or follow-ups when busy).
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        if (this.inputTarget.value.trim() || this.formTarget.querySelector(".agent-chip")) {
+          const submitter = this.formTarget.querySelector<HTMLButtonElement>('button[value="send"], button[value="followup"]');
+          this.formTarget.requestSubmit(submitter ?? undefined);
+        }
+      }
+    }
+
+    focusInput(event: Event): void {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest("button, select, input, a, textarea, .agent-chip")) return;
+      const input = this.inputTarget;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
+
+    autosize(): void {
+      const input = this.inputTarget;
+      input.style.height = "auto";
+      input.style.height = `${Math.min(input.scrollHeight, 220)}px`;
+    }
+
+    submitted(event: Event): void {
+      const detail = (event as CustomEvent).detail as { success?: boolean } | undefined;
+      if (detail?.success === false) return;
+      this.inputTarget.value = "";
+      this.autosize();
+      // Attachments were delivered with the message; clear the chips.
+      this.formTarget.querySelectorAll(".agent-chip").forEach((chip) => chip.remove());
+      this.stuck = true;
+      this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
+      this.inputTarget.focus();
+    }
+
+    // ---- collapse / expand ----
+
+    toggleActivity(event: Event): void {
+      const target = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+      target?.closest(".agent-activity")?.classList.toggle("open");
+    }
+
+    // ---- rewind ----
+
+    openRewind(event: Event): void {
+      const button = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+      if (!button) return;
+      this.rewindEntryTarget.value = button.dataset.entryId ?? "";
+      this.rewindUserText = button.dataset.userText ?? "";
+      const preview = this.rewindUserText.length > 80 ? `${this.rewindUserText.slice(0, 80)}…` : this.rewindUserText;
+      this.rewindPreviewTarget.textContent = `“${preview}”`;
+      if (!this.rewindDialogTarget.open) this.rewindDialogTarget.showModal();
+    }
+
+    closeRewind(): void {
+      this.rewindDialogTarget.close();
+    }
+
+    rewindPickCustom(event: Event): void {
+      const textarea = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+      const label = textarea?.closest(".agent-rewind-opt");
+      const radio = label?.querySelector<HTMLInputElement>("input[type=radio]");
+      if (radio) radio.checked = true;
+    }
+
+    rewindSubmitted(): void {
+      // Close immediately on submit; the rewind itself streams in via SSE
+      // (summaries behave like a busy agent with a stop button).
+      this.rewindDialogTarget.close();
+      if (this.rewindUserText && !this.inputTarget.value.trim()) {
+        this.inputTarget.value = this.rewindUserText;
+        this.autosize();
+        this.inputTarget.focus();
+      }
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// agent-autosubmit: submit a small form when its select changes
+// ---------------------------------------------------------------------------
+
+export function createAgentAutosubmitController(Controller: StimulusControllerConstructor) {
+  return class AgentAutosubmitController extends Controller {
+    declare readonly element: HTMLFormElement;
+
+    submit(): void {
+      this.element.requestSubmit();
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// agent-elapsed: ticking elapsed time inside the stop button
+// ---------------------------------------------------------------------------
+
+export function createAgentElapsedController(Controller: StimulusControllerConstructor) {
+  return class AgentElapsedController extends Controller {
+    static values = { since: Number, max: Number };
+    static targets = ["time"];
+    declare readonly sinceValue: number;
+    declare readonly maxValue: number;
+    declare readonly hasMaxValue: boolean;
+    declare readonly timeTargets: HTMLElement[];
+    private timer?: ReturnType<typeof setInterval>;
+
+    connect(): void {
+      const format = (seconds: number): string => {
+        if (seconds < 60) return `${seconds}s`;
+        const minutes = Math.floor(seconds / 60);
+        const rest = seconds % 60;
+        return rest === 0 ? `${minutes}m` : `${minutes}m${String(rest).padStart(2, "0")}`;
+      };
+      const update = () => {
+        const seconds = Math.max(0, Math.round((Date.now() - this.sinceValue) / 1000));
+        const max = this.hasMaxValue && this.maxValue > 0 ? ` max ${format(this.maxValue)}` : "";
+        for (const target of this.timeTargets) target.textContent = `${format(seconds)}${max}`;
+      };
+      update();
+      this.timer = setInterval(update, 1000);
+    }
+
+    disconnect(): void {
+      if (this.timer) clearInterval(this.timer);
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// agent-notice: transient notice lines auto-dismiss
+// ---------------------------------------------------------------------------
+
+export function createAgentNoticeController(Controller: StimulusControllerConstructor) {
+  return class AgentNoticeController extends Controller {
+    declare readonly element: HTMLElement;
+    private timer?: ReturnType<typeof setTimeout>;
+
+    connect(): void {
+      this.timer = setTimeout(() => this.element.remove(), 8000);
+    }
+
+    disconnect(): void {
+      if (this.timer) clearTimeout(this.timer);
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// agent-attachments: drag & drop + uploads with progress chips
+// ---------------------------------------------------------------------------
+
+let dropGuardInstalled = false;
+
+function installDropGuard(): void {
+  if (dropGuardInstalled) return;
+  dropGuardInstalled = true;
+  // Never let a stray drop navigate the app away.
+  window.addEventListener("dragover", (event) => event.preventDefault());
+  window.addEventListener("drop", (event) => event.preventDefault());
+}
+
+export function createAgentAttachmentsController(Controller: StimulusControllerConstructor) {
+  return class AgentAttachmentsController extends Controller {
+    static values = { uploadUrl: String };
+    static targets = ["row", "hint"];
+    declare readonly element: HTMLElement;
+    declare readonly uploadUrlValue: string;
+    declare readonly rowTarget: HTMLElement;
+
+    connect(): void {
+      installDropGuard();
+    }
+
+    dragOver(event: DragEvent): void {
+      if (!event.dataTransfer?.types.includes("Files")) return;
+      event.preventDefault();
+      this.element.classList.add("agent-dropping");
+    }
+
+    dragLeave(event: DragEvent): void {
+      if (event.target === this.element) this.element.classList.remove("agent-dropping");
+    }
+
+    drop(event: DragEvent): void {
+      this.element.classList.remove("agent-dropping");
+      const files = event.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      event.preventDefault();
+      for (const file of Array.from(files)) this.upload(file);
+    }
+
+    remove(event: Event): void {
+      const button = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+      const attachmentId = button?.dataset.attachmentId;
+      if (!attachmentId) return;
+      void fetch(`${this.uploadUrlValue}/${encodeURIComponent(attachmentId)}/delete`, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } })
+        .then((response) => response.text())
+        .then((html) => window.Turbo?.renderStreamMessage(html));
+    }
+
+    private upload(file: File): void {
+      const temp = document.createElement("span");
+      temp.className = "agent-chip uploading";
+      temp.innerHTML = `<span class="agent-chip-ico">⬆</span><span class="agent-chip-name"></span><span class="agent-chip-prog"><i style="width:0%"></i></span>`;
+      temp.querySelector(".agent-chip-name")!.textContent = file.name;
+      this.rowTarget.appendChild(temp);
+
+      const data = new FormData();
+      data.append("file", file);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", this.uploadUrlValue);
+      xhr.setRequestHeader("Accept", "text/vnd.turbo-stream.html");
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const bar = temp.querySelector<HTMLElement>(".agent-chip-prog i");
+        if (bar) bar.style.width = `${Math.round((event.loaded / event.total) * 100)}%`;
+      };
+      xhr.onload = () => {
+        temp.remove();
+        if (xhr.status >= 200 && xhr.status < 300) window.Turbo?.renderStreamMessage(xhr.responseText);
+      };
+      xhr.onerror = () => {
+        temp.classList.add("error");
+        temp.querySelector(".agent-chip-ico")!.textContent = "✕";
+        setTimeout(() => temp.remove(), 4000);
+      };
+      xhr.send(data);
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// agent-term: inline read-only xterm attached to an agent tmux session
+// ---------------------------------------------------------------------------
+
+export function createAgentTermController(Controller: StimulusControllerConstructor) {
+  return class AgentTermController extends Controller {
+    static values = { workspaceId: String, label: String, session: String };
+    declare readonly element: HTMLElement;
+    declare readonly workspaceIdValue: string;
+    declare readonly sessionValue: string;
+    private term?: Terminal;
+    private ws?: WebSocket;
+    private resizeObserver?: ResizeObserver;
+
+    connect(): void {
+      // Fixed size matching the server-side tmux session (window-size manual):
+      // the viewer never resizes the command's terminal.
+      const term = new Terminal({
+        cols: 120,
+        rows: 30,
+        cursorBlink: false,
+        disableStdin: true,
+        fontSize: 11,
+        fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
+        scrollback: 4000,
+        theme: { background: "#161a22", foreground: "#d3dae5" },
+      });
+      term.open(this.element);
+
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${protocol}//${location.host}/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agent-term/${encodeURIComponent(this.sessionValue)}/ws?cols=120&rows=30`);
+      ws.onmessage = (event) => {
+        if (typeof event.data === "string") term.write(event.data);
+        else (event.data as Blob).arrayBuffer().then((buffer) => term.write(new Uint8Array(buffer)));
+      };
+      this.term = term;
+      this.ws = ws;
+    }
+
+    disconnect(): void {
+      this.ws?.close();
+      this.resizeObserver?.disconnect();
+      this.term?.dispose();
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tab activation hook
+// ---------------------------------------------------------------------------
+
+export function startAgentTab(application: StimulusApplication, tabName: string, workspaceId?: string): void {
+  if (!tabName.startsWith("agent:")) return;
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>(`.tab-pane[data-tab-pane="${CSS.escape(tabName)}"] [data-controller~="agent-pane"]`));
+  const pane = workspaceId ? candidates.find((candidate) => candidate.dataset.agentPaneWorkspaceIdValue === workspaceId) : candidates[0];
+  const controller = pane ? application.getControllerForElementAndIdentifier(pane, "agent-pane") as AgentPaneControllerInstance | null : null;
+  controller?.start();
+}

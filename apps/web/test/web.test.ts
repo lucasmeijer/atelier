@@ -50,7 +50,7 @@ const blockedDetails = (id: string): WorkspaceDeleteBlockedDetails => ({
 });
 
 describe("web app contracts", () => {
-  test("POST /workspaces responds 303 to the new workspace before provisioning finishes", async () => {
+  test("POST /workspaces responds with streams and Location before provisioning finishes", async () => {
     const provision = deferred();
     const { app, registry, broadcasts } = createTestApp({ provision: () => provision.promise });
     await registry.seed([]);
@@ -58,11 +58,16 @@ describe("web app contracts", () => {
 
     const response = await app.fetch(post("/workspaces"));
 
-    expect(response.status).toBe(303);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
     const location = response.headers.get("location") ?? "";
     const id = location.match(/\/workspaces\/([^/]+)$/)?.[1] ?? "";
     expect(id).not.toBe("");
     expect(registry.get(id)?.phase).toBe("starting");
+
+    const body = await response.text();
+    expect(body).toContain('target="workspaces_table_rows"');
+    expect(body).toContain('data-phase="starting"');
 
     // The broadcast prepends a starting row for everyone (via the rows container).
     const listBroadcast = broadcasts.find((html) => html.includes('target="workspaces_table_rows"'));

@@ -1,13 +1,15 @@
 import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import {
-  closeAgentSocket,
+  agentStaticFiles,
+  closeAgentTermSocket,
   ensureDefaultWorkspaceAgent,
-  handleAgentSocketMessage,
-  openAgentSocket,
+  handleAgentTermSocketMessage,
+  isFakeMode,
+  openAgentTermSocket,
   subscribeWorkspaceTabBusy,
-  validateAgentSocket,
-  type AgentSocketData,
+  validateAgentTermSocket,
+  type AgentTermSocketData,
 } from "@atelier/agent/server";
 import { containerHealthStaticFiles } from "@atelier/container-health/server";
 import {
@@ -52,8 +54,9 @@ const app = createWebApp({
   registry,
   hub,
   layouts,
+  events: atelierEvents,
   async provisionWorkspace(id) {
-    await createWorkspace({ id });
+    if (!isFakeMode()) await createWorkspace({ id });
     await ensureDefaultWorkspaceAgent(id);
     await atelierEvents.emit("workspace_created", { workspaceId: id });
   },
@@ -69,13 +72,15 @@ subscribeWorkspaceTabBusy(({ workspaceId, tabKey, busy }) => registry.setTabBusy
 subscribeTerminalTabBusy(({ workspaceId, tabKey, busy }) => registry.setTabBusy(workspaceId, tabKey, busy));
 
 // Docker is the persistent truth for which workspaces exist; seed the registry from it.
-await registry.seed((await listWorkspaces()).workspaces);
+// In fake-agent mode (UI development without docker) we seed a demo workspace instead.
+await registry.seed(isFakeMode() ? [{ id: "demo", title: "Demo workspace" }] : (await listWorkspaces()).workspaces);
 
 async function serveStatic(pathname: string): Promise<Response | undefined> {
   const staticFiles: Record<string, { url: URL; contentType: string }> = {
     "/style.css": { url: new URL("../../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
     "/workspace.js": { url: new URL("../../public/workspace.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
     ...terminalStaticFiles,
+    ...agentStaticFiles,
     ...containerHealthStaticFiles,
   };
   const entry = staticFiles[pathname];
@@ -85,10 +90,10 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
   return new Response(file, { headers: { "content-type": entry.contentType } });
 }
 
-type SocketData = TerminalSocketData | AgentSocketData;
+type SocketData = TerminalSocketData | AgentTermSocketData;
 
 async function validateSocket(url: URL): Promise<SocketData | undefined> {
-  return (await validateAgentSocket(url)) ?? (await validateTerminalSocket(url));
+  return validateAgentTermSocket(url) ?? (await validateTerminalSocket(url));
 }
 
 const maxPortAttempts = 100;
@@ -101,6 +106,12 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
     const server = Bun.serve<SocketData>({
       hostname,
       port,
+      // The app intentionally uses long-lived SSE endpoints (workspace status,
+      // agent transcript streams, health metrics). Bun's default 10s idle
+      // timeout kills quiet EventSource requests and logs
+      // "request timed out after 10 seconds". Keep SSE alive with heartbeats,
+      // and give stalled samples enough headroom before Bun closes the request.
+      idleTimeout: 255,
       async fetch(request, server) {
         const url = new URL(request.url);
         const staticResponse = await serveStatic(url.pathname);
@@ -118,15 +129,15 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       websocket: {
         open(ws) {
           if (ws.data.kind === "terminal") openTerminalSocket(ws as ServerWebSocket<TerminalSocketData>);
-          if (ws.data.kind === "agent") void openAgentSocket(ws as ServerWebSocket<AgentSocketData>);
+          if (ws.data.kind === "agent-term") openAgentTermSocket(ws as ServerWebSocket<AgentTermSocketData>);
         },
         message(ws, message) {
           if (ws.data.kind === "terminal") handleTerminalSocketMessage(ws as ServerWebSocket<TerminalSocketData>, message);
-          if (ws.data.kind === "agent") void handleAgentSocketMessage(ws as ServerWebSocket<AgentSocketData>, message, { events: atelierEvents });
+          if (ws.data.kind === "agent-term") handleAgentTermSocketMessage(ws as ServerWebSocket<AgentTermSocketData>, message);
         },
         close(ws) {
           if (ws.data.kind === "terminal") closeTerminalSocket(ws as ServerWebSocket<TerminalSocketData>);
-          if (ws.data.kind === "agent") closeAgentSocket(ws as ServerWebSocket<AgentSocketData>);
+          if (ws.data.kind === "agent-term") closeAgentTermSocket(ws as ServerWebSocket<AgentTermSocketData>);
         },
       },
     });

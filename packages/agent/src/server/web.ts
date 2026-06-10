@@ -1,17 +1,36 @@
 import type { WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
-import { renderAgentPane } from "./render.ts";
+import { agentTabKey, renderAgentPane, type AgentStatsView } from "./render.ts";
 
 export async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgentInfo[]> {
   const agents = await listWorkspaceAgents(workspaceId);
   return agents.length > 0 ? agents : [await ensureDefaultWorkspaceAgent(workspaceId)];
 }
 
+const emptyStats: AgentStatsView = {
+  contextPercent: null,
+  inputTokens: 0,
+  outputTokens: 0,
+  cost: 0,
+  modelName: undefined,
+  provider: undefined,
+  thinkingLevel: "off",
+  thinkingLevels: [],
+  models: [],
+};
+
 export function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[]): WorkspaceTabContribution[] {
   return agents.map((agent, index) => ({
-    key: `agent:${agent.label}`,
+    key: agentTabKey(agent.label),
     label: agent.label,
-    paneHtml: renderAgentPane(workspaceId, agent, { active: index === 0, autostart: index === 0 }),
+    // The pane renders as an empty shell: the SSE snapshot fills in the
+    // transcript, stats, and prompt actions on connect.
+    paneHtml: renderAgentPane(
+      { workspaceId, label: agent.label },
+      agent,
+      { transcriptHtml: "", busy: false, stats: emptyStats },
+      { active: index === 0 },
+    ),
   }));
 }
 
@@ -25,4 +44,3 @@ export const agentWorkspaceModule: WorkspaceModule = {
     };
   },
 };
-

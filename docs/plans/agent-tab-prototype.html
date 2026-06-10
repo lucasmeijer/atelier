@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent tab — visual prototype</title>
+<style>
+  :root {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --line: #e6eaf0;
+    --line-2: #d8dee8;
+    --text: #131a26;
+    --muted: #687387;
+    --muted-2: #a6afbf;
+    --accent: #2563eb;
+    --accent-soft: #e7efff;
+    --green: #138a52;
+    --green-soft: #e2f4ea;
+    --amber: #a9760a;
+    --amber-soft: #f7efd8;
+    --red: #d23b3b;
+    --red-soft: #fbe8e8;
+    --purple: #7c3aed;
+    --purple-soft: #f1eafe;
+    --sans: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 13px; line-height: 1.5; }
+
+  /* ====== tab layout: transcript scrolls, prompt box pinned ====== */
+  .agent-tab { display: flex; flex-direction: column; height: 100vh; max-width: 880px; margin: 0 auto; }
+  .transcript { flex: 1; overflow-y: auto; padding: 24px 20px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .transcript::after { content: ""; flex: 0 0 4px; }
+
+  /* ====== sections ====== */
+  .section { display: flex; flex-direction: column; gap: 10px; padding: 14px 0; position: relative; }
+  .section + .section { border-top: 1px solid var(--line); }
+
+  /* rewind affordance on the section boundary */
+  .rewind-zone { position: absolute; top: -13px; left: 0; right: 0; height: 26px; display: flex; align-items: center; justify-content: center; z-index: 3; }
+  .rewind-btn {
+    opacity: 0; transform: translateY(2px); transition: opacity .12s, transform .12s;
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px;
+    padding: 3px 11px; cursor: pointer; box-shadow: 0 2px 8px rgba(19,26,38,.07);
+  }
+  .rewind-zone:hover .rewind-btn, .rewind-btn:focus-visible { opacity: 1; transform: none; }
+  .rewind-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .rewind-zone::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed transparent; transition: border-color .12s; }
+  .rewind-zone:hover::before { border-color: var(--accent); opacity: .4; }
+
+  /* ====== message bubbles ====== */
+  .msg { border-radius: 10px; padding: 10px 14px; max-width: 92%; position: relative; }
+
+  .msg.user {
+    align-self: flex-end;
+    background: var(--accent-soft); border: 1px solid #d5e3ff;
+    color: var(--text);
+  }
+  .msg.user .who { color: var(--accent); }
+
+  .msg.assistant {
+    align-self: stretch; max-width: none;
+    background: var(--panel); border: 1px solid var(--line);
+  }
+  .msg.assistant .who { color: var(--green); }
+
+  .msg.system {
+    align-self: center; max-width: none;
+    background: var(--amber-soft); border: 1px solid #eedfb4; color: var(--amber);
+    font-size: 12px; padding: 6px 14px; border-radius: 20px;
+  }
+
+  .who { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .who .time { font-weight: 500; color: var(--muted-2); text-transform: none; letter-spacing: 0; }
+
+  .msg p { margin: 0 0 8px; }
+  .msg p:last-child { margin-bottom: 0; }
+  .msg ul { margin: 0 0 8px 18px; }
+  .msg code { font-family: var(--mono); font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  .msg pre { font-family: var(--mono); font-size: 12px; background: #0f172a; color: #dbe5f1; border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 8px 0; line-height: 1.55; }
+  .msg pre code { background: none; border: none; padding: 0; color: inherit; }
+
+  /* attachments on user message */
+  .msg-attachments { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .att-thumb { width: 84px; height: 60px; border-radius: 7px; border: 1px solid var(--line-2); background: linear-gradient(135deg,#c7d6f5,#eaf0fb); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 18px; }
+
+  /* ====== activity (collapsed tool/thinking run) ====== */
+  .activity { align-self: stretch; }
+  .activity-summary {
+    display: flex; align-items: center; gap: 9px; cursor: pointer; user-select: none;
+    color: var(--muted); font-size: 12px; font-weight: 550;
+    padding: 5px 10px; border-radius: 8px; border: 1px dashed var(--line-2); background: transparent;
+    width: 100%; text-align: left; font-family: inherit;
+  }
+  .activity-summary:hover { border-color: var(--muted-2); color: var(--text); background: var(--panel); }
+  .activity-summary .chev { transition: transform .15s; font-size: 10px; color: var(--muted-2); }
+  .activity.open .activity-summary .chev { transform: rotate(90deg); }
+  .activity-summary .dots { display: inline-flex; gap: 3px; }
+  .activity-summary .dot { width: 7px; height: 7px; border-radius: 2px; }
+  .activity-summary .meta { margin-left: auto; color: var(--muted-2); font-weight: 500; }
+
+  .activity-body { display: none; flex-direction: column; gap: 8px; padding: 10px 0 2px 14px; border-left: 2px solid var(--line); margin: 6px 0 0 12px; }
+  .activity.open .activity-body { display: flex; }
+
+  /* ====== thinking ====== */
+  .thinking {
+    background: var(--purple-soft); border: 1px solid #e4d7fb; border-radius: 9px; padding: 9px 13px;
+    color: #5b3aa3; font-size: 12.5px;
+  }
+  .thinking .who { color: var(--purple); }
+  .thinking.streaming { font-style: italic; }
+
+  /* ====== tool calls ====== */
+  .tool { border: 1px solid var(--line); border-left: 3px solid var(--tool-accent, var(--muted-2)); border-radius: 9px; background: var(--panel); overflow: hidden; }
+  .tool-head { display: flex; align-items: center; gap: 9px; padding: 7px 12px; font-size: 12px; }
+  .tool-name { font-family: var(--mono); font-weight: 650; color: var(--tool-accent, var(--text)); }
+  .tool-args { font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+  .tool-status { font-size: 11px; font-weight: 650; padding: 1px 8px; border-radius: 20px; }
+  .tool-status.ok { color: var(--green); background: var(--green-soft); }
+  .tool-status.err { color: var(--red); background: var(--red-soft); }
+  .tool-status.run { color: var(--accent); background: var(--accent-soft); }
+  .tool-dur { font-size: 11px; color: var(--muted-2); }
+  .tool-body { border-top: 1px solid var(--line); padding: 9px 12px; }
+  .tool-params { font-family: var(--mono); font-size: 11.5px; color: var(--muted); background: var(--bg); border-radius: 6px; padding: 7px 10px; margin-bottom: 8px; white-space: pre-wrap; }
+  .tool-result { font-family: var(--mono); font-size: 11.5px; color: var(--text); white-space: pre-wrap; max-height: 180px; overflow: hidden; position: relative; }
+  .tool-result.truncated::after { content: ""; position: absolute; inset: auto 0 0 0; height: 40px; background: linear-gradient(transparent, var(--panel)); }
+  .tool-expand { font-size: 11px; color: var(--accent); cursor: pointer; font-weight: 600; background: none; border: none; font-family: inherit; padding: 4px 0 0; }
+
+  /* per-tool accents (hash % palette) */
+  .tool.t-bash  { --tool-accent: #d97706; }
+  .tool.t-read  { --tool-accent: #2563eb; }
+  .tool.t-write { --tool-accent: #138a52; }
+  .tool.t-edit  { --tool-accent: #7c3aed; }
+
+  /* live terminal inside a running bash tool */
+  .term {
+    background: #0f172a; color: #d7e2ee; font-family: var(--mono); font-size: 12px; line-height: 1.5;
+    padding: 10px 12px; border-radius: 0 0 8px 8px; min-height: 120px; position: relative;
+  }
+  .term .green { color: #4ade80; } .term .cyan { color: #67e8f9; } .term .dim { color: #64748b; }
+  .term .bar { color: #4ade80; }
+  .term-badge { position: absolute; top: 8px; right: 10px; font-size: 10px; font-weight: 700; letter-spacing: .8px; color: #93c5fd; background: rgba(37,99,235,.25); padding: 2px 8px; border-radius: 12px; }
+
+  /* streaming affordances */
+  .stop-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 650; color: var(--red);
+    background: var(--panel); border: 1px solid var(--red-soft); border-radius: 20px;
+    padding: 2px 10px; cursor: pointer; margin-left: auto;
+  }
+  .stop-btn:hover { background: var(--red-soft); border-color: var(--red); }
+  .stop-btn .sq { width: 8px; height: 8px; background: var(--red); border-radius: 2px; }
+  .caret { display: inline-block; width: 7px; height: 14px; background: var(--accent); vertical-align: -2px; margin-left: 2px; animation: blink 1s steps(1) infinite; border-radius: 1px; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--accent-soft); border-top-color: var(--accent); border-radius: 50%; animation: rot .7s linear infinite; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+
+  /* branch summary entry */
+  .branch-summary {
+    align-self: stretch; background: var(--panel); border: 1px dashed var(--line-2); border-radius: 10px; padding: 10px 14px; color: var(--muted); font-size: 12.5px;
+  }
+  .branch-summary .who { color: var(--muted-2); }
+
+  /* media from rewritten atelier:// links */
+  .media-img { border-radius: 8px; border: 1px solid var(--line); max-width: 420px; display: block; margin: 8px 0; }
+  .fake-img { height: 180px; width: 420px; background: linear-gradient(135deg,#dbe7fb,#f3e8fb); display: flex; align-items: center; justify-content: center; color: var(--muted); }
+
+  /* ====== prompt box ====== */
+  .promptbox-wrap { flex: none; padding: 8px 20px 14px; background: linear-gradient(transparent, var(--bg) 30%); }
+  .promptbox { background: var(--panel); border: 1px solid var(--line-2); border-radius: 14px; box-shadow: 0 6px 24px rgba(19,26,38,.08); overflow: hidden; }
+  .promptbox:focus-within { border-color: var(--accent); }
+
+  .attach-row { display: flex; gap: 8px; padding: 10px 12px 0; flex-wrap: wrap; }
+  .chip { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 5px 9px; font-size: 12px; position: relative; overflow: hidden; }
+  .chip .ico { width: 22px; height: 22px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 12px; }
+  .chip .nm { font-weight: 600; } .chip .sz { color: var(--muted-2); font-size: 11px; }
+  .chip .x { color: var(--muted-2); cursor: pointer; border: none; background: none; font-size: 13px; padding: 0 1px; }
+  .chip .x:hover { color: var(--red); }
+  .chip .prog { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--accent); width: 62%; }
+
+  .prompt-input { width: 100%; border: none; resize: none; font-family: inherit; font-size: 13.5px; padding: 12px 14px 4px; outline: none; min-height: 52px; background: transparent; color: var(--text); }
+  .prompt-input::placeholder { color: var(--muted-2); }
+
+  .prompt-actions { display: flex; align-items: center; gap: 8px; padding: 6px 10px 10px 14px; }
+  .esc-hint { font-size: 11px; color: var(--muted-2); }
+  .esc-hint kbd { font-family: var(--mono); font-size: 10px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--bg); }
+  .pbtn { font-family: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--line-2); background: var(--panel); color: var(--text); }
+  .pbtn:hover { border-color: var(--muted-2); }
+  .pbtn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pbtn.steer { background: var(--amber-soft); border-color: #eedfb4; color: var(--amber); }
+
+  .statbar { display: flex; align-items: center; gap: 14px; border-top: 1px solid var(--line); padding: 7px 14px; font-size: 11.5px; color: var(--muted); background: var(--bg); flex-wrap: wrap; }
+  .stat { display: inline-flex; align-items: center; gap: 6px; }
+  .stat b { color: var(--text); font-weight: 600; font-family: var(--mono); font-size: 11px; }
+  .ctx-meter { width: 54px; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .ctx-meter i { display: block; height: 100%; width: 38%; background: var(--green); border-radius: 3px; }
+  .statbar .sel { font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--text); border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 2px 4px; cursor: pointer; }
+  .statbar .sel:hover { border-color: var(--line-2); background: var(--panel); }
+  .statbar .right { margin-left: auto; display: inline-flex; gap: 4px; align-items: center; }
+  .busy-pill { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 600; }
+
+  /* ====== rewind dialog ====== */
+  .overlay { position: fixed; inset: 0; background: rgba(19,26,38,.35); display: none; align-items: center; justify-content: center; z-index: 50; }
+  .overlay.open { display: flex; }
+  .dialog { width: 440px; background: var(--panel); border-radius: 14px; box-shadow: 0 20px 60px rgba(19,26,38,.3); padding: 20px; }
+  .dialog h2 { font-size: 15px; letter-spacing: -.2px; margin-bottom: 4px; }
+  .dialog .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+  .dialog .sub b { color: var(--text); }
+  .opt { display: flex; gap: 11px; border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; cursor: pointer; margin-bottom: 8px; align-items: flex-start; }
+  .opt:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .opt input { margin-top: 3px; accent-color: var(--accent); }
+  .opt .t { font-weight: 600; font-size: 13px; }
+  .opt .d { color: var(--muted); font-size: 12px; }
+  .opt textarea { width: 100%; margin-top: 8px; border: 1px solid var(--line-2); border-radius: 7px; font-family: inherit; font-size: 12.5px; padding: 7px 9px; resize: vertical; min-height: 48px; display: none; }
+  .opt.selected textarea { display: block; }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+</style>
+</head>
+<body>
+
+<div class="agent-tab">
+  <div class="transcript" id="transcript">
+
+    <!-- ============ SECTION 1: completed, collapsed ============ -->
+    <div class="section">
+      <div class="msg user">
+        <div class="who">You <span class="time">10:42</span></div>
+        <p>Add a <code>--json</code> flag to the export command, and make sure the existing tests still pass.</p>
+      </div>
+
+      <div class="activity" data-activity>
+        <button class="activity-summary" onclick="toggleActivity(this)">
+          <span class="chev">▶</span>
+          <span class="dots">
+            <span class="dot" style="background:#7c3aed"></span>
+            <span class="dot" style="background:#2563eb"></span>
+            <span class="dot" style="background:#d97706"></span>
+            <span class="dot" style="background:#7c3aed"></span>
+            <span class="dot" style="background:#138a52"></span>
+            <span class="dot" style="background:#d97706"></span>
+          </span>
+          thinking · 6 tool calls
+          <span class="meta">2m 14s · 41.2k tokens</span>
+        </button>
+        <div class="activity-body">
+          <div class="thinking">
+            <div class="who">Thinking</div>
+            The export command lives in <code>src/commands/export.ts</code>. I should check how other commands implement flag parsing before adding <code>--json</code>…
+          </div>
+          <div class="tool t-read">
+            <div class="tool-head">
+              <span class="tool-name">read</span>
+              <span class="tool-args">src/commands/export.ts</span>
+              <span class="tool-dur">0.4s</span>
+              <span class="tool-status ok">ok</span>
+            </div>
+          </div>
+          <div class="tool t-bash">
+            <div class="tool-head">
+              <span class="tool-name">bash</span>
+              <span class="tool-args">rg -n "addFlag" src/commands | head -20</span>
+              <span class="tool-dur">0.8s</span>
+              <span class="tool-status ok">ok</span>
+            </div>
+            <div class="tool-body">
+              <div class="tool-result">src/commands/import.ts:34:  cmd.addFlag("--dry-run", ...)
+src/commands/import.ts:35:  cmd.addFlag("--verbose", ...)
+src/commands/list.ts:18:  cmd.addFlag("--all", ...)</div>
+            </div>
+          </div>
+          <div class="thinking">
+            <div class="who">Thinking</div>
+            Same pattern everywhere — I'll mirror <code>import.ts</code> and serialize via the existing <code>Report</code> type.
+          </div>
+          <div class="tool t-edit">
+            <div class="tool-head">
+              <span class="tool-name">edit</span>
+              <span class="tool-args">src/commands/export.ts · 2 edits</span>
+              <span class="tool-dur">0.2s</span>
+              <span class="tool-status ok">ok</span>
+            </div>
+            <div class="tool-body">
+              <div class="tool-params">{ "path": "src/commands/export.ts",
+  "edits": [ { "oldText": "cmd.addFlag(\"--out\"…", "newText": "cmd.addFlag(\"--out\"…\ncmd.addFlag(\"--json\"…" }, … ] }</div>
+            </div>
+          </div>
+          <div class="tool t-write">
+            <div class="tool-head">
+              <span class="tool-name">write</span>
+              <span class="tool-args">test/export-json.test.ts</span>
+              <span class="tool-dur">0.3s</span>
+              <span class="tool-status ok">ok</span>
+            </div>
+          </div>
+          <div class="tool t-bash">
+            <div class="tool-head">
+              <span class="tool-name">bash</span>
+              <span class="tool-args">bun test</span>
+              <span class="tool-dur">14.1s</span>
+              <span class="tool-status ok">ok</span>
+            </div>
+            <div class="tool-body">
+              <div class="tool-result truncated">bun test v1.3.14
+
+test/export.test.ts:
+✓ exports csv by default [12.04ms]
+✓ respects --out path [3.11ms]
+
+test/export-json.test.ts:
+✓ emits valid json [8.66ms]
+✓ json includes all rows [2.90ms]
+
+ 47 pass
+ 0 fail
+Ran 47 tests across 9 files. [13.92s]</div>
+              <button class="tool-expand">Show full output (212 lines)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="msg assistant">
+        <div class="who">Assistant <span class="time">claude-sonnet · 10:45</span></div>
+        <p>Done. I added a <code>--json</code> flag to the export command:</p>
+        <ul>
+          <li><code>src/commands/export.ts</code> — new flag, JSON serialization through the existing <code>Report</code> type</li>
+          <li><code>test/export-json.test.ts</code> — two new tests</li>
+        </ul>
+        <p>All 47 tests pass, including the 45 pre-existing ones.</p>
+      </div>
+    </div>
+
+    <!-- ============ SECTION 2: rewind target demo, has branch summary after ============ -->
+    <div class="section">
+      <div class="rewind-zone">
+        <button class="rewind-btn" onclick="openRewind()">⟲ Rewind to here</button>
+      </div>
+
+      <div class="msg user">
+        <div class="who">You <span class="time">10:51</span></div>
+        <p>Now try converting the whole config system to TOML.</p>
+        <div class="msg-attachments">
+          <div class="att-thumb">🖼</div>
+        </div>
+      </div>
+
+      <div class="branch-summary">
+        <div class="who">Rewound · summary of discarded branch</div>
+        Explored converting config to TOML. Conclusion: the <code>@iarna/toml</code> dependency conflicts with our bun bundling, and round-tripping comments is lossy. Recommended staying on JSON5. Files touched and reverted: <code>src/config/loader.ts</code>, <code>package.json</code>.
+      </div>
+
+      <div class="msg system">Model changed to claude-opus · thinking: high</div>
+    </div>
+
+    <!-- ============ SECTION 3: live / streaming, fully uncollapsed ============ -->
+    <div class="section">
+      <div class="rewind-zone">
+        <button class="rewind-btn" onclick="openRewind()">⟲ Rewind to here</button>
+      </div>
+
+      <div class="msg user">
+        <div class="who">You <span class="time">10:58</span></div>
+        <p>OK keep JSON5. Run the full benchmark suite and show me the flame graph for the slowest case.</p>
+      </div>
+
+      <div class="thinking streaming">
+        <div class="who">Thinking <span class="spin" style="margin-left:auto"></span></div>
+        The benchmark suite is in <code>bench/</code> and takes a while. I'll run it under the profiler so I can produce a flame graph in one pass, then…<span class="caret" style="background:#7c3aed"></span>
+      </div>
+
+      <!-- running bash tool with live tmux/xterm widget -->
+      <div class="tool t-bash">
+        <div class="tool-head">
+          <span class="tool-name">bash</span>
+          <span class="tool-args">bun run bench:all --profile</span>
+          <span class="tool-status run"><span class="spin" style="width:8px;height:8px;border-width:1.5px;vertical-align:-1px"></span>&nbsp;running · 1m 32s</span>
+          <button class="stop-btn"><span class="sq"></span>Stop</button>
+        </div>
+        <div class="term">
+          <span class="term-badge">LIVE · tmux</span>
+          <div><span class="green">$</span> bun run bench:all --profile</div>
+          <div><span class="dim">[bench]</span> warming up workers… <span class="cyan">done</span></div>
+          <div><span class="dim">[bench]</span> parse-large-config      <span class="cyan">412 ops/s</span></div>
+          <div><span class="dim">[bench]</span> resolve-imports         <span class="cyan">1,204 ops/s</span></div>
+          <div><span class="dim">[bench]</span> export-10k-rows         <span class="bar">▕████████████░░░░░░░░▏</span> 61%</div>
+          <div><span class="caret" style="background:#67e8f9"></span></div>
+        </div>
+      </div>
+
+      <!-- streaming assistant message with inline stop + rewritten media -->
+      <div class="msg assistant">
+        <div class="who">Assistant <span class="time">claude-opus · streaming</span>
+          <button class="stop-btn"><span class="sq"></span>Stop</button>
+        </div>
+        <p>Benchmarks are running. Early numbers look consistent with last week except <code>export-10k-rows</code>, which regressed ~18%. Here's the flame graph for that case so far:</p>
+        <div class="media-img fake-img">flame-graph.png — served via /workspaces/w1/files/…</div>
+        <p>The hot frame is <code>serializeRow</code> — it re-creates the formatter on every<span class="caret"></span></p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ prompt box, pinned ============ -->
+  <div class="promptbox-wrap">
+    <div class="promptbox">
+      <div class="attach-row">
+        <div class="chip">
+          <span class="ico">🖼</span>
+          <span class="nm">screenshot.png</span><span class="sz">1.2 MB</span>
+          <button class="x">✕</button>
+          <span class="prog"></span>
+        </div>
+        <div class="chip">
+          <span class="ico">📄</span>
+          <span class="nm">perf-notes.md</span><span class="sz">4 KB</span>
+          <button class="x">✕</button>
+        </div>
+      </div>
+      <textarea class="prompt-input" placeholder="Message the agent… (drop files anywhere)">Also compare against the v2 branch numbers</textarea>
+      <div class="prompt-actions">
+        <span class="esc-hint"><kbd>Esc</kbd> abort</span>
+        <span style="flex:1"></span>
+        <button class="pbtn steer">Steer</button>
+        <button class="pbtn primary">Follow-up</button>
+      </div>
+      <div class="statbar">
+        <span class="busy-pill"><span class="spin"></span> working</span>
+        <span class="stat"><span class="ctx-meter"><i></i></span><b>38%</b> context</span>
+        <span class="stat">↑ <b>128.4k</b></span>
+        <span class="stat">↓ <b>22.1k</b></span>
+        <span class="stat"><b>$1.84</b></span>
+        <span class="right">
+          <button class="sel">anthropic ▾</button>
+          <button class="sel">claude-opus-4-6 ▾</button>
+          <button class="sel">thinking: high ▾</button>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ rewind dialog ============ -->
+<div class="overlay" id="rewindOverlay" onclick="if(event.target===this)closeRewind()">
+  <div class="dialog">
+    <h2>⟲ Rewind conversation</h2>
+    <p class="sub">Everything after <b>“Add a --json flag to the export command…”</b> will be removed from the active branch. Your files and container are not changed.</p>
+    <label class="opt" onclick="pickOpt(this)">
+      <input type="radio" name="rw" checked>
+      <span><span class="t">Discard the tail</span><br><span class="d">Just go back. The branch stays in the session tree.</span></span>
+    </label>
+    <label class="opt" onclick="pickOpt(this)">
+      <input type="radio" name="rw">
+      <span><span class="t">Replace with a summary</span><br><span class="d">An AI-generated summary of the discarded turns is kept as context.</span></span>
+    </label>
+    <label class="opt" onclick="pickOpt(this)">
+      <input type="radio" name="rw">
+      <span style="flex:1"><span class="t">Replace with custom text</span><br><span class="d">Write your own note about what happened in the discarded turns.</span>
+        <textarea placeholder="e.g. We tried TOML, it didn't work out because…"></textarea>
+      </span>
+    </label>
+    <div class="dialog-actions">
+      <button class="pbtn" onclick="closeRewind()">Cancel</button>
+      <button class="pbtn primary" onclick="closeRewind()">Rewind</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // prototype-only behavior, just enough to evaluate the visuals
+  function toggleActivity(btn) { btn.closest('[data-activity]').classList.toggle('open'); }
+  function openRewind() { document.getElementById('rewindOverlay').classList.add('open'); }
+  function closeRewind() { document.getElementById('rewindOverlay').classList.remove('open'); }
+  function pickOpt(label) {
+    document.querySelectorAll('.opt').forEach(o => o.classList.remove('selected'));
+    label.classList.add('selected');
+    label.querySelector('input').checked = true;
+  }
+  // start scrolled to bottom, like the real thing
+  const t = document.getElementById('transcript');
+  t.scrollTop = t.scrollHeight;
+</script>
+</body>
+</html>

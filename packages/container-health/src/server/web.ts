@@ -53,7 +53,7 @@ export function containerHealthStreamEndpoint(workspaceId: string): Response {
       };
       void sendHealth();
       interval = setInterval(() => void sendHealth(), 1500);
-      heartbeat = setInterval(() => send("ping", "{}"), 15000);
+      heartbeat = setInterval(() => send("ping", "{}"), 5000);
     },
     cancel() {
       closed = true;
