@@ -27,6 +27,7 @@ const TERMINAL_THEME = {
 
 const terminals = new Map<string, TerminalState>();
 const startingTerminals = new Set<string>();
+const pendingTerminalFocus = new Set<string>();
 
 function terminalKey(workspaceId: string, title: string): string {
   return `${workspaceId}\u0000${title}`;
@@ -51,7 +52,8 @@ function findTerminalPane(workspaceId: string, title: string): HTMLElement | und
   );
 }
 
-export async function startTerminal(workspaceId: string, title: string): Promise<void> {
+export async function startTerminal(workspaceId: string, title: string, options: { focus?: boolean } = {}): Promise<void> {
+  const focus = options.focus !== false;
   const key = terminalKey(workspaceId, title);
   const pane = findTerminalPane(workspaceId, title);
   const host = pane?.querySelector<HTMLElement>(".xterm-terminal");
@@ -59,21 +61,27 @@ export async function startTerminal(workspaceId: string, title: string): Promise
 
   const existing = terminals.get(key);
   if (existing) {
-    existing.term.focus();
+    if (focus) existing.term.focus();
     existing.fit.fit();
     return;
   }
-  if (startingTerminals.has(key)) return;
+  if (startingTerminals.has(key)) {
+    if (focus) pendingTerminalFocus.add(key);
+    return;
+  }
+  if (focus) pendingTerminalFocus.add(key);
   startingTerminals.add(key);
 
   try {
     await document.fonts.load('13px "JetBrains Mono"');
   } catch (error) {
     startingTerminals.delete(key);
+    pendingTerminalFocus.delete(key);
     throw error;
   }
   if (terminals.has(key)) {
     startingTerminals.delete(key);
+    pendingTerminalFocus.delete(key);
     return;
   }
 
@@ -120,9 +128,11 @@ export async function startTerminal(workspaceId: string, title: string): Promise
 
     terminals.set(key, { term, ws, fit, progressSubscription, resizeObserver });
     startingTerminals.delete(key);
-    term.focus();
+    const shouldFocus = pendingTerminalFocus.delete(key) || focus;
+    if (shouldFocus) term.focus();
   } catch (error) {
     startingTerminals.delete(key);
+    pendingTerminalFocus.delete(key);
     throw error;
   }
 }
@@ -140,6 +150,7 @@ export function stopTerminal(workspaceId: string, title: string): void {
   state.term.dispose();
   terminals.delete(key);
   startingTerminals.delete(key);
+  pendingTerminalFocus.delete(key);
 }
 
 export function startTerminalTab(workspaceId: string, tabName: string): void {
@@ -156,9 +167,7 @@ export function createTerminalPaneController(Controller: StimulusControllerConst
 
     connect(): void {
       const pane = this.element.closest<HTMLElement>(".tab-pane[data-tab-pane]");
-      if (this.autostartValue || pane?.classList.contains("active")) {
-        void startTerminal(this.workspaceIdValue, this.titleValue);
-      }
+      void startTerminal(this.workspaceIdValue, this.titleValue, { focus: this.autostartValue || pane?.classList.contains("active") });
     }
 
     disconnect(): void {
