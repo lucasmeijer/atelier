@@ -22,7 +22,15 @@ declare global {
   }
 }
 
-const { Application, Controller } = window.Stimulus;
+async function waitForStimulus(): Promise<typeof window.Stimulus> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (window.Stimulus?.Application && window.Stimulus.Controller) return window.Stimulus;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Stimulus did not initialize before workspace.js");
+}
+
+const { Application, Controller } = await waitForStimulus();
 
 initializeTerminalTheme();
 registerAgentStreamActions();

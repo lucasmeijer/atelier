@@ -268,7 +268,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       <h1>${escapeHtml(atelierName)}</h1>
       <div class="sidebar-filter-row">
         <input class="search global-filter" placeholder="Filter…" data-controller="global-filter" data-action="input->global-filter#filter">
-        <button class="sidebar-collapse-toggle" type="button" aria-label="Collapse workspace list" title="Collapse workspace list" data-workspace-shell-target="toggle" data-action="workspace-shell#toggle">‹</button>
+        <button class="sidebar-collapse-toggle" type="button" aria-label="Collapse workspace list" title="Collapse workspace list" data-workspace-shell-target="toggle" data-action="click->workspace-shell#toggle">‹</button>
       </div>
     </div>
     <div class="table workspace-sidebar-table">

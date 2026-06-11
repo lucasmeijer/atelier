@@ -346,7 +346,7 @@ a.btn { text-decoration: none; }
 .workspace-shell.workspace-shell-collapsed { grid-template-columns: 48px 0 minmax(0, 1fr); }
 .workspace-shell-sidebar { min-width: 0; height: 100vh; overflow: auto; background: var(--panel); border-right: 1px solid var(--line); }
 .workspace-shell-main { min-width: 0; height: 100vh; overflow: auto; }
-.workspace-shell-resizer { width: 6px; height: 100vh; cursor: col-resize; background: transparent; border-right: 1px solid var(--line); }
+.workspace-shell-resizer { width: 6px; height: 100vh; cursor: col-resize; background: transparent; border-right: 1px solid var(--line); touch-action: none; user-select: none; }
 .workspace-shell-resizer:hover, .workspace-shell-resizing .workspace-shell-resizer { background: var(--accent-soft); }
 .workspace-shell-collapsed .workspace-shell-resizer { display: none; }
 .workspace-shell-collapsed .workspace-shell-sidebar { overflow: hidden; }
