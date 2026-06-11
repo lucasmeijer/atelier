@@ -10,6 +10,7 @@ export interface WorkspaceGroupState {
 
 export interface WorkspaceLayoutState {
   groups: WorkspaceGroupState[];
+  closedTabs?: string[];
 }
 
 export interface MoveTabRequest {
@@ -26,6 +27,7 @@ export interface WorkspaceLayoutStore {
   removeEmptyGroup(workspaceId: string, tabKeys: string[], groupId: string): void;
   closeGroup(workspaceId: string, tabKeys: string[], groupId: string): void;
   moveTab(workspaceId: string, tabKeys: string[], request: MoveTabRequest): void;
+  closeTab(workspaceId: string, tabKeys: string[], tab: string): void;
   resize(workspaceId: string, tabKeys: string[], sizes: number[]): void;
   setActiveTab(workspaceId: string, groupId: string, tab: string): void;
   /** Place a freshly created tab into a group and activate it. */
@@ -42,15 +44,18 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
   const layouts = new Map<string, WorkspaceLayoutState>();
 
   function normalize(workspaceId: string, tabKeys: string[]): WorkspaceLayoutState {
-    const keySet = new Set(tabKeys);
     let layout = layouts.get(workspaceId);
     if (!layout || layout.groups.length === 0) {
-      layout = { groups: [{ id: crypto.randomUUID(), tabs: [...tabKeys], activeTab: tabKeys[0], size: 1 }] };
+      layout = { groups: [{ id: crypto.randomUUID(), tabs: [...tabKeys], activeTab: tabKeys[0], size: 1 }], closedTabs: [] };
       layouts.set(workspaceId, layout);
       return layout;
     }
+    layout.closedTabs = (layout.closedTabs ?? []).filter((key) => tabKeys.includes(key));
+    const closedSet = new Set(layout.closedTabs);
+    const visibleTabKeys = tabKeys.filter((key) => !closedSet.has(key));
+    const keySet = new Set(visibleTabKeys);
     const assigned = new Set(layout.groups.flatMap((group) => group.tabs));
-    const missing = tabKeys.filter((key) => !assigned.has(key));
+    const missing = visibleTabKeys.filter((key) => !assigned.has(key));
     layout.groups[0]?.tabs.push(...missing);
     for (const group of layout.groups) {
       group.tabs = group.tabs.filter((key) => keySet.has(key));
@@ -116,6 +121,21 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
       normalizeGroupSizes(layout);
     },
 
+    closeTab(workspaceId, tabKeys, tab) {
+      if (!tabKeys.includes(tab)) return;
+      const layout = normalize(workspaceId, tabKeys);
+      const closedTabs = new Set(layout.closedTabs ?? []);
+      closedTabs.add(tab);
+      layout.closedTabs = [...closedTabs];
+      for (const group of layout.groups) {
+        const oldIndex = group.tabs.indexOf(tab);
+        if (oldIndex < 0) continue;
+        group.tabs = group.tabs.filter((key) => key !== tab);
+        if (group.activeTab === tab) group.activeTab = group.tabs[Math.max(0, oldIndex - 1)] ?? group.tabs[0];
+      }
+      normalizeGroupSizes(layout);
+    },
+
     resize(workspaceId, tabKeys, sizes) {
       const layout = normalize(workspaceId, tabKeys);
       if (sizes.length === layout.groups.length) layout.groups.forEach((group, index) => { group.size = sizes[index] ?? 1; });
@@ -131,6 +151,7 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
       const layout = normalize(workspaceId, tabKeys);
       const group = layout.groups.find((candidate) => candidate.id === groupId) ?? layout.groups[0];
       if (!group || group.tabs.includes(tabKey)) return;
+      layout.closedTabs = (layout.closedTabs ?? []).filter((tab) => tab !== tabKey);
       for (const candidate of layout.groups) candidate.tabs = candidate.tabs.filter((tab) => tab !== tabKey);
       group.tabs.push(tabKey);
       group.activeTab = tabKey;

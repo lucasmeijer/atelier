@@ -128,11 +128,15 @@ a { color: inherit; text-decoration: none; }
 .workspace-group { flex: var(--group-size) 1 0; min-width: 180px; display: flex; flex-direction: column; background: var(--panel); position: relative; }
 .group-tabbar { display: flex; align-items: stretch; min-height: 38px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg,#fbfcff,#f4f7fb); }
 .group-tabs { display: flex; align-items: stretch; gap: 1px; min-width: 0; overflow-x: auto; flex: 1; }
-.group-tab { appearance: none; border: 0; border-right: 1px solid transparent; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 620; padding: 9px 12px; cursor: pointer; white-space: nowrap; position: relative; display: inline-flex; align-items: center; gap: 7px; }
+.group-tab { border-right: 1px solid transparent; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 620; white-space: nowrap; position: relative; display: inline-flex; align-items: stretch; }
 .group-tab:hover { background: rgba(37,99,235,.055); color: var(--text); }
 .group-tab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--panel); }
 .group-tab.muted { color: var(--muted); }
 .group-tab:active { cursor: grabbing; }
+.group-tab-label { appearance: none; border: 0; background: transparent; color: inherit; font: inherit; font-size: inherit; font-weight: inherit; padding: 9px 5px 9px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.group-tab-close-form { display: flex; align-items: center; margin: 0; padding: 0 6px 0 0; }
+.group-tab-close { appearance: none; border: 0; background: transparent; color: var(--muted-2); width: 18px; height: 18px; border-radius: 4px; display: inline-grid; place-items: center; padding: 0; font: inherit; font-size: 16px; line-height: 1; cursor: pointer; }
+.group-tab-close:hover { color: var(--text); }
 .workspace-group.drop-target { box-shadow: inset 0 0 0 2px rgba(37,99,235,.18); }
 .new-group-drop-zone { position: absolute; z-index: 15; top: 0; right: 0; bottom: 0; width: 10%; min-width: 48px; opacity: 0; pointer-events: none; transition: opacity .12s ease; }
 .workspace-groups.dragging-tab .new-group-drop-zone { opacity: 1; pointer-events: auto; }

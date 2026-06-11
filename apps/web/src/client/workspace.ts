@@ -86,6 +86,16 @@ class WorkspaceTabsController extends Controller {
   }
 }
 
+class WorkspaceTabCloseController extends Controller {
+  static values = { label: String };
+  declare readonly labelValue: string;
+
+  confirm(event: SubmitEvent): void {
+    const label = this.labelValue || "this tab";
+    if (!window.confirm(`Close ${label}?`)) event.preventDefault();
+  }
+}
+
 class WorkspaceGroupsController extends Controller {
   static targets = ["group"];
   static values = { workspaceId: String };
@@ -533,6 +543,7 @@ class WorkspaceTitleEditController extends Controller {
 
 const application = Application.start();
 application.register("workspace-tabs", WorkspaceTabsController);
+application.register("workspace-tab-close", WorkspaceTabCloseController);
 application.register("workspace-groups", WorkspaceGroupsController);
 application.register("workspace-residency", WorkspaceResidencyController);
 application.register("terminal-pane", createTerminalPaneController(Controller));
