@@ -27,6 +27,86 @@ const { Application, Controller } = window.Stimulus;
 initializeTerminalTheme();
 registerAgentStreamActions();
 
+class WorkspaceShellController extends Controller {
+  static targets = ["sidebar", "toggle"];
+  declare readonly element: HTMLElement;
+  declare readonly sidebarTarget: HTMLElement;
+  declare readonly hasSidebarTarget: boolean;
+  declare readonly toggleTargets: HTMLButtonElement[];
+  private readonly storageKey = "atelier.workspaceSidebar";
+  private resize?: { startX: number; startWidth: number; pointerId: number; handle: HTMLElement };
+
+  connect(): void {
+    const state = this.savedState();
+    if (state.width) this.setWidth(state.width);
+    this.setCollapsed(Boolean(state.collapsed));
+  }
+
+  toggle(): void {
+    this.setCollapsed(!this.element.classList.contains("workspace-shell-collapsed"), { persist: true });
+  }
+
+  startResize(event: PointerEvent): void {
+    if (this.element.classList.contains("workspace-shell-collapsed") || !this.hasSidebarTarget) return;
+    const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    if (!handle) return;
+    event.preventDefault();
+    this.resize = { startX: event.clientX, startWidth: this.sidebarTarget.getBoundingClientRect().width, pointerId: event.pointerId, handle };
+    handle.setPointerCapture(event.pointerId);
+    document.body.classList.add("workspace-shell-resizing");
+    window.addEventListener("pointermove", this.pointerMove);
+    window.addEventListener("pointerup", this.pointerUp, { once: true });
+  }
+
+  private pointerMove = (event: PointerEvent): void => {
+    if (!this.resize) return;
+    this.setWidth(this.resize.startWidth + event.clientX - this.resize.startX);
+  };
+
+  private pointerUp = (): void => {
+    window.removeEventListener("pointermove", this.pointerMove);
+    document.body.classList.remove("workspace-shell-resizing");
+    const width = this.currentWidth();
+    this.resize = undefined;
+    this.saveState({ ...this.savedState(), width });
+  };
+
+  private setCollapsed(collapsed: boolean, options: { persist?: boolean } = {}): void {
+    this.element.classList.toggle("workspace-shell-collapsed", collapsed);
+    this.toggleTargets.forEach((button) => {
+      button.textContent = collapsed ? "›" : "‹";
+      button.setAttribute("aria-label", collapsed ? "Expand workspace list" : "Collapse workspace list");
+      button.title = collapsed ? "Expand workspace list" : "Collapse workspace list";
+    });
+    if (options.persist) this.saveState({ ...this.savedState(), collapsed });
+  }
+
+  private setWidth(width: number): void {
+    const clamped = Math.max(260, Math.min(720, width));
+    this.element.style.setProperty("--workspace-sidebar-width", `${clamped}px`);
+  }
+
+  private currentWidth(): number {
+    return this.hasSidebarTarget ? this.sidebarTarget.getBoundingClientRect().width : 360;
+  }
+
+  private savedState(): { width?: number; collapsed?: boolean } {
+    try {
+      return JSON.parse(localStorage.getItem(this.storageKey) || "{}") as { width?: number; collapsed?: boolean };
+    } catch {
+      return {};
+    }
+  }
+
+  private saveState(state: { width?: number; collapsed?: boolean }): void {
+    try {
+      localStorage.setItem(this.storageKey, JSON.stringify(state));
+    } catch {
+      // Ignore unavailable storage.
+    }
+  }
+}
+
 class WorkspaceTabsController extends Controller {
   static values = { workspaceId: String, groupId: String, initialTab: String };
   declare readonly element: HTMLElement;
@@ -566,6 +646,7 @@ class WorkspaceTitleEditController extends Controller {
 }
 
 const application = Application.start();
+application.register("workspace-shell", WorkspaceShellController);
 application.register("workspace-tabs", WorkspaceTabsController);
 application.register("workspace-tab-close", WorkspaceTabCloseController);
 application.register("workspace-groups", WorkspaceGroupsController);
