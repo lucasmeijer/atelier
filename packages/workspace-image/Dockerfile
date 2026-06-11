@@ -113,6 +113,8 @@ RUN set -eux; \
       if [ "$i" = 120 ]; then cat /tmp/vscode-prewarm.log; echo "VS Code server prewarm timed out" >&2; exit 1; fi; \
     done; \
     pkill -u atelier -f 'code serve-web' || true; \
+    su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server --install-extension ms-vscode.cpptools-extension-pack --force'; \
+    su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server --list-extensions --show-versions' | grep -x 'ms-vscode.cpptools-extension-pack@.*'; \
     rm -f /tmp/vscode-prewarm.log
 
 ENV TERM=xterm-256color \

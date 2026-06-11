@@ -99,18 +99,25 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
 interface WorkspaceAppProxySocketData {
   kind: "workspace-app-proxy";
   target: string;
+  host: string;
+  protocols: string[];
 }
 
 type SocketData = TerminalSocketData | AgentTermSocketData | WorkspaceAppProxySocketData;
 
-async function validateSocket(url: URL): Promise<SocketData | undefined> {
-  const appHost = parseWorkspaceAppHost(url.host);
-  if (appHost) return { kind: "workspace-app-proxy", target: await workspaceAppWebSocketTarget(appHost, url.pathname, url.search) };
+async function validateSocket(request: Request, url: URL): Promise<SocketData | undefined> {
+  const appHost = parseWorkspaceAppHost(request.headers.get("host"));
+  if (appHost) {
+    const protocols = (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((protocol) => protocol.trim()).filter(Boolean);
+    return { kind: "workspace-app-proxy", target: await workspaceAppWebSocketTarget(appHost, url.pathname, url.search), host: request.headers.get("host") ?? url.host, protocols };
+  }
   return validateAgentTermSocket(url) ?? (await validateTerminalSocket(url));
 }
 
 function openWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocketData>): void {
-  const upstream = new WebSocket(ws.data.target);
+  const WebSocketWithOptions = WebSocket as unknown as new (url: string, options: { headers?: Record<string, string>; protocols?: string[] }) => WebSocket;
+  const upstream = new WebSocketWithOptions(ws.data.target, { headers: { Host: ws.data.host }, protocols: ws.data.protocols });
+  upstream.binaryType = "arraybuffer";
   const pending: Array<string | ArrayBuffer> = [];
   (ws.data as WorkspaceAppProxySocketData & { upstream?: WebSocket; pending?: Array<string | ArrayBuffer> }).upstream = upstream;
   (ws.data as WorkspaceAppProxySocketData & { pending?: Array<string | ArrayBuffer> }).pending = pending;
@@ -118,8 +125,13 @@ function openWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocket
     for (const message of pending.splice(0)) upstream.send(message);
   });
   upstream.addEventListener("message", (event) => {
-    if (typeof event.data === "string") ws.send(event.data);
-    else if (event.data instanceof ArrayBuffer) ws.send(event.data);
+    if (typeof event.data === "string") {
+      ws.send(event.data);
+    } else if (event.data instanceof ArrayBuffer) {
+      ws.send(event.data);
+    } else if (event.data instanceof Blob) {
+      void event.data.arrayBuffer().then((buffer) => ws.send(buffer)).catch(() => ws.close());
+    }
   });
   upstream.addEventListener("close", () => ws.close());
   upstream.addEventListener("error", () => ws.close());
@@ -158,7 +170,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
         const appHost = parseWorkspaceAppHost(request.headers.get("host"));
 
         if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
-          const socketData = await validateSocket(url);
+          const socketData = await validateSocket(request, url);
           if (!socketData) return new Response("not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
           if (server.upgrade(request, { data: socketData })) return undefined;
           return new Response("websocket upgrade failed", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });

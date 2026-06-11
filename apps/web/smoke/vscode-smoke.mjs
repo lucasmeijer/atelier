@@ -38,11 +38,13 @@ try {
   await waitForServer();
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const page = await browser.newPage();
+  const consoleMessages = [];
+  page.on('console', (message) => consoleMessages.push(message.text()));
   await page.goto(`http://localhost:${port}/`, { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: /New workspace/ }).click();
   await page.waitForURL(/\/workspaces\//, { timeout: 10_000 });
-  await page.getByRole('button', { name: /VS Code/ }).waitFor({ timeout: 60_000 });
-  await page.getByRole('button', { name: /VS Code/ }).click();
+  await page.getByRole('button', { name: 'VS Code', exact: true }).waitFor({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'VS Code', exact: true }).click();
   const frame = page.locator('iframe.vscode-frame');
   await frame.waitFor({ timeout: 10_000 });
   await page.waitForFunction(() => {
@@ -53,6 +55,9 @@ try {
   const response = await fetch(src);
   const text = await response.text();
   if (!response.ok || !/Visual Studio Code|latest version of the Visual Studio Code Server|workbench/i.test(text)) throw new Error(`unexpected VS Code proxy response ${response.status}: ${text.slice(0, 200)}`);
+  await delay(15_000);
+  const cspFailures = consoleMessages.filter((message) => message.includes('Content Security Policy') || message.includes('vscode-remote-resource') && message.includes('Failed to fetch'));
+  if (cspFailures.length > 0) throw new Error(`VS Code resource loading failed:\n${cspFailures.join('\n')}`);
   console.log(`playwright smoke passed: ${src}`);
 } finally {
   await browser?.close();

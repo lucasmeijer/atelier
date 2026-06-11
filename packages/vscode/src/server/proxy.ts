@@ -39,7 +39,8 @@ export async function proxyWorkspaceAppRequest(app: WorkspaceAppHost, request: R
   const source = new URL(request.url);
   const target = new URL(source.pathname + source.search, `http://127.0.0.1:${hostPort}`);
   const headers = stripHopByHop(request.headers);
-  headers.set("host", `127.0.0.1:${hostPort}`);
+  const originalHost = request.headers.get("host");
+  if (originalHost) headers.set("host", originalHost);
   return await fetch(target, {
     method: request.method,
     headers,
