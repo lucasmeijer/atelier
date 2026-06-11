@@ -59,6 +59,10 @@ class WorkspaceShellController extends Controller {
     this.setCollapsed(!this.element.classList.contains("workspace-shell-collapsed"), { persist: true });
   }
 
+  stopPropagation(event: Event): void {
+    event.stopPropagation();
+  }
+
   startResize(event: PointerEvent): void {
     if (!this.hasSidebarTarget) return;
     const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
