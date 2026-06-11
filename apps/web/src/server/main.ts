@@ -31,13 +31,20 @@ import {
   type TerminalSocketData,
 } from "@atelier/terminal/server";
 import { atelierName } from "@atelier/shared";
+import {
+  parseWorkspaceAppHost,
+  proxyWorkspaceAppRequest,
+  vscodeStaticFiles,
+  workspaceAppWebSocketTarget,
+  type WorkspaceAppHost,
+} from "@atelier/vscode/server";
 import { createWebApp } from "./app.ts";
 import { createStreamHub } from "./stream-hub.ts";
 import { createWorkspaceLayoutStore } from "./workspace-layout.ts";
 import { createFileWorkspaceActivityStore, createWorkspaceRegistry } from "./workspace-registry.ts";
 
 const requestedPort = Number(process.env.PORT ?? 3000);
-const hostname = process.env.HOST ?? "127.0.0.1";
+const hostname = process.env.HOST ?? "localhost";
 
 const atelierEvents = createAtelierEventBus();
 registerPiConfigEvents(atelierEvents);
@@ -80,6 +87,7 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
     "/workspace.js": { url: new URL("../../public/workspace.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
     ...terminalStaticFiles,
     ...agentStaticFiles,
+    ...vscodeStaticFiles,
   };
   const entry = staticFiles[pathname];
   if (!entry) return undefined;
@@ -88,10 +96,45 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
   return new Response(file, { headers: { "content-type": entry.contentType } });
 }
 
-type SocketData = TerminalSocketData | AgentTermSocketData;
+interface WorkspaceAppProxySocketData {
+  kind: "workspace-app-proxy";
+  target: string;
+}
+
+type SocketData = TerminalSocketData | AgentTermSocketData | WorkspaceAppProxySocketData;
 
 async function validateSocket(url: URL): Promise<SocketData | undefined> {
+  const appHost = parseWorkspaceAppHost(url.host);
+  if (appHost) return { kind: "workspace-app-proxy", target: await workspaceAppWebSocketTarget(appHost, url.pathname, url.search) };
   return validateAgentTermSocket(url) ?? (await validateTerminalSocket(url));
+}
+
+function openWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocketData>): void {
+  const upstream = new WebSocket(ws.data.target);
+  const pending: Array<string | ArrayBuffer> = [];
+  (ws.data as WorkspaceAppProxySocketData & { upstream?: WebSocket; pending?: Array<string | ArrayBuffer> }).upstream = upstream;
+  (ws.data as WorkspaceAppProxySocketData & { pending?: Array<string | ArrayBuffer> }).pending = pending;
+  upstream.addEventListener("open", () => {
+    for (const message of pending.splice(0)) upstream.send(message);
+  });
+  upstream.addEventListener("message", (event) => {
+    if (typeof event.data === "string") ws.send(event.data);
+    else if (event.data instanceof ArrayBuffer) ws.send(event.data);
+  });
+  upstream.addEventListener("close", () => ws.close());
+  upstream.addEventListener("error", () => ws.close());
+}
+
+function handleWorkspaceAppProxySocketMessage(ws: ServerWebSocket<WorkspaceAppProxySocketData>, message: string | Buffer): void {
+  const data = ws.data as WorkspaceAppProxySocketData & { upstream?: WebSocket; pending?: Array<string | ArrayBuffer> };
+  const payload = typeof message === "string" ? message : new Uint8Array(message).slice().buffer;
+  if (data.upstream?.readyState === WebSocket.OPEN) data.upstream.send(payload);
+  else data.pending?.push(payload);
+}
+
+function closeWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocketData>): void {
+  const upstream = (ws.data as WorkspaceAppProxySocketData & { upstream?: WebSocket }).upstream;
+  if (upstream && upstream.readyState <= WebSocket.OPEN) upstream.close();
 }
 
 const maxPortAttempts = 100;
@@ -112,8 +155,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       idleTimeout: 255,
       async fetch(request, server) {
         const url = new URL(request.url);
-        const staticResponse = await serveStatic(url.pathname);
-        if (staticResponse) return staticResponse;
+        const appHost = parseWorkspaceAppHost(request.headers.get("host"));
 
         if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
           const socketData = await validateSocket(url);
@@ -122,20 +164,28 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
           return new Response("websocket upgrade failed", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });
         }
 
+        if (appHost) return await proxyWorkspaceAppRequest(appHost, request);
+
+        const staticResponse = await serveStatic(url.pathname);
+        if (staticResponse) return staticResponse;
+
         return await app.fetch(request);
       },
       websocket: {
         open(ws) {
           if (ws.data.kind === "terminal") openTerminalSocket(ws as ServerWebSocket<TerminalSocketData>);
           if (ws.data.kind === "agent-term") openAgentTermSocket(ws as ServerWebSocket<AgentTermSocketData>);
+          if (ws.data.kind === "workspace-app-proxy") openWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>);
         },
         message(ws, message) {
           if (ws.data.kind === "terminal") handleTerminalSocketMessage(ws as ServerWebSocket<TerminalSocketData>, message);
           if (ws.data.kind === "agent-term") handleAgentTermSocketMessage(ws as ServerWebSocket<AgentTermSocketData>, message);
+          if (ws.data.kind === "workspace-app-proxy") handleWorkspaceAppProxySocketMessage(ws as ServerWebSocket<WorkspaceAppProxySocketData>, message as string | Buffer);
         },
         close(ws) {
           if (ws.data.kind === "terminal") closeTerminalSocket(ws as ServerWebSocket<TerminalSocketData>);
           if (ws.data.kind === "agent-term") closeAgentTermSocket(ws as ServerWebSocket<AgentTermSocketData>);
+          if (ws.data.kind === "workspace-app-proxy") closeWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>);
         },
       },
     });

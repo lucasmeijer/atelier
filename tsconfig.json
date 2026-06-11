@@ -13,7 +13,10 @@
       "@atelier/pi-config": ["packages/pi-config/src/server/index.ts"],
       "@atelier/terminal/server": ["packages/terminal/src/server/index.ts"],
       "@atelier/terminal/client": ["packages/terminal/src/client/index.ts"],
-      "@atelier/terminal": ["packages/terminal/src/index.ts"]
+      "@atelier/terminal": ["packages/terminal/src/index.ts"],
+      "@atelier/vscode/server": ["packages/vscode/src/server/index.ts"],
+      "@atelier/vscode/client": ["packages/vscode/src/client/index.ts"],
+      "@atelier/vscode": ["packages/vscode/src/server/index.ts"]
     },
     "types": ["bun-types"],
     "strict": true,

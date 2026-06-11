@@ -10,6 +10,7 @@ RUN apt-get update \
       ca-certificates \
       curl \
       git \
+      gpg \
       locales \
       python3 \
       python-is-python3 \
@@ -53,6 +54,15 @@ RUN curl -fsSL "https://ftp.gnu.org/pub/gnu/ncurses/ncurses-${NCURSES_VERSION}.t
  && rm -rf "/tmp/ncurses-${NCURSES_VERSION}"
 
 RUN set -eux; \
+    install -d -m 0755 /etc/apt/keyrings; \
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/packages.microsoft.gpg; \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends code; \
+    rm -rf /var/lib/apt/lists/*; \
+    code --version --no-sandbox --user-data-dir /tmp/code-version
+
+RUN set -eux; \
     node_arch="$(dpkg --print-architecture)"; \
     case "$node_arch" in \
       amd64) node_arch="x64" ;; \
@@ -90,6 +100,20 @@ RUN printf '%s\n' \
 RUN id -u atelier >/dev/null 2>&1 || useradd --create-home --shell /bin/bash atelier \
  && mkdir -p /.atelier /repos \
  && chown -R atelier:atelier /.atelier /repos
+
+# `code serve-web` ships as a small CLI in the deb and downloads the actual
+# web/server payload on first use. Pre-warm that cache in the image so every
+# new workspace does not start with the "latest VS Code is downloading" page.
+RUN set -eux; \
+    su atelier -c 'nohup code serve-web --accept-server-license-terms --host 127.0.0.1 --port 8000 --without-connection-token --default-folder /repos > /tmp/vscode-prewarm.log 2>&1 &' ; \
+    for i in $(seq 1 120); do \
+      body="$(curl -fsS http://127.0.0.1:8000/ 2>/dev/null || true)"; \
+      echo "$body" | grep -qi "workbench" && break; \
+      sleep 1; \
+      if [ "$i" = 120 ]; then cat /tmp/vscode-prewarm.log; echo "VS Code server prewarm timed out" >&2; exit 1; fi; \
+    done; \
+    pkill -u atelier -f 'code serve-web' || true; \
+    rm -f /tmp/vscode-prewarm.log
 
 ENV TERM=xterm-256color \
     COLORTERM=truecolor \

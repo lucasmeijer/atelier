@@ -19,9 +19,11 @@
     "web-container:logs": "tools/atelier-web-container.sh logs",
     "workspace-image:build": "tools/workspace-image.sh build",
     "workspace-image:verify": "tools/workspace-image.sh verify",
-    "workspace-image:publish": "tools/workspace-image.sh publish"
+    "workspace-image:publish": "tools/workspace-image.sh publish",
+    "smoke:vscode": "node apps/web/smoke/vscode-smoke.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "1.60.0",
     "bun-types": "1.3.14",
     "typescript": "6.0.3"
   }

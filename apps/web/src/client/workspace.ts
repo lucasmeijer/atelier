@@ -55,6 +55,18 @@ class WorkspaceTabsController extends Controller {
     this.activateTab(tabName);
   }
 
+  async close(event: Event & { params?: { tab?: string } }): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    const tabName = event.params?.tab ?? (event.currentTarget instanceof HTMLElement ? event.currentTarget.dataset.tab : undefined);
+    if (!tabName) return;
+    const html = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/tabs/${encodeURIComponent(tabName)}/close`, {
+      method: "POST",
+      headers: { "Accept": "text/vnd.turbo-stream.html" },
+    }).then((response) => response.text());
+    window.Turbo?.renderStreamMessage(html);
+  }
+
   stopPropagation(event: Event): void {
     event.stopPropagation();
   }
@@ -528,6 +540,18 @@ class GlobalFilterController extends Controller {
   }
 }
 
+class WorkspaceAppFrameController extends Controller {
+  static values = { workspaceId: String, appKey: String };
+  declare readonly element: HTMLIFrameElement;
+  declare readonly workspaceIdValue: string;
+  declare readonly appKeyValue: string;
+
+  connect(): void {
+    const port = window.location.port ? `:${window.location.port}` : "";
+    this.element.src = `${window.location.protocol}//${this.appKeyValue}--${this.workspaceIdValue}.localhost${port}/`;
+  }
+}
+
 class WorkspaceTitleEditController extends Controller {
   static values = { cancelUrl: String };
   declare readonly element: HTMLFormElement;
@@ -558,3 +582,4 @@ application.register("modal-opener", ModalOpenerController);
 application.register("global-filter", GlobalFilterController);
 application.register("workspace-list", WorkspaceListController);
 application.register("workspace-title-edit", WorkspaceTitleEditController);
+application.register("workspace-app-frame", WorkspaceAppFrameController);

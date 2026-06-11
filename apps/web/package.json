@@ -11,6 +11,7 @@
     "@atelier/core": "workspace:*",
     "@atelier/pi-config": "workspace:*",
     "@atelier/shared": "workspace:*",
-    "@atelier/terminal": "workspace:*"
+    "@atelier/terminal": "workspace:*",
+    "@atelier/vscode": "workspace:*"
   }
 }

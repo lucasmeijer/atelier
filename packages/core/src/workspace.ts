@@ -11,6 +11,7 @@ const namespaceLabel = "com.atelier.namespace";
 const titlePath = "/.atelier/title";
 const workspaceRoot = "/repos";
 const atelierReposRoot = "/atelier/repos";
+export const workspaceVSCodePort = 8000;
 const defaultWorkspaceImage = "ghcr.io/lucasmeijer/atelier-workspace:latest";
 const workspaceUtf8Environment = ["--env", "LANG=C.UTF-8", "--env", "LC_ALL=C.UTF-8"];
 
@@ -160,7 +161,7 @@ async function ensureWorkspaceFilesystem(id: string): Promise<void> {
   if (result.exitCode !== 0) throw new AtelierCoreError("workspace_repair_failed", result.stderr.trim() || result.stdout.trim() || `could not prepare workspace filesystem for ${id}`);
 }
 
-async function resolveWorkspace(id: string): Promise<string> {
+export async function resolveWorkspace(id: string): Promise<string> {
   const labels = await inspectLabels(id);
   if (labels[workspaceTypeLabel] !== "workspace" || labels[namespaceLabel] !== namespace()) {
     throw new AtelierCoreError("workspace_not_found", `workspace not found: ${id}`);
@@ -235,16 +236,33 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     `${workspaceIdLabel}=${id}`,
     "--mount",
     `type=bind,src=${dockerHostReposDir},dst=${atelierReposRoot}`,
+    "--publish",
+    `127.0.0.1::${workspaceVSCodePort}`,
     ...workspaceUtf8Environment,
     "--user",
     "root",
     workspaceImage(),
     "sh",
     "-lc",
-    "mkdir -p /.atelier /repos; chown -R atelier:atelier /.atelier /repos; git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; chown atelier:atelier /home/atelier/.gitconfig; sleep infinity",
+    `mkdir -p /.atelier /repos; chown -R atelier:atelier /.atelier /repos; git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; chown atelier:atelier /home/atelier/.gitconfig; if command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder /repos > /.atelier/vscode-server.log 2>&1 &' || true; fi; sleep infinity`,
   ]);
 
   return { id };
+}
+
+export async function getWorkspacePublishedPort(id: string, containerPort: number): Promise<number> {
+  await resolveWorkspace(id);
+  const result = await runDocker(["port", workspaceContainerName(id), `${containerPort}/tcp`]);
+  if (result.exitCode !== 0) throw new AtelierCoreError("workspace_port_not_found", result.stderr.trim() || `workspace ${id} does not publish port ${containerPort}`);
+  const line = result.stdout.trim().split(/\n+/)[0] ?? "";
+  const match = line.match(/(?:0\.0\.0\.0|127\.0\.0\.1|\[?::1\]?):(\d+)$/) ?? line.match(/:(\d+)$/);
+  const port = match ? Number(match[1]) : NaN;
+  if (!Number.isInteger(port) || port <= 0) throw new AtelierCoreError("workspace_port_not_found", `could not parse published port for ${id}:${containerPort}: ${line}`);
+  return port;
+}
+
+export async function getWorkspaceVSCodePort(id: string): Promise<number> {
+  return await getWorkspacePublishedPort(id, workspaceVSCodePort);
 }
 
 export async function listWorkspaces(): Promise<WorkspaceListResult> {
