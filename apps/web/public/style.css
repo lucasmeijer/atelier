@@ -85,7 +85,10 @@ a { color: inherit; text-decoration: none; }
 .row:hover { background: var(--bg); }
 .row.head { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted-2); font-weight: 600; }
 .row-main { display: block; min-width: 0; }
-.row-actions { display: flex; justify-content: flex-end; }
+.row-actions { display: flex; justify-content: flex-end; align-items: center; }
+.repo-launch-btn { width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--muted-2); cursor: pointer; font: 700 16px/1 system-ui, sans-serif; }
+.repo-launch-btn:hover { color: var(--accent); background: var(--accent-soft); border-color: rgba(37,99,235,.18); }
+.repo-launch-btn:active { transform: translateY(1px); }
 .workspace-row-title-frame { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; min-width: 0; }
 .workspace-row-edit { opacity: 0; color: var(--muted-2); font-size: 12px; padding: 2px 4px; border-radius: 5px; }
 .workspace-row:hover .workspace-row-edit { opacity: 1; }
@@ -339,6 +342,11 @@ a.btn { text-decoration: none; }
 .contents { display: contents; }
 .modal-input { width: 100%; border: 1px solid var(--line-2); border-radius: 10px; padding: 10px; font: inherit; }
 .modal-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.agent-launch-modal { width: min(900px, calc(100vw - 40px)); border: 0; padding: 0; margin: auto; position: fixed; inset: 0; background: transparent; color: var(--text); }
+.agent-launch-modal::backdrop { background: rgba(15,23,42,.35); }
+.agent-launch-modal .agent-promptwrap { padding: 0; }
+.agent-launch-modal .agent-promptbox { max-width: 860px; }
+.agent-launch-modal .agent-input { resize: none; border: none; border-radius: 0; padding: 10px 12px 2px; min-height: 170px; }
 .managed-repos-table .r-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* split workspace shell */

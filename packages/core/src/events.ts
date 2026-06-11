@@ -1,5 +1,8 @@
+export type WorkspaceCreationContext = Record<string, unknown>;
+
 export interface WorkspaceCreatedEvent {
   workspaceId: string;
+  context?: WorkspaceCreationContext;
 }
 
 export interface WorkspaceUserActivityEvent {

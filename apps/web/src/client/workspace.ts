@@ -370,12 +370,27 @@ class ModalController extends Controller {
   static values = { autoShow: Boolean };
   declare readonly element: HTMLDialogElement;
   declare readonly autoShowValue: boolean;
+  private readonly onClose = (): void => {
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    active?.blur();
+  };
 
   connect(): void {
+    this.element.addEventListener("close", this.onClose);
     if (this.autoShowValue && !this.element.open) this.element.showModal();
   }
 
+  disconnect(): void {
+    this.element.removeEventListener("close", this.onClose);
+  }
+
   close(): void {
+    this.element.close();
+  }
+
+  submitted(event: Event): void {
+    const detail = (event as CustomEvent).detail as { success?: boolean } | undefined;
+    if (detail?.success === false) return;
     this.element.close();
   }
 }
@@ -387,7 +402,16 @@ class ModalOpenerController extends Controller {
 
   open(): void {
     const dialog = document.getElementById(this.targetIdValue) as HTMLDialogElement | null;
-    if (dialog && !dialog.open) dialog.showModal();
+    if (!dialog || dialog.open) return;
+    dialog.showModal();
+    this.element.blur();
+    const input = dialog.querySelector<HTMLTextAreaElement>("textarea");
+    if (input) {
+      requestAnimationFrame(() => {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      });
+    }
   }
 }
 

@@ -14,7 +14,7 @@ export {
   type WorkspaceTabBusyListener,
   type WorkspaceAgentRuntime,
 } from "./runtime.ts";
-export { handleAgentRequest, type AgentRouteOptions } from "./routes.ts";
+export { handleAgentRequest, registerAgentEvents, type AgentRouteOptions, type AgentWorkspaceCreationContext } from "./routes.ts";
 export {
   validateAgentTermSocket,
   openAgentTermSocket,
@@ -23,7 +23,7 @@ export {
   agentTmuxPrefix,
   type AgentTermSocketData,
 } from "./bash-tmux.ts";
-export { agentTabKey, renderAgentPane } from "./render.ts";
+export { agentTabKey, renderAgentComposer, renderAgentPane } from "./render.ts";
 export { agentWorkspaceModule, listOrCreateWorkspaceAgents, renderWorkspaceAgentTabs } from "./web.ts";
 export { applyExactEdits, createWorkspaceAgentTools, normalizeWorkspacePath } from "./tools.ts";
 export { agentStaticFiles } from "./static.ts";

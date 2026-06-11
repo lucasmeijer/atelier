@@ -2,6 +2,7 @@ import {
   createNextWorkspaceAgent,
   agentWorkspaceModule,
   handleAgentRequest,
+  renderAgentComposer,
 } from "@atelier/agent/server";
 import {
   browserNavigateEndpoint,
@@ -14,6 +15,7 @@ import {
   AtelierCoreError,
   addManagedRepo,
   type AtelierEventBus,
+  type WorkspaceCreationContext,
   cloneManagedRepoIntoWorkspace,
   generateWorkspaceId,
   getWorkspaceRepoMergeability,
@@ -44,7 +46,7 @@ export interface WebAppDeps {
   /** Event bus passed through to the agent module routes. */
   events?: AtelierEventBus;
   /** Create the container + default agent etc. for an already-registered workspace id. */
-  provisionWorkspace(id: string): Promise<void>;
+  provisionWorkspace(id: string, options?: { context?: WorkspaceCreationContext }): Promise<void>;
   inspectDeleteSafety(id: string): Promise<WorkspaceDeleteBlockedDetails>;
   /** Force-remove the workspace container. */
   destroyWorkspace(id: string): Promise<void>;
@@ -233,6 +235,31 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 </html>`;
   }
 
+  function repoWorktreeName(repoName: string): string {
+    return repoName.endsWith(".git") ? repoName.slice(0, -4) : repoName;
+  }
+
+  function launchRepoAgentModal(repo: { name: string; path: string; remoteUrl: string | null }): string {
+    const modalId = domId("agent_launch_repo_modal", repo.name);
+    const formId = domId("agent_launch_repo_form", repo.name);
+    const cloneUrl = repo.remoteUrl || repo.path;
+    const worktreeName = repoWorktreeName(repo.name);
+    const initialText = `git clone ${cloneUrl} into /repos/${worktreeName}\n\nand then\n\n`;
+    return `<dialog id="${modalId}" class="agent-launch-modal" data-controller="modal">
+  ${renderAgentComposer({
+    action: `/repo-agent-workspaces/${encodeURIComponent(repo.name)}`,
+    draftId: crypto.randomUUID(),
+    formId,
+    placeholder: "Describe what you want the agent to do…",
+    initialText,
+    submitLabel: "Create workspace and kick off agent",
+    submitShortcut: "⌘↩",
+    rows: 8,
+    formActions: "turbo:submit-end->modal#submitted",
+  })}
+</dialog>`;
+  }
+
   function addManagedRepoModal(): string {
     return `<dialog id="add-managed-repo-modal" class="modal" data-controller="modal">
   <form method="post" action="/managed-repos">
@@ -258,11 +285,14 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     <span></span>
   </button></form>`;
 
-    const managedRepoRows = managedRepos.map((repo) => `<div class="row managed-repo-row">
+    const managedRepoRows = managedRepos.map((repo) => {
+      const modalId = domId("agent_launch_repo_modal", repo.name);
+      return `<div class="row managed-repo-row">
     <span></span>
-    <div><div class="r-title">${escapeHtml(repo.name)}</div><div class="r-sub">${escapeHtml(repo.remoteUrl ?? "remote unknown")}</div></div>
-    <span></span>
-  </div>`).join("");
+    <div><div class="r-title">${escapeHtml(repo.name)}</div><div class="r-sub">${escapeHtml(repo.remoteUrl ?? repo.path)}</div></div>
+    <span class="row-actions"><button class="repo-launch-btn" type="button" title="Start agent workspace from this repo" aria-label="Start agent workspace from ${escapeHtml(repo.name)}" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="${modalId}"><span aria-hidden="true">＋</span></button></span>
+  </div>`;
+    }).join("");
 
     const addManagedRepoRow = `<button class="row ghost-row" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="add-managed-repo-modal">
     <span></span>
@@ -283,7 +313,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     </div>
 
     <section class="host-repos sidebar-host-repos">
-      <div class="section-head"><div><h2>Managed repositories</h2></div></div>
+      <div class="section-head"><div><h2>Repositories</h2></div></div>
       <div class="table managed-repos-table">
         ${managedRepoRows || `<div class="row"><span></span><div><div class="r-title">No managed repositories</div><div class="r-sub">Add one below.</div></div><span></span></div>`}
         ${addManagedRepoRow}
@@ -394,6 +424,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     </div>`;
   }
 
+  async function renderRepoLaunchModals(): Promise<string> {
+    const { repos } = await listManagedRepos();
+    return repos.map((repo) => launchRepoAgentModal(repo)).join("");
+  }
+
   async function renderWorkspaceShell(selectedId?: string): Promise<string> {
     return `<div class="app workspace-shell" data-controller="workspace-shell">
     <aside class="workspace-shell-sidebar" data-workspace-shell-target="sidebar">${await renderWorkspaceSidebar()}</aside>
@@ -402,7 +437,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     </div>
     <main class="workspace-shell-main">${await workspaceDetailHostHtml(selectedId)}</main>
   </div>
-  ${addManagedRepoModal()}`;
+  ${addManagedRepoModal()}
+  ${await renderRepoLaunchModals()}`;
   }
 
   async function homePage(): Promise<Response> {
@@ -427,12 +463,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // Create / delete / dismiss
   // ---------------------------------------------------------------------------
 
-  function createWorkspaceEndpoint(url: URL, request: Request): Response {
-    const id = generateWorkspaceId();
-    registry.add(id);
+  function startWorkspaceProvisioning(id: string, options: { context?: WorkspaceCreationContext } = {}): void {
     void (async () => {
       try {
-        await deps.provisionWorkspace(id);
+        await deps.provisionWorkspace(id, { context: options.context });
         registry.setPhase(id, "ready");
         await broadcastWorkspaceReady(id);
       } catch (error) {
@@ -445,11 +479,38 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         if (entry) hub.broadcast(turboReplaceStream(workspaceBootId(id), workspaceBootResidentHtml(entry)));
       }
     })();
+  }
+
+  function createWorkspaceEndpoint(url: URL, request: Request): Response {
+    const id = generateWorkspaceId();
+    registry.add(id);
+    startWorkspaceProvisioning(id);
     const location = new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString();
     if (wantsTurboStream(request)) {
       return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()), { headers: { location } });
     }
     return Response.redirect(location, 303);
+  }
+
+  async function createRepoAgentWorkspaceEndpoint(repoName: string, request: Request): Promise<Response> {
+    const { repos } = await listManagedRepos();
+    const repo = repos.find((candidate) => candidate.name === repoName);
+    if (!repo) throw new AtelierCoreError("managed_repo_not_found", `managed repo not found: ${repoName}`);
+    const form = await request.formData();
+    const text = String(form.get("text") ?? "").trim();
+    if (!text) return turboStreamResponse("", { status: 400 });
+    const id = generateWorkspaceId();
+    registry.add(id);
+    const context: WorkspaceCreationContext = {
+      agent: {
+        initialPrompt: text,
+        model: String(form.get("model") ?? ""),
+        thinkingLevel: String(form.get("level") ?? ""),
+        attachmentDraft: String(form.get("attachmentDraft") ?? ""),
+      },
+    };
+    startWorkspaceProvisioning(id, { context });
+    return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
   }
 
   async function broadcastWorkspaceReady(id: string): Promise<void> {
@@ -742,6 +803,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (agentResponse) return agentResponse;
 
     let params: string[] | undefined;
+
+    if ((params = match(/^\/repo-agent-workspaces\/([^/]+)$/)) && request.method === "POST") return await createRepoAgentWorkspaceEndpoint(params[0], request);
 
     if ((params = match(/^\/workspaces\/([^/]+)\/sidebar-title\/edit$/)) && request.method === "GET") return workspaceSidebarTitleEditFrame(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/sidebar-title$/))) {

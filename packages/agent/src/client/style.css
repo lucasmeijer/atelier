@@ -183,16 +183,16 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 .agent-chip-prog i { display: block; height: 100%; background: var(--accent); transition: width .15s; }
 .agent-chip.error { border-color: var(--red); color: var(--red); }
 
-.agent-promptbox form { cursor: text; }
+.agent-promptbox form { cursor: text; position: relative; }
 .agent-promptbox .agent-prompt-actions, .agent-promptbox .agent-attach-row { cursor: default; }
 .agent-input {
   width: 100%; border: none; resize: none; font-family: inherit; font-size: 13px; line-height: 1.5;
-  padding: 10px 12px 2px; outline: none; background: transparent; color: var(--text); min-height: 38px; max-height: 220px; display: block;
+  padding: 10px 12px 2px; outline: none; background: transparent; color: var(--text); min-height: calc(1.5em * 4 + 12px); max-height: 220px; display: block;
 }
 .agent-input::placeholder { color: var(--muted-2); }
 
-.agent-prompt-actions { display: flex; align-items: center; gap: 8px; padding: 4px 8px 8px 12px; }
-.agent-prompt-actions .spacer { flex: 1; }
+.agent-prompt-actions { position: absolute; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 8px; padding: 0; z-index: 1; }
+.agent-prompt-actions .spacer { display: none; }
 .agent-drop-hint { display: none; }
 
 .agent-btn {

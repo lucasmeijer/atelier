@@ -7,6 +7,7 @@ import {
   handleAgentTermSocketMessage,
   isFakeMode,
   openAgentTermSocket,
+  registerAgentEvents,
   subscribeWorkspaceTabBusy,
   validateAgentTermSocket,
   type AgentTermSocketData,
@@ -51,6 +52,7 @@ const hostname = process.env.HOST ?? "localhost";
 const atelierEvents = createAtelierEventBus();
 registerPiConfigEvents(atelierEvents);
 registerTerminalEvents(atelierEvents);
+registerAgentEvents(atelierEvents);
 
 const registry = createWorkspaceRegistry({
   activityStore: createFileWorkspaceActivityStore(join(defaultDataDir(), "view-state", "workspace-activity.json")),
@@ -63,10 +65,10 @@ const app = createWebApp({
   hub,
   layouts,
   events: atelierEvents,
-  async provisionWorkspace(id) {
+  async provisionWorkspace(id, options) {
     if (!isFakeMode()) await createWorkspace({ id });
     await ensureDefaultWorkspaceAgent(id);
-    await atelierEvents.emit("workspace_created", { workspaceId: id });
+    await atelierEvents.emit("workspace_created", { workspaceId: id, context: options?.context });
   },
   inspectDeleteSafety: (id) => inspectWorkspaceDeleteSafety(id),
   destroyWorkspace: async (id) => {

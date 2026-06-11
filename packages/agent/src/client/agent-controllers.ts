@@ -294,6 +294,7 @@ export function createAgentAttachmentsController(Controller: StimulusControllerC
     dragOver(event: DragEvent): void {
       if (!event.dataTransfer?.types.includes("Files")) return;
       event.preventDefault();
+      event.stopPropagation();
       this.element.classList.add("agent-dropping");
     }
 
@@ -306,6 +307,7 @@ export function createAgentAttachmentsController(Controller: StimulusControllerC
       const files = event.dataTransfer?.files;
       if (!files || files.length === 0) return;
       event.preventDefault();
+      event.stopPropagation();
       for (const file of Array.from(files)) this.upload(file);
     }
 

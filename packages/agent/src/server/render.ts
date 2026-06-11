@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { configuredAgentModels } from "@atelier/pi-config/server";
 import { domId, escapeHtml } from "./html.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { rewriteSegment } from "./rewrite.ts";
@@ -43,6 +45,8 @@ export const ids = {
   actions: (ctx: AgentRenderContext) => `${prefix(ctx)}_actions`,
   attachRow: (ctx: AgentRenderContext) => `${prefix(ctx)}_attach`,
   chip: (ctx: AgentRenderContext, attachmentId: string) => domId(`${prefix(ctx)}_chip`, attachmentId),
+  draftAttachRow: (draftId: string) => domId("agent_draft_attach", draftId),
+  draftChip: (draftId: string, attachmentId: string) => domId("agent_draft_chip", draftId, attachmentId),
   notices: (ctx: AgentRenderContext) => `${prefix(ctx)}_notices`,
 };
 
@@ -85,33 +89,89 @@ export interface AgentPaneState {
 
 export function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { active?: boolean } = {}): string {
   const key = agentTabKey(agent.label);
+  const draftId = randomUUID();
+  const attachRowId = ids.attachRow(ctx);
   return `<section id="${domId("agent_pane", ctx.workspaceId, agent.label)}" class="tab-pane agent-tab-pane ${options.active ? "active" : ""}" data-tab-pane="${escapeHtml(key)}">
     <div class="agent-pane" id="${ids.pane(ctx)}"
       data-controller="agent-pane agent-attachments"
       data-agent-pane-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
       data-agent-pane-label-value="${escapeHtml(ctx.label)}"
-      data-agent-attachments-upload-url-value="${escapeHtml(agentPath(ctx, "/attachments"))}"
+      data-agent-attachments-upload-url-value="${escapeHtml(`/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`)}"
       data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
       <div class="agent-transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
-      <div class="agent-promptwrap">
-        <div class="agent-promptbox">
-          <form method="post" action="${escapeHtml(agentPath(ctx, "/messages"))}" data-agent-pane-target="form" data-action="turbo:submit-end->agent-pane#submitted click->agent-pane#focusInput">
-            <div class="agent-attach-row" id="${ids.attachRow(ctx)}" data-agent-attachments-target="row"></div>
-            <textarea class="agent-input" name="text" rows="1" placeholder="Message ${escapeHtml(ctx.label)}… (drop files anywhere)"
-              data-agent-pane-target="input"
-              data-action="keydown->agent-pane#inputKeydown input->agent-pane#autosize"></textarea>
-            <div class="agent-prompt-actions">
-              <span class="agent-drop-hint" data-agent-attachments-target="hint">Drop files to attach</span>
-              <span class="spacer"></span>
-              <span id="${ids.actions(ctx)}">${renderPromptActions(ctx, state.busy)}</span>
-            </div>
-          </form>
-          <div class="agent-statbar" id="${ids.stats(ctx)}">${renderStatsBar(ctx, state.stats)}</div>
-        </div>
-      </div>
+      ${renderAgentComposer({
+        ctx,
+        action: agentPath(ctx, "/messages"),
+        draftId,
+        placeholder: `Message ${ctx.label}… (drop files anywhere)`,
+        formTarget: true,
+        includePaneActions: true,
+        busy: state.busy,
+        stats: state.stats,
+      })}
       ${renderRewindDialog(ctx)}
     </div>
   </section>`;
+}
+
+export interface AgentComposerRenderOptions {
+  ctx?: AgentRenderContext;
+  action: string;
+  draftId: string;
+  placeholder: string;
+  initialText?: string;
+  formTarget?: boolean;
+  includePaneActions?: boolean;
+  busy?: boolean;
+  stats?: AgentStatsView;
+  submitLabel?: string;
+  submitShortcut?: string;
+  formId?: string;
+  rows?: number;
+  formActions?: string;
+}
+
+export function renderAgentComposer(options: AgentComposerRenderOptions): string {
+  const draftId = options.draftId;
+  const attachRowId = options.ctx ? ids.attachRow(options.ctx) : ids.draftAttachRow(draftId);
+  const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
+  const actionAttrs = ["turbo:submit-end->agent-pane#submitted", "click->agent-pane#focusInput"];
+  const targetAttrs = options.formTarget ? ` data-agent-pane-target="form"` : "";
+  const inputTarget = options.formTarget ? ` data-agent-pane-target="input"` : "";
+  const inputActions = options.formTarget ? ` data-action="keydown->agent-pane#inputKeydown input->agent-pane#autosize"` : "";
+  const shortcut = options.submitShortcut ? ` <kbd>${escapeHtml(options.submitShortcut)}</kbd>` : "";
+  const actions = options.includePaneActions && options.ctx
+    ? `<span id="${ids.actions(options.ctx)}">${renderPromptActions(options.ctx, Boolean(options.busy))}</span>`
+    : `<button class="agent-btn primary" type="submit" name="mode" value="send">${escapeHtml(options.submitLabel ?? "Send")}${shortcut}</button>`;
+  const formId = options.formId ?? `agent_composer_${draftId}`;
+  const statbar = options.stats && options.ctx
+    ? `<div class="agent-statbar" id="${ids.stats(options.ctx)}">${renderStatsBar(options.ctx, options.stats)}</div>`
+    : `<div class="agent-statbar">${renderComposerSettings(formId)}</div>`;
+  return `<div class="agent-promptwrap">
+        <div class="agent-promptbox" data-controller="agent-attachments" data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}" data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
+          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
+            <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
+            <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row"></div>
+            <textarea class="agent-input" name="text" rows="${options.rows ?? 1}" placeholder="${escapeHtml(options.placeholder)}"${inputTarget}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>
+            <div class="agent-prompt-actions">
+              <span class="agent-drop-hint" data-agent-attachments-target="hint">Drop files to attach</span>
+              <span class="spacer"></span>
+              ${actions}
+            </div>
+          </form>
+          ${statbar}
+        </div>
+      </div>`;
+}
+
+function renderComposerSettings(formId: string): string {
+  const modelOptions = configuredAgentModels.map((model, index) =>
+    `<option value="${escapeHtml(`${model.provider}::${model.id}`)}"${index === 0 ? " selected" : ""}>${escapeHtml(model.label)}</option>`).join("");
+  const thinkingLevels = ["off", "low", "medium", "high"];
+  return `<span class="agent-stat-right">
+<select class="agent-sel" name="model" form="${escapeHtml(formId)}" title="Model">${modelOptions}</select>
+<select class="agent-sel" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}">${escapeHtml(level)}</option>`).join("")}</select>
+</span>`;
 }
 
 export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): string {
@@ -301,13 +361,14 @@ function toolParamsText(tool: ToolView): string {
 // Attachments / notices / rewind dialog
 // ---------------------------------------------------------------------------
 
-export function renderAttachmentChip(ctx: AgentRenderContext, attachment: { id: string; name: string; size: number; isImage: boolean }): string {
-  return `<span class="agent-chip" id="${ids.chip(ctx, attachment.id)}">
+export function renderAttachmentChip(ctx: AgentRenderContext | undefined, attachment: { id: string; name: string; size: number; isImage: boolean }, options: { draftId?: string } = {}): string {
+  const chipId = ctx ? ids.chip(ctx, attachment.id) : ids.draftChip(options.draftId ?? "draft", attachment.id);
+  return `<span class="agent-chip" id="${chipId}">
     <input type="hidden" name="attachment" value="${escapeHtml(attachment.id)}">
     <span class="agent-chip-ico">${attachment.isImage ? "🖼" : "📄"}</span>
     <span class="agent-chip-name">${escapeHtml(attachment.name)}</span>
     <span class="agent-chip-size">${formatBytes(attachment.size)}</span>
-    <button type="button" class="agent-chip-x" data-action="agent-attachments#remove" data-attachment-id="${escapeHtml(attachment.id)}" data-chip-id="${ids.chip(ctx, attachment.id)}">✕</button>
+    <button type="button" class="agent-chip-x" data-action="agent-attachments#remove" data-attachment-id="${escapeHtml(attachment.id)}" data-chip-id="${chipId}">✕</button>
   </span>`;
 }
 

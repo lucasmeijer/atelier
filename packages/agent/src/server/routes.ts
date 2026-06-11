@@ -4,12 +4,40 @@ import { AtelierCoreError, defaultDataDir, getWorkspacePreviewPort, workspaceCon
 import { ids, renderAttachmentChip } from "./render.ts";
 import { sseFrame, turboStream, turboStreamResponse } from "./html.ts";
 import { getWorkspaceAgentRuntime, isFakeMode, type RewindMode, type SubmitMode } from "./runtime.ts";
-import { listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
+import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
 import type { ImageRef } from "./transcript.ts";
 import { maybeNameWorkspaceFromAgentPrompt } from "./workspace-title-suggestion.ts";
 
 export interface AgentRouteOptions {
   events?: AtelierEventBus;
+}
+
+export interface AgentWorkspaceCreationContext {
+  initialPrompt?: string;
+  model?: string;
+  thinkingLevel?: string;
+  attachmentDraft?: string;
+}
+
+function parseAgentWorkspaceCreationContext(value: unknown): AgentWorkspaceCreationContext | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const initialPrompt = typeof record.initialPrompt === "string" ? record.initialPrompt : undefined;
+  if (!initialPrompt?.trim()) return undefined;
+  return {
+    initialPrompt,
+    model: typeof record.model === "string" ? record.model : undefined,
+    thinkingLevel: typeof record.thinkingLevel === "string" ? record.thinkingLevel : undefined,
+    attachmentDraft: typeof record.attachmentDraft === "string" ? record.attachmentDraft : undefined,
+  };
+}
+
+export function registerAgentEvents(events: AtelierEventBus): void {
+  events.on("workspace_created", async ({ workspaceId, context }) => {
+    const agentContext = parseAgentWorkspaceCreationContext(context?.agent);
+    if (!agentContext) return;
+    await submitInitialAgentPrompt(workspaceId, agentContext, { events });
+  });
 }
 
 const imageMimeByExtension: Record<string, string> = {
@@ -58,8 +86,16 @@ async function requireAgent(workspaceId: string, label: string): Promise<Workspa
 // Attachment staging
 // ---------------------------------------------------------------------------
 
-function attachmentsDir(workspaceId: string): string {
-  return join(defaultDataDir(), "workspace-agents", workspaceId, "attachments");
+function attachmentDraftsDir(): string {
+  return join(defaultDataDir(), "agent-attachment-drafts");
+}
+
+function attachmentDraftDir(draftId: string): string {
+  return join(attachmentDraftsDir(), draftId);
+}
+
+function validDraftId(draftId: string): boolean {
+  return /^[a-zA-Z0-9_-]{8,80}$/.test(draftId);
 }
 
 function sanitizeFilename(name: string): string {
@@ -75,9 +111,9 @@ interface StagedAttachment {
   isImage: boolean;
 }
 
-async function findStagedAttachment(workspaceId: string, attachmentId: string): Promise<StagedAttachment | undefined> {
-  if (!/^[a-f0-9-]{8,40}$/.test(attachmentId)) return undefined;
-  const dir = join(attachmentsDir(workspaceId), attachmentId);
+async function findStagedAttachment(draftId: string, attachmentId: string): Promise<StagedAttachment | undefined> {
+  if (!validDraftId(draftId) || !/^[a-f0-9-]{8,40}$/.test(attachmentId)) return undefined;
+  const dir = join(attachmentDraftDir(draftId), attachmentId);
   let names: string[];
   try {
     names = await readdir(dir);
@@ -102,6 +138,13 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   };
 
   let params: string[] | undefined;
+
+  if ((params = match(/^\/agent-attachment-drafts\/([^/]+)\/attachments$/)) && request.method === "POST") {
+    return await uploadAttachmentEndpoint(params[0], request, url.searchParams.get("row") ?? undefined);
+  }
+  if ((params = match(/^\/agent-attachment-drafts\/([^/]+)\/attachments\/([^/]+)\/delete$/)) && request.method === "POST") {
+    return await deleteAttachmentEndpoint(params[0], params[1]);
+  }
 
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/events$/)) && request.method === "GET") {
     return await agentEventsEndpoint(params[0], params[1]);
@@ -136,12 +179,6 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
     const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]));
     if (entry) await runtime.rewind(entry, ["discard", "summary", "custom"].includes(mode) ? mode : "discard", note);
     return turboStreamResponse("");
-  }
-  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/attachments$/)) && request.method === "POST") {
-    return await uploadAttachmentEndpoint(params[0], params[1], request);
-  }
-  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/attachments\/([^/]+)\/delete$/)) && request.method === "POST") {
-    return await deleteAttachmentEndpoint(params[0], params[1], params[2]);
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agent-files$/)) && request.method === "GET") {
     return await workspaceFileEndpoint(params[0], url.searchParams.get("path") ?? "", request);
@@ -208,11 +245,12 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
   const modeRaw = String(form.get("mode") ?? "send");
   const mode: SubmitMode = modeRaw === "steer" || modeRaw === "followup" ? modeRaw : "send";
   const attachmentIds = form.getAll("attachment").map(String);
+  const attachmentDraft = String(form.get("attachmentDraft") ?? "");
 
   const images: ImageRef[] = [];
   const attachmentNotes: string[] = [];
   for (const attachmentId of attachmentIds) {
-    const staged = await findStagedAttachment(workspaceId, attachmentId);
+    const staged = await findStagedAttachment(attachmentDraft, attachmentId);
     if (!staged) continue;
     if (staged.isImage) {
       const data = await readFile(staged.path);
@@ -220,7 +258,7 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
     } else {
       attachmentNotes.push(await deliverFileAttachment(workspaceId, staged));
     }
-    await rm(join(attachmentsDir(workspaceId), staged.id), { recursive: true, force: true });
+    await rm(join(attachmentDraftDir(attachmentDraft), staged.id), { recursive: true, force: true });
   }
 
   const trimmed = text.trim();
@@ -230,6 +268,44 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
   }
   await runtime.submit(text, { mode, images, attachmentNotes });
   return turboStreamResponse("");
+}
+
+async function submitInitialAgentPrompt(workspaceId: string, context: AgentWorkspaceCreationContext, options: AgentRouteOptions): Promise<void> {
+  const agent = await ensureDefaultWorkspaceAgent(workspaceId);
+  const runtime = await getWorkspaceAgentRuntime(agent);
+  if (context.model) {
+    const [provider, modelId] = context.model.split("::");
+    if (provider && modelId) await runtime.setModel(provider, modelId);
+  }
+  if (context.thinkingLevel) await runtime.setThinkingLevel(context.thinkingLevel);
+
+  const images: ImageRef[] = [];
+  const attachmentNotes: string[] = [];
+  const draftId = context.attachmentDraft ?? "";
+  if (validDraftId(draftId)) {
+    let entries: string[] = [];
+    try {
+      entries = await readdir(attachmentDraftDir(draftId));
+    } catch {
+      entries = [];
+    }
+    for (const attachmentId of entries) {
+      const staged = await findStagedAttachment(draftId, attachmentId);
+      if (!staged) continue;
+      if (staged.isImage) {
+        const data = await readFile(staged.path);
+        images.push({ mimeType: imageMimeByExtension[extensionOf(staged.name)] ?? "image/png", data: data.toString("base64") });
+      } else {
+        attachmentNotes.push(await deliverFileAttachment(workspaceId, staged));
+      }
+    }
+    await rm(attachmentDraftDir(draftId), { recursive: true, force: true });
+  }
+
+  const prompt = context.initialPrompt ?? "";
+  await options.events?.emit("workspace_user_activity", { workspaceId });
+  maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), prompt.trim()], { events: options.events });
+  await runtime.submit(prompt, { mode: "send", images, attachmentNotes });
 }
 
 async function deliverFileAttachment(workspaceId: string, staged: StagedAttachment): Promise<string> {
@@ -254,27 +330,24 @@ async function deliverFileAttachment(workspaceId: string, staged: StagedAttachme
 // Attachments
 // ---------------------------------------------------------------------------
 
-async function uploadAttachmentEndpoint(workspaceId: string, label: string, request: Request): Promise<Response> {
-  await requireAgent(workspaceId, label);
+async function uploadAttachmentEndpoint(draftId: string, request: Request, rowId?: string): Promise<Response> {
+  if (!validDraftId(draftId)) return turboStreamResponse("", { status: 400 });
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File)) return turboStreamResponse("", { status: 400 });
   const attachmentId = crypto.randomUUID();
   const name = sanitizeFilename(file.name || "file");
-  const dir = join(attachmentsDir(workspaceId), attachmentId);
+  const dir = join(attachmentDraftDir(draftId), attachmentId);
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, name), Buffer.from(await file.arrayBuffer()));
-  const ctx = { workspaceId, label };
-  const chip = renderAttachmentChip(ctx, { id: attachmentId, name, size: file.size, isImage: Boolean(imageMimeByExtension[extensionOf(name)]) });
-  return turboStreamResponse(turboStream("append", ids.attachRow(ctx), chip));
+  const chip = renderAttachmentChip(undefined, { id: attachmentId, name, size: file.size, isImage: Boolean(imageMimeByExtension[extensionOf(name)]) }, { draftId });
+  return turboStreamResponse(turboStream("append", rowId || ids.draftAttachRow(draftId), chip));
 }
 
-async function deleteAttachmentEndpoint(workspaceId: string, label: string, attachmentId: string): Promise<Response> {
-  await requireAgent(workspaceId, label);
-  const staged = await findStagedAttachment(workspaceId, attachmentId);
-  if (staged) await rm(join(attachmentsDir(workspaceId), staged.id), { recursive: true, force: true });
-  const ctx = { workspaceId, label };
-  return turboStreamResponse(turboStream("remove", ids.chip(ctx, attachmentId)));
+async function deleteAttachmentEndpoint(draftId: string, attachmentId: string): Promise<Response> {
+  const staged = await findStagedAttachment(draftId, attachmentId);
+  if (staged) await rm(join(attachmentDraftDir(draftId), staged.id), { recursive: true, force: true });
+  return turboStreamResponse(turboStream("remove", ids.draftChip(draftId, attachmentId)));
 }
 
 // ---------------------------------------------------------------------------
