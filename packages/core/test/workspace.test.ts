@@ -4,6 +4,7 @@ import {
   createWorkspace,
   deleteWorkspace,
   execWorkspace,
+  execWorkspaceShell,
   listWorkspaces,
   setWorkspaceTitle,
   workspaceCommand,
@@ -73,6 +74,17 @@ describe("core workspaces", () => {
     expect(exec.exitCode).toBe(0);
     expect(exec.stdout.trim()).toBe("atelier");
     expect(exec.stderr).toBe("");
+  });
+
+  test("execWorkspaceShell passes stdin into docker exec commands", async () => {
+    const created = await createWorkspace();
+
+    const write = await execWorkspaceShell(created.id, "cat > /repos/stdin.txt", { stdin: "hello from stdin" });
+    const read = await execWorkspace(created.id, ["cat", "/repos/stdin.txt"]);
+
+    expect(write.exitCode).toBe(0);
+    expect(read.exitCode).toBe(0);
+    expect(read.stdout).toBe("hello from stdin");
   });
 
   test("createWorkspace configures default git identity", async () => {

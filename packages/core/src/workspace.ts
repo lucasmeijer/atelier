@@ -186,6 +186,7 @@ export async function execWorkspaceCommand(
   const startedAt = Date.now();
   const dockerArgs = [
     "exec",
+    ...(options.stdin !== undefined ? ["-i"] : []),
     "--user",
     options.user ?? "atelier",
     ...workspaceUtf8Environment,
