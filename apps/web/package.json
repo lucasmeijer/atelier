@@ -8,7 +8,6 @@
   },
   "dependencies": {
     "@atelier/agent": "workspace:*",
-    "@atelier/container-health": "workspace:*",
     "@atelier/core": "workspace:*",
     "@atelier/pi-config": "workspace:*",
     "@atelier/shared": "workspace:*",

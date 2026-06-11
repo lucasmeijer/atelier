@@ -10,7 +10,6 @@ import {
   registerAgentStreamActions,
   startAgentTab,
 } from "@atelier/agent/client";
-import { createContainerHealthController } from "@atelier/container-health/client";
 import { createTerminalPaneController, initializeTerminalTheme, startTerminal, startTerminalTab } from "@atelier/terminal/client";
 
 declare global {
@@ -543,7 +542,6 @@ application.register("agent-autosubmit", createAgentAutosubmitController(Control
 application.register("agent-elapsed", createAgentElapsedController(Controller));
 application.register("agent-notice", createAgentNoticeController(Controller));
 application.register("agent-term", createAgentTermController(Controller));
-application.register("container-health", createContainerHealthController(Controller));
 application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);
 application.register("global-filter", GlobalFilterController);

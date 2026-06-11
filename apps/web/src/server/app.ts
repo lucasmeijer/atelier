@@ -4,11 +4,6 @@ import {
   handleAgentRequest,
 } from "@atelier/agent/server";
 import {
-  containerHealthStreamEndpoint,
-  containerHealthWorkspaceModule,
-  healthPaneEndpoint,
-} from "@atelier/container-health/server";
-import {
   AtelierCoreError,
   addManagedRepo,
   type AtelierEventBus,
@@ -93,7 +88,7 @@ function turboUpdateStream(target: string, html: string): string {
   return `<turbo-stream action="update" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
 }
 
-const workspaceModules: WorkspaceModule[] = [agentWorkspaceModule, terminalWorkspaceModule, containerHealthWorkspaceModule];
+const workspaceModules: WorkspaceModule[] = [agentWorkspaceModule, terminalWorkspaceModule];
 
 export function createWebApp(deps: WebAppDeps): WebApp {
   const { registry, hub, layouts } = deps;
@@ -210,7 +205,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/terminal.css">
 <link rel="stylesheet" href="/agent.css">
-<link rel="stylesheet" href="/container-health.css">
 <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.13/dist/turbo.es2017-esm.js"></script>
 <script type="module">
   import { Application, Controller } from "https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/+esm";
@@ -730,8 +724,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/close$/)) && request.method === "POST") return await closeWorkspaceGroupEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/layout\/move-tab$/)) && request.method === "POST") return await moveWorkspaceTabEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/layout\/resize$/)) && request.method === "POST") return await resizeWorkspaceGroupsEndpoint(params[0], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/health$/)) && request.method === "GET") return healthPaneEndpoint(params[0]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/health\/stream$/)) && request.method === "GET") return containerHealthStreamEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/clone-managed-repo$/)) && request.method === "POST") return await cloneManagedRepoIntoWorkspaceFromForm(params[0], request, url);
     if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/push$/)) && request.method === "POST") return await pushRepoEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/mergeability$/)) && request.method === "GET") return await mergeabilityFrame(params[0], params[1]);

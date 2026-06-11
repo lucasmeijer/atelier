@@ -11,7 +11,6 @@ import {
   validateAgentTermSocket,
   type AgentTermSocketData,
 } from "@atelier/agent/server";
-import { containerHealthStaticFiles } from "@atelier/container-health/server";
 import {
   createAtelierEventBus,
   createWorkspace,
@@ -81,7 +80,6 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
     "/workspace.js": { url: new URL("../../public/workspace.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
     ...terminalStaticFiles,
     ...agentStaticFiles,
-    ...containerHealthStaticFiles,
   };
   const entry = staticFiles[pathname];
   if (!entry) return undefined;
@@ -107,7 +105,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       hostname,
       port,
       // The app intentionally uses long-lived SSE endpoints (workspace status,
-      // agent transcript streams, health metrics). Bun's default 10s idle
+      // agent transcript streams). Bun's default 10s idle
       // timeout kills quiet EventSource requests and logs
       // "request timed out after 10 seconds". Keep SSE alive with heartbeats,
       // and give stalled samples enough headroom before Bun closes the request.

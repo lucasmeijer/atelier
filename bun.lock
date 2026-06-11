@@ -13,7 +13,6 @@
       "name": "@atelier/web",
       "dependencies": {
         "@atelier/agent": "workspace:*",
-        "@atelier/container-health": "workspace:*",
         "@atelier/core": "workspace:*",
         "@atelier/pi-config": "workspace:*",
         "@atelier/shared": "workspace:*",
@@ -27,13 +26,6 @@
         "@atelier/shared": "workspace:*",
         "@earendil-works/pi-coding-agent": "^0.79.0",
         "typebox": "^1.0.57",
-      },
-    },
-    "packages/container-health": {
-      "name": "@atelier/container-health",
-      "dependencies": {
-        "@atelier/core": "workspace:*",
-        "@atelier/shared": "workspace:*",
       },
     },
     "packages/core": {
@@ -78,8 +70,6 @@
     "@atelier/agent": ["@atelier/agent@workspace:packages/agent"],
 
     "@atelier/cli": ["@atelier/cli@workspace:tools/atelier"],
-
-    "@atelier/container-health": ["@atelier/container-health@workspace:packages/container-health"],
 
     "@atelier/core": ["@atelier/core@workspace:packages/core"],
 
