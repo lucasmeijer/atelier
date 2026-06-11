@@ -91,6 +91,7 @@ export async function startTerminal(workspaceId: string, title: string, options:
       cursorBlink: true,
       fontSize: 13,
       fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      logLevel: "error",
       scrollback: 10000,
       theme: TERMINAL_THEME,
     });
