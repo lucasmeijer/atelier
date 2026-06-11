@@ -245,7 +245,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     workspaceImage(),
     "sh",
     "-lc",
-    `mkdir -p /.atelier /repos; chown -R atelier:atelier /.atelier /repos; git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; chown atelier:atelier /home/atelier/.gitconfig; if command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder /repos > /.atelier/vscode-server.log 2>&1 &' || true; fi; sleep infinity`,
+    `mkdir -p /.atelier /repos; chown -R atelier:atelier /.atelier /repos; git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; chown atelier:atelier /home/atelier/.gitconfig; if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder /repos > /.atelier/vscode-server.log 2>&1 &' || true; fi; sleep infinity`,
   ]);
 
   return { id };

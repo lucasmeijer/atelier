@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+server_data_dir="${ATELIER_VSCODE_SERVER_DATA_DIR:-/home/atelier/.vscode-server}"
+defaults_dir="${ATELIER_VSCODE_DEFAULTS_DIR:-/opt/atelier/vscode-defaults}"
+
+seed_file() {
+  src="$1"
+  dst="$2"
+  if [ -f "$src" ] && [ ! -e "$dst" ]; then
+    mkdir -p "$(dirname "$dst")"
+    cp "$src" "$dst"
+  fi
+}
+
+# Seed remote/server-side VS Code defaults. Browser-local User settings are not
+# controlled by code serve-web.
+seed_file "$defaults_dir/Machine/settings.json" "$server_data_dir/data/Machine/settings.json"
+seed_file "$defaults_dir/Machine/mcp.json" "$server_data_dir/data/Machine/mcp.json"
+
+exec code serve-web \
+  --accept-server-license-terms \
+  --host "${ATELIER_VSCODE_HOST:-0.0.0.0}" \
+  --port "${ATELIER_VSCODE_PORT:-8000}" \
+  --without-connection-token \
+  --default-folder "${ATELIER_VSCODE_DEFAULT_FOLDER:-/repos}" \
+  --server-data-dir "$server_data_dir"

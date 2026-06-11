@@ -45,7 +45,11 @@ export async function ensureWorkspaceVSCodeServer(workspaceId: string): Promise<
       exit 0
     fi
     mkdir -p /.atelier/vscode
-    nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port 8000 --without-connection-token --default-folder /repos > /.atelier/vscode/server.log 2>&1 &
+    if command -v atelier-start-vscode >/dev/null 2>&1; then
+      nohup atelier-start-vscode > /.atelier/vscode/server.log 2>&1 &
+    else
+      nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port 8000 --without-connection-token --default-folder /repos > /.atelier/vscode/server.log 2>&1 &
+    fi
   `, { user: "atelier" });
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || `could not start VS Code server for ${workspaceId}`);
 }

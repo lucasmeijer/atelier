@@ -97,15 +97,19 @@ RUN printf '%s\n' \
       'set -g allow-passthrough on' \
     > /etc/tmux.conf
 
-RUN id -u atelier >/dev/null 2>&1 || useradd --create-home --shell /bin/bash atelier \
- && mkdir -p /.atelier /repos \
- && chown -R atelier:atelier /.atelier /repos
+COPY vscode-defaults /opt/atelier/vscode-defaults
+COPY bin/atelier-start-vscode /usr/local/bin/atelier-start-vscode
+
+RUN chmod +x /usr/local/bin/atelier-start-vscode \
+ && id -u atelier >/dev/null 2>&1 || useradd --create-home --shell /bin/bash atelier \
+ && mkdir -p /.atelier /repos /home/atelier/.vscode-server \
+ && chown -R atelier:atelier /.atelier /repos /home/atelier/.vscode-server
 
 # `code serve-web` ships as a small CLI in the deb and downloads the actual
 # web/server payload on first use. Pre-warm that cache in the image so every
 # new workspace does not start with the "latest VS Code is downloading" page.
 RUN set -eux; \
-    su atelier -c 'nohup code serve-web --accept-server-license-terms --host 127.0.0.1 --port 8000 --without-connection-token --default-folder /repos > /tmp/vscode-prewarm.log 2>&1 &' ; \
+    su atelier -c 'ATELIER_VSCODE_HOST=127.0.0.1 nohup atelier-start-vscode > /tmp/vscode-prewarm.log 2>&1 &' ; \
     for i in $(seq 1 120); do \
       body="$(curl -fsS http://127.0.0.1:8000/ 2>/dev/null || true)"; \
       echo "$body" | grep -qi "workbench" && break; \
