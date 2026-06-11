@@ -43,6 +43,10 @@ class WorkspaceShellController extends Controller {
   declare readonly hasSidebarTarget: boolean;
   declare readonly toggleTargets: HTMLButtonElement[];
   private readonly storageKey = "atelier.workspaceSidebar";
+  private readonly minWidth = 260;
+  private readonly maxWidth = 720;
+  private readonly collapseThreshold = 180;
+  private readonly expandThreshold = 220;
   private resize?: { startX: number; startWidth: number; pointerId: number; handle: HTMLElement };
 
   connect(): void {
@@ -56,11 +60,13 @@ class WorkspaceShellController extends Controller {
   }
 
   startResize(event: PointerEvent): void {
-    if (this.element.classList.contains("workspace-shell-collapsed") || !this.hasSidebarTarget) return;
+    if (!this.hasSidebarTarget) return;
     const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
     if (!handle) return;
     event.preventDefault();
-    this.resize = { startX: event.clientX, startWidth: this.sidebarTarget.getBoundingClientRect().width, pointerId: event.pointerId, handle };
+    const collapsed = this.element.classList.contains("workspace-shell-collapsed");
+    const startWidth = collapsed ? 0 : this.sidebarTarget.getBoundingClientRect().width;
+    this.resize = { startX: event.clientX, startWidth, pointerId: event.pointerId, handle };
     handle.setPointerCapture(event.pointerId);
     document.body.classList.add("workspace-shell-resizing");
     window.addEventListener("pointermove", this.pointerMove);
@@ -69,15 +75,33 @@ class WorkspaceShellController extends Controller {
 
   private pointerMove = (event: PointerEvent): void => {
     if (!this.resize) return;
-    this.setWidth(this.resize.startWidth + event.clientX - this.resize.startX);
+    const proposedWidth = this.resize.startWidth + event.clientX - this.resize.startX;
+
+    if (proposedWidth <= this.collapseThreshold) {
+      this.setCollapsed(true);
+      return;
+    }
+
+    if (this.element.classList.contains("workspace-shell-collapsed")) {
+      if (proposedWidth < this.expandThreshold) return;
+      this.setCollapsed(false);
+    }
+    this.setWidth(proposedWidth);
   };
 
   private pointerUp = (): void => {
     window.removeEventListener("pointermove", this.pointerMove);
     document.body.classList.remove("workspace-shell-resizing");
-    const width = this.currentWidth();
+    const resize = this.resize;
     this.resize = undefined;
-    this.saveState({ ...this.savedState(), width });
+    const collapsed = this.element.classList.contains("workspace-shell-collapsed");
+    const width = collapsed ? this.savedState().width : this.currentWidth();
+    this.saveState({ ...this.savedState(), width, collapsed });
+    try {
+      resize?.handle.releasePointerCapture(resize.pointerId);
+    } catch {
+      // Ignore browsers that already released capture.
+    }
   };
 
   private setCollapsed(collapsed: boolean, options: { persist?: boolean } = {}): void {
@@ -91,7 +115,7 @@ class WorkspaceShellController extends Controller {
   }
 
   private setWidth(width: number): void {
-    const clamped = Math.max(260, Math.min(720, width));
+    const clamped = Math.max(this.minWidth, Math.min(this.maxWidth, width));
     this.element.style.setProperty("--workspace-sidebar-width", `${clamped}px`);
   }
 
