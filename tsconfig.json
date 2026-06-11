@@ -9,6 +9,11 @@
     "paths": {
       "@atelier/core": ["packages/core/src/index.ts"],
       "@atelier/shared": ["packages/shared/src/index.ts"],
+      "@atelier/browser/server": ["packages/browser/src/server/index.ts"],
+      "@atelier/browser/client": ["packages/browser/src/client/index.ts"],
+      "@atelier/browser": ["packages/browser/src/server/index.ts"],
+      "@atelier/workspace-proxy/server": ["packages/workspace-proxy/src/server/index.ts"],
+      "@atelier/workspace-proxy": ["packages/workspace-proxy/src/server/index.ts"],
       "@atelier/pi-config/server": ["packages/pi-config/src/server/index.ts"],
       "@atelier/pi-config": ["packages/pi-config/src/server/index.ts"],
       "@atelier/terminal/server": ["packages/terminal/src/server/index.ts"],

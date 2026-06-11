@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AtelierCoreError, defaultDataDir, workspaceContainerName, type AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, defaultDataDir, getWorkspacePreviewPort, workspaceContainerName, workspacePreviewPorts, type AtelierEventBus } from "@atelier/core";
 import { ids, renderAttachmentChip } from "./render.ts";
 import { sseFrame, turboStream, turboStreamResponse } from "./html.ts";
 import { getWorkspaceAgentRuntime, isFakeMode, type RewindMode, type SubmitMode } from "./runtime.ts";
@@ -348,38 +348,15 @@ async function workspaceFileEndpoint(workspaceId: string, path: string, request:
 
 async function workspacePortProxyEndpoint(workspaceId: string, port: number, path: string, url: URL): Promise<Response> {
   if (!Number.isInteger(port) || port <= 0 || port > 65535) return new Response("bad port", { status: 400 });
+  if (!(workspacePreviewPorts as readonly number[]).includes(port)) {
+    return new Response(`Port ${port} is not published for previews. Use one of: ${workspacePreviewPorts.join(", ")}`, { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });
+  }
   const search = url.search ?? "";
-
-  if (isFakeMode()) {
-    try {
-      const upstream = await fetch(`http://127.0.0.1:${port}${path}${search}`);
-      return new Response(upstream.body, { status: upstream.status, headers: upstream.headers });
-    } catch {
-      return new Response("upstream unreachable", { status: 502 });
-    }
+  const hostPort = isFakeMode() ? port : await getWorkspacePreviewPort(workspaceId, port);
+  try {
+    const upstream = await fetch(`http://127.0.0.1:${hostPort}${path}${search}`, { redirect: "manual" });
+    return new Response(upstream.body, { status: upstream.status, headers: upstream.headers });
+  } catch {
+    return new Response("upstream unreachable", { status: 502 });
   }
-
-  const container = workspaceContainerName(workspaceId);
-  const target = `http://127.0.0.1:${port}${path}${search}`;
-  const proc = Bun.spawn(
-    ["docker", "exec", container, "sh", "-c", `curl -sS -i --max-time 30 '${target.replaceAll("'", `'\\''`)}'`],
-    { stdout: "pipe", stderr: "ignore" },
-  );
-  const raw = Buffer.from(await new Response(proc.stdout).arrayBuffer());
-  const exitCode = await proc.exited;
-  if (exitCode !== 0) return new Response("upstream unreachable", { status: 502 });
-  const separator = raw.indexOf("\r\n\r\n");
-  if (separator === -1) return new Response(raw, { headers: { "content-type": "text/plain" } });
-  const head = raw.subarray(0, separator).toString("utf8");
-  const body = raw.subarray(separator + 4);
-  const lines = head.split("\r\n");
-  const status = Number(lines[0]?.split(" ")[1]) || 200;
-  const headers = new Headers();
-  for (const line of lines.slice(1)) {
-    const index = line.indexOf(":");
-    if (index === -1) continue;
-    const name = line.slice(0, index).trim().toLowerCase();
-    if (["content-type", "cache-control", "location"].includes(name)) headers.set(name, line.slice(index + 1).trim());
-  }
-  return new Response(body, { status, headers });
 }

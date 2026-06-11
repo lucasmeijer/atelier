@@ -12,6 +12,7 @@ const titlePath = "/.atelier/title";
 const workspaceRoot = "/repos";
 const atelierReposRoot = "/atelier/repos";
 export const workspaceVSCodePort = 8000;
+export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
 const defaultWorkspaceImage = "ghcr.io/lucasmeijer/atelier-workspace:latest";
 const workspaceUtf8Environment = ["--env", "LANG=C.UTF-8", "--env", "LC_ALL=C.UTF-8"];
 
@@ -239,6 +240,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     `type=bind,src=${dockerHostReposDir},dst=${atelierReposRoot}`,
     "--publish",
     `127.0.0.1::${workspaceVSCodePort}`,
+    ...workspacePreviewPorts.flatMap((port) => ["--publish", `127.0.0.1::${port}`]),
     ...workspaceUtf8Environment,
     "--user",
     "root",
@@ -264,6 +266,13 @@ export async function getWorkspacePublishedPort(id: string, containerPort: numbe
 
 export async function getWorkspaceVSCodePort(id: string): Promise<number> {
   return await getWorkspacePublishedPort(id, workspaceVSCodePort);
+}
+
+export async function getWorkspacePreviewPort(id: string, containerPort: number): Promise<number> {
+  if (!(workspacePreviewPorts as readonly number[]).includes(containerPort)) {
+    throw invalidArguments(`unsupported workspace preview port: ${containerPort}. Supported ports: ${workspacePreviewPorts.join(", ")}`);
+  }
+  return await getWorkspacePublishedPort(id, containerPort);
 }
 
 export async function listWorkspaces(): Promise<WorkspaceListResult> {

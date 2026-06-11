@@ -11,6 +11,7 @@ import {
   validateAgentTermSocket,
   type AgentTermSocketData,
 } from "@atelier/agent/server";
+import { browserStaticFiles, isBrowserWorkspaceApp, resolveBrowserWorkspaceAppTarget } from "@atelier/browser/server";
 import {
   createAtelierEventBus,
   createWorkspace,
@@ -34,10 +35,11 @@ import { atelierName } from "@atelier/shared";
 import {
   parseWorkspaceAppHost,
   proxyWorkspaceAppRequest,
-  vscodeStaticFiles,
   workspaceAppWebSocketTarget,
   type WorkspaceAppHost,
-} from "@atelier/vscode/server";
+  type WorkspaceAppTargetResolver,
+} from "@atelier/workspace-proxy/server";
+import { resolveVSCodeWorkspaceAppTarget, vscodeAppKey, vscodeStaticFiles } from "@atelier/vscode/server";
 import { createWebApp } from "./app.ts";
 import { createStreamHub } from "./stream-hub.ts";
 import { createWorkspaceLayoutStore } from "./workspace-layout.ts";
@@ -88,6 +90,7 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
     ...terminalStaticFiles,
     ...agentStaticFiles,
     ...vscodeStaticFiles,
+    ...browserStaticFiles,
   };
   const entry = staticFiles[pathname];
   if (!entry) return undefined;
@@ -105,11 +108,17 @@ interface WorkspaceAppProxySocketData {
 
 type SocketData = TerminalSocketData | AgentTermSocketData | WorkspaceAppProxySocketData;
 
+const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, requestUrl) => {
+  if (app.appKey === vscodeAppKey) return await resolveVSCodeWorkspaceAppTarget(app, requestUrl);
+  if (isBrowserWorkspaceApp(app.appKey)) return await resolveBrowserWorkspaceAppTarget(app, requestUrl);
+  throw new Error(`unknown workspace app: ${app.appKey}`);
+};
+
 async function validateSocket(request: Request, url: URL): Promise<SocketData | undefined> {
   const appHost = parseWorkspaceAppHost(request.headers.get("host"));
   if (appHost) {
     const protocols = (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((protocol) => protocol.trim()).filter(Boolean);
-    return { kind: "workspace-app-proxy", target: await workspaceAppWebSocketTarget(appHost, url.pathname, url.search), host: request.headers.get("host") ?? url.host, protocols };
+    return { kind: "workspace-app-proxy", target: await workspaceAppWebSocketTarget(appHost, url.pathname, url.search, resolveWorkspaceAppTarget), host: request.headers.get("host") ?? url.host, protocols };
   }
   return validateAgentTermSocket(url) ?? (await validateTerminalSocket(url));
 }
@@ -176,7 +185,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
           return new Response("websocket upgrade failed", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });
         }
 
-        if (appHost) return await proxyWorkspaceAppRequest(appHost, request);
+        if (appHost) return await proxyWorkspaceAppRequest(appHost, request, resolveWorkspaceAppTarget);
 
         const staticResponse = await serveStatic(url.pathname);
         if (staticResponse) return staticResponse;

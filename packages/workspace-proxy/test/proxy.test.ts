@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseWorkspaceAppHost } from "../src/server/proxy.ts";
+import { parseWorkspaceAppHost } from "@atelier/workspace-proxy/server";
 
 describe("parseWorkspaceAppHost", () => {
   test("parses localhost app hosts", () => {

@@ -1,0 +1,17 @@
+.browser-pane { height: 100%; min-height: 360px; }
+.browser-frame { display: block; height: 100%; }
+.browser-shell { height: 100%; min-height: 360px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: 0 18px 48px rgba(19,26,38,.08); }
+.browser-toolbar { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg,#fbfcff,#f4f7fb); }
+.browser-window-controls { display: inline-flex; align-items: center; gap: 6px; padding: 0 4px 0 2px; }
+.browser-window-controls span { width: 11px; height: 11px; border-radius: 999px; display: block; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+.browser-window-controls .red { background: #ff5f57; }
+.browser-window-controls .amber { background: #ffbd2e; }
+.browser-window-controls .green { background: #28c840; }
+.browser-nav-button, .browser-open-external { width: 30px; height: 30px; display: inline-grid; place-items: center; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); color: var(--muted); font: inherit; font-weight: 750; cursor: pointer; }
+.browser-nav-button:hover, .browser-open-external:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.browser-address-input { min-width: 0; flex: 1; height: 31px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 999px; background: rgba(255,255,255,.94); color: var(--text); font: inherit; font-size: 12px; box-shadow: inset 0 1px 2px rgba(19,26,38,.03); }
+.browser-address-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.browser-viewport { flex: 1; min-height: 0; background: linear-gradient(135deg,#f6f8fc,#e7eefc); }
+.browser-viewport iframe { width: 100%; height: 100%; min-height: 320px; display: block; border: 0; background: #fff; }
+.workspace-group .workspace-panes .browser-pane { height: 100%; }
+.workspace-group .workspace-panes:has(.browser-pane) { padding: 10px; }

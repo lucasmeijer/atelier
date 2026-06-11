@@ -4,6 +4,13 @@ import {
   handleAgentRequest,
 } from "@atelier/agent/server";
 import {
+  browserNavigateEndpoint,
+  browserWorkspaceModule,
+  createWorkspaceBrowserTabForWorkspace,
+  deleteWorkspaceBrowserState,
+  deleteWorkspaceBrowserTabForWorkspace,
+} from "@atelier/browser/server";
+import {
   AtelierCoreError,
   addManagedRepo,
   type AtelierEventBus,
@@ -23,8 +30,6 @@ import {
 import {
   createWorkspaceVSCodeTab,
   deleteWorkspaceVSCodeTab,
-  parseWorkspaceAppHost,
-  proxyWorkspaceAppRequest,
   vscodeWorkspaceModule,
 } from "@atelier/vscode/server";
 import { atelierName, type WorkspaceAttachment, type WorkspaceModule, type WorkspaceTabContribution } from "@atelier/shared";
@@ -95,7 +100,7 @@ function turboUpdateStream(target: string, html: string): string {
   return `<turbo-stream action="update" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
 }
 
-const workspaceModules: WorkspaceModule[] = [agentWorkspaceModule, terminalWorkspaceModule, vscodeWorkspaceModule];
+const workspaceModules: WorkspaceModule[] = [agentWorkspaceModule, terminalWorkspaceModule, browserWorkspaceModule, vscodeWorkspaceModule];
 
 export function createWebApp(deps: WebAppDeps): WebApp {
   const { registry, hub, layouts } = deps;
@@ -194,6 +199,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     },
     removed(id) {
       layouts.delete(id);
+      deleteWorkspaceBrowserState(id);
       hub.broadcast(turboRemoveStream(workspaceRowId(id)));
     },
   });
@@ -213,6 +219,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 <link rel="stylesheet" href="/terminal.css">
 <link rel="stylesheet" href="/agent.css">
 <link rel="stylesheet" href="/vscode.css">
+<link rel="stylesheet" href="/browser.css">
 <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.13/dist/turbo.es2017-esm.js"></script>
 <script type="module">
   import { Application, Controller } from "https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/+esm";
@@ -663,6 +670,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (actionKey === "agent:create") createdKey = `agent:${(await createNextWorkspaceAgent(workspaceId)).label}`;
     if (actionKey === "terminal:create") createdKey = `terminal:${(await createWorkspaceTerminal(workspaceId)).title}`;
     if (actionKey === "vscode:create") createdKey = `vscode:${createWorkspaceVSCodeTab(workspaceId).title}`;
+    if (actionKey === "browser:create") createdKey = createWorkspaceBrowserTabForWorkspace(workspaceId).key;
     const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
     if (createdKey) layouts.placeNewTab(workspaceId, tabs.map((tab) => tab.key), groupId, createdKey);
     return turboStreamResponse(`<turbo-stream action="replace" target="${workspaceGroupsId(workspaceId)}"><template>${renderWorkspaceGroups(workspaceId, tabs, attachments)}</template></turbo-stream>`);
@@ -670,6 +678,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function closeWorkspaceTabEndpoint(workspaceId: string, tab: string): Promise<Response> {
     if (tab.startsWith("vscode:")) deleteWorkspaceVSCodeTab(workspaceId, tab.slice("vscode:".length));
+    if (/^browser-\d+$/.test(tab)) deleteWorkspaceBrowserTabForWorkspace(workspaceId, tab);
     layouts.closeTab(workspaceId, await tabKeysFor(workspaceId), tab);
     return replaceWorkspaceGroupsStream(workspaceId);
   }
@@ -728,9 +737,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       return result ? result.slice(1).map(decodeURIComponent) : undefined;
     };
 
-    const appHost = parseWorkspaceAppHost(request.headers.get("host"));
-    if (appHost) return await proxyWorkspaceAppRequest(appHost, request);
-
     const agentResponse = await handleAgentRequest(request, url, { events: deps.events });
     if (agentResponse) return agentResponse;
 
@@ -750,6 +756,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if ((params = match(/^\/workspaces\/([^/]+)\/layout\/move-tab$/)) && request.method === "POST") return await moveWorkspaceTabEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/tabs\/(.+)\/close$/)) && request.method === "POST") return await closeWorkspaceTabEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/layout\/resize$/)) && request.method === "POST") return await resizeWorkspaceGroupsEndpoint(params[0], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/browser\/navigate$/)) && request.method === "POST") return await browserNavigateEndpoint(params[0], "browser", request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/browser\/([^/]+)\/navigate$/)) && request.method === "POST") return await browserNavigateEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/clone-managed-repo$/)) && request.method === "POST") return await cloneManagedRepoIntoWorkspaceFromForm(params[0], request, url);
     if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/push$/)) && request.method === "POST") return await pushRepoEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/mergeability$/)) && request.method === "GET") return await mergeabilityFrame(params[0], params[1]);

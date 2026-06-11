@@ -1,0 +1,45 @@
+import type { WorkspaceTabContribution } from "@atelier/shared";
+import { browserFrameId, browserTabKey, getWorkspaceBrowserState, type WorkspaceBrowserTab } from "./state.ts";
+
+export function escapeHtml(value: unknown): string {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+export function renderBrowserTab(workspaceId: string, tab: WorkspaceBrowserTab): WorkspaceTabContribution {
+  const key = browserTabKey(tab.appKey);
+  return {
+    key,
+    label: tab.label,
+    paneHtml: `<section class="tab-pane" data-tab-pane="${escapeHtml(key)}">${renderBrowserPane(workspaceId, tab)}</section>`,
+  };
+}
+
+export function renderBrowserPane(workspaceId: string, tab: WorkspaceBrowserTab): string {
+  return `<div class="browser-pane" data-controller="browser-pane">
+    ${renderBrowserFrame(workspaceId, tab.appKey)}
+  </div>`;
+}
+
+export function renderBrowserFrame(workspaceId: string, appKey: string): string {
+  const state = getWorkspaceBrowserState(workspaceId, appKey);
+  const target = new URL(state.targetUrl);
+  const initialPath = `${target.pathname}${target.search}`;
+  return `<turbo-frame id="${browserFrameId(workspaceId, appKey)}" class="browser-frame">
+    <div class="browser-shell">
+      <form class="browser-toolbar" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/browser/${encodeURIComponent(appKey)}/navigate" data-turbo-frame="${browserFrameId(workspaceId, appKey)}" data-controller="browser-address" data-action="submit->browser-address#submit">
+        <div class="browser-window-controls" aria-hidden="true"><span class="red"></span><span class="amber"></span><span class="green"></span></div>
+        <button class="browser-nav-button" type="submit" name="action" value="reload" title="Reload" aria-label="Reload">↻</button>
+        <input class="browser-address-input" name="url" value="${escapeHtml(state.targetUrl)}" placeholder="http://localhost:3000" spellcheck="false" autocomplete="off" aria-label="Browser URL">
+        <a class="browser-open-external" href="#" data-browser-address-target="external" target="_blank" rel="noreferrer" title="Open preview in a new tab">↗</a>
+      </form>
+      <div class="browser-viewport" data-browser-pane-target="viewport">
+        <iframe data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-app-frame-app-key-value="${escapeHtml(appKey)}" data-workspace-app-frame-initial-path-value="${escapeHtml(initialPath)}" title="Workspace browser preview" loading="eager" referrerpolicy="no-referrer"></iframe>
+      </div>
+    </div>
+  </turbo-frame>`;
+}

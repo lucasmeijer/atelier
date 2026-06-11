@@ -14,11 +14,13 @@
       "name": "@atelier/web",
       "dependencies": {
         "@atelier/agent": "workspace:*",
+        "@atelier/browser": "workspace:*",
         "@atelier/core": "workspace:*",
         "@atelier/pi-config": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/terminal": "workspace:*",
         "@atelier/vscode": "workspace:*",
+        "@atelier/workspace-proxy": "workspace:*",
       },
     },
     "packages/agent": {
@@ -33,6 +35,14 @@
         "@xterm/xterm": "6.0.0",
         "@zenyr/bun-pty": "^0.4.4",
         "typebox": "^1.0.57",
+      },
+    },
+    "packages/browser": {
+      "name": "@atelier/browser",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+        "@atelier/shared": "workspace:*",
+        "@atelier/workspace-proxy": "workspace:*",
       },
     },
     "packages/core": {
@@ -65,7 +75,11 @@
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@atelier/shared": "workspace:*",
+        "@atelier/workspace-proxy": "workspace:*",
       },
+    },
+    "packages/workspace-proxy": {
+      "name": "@atelier/workspace-proxy",
     },
     "tools/atelier": {
       "name": "@atelier/cli",
@@ -83,6 +97,8 @@
 
     "@atelier/agent": ["@atelier/agent@workspace:packages/agent"],
 
+    "@atelier/browser": ["@atelier/browser@workspace:packages/browser"],
+
     "@atelier/cli": ["@atelier/cli@workspace:tools/atelier"],
 
     "@atelier/core": ["@atelier/core@workspace:packages/core"],
@@ -96,6 +112,8 @@
     "@atelier/vscode": ["@atelier/vscode@workspace:packages/vscode"],
 
     "@atelier/web": ["@atelier/web@workspace:apps/web"],
+
+    "@atelier/workspace-proxy": ["@atelier/workspace-proxy@workspace:packages/workspace-proxy"],
 
     "@aws-crypto/crc32": ["@aws-crypto/crc32@5.2.0", "", { "dependencies": { "@aws-crypto/util": "^5.2.0", "@aws-sdk/types": "^3.222.0", "tslib": "^2.6.2" } }, "sha512-nLbCWqQNgUiwwtFsen1AdzAtvuLRsQS8rYgMuxCrdKf9kOssamGLuPwyTY9wyYblNr9+1XM8v6zoDTPPSIeANg=="],
 

@@ -10,6 +10,7 @@ import {
   registerAgentStreamActions,
   startAgentTab,
 } from "@atelier/agent/client";
+import { createBrowserAddressController, createBrowserPaneController } from "@atelier/browser/client";
 import { createTerminalPaneController, initializeTerminalTheme, startTerminal, startTerminalTab } from "@atelier/terminal/client";
 
 declare global {
@@ -170,6 +171,7 @@ class WorkspaceTabsController extends Controller {
 
     startTerminalTab(this.workspaceIdValue, tabName);
     startAgentTab(application, tabName, this.workspaceIdValue);
+    startWorkspaceAppFrames(this.group, tabName);
     if (options.persist !== false) void this.persistActiveTab(tabName);
   }
 
@@ -629,15 +631,40 @@ class GlobalFilterController extends Controller {
 }
 
 class WorkspaceAppFrameController extends Controller {
-  static values = { workspaceId: String, appKey: String };
+  static values = { workspaceId: String, appKey: String, initialPath: String };
   declare readonly element: HTMLIFrameElement;
   declare readonly workspaceIdValue: string;
   declare readonly appKeyValue: string;
+  declare readonly initialPathValue: string;
+  declare readonly hasInitialPathValue: boolean;
 
   connect(): void {
-    const port = window.location.port ? `:${window.location.port}` : "";
-    this.element.src = `${window.location.protocol}//${this.appKeyValue}--${this.workspaceIdValue}.localhost${port}/`;
+    if (this.isActivePane()) this.load();
   }
+
+  activate(): void {
+    this.load();
+  }
+
+  load(): void {
+    const port = window.location.port ? `:${window.location.port}` : "";
+    const path = this.hasInitialPathValue && this.initialPathValue ? this.initialPathValue : "/";
+    const src = `${window.location.protocol}//${this.appKeyValue}--${this.workspaceIdValue}.localhost${port}${path.startsWith("/") ? path : `/${path}`}`;
+    if (this.element.src !== src) this.element.src = src;
+    this.element.closest(".browser-shell")?.querySelector<HTMLAnchorElement>(".browser-open-external")?.setAttribute("href", src);
+  }
+
+  private isActivePane(): boolean {
+    return this.element.closest(".tab-pane")?.classList.contains("active") ?? true;
+  }
+}
+
+function startWorkspaceAppFrames(root: ParentNode, tabName: string): void {
+  const pane = root.querySelector<HTMLElement>(`.tab-pane.active[data-tab-pane="${CSS.escape(tabName)}"]`);
+  pane?.querySelectorAll<HTMLIFrameElement>('[data-controller~="workspace-app-frame"]').forEach((frame) => {
+    const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame") as { activate?: () => void } | null;
+    controller?.activate?.();
+  });
 }
 
 class WorkspaceTitleEditController extends Controller {
@@ -666,6 +693,8 @@ application.register("agent-autosubmit", createAgentAutosubmitController(Control
 application.register("agent-elapsed", createAgentElapsedController(Controller));
 application.register("agent-notice", createAgentNoticeController(Controller));
 application.register("agent-term", createAgentTermController(Controller));
+application.register("browser-pane", createBrowserPaneController(Controller));
+application.register("browser-address", createBrowserAddressController(Controller));
 application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);
 application.register("global-filter", GlobalFilterController);

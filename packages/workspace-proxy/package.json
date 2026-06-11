@@ -1,0 +1,10 @@
+{
+  "name": "@atelier/workspace-proxy",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/server/index.ts",
+    "./server": "./src/server/index.ts"
+  },
+  "dependencies": {}
+}
