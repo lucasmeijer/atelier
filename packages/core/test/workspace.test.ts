@@ -8,6 +8,7 @@ import {
   listWorkspaces,
   setWorkspaceTitle,
   workspaceCommand,
+  resolveWorkspaceImage,
   type WorkspaceExecResult,
 } from "../src/index.ts";
 import { generateWorkspaceId, workspaceContainerName } from "../src/index.ts";
@@ -192,7 +193,7 @@ describe("core workspaces", () => {
   });
 
   test("listWorkspaces falls back to the container id prefix for legacy containers without a workspace-id label", async () => {
-    const image = process.env.ATELIER_WORKSPACE_IMAGE || "ghcr.io/lucasmeijer/atelier-workspace:latest";
+    const image = await resolveWorkspaceImage();
     const run = await docker([
       "run", "-d",
       "--label", "com.atelier.type=workspace",

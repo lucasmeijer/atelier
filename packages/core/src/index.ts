@@ -41,6 +41,8 @@ export {
   type AtelierRuntimeContext,
 } from "./runtime-context.ts";
 
+export { resolveWorkspaceImage } from "./workspace-image.ts";
+
 export {
   cloneManagedRepoIntoWorkspace,
   createWorkspace,

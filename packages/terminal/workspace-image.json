@@ -1,0 +1,9 @@
+{
+  "aptPackages": ["ncurses-bin", "ncurses-term", "tmux"],
+  "files": [
+    { "from": "workspace-image/rootfs/etc/tmux.conf", "to": "/etc/tmux.conf" }
+  ],
+  "run": [
+    "curl -fsSL \"https://ftp.gnu.org/pub/gnu/ncurses/ncurses-6.6.tar.gz\" | tar -xz -C /tmp && tic -x -o /usr/share/terminfo /tmp/ncurses-6.6/misc/terminfo.src && infocmp -x ghostty | awk 'BEGIN { replaced=0 } /^#/ { print; next } replaced == 0 { print \"xterm-ghostty|ghostty|Ghostty terminal emulator,\"; replaced=1; next } { print }' | tic -x -o /usr/share/terminfo - && rm -rf /tmp/ncurses-6.6"
+  ]
+}

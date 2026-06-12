@@ -7,6 +7,7 @@ import { AtelierCoreError, invalidArguments } from "./errors.ts";
 import type { AtelierEventBus } from "./events.ts";
 import { listManagedRepos, managedReposDir } from "./managed-repo.ts";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext } from "./runtime-context.ts";
+import { resolveWorkspaceImage } from "./workspace-image.ts";
 
 const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
@@ -15,7 +16,7 @@ const workspaceRoot = "/repos";
 const atelierReposRoot = "/atelier/repos";
 export const workspaceVSCodePort = 8000;
 export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
-const defaultWorkspaceImage = "ghcr.io/lucasmeijer/atelier-workspace:latest";
+
 const workspaceUtf8Environment = ["--env", "LANG=C.UTF-8", "--env", "LC_ALL=C.UTF-8"];
 const githubTokenEnvVar = "GH_TOKEN";
 const workspaceGithubTokenPath = "/run/atelier-gh-token";
@@ -107,13 +108,10 @@ export function workspaceContainerName(id: string): string {
   return `atelier-${id}`;
 }
 
-function workspaceImage(): string {
-  return process.env.ATELIER_WORKSPACE_IMAGE || defaultWorkspaceImage;
-}
-
 function workspacePublishHost(): string {
   return process.env.ATELIER_WORKSPACE_PUBLISH_HOST || "127.0.0.1";
 }
+
 
 function workspaceGitHubCredentialDockerArgs(): string[] {
   if (process.env[githubTokenEnvVar]) return ["--env", githubTokenEnvVar];
@@ -242,6 +240,8 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     throw new AtelierCoreError("data_dir_unavailable", `could not create Atelier repos directory ${reposDir}: ${message}`);
   }
 
+  const image = await resolveWorkspaceImage();
+
   await requireDocker([
     "run",
     "-d",
@@ -262,7 +262,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     ...workspaceGitHubCredentialDockerArgs(),
     "--user",
     "root",
-    workspaceImage(),
+    image,
     "sh",
     "-lc",
     `mkdir -p /.atelier /repos; chown -R atelier:atelier /.atelier /repos; cat > /usr/local/bin/atelier-git-credential <<'EOF'

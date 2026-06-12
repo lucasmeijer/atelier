@@ -1,39 +1,29 @@
 # Atelier workspace image
 
-Workspace container image used by Atelier.
+Workspace containers are assembled from module contributions instead of one hand-written Dockerfile.
 
-It extends `mcr.microsoft.com/devcontainers/base:ubuntu-24.04` and adds:
+A module contributes a `workspace-image.json` file at its package root. The manifest can add Ubuntu packages, files/directories to copy into the image, build-time `RUN` scripts, and default environment variables:
 
-- `tmux`
-- recent ncurses terminfo
-- `/etc/tmux.conf` configured for `xterm-256color` + RGB
-- UTF-8 locale defaults (`LANG=C.UTF-8`, `LC_ALL=C.UTF-8`)
-- the `atelier` user and `/repos` / `/.atelier` directories
-- server-side VS Code defaults from `vscode-defaults/`
-- preinstalled VS Code extensions, including `ms-vscode.cpptools-extension-pack` and the official Microsoft C# extension `ms-dotnettools.csharp`
-
-VS Code defaults live in `packages/workspace-image/vscode-defaults/` and are copied into a new container's `/home/atelier/.vscode-server/data/` before `code serve-web` starts. The current default hides the secondary side bar (`workbench.secondarySideBar.defaultVisibility: hidden`), which keeps the AI chat side bar collapsed for new workspaces.
-
-Build locally:
-
-```sh
-bun run workspace-image:build
+```json
+{
+  "aptPackages": ["tmux"],
+  "files": [{ "from": "workspace-image/rootfs/etc/tmux.conf", "to": "/etc/tmux.conf" }],
+  "run": ["echo build step"],
+  "env": { "TERM": "xterm-256color" }
+}
 ```
 
-Verify:
+Module names are inferred from their package directory (`packages/terminal` -> `terminal`); the base `packages/workspace-image` contribution is named `base`.
 
-```sh
-bun run workspace-image:verify
-```
+Current contributions:
 
-Publish to GHCR:
+- `packages/workspace-image/workspace-image.json`: base Ubuntu tools, C/C++ toolchain, .NET 10 SDK, Node.js, pi, `atelier` user, `/repos`.
+- `packages/terminal/workspace-image.json`: tmux, terminfo, `/etc/tmux.conf`.
+- `packages/vscode/workspace-image.json`: VS Code apt repo/package, `atelier-start-vscode`, defaults, server and extension prewarm.
 
-```sh
-IMAGE=ghcr.io/<owner>/atelier-workspace:latest bun run workspace-image:publish
-```
+On-demand builds:
 
-You must be logged in first:
+- `createWorkspace()` always builds/resolves a deterministic local image tag from the generated context before launching a workspace.
+- If the tag already exists locally, no rebuild happens; only the first build for a given contribution hash is slow.
 
-```sh
-echo "$GHCR_TOKEN" | docker login ghcr.io -u <github-user> --password-stdin
-```
+This makes a later repo-level contribution phase straightforward: add repo manifests to the same context generator before the hash/tag is computed. Production deployments should therefore include Docker build capability and persistent Docker image/cache storage.
