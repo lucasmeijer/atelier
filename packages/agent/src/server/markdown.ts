@@ -6,9 +6,9 @@ import { highlightCodeHtml } from "./highlight.ts";
  * Supports: headings, fenced code blocks, inline code, bold, italics, links,
  * unordered/ordered lists, blockquotes, paragraphs.
  *
- * An optional `rewriteToken` hook lets callers turn special tokens (e.g.
- * atelier:// media references) into HTML; it receives raw (unescaped) text
- * segments outside of code spans/blocks and returns HTML.
+ * An optional `rewriteSegment` hook lets callers turn explicit embed directives
+ * into HTML; it receives raw (unescaped) text segments outside of code
+ * spans/blocks and returns HTML.
  */
 export interface MarkdownOptions {
   rewriteSegment?: (rawText: string) => string | undefined;

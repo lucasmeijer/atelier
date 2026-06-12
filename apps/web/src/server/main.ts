@@ -7,6 +7,8 @@ import {
   isFakeMode,
   openAgentTermSocket,
   registerAgentEvents,
+  resolveWorkspacePortProxyTarget,
+  workspaceFileEndpoint,
   subscribeWorkspaceTabBusy,
   validateAgentTermSocket,
   type AgentTermSocketData,
@@ -123,15 +125,20 @@ interface WorkspaceAppProxySocketData {
 
 type SocketData = TerminalSocketData | AgentTermSocketData | WorkspaceAppProxySocketData;
 
+const workspacePortAppKeyPattern = /^port-(\d+)$/;
+
 const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, requestUrl) => {
   if (app.appKey === vscodeAppKey) return await resolveVSCodeWorkspaceAppTarget(app, requestUrl);
   if (isBrowserWorkspaceApp(app.appKey)) return await resolveBrowserWorkspaceAppTarget(app, requestUrl);
+  const portMatch = app.appKey.match(workspacePortAppKeyPattern);
+  if (portMatch) return await resolveWorkspacePortProxyTarget(app.workspaceId, Number(portMatch[1]), requestUrl.pathname, requestUrl.search);
   throw new Error(`unknown workspace app: ${app.appKey}`);
 };
 
 async function validateSocket(request: Request, url: URL): Promise<SocketData | undefined> {
   const appHost = parseWorkspaceAppHost(request.headers.get("host"));
   if (appHost) {
+    if (appHost.appKey === "file") return undefined;
     const protocols = (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((protocol) => protocol.trim()).filter(Boolean);
     return { kind: "workspace-app-proxy", target: await workspaceAppWebSocketTarget(appHost, url.pathname, url.search, resolveWorkspaceAppTarget), host: request.headers.get("host") ?? url.host, protocols };
   }
@@ -200,6 +207,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
           return new Response("websocket upgrade failed", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });
         }
 
+        if (appHost?.appKey === "file") return await workspaceFileEndpoint(appHost.workspaceId, decodeURIComponent(url.pathname), request);
         if (appHost) return await proxyWorkspaceAppRequest(appHost, request, resolveWorkspaceAppTarget);
 
         const staticResponse = await serveStatic(url.pathname);

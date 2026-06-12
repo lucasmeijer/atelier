@@ -1034,7 +1034,7 @@ class FakeAgentRuntime extends BaseAgentRuntime {
         "- Inspected `/repos` — one repository (`demo-repo`) plus a README",
         "- Wrote `demo-repo/NOTES.md` with a short streaming demo document",
         "",
-        wantsMedia ? "Here is the screenshot you asked for:\n\natelier://file//tmp/atelier-fake-demo.png\n" : "",
+        wantsMedia ? "Here is the screenshot you asked for:\n\n{{atelier:embed /tmp/atelier-fake-demo.png}}\n" : "",
         "```bash",
         "ls -la /repos   # 2 entries",
         "```",

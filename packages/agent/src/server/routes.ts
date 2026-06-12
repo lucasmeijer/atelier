@@ -183,8 +183,8 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   if ((params = match(/^\/workspaces\/([^/]+)\/agent-files$/)) && request.method === "GET") {
     return await workspaceFileEndpoint(params[0], url.searchParams.get("path") ?? "", request);
   }
-  if ((params = match(/^\/workspaces\/([^/]+)\/agent-port\/(\d+)(\/.*)?$/)) && request.method === "GET") {
-    return await workspacePortProxyEndpoint(params[0], Number(params[1]), params[2] ?? "/", url);
+  if ((params = match(/^\/workspaces\/([^/]+)\/agent-port\/(\d+)(\/.*)?$/))) {
+    return await workspacePortProxyEndpoint(params[0], Number(params[1]), params[2] ?? "/", url, request);
   }
 
   return undefined;
@@ -369,7 +369,7 @@ function parseRange(header: string | null, size: number): { start: number; end: 
   return { start, end };
 }
 
-async function workspaceFileEndpoint(workspaceId: string, path: string, request: Request): Promise<Response> {
+export async function workspaceFileEndpoint(workspaceId: string, path: string, request: Request): Promise<Response> {
   if (!path.startsWith("/") || path.includes("..") || path.includes("\0")) {
     return new Response("bad path", { status: 400 });
   }
@@ -416,24 +416,43 @@ async function workspaceFileEndpoint(workspaceId: string, path: string, request:
 }
 
 // ---------------------------------------------------------------------------
-// Dev-server proxy (GET only, v1)
+// Dev-server proxy
 // ---------------------------------------------------------------------------
 
 function publishedPortHost(): string {
   return process.env.ATELIER_DOCKER_PUBLISHED_PORT_HOST || "127.0.0.1";
 }
 
-async function workspacePortProxyEndpoint(workspaceId: string, port: number, path: string, url: URL): Promise<Response> {
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) return new Response("bad port", { status: 400 });
+export async function resolveWorkspacePortProxyTarget(workspaceId: string, port: number, path: string, search = ""): Promise<URL> {
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new Error("bad port");
   if (!(workspacePreviewPorts as readonly number[]).includes(port)) {
-    return new Response(`Port ${port} is not published for previews. Use one of: ${workspacePreviewPorts.join(", ")}`, { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });
+    throw new Error(`Port ${port} is not published for previews. Use one of: ${workspacePreviewPorts.join(", ")}`);
   }
-  const search = url.search ?? "";
   const hostPort = isFakeMode() ? port : await getWorkspacePreviewPort(workspaceId, port);
+  return new URL(`${path.startsWith("/") ? path : `/${path}`}${search}`, `http://${publishedPortHost()}:${hostPort}`);
+}
+
+function stripHopByHop(headers: Headers): Headers {
+  const next = new Headers(headers);
+  for (const name of ["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "host"]) next.delete(name);
+  return next;
+}
+
+async function workspacePortProxyEndpoint(workspaceId: string, port: number, path: string, url: URL, request: Request): Promise<Response> {
   try {
-    const upstream = await fetch(`http://${publishedPortHost()}:${hostPort}${path}${search}`, { redirect: "manual" });
+    const target = await resolveWorkspacePortProxyTarget(workspaceId, port, path, url.search ?? "");
+    const headers = stripHopByHop(request.headers);
+    headers.set("host", target.host);
+    const upstream = await fetch(target, {
+      method: request.method,
+      headers,
+      body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+      redirect: "manual",
+    });
     return new Response(upstream.body, { status: upstream.status, headers: upstream.headers });
-  } catch {
-    return new Response("upstream unreachable", { status: 502 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const status = message === "bad port" || message.includes("not published") ? 400 : 502;
+    return new Response(status === 502 ? "upstream unreachable" : message, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
   }
 }

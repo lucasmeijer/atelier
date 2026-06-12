@@ -14,7 +14,14 @@ export {
   type WorkspaceTabBusyListener,
   type WorkspaceAgentRuntime,
 } from "./runtime.ts";
-export { handleAgentRequest, registerAgentEvents, type AgentRouteOptions, type AgentWorkspaceCreationContext } from "./routes.ts";
+export {
+  handleAgentRequest,
+  registerAgentEvents,
+  resolveWorkspacePortProxyTarget,
+  workspaceFileEndpoint,
+  type AgentRouteOptions,
+  type AgentWorkspaceCreationContext,
+} from "./routes.ts";
 export {
   validateAgentTermSocket,
   openAgentTermSocket,
