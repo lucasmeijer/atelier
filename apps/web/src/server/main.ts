@@ -1,7 +1,6 @@
 import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import {
-  agentStaticFiles,
   closeAgentTermSocket,
   ensureDefaultWorkspaceAgent,
   handleAgentTermSocketMessage,
@@ -12,7 +11,7 @@ import {
   validateAgentTermSocket,
   type AgentTermSocketData,
 } from "@atelier/agent/server";
-import { browserStaticFiles, isBrowserWorkspaceApp, resolveBrowserWorkspaceAppTarget } from "@atelier/browser/server";
+import { isBrowserWorkspaceApp, resolveBrowserWorkspaceAppTarget } from "@atelier/browser/server";
 import {
   createAtelierEventBus,
   createWorkspace,
@@ -28,7 +27,6 @@ import {
   openTerminalSocket,
   registerTerminalEvents,
   subscribeTerminalTabBusy,
-  terminalStaticFiles,
   validateTerminalSocket,
   type TerminalSocketData,
 } from "@atelier/terminal/server";
@@ -40,10 +38,11 @@ import {
   type WorkspaceAppHost,
   type WorkspaceAppTargetResolver,
 } from "@atelier/workspace-proxy/server";
-import { resolveVSCodeWorkspaceAppTarget, vscodeAppKey, vscodeStaticFiles } from "@atelier/vscode/server";
+import { resolveVSCodeWorkspaceAppTarget, vscodeAppKey } from "@atelier/vscode/server";
 import { createWebApp } from "./app.ts";
 import { createFileWebPreferenceStore } from "./preferences.ts";
 import { createStreamHub } from "./stream-hub.ts";
+import { legacyStaticFiles } from "./static-files.ts";
 import { createWorkspaceLayoutStore } from "./workspace-layout.ts";
 import { createFileWorkspaceActivityStore, createWorkspaceRegistry } from "./workspace-registry.ts";
 
@@ -106,15 +105,7 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
     });
   }
 
-  const staticFiles: Record<string, { url: URL; contentType: string }> = {
-    "/style.css": { url: new URL("../../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
-    "/workspace.js": { url: new URL("../../public/workspace.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
-    ...terminalStaticFiles,
-    ...agentStaticFiles,
-    ...vscodeStaticFiles,
-    ...browserStaticFiles,
-  };
-  const entry = staticFiles[pathname];
+  const entry = legacyStaticFiles[pathname];
   if (!entry) return undefined;
   const file = Bun.file(entry.url);
   if (!(await file.exists())) return new Response("not found", { status: 404, headers: { "content-type": "text/plain" } });

@@ -1,13 +1,16 @@
-import { mkdir, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { mkdir, rm } from "node:fs/promises";
 import { basename, extname } from "node:path";
-import { terminalStaticFiles } from "../../../packages/terminal/src/server/static.ts";
+import { clientEntrypoints, fingerprintedStaticFiles, type StaticFileEntry } from "../src/server/static-files.ts";
 
 const publicDir = new URL("../public/", import.meta.url);
 const assetsDir = new URL("../public/assets/", import.meta.url);
 const manifestUrl = new URL("../public/assets-manifest.json", import.meta.url);
+const maxCssManifestPasses = 10;
 
 type Manifest = Record<string, string>;
+
+type StaticFileRecord = [logicalPath: string, entry: StaticFileEntry];
 
 const manifest: Manifest = {};
 
@@ -21,12 +24,49 @@ function fingerprintedPath(logicalPath: string, content: string | Uint8Array): s
   return `/assets/${name}-${contentHash(content)}${extension}`;
 }
 
-async function copyTextAsset(logicalPath: string, source: URL, transform?: (content: string) => string): Promise<void> {
-  const original = await Bun.file(source).text();
-  const content = transform ? transform(original) : original;
-  const publicPath = fingerprintedPath(logicalPath, content);
-  await Bun.write(new URL(`.${publicPath}`, publicDir), content);
-  manifest[logicalPath] = publicPath;
+function isCss(entry: StaticFileEntry): boolean {
+  return entry.contentType.toLowerCase().startsWith("text/css");
+}
+
+function rewriteAssetReferences(content: string, assetManifest: Manifest): string {
+  let next = content;
+  for (const [logicalPath, publicPath] of Object.entries(assetManifest).sort((a, b) => b[0].length - a[0].length)) {
+    next = next
+      .replaceAll(`url("${logicalPath}")`, `url("${publicPath}")`)
+      .replaceAll(`url('${logicalPath}')`, `url('${publicPath}')`)
+      .replaceAll(`url(${logicalPath})`, `url(${publicPath})`)
+      .replaceAll(`@import "${logicalPath}"`, `@import "${publicPath}"`)
+      .replaceAll(`@import '${logicalPath}'`, `@import '${publicPath}'`);
+  }
+  return next;
+}
+
+async function buildClientEntrypoints(): Promise<void> {
+  for (const [logicalPath, entry] of Object.entries(clientEntrypoints)) {
+    const build = await Bun.build({
+      entrypoints: [entry.url.pathname],
+      outdir: assetsDir.pathname,
+      format: "esm",
+      target: "browser",
+      naming: {
+        entry: "[name]-[hash].[ext]",
+        chunk: "[name]-[hash].[ext]",
+        asset: "[name]-[hash].[ext]",
+      },
+    });
+
+    if (!build.success) {
+      for (const log of build.logs) console.error(log);
+      process.exit(1);
+    }
+
+    const entryExtension = extname(logicalPath);
+    const outputs = build.outputs.filter((output) => extname(output.path) === entryExtension);
+    if (outputs.length !== 1) {
+      throw new Error(`expected exactly one ${entryExtension} output for ${logicalPath}, got ${outputs.length}`);
+    }
+    manifest[logicalPath] = `/assets/${basename(outputs[0].path)}`;
+  }
 }
 
 async function copyBinaryAsset(logicalPath: string, source: URL): Promise<void> {
@@ -36,41 +76,49 @@ async function copyBinaryAsset(logicalPath: string, source: URL): Promise<void> 
   manifest[logicalPath] = publicPath;
 }
 
+async function fingerprintCssAssets(cssFiles: StaticFileRecord[]): Promise<Map<string, string>> {
+  const cssSources = new Map<string, string>();
+  for (const [logicalPath, entry] of cssFiles) {
+    const source = await Bun.file(entry.url).text();
+    cssSources.set(logicalPath, source);
+    manifest[logicalPath] = fingerprintedPath(logicalPath, source);
+  }
+
+  const rendered = new Map<string, string>();
+  for (let pass = 0; pass < maxCssManifestPasses; pass += 1) {
+    let changed = false;
+    for (const [logicalPath, source] of cssSources) {
+      const content = rewriteAssetReferences(source, manifest);
+      rendered.set(logicalPath, content);
+      const publicPath = fingerprintedPath(logicalPath, content);
+      if (manifest[logicalPath] !== publicPath) {
+        manifest[logicalPath] = publicPath;
+        changed = true;
+      }
+    }
+    if (!changed) return rendered;
+  }
+
+  throw new Error(`CSS asset manifest did not stabilize after ${maxCssManifestPasses} passes`);
+}
+
 await rm(assetsDir, { recursive: true, force: true });
 await mkdir(assetsDir, { recursive: true });
 
-const build = await Bun.build({
-  entrypoints: [new URL("../src/client/workspace.ts", import.meta.url).pathname],
-  outdir: assetsDir.pathname,
-  format: "esm",
-  target: "browser",
-  naming: {
-    entry: "[name]-[hash].[ext]",
-    chunk: "[name]-[hash].[ext]",
-    asset: "[name]-[hash].[ext]",
-  },
-});
+await buildClientEntrypoints();
 
-if (!build.success) {
-  for (const log of build.logs) console.error(log);
-  process.exit(1);
+const staticFiles = Object.entries(fingerprintedStaticFiles).sort(([a], [b]) => a.localeCompare(b)) as StaticFileRecord[];
+const cssFiles = staticFiles.filter(([, entry]) => isCss(entry));
+const nonCssFiles = staticFiles.filter(([, entry]) => !isCss(entry));
+
+for (const [logicalPath, entry] of nonCssFiles) {
+  await copyBinaryAsset(logicalPath, entry.url);
 }
 
-const workspaceOutput = build.outputs.find((output) => basename(output.path).startsWith("workspace-") && output.path.endsWith(".js"));
-if (!workspaceOutput) throw new Error("could not find built workspace.js output");
-manifest["/workspace.js"] = `/assets/${basename(workspaceOutput.path)}`;
-
-await copyTextAsset("/style.css", new URL("../public/style.css", import.meta.url));
-await copyTextAsset("/agent.css", new URL("../../../packages/agent/src/client/style.css", import.meta.url));
-await copyTextAsset("/browser.css", new URL("../../../packages/browser/src/client/style.css", import.meta.url));
-await copyTextAsset("/vscode.css", new URL("../../../packages/vscode/src/client/style.css", import.meta.url));
-await copyTextAsset("/xterm.css", terminalStaticFiles["/xterm.css"].url);
-await copyBinaryAsset("/fonts/jetbrains-mono-latin-300-normal.woff2", terminalStaticFiles["/fonts/jetbrains-mono-latin-300-normal.woff2"].url);
-await copyTextAsset("/terminal.css", new URL("../../../packages/terminal/src/client/style.css", import.meta.url), (content) => {
-  return content
-    .replaceAll('url("/xterm.css")', `url("${manifest["/xterm.css"]}")`)
-    .replaceAll('url("/fonts/jetbrains-mono-latin-300-normal.woff2")', `url("${manifest["/fonts/jetbrains-mono-latin-300-normal.woff2"]}")`);
-});
+const cssAssets = await fingerprintCssAssets(cssFiles);
+for (const [logicalPath, content] of cssAssets) {
+  await Bun.write(new URL(`.${manifest[logicalPath]}`, publicDir), content);
+}
 
 await Bun.write(manifestUrl, `${JSON.stringify(manifest, null, 2)}\n`);
 
