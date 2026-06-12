@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { requireDocker, runDocker } from "./docker.ts";
 import { AtelierCoreError, invalidArguments } from "./errors.ts";
@@ -15,6 +17,8 @@ export const workspaceVSCodePort = 8000;
 export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
 const defaultWorkspaceImage = "ghcr.io/lucasmeijer/atelier-workspace:latest";
 const workspaceUtf8Environment = ["--env", "LANG=C.UTF-8", "--env", "LC_ALL=C.UTF-8"];
+const githubTokenEnvVar = "GH_TOKEN";
+const workspaceGithubTokenPath = "/run/atelier-gh-token";
 
 export interface WorkspaceNewResult {
   id: string;
@@ -105,6 +109,15 @@ export function workspaceContainerName(id: string): string {
 
 function workspaceImage(): string {
   return process.env.ATELIER_WORKSPACE_IMAGE || defaultWorkspaceImage;
+}
+
+function workspaceGitHubCredentialDockerArgs(): string[] {
+  if (process.env[githubTokenEnvVar]) return ["--env", githubTokenEnvVar];
+
+  const tokenPath = join(homedir(), githubTokenEnvVar);
+  if (existsSync(tokenPath)) return ["--mount", `type=bind,src=${tokenPath},dst=${workspaceGithubTokenPath},readonly`];
+
+  return [];
 }
 
 function requireArg(value: string | undefined, name: string): string {
@@ -242,12 +255,29 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     `127.0.0.1::${workspaceVSCodePort}`,
     ...workspacePreviewPorts.flatMap((port) => ["--publish", `127.0.0.1::${port}`]),
     ...workspaceUtf8Environment,
+    ...workspaceGitHubCredentialDockerArgs(),
     "--user",
     "root",
     workspaceImage(),
     "sh",
     "-lc",
-    `mkdir -p /.atelier /repos; chown -R atelier:atelier /.atelier /repos; git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; chown atelier:atelier /home/atelier/.gitconfig; if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder /repos > /.atelier/vscode-server.log 2>&1 &' || true; fi; sleep infinity`,
+    `mkdir -p /.atelier /repos; chown -R atelier:atelier /.atelier /repos; cat > /usr/local/bin/atelier-git-credential <<'EOF'
+#!/bin/sh
+test "$1" = get || exit 0
+token="\${GH_TOKEN:-}"
+if [ -z "$token" ] && [ -r ${workspaceGithubTokenPath} ]; then
+  token="$(cat ${workspaceGithubTokenPath})"
+fi
+[ -n "$token" ] || exit 0
+echo username=x-access-token
+echo password="$token"
+EOF
+chmod 755 /usr/local/bin/atelier-git-credential; cat > /etc/profile.d/atelier-github-token.sh <<'EOF'
+if [ -z "\${GH_TOKEN:-}" ] && [ -r ${workspaceGithubTokenPath} ]; then
+  export GH_TOKEN="$(cat ${workspaceGithubTokenPath})"
+fi
+EOF
+git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; git config --file /home/atelier/.gitconfig credential.helper '!/usr/local/bin/atelier-git-credential'; chown atelier:atelier /home/atelier/.gitconfig; if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder /repos > /.atelier/vscode-server.log 2>&1 &' || true; fi; sleep infinity`,
   ]);
 
   return { id };
