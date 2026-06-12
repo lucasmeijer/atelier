@@ -1,8 +1,10 @@
 import {
   createNextWorkspaceAgent,
   agentWorkspaceModule,
+  getWorkspaceAgentRuntime,
   handleAgentRequest,
   renderAgentComposer,
+  type WorkspaceAgentInfo,
 } from "@atelier/agent/server";
 import {
   browserNavigateEndpoint,
@@ -37,6 +39,7 @@ import {
 import { atelierName, type WorkspaceAttachment, type WorkspaceModule, type WorkspaceTabContribution } from "@atelier/shared";
 import type { StreamHub } from "./stream-hub.ts";
 import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
+import type { WebPreferenceStore } from "./preferences.ts";
 import type { WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
 
 export interface WebAppDeps {
@@ -45,6 +48,8 @@ export interface WebAppDeps {
   layouts: WorkspaceLayoutStore;
   /** Event bus passed through to the agent module routes. */
   events?: AtelierEventBus;
+  /** File-backed UI preferences for future/new agent creation flows. */
+  preferences?: WebPreferenceStore;
   /** Create the container + default agent etc. for an already-registered workspace id. */
   provisionWorkspace(id: string, options?: { context?: WorkspaceCreationContext }): Promise<void>;
   inspectDeleteSafety(id: string): Promise<WorkspaceDeleteBlockedDetails>;
@@ -106,6 +111,23 @@ const workspaceModules: WorkspaceModule[] = [agentWorkspaceModule, terminalWorks
 
 export function createWebApp(deps: WebAppDeps): WebApp {
   const { registry, hub, layouts } = deps;
+
+  async function preferredNewAgentModel(): Promise<string | undefined> {
+    return (await deps.preferences?.load())?.preferredNewAgentModel;
+  }
+
+  async function rememberPreferredNewAgentModel(model: string): Promise<void> {
+    if (!deps.preferences || !model.trim()) return;
+    const preferences = await deps.preferences.load();
+    await deps.preferences.save({ ...preferences, preferredNewAgentModel: model.trim() });
+  }
+
+  async function applyPreferredNewAgentModel(agent: WorkspaceAgentInfo): Promise<void> {
+    const model = await preferredNewAgentModel();
+    const [provider, modelId] = String(model ?? "").split("::");
+    if (!provider || !modelId) return;
+    await (await getWorkspaceAgentRuntime(agent)).setModel(provider, modelId);
+  }
 
   // ---------------------------------------------------------------------------
   // Workspace sidebar rendering. Broadcast HTML never contains per-client state
@@ -239,7 +261,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return repoName.endsWith(".git") ? repoName.slice(0, -4) : repoName;
   }
 
-  function launchRepoAgentModal(repo: { name: string; path: string; remoteUrl: string | null }): string {
+  function launchRepoAgentModal(repo: { name: string; path: string; remoteUrl: string | null }, selectedModel?: string): string {
     const modalId = domId("agent_launch_repo_modal", repo.name);
     const formId = domId("agent_launch_repo_form", repo.name);
     const cloneUrl = repo.remoteUrl || repo.path;
@@ -256,6 +278,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     submitShortcut: "⌘↩",
     rows: 8,
     formActions: "turbo:submit-end->modal#submitted",
+    selectedModel,
   })}
 </dialog>`;
   }
@@ -426,7 +449,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function renderRepoLaunchModals(): Promise<string> {
     const { repos } = await listManagedRepos();
-    return repos.map((repo) => launchRepoAgentModal(repo)).join("");
+    const selectedModel = await preferredNewAgentModel();
+    return repos.map((repo) => launchRepoAgentModal(repo, selectedModel)).join("");
   }
 
   async function renderWorkspaceShell(selectedId?: string): Promise<string> {
@@ -501,10 +525,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (!text) return turboStreamResponse("", { status: 400 });
     const id = generateWorkspaceId();
     registry.add(id);
+    const model = String(form.get("model") ?? "");
+    await rememberPreferredNewAgentModel(model);
     const context: WorkspaceCreationContext = {
       agent: {
         initialPrompt: text,
-        model: String(form.get("model") ?? ""),
+        model,
         thinkingLevel: String(form.get("level") ?? ""),
         attachmentDraft: String(form.get("attachmentDraft") ?? ""),
       },
@@ -729,7 +755,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function workspaceGroupActionEndpoint(workspaceId: string, groupId: string, actionKey: string): Promise<Response> {
     let createdKey: string | undefined;
-    if (actionKey === "agent:create") createdKey = `agent:${(await createNextWorkspaceAgent(workspaceId)).label}`;
+    if (actionKey === "agent:create") {
+      const agent = await createNextWorkspaceAgent(workspaceId);
+      await applyPreferredNewAgentModel(agent);
+      createdKey = `agent:${agent.label}`;
+    }
     if (actionKey === "terminal:create") createdKey = `terminal:${(await createWorkspaceTerminal(workspaceId)).title}`;
     if (actionKey === "vscode:create") createdKey = `vscode:${createWorkspaceVSCodeTab(workspaceId).title}`;
     if (actionKey === "browser:create") createdKey = createWorkspaceBrowserTabForWorkspace(workspaceId).key;

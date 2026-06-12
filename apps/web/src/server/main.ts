@@ -42,6 +42,7 @@ import {
 } from "@atelier/workspace-proxy/server";
 import { resolveVSCodeWorkspaceAppTarget, vscodeAppKey, vscodeStaticFiles } from "@atelier/vscode/server";
 import { createWebApp } from "./app.ts";
+import { createFileWebPreferenceStore } from "./preferences.ts";
 import { createStreamHub } from "./stream-hub.ts";
 import { createWorkspaceLayoutStore } from "./workspace-layout.ts";
 import { createFileWorkspaceActivityStore, createWorkspaceRegistry } from "./workspace-registry.ts";
@@ -65,6 +66,7 @@ const app = createWebApp({
   hub,
   layouts,
   events: atelierEvents,
+  preferences: createFileWebPreferenceStore(join(defaultDataDir(), "view-state", "preferences.json")),
   async provisionWorkspace(id, options) {
     if (!isFakeMode()) await createWorkspace({ id });
     await ensureDefaultWorkspaceAgent(id);

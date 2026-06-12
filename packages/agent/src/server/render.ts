@@ -129,6 +129,7 @@ export interface AgentComposerRenderOptions {
   formId?: string;
   rows?: number;
   formActions?: string;
+  selectedModel?: string;
 }
 
 export function renderAgentComposer(options: AgentComposerRenderOptions): string {
@@ -146,7 +147,7 @@ export function renderAgentComposer(options: AgentComposerRenderOptions): string
   const formId = options.formId ?? `agent_composer_${draftId}`;
   const statbar = options.stats && options.ctx
     ? `<div class="agent-statbar" id="${ids.stats(options.ctx)}">${renderStatsBar(options.ctx, options.stats)}</div>`
-    : `<div class="agent-statbar">${renderComposerSettings(formId)}</div>`;
+    : `<div class="agent-statbar">${renderComposerSettings(formId, options.selectedModel)}</div>`;
   return `<div class="agent-promptwrap">
         <div class="agent-promptbox" data-controller="agent-attachments" data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}" data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
           <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
@@ -164,9 +165,12 @@ export function renderAgentComposer(options: AgentComposerRenderOptions): string
       </div>`;
 }
 
-function renderComposerSettings(formId: string): string {
-  const modelOptions = configuredAgentModels.map((model, index) =>
-    `<option value="${escapeHtml(`${model.provider}::${model.id}`)}"${index === 0 ? " selected" : ""}>${escapeHtml(model.label)}</option>`).join("");
+function renderComposerSettings(formId: string, selectedModel?: string): string {
+  const selected = configuredAgentModels.some((model) => `${model.provider}::${model.id}` === selectedModel) ? selectedModel : undefined;
+  const modelOptions = configuredAgentModels.map((model, index) => {
+    const value = `${model.provider}::${model.id}`;
+    return `<option value="${escapeHtml(value)}"${(selected ? value === selected : index === 0) ? " selected" : ""}>${escapeHtml(model.label)}</option>`;
+  }).join("");
   const thinkingLevels = ["off", "low", "medium", "high"];
   return `<span class="agent-stat-right">
 <select class="agent-sel" name="model" form="${escapeHtml(formId)}" title="Model">${modelOptions}</select>
