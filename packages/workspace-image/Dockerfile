@@ -118,7 +118,11 @@ RUN set -eux; \
     done; \
     pkill -u atelier -f 'code serve-web' || true; \
     su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server --install-extension ms-vscode.cpptools-extension-pack --force'; \
-    su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server --list-extensions --show-versions' | grep -x 'ms-vscode.cpptools-extension-pack@.*'; \
+    su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server --install-extension ms-dotnettools.csharp --force'; \
+    su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server --list-extensions --show-versions' | tee /tmp/vscode-extensions.log; \
+    grep -x 'ms-vscode.cpptools-extension-pack@.*' /tmp/vscode-extensions.log; \
+    grep -x 'ms-dotnettools.csharp@.*' /tmp/vscode-extensions.log; \
+    rm -f /tmp/vscode-extensions.log; \
     rm -f /tmp/vscode-prewarm.log
 
 ENV TERM=xterm-256color \

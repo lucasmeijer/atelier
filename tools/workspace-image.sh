@@ -63,6 +63,10 @@ dotnet --version
 go version
 bazel version | head -n 1
 ruby --version
+su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server --list-extensions --show-versions' | tee /tmp/atelier-vscode-extensions.log
+grep -x 'ms-vscode.cpptools-extension-pack@.*' /tmp/atelier-vscode-extensions.log
+grep -x 'ms-dotnettools.csharp@.*' /tmp/atelier-vscode-extensions.log
+rm -f /tmp/atelier-vscode-extensions.log
 infocmp -x xterm-256color >/dev/null
 colors="$(TERM=xterm-256color tput colors)"
 test "$colors" -ge 256
@@ -83,7 +87,7 @@ su atelier -c "command -v pi >/dev/null && pi --version >/dev/null"
 test "$(cat /tmp/atelier-tmux-test/pane-env)" = "xterm-256color truecolor"
 su atelier -c "tmux -S /tmp/atelier-tmux-test/socket kill-session -t 'Terminal 1'"
 
-echo "verified: pi, Node.js, npm, ripgrep, fd, cmatrix, tmux, Python, CMake, Clang, GCC, Ninja, .NET SDK, Go, Bazel, Ruby, UTF-8 locale, extended-keys, tmux passthrough, xterm-256color terminfo, 256-color tput, and tmux pane TERM=xterm-256color"
+echo "verified: pi, Node.js, npm, ripgrep, fd, cmatrix, tmux, Python, CMake, Clang, GCC, Ninja, .NET SDK, Go, Bazel, Ruby, VS Code C++ and C# extensions, UTF-8 locale, extended-keys, tmux passthrough, xterm-256color terminfo, 256-color tput, and tmux pane TERM=xterm-256color"
 VERIFY
 }
 
