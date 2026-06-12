@@ -1,6 +1,7 @@
 import type { WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
 import { agentTabKey, renderAgentPane, type AgentStatsView } from "./render.ts";
+import { agentStaticFiles } from "./static.ts";
 
 export async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgentInfo[]> {
   const agents = await listWorkspaceAgents(workspaceId);
@@ -36,6 +37,7 @@ export function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceA
 
 export const agentWorkspaceModule: WorkspaceModule = {
   id: "agent",
+  staticFiles: agentStaticFiles,
   async attachToWorkspace({ workspaceId }) {
     const agents = await listOrCreateWorkspaceAgents(workspaceId);
     return {

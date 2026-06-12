@@ -1,6 +1,7 @@
 import type { WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { renderBrowserFrame, renderBrowserTab } from "./render.ts";
 import { createWorkspaceBrowserTab, deleteWorkspaceBrowserTab, listWorkspaceBrowserTabs, setWorkspaceBrowserTarget } from "./state.ts";
+import { browserStaticFiles } from "./static.ts";
 
 export function renderWorkspaceBrowserTabs(workspaceId: string): WorkspaceTabContribution[] {
   return listWorkspaceBrowserTabs(workspaceId).map((tab) => renderBrowserTab(workspaceId, tab));
@@ -8,6 +9,7 @@ export function renderWorkspaceBrowserTabs(workspaceId: string): WorkspaceTabCon
 
 export const browserWorkspaceModule: WorkspaceModule = {
   id: "browser",
+  staticFiles: browserStaticFiles,
   attachToWorkspace({ workspaceId }) {
     return {
       tabs: renderWorkspaceBrowserTabs(workspaceId),

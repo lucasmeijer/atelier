@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import {
   createNextWorkspaceAgent,
-  agentWorkspaceModule,
   getWorkspaceAgentRuntime,
   handleAgentRequest,
   renderAgentComposer,
@@ -9,7 +8,6 @@ import {
 } from "@atelier/agent/server";
 import {
   browserNavigateEndpoint,
-  browserWorkspaceModule,
   createWorkspaceBrowserTabForWorkspace,
   deleteWorkspaceBrowserState,
   deleteWorkspaceBrowserTabForWorkspace,
@@ -28,20 +26,17 @@ import {
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceRepoMergeabilityResult,
 } from "@atelier/core";
-import {
-  createWorkspaceTerminal,
-  terminalWorkspaceModule,
-} from "@atelier/terminal/server";
+import { createWorkspaceTerminal } from "@atelier/terminal/server";
 import {
   createWorkspaceVSCodeTab,
   deleteWorkspaceVSCodeTab,
-  vscodeWorkspaceModule,
 } from "@atelier/vscode/server";
-import { atelierName, type WorkspaceAttachment, type WorkspaceModule, type WorkspaceTabContribution } from "@atelier/shared";
+import { atelierName, type WorkspaceAttachment, type WorkspaceTabContribution } from "@atelier/shared";
 import type { StreamHub } from "./stream-hub.ts";
 import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
 import type { WebPreferenceStore } from "./preferences.ts";
 import type { WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
+import { workspaceModules } from "./workspace-modules.ts";
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
@@ -109,8 +104,6 @@ function turboRemoveStream(target: string): string {
 function turboUpdateStream(target: string, html: string): string {
   return `<turbo-stream action="update" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
 }
-
-const workspaceModules: WorkspaceModule[] = [agentWorkspaceModule, terminalWorkspaceModule, browserWorkspaceModule, vscodeWorkspaceModule];
 
 let cachedAssetManifest: Record<string, string> | undefined;
 

@@ -21,7 +21,13 @@ export interface WorkspaceAttachment {
   tabActions?: WorkspaceTabActionContribution[];
 }
 
+export interface StaticFileContribution {
+  url: URL;
+  contentType: string;
+}
+
 export interface WorkspaceModule {
   id: string;
+  staticFiles?: Record<string, StaticFileContribution>;
   attachToWorkspace(context: WorkspaceAttachContext): Promise<WorkspaceAttachment> | WorkspaceAttachment;
 }

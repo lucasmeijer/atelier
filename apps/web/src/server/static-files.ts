@@ -1,11 +1,10 @@
-import { agentStaticFiles } from "@atelier/agent/server";
-import { browserStaticFiles } from "@atelier/browser/server";
-import { terminalStaticFiles } from "@atelier/terminal/server";
-import { vscodeStaticFiles } from "@atelier/vscode/server";
+import type { StaticFileContribution } from "@atelier/shared";
+import { workspaceModules } from "./workspace-modules.ts";
 
-export interface StaticFileEntry {
-  url: URL;
-  contentType: string;
+export type StaticFileEntry = StaticFileContribution;
+
+function workspaceModuleStaticFiles(): Record<string, StaticFileEntry> {
+  return Object.fromEntries(workspaceModules.flatMap((module) => Object.entries(module.staticFiles ?? {})));
 }
 
 export const clientEntrypoints: Record<string, StaticFileEntry> = {
@@ -14,10 +13,7 @@ export const clientEntrypoints: Record<string, StaticFileEntry> = {
 
 export const fingerprintedStaticFiles: Record<string, StaticFileEntry> = {
   "/style.css": { url: new URL("../../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
-  ...terminalStaticFiles,
-  ...agentStaticFiles,
-  ...vscodeStaticFiles,
-  ...browserStaticFiles,
+  ...workspaceModuleStaticFiles(),
 };
 
 export const legacyStaticFiles: Record<string, StaticFileEntry> = {
