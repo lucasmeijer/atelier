@@ -7,9 +7,7 @@ export type WorkspaceAppTargetResolver = (app: WorkspaceAppHost, requestUrl: URL
 
 export function parseWorkspaceAppHost(hostHeader: string | null): WorkspaceAppHost | undefined {
   const host = (hostHeader ?? "").split(":")[0]?.toLowerCase() ?? "";
-  const suffix = ".localhost";
-  if (!host.endsWith(suffix)) return undefined;
-  const label = host.slice(0, -suffix.length);
+  const label = host.split(".")[0] ?? "";
   const separator = label.lastIndexOf("--");
   if (separator <= 0 || separator === label.length - 2) return undefined;
   const appKey = label.slice(0, separator);

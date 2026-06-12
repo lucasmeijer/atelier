@@ -1,0 +1,54 @@
+# Kamal deployment for Atelier.
+# Cloudflare terminates public HTTPS and Cloudflare Access protects the app.
+service: atelier
+image: atelier-web
+
+servers:
+  web:
+    hosts:
+      - 78.47.191.121
+    options:
+      # Let the Atelier container reach host-published workspace ports on Linux.
+      add-host: host.docker.internal:host-gateway
+
+proxy:
+  app_port: 3000
+  ssl: false
+  response_timeout: 3600
+  healthcheck:
+    path: /up
+    interval: 3
+    timeout: 3
+
+registry:
+  # Kamal 2.11 starts a temporary/local registry and uses SSH forwarding.
+  server: localhost:5555
+
+builder:
+  arch: amd64
+  context: .
+  dockerfile: apps/web/Dockerfile
+
+ssh:
+  user: root
+
+env:
+  clear:
+    HOST: 0.0.0.0
+    PORT: 3000
+    ATELIER_DATA_DIR: /var/lib/atelier
+    # Pi's AuthStorage.create() reads auth.json from PI_CODING_AGENT_DIR.
+    # Workspace creation also copies these files into each workspace container.
+    PI_CODING_AGENT_DIR: /var/lib/atelier/pi-config
+    ATELIER_NAMESPACE: production
+    ATELIER_WORKSPACE_IMAGE: ghcr.io/lucasmeijer/atelier-workspace:latest
+    # Workspace containers publish random host ports. Since Atelier itself runs
+    # in Docker in production, bind those host ports on Docker's host gateway
+    # rather than on public interfaces.
+    ATELIER_WORKSPACE_PUBLISH_HOST: 172.17.0.1
+    ATELIER_DOCKER_PUBLISHED_PORT_HOST: host.docker.internal
+    ATELIER_AGENT_FAKE: 0
+
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+  - /var/lib/atelier:/var/lib/atelier

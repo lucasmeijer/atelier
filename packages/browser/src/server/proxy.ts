@@ -4,6 +4,10 @@ import { getWorkspaceBrowserState } from "./state.ts";
 
 export const browserAppKey = "browser";
 
+function publishedPortHost(): string {
+  return process.env.ATELIER_DOCKER_PUBLISHED_PORT_HOST || "127.0.0.1";
+}
+
 export function isBrowserWorkspaceApp(appKey: string): boolean {
   return appKey === browserAppKey || /^browser-\d+$/.test(appKey);
 }
@@ -21,7 +25,7 @@ export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, re
   }
 
   const hostPort = await getWorkspacePreviewPort(app.workspaceId, containerPort);
-  return new URL(`${target.protocol}//127.0.0.1:${hostPort}${target.pathname}${target.search}`);
+  return new URL(`${target.protocol}//${publishedPortHost()}:${hostPort}${target.pathname}${target.search}`);
 }
 
 function defaultPortForProtocol(protocol: string): number {

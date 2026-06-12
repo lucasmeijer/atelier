@@ -419,6 +419,10 @@ async function workspaceFileEndpoint(workspaceId: string, path: string, request:
 // Dev-server proxy (GET only, v1)
 // ---------------------------------------------------------------------------
 
+function publishedPortHost(): string {
+  return process.env.ATELIER_DOCKER_PUBLISHED_PORT_HOST || "127.0.0.1";
+}
+
 async function workspacePortProxyEndpoint(workspaceId: string, port: number, path: string, url: URL): Promise<Response> {
   if (!Number.isInteger(port) || port <= 0 || port > 65535) return new Response("bad port", { status: 400 });
   if (!(workspacePreviewPorts as readonly number[]).includes(port)) {
@@ -427,7 +431,7 @@ async function workspacePortProxyEndpoint(workspaceId: string, port: number, pat
   const search = url.search ?? "";
   const hostPort = isFakeMode() ? port : await getWorkspacePreviewPort(workspaceId, port);
   try {
-    const upstream = await fetch(`http://127.0.0.1:${hostPort}${path}${search}`, { redirect: "manual" });
+    const upstream = await fetch(`http://${publishedPortHost()}:${hostPort}${path}${search}`, { redirect: "manual" });
     return new Response(upstream.body, { status: upstream.status, headers: upstream.headers });
   } catch {
     return new Response("upstream unreachable", { status: 502 });

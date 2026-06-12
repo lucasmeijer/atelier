@@ -87,7 +87,25 @@ subscribeTerminalTabBusy(({ workspaceId, tabKey, busy }) => registry.setTabBusy(
 // In fake-agent mode (UI development without docker) we seed a demo workspace instead.
 await registry.seed(isFakeMode() ? [{ id: "demo", title: "Demo workspace" }] : (await listWorkspaces()).workspaces);
 
+function contentTypeForStaticPath(pathname: string): string {
+  if (pathname.endsWith(".css")) return "text/css; charset=utf-8";
+  if (pathname.endsWith(".js")) return "text/javascript; charset=utf-8";
+  if (pathname.endsWith(".woff2")) return "font/woff2";
+  return "application/octet-stream";
+}
+
 async function serveStatic(pathname: string): Promise<Response | undefined> {
+  if (pathname.startsWith("/assets/")) {
+    const file = Bun.file(new URL(`../../public${pathname}`, import.meta.url));
+    if (!(await file.exists())) return new Response("not found", { status: 404, headers: { "content-type": "text/plain" } });
+    return new Response(file, {
+      headers: {
+        "content-type": contentTypeForStaticPath(pathname),
+        "cache-control": "public, max-age=31536000, immutable",
+      },
+    });
+  }
+
   const staticFiles: Record<string, { url: URL; contentType: string }> = {
     "/style.css": { url: new URL("../../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
     "/workspace.js": { url: new URL("../../public/workspace.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
@@ -100,7 +118,9 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
   if (!entry) return undefined;
   const file = Bun.file(entry.url);
   if (!(await file.exists())) return new Response("not found", { status: 404, headers: { "content-type": "text/plain" } });
-  return new Response(file, { headers: { "content-type": entry.contentType } });
+  const headers: Record<string, string> = { "content-type": entry.contentType };
+  if (pathname === "/workspace.js") headers["cache-control"] = "no-store";
+  return new Response(file, { headers });
 }
 
 interface WorkspaceAppProxySocketData {

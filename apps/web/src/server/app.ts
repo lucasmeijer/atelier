@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import {
   createNextWorkspaceAgent,
   agentWorkspaceModule,
@@ -110,6 +111,16 @@ function turboUpdateStream(target: string, html: string): string {
 }
 
 const workspaceModules: WorkspaceModule[] = [agentWorkspaceModule, terminalWorkspaceModule, browserWorkspaceModule, vscodeWorkspaceModule];
+
+let cachedAssetManifest: Record<string, string> | undefined;
+
+function assetPath(logicalPath: string): string {
+  if (!cachedAssetManifest) {
+    const manifestUrl = new URL("../../public/assets-manifest.json", import.meta.url);
+    cachedAssetManifest = existsSync(manifestUrl) ? JSON.parse(readFileSync(manifestUrl, "utf8")) as Record<string, string> : {};
+  }
+  return cachedAssetManifest[logicalPath] ?? logicalPath;
+}
 
 export function createWebApp(deps: WebAppDeps): WebApp {
   const { registry, hub, layouts } = deps;
@@ -242,17 +253,17 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(atelierName)} · ${escapeHtml(title)}</title>
-<link rel="stylesheet" href="/style.css">
-<link rel="stylesheet" href="/terminal.css">
-<link rel="stylesheet" href="/agent.css">
-<link rel="stylesheet" href="/vscode.css">
-<link rel="stylesheet" href="/browser.css">
+<link rel="stylesheet" href="${assetPath("/style.css")}">
+<link rel="stylesheet" href="${assetPath("/terminal.css")}">
+<link rel="stylesheet" href="${assetPath("/agent.css")}">
+<link rel="stylesheet" href="${assetPath("/vscode.css")}">
+<link rel="stylesheet" href="${assetPath("/browser.css")}">
 <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.13/dist/turbo.es2017-esm.js"></script>
 <script type="module">
   import { Application, Controller } from "https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/+esm";
   window.Stimulus = { Application, Controller };
 </script>
-<script type="module" src="/workspace.js"></script>
+<script type="module" src="${assetPath("/workspace.js")}"></script>
 </head>
 <body id="body">${body}
 <turbo-stream-source src="/workspace-events/stream"></turbo-stream-source>
@@ -822,6 +833,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   async function route(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === "/up" && request.method === "GET") return new Response("ok\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
     if (url.pathname === "/" && request.method === "GET") return await homePage();
     if (url.pathname === "/workspace-events/stream" && request.method === "GET") return hub.sseResponse(initialStatusStreams);
     if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);

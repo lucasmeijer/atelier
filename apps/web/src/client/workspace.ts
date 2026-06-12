@@ -701,7 +701,8 @@ class WorkspaceAppFrameController extends Controller {
   load(): void {
     const port = window.location.port ? `:${window.location.port}` : "";
     const path = this.hasInitialPathValue && this.initialPathValue ? this.initialPathValue : "/";
-    const src = `${window.location.protocol}//${this.appKeyValue}--${this.workspaceIdValue}.localhost${port}${path.startsWith("/") ? path : `/${path}`}`;
+    const hostSuffix = window.location.hostname === "localhost" ? "localhost" : window.location.hostname;
+    const src = `${window.location.protocol}//${this.appKeyValue}--${this.workspaceIdValue}.${hostSuffix}${port}${path.startsWith("/") ? path : `/${path}`}`;
     if (this.element.src !== src) this.element.src = src;
     this.element.closest(".browser-shell")?.querySelector<HTMLAnchorElement>(".browser-open-external")?.setAttribute("href", src);
   }

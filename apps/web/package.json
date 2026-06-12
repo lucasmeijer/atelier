@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:client": "bun build src/client/workspace.ts --outdir public --format esm --target browser",
-    "dev": "bun run build:client && bun run src/server/main.ts"
+    "build:assets": "bun run scripts/build-assets.ts",
+    "build:client": "bun run build:assets",
+    "dev": "bun run build:assets && bun run src/server/main.ts"
   },
   "dependencies": {
     "@atelier/agent": "workspace:*",

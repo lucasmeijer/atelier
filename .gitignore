@@ -2,3 +2,5 @@ node_modules/
 .atelier-data/
 .DS_Store
 apps/web/public/*.js
+apps/web/public/assets/
+apps/web/public/assets-manifest.json

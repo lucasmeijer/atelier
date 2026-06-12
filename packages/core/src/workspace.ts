@@ -111,6 +111,10 @@ function workspaceImage(): string {
   return process.env.ATELIER_WORKSPACE_IMAGE || defaultWorkspaceImage;
 }
 
+function workspacePublishHost(): string {
+  return process.env.ATELIER_WORKSPACE_PUBLISH_HOST || "127.0.0.1";
+}
+
 function workspaceGitHubCredentialDockerArgs(): string[] {
   if (process.env[githubTokenEnvVar]) return ["--env", githubTokenEnvVar];
 
@@ -252,8 +256,8 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     "--mount",
     `type=bind,src=${dockerHostReposDir},dst=${atelierReposRoot}`,
     "--publish",
-    `127.0.0.1::${workspaceVSCodePort}`,
-    ...workspacePreviewPorts.flatMap((port) => ["--publish", `127.0.0.1::${port}`]),
+    `${workspacePublishHost()}::${workspaceVSCodePort}`,
+    ...workspacePreviewPorts.flatMap((port) => ["--publish", `${workspacePublishHost()}::${port}`]),
     ...workspaceUtf8Environment,
     ...workspaceGitHubCredentialDockerArgs(),
     "--user",
