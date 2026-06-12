@@ -350,12 +350,13 @@ a.btn { text-decoration: none; }
 .managed-repos-table .r-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* split workspace shell */
-.workspace-shell { --workspace-sidebar-width: clamp(360px, 30vw, 560px); --workspace-rail-width: 32px; grid-template-columns: var(--workspace-sidebar-width) var(--workspace-rail-width) minmax(0, 1fr); height: 100vh; min-height: 100vh; overflow: hidden; }
+.workspace-shell { --workspace-sidebar-width: clamp(360px, 30vw, 560px); --workspace-rail-width: 6px; grid-template-columns: var(--workspace-sidebar-width) var(--workspace-rail-width) minmax(0, 1fr); height: 100vh; min-height: 100vh; overflow: hidden; }
 .workspace-shell.workspace-shell-collapsed { grid-template-columns: 0 var(--workspace-rail-width) minmax(0, 1fr); }
 .workspace-shell-sidebar { min-width: 0; height: 100vh; overflow: auto; background: var(--panel); border-right: 1px solid var(--line); }
 .workspace-shell-main { min-width: 0; height: 100vh; overflow: auto; }
-.workspace-shell-rail { width: var(--workspace-rail-width); height: 100vh; padding-top: 14px; display: flex; justify-content: center; align-items: flex-start; cursor: col-resize; background: var(--panel); border-right: 1px solid var(--line); touch-action: none; user-select: none; }
-.workspace-shell-rail:hover, .workspace-shell-resizing .workspace-shell-rail { background: var(--accent-soft); }
+.workspace-shell-rail { position: relative; width: var(--workspace-rail-width); height: 100vh; cursor: col-resize; background: linear-gradient(90deg, transparent 0 2px, var(--line-2) 2px 4px, transparent 4px); border-right: 0; touch-action: none; user-select: none; }
+.workspace-shell-rail:hover, .workspace-shell-resizing .workspace-shell-rail { background: linear-gradient(90deg, transparent 0 2px, var(--accent) 2px 4px, rgba(37,99,235,.05) 4px); }
+.workspace-shell-rail:has(.sidebar-collapse-notch:hover) { background: linear-gradient(90deg, transparent 0 2px, var(--line-2) 2px 4px, transparent 4px); }
 .workspace-shell-collapsed .workspace-shell-sidebar { overflow: hidden; border-right: 0; }
 .workspace-shell-main > turbo-frame, #workspace_detail { display: block; min-height: 100%; }
 .workspace-detail-host { min-height: 100%; }
@@ -373,8 +374,11 @@ a.btn { text-decoration: none; }
 .sidebar-header h1 { font-size: 16px; font-weight: 700; letter-spacing: -.3px; }
 .sidebar-filter-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sidebar-filter-row .global-filter { min-width: 0; }
-.sidebar-collapse-toggle { flex: 0 0 auto; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line-2); border-radius: 7px; background: var(--panel); color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; }
-.sidebar-collapse-toggle:hover { border-color: var(--muted-2); color: var(--text); background: var(--bg); }
+.sidebar-collapse-notch { position: absolute; top: 50%; left: -1px; transform: translateY(-50%); width: 18px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line-2); border-left: 0; border-radius: 0 10px 10px 0; background: var(--panel); color: var(--muted-2); font-size: 13px; font-weight: 800; line-height: 1; cursor: pointer; box-shadow: 5px 0 14px rgba(19,26,38,.08); }
+.sidebar-collapse-notch::before { content: ""; position: absolute; left: -3px; top: 6px; bottom: 6px; width: 3px; border-radius: 99px; background: var(--accent); opacity: 0; }
+.workspace-shell-rail:hover .sidebar-collapse-notch::before { opacity: .35; }
+.sidebar-collapse-notch:hover { border-color: rgba(37,99,235,.36); background: #fff; color: var(--accent); box-shadow: 6px 0 18px rgba(37,99,235,.14); }
+.sidebar-collapse-notch:hover::before { opacity: 1; }
 .workspace-sidebar-table, .sidebar-host-repos .table { border-left: 0; border-right: 0; border-radius: 0; }
 .workspace-sidebar-table .row, .sidebar-host-repos .row { grid-template-columns: 16px minmax(0, 1fr) auto; padding-left: 14px; padding-right: 14px; }
 /* Workspace rows keep a constant height in every state: ready, starting,

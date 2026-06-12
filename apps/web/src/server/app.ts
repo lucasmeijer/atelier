@@ -460,7 +460,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return `<div class="app workspace-shell" data-controller="workspace-shell">
     <aside class="workspace-shell-sidebar" data-workspace-shell-target="sidebar">${await renderWorkspaceSidebar()}</aside>
     <div class="workspace-shell-rail" title="Resize workspace list" data-action="pointerdown->workspace-shell#startResize">
-      <button class="sidebar-collapse-toggle" type="button" aria-label="Collapse workspace list" title="Collapse workspace list" data-workspace-shell-target="toggle" data-action="pointerdown->workspace-shell#stopPropagation click->workspace-shell#toggle">‹</button>
+      <button class="sidebar-collapse-notch" type="button" aria-label="Collapse workspace list" title="Collapse workspace list" data-workspace-shell-target="toggle" data-action="pointerdown->workspace-shell#stopPropagation click->workspace-shell#toggle">‹</button>
     </div>
     <main class="workspace-shell-main">${await workspaceDetailHostHtml(selectedId)}</main>
   </div>
