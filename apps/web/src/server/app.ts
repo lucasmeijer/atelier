@@ -445,7 +445,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return `<div class="workspace-build-status ${build.state}">
       <div class="workspace-build-heading"><div><b>${heading}</b><div class="r-sub">${detail}</div></div></div>
       <div class="r-sub">Image: <code>${escapeHtml(build.image)}</code>${build.modules.length ? ` · Modules: ${escapeHtml(build.modules.join(", "))}` : ""}</div>
-      ${build.output ? `<pre class="workspace-build-log">${escapeHtml(build.output)}</pre>` : `<div class="workspace-build-log empty">Waiting for Docker build output…</div>`}
+      ${build.output ? `<pre class="workspace-build-log" data-controller="workspace-build-log">${escapeHtml(build.output)}</pre>` : `<div class="workspace-build-log empty">Waiting for Docker build output…</div>`}
     </div>`;
   }
 

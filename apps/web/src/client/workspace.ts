@@ -733,6 +733,16 @@ class WorkspaceTitleEditController extends Controller {
   }
 }
 
+class WorkspaceBuildLogController extends Controller {
+  declare readonly element: HTMLElement;
+
+  connect(): void {
+    requestAnimationFrame(() => {
+      this.element.scrollTop = this.element.scrollHeight;
+    });
+  }
+}
+
 const application = Application.start();
 application.register("workspace-shell", WorkspaceShellController);
 application.register("workspace-tabs", WorkspaceTabsController);
@@ -753,4 +763,5 @@ application.register("modal-opener", ModalOpenerController);
 application.register("global-filter", GlobalFilterController);
 application.register("workspace-list", WorkspaceListController);
 application.register("workspace-title-edit", WorkspaceTitleEditController);
+application.register("workspace-build-log", WorkspaceBuildLogController);
 application.register("workspace-app-frame", WorkspaceAppFrameController);
