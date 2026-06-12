@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { configuredAgentModels } from "@atelier/pi-config/server";
-import { renderDiffHtml, type DiffOperation } from "./diff.ts";
+import { diffStats, renderDiffHtml, type DiffOperation } from "./diff.ts";
 import { highlightCodeHtmlForPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
 import { renderMarkdown } from "./markdown.ts";
@@ -457,9 +457,19 @@ const writeRenderer: ToolRenderer = {
 
 const editRenderer: ToolRenderer = {
   known: true,
-  summary: (tool) => pathSummary(tool),
+  hideEmptyResult: true,
+  flushSingleBlock: true,
+  summary: (tool) => {
+    const path = pathSummary(tool);
+    const operations = getEditOperations(toolArgs(tool));
+    const blockCount = operations.length;
+    const blocks = blockCount > 0 ? `${blockCount} ${blockCount === 1 ? "block" : "blocks"}` : "";
+    const stats = diffStats(operations);
+    const lines = stats.added > 0 || stats.deleted > 0 ? `+${stats.added} -${stats.deleted}` : "";
+    return [path, blocks, lines].filter(Boolean).join(" · ");
+  },
   paramsHtml: (_ctx, tool) => renderDiffHtml(getEditOperations(toolArgs(tool))) || genericParamsHtml(tool),
-  resultHtml: (_ctx, tool) => resultPreHtml(trimResult(tool)),
+  resultHtml: (_ctx, tool) => tool.status === "error" ? resultPreHtml(trimResult(tool)) : "",
 };
 
 function getEditOperations(args: Record<string, unknown> | undefined): DiffOperation[] {

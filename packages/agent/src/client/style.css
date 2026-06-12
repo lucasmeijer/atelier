@@ -120,7 +120,9 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 
 .agent-tool-detail { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; background: var(--tool-detail-bg); }
 .agent-tool-detail.flush { padding: 0; }
-.agent-tool-detail.flush > .agent-tool-code { border-radius: 0 0 8px 8px; }
+.agent-tool-detail.flush > .agent-tool-code,
+.agent-tool-detail.flush > .agent-diff { border-radius: 0 0 8px 8px; }
+.agent-tool-detail.flush > .agent-diff { margin: 0; border: 0; }
 .agent-tool-params, .agent-tool-result, .agent-tool-stream, .agent-tool-code {
   font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 11px; line-height: 1.5; white-space: pre-wrap;
   word-break: break-word; margin: 0; max-height: 320px; overflow: auto;

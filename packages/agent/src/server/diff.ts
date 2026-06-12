@@ -49,13 +49,25 @@ function diffLines(oldText: string, newText: string): DiffLine[] {
   return out;
 }
 
-export function renderDiffHtml(operations: DiffOperation[]): string {
-  if (operations.length === 0) return "";
-  const lines = operations.flatMap((operation, index) => {
+function diffOperationLines(operations: DiffOperation[]): DiffLine[] {
+  return operations.flatMap((operation, index) => {
     const diff = diffLines(operation.oldText, operation.newText);
     if (operations.length <= 1 || index === 0) return diff;
     return [{ kind: "ctx" as const, text: "" }, ...diff];
   });
+}
+
+export function diffStats(operations: DiffOperation[]): { added: number; deleted: number } {
+  const lines = diffOperationLines(operations);
+  return {
+    added: lines.filter((line) => line.kind === "add").length,
+    deleted: lines.filter((line) => line.kind === "del").length,
+  };
+}
+
+export function renderDiffHtml(operations: DiffOperation[]): string {
+  if (operations.length === 0) return "";
+  const lines = diffOperationLines(operations);
   if (lines.length === 0) return "";
   return `<div class="agent-diff">${lines.map((line) => {
     const mark = line.kind === "add" ? "+" : line.kind === "del" ? "-" : " ";

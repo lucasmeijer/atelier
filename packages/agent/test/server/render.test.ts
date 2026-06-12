@@ -30,10 +30,14 @@ describe("tool rendering", () => {
   });
 
   test("edit renders diff instead of raw JSON", () => {
-    const html = renderToolCard(ctx, tool({ name: "edit", args: { path: "a.ts", oldText: "old", newText: "new" }, resultText: "ok" }));
+    const html = renderToolCard(ctx, tool({ name: "edit", args: { path: "a.ts", oldText: "old", newText: "new" }, resultText: "Applied 1 block" }));
+    expect(html).toContain("a.ts · 1 block · +1 -1");
     expect(html).toContain("agent-diff-line del");
     expect(html).toContain("agent-diff-line add");
+    expect(html).toContain("agent-tool-detail flush");
     expect(html).not.toContain("oldText");
+    expect(html).not.toContain("Applied 1 block");
+    expect(html).not.toContain("no output");
   });
 
   test("streaming known tools hide raw argument JSON", () => {
