@@ -27,7 +27,7 @@ import {
   type AgentStatsView,
 } from "./render.ts";
 import type { WorkspaceAgentInfo } from "./session-store.ts";
-import { createAtelierResourceLoader } from "./system-prompt.ts";
+import { atelierSystemPrompt, createAtelierResourceLoader } from "./system-prompt.ts";
 import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
 import {
   buildSections,
@@ -70,6 +70,7 @@ export interface WorkspaceAgentRuntime {
   subscribe(listener: AgentSubscriber): () => void;
   /** Turbo-stream HTML bringing a fresh client fully up to date. */
   snapshotStream(): Promise<string>;
+  systemPrompt(): string;
   userMessages(): string[];
   submit(text: string, options: SubmitOptions): Promise<void>;
   abort(): Promise<void>;
@@ -469,7 +470,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   protected async refreshTranscript(): Promise<void> {
-    this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, await this.sectionsForDisplay())));
+    this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, await this.sectionsForDisplay(), this.systemPrompt())));
   }
 
   protected async refreshStats(): Promise<void> {
@@ -479,12 +480,13 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   async snapshotStream(): Promise<string> {
     const sections = await this.sectionsForDisplay();
     return (
-      turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, sections)) +
+      turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, sections, this.systemPrompt())) +
       turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, this.busy)) +
       turboStream("update", ids.stats(this.ctx), renderStatsBar(this.ctx, await this.statsView()))
     );
   }
 
+  abstract systemPrompt(): string;
   abstract userMessages(): string[];
   protected abstract canonicalSections(): Promise<SectionView[]>;
   protected abstract statsView(): Promise<AgentStatsView>;
@@ -597,6 +599,10 @@ class RealAgentRuntime extends BaseAgentRuntime {
       name: configured.label,
       model: this.session.modelRegistry.find?.(configured.provider, configured.id),
     }));
+  }
+
+  systemPrompt(): string {
+    return this.session.systemPrompt ?? "";
   }
 
   userMessages(): string[] {
@@ -795,7 +801,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       this.liveNote("Summarizing the abandoned branch…", "system");
       const truncated = await this.canonicalSections(target);
       if (this.live) truncated.push(this.live.view);
-      this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, truncated)));
+      this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, truncated, this.systemPrompt())));
       void this.session
         .navigateTree(target, { summarize: true })
         .catch((error: unknown) => this.notice("error", error instanceof Error ? error.message : String(error)))
@@ -932,6 +938,10 @@ class FakeAgentRuntime extends BaseAgentRuntime {
       cursor = entry.parentId ?? null;
     }
     return path.reverse();
+  }
+
+  systemPrompt(): string {
+    return atelierSystemPrompt;
   }
 
   private records(): TranscriptRecord[] {

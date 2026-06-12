@@ -34,6 +34,7 @@ function prefix(ctx: AgentRenderContext): string {
 export const ids = {
   pane: (ctx: AgentRenderContext) => `${prefix(ctx)}_pane`,
   transcript: (ctx: AgentRenderContext) => `${prefix(ctx)}_transcript`,
+  systemPrompt: (ctx: AgentRenderContext) => `${prefix(ctx)}_system_prompt`,
   section: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_s`, sid),
   activity: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_act`, sid),
   activityBody: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_actbody`, sid),
@@ -211,10 +212,19 @@ ${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(ag
 // Transcript / sections
 // ---------------------------------------------------------------------------
 
-export function renderTranscript(ctx: AgentRenderContext, sections: SectionView[]): string {
+export function renderTranscript(ctx: AgentRenderContext, sections: SectionView[], systemPrompt?: string): string {
   const userSections = sections.filter((section) => section.user && section.summaryNote === undefined);
   const latestUserSid = userSections[userSections.length - 1]?.sid;
-  return `<div class="agent-notices" id="${ids.notices(ctx)}"></div>${sections.map((section) => renderSection(ctx, section, { collapsed: Boolean(section.user) && section.sid !== latestUserSid })).join("")}`;
+  return `${renderSystemPromptCard(ctx, systemPrompt)}<div class="agent-notices" id="${ids.notices(ctx)}"></div>${sections.map((section) => renderSection(ctx, section, { collapsed: Boolean(section.user) && section.sid !== latestUserSid })).join("")}`;
+}
+
+export function renderSystemPromptCard(ctx: AgentRenderContext, systemPrompt?: string): string {
+  const prompt = systemPrompt?.trim();
+  if (!prompt) return "";
+  return `<details class="agent-tool done tool-system-prompt" id="${ids.systemPrompt(ctx)}">
+    <summary class="agent-tool-head"><code class="agent-tool-name">system prompt</code></summary>
+    <div class="agent-tool-detail flush"><pre class="agent-tool-code agent-system-prompt-body">${escapeHtml(prompt)}</pre></div>
+  </details>`;
 }
 
 export function renderSection(ctx: AgentRenderContext, section: SectionView, options: { collapsed?: boolean } = {}): string {

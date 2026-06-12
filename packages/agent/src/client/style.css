@@ -16,6 +16,9 @@
 .agent-transcript::before { content: ""; flex: 1 0 0; }
 .agent-transcript > * { max-width: 860px; width: 100%; margin-left: auto; margin-right: auto; flex: none; }
 
+.tool-system-prompt { --tool-border: #d8dee8; --tool-head-bg: #f3f5f8; --tool-detail-bg: #f8fafc; --tool-hover-bg: #edf1f6; }
+.agent-system-prompt-body { max-height: 420px; overflow: auto; white-space: pre-wrap; }
+
 /* ---------------------------------------------------------------------------
  * Sections
  * ------------------------------------------------------------------------ */
