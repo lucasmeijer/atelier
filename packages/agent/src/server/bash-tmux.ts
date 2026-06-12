@@ -142,11 +142,6 @@ export interface AgentTermSocketData {
   pty?: IPty;
 }
 
-function parsePositiveInteger(value: string | null, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 && parsed <= 1000 ? parsed : fallback;
-}
-
 export function validateAgentTermSocket(url: URL): AgentTermSocketData | undefined {
   const match = url.pathname.match(/^\/workspaces\/([^/]+)\/agent-term\/([^/]+)\/ws$/);
   if (!match) return undefined;
@@ -157,8 +152,13 @@ export function validateAgentTermSocket(url: URL): AgentTermSocketData | undefin
     kind: "agent-term",
     workspaceId,
     session,
-    cols: parsePositiveInteger(url.searchParams.get("cols"), 80),
-    rows: parsePositiveInteger(url.searchParams.get("rows"), 24),
+    // Agent bash sessions have a fixed, desktop-like size. Do not trust the
+    // browser/PTY-reported attach size here: hidden or freshly-mounted inline
+    // terminals can briefly report tiny dimensions (for example 5x5), and a
+    // tmux attach client may otherwise propagate that size to the running
+    // command.
+    cols: agentTermCols,
+    rows: agentTermRows,
   };
 }
 
@@ -170,7 +170,10 @@ export function openAgentTermSocket(ws: ServerWebSocket<AgentTermSocketData>): v
       "--user", "atelier",
       "-e", "TERM=xterm-256color",
       workspaceContainerName(data.workspaceId),
-      "tmux", "attach-session", "-r", "-t", data.session,
+      "tmux",
+      "set-option", "-t", data.session, "window-size", "manual", "\;",
+      "resize-window", "-t", data.session, "-x", String(agentTermCols), "-y", String(agentTermRows), "\;",
+      "attach-session", "-r", "-t", data.session,
     ], {
       name: "xterm-256color",
       cols: data.cols,
