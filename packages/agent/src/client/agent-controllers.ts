@@ -61,21 +61,6 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
         void fetch(this.path("/abort"), { method: "POST" });
       }
     };
-    /** Sections/tools the user explicitly expanded; survives transcript re-renders. */
-    private readonly onBeforeStreamRender = (event: Event): void => {
-      const detail = (event as CustomEvent).detail as { render?: (element: Element) => Promise<void> } | undefined;
-      const original = detail?.render;
-      if (!detail || !original) return;
-      const pane = this.element;
-      detail.render = async (element: Element) => {
-        const openActivities = Array.from(pane.querySelectorAll(".agent-activity.open")).map((node) => node.id).filter(Boolean);
-        const openDetails = Array.from(pane.querySelectorAll("details[open]")).map((node) => (node.closest(".agent-item") as HTMLElement | null)?.id).filter(Boolean) as string[];
-        await original(element);
-        for (const id of openActivities) document.getElementById(id)?.classList.add("open");
-        for (const id of openDetails) document.getElementById(id)?.querySelector("details")?.setAttribute("open", "");
-      };
-    };
-
     connect(): void {
       registerAgentStreamActions();
       this.observer = new MutationObserver(() => {
@@ -88,7 +73,6 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       this.observer.observe(this.transcriptTarget, { childList: true, subtree: true, characterData: true });
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       document.addEventListener("keydown", this.onKeydown);
-      document.addEventListener("turbo:before-stream-render", this.onBeforeStreamRender);
       if (this.element.closest(".tab-pane")?.classList.contains("active")) this.start();
     }
 
@@ -96,7 +80,6 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       this.observer?.disconnect();
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
       document.removeEventListener("keydown", this.onKeydown);
-      document.removeEventListener("turbo:before-stream-render", this.onBeforeStreamRender);
       this.source?.close();
       this.source = undefined;
     }
@@ -151,13 +134,6 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
       this.stuck = true;
       this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
       this.inputTarget.focus();
-    }
-
-    // ---- collapse / expand ----
-
-    toggleActivity(event: Event): void {
-      const target = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-      target?.closest(".agent-activity")?.classList.toggle("open");
     }
 
     // ---- rewind ----

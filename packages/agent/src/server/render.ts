@@ -9,7 +9,6 @@ import type { WorkspaceAgentInfo } from "./session-store.ts";
 import {
   formatCost,
   formatTokens,
-  summarizeSectionStats,
   type SectionItem,
   type SectionView,
   type ToolView,
@@ -38,13 +37,12 @@ export const ids = {
   section: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_s`, sid),
   activity: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_act`, sid),
   activityBody: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_actbody`, sid),
-  activitySummary: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_actsum`, sid),
-  activityRow: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_actrow`, sid),
   final: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_final`, sid),
   item: (ctx: AgentRenderContext, sid: string, n: number) => domId(`${prefix(ctx)}_item`, sid, String(n)),
   itemText: (ctx: AgentRenderContext, sid: string, n: number) => domId(`${prefix(ctx)}_itemtext`, sid, String(n)),
   stats: (ctx: AgentRenderContext) => `${prefix(ctx)}_stats`,
   actions: (ctx: AgentRenderContext) => `${prefix(ctx)}_actions`,
+  abortForm: (ctx: AgentRenderContext) => `${prefix(ctx)}_abort_form`,
   attachRow: (ctx: AgentRenderContext) => `${prefix(ctx)}_attach`,
   chip: (ctx: AgentRenderContext, attachmentId: string) => domId(`${prefix(ctx)}_chip`, attachmentId),
   draftAttachRow: (draftId: string) => domId("agent_draft_attach", draftId),
@@ -162,6 +160,7 @@ export function renderAgentComposer(options: AgentComposerRenderOptions): string
               ${actions}
             </div>
           </form>
+          ${options.includePaneActions && options.ctx ? `<form id="${ids.abortForm(options.ctx)}" method="post" action="${escapeHtml(agentPath(options.ctx, "/abort"))}" hidden></form>` : ""}
           ${statbar}
         </div>
       </div>`;
@@ -184,7 +183,8 @@ export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): str
   if (!busy) {
     return `<button class="agent-btn primary" type="submit" name="mode" value="send">Send <kbd>⌘↩</kbd></button>`;
   }
-  return `<button class="agent-btn steer" type="submit" name="mode" value="steer" title="Deliver between turns, while the agent keeps working">Steer</button>
+  return `<button class="agent-btn stop" type="submit" form="${ids.abortForm(ctx)}" title="Stop the agent"><span class="agent-stop-dot"></span> Stop</button>
+<button class="agent-btn steer" type="submit" name="mode" value="steer" title="Deliver between turns, while the agent keeps working">Steer</button>
 <button class="agent-btn primary" type="submit" name="mode" value="followup" title="Deliver after the agent finishes">Follow-up <kbd>⌘↩</kbd></button>`;
 }
 
@@ -212,38 +212,30 @@ ${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(ag
 // ---------------------------------------------------------------------------
 
 export function renderTranscript(ctx: AgentRenderContext, sections: SectionView[]): string {
-  return `<div class="agent-notices" id="${ids.notices(ctx)}"></div>${sections.map((section) => renderSection(ctx, section)).join("")}`;
+  const userSections = sections.filter((section) => section.user && section.summaryNote === undefined);
+  const latestUserSid = userSections[userSections.length - 1]?.sid;
+  return `<div class="agent-notices" id="${ids.notices(ctx)}"></div>${sections.map((section) => renderSection(ctx, section, { collapsed: Boolean(section.user) && section.sid !== latestUserSid })).join("")}`;
 }
 
-export function renderSection(ctx: AgentRenderContext, section: SectionView): string {
+export function renderSection(ctx: AgentRenderContext, section: SectionView, options: { collapsed?: boolean } = {}): string {
   if (section.summaryNote !== undefined) {
     return `<div class="agent-section agent-summary-section" id="${ids.section(ctx, section.sid)}" data-sid="${escapeHtml(section.sid)}">
       <div class="agent-note summary">${markdown(ctx, section.summaryNote)}</div>
     </div>`;
   }
-  const hasThinking = section.items.some((item) => item.type === "thinking");
   const hasActivity = section.items.length > 0 || section.streaming;
-  const summary = section.streaming
-    ? renderActivitySummaryStreaming(ctx, section, section.startedAt ?? Date.now())
-    : `<button class="agent-actsum" type="button" id="${ids.activitySummary(ctx, section.sid)}" data-action="agent-pane#toggleActivity"><span class="agent-chev">▸</span>${escapeHtml(summarizeSectionStats(section.stats, { hasThinking }))}</button>`;
-  return `<div class="agent-section${section.streaming ? " streaming" : ""}" id="${ids.section(ctx, section.sid)}" data-sid="${escapeHtml(section.sid)}">
+  const collapsed = Boolean(options.collapsed) && !section.streaming;
+  return `<div class="agent-section${section.streaming ? " streaming" : ""}${collapsed ? " collapsed" : ""}" id="${ids.section(ctx, section.sid)}" data-sid="${escapeHtml(section.sid)}">
     ${section.userEntryId ? renderRewindZone(ctx, section) : ""}
     ${section.user ? renderUserMessage(ctx, section.user) : ""}
     <div class="agent-activity" id="${ids.activity(ctx, section.sid)}"${hasActivity ? "" : " hidden"}>
-      <div class="agent-actrow" id="${ids.activityRow(ctx, section.sid)}">${summary}</div>
-      <div class="agent-actbody" id="${ids.activityBody(ctx, section.sid)}">${section.items.map((item, index) => renderItem(ctx, section.sid, index, item, { live: section.streaming && index === section.items.length - 1 })).join("")}</div>
+      <div class="agent-actbody" id="${ids.activityBody(ctx, section.sid)}">${section.items.map((item, index) => renderItem(ctx, section.sid, index, item, { live: section.streaming && index === section.items.length - 1, collapsed })).join("")}</div>
     </div>
     <div class="agent-final" id="${ids.final(ctx, section.sid)}">${section.finalText ? renderFinalText(ctx, section.finalText) : ""}</div>
     ${section.errorMessage ? `<div class="agent-error">${escapeHtml(section.errorMessage)}</div>` : ""}
   </div>`;
 }
 
-export function renderActivitySummaryStreaming(ctx: AgentRenderContext, section: SectionView, startedAt: number): string {
-  const hasThinking = section.items.some((item) => item.type === "thinking");
-  const label = section.items.length === 0 ? "working" : summarizeSectionStats(section.stats, { hasThinking });
-  return `<button class="agent-actsum" type="button" id="${ids.activitySummary(ctx, section.sid)}" data-action="agent-pane#toggleActivity"><span class="agent-chev">▸</span>${escapeHtml(label)}</button>
-<form method="post" action="${escapeHtml(agentPath(ctx, "/abort"))}" class="agent-stopform"><button class="agent-stop" type="submit" title="Stop the agent" data-controller="agent-elapsed" data-agent-elapsed-since-value="${startedAt}"><span class="agent-stop-sq"></span><span data-agent-elapsed-target="time">0s</span></button></form>`;
-}
 
 function renderRewindZone(ctx: AgentRenderContext, section: SectionView): string {
   if (!section.userEntryId) return "";
@@ -268,7 +260,7 @@ export function renderFinalText(ctx: AgentRenderContext, text: string, options: 
 // Items
 // ---------------------------------------------------------------------------
 
-export function renderItem(ctx: AgentRenderContext, sid: string, index: number, item: SectionItem, options: { live?: boolean } = {}): string {
+export function renderItem(ctx: AgentRenderContext, sid: string, index: number, item: SectionItem, options: { live?: boolean; collapsed?: boolean } = {}): string {
   const id = ids.item(ctx, sid, index);
   if (item.type === "thinking") {
     return `<div class="agent-item agent-thinking" id="${id}"><div class="agent-thinking-text" id="${ids.itemText(ctx, sid, index)}">${escapeHtml(item.text)}</div></div>`;
@@ -285,7 +277,7 @@ export function renderItem(ctx: AgentRenderContext, sid: string, index: number, 
   if (item.tool.status === "streaming") {
     return renderStreamingToolItem(ctx, sid, index, item.tool.name, item.tool.argsStream ?? "");
   }
-  return `<div class="agent-item" id="${id}">${renderToolCard(ctx, item.tool)}</div>`;
+  return `<div class="agent-item" id="${id}">${renderToolCard(ctx, item.tool, { open: !options.collapsed })}</div>`;
 }
 
 /** Streaming placeholders used by the live pipeline (content streamed into the text target). */
@@ -303,8 +295,8 @@ export function renderStreamingToolItem(ctx: AgentRenderContext, sid: string, in
   const stream = renderer.known
     ? `${knownBody ? `<div class="agent-tool-detail">${knownBody}</div>` : `<div class="agent-tool-empty agent-tool-stream">composing arguments…</div>`}<span id="${streamTarget}" hidden></span>`
     : `<pre class="agent-tool-stream" id="${streamTarget}">${escapeHtml(argsStream)}</pre>`;
-  return `<div class="agent-item" id="${ids.item(ctx, sid, index)}"><div class="agent-tool streaming">
-    <div class="agent-tool-head"><span class="agent-tool-glyph run"></span><code class="agent-tool-name">${escapeHtml(name || "tool")}</code><span class="agent-tool-args">${escapeHtml(summary || "composing…")}</span></div>
+  return `<div class="agent-item" id="${ids.item(ctx, sid, index)}"><div class="agent-tool streaming ${toolClass(name)}">
+    <div class="agent-tool-head"><span class="agent-tool-glyph pending">…</span><code class="agent-tool-name">${escapeHtml(name || "tool")}</code><span class="agent-tool-args">${escapeHtml(summary || "composing…")}</span></div>
     ${stream}
   </div></div>`;
 }
@@ -322,30 +314,35 @@ export function renderRunningToolCard(ctx: AgentRenderContext, tool: ToolView): 
       ? `<pre class="agent-tool-stream agent-tool-livestream">${escapeHtml(tool.resultText)}</pre>`
       : renderer.paramsHtml?.(ctx, tool) ?? "";
   const elapsed = tool.startedAt
-    ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/abort"))}" class="agent-stopform"><button class="agent-stop" type="submit" title="Stop" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}"${tool.timeoutSeconds ? ` data-agent-elapsed-max-value="${tool.timeoutSeconds}"` : ""}><span class="agent-stop-sq"></span><span data-agent-elapsed-target="time">0s</span></button></form>`
+    ? `<span class="agent-tool-elapsed" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}"${tool.timeoutSeconds ? ` data-agent-elapsed-max-value="${tool.timeoutSeconds}"` : ""}><span data-agent-elapsed-target="time">0s</span></span>`
     : "";
-  return `<div class="agent-tool running">
-    <div class="agent-tool-head"><span class="agent-tool-glyph run"></span><code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span>${elapsed}</div>
+  return `<div class="agent-tool running ${toolClass(tool.name)}">
+    <div class="agent-tool-head"><span class="agent-tool-glyph pending">…</span><code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span>${elapsed}</div>
     ${terminal}
   </div>`;
 }
 
 const toolResultPreviewLimit = 4000;
 
-export function renderToolCard(ctx: AgentRenderContext, tool: ToolView): string {
+export function renderToolCard(ctx: AgentRenderContext, tool: ToolView, options: { open?: boolean } = {}): string {
   if (tool.status === "running") return renderRunningToolCard(ctx, tool);
   const glyph = tool.status === "error" ? `<span class="agent-tool-glyph err">✕</span>` : `<span class="agent-tool-glyph ok">✓</span>`;
   const renderer = toolRenderer(tool.name);
   const argsSummary = renderer.summary?.(tool) ?? genericToolSummary(tool);
   const paramsHtml = renderer.known ? (renderer.paramsHtml?.(ctx, tool) ?? "") : genericParamsHtml(tool);
   const resultHtml = renderer.resultHtml?.(ctx, tool) ?? genericResultHtml(tool);
-  return `<details class="agent-tool done${tool.status === "error" ? " error" : ""}">
+  const emptyResultHtml = renderer.hideEmptyResult ? "" : `<div class="agent-tool-empty">no output</div>`;
+  const bodyHtml = `${paramsHtml}${resultHtml || emptyResultHtml}`;
+  const flushSingleBlock = Boolean(renderer.flushSingleBlock && ((paramsHtml && !resultHtml) || (!paramsHtml && resultHtml)));
+  return `<details class="agent-tool done ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}"${options.open ? " open" : ""}>
     <summary class="agent-tool-head">${glyph}<code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span></summary>
-    <div class="agent-tool-detail">
-      ${paramsHtml}
-      ${resultHtml || `<div class="agent-tool-empty">no output</div>`}
-    </div>
+    <div class="agent-tool-detail${flushSingleBlock ? " flush" : ""}">${bodyHtml}</div>
   </details>`;
+}
+
+function toolClass(name: string): string {
+  const slug = name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
+  return `tool-${slug}`;
 }
 
 interface ToolRenderer {
@@ -353,6 +350,8 @@ interface ToolRenderer {
   summary?: (tool: ToolView) => string;
   paramsHtml?: (ctx: AgentRenderContext, tool: ToolView) => string;
   resultHtml?: (ctx: AgentRenderContext, tool: ToolView) => string;
+  hideEmptyResult?: boolean;
+  flushSingleBlock?: boolean;
 }
 
 function toolRenderer(name: string): ToolRenderer {
@@ -433,6 +432,7 @@ const bashRenderer: ToolRenderer = {
 
 const readRenderer: ToolRenderer = {
   known: true,
+  flushSingleBlock: true,
   summary: (tool) => pathSummary(tool, formatReadRange(toolArgs(tool))),
   resultHtml: (_ctx, tool) => {
     const result = trimResult(tool);
@@ -443,6 +443,8 @@ const readRenderer: ToolRenderer = {
 
 const writeRenderer: ToolRenderer = {
   known: true,
+  hideEmptyResult: true,
+  flushSingleBlock: true,
   summary: (tool) => pathSummary(tool),
   paramsHtml: (_ctx, tool) => {
     const args = toolArgs(tool);
@@ -450,7 +452,7 @@ const writeRenderer: ToolRenderer = {
     if (content === undefined) return genericParamsHtml(tool);
     return codeBlockHtml(content, stringArg(args, "path", "file_path"), "agent-tool-code", { lines: tool.status === "running" ? 80 : 120, chars: tool.status === "running" ? 8000 : 12000 });
   },
-  resultHtml: (_ctx, tool) => resultPreHtml(trimResult(tool)),
+  resultHtml: (_ctx, tool) => tool.status === "error" ? resultPreHtml(trimResult(tool)) : "",
 };
 
 const editRenderer: ToolRenderer = {

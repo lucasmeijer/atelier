@@ -52,48 +52,39 @@
 .agent-error { color: var(--red); background: var(--red-soft); border: 1px solid #f1c7c7; border-radius: 8px; padding: 6px 10px; font-size: 12px; }
 
 /* ---------------------------------------------------------------------------
- * Activity (collapsed in-between items)
+ * Activity
  * ------------------------------------------------------------------------ */
 
 .agent-activity[hidden] { display: none; }
 .agent-section.streaming .agent-activity:has(.agent-actbody:empty) { display: none; }
-.agent-actrow { display: flex; align-items: center; gap: 8px; }
-.agent-actsum {
-  display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 550; color: var(--muted-2);
-  background: none; border: none; padding: 2px 4px; cursor: pointer; font-family: inherit; border-radius: 6px;
-}
-.agent-actsum:hover { color: var(--muted); background: rgba(19, 26, 38, .04); }
-.agent-chev { font-size: 9px; transition: transform .15s; display: inline-block; }
-.agent-activity.open .agent-chev { transform: rotate(90deg); }
-
-.agent-stopform { display: inline-flex; margin-left: auto; }
-.agent-stop {
-  display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--muted);
-  background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 2px 10px; cursor: pointer; font-family: inherit;
-}
-.agent-stop:hover { color: var(--red); border-color: var(--red); background: var(--red-soft); }
-.agent-stop-sq { width: 7px; height: 7px; border-radius: 1.5px; background: var(--red); }
 
 .agent-actbody { display: flex; flex-direction: column; gap: 6px; }
 .agent-actbody:not(:empty) { padding: 4px 0 2px 10px; border-left: 2px solid var(--line); margin-left: 4px; }
-/* collapsed by default … */
-.agent-actbody > .agent-item { display: none; }
-/* … except when expanded … */
-.agent-activity.open .agent-actbody > .agent-item { display: block; }
-/* … and the currently-streaming (last) item of a live section is always visible. */
-.agent-section.streaming .agent-actbody > .agent-item:last-child { display: block; }
+.agent-section.collapsed .agent-actbody { gap: 4px; }
+.agent-section.collapsed .agent-thinking,
+.agent-section.collapsed .agent-itext,
+.agent-section.collapsed .agent-note:not(.summary) {
+  border: 1px solid var(--line); border-radius: 9px; background: var(--panel); padding: 5px 10px; overflow: hidden;
+}
+.agent-section.collapsed .agent-thinking-text,
+.agent-section.collapsed .agent-itext .agent-md,
+.agent-section.collapsed .agent-note:not(.summary) {
+  max-height: 1.5em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
-/* thinking: mild gray, glanceable */
-.agent-thinking-text { color: var(--muted-2); font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+/* thinking: mild gray/lavender, glanceable */
+.agent-thinking { background: #f7f6ff; border: 1px solid #e7e3ff; border-radius: 9px; padding: 6px 10px; }
+.agent-thinking-text { color: #655f85; font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
 
 /* intermediate assistant text */
+.agent-itext { background: #f6f8fb; border: 1px solid #e3e8f0; border-radius: 9px; padding: 7px 10px; }
 .agent-itext .agent-md { font-size: 13px; color: var(--muted); }
 .agent-stream-text { white-space: pre-wrap; font-size: 13px; color: var(--text); line-height: 1.55; }
 
 /* notes (steer / rewind summaries / system) */
-.agent-note { font-size: 12px; color: var(--muted); }
+.agent-note { font-size: 12px; color: var(--muted); background: #fff8e8; border: 1px solid #f4e3b8; border-radius: 9px; padding: 6px 10px; }
 .agent-note.summary { background: var(--panel); border: 1px dashed var(--line-2); border-radius: 9px; padding: 8px 11px; }
-.agent-note.error { color: var(--red); }
+.agent-note.error { color: var(--red); background: var(--red-soft); border-color: #f1c7c7; }
 .agent-note p { margin: 0 0 4px; }
 .agent-note p:last-child { margin-bottom: 0; }
 
@@ -101,27 +92,35 @@
  * Tool calls — quiet line items, no tinted edge
  * ------------------------------------------------------------------------ */
 
-.agent-tool { border: 1px solid var(--line); border-radius: 9px; background: var(--panel); overflow: hidden; }
+.agent-tool {
+  --tool-border: var(--line);
+  --tool-head-bg: var(--panel);
+  --tool-detail-bg: var(--panel);
+  --tool-hover-bg: rgba(19, 26, 38, .025);
+  border: 1px solid var(--tool-border); border-radius: 9px; background: var(--tool-detail-bg); overflow: hidden;
+}
+.agent-tool.tool-bash { --tool-border: #d8dee8; --tool-head-bg: #f3f5f8; --tool-detail-bg: #f8fafc; --tool-hover-bg: #edf1f6; }
+.agent-tool.tool-read { --tool-border: #c7e8f1; --tool-head-bg: #ecfbff; --tool-detail-bg: #f6fdff; --tool-hover-bg: #dff7fd; }
+.agent-tool.tool-write { --tool-border: #cfead6; --tool-head-bg: #f0fbf3; --tool-detail-bg: #f8fdf9; --tool-hover-bg: #e6f7ea; }
+.agent-tool.tool-edit { --tool-border: #ead9f7; --tool-head-bg: #fbf5ff; --tool-detail-bg: #fdfaff; --tool-hover-bg: #f4eaff; }
 .agent-tool-head {
-  display: flex; align-items: center; gap: 8px; padding: 5px 10px; font-size: 12px; cursor: default; list-style: none; min-width: 0;
+  display: flex; align-items: center; gap: 8px; padding: 5px 10px; font-size: 12px; cursor: default; list-style: none; min-width: 0; background: var(--tool-head-bg);
 }
 details.agent-tool > summary.agent-tool-head { cursor: pointer; }
 details.agent-tool > summary.agent-tool-head::-webkit-details-marker { display: none; }
-details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid var(--line); }
-.agent-tool-head:hover { background: rgba(19, 26, 38, .025); }
+details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid var(--tool-border); }
+.agent-tool-head:hover { background: var(--tool-hover-bg); }
 .agent-tool-name { font-family: var(--mono, ui-monospace, Menlo, monospace); font-weight: 650; font-size: 11.5px; color: var(--text); }
 .agent-tool-args { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
 .agent-tool-glyph { width: 14px; text-align: center; font-size: 10px; font-weight: 700; flex: none; }
 .agent-tool-glyph.ok { color: var(--green); }
 .agent-tool-glyph.err { color: var(--red); }
-.agent-tool-glyph.run {
-  width: 10px; height: 10px; margin: 0 2px; border: 2px solid var(--accent-soft); border-top-color: var(--accent);
-  border-radius: 50%; animation: agent-rot .7s linear infinite;
-}
-@keyframes agent-rot { to { transform: rotate(360deg); } }
+.agent-tool-glyph.pending { color: var(--muted-2); font-size: 13px; line-height: 1; }
 .agent-tool.error .agent-tool-name { color: var(--red); }
 
-.agent-tool-detail { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.agent-tool-detail { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; background: var(--tool-detail-bg); }
+.agent-tool-detail.flush { padding: 0; }
+.agent-tool-detail.flush > .agent-tool-code { border-radius: 0 0 8px 8px; }
 .agent-tool-params, .agent-tool-result, .agent-tool-stream, .agent-tool-code {
   font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 11px; line-height: 1.5; white-space: pre-wrap;
   word-break: break-word; margin: 0; max-height: 320px; overflow: auto;
@@ -134,7 +133,7 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 .agent-tool-stream:empty { display: none; }
 .agent-tool-livestream { color: var(--text); background: #161a22; color: #d3dae5; border-top: none; border-radius: 0 0 8px 8px; padding: 8px 10px; min-height: 36px; }
 .agent-tool-term { background: #161a22; padding: 4px 6px; overflow-x: auto; }
-.agent-tool-head .agent-stopform { margin-left: 8px; flex: none; }
+.agent-tool-elapsed { margin-left: 8px; flex: none; font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 10.5px; color: var(--muted-2); }
 
 /* ---------------------------------------------------------------------------
  * Markdown
@@ -242,6 +241,23 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 .agent-btn.primary:hover { background: #1d4fd0; }
 .agent-btn.steer { background: var(--amber-soft); border-color: #eedfb4; color: var(--amber); }
 .agent-btn.steer:hover { border-color: var(--amber); }
+.agent-btn.stop {
+  display: inline-flex; align-items: center; gap: 6px; color: var(--red); background: var(--red-soft); border-color: #f1c7c7;
+  line-height: 1.2; animation: agent-stop-pulse 1.15s ease-in-out infinite;
+}
+.agent-btn.stop:hover { border-color: var(--red); animation-play-state: paused; }
+.agent-stop-dot {
+  width: 7px; height: 7px; border-radius: 1.5px; background: var(--red); flex: none;
+  animation: agent-stop-dot-pulse 1.15s ease-in-out infinite;
+}
+@keyframes agent-stop-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+  50% { box-shadow: 0 0 0 3px rgba(220, 38, 38, .12); }
+}
+@keyframes agent-stop-dot-pulse {
+  0%, 100% { opacity: .55; transform: scale(.82); }
+  50% { opacity: 1; transform: scale(1.18); }
+}
 .agent-btn kbd { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 9.5px; font-weight: 500; opacity: .65; margin-left: 3px; }
 
 /* stats: modest gray */

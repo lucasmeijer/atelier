@@ -11,7 +11,6 @@ import {
 import { turboAppendText, turboStream } from "./html.ts";
 import {
   ids,
-  renderActivitySummaryStreaming,
   renderFinalText,
   renderItem,
   renderNotice,
@@ -267,13 +266,6 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.stream(turboStream("append", ids.activityBody(this.ctx, this.live!.view.sid), html));
   }
 
-  private updateSummaryButton(): void {
-    const live = this.live;
-    if (!live) return;
-    const rowHtml = renderActivitySummaryStreaming(this.ctx, live.view, live.view.startedAt ?? Date.now());
-    this.stream(turboStream("update", ids.activityRow(this.ctx, live.view.sid), rowHtml));
-  }
-
   private liveFinalTarget(live: LiveState): string {
     return ids.final(this.ctx, live.view.sid);
   }
@@ -316,7 +308,6 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       live.view.items.push({ type: "thinking", text: "" });
       live.open = { index, kind: "thinking" };
       this.appendItemHtml(renderStreamingThinkingItem(this.ctx, live.view.sid, index));
-      this.updateSummaryButton();
     }
     const item = live.view.items[live.open.index];
     if (item.type === "thinking") item.text += text;
@@ -415,8 +406,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     item.tool.resultText = resultText;
     item.tool.tmuxSession = undefined;
     live.view.stats.tools += 1;
-    this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderToolCard(this.ctx, item.tool)));
-    this.updateSummaryButton();
+    this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderToolCard(this.ctx, item.tool, { open: true })));
   }
 
   protected liveNote(text: string, tone: "system" | "summary" | "error"): void {
@@ -432,7 +422,6 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (!live) return;
     live.view.stats.outTokens += outTokens;
     live.view.stats.cost += cost;
-    this.updateSummaryButton();
   }
 
   /** The final assistant message arrived: move trailing text item into the final slot. */

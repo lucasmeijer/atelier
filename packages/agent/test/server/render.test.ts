@@ -18,12 +18,15 @@ describe("tool rendering", () => {
   });
 
   test("write renders content preview as code, not JSON newlines", () => {
-    const html = renderToolCard(ctx, tool({ name: "write", args: { path: "a.ts", content: "const x = 1;\n<script>" }, resultText: "ok" }));
+    const html = renderToolCard(ctx, tool({ name: "write", args: { path: "a.ts", content: "const x = 1;\n<script>" }, resultText: "Successfully wrote 27 bytes to a.ts" }));
     expect(html).toContain("agent-tool-code");
     expect(html).toContain("x =");
     expect(html).toContain("\n");
     expect(html).not.toContain("\\n");
     expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("Successfully wrote");
+    expect(html).not.toContain("no output");
+    expect(html).toContain("agent-tool-detail flush");
   });
 
   test("edit renders diff instead of raw JSON", () => {
