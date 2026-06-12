@@ -32,5 +32,13 @@ export {
 } from "./bash-tmux.ts";
 export { agentTabKey, renderAgentComposer, renderAgentPane } from "./render.ts";
 export { agentWorkspaceModule, listOrCreateWorkspaceAgents, renderWorkspaceAgentTabs } from "./web.ts";
-export { applyExactEdits, createWorkspaceAgentTools, normalizeWorkspacePath } from "./tools.ts";
+export {
+  applyExactEdits,
+  createWorkspaceAgentTools,
+  normalizeWorkspacePath,
+  registerWorkspaceAgentTool,
+  workspaceAgentToolNames,
+  type WorkspaceAgentToolFactory,
+  type WorkspaceAgentToolOptions,
+} from "./tools.ts";
 export { agentStaticFiles } from "./static.ts";

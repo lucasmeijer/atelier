@@ -1,5 +1,5 @@
 import { dirname, posix } from "node:path";
-import { execWorkspaceCommand, execWorkspaceShell } from "@atelier/core";
+import { execWorkspaceCommand, execWorkspaceShell, type AtelierEventBus } from "@atelier/core";
 import {
   createEditToolDefinition,
   createReadToolDefinition,
@@ -63,7 +63,26 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
-export function createWorkspaceAgentTools(workspaceId: string): ToolDefinition<any, any>[] {
+export interface WorkspaceAgentToolOptions {
+  events?: AtelierEventBus;
+}
+
+export type WorkspaceAgentToolFactory = (workspaceId: string, options: WorkspaceAgentToolOptions) => ToolDefinition<any, any>;
+
+const registeredWorkspaceAgentTools = new Map<string, WorkspaceAgentToolFactory>();
+
+export function registerWorkspaceAgentTool(name: string, factory: WorkspaceAgentToolFactory): () => void {
+  registeredWorkspaceAgentTools.set(name, factory);
+  return () => {
+    if (registeredWorkspaceAgentTools.get(name) === factory) registeredWorkspaceAgentTools.delete(name);
+  };
+}
+
+export function workspaceAgentToolNames(): string[] {
+  return ["read", "write", "edit", "bash", ...registeredWorkspaceAgentTools.keys()];
+}
+
+export function createWorkspaceAgentTools(workspaceId: string, options: WorkspaceAgentToolOptions = {}): ToolDefinition<any, any>[] {
   const read = createReadToolDefinition(workspaceRoot, {
     operations: {
       readFile: (path) => readFileBuffer(workspaceId, normalizeWorkspacePath(path)),
@@ -87,5 +106,6 @@ export function createWorkspaceAgentTools(workspaceId: string): ToolDefinition<a
     },
   });
   const bash = createTmuxBashTool(workspaceId);
-  return [read, write, edit, bash];
+  const external = [...registeredWorkspaceAgentTools.values()].map((factory) => factory(workspaceId, options));
+  return [read, write, edit, bash, ...external];
 }

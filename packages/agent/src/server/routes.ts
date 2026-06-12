@@ -147,27 +147,27 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   }
 
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/events$/)) && request.method === "GET") {
-    return await agentEventsEndpoint(params[0], params[1]);
+    return await agentEventsEndpoint(params[0], params[1], options);
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/messages$/)) && request.method === "POST") {
     return await agentMessagesEndpoint(params[0], params[1], request, options);
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/abort$/)) && request.method === "POST") {
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]));
+    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
     await runtime.abort();
     return turboStreamResponse("");
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/model$/)) && request.method === "POST") {
     const form = await request.formData();
     const [provider, modelId] = String(form.get("model") ?? "").split("::");
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]));
+    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
     if (provider && modelId) await runtime.setModel(provider, modelId);
     return turboStreamResponse("");
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/thinking$/)) && request.method === "POST") {
     const form = await request.formData();
     const level = String(form.get("level") ?? "");
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]));
+    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
     if (level) await runtime.setThinkingLevel(level);
     return turboStreamResponse("");
   }
@@ -176,7 +176,7 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
     const entry = String(form.get("entry") ?? "");
     const mode = String(form.get("rewindMode") ?? "discard") as RewindMode;
     const note = String(form.get("note") ?? "");
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]));
+    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
     if (entry) await runtime.rewind(entry, ["discard", "summary", "custom"].includes(mode) ? mode : "discard", note);
     return turboStreamResponse("");
   }
@@ -194,9 +194,9 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
 // SSE
 // ---------------------------------------------------------------------------
 
-async function agentEventsEndpoint(workspaceId: string, label: string): Promise<Response> {
+async function agentEventsEndpoint(workspaceId: string, label: string, options: AgentRouteOptions = {}): Promise<Response> {
   const agent = await requireAgent(workspaceId, label);
-  const runtime = await getWorkspaceAgentRuntime(agent);
+  const runtime = await getWorkspaceAgentRuntime(agent, options);
   const encoder = new TextEncoder();
   let unsubscribe: (() => void) | undefined;
   let keepalive: ReturnType<typeof setInterval> | undefined;
@@ -239,7 +239,7 @@ async function agentEventsEndpoint(workspaceId: string, label: string): Promise<
 
 async function agentMessagesEndpoint(workspaceId: string, label: string, request: Request, options: AgentRouteOptions): Promise<Response> {
   const agent = await requireAgent(workspaceId, label);
-  const runtime = await getWorkspaceAgentRuntime(agent);
+  const runtime = await getWorkspaceAgentRuntime(agent, options);
   const form = await request.formData();
   const text = String(form.get("text") ?? "");
   const modeRaw = String(form.get("mode") ?? "send");
@@ -272,7 +272,7 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
 
 async function submitInitialAgentPrompt(workspaceId: string, context: AgentWorkspaceCreationContext, options: AgentRouteOptions): Promise<void> {
   const agent = await ensureDefaultWorkspaceAgent(workspaceId);
-  const runtime = await getWorkspaceAgentRuntime(agent);
+  const runtime = await getWorkspaceAgentRuntime(agent, options);
   if (context.model) {
     const [provider, modelId] = context.model.split("::");
     if (provider && modelId) await runtime.setModel(provider, modelId);

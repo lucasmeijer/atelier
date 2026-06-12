@@ -1,4 +1,4 @@
-import { execWorkspaceShell, AtelierCoreError } from "@atelier/core";
+import { execWorkspaceShell, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 
 const terminalRoot = "/repos";
 const terminalEnvironment = "LANG=C.UTF-8 LC_ALL=C.UTF-8 TERM=xterm-256color COLORTERM=truecolor";
@@ -9,6 +9,17 @@ function shellQuote(value: string): string {
 
 export interface WorkspaceTerminalListResult {
   terminals: Array<{ title: string }>;
+}
+
+export interface WorkspaceTerminalCreateOptions {
+  /** Preferred tmux session / tab title. If already used, a numeric suffix is added. */
+  title?: string;
+  /** Command to run in the terminal instead of opening an idle bash shell. */
+  command?: string;
+  /** Working directory for the terminal session. Must stay under /repos. */
+  cwd?: string;
+  /** Event bus used to notify the web UI that the workspace tab set changed. */
+  events?: AtelierEventBus;
 }
 
 export interface WorkspaceTerminalCreateResult {
@@ -35,24 +46,51 @@ export async function listWorkspaceTerminals(id: string): Promise<WorkspaceTermi
   };
 }
 
-export async function createWorkspaceTerminal(id: string): Promise<WorkspaceTerminalCreateResult> {
-  const { terminals } = await listWorkspaceTerminals(id);
+function terminalTitle(terminals: WorkspaceTerminalListResult["terminals"], preferred?: string): string {
+  const existing = new Set(terminals.map((terminal) => terminal.title));
+  const base = (preferred ?? "").trim() || "Terminal";
+  if (base !== "Terminal" && !existing.has(base)) return base;
+
   const used = new Set<number>();
+  const pattern = base === "Terminal" ? /^Terminal (\d+)$/ : new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} (\\d+)$`);
   for (const { title } of terminals) {
-    const match = title.match(/^Terminal (\d+)$/);
+    const match = title.match(pattern);
     if (match) used.add(Number(match[1]));
   }
 
   let index = 1;
-  while (used.has(index)) index += 1;
-  const title = `Terminal ${index}`;
+  while (used.has(index) || existing.has(`${base} ${index}`)) index += 1;
+  return `${base} ${index}`;
+}
+
+function normalizeCwd(cwd: string | undefined): string {
+  const value = (cwd ?? terminalRoot).trim() || terminalRoot;
+  if (value !== terminalRoot && !value.startsWith(`${terminalRoot}/`)) {
+    throw new AtelierCoreError("terminal_invalid_cwd", `terminal cwd must be under ${terminalRoot}: ${value}`);
+  }
+  return value;
+}
+
+function tmuxSessionCommand(command: string | undefined): string {
+  const trimmed = command?.trim();
+  if (!trimmed) return "/bin/bash";
+  const script = `${trimmed}\nstatus=$?\nprintf '\\n[process exited with code %s]\\n' "$status"\nexec /bin/bash`;
+  return `/bin/bash -lc ${shellQuote(script)}`;
+}
+
+export async function createWorkspaceTerminal(id: string, options: WorkspaceTerminalCreateOptions = {}): Promise<WorkspaceTerminalCreateResult> {
+  const { terminals } = await listWorkspaceTerminals(id);
+  const title = terminalTitle(terminals, options.title);
+  const cwd = normalizeCwd(options.cwd);
+  const command = tmuxSessionCommand(options.command);
 
   const result = await execWorkspaceShell(
     id,
-    `${terminalEnvironment} tmux set-option -g allow-passthrough on \\; set-option -g status off \\; set-environment -g LANG C.UTF-8 \\; set-environment -g LC_ALL C.UTF-8 \\; set-environment -g TERM xterm-256color \\; set-environment -g COLORTERM truecolor \\; new-session -d -s ${shellQuote(title)} -c ${shellQuote(terminalRoot)} /bin/bash \\; set-option -t ${shellQuote(title)} status off`,
+    `${terminalEnvironment} tmux set-option -g allow-passthrough on \\; set-option -g status off \\; set-environment -g LANG C.UTF-8 \\; set-environment -g LC_ALL C.UTF-8 \\; set-environment -g TERM xterm-256color \\; set-environment -g COLORTERM truecolor \\; new-session -d -s ${shellQuote(title)} -c ${shellQuote(cwd)} ${command} \\; set-option -t ${shellQuote(title)} status off`,
   );
   if (result.exitCode !== 0) throw new AtelierCoreError("terminal_create_failed", result.stderr.trim() || `could not create terminal: ${title}`);
 
+  await options.events?.emit("workspace_tabs_changed", { workspaceId: id });
   return { title };
 }
 

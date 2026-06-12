@@ -1,5 +1,6 @@
 import { appendFile, mkdir, open, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import type { AtelierEventBus } from "@atelier/core";
 import { configuredAgentModels } from "@atelier/pi-config/server";
 import {
   AuthStorage,
@@ -27,7 +28,7 @@ import {
 } from "./render.ts";
 import type { WorkspaceAgentInfo } from "./session-store.ts";
 import { createAtelierResourceLoader } from "./system-prompt.ts";
-import { createWorkspaceAgentTools } from "./tools.ts";
+import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
 import {
   buildSections,
   type ImageRef,
@@ -83,11 +84,15 @@ function runtimeKey(workspaceId: string, label: string): string {
   return `${workspaceId}\u0000${label}`;
 }
 
-export function getWorkspaceAgentRuntime(agent: WorkspaceAgentInfo): Promise<WorkspaceAgentRuntime> {
+export interface WorkspaceAgentRuntimeOptions {
+  events?: AtelierEventBus;
+}
+
+export function getWorkspaceAgentRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
   const key = runtimeKey(agent.workspaceId, agent.label);
   let runtime = runtimes.get(key);
   if (!runtime) {
-    runtime = isFakeMode() ? createFakeRuntime(agent) : createRealRuntime(agent);
+    runtime = isFakeMode() ? createFakeRuntime(agent) : createRealRuntime(agent, options);
     runtimes.set(key, runtime);
   }
   return runtime;
@@ -816,7 +821,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 }
 
-async function createRealRuntime(agent: WorkspaceAgentInfo): Promise<WorkspaceAgentRuntime> {
+async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
   await ensureSessionFile(agent.path);
   const authStorage = AuthStorage.create();
   const modelRegistry = ModelRegistry.create(authStorage);
@@ -827,8 +832,8 @@ async function createRealRuntime(agent: WorkspaceAgentInfo): Promise<WorkspaceAg
     authStorage,
     modelRegistry,
     resourceLoader: createAtelierResourceLoader(),
-    customTools: createWorkspaceAgentTools(agent.workspaceId),
-    tools: ["read", "write", "edit", "bash"],
+    customTools: createWorkspaceAgentTools(agent.workspaceId, { events: options.events }),
+    tools: workspaceAgentToolNames(),
     sessionManager,
     settingsManager: SettingsManager.inMemory({ compaction: { enabled: true } } as any),
   });

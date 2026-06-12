@@ -3,6 +3,7 @@ export {
   createWorkspaceTerminal,
   deleteWorkspaceTerminal,
   listWorkspaceTerminals,
+  type WorkspaceTerminalCreateOptions,
   type WorkspaceTerminalCreateResult,
   type WorkspaceTerminalListResult,
 } from "./workspace-terminals.ts";

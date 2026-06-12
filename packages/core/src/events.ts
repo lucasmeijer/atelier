@@ -14,6 +14,10 @@ export interface WorkspaceTitleChangedEvent {
   title: string;
 }
 
+export interface WorkspaceTabsChangedEvent {
+  workspaceId: string;
+}
+
 export interface WorkspaceImageBuildEvent {
   workspaceId: string;
   image: string;
@@ -26,6 +30,7 @@ export interface AtelierEventMap {
   workspace_created: WorkspaceCreatedEvent;
   workspace_user_activity: WorkspaceUserActivityEvent;
   workspace_title_changed: WorkspaceTitleChangedEvent;
+  workspace_tabs_changed: WorkspaceTabsChangedEvent;
   workspace_image_build_started: WorkspaceImageBuildEvent;
   workspace_image_build_output: WorkspaceImageBuildEvent;
   workspace_image_build_finished: WorkspaceImageBuildEvent;

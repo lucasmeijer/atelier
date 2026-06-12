@@ -134,7 +134,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const model = await preferredNewAgentModel();
     const [provider, modelId] = String(model ?? "").split("::");
     if (!provider || !modelId) return;
-    await (await getWorkspaceAgentRuntime(agent)).setModel(provider, modelId);
+    await (await getWorkspaceAgentRuntime(agent, { events: deps.events })).setModel(provider, modelId);
   }
 
   // ---------------------------------------------------------------------------
@@ -781,8 +781,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // Group / tab layout endpoints (requester-only streams; no cross-user sync)
   // ---------------------------------------------------------------------------
 
+  async function replaceWorkspaceGroupsTurboStream(workspaceId: string): Promise<string> {
+    return `<turbo-stream action="replace" target="${workspaceGroupsId(workspaceId)}"><template>${await renderWorkspaceGroupsFor(workspaceId)}</template></turbo-stream>`;
+  }
+
   async function replaceWorkspaceGroupsStream(workspaceId: string): Promise<Response> {
-    return turboStreamResponse(`<turbo-stream action="replace" target="${workspaceGroupsId(workspaceId)}"><template>${await renderWorkspaceGroupsFor(workspaceId)}</template></turbo-stream>`);
+    return turboStreamResponse(await replaceWorkspaceGroupsTurboStream(workspaceId));
   }
 
   async function tabKeysFor(workspaceId: string): Promise<string[]> {
@@ -855,6 +859,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (activeTab && groupId) layouts.setActiveTab(id, groupId, activeTab);
     return jsonResponse({ ok: true });
   }
+
+  deps.events?.on("workspace_tabs_changed", ({ workspaceId }) => {
+    void replaceWorkspaceGroupsTurboStream(workspaceId)
+      .then((html) => hub.broadcast(html))
+      .catch((error) => logError(`could not broadcast workspace tab changes for ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`));
+  });
 
   // ---------------------------------------------------------------------------
   // Errors + routing
