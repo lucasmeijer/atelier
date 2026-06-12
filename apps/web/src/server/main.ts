@@ -67,7 +67,7 @@ const app = createWebApp({
   events: atelierEvents,
   preferences: createFileWebPreferenceStore(join(defaultDataDir(), "view-state", "preferences.json")),
   async provisionWorkspace(id, options) {
-    if (!isFakeMode()) await createWorkspace({ id });
+    if (!isFakeMode()) await createWorkspace({ id, events: atelierEvents });
     await ensureDefaultWorkspaceAgent(id);
     await atelierEvents.emit("workspace_created", { workspaceId: id, context: options?.context });
   },

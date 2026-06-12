@@ -118,6 +118,7 @@ function assetPath(logicalPath: string): string {
 export function createWebApp(deps: WebAppDeps): WebApp {
   const { registry, hub, layouts } = deps;
   const logError = deps.logError ?? ((message: string) => console.error(message));
+  const imageBuilds = new Map<string, { state: "building" | "failed"; image: string; modules: string[]; output: string; error?: string }>();
 
   async function preferredNewAgentModel(): Promise<string | undefined> {
     return (await deps.preferences?.load())?.preferredNewAgentModel;
@@ -181,17 +182,19 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function workspaceRow(entry: WorkspaceEntry): string {
     const id = entry.id;
     const title = workspaceTitle(entry);
-    const open = (extraClass: string) => `<div class="row workspace-row ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}"${entry.phase === "ready" ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
+    const selectable = entry.phase === "starting" || entry.phase === "failed" || entry.phase === "ready";
+    const open = (extraClass: string) => `<div class="row workspace-row ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}"${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
+    const workspaceLink = (label: string, attrs = "") => `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"${attrs}><div class="r-title">${escapeHtml(label)}</div></a>`;
     switch (entry.phase) {
       // All phases render single-line rows (no r-sub) so phase changes never
       // change row height.
       case "starting":
-        return `${open("starting")}${renderWorkspaceStatus(id)}<div class="row-main" title="Starting workspace…"><div class="r-title">${escapeHtml(title)}</div></div><span class="row-actions"><span class="status-spinner sm" aria-label="Starting" title="Starting workspace…"></span></span></div>`;
+        return `${open("starting")}${renderWorkspaceStatus(id)}${workspaceLink(title, ` title="Starting workspace…"`)}<span class="row-actions"><span class="status-spinner sm" aria-label="Starting" title="Starting workspace…"></span></span></div>`;
       case "checking_delete":
       case "deleting":
         return `${open("pending-delete")}${renderWorkspaceStatus(id)}<div class="row-main" title="Deleting…"><div class="r-title">${escapeHtml(title)}</div></div><span class="row-actions"><span class="status-spinner sm" aria-label="Deleting" title="Deleting…"></span></span></div>`;
       case "failed":
-        return `${open("failed")}<span class="dot err"></span><div class="row-main" title="${escapeHtml(entry.error ?? "Workspace failed")}"><div class="r-title">${escapeHtml(title)}</div></div><form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/dismiss"><button type="submit" title="${escapeHtml(entry.error ?? "Workspace failed")} — dismiss" aria-label="Dismiss">✕</button></form></div>`;
+        return `${open("failed")}<span class="dot err"></span>${workspaceLink(title, ` title="${escapeHtml(entry.error ?? "Workspace failed")}"`)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/dismiss"><button type="submit" title="${escapeHtml(entry.error ?? "Workspace failed")} — dismiss" aria-label="Dismiss">✕</button></form></div>`;
       case "ready":
         return `${open("")}${renderWorkspaceStatus(id)}${workspaceSidebarTitleFrame(id, title)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></div>`;
     }
@@ -432,12 +435,52 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return `<div class="workspace-detail-resident ${options.active ? "active" : ""}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${await workspaceDetailContent(id)}</div>`;
   }
 
+  function workspaceImageBuildHtml(id: string): string {
+    const build = imageBuilds.get(id);
+    if (!build) return "";
+    const heading = build.state === "failed" ? "Workspace image build failed" : "Building workspace image…";
+    const detail = build.state === "failed"
+      ? escapeHtml(build.error ?? "Docker build failed")
+      : "This is the first workspace using this image configuration, so it can take a few minutes.";
+    return `<div class="workspace-build-status ${build.state}">
+      <div class="workspace-build-heading"><div><b>${heading}</b><div class="r-sub">${detail}</div></div></div>
+      <div class="r-sub">Image: <code>${escapeHtml(build.image)}</code>${build.modules.length ? ` · Modules: ${escapeHtml(build.modules.join(", "))}` : ""}</div>
+      ${build.output ? `<pre class="workspace-build-log">${escapeHtml(build.output)}</pre>` : `<div class="workspace-build-log empty">Waiting for Docker build output…</div>`}
+    </div>`;
+  }
+
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { active?: boolean } = {}): string {
+    const buildHtml = imageBuilds.get(entry.id) ? workspaceImageBuildHtml(entry.id) : "";
     const inner = entry.phase === "failed"
-      ? `<div class="pad workspace-boot-pad"><span class="dot err"></span> Workspace creation failed: ${escapeHtml(entry.error ?? "unknown error")}</div>`
-      : `<div class="pad workspace-boot-pad"><span class="status-spinner"></span> Starting workspace…</div>`;
+      ? buildHtml || `<div class="pad workspace-boot-pad"><span class="dot err"></span> Workspace creation failed: ${escapeHtml(entry.error ?? "unknown error")}</div>`
+      : buildHtml || `<div class="pad workspace-boot-pad"><span class="status-spinner"></span> Starting workspace…</div>`;
     return `<div class="workspace-detail-resident workspace-boot ${options.active ? "active" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"><div class="main"><header class="header"><h1>${escapeHtml(workspaceTitle(entry))}</h1></header><div class="body"><div class="panel">${inner}</div></div></div></div>`;
   }
+
+  function broadcastWorkspaceBoot(id: string): void {
+    const entry = registry.get(id);
+    if (!entry || (entry.phase !== "starting" && entry.phase !== "failed")) return;
+    hub.broadcast(turboReplaceStream(workspaceBootId(id), workspaceBootResidentHtml(entry)));
+  }
+
+  deps.events?.on("workspace_image_build_started", (event) => {
+    imageBuilds.set(event.workspaceId, { state: "building", image: event.image, modules: event.modules, output: event.output });
+    broadcastWorkspaceBoot(event.workspaceId);
+  });
+
+  deps.events?.on("workspace_image_build_output", (event) => {
+    imageBuilds.set(event.workspaceId, { state: "building", image: event.image, modules: event.modules, output: event.output });
+    broadcastWorkspaceBoot(event.workspaceId);
+  });
+
+  deps.events?.on("workspace_image_build_finished", (event) => {
+    if (event.error) {
+      imageBuilds.set(event.workspaceId, { state: "failed", image: event.image, modules: event.modules, output: event.output, error: event.error });
+    } else {
+      imageBuilds.delete(event.workspaceId);
+    }
+    broadcastWorkspaceBoot(event.workspaceId);
+  });
 
   async function workspaceResidentFor(entry: WorkspaceEntry, options: { active?: boolean } = {}): Promise<string> {
     if (entry.phase === "starting" || entry.phase === "failed") return workspaceBootResidentHtml(entry, options);

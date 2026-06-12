@@ -225,6 +225,7 @@ export async function execWorkspaceShell(
 
 export interface CreateWorkspaceOptions {
   id?: string;
+  events?: AtelierEventBus;
 }
 
 export async function createWorkspace(options: CreateWorkspaceOptions = {}): Promise<WorkspaceNewResult> {
@@ -240,7 +241,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     throw new AtelierCoreError("data_dir_unavailable", `could not create Atelier repos directory ${reposDir}: ${message}`);
   }
 
-  const image = await resolveWorkspaceImage();
+  const image = await resolveWorkspaceImage({ workspaceId: id, events: options.events });
 
   await requireDocker([
     "run",
@@ -641,7 +642,7 @@ export async function workspaceCommand(args: string[], context: WorkspaceCommand
   switch (subcommand) {
     case "new": {
       if (rest.length !== 0) throw invalidArguments("workspace new takes no arguments");
-      const created = await createWorkspace();
+      const created = await createWorkspace({ events: context.events });
       await context.events?.emit("workspace_created", { workspaceId: created.id });
       return created;
     }

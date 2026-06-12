@@ -14,10 +14,21 @@ export interface WorkspaceTitleChangedEvent {
   title: string;
 }
 
+export interface WorkspaceImageBuildEvent {
+  workspaceId: string;
+  image: string;
+  modules: string[];
+  output: string;
+  error?: string;
+}
+
 export interface AtelierEventMap {
   workspace_created: WorkspaceCreatedEvent;
   workspace_user_activity: WorkspaceUserActivityEvent;
   workspace_title_changed: WorkspaceTitleChangedEvent;
+  workspace_image_build_started: WorkspaceImageBuildEvent;
+  workspace_image_build_output: WorkspaceImageBuildEvent;
+  workspace_image_build_finished: WorkspaceImageBuildEvent;
 }
 
 export interface AtelierEventContext {

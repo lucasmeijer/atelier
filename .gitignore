@@ -1,5 +1,6 @@
 node_modules/
 .atelier-data/
+.atelier-workspace-image-context/
 .DS_Store
 apps/web/public/*.js
 apps/web/public/assets/

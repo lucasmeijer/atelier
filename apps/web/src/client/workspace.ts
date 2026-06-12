@@ -584,7 +584,7 @@ class WorkspaceListController extends Controller {
     const link = event.currentTarget instanceof HTMLAnchorElement ? event.currentTarget : null;
     const row = link?.closest<HTMLElement>(".workspace-row") ?? null;
     if (!row || !link) return;
-    if (row.dataset.phase !== "ready" || row.classList.contains("pending-delete")) {
+    if (row.classList.contains("pending-delete") || row.dataset.phase === "checking_delete" || row.dataset.phase === "deleting") {
       event.preventDefault();
       return;
     }
