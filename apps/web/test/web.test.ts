@@ -186,6 +186,24 @@ describe("web app contracts", () => {
     expect(reorder!.indexOf('id="workspace_row_b"')).toBeLessThan(reorder!.indexOf('id="workspace_row_a"'));
   });
 
+  test("moving the last tab out of a group removes the emptied group", () => {
+    const layouts = createWorkspaceLayoutStore();
+    layouts.normalize("w", ["a", "b"]);
+    layouts.splitGroup("w", ["a", "b"], layouts.normalize("w", ["a", "b"]).groups[0]!.id);
+    const state = layouts.normalize("w", ["a", "b"]);
+    const [left, right] = state.groups;
+    expect(left).toBeDefined();
+    expect(right).toBeDefined();
+
+    layouts.moveTab("w", ["a", "b"], { tab: "b", toGroup: right!.id });
+    layouts.moveTab("w", ["a", "b"], { tab: "a", toGroup: right!.id });
+
+    const after = layouts.normalize("w", ["a", "b"]);
+    expect(after.groups).toHaveLength(1);
+    expect(after.groups[0]!.id).toBe(right!.id);
+    expect(after.groups[0]!.tabs).toEqual(["b", "a"]);
+  });
+
   test("SSE stream emits raw turbo-stream HTML in plain data: lines (turbo-stream-source compatible)", async () => {
     const { app, registry, hub } = createTestApp();
     await registry.seed([{ id: "abc", title: "A" }]);

@@ -118,6 +118,10 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
         : target.tabs.length;
       target.tabs.splice(toIndex, 0, tab);
       target.activeTab = tab;
+      if (source && source !== target && source.tabs.length === 0 && layout.groups.length > 1) {
+        const sourceIndex = layout.groups.indexOf(source);
+        if (sourceIndex >= 0) layout.groups.splice(sourceIndex, 1);
+      }
       normalizeGroupSizes(layout);
     },
 
