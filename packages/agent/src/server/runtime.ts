@@ -19,7 +19,6 @@ import {
   renderRunningToolCard,
   renderSection,
   renderStatsBar,
-  renderStreamingTextItem,
   renderStreamingThinkingItem,
   renderStreamingToolItem,
   renderToolCard,
@@ -104,6 +103,7 @@ export function isFakeMode(): boolean {
 // ---------------------------------------------------------------------------
 
 const deltaFlushMs = 25;
+const streamingSyntaxHighlightMs = 250;
 
 interface LiveState {
   view: SectionView;
@@ -112,6 +112,13 @@ interface LiveState {
   toolIndexByCallId: Map<string, number>;
   /** Timers that reveal a tool's live terminal after a delay. */
   terminalTimers: Map<string, ReturnType<typeof setTimeout>>;
+}
+
+interface StreamingMarkdownState {
+  renderTimer?: ReturnType<typeof setTimeout>;
+  highlightTimer?: ReturnType<typeof setTimeout>;
+  lastHighlightAt: number;
+  getText: () => string;
 }
 
 /** Only attach the inline terminal when a tool call has been running this long. */
@@ -127,6 +134,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   private subscribers = new Set<AgentSubscriber>();
   private pendingDeltas = new Map<string, string>();
   private deltaTimer: ReturnType<typeof setTimeout> | undefined;
+  private streamingMarkdown = new Map<string, StreamingMarkdownState>();
 
   constructor(agent: WorkspaceAgentInfo) {
     this.workspaceId = agent.workspaceId;
@@ -174,6 +182,55 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.broadcastRaw(payload);
   }
 
+  private scheduleStreamingMarkdown(target: string, getText: () => string): void {
+    let state = this.streamingMarkdown.get(target);
+    if (!state) {
+      state = { lastHighlightAt: Date.now(), getText };
+      this.streamingMarkdown.set(target, state);
+    }
+    state.getText = getText;
+    if (!state.renderTimer) {
+      state.renderTimer = setTimeout(() => this.renderStreamingMarkdown(target, false), deltaFlushMs);
+    }
+  }
+
+  private renderStreamingMarkdown(target: string, forceHighlight: boolean): void {
+    const state = this.streamingMarkdown.get(target);
+    if (!state) return;
+    if (state.renderTimer) {
+      clearTimeout(state.renderTimer);
+      state.renderTimer = undefined;
+    }
+    const now = Date.now();
+    const shouldHighlight = forceHighlight || now - state.lastHighlightAt >= streamingSyntaxHighlightMs;
+    if (shouldHighlight) state.lastHighlightAt = now;
+    this.broadcastRaw(turboStream("update", target, renderFinalText(this.ctx, state.getText(), { highlightCode: shouldHighlight })));
+    if (!shouldHighlight && !state.highlightTimer) {
+      const delay = Math.max(0, streamingSyntaxHighlightMs - (now - state.lastHighlightAt));
+      state.highlightTimer = setTimeout(() => {
+        const current = this.streamingMarkdown.get(target);
+        if (current) current.highlightTimer = undefined;
+        this.renderStreamingMarkdown(target, true);
+      }, delay);
+    }
+  }
+
+  private flushStreamingMarkdown(target?: string, options: { highlightCode?: boolean; remove?: boolean } = {}): void {
+    const targets = target ? [target] : [...this.streamingMarkdown.keys()];
+    for (const key of targets) {
+      const state = this.streamingMarkdown.get(key);
+      if (!state) continue;
+      if (state.renderTimer) clearTimeout(state.renderTimer);
+      if (state.highlightTimer) clearTimeout(state.highlightTimer);
+      state.renderTimer = undefined;
+      state.highlightTimer = undefined;
+      if (!options.remove) {
+        this.broadcastRaw(turboStream("update", key, renderFinalText(this.ctx, state.getText(), { highlightCode: options.highlightCode ?? true })));
+      }
+      this.streamingMarkdown.delete(key);
+    }
+  }
+
   protected setBusy(busy: boolean): void {
     if (this.busy === busy) return;
     this.busy = busy;
@@ -217,7 +274,23 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.stream(turboStream("update", ids.activityRow(this.ctx, live.view.sid), rowHtml));
   }
 
+  private liveFinalTarget(live: LiveState): string {
+    return ids.final(this.ctx, live.view.sid);
+  }
+
+  private promoteOpenTextToActivity(): void {
+    const live = this.live;
+    if (!live?.open || live.open.kind !== "text") return;
+    const index = live.open.index;
+    this.flushStreamingMarkdown(this.liveFinalTarget(live), { remove: true });
+    const item = live.view.items[index];
+    if (item?.type === "text") this.appendItemHtml(renderItem(this.ctx, live.view.sid, index, item));
+    this.stream(turboStream("update", this.liveFinalTarget(live), ""));
+    live.open = undefined;
+  }
+
   protected closeOpenItem(): void {
+    this.promoteOpenTextToActivity();
     const live = this.live;
     if (live) live.open = undefined;
   }
@@ -228,15 +301,16 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       const index = live.view.items.length;
       live.view.items.push({ type: "text", text: "", stopReason: "toolUse" });
       live.open = { index, kind: "text" };
-      this.appendItemHtml(renderStreamingTextItem(this.ctx, live.view.sid, index));
     }
     const item = live.view.items[live.open.index];
     if (item.type === "text") item.text += text;
-    this.delta(ids.itemText(this.ctx, live.view.sid, live.open.index), text);
+    const target = this.liveFinalTarget(live);
+    this.scheduleStreamingMarkdown(target, () => item.type === "text" ? item.text : "");
   }
 
   protected liveThinkingDelta(text: string): void {
     const live = this.liveEnsure();
+    if (live.open?.kind === "text") this.promoteOpenTextToActivity();
     if (!live.open || live.open.kind !== "thinking") {
       const index = live.view.items.length;
       live.view.items.push({ type: "thinking", text: "" });
@@ -251,6 +325,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   protected liveToolStreamStart(name: string): number {
     const live = this.liveEnsure();
+    if (live.open?.kind === "text") this.promoteOpenTextToActivity();
     const index = live.view.items.length;
     const tool: ToolView = { callId: `pending_${index}`, name, args: undefined, status: "streaming", argsStream: "" };
     live.view.items.push({ type: "tool", tool });
@@ -366,8 +441,8 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (!live) return;
     if (live.open?.kind === "text") {
       const index = live.open.index;
+      this.flushStreamingMarkdown(this.liveFinalTarget(live), { remove: true });
       live.view.items.splice(index, 1);
-      this.stream(turboStream("remove", ids.item(this.ctx, live.view.sid, index)));
       live.open = undefined;
     }
     live.view.finalText = text;
@@ -376,6 +451,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   /** Run ended: replace everything with the canonical transcript. */
   protected async liveEnd(): Promise<void> {
+    this.flushStreamingMarkdown(undefined, { remove: true });
     if (this.live) for (const timer of this.live.terminalTimers.values()) clearTimeout(timer);
     this.live = undefined;
     await this.refreshTranscript();

@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { configuredAgentModels } from "@atelier/pi-config/server";
+import { renderDiffHtml, type DiffOperation } from "./diff.ts";
+import { highlightCodeHtmlForPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { rewriteSegment } from "./rewrite.ts";
@@ -54,8 +56,8 @@ function agentPath(ctx: AgentRenderContext, suffix: string): string {
   return `/workspaces/${encodeURIComponent(ctx.workspaceId)}/agents/${encodeURIComponent(ctx.label)}${suffix}`;
 }
 
-function markdown(ctx: AgentRenderContext, text: string): string {
-  return renderMarkdown(text, { rewriteSegment: (segment) => rewriteSegment(ctx.workspaceId, segment) });
+function markdown(ctx: AgentRenderContext, text: string, options: { highlightCode?: boolean } = {}): string {
+  return renderMarkdown(text, { rewriteSegment: (segment) => rewriteSegment(ctx.workspaceId, segment), highlightCode: options.highlightCode });
 }
 
 // ---------------------------------------------------------------------------
@@ -258,8 +260,8 @@ export function renderUserMessage(ctx: AgentRenderContext, user: { text: string;
   return `<div class="agent-user"><div class="agent-user-bubble">${markdown(ctx, user.text)}${images}</div></div>`;
 }
 
-export function renderFinalText(ctx: AgentRenderContext, text: string): string {
-  return `<div class="agent-md">${markdown(ctx, text)}</div>`;
+export function renderFinalText(ctx: AgentRenderContext, text: string, options: { highlightCode?: boolean } = {}): string {
+  return `<div class="agent-md">${markdown(ctx, text, { highlightCode: options.highlightCode })}</div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -291,20 +293,26 @@ export function renderStreamingThinkingItem(ctx: AgentRenderContext, sid: string
   return `<div class="agent-item agent-thinking" id="${ids.item(ctx, sid, index)}"><div class="agent-thinking-text" id="${ids.itemText(ctx, sid, index)}"></div></div>`;
 }
 
-export function renderStreamingTextItem(ctx: AgentRenderContext, sid: string, index: number): string {
-  return `<div class="agent-item agent-itext" id="${ids.item(ctx, sid, index)}"><div class="agent-stream-text" id="${ids.itemText(ctx, sid, index)}"></div></div>`;
-}
-
 export function renderStreamingToolItem(ctx: AgentRenderContext, sid: string, index: number, name: string, argsStream = ""): string {
+  const parsed = parseStreamedArgs(argsStream);
+  const tool: ToolView = { callId: "streaming", name, args: parsed, status: "streaming", argsStream };
+  const renderer = toolRenderer(tool.name);
+  const summary = renderer.summary?.(tool) ?? genericToolSummary(tool);
+  const knownBody = parsed ? renderer.paramsHtml?.(ctx, tool) : "";
+  const streamTarget = ids.itemText(ctx, sid, index);
+  const stream = renderer.known
+    ? `${knownBody ? `<div class="agent-tool-detail">${knownBody}</div>` : `<div class="agent-tool-empty agent-tool-stream">composing arguments…</div>`}<span id="${streamTarget}" hidden></span>`
+    : `<pre class="agent-tool-stream" id="${streamTarget}">${escapeHtml(argsStream)}</pre>`;
   return `<div class="agent-item" id="${ids.item(ctx, sid, index)}"><div class="agent-tool streaming">
-    <div class="agent-tool-head"><span class="agent-tool-glyph run"></span><code class="agent-tool-name">${escapeHtml(name || "tool")}</code><span class="agent-tool-args">composing…</span></div>
-    <pre class="agent-tool-stream" id="${ids.itemText(ctx, sid, index)}">${escapeHtml(argsStream)}</pre>
+    <div class="agent-tool-head"><span class="agent-tool-glyph run"></span><code class="agent-tool-name">${escapeHtml(name || "tool")}</code><span class="agent-tool-args">${escapeHtml(summary || "composing…")}</span></div>
+    ${stream}
   </div></div>`;
 }
 
 export function renderRunningToolCard(ctx: AgentRenderContext, tool: ToolView): string {
-  const argsSummary = toolArgsSummary(tool);
-  const showTerminal = Boolean(tool.tmuxSession && tool.terminalVisible);
+  const renderer = toolRenderer(tool.name);
+  const argsSummary = renderer.summary?.(tool) ?? genericToolSummary(tool);
+  const showTerminal = tool.name === "bash" && Boolean(tool.tmuxSession && tool.terminalVisible);
   const terminal = showTerminal
     ? `<div class="agent-tool-term" data-controller="agent-term"
         data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
@@ -312,7 +320,7 @@ export function renderRunningToolCard(ctx: AgentRenderContext, tool: ToolView): 
         data-agent-term-session-value="${escapeHtml(tool.tmuxSession!)}"></div>`
     : tool.resultText
       ? `<pre class="agent-tool-stream agent-tool-livestream">${escapeHtml(tool.resultText)}</pre>`
-      : "";
+      : renderer.paramsHtml?.(ctx, tool) ?? "";
   const elapsed = tool.startedAt
     ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/abort"))}" class="agent-stopform"><button class="agent-stop" type="submit" title="Stop" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}"${tool.timeoutSeconds ? ` data-agent-elapsed-max-value="${tool.timeoutSeconds}"` : ""}><span class="agent-stop-sq"></span><span data-agent-elapsed-target="time">0s</span></button></form>`
     : "";
@@ -327,38 +335,181 @@ const toolResultPreviewLimit = 4000;
 export function renderToolCard(ctx: AgentRenderContext, tool: ToolView): string {
   if (tool.status === "running") return renderRunningToolCard(ctx, tool);
   const glyph = tool.status === "error" ? `<span class="agent-tool-glyph err">✕</span>` : `<span class="agent-tool-glyph ok">✓</span>`;
-  const argsSummary = toolArgsSummary(tool);
-  const params = toolParamsText(tool);
-  const result = (tool.resultText ?? "").trimEnd();
-  const truncated = result.length > toolResultPreviewLimit;
-  const shown = truncated ? `${result.slice(0, toolResultPreviewLimit)}\n… (${formatTokens(result.length)} chars total)` : result;
+  const renderer = toolRenderer(tool.name);
+  const argsSummary = renderer.summary?.(tool) ?? genericToolSummary(tool);
+  const paramsHtml = renderer.known ? (renderer.paramsHtml?.(ctx, tool) ?? "") : genericParamsHtml(tool);
+  const resultHtml = renderer.resultHtml?.(ctx, tool) ?? genericResultHtml(tool);
   return `<details class="agent-tool done${tool.status === "error" ? " error" : ""}">
     <summary class="agent-tool-head">${glyph}<code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span></summary>
     <div class="agent-tool-detail">
-      ${params ? `<pre class="agent-tool-params">${escapeHtml(params)}</pre>` : ""}
-      ${shown ? `<pre class="agent-tool-result">${escapeHtml(shown)}</pre>` : `<div class="agent-tool-empty">no output</div>`}
+      ${paramsHtml}
+      ${resultHtml || `<div class="agent-tool-empty">no output</div>`}
     </div>
   </details>`;
 }
 
-export function toolArgsSummary(tool: ToolView): string {
-  const args = tool.args as Record<string, unknown> | undefined;
-  if (!args || typeof args !== "object") return "";
-  if (typeof args.command === "string") return args.command.length > 120 ? `${args.command.slice(0, 120)}…` : args.command;
-  if (typeof args.path === "string") return args.path;
-  if (typeof args.file_path === "string") return args.file_path;
-  const json = JSON.stringify(args);
-  return json && json !== "{}" ? (json.length > 120 ? `${json.slice(0, 120)}…` : json) : "";
+interface ToolRenderer {
+  known?: boolean;
+  summary?: (tool: ToolView) => string;
+  paramsHtml?: (ctx: AgentRenderContext, tool: ToolView) => string;
+  resultHtml?: (ctx: AgentRenderContext, tool: ToolView) => string;
 }
 
-function toolParamsText(tool: ToolView): string {
-  const args = tool.args as Record<string, unknown> | undefined;
-  if (!args || typeof args !== "object") return "";
+function toolRenderer(name: string): ToolRenderer {
+  if (name === "bash") return bashRenderer;
+  if (name === "read") return readRenderer;
+  if (name === "write") return writeRenderer;
+  if (name === "edit") return editRenderer;
+  return {};
+}
+
+function toolArgs(tool: ToolView): Record<string, unknown> | undefined {
+  return tool.args && typeof tool.args === "object" && !Array.isArray(tool.args) ? tool.args as Record<string, unknown> : undefined;
+}
+
+function stringArg(args: Record<string, unknown> | undefined, ...keys: string[]): string | undefined {
+  for (const key of keys) if (typeof args?.[key] === "string") return args[key] as string;
+  return undefined;
+}
+
+function numberArg(args: Record<string, unknown> | undefined, key: string): number | undefined {
+  const value = args?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+export function formatReadRange(args: Record<string, unknown> | undefined): string {
+  const offset = numberArg(args, "offset");
+  const limit = numberArg(args, "limit");
+  if (offset === undefined && limit === undefined) return "";
+  const start = offset ?? 1;
+  const end = limit !== undefined ? start + limit - 1 : undefined;
+  return `:${start}${end !== undefined ? `-${end}` : ""}`;
+}
+
+function pathSummary(tool: ToolView, range = ""): string {
+  const args = toolArgs(tool);
+  const path = stringArg(args, "path", "file_path");
+  return path ? `${path}${range}` : "";
+}
+
+function commandSummary(tool: ToolView): string {
+  const command = stringArg(toolArgs(tool), "command");
+  return command ? truncateOneLine(command, 120) : "";
+}
+
+function truncateOneLine(text: string, limit: number): string {
+  const oneLine = text.replaceAll("\n", " ");
+  return oneLine.length > limit ? `${oneLine.slice(0, limit)}…` : oneLine;
+}
+
+function trimResult(tool: ToolView): string {
+  return (tool.resultText ?? "").trimEnd();
+}
+
+function limitedText(text: string, options: { lines: number; chars: number }): { text: string; truncated: boolean } {
+  const lines = text.replaceAll("\r\n", "\n").split("\n");
+  const byLines = lines.length > options.lines ? lines.slice(0, options.lines).join("\n") : text;
+  const byChars = byLines.length > options.chars ? byLines.slice(0, options.chars) : byLines;
+  return { text: byChars, truncated: byChars.length < text.length || lines.length > options.lines };
+}
+
+function codeBlockHtml(code: string, filePath: string | undefined, className = "agent-tool-code", limit?: { lines: number; chars: number }): string {
+  const preview = limit ? limitedText(code, limit) : { text: code, truncated: false };
+  const suffix = preview.truncated ? "\n…" : "";
+  const highlighted = highlightCodeHtmlForPath(`${preview.text}${suffix}`, filePath);
+  const languageClass = highlighted.language ? ` language-${escapeHtml(highlighted.language)}` : "";
+  return `<pre class="${className}${languageClass}"><code>${highlighted.html}</code></pre>`;
+}
+
+function resultPreHtml(text: string, className = "agent-tool-result"): string {
+  return text ? `<pre class="${className}">${escapeHtml(text)}</pre>` : "";
+}
+
+const bashRenderer: ToolRenderer = {
+  known: true,
+  summary: commandSummary,
+  resultHtml: (_ctx, tool) => resultPreHtml(trimResult(tool)),
+};
+
+const readRenderer: ToolRenderer = {
+  known: true,
+  summary: (tool) => pathSummary(tool, formatReadRange(toolArgs(tool))),
+  resultHtml: (_ctx, tool) => {
+    const result = trimResult(tool);
+    if (!result) return "";
+    return codeBlockHtml(result, stringArg(toolArgs(tool), "path", "file_path"), "agent-tool-result agent-tool-code");
+  },
+};
+
+const writeRenderer: ToolRenderer = {
+  known: true,
+  summary: (tool) => pathSummary(tool),
+  paramsHtml: (_ctx, tool) => {
+    const args = toolArgs(tool);
+    const content = stringArg(args, "content");
+    if (content === undefined) return genericParamsHtml(tool);
+    return codeBlockHtml(content, stringArg(args, "path", "file_path"), "agent-tool-code", { lines: tool.status === "running" ? 80 : 120, chars: tool.status === "running" ? 8000 : 12000 });
+  },
+  resultHtml: (_ctx, tool) => resultPreHtml(trimResult(tool)),
+};
+
+const editRenderer: ToolRenderer = {
+  known: true,
+  summary: (tool) => pathSummary(tool),
+  paramsHtml: (_ctx, tool) => renderDiffHtml(getEditOperations(toolArgs(tool))) || genericParamsHtml(tool),
+  resultHtml: (_ctx, tool) => resultPreHtml(trimResult(tool)),
+};
+
+function getEditOperations(args: Record<string, unknown> | undefined): DiffOperation[] {
+  if (!args) return [];
+  if (Array.isArray(args.edits)) {
+    return args.edits.flatMap((edit) => {
+      if (!edit || typeof edit !== "object") return [];
+      const entry = edit as Record<string, unknown>;
+      return typeof entry.oldText === "string" && typeof entry.newText === "string" ? [{ oldText: entry.oldText, newText: entry.newText }] : [];
+    });
+  }
+  return typeof args.oldText === "string" && typeof args.newText === "string" ? [{ oldText: args.oldText, newText: args.newText }] : [];
+}
+
+function genericToolSummary(tool: ToolView): string {
+  const args = toolArgs(tool);
+  if (!args) return "";
+  const direct = stringArg(args, "command", "path", "file_path");
+  if (direct) return truncateOneLine(direct, 120);
+  const json = JSON.stringify(args);
+  return json && json !== "{}" ? truncateOneLine(json, 120) : "";
+}
+
+export function toolArgsSummary(tool: ToolView): string {
+  const renderer = toolRenderer(tool.name);
+  return renderer.summary?.(tool) ?? genericToolSummary(tool);
+}
+
+function genericParamsHtml(tool: ToolView): string {
+  const args = toolArgs(tool);
+  if (!args) return "";
   const keys = Object.keys(args);
   if (keys.length === 0) return "";
-  // Single string arg that is already shown in the summary: skip params block.
-  if (keys.length === 1 && typeof args[keys[0]] === "string" && toolArgsSummary(tool) === args[keys[0]]) return "";
-  return JSON.stringify(args, null, 2);
+  if (keys.length === 1 && typeof args[keys[0]] === "string" && genericToolSummary(tool) === args[keys[0]]) return "";
+  return `<pre class="agent-tool-params">${escapeHtml(JSON.stringify(args, null, 2))}</pre>`;
+}
+
+function genericResultHtml(tool: ToolView): string {
+  const result = trimResult(tool);
+  if (!result) return "";
+  const truncated = result.length > toolResultPreviewLimit;
+  const shown = truncated ? `${result.slice(0, toolResultPreviewLimit)}\n… (${formatTokens(result.length)} chars total)` : result;
+  return resultPreHtml(shown);
+}
+
+function parseStreamedArgs(argsStream: string): unknown | undefined {
+  if (!argsStream.trim()) return undefined;
+  try {
+    return JSON.parse(argsStream);
+  } catch {
+    return undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------

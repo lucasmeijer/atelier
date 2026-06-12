@@ -12,9 +12,17 @@ describe("renderMarkdown", () => {
     expect(renderMarkdown("<script>alert(1)</script>")).toContain("&lt;script&gt;");
   });
 
-  test("fenced code blocks are not formatted", () => {
+  test("fenced code blocks are highlighted but markdown is not formatted", () => {
     const html = renderMarkdown("```bash\nls **/repos**\n```");
-    expect(html).toBe(`<pre data-lang="bash"><code>ls **/repos**</code></pre>`);
+    expect(html.startsWith(`<pre data-lang="bash" class="language-bash"><code>`)).toBe(true);
+    expect(html).toContain("**/repos**");
+    expect(html).not.toContain("<strong>");
+  });
+
+  test("fenced code highlighting supports C# aliases", () => {
+    const html = renderMarkdown("```cs\npublic class Demo {}\n```");
+    expect(html).toContain(`data-lang="cs" class="language-csharp"`);
+    expect(html).toContain("hljs-keyword");
   });
 
   test("lists", () => {

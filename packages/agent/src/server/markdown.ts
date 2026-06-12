@@ -1,4 +1,5 @@
 import { escapeHtml } from "./html.ts";
+import { highlightCodeHtml } from "./highlight.ts";
 
 /**
  * Minimal server-side markdown renderer for assistant messages.
@@ -11,6 +12,7 @@ import { escapeHtml } from "./html.ts";
  */
 export interface MarkdownOptions {
   rewriteSegment?: (rawText: string) => string | undefined;
+  highlightCode?: boolean;
 }
 
 function inline(raw: string, options: MarkdownOptions): string {
@@ -65,8 +67,14 @@ export function renderMarkdown(text: string, options: MarkdownOptions = {}): str
         index += 1;
       }
       index += 1; // closing fence
-      const lang = fence[1] ? ` data-lang="${escapeHtml(fence[1])}"` : "";
-      out.push(`<pre${lang}><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+      const rawLang = fence[1] || undefined;
+      const codeText = code.join("\n");
+      const highlighted = options.highlightCode === false ? { html: escapeHtml(codeText), language: undefined } : highlightCodeHtml(codeText, rawLang);
+      const attrs = [
+        rawLang ? `data-lang="${escapeHtml(rawLang)}"` : "",
+        highlighted.language ? `class="language-${escapeHtml(highlighted.language)}"` : "",
+      ].filter(Boolean).join(" ");
+      out.push(`<pre${attrs ? ` ${attrs}` : ""}><code>${highlighted.html}</code></pre>`);
       continue;
     }
 
