@@ -55,6 +55,8 @@ export interface WebAppDeps {
   inspectDeleteSafety(id: string): Promise<WorkspaceDeleteBlockedDetails>;
   /** Force-remove the workspace container. */
   destroyWorkspace(id: string): Promise<void>;
+  /** Receives background task failures. Defaults to console.error. */
+  logError?(message: string): void;
 }
 
 export interface WebApp {
@@ -111,6 +113,7 @@ const workspaceModules: WorkspaceModule[] = [agentWorkspaceModule, terminalWorks
 
 export function createWebApp(deps: WebAppDeps): WebApp {
   const { registry, hub, layouts } = deps;
+  const logError = deps.logError ?? ((message: string) => console.error(message));
 
   async function preferredNewAgentModel(): Promise<string | undefined> {
     return (await deps.preferences?.load())?.preferredNewAgentModel;
@@ -495,7 +498,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         await broadcastWorkspaceReady(id);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`could not provision workspace ${id}`, error);
+        logError(`could not provision workspace ${id}: ${message}`);
         registry.setPhase(id, "failed", message);
         const entry = registry.get(id);
         // No "active" class in broadcasts: each client activates the resident
@@ -545,7 +548,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       // itself iff it is currently looking at this workspace.
       hub.broadcast(turboReplaceStream(workspaceBootId(id), await workspaceDetailResidentHtml(id)));
     } catch (error) {
-      console.error(`could not render workspace detail for ${id}`, error);
+      const message = error instanceof Error ? error.message : String(error);
+      logError(`could not render workspace detail for ${id}: ${message}`);
     }
   }
 
@@ -590,7 +594,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         registry.remove(id);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`could not delete workspace ${id}`, error);
+        logError(`could not delete workspace ${id}: ${message}`);
         registry.setPhase(id, "failed", `Delete failed: ${message}`);
       }
     })();

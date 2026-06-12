@@ -35,6 +35,7 @@ function createTestApp(options: TestAppOptions = {}) {
     provisionWorkspace: options.provision ?? (async () => {}),
     inspectDeleteSafety: options.inspect ?? (async (id) => ({ workspaceId: id, issues: [] })),
     destroyWorkspace: options.destroy ?? (async () => {}),
+    logError: () => {},
   });
   hub.subscribe((html) => broadcasts.push(html));
   return { app, registry, hub, broadcasts };
