@@ -28,7 +28,7 @@ describe("buildSections", () => {
         cost: 0.01,
         timestamp: 2000,
       },
-      { kind: "toolResult", callId: "c1", text: "file.txt", isError: false, timestamp: 3000 },
+      { kind: "toolResult", callId: "c1", text: "file.txt", isError: false, timestamp: 3000, details: { displayAnsi: "\x1b[32mfile.txt\x1b[0m" } },
       { kind: "assistant", id: "a2", parts: [{ type: "text", text: "All done." }], stopReason: "stop", outTokens: 50, cost: 0.005, timestamp: 4000 },
     ];
     const sections = buildSections(records);
@@ -38,7 +38,7 @@ describe("buildSections", () => {
     expect(section.userEntryId).toBe("u1");
     expect(section.finalText).toBe("All done.");
     expect(section.items.length).toBe(2); // thinking + tool (final text promoted out)
-    expect(section.items[1]).toMatchObject({ type: "tool", tool: { callId: "c1", status: "ok", resultText: "file.txt" } });
+    expect(section.items[1]).toMatchObject({ type: "tool", tool: { callId: "c1", status: "ok", resultText: "file.txt", details: { displayAnsi: "\x1b[32mfile.txt\x1b[0m" } } });
     expect(section.stats).toMatchObject({ tools: 1, outTokens: 150, durationMs: 3000 });
     expect(section.stats.cost).toBeCloseTo(0.015);
   });

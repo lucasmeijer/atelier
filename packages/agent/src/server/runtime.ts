@@ -31,6 +31,7 @@ import { atelierSystemPrompt, createAtelierResourceLoader } from "./system-promp
 import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
 import {
   buildSections,
+  toolDetailsIndicateError,
   type ImageRef,
   type SectionView,
   type ToolView,
@@ -372,7 +373,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (!live.toolIndexByCallId.has(callId)) this.liveToolCallComplete(callId, name, args);
   }
 
-  protected liveToolUpdate(callId: string, update: { tmuxSession?: string; outputText?: string }): void {
+  protected liveToolUpdate(callId: string, update: { tmuxSession?: string; outputText?: string; details?: unknown }): void {
     const live = this.live;
     if (!live) return;
     const index = live.toolIndexByCallId.get(callId);
@@ -393,10 +394,11 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       live.terminalTimers.set(callId, timer);
     }
     if (update.outputText !== undefined) item.tool.resultText = update.outputText;
+    if (update.details !== undefined) item.tool.details = update.details;
     this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderRunningToolCard(this.ctx, item.tool)));
   }
 
-  protected liveToolEnd(callId: string, resultText: string, isError: boolean): void {
+  protected liveToolEnd(callId: string, resultText: string, isError: boolean, details?: unknown): void {
     const live = this.live;
     if (!live) return;
     const timer = live.terminalTimers.get(callId);
@@ -408,8 +410,9 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (index === undefined) return;
     const item = live.view.items[index];
     if (item?.type !== "tool") return;
-    item.tool.status = isError ? "error" : "ok";
+    item.tool.status = isError || toolDetailsIndicateError(details) ? "error" : "ok";
     item.tool.resultText = resultText;
+    item.tool.details = details;
     item.tool.tmuxSession = undefined;
     live.view.stats.tools += 1;
     this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderToolCard(this.ctx, item.tool, { open: true })));
@@ -552,7 +555,7 @@ export function recordsFromSessionEntries(entries: any[]): TranscriptRecord[] {
           timestamp: entryTimestamp(entry, message),
         });
       } else if (message.role === "toolResult") {
-        records.push({ kind: "toolResult", callId: message.toolCallId, text: contentToText(message.content), isError: Boolean(message.isError), timestamp: entryTimestamp(entry, message) });
+        records.push({ kind: "toolResult", callId: message.toolCallId, text: contentToText(message.content), isError: Boolean(message.isError), timestamp: entryTimestamp(entry, message), details: message.details });
       } else if (message.role === "bashExecution") {
         records.push({ kind: "note", id: entry.id, text: `\`$ ${message.command}\`\n\n\`\`\`\n${message.output ?? ""}\n\`\`\``, tone: "system", timestamp: entryTimestamp(entry, message) });
       } else if (message.role === "custom" && message.display) {
@@ -673,12 +676,12 @@ class RealAgentRuntime extends BaseAgentRuntime {
       case "tool_execution_update": {
         const details = event.partialResult?.details;
         const text = contentToText(event.partialResult?.content);
-        this.liveToolUpdate(event.toolCallId, { tmuxSession: details?.tmuxSession, outputText: text || undefined });
+        this.liveToolUpdate(event.toolCallId, { tmuxSession: details?.tmuxSession, outputText: text || undefined, details });
         break;
       }
       case "tool_execution_end": {
         const text = contentToText(event.result?.content);
-        this.liveToolEnd(event.toolCallId, text, Boolean(event.isError));
+        this.liveToolEnd(event.toolCallId, text, Boolean(event.isError), event.result?.details);
         break;
       }
       case "message_end": {
@@ -871,6 +874,7 @@ interface FakeEntry {
   // toolResult
   callId?: string;
   isError?: boolean;
+  details?: unknown;
   // note
   tone?: "system" | "summary" | "error";
   // leaf
@@ -948,7 +952,7 @@ class FakeAgentRuntime extends BaseAgentRuntime {
     return this.activePath().map((entry): TranscriptRecord | undefined => {
       if (entry.t === "user") return { kind: "user", id: entry.id!, text: entry.text ?? "", images: entry.images ?? [], timestamp: entry.ts ?? 0, rewindable: entry.parentId !== null && entry.parentId !== undefined };
       if (entry.t === "assistant") return { kind: "assistant", id: entry.id!, parts: entry.parts ?? [], stopReason: entry.stop ?? "stop", outTokens: entry.out ?? 0, cost: entry.cost ?? 0, timestamp: entry.ts ?? 0 };
-      if (entry.t === "toolResult") return { kind: "toolResult", callId: entry.callId ?? "", text: entry.text ?? "", isError: Boolean(entry.isError), timestamp: entry.ts ?? 0 };
+      if (entry.t === "toolResult") return { kind: "toolResult", callId: entry.callId ?? "", text: entry.text ?? "", isError: Boolean(entry.isError), timestamp: entry.ts ?? 0, details: entry.details };
       if (entry.t === "note") return { kind: "note", id: entry.id, text: entry.text ?? "", tone: entry.tone ?? "system", timestamp: entry.ts };
       return undefined;
     }).filter((record): record is TranscriptRecord => Boolean(record));

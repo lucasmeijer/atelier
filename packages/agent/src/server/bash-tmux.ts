@@ -18,7 +18,9 @@ export const agentTmuxPrefix = "atelier-agent-";
 export const agentTermCols = 120;
 export const agentTermRows = 30;
 
-const maxToolOutputBytes = 200_000;
+const maxModelOutputBytes = 200_000;
+const maxDisplayAnsiBytes = 200_000;
+const tmuxHistoryLimit = 100_000;
 const pollIntervalMs = 350;
 
 export interface TmuxBashHooks {
@@ -40,11 +42,30 @@ function stripAnsi(text: string): string {
     .replace(/^.*\r(?!\n)/gm, "");
 }
 
+function byteLimitUtf8(text: string, maxBytes: number): { text: string; truncated: boolean } {
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes <= maxBytes) return { text, truncated: false };
+  let used = 0;
+  let out = "";
+  for (const char of text) {
+    const size = Buffer.byteLength(char, "utf8");
+    if (used + size > maxBytes) break;
+    out += char;
+    used += size;
+  }
+  return { text: out, truncated: true };
+}
+
 /** Remove the `script` typescript header/footer lines from captured output. */
 function stripScriptFraming(text: string): string {
   return text
     .replace(/^Script started on [^\n]*\n?/, "")
     .replace(/\n?Script done on [^\n]*\n?$/, "");
+}
+
+/** Remove tmux's remain-on-exit marker from captured panes. */
+function stripTmuxPaneFraming(text: string): string {
+  return text.replace(/(?:\n|\r|\u001b\[[0-9;?]*[a-zA-Z])*Pane is dead\n?$/, "");
 }
 
 export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {}): ToolDefinition<any, any> {
@@ -63,8 +84,8 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
       const timeoutMs = Math.max(1, params.timeout ?? 600) * 1000;
 
       // `script` runs the command under a PTY and tees everything to outFile,
-      // independent of any attached viewer. The tmux session exists purely for
-      // live viewing and dies when the command completes.
+      // independent of any attached viewer. The tmux session exists for live
+      // viewing and final ANSI-preserving pane capture.
       //
       // Interactive editors/pagers/prompts are neutralized (GIT_EDITOR=true,
       // PAGER=cat, GIT_TERMINAL_PROMPT=0) so commands like a bare `git commit`
@@ -76,12 +97,19 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
       // and the command lands the command in a background process group and
       // full-screen programs get stopped by SIGTTOU before drawing anything.
       const guards = "EDITOR=true GIT_EDITOR=true VISUAL=true GIT_PAGER=cat PAGER=cat GIT_TERMINAL_PROMPT=0";
-      const inner = `${guards} script -qefc ${shellQuote(params.command)} ${shellQuote(outFile)}; echo $? > ${shellQuote(exitFile)}`;
+      // Encourage color in tools that otherwise default to `auto` detection.
+      // The AI-facing result is still ANSI-stripped; these settings are for the
+      // tmux/UI display channel. COLOR is used by CMake-generated Makefiles,
+      // FORCE_COLOR by many JS/Rust tools, CLICOLOR_FORCE by BSD-ish tools, and
+      // NINJA_STATUS gives direct ninja invocations a colored progress prefix.
+      const colorEnv = "TERM=xterm-256color COLORTERM=truecolor CLICOLOR_FORCE=1 FORCE_COLOR=1 COLOR=1";
+      const ninjaStatus = "NINJA_STATUS=$(printf '\\033[36m[%%f/%%t %%p]\\033[0m ')";
+      const inner = `tmux set-window-option remain-on-exit on; ${ninjaStatus} ${colorEnv} ${guards} script -qefc ${shellQuote(params.command)} ${shellQuote(outFile)}; echo $? > ${shellQuote(exitFile)}`;
       // Fixed desktop-like terminal size; `window-size manual` stops attached
       // viewers (the inline xterm) from resizing the command's terminal.
       const create = await execWorkspaceShell(
         workspaceId,
-        `TERM=xterm-256color tmux new-session -d -s ${shellQuote(sessionName)} -x ${agentTermCols} -y ${agentTermRows} -c /repos ${shellQuote(inner)} \\; set-option -t ${shellQuote(sessionName)} window-size manual \\; set-option -t ${shellQuote(sessionName)} status off`,
+        `TERM=xterm-256color tmux new-session -d -s ${shellQuote(sessionName)} -x ${agentTermCols} -y ${agentTermRows} -c /repos ${shellQuote(inner)} \\; set-option -t ${shellQuote(sessionName)} window-size manual \\; set-option -t ${shellQuote(sessionName)} status off \\; set-option -t ${shellQuote(sessionName)} history-limit ${tmuxHistoryLimit}`,
       );
       if (create.exitCode !== 0) throw new Error(create.stderr.trim() || `could not start command session`);
 
@@ -92,7 +120,7 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
       let exitCode: number | undefined;
       for (;;) {
         if (signal?.aborted) {
-          await execWorkspaceShell(workspaceId, `tmux kill-session -t ${shellQuote(sessionName)} 2>/dev/null; true`);
+          await execWorkspaceShell(workspaceId, `tmux send-keys -t ${shellQuote(sessionName)} C-c 2>/dev/null; true`);
           break;
         }
         const probe = await execWorkspaceShell(workspaceId, `cat ${shellQuote(exitFile)} 2>/dev/null`);
@@ -102,28 +130,42 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
           break;
         }
         if (Date.now() - startedAt > timeoutMs) {
-          await execWorkspaceShell(workspaceId, `tmux kill-session -t ${shellQuote(sessionName)} 2>/dev/null; true`);
+          await execWorkspaceShell(workspaceId, `tmux send-keys -t ${shellQuote(sessionName)} C-c 2>/dev/null; true`);
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
       }
 
-      // Capture whatever output exists, then clean up.
-      const captured = await execWorkspaceCommand(workspaceId, ["sh", "-c", `head -c ${maxToolOutputBytes + 1} ${shellQuote(outFile)} 2>/dev/null`]);
+      // Capture whatever output exists. The model result comes from `script`'s
+      // raw log and is stripped of terminal control codes; the UI result comes
+      // from tmux scrollback with SGR color escapes preserved (`capture-pane -e`).
+      const captured = await execWorkspaceCommand(workspaceId, ["sh", "-c", `head -c ${maxModelOutputBytes + 1} ${shellQuote(outFile)} 2>/dev/null`]);
       const raw = captured.stdout;
-      await execWorkspaceShell(workspaceId, `rm -f ${shellQuote(outFile)} ${shellQuote(exitFile)}; true`);
-      const truncated = raw.length > maxToolOutputBytes;
-      let output = stripScriptFraming(stripAnsi(truncated ? raw.slice(0, maxToolOutputBytes) : raw)).trim();
-      if (truncated) output += `\n… output truncated at ${maxToolOutputBytes} bytes`;
+      const pane = await execWorkspaceShell(workspaceId, `tmux capture-pane -p -e -J -S -${tmuxHistoryLimit} -t ${shellQuote(sessionName)} 2>/dev/null || true`);
+      await execWorkspaceShell(workspaceId, `tmux kill-session -t ${shellQuote(sessionName)} 2>/dev/null; rm -f ${shellQuote(outFile)} ${shellQuote(exitFile)}; true`);
+
+      const modelLimited = byteLimitUtf8(raw, maxModelOutputBytes);
+      let output = stripScriptFraming(stripAnsi(modelLimited.text)).trim();
+      if (modelLimited.truncated) output += `\n… output truncated at ${maxModelOutputBytes} bytes`;
       const aborted = signal?.aborted ?? false;
       const timedOut = exitCode === undefined && !aborted;
-      const body = output || "(no output)";
-      if (aborted) throw new Error(`${body}\n\nCommand aborted`);
-      if (timedOut) throw new Error(`${body}\n\nCommand timed out after ${Math.round(timeoutMs / 1000)} seconds`);
-      if (exitCode !== 0) throw new Error(`${body}\n\nCommand exited with code ${exitCode}`);
+      let body = output || "(no output)";
+      if (aborted) body = `${body}\n\nCommand aborted`;
+      else if (timedOut) body = `${body}\n\nCommand timed out after ${Math.round(timeoutMs / 1000)} seconds`;
+      else if (exitCode !== 0) body = `${body}\n\nCommand exited with code ${exitCode}`;
+
+      const displayLimited = byteLimitUtf8(stripTmuxPaneFraming(pane.stdout) || raw, maxDisplayAnsiBytes);
+      let displayAnsi = stripScriptFraming(displayLimited.text).trimEnd();
+      if (displayLimited.truncated) displayAnsi += `\n… output truncated at ${maxDisplayAnsiBytes} bytes`;
       return {
         content: [{ type: "text" as const, text: body }],
-        details: { exitCode, tmuxSession: sessionName },
+        details: {
+          exitCode,
+          tmuxSession: sessionName,
+          displayAnsi,
+          aborted,
+          timedOut,
+        },
       };
     },
   });

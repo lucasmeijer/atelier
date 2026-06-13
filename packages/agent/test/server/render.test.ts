@@ -56,4 +56,30 @@ describe("tool rendering", () => {
     expect(done).not.toContain("agent-tool-term");
     expect(done).not.toContain("agent-tool-params");
   });
+
+  test("bash renders ANSI display details instead of model text", () => {
+    const html = renderToolCard(ctx, tool({
+      name: "bash",
+      args: { command: "printf color" },
+      resultText: "plain model text",
+      details: { displayAnsi: "\x1b[31mred\x1b[0m <tag>" },
+    }));
+    expect(html).toContain("agent-tool-ansi");
+    expect(html).toContain("color:#cd0000");
+    expect(html).toContain("red");
+    expect(html).toContain("&lt;tag&gt;");
+    expect(html).not.toContain("plain model text");
+  });
+
+  test("bash colorizes plain CMake build output when tools emit no ANSI", () => {
+    const html = renderToolCard(ctx, tool({
+      name: "bash",
+      args: { command: "cmake --build build-cmake" },
+      resultText: "[ 40%] Built target libninja",
+      details: { displayAnsi: "[ 40%] Built target libninja" },
+    }));
+    expect(html).toContain("color:#00cdcd");
+    expect(html).toContain("color:#00cd00");
+    expect(html).toContain("Built target");
+  });
 });

@@ -19,7 +19,7 @@ export type AssistantPart =
 export type TranscriptRecord =
   | { kind: "user"; id: string; text: string; images: ImageRef[]; timestamp: number; rewindable?: boolean }
   | { kind: "assistant"; id: string; parts: AssistantPart[]; stopReason: string; errorMessage?: string; outTokens: number; cost: number; timestamp: number }
-  | { kind: "toolResult"; callId: string; text: string; isError: boolean; timestamp: number }
+  | { kind: "toolResult"; callId: string; text: string; isError: boolean; timestamp: number; details?: unknown }
   | { kind: "note"; id?: string; text: string; tone: NoteTone; timestamp?: number };
 
 export type NoteTone = "system" | "summary" | "error";
@@ -40,6 +40,8 @@ export interface ToolView {
   startedAt?: number;
   /** Timeout in seconds, when the tool has one (bash). */
   timeoutSeconds?: number;
+  /** Structured tool details persisted for UI rendering (not sent as text to the model). */
+  details?: unknown;
 }
 
 export type SectionItem =
@@ -141,7 +143,8 @@ export function buildSections(records: TranscriptRecord[]): SectionView[] {
       const tool = toolItems.get(record.callId);
       if (tool) {
         tool.resultText = record.text;
-        tool.status = record.isError ? "error" : "ok";
+        tool.details = record.details;
+        tool.status = record.isError || toolDetailsIndicateError(record.details) ? "error" : "ok";
       }
       continue;
     }
@@ -167,6 +170,12 @@ export function buildSections(records: TranscriptRecord[]): SectionView[] {
 
   finishSection(current);
   return sections;
+}
+
+export function toolDetailsIndicateError(details: unknown): boolean {
+  if (!details || typeof details !== "object") return false;
+  const entry = details as Record<string, unknown>;
+  return entry.aborted === true || entry.timedOut === true || (typeof entry.exitCode === "number" && entry.exitCode !== 0);
 }
 
 export function formatTokens(count: number): string {
