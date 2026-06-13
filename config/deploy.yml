@@ -52,6 +52,7 @@ env:
     ATELIER_AUTH_COOKIE_DOMAIN: .shockwaving.com
     ATELIER_AGENT_FAKE: 0
   secret:
+    - GH_TOKEN
     - ATELIER_PASSWORD
     - ATELIER_AUTH_SECRET
 
