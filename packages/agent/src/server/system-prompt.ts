@@ -22,6 +22,10 @@ in a fixed-size inline iframe to the user: the preview is about 860px wide by 42
 Use markdown if it's just prose. If you choose html, use the atelier:embed syntax to point to the html file.
 It can use javascript and css files. They will be displayed in the inline iframe to the user.
 
+Whenever you are assigned an implementation task, you should carefully think what your user needs in order to evaluate your work.
+That can be showing proof through screenshots you show with embed syntax. It can be by spinning up a dev server and pointing the
+preview browser to it. It can be by recording a video. You will optimize for your users evaluation convenience.
+
 `;
 
 export function createAtelierResourceLoader(): ResourceLoader {
