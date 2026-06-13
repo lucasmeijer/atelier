@@ -200,14 +200,14 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       // All phases render single-line rows (no r-sub) so phase changes never
       // change row height.
       case "starting":
-        return `${open("starting")}${renderWorkspaceStatus(id)}${workspaceLink(title, ` title="Starting workspace…"`)}<span class="row-actions"><span class="status-spinner sm" aria-label="Starting" title="Starting workspace…"></span></span></div>`;
+        return `${open("starting")}${workspaceLink(title, ` title="Starting workspace…"`)}<span class="row-actions"><span class="status-spinner sm" aria-label="Starting" title="Starting workspace…"></span></span></div>`;
       case "checking_delete":
       case "deleting":
-        return `${open("pending-delete")}${renderWorkspaceStatus(id)}<div class="row-main" title="Deleting…"><div class="r-title">${escapeHtml(title)}</div></div><span class="row-actions"><span class="status-spinner sm" aria-label="Deleting" title="Deleting…"></span></span></div>`;
+        return `${open("pending-delete")}<div class="row-main" title="Deleting…"><div class="r-title">${escapeHtml(title)}</div></div><span class="row-actions"><span class="status-spinner sm" aria-label="Deleting" title="Deleting…"></span></span></div>`;
       case "failed":
-        return `${open("failed")}<span class="dot err"></span>${workspaceLink(title, ` title="${escapeHtml(entry.error ?? "Workspace failed")}"`)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/dismiss"><button type="submit" title="${escapeHtml(entry.error ?? "Workspace failed")} — dismiss" aria-label="Dismiss">✕</button></form></div>`;
+        return `${open("failed")}${workspaceLink(title, ` title="${escapeHtml(entry.error ?? "Workspace failed")}"`)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/dismiss"><button type="submit" title="${escapeHtml(entry.error ?? "Workspace failed")} — dismiss" aria-label="Dismiss">✕</button></form></div>`;
       case "ready":
-        return `${open("")}${renderWorkspaceStatus(id)}${workspaceSidebarTitleFrame(id, title)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></div>`;
+        return `${open("")}${workspaceSidebarTitleFrame(id, title)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></div>`;
     }
   }
 
