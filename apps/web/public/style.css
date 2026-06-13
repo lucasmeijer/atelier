@@ -356,7 +356,7 @@ a.btn { text-decoration: none; }
 .workspace-shell.workspace-shell-collapsed { grid-template-columns: 0 var(--workspace-rail-width) minmax(0, 1fr); }
 .workspace-shell-sidebar { min-width: 0; height: 100vh; overflow: auto; background: var(--panel); border-right: 1px solid var(--line); }
 .workspace-shell-main { min-width: 0; height: 100vh; overflow: auto; }
-.workspace-shell-rail { position: relative; width: var(--workspace-rail-width); height: 100vh; cursor: col-resize; background: linear-gradient(90deg, transparent 0 2px, var(--line-2) 2px 4px, transparent 4px); border-right: 0; touch-action: none; user-select: none; }
+.workspace-shell-rail { position: relative; z-index: 5; width: var(--workspace-rail-width); height: 100vh; cursor: col-resize; background: linear-gradient(90deg, transparent 0 2px, var(--line-2) 2px 4px, transparent 4px); border-right: 0; touch-action: none; user-select: none; }
 .workspace-shell-rail:hover, .workspace-shell-resizing .workspace-shell-rail { background: linear-gradient(90deg, transparent 0 2px, var(--accent) 2px 4px, rgba(37,99,235,.05) 4px); }
 .workspace-shell-rail:has(.sidebar-collapse-notch:hover) { background: linear-gradient(90deg, transparent 0 2px, var(--line-2) 2px 4px, transparent 4px); }
 .workspace-shell-collapsed .workspace-shell-sidebar { overflow: hidden; border-right: 0; }
