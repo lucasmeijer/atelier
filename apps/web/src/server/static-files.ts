@@ -12,6 +12,7 @@ export const clientEntrypoints: Record<string, StaticFileEntry> = {
 };
 
 export const fingerprintedStaticFiles: Record<string, StaticFileEntry> = {
+  "/favicon.svg": { url: new URL("../../public/favicon.svg", import.meta.url), contentType: "image/svg+xml; charset=utf-8" },
   "/style.css": { url: new URL("../../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   ...workspaceModuleStaticFiles(),
 };
