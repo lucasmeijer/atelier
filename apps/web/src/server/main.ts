@@ -40,7 +40,7 @@ import {
   type WorkspaceAppHost,
   type WorkspaceAppTargetResolver,
 } from "@atelier/workspace-proxy/server";
-import { resolveVSCodeWorkspaceAppTarget, vscodeAppKey } from "@atelier/vscode/server";
+import { patchVSCodeWorkspaceAppResponse, resolveVSCodeWorkspaceAppTarget, vscodeAppKey } from "@atelier/vscode/server";
 import { createWebApp } from "./app.ts";
 import { createFileWebPreferenceStore } from "./preferences.ts";
 import { createStreamHub } from "./stream-hub.ts";
@@ -362,7 +362,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
         }
 
         if (appHost?.appKey === "file") return await workspaceFileEndpoint(appHost.workspaceId, decodeURIComponent(url.pathname), request);
-        if (appHost) return await proxyWorkspaceAppRequest(appHost, request, resolveWorkspaceAppTarget);
+        if (appHost) return await proxyWorkspaceAppRequest(appHost, request, resolveWorkspaceAppTarget, patchVSCodeWorkspaceAppResponse);
 
         const staticResponse = await serveStatic(url.pathname);
         if (staticResponse) return staticResponse;

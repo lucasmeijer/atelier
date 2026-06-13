@@ -4,6 +4,7 @@ export interface WorkspaceAppHost {
 }
 
 export type WorkspaceAppTargetResolver = (app: WorkspaceAppHost, requestUrl: URL) => Promise<URL> | URL;
+export type WorkspaceAppResponseTransformer = (app: WorkspaceAppHost, response: Response) => Promise<Response> | Response;
 
 export function parseWorkspaceAppHost(hostHeader: string | null): WorkspaceAppHost | undefined {
   const host = (hostHeader ?? "").split(":")[0]?.toLowerCase() ?? "";
@@ -22,18 +23,24 @@ function stripHopByHop(headers: Headers): Headers {
   return next;
 }
 
-export async function proxyWorkspaceAppRequest(app: WorkspaceAppHost, request: Request, resolveTarget: WorkspaceAppTargetResolver): Promise<Response> {
+export async function proxyWorkspaceAppRequest(
+  app: WorkspaceAppHost,
+  request: Request,
+  resolveTarget: WorkspaceAppTargetResolver,
+  transformResponse?: WorkspaceAppResponseTransformer,
+): Promise<Response> {
   try {
     const source = new URL(request.url);
     const target = await resolveTarget(app, source);
     const headers = stripHopByHop(request.headers);
     headers.set("host", request.headers.get("host") ?? target.host);
-    return await fetch(target, {
+    const response = await fetch(target, {
       method: request.method,
       headers,
       body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
       redirect: "manual",
     });
+    return transformResponse ? await transformResponse(app, response) : response;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return new Response(`Workspace app proxy error: ${message}\n`, { status: 502, headers: { "content-type": "text/plain; charset=utf-8" } });
