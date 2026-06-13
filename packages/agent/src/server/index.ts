@@ -34,6 +34,7 @@ export { agentTabKey, renderAgentComposer, renderAgentPane } from "./render.ts";
 export { agentWorkspaceModule, listOrCreateWorkspaceAgents, renderWorkspaceAgentTabs } from "./web.ts";
 export {
   applyExactEdits,
+  createDeleteCurrentWorkspaceTool,
   createWorkspaceAgentTools,
   normalizeWorkspacePath,
   registerWorkspaceAgentTool,

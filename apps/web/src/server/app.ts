@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import {
   createNextWorkspaceAgent,
   getWorkspaceAgentRuntime,
+  createDeleteCurrentWorkspaceTool,
   handleAgentRequest,
   registerWorkspaceAgentTool,
   renderAgentComposer,
@@ -126,6 +127,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     getTabKeys: () => tabKeysFor(workspaceId),
     layouts,
   }));
+  registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, (force) => deleteCurrentWorkspaceFromAgent(workspaceId, force)));
   const imageBuilds = new Map<string, { state: "building" | "failed"; image: string; modules: string[]; output: string; error?: string }>();
   const workspaceCommandModalHostId = "workspace_command_modal_host";
 
@@ -648,6 +650,41 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   </dialog>`;
   }
 
+  function scheduleWorkspaceDeletion(id: string): void {
+    registry.setPhase(id, "deleting");
+    void (async () => {
+      try {
+        await deps.destroyWorkspace(id);
+        registry.remove(id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logError(`could not delete workspace ${id}: ${message}`);
+        registry.setPhase(id, "failed", `Delete failed: ${message}`);
+      }
+    })();
+  }
+
+  async function deleteCurrentWorkspaceFromAgent(id: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }> {
+    const entry = requireWorkspace(id);
+    if (entry.phase !== "ready") throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not ready for deletion`);
+    registry.setPhase(id, "checking_delete");
+    if (!force) {
+      let details: WorkspaceDeleteBlockedDetails;
+      try {
+        details = await deps.inspectDeleteSafety(id);
+      } catch (error) {
+        registry.setPhase(id, "ready");
+        throw error;
+      }
+      if (details.issues.length > 0) {
+        registry.setPhase(id, "ready");
+        return { deleted: false, blocked: true, details };
+      }
+    }
+    scheduleWorkspaceDeletion(id);
+    return { deleted: true, blocked: false };
+  }
+
   async function deleteWorkspaceEndpoint(id: string, force: boolean): Promise<Response> {
     const entry = requireWorkspace(id);
     if (entry.phase !== "ready") {
@@ -668,17 +705,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         return turboStreamResponse(`${turboRemoveStream("delete-workspace-modal")}<turbo-stream action="append" target="body"><template>${deleteBlockedModal(id, details)}</template></turbo-stream>`);
       }
     }
-    registry.setPhase(id, "deleting");
-    void (async () => {
-      try {
-        await deps.destroyWorkspace(id);
-        registry.remove(id);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        logError(`could not delete workspace ${id}: ${message}`);
-        registry.setPhase(id, "failed", `Delete failed: ${message}`);
-      }
-    })();
+    scheduleWorkspaceDeletion(id);
     return turboStreamResponse(turboRemoveStream("delete-workspace-modal"));
   }
 

@@ -4,8 +4,10 @@ import {
   createEditToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
+  defineTool,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { createTmuxBashTool } from "./bash-tmux.ts";
 
 const workspaceRoot = "/repos";
@@ -80,6 +82,38 @@ export function registerWorkspaceAgentTool(name: string, factory: WorkspaceAgent
 
 export function workspaceAgentToolNames(): string[] {
   return ["read", "write", "edit", "bash", ...registeredWorkspaceAgentTools.keys()];
+}
+
+export interface DeleteCurrentWorkspaceResult {
+  deleted: boolean;
+  blocked: boolean;
+  details?: unknown;
+}
+
+export function createDeleteCurrentWorkspaceTool(workspaceId: string, deleteCurrentWorkspace: (force: boolean) => Promise<DeleteCurrentWorkspaceResult>): ToolDefinition<any, any> {
+  return defineTool({
+    name: "delete_current_workspace",
+    label: "Delete Current Workspace",
+    description: "Permanently delete this agent's current Atelier workspace. This tears down the execution context the agent has been doing all of its work in, including the workspace container and local files/changes that have not been preserved elsewhere. The agent cannot choose another workspace; this tool always deletes only its own current workspace. Execute this only when the user has explicitly requested deletion of this workspace.",
+    parameters: Type.Object({
+      force: Type.Boolean({
+        description: "Set to false to run the existing workspace delete safety checks and report outstanding local changes instead of deleting when they are present. Set to true only when the user explicitly requested force deletion.",
+      }),
+    }),
+    execute: async (_toolCallId: string, params: { force: boolean }) => {
+      const result = await deleteCurrentWorkspace(params.force);
+      if (result.blocked) {
+        return {
+          content: [{ type: "text" as const, text: "Current workspace was not deleted because the delete safety checks found outstanding local changes or unpushed commits." }],
+          details: { workspaceId, ...result },
+        };
+      }
+      return {
+        content: [{ type: "text" as const, text: `Current workspace ${workspaceId} deletion has been scheduled. The agent execution context is now being torn down.` }],
+        details: { workspaceId, ...result },
+      };
+    },
+  });
 }
 
 export function createWorkspaceAgentTools(workspaceId: string, options: WorkspaceAgentToolOptions = {}): ToolDefinition<any, any>[] {
