@@ -72,7 +72,7 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
   return defineTool({
     name: "bash",
     label: "Bash",
-    description: "Execute a bash command inside the workspace container (under a PTY; interactive progress output is fine). Returns stdout+stderr and the exit code. The working directory is /repos.",
+    description: "the bash toolcall will be executed inside of a tmux session for visibility. avoid redirecting output to nowhere. avoid the programs you're invoking from attempting to read from stdin, as that will hang the toolcall.",
     parameters: Type.Object({
       command: Type.String({ description: "The bash command to execute" }),
       timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (default 600)" })),
