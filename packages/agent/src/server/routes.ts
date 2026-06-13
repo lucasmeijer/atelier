@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { AtelierCoreError, defaultDataDir, getWorkspacePreviewPort, workspaceContainerName, workspacePreviewPorts, type AtelierEventBus } from "@atelier/core";
 import { ids, renderAttachmentChip } from "./render.ts";
 import { sseFrame, turboStream, turboStreamResponse } from "./html.ts";
+import { expandPromptTemplate } from "./prompt-templates.ts";
 import { getWorkspaceAgentRuntime, isFakeMode, type RewindMode, type SubmitMode } from "./runtime.ts";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
 import type { ImageRef } from "./transcript.ts";
@@ -259,12 +260,13 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
     await rm(join(attachmentDraftDir(attachmentDraft), staged.id), { recursive: true, force: true });
   }
 
-  const trimmed = text.trim();
+  const expandedText = expandPromptTemplate(text);
+  const trimmed = expandedText.trim();
   if (trimmed) {
     await options.events?.emit("workspace_user_activity", { workspaceId });
     maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), trimmed], { events: options.events });
   }
-  await runtime.submit(text, { mode, images, attachmentNotes });
+  await runtime.submit(expandedText, { mode, images, attachmentNotes });
   return turboStreamResponse("");
 }
 
@@ -300,7 +302,7 @@ async function submitInitialAgentPrompt(workspaceId: string, context: AgentWorks
     await rm(attachmentDraftDir(draftId), { recursive: true, force: true });
   }
 
-  const prompt = context.initialPrompt ?? "";
+  const prompt = expandPromptTemplate(context.initialPrompt ?? "");
   await options.events?.emit("workspace_user_activity", { workspaceId });
   maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), prompt.trim()], { events: options.events });
   await runtime.submit(prompt, { mode: "send", images, attachmentNotes });
