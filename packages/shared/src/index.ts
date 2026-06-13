@@ -11,14 +11,35 @@ export interface WorkspaceTabContribution {
   paneHtml?: string;
 }
 
-export interface WorkspaceTabActionContribution {
-  key: string;
+export interface WorkspaceCommandUiSurface {
+  /** Where the server-rendered web UI should place this command. */
+  placement: "group-menu";
+  label?: string;
+}
+
+export interface WorkspaceCommandShortcutSurface {
+  defaultBinding: string;
+}
+
+export interface WorkspaceCommandSurfaces {
+  ui?: WorkspaceCommandUiSurface;
+  shortcut?: WorkspaceCommandShortcutSurface;
+}
+
+export interface WorkspaceCommandContribution<Input = Record<string, never>> {
+  id: string;
   label: string;
+  description?: string;
+  /** Runtime schema placeholder for future typed form/palette generation. */
+  inputSchema?: unknown;
+  surfaces?: WorkspaceCommandSurfaces;
+  /** Type carrier only; command metadata stays serializable. */
+  readonly __input?: Input;
 }
 
 export interface WorkspaceAttachment {
   tabs?: WorkspaceTabContribution[];
-  tabActions?: WorkspaceTabActionContribution[];
+  workspaceCommands?: WorkspaceCommandContribution[];
 }
 
 export interface StaticFileContribution {

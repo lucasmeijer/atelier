@@ -1,4 +1,4 @@
-import type { WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
+import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { renderVSCodePane, vscodeTabKey } from "./render.ts";
 import { createWorkspaceVSCodeTab, listWorkspaceVSCodeTabs, type WorkspaceVSCodeTab } from "./workspace-vscode.ts";
 import { vscodeStaticFiles } from "./static.ts";
@@ -11,13 +11,24 @@ export function renderWorkspaceVSCodeTabs(workspaceId: string, tabs: WorkspaceVS
   }));
 }
 
+export const vscodeWorkspaceCommands: WorkspaceCommandContribution[] = [
+  {
+    id: "vscode.open",
+    label: "Open VS Code",
+    surfaces: {
+      ui: { placement: "group-menu", label: "New VS Code" },
+      shortcut: { defaultBinding: "Meta+Alt+KeyV" },
+    },
+  },
+];
+
 export const vscodeWorkspaceModule: WorkspaceModule = {
   id: "vscode",
   staticFiles: vscodeStaticFiles,
   attachToWorkspace({ workspaceId }) {
     return {
       tabs: renderWorkspaceVSCodeTabs(workspaceId, listWorkspaceVSCodeTabs(workspaceId)),
-      tabActions: [{ key: "vscode:create", label: "New VS Code" }],
+      workspaceCommands: vscodeWorkspaceCommands,
     };
   },
 };

@@ -1,4 +1,4 @@
-import type { WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
+import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
 import { agentTabKey, renderAgentPane, type AgentStatsView } from "./render.ts";
 import { agentStaticFiles } from "./static.ts";
@@ -35,6 +35,14 @@ export function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceA
   }));
 }
 
+export const agentWorkspaceCommands: WorkspaceCommandContribution[] = [
+  {
+    id: "agent.create",
+    label: "New Agent",
+    surfaces: { ui: { placement: "group-menu" } },
+  },
+];
+
 export const agentWorkspaceModule: WorkspaceModule = {
   id: "agent",
   staticFiles: agentStaticFiles,
@@ -42,7 +50,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
     const agents = await listOrCreateWorkspaceAgents(workspaceId);
     return {
       tabs: renderWorkspaceAgentTabs(workspaceId, agents),
-      tabActions: [{ key: "agent:create", label: "New Agent" }],
+      workspaceCommands: agentWorkspaceCommands,
     };
   },
 };

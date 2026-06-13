@@ -31,7 +31,7 @@ import {
   createWorkspaceVSCodeTab,
   deleteWorkspaceVSCodeTab,
 } from "@atelier/vscode/server";
-import { atelierName, type WorkspaceAttachment, type WorkspaceTabContribution } from "@atelier/shared";
+import { atelierName, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceTabContribution } from "@atelier/shared";
 import type { StreamHub } from "./stream-hub.ts";
 import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
 import type { WebPreferenceStore } from "./preferences.ts";
@@ -388,9 +388,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function renderWorkspaceGroups(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {
     const layoutState = layouts.normalize(workspaceId, tabs.map((tab) => tab.key));
     const tabByKey = new Map(tabs.map((tab) => [tab.key, tab]));
-    const actions = attachments.flatMap((attachment) => attachment.tabActions ?? []);
+    const commands = attachments.flatMap((attachment) => attachment.workspaceCommands ?? []).filter((command) => command.surfaces?.ui?.placement === "group-menu");
     const actionMenu = (group: { id: string }, index: number) => `<details class="group-add-menu"><summary class="group-icon-btn" title="Add tab or group">+</summary><div class="group-menu-panel">
-      ${actions.map((action) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/actions/${encodeURIComponent(action.key)}"><button type="submit">${escapeHtml(action.label)}</button></form>`).join("")}
+      ${commands.map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/commands/${encodeURIComponent(command.id)}"><button type="submit">${escapeHtml(command.surfaces?.ui?.label ?? command.label)}</button></form>`).join("")}
       <form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/split"><button type="submit">New Group</button></form>
       ${layoutState.groups.length > 1 && index > 0 ? `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/close"><button type="submit">Close Group</button></form>` : ""}
     </div></details>`;
@@ -809,19 +809,50 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return replaceWorkspaceGroupsStream(workspaceId);
   }
 
-  async function workspaceGroupActionEndpoint(workspaceId: string, groupId: string, actionKey: string): Promise<Response> {
-    let createdKey: string | undefined;
-    if (actionKey === "agent:create") {
-      const agent = await createNextWorkspaceAgent(workspaceId);
-      await applyPreferredNewAgentModel(agent);
-      createdKey = `agent:${agent.label}`;
+  async function assertWorkspaceCommandExists(workspaceId: string, commandId: string): Promise<void> {
+    const commands = (await workspaceTabsAndAttachments(workspaceId)).attachments.flatMap((attachment) => attachment.workspaceCommands ?? []);
+    if (!commands.some((command: WorkspaceCommandContribution) => command.id === commandId)) {
+      throw new AtelierCoreError("command_not_found", `workspace command not found: ${commandId}`);
     }
-    if (actionKey === "terminal:create") createdKey = `terminal:${(await createWorkspaceTerminal(workspaceId)).title}`;
-    if (actionKey === "vscode:create") createdKey = `vscode:${createWorkspaceVSCodeTab(workspaceId).title}`;
-    if (actionKey === "browser:create") createdKey = createWorkspaceBrowserTabForWorkspace(workspaceId).key;
+  }
+
+  async function executeWorkspaceCommand(workspaceId: string, commandId: string, context: { groupId?: string } = {}): Promise<{ createdTabKey?: string }> {
+    await assertWorkspaceCommandExists(workspaceId, commandId);
+    switch (commandId) {
+      case "agent.create": {
+        const agent = await createNextWorkspaceAgent(workspaceId);
+        await applyPreferredNewAgentModel(agent);
+        return { createdTabKey: `agent:${agent.label}` };
+      }
+      case "terminal.create":
+        return { createdTabKey: `terminal:${(await createWorkspaceTerminal(workspaceId)).title}` };
+      case "vscode.open": {
+        const existing = (await tabKeysFor(workspaceId)).find((key) => key.startsWith("vscode:"));
+        return { createdTabKey: existing ?? `vscode:${createWorkspaceVSCodeTab(workspaceId).title}` };
+      }
+      case "browser.create":
+        return { createdTabKey: createWorkspaceBrowserTabForWorkspace(workspaceId).key };
+      default:
+        throw new AtelierCoreError("command_not_implemented", `workspace command not implemented: ${commandId}`);
+    }
+  }
+
+  async function workspaceGroupCommandEndpoint(workspaceId: string, groupId: string, commandId: string): Promise<Response> {
+    const result = await executeWorkspaceCommand(workspaceId, commandId, { groupId });
     const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
-    if (createdKey) layouts.placeNewTab(workspaceId, tabs.map((tab) => tab.key), groupId, createdKey);
+    if (result.createdTabKey) layouts.placeNewTab(workspaceId, tabs.map((tab) => tab.key), groupId, result.createdTabKey);
     return turboStreamResponse(`<turbo-stream action="replace" target="${workspaceGroupsId(workspaceId)}"><template>${renderWorkspaceGroups(workspaceId, tabs, attachments)}</template></turbo-stream>`);
+  }
+
+  async function workspaceGroupActionEndpoint(workspaceId: string, groupId: string, actionKey: string): Promise<Response> {
+    const legacyCommandId = new Map([
+      ["agent:create", "agent.create"],
+      ["terminal:create", "terminal.create"],
+      ["vscode:create", "vscode.open"],
+      ["browser:create", "browser.create"],
+    ]).get(actionKey);
+    if (!legacyCommandId) throw new AtelierCoreError("command_not_found", `workspace action not found: ${actionKey}`);
+    return await workspaceGroupCommandEndpoint(workspaceId, groupId, legacyCommandId);
   }
 
   async function closeWorkspaceTabEndpoint(workspaceId: string, tab: string): Promise<Response> {
@@ -905,6 +936,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       if (request.method === "POST") return await updateWorkspaceSidebarTitleFromForm(params[0], request);
     }
     if ((params = match(/^\/workspaces\/([^/]+)\/view-state$/)) && request.method === "POST") return await updateWorkspaceViewStateEndpoint(params[0], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceGroupCommandEndpoint(params[0], params[1], params[2]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/actions\/([^/]+)$/)) && request.method === "POST") return await workspaceGroupActionEndpoint(params[0], params[1], params[2]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/split$/)) && request.method === "POST") return await splitWorkspaceGroupEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/remove$/)) && request.method === "POST") return await removeWorkspaceGroupEndpoint(params[0], params[1]);

@@ -30,7 +30,7 @@ export interface WorkspaceLayoutStore {
   closeTab(workspaceId: string, tabKeys: string[], tab: string): void;
   resize(workspaceId: string, tabKeys: string[], sizes: number[]): void;
   setActiveTab(workspaceId: string, groupId: string, tab: string): void;
-  /** Place a freshly created tab into a group and activate it. */
+  /** Place a newly available tab into a group and activate it. */
   placeNewTab(workspaceId: string, tabKeys: string[], groupId: string, tabKey: string): void;
   delete(workspaceId: string): void;
 }
@@ -154,10 +154,12 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
     placeNewTab(workspaceId, tabKeys, groupId, tabKey) {
       const layout = normalize(workspaceId, tabKeys);
       const group = layout.groups.find((candidate) => candidate.id === groupId) ?? layout.groups[0];
-      if (!group || group.tabs.includes(tabKey)) return;
-      layout.closedTabs = (layout.closedTabs ?? []).filter((tab) => tab !== tabKey);
-      for (const candidate of layout.groups) candidate.tabs = candidate.tabs.filter((tab) => tab !== tabKey);
-      group.tabs.push(tabKey);
+      if (!group) return;
+      if (!group.tabs.includes(tabKey)) {
+        layout.closedTabs = (layout.closedTabs ?? []).filter((tab) => tab !== tabKey);
+        for (const candidate of layout.groups) candidate.tabs = candidate.tabs.filter((tab) => tab !== tabKey);
+        group.tabs.push(tabKey);
+      }
       group.activeTab = tabKey;
     },
 

@@ -1,4 +1,4 @@
-import type { WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
+import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { renderBrowserFrame, renderBrowserTab } from "./render.ts";
 import { createWorkspaceBrowserTab, deleteWorkspaceBrowserTab, listWorkspaceBrowserTabs, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
@@ -7,13 +7,21 @@ export function renderWorkspaceBrowserTabs(workspaceId: string): WorkspaceTabCon
   return listWorkspaceBrowserTabs(workspaceId).map((tab) => renderBrowserTab(workspaceId, tab));
 }
 
+export const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
+  {
+    id: "browser.create",
+    label: "New Browser",
+    surfaces: { ui: { placement: "group-menu" } },
+  },
+];
+
 export const browserWorkspaceModule: WorkspaceModule = {
   id: "browser",
   staticFiles: browserStaticFiles,
   attachToWorkspace({ workspaceId }) {
     return {
       tabs: renderWorkspaceBrowserTabs(workspaceId),
-      tabActions: [{ key: "browser:create", label: "New Browser" }],
+      workspaceCommands: browserWorkspaceCommands,
     };
   },
 };
