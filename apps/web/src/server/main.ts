@@ -51,6 +51,151 @@ import { createFileWorkspaceActivityStore, createWorkspaceRegistry } from "./wor
 const requestedPort = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "localhost";
 
+const authPassword = process.env.ATELIER_PASSWORD ?? "";
+const authCookieName = "atelier_session";
+const authCookieMaxAgeSeconds = 60 * 60 * 24 * 30;
+
+function authSecret(): string {
+  return process.env.ATELIER_AUTH_SECRET || authPassword;
+}
+
+function authEnabled(): boolean {
+  return authPassword.length > 0;
+}
+
+function base64Url(bytes: ArrayBuffer | Uint8Array): string {
+  const array = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let binary = "";
+  for (const byte of array) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+async function hmac(input: string): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(authSecret()), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return base64Url(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(input)));
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  const left = new TextEncoder().encode(a);
+  const right = new TextEncoder().encode(b);
+  if (left.length !== right.length) return false;
+  let diff = 0;
+  for (let i = 0; i < left.length; i++) diff |= left[i]! ^ right[i]!;
+  return diff === 0;
+}
+
+function cookieValue(request: Request, name: string): string | undefined {
+  const cookie = request.headers.get("cookie") ?? "";
+  for (const part of cookie.split(";")) {
+    const [rawName, ...rawValue] = part.trim().split("=");
+    if (rawName === name) return rawValue.join("=");
+  }
+  return undefined;
+}
+
+async function createAuthSessionCookie(): Promise<string> {
+  const expires = Math.floor(Date.now() / 1000) + authCookieMaxAgeSeconds;
+  const nonce = crypto.randomUUID();
+  const payload = base64Url(new TextEncoder().encode(JSON.stringify({ expires, nonce })));
+  return `${payload}.${await hmac(payload)}`;
+}
+
+async function isAuthenticated(request: Request): Promise<boolean> {
+  if (!authEnabled()) return true;
+  const value = cookieValue(request, authCookieName);
+  if (!value) return false;
+  const [payload, signature] = value.split(".");
+  if (!payload || !signature || !timingSafeEqual(signature, await hmac(payload))) return false;
+  try {
+    const normalized = payload.replaceAll("-", "+").replaceAll("_", "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(padded), (char) => char.charCodeAt(0)))) as { expires?: number };
+    return typeof data.expires === "number" && data.expires > Math.floor(Date.now() / 1000);
+  } catch {
+    return false;
+  }
+}
+
+function isHttpsRequest(request: Request): boolean {
+  return new URL(request.url).protocol === "https:" || request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
+}
+
+function authCookieAttributes(request: Request): string {
+  const secure = isHttpsRequest(request) ? "; Secure" : "";
+  const domain = process.env.ATELIER_AUTH_COOKIE_DOMAIN ? `; Domain=${process.env.ATELIER_AUTH_COOKIE_DOMAIN}` : "";
+  return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${authCookieMaxAgeSeconds}${secure}${domain}`;
+}
+
+function clearAuthCookieAttributes(request: Request): string {
+  const secure = isHttpsRequest(request) ? "; Secure" : "";
+  const domain = process.env.ATELIER_AUTH_COOKIE_DOMAIN ? `; Domain=${process.env.ATELIER_AUTH_COOKIE_DOMAIN}` : "";
+  return `Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}${domain}`;
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+function loginPage(next: string, error = ""): Response {
+  return new Response(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(atelierName)} · Login</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; font: 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f6f8fc; color: #172033; }
+  form { width: min(360px, calc(100vw - 32px)); display: grid; gap: 14px; padding: 24px; border: 1px solid #d8e0ec; border-radius: 16px; background: white; box-shadow: 0 18px 50px rgba(15, 23, 42, .08); }
+  h1 { margin: 0; font-size: 18px; }
+  input, button { font: inherit; border-radius: 10px; padding: 10px 12px; }
+  input { border: 1px solid #cbd5e1; }
+  button { border: 0; background: #2563eb; color: white; font-weight: 650; cursor: pointer; }
+  .error { color: #b42318; min-height: 20px; }
+</style>
+</head>
+<body>
+<form method="post" action="/login">
+  <h1>Sign in to ${escapeHtml(atelierName)}</h1>
+  ${error ? `<div class="error">${escapeHtml(error)}</div>` : `<div class="error"></div>`}
+  <input type="hidden" name="next" value="${escapeHtml(next)}">
+  <input name="password" type="password" placeholder="Password" autocomplete="current-password" autofocus required>
+  <button type="submit">Sign in</button>
+</form>
+</body>
+</html>`, { headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
+function redirectToLogin(request: Request): Response {
+  const url = new URL(request.url);
+  const next = `${url.pathname}${url.search}`;
+  return Response.redirect(new URL(`/login?next=${encodeURIComponent(next)}`, url).toString(), 303);
+}
+
+async function authResponse(request: Request): Promise<Response | undefined> {
+  if (!authEnabled()) return undefined;
+  const url = new URL(request.url);
+  if (url.pathname === "/up") return undefined;
+  if (url.pathname === "/login" && request.method === "GET") return loginPage(url.searchParams.get("next") || "/");
+  if (url.pathname === "/login" && request.method === "POST") {
+    const form = await request.formData();
+    const next = String(form.get("next") || "/");
+    const password = String(form.get("password") || "");
+    if (!timingSafeEqual(password, authPassword)) return loginPage(next, "Invalid password");
+    const response = Response.redirect(new URL(next.startsWith("/") ? next : "/", url).toString(), 303);
+    response.headers.append("set-cookie", `${authCookieName}=${await createAuthSessionCookie()}; ${authCookieAttributes(request)}`);
+    return response;
+  }
+  if (url.pathname === "/logout") {
+    const response = Response.redirect(new URL("/login", url).toString(), 303);
+    response.headers.append("set-cookie", `${authCookieName}=; ${clearAuthCookieAttributes(request)}`);
+    return response;
+  }
+  if (await isAuthenticated(request)) return undefined;
+  const accepts = request.headers.get("accept") ?? "";
+  if (request.method === "GET" && accepts.includes("text/html")) return redirectToLogin(request);
+  return new Response("unauthorized\n", { status: 401, headers: { "content-type": "text/plain; charset=utf-8" } });
+}
+
 const atelierEvents = createAtelierEventBus();
 registerPiConfigEvents(atelierEvents);
 registerTerminalEvents(atelierEvents);
@@ -199,6 +344,8 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       async fetch(request, server) {
         const url = new URL(request.url);
         const appHost = parseWorkspaceAppHost(request.headers.get("host"));
+        const auth = await authResponse(request);
+        if (auth) return auth;
 
         if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
           const socketData = await validateSocket(request, url);

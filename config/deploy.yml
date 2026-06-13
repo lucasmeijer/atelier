@@ -47,7 +47,13 @@ env:
     # rather than on public interfaces.
     ATELIER_WORKSPACE_PUBLISH_HOST: 172.17.0.1
     ATELIER_DOCKER_PUBLISHED_PORT_HOST: host.docker.internal
+    # Scope Atelier's own auth cookie to all preview subdomains, so the
+    # workspace iframe/proxy hosts are authenticated after logging in once.
+    ATELIER_AUTH_COOKIE_DOMAIN: .shockwaving.com
     ATELIER_AGENT_FAKE: 0
+  secret:
+    - ATELIER_PASSWORD
+    - ATELIER_AUTH_SECRET
 
 volumes:
   - /var/run/docker.sock:/var/run/docker.sock
