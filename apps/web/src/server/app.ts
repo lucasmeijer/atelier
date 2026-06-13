@@ -3,11 +3,13 @@ import {
   createNextWorkspaceAgent,
   getWorkspaceAgentRuntime,
   handleAgentRequest,
+  registerWorkspaceAgentTool,
   renderAgentComposer,
   type WorkspaceAgentInfo,
 } from "@atelier/agent/server";
 import {
   browserNavigateEndpoint,
+  createOrOpenPreviewBrowserTool,
   createWorkspaceBrowserTabForWorkspace,
   deleteWorkspaceBrowserState,
   deleteWorkspaceBrowserTabForWorkspace,
@@ -118,6 +120,12 @@ function assetPath(logicalPath: string): string {
 export function createWebApp(deps: WebAppDeps): WebApp {
   const { registry, hub, layouts } = deps;
   const logError = deps.logError ?? ((message: string) => console.error(message));
+
+  registerWorkspaceAgentTool("create_or_open_preview_browser", (workspaceId, options) => createOrOpenPreviewBrowserTool(workspaceId, {
+    events: options.events,
+    getTabKeys: () => tabKeysFor(workspaceId),
+    layouts,
+  }));
   const imageBuilds = new Map<string, { state: "building" | "failed"; image: string; modules: string[]; output: string; error?: string }>();
 
   async function preferredNewAgentModel(): Promise<string | undefined> {

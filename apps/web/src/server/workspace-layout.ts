@@ -32,6 +32,8 @@ export interface WorkspaceLayoutStore {
   setActiveTab(workspaceId: string, groupId: string, tab: string): void;
   /** Place a newly available tab into a group and activate it. */
   placeNewTab(workspaceId: string, tabKeys: string[], groupId: string, tabKey: string): void;
+  /** Ensure a tab is visible and active in a group that contains no agent tabs. */
+  ensureTabInAgentFreeGroup(workspaceId: string, tabKeys: string[], tabKey: string): { groupId: string; moved: boolean; createdGroup: boolean } | undefined;
   delete(workspaceId: string): void;
 }
 
@@ -161,6 +163,36 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
         group.tabs.push(tabKey);
       }
       group.activeTab = tabKey;
+    },
+
+    ensureTabInAgentFreeGroup(workspaceId, tabKeys, tabKey) {
+      if (!tabKeys.includes(tabKey)) return undefined;
+      const layout = normalize(workspaceId, tabKeys);
+      layout.closedTabs = (layout.closedTabs ?? []).filter((tab) => tab !== tabKey);
+      const hasAgent = (group: WorkspaceGroupState) => group.tabs.some((tab) => tab.startsWith("agent:"));
+      const source = layout.groups.find((group) => group.tabs.includes(tabKey));
+      if (source && !hasAgent(source)) {
+        source.activeTab = tabKey;
+        return { groupId: source.id, moved: false, createdGroup: false };
+      }
+
+      let target = layout.groups.find((group) => !hasAgent(group) && group !== source);
+      let createdGroup = false;
+      if (!target) {
+        target = { id: crypto.randomUUID(), tabs: [], size: 1 };
+        layout.groups.push(target);
+        createdGroup = true;
+      }
+
+      for (const group of layout.groups) group.tabs = group.tabs.filter((tab) => tab !== tabKey);
+      target.tabs.push(tabKey);
+      target.activeTab = tabKey;
+      if (source && source !== target && source.tabs.length === 0 && layout.groups.length > 1) {
+        const sourceIndex = layout.groups.indexOf(source);
+        if (sourceIndex >= 0) layout.groups.splice(sourceIndex, 1);
+      }
+      normalizeGroupSizes(layout);
+      return { groupId: target.id, moved: source !== target, createdGroup };
     },
 
     delete(workspaceId) {

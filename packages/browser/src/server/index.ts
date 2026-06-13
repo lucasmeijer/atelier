@@ -26,3 +26,4 @@ export {
   type WorkspaceBrowserTab,
 } from "./state.ts";
 export { renderBrowserFrame, renderBrowserPane, renderBrowserTab } from "./render.ts";
+export { createOrOpenPreviewBrowserTool, type CreateOrOpenPreviewBrowserToolDeps, type PreviewBrowserLayoutController } from "./agent-tool.ts";

@@ -205,6 +205,51 @@ describe("web app contracts", () => {
     expect(after.groups[0]!.tabs).toEqual(["b", "a"]);
   });
 
+  test("preview browser layout helper keeps browser in an agent-free group", () => {
+    const layouts = createWorkspaceLayoutStore();
+    const tabs = ["agent:Agent 1", "browser", "notes"];
+    const initial = layouts.normalize("w", tabs);
+    layouts.splitGroup("w", tabs, initial.groups[0]!.id);
+    const right = layouts.normalize("w", tabs).groups[1]!;
+    layouts.moveTab("w", tabs, { tab: "notes", toGroup: right.id });
+
+    const result = layouts.ensureTabInAgentFreeGroup("w", tabs, "browser");
+
+    const after = layouts.normalize("w", tabs);
+    expect(result?.moved).toBe(true);
+    expect(result?.createdGroup).toBe(false);
+    expect(after.groups.find((group) => group.tabs.includes("browser"))?.id).toBe(right.id);
+    expect(right.tabs).not.toContain("agent:Agent 1");
+  });
+
+  test("preview browser layout helper creates an agent-free group when required", () => {
+    const layouts = createWorkspaceLayoutStore();
+    const tabs = ["agent:Agent 1", "browser"];
+    layouts.normalize("w", tabs);
+
+    const result = layouts.ensureTabInAgentFreeGroup("w", tabs, "browser");
+
+    const after = layouts.normalize("w", tabs);
+    expect(result?.moved).toBe(true);
+    expect(result?.createdGroup).toBe(true);
+    expect(after.groups).toHaveLength(2);
+    expect(after.groups[1]!.tabs).toEqual(["browser"]);
+    expect(after.groups[1]!.activeTab).toBe("browser");
+  });
+
+  test("preview browser layout helper reopens a closed browser tab", () => {
+    const layouts = createWorkspaceLayoutStore();
+    const tabs = ["agent:Agent 1", "browser"];
+    layouts.closeTab("w", tabs, "browser");
+
+    const result = layouts.ensureTabInAgentFreeGroup("w", tabs, "browser");
+
+    const after = layouts.normalize("w", tabs);
+    expect(result?.createdGroup).toBe(true);
+    expect(after.closedTabs).not.toContain("browser");
+    expect(after.groups.some((group) => group.tabs.includes("browser"))).toBe(true);
+  });
+
   test("SSE stream emits raw turbo-stream HTML in plain data: lines (turbo-stream-source compatible)", async () => {
     const { app, registry, hub } = createTestApp();
     await registry.seed([{ id: "abc", title: "A" }]);
