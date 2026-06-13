@@ -214,7 +214,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function renderWorkspaceRows(): string {
     const entries = registry.list();
     if (entries.length === 0) {
-      return `<div class="row" id="no_workspaces_row"><span></span><div><div class="r-title">No workspaces</div><div class="r-sub">Create one below.</div></div><span></span></div>`;
+      return `<div class="row" id="no_workspaces_row"><div><div class="r-title">No workspaces</div><div class="r-sub">Create one below.</div></div><span></span></div>`;
     }
     return entries.map((entry) => workspaceRow(entry)).join("");
   }
@@ -342,23 +342,20 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     // JavaScript submits this as a Turbo Stream and then switches the resident
     // client-side. Without JavaScript, the endpoint still falls back to a 303.
     const newWorkspaceRow = `<form class="contents" method="post" action="/workspaces" data-turbo="false" data-action="submit->workspace-list#createWorkspace"><button class="row ghost-row" type="submit">
-    <span></span>
-    <div><div class="r-title">+ New workspace</div></div>
+    <div><div class="r-title">New workspace</div></div>
     <span></span>
   </button></form>`;
 
     const managedRepoRows = managedRepos.map((repo) => {
       const modalId = domId("agent_launch_repo_modal", repo.name);
       return `<div class="row managed-repo-row repo-tinted-row" style="${repoColorStyle(repo.name)}">
-    <span></span>
     <div><div class="r-title">${escapeHtml(repo.name)}</div><div class="r-sub">${escapeHtml(repo.remoteUrl ?? repo.path)}</div></div>
     <span class="row-actions"><button class="repo-launch-btn" type="button" title="Start agent workspace from this repo" aria-label="Start agent workspace from ${escapeHtml(repo.name)}" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="${modalId}"><span aria-hidden="true">＋</span></button></span>
   </div>`;
     }).join("");
 
     const addManagedRepoRow = `<button class="row ghost-row" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="add-managed-repo-modal">
-    <span></span>
-    <div><div class="r-title">+ Add managed repository</div><div class="r-sub">Create a bare clone in the Atelier data directory</div></div>
+    <div><div class="r-title">Add managed repository</div><div class="r-sub">Create a bare clone in the Atelier data directory</div></div>
     <span></span>
   </button>`;
 
@@ -377,7 +374,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     <section class="host-repos sidebar-host-repos">
       <div class="section-head"><div><h2>Repositories</h2></div></div>
       <div class="table managed-repos-table">
-        ${managedRepoRows || `<div class="row"><span></span><div><div class="r-title">No managed repositories</div><div class="r-sub">Add one below.</div></div><span></span></div>`}
+        ${managedRepoRows || `<div class="row"><div><div class="r-title">No managed repositories</div><div class="r-sub">Add one below.</div></div><span></span></div>`}
         ${addManagedRepoRow}
       </div>
     </section>

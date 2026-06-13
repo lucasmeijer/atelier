@@ -389,13 +389,14 @@ a.btn { text-decoration: none; }
 .sidebar-collapse-notch:hover { border-color: rgba(37,99,235,.36); background: #fff; color: var(--accent); box-shadow: 6px 0 18px rgba(37,99,235,.14); }
 .sidebar-collapse-notch:hover::before { opacity: 1; }
 .workspace-sidebar-table, .sidebar-host-repos .table { border-left: 0; border-right: 0; border-radius: 0; }
-.workspace-sidebar-table .row, .sidebar-host-repos .row { grid-template-columns: 16px minmax(0, 1fr) auto; padding-left: 14px; padding-right: 14px; }
+.workspace-sidebar-table .row, .sidebar-host-repos .row { grid-template-columns: minmax(0, 1fr) auto; padding-left: 14px; padding-right: 14px; }
+.workspace-sidebar-table .workspace-row { grid-template-columns: minmax(0, 1fr) auto; }
 /* Workspace rows keep a constant height in every state: ready, starting,
    deleting, failed, title-edit mode, and the ghost "+ New workspace" row. */
 .workspace-sidebar-table .row { height: 42px; padding-top: 0; padding-bottom: 0; box-sizing: border-box; overflow: hidden; }
 .workspace-sidebar-table .r-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .workspace-sidebar-title-form input { padding: 3px 6px; }
-.workspace-sidebar-table .row.head { grid-template-columns: 16px minmax(0, 1fr) auto; }
+.workspace-sidebar-table .row.head { grid-template-columns: minmax(0, 1fr) auto; }
 .workspace-row.active { background: var(--accent-soft); }
 .workspace-row.active .r-title { color: var(--accent); }
 .sidebar-host-repos { margin-top: 24px; padding-bottom: 24px; }
