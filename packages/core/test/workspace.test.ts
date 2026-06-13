@@ -56,6 +56,15 @@ describe("core workspaces", () => {
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: "Add dark mode toggle" });
   });
 
+  test("createWorkspace persists source repo name as a Docker label", async () => {
+    const created = await createWorkspace({ sourceRepoName: "atelier.git" });
+
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, sourceRepoName: "atelier.git" });
+    const inspected = await docker(["inspect", "--format", `{{index .Config.Labels "com.atelier.source-repo"}}`, workspaceContainerName(created.id)]);
+    expect(inspected.exitCode).toBe(0);
+    expect(inspected.stdout.trim()).toBe("atelier.git");
+  });
+
   test("execWorkspace captures stdout, stderr, exit code, and duration", async () => {
     const created = await createWorkspace();
 

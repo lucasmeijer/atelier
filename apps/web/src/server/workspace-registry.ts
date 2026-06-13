@@ -8,6 +8,7 @@ export interface WorkspaceEntry {
   title: string | null;
   phase: WorkspacePhase;
   lastActivityAt: number;
+  sourceRepoName: string | null;
   error?: string;
 }
 
@@ -60,10 +61,10 @@ export function createFileWorkspaceActivityStore(path: string): WorkspaceActivit
 export interface WorkspaceRegistry {
   setCallbacks(callbacks: WorkspaceRegistryCallbacks): void;
   /** Seed from the containers Docker knows about. Replaces all current entries with phase "ready". */
-  seed(workspaces: Array<{ id: string; title: string | null }>): Promise<void>;
+  seed(workspaces: Array<{ id: string; title: string | null; sourceRepoName?: string | null }>): Promise<void>;
   list(): WorkspaceEntry[];
   get(id: string): WorkspaceEntry | undefined;
-  add(id: string, title?: string | null): WorkspaceEntry;
+  add(id: string, title?: string | null, sourceRepoName?: string | null): WorkspaceEntry;
   setPhase(id: string, phase: WorkspacePhase, error?: string): void;
   setTitle(id: string, title: string | null): void;
   touch(id: string): void;
@@ -115,6 +116,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
           title: workspace.title,
           phase: "ready",
           lastActivityAt: activity[workspace.id] ?? 0,
+          sourceRepoName: workspace.sourceRepoName ?? null,
         });
       }
       callbacks.listChanged?.(sorted());
@@ -128,9 +130,9 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       return entries.get(id);
     },
 
-    add(id, title = null) {
+    add(id, title = null, sourceRepoName = null) {
       if (entries.has(id)) throw new Error(`workspace already in registry: ${id}`);
-      const entry: WorkspaceEntry = { id, title, phase: "starting", lastActivityAt: now() };
+      const entry: WorkspaceEntry = { id, title, phase: "starting", lastActivityAt: now(), sourceRepoName };
       entries.set(id, entry);
       activity[id] = entry.lastActivityAt;
       persistActivity();

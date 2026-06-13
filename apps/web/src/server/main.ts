@@ -208,6 +208,12 @@ const registry = createWorkspaceRegistry({
 const hub = createStreamHub();
 const layouts = createWorkspaceLayoutStore();
 
+function sourceRepoNameFromContext(context: unknown): string | undefined {
+  if (!context || typeof context !== "object" || !("sourceRepoName" in context)) return undefined;
+  const sourceRepoName = (context as { sourceRepoName?: unknown }).sourceRepoName;
+  return typeof sourceRepoName === "string" && sourceRepoName.trim() ? sourceRepoName.trim() : undefined;
+}
+
 const app = createWebApp({
   registry,
   hub,
@@ -215,7 +221,7 @@ const app = createWebApp({
   events: atelierEvents,
   preferences: createFileWebPreferenceStore(join(defaultDataDir(), "view-state", "preferences.json")),
   async provisionWorkspace(id, options) {
-    if (!isFakeMode()) await createWorkspace({ id, events: atelierEvents });
+    if (!isFakeMode()) await createWorkspace({ id, events: atelierEvents, sourceRepoName: sourceRepoNameFromContext(options?.context) });
     await ensureDefaultWorkspaceAgent(id);
     await atelierEvents.emit("workspace_created", { workspaceId: id, context: options?.context });
   },

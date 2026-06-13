@@ -29,6 +29,7 @@ export interface WorkspaceListResult {
   workspaces: Array<{
     id: string;
     title: string | null;
+    sourceRepoName?: string | null;
   }>;
 }
 
@@ -95,6 +96,7 @@ export type WorkspaceRepoPushResult =
   | { state: "failed"; message: string };
 
 const workspaceIdLabel = "com.atelier.workspace-id";
+export const workspaceSourceRepoLabel = "com.atelier.source-repo";
 
 function namespace(): string {
   return process.env.ATELIER_NAMESPACE || "default";
@@ -226,6 +228,7 @@ export async function execWorkspaceShell(
 export interface CreateWorkspaceOptions {
   id?: string;
   events?: AtelierEventBus;
+  sourceRepoName?: string;
 }
 
 export async function createWorkspace(options: CreateWorkspaceOptions = {}): Promise<WorkspaceNewResult> {
@@ -254,6 +257,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     `${namespaceLabel}=${namespace()}`,
     "--label",
     `${workspaceIdLabel}=${id}`,
+    ...(options.sourceRepoName ? ["--label", `${workspaceSourceRepoLabel}=${options.sourceRepoName}`] : []),
     "--mount",
     `type=bind,src=${dockerHostReposDir},dst=${atelierReposRoot}`,
     "--publish",
@@ -320,17 +324,18 @@ export async function listWorkspaces(): Promise<WorkspaceListResult> {
     "--filter",
     `label=${namespaceLabel}=${namespace()}`,
     "--format",
-    `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}`,
+    `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}\t{{.Label "${workspaceSourceRepoLabel}"}}`,
   ]);
 
   const workspaces: WorkspaceListResult["workspaces"] = [];
   for (const line of listed.stdout.trim().split(/\n+/).filter(Boolean)) {
-    const [containerId, labelledId] = line.split("\t");
+    const [containerId, labelledId, sourceRepoName] = line.split("\t");
     if (!containerId) continue;
     // Workspaces created before app-generated ids carry no workspace-id label;
     // their id is the 8-char container id prefix (their container is named atelier-<prefix>).
     const id = labelledId?.trim() || containerId.slice(0, 8);
-    workspaces.push({ id, title: await readTitle(containerId) });
+    const source = sourceRepoName?.trim();
+    workspaces.push({ id, title: await readTitle(containerId), ...(source ? { sourceRepoName: source } : {}) });
   }
 
   return { workspaces };

@@ -183,7 +183,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const id = entry.id;
     const title = workspaceTitle(entry);
     const selectable = entry.phase === "starting" || entry.phase === "failed" || entry.phase === "ready";
-    const open = (extraClass: string) => `<div class="row workspace-row ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}"${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
+    const sourceRepoClass = entry.sourceRepoName ? "repo-tinted-row" : "";
+    const sourceRepoStyle = entry.sourceRepoName ? ` style="${repoColorStyle(entry.sourceRepoName)}"` : "";
+    const open = (extraClass: string) => `<div class="row workspace-row ${sourceRepoClass} ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}"${sourceRepoStyle}${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
     const workspaceLink = (label: string, attrs = "") => `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"${attrs}><div class="r-title">${escapeHtml(label)}</div></a>`;
     switch (entry.phase) {
       // All phases render single-line rows (no r-sub) so phase changes never
@@ -268,6 +270,23 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 </html>`;
   }
 
+  const repoColorPalette = [
+    "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#22c55e", "#10b981", "#14b8a6",
+    "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
+    "#f43f5e", "#fb7185", "#fdba74", "#facc15", "#a3e635", "#4ade80", "#34d399", "#2dd4bf",
+    "#22d3ee", "#38bdf8", "#60a5fa", "#818cf8", "#a78bfa", "#c084fc", "#e879f9", "#f472b6",
+  ];
+
+  function repoColor(repoName: string): string {
+    let sum = 0;
+    for (let i = 0; i < repoName.length; i++) sum += repoName.charCodeAt(i);
+    return repoColorPalette[sum % repoColorPalette.length]!;
+  }
+
+  function repoColorStyle(repoName: string): string {
+    return `--repo-color:${repoColor(repoName)}`;
+  }
+
   function repoWorktreeName(repoName: string): string {
     return repoName.endsWith(".git") ? repoName.slice(0, -4) : repoName;
   }
@@ -321,7 +340,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
     const managedRepoRows = managedRepos.map((repo) => {
       const modalId = domId("agent_launch_repo_modal", repo.name);
-      return `<div class="row managed-repo-row">
+      return `<div class="row managed-repo-row repo-tinted-row" style="${repoColorStyle(repo.name)}">
     <span></span>
     <div><div class="r-title">${escapeHtml(repo.name)}</div><div class="r-sub">${escapeHtml(repo.remoteUrl ?? repo.path)}</div></div>
     <span class="row-actions"><button class="repo-launch-btn" type="button" title="Start agent workspace from this repo" aria-label="Start agent workspace from ${escapeHtml(repo.name)}" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="${modalId}"><span aria-hidden="true">＋</span></button></span>
@@ -575,10 +594,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const text = String(form.get("text") ?? "").trim();
     if (!text) return turboStreamResponse("", { status: 400 });
     const id = generateWorkspaceId();
-    registry.add(id);
+    registry.add(id, null, repo.name);
     const model = String(form.get("model") ?? "");
     await rememberPreferredNewAgentModel(model);
     const context: WorkspaceCreationContext = {
+      sourceRepoName: repo.name,
       agent: {
         initialPrompt: text,
         model,
