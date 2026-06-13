@@ -579,6 +579,7 @@ function bashOutputHtml(text: string): string {
 
 const bashRenderer: ToolRenderer = {
   known: true,
+  flushSingleBlock: true,
   summary: commandSummary,
   resultHtml: (_ctx, tool) => {
     const displayAnsi = bashDetails(tool)?.displayAnsi;
