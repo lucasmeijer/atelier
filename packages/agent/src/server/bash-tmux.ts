@@ -113,9 +113,16 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
       // tmux/UI display channel. COLOR is used by CMake-generated Makefiles,
       // FORCE_COLOR by many JS/Rust tools, CLICOLOR_FORCE by BSD-ish tools, and
       // NINJA_STATUS gives direct ninja invocations a colored progress prefix.
-      const colorEnv = "TERM=xterm-256color COLORTERM=truecolor CLICOLOR_FORCE=1 FORCE_COLOR=1 COLOR=1";
+      const colorEnv = `TERM=xterm-256color COLORTERM=truecolor COLUMNS=${agentTermCols} LINES=${agentTermRows} CLICOLOR_FORCE=1 FORCE_COLOR=1 COLOR=1`;
       const ninjaStatus = "NINJA_STATUS=$(printf '\\033[36m[%%f/%%t %%p]\\033[0m ')";
-      const inner = `tmux set-window-option remain-on-exit on; ${ninjaStatus} ${colorEnv} ${guards} script -qefc ${shellQuote(params.command)} ${shellQuote(outFile)}; echo $? > ${shellQuote(exitFile)}`;
+      // Force the tmux pane's tty size immediately before `script` starts.
+      // `script` copies the parent tty size to the command's PTY; if the size
+      // is briefly reported as very narrow, carriage-return progress UIs (for
+      // example `git clone`) wrap and then each `\r` returns only to the start
+      // of the wrapped physical row, producing concatenated progress text in
+      // the live browser terminal.
+      const forceTtySize = `stty cols ${agentTermCols} rows ${agentTermRows} 2>/dev/null || true`;
+      const inner = `tmux set-window-option remain-on-exit on; ${forceTtySize}; ${ninjaStatus} ${colorEnv} ${guards} script -qefc ${shellQuote(params.command)} ${shellQuote(outFile)}; echo $? > ${shellQuote(exitFile)}`;
       // Fixed desktop-like terminal size; `window-size manual` stops attached
       // viewers (the inline xterm) from resizing the command's terminal.
       const create = await execWorkspaceShell(

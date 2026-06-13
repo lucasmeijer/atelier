@@ -16,7 +16,7 @@ mock.module("@atelier/core", () => ({
   workspaceContainerName: (workspaceId: string) => `atelier-${workspaceId}`,
 }));
 
-const { createTmuxBashTool, stripTmuxPaneFraming } = await import("../../src/server/bash-tmux.ts");
+const { agentTermCols, agentTermRows, createTmuxBashTool, stripTmuxPaneFraming } = await import("../../src/server/bash-tmux.ts");
 
 function textResult(result: any): string {
   return result.content.map((part: { text?: string }) => part.text ?? "").join("");
@@ -41,6 +41,17 @@ describe("tmux bash tool", () => {
       return { stdout: "", stderr: "", exitCode: 0 };
     });
     execWorkspaceCommand.mockImplementation(async () => ({ stdout: "", stderr: "", exitCode: 0 }));
+  });
+
+  test("forces a stable tty size for carriage-return progress UIs", async () => {
+    await executeBash({ command: "git clone https://example.com/repo.git" });
+
+    const createCall = execWorkspaceShell.mock.calls.find(([, command]) => command.includes("tmux new-session"));
+    expect(createCall).toBeDefined();
+    const command = createCall![1];
+    expect(command).toContain(`-x ${agentTermCols} -y ${agentTermRows}`);
+    expect(command).toContain(`stty cols ${agentTermCols} rows ${agentTermRows}`);
+    expect(command).toContain(`COLUMNS=${agentTermCols} LINES=${agentTermRows}`);
   });
 
   test("returns ANSI-stripped model output while storing colored pane output", async () => {
