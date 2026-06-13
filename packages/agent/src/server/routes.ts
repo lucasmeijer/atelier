@@ -152,6 +152,11 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/messages$/)) && request.method === "POST") {
     return await agentMessagesEndpoint(params[0], params[1], request, options);
   }
+  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/followups\/([^/]+)\/cancel$/)) && request.method === "POST") {
+    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
+    await runtime.cancelFollowup(params[2]);
+    return turboStreamResponse("");
+  }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/abort$/)) && request.method === "POST") {
     const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
     await runtime.abort();

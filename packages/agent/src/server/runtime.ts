@@ -15,6 +15,7 @@ import {
   renderFinalText,
   renderItem,
   renderNotice,
+  renderPendingFollowups,
   renderPromptActions,
   renderRunningToolCard,
   renderSection,
@@ -74,6 +75,7 @@ export interface WorkspaceAgentRuntime {
   systemPrompt(): string;
   userMessages(): string[];
   submit(text: string, options: SubmitOptions): Promise<void>;
+  cancelFollowup(id: string): Promise<void>;
   abort(): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: string): Promise<void>;
@@ -127,6 +129,14 @@ interface StreamingMarkdownState {
   getText: () => string;
 }
 
+interface PendingFollowup {
+  id: string;
+  displayText: string;
+  fullText: string;
+  imageRefs: ImageRef[];
+  imageContent?: { type: "image"; data: string; mimeType: string }[];
+}
+
 /** Only attach the inline terminal when a tool call has been running this long. */
 const terminalRevealMs = 3000;
 
@@ -141,6 +151,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   private pendingDeltas = new Map<string, string>();
   private deltaTimer: ReturnType<typeof setTimeout> | undefined;
   private streamingMarkdown = new Map<string, StreamingMarkdownState>();
+  private pendingFollowups: PendingFollowup[] = [];
 
   constructor(agent: WorkspaceAgentInfo) {
     this.workspaceId = agent.workspaceId;
@@ -246,6 +257,30 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   protected notice(level: "info" | "error", message: string): void {
     this.stream(turboStream("append", ids.notices(this.ctx), renderNotice(level, message)));
+  }
+
+  protected queuePendingFollowup(item: Omit<PendingFollowup, "id">): string {
+    const id = crypto.randomUUID();
+    this.pendingFollowups.push({ id, ...item });
+    this.renderPendingFollowups();
+    return id;
+  }
+
+  protected shiftPendingFollowup(): PendingFollowup | undefined {
+    const next = this.pendingFollowups.shift();
+    if (next) this.renderPendingFollowups();
+    return next;
+  }
+
+  async cancelFollowup(id: string): Promise<void> {
+    const index = this.pendingFollowups.findIndex((item) => item.id === id);
+    if (index === -1) return;
+    this.pendingFollowups.splice(index, 1);
+    this.renderPendingFollowups();
+  }
+
+  private renderPendingFollowups(): void {
+    this.stream(turboStream("update", ids.pendingFollowups(this.ctx), renderPendingFollowups(this.ctx, this.pendingFollowups)));
   }
 
   // ---- live section streaming -------------------------------------------
@@ -484,6 +519,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const sections = await this.sectionsForDisplay();
     return (
       turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, sections, this.systemPrompt())) +
+      turboStream("update", ids.pendingFollowups(this.ctx), renderPendingFollowups(this.ctx, this.pendingFollowups)) +
       turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, this.busy)) +
       turboStream("update", ids.stats(this.ctx), renderStatsBar(this.ctx, await this.statsView()))
     );
@@ -702,6 +738,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       case "agent_end":
         await this.liveEnd();
         this.setBusy(false);
+        this.startNextPendingFollowup();
         break;
       case "compaction_start":
         this.notice("info", "Compacting context…");
@@ -727,8 +764,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
 
     if (this.session.isStreaming) {
       if (options.mode === "followup") {
-        await this.session.followUp(fullText, images.length > 0 ? images : undefined);
-        this.liveNote(`Queued follow-up: ${trimmed}`, "system");
+        this.queuePendingFollowup({ displayText: trimmed || "(attachments)", fullText, imageRefs: options.images ?? [], imageContent: images.length > 0 ? images : undefined });
       } else {
         await this.session.steer(fullText, images.length > 0 ? images : undefined);
         this.liveNote(`Steer: ${trimmed}`, "system");
@@ -740,6 +776,20 @@ class RealAgentRuntime extends BaseAgentRuntime {
     this.setBusy(true);
     void this.session
       .prompt(fullText, images.length > 0 ? { images } : undefined)
+      .catch(async (error: unknown) => {
+        this.notice("error", error instanceof Error ? error.message : String(error));
+        await this.liveEnd();
+        this.setBusy(false);
+      });
+  }
+
+  private startNextPendingFollowup(): void {
+    const next = this.shiftPendingFollowup();
+    if (!next) return;
+    this.liveBegin({ text: next.displayText === "(attachments)" ? "" : next.displayText, images: next.imageRefs });
+    this.setBusy(true);
+    void this.session
+      .prompt(next.fullText, next.imageContent && next.imageContent.length > 0 ? { images: next.imageContent } : undefined)
       .catch(async (error: unknown) => {
         this.notice("error", error instanceof Error ? error.message : String(error));
         await this.liveEnd();
@@ -893,7 +943,7 @@ class FakeAgentRuntime extends BaseAgentRuntime {
   private aborted = false;
   private running = false;
   private summarizing = false;
-  private followUpQueue: string[] = [];
+
   private thinkingLevel = "medium";
   private modelId = configuredAgentModels[0]?.id ?? "gpt-5.5";
 
@@ -998,8 +1048,7 @@ class FakeAgentRuntime extends BaseAgentRuntime {
     if (options.attachmentNotes?.length) trimmed = `${trimmed}\n\n${options.attachmentNotes.join("\n")}`.trim();
     if (this.running) {
       if (options.mode === "followup") {
-        this.followUpQueue.push(trimmed);
-        this.liveNote(`Queued follow-up: ${trimmed}`, "system");
+        this.queuePendingFollowup({ displayText: trimmed || "(attachments)", fullText: trimmed, imageRefs: options.images ?? [] });
       } else {
         this.liveNote(`Steer: ${trimmed}`, "system");
         await this.append({ t: "user", text: `[steer] ${trimmed}`, images: [] });
@@ -1084,10 +1133,10 @@ class FakeAgentRuntime extends BaseAgentRuntime {
     this.setBusy(false);
     this.running = false;
 
-    const next = this.followUpQueue.shift();
+    const next = this.shiftPendingFollowup();
     if (next) {
       await fakeDelay(400);
-      void this.run(next, { mode: "send" });
+      void this.run(next.fullText, { mode: "send", images: next.imageRefs });
     }
   }
 

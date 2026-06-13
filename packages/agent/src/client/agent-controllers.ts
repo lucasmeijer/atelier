@@ -37,11 +37,12 @@ export interface AgentPaneControllerInstance {
 export function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
     static values = { workspaceId: String, label: String };
-    static targets = ["transcript", "input", "form", "rewindDialog", "rewindEntry", "rewindPreview"];
+    static targets = ["transcript", "pendingFollowups", "input", "form", "rewindDialog", "rewindEntry", "rewindPreview"];
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
     declare readonly labelValue: string;
     declare readonly transcriptTarget: HTMLElement;
+    declare readonly pendingFollowupsTarget: HTMLElement;
     declare readonly inputTarget: HTMLTextAreaElement;
     declare readonly formTarget: HTMLFormElement;
     declare readonly rewindDialogTarget: HTMLDialogElement;
@@ -71,6 +72,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
         }
       });
       this.observer.observe(this.transcriptTarget, { childList: true, subtree: true, characterData: true });
+      this.observer.observe(this.pendingFollowupsTarget, { childList: true, subtree: true, characterData: true });
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       document.addEventListener("keydown", this.onKeydown);
       if (this.element.closest(".tab-pane")?.classList.contains("active")) this.start();

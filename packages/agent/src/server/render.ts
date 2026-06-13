@@ -49,6 +49,7 @@ export const ids = {
   draftAttachRow: (draftId: string) => domId("agent_draft_attach", draftId),
   draftChip: (draftId: string, attachmentId: string) => domId("agent_draft_chip", draftId, attachmentId),
   notices: (ctx: AgentRenderContext) => `${prefix(ctx)}_notices`,
+  pendingFollowups: (ctx: AgentRenderContext) => `${prefix(ctx)}_pending_followups`,
 };
 
 function agentPath(ctx: AgentRenderContext, suffix: string): string {
@@ -100,6 +101,7 @@ export function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentIn
       data-agent-attachments-upload-url-value="${escapeHtml(`/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`)}"
       data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
       <div class="agent-transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
+      <div class="agent-pending-followups" id="${ids.pendingFollowups(ctx)}" data-agent-pane-target="pendingFollowups">${renderPendingFollowups(ctx, [])}</div>
       ${renderAgentComposer({
         ctx,
         action: agentPath(ctx, "/messages"),
@@ -178,6 +180,10 @@ function renderComposerSettings(formId: string, selectedModel?: string): string 
 <select class="agent-sel" name="model" form="${escapeHtml(formId)}" title="Model">${modelOptions}</select>
 <select class="agent-sel" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}">${escapeHtml(level)}</option>`).join("")}</select>
 </span>`;
+}
+
+export function renderPendingFollowups(ctx: AgentRenderContext, messages: Array<{ id: string; displayText: string }>): string {
+  return messages.map((message) => `<div class="agent-pending-followup"><form method="post" action="${escapeHtml(agentPath(ctx, `/followups/${encodeURIComponent(message.id)}/cancel`))}"><button class="agent-pending-x" type="submit" title="Cancel follow-up" aria-label="Cancel follow-up">×</button></form><span class="agent-pending-label">Queued follow-up</span><div class="agent-pending-text">${escapeHtml(message.displayText)}</div></div>`).join("");
 }
 
 export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): string {

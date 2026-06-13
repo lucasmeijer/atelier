@@ -203,6 +203,14 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
  * Prompt box
  * ------------------------------------------------------------------------ */
 
+.agent-pending-followups { flex: none; max-width: 860px; width: calc(100% - 36px); margin: 0 auto; padding: 0 0 4px; display: flex; flex-direction: column; gap: 6px; }
+.agent-pending-followups:empty { display: none; }
+.agent-pending-followup { position: relative; align-self: flex-end; max-width: 86%; background: #fff8e8; border: 1px solid #f4e3b8; border-radius: 12px 12px 4px 12px; padding: 7px 28px 7px 10px; font-size: 12px; color: var(--text); box-shadow: 0 2px 8px rgba(19, 26, 38, .04); }
+.agent-pending-x { position: absolute; top: 5px; right: 7px; width: 17px; height: 17px; border: none; border-radius: 50%; background: transparent; color: var(--muted-2); font-size: 15px; line-height: 16px; padding: 0; cursor: pointer; }
+.agent-pending-x:hover { background: rgba(146, 64, 14, .1); color: var(--amber); }
+.agent-pending-label { display: block; margin-bottom: 3px; color: var(--amber); font-weight: 650; font-size: 11px; }
+.agent-pending-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
 .agent-promptwrap { flex: none; padding: 4px 18px 12px; }
 .agent-promptbox {
   max-width: 860px; margin: 0 auto; background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px;

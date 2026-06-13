@@ -22,6 +22,10 @@ function textResult(result: any): string {
   return result.content.map((part: { text?: string }) => part.text ?? "").join("");
 }
 
+async function executeBash(params: { command: string; timeout?: number }) {
+  return await createTmuxBashTool("ws").execute("call", params, undefined, undefined, {} as any);
+}
+
 describe("tmux bash tool", () => {
   beforeEach(() => {
     execWorkspaceShell.mockClear();
@@ -51,7 +55,7 @@ describe("tmux bash tool", () => {
       return { stdout: "", stderr: "", exitCode: 0 };
     });
 
-    const result = await createTmuxBashTool("ws").execute("call", { command: "printf red" });
+    const result = await executeBash({ command: "printf red" });
 
     expect(textResult(result)).toBe("red");
     expect(result.details.displayAnsi).toBe("\u001b[31mred\u001b[0m");
@@ -75,7 +79,7 @@ describe("tmux bash tool", () => {
       return { stdout: "", stderr: "", exitCode: 0 };
     });
 
-    const result = await createTmuxBashTool("ws").execute("call", { command: "seq 1 100" });
+    const result = await executeBash({ command: "seq 1 100" });
 
     expect(textResult(result)).toBe(plainLines.join("\n"));
     expect(result.details.displayAnsi.split("\n")).toHaveLength(100);
@@ -93,7 +97,7 @@ describe("tmux bash tool", () => {
       return { stdout: "", stderr: "", exitCode: 0 };
     });
 
-    const result = await createTmuxBashTool("ws").execute("call", { command: "false" });
+    const result = await executeBash({ command: "false" });
 
     expect(textResult(result)).toBe("failure\n\nCommand exited with code 7");
     expect(result.details).toMatchObject({ exitCode: 7, aborted: false, timedOut: false });
