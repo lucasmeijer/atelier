@@ -367,6 +367,85 @@ class WorkspaceGroupsController extends Controller {
   }
 }
 
+class AtelierShortcutsController extends Controller {
+  declare readonly element: HTMLElement;
+
+  connect(): void {
+    // Listen at window capture so we get first chance at shortcuts that focused
+    // Atelier-owned widgets (not iframes) might otherwise consume.
+    window.addEventListener("keydown", this.keydown, true);
+  }
+
+  disconnect(): void {
+    window.removeEventListener("keydown", this.keydown, true);
+  }
+
+  private readonly keydown = (event: KeyboardEvent): void => {
+    if (event.repeat || event.isComposing) return;
+    if (!event.metaKey || !event.altKey || event.ctrlKey || event.shiftKey) return;
+
+    if (event.code === "BracketLeft" || event.key === "[" || event.key === "“") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.focusAdjacentGroup(-1);
+      return;
+    }
+
+    if (event.code === "BracketRight" || event.key === "]" || event.key === "‘") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.focusAdjacentGroup(1);
+    }
+  };
+
+  private focusAdjacentGroup(direction: -1 | 1): void {
+    const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.active");
+    if (!resident) return;
+    const groups = [...resident.querySelectorAll<HTMLElement>(".workspace-group")];
+    if (groups.length === 0) return;
+
+    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const current = activeElement?.closest<HTMLElement>(".workspace-group");
+    const currentIndex = current && groups.includes(current) ? groups.indexOf(current) : 0;
+    const nextIndex = (currentIndex + direction + groups.length) % groups.length;
+    this.focusGroup(groups[nextIndex] ?? groups[0]);
+  }
+
+  private focusGroup(group: HTMLElement | undefined): void {
+    if (!group) return;
+    const workspaceId = group.closest<HTMLElement>("[data-workspace-id]")?.dataset.workspaceId;
+    const tabName = group.querySelector<HTMLElement>(".group-tab.active[data-tab]")?.dataset.tab;
+    const pane = tabName
+      ? group.querySelector<HTMLElement>(`.tab-pane.active[data-tab-pane="${CSS.escape(tabName)}"]`)
+      : group.querySelector<HTMLElement>(".tab-pane.active[data-tab-pane]");
+
+    if (workspaceId && tabName?.startsWith("terminal:")) {
+      void startTerminal(workspaceId, tabName.slice("terminal:".length), { focus: true });
+      return;
+    }
+
+    const agentInput = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
+    if (agentInput) {
+      agentInput.focus();
+      return;
+    }
+
+    const iframe = pane?.querySelector<HTMLIFrameElement>("iframe");
+    if (iframe) {
+      iframe.focus();
+      return;
+    }
+
+    const focusable = pane?.querySelector<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])");
+    if (focusable) {
+      focusable.focus();
+      return;
+    }
+
+    group.querySelector<HTMLButtonElement>(".group-tab.active .group-tab-label")?.focus();
+  }
+}
+
 class ModalController extends Controller {
   static values = { autoShow: Boolean };
   declare readonly element: HTMLDialogElement;
@@ -750,6 +829,7 @@ application.register("workspace-tabs", WorkspaceTabsController);
 application.register("workspace-tab-close", WorkspaceTabCloseController);
 application.register("workspace-groups", WorkspaceGroupsController);
 application.register("workspace-residency", WorkspaceResidencyController);
+application.register("atelier-shortcuts", AtelierShortcutsController);
 application.register("terminal-pane", createTerminalPaneController(Controller));
 application.register("agent-pane", createAgentPaneController(Controller));
 application.register("agent-attachments", createAgentAttachmentsController(Controller));
