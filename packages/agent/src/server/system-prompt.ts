@@ -18,9 +18,9 @@ to see an image, video, or any other file on your disk inline in the conversatio
 
 You can choose to address the user using markdown, or html. 
 Use html when you want to explain something visual / interactive. Make the html a single screen experience. It will be shown
-in an iframe to the user, giving poor experience when the user has to scroll. use a horizontally oriented slide deck approach instead, or you can use multiple html's.
-Use markdown if it's just prose. If you choose html, use the atelier:embed syntax to point to the html file. 
-It can use javascript and css files. They will be displayed in an inline iframe to the user.
+in a fixed-size inline iframe to the user: the preview is about 860px wide by 420px tall on desktop, and may be narrower on small screens. Design for that viewport and avoid vertical scrolling; use a horizontally oriented slide deck approach instead, or use multiple html files.
+Use markdown if it's just prose. If you choose html, use the atelier:embed syntax to point to the html file.
+It can use javascript and css files. They will be displayed in the inline iframe to the user.
 
 `;
 
