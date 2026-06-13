@@ -127,6 +127,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     layouts,
   }));
   const imageBuilds = new Map<string, { state: "building" | "failed"; image: string; modules: string[]; output: string; error?: string }>();
+  const workspaceCommandModalHostId = "workspace_command_modal_host";
 
   async function preferredNewAgentModel(): Promise<string | undefined> {
     return (await deps.preferences?.load())?.preferredNewAgentModel;
@@ -299,13 +300,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return repoName.endsWith(".git") ? repoName.slice(0, -4) : repoName;
   }
 
-  function launchRepoAgentModal(repo: { name: string; path: string; remoteUrl: string | null }, selectedModel?: string): string {
-    const modalId = domId("agent_launch_repo_modal", repo.name);
-    const formId = domId("agent_launch_repo_form", repo.name);
+  function launchRepoAgentModal(repo: { name: string; path: string; remoteUrl: string | null }, selectedModel?: string, options: { autoShow?: boolean; modalId?: string; formId?: string } = {}): string {
+    const modalId = options.modalId ?? domId("agent_launch_repo_modal", repo.name);
+    const formId = options.formId ?? domId("agent_launch_repo_form", repo.name);
     const cloneUrl = repo.remoteUrl || repo.path;
     const worktreeName = repoWorktreeName(repo.name);
     const initialText = `git clone ${cloneUrl} into /repos/${worktreeName}\n\nand then\n\n`;
-    return `<dialog id="${modalId}" class="agent-launch-modal" data-controller="modal">
+    return `<dialog id="${modalId}" class="agent-launch-modal" data-controller="modal submit-shortcut"${options.autoShow ? ` data-modal-auto-show-value="true"` : ""}>
   ${renderAgentComposer({
     action: `/repo-agent-workspaces/${encodeURIComponent(repo.name)}`,
     draftId: crypto.randomUUID(),
@@ -315,7 +316,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     submitLabel: "Create workspace and kick off agent",
     submitShortcut: "⌘↩",
     rows: 8,
-    formActions: "turbo:submit-end->modal#submitted",
+    formActions: "keydown->submit-shortcut#keydown turbo:submit-end->modal#submitted",
     selectedModel,
   })}
 </dialog>`;
@@ -388,7 +389,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // ---------------------------------------------------------------------------
 
   async function attachWorkspaceModules(workspaceId: string): Promise<WorkspaceAttachment[]> {
-    return await Promise.all(workspaceModules.map((module) => module.attachToWorkspace({ workspaceId })));
+    const entry = requireWorkspace(workspaceId);
+    return await Promise.all(workspaceModules.map((module) => module.attachToWorkspace({ workspaceId, sourceRepoName: entry.sourceRepoName })));
   }
 
   async function workspaceTabsAndAttachments(workspaceId: string): Promise<{ attachments: WorkspaceAttachment[]; tabs: WorkspaceTabContribution[] }> {
@@ -415,7 +417,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function renderWorkspaceGroups(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {
     const layoutState = layouts.normalize(workspaceId, tabs.map((tab) => tab.key));
     const tabByKey = new Map(tabs.map((tab) => [tab.key, tab]));
-    const commands = attachments.flatMap((attachment) => attachment.workspaceCommands ?? []).filter((command) => command.surfaces?.ui?.placement === "group-menu");
+    const allCommands = attachments.flatMap((attachment) => attachment.workspaceCommands ?? []);
+    const commands = allCommands.filter((command) => command.surfaces?.ui?.placement === "group-menu");
+    const shortcutCommands = allCommands.flatMap((command) => {
+      const binding = command.surfaces?.shortcut?.defaultBinding;
+      return binding ? [{ id: command.id, binding }] : [];
+    });
     const actionMenu = (group: { id: string }, index: number) => `<details class="group-add-menu"><summary class="group-icon-btn" title="Add tab or group">+</summary><div class="group-menu-panel">
       ${commands.map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/commands/${encodeURIComponent(command.id)}"><button type="submit">${escapeHtml(command.surfaces?.ui?.label ?? command.label)}</button></form>`).join("")}
       <form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/split"><button type="submit">New Group</button></form>
@@ -442,7 +449,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       ${index === layoutState.groups.length - 1 ? `<div class="new-group-drop-zone" data-new-group-drop-zone="true" data-action="dragover->workspace-groups#dragOver dragleave->workspace-groups#dragLeave drop->workspace-groups#drop" title="Drop here to create a new group" aria-label="Drop tab here to create a new group"></div>` : ""}
     </section>${index < layoutState.groups.length - 1 ? `<div class="group-resizer" data-action="pointerdown->workspace-groups#startResize" data-resizer-index="${index}" role="separator" aria-orientation="vertical"></div>` : ""}`;
     }).join("");
-    return `<div class="workspace-groups" id="${workspaceGroupsId(workspaceId)}" data-controller="workspace-groups" data-workspace-groups-workspace-id-value="${escapeHtml(workspaceId)}">${groups}</div>`;
+    return `<div class="workspace-groups" id="${workspaceGroupsId(workspaceId)}" data-controller="workspace-groups" data-workspace-groups-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-command-shortcuts="${escapeHtml(JSON.stringify(shortcutCommands))}">${groups}</div>`;
   }
 
   async function renderWorkspaceGroupsFor(workspaceId: string): Promise<string> {
@@ -540,6 +547,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     <main class="workspace-shell-main">${await workspaceDetailHostHtml(selectedId)}</main>
   </div>
   ${addManagedRepoModal()}
+  <div id="${workspaceCommandModalHostId}"></div>
   ${await renderRepoLaunchModals()}`;
   }
 
@@ -844,7 +852,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     }
   }
 
-  async function executeWorkspaceCommand(workspaceId: string, commandId: string, context: { groupId?: string } = {}): Promise<{ createdTabKey?: string }> {
+  async function executeWorkspaceCommand(workspaceId: string, commandId: string): Promise<{ createdTabKey?: string; streamHtml?: string }> {
     await assertWorkspaceCommandExists(workspaceId, commandId);
     switch (commandId) {
       case "agent.create": {
@@ -860,16 +868,44 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       }
       case "browser.create":
         return { createdTabKey: createWorkspaceBrowserTabForWorkspace(workspaceId).key };
+      case "agent.launch-source-repo-workspace": {
+        const entry = requireWorkspace(workspaceId);
+        if (!entry.sourceRepoName) throw new AtelierCoreError("source_repo_not_found", `workspace ${workspaceId} was not created from a managed repository`);
+        const { repos } = await listManagedRepos();
+        const repo = repos.find((candidate) => candidate.name === entry.sourceRepoName);
+        if (!repo) throw new AtelierCoreError("managed_repo_not_found", `managed repo not found: ${entry.sourceRepoName}`);
+        const modal = launchRepoAgentModal(repo, await preferredNewAgentModel(), {
+          autoShow: true,
+          modalId: domId("agent_launch_source_repo_modal", workspaceId, repo.name),
+          formId: domId("agent_launch_source_repo_form", workspaceId, repo.name),
+        });
+        return { streamHtml: turboUpdateStream(workspaceCommandModalHostId, modal) };
+      }
       default:
         throw new AtelierCoreError("command_not_implemented", `workspace command not implemented: ${commandId}`);
     }
   }
 
+  function workspaceGroupsTurboStream(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {
+    return turboReplaceStream(workspaceGroupsId(workspaceId), renderWorkspaceGroups(workspaceId, tabs, attachments));
+  }
+
   async function workspaceGroupCommandEndpoint(workspaceId: string, groupId: string, commandId: string): Promise<Response> {
-    const result = await executeWorkspaceCommand(workspaceId, commandId, { groupId });
+    const result = await executeWorkspaceCommand(workspaceId, commandId);
     const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
     if (result.createdTabKey) layouts.placeNewTab(workspaceId, tabs.map((tab) => tab.key), groupId, result.createdTabKey);
-    return turboStreamResponse(`<turbo-stream action="replace" target="${workspaceGroupsId(workspaceId)}"><template>${renderWorkspaceGroups(workspaceId, tabs, attachments)}</template></turbo-stream>`);
+    return turboStreamResponse(`${workspaceGroupsTurboStream(workspaceId, tabs, attachments)}${result.streamHtml ?? ""}`);
+  }
+
+  async function workspaceCommandEndpoint(workspaceId: string, commandId: string): Promise<Response> {
+    const result = await executeWorkspaceCommand(workspaceId, commandId);
+    if (!result.createdTabKey) return turboStreamResponse(result.streamHtml ?? "");
+
+    const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
+    const tabKeys = tabs.map((tab) => tab.key);
+    const groupId = layouts.normalize(workspaceId, tabKeys).groups.find((group) => group.activeTab)?.id;
+    if (groupId) layouts.placeNewTab(workspaceId, tabKeys, groupId, result.createdTabKey);
+    return turboStreamResponse(`${workspaceGroupsTurboStream(workspaceId, tabs, attachments)}${result.streamHtml ?? ""}`);
   }
 
   async function workspaceGroupActionEndpoint(workspaceId: string, groupId: string, actionKey: string): Promise<Response> {
@@ -964,6 +1000,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       if (request.method === "POST") return await updateWorkspaceSidebarTitleFromForm(params[0], request);
     }
     if ((params = match(/^\/workspaces\/([^/]+)\/view-state$/)) && request.method === "POST") return await updateWorkspaceViewStateEndpoint(params[0], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceGroupCommandEndpoint(params[0], params[1], params[2]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/actions\/([^/]+)$/)) && request.method === "POST") return await workspaceGroupActionEndpoint(params[0], params[1], params[2]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/split$/)) && request.method === "POST") return await splitWorkspaceGroupEndpoint(params[0], params[1]);

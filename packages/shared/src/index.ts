@@ -2,6 +2,7 @@ export const atelierName = "Atelier" as const;
 
 export interface WorkspaceAttachContext {
   workspaceId: string;
+  sourceRepoName?: string | null;
 }
 
 export interface WorkspaceTabContribution {

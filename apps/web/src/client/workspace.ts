@@ -367,6 +367,8 @@ class WorkspaceGroupsController extends Controller {
   }
 }
 
+type WorkspaceShortcutCommand = { id: string; binding: string };
+
 class AtelierShortcutsController extends Controller {
   declare readonly element: HTMLElement;
 
@@ -395,8 +397,66 @@ class AtelierShortcutsController extends Controller {
       event.preventDefault();
       event.stopImmediatePropagation();
       this.focusAdjacentGroup(1);
+      return;
+    }
+
+    const commandId = this.registeredShortcutCommandId(event);
+    if (commandId) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void this.executeActiveWorkspaceCommand(commandId);
     }
   };
+
+  private registeredShortcutCommandId(event: KeyboardEvent): string | undefined {
+    const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.active");
+    const groups = resident?.querySelector<HTMLElement>(".workspace-groups[data-workspace-command-shortcuts]");
+    if (!groups?.dataset.workspaceCommandShortcuts) return undefined;
+    let shortcuts: unknown;
+    try {
+      shortcuts = JSON.parse(groups.dataset.workspaceCommandShortcuts);
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(shortcuts)) return undefined;
+    return shortcuts.find((shortcut): shortcut is WorkspaceShortcutCommand => {
+      return typeof shortcut?.id === "string" && typeof shortcut?.binding === "string" && this.matchesBinding(event, shortcut.binding);
+    })?.id;
+  }
+
+  private matchesBinding(event: KeyboardEvent, binding: string): boolean {
+    const parts = new Set(binding.split("+").map((part) => part.trim()).filter(Boolean));
+    const modifiers = new Set(["Meta", "Alt", "Control", "Shift"]);
+    const code = [...parts].find((part) => !modifiers.has(part));
+    return Boolean(code)
+      && event.code === code
+      && event.metaKey === parts.has("Meta")
+      && event.altKey === parts.has("Alt")
+      && event.ctrlKey === parts.has("Control")
+      && event.shiftKey === parts.has("Shift");
+  }
+
+  private activeWorkspaceId(): string | undefined {
+    const fromPath = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
+    if (fromPath) return decodeURIComponent(fromPath);
+    return residencyController()?.activeWorkspaceId();
+  }
+
+  private async executeActiveWorkspaceCommand(commandId: string): Promise<void> {
+    const workspaceId = this.activeWorkspaceId();
+    if (!workspaceId) return;
+    try {
+      const response = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/commands/${encodeURIComponent(commandId)}`, {
+        method: "POST",
+        headers: { "Accept": "text/vnd.turbo-stream.html" },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const html = await response.text();
+      if (html) window.Turbo?.renderStreamMessage(html);
+    } catch (error) {
+      console.error("Could not execute workspace command", error);
+    }
+  }
 
   private focusAdjacentGroup(direction: -1 | 1): void {
     const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.active");
@@ -446,6 +506,28 @@ class AtelierShortcutsController extends Controller {
   }
 }
 
+function focusDialogPromptEnd(dialog: ParentNode): void {
+  const input = dialog.querySelector<HTMLTextAreaElement>("textarea");
+  if (!input) return;
+  requestAnimationFrame(() => {
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  });
+}
+
+class SubmitShortcutController extends Controller {
+  declare readonly element: HTMLElement;
+
+  keydown(event: KeyboardEvent): void {
+    if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
+    const form = event.target instanceof HTMLElement ? event.target.closest<HTMLFormElement>("form") : null;
+    if (!form || !this.element.contains(form)) return;
+    event.preventDefault();
+    const submitter = form.querySelector<HTMLButtonElement>('button[type="submit"], button:not([type])');
+    form.requestSubmit(submitter ?? undefined);
+  }
+}
+
 class ModalController extends Controller {
   static values = { autoShow: Boolean };
   declare readonly element: HTMLDialogElement;
@@ -457,7 +539,10 @@ class ModalController extends Controller {
 
   connect(): void {
     this.element.addEventListener("close", this.onClose);
-    if (this.autoShowValue && !this.element.open) this.element.showModal();
+    if (this.autoShowValue && !this.element.open) {
+      this.element.showModal();
+      focusDialogPromptEnd(this.element);
+    }
   }
 
   disconnect(): void {
@@ -485,13 +570,7 @@ class ModalOpenerController extends Controller {
     if (!dialog || dialog.open) return;
     dialog.showModal();
     this.element.blur();
-    const input = dialog.querySelector<HTMLTextAreaElement>("textarea");
-    if (input) {
-      requestAnimationFrame(() => {
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
-      });
-    }
+    focusDialogPromptEnd(dialog);
   }
 }
 
@@ -830,6 +909,7 @@ application.register("workspace-tab-close", WorkspaceTabCloseController);
 application.register("workspace-groups", WorkspaceGroupsController);
 application.register("workspace-residency", WorkspaceResidencyController);
 application.register("atelier-shortcuts", AtelierShortcutsController);
+application.register("submit-shortcut", SubmitShortcutController);
 application.register("terminal-pane", createTerminalPaneController(Controller));
 application.register("agent-pane", createAgentPaneController(Controller));
 application.register("agent-attachments", createAgentAttachmentsController(Controller));
