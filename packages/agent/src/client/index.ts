@@ -4,6 +4,7 @@ export {
   createAgentElapsedController,
   createAgentNoticeController,
   createAgentPaneController,
+  createAgentProxyController,
   createAgentTermController,
   registerAgentStreamActions,
   startAgentTab,

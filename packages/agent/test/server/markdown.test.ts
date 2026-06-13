@@ -48,7 +48,9 @@ describe("rewriteSegment", () => {
 
   test("rewrites image file embeds to <img>", () => {
     const html = rewriteSegment("ws", "look: {{atelier:embed /tmp/shot.png}} done")!;
-    expect(html).toContain(`<img class="agent-media-img" src="/workspaces/ws/agent-files?path=%2Ftmp%2Fshot.png"`);
+    expect(html).toContain(`data-agent-proxy-app-key-value="file"`);
+    expect(html).toContain(`data-agent-proxy-path-value="/tmp/shot.png"`);
+    expect(html).toContain(`<img class="agent-media-img"`);
   });
 
   test("rewrites video file embeds to <video>", () => {
@@ -57,9 +59,11 @@ describe("rewriteSegment", () => {
     expect(html).toContain("controls");
   });
 
-  test("rewrites localhost url embeds to iframes through the workspace port proxy", () => {
+  test("rewrites localhost url embeds to iframes through the workspace app subdomain proxy", () => {
     const html = rewriteSegment("ws", "try {{atelier:embed http://localhost:3000/app?x=1&y=2}}")!;
-    expect(html).toContain(`<iframe src="/workspaces/ws/agent-port/3000/app?x=1&amp;y=2"`);
+    expect(html).toContain(`data-agent-proxy-app-key-value="port-3000"`);
+    expect(html).toContain(`data-agent-proxy-path-value="/app?x=1&amp;y=2"`);
+    expect(html).toContain(`<iframe data-controller="agent-proxy"`);
   });
 
   test("rewrites remote url embeds to direct iframes", () => {
@@ -71,6 +75,7 @@ describe("rewriteSegment", () => {
     const html = rewriteSegment("ws", "<b> {{atelier:embed /x.bin}}")!;
     expect(html).toContain("&lt;b&gt;");
     expect(html).toContain(`<a class="agent-media-link"`);
+    expect(html).toContain(`data-agent-proxy-app-key-value="file"`);
   });
 });
 

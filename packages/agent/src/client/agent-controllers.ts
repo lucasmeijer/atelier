@@ -242,6 +242,38 @@ export function createAgentNoticeController(Controller: StimulusControllerConstr
 }
 
 // ---------------------------------------------------------------------------
+// agent-proxy: fill subdomain proxy URLs for server-rendered embeds
+// ---------------------------------------------------------------------------
+
+function encodeFilePath(path: string): string {
+  return path.split("/").map((part, index) => index === 0 ? part : encodeURIComponent(part)).join("/");
+}
+
+function workspaceProxyUrl(workspaceId: string, appKey: string, path: string): string {
+  const port = window.location.port ? `:${window.location.port}` : "";
+  const hostSuffix = window.location.hostname === "localhost" ? "localhost" : window.location.hostname;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const proxyPath = appKey === "file" ? encodeFilePath(normalizedPath) : normalizedPath;
+  return `${window.location.protocol}//${appKey}--${workspaceId}.${hostSuffix}${port}${proxyPath}`;
+}
+
+export function createAgentProxyController(Controller: StimulusControllerConstructor) {
+  return class AgentProxyController extends Controller {
+    static values = { workspaceId: String, appKey: String, path: String };
+    declare readonly element: HTMLElement;
+    declare readonly workspaceIdValue: string;
+    declare readonly appKeyValue: string;
+    declare readonly pathValue: string;
+
+    connect(): void {
+      const url = workspaceProxyUrl(this.workspaceIdValue, this.appKeyValue, this.pathValue || "/");
+      if (this.element instanceof HTMLAnchorElement) this.element.href = url;
+      else if (this.element instanceof HTMLImageElement || this.element instanceof HTMLVideoElement || this.element instanceof HTMLIFrameElement) this.element.src = url;
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
 // agent-attachments: drag & drop + uploads with progress chips
 // ---------------------------------------------------------------------------
 

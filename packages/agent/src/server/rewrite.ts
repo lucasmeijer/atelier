@@ -14,12 +14,13 @@ const embedToken = /\{\{\s*atelier:embed\s+([^{}]+?)\s*\}\}/g;
 const imageExtensions = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"]);
 const videoExtensions = new Set(["mp4", "webm", "mov", "m4v", "ogv"]);
 
-function workspaceFileUrl(workspaceId: string, path: string): string {
-  return `/workspaces/${encodeURIComponent(workspaceId)}/agent-files?path=${encodeURIComponent(path)}`;
-}
-
-function workspacePortUrl(workspaceId: string, port: number, path = "/"): string {
-  return `/workspaces/${encodeURIComponent(workspaceId)}/agent-port/${port}${path.startsWith("/") ? path : `/${path}`}`;
+function workspaceProxyController(workspaceId: string, appKey: string, path: string): string {
+  return [
+    `data-controller="agent-proxy"`,
+    `data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}"`,
+    `data-agent-proxy-app-key-value="${escapeHtml(appKey)}"`,
+    `data-agent-proxy-path-value="${escapeHtml(path)}"`,
+  ].join(" ");
 }
 
 export function containsAtelierEmbed(text: string): boolean {
@@ -40,16 +41,19 @@ function renderFileEmbed(workspaceId: string, path: string): string {
   if (!path.startsWith("/") || path.includes("\0")) return escapeHtml(`{{atelier:embed ${path}}}`);
 
   const ext = extensionOf(path);
-  const url = workspaceFileUrl(workspaceId, path);
   const name = path.split("/").pop() || path;
+  const proxy = workspaceProxyController(workspaceId, "file", path);
 
   if (imageExtensions.has(ext)) {
-    return `</p><a class="agent-media-link" href="${escapeHtml(url)}" target="_blank" rel="noopener"><img class="agent-media-img" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" loading="lazy"></a><p>`;
+    return `</p><a class="agent-media-link" ${proxy} target="_blank" rel="noopener"><img class="agent-media-img" ${proxy} alt="${escapeHtml(name)}" loading="lazy"></a><p>`;
   }
   if (videoExtensions.has(ext)) {
-    return `</p><video class="agent-media-video" src="${escapeHtml(url)}" controls preload="metadata"></video><p>`;
+    return `</p><video class="agent-media-video" ${proxy} controls preload="metadata"></video><p>`;
   }
-  return `<a class="agent-media-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(name)}</a>`;
+  if (ext === "html" || ext === "htm") {
+    return `</p><div class="agent-media-frame"><div class="agent-media-frame-bar"><span>${escapeHtml(path)}</span><a ${proxy} target="_blank" rel="noopener">open ↗</a></div><iframe ${proxy} loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe></div><p>`;
+  }
+  return `<a class="agent-media-link" ${proxy} target="_blank" rel="noopener">${escapeHtml(name)}</a>`;
 }
 
 function renderUrlEmbed(workspaceId: string, rawTarget: string): string {
@@ -61,12 +65,15 @@ function renderUrlEmbed(workspaceId: string, rawTarget: string): string {
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return escapeHtml(`{{atelier:embed ${rawTarget}}}`);
 
-  let src = parsed.toString();
   if (isLoopbackHost(parsed.hostname)) {
     const port = Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80));
-    src = workspacePortUrl(workspaceId, port, `${parsed.pathname}${parsed.search}`);
+    const appKey = `port-${port}`;
+    const path = `${parsed.pathname}${parsed.search}`;
+    const proxy = workspaceProxyController(workspaceId, appKey, path);
+    return `</p><div class="agent-media-frame"><div class="agent-media-frame-bar"><span>${escapeHtml(rawTarget)}</span><a ${proxy} target="_blank" rel="noopener">open ↗</a></div><iframe ${proxy} loading="lazy"></iframe></div><p>`;
   }
 
+  const src = parsed.toString();
   return `</p><div class="agent-media-frame"><div class="agent-media-frame-bar"><span>${escapeHtml(rawTarget)}</span><a href="${escapeHtml(src)}" target="_blank" rel="noopener">open ↗</a></div><iframe src="${escapeHtml(src)}" loading="lazy"></iframe></div><p>`;
 }
 
@@ -104,4 +111,4 @@ Use this only when you want the web UI to render the target inline. The target m
 - an absolute path inside the workspace container, e.g. {{atelier:embed /repos/app/screenshot.png}}
 - an http(s) URL, e.g. {{atelier:embed http://localhost:3000/dashboard}}
 
-Image-looking files render as images, video-looking files render with a video player, other files render as links, and URLs render as preview iframes. The directive can appear in the middle of a sentence, but do not wrap it in Markdown link or image syntax. Do not use it for ordinary code/path mentions.`;
+Image-looking files render as images, video-looking files render with a video player, HTML files render as preview iframes, other files render as links, and URLs render as preview iframes. The directive can appear in the middle of a sentence, but do not wrap it in Markdown link or image syntax. Do not use it for ordinary code/path mentions.`;

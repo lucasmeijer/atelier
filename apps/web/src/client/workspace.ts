@@ -6,6 +6,7 @@ import {
   createAgentElapsedController,
   createAgentNoticeController,
   createAgentPaneController,
+  createAgentProxyController,
   createAgentTermController,
   registerAgentStreamActions,
   startAgentTab,
@@ -755,6 +756,7 @@ application.register("agent-attachments", createAgentAttachmentsController(Contr
 application.register("agent-autosubmit", createAgentAutosubmitController(Controller));
 application.register("agent-elapsed", createAgentElapsedController(Controller));
 application.register("agent-notice", createAgentNoticeController(Controller));
+application.register("agent-proxy", createAgentProxyController(Controller));
 application.register("agent-term", createAgentTermController(Controller));
 application.register("browser-pane", createBrowserPaneController(Controller));
 application.register("browser-address", createBrowserAddressController(Controller));
