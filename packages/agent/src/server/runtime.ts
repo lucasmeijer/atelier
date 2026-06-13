@@ -96,7 +96,7 @@ export function getWorkspaceAgentRuntime(agent: WorkspaceAgentInfo, options: Wor
   const key = runtimeKey(agent.workspaceId, agent.label);
   let runtime = runtimes.get(key);
   if (!runtime) {
-    runtime = isFakeMode() ? createFakeRuntime(agent) : createRealRuntime(agent, options);
+    runtime = isFakeMode() ? createFakeRuntime(agent, options) : createRealRuntime(agent, options);
     runtimes.set(key, runtime);
   }
   return runtime;
@@ -153,11 +153,15 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   private streamingMarkdown = new Map<string, StreamingMarkdownState>();
   private pendingFollowups: PendingFollowup[] = [];
 
-  constructor(agent: WorkspaceAgentInfo) {
+  constructor(agent: WorkspaceAgentInfo, protected readonly options: WorkspaceAgentRuntimeOptions = {}) {
     this.workspaceId = agent.workspaceId;
     this.label = agent.label;
     this.sessionFile = agent.path;
     this.ctx = { workspaceId: agent.workspaceId, label: agent.label };
+  }
+
+  protected async emitTurnFinished(): Promise<void> {
+    await this.options.events?.emit("workspace_agent_turn_finished", { workspaceId: this.workspaceId, agentLabel: this.label });
   }
 
   get isStreaming(): boolean {
@@ -625,8 +629,8 @@ class RealAgentRuntime extends BaseAgentRuntime {
   private modelOptions: { provider: string; id: string; name: string; model: any }[] = [];
   private summarizing = false;
 
-  constructor(agent: WorkspaceAgentInfo, private session: any) {
-    super(agent);
+  constructor(agent: WorkspaceAgentInfo, private session: any, options: WorkspaceAgentRuntimeOptions = {}) {
+    super(agent, options);
     session.subscribe((event: any) => {
       void this.handleEvent(event);
     });
@@ -738,6 +742,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       case "agent_end":
         await this.liveEnd();
         this.setBusy(false);
+        await this.emitTurnFinished();
         this.startNextPendingFollowup();
         break;
       case "compaction_start":
@@ -780,6 +785,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
         this.notice("error", error instanceof Error ? error.message : String(error));
         await this.liveEnd();
         this.setBusy(false);
+        await this.emitTurnFinished();
       });
   }
 
@@ -794,6 +800,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
         this.notice("error", error instanceof Error ? error.message : String(error));
         await this.liveEnd();
         this.setBusy(false);
+        await this.emitTurnFinished();
       });
   }
 
@@ -896,7 +903,7 @@ async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAg
     sessionManager,
     settingsManager: SettingsManager.inMemory({ compaction: { enabled: true } } as any),
   });
-  return new RealAgentRuntime(agent, session);
+  return new RealAgentRuntime(agent, session, options);
 }
 
 async function ensureSessionFile(path: string): Promise<void> {
@@ -1132,6 +1139,7 @@ class FakeAgentRuntime extends BaseAgentRuntime {
     await this.liveEnd();
     this.setBusy(false);
     this.running = false;
+    await this.emitTurnFinished();
 
     const next = this.shiftPendingFollowup();
     if (next) {
@@ -1249,8 +1257,8 @@ function chunkText(text: string, size: number): string[] {
   return chunks;
 }
 
-async function createFakeRuntime(agent: WorkspaceAgentInfo): Promise<WorkspaceAgentRuntime> {
-  const runtime = new FakeAgentRuntime(agent);
+async function createFakeRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
+  const runtime = new FakeAgentRuntime(agent, options);
   await runtime.init();
   return runtime;
 }

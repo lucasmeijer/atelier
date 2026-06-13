@@ -18,6 +18,11 @@ export interface WorkspaceTabsChangedEvent {
   workspaceId: string;
 }
 
+export interface WorkspaceAgentTurnFinishedEvent {
+  workspaceId: string;
+  agentLabel: string;
+}
+
 export interface WorkspaceImageBuildEvent {
   workspaceId: string;
   image: string;
@@ -31,6 +36,7 @@ export interface AtelierEventMap {
   workspace_user_activity: WorkspaceUserActivityEvent;
   workspace_title_changed: WorkspaceTitleChangedEvent;
   workspace_tabs_changed: WorkspaceTabsChangedEvent;
+  workspace_agent_turn_finished: WorkspaceAgentTurnFinishedEvent;
   workspace_image_build_started: WorkspaceImageBuildEvent;
   workspace_image_build_output: WorkspaceImageBuildEvent;
   workspace_image_build_finished: WorkspaceImageBuildEvent;
