@@ -64,8 +64,19 @@ function stripScriptFraming(text: string): string {
 }
 
 /** Remove tmux's remain-on-exit marker from captured panes. */
-function stripTmuxPaneFraming(text: string): string {
-  return text.replace(/(?:\n|\r|\u001b\[[0-9;?]*[a-zA-Z])*Pane is dead\n?$/, "");
+export function stripTmuxPaneFraming(text: string): string {
+  let output = text.replace(/[ \t\r\n]*$/, "");
+  for (;;) {
+    const lastNewline = Math.max(output.lastIndexOf("\n"), output.lastIndexOf("\r"));
+    const line = lastNewline >= 0 ? output.slice(lastNewline + 1) : output;
+    const plainLine = stripAnsi(line).trim();
+    // tmux's `remain-on-exit` marker is painted in the dead pane. With
+    // `capture-pane -e`, SGR can surround it; with narrow panes or downstream
+    // byte limits, we have also seen the final `d` disappear (`Pane is dea`).
+    if (!/^Pane is dea(?:d)?$/.test(plainLine)) return output;
+    output = lastNewline >= 0 ? output.slice(0, lastNewline) : "";
+    output = output.replace(/[ \t\r\n]*$/, "");
+  }
 }
 
 export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {}): ToolDefinition<any, any> {

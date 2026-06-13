@@ -1,0 +1,102 @@
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+
+const execWorkspaceShell = mock(async (_workspaceId: string, command: string) => {
+  if (command.includes("tmux new-session")) return { stdout: "", stderr: "", exitCode: 0 };
+  if (command.includes("cat '/tmp/atelier-agent-") && command.includes(".exit")) return { stdout: "0\n", stderr: "", exitCode: 0 };
+  if (command.includes("tmux capture-pane")) return { stdout: "", stderr: "", exitCode: 0 };
+  if (command.includes("tmux kill-session")) return { stdout: "", stderr: "", exitCode: 0 };
+  return { stdout: "", stderr: "", exitCode: 0 };
+});
+
+const execWorkspaceCommand = mock(async (_workspaceId: string, _args: string[]) => ({ stdout: "", stderr: "", exitCode: 0 }));
+
+mock.module("@atelier/core", () => ({
+  execWorkspaceShell,
+  execWorkspaceCommand,
+  workspaceContainerName: (workspaceId: string) => `atelier-${workspaceId}`,
+}));
+
+const { createTmuxBashTool, stripTmuxPaneFraming } = await import("../../src/server/bash-tmux.ts");
+
+function textResult(result: any): string {
+  return result.content.map((part: { text?: string }) => part.text ?? "").join("");
+}
+
+describe("tmux bash tool", () => {
+  beforeEach(() => {
+    execWorkspaceShell.mockClear();
+    execWorkspaceCommand.mockClear();
+  });
+
+  afterEach(() => {
+    execWorkspaceShell.mockImplementation(async (_workspaceId: string, command: string) => {
+      if (command.includes("tmux new-session")) return { stdout: "", stderr: "", exitCode: 0 };
+      if (command.includes("cat '/tmp/atelier-agent-") && command.includes(".exit")) return { stdout: "0\n", stderr: "", exitCode: 0 };
+      if (command.includes("tmux capture-pane")) return { stdout: "", stderr: "", exitCode: 0 };
+      if (command.includes("tmux kill-session")) return { stdout: "", stderr: "", exitCode: 0 };
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+    execWorkspaceCommand.mockImplementation(async () => ({ stdout: "", stderr: "", exitCode: 0 }));
+  });
+
+  test("returns ANSI-stripped model output while storing colored pane output", async () => {
+    execWorkspaceCommand.mockImplementation(async () => ({
+      stdout: "Script started on 2026-06-13\n\u001b[31mred\u001b[0m\r\nScript done on 2026-06-13\n",
+      stderr: "",
+      exitCode: 0,
+    }));
+    execWorkspaceShell.mockImplementation(async (_workspaceId: string, command: string) => {
+      if (command.includes("tmux capture-pane")) return { stdout: "\u001b[31mred\u001b[0m\nPane is dead\n", stderr: "", exitCode: 0 };
+      if (command.includes("cat '/tmp/atelier-agent-") && command.includes(".exit")) return { stdout: "0\n", stderr: "", exitCode: 0 };
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+
+    const result = await createTmuxBashTool("ws").execute("call", { command: "printf red" });
+
+    expect(textResult(result)).toBe("red");
+    expect(result.details.displayAnsi).toBe("\u001b[31mred\u001b[0m");
+    expect(result.details.displayAnsi).not.toContain("Pane is dea");
+    expect(result.details.exitCode).toBe(0);
+  });
+
+  test("removes full and partial tmux dead-pane markers from captured display output", () => {
+    expect(stripTmuxPaneFraming("ok\nPane is dead\n")).toBe("ok");
+    expect(stripTmuxPaneFraming("ok\n\u001b[2mPane is dead\u001b[0m\r\n")).toBe("ok");
+    expect(stripTmuxPaneFraming("ok\nPane is dea")).toBe("ok");
+  });
+
+  test("captures 100 lines from the model log and tmux scrollback display", async () => {
+    const plainLines = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`);
+    const ansiLines = plainLines.map((line) => `\u001b[32m${line}\u001b[0m`);
+    execWorkspaceCommand.mockImplementation(async () => ({ stdout: `${plainLines.join("\n")}\n`, stderr: "", exitCode: 0 }));
+    execWorkspaceShell.mockImplementation(async (_workspaceId: string, command: string) => {
+      if (command.includes("tmux capture-pane")) return { stdout: `${ansiLines.join("\n")}\nPane is dead\n`, stderr: "", exitCode: 0 };
+      if (command.includes("cat '/tmp/atelier-agent-") && command.includes(".exit")) return { stdout: "0\n", stderr: "", exitCode: 0 };
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+
+    const result = await createTmuxBashTool("ws").execute("call", { command: "seq 1 100" });
+
+    expect(textResult(result)).toBe(plainLines.join("\n"));
+    expect(result.details.displayAnsi.split("\n")).toHaveLength(100);
+    expect(result.details.displayAnsi).toStartWith("\u001b[32mline 1\u001b[0m");
+    expect(result.details.displayAnsi).toEndWith("\u001b[32mline 100\u001b[0m");
+    expect(result.details.displayAnsi).not.toContain("Pane is dea");
+    expect(execWorkspaceShell.mock.calls.some(([, command]) => command.includes("tmux capture-pane") && command.includes("-S -100000"))).toBe(true);
+  });
+
+  test("reports non-zero exit codes to the model result without adding them to displayAnsi", async () => {
+    execWorkspaceCommand.mockImplementation(async () => ({ stdout: "failure\n", stderr: "", exitCode: 0 }));
+    execWorkspaceShell.mockImplementation(async (_workspaceId: string, command: string) => {
+      if (command.includes("tmux capture-pane")) return { stdout: "\u001b[31mfailure\u001b[0m\nPane is dea", stderr: "", exitCode: 0 };
+      if (command.includes("cat '/tmp/atelier-agent-") && command.includes(".exit")) return { stdout: "7\n", stderr: "", exitCode: 0 };
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+
+    const result = await createTmuxBashTool("ws").execute("call", { command: "false" });
+
+    expect(textResult(result)).toBe("failure\n\nCommand exited with code 7");
+    expect(result.details).toMatchObject({ exitCode: 7, aborted: false, timedOut: false });
+    expect(result.details.displayAnsi).toBe("\u001b[31mfailure\u001b[0m");
+  });
+});
