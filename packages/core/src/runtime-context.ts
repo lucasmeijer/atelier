@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { runDocker } from "./docker.ts";
-import { defaultDataDir } from "./managed-repo.ts";
+import { defaultDataDir } from "./data-dir.ts";
 
 export interface AtelierRuntimeContext {
   /** Path as seen by the Atelier process itself. Use this for normal Atelier file IO. */

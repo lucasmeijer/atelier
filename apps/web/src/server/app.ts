@@ -17,12 +17,14 @@ import {
 } from "@atelier/browser/server";
 import {
   AtelierCoreError,
-  addManagedRepo,
+  addRepository,
   type AtelierEventBus,
+  formatRepositorySpec,
+  type RepositorySummary,
   type WorkspaceCreationContext,
   generateWorkspaceId,
   getWorkspaceRepoMergeability,
-  listManagedRepos,
+  listRepositories,
   pushWorkspaceRepo,
   setWorkspaceTitle,
   type WorkspaceDeleteBlockedDetails,
@@ -194,9 +196,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const id = entry.id;
     const title = workspaceTitle(entry);
     const selectable = entry.phase === "starting" || entry.phase === "failed" || entry.phase === "ready";
-    const sourceRepoClass = entry.sourceRepoName ? "repo-tinted-row" : "";
-    const sourceRepoStyle = entry.sourceRepoName ? ` style="${repoColorStyle(entry.sourceRepoName)}"` : "";
-    const open = (extraClass: string) => `<div class="row workspace-row ${sourceRepoClass} ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}"${sourceRepoStyle}${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
+    const sourceRepositoryClass = entry.sourceRepositoryId ? "repo-tinted-row" : "";
+    const sourceRepositoryStyle = entry.sourceRepositoryId ? ` style="${repoColorStyle(entry.sourceRepositoryId)}"` : "";
+    const open = (extraClass: string) => `<div class="row workspace-row ${sourceRepositoryClass} ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}"${sourceRepositoryStyle}${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
     const workspaceLink = (label: string, attrs = "") => `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"${attrs}><div class="r-title">${escapeHtml(label)}</div></a>`;
     switch (entry.phase) {
       // All phases render single-line rows (no r-sub) so phase changes never
@@ -298,13 +300,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return `--repo-color:${repoColor(repoName)}`;
   }
 
-  function launchRepoAgentModal(repo: { name: string; path: string; remoteUrl: string | null }, selectedModel?: string, options: { autoShow?: boolean; modalId?: string; formId?: string } = {}): string {
-    const modalId = options.modalId ?? domId("agent_launch_repo_modal", repo.name);
-    const formId = options.formId ?? domId("agent_launch_repo_form", repo.name);
+  function launchRepoAgentModal(repo: RepositorySummary, selectedModel?: string, options: { autoShow?: boolean; modalId?: string; formId?: string } = {}): string {
+    const modalId = options.modalId ?? domId("agent_launch_repo_modal", repo.id);
+    const formId = options.formId ?? domId("agent_launch_repo_form", repo.id);
     const initialText = "";
     return `<dialog id="${modalId}" class="agent-launch-modal" data-controller="modal submit-shortcut"${options.autoShow ? ` data-modal-auto-show-value="true"` : ""}>
   ${renderAgentComposer({
-    action: `/repo-agent-workspaces/${encodeURIComponent(repo.name)}`,
+    action: `/repo-agent-workspaces/${encodeURIComponent(repo.id)}`,
     draftId: crypto.randomUUID(),
     formId,
     placeholder: "Describe what you want the agent to do…",
@@ -318,12 +320,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 </dialog>`;
   }
 
-  function addManagedRepoModal(): string {
-    return `<dialog id="add-managed-repo-modal" class="modal" data-controller="modal">
-  <form method="post" action="/managed-repos">
-    <h2>Add managed repository</h2>
-    <p>Create a bare clone in Atelier's data directory.</p>
-    <input class="modal-input" name="gitUrl" type="text" placeholder="https://github.com/org/repo.git or /path/to/repo" required autofocus>
+  function addRepositoryModal(): string {
+    return `<dialog id="add-repository-modal" class="modal" data-controller="modal">
+  <form method="post" action="/repositories">
+    <h2>Add repository</h2>
+    <p>Save a remote URL. Add <code>#branch</code> to clone a specific branch.</p>
+    <input class="modal-input" name="gitUrl" type="text" placeholder="https://github.com/org/repo.git#main or /path/to/repo#feature" required autofocus>
     <div class="modal-actions">
       <button class="btn" type="button" data-action="modal#close">Cancel</button>
       <button class="btn primary" type="submit">Add repository</button>
@@ -333,7 +335,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   async function renderWorkspaceSidebar(): Promise<string> {
-    const { repos: managedRepos } = await listManagedRepos();
+    const { repos } = await listRepositories();
 
     // JavaScript submits this as a Turbo Stream and then switches the resident
     // client-side. Without JavaScript, the endpoint still falls back to a 303.
@@ -342,16 +344,17 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     <span></span>
   </button></form>`;
 
-    const managedRepoRows = managedRepos.map((repo) => {
-      const modalId = domId("agent_launch_repo_modal", repo.name);
-      return `<div class="row managed-repo-row repo-tinted-row" style="${repoColorStyle(repo.name)}">
-    <div><div class="r-title">${escapeHtml(repo.name)}</div><div class="r-sub">${escapeHtml(repo.remoteUrl ?? repo.path)}</div></div>
+    const repoRows = repos.map((repo) => {
+      const modalId = domId("agent_launch_repo_modal", repo.id);
+      const spec = formatRepositorySpec(repo);
+      return `<div class="row repository-row repo-tinted-row" style="${repoColorStyle(repo.id)}">
+    <div><div class="r-title">${escapeHtml(repo.name)}${repo.branch ? ` <small>${escapeHtml(repo.branch)}</small>` : ""}</div><div class="r-sub">${escapeHtml(spec)}</div></div>
     <span class="row-actions"><button class="repo-launch-btn" type="button" title="Start agent workspace from this repo" aria-label="Start agent workspace from ${escapeHtml(repo.name)}" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="${modalId}"><span aria-hidden="true">＋</span></button></span>
   </div>`;
     }).join("");
 
-    const addManagedRepoRow = `<button class="row ghost-row" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="add-managed-repo-modal">
-    <div><div class="r-title">Add managed repository</div><div class="r-sub">Create a bare clone in the Atelier data directory</div></div>
+    const addRepoRow = `<button class="row ghost-row" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="add-repository-modal">
+    <div><div class="r-title">Add repository</div><div class="r-sub">Save a remote URL for workspace clones</div></div>
     <span></span>
   </button>`;
 
@@ -369,9 +372,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
     <section class="host-repos sidebar-host-repos">
       <div class="section-head"><div><h2>Repositories</h2></div></div>
-      <div class="table managed-repos-table">
-        ${managedRepoRows || `<div class="row"><div><div class="r-title">No managed repositories</div><div class="r-sub">Add one below.</div></div><span></span></div>`}
-        ${addManagedRepoRow}
+      <div class="table repositories-table">
+        ${repoRows || `<div class="row"><div><div class="r-title">No repositories</div><div class="r-sub">Add one below.</div></div><span></span></div>`}
+        ${addRepoRow}
       </div>
     </section>
   </turbo-frame>`;
@@ -383,7 +386,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function attachWorkspaceModules(workspaceId: string): Promise<WorkspaceAttachment[]> {
     const entry = requireWorkspace(workspaceId);
-    return await Promise.all(workspaceModules.map((module) => module.attachToWorkspace({ workspaceId, sourceRepoName: entry.sourceRepoName })));
+    return await Promise.all(workspaceModules.map((module) => module.attachToWorkspace({ workspaceId, sourceRepositoryId: entry.sourceRepositoryId })));
   }
 
   async function workspaceTabsAndAttachments(workspaceId: string): Promise<{ attachments: WorkspaceAttachment[]; tabs: WorkspaceTabContribution[] }> {
@@ -542,8 +545,15 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     </div>`;
   }
 
+  async function repositoryById(id: string): Promise<RepositorySummary> {
+    const { repos } = await listRepositories();
+    const repo = repos.find((candidate) => candidate.id === id);
+    if (!repo) throw new AtelierCoreError("repository_not_found", `repository not found: ${id}`);
+    return repo;
+  }
+
   async function renderRepoLaunchModals(): Promise<string> {
-    const { repos } = await listManagedRepos();
+    const { repos } = await listRepositories();
     const selectedModel = await preferredNewAgentModel();
     return repos.map((repo) => launchRepoAgentModal(repo, selectedModel)).join("");
   }
@@ -556,7 +566,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     </div>
     <main class="workspace-shell-main">${await workspaceDetailHostHtml(selectedId)}</main>
   </div>
-  ${addManagedRepoModal()}
+  ${addRepositoryModal()}
   <div id="${workspaceCommandModalHostId}"></div>
   ${await renderRepoLaunchModals()}`;
   }
@@ -613,19 +623,18 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   async function createRepoAgentWorkspaceEndpoint(repoName: string, request: Request): Promise<Response> {
-    const { repos } = await listManagedRepos();
-    const repo = repos.find((candidate) => candidate.name === repoName);
-    if (!repo) throw new AtelierCoreError("managed_repo_not_found", `managed repo not found: ${repoName}`);
+    const repo = await repositoryById(repoName);
     const form = await request.formData();
     const text = String(form.get("text") ?? "").trim();
     if (!text) return turboStreamResponse("", { status: 400 });
     const id = generateWorkspaceId();
-    registry.add(id, null, repo.name);
+    registry.add(id, null, repo.id);
     const model = String(form.get("model") ?? "");
     await rememberPreferredNewAgentModel(model);
     const context: WorkspaceCreationContext = {
-      sourceRepoName: repo.name,
-      gitUrl: repo.remoteUrl || repo.path,
+      sourceRepositoryId: repo.id,
+      gitUrl: repo.gitUrl,
+      gitBranch: repo.branch,
       agent: {
         initialPrompt: text,
         model,
@@ -756,13 +765,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   // ---------------------------------------------------------------------------
-  // Managed repos / mergeability / push (unchanged behavior)
+  // Repositories / mergeability / push
   // ---------------------------------------------------------------------------
 
-  async function createManagedRepoFromForm(request: Request, url: URL): Promise<Response> {
+  async function createRepositoryFromForm(request: Request, url: URL): Promise<Response> {
     const formData = await request.formData();
     const gitUrl = String(formData.get("gitUrl") ?? "");
-    await addManagedRepo(gitUrl);
+    await addRepository(gitUrl);
     return Response.redirect(new URL("/", url).toString(), 303);
   }
 
@@ -899,14 +908,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         return { createdTabKey: createWorkspaceBrowserTabForWorkspace(workspaceId).key };
       case "agent.launch-source-repo-workspace": {
         const entry = requireWorkspace(workspaceId);
-        if (!entry.sourceRepoName) throw new AtelierCoreError("source_repo_not_found", `workspace ${workspaceId} was not created from a managed repository`);
-        const { repos } = await listManagedRepos();
-        const repo = repos.find((candidate) => candidate.name === entry.sourceRepoName);
-        if (!repo) throw new AtelierCoreError("managed_repo_not_found", `managed repo not found: ${entry.sourceRepoName}`);
+        if (!entry.sourceRepositoryId) throw new AtelierCoreError("source_repo_not_found", `workspace ${workspaceId} was not created from a repository`);
+        const repo = await repositoryById(entry.sourceRepositoryId);
         const modal = launchRepoAgentModal(repo, await preferredNewAgentModel(), {
           autoShow: true,
-          modalId: domId("agent_launch_source_repo_modal", workspaceId, repo.name),
-          formId: domId("agent_launch_source_repo_form", workspaceId, repo.name),
+          modalId: domId("agent_launch_source_repo_modal", workspaceId, repo.id),
+          formId: domId("agent_launch_source_repo_form", workspaceId, repo.id),
         });
         return { streamHtml: turboUpdateStream(workspaceCommandModalHostId, modal) };
       }
@@ -1009,7 +1016,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (url.pathname === "/workspace-events/stream" && request.method === "GET") return hub.sseResponse(initialStatusStreams);
     if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
     if (url.pathname === "/workspaces" && request.method === "POST") return createWorkspaceEndpoint(url, request);
-    if (url.pathname === "/managed-repos" && request.method === "POST") return await createManagedRepoFromForm(request, url);
+    if (url.pathname === "/repositories" && request.method === "POST") return await createRepositoryFromForm(request, url);
 
     const match = (pattern: RegExp): string[] | undefined => {
       const result = url.pathname.match(pattern);

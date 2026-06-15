@@ -53,11 +53,11 @@ const sourceRepoAgentWorkspaceCommand: WorkspaceCommandContribution = {
 export const agentWorkspaceModule: WorkspaceModule = {
   id: "agent",
   staticFiles: agentStaticFiles,
-  async attachToWorkspace({ workspaceId, sourceRepoName }) {
+  async attachToWorkspace({ workspaceId, sourceRepositoryId }) {
     const agents = await listOrCreateWorkspaceAgents(workspaceId);
     return {
       tabs: renderWorkspaceAgentTabs(workspaceId, agents),
-      workspaceCommands: sourceRepoName ? [...agentWorkspaceCommands, sourceRepoAgentWorkspaceCommand] : agentWorkspaceCommands,
+      workspaceCommands: sourceRepositoryId ? [...agentWorkspaceCommands, sourceRepoAgentWorkspaceCommand] : agentWorkspaceCommands,
     };
   },
 };

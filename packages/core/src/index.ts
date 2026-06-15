@@ -24,14 +24,19 @@ export {
 } from "./errors.ts";
 
 export {
-  addManagedRepo,
   defaultDataDir,
-  listManagedRepos,
-  managedReposDir,
-  type AddManagedRepoResult,
-  type ManagedRepoListResult,
-  type ManagedRepoSummary,
-} from "./managed-repo.ts";
+} from "./data-dir.ts";
+
+export {
+  addRepository,
+  formatRepositorySpec,
+  listRepositories,
+  parseRepositorySpec,
+  repositoriesFile,
+  type AddRepositoryResult,
+  type RepositoryListResult,
+  type RepositorySummary,
+} from "./repository.ts";
 
 export {
   atelierDataPath,
@@ -45,7 +50,6 @@ export {
 export { resolveWorkspaceImage } from "./workspace-image.ts";
 
 export {
-  cloneManagedRepoIntoWorkspace,
   createWorkspace,
   deleteWorkspace,
   generateWorkspaceId,
@@ -68,7 +72,6 @@ export {
   workspaceVSCodePort,
   type CreateWorkspaceOptions,
   type DeleteWorkspaceOptions,
-  type WorkspaceCloneResult,
   type WorkspaceCommandContext,
   type WorkspaceCommandOptions,
   type WorkspaceDeleteBlockedDetails,

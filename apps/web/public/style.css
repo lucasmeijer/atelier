@@ -344,7 +344,7 @@ a.btn { text-decoration: none; }
 .agent-launch-modal .agent-promptwrap { padding: 0; }
 .agent-launch-modal .agent-promptbox { max-width: 860px; }
 .agent-launch-modal .agent-input { resize: none; border: none; border-radius: 0; padding: 10px 12px 2px; min-height: 170px; }
-.managed-repos-table .r-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repositories-table .r-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* split workspace shell */
 .workspace-shell { --workspace-sidebar-width: clamp(360px, 30vw, 560px); --workspace-rail-width: 6px; grid-template-columns: var(--workspace-sidebar-width) var(--workspace-rail-width) minmax(0, 1fr); height: 100vh; min-height: 100vh; overflow: hidden; }

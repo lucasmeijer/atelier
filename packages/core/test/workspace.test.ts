@@ -57,9 +57,9 @@ describe("core workspaces", () => {
   });
 
   test("createWorkspace persists source repo name as a Docker label", async () => {
-    const created = await createWorkspace({ sourceRepoName: "atelier.git" });
+    const created = await createWorkspace({ sourceRepositoryId: "atelier.git" });
 
-    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, sourceRepoName: "atelier.git" });
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, sourceRepositoryId: "atelier.git" });
     const inspected = await docker(["inspect", "--format", `{{index .Config.Labels "com.atelier.source-repo"}}`, workspaceContainerName(created.id)]);
     expect(inspected.exitCode).toBe(0);
     expect(inspected.stdout.trim()).toBe("atelier.git");

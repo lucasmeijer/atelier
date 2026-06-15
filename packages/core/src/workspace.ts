@@ -1,19 +1,16 @@
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { requireDocker, runDocker } from "./docker.ts";
 import { AtelierCoreError, invalidArguments } from "./errors.ts";
 import type { AtelierEventBus } from "./events.ts";
-import { listManagedRepos, managedReposDir } from "./managed-repo.ts";
-import { dockerHostAtelierDataPath, getAtelierRuntimeContext } from "./runtime-context.ts";
+import { parseRepositorySpec } from "./repository.ts";
 import { resolveWorkspaceImage } from "./workspace-image.ts";
 
 const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
 const titlePath = "/.atelier/title";
 export const workspaceRoot = "/work";
-const atelierReposRoot = "/atelier/repos";
 export const workspaceVSCodePort = 8000;
 export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
 
@@ -29,7 +26,7 @@ export interface WorkspaceListResult {
   workspaces: Array<{
     id: string;
     title: string | null;
-    sourceRepoName?: string | null;
+    sourceRepositoryId?: string | null;
   }>;
 }
 
@@ -69,13 +66,6 @@ export interface DeleteWorkspaceOptions {
   force?: boolean;
 }
 
-export interface WorkspaceCloneResult {
-  repo: string;
-  path: string;
-  remoteUrl: string;
-  referencePath: string;
-}
-
 export interface WorkspaceRepoWorkingTreeStatus {
   stagedFiles: string[];
   addedFiles: string[];
@@ -96,7 +86,7 @@ export type WorkspaceRepoPushResult =
   | { state: "failed"; message: string };
 
 const workspaceIdLabel = "com.atelier.workspace-id";
-export const workspaceSourceRepoLabel = "com.atelier.source-repo";
+export const workspaceSourceRepositoryLabel = "com.atelier.source-repo";
 
 function namespace(): string {
   return process.env.ATELIER_NAMESPACE || "default";
@@ -140,14 +130,6 @@ function repoPath(repo: string): string {
   validateRepoName(repo);
   if (repo !== singleWorkspaceRepoName) throw new AtelierCoreError("repo_not_found", `repo not found: ${repo}`);
   return workspaceRoot;
-}
-
-function bareRepoName(repo: string): string {
-  return repo.endsWith(".git") ? repo : `${repo}.git`;
-}
-
-function worktreeRepoName(repo: string): string {
-  return repo.endsWith(".git") ? repo.slice(0, -4) : repo;
 }
 
 function validateRepoName(repo: string): void {
@@ -236,23 +218,14 @@ export async function execWorkspaceShell(
 export interface CreateWorkspaceOptions {
   id?: string;
   events?: AtelierEventBus;
-  sourceRepoName?: string;
+  sourceRepositoryId?: string;
   gitUrl?: string | null;
+  gitBranch?: string | null;
 }
 
 export async function createWorkspace(options: CreateWorkspaceOptions = {}): Promise<WorkspaceNewResult> {
   const id = options.id ?? generateWorkspaceId();
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id)) throw invalidArguments(`invalid workspace id: ${id}`);
-  const runtimeContext = await getAtelierRuntimeContext();
-  const reposDir = managedReposDir(runtimeContext.atelierDataDir);
-  const dockerHostReposDir = dockerHostAtelierDataPath(runtimeContext, "repos");
-  try {
-    await mkdir(reposDir, { recursive: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new AtelierCoreError("data_dir_unavailable", `could not create Atelier repos directory ${reposDir}: ${message}`);
-  }
-
   const image = await resolveWorkspaceImage({ workspaceId: id, events: options.events });
 
   await requireDocker([
@@ -266,9 +239,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     `${namespaceLabel}=${namespace()}`,
     "--label",
     `${workspaceIdLabel}=${id}`,
-    ...(options.sourceRepoName ? ["--label", `${workspaceSourceRepoLabel}=${options.sourceRepoName}`] : []),
-    "--mount",
-    `type=bind,src=${dockerHostReposDir},dst=${atelierReposRoot}`,
+    ...(options.sourceRepositoryId ? ["--label", `${workspaceSourceRepositoryLabel}=${options.sourceRepositoryId}`] : []),
     "--publish",
     `${workspacePublishHost()}::${workspaceVSCodePort}`,
     ...workspacePreviewPorts.flatMap((port) => ["--publish", `${workspacePublishHost()}::${port}`]),
@@ -302,7 +273,7 @@ git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config 
     await resolveWorkspace(id);
     await waitForWorkspaceInit(id);
     const gitUrl = options.gitUrl?.trim();
-    if (gitUrl) await cloneGitUrlIntoWorkspace(id, gitUrl, { events: options.events });
+    if (gitUrl) await cloneGitUrlIntoWorkspace(id, gitUrl, { events: options.events, branch: options.gitBranch?.trim() || null });
   } catch (error) {
     await runDocker(["rm", "-f", workspaceContainerName(id)]).catch(() => undefined);
     throw error;
@@ -343,18 +314,18 @@ export async function listWorkspaces(): Promise<WorkspaceListResult> {
     "--filter",
     `label=${namespaceLabel}=${namespace()}`,
     "--format",
-    `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}\t{{.Label "${workspaceSourceRepoLabel}"}}`,
+    `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}\t{{.Label "${workspaceSourceRepositoryLabel}"}}`,
   ]);
 
   const workspaces: WorkspaceListResult["workspaces"] = [];
   for (const line of listed.stdout.trim().split(/\n+/).filter(Boolean)) {
-    const [containerId, labelledId, sourceRepoName] = line.split("\t");
+    const [containerId, labelledId, sourceRepositoryId] = line.split("\t");
     if (!containerId) continue;
     // Workspaces created before app-generated ids carry no workspace-id label;
     // their id is the 8-char container id prefix (their container is named atelier-<prefix>).
     const id = labelledId?.trim() || containerId.slice(0, 8);
-    const source = sourceRepoName?.trim();
-    workspaces.push({ id, title: await readTitle(containerId), ...(source ? { sourceRepoName: source } : {}) });
+    const source = sourceRepositoryId?.trim();
+    workspaces.push({ id, title: await readTitle(containerId), ...(source ? { sourceRepositoryId: source } : {}) });
   }
 
   return { workspaces };
@@ -509,10 +480,11 @@ async function listRepos(id: string): Promise<string[]> {
   return result.exitCode === 0 ? [singleWorkspaceRepoName] : [];
 }
 
-async function cloneGitUrlIntoWorkspace(id: string, gitUrl: string, options: { referencePath?: string; events?: AtelierEventBus } = {}): Promise<void> {
+async function cloneGitUrlIntoWorkspace(id: string, gitUrl: string, options: { branch?: string | null; events?: AtelierEventBus } = {}): Promise<void> {
   const trimmed = gitUrl.trim();
   if (!trimmed) throw invalidArguments("missing git URL");
-  const referenceArgs = options.referencePath ? ` --reference ${shellQuote(options.referencePath)}` : "";
+  const branch = options.branch?.trim() || null;
+  const branchArgs = branch ? ` --branch ${shellQuote(branch)}` : "";
   const exitPath = `/.atelier/git-clone-${Date.now()}.exit`;
   const script = `
     set -e
@@ -527,9 +499,9 @@ async function cloneGitUrlIntoWorkspace(id: string, gitUrl: string, options: { r
       echo 17 > ${shellQuote(exitPath)}
       exit 17
     fi
-    printf '\\033[36mCloning %s into ${workspaceRoot}...\\033[0m\\n' ${shellQuote(trimmed)}
+    printf '\\033[36mCloning %s%s into ${workspaceRoot}...\\033[0m\\n' ${shellQuote(trimmed)} ${shellQuote(branch ? `#${branch}` : "")}
     set +e
-    git clone --progress${referenceArgs} ${shellQuote(trimmed)} ${shellQuote(workspaceRoot)}
+    git clone --progress${branchArgs} ${shellQuote(trimmed)} ${shellQuote(workspaceRoot)}
     status=$?
     set -e
     if [ "$status" -eq 0 ]; then
@@ -547,7 +519,7 @@ async function cloneGitUrlIntoWorkspace(id: string, gitUrl: string, options: { r
   );
   if (start.exitCode !== 0) throw new AtelierCoreError("git_clone_failed", start.stderr.trim() || start.stdout.trim() || `could not start clone for ${trimmed}`);
 
-  const event = { workspaceId: id, gitUrl: trimmed, terminalTitle: workspaceGitCloneTerminalTitle };
+  const event = { workspaceId: id, gitUrl: branch ? `${trimmed}#${branch}` : trimmed, terminalTitle: workspaceGitCloneTerminalTitle };
   await options.events?.emit("workspace_git_clone_started", event);
 
   async function fail(code: "repo_already_exists" | "git_clone_failed", message: string): Promise<never> {
@@ -572,19 +544,6 @@ async function cloneGitUrlIntoWorkspace(id: string, gitUrl: string, options: { r
     if (Date.now() > deadline) return await fail("git_clone_failed", `git clone timed out for ${trimmed}`);
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-}
-
-export async function cloneManagedRepoIntoWorkspace(id: string, repo: string): Promise<WorkspaceCloneResult> {
-  validateRepoName(repo);
-  await resolveWorkspace(id);
-
-  const bareName = bareRepoName(repo);
-  const managed = (await listManagedRepos()).repos.find((candidate) => candidate.name === bareName || candidate.name === repo);
-  if (!managed) throw new AtelierCoreError("managed_repo_not_found", `managed repo not found: ${repo}`);
-  const referencePath = join(atelierReposRoot, managed.name);
-  await cloneGitUrlIntoWorkspace(id, referencePath, { referencePath });
-
-  return { repo: singleWorkspaceRepoName, path: workspaceRoot, remoteUrl: referencePath, referencePath };
 }
 
 async function calculateMergeability(id: string, repo: string): Promise<WorkspaceRepoMergeabilityResult> {
@@ -717,9 +676,9 @@ export async function workspaceCommand(args: string[], context: WorkspaceCommand
   switch (subcommand) {
     case "new": {
       if (rest.length > 1) throw invalidArguments("usage: atelier workspace new [git-url]");
-      const gitUrl = rest[0] ?? null;
-      const created = await createWorkspace({ events: context.events, gitUrl });
-      await context.events?.emit("workspace_created", { workspaceId: created.id, context: gitUrl ? { gitUrl } : undefined });
+      const repoSpec = rest[0] ? parseRepositorySpec(rest[0]) : undefined;
+      const created = await createWorkspace({ events: context.events, gitUrl: repoSpec?.gitUrl ?? null, gitBranch: repoSpec?.branch ?? null });
+      await context.events?.emit("workspace_created", { workspaceId: created.id, context: repoSpec ? { gitUrl: repoSpec.gitUrl, gitBranch: repoSpec.branch } : undefined });
       return created;
     }
     case "list":
@@ -743,12 +702,6 @@ export async function workspaceCommand(args: string[], context: WorkspaceCommand
       return await execWorkspace(id, rest.slice(separatorIndex + 1));
     }
     default:
-      if (args[1] === "clone") {
-        const id = requireArg(args[0], "workspace id");
-        const repo = requireArg(args[2], "repo name");
-        if (args.length !== 3) throw invalidArguments("usage: atelier workspace <workspace-id> clone <repo>");
-        return await cloneManagedRepoIntoWorkspace(id, repo);
-      }
       return await workspaceRepoCommand(args);
   }
 }

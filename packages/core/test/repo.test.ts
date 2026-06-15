@@ -1,10 +1,6 @@
-import { mkdir, mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   AtelierCoreError,
-  cloneManagedRepoIntoWorkspace,
   createWorkspace,
   deleteWorkspace,
   execWorkspace,
@@ -38,16 +34,6 @@ async function expectCoreError(action: () => Promise<unknown>): Promise<AtelierC
     return error as AtelierCoreError;
   }
   throw new Error("expected AtelierCoreError");
-}
-
-async function hostGit(args: string[]): Promise<void> {
-  const proc = Bun.spawn(["git", ...args], { stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if (exitCode !== 0) throw new Error(`git ${args.join(" ")} failed\n${stdout}\n${stderr}`);
 }
 
 async function execScript(workspaceId: string, script: string): Promise<WorkspaceExecResult> {
@@ -142,44 +128,6 @@ describe("core workspace repos", () => {
     await execScript(workspaceId, "mkdir -p /work/not-a-repo");
 
     expect((await listWorkspaceRepos(workspaceId)).repos).toEqual([]);
-  });
-
-  test("cloneManagedRepoIntoWorkspace clones a managed repo into /work", async () => {
-    const previousDataDir = process.env.ATELIER_DATA_DIR;
-    const dataDir = await mkdtemp(join(tmpdir(), "atelier-clone-data-"));
-    const reposDir = join(dataDir, "repos");
-    const barePath = join(reposDir, "alpha.git");
-    await mkdir(reposDir, { recursive: true });
-    await hostGit(["init", "--bare", barePath]);
-    await hostGit(["--git-dir", barePath, "symbolic-ref", "HEAD", "refs/heads/main"]);
-    await hostGit(["--git-dir", barePath, "config", "remote.origin.url", "/atelier/repos/alpha.git"]);
-
-    process.env.ATELIER_DATA_DIR = dataDir;
-    const workspace = await createWorkspace();
-    try {
-      const cloned = await cloneManagedRepoIntoWorkspace(workspace.id, "alpha");
-      expect(cloned.repo).toBe("work");
-      expect(cloned.path).toBe("/work");
-      expect(cloned.remoteUrl).toBe("/atelier/repos/alpha.git");
-      expect(cloned.referencePath).toBe("/atelier/repos/alpha.git");
-
-      const origin = await execScript(workspace.id, "git -C /work remote get-url origin");
-      expect(origin.stdout.trim()).toBe("/atelier/repos/alpha.git");
-
-      await execScript(workspace.id, `
-        ${gitIdentityScript()}
-        cd /work
-        echo hello > README.md
-        git add README.md
-        git commit -m initial >/dev/null
-        git push -u origin main >/dev/null 2>&1
-      `);
-
-      expect((await listWorkspaceRepos(workspace.id)).repos).toEqual(["work"]);
-    } finally {
-      await deleteWorkspace(workspace.id).catch(() => null);
-      process.env.ATELIER_DATA_DIR = previousDataDir;
-    }
   });
 
   test("listWorkspaceRepos ignores hidden directories under /work", async () => {

@@ -214,12 +214,16 @@ function stringFromContext(context: unknown, key: string): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function sourceRepoNameFromContext(context: unknown): string | undefined {
-  return stringFromContext(context, "sourceRepoName");
+function sourceRepositoryIdFromContext(context: unknown): string | undefined {
+  return stringFromContext(context, "sourceRepositoryId");
 }
 
 function gitUrlFromContext(context: unknown): string | undefined {
   return stringFromContext(context, "gitUrl");
+}
+
+function gitBranchFromContext(context: unknown): string | undefined {
+  return stringFromContext(context, "gitBranch");
 }
 
 const app = createWebApp({
@@ -229,7 +233,7 @@ const app = createWebApp({
   events: atelierEvents,
   preferences: createFileWebPreferenceStore(join(defaultDataDir(), "view-state", "preferences.json")),
   async provisionWorkspace(id, options) {
-    if (!isFakeMode()) await createWorkspace({ id, events: atelierEvents, sourceRepoName: sourceRepoNameFromContext(options?.context), gitUrl: gitUrlFromContext(options?.context) });
+    if (!isFakeMode()) await createWorkspace({ id, events: atelierEvents, sourceRepositoryId: sourceRepositoryIdFromContext(options?.context), gitUrl: gitUrlFromContext(options?.context), gitBranch: gitBranchFromContext(options?.context) });
     await ensureDefaultWorkspaceAgent(id);
     await atelierEvents.emit("workspace_created", { workspaceId: id, context: options?.context });
   },
