@@ -209,7 +209,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       case "failed":
         return `${open("failed")}${workspaceLink(title, ` title="${escapeHtml(entry.error ?? "Workspace failed")}"`)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/dismiss"><button type="submit" title="${escapeHtml(entry.error ?? "Workspace failed")} — dismiss" aria-label="Dismiss">✕</button></form></div>`;
       case "ready":
-        return `${open("")}${workspaceSidebarTitleFrame(id, title)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></div>`;
+        return `${open("")}${workspaceSidebarTitleFrame(id, title)}<div class="workspace-row-actions">${renderWorkspaceStatus(id)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></div></div>`;
     }
   }
 

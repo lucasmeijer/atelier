@@ -97,6 +97,7 @@ a { color: inherit; text-decoration: none; }
 .workspace-row:hover .workspace-row-edit { opacity: 1; }
 .workspace-row-edit:hover { background: var(--accent-soft); color: var(--accent); }
 .workspace-sidebar-title-form input { width: 100%; border: 1px solid var(--accent); border-radius: 6px; padding: 4px 6px; font: inherit; font-weight: 600; }
+.workspace-row-actions { display: inline-flex; justify-content: flex-end; align-items: center; gap: 8px; }
 .workspace-row-delete { display: flex; justify-content: flex-end; }
 .workspace-row-delete button { border: 0; background: transparent; color: var(--muted-2); cursor: pointer; border-radius: 6px; padding: 4px 6px; opacity: .65; }
 .workspace-row-delete button:hover { color: var(--red); background: var(--red-soft); opacity: 1; }

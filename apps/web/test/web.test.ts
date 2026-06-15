@@ -132,6 +132,21 @@ describe("web app contracts", () => {
     expect(broadcasts.some((html) => html.includes('<turbo-stream action="remove" target="workspace_row_abc">'))).toBe(true);
   });
 
+  test("ready workspace rows include a busy status slot before the delete button", async () => {
+    const { app, registry, broadcasts } = createTestApp();
+    await registry.seed([{ id: "abc", title: "A" }]);
+
+    const html = await (await app.fetch(new Request("http://test.local/"))).text();
+    expect(html).toContain('id="workspace_status_abc"');
+    expect(html.indexOf('id="workspace_status_abc"')).toBeLessThan(html.indexOf('class="workspace-row-delete"'));
+
+    broadcasts.length = 0;
+    registry.setTabBusy("abc", "agent:Agent 1", true);
+    const busyBroadcast = broadcasts.find((item) => item.includes('target="workspace_status_abc"')) ?? "";
+    expect(busyBroadcast).toContain('class="status-spinner sm"');
+    expect(busyBroadcast).toContain('Workspace busy');
+  });
+
   test("broadcast HTML never contains per-client state (active rows, selection inputs)", async () => {
     const provision = deferred();
     const destroy = deferred();
