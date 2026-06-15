@@ -4,4 +4,9 @@ node_modules
 .DS_Store
 .env
 *.log
+
+# Build outputs are regenerated inside the Docker build. Including them in the
+# context adds churn and can invalidate the `COPY . .` layer unnecessarily.
+apps/web/public/assets
+apps/web/public/assets-manifest.json
 apps/web/public/workspace.js.map

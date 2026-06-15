@@ -17,7 +17,8 @@ COPY packages/vscode/package.json packages/vscode/package.json
 COPY packages/workspace-proxy/package.json packages/workspace-proxy/package.json
 COPY tools/atelier/package.json tools/atelier/package.json
 
-RUN bun install --frozen-lockfile
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
 
 FROM deps AS build
 COPY . .
@@ -35,6 +36,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0

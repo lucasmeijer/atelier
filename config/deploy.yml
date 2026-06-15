@@ -26,6 +26,9 @@ registry:
 
 builder:
   arch: amd64
+  # Building amd64 images locally on Apple Silicon goes through QEMU and makes
+  # `kamal deploy` crawl. Build natively on the amd64 deployment host instead.
+  remote: ssh://root@78.47.191.121
   context: .
   dockerfile: apps/web/Dockerfile
 

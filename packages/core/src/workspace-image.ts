@@ -87,9 +87,14 @@ function startBuildTask(tag: string, modules: string[], dockerfile: string, cont
   };
 
   task.promise = (async () => {
-    const proc = Bun.spawn(["docker", "build", "-t", tag, "-f", dockerfile, contextDir], {
+    const proc = Bun.spawn(["docker", "buildx", "build", "--load", "--progress=plain", "-t", tag, "-f", dockerfile, contextDir], {
       stdout: "pipe",
       stderr: "pipe",
+      env: {
+        ...process.env,
+        DOCKER_BUILDKIT: "1",
+        BUILDKIT_PROGRESS: "plain",
+      },
     });
     await Promise.all([readBuildStream(task, proc.stdout), readBuildStream(task, proc.stderr)]);
     const exitCode = await proc.exited;

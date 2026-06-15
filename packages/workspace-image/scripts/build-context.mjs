@@ -71,8 +71,6 @@ if (uniqueApt.length) {
   dockerfile += `RUN apt-get update \\\n && apt-get install -y --no-install-recommends \\\n${uniqueApt.map((pkg) => `      ${pkg} \\\n`).join("")} && rm -rf /var/lib/apt/lists/*\n\n`;
 }
 for (const copy of copyInstructions) {
-  // Do not use Dockerfile `COPY --chmod`: shockwaving.com still uses Docker's
-  // legacy builder, where BuildKit-only COPY flags fail the entire image build.
   // Keep permission changes in a plain RUN chmod so the generated Dockerfile
   // remains compatible with both legacy builder and BuildKit.
   dockerfile += `COPY ${quote(copy.rel)} ${quote(copy.to)}\n`;
