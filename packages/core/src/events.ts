@@ -31,6 +31,13 @@ export interface WorkspaceImageBuildEvent {
   error?: string;
 }
 
+export interface WorkspaceGitCloneEvent {
+  workspaceId: string;
+  gitUrl: string;
+  terminalTitle: string;
+  error?: string;
+}
+
 export interface AtelierEventMap {
   workspace_created: WorkspaceCreatedEvent;
   workspace_user_activity: WorkspaceUserActivityEvent;
@@ -40,6 +47,8 @@ export interface AtelierEventMap {
   workspace_image_build_started: WorkspaceImageBuildEvent;
   workspace_image_build_output: WorkspaceImageBuildEvent;
   workspace_image_build_finished: WorkspaceImageBuildEvent;
+  workspace_git_clone_started: WorkspaceGitCloneEvent;
+  workspace_git_clone_finished: WorkspaceGitCloneEvent;
 }
 
 export interface AtelierEventContext {

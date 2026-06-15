@@ -89,8 +89,8 @@ describe("core workspaces", () => {
   test("execWorkspaceShell passes stdin into docker exec commands", async () => {
     const created = await createWorkspace();
 
-    const write = await execWorkspaceShell(created.id, "cat > /repos/stdin.txt", { stdin: "hello from stdin" });
-    const read = await execWorkspace(created.id, ["cat", "/repos/stdin.txt"]);
+    const write = await execWorkspaceShell(created.id, "cat > /work/stdin.txt", { stdin: "hello from stdin" });
+    const read = await execWorkspace(created.id, ["cat", "/work/stdin.txt"]);
 
     expect(write.exitCode).toBe(0);
     expect(read.exitCode).toBe(0);
@@ -127,7 +127,7 @@ describe("core workspaces", () => {
 
   test("deleteWorkspace fails with uncommitted changes unless forced", async () => {
     const created = await createWorkspace();
-    const setup = await execWorkspace(created.id, ["sh", "-lc", "mkdir -p /repos/sample && cd /repos/sample && git init && printf hello > changed.txt"]);
+    const setup = await execWorkspace(created.id, ["sh", "-lc", "cd /work && git init && printf hello > changed.txt"]);
     expect(setup.exitCode).toBe(0);
 
     const error = await expectCoreError(() => deleteWorkspace(created.id));

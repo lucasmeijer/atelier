@@ -63,6 +63,7 @@ export {
   pushWorkspaceRepo,
   setWorkspaceTitle,
   workspaceCommand,
+  workspaceRoot,
   workspacePreviewPorts,
   workspaceVSCodePort,
   type CreateWorkspaceOptions,

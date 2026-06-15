@@ -14,9 +14,9 @@ describe("renderMarkdown", () => {
   });
 
   test("fenced code blocks are highlighted but markdown is not formatted", () => {
-    const html = renderMarkdown("```bash\nls **/repos**\n```");
+    const html = renderMarkdown("```bash\nls **/work**\n```");
     expect(html.startsWith(`<pre data-lang="bash" class="language-bash"><code>`)).toBe(true);
-    expect(html).toContain("**/repos**");
+    expect(html).toContain("**/work**");
     expect(html).not.toContain("<strong>");
   });
 
@@ -54,7 +54,7 @@ describe("rewriteSegment", () => {
   });
 
   test("rewrites video file embeds to <video>", () => {
-    const html = rewriteSegment("ws", "{{atelier:embed /repos/demo.mp4}}")!;
+    const html = rewriteSegment("ws", "{{atelier:embed /work/demo.mp4}}")!;
     expect(html).toContain("<video");
     expect(html).toContain("controls");
   });

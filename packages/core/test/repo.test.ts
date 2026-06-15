@@ -69,10 +69,10 @@ function setupBaseRepoScript(repo: string): string {
   return `
     set -e
     ${gitIdentityScript()}
-    mkdir -p /tmp/atelier-test-remotes /tmp/atelier-test-clones /repos
+    mkdir -p /tmp/atelier-test-remotes /tmp/atelier-test-clones /work
     git init --bare /tmp/atelier-test-remotes/${repo}.git >/dev/null
-    git clone /tmp/atelier-test-remotes/${repo}.git /repos/${repo} >/dev/null 2>&1
-    cd /repos/${repo}
+    git clone /tmp/atelier-test-remotes/${repo}.git /work >/dev/null 2>&1
+    cd /work
     echo base > file.txt
     git add file.txt
     git commit -m base >/dev/null
@@ -84,7 +84,7 @@ function setupBaseRepoScript(repo: string): string {
 function addLocalCommitScript(repo: string, file: string, content: string, message = "local change"): string {
   return `
     set -e
-    cd /repos/${repo}
+    cd /work
     printf '%s\n' ${JSON.stringify(content)} > ${file}
     git add ${file}
     git commit -m ${JSON.stringify(message)} >/dev/null
@@ -117,7 +117,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await execScript(sharedWorkspaceId, "find /repos -mindepth 1 -maxdepth 1 -exec rm -rf {} +; rm -rf /tmp/atelier-test-remotes /tmp/atelier-test-clones; mkdir -p /repos");
+  await execScript(sharedWorkspaceId, "find /work -mindepth 1 -maxdepth 1 -exec rm -rf {} +; rm -rf /tmp/atelier-test-remotes /tmp/atelier-test-clones; mkdir -p /work");
 });
 
 afterAll(async () => {
@@ -126,25 +126,25 @@ afterAll(async () => {
 });
 
 describe("core workspace repos", () => {
-  test("listWorkspaceRepos returns an empty repo list when /repos has no git repos", async () => {
+  test("listWorkspaceRepos returns an empty repo list when /work has no git repo", async () => {
     expect(await listWorkspaceRepos(getWorkspaceId())).toEqual({ repos: [] });
   });
 
-  test("listWorkspaceRepos returns direct child git repos under /repos", async () => {
+  test("listWorkspaceRepos returns the git repo at /work", async () => {
     const workspaceId = getWorkspaceId();
-    await execScript(workspaceId, `${setupBaseRepoScript("alpha")} ${setupBaseRepoScript("beta")}`);
+    await execScript(workspaceId, setupBaseRepoScript("alpha"));
 
-    expect((await listWorkspaceRepos(workspaceId)).repos).toEqual(["alpha", "beta"]);
+    expect((await listWorkspaceRepos(workspaceId)).repos).toEqual(["work"]);
   });
 
-  test("listWorkspaceRepos ignores non-git directories under /repos", async () => {
+  test("listWorkspaceRepos ignores a non-git /work", async () => {
     const workspaceId = getWorkspaceId();
-    await execScript(workspaceId, `${setupBaseRepoScript("alpha")} mkdir -p /repos/not-a-repo`);
+    await execScript(workspaceId, "mkdir -p /work/not-a-repo");
 
-    expect((await listWorkspaceRepos(workspaceId)).repos).toEqual(["alpha"]);
+    expect((await listWorkspaceRepos(workspaceId)).repos).toEqual([]);
   });
 
-  test("cloneManagedRepoIntoWorkspace clones a managed repo into /repos", async () => {
+  test("cloneManagedRepoIntoWorkspace clones a managed repo into /work", async () => {
     const previousDataDir = process.env.ATELIER_DATA_DIR;
     const dataDir = await mkdtemp(join(tmpdir(), "atelier-clone-data-"));
     const reposDir = join(dataDir, "repos");
@@ -158,39 +158,38 @@ describe("core workspace repos", () => {
     const workspace = await createWorkspace();
     try {
       const cloned = await cloneManagedRepoIntoWorkspace(workspace.id, "alpha");
-      expect(cloned.repo).toBe("alpha");
-      expect(cloned.path).toBe("/repos/alpha");
+      expect(cloned.repo).toBe("work");
+      expect(cloned.path).toBe("/work");
       expect(cloned.remoteUrl).toBe("/atelier/repos/alpha.git");
       expect(cloned.referencePath).toBe("/atelier/repos/alpha.git");
 
-      const origin = await execScript(workspace.id, "git -C /repos/alpha remote get-url origin");
+      const origin = await execScript(workspace.id, "git -C /work remote get-url origin");
       expect(origin.stdout.trim()).toBe("/atelier/repos/alpha.git");
 
       await execScript(workspace.id, `
         ${gitIdentityScript()}
-        cd /repos/alpha
+        cd /work
         echo hello > README.md
         git add README.md
         git commit -m initial >/dev/null
         git push -u origin main >/dev/null 2>&1
       `);
 
-      expect((await listWorkspaceRepos(workspace.id)).repos).toEqual(["alpha"]);
+      expect((await listWorkspaceRepos(workspace.id)).repos).toEqual(["work"]);
     } finally {
       await deleteWorkspace(workspace.id).catch(() => null);
       process.env.ATELIER_DATA_DIR = previousDataDir;
     }
   });
 
-  test("listWorkspaceRepos ignores hidden test/helper directories under /repos", async () => {
+  test("listWorkspaceRepos ignores hidden directories under /work", async () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `
-      ${setupBaseRepoScript("alpha")}
-      mkdir -p /repos/.hidden
-      git init /repos/.hidden >/dev/null
+      mkdir -p /work/.hidden
+      git init /work/.hidden >/dev/null
     `);
 
-    expect((await listWorkspaceRepos(workspaceId)).repos).toEqual(["alpha"]);
+    expect((await listWorkspaceRepos(workspaceId)).repos).toEqual([]);
   });
 
   test("workspaceCommand repo list rejects unexpected arguments", async () => {
@@ -202,21 +201,21 @@ describe("core workspace repos", () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, setupBaseRepoScript("equal"));
 
-    expect(await getWorkspaceRepoMergeability(workspaceId, "equal")).toEqual({ state: "nothing_to_push", behind: 0, workingTree: emptyWorkingTree });
+    expect(await getWorkspaceRepoMergeability(workspaceId, "work")).toEqual({ state: "nothing_to_push", behind: 0, workingTree: emptyWorkingTree });
   });
 
   test("getWorkspaceRepoMergeability returns can_push for local commits and no upstream changes", async () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `${setupBaseRepoScript("local-only")} ${addLocalCommitScript("local-only", "local.txt", "local")}`);
 
-    expect(await getWorkspaceRepoMergeability(workspaceId, "local-only")).toEqual({ state: "can_push", ahead: 1, behind: 0, workingTree: emptyWorkingTree });
+    expect(await getWorkspaceRepoMergeability(workspaceId, "work")).toEqual({ state: "can_push", ahead: 1, behind: 0, workingTree: emptyWorkingTree });
   });
 
   test("getWorkspaceRepoMergeability includes staged, added, modified, removed, and untracked files", async () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `
       ${setupBaseRepoScript("dirty")}
-      cd /repos/dirty
+      cd /work
       printf 'tracked\n' > modified.txt
       git add modified.txt
       git commit -m 'add modified fixture' >/dev/null
@@ -227,7 +226,7 @@ describe("core workspace repos", () => {
       printf 'untracked\n' > untracked.txt
     `);
 
-    const result = await getWorkspaceRepoMergeability(workspaceId, "dirty");
+    const result = await getWorkspaceRepoMergeability(workspaceId, "work");
     expect(result.workingTree).toEqual({
       stagedFiles: ["staged.txt"],
       addedFiles: ["staged.txt"],
@@ -241,12 +240,12 @@ describe("core workspace repos", () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `
       ${setupBaseRepoScript("local-delete")}
-      cd /repos/local-delete
+      cd /work
       git rm tsconfig.json >/dev/null 2>&1 || git rm file.txt >/dev/null
       git commit -m 'delete file' >/dev/null
     `);
 
-    expect(await getWorkspaceRepoMergeability(workspaceId, "local-delete")).toEqual({ state: "can_push", ahead: 1, behind: 0, workingTree: emptyWorkingTree });
+    expect(await getWorkspaceRepoMergeability(workspaceId, "work")).toEqual({ state: "can_push", ahead: 1, behind: 0, workingTree: emptyWorkingTree });
   });
 
   test("getWorkspaceRepoMergeability returns can_push for local commits plus non-conflicting upstream commits", async () => {
@@ -257,7 +256,7 @@ describe("core workspace repos", () => {
       ${addLocalCommitScript("no-conflict", "local.txt", "local")}
     `);
 
-    expect(await getWorkspaceRepoMergeability(workspaceId, "no-conflict")).toEqual({ state: "can_push", ahead: 1, behind: 1, workingTree: emptyWorkingTree });
+    expect(await getWorkspaceRepoMergeability(workspaceId, "work")).toEqual({ state: "can_push", ahead: 1, behind: 1, workingTree: emptyWorkingTree });
   });
 
   test("getWorkspaceRepoMergeability returns has_conflicts for local and upstream commits changing the same line", async () => {
@@ -268,18 +267,18 @@ describe("core workspace repos", () => {
       ${addLocalCommitScript("conflict", "file.txt", "local")}
     `);
 
-    expect(await getWorkspaceRepoMergeability(workspaceId, "conflict")).toEqual({ state: "has_conflicts", ahead: 1, behind: 1, conflictCount: 1, workingTree: emptyWorkingTree });
+    expect(await getWorkspaceRepoMergeability(workspaceId, "work")).toEqual({ state: "has_conflicts", ahead: 1, behind: 1, conflictCount: 1, workingTree: emptyWorkingTree });
   });
 
   test("getWorkspaceRepoMergeability returns fetch_failed when git fetch cannot fetch upstream", async () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `
       ${setupBaseRepoScript("broken-fetch")}
-      cd /repos/broken-fetch
+      cd /work
       git remote set-url origin /tmp/atelier-test-remotes/missing.git
     `);
 
-    const result = await getWorkspaceRepoMergeability(workspaceId, "broken-fetch");
+    const result = await getWorkspaceRepoMergeability(workspaceId, "work");
     expect(result.state).toBe("fetch_failed");
     if (result.state !== "fetch_failed") throw new Error("expected fetch_failed");
     expect(result.message.length).toBeGreaterThan(0);
@@ -304,14 +303,14 @@ describe("core workspace repos", () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, setupBaseRepoScript("push-equal"));
 
-    expect(await pushWorkspaceRepo(workspaceId, "push-equal")).toEqual({ state: "skipped", reason: "nothing_to_push" });
+    expect(await pushWorkspaceRepo(workspaceId, "work")).toEqual({ state: "skipped", reason: "nothing_to_push" });
   });
 
   test("pushWorkspaceRepo pushes a local commit when mergeability is can_push", async () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `${setupBaseRepoScript("push-local")} ${addLocalCommitScript("push-local", "local.txt", "local")}`);
 
-    const result = await pushWorkspaceRepo(workspaceId, "push-local");
+    const result = await pushWorkspaceRepo(workspaceId, "work");
     const count = await execScript(workspaceId, "git --git-dir=/tmp/atelier-test-remotes/push-local.git rev-list --count main");
 
     expect(result).toEqual({ state: "pushed" });
@@ -326,7 +325,7 @@ describe("core workspace repos", () => {
       ${addLocalCommitScript("push-rebase", "local.txt", "local")}
     `);
 
-    const result = await pushWorkspaceRepo(workspaceId, "push-rebase");
+    const result = await pushWorkspaceRepo(workspaceId, "work");
     const count = await execScript(workspaceId, "git --git-dir=/tmp/atelier-test-remotes/push-rebase.git rev-list --count main");
 
     expect(result).toEqual({ state: "pushed" });
@@ -341,18 +340,18 @@ describe("core workspace repos", () => {
       ${addLocalCommitScript("push-conflict", "file.txt", "local")}
     `);
 
-    expect(await pushWorkspaceRepo(workspaceId, "push-conflict")).toEqual({ state: "skipped", reason: "has_conflicts" });
+    expect(await pushWorkspaceRepo(workspaceId, "work")).toEqual({ state: "skipped", reason: "has_conflicts" });
   });
 
   test("pushWorkspaceRepo returns skipped fetch_failed when fetch fails", async () => {
     const workspaceId = getWorkspaceId();
     await execScript(workspaceId, `
       ${setupBaseRepoScript("push-fetch-failed")}
-      cd /repos/push-fetch-failed
+      cd /work
       git remote set-url origin /tmp/atelier-test-remotes/missing.git
     `);
 
-    expect(await pushWorkspaceRepo(workspaceId, "push-fetch-failed")).toEqual({ state: "skipped", reason: "fetch_failed" });
+    expect(await pushWorkspaceRepo(workspaceId, "work")).toEqual({ state: "skipped", reason: "fetch_failed" });
   });
 
   test("pushWorkspaceRepo missing repo throws repo_not_found", async () => {

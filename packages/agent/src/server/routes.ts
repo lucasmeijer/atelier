@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AtelierCoreError, defaultDataDir, getWorkspacePreviewPort, workspaceContainerName, workspacePreviewPorts, type AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, defaultDataDir, getWorkspacePreviewPort, workspaceContainerName, workspacePreviewPorts, workspaceRoot, type AtelierEventBus } from "@atelier/core";
 import { ids, renderAttachmentChip } from "./render.ts";
 import { sseFrame, turboStream, turboStreamResponse } from "./html.ts";
 import { expandPromptTemplate } from "./prompt-templates.ts";
@@ -310,13 +310,13 @@ async function submitInitialAgentPrompt(workspaceId: string, context: AgentWorks
 
 async function deliverFileAttachment(workspaceId: string, staged: StagedAttachment): Promise<string> {
   if (isFakeMode()) return `[Attached file: ${staged.name}]`;
-  const target = `/repos/.atelier-attachments/${staged.name}`;
+  const target = `${workspaceRoot}/.atelier-attachments/${staged.name}`;
   try {
     const content = await readFile(staged.path);
     const { execWorkspaceCommand } = await import("@atelier/core");
     const result = await execWorkspaceCommand(
       workspaceId,
-      ["sh", "-c", `mkdir -p /repos/.atelier-attachments && base64 -d > '${target.replaceAll("'", `'\\''`)}'`],
+      ["sh", "-c", `mkdir -p ${workspaceRoot}/.atelier-attachments && base64 -d > '${target.replaceAll("'", `'\\''`)}'`],
       { stdin: content.toString("base64") },
     );
     if (result.exitCode !== 0) return `[Attached file ${staged.name}: failed to copy into workspace]`;

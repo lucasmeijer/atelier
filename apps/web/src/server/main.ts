@@ -208,10 +208,18 @@ const registry = createWorkspaceRegistry({
 const hub = createStreamHub();
 const layouts = createWorkspaceLayoutStore();
 
+function stringFromContext(context: unknown, key: string): string | undefined {
+  if (!context || typeof context !== "object" || !(key in context)) return undefined;
+  const value = (context as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 function sourceRepoNameFromContext(context: unknown): string | undefined {
-  if (!context || typeof context !== "object" || !("sourceRepoName" in context)) return undefined;
-  const sourceRepoName = (context as { sourceRepoName?: unknown }).sourceRepoName;
-  return typeof sourceRepoName === "string" && sourceRepoName.trim() ? sourceRepoName.trim() : undefined;
+  return stringFromContext(context, "sourceRepoName");
+}
+
+function gitUrlFromContext(context: unknown): string | undefined {
+  return stringFromContext(context, "gitUrl");
 }
 
 const app = createWebApp({
@@ -221,7 +229,7 @@ const app = createWebApp({
   events: atelierEvents,
   preferences: createFileWebPreferenceStore(join(defaultDataDir(), "view-state", "preferences.json")),
   async provisionWorkspace(id, options) {
-    if (!isFakeMode()) await createWorkspace({ id, events: atelierEvents, sourceRepoName: sourceRepoNameFromContext(options?.context) });
+    if (!isFakeMode()) await createWorkspace({ id, events: atelierEvents, sourceRepoName: sourceRepoNameFromContext(options?.context), gitUrl: gitUrlFromContext(options?.context) });
     await ensureDefaultWorkspaceAgent(id);
     await atelierEvents.emit("workspace_created", { workspaceId: id, context: options?.context });
   },

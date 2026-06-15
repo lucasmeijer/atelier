@@ -1,6 +1,6 @@
 import { spawn, type IPty } from "@zenyr/bun-pty";
 import type { ServerWebSocket } from "bun";
-import { execWorkspaceCommand, execWorkspaceShell, workspaceContainerName } from "@atelier/core";
+import { execWorkspaceCommand, execWorkspaceShell, workspaceContainerName, workspaceRoot } from "@atelier/core";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
@@ -127,7 +127,7 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
       // viewers (the inline xterm) from resizing the command's terminal.
       const create = await execWorkspaceShell(
         workspaceId,
-        `TERM=xterm-256color tmux new-session -d -s ${shellQuote(sessionName)} -x ${agentTermCols} -y ${agentTermRows} -c /repos ${shellQuote(inner)} \\; set-option -t ${shellQuote(sessionName)} window-size manual \\; set-option -t ${shellQuote(sessionName)} status off \\; set-option -t ${shellQuote(sessionName)} history-limit ${tmuxHistoryLimit}`,
+        `TERM=xterm-256color tmux new-session -d -s ${shellQuote(sessionName)} -x ${agentTermCols} -y ${agentTermRows} -c ${shellQuote(workspaceRoot)} ${shellQuote(inner)} \\; set-option -t ${shellQuote(sessionName)} window-size manual \\; set-option -t ${shellQuote(sessionName)} status off \\; set-option -t ${shellQuote(sessionName)} history-limit ${tmuxHistoryLimit}`,
       );
       if (create.exitCode !== 0) throw new Error(create.stderr.trim() || `could not start command session`);
 

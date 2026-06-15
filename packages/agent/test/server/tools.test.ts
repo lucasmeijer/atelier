@@ -2,16 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { applyExactEdits, createDeleteCurrentWorkspaceTool, normalizeWorkspacePath } from "../../src/server/tools.ts";
 
 describe("workspace agent tools", () => {
-  test("normalizes paths under /repos", () => {
-    expect(normalizeWorkspacePath("foo.ts")).toBe("/repos/foo.ts");
-    expect(normalizeWorkspacePath("/repos/foo.ts")).toBe("/repos/foo.ts");
-    expect(normalizeWorkspacePath("nested/../foo.ts")).toBe("/repos/foo.ts");
+  test("normalizes paths under /work", () => {
+    expect(normalizeWorkspacePath("foo.ts")).toBe("/work/foo.ts");
+    expect(normalizeWorkspacePath("/work/foo.ts")).toBe("/work/foo.ts");
+    expect(normalizeWorkspacePath("nested/../foo.ts")).toBe("/work/foo.ts");
   });
 
   test("rejects path escapes", () => {
     expect(() => normalizeWorkspacePath("../foo.ts")).toThrow();
     expect(() => normalizeWorkspacePath("/etc/passwd")).toThrow();
-    expect(() => normalizeWorkspacePath("/workspace/repos/x")).toThrow();
+    expect(() => normalizeWorkspacePath("/workspace/work/x")).toThrow();
   });
 
   test("applies exact edits", () => {

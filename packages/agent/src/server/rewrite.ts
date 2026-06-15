@@ -108,7 +108,7 @@ export const atelierMediaPromptInstructions = `To show the user workspace media 
 {{atelier:embed <target>}}
 
 Use this only when you want the web UI to render the target inline. The target must be either:
-- an absolute path inside the workspace container, e.g. {{atelier:embed /repos/app/screenshot.png}}
+- an absolute path inside the workspace container, e.g. {{atelier:embed /work/app/screenshot.png}}
 - an http(s) URL, e.g. {{atelier:embed http://localhost:3000/dashboard}}
 
 Image-looking files render as images, video-looking files render with a video player, HTML files render as preview iframes, other files render as links, and URLs render as preview iframes. The directive can appear in the middle of a sentence, but do not wrap it in Markdown link or image syntax. Do not use it for ordinary code/path mentions.`;

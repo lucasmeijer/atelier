@@ -12,7 +12,7 @@ import { resolveWorkspaceImage } from "./workspace-image.ts";
 const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
 const titlePath = "/.atelier/title";
-const workspaceRoot = "/repos";
+export const workspaceRoot = "/work";
 const atelierReposRoot = "/atelier/repos";
 export const workspaceVSCodePort = 8000;
 export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
@@ -133,8 +133,13 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+const singleWorkspaceRepoName = "work";
+const workspaceGitCloneTerminalTitle = "Cloning repository";
+
 function repoPath(repo: string): string {
-  return `${workspaceRoot}/${repo}`;
+  validateRepoName(repo);
+  if (repo !== singleWorkspaceRepoName) throw new AtelierCoreError("repo_not_found", `repo not found: ${repo}`);
+  return workspaceRoot;
 }
 
 function bareRepoName(repo: string): string {
@@ -172,6 +177,9 @@ async function ensureWorkspaceFilesystem(id: string): Promise<void> {
     set -e
     if [ ! -e ${shellQuote(workspaceRoot)} ] && [ -d /workspace/repos ]; then
       mv /workspace/repos ${shellQuote(workspaceRoot)}
+    fi
+    if [ ! -e ${shellQuote(workspaceRoot)} ] && [ -d /repos ]; then
+      mv /repos ${shellQuote(workspaceRoot)}
     fi
     mkdir -p ${shellQuote(workspaceRoot)} /.atelier
     chown -R atelier:atelier ${shellQuote(workspaceRoot)} /.atelier
@@ -229,6 +237,7 @@ export interface CreateWorkspaceOptions {
   id?: string;
   events?: AtelierEventBus;
   sourceRepoName?: string;
+  gitUrl?: string | null;
 }
 
 export async function createWorkspace(options: CreateWorkspaceOptions = {}): Promise<WorkspaceNewResult> {
@@ -270,7 +279,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     image,
     "sh",
     "-lc",
-    `mkdir -p /.atelier /repos; chown -R atelier:atelier /.atelier /repos; cat > /usr/local/bin/atelier-git-credential <<'EOF'
+    `mkdir -p /.atelier ${workspaceRoot}; chown -R atelier:atelier /.atelier ${workspaceRoot}; cat > /usr/local/bin/atelier-git-credential <<'EOF'
 #!/bin/sh
 test "$1" = get || exit 0
 token="\${GH_TOKEN:-}"
@@ -286,8 +295,18 @@ if [ -z "\${GH_TOKEN:-}" ] && [ -r ${workspaceGithubTokenPath} ]; then
   export GH_TOKEN="$(cat ${workspaceGithubTokenPath})"
 fi
 EOF
-git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; git config --file /home/atelier/.gitconfig credential.helper '!/usr/local/bin/atelier-git-credential'; chown atelier:atelier /home/atelier/.gitconfig; if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder /repos > /.atelier/vscode-server.log 2>&1 &' || true; fi; sleep infinity`,
+git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; git config --file /home/atelier/.gitconfig credential.helper '!/usr/local/bin/atelier-git-credential'; chown atelier:atelier /home/atelier/.gitconfig; if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'ATELIER_VSCODE_DEFAULT_FOLDER=${workspaceRoot} nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode-server.log 2>&1 &' || true; fi; sleep infinity`,
   ]);
+
+  try {
+    await resolveWorkspace(id);
+    await waitForWorkspaceInit(id);
+    const gitUrl = options.gitUrl?.trim();
+    if (gitUrl) await cloneGitUrlIntoWorkspace(id, gitUrl, { events: options.events });
+  } catch (error) {
+    await runDocker(["rm", "-f", workspaceContainerName(id)]).catch(() => undefined);
+    throw error;
+  }
 
   return { id };
 }
@@ -480,11 +499,79 @@ async function ensureRepo(id: string, repo: string): Promise<void> {
   if (result.exitCode !== 0) throw new AtelierCoreError("repo_not_found", `repo not found: ${repo}`);
 }
 
+async function waitForWorkspaceInit(id: string): Promise<void> {
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `for i in $(seq 1 100); do test -x /usr/local/bin/atelier-git-credential && test -f /home/atelier/.gitconfig && exit 0; sleep 0.1; done; exit 1`]);
+  if (result.exitCode !== 0) throw new AtelierCoreError("workspace_init_failed", result.stderr.trim() || result.stdout.trim() || `workspace ${id} did not finish initializing`);
+}
+
 async function listRepos(id: string): Promise<string[]> {
-  const script = `mkdir -p ${shellQuote(workspaceRoot)} && find ${shellQuote(workspaceRoot)} -mindepth 1 -maxdepth 1 -type d ! -name '.*' -exec sh -c 'for dir do git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 && basename "$dir"; done' sh {} + | sort`;
-  const result = await execShellAsAtelier(id, script);
-  if (result.exitCode !== 0) throw new AtelierCoreError("git_error", result.stderr.trim() || "could not list repos");
-  return result.stdout.trim().split(/\n+/).filter(Boolean);
+  const result = await execShellAsAtelier(id, `mkdir -p ${shellQuote(workspaceRoot)} && git -C ${shellQuote(workspaceRoot)} rev-parse --is-inside-work-tree >/dev/null 2>&1`);
+  return result.exitCode === 0 ? [singleWorkspaceRepoName] : [];
+}
+
+async function cloneGitUrlIntoWorkspace(id: string, gitUrl: string, options: { referencePath?: string; events?: AtelierEventBus } = {}): Promise<void> {
+  const trimmed = gitUrl.trim();
+  if (!trimmed) throw invalidArguments("missing git URL");
+  const referenceArgs = options.referencePath ? ` --reference ${shellQuote(options.referencePath)}` : "";
+  const exitPath = `/.atelier/git-clone-${Date.now()}.exit`;
+  const script = `
+    set -e
+    mkdir -p ${shellQuote(workspaceRoot)} /.atelier
+    if git -C ${shellQuote(workspaceRoot)} rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      printf 'repo already exists at %s\\n' ${shellQuote(workspaceRoot)} >&2
+      echo 17 > ${shellQuote(exitPath)}
+      exit 17
+    fi
+    if find ${shellQuote(workspaceRoot)} -mindepth 1 -maxdepth 1 | read _; then
+      printf 'workspace directory is not empty: %s\\n' ${shellQuote(workspaceRoot)} >&2
+      echo 17 > ${shellQuote(exitPath)}
+      exit 17
+    fi
+    printf '\\033[36mCloning %s into ${workspaceRoot}...\\033[0m\\n' ${shellQuote(trimmed)}
+    set +e
+    git clone --progress${referenceArgs} ${shellQuote(trimmed)} ${shellQuote(workspaceRoot)}
+    status=$?
+    set -e
+    if [ "$status" -eq 0 ]; then
+      printf '\\n\\033[32mClone complete.\\033[0m\\n'
+    else
+      printf '\\n\\033[31mClone failed with exit code %s.\\033[0m\\n' "$status"
+    fi
+    echo "$status" > ${shellQuote(exitPath)}
+    exit "$status"
+  `;
+  const start = await execShellAsAtelier(
+    id,
+    `tmux kill-session -t ${shellQuote(workspaceGitCloneTerminalTitle)} 2>/dev/null || true
+     tmux new-session -d -s ${shellQuote(workspaceGitCloneTerminalTitle)} -c / /bin/bash -lc ${shellQuote(script)} \\; set-option -t ${shellQuote(workspaceGitCloneTerminalTitle)} status off`,
+  );
+  if (start.exitCode !== 0) throw new AtelierCoreError("git_clone_failed", start.stderr.trim() || start.stdout.trim() || `could not start clone for ${trimmed}`);
+
+  const event = { workspaceId: id, gitUrl: trimmed, terminalTitle: workspaceGitCloneTerminalTitle };
+  await options.events?.emit("workspace_git_clone_started", event);
+
+  async function fail(code: "repo_already_exists" | "git_clone_failed", message: string): Promise<never> {
+    await options.events?.emit("workspace_git_clone_finished", { ...event, error: message });
+    throw new AtelierCoreError(code, message);
+  }
+
+  const deadline = Date.now() + 30 * 60 * 1000;
+  for (;;) {
+    const status = await execShellAsAtelier(id, `cat ${shellQuote(exitPath)} 2>/dev/null`);
+    if (status.exitCode === 0 && status.stdout.trim()) {
+      const code = Number(status.stdout.trim());
+      if (code === 0) {
+        await options.events?.emit("workspace_git_clone_finished", event);
+        return;
+      }
+      const message = code === 17 ? `workspace directory is not empty: ${workspaceRoot}` : `could not clone ${trimmed}`;
+      return await fail(code === 17 ? "repo_already_exists" : "git_clone_failed", message);
+    }
+    const alive = await execShellAsAtelier(id, `tmux has-session -t ${shellQuote(workspaceGitCloneTerminalTitle)} 2>/dev/null`);
+    if (alive.exitCode !== 0) return await fail("git_clone_failed", `git clone session exited without reporting status for ${trimmed}`);
+    if (Date.now() > deadline) return await fail("git_clone_failed", `git clone timed out for ${trimmed}`);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
 }
 
 export async function cloneManagedRepoIntoWorkspace(id: string, repo: string): Promise<WorkspaceCloneResult> {
@@ -492,29 +579,12 @@ export async function cloneManagedRepoIntoWorkspace(id: string, repo: string): P
   await resolveWorkspace(id);
 
   const bareName = bareRepoName(repo);
-  const worktreeName = worktreeRepoName(repo);
   const managed = (await listManagedRepos()).repos.find((candidate) => candidate.name === bareName || candidate.name === repo);
   if (!managed) throw new AtelierCoreError("managed_repo_not_found", `managed repo not found: ${repo}`);
-  const targetPath = repoPath(worktreeName);
   const referencePath = join(atelierReposRoot, managed.name);
-  const result = await execShellAsAtelier(
-    id,
-    `set -e
-      mkdir -p ${shellQuote(workspaceRoot)}
-      if [ -e ${shellQuote(targetPath)} ]; then
-        printf 'repo already exists: %s\n' ${shellQuote(worktreeName)} >&2
-        exit 17
-      fi
-      git clone --reference ${shellQuote(referencePath)} ${shellQuote(referencePath)} ${shellQuote(targetPath)}
-    `,
-  );
-  if (result.exitCode !== 0) {
-    const message = (result.stderr || result.stdout).trim();
-    if (message.includes("File exists")) throw new AtelierCoreError("repo_already_exists", `repo already exists: ${worktreeName}`);
-    throw new AtelierCoreError("git_clone_failed", message || `could not clone ${repo}`);
-  }
+  await cloneGitUrlIntoWorkspace(id, referencePath, { referencePath });
 
-  return { repo: worktreeName, path: targetPath, remoteUrl: referencePath, referencePath };
+  return { repo: singleWorkspaceRepoName, path: workspaceRoot, remoteUrl: referencePath, referencePath };
 }
 
 async function calculateMergeability(id: string, repo: string): Promise<WorkspaceRepoMergeabilityResult> {
@@ -646,9 +716,10 @@ export async function workspaceCommand(args: string[], context: WorkspaceCommand
 
   switch (subcommand) {
     case "new": {
-      if (rest.length !== 0) throw invalidArguments("workspace new takes no arguments");
-      const created = await createWorkspace({ events: context.events });
-      await context.events?.emit("workspace_created", { workspaceId: created.id });
+      if (rest.length > 1) throw invalidArguments("usage: atelier workspace new [git-url]");
+      const gitUrl = rest[0] ?? null;
+      const created = await createWorkspace({ events: context.events, gitUrl });
+      await context.events?.emit("workspace_created", { workspaceId: created.id, context: gitUrl ? { gitUrl } : undefined });
       return created;
     }
     case "list":

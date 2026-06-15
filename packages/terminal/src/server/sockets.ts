@@ -1,6 +1,6 @@
 import { spawn, type IPty } from "@zenyr/bun-pty";
 import type { ServerWebSocket } from "bun";
-import { AtelierCoreError, workspaceContainerName } from "@atelier/core";
+import { AtelierCoreError, workspaceContainerName, workspaceRoot } from "@atelier/core";
 import { listWorkspaceTerminals } from "./workspace-terminals.ts";
 
 export interface TerminalSocketData {
@@ -66,7 +66,7 @@ export function openTerminalSocket(ws: ServerWebSocket<TerminalSocketData>): voi
   const args = [
     "exec", "-it",
     "--user", "atelier",
-    "--workdir", "/repos",
+    "--workdir", workspaceRoot,
     "-e", "TERM=xterm-256color",
     "-e", "COLORTERM=truecolor",
     "-e", "LANG=C.UTF-8",

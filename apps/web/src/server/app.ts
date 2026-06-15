@@ -20,7 +20,6 @@ import {
   addManagedRepo,
   type AtelierEventBus,
   type WorkspaceCreationContext,
-  cloneManagedRepoIntoWorkspace,
   generateWorkspaceId,
   getWorkspaceRepoMergeability,
   listManagedRepos,
@@ -29,7 +28,7 @@ import {
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceRepoMergeabilityResult,
 } from "@atelier/core";
-import { createWorkspaceTerminal } from "@atelier/terminal/server";
+import { createWorkspaceTerminal, renderTerminalPane } from "@atelier/terminal/server";
 import {
   createWorkspaceVSCodeTab,
   deleteWorkspaceVSCodeTab,
@@ -130,6 +129,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, (force) => deleteCurrentWorkspaceFromAgent(workspaceId, force)));
   const imageBuilds = new Map<string, { state: "building" | "failed"; image: string; modules: string[]; output: string; error?: string }>();
   const workspaceCommandModalHostId = "workspace_command_modal_host";
+  const cloneTerminals = new Map<string, { title: string; gitUrl: string }>();
 
   async function preferredNewAgentModel(): Promise<string | undefined> {
     return (await deps.preferences?.load())?.preferredNewAgentModel;
@@ -298,16 +298,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return `--repo-color:${repoColor(repoName)}`;
   }
 
-  function repoWorktreeName(repoName: string): string {
-    return repoName.endsWith(".git") ? repoName.slice(0, -4) : repoName;
-  }
-
   function launchRepoAgentModal(repo: { name: string; path: string; remoteUrl: string | null }, selectedModel?: string, options: { autoShow?: boolean; modalId?: string; formId?: string } = {}): string {
     const modalId = options.modalId ?? domId("agent_launch_repo_modal", repo.name);
     const formId = options.formId ?? domId("agent_launch_repo_form", repo.name);
-    const cloneUrl = repo.remoteUrl || repo.path;
-    const worktreeName = repoWorktreeName(repo.name);
-    const initialText = `git clone ${cloneUrl} into /repos/${worktreeName}\n\nand then\n\n`;
+    const initialText = "";
     return `<dialog id="${modalId}" class="agent-launch-modal" data-controller="modal submit-shortcut"${options.autoShow ? ` data-modal-auto-show-value="true"` : ""}>
   ${renderAgentComposer({
     action: `/repo-agent-workspaces/${encodeURIComponent(repo.name)}`,
@@ -483,11 +477,18 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     </div>`;
   }
 
+  function workspaceCloneTerminalHtml(entry: WorkspaceEntry): string {
+    const clone = cloneTerminals.get(entry.id);
+    if (!clone || entry.phase !== "starting") return "";
+    return `<div class="workspace-clone-terminal"><div class="workspace-clone-heading"><span class="status-spinner"></span><div><b>Cloning repository into /work…</b><div class="r-sub">${escapeHtml(clone.gitUrl)}</div></div></div>${renderTerminalPane(entry.id, clone.title, { autostart: true, active: true })}</div>`;
+  }
+
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { active?: boolean } = {}): string {
     const buildHtml = imageBuilds.get(entry.id) ? workspaceImageBuildHtml(entry.id) : "";
+    const cloneHtml = workspaceCloneTerminalHtml(entry);
     const inner = entry.phase === "failed"
       ? buildHtml || `<div class="pad workspace-boot-pad"><span class="dot err"></span> Workspace creation failed: ${escapeHtml(entry.error ?? "unknown error")}</div>`
-      : buildHtml || `<div class="pad workspace-boot-pad"><span class="status-spinner"></span> Starting workspace…</div>`;
+      : cloneHtml || buildHtml || `<div class="pad workspace-boot-pad"><span class="status-spinner"></span> Starting workspace…</div>`;
     return `<div class="workspace-detail-resident workspace-boot ${options.active ? "active" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"><div class="main"><header class="header"><h1>${escapeHtml(workspaceTitle(entry))}</h1></header><div class="body"><div class="panel">${inner}</div></div></div></div>`;
   }
 
@@ -514,6 +515,16 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       imageBuilds.delete(event.workspaceId);
     }
     broadcastWorkspaceBoot(event.workspaceId);
+  });
+
+  deps.events?.on("workspace_git_clone_started", (event) => {
+    cloneTerminals.set(event.workspaceId, { title: event.terminalTitle, gitUrl: event.gitUrl });
+    broadcastWorkspaceBoot(event.workspaceId);
+  });
+
+  deps.events?.on("workspace_git_clone_finished", ({ workspaceId }) => {
+    cloneTerminals.delete(workspaceId);
+    broadcastWorkspaceBoot(workspaceId);
   });
 
   async function workspaceResidentFor(entry: WorkspaceEntry, options: { active?: boolean } = {}): Promise<string> {
@@ -614,6 +625,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     await rememberPreferredNewAgentModel(model);
     const context: WorkspaceCreationContext = {
       sourceRepoName: repo.name,
+      gitUrl: repo.remoteUrl || repo.path,
       agent: {
         initialPrompt: text,
         model,
@@ -752,13 +764,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const gitUrl = String(formData.get("gitUrl") ?? "");
     await addManagedRepo(gitUrl);
     return Response.redirect(new URL("/", url).toString(), 303);
-  }
-
-  async function cloneManagedRepoIntoWorkspaceFromForm(id: string, request: Request, url: URL): Promise<Response> {
-    const formData = await request.formData();
-    const repo = String(formData.get("repo") ?? "");
-    await cloneManagedRepoIntoWorkspace(id, repo);
-    return Response.redirect(new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString(), 303);
   }
 
   function statusBadge(className: string, label: string, title: string): string {
@@ -1036,7 +1041,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if ((params = match(/^\/workspaces\/([^/]+)\/layout\/resize$/)) && request.method === "POST") return await resizeWorkspaceGroupsEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/browser\/navigate$/)) && request.method === "POST") return await browserNavigateEndpoint(params[0], "browser", request);
     if ((params = match(/^\/workspaces\/([^/]+)\/browser\/([^/]+)\/navigate$/)) && request.method === "POST") return await browserNavigateEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/clone-managed-repo$/)) && request.method === "POST") return await cloneManagedRepoIntoWorkspaceFromForm(params[0], request, url);
     if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/push$/)) && request.method === "POST") return await pushRepoEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/mergeability$/)) && request.method === "GET") return await mergeabilityFrame(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteWorkspaceEndpoint(params[0], url.searchParams.get("force") === "1");

@@ -14,7 +14,7 @@ Those are the only ports exposed out of your execution environment, and Atelier 
 The Atelier web application makes it easy for the user to inspect files you have created. If you want the user
 to see an image, video, or any other file on your disk inline in the conversation, emit it like this:
 
-- {{atelier:embed /repos/app/screenshot.png}}
+- {{atelier:embed /work/app/screenshot.png}}
 
 You can choose to address the user using markdown, or html. 
 Use html when you want to explain something visual / interactive. Make the html a single screen experience. It will be shown
@@ -28,13 +28,18 @@ preview browser to it. It can be by recording a video. You will optimize for you
 
 `;
 
-export function createAtelierResourceLoader(): ResourceLoader {
+export interface AtelierAgentsFile {
+  path: string;
+  content: string;
+}
+
+export function createAtelierResourceLoader(agentsFiles: AtelierAgentsFile[] = []): ResourceLoader {
   return {
     getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
     getSkills: () => ({ skills: [], diagnostics: [] }),
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
-    getAgentsFiles: () => ({ agentsFiles: [] }),
+    getAgentsFiles: () => ({ agentsFiles }),
     getSystemPrompt: () => atelierSystemPrompt,
     getAppendSystemPrompt: () => [],
     extendResources: () => {},

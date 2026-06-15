@@ -1,5 +1,5 @@
 import { dirname, posix } from "node:path";
-import { execWorkspaceCommand, execWorkspaceShell, type AtelierEventBus } from "@atelier/core";
+import { execWorkspaceCommand, execWorkspaceShell, workspaceRoot, type AtelierEventBus } from "@atelier/core";
 import {
   createEditToolDefinition,
   createReadToolDefinition,
@@ -10,7 +10,6 @@ import {
 import { Type } from "typebox";
 import { createTmuxBashTool } from "./bash-tmux.ts";
 
-const workspaceRoot = "/repos";
 const maxReadBytes = 200_000;
 
 export function normalizeWorkspacePath(path: string): string {

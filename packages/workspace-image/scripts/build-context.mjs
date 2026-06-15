@@ -79,6 +79,6 @@ for (const copy of copyInstructions) {
 if (copyInstructions.length) dockerfile += "\n";
 for (const script of runInstructions) dockerfile += `RUN ${dockerEscapeRun(script)}\n\n`;
 if (Object.keys(env).length) dockerfile += `ENV ${Object.entries(env).map(([key, value]) => `${key}=${quote(value)}`).join(" \\\n    ")}\n\n`;
-dockerfile += `WORKDIR /repos\n`;
+dockerfile += `WORKDIR /work\n`;
 await writeFile(join(outDir, "Dockerfile"), dockerfile);
 await writeFile(join(outDir, "metadata.json"), JSON.stringify({ tag: `atelier-workspace:${hash.digest("hex").slice(0, 16)}`, modules: moduleNames }, null, 2));

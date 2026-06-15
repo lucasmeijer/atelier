@@ -1,6 +1,6 @@
-import { execWorkspaceShell, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
+import { execWorkspaceShell, AtelierCoreError, workspaceRoot, type AtelierEventBus } from "@atelier/core";
 
-const terminalRoot = "/repos";
+const terminalRoot = workspaceRoot;
 const terminalEnvironment = "LANG=C.UTF-8 LC_ALL=C.UTF-8 TERM=xterm-256color COLORTERM=truecolor";
 
 function shellQuote(value: string): string {
@@ -16,7 +16,7 @@ export interface WorkspaceTerminalCreateOptions {
   title?: string;
   /** Command to run in the terminal instead of opening an idle bash shell. */
   command?: string;
-  /** Working directory for the terminal session. Must stay under /repos. */
+  /** Working directory for the terminal session. Must stay under /work. */
   cwd?: string;
   /** Event bus used to notify the web UI that the workspace tab set changed. */
   events?: AtelierEventBus;

@@ -17,7 +17,7 @@ Module names are inferred from their package directory (`packages/terminal` -> `
 
 Current contributions:
 
-- `packages/workspace-image/workspace-image.json`: base Ubuntu tools, C/C++ toolchain, .NET 10 SDK, Node.js, pi, `atelier` user, `/repos`.
+- `packages/workspace-image/workspace-image.json`: base Ubuntu tools, C/C++ toolchain, .NET 10 SDK, Node.js, pi, `atelier` user, `/work`.
 - `packages/terminal/workspace-image.json`: tmux, terminfo, `/etc/tmux.conf`.
 - `packages/vscode/workspace-image.json`: VS Code apt repo/package, `atelier-start-vscode`, defaults, server and extension prewarm.
 

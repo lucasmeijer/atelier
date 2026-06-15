@@ -1,6 +1,6 @@
 import { appendFile, mkdir, open, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { AtelierEventBus } from "@atelier/core";
+import { execWorkspaceCommand, workspaceRoot, type AtelierEventBus } from "@atelier/core";
 import { configuredAgentModels } from "@atelier/pi-config/server";
 import {
   AuthStorage,
@@ -887,17 +887,29 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 }
 
+async function loadWorkspaceAgentsFiles(workspaceId: string): Promise<Array<{ path: string; content: string }>> {
+  const agentsPath = `${workspaceRoot}/AGENTS.md`;
+  try {
+    const result = await execWorkspaceCommand(workspaceId, ["cat", agentsPath], { workdir: workspaceRoot });
+    if (result.exitCode === 0 && result.stdout.trim()) return [{ path: agentsPath, content: result.stdout }];
+  } catch {
+    // AGENTS.md context is best-effort; workspace startup should not fail if it cannot be read.
+  }
+  return [];
+}
+
 async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
   await ensureSessionFile(agent.path);
   const authStorage = AuthStorage.create();
   const modelRegistry = ModelRegistry.create(authStorage);
-  const sessionManager = SessionManager.open(agent.path, dirname(agent.path), "/repos");
+  const agentsFiles = await loadWorkspaceAgentsFiles(agent.workspaceId);
+  const sessionManager = SessionManager.open(agent.path, dirname(agent.path), workspaceRoot);
   const { session } = await createAgentSession({
-    cwd: "/repos",
+    cwd: workspaceRoot,
     agentDir: dirname(agent.path),
     authStorage,
     modelRegistry,
-    resourceLoader: createAtelierResourceLoader(),
+    resourceLoader: createAtelierResourceLoader(agentsFiles),
     customTools: createWorkspaceAgentTools(agent.workspaceId, { events: options.events }),
     tools: workspaceAgentToolNames(),
     sessionManager,
@@ -1087,7 +1099,7 @@ class FakeAgentRuntime extends BaseAgentRuntime {
       parts.push({ type: "thinking", text: acc });
 
       // Tool 1: bash with streamed output
-      await this.fakeTool(parts, "bash", { command: "ls -la /repos" }, [
+      await this.fakeTool(parts, "bash", { command: "ls -la /work" }, [
         "total 24",
         "drwxr-xr-x  6 atelier atelier 192 Jun 10 11:02 .",
         "drwxr-xr-x 18 root    root    576 Jun 10 10:55 ..",
@@ -1106,12 +1118,12 @@ class FakeAgentRuntime extends BaseAgentRuntime {
       const final = [
         `Done. Here is what I did with **${text.slice(0, 60)}**:`,
         "",
-        "- Inspected `/repos` — one repository (`demo-repo`) plus a README",
+        "- Inspected `/work` — one repository (`demo-repo`) plus a README",
         "- Wrote `demo-repo/NOTES.md` with a short streaming demo document",
         "",
         wantsMedia ? "Here is the screenshot you asked for:\n\n{{atelier:embed /tmp/atelier-fake-demo.png}}\n" : "",
         "```bash",
-        "ls -la /repos   # 2 entries",
+        "ls -la /work   # 2 entries",
         "```",
         "",
         "Anything else you would like me to adjust?",

@@ -23,5 +23,5 @@ exec code serve-web \
   --host "${ATELIER_VSCODE_HOST:-0.0.0.0}" \
   --port "${ATELIER_VSCODE_PORT:-8000}" \
   --without-connection-token \
-  --default-folder "${ATELIER_VSCODE_DEFAULT_FOLDER:-/repos}" \
+  --default-folder "${ATELIER_VSCODE_DEFAULT_FOLDER:-/work}" \
   --server-data-dir "$server_data_dir"
