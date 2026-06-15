@@ -41,7 +41,6 @@ COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
-ENV ATELIER_AGENT_FAKE=0
 
 COPY --from=build /app /app
 

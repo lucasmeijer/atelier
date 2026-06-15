@@ -4,7 +4,7 @@ import { AtelierCoreError, defaultDataDir, getWorkspacePreviewPort, workspaceCon
 import { ids, renderAttachmentChip } from "./render.ts";
 import { sseFrame, turboStream, turboStreamResponse } from "./html.ts";
 import { expandPromptTemplate } from "./prompt-templates.ts";
-import { getWorkspaceAgentRuntime, isFakeMode, type RewindMode, type SubmitMode } from "./runtime.ts";
+import { getWorkspaceAgentRuntime, type RewindMode, type SubmitMode } from "./runtime.ts";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
 import type { ImageRef } from "./transcript.ts";
 import { maybeNameWorkspaceFromAgentPrompt } from "./workspace-title-suggestion.ts";
@@ -309,7 +309,6 @@ async function submitInitialAgentPrompt(workspaceId: string, context: AgentWorks
 }
 
 async function deliverFileAttachment(workspaceId: string, staged: StagedAttachment): Promise<string> {
-  if (isFakeMode()) return `[Attached file: ${staged.name}]`;
   const target = `${workspaceRoot}/.atelier-attachments/${staged.name}`;
   try {
     const content = await readFile(staged.path);
@@ -374,23 +373,6 @@ export async function workspaceFileEndpoint(workspaceId: string, path: string, r
     return new Response("bad path", { status: 400 });
   }
 
-  if (isFakeMode()) {
-    const file = Bun.file(path);
-    if (!(await file.exists())) return new Response("not found", { status: 404 });
-    const range = parseRange(request.headers.get("range"), file.size);
-    if (range) {
-      return new Response(file.slice(range.start, range.end + 1), {
-        status: 206,
-        headers: {
-          "content-type": contentTypeFor(path),
-          "content-range": `bytes ${range.start}-${range.end}/${file.size}`,
-          "accept-ranges": "bytes",
-        },
-      });
-    }
-    return new Response(file, { headers: { "content-type": contentTypeFor(path), "accept-ranges": "bytes" } });
-  }
-
   const container = workspaceContainerName(workspaceId);
   const quoted = `'${path.replaceAll("'", `'\\''`)}'`;
   const stat = Bun.spawnSync(["docker", "exec", container, "sh", "-c", `stat -c %s ${quoted} 2>/dev/null || stat -f %z ${quoted}`]);
@@ -428,7 +410,7 @@ export async function resolveWorkspacePortProxyTarget(workspaceId: string, port:
   if (!(workspacePreviewPorts as readonly number[]).includes(port)) {
     throw new Error(`Port ${port} is not published for previews. Use one of: ${workspacePreviewPorts.join(", ")}`);
   }
-  const hostPort = isFakeMode() ? port : await getWorkspacePreviewPort(workspaceId, port);
+  const hostPort = await getWorkspacePreviewPort(workspaceId, port);
   return new URL(`${path.startsWith("/") ? path : `/${path}`}${search}`, `http://${publishedPortHost()}:${hostPort}`);
 }
 

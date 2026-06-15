@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderMarkdown } from "../../src/server/markdown.ts";
 import { rewriteSegment } from "../../src/server/rewrite.ts";
-import { resolveWorkspacePortProxyTarget } from "../../src/server/routes.ts";
 
 describe("renderMarkdown", () => {
   test("paragraphs, bold, inline code", () => {
@@ -76,19 +75,5 @@ describe("rewriteSegment", () => {
     expect(html).toContain("&lt;b&gt;");
     expect(html).toContain(`<a class="agent-media-link"`);
     expect(html).toContain(`data-agent-proxy-app-key-value="file"`);
-  });
-});
-
-describe("resolveWorkspacePortProxyTarget", () => {
-  test("builds a published preview target in fake mode", async () => {
-    const previous = process.env.ATELIER_AGENT_FAKE;
-    process.env.ATELIER_AGENT_FAKE = "1";
-    try {
-      const target = await resolveWorkspacePortProxyTarget("ws", 3000, "app", "?x=1");
-      expect(target.toString()).toBe("http://127.0.0.1:3000/app?x=1");
-    } finally {
-      if (previous === undefined) delete process.env.ATELIER_AGENT_FAKE;
-      else process.env.ATELIER_AGENT_FAKE = previous;
-    }
   });
 });

@@ -53,7 +53,6 @@ env:
     # Scope Atelier's own auth cookie to all preview subdomains, so the
     # workspace iframe/proxy hosts are authenticated after logging in once.
     ATELIER_AUTH_COOKIE_DOMAIN: .shockwaving.com
-    ATELIER_AGENT_FAKE: 0
   secret:
     - GH_TOKEN
     - ATELIER_PASSWORD

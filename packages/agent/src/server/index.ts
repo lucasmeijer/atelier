@@ -9,7 +9,6 @@ export {
 } from "./session-store.ts";
 export {
   getWorkspaceAgentRuntime,
-  isFakeMode,
   subscribeWorkspaceTabBusy,
   type WorkspaceTabBusyListener,
   type WorkspaceAgentRuntime,

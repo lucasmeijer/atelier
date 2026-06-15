@@ -4,7 +4,6 @@ import {
   closeAgentTermSocket,
   ensureDefaultWorkspaceAgent,
   handleAgentTermSocketMessage,
-  isFakeMode,
   openAgentTermSocket,
   registerAgentEvents,
   resolveWorkspacePortProxyTarget,
@@ -233,7 +232,7 @@ const app = createWebApp({
   events: atelierEvents,
   preferences: createFileWebPreferenceStore(join(defaultDataDir(), "view-state", "preferences.json")),
   async provisionWorkspace(id, options) {
-    if (!isFakeMode()) await createWorkspace({ id, events: atelierEvents, sourceRepositoryId: sourceRepositoryIdFromContext(options?.context), gitUrl: gitUrlFromContext(options?.context), gitBranch: gitBranchFromContext(options?.context) });
+    await createWorkspace({ id, events: atelierEvents, sourceRepositoryId: sourceRepositoryIdFromContext(options?.context), gitUrl: gitUrlFromContext(options?.context), gitBranch: gitBranchFromContext(options?.context) });
     await ensureDefaultWorkspaceAgent(id);
     await atelierEvents.emit("workspace_created", { workspaceId: id, context: options?.context });
   },
@@ -249,8 +248,7 @@ subscribeWorkspaceTabBusy(({ workspaceId, tabKey, busy }) => registry.setTabBusy
 subscribeTerminalTabBusy(({ workspaceId, tabKey, busy }) => registry.setTabBusy(workspaceId, tabKey, busy));
 
 // Docker is the persistent truth for which workspaces exist; seed the registry from it.
-// In fake-agent mode (UI development without docker) we seed a demo workspace instead.
-await registry.seed(isFakeMode() ? [{ id: "demo", title: "Demo workspace" }] : (await listWorkspaces()).workspaces);
+await registry.seed((await listWorkspaces()).workspaces);
 
 function contentTypeForStaticPath(pathname: string): string {
   if (pathname.endsWith(".css")) return "text/css; charset=utf-8";

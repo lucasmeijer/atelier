@@ -1,5 +1,5 @@
 /**
- * Neutral transcript model shared by the real (pi-backed) and fake runtimes.
+ * Neutral transcript model for the pi-backed runtime.
  *
  * Records are a flattened, renderer-friendly view of a session's active path.
  * `buildSections()` groups them into sections: one user message plus everything
