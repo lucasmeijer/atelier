@@ -1,9 +1,9 @@
-import { buildHasSessionCommand, buildKillSessionCommand, buildObservableSessionCommand, shellQuote as observableShellQuote } from "@atelier/observable-terminal/server";
 import { requireDocker, runDocker } from "./docker.ts";
 import { AtelierCoreError, invalidArguments } from "./errors.ts";
 import type { AtelierEventBus } from "./events.ts";
 import { parseRepositorySpec } from "./repository.ts";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext } from "./runtime-context.ts";
+import { deleteWorkspaceSource, prepareWorkspaceSource, type PreparedWorkspaceSource } from "./workspace-source.ts";
 import { resolveWorkspaceImage } from "./workspace-image.ts";
 import { ensureAtelierWorkspaceProxy, ensureWorkspaceProxyAuthToken, forgetWorkspaceProxyAuthToken, workspaceProxyUrl } from "./proxy/egress-proxy.ts";
 import { ensureMitmCa } from "./proxy/mitm-ca.ts";
@@ -143,7 +143,6 @@ function shellQuote(value: string): string {
 }
 
 const singleWorkspaceRepoName = "work";
-const workspaceGitCloneTerminalTitle = "Cloning repository";
 
 function repoPath(repo: string): string {
   validateRepoName(repo);
@@ -183,7 +182,7 @@ async function ensureWorkspaceFilesystem(id: string): Promise<void> {
       mv /repos ${shellQuote(workspaceRoot)}
     fi
     mkdir -p ${shellQuote(workspaceRoot)} /.atelier
-    chown -R atelier:atelier ${shellQuote(workspaceRoot)} /.atelier
+    chown atelier:atelier ${shellQuote(workspaceRoot)} /.atelier
   `]);
   if (result.exitCode !== 0) throw new AtelierCoreError("workspace_repair_failed", result.stderr.trim() || result.stdout.trim() || `could not prepare workspace filesystem for ${id}`);
 }
@@ -255,42 +254,49 @@ export interface CreateWorkspaceOptions {
 export async function createWorkspace(options: CreateWorkspaceOptions = {}): Promise<WorkspaceNewResult> {
   const id = options.id ?? generateWorkspaceId();
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id)) throw invalidArguments(`invalid workspace id: ${id}`);
-  const image = await resolveWorkspaceImage({ workspaceId: id, events: options.events });
   const runtimeContext = await getAtelierRuntimeContext();
+  let source: PreparedWorkspaceSource | undefined;
 
   try {
+    const gitUrl = options.gitUrl?.trim();
+    if (gitUrl) source = await prepareWorkspaceSource({ workspaceId: id, gitUrl, branch: options.gitBranch?.trim() || null });
+
+    const image = await resolveWorkspaceImage({ workspaceId: id, events: options.events, sourcePath: source?.worktreePath });
     const secretContext = await createWorkspaceSecretContext(id);
     const proxyAuthToken = await ensureWorkspaceProxyAuthToken(id);
     await ensureAtelierWorkspaceProxy();
-    const mitmCa = await ensureMitmCa(runtimeContext);
+    await ensureMitmCa(runtimeContext);
     const dockerHostMitmCaPath = dockerHostAtelierDataPath(runtimeContext, "proxy-ca", "atelier-mitm-ca.pem");
+    const dockerHostWorktreePath = source ? dockerHostAtelierDataPath(runtimeContext, "workspaces", id, "work") : undefined;
 
     await requireDocker([
-    "run",
-    "-d",
-    "--name",
-    workspaceContainerName(id),
-    "--label",
-    `${workspaceTypeLabel}=workspace`,
-    "--label",
-    `${namespaceLabel}=${namespace()}`,
-    "--label",
-    `${workspaceIdLabel}=${id}`,
-    ...(options.sourceRepositoryId ? ["--label", `${workspaceSourceRepositoryLabel}=${options.sourceRepositoryId}`] : []),
-    "--publish",
-    `${workspacePublishHost()}::${workspaceVSCodePort}`,
-    ...workspacePreviewPorts.flatMap((port) => ["--publish", `${workspacePublishHost()}::${port}`]),
-    ...workspaceUtf8Environment,
-    ...dockerHostGatewayArgs(),
-    ...secretEnvDockerArgs(secretContext.env),
-    ...workspaceProxyEnvArgs(id, proxyAuthToken),
-    "--mount", `type=bind,src=${dockerHostMitmCaPath},dst=${workspaceMitmCaPath},readonly`,
-    "--user",
-    "root",
-    image,
-    "sh",
-    "-lc",
-    `mkdir -p /.atelier ${workspaceRoot}; chown -R atelier:atelier /.atelier ${workspaceRoot}; if [ -r ${workspaceMitmCaPath} ]; then mkdir -p /usr/local/share/ca-certificates; cp ${workspaceMitmCaPath} /usr/local/share/ca-certificates/atelier-mitm-ca.crt; update-ca-certificates || true; fi; cat > /usr/local/bin/atelier-git-credential <<'EOF'
+      "run",
+      "-d",
+      "--name",
+      workspaceContainerName(id),
+      "--label",
+      `${workspaceTypeLabel}=workspace`,
+      "--label",
+      `${namespaceLabel}=${namespace()}`,
+      "--label",
+      `${workspaceIdLabel}=${id}`,
+      ...(options.sourceRepositoryId ? ["--label", `${workspaceSourceRepositoryLabel}=${options.sourceRepositoryId}`] : []),
+      ...(source ? ["--label", `com.atelier.source-commit=${source.resolvedCommit}`, "--label", `com.atelier.source-template=${source.templateKey}`] : []),
+      "--publish",
+      `${workspacePublishHost()}::${workspaceVSCodePort}`,
+      ...workspacePreviewPorts.flatMap((port) => ["--publish", `${workspacePublishHost()}::${port}`]),
+      ...workspaceUtf8Environment,
+      ...dockerHostGatewayArgs(),
+      ...secretEnvDockerArgs(secretContext.env),
+      ...workspaceProxyEnvArgs(id, proxyAuthToken),
+      "--mount", `type=bind,src=${dockerHostMitmCaPath},dst=${workspaceMitmCaPath},readonly`,
+      ...(dockerHostWorktreePath ? ["--mount", `type=bind,src=${dockerHostWorktreePath},dst=${workspaceRoot}`] : []),
+      "--user",
+      "root",
+      image,
+      "sh",
+      "-lc",
+      `mkdir -p /.atelier ${workspaceRoot}; chown -R atelier:atelier /.atelier ${workspaceRoot}; if [ -r ${workspaceMitmCaPath} ]; then mkdir -p /usr/local/share/ca-certificates; cp ${workspaceMitmCaPath} /usr/local/share/ca-certificates/atelier-mitm-ca.crt; update-ca-certificates || true; fi; cat > /usr/local/bin/atelier-git-credential <<'EOF'
 #!/bin/sh
 test "$1" = get || exit 0
 [ -n "\${GH_TOKEN:-}" ] || exit 0
@@ -305,11 +311,9 @@ git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config 
 
     await waitForWorkspaceStartup(id);
     await resolveWorkspace(id);
-    await waitForWorkspaceInit(id);
-    const gitUrl = options.gitUrl?.trim();
-    if (gitUrl) await cloneGitUrlIntoWorkspace(id, gitUrl, { events: options.events, branch: options.gitBranch?.trim() || null });
   } catch (error) {
     await runDocker(["rm", "-f", workspaceContainerName(id)]).catch(() => undefined);
+    await deleteWorkspaceSource(id).catch(() => undefined);
     await forgetWorkspaceProxyAuthToken(id).catch(() => undefined);
     forgetWorkspaceSecretContext(id);
     throw error;
@@ -484,6 +488,7 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
     }
   }
   await requireDocker(["rm", "-f", workspaceContainerName(id)]);
+  await deleteWorkspaceSource(id);
   await forgetWorkspaceProxyAuthToken(id);
   forgetWorkspaceSecretContext(id);
   return null;
@@ -508,80 +513,9 @@ async function ensureRepo(id: string, repo: string): Promise<void> {
   if (result.exitCode !== 0) throw new AtelierCoreError("repo_not_found", `repo not found: ${repo}`);
 }
 
-async function waitForWorkspaceInit(id: string): Promise<void> {
-  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `for i in $(seq 1 100); do test -x /usr/local/bin/atelier-git-credential && test -f /home/atelier/.gitconfig && exit 0; sleep 0.1; done; exit 1`]);
-  if (result.exitCode !== 0) throw new AtelierCoreError("workspace_init_failed", result.stderr.trim() || result.stdout.trim() || `workspace ${id} did not finish initializing`);
-}
-
 async function listRepos(id: string): Promise<string[]> {
   const result = await execShellAsAtelier(id, `mkdir -p ${shellQuote(workspaceRoot)} && git -C ${shellQuote(workspaceRoot)} rev-parse --is-inside-work-tree >/dev/null 2>&1`);
   return result.exitCode === 0 ? [singleWorkspaceRepoName] : [];
-}
-
-async function cloneGitUrlIntoWorkspace(id: string, gitUrl: string, options: { branch?: string | null; events?: AtelierEventBus } = {}): Promise<void> {
-  const trimmed = gitUrl.trim();
-  if (!trimmed) throw invalidArguments("missing git URL");
-  const branch = options.branch?.trim() || null;
-  const branchArgs = branch ? ` --branch ${shellQuote(branch)}` : "";
-  const exitPath = `/.atelier/git-clone-${Date.now()}.exit`;
-  const script = `
-    set -e
-    mkdir -p ${shellQuote(workspaceRoot)} /.atelier
-    if git -C ${shellQuote(workspaceRoot)} rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-      printf 'repo already exists at %s\\n' ${shellQuote(workspaceRoot)} >&2
-      echo 17 > ${shellQuote(exitPath)}
-      exit 17
-    fi
-    if find ${shellQuote(workspaceRoot)} -mindepth 1 -maxdepth 1 | read _; then
-      printf 'workspace directory is not empty: %s\\n' ${shellQuote(workspaceRoot)} >&2
-      echo 17 > ${shellQuote(exitPath)}
-      exit 17
-    fi
-    printf '\\033[36mCloning %s%s into ${workspaceRoot}...\\033[0m\\n' ${shellQuote(trimmed)} ${shellQuote(branch ? `#${branch}` : "")}
-    set +e
-    git clone --progress${branchArgs} ${shellQuote(trimmed)} ${shellQuote(workspaceRoot)}
-    status=$?
-    set -e
-    if [ "$status" -eq 0 ]; then
-      printf '\\n\\033[32mClone complete.\\033[0m\\n'
-    else
-      printf '\\n\\033[31mClone failed with exit code %s.\\033[0m\\n' "$status"
-    fi
-    echo "$status" > ${shellQuote(exitPath)}
-    exit "$status"
-  `;
-  const start = await execShellAsAtelier(
-    id,
-    `${buildKillSessionCommand(workspaceGitCloneTerminalTitle)}
-     ${buildObservableSessionCommand({ session: workspaceGitCloneTerminalTitle, cwd: "/", command: `/bin/bash -lc ${observableShellQuote(script)}`, status: false })}`,
-  );
-  if (start.exitCode !== 0) throw new AtelierCoreError("git_clone_failed", start.stderr.trim() || start.stdout.trim() || `could not start clone for ${trimmed}`);
-
-  const event = { workspaceId: id, gitUrl: branch ? `${trimmed}#${branch}` : trimmed, terminalTitle: workspaceGitCloneTerminalTitle };
-  await options.events?.emit("workspace_git_clone_started", event);
-
-  async function fail(code: "repo_already_exists" | "git_clone_failed", message: string): Promise<never> {
-    await options.events?.emit("workspace_git_clone_finished", { ...event, error: message });
-    throw new AtelierCoreError(code, message);
-  }
-
-  const deadline = Date.now() + 30 * 60 * 1000;
-  for (;;) {
-    const status = await execShellAsAtelier(id, `cat ${shellQuote(exitPath)} 2>/dev/null`);
-    if (status.exitCode === 0 && status.stdout.trim()) {
-      const code = Number(status.stdout.trim());
-      if (code === 0) {
-        await options.events?.emit("workspace_git_clone_finished", event);
-        return;
-      }
-      const message = code === 17 ? `workspace directory is not empty: ${workspaceRoot}` : `could not clone ${trimmed}`;
-      return await fail(code === 17 ? "repo_already_exists" : "git_clone_failed", message);
-    }
-    const alive = await execShellAsAtelier(id, buildHasSessionCommand(workspaceGitCloneTerminalTitle));
-    if (alive.exitCode !== 0) return await fail("git_clone_failed", `git clone session exited without reporting status for ${trimmed}`);
-    if (Date.now() > deadline) return await fail("git_clone_failed", `git clone timed out for ${trimmed}`);
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
 }
 
 async function calculateMergeability(id: string, repo: string): Promise<WorkspaceRepoMergeabilityResult> {

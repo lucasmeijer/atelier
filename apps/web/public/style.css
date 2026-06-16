@@ -361,9 +361,6 @@ a.btn { text-decoration: none; }
 .workspace-row.starting { opacity: .75; }
 .workspace-row.failed .r-sub { color: var(--red); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-boot-pad { display: flex; align-items: center; gap: 10px; }
-.workspace-clone-terminal { display: flex; flex-direction: column; gap: 10px; padding: 12px; height: min(58vh, 560px); min-height: 320px; box-sizing: border-box; }
-.workspace-clone-heading { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
-.workspace-clone-terminal .terminal-tab-pane { flex: 1 1 auto; min-height: 0; border-radius: 10px; overflow: hidden; background: var(--terminal-bg, #2e3440); display: block; }
 .workspace-build-status { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .workspace-build-heading { display: flex; align-items: center; gap: 10px; }
 .workspace-build-heading b { font-size: 14px; }

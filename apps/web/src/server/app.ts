@@ -30,7 +30,7 @@ import {
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceRepoMergeabilityResult,
 } from "@atelier/core";
-import { createWorkspaceTerminal, renderTerminalPane } from "@atelier/workspace-terminal/server";
+import { createWorkspaceTerminal } from "@atelier/workspace-terminal/server";
 import {
   createWorkspaceVSCodeTab,
   deleteWorkspaceVSCodeTab,
@@ -131,7 +131,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, (force) => deleteCurrentWorkspaceFromAgent(workspaceId, force)));
   const imageBuilds = new Map<string, { state: "building" | "failed"; image: string; modules: string[]; output: string; error?: string }>();
   const workspaceCommandModalHostId = "workspace_command_modal_host";
-  const cloneTerminals = new Map<string, { title: string; gitUrl: string }>();
 
   async function preferredNewAgentModel(): Promise<string | undefined> {
     return (await deps.preferences?.load())?.preferredNewAgentModel;
@@ -480,18 +479,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     </div>`;
   }
 
-  function workspaceCloneTerminalHtml(entry: WorkspaceEntry): string {
-    const clone = cloneTerminals.get(entry.id);
-    if (!clone || entry.phase !== "starting") return "";
-    return `<div class="workspace-clone-terminal"><div class="workspace-clone-heading"><span class="status-spinner"></span><div><b>Cloning repository into /work…</b><div class="r-sub">${escapeHtml(clone.gitUrl)}</div></div></div>${renderTerminalPane(entry.id, clone.title, { autostart: true, active: true })}</div>`;
-  }
-
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { active?: boolean } = {}): string {
     const buildHtml = imageBuilds.get(entry.id) ? workspaceImageBuildHtml(entry.id) : "";
-    const cloneHtml = workspaceCloneTerminalHtml(entry);
     const inner = entry.phase === "failed"
       ? buildHtml || `<div class="pad workspace-boot-pad"><span class="dot err"></span> Workspace creation failed: ${escapeHtml(entry.error ?? "unknown error")}</div>`
-      : cloneHtml || buildHtml || `<div class="pad workspace-boot-pad"><span class="status-spinner"></span> Starting workspace…</div>`;
+      : buildHtml || `<div class="pad workspace-boot-pad"><span class="status-spinner"></span> Starting workspace…</div>`;
     return `<div class="workspace-detail-resident workspace-boot ${options.active ? "active" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"><div class="main"><header class="header"><h1>${escapeHtml(workspaceTitle(entry))}</h1></header><div class="body"><div class="panel">${inner}</div></div></div></div>`;
   }
 
@@ -518,16 +510,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       imageBuilds.delete(event.workspaceId);
     }
     broadcastWorkspaceBoot(event.workspaceId);
-  });
-
-  deps.events?.on("workspace_git_clone_started", (event) => {
-    cloneTerminals.set(event.workspaceId, { title: event.terminalTitle, gitUrl: event.gitUrl });
-    broadcastWorkspaceBoot(event.workspaceId);
-  });
-
-  deps.events?.on("workspace_git_clone_finished", ({ workspaceId }) => {
-    cloneTerminals.delete(workspaceId);
-    broadcastWorkspaceBoot(workspaceId);
   });
 
   async function workspaceResidentFor(entry: WorkspaceEntry, options: { active?: boolean } = {}): Promise<string> {

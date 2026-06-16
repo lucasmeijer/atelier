@@ -18,6 +18,10 @@ interface WorkspaceImageBuildTask {
 export interface ResolveWorkspaceImageOptions {
   workspaceId?: string;
   events?: AtelierEventBus;
+  // Source checkout path is available before the container starts. Current image
+  // resolution does not inspect it yet, but repo-aware image selection/building
+  // can use this path without needing docker exec cloning.
+  sourcePath?: string;
 }
 
 const maxBuildOutputBytes = 64 * 1024;
