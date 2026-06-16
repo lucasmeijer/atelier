@@ -322,7 +322,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   function addRepositoryModal(): string {
     return `<dialog id="add-repository-modal" class="modal" data-controller="modal">
-  <form method="post" action="/repositories">
+  <form method="post" action="/repositories" data-action="turbo:submit-end->modal#submitted">
     <h2>Add repository</h2>
     <p>Save a remote URL. Add <code>#branch</code> to clone a specific branch.</p>
     <input class="modal-input" name="gitUrl" type="text" placeholder="https://github.com/org/repo.git#main or /path/to/repo#feature" required autofocus>
