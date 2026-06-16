@@ -14,7 +14,11 @@ import {
 import { generateWorkspaceId, workspaceContainerName } from "../src/index.ts";
 import { cleanupNamespace, createTestNamespace, docker } from "./helpers.ts";
 
-setDefaultTimeout(30_000);
+// The first workspace-image build is intentionally heavy: it installs VS Code,
+// prewarms the VS Code server, and installs large extensions. On a cold Docker
+// cache this regularly takes several minutes, so keep the integration-test
+// timeout above the image build's own 120s VS Code prewarm watchdog.
+setDefaultTimeout(300_000);
 
 const testNamespace = createTestNamespace("test-core-workspace");
 
@@ -31,6 +35,11 @@ async function expectCoreError(action: () => Promise<unknown>): Promise<AtelierC
 beforeAll(async () => {
   process.env.ATELIER_NAMESPACE = testNamespace;
   await cleanupNamespace(testNamespace);
+  // Build/resolve the deterministic workspace image once for this namespace.
+  // Without this warm-up, the first createWorkspace() assertion races the cold
+  // image build and can hit the per-test timeout, which cancels Docker buildx
+  // and causes cascading failures that look like Docker hangs.
+  await resolveWorkspaceImage({ workspaceId: "test-suite-bootstrap" });
 });
 
 afterAll(async () => {
