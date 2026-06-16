@@ -17,8 +17,10 @@
         "@atelier/browser": "workspace:*",
         "@atelier/core": "workspace:*",
         "@atelier/pi-config": "workspace:*",
+        "@atelier/repository": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/vscode": "workspace:*",
+        "@atelier/workspace": "workspace:*",
         "@atelier/workspace-proxy": "workspace:*",
         "@atelier/workspace-terminal": "workspace:*",
       },
@@ -30,6 +32,7 @@
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/pi-config": "workspace:*",
         "@atelier/shared": "workspace:*",
+        "@atelier/workspace": "workspace:*",
         "@earendil-works/pi-ai": "^0.79.0",
         "@earendil-works/pi-coding-agent": "^0.79.0",
         "highlight.js": "^11.11.1",
@@ -41,6 +44,7 @@
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@atelier/shared": "workspace:*",
+        "@atelier/workspace": "workspace:*",
         "@atelier/workspace-proxy": "workspace:*",
         "@earendil-works/pi-coding-agent": "^0.79.0",
         "typebox": "^1.0.57",
@@ -67,6 +71,14 @@
       "name": "@atelier/pi-config",
       "dependencies": {
         "@atelier/core": "workspace:*",
+        "@atelier/workspace": "workspace:*",
+      },
+    },
+    "packages/repository": {
+      "name": "@atelier/repository",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+        "@atelier/workspace": "workspace:*",
       },
     },
     "packages/shared": {
@@ -77,11 +89,28 @@
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@atelier/shared": "workspace:*",
+        "@atelier/workspace": "workspace:*",
         "@atelier/workspace-proxy": "workspace:*",
+      },
+    },
+    "packages/workspace": {
+      "name": "@atelier/workspace",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+        "@atelier/workspace-image": "workspace:*",
+      },
+    },
+    "packages/workspace-image": {
+      "name": "@atelier/workspace-image",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
       },
     },
     "packages/workspace-proxy": {
       "name": "@atelier/workspace-proxy",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+      },
     },
     "packages/workspace-terminal": {
       "name": "@atelier/workspace-terminal",
@@ -89,6 +118,7 @@
         "@atelier/core": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/shared": "workspace:*",
+        "@atelier/workspace": "workspace:*",
       },
     },
     "tools/atelier": {
@@ -98,6 +128,9 @@
       },
       "dependencies": {
         "@atelier/core": "workspace:*",
+        "@atelier/repository": "workspace:*",
+        "@atelier/workspace": "workspace:*",
+        "@atelier/workspace-proxy": "workspace:*",
         "@atelier/workspace-terminal": "workspace:*",
       },
     },
@@ -117,11 +150,17 @@
 
     "@atelier/pi-config": ["@atelier/pi-config@workspace:packages/pi-config"],
 
+    "@atelier/repository": ["@atelier/repository@workspace:packages/repository"],
+
     "@atelier/shared": ["@atelier/shared@workspace:packages/shared"],
 
     "@atelier/vscode": ["@atelier/vscode@workspace:packages/vscode"],
 
     "@atelier/web": ["@atelier/web@workspace:apps/web"],
+
+    "@atelier/workspace": ["@atelier/workspace@workspace:packages/workspace"],
+
+    "@atelier/workspace-image": ["@atelier/workspace-image@workspace:packages/workspace-image"],
 
     "@atelier/workspace-proxy": ["@atelier/workspace-proxy@workspace:packages/workspace-proxy"],
 
