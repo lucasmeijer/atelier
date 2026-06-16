@@ -24,6 +24,7 @@ function namespace(): string { return process.env.ATELIER_NAMESPACE || "default"
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }
 export function workspaceContainerName(id: string): string { return `atelier-${id}`; }
 function workspacePublishHost(): string { return process.env.ATELIER_WORKSPACE_PUBLISH_HOST || "127.0.0.1"; }
+function workspaceDockerNetwork(): string | undefined { return process.env.ATELIER_WORKSPACE_DOCKER_NETWORK || undefined; }
 function formatDeleteBlockedMessage(id: string, issues: unknown[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
 function dockerHostGatewayArgs(): string[] { return ["--add-host", "host.docker.internal:host-gateway"]; }
 function requireArg(value: string | undefined, name: string): string { if (!value) throw invalidArguments(`missing ${name}`); return value; }
@@ -89,7 +90,10 @@ export async function execWorkspace(id: string, command: string[]): Promise<Work
 
 function dockerMountArg(mount: WorkspaceDockerMount): string { return [`type=${mount.type}`, `src=${mount.source}`, `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : [])].join(","); }
 function planEnvDockerArgs(env: Record<string, string>): string[] { return Object.entries(env).flatMap(([name, value]) => ["--env", `${name}=${value}`]); }
-function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan { return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8" }, mounts: [], publishes: [workspaceVSCodePort, ...workspacePreviewPorts], extraArgs: dockerHostGatewayArgs(), initScripts: [], cleanup: [] }; }
+function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan {
+  const network = workspaceDockerNetwork();
+  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8" }, mounts: [], publishes: [workspaceVSCodePort, ...workspacePreviewPorts], extraArgs: [...(network ? ["--network", network] : []), ...dockerHostGatewayArgs()], initScripts: [], cleanup: [] };
+}
 function workspaceInitScript(plan: WorkspaceDockerPlan): string {
   return [`mkdir -p /.atelier ${workspaceRoot}`, `chown -R atelier:atelier /.atelier ${workspaceRoot}`, ...plan.initScripts, `if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'ATELIER_VSCODE_DEFAULT_FOLDER=${workspaceRoot} nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode-server.log 2>&1 &' || true; fi`, "sleep infinity"].join("; ");
 }

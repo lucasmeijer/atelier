@@ -29,7 +29,7 @@ type MitmConnectionContext = { workspaceId: string; hostname: string };
 type MitmTargetServer = { server: ReturnType<typeof createHttpsServer>; port: number; connections: Map<number, MitmConnectionContext> };
 
 export function workspaceProxyHost(): string {
-  return "host.docker.internal";
+  return process.env.ATELIER_WORKSPACE_PROXY_HOST || "host.docker.internal";
 }
 
 export function workspaceProxyUrl(workspaceId: string, token: string): string {
