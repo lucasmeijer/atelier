@@ -1,0 +1,9 @@
+{
+  "aptPackages": [
+    "docker.io",
+    "docker-buildx"
+  ],
+  "run": [
+    "if getent group docker >/dev/null 2>&1; then usermod -aG docker atelier; fi"
+  ]
+}

@@ -6,7 +6,8 @@ import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const outDir = process.argv[2];
-if (!outDir) throw new Error("usage: build-context.mjs <output-dir>");
+const sourceDir = process.argv[3];
+if (!outDir) throw new Error("usage: build-context.mjs <output-dir> [source-dir]");
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const packagesDir = join(root, "packages");
 
@@ -20,10 +21,16 @@ for (const entry of await readdir(packagesDir, { withFileTypes: true })) {
   const path = join(packagesDir, entry.name, "workspace-image.json");
   if (existsSync(path)) manifestPaths.push(path);
 }
+if (sourceDir) {
+  const path = join(sourceDir, "workspace.json");
+  if (existsSync(path)) manifestPaths.push(path);
+}
 
 function moduleNameFor(dir) {
   const name = basename(dir);
-  return name === "workspace-image" ? "base" : name;
+  if (name === "workspace-image") return "base";
+  if (sourceDir && dir === sourceDir) return "repo";
+  return name;
 }
 
 const manifests = [];

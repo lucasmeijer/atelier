@@ -165,7 +165,7 @@ export async function resolveWorkspaceImage(options: ResolveWorkspaceImageOption
   await rm(contextDir, { recursive: true, force: true });
   await mkdir(contextDir, { recursive: true });
 
-  const generated = Bun.spawnSync(["bun", script, contextDir], { cwd: root, stdout: "pipe", stderr: "pipe" });
+  const generated = Bun.spawnSync(["bun", script, contextDir, ...(options.sourcePath ? [options.sourcePath] : [])], { cwd: root, stdout: "pipe", stderr: "pipe" });
   if (generated.exitCode !== 0) throw new Error(`could not generate workspace image context: ${generated.stderr.toString() || generated.stdout.toString()}`);
 
   const metadata = await contextMetadata(contextDir);

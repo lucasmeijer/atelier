@@ -2,7 +2,7 @@
 
 Workspace containers are assembled from module contributions instead of one hand-written Dockerfile.
 
-A module contributes a `workspace-image.json` file at its package root. The manifest can add Ubuntu packages, files/directories to copy into the image, build-time `RUN` scripts, and default environment variables:
+A module contributes a `workspace-image.json` file at its package root. A checked-out repository can also contribute a root-level `workspace.json` file. The manifest can add Ubuntu packages, files/directories to copy into the image, build-time `RUN` scripts, and default environment variables:
 
 ```json
 {
@@ -26,4 +26,4 @@ On-demand builds:
 - `createWorkspace()` always builds/resolves a deterministic local image tag from the generated context before launching a workspace.
 - If the tag already exists locally, no rebuild happens; only the first build for a given contribution hash is slow.
 
-This makes a later repo-level contribution phase straightforward: add repo manifests to the same context generator before the hash/tag is computed. Production deployments should therefore include Docker build capability and persistent Docker image/cache storage.
+When a workspace is created from a repository, a root `workspace.json` in that repository is included in the same context before the hash/tag is computed. Production deployments should therefore include Docker build capability and persistent Docker image/cache storage.
