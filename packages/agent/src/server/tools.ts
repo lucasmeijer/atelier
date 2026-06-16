@@ -1,5 +1,6 @@
 import { dirname, posix } from "node:path";
-import { execWorkspaceCommand, execWorkspaceShell, workspaceRoot, type AtelierEventBus } from "@atelier/core";
+import type { AtelierEventBus } from "@atelier/core";
+import { execWorkspaceCommand, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import {
   createEditToolDefinition,
   createReadToolDefinition,

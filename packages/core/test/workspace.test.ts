@@ -1,17 +1,19 @@
 import { describe, expect, setDefaultTimeout, test, beforeAll, afterAll } from "bun:test";
+import { AtelierCoreError, createAtelierEventBus } from "../src/index.ts";
 import {
-  AtelierCoreError,
   createWorkspace,
   deleteWorkspace,
   execWorkspace,
   execWorkspaceShell,
+  generateWorkspaceId,
   listWorkspaces,
   setWorkspaceTitle,
   workspaceCommand,
-  resolveWorkspaceImage,
+  workspaceContainerName,
   type WorkspaceExecResult,
-} from "../src/index.ts";
-import { generateWorkspaceId, workspaceContainerName } from "../src/index.ts";
+} from "@atelier/workspace";
+import { resolveWorkspaceImage } from "@atelier/workspace-image";
+import { registerRepositoryWorkspaceEvents } from "@atelier/repository";
 import { cleanupNamespace, createTestNamespace, docker } from "./helpers.ts";
 
 // The first workspace-image build is intentionally heavy: it installs VS Code,
@@ -139,7 +141,9 @@ describe("core workspaces", () => {
     const setup = await execWorkspace(created.id, ["sh", "-lc", "cd /work && git init && printf hello > changed.txt"]);
     expect(setup.exitCode).toBe(0);
 
-    const error = await expectCoreError(() => deleteWorkspace(created.id));
+    const events = createAtelierEventBus();
+    registerRepositoryWorkspaceEvents(events);
+    const error = await expectCoreError(() => deleteWorkspace(created.id, { events }));
     expect(error.code).toBe("workspace_delete_blocked");
     expect(error.message).toContain("changed.txt");
 

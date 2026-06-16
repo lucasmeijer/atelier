@@ -12,9 +12,11 @@
     "@atelier/browser": "workspace:*",
     "@atelier/core": "workspace:*",
     "@atelier/pi-config": "workspace:*",
+    "@atelier/repository": "workspace:*",
     "@atelier/shared": "workspace:*",
+    "@atelier/workspace": "workspace:*",
+    "@atelier/workspace-proxy": "workspace:*",
     "@atelier/workspace-terminal": "workspace:*",
-    "@atelier/vscode": "workspace:*",
-    "@atelier/workspace-proxy": "workspace:*"
+    "@atelier/vscode": "workspace:*"
   }
 }

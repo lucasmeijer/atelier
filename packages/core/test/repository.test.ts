@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { addRepository, listRepositories, parseRepositorySpec } from "../src/repository.ts";
+import { addRepository, listRepositories, parseRepositorySpec } from "@atelier/repository";
 
 describe("repositories", () => {
   test("parseRepositorySpec supports an optional #branch suffix", () => {

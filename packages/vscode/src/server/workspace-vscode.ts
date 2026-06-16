@@ -1,4 +1,4 @@
-import { execWorkspaceShell, workspaceRoot } from "@atelier/core";
+import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 
 export interface WorkspaceVSCodeTab {
   title: string;

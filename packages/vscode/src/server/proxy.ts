@@ -1,4 +1,4 @@
-import { getWorkspaceVSCodePort } from "@atelier/core";
+import { getWorkspaceVSCodePort } from "@atelier/workspace";
 import type { WorkspaceAppHost } from "@atelier/workspace-proxy/server";
 import { ensureWorkspaceVSCodeServer } from "./workspace-vscode.ts";
 

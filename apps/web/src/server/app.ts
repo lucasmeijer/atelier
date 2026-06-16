@@ -18,19 +18,20 @@ import {
 } from "@atelier/browser/server";
 import {
   AtelierCoreError,
-  addRepository,
   type AtelierEventBus,
-  formatRepositorySpec,
-  type RepositorySummary,
   type WorkspaceCreationContext,
-  generateWorkspaceId,
+} from "@atelier/core";
+import {
+  addRepository,
+  formatRepositorySpec,
   getWorkspaceRepoMergeability,
   listRepositories,
   pushWorkspaceRepo,
-  setWorkspaceTitle,
+  type RepositorySummary,
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceRepoMergeabilityResult,
-} from "@atelier/core";
+} from "@atelier/repository";
+import { generateWorkspaceId, setWorkspaceTitle } from "@atelier/workspace";
 import { createWorkspaceTerminal } from "@atelier/workspace-terminal/server";
 import {
   createWorkspaceVSCodeTab,

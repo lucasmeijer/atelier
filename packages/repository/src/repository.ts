@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { createHash } from "node:crypto";
-import { defaultDataDir } from "./data-dir.ts";
-import { AtelierCoreError } from "./errors.ts";
+import { defaultDataDir } from "@atelier/core";
+import { AtelierCoreError } from "@atelier/core";
 
 export interface RepositorySummary {
   id: string;

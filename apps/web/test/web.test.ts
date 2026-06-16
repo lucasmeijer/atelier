@@ -3,7 +3,7 @@ import { createWebApp } from "../src/server/app.ts";
 import { createStreamHub } from "../src/server/stream-hub.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
-import type { WorkspaceDeleteBlockedDetails } from "@atelier/core";
+import type { WorkspaceDeleteBlockedDetails } from "@atelier/repository";
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;

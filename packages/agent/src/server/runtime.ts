@@ -1,6 +1,7 @@
 import { mkdir, open } from "node:fs/promises";
 import { dirname } from "node:path";
-import { execWorkspaceCommand, workspaceRoot, type AtelierEventBus } from "@atelier/core";
+import type { AtelierEventBus } from "@atelier/core";
+import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
 import { configuredAgentModels } from "@atelier/pi-config/server";
 import {
   AuthStorage,

@@ -13,15 +13,10 @@ import {
   type AgentTermSocketData,
 } from "@atelier/agent/server";
 import { isBrowserWorkspaceApp, resolveBrowserWorkspaceAppTarget } from "@atelier/browser/server";
-import {
-  createAtelierEventBus,
-  createWorkspace,
-  defaultDataDir,
-  deleteWorkspace,
-  ensureAtelierWorkspaceProxy,
-  inspectWorkspaceDeleteSafety,
-  listWorkspaces,
-} from "@atelier/core";
+import { createAtelierEventBus, defaultDataDir } from "@atelier/core";
+import { inspectWorkspaceDeleteSafety, registerRepositoryWorkspaceEvents } from "@atelier/repository";
+import { createWorkspace, deleteWorkspace, listWorkspaces } from "@atelier/workspace";
+import { ensureAtelierWorkspaceProxy, registerWorkspaceProxyEvents } from "@atelier/workspace-proxy";
 import { registerPiConfigEvents } from "@atelier/pi-config/server";
 import {
   closeTerminalSocket,
@@ -198,6 +193,8 @@ async function authResponse(request: Request): Promise<Response | undefined> {
 }
 
 const atelierEvents = createAtelierEventBus();
+registerRepositoryWorkspaceEvents(atelierEvents);
+registerWorkspaceProxyEvents(atelierEvents);
 registerPiConfigEvents(atelierEvents);
 registerTerminalEvents(atelierEvents);
 registerAgentEvents(atelierEvents);
@@ -218,14 +215,6 @@ function sourceRepositoryIdFromContext(context: unknown): string | undefined {
   return stringFromContext(context, "sourceRepositoryId");
 }
 
-function gitUrlFromContext(context: unknown): string | undefined {
-  return stringFromContext(context, "gitUrl");
-}
-
-function gitBranchFromContext(context: unknown): string | undefined {
-  return stringFromContext(context, "gitBranch");
-}
-
 const app = createWebApp({
   registry,
   hub,
@@ -233,13 +222,13 @@ const app = createWebApp({
   events: atelierEvents,
   preferences: createFileWebPreferenceStore(join(defaultDataDir(), "view-state", "preferences.json")),
   async provisionWorkspace(id, options) {
-    await createWorkspace({ id, events: atelierEvents, sourceRepositoryId: sourceRepositoryIdFromContext(options?.context), gitUrl: gitUrlFromContext(options?.context), gitBranch: gitBranchFromContext(options?.context) });
+    await createWorkspace({ id, events: atelierEvents, sourceRepositoryId: sourceRepositoryIdFromContext(options?.context), context: options?.context });
     await ensureDefaultWorkspaceAgent(id);
     await atelierEvents.emit("workspace_created", { workspaceId: id, context: options?.context });
   },
   inspectDeleteSafety: (id) => inspectWorkspaceDeleteSafety(id),
   destroyWorkspace: async (id) => {
-    await deleteWorkspace(id, { force: true });
+    await deleteWorkspace(id, { force: true, events: atelierEvents });
   },
 });
 

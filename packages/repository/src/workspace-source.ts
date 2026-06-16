@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
-import { defaultDataDir } from "./data-dir.ts";
-import type { CommandResult } from "./docker.ts";
-import { AtelierCoreError, invalidArguments } from "./errors.ts";
+import { defaultDataDir } from "@atelier/core";
+import type { CommandResult } from "@atelier/core";
+import { AtelierCoreError, invalidArguments } from "@atelier/core";
+import type { AtelierEventBus } from "@atelier/core";
 
 export interface PreparedWorkspaceSource {
   workspaceId: string;
@@ -15,6 +16,11 @@ export interface PreparedWorkspaceSource {
   branch: string | null;
   resolvedCommit: string;
   templateKey: string;
+}
+
+export interface GitWorkspaceSourceRequest {
+  gitUrl: string;
+  branch: string | null;
 }
 
 const templateLocks = new Map<string, Promise<void>>();
@@ -37,6 +43,10 @@ function templateRepoPath(key: string): string {
 
 function workspaceSourceDir(workspaceId: string): string {
   return join(sourceRoot(), "workspaces", workspaceId);
+}
+
+function workspaceWorktreePath(workspaceId: string): string {
+  return join(workspaceSourceDir(workspaceId), "work");
 }
 
 async function withTemplateLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
@@ -202,17 +212,20 @@ async function verifyStandaloneWorktree(worktreePath: string): Promise<void> {
   }
 }
 
-export async function prepareWorkspaceSource(options: { workspaceId: string; gitUrl: string; branch: string | null }): Promise<PreparedWorkspaceSource> {
+export async function prepareWorkspaceSource(options: { workspaceId: string; gitUrl: string; branch: string | null; worktreePath?: string }): Promise<PreparedWorkspaceSource> {
   const gitUrl = options.gitUrl.trim();
   if (!gitUrl) throw invalidArguments("missing git URL");
   const branch = options.branch?.trim() || null;
   const key = templateKey(gitUrl, branch);
   const cleanupPath = workspaceSourceDir(options.workspaceId);
-  const worktreePath = join(cleanupPath, "work");
+  const worktreePath = options.worktreePath ?? workspaceWorktreePath(options.workspaceId);
 
   return await withTemplateLock(key, async () => {
-    if (await pathExists(worktreePath)) throw new AtelierCoreError("workspace_source_exists", `workspace source already exists: ${worktreePath}`);
     await mkdir(cleanupPath, { recursive: true });
+    if (await pathExists(worktreePath)) {
+      const entries = await readdir(worktreePath);
+      if (entries.length > 0) throw new AtelierCoreError("workspace_source_exists", `workspace source is not empty: ${worktreePath}`);
+    }
     const tmpWorkPath = join(cleanupPath, `work.tmp-${process.pid}-${Date.now()}`);
     await rm(tmpWorkPath, { recursive: true, force: true });
 
@@ -220,6 +233,7 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
       const template = await ensureTemplate(gitUrl, branch, key);
       await cowCopy(template.repoPath, tmpWorkPath);
       await verifyStandaloneWorktree(tmpWorkPath);
+      await rm(worktreePath, { recursive: true, force: true });
       await rename(tmpWorkPath, worktreePath);
 
       const metadata = {
@@ -244,12 +258,39 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
       };
     } catch (error) {
       await rm(tmpWorkPath, { recursive: true, force: true }).catch(() => undefined);
-      await rm(cleanupPath, { recursive: true, force: true }).catch(() => undefined);
       throw error;
     }
   });
 }
 
-export async function deleteWorkspaceSource(workspaceId: string): Promise<void> {
-  await rm(workspaceSourceDir(workspaceId), { recursive: true, force: true });
+export function parseGitWorkspaceSourceRequest(context: unknown): GitWorkspaceSourceRequest | undefined {
+  if (!context || typeof context !== "object") return undefined;
+  const record = context as Record<string, unknown>;
+  const directGitUrl = typeof record.gitUrl === "string" ? record.gitUrl : undefined;
+  const directBranch = typeof record.gitBranch === "string" ? record.gitBranch : undefined;
+  const git = record.git && typeof record.git === "object" ? record.git as Record<string, unknown> : undefined;
+  const gitUrl = directGitUrl ?? (typeof git?.url === "string" ? git.url : typeof git?.gitUrl === "string" ? git.gitUrl : undefined);
+  if (!gitUrl?.trim()) return undefined;
+  const branch = directBranch ?? (typeof git?.branch === "string" ? git.branch : null);
+  if (branch === null) {
+    const [url, parsedBranch] = gitUrl.trim().split(/#(.+)/, 2).map((part) => part.trim());
+    if (url && parsedBranch) return { gitUrl: url, branch: parsedBranch };
+  }
+  return { gitUrl, branch };
+}
+
+export function registerRepositoryWorkspaceSourceEvents(events: AtelierEventBus): void {
+  events.on("workspace_source_prepare", async ({ workspaceId, context, workHostPath }) => {
+    const request = parseGitWorkspaceSourceRequest(context);
+    if (!request) return;
+    await prepareWorkspaceSource({ workspaceId, gitUrl: request.gitUrl, branch: request.branch, worktreePath: workHostPath });
+  });
+
+  events.on("workspace_plan_prepare", async ({ workspaceId, plan }) => {
+    const metadataPath = join(workspaceSourceDir(workspaceId), "metadata.json");
+    if (!existsSync(metadataPath)) return;
+    const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as Partial<PreparedWorkspaceSource>;
+    if (typeof metadata.resolvedCommit === "string") plan.labels["com.atelier.source-commit"] = metadata.resolvedCommit;
+    if (typeof metadata.templateKey === "string") plan.labels["com.atelier.source-template"] = metadata.templateKey;
+  });
 }

@@ -1,4 +1,4 @@
-import { getWorkspacePreviewPort, workspacePreviewPorts } from "@atelier/core";
+import { getWorkspacePreviewPort, workspacePreviewPorts } from "@atelier/workspace";
 import type { WorkspaceAppHost } from "@atelier/workspace-proxy/server";
 import { getWorkspaceBrowserState } from "./state.ts";
 

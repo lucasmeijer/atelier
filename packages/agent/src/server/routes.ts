@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AtelierCoreError, defaultDataDir, getWorkspacePreviewPort, workspaceContainerName, workspacePreviewPorts, workspaceRoot, type AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, defaultDataDir, type AtelierEventBus } from "@atelier/core";
+import { getWorkspacePreviewPort, workspaceContainerName, workspacePreviewPorts, workspaceRoot } from "@atelier/workspace";
 import { ids, renderAttachmentChip } from "./render.ts";
 import { sseFrame, turboStream, turboStreamResponse } from "./html.ts";
 import { expandPromptTemplate } from "./prompt-templates.ts";
@@ -312,7 +313,7 @@ async function deliverFileAttachment(workspaceId: string, staged: StagedAttachme
   const target = `${workspaceRoot}/.atelier-attachments/${staged.name}`;
   try {
     const content = await readFile(staged.path);
-    const { execWorkspaceCommand } = await import("@atelier/core");
+    const { execWorkspaceCommand } = await import("@atelier/workspace");
     const result = await execWorkspaceCommand(
       workspaceId,
       ["sh", "-c", `mkdir -p ${workspaceRoot}/.atelier-attachments && base64 -d > '${target.replaceAll("'", `'\\''`)}'`],

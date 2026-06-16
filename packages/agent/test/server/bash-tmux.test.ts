@@ -10,7 +10,7 @@ const execWorkspaceShell = mock(async (_workspaceId: string, command: string) =>
 
 const execWorkspaceCommand = mock(async (_workspaceId: string, _args: string[]) => ({ stdout: "", stderr: "", exitCode: 0 }));
 
-mock.module("@atelier/core", () => ({
+mock.module("@atelier/workspace", () => ({
   execWorkspaceShell,
   execWorkspaceCommand,
   workspaceContainerName: (workspaceId: string) => `atelier-${workspaceId}`,

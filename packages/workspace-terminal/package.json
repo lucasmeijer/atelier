@@ -10,6 +10,7 @@
   "dependencies": {
     "@atelier/core": "workspace:*",
     "@atelier/observable-terminal": "workspace:*",
-    "@atelier/shared": "workspace:*"
+    "@atelier/shared": "workspace:*",
+    "@atelier/workspace": "workspace:*"
   }
 }

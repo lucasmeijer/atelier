@@ -7,6 +7,9 @@
   },
   "dependencies": {
     "@atelier/core": "workspace:*",
+    "@atelier/repository": "workspace:*",
+    "@atelier/workspace": "workspace:*",
+    "@atelier/workspace-proxy": "workspace:*",
     "@atelier/workspace-terminal": "workspace:*"
   }
 }

@@ -6,7 +6,13 @@ export {
   type AtelierEventMap,
   type WorkspaceCreatedEvent,
   type WorkspaceCreationContext,
+  type WorkspaceDeleteInspectEvent,
+  type WorkspaceDeletedEvent,
+  type WorkspaceDockerMount,
+  type WorkspaceDockerPlan,
   type WorkspaceImageBuildEvent,
+  type WorkspacePlanPrepareEvent,
+  type WorkspaceSourcePrepareEvent,
   type WorkspaceTitleChangedEvent,
   type WorkspaceUserActivityEvent,
 } from "./events.ts";
@@ -28,17 +34,6 @@ export {
 } from "./data-dir.ts";
 
 export {
-  addRepository,
-  formatRepositorySpec,
-  listRepositories,
-  parseRepositorySpec,
-  repositoriesFile,
-  type AddRepositoryResult,
-  type RepositoryListResult,
-  type RepositorySummary,
-} from "./repository.ts";
-
-export {
   atelierDataPath,
   discoverAtelierRuntimeContext,
   dockerHostAtelierDataPath,
@@ -46,8 +41,6 @@ export {
   resetAtelierRuntimeContextForTests,
   type AtelierRuntimeContext,
 } from "./runtime-context.ts";
-
-export { resolveWorkspaceImage } from "./workspace-image.ts";
 
 export {
   createHttpHooks,
@@ -60,48 +53,9 @@ export {
 export {
   createWorkspaceSecretContext,
   discoverHostGitHubToken,
+  forgetWorkspaceSecretContext,
   getWorkspaceSecretContext,
   type WorkspaceSecretContext,
 } from "./secrets/workspace-secrets.ts";
 
-export {
-  atelierWorkspaceProxyPort,
-  ensureAtelierWorkspaceProxy,
-  stopAtelierWorkspaceProxy,
-} from "./proxy/egress-proxy.ts";
-
-export {
-  createWorkspace,
-  deleteWorkspace,
-  generateWorkspaceId,
-  workspaceContainerName,
-  execWorkspace,
-  execWorkspaceCommand,
-  execWorkspaceShell,
-  inspectWorkspaceDeleteSafety,
-  getWorkspacePreviewPort,
-  getWorkspacePublishedPort,
-  getWorkspaceRepoMergeability,
-  getWorkspaceVSCodePort,
-  listWorkspaces,
-  listWorkspaceRepos,
-  pushWorkspaceRepo,
-  setWorkspaceTitle,
-  workspaceCommand,
-  workspaceRoot,
-  workspacePreviewPorts,
-  workspaceVSCodePort,
-  type CreateWorkspaceOptions,
-  type DeleteWorkspaceOptions,
-  type WorkspaceCommandContext,
-  type WorkspaceCommandOptions,
-  type WorkspaceDeleteBlockedDetails,
-  type WorkspaceDeleteSafetyIssue,
-  type WorkspaceExecResult,
-  type WorkspaceListResult,
-  type WorkspaceNewResult,
-  type WorkspaceRepoListResult,
-  type WorkspaceRepoMergeabilityResult,
-  type WorkspaceRepoPushResult,
-  type WorkspaceRepoWorkingTreeStatus,
-} from "./workspace.ts";
+export { HttpRequestBlockedError } from "./secrets/errors.ts";

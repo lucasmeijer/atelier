@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { prepareWorkspaceSource, deleteWorkspaceSource } from "../src/workspace-source.ts";
+import { prepareWorkspaceSource } from "@atelier/repository";
 
 async function run(command: string[], options: { cwd?: string } = {}): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = Bun.spawn(command, { cwd: options.cwd, stdout: "pipe", stderr: "pipe" });
@@ -78,14 +78,4 @@ describe("workspace source preparation", () => {
     expect(first.resolvedCommit).not.toBe(second.resolvedCommit);
   });
 
-  test("deleteWorkspaceSource removes only the workspace copy", async () => {
-    const fixture = await createRemote();
-    tempRoots.push(fixture.root);
-    const source = await prepareWorkspaceSource({ workspaceId: "ws1", gitUrl: fixture.remote, branch: "main" });
-
-    await deleteWorkspaceSource("ws1");
-
-    expect(await Bun.file(source.worktreePath).exists()).toBe(false);
-    expect(await Bun.file(join(dataDir, "git-templates", source.templateKey, "repo", "file.txt")).exists()).toBe(true);
-  });
 });

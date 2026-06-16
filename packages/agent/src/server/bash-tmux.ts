@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from "bun";
-import { execWorkspaceCommand, execWorkspaceShell, workspaceContainerName, workspaceRoot } from "@atelier/core";
+import { execWorkspaceCommand, execWorkspaceShell, workspaceContainerName, workspaceRoot } from "@atelier/workspace";
 import {
   attachObservableTerminal,
   buildCapturePaneCommand,

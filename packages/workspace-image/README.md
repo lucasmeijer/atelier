@@ -13,7 +13,7 @@ A module contributes a `workspace-image.json` file at its package root. A checke
 }
 ```
 
-Module names are inferred from their package directory (`packages/workspace-terminal` -> `workspace-terminal`); the base `packages/workspace-image` contribution is named `base`.
+Module names are inferred from their package directory (`packages/workspace-terminal` -> `workspace-terminal`); the base `packages/workspace-image` contribution is named `base`. Repository contributions are named `repo` and are applied after package contributions.
 
 Current contributions:
 
@@ -21,9 +21,23 @@ Current contributions:
 - `packages/workspace-terminal/workspace-image.json`: terminal runtime tools, terminfo, `/etc/tmux.conf`.
 - `packages/vscode/workspace-image.json`: VS Code apt repo/package, `atelier-start-vscode`, defaults, server and extension prewarm.
 
+Repository `workspace.json` uses the same shape plus optional `version: 1`:
+
+```json
+{
+  "version": 1,
+  "aptPackages": ["libpq-dev", "postgresql-client"],
+  "env": { "EXAMPLE": "value" },
+  "run": ["corepack enable"],
+  "files": [{ "from": ".atelier/image/rootfs/etc/example.conf", "to": "/etc/example.conf", "mode": "0644" }]
+}
+```
+
+Repo `files[].from` paths are relative to the repository root and may not escape it. Repo contributions are included in the image hash/tag. For compatibility, `.atelier/workspace-image.json` is also accepted when `workspace.json` is absent.
+
 On-demand builds:
 
 - `createWorkspace()` always builds/resolves a deterministic local image tag from the generated context before launching a workspace.
 - If the tag already exists locally, no rebuild happens; only the first build for a given contribution hash is slow.
 
-When a workspace is created from a repository, a root `workspace.json` in that repository is included in the same context before the hash/tag is computed. Production deployments should therefore include Docker build capability and persistent Docker image/cache storage.
+Production deployments should include Docker build capability and persistent Docker image/cache storage.

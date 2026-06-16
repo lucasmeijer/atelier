@@ -1,9 +1,14 @@
 #!/usr/bin/env bun
-import { AtelierCoreError, createAtelierEventBus, invalidArguments, workspaceCommand } from "@atelier/core";
+import { AtelierCoreError, createAtelierEventBus, invalidArguments } from "@atelier/core";
+import { registerRepositoryWorkspaceEvents, workspaceRepoCommand } from "@atelier/repository";
+import { workspaceCommand } from "@atelier/workspace";
+import { registerWorkspaceProxyEvents } from "@atelier/workspace-proxy";
 import { registerTerminalEvents } from "@atelier/workspace-terminal/server";
 import { writeError, writeSuccess } from "./json.ts";
 
 const atelierEvents = createAtelierEventBus();
+registerRepositoryWorkspaceEvents(atelierEvents);
+registerWorkspaceProxyEvents(atelierEvents);
 registerTerminalEvents(atelierEvents);
 
 function usage(): string {
@@ -22,7 +27,7 @@ async function main(argv: string[]): Promise<void> {
       process.stdout.write(usage());
       return;
     case "workspace":
-      writeSuccess(await workspaceCommand(rest, { events: atelierEvents }));
+      writeSuccess(await (rest[1] === "repo" ? workspaceRepoCommand(rest) : workspaceCommand(rest, { events: atelierEvents })));
       return;
     default:
       throw invalidArguments(`unknown command: ${command}`);

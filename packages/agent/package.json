@@ -16,6 +16,7 @@
     "@earendil-works/pi-ai": "^0.79.0",
     "@earendil-works/pi-coding-agent": "^0.79.0",
     "highlight.js": "^11.11.1",
-    "typebox": "^1.0.57"
+    "typebox": "^1.0.57",
+    "@atelier/workspace": "workspace:*"
   }
 }

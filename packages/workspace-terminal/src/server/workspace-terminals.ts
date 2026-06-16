@@ -1,4 +1,5 @@
-import { execWorkspaceShell, AtelierCoreError, workspaceRoot, type AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
+import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import { buildKillSessionCommand, buildListSessionsCommand, buildObservableSessionCommand, shellQuote } from "@atelier/observable-terminal/server";
 
 const terminalRoot = workspaceRoot;

@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { atelierDataPath, getAtelierRuntimeContext, type AtelierRuntimeContext } from "../runtime-context.ts";
+import { atelierDataPath, getAtelierRuntimeContext, type AtelierRuntimeContext } from "@atelier/core";
 
 export type MitmCa = { dir: string; certPath: string; keyPath: string; leafDir: string };
 

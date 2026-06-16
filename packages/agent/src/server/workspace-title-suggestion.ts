@@ -1,7 +1,8 @@
 import { join } from "node:path";
 import { completeSimple, getModel } from "@earendil-works/pi-ai";
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
-import { listWorkspaces, workspaceCommand, type AtelierEventBus } from "@atelier/core";
+import type { AtelierEventBus } from "@atelier/core";
+import { listWorkspaces, workspaceCommand } from "@atelier/workspace";
 import { piConfigSeedDir } from "@atelier/pi-config/server";
 
 const pending = new Set<string>();

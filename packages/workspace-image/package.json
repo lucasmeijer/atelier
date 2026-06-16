@@ -1,0 +1,7 @@
+{
+  "name": "@atelier/workspace-image",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@atelier/core": "workspace:*" }
+}

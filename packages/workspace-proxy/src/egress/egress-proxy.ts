@@ -8,13 +8,16 @@ import net from "node:net";
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import tls from "node:tls";
-import { HttpRequestBlockedError } from "../secrets/errors.ts";
-import { getWorkspaceSecretContext } from "../secrets/workspace-secrets.ts";
-import { atelierDataPath, getAtelierRuntimeContext } from "../runtime-context.ts";
+import { HttpRequestBlockedError } from "@atelier/core";
+import { createWorkspaceSecretContext, forgetWorkspaceSecretContext, getWorkspaceSecretContext } from "@atelier/core";
+import { atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
+import type { AtelierEventBus } from "@atelier/core";
 import { ensureLeafCertificate, ensureMitmCa, type MitmCa } from "./mitm-ca.ts";
 
 export const atelierWorkspaceProxyPort = 58123;
 export type AtelierWorkspaceProxy = { port: number; close(): Promise<void> };
+
+const workspaceMitmCaPath = "/run/atelier-mitm-ca.crt";
 
 const proxyAuthVersion = 1;
 let sharedProxy: Promise<AtelierWorkspaceProxy> | undefined;
@@ -31,6 +34,60 @@ export function workspaceProxyHost(): string {
 
 export function workspaceProxyUrl(workspaceId: string, token: string): string {
   return `http://${encodeURIComponent(workspaceId)}:${encodeURIComponent(token)}@${workspaceProxyHost()}:${atelierWorkspaceProxyPort}`;
+}
+
+function workspaceProxyEnv(workspaceId: string, token: string): Record<string, string> {
+  const proxy = workspaceProxyUrl(workspaceId, token);
+  return {
+    HTTP_PROXY: proxy,
+    HTTPS_PROXY: proxy,
+    http_proxy: proxy,
+    https_proxy: proxy,
+    NO_PROXY: "localhost,127.0.0.1,::1",
+    no_proxy: "localhost,127.0.0.1,::1",
+    SSL_CERT_FILE: "/etc/ssl/certs/ca-certificates.crt",
+    REQUESTS_CA_BUNDLE: "/etc/ssl/certs/ca-certificates.crt",
+    CURL_CA_BUNDLE: "/etc/ssl/certs/ca-certificates.crt",
+    NODE_EXTRA_CA_CERTS: "/usr/local/share/ca-certificates/atelier-mitm-ca.crt",
+    GIT_SSL_CAINFO: "/etc/ssl/certs/ca-certificates.crt",
+    NPM_CONFIG_CAFILE: "/etc/ssl/certs/ca-certificates.crt",
+    YARN_CA_FILE: "/etc/ssl/certs/ca-certificates.crt",
+    PIP_CERT: "/etc/ssl/certs/ca-certificates.crt",
+  };
+}
+
+export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
+  events.on("workspace_plan_prepare", async ({ workspaceId, plan }) => {
+    const runtimeContext = await getAtelierRuntimeContext();
+    const secretContext = await createWorkspaceSecretContext(workspaceId);
+    Object.assign(plan.env, secretContext.env);
+
+    const proxyAuthToken = await ensureWorkspaceProxyAuthToken(workspaceId);
+    await ensureAtelierWorkspaceProxy();
+    await ensureMitmCa(runtimeContext);
+    Object.assign(plan.env, workspaceProxyEnv(workspaceId, proxyAuthToken));
+    plan.mounts.push({ type: "bind", source: dockerHostAtelierDataPath(runtimeContext, "proxy-ca", "atelier-mitm-ca.pem"), target: workspaceMitmCaPath, readonly: true });
+    plan.initScripts.push(`if [ -r ${workspaceMitmCaPath} ]; then mkdir -p /usr/local/share/ca-certificates; cp ${workspaceMitmCaPath} /usr/local/share/ca-certificates/atelier-mitm-ca.crt; update-ca-certificates || true; fi`);
+    plan.initScripts.push(`cat > /usr/local/bin/atelier-git-credential <<'EOF'
+#!/bin/sh
+test "$1" = get || exit 0
+[ -n "\${GH_TOKEN:-}" ] || exit 0
+echo username=x-access-token
+echo password="$GH_TOKEN"
+EOF
+chmod 755 /usr/local/bin/atelier-git-credential; cat > /etc/profile.d/atelier-github-token.sh <<'EOF'
+# GH_TOKEN, when present, is an Atelier placeholder. It is not the real secret.
+EOF
+git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; git config --file /home/atelier/.gitconfig credential.helper '!/usr/local/bin/atelier-git-credential'; git config --file /home/atelier/.gitconfig http.proxy "$HTTPS_PROXY"; git config --file /home/atelier/.gitconfig http.proxyAuthMethod basic; chown atelier:atelier /home/atelier/.gitconfig`);
+    plan.cleanup.push(async () => cleanupWorkspaceProxy(workspaceId));
+  });
+
+  events.on("workspace_deleted", async ({ workspaceId }) => cleanupWorkspaceProxy(workspaceId));
+}
+
+async function cleanupWorkspaceProxy(workspaceId: string): Promise<void> {
+  await forgetWorkspaceProxyAuthToken(workspaceId).catch(() => undefined);
+  forgetWorkspaceSecretContext(workspaceId);
 }
 
 export async function ensureAtelierWorkspaceProxy(): Promise<AtelierWorkspaceProxy> {

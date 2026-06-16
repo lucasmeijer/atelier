@@ -1,16 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { AtelierCoreError } from "../src/index.ts";
+import { createWorkspace, deleteWorkspace, execWorkspace, type WorkspaceExecResult } from "@atelier/workspace";
 import {
-  AtelierCoreError,
-  createWorkspace,
-  deleteWorkspace,
-  execWorkspace,
   getWorkspaceRepoMergeability,
   listWorkspaceRepos,
   pushWorkspaceRepo,
-  workspaceCommand,
-  type WorkspaceExecResult,
+  workspaceRepoCommand,
   type WorkspaceRepoWorkingTreeStatus,
-} from "../src/index.ts";
+} from "@atelier/repository";
 import { cleanupNamespace, createTestNamespace } from "./helpers.ts";
 
 setDefaultTimeout(120_000);
@@ -140,8 +137,8 @@ describe("core workspace repos", () => {
     expect((await listWorkspaceRepos(workspaceId)).repos).toEqual([]);
   });
 
-  test("workspaceCommand repo list rejects unexpected arguments", async () => {
-    const error = await expectCoreError(() => workspaceCommand([getWorkspaceId(), "repo", "list", "unexpected"]));
+  test("workspaceRepoCommand list rejects unexpected arguments", async () => {
+    const error = await expectCoreError(() => workspaceRepoCommand([getWorkspaceId(), "repo", "list", "unexpected"]));
     expect(error.code).toBe("invalid_arguments");
   });
 
@@ -237,13 +234,13 @@ describe("core workspace repos", () => {
     expect(error.code).toBe("repo_not_found");
   });
 
-  test("workspaceCommand repo mergeability rejects missing repo name", async () => {
-    const error = await expectCoreError(() => workspaceCommand([getWorkspaceId(), "repo", "mergeability"]));
+  test("workspaceRepoCommand mergeability rejects missing repo name", async () => {
+    const error = await expectCoreError(() => workspaceRepoCommand([getWorkspaceId(), "repo", "mergeability"]));
     expect(error.code).toBe("invalid_arguments");
   });
 
-  test("workspaceCommand repo mergeability rejects unexpected arguments", async () => {
-    const error = await expectCoreError(() => workspaceCommand([getWorkspaceId(), "repo", "mergeability", "repo", "unexpected"]));
+  test("workspaceRepoCommand mergeability rejects unexpected arguments", async () => {
+    const error = await expectCoreError(() => workspaceRepoCommand([getWorkspaceId(), "repo", "mergeability", "repo", "unexpected"]));
     expect(error.code).toBe("invalid_arguments");
   });
 
@@ -307,13 +304,13 @@ describe("core workspace repos", () => {
     expect(error.code).toBe("repo_not_found");
   });
 
-  test("workspaceCommand repo push rejects missing repo name", async () => {
-    const error = await expectCoreError(() => workspaceCommand([getWorkspaceId(), "repo", "push"]));
+  test("workspaceRepoCommand push rejects missing repo name", async () => {
+    const error = await expectCoreError(() => workspaceRepoCommand([getWorkspaceId(), "repo", "push"]));
     expect(error.code).toBe("invalid_arguments");
   });
 
-  test("workspaceCommand repo push rejects unexpected arguments", async () => {
-    const error = await expectCoreError(() => workspaceCommand([getWorkspaceId(), "repo", "push", "repo", "unexpected"]));
+  test("workspaceRepoCommand push rejects unexpected arguments", async () => {
+    const error = await expectCoreError(() => workspaceRepoCommand([getWorkspaceId(), "repo", "push", "repo", "unexpected"]));
     expect(error.code).toBe("invalid_arguments");
   });
 

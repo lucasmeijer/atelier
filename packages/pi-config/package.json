@@ -7,6 +7,7 @@
     "./server": "./src/server/index.ts"
   },
   "dependencies": {
-    "@atelier/core": "workspace:*"
+    "@atelier/core": "workspace:*",
+    "@atelier/workspace": "workspace:*"
   }
 }

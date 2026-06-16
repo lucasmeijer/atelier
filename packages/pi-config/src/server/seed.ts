@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { AtelierCoreError, atelierDataPath, execWorkspaceCommand, getAtelierRuntimeContext, runDocker, workspaceContainerName, type AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, atelierDataPath, getAtelierRuntimeContext, runDocker, type AtelierEventBus } from "@atelier/core";
+import { execWorkspaceCommand, workspaceContainerName } from "@atelier/workspace";
 
 const workspacePiConfigDir = "/home/atelier/.pi/agent";
 const seedFilenames = ["auth.json", "settings.json", "models.json"] as const;

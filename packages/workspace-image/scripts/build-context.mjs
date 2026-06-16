@@ -2,11 +2,11 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const outDir = process.argv[2];
-const sourceDir = process.argv[3];
+const sourceDir = process.argv[3] || process.env.ATELIER_WORKSPACE_SOURCE_PATH || "";
 if (!outDir) throw new Error("usage: build-context.mjs <output-dir> [source-dir]");
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const packagesDir = join(root, "packages");
@@ -21,45 +21,60 @@ for (const entry of await readdir(packagesDir, { withFileTypes: true })) {
   const path = join(packagesDir, entry.name, "workspace-image.json");
   if (existsSync(path)) manifestPaths.push(path);
 }
-if (sourceDir) {
-  const path = join(sourceDir, "workspace.json");
-  if (existsSync(path)) manifestPaths.push(path);
-}
 
 function moduleNameFor(dir) {
   const name = basename(dir);
-  if (name === "workspace-image") return "base";
-  if (sourceDir && dir === sourceDir) return "repo";
-  return name;
+  return name === "workspace-image" ? "base" : name;
+}
+
+function assertSafeRepoRelativePath(value) {
+  if (typeof value !== "string" || !value.trim()) throw new Error("repo workspace image file.from must be a non-empty string");
+  if (isAbsolute(value)) throw new Error(`repo workspace image file.from must be relative: ${value}`);
+  const normalized = normalize(value).replaceAll("\\", "/");
+  if (normalized === ".." || normalized.startsWith("../")) throw new Error(`repo workspace image file.from may not escape repository: ${value}`);
+  return normalized;
 }
 
 const manifests = [];
 for (const path of manifestPaths) {
   const dir = dirname(path);
-  manifests.push({ path, dir, name: moduleNameFor(dir), manifest: await readJson(path) });
+  manifests.push({ path, dir, name: moduleNameFor(dir), manifest: await readJson(path), repo: false, hashPath: relative(root, path) });
 }
-manifests.sort((a, b) => (a.name === "base" ? -1 : b.name === "base" ? 1 : a.name.localeCompare(b.name)));
+
+if (sourceDir) {
+  const repoManifestPath = join(sourceDir, "workspace.json");
+  const legacyRepoManifestPath = join(sourceDir, ".atelier", "workspace-image.json");
+  const path = existsSync(repoManifestPath) ? repoManifestPath : existsSync(legacyRepoManifestPath) ? legacyRepoManifestPath : undefined;
+  if (path) {
+    const manifest = await readJson(path);
+    if (manifest.version !== undefined && manifest.version !== 1) throw new Error(`unsupported repo workspace image version: ${manifest.version}`);
+    manifests.push({ path, dir: sourceDir, name: "repo", manifest, repo: true, hashPath: relative(sourceDir, path) });
+  }
+}
+
+manifests.sort((a, b) => (a.name === "base" ? -1 : b.name === "base" ? 1 : a.name === "repo" ? 1 : b.name === "repo" ? -1 : a.name.localeCompare(b.name)));
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(join(outDir, "files"), { recursive: true });
 
 const hash = createHash("sha256");
-hash.update("atelier-workspace-image-v2\n");
+hash.update("atelier-workspace-image-v3\n");
 const apt = [];
 const env = {};
 const copyInstructions = [];
 const runInstructions = [];
 const moduleNames = [];
 
-for (const { path, dir, name, manifest } of manifests) {
+for (const { path, dir, name, manifest, repo, hashPath } of manifests) {
   moduleNames.push(name);
   const manifestText = await readFile(path, "utf8");
-  hash.update(relative(root, path)); hash.update("\0"); hash.update(manifestText); hash.update("\0");
+  hash.update(hashPath); hash.update("\0"); hash.update(manifestText); hash.update("\0");
   apt.push(...(manifest.aptPackages ?? []));
   Object.assign(env, manifest.env ?? {});
   for (const file of manifest.files ?? []) {
-    const from = join(dir, file.from);
-    const rel = `${name}/${file.from.replaceAll(/[^a-zA-Z0-9._/-]/g, "_")}`;
+    const safeFrom = repo ? assertSafeRepoRelativePath(file.from) : file.from;
+    const from = join(dir, safeFrom);
+    const rel = `${name}/${safeFrom.replaceAll(/[^a-zA-Z0-9._/-]/g, "_")}`;
     const dest = join(outDir, "files", rel);
     await mkdir(dirname(dest), { recursive: true });
     await cp(from, dest, { recursive: true });
@@ -78,8 +93,6 @@ if (uniqueApt.length) {
   dockerfile += `RUN apt-get update \\\n && apt-get install -y --no-install-recommends \\\n${uniqueApt.map((pkg) => `      ${pkg} \\\n`).join("")} && rm -rf /var/lib/apt/lists/*\n\n`;
 }
 for (const copy of copyInstructions) {
-  // Keep permission changes in a plain RUN chmod so the generated Dockerfile
-  // remains compatible with both legacy builder and BuildKit.
   dockerfile += `COPY ${quote(copy.rel)} ${quote(copy.to)}\n`;
   if (copy.mode) dockerfile += `RUN chmod ${quote(copy.mode)} ${quote(copy.to)}\n`;
 }

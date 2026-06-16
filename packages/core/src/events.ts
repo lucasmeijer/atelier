@@ -5,6 +5,15 @@ export interface WorkspaceCreatedEvent {
   context?: WorkspaceCreationContext;
 }
 
+export interface WorkspaceDeletedEvent {
+  workspaceId: string;
+}
+
+export interface WorkspaceDeleteInspectEvent {
+  workspaceId: string;
+  issues: unknown[];
+}
+
 export interface WorkspaceUserActivityEvent {
   workspaceId: string;
 }
@@ -31,8 +40,42 @@ export interface WorkspaceImageBuildEvent {
   error?: string;
 }
 
+export interface WorkspaceDockerMount {
+  type: "bind";
+  source: string;
+  target: string;
+  readonly?: boolean;
+}
+
+export interface WorkspaceDockerPlan {
+  image?: string;
+  labels: Record<string, string>;
+  env: Record<string, string>;
+  mounts: WorkspaceDockerMount[];
+  publishes: number[];
+  extraArgs: string[];
+  initScripts: string[];
+  cleanup: Array<() => Promise<void> | void>;
+}
+
+
+export interface WorkspaceSourcePrepareEvent {
+  workspaceId: string;
+  context?: WorkspaceCreationContext;
+  workHostPath: string;
+  workContainerPath: string;
+}
+
+export interface WorkspacePlanPrepareEvent extends WorkspaceSourcePrepareEvent {
+  plan: WorkspaceDockerPlan;
+}
+
 export interface AtelierEventMap {
+  workspace_source_prepare: WorkspaceSourcePrepareEvent;
+  workspace_plan_prepare: WorkspacePlanPrepareEvent;
   workspace_created: WorkspaceCreatedEvent;
+  workspace_deleted: WorkspaceDeletedEvent;
+  workspace_delete_inspect: WorkspaceDeleteInspectEvent;
   workspace_user_activity: WorkspaceUserActivityEvent;
   workspace_title_changed: WorkspaceTitleChangedEvent;
   workspace_tabs_changed: WorkspaceTabsChangedEvent;

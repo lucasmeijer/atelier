@@ -3,8 +3,8 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runDocker } from "./docker.ts";
-import type { AtelierEventBus } from "./events.ts";
+import { runDocker } from "@atelier/core";
+import type { AtelierEventBus } from "@atelier/core";
 
 interface WorkspaceImageMetadata { tag: string; modules: string[] }
 
