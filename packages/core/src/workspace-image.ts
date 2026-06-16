@@ -75,6 +75,33 @@ async function readBuildStream(task: WorkspaceImageBuildTask, stream: ReadableSt
   appendOutput(task, decoder.decode());
 }
 
+interface BuildxBuilderListing {
+  Current?: boolean;
+  Driver?: string;
+  Name?: string;
+  Nodes?: Array<{ Endpoint?: string; Status?: string }>;
+}
+
+function dockerBuildxBuilderArgs(): string[] {
+  const context = Bun.spawnSync(["docker", "context", "show"], { stdout: "pipe", stderr: "ignore" }).stdout.toString().trim();
+  const listed = Bun.spawnSync(["docker", "buildx", "ls", "--format", "{{json .}}"], { stdout: "pipe", stderr: "ignore" });
+  if (listed.exitCode !== 0) return [];
+
+  const builders = listed.stdout.toString().split("\n").map((line) => line.trim()).filter(Boolean).flatMap((line): BuildxBuilderListing[] => {
+    try {
+      return [JSON.parse(line) as BuildxBuilderListing];
+    } catch {
+      return [];
+    }
+  });
+  const dockerBuilders = builders.filter((builder) => builder.Driver === "docker" && builder.Name);
+  const contextBuilder = dockerBuilders.find((builder) => builder.Nodes?.some((node) => node.Endpoint === context && node.Status === "running"));
+  const currentBuilder = dockerBuilders.find((builder) => builder.Current && builder.Nodes?.some((node) => node.Status === "running"));
+  const runningBuilder = dockerBuilders.find((builder) => builder.Nodes?.some((node) => node.Status === "running"));
+  const builder = contextBuilder ?? currentBuilder ?? runningBuilder;
+  return builder?.Name ? ["--builder", builder.Name] : [];
+}
+
 function startBuildTask(tag: string, modules: string[], dockerfile: string, contextDir: string): WorkspaceImageBuildTask {
   const existing = buildTasks.get(tag);
   if (existing) return existing;
@@ -87,7 +114,7 @@ function startBuildTask(tag: string, modules: string[], dockerfile: string, cont
   };
 
   task.promise = (async () => {
-    const proc = Bun.spawn(["docker", "buildx", "build", "--load", "--progress=plain", "-t", tag, "-f", dockerfile, contextDir], {
+    const proc = Bun.spawn(["docker", "buildx", "build", ...dockerBuildxBuilderArgs(), "--load", "--progress=plain", "-t", tag, "-f", dockerfile, contextDir], {
       stdout: "pipe",
       stderr: "pipe",
       env: {
