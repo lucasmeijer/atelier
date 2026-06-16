@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { Terminal } from "@xterm/xterm";
+import { createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
@@ -371,39 +371,31 @@ export function createAgentTermController(Controller: StimulusControllerConstruc
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
     declare readonly sessionValue: string;
-    private term?: Terminal;
-    private ws?: WebSocket;
-    private resizeObserver?: ResizeObserver;
+    private viewer?: ObservableTerminalViewer;
+    private disposed = false;
 
     connect(): void {
-      // Fixed size matching the server-side tmux session (window-size manual):
-      // the viewer never resizes the command's terminal.
-      const term = new Terminal({
+      this.disposed = false;
+      void createObservableTerminalViewer({
+        host: this.element,
+        mode: "fixed-readonly",
         cols: 120,
         rows: 30,
-        cursorBlink: false,
-        disableStdin: true,
-        fontSize: 11,
+        websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agent-term/${encodeURIComponent(this.sessionValue)}/ws?cols=120&rows=30`),
         fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
-        scrollback: 4000,
         theme: { background: "#161a22", foreground: "#d3dae5" },
+      }).then((viewer) => {
+        if (this.disposed) viewer.dispose();
+        else this.viewer = viewer;
+      }).catch(() => {
+        // Inline terminal is best-effort; the completed tool card still shows captured output.
       });
-      term.open(this.element);
-
-      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(`${protocol}//${location.host}/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agent-term/${encodeURIComponent(this.sessionValue)}/ws?cols=120&rows=30`);
-      ws.onmessage = (event) => {
-        if (typeof event.data === "string") term.write(event.data);
-        else (event.data as Blob).arrayBuffer().then((buffer) => term.write(new Uint8Array(buffer)));
-      };
-      this.term = term;
-      this.ws = ws;
     }
 
     disconnect(): void {
-      this.ws?.close();
-      this.resizeObserver?.disconnect();
-      this.term?.dispose();
+      this.disposed = true;
+      this.viewer?.dispose();
+      this.viewer = undefined;
     }
   };
 }

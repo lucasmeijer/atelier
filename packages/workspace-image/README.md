@@ -13,12 +13,12 @@ A module contributes a `workspace-image.json` file at its package root. The mani
 }
 ```
 
-Module names are inferred from their package directory (`packages/terminal` -> `terminal`); the base `packages/workspace-image` contribution is named `base`.
+Module names are inferred from their package directory (`packages/workspace-terminal` -> `workspace-terminal`); the base `packages/workspace-image` contribution is named `base`.
 
 Current contributions:
 
 - `packages/workspace-image/workspace-image.json`: base Ubuntu tools, C/C++ toolchain, .NET 10 SDK, Node.js, pi, `atelier` user, `/work`.
-- `packages/terminal/workspace-image.json`: tmux, terminfo, `/etc/tmux.conf`.
+- `packages/workspace-terminal/workspace-image.json`: terminal runtime tools, terminfo, `/etc/tmux.conf`.
 - `packages/vscode/workspace-image.json`: VS Code apt repo/package, `atelier-start-vscode`, defaults, server and extension prewarm.
 
 On-demand builds:

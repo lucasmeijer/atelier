@@ -1,6 +1,8 @@
-import { spawn, type IPty } from "@zenyr/bun-pty";
+import type { IPty } from "@atelier/observable-terminal/server";
 import type { ServerWebSocket } from "bun";
 import { AtelierCoreError, workspaceContainerName, workspaceRoot } from "@atelier/core";
+import { attachObservableTerminal } from "@atelier/observable-terminal/server";
+import { observableTerminalTabPrefix, parseObservableTerminalMessage } from "@atelier/observable-terminal/shared";
 import { listWorkspaceTerminals } from "./workspace-terminals.ts";
 
 export interface TerminalSocketData {
@@ -23,7 +25,7 @@ export function subscribeTerminalTabBusy(listener: TerminalTabBusyListener): () 
 }
 
 function terminalTabKey(title: string): string {
-  return `terminal:${title}`;
+  return `${observableTerminalTabPrefix}${title}`;
 }
 
 function terminalBusyKey(workspaceId: string, title: string): string {
@@ -48,8 +50,8 @@ export async function validateTerminalSocket(url: URL): Promise<TerminalSocketDa
   if (!match) return undefined;
   const workspaceId = decodeURIComponent(match[1]);
   const tabId = decodeURIComponent(match[2]);
-  if (!tabId.startsWith("terminal:")) return undefined;
-  const title = tabId.slice("terminal:".length);
+  if (!tabId.startsWith(observableTerminalTabPrefix)) return undefined;
+  const title = tabId.slice(observableTerminalTabPrefix.length);
   const { terminals } = await listWorkspaceTerminals(workspaceId);
   if (!terminals.some((terminal) => terminal.title === title)) throw new AtelierCoreError("terminal_not_found", `terminal not found: ${title}`);
   return {
@@ -63,23 +65,15 @@ export async function validateTerminalSocket(url: URL): Promise<TerminalSocketDa
 
 export function openTerminalSocket(ws: ServerWebSocket<TerminalSocketData>): void {
   const data = ws.data;
-  const args = [
-    "exec", "-it",
-    "--user", "atelier",
-    "--workdir", workspaceRoot,
-    "-e", "TERM=xterm-256color",
-    "-e", "COLORTERM=truecolor",
-    "-e", "LANG=C.UTF-8",
-    "-e", "LC_ALL=C.UTF-8",
-    workspaceContainerName(data.workspaceId),
-    "tmux", "attach-session", "-t", data.title,
-  ];
   try {
-    const pty = spawn("docker", args, {
-      name: "xterm-256color",
+    const pty = attachObservableTerminal({
+      containerName: workspaceContainerName(data.workspaceId),
+      session: data.title,
       cols: data.cols,
       rows: data.rows,
-      env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", LANG: "C.UTF-8", LC_ALL: "C.UTF-8" },
+      user: "atelier",
+      workdir: workspaceRoot,
+      readonly: false,
     });
     data.pty = pty;
     pty.onData((chunk) => {
@@ -101,21 +95,14 @@ export function openTerminalSocket(ws: ServerWebSocket<TerminalSocketData>): voi
 
 export function handleTerminalSocketMessage(ws: ServerWebSocket<TerminalSocketData>, message: string | Buffer): void {
   const text = typeof message === "string" ? message : message.toString();
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    if (parsed && typeof parsed === "object" && (parsed as { type?: unknown }).type === "resize") {
-      const cols = Number((parsed as { cols?: unknown }).cols);
-      const rows = Number((parsed as { rows?: unknown }).rows);
-      if (Number.isInteger(cols) && Number.isInteger(rows) && cols > 0 && rows > 0) ws.data.pty?.resize(cols, rows);
-      return;
-    }
-    if (parsed && typeof parsed === "object" && (parsed as { type?: unknown }).type === "progress") {
-      const state = Number((parsed as { state?: unknown }).state);
-      if (Number.isInteger(state) && state >= 0 && state <= 4) setTerminalTabBusy(ws.data.workspaceId, ws.data.title, state !== 0);
-      return;
-    }
-  } catch {
-    // Raw terminal input is not JSON.
+  const control = parseObservableTerminalMessage(text);
+  if (control?.type === "resize") {
+    ws.data.pty?.resize(control.cols, control.rows);
+    return;
+  }
+  if (control?.type === "progress") {
+    setTerminalTabBusy(ws.data.workspaceId, ws.data.title, control.state !== 0);
+    return;
   }
   ws.data.pty?.write(text);
 }

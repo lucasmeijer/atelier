@@ -31,7 +31,7 @@ import {
   subscribeTerminalTabBusy,
   validateTerminalSocket,
   type TerminalSocketData,
-} from "@atelier/terminal/server";
+} from "@atelier/workspace-terminal/server";
 import { atelierName } from "@atelier/shared";
 import {
   parseWorkspaceAppHost,

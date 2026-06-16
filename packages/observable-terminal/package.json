@@ -1,5 +1,5 @@
 {
-  "name": "@atelier/terminal",
+  "name": "@atelier/observable-terminal",
   "private": true,
   "type": "module",
   "exports": {
@@ -9,8 +9,6 @@
     "./shared": "./src/shared/index.ts"
   },
   "dependencies": {
-    "@atelier/core": "workspace:*",
-    "@atelier/shared": "workspace:*",
     "@fontsource/jetbrains-mono": "5.2.8",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/addon-progress": "0.2.0",

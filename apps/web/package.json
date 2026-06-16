@@ -13,7 +13,7 @@
     "@atelier/core": "workspace:*",
     "@atelier/pi-config": "workspace:*",
     "@atelier/shared": "workspace:*",
-    "@atelier/terminal": "workspace:*",
+    "@atelier/workspace-terminal": "workspace:*",
     "@atelier/vscode": "workspace:*",
     "@atelier/workspace-proxy": "workspace:*"
   }

@@ -1,6 +1,21 @@
-import { spawn, type IPty } from "@zenyr/bun-pty";
 import type { ServerWebSocket } from "bun";
 import { execWorkspaceCommand, execWorkspaceShell, workspaceContainerName, workspaceRoot } from "@atelier/core";
+import {
+  attachObservableTerminal,
+  buildCapturePaneCommand,
+  buildKillSessionCommand,
+  buildObservableSessionCommand,
+  buildSendInterruptCommand,
+  buildSetRemainOnExitCommand,
+  normalizeCarriageReturns,
+  observableTerminalCols,
+  observableTerminalHistoryLimit,
+  observableTerminalRows,
+  shellQuote,
+  stripObservablePaneFraming,
+  stripTerminalControls,
+  type IPty,
+} from "@atelier/observable-terminal/server";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
@@ -15,31 +30,17 @@ import { Type } from "typebox";
 export const agentTmuxPrefix = "atelier-agent-";
 
 /** Fixed terminal size for agent bash commands (a normal desktop terminal). */
-export const agentTermCols = 120;
-export const agentTermRows = 30;
+export const agentTermCols = observableTerminalCols;
+export const agentTermRows = observableTerminalRows;
 
 const maxModelOutputBytes = 200_000;
 const maxDisplayAnsiBytes = 200_000;
-const tmuxHistoryLimit = 100_000;
+const tmuxHistoryLimit = observableTerminalHistoryLimit;
 const pollIntervalMs = 350;
 
 export interface TmuxBashHooks {
   /** Called when the tmux session is up: lets the runtime show a live terminal. */
   onSessionStarted?: (toolCallId: string, tmuxSession: string) => void;
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
-}
-
-function stripAnsi(text: string): string {
-  // eslint-disable-next-line no-control-regex
-  return text
-    .replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, "")
-    .replace(/\u001b\][^\u0007]*(\u0007|\u001b\\)/g, "")
-    .replace(/\u001b[()][0-9A-B]/g, "")
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
-    .replace(/^.*\r(?!\n)/gm, "");
 }
 
 function byteLimitUtf8(text: string, maxBytes: number): { text: string; truncated: boolean } {
@@ -63,20 +64,8 @@ function stripScriptFraming(text: string): string {
     .replace(/\n?Script done on [^\n]*\n?$/, "");
 }
 
-/** Remove tmux's remain-on-exit marker from captured panes. */
 export function stripTmuxPaneFraming(text: string): string {
-  let output = text.replace(/[ \t\r\n]*$/, "");
-  for (;;) {
-    const lastNewline = Math.max(output.lastIndexOf("\n"), output.lastIndexOf("\r"));
-    const line = lastNewline >= 0 ? output.slice(lastNewline + 1) : output;
-    const plainLine = stripAnsi(line).trim();
-    // tmux's `remain-on-exit` marker is painted in the dead pane. With
-    // `capture-pane -e`, SGR can surround it; with narrow panes or downstream
-    // byte limits, we have also seen the final `d` disappear (`Pane is dea`).
-    if (!/^Pane is dea(?:d)?$/.test(plainLine)) return output;
-    output = lastNewline >= 0 ? output.slice(0, lastNewline) : "";
-    output = output.replace(/[ \t\r\n]*$/, "");
-  }
+  return stripObservablePaneFraming(text);
 }
 
 export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {}): ToolDefinition<any, any> {
@@ -122,12 +111,11 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
       // of the wrapped physical row, producing concatenated progress text in
       // the live browser terminal.
       const forceTtySize = `stty cols ${agentTermCols} rows ${agentTermRows} 2>/dev/null || true`;
-      const inner = `tmux set-window-option remain-on-exit on; ${forceTtySize}; ${ninjaStatus} ${colorEnv} ${guards} script -qefc ${shellQuote(params.command)} ${shellQuote(outFile)}; echo $? > ${shellQuote(exitFile)}`;
-      // Fixed desktop-like terminal size; `window-size manual` stops attached
-      // viewers (the inline xterm) from resizing the command's terminal.
+      const scriptCommand = `${forceTtySize}; ${params.command}`;
+      const inner = `${buildSetRemainOnExitCommand()}; ${forceTtySize}; ${ninjaStatus} ${colorEnv} ${guards} script -qefc ${shellQuote(scriptCommand)} ${shellQuote(outFile)}; echo $? > ${shellQuote(exitFile)}`;
       const create = await execWorkspaceShell(
         workspaceId,
-        `TERM=xterm-256color tmux new-session -d -s ${shellQuote(sessionName)} -x ${agentTermCols} -y ${agentTermRows} -c ${shellQuote(workspaceRoot)} ${shellQuote(inner)} \\; set-option -t ${shellQuote(sessionName)} window-size manual \\; set-option -t ${shellQuote(sessionName)} status off \\; set-option -t ${shellQuote(sessionName)} history-limit ${tmuxHistoryLimit}`,
+        buildObservableSessionCommand({ session: sessionName, cwd: workspaceRoot, command: shellQuote(inner), cols: agentTermCols, rows: agentTermRows, fixedSize: true, remainOnExit: true, historyLimit: tmuxHistoryLimit }),
       );
       if (create.exitCode !== 0) throw new Error(create.stderr.trim() || `could not start command session`);
 
@@ -138,7 +126,7 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
       let exitCode: number | undefined;
       for (;;) {
         if (signal?.aborted) {
-          await execWorkspaceShell(workspaceId, `tmux send-keys -t ${shellQuote(sessionName)} C-c 2>/dev/null; true`);
+          await execWorkspaceShell(workspaceId, buildSendInterruptCommand(sessionName));
           break;
         }
         const probe = await execWorkspaceShell(workspaceId, `cat ${shellQuote(exitFile)} 2>/dev/null`);
@@ -148,7 +136,7 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
           break;
         }
         if (Date.now() - startedAt > timeoutMs) {
-          await execWorkspaceShell(workspaceId, `tmux send-keys -t ${shellQuote(sessionName)} C-c 2>/dev/null; true`);
+          await execWorkspaceShell(workspaceId, buildSendInterruptCommand(sessionName));
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
@@ -159,11 +147,11 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
       // from tmux scrollback with SGR color escapes preserved (`capture-pane -e`).
       const captured = await execWorkspaceCommand(workspaceId, ["sh", "-c", `head -c ${maxModelOutputBytes + 1} ${shellQuote(outFile)} 2>/dev/null`]);
       const raw = captured.stdout;
-      const pane = await execWorkspaceShell(workspaceId, `tmux capture-pane -p -e -J -S -${tmuxHistoryLimit} -t ${shellQuote(sessionName)} 2>/dev/null || true`);
-      await execWorkspaceShell(workspaceId, `tmux kill-session -t ${shellQuote(sessionName)} 2>/dev/null; rm -f ${shellQuote(outFile)} ${shellQuote(exitFile)}; true`);
+      const pane = await execWorkspaceShell(workspaceId, buildCapturePaneCommand({ session: sessionName, historyLimit: tmuxHistoryLimit }));
+      await execWorkspaceShell(workspaceId, `${buildKillSessionCommand(sessionName)}; rm -f ${shellQuote(outFile)} ${shellQuote(exitFile)}; true`);
 
       const modelLimited = byteLimitUtf8(raw, maxModelOutputBytes);
-      let output = stripScriptFraming(stripAnsi(modelLimited.text)).trim();
+      let output = stripScriptFraming(stripTerminalControls(modelLimited.text)).trim();
       if (modelLimited.truncated) output += `\n… output truncated at ${maxModelOutputBytes} bytes`;
       const aborted = signal?.aborted ?? false;
       const timedOut = exitCode === undefined && !aborted;
@@ -173,7 +161,7 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
       else if (exitCode !== 0) body = `${body}\n\nCommand exited with code ${exitCode}`;
 
       const displayLimited = byteLimitUtf8(stripTmuxPaneFraming(pane.stdout) || raw, maxDisplayAnsiBytes);
-      let displayAnsi = stripScriptFraming(displayLimited.text).trimEnd();
+      let displayAnsi = normalizeCarriageReturns(stripScriptFraming(displayLimited.text)).trimEnd();
       if (displayLimited.truncated) displayAnsi += `\n… output truncated at ${maxDisplayAnsiBytes} bytes`;
       return {
         content: [{ type: "text" as const, text: body }],
@@ -225,20 +213,14 @@ export function validateAgentTermSocket(url: URL): AgentTermSocketData | undefin
 export function openAgentTermSocket(ws: ServerWebSocket<AgentTermSocketData>): void {
   const data = ws.data;
   try {
-    const pty = spawn("docker", [
-      "exec", "-it",
-      "--user", "atelier",
-      "-e", "TERM=xterm-256color",
-      workspaceContainerName(data.workspaceId),
-      "tmux",
-      "set-option", "-t", data.session, "window-size", "manual", "\;",
-      "resize-window", "-t", data.session, "-x", String(agentTermCols), "-y", String(agentTermRows), "\;",
-      "attach-session", "-r", "-t", data.session,
-    ], {
-      name: "xterm-256color",
+    const pty = attachObservableTerminal({
+      containerName: workspaceContainerName(data.workspaceId),
+      session: data.session,
       cols: data.cols,
       rows: data.rows,
-      env: { ...process.env, TERM: "xterm-256color" },
+      user: "atelier",
+      readonly: true,
+      fixedSize: true,
     });
     data.pty = pty;
     pty.onData((chunk) => {

@@ -30,7 +30,7 @@ import {
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceRepoMergeabilityResult,
 } from "@atelier/core";
-import { createWorkspaceTerminal, renderTerminalPane } from "@atelier/terminal/server";
+import { createWorkspaceTerminal, renderTerminalPane } from "@atelier/workspace-terminal/server";
 import {
   createWorkspaceVSCodeTab,
   deleteWorkspaceVSCodeTab,

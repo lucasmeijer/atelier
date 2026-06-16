@@ -18,22 +18,20 @@
         "@atelier/core": "workspace:*",
         "@atelier/pi-config": "workspace:*",
         "@atelier/shared": "workspace:*",
-        "@atelier/terminal": "workspace:*",
         "@atelier/vscode": "workspace:*",
         "@atelier/workspace-proxy": "workspace:*",
+        "@atelier/workspace-terminal": "workspace:*",
       },
     },
     "packages/agent": {
       "name": "@atelier/agent",
       "dependencies": {
         "@atelier/core": "workspace:*",
+        "@atelier/observable-terminal": "workspace:*",
         "@atelier/pi-config": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@earendil-works/pi-ai": "^0.79.0",
         "@earendil-works/pi-coding-agent": "^0.79.0",
-        "@xterm/addon-fit": "0.11.0",
-        "@xterm/xterm": "6.0.0",
-        "@zenyr/bun-pty": "^0.4.4",
         "highlight.js": "^11.11.1",
         "typebox": "^1.0.57",
       },
@@ -44,10 +42,26 @@
         "@atelier/core": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace-proxy": "workspace:*",
+        "@earendil-works/pi-coding-agent": "^0.79.0",
+        "typebox": "^1.0.57",
       },
     },
     "packages/core": {
       "name": "@atelier/core",
+      "dependencies": {
+        "@atelier/observable-terminal": "workspace:*",
+      },
+    },
+    "packages/observable-terminal": {
+      "name": "@atelier/observable-terminal",
+      "dependencies": {
+        "@fontsource/jetbrains-mono": "5.2.8",
+        "@xterm/addon-fit": "0.11.0",
+        "@xterm/addon-progress": "0.2.0",
+        "@xterm/addon-unicode11": "0.9.0",
+        "@xterm/xterm": "6.0.0",
+        "@zenyr/bun-pty": "^0.4.4",
+      },
     },
     "packages/pi-config": {
       "name": "@atelier/pi-config",
@@ -57,19 +71,6 @@
     },
     "packages/shared": {
       "name": "@atelier/shared",
-    },
-    "packages/terminal": {
-      "name": "@atelier/terminal",
-      "dependencies": {
-        "@atelier/core": "workspace:*",
-        "@atelier/shared": "workspace:*",
-        "@fontsource/jetbrains-mono": "5.2.8",
-        "@xterm/addon-fit": "0.11.0",
-        "@xterm/addon-progress": "0.2.0",
-        "@xterm/addon-unicode11": "0.9.0",
-        "@xterm/xterm": "6.0.0",
-        "@zenyr/bun-pty": "^0.4.4",
-      },
     },
     "packages/vscode": {
       "name": "@atelier/vscode",
@@ -82,6 +83,14 @@
     "packages/workspace-proxy": {
       "name": "@atelier/workspace-proxy",
     },
+    "packages/workspace-terminal": {
+      "name": "@atelier/workspace-terminal",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+        "@atelier/observable-terminal": "workspace:*",
+        "@atelier/shared": "workspace:*",
+      },
+    },
     "tools/atelier": {
       "name": "@atelier/cli",
       "bin": {
@@ -89,7 +98,7 @@
       },
       "dependencies": {
         "@atelier/core": "workspace:*",
-        "@atelier/terminal": "workspace:*",
+        "@atelier/workspace-terminal": "workspace:*",
       },
     },
   },
@@ -104,17 +113,19 @@
 
     "@atelier/core": ["@atelier/core@workspace:packages/core"],
 
+    "@atelier/observable-terminal": ["@atelier/observable-terminal@workspace:packages/observable-terminal"],
+
     "@atelier/pi-config": ["@atelier/pi-config@workspace:packages/pi-config"],
 
     "@atelier/shared": ["@atelier/shared@workspace:packages/shared"],
-
-    "@atelier/terminal": ["@atelier/terminal@workspace:packages/terminal"],
 
     "@atelier/vscode": ["@atelier/vscode@workspace:packages/vscode"],
 
     "@atelier/web": ["@atelier/web@workspace:apps/web"],
 
     "@atelier/workspace-proxy": ["@atelier/workspace-proxy@workspace:packages/workspace-proxy"],
+
+    "@atelier/workspace-terminal": ["@atelier/workspace-terminal@workspace:packages/workspace-terminal"],
 
     "@aws-crypto/crc32": ["@aws-crypto/crc32@5.2.0", "", { "dependencies": { "@aws-crypto/util": "^5.2.0", "@aws-sdk/types": "^3.222.0", "tslib": "^2.6.2" } }, "sha512-nLbCWqQNgUiwwtFsen1AdzAtvuLRsQS8rYgMuxCrdKf9kOssamGLuPwyTY9wyYblNr9+1XM8v6zoDTPPSIeANg=="],
 

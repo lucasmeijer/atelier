@@ -1,18 +1,14 @@
 import { execWorkspaceShell, AtelierCoreError, workspaceRoot, type AtelierEventBus } from "@atelier/core";
+import { buildKillSessionCommand, buildListSessionsCommand, buildObservableSessionCommand, shellQuote } from "@atelier/observable-terminal/server";
 
 const terminalRoot = workspaceRoot;
-const terminalEnvironment = "LANG=C.UTF-8 LC_ALL=C.UTF-8 TERM=xterm-256color COLORTERM=truecolor";
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
-}
 
 export interface WorkspaceTerminalListResult {
   terminals: Array<{ title: string }>;
 }
 
 export interface WorkspaceTerminalCreateOptions {
-  /** Preferred tmux session / tab title. If already used, a numeric suffix is added. */
+  /** Preferred session / tab title. If already used, a numeric suffix is added. */
   title?: string;
   /** Command to run in the terminal instead of opening an idle bash shell. */
   command?: string;
@@ -29,9 +25,8 @@ export interface WorkspaceTerminalCreateResult {
 export async function listWorkspaceTerminals(id: string): Promise<WorkspaceTerminalListResult> {
   let result;
   try {
-    result = await execWorkspaceShell(id, "tmux list-sessions -F '#S'");
+    result = await execWorkspaceShell(id, buildListSessionsCommand());
   } catch {
-    // Container or docker unavailable: no terminals rather than a hard failure.
     return { terminals: [] };
   }
   if (result.exitCode !== 0) return { terminals: [] };
@@ -40,7 +35,6 @@ export async function listWorkspaceTerminals(id: string): Promise<WorkspaceTermi
       .trim()
       .split(/\n+/)
       .filter(Boolean)
-      // Agent tool sessions (atelier-agent-*) are internal; never list them as terminal tabs.
       .filter((title) => !title.startsWith("atelier-agent-"))
       .map((title) => ({ title })),
   };
@@ -71,7 +65,7 @@ function normalizeCwd(cwd: string | undefined): string {
   return value;
 }
 
-function tmuxSessionCommand(command: string | undefined): string {
+function sessionCommand(command: string | undefined): string {
   const trimmed = command?.trim();
   if (!trimmed) return "/bin/bash";
   const script = `${trimmed}\nstatus=$?\nprintf '\\n[process exited with code %s]\\n' "$status"\nexec /bin/bash`;
@@ -82,12 +76,9 @@ export async function createWorkspaceTerminal(id: string, options: WorkspaceTerm
   const { terminals } = await listWorkspaceTerminals(id);
   const title = terminalTitle(terminals, options.title);
   const cwd = normalizeCwd(options.cwd);
-  const command = tmuxSessionCommand(options.command);
+  const command = sessionCommand(options.command);
 
-  const result = await execWorkspaceShell(
-    id,
-    `${terminalEnvironment} tmux set-option -g allow-passthrough on \\; set-option -g status off \\; set-environment -g LANG C.UTF-8 \\; set-environment -g LC_ALL C.UTF-8 \\; set-environment -g TERM xterm-256color \\; set-environment -g COLORTERM truecolor \\; new-session -d -s ${shellQuote(title)} -c ${shellQuote(cwd)} ${command} \\; set-option -t ${shellQuote(title)} status off`,
-  );
+  const result = await execWorkspaceShell(id, buildObservableSessionCommand({ session: title, cwd, command, passthrough: true, status: false }));
   if (result.exitCode !== 0) throw new AtelierCoreError("terminal_create_failed", result.stderr.trim() || `could not create terminal: ${title}`);
 
   await options.events?.emit("workspace_tabs_changed", { workspaceId: id });
@@ -100,7 +91,7 @@ export async function deleteWorkspaceTerminal(id: string, title: string): Promis
     throw new AtelierCoreError("terminal_not_found", `terminal not found: ${title}`);
   }
 
-  const result = await execWorkspaceShell(id, `tmux kill-session -t ${shellQuote(title)}`);
+  const result = await execWorkspaceShell(id, buildKillSessionCommand(title));
   if (result.exitCode !== 0) throw new AtelierCoreError("terminal_delete_failed", result.stderr.trim() || `could not delete terminal: ${title}`);
   return null;
 }

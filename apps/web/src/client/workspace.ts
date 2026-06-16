@@ -12,7 +12,7 @@ import {
   startAgentTab,
 } from "@atelier/agent/client";
 import { createBrowserAddressController, createBrowserPaneController } from "@atelier/browser/client";
-import { createTerminalPaneController, initializeTerminalTheme, startTerminal, startTerminalTab } from "@atelier/terminal/client";
+import { createTerminalPaneController, initializeTerminalTheme, startTerminal, startTerminalTab } from "@atelier/workspace-terminal/client";
 
 declare global {
   interface Window {

@@ -1,3 +1,4 @@
+import { buildHasSessionCommand, buildKillSessionCommand, buildObservableSessionCommand, shellQuote as observableShellQuote } from "@atelier/observable-terminal/server";
 import { requireDocker, runDocker } from "./docker.ts";
 import { AtelierCoreError, invalidArguments } from "./errors.ts";
 import type { AtelierEventBus } from "./events.ts";
@@ -551,8 +552,8 @@ async function cloneGitUrlIntoWorkspace(id: string, gitUrl: string, options: { b
   `;
   const start = await execShellAsAtelier(
     id,
-    `tmux kill-session -t ${shellQuote(workspaceGitCloneTerminalTitle)} 2>/dev/null || true
-     tmux new-session -d -s ${shellQuote(workspaceGitCloneTerminalTitle)} -c / /bin/bash -lc ${shellQuote(script)} \\; set-option -t ${shellQuote(workspaceGitCloneTerminalTitle)} status off`,
+    `${buildKillSessionCommand(workspaceGitCloneTerminalTitle)}
+     ${buildObservableSessionCommand({ session: workspaceGitCloneTerminalTitle, cwd: "/", command: `/bin/bash -lc ${observableShellQuote(script)}`, status: false })}`,
   );
   if (start.exitCode !== 0) throw new AtelierCoreError("git_clone_failed", start.stderr.trim() || start.stdout.trim() || `could not start clone for ${trimmed}`);
 
@@ -576,7 +577,7 @@ async function cloneGitUrlIntoWorkspace(id: string, gitUrl: string, options: { b
       const message = code === 17 ? `workspace directory is not empty: ${workspaceRoot}` : `could not clone ${trimmed}`;
       return await fail(code === 17 ? "repo_already_exists" : "git_clone_failed", message);
     }
-    const alive = await execShellAsAtelier(id, `tmux has-session -t ${shellQuote(workspaceGitCloneTerminalTitle)} 2>/dev/null`);
+    const alive = await execShellAsAtelier(id, buildHasSessionCommand(workspaceGitCloneTerminalTitle));
     if (alive.exitCode !== 0) return await fail("git_clone_failed", `git clone session exited without reporting status for ${trimmed}`);
     if (Date.now() > deadline) return await fail("git_clone_failed", `git clone timed out for ${trimmed}`);
     await new Promise((resolve) => setTimeout(resolve, 250));

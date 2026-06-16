@@ -322,7 +322,7 @@ export function renderRunningToolCard(ctx: AgentRenderContext, tool: ToolView): 
   const argsSummary = renderer.summary?.(tool) ?? genericToolSummary(tool);
   const showTerminal = tool.name === "bash" && Boolean(tool.tmuxSession && tool.terminalVisible);
   const terminal = showTerminal
-    ? `<div class="agent-tool-term" data-controller="agent-term"
+    ? `<div class="agent-tool-term observable-terminal-host" data-controller="agent-term"
         data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
         data-agent-term-label-value="${escapeHtml(ctx.label)}"
         data-agent-term-session-value="${escapeHtml(tool.tmuxSession!)}"></div>`

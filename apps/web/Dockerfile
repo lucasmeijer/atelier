@@ -10,7 +10,8 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/agent/package.json packages/agent/package.json
 COPY packages/pi-config/package.json packages/pi-config/package.json
-COPY packages/terminal/package.json packages/terminal/package.json
+COPY packages/workspace-terminal/package.json packages/workspace-terminal/package.json
+COPY packages/observable-terminal/package.json packages/observable-terminal/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/browser/package.json packages/browser/package.json
 COPY packages/vscode/package.json packages/vscode/package.json

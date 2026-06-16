@@ -1,0 +1,15 @@
+{
+  "name": "@atelier/workspace-terminal",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/server/index.ts",
+    "./server": "./src/server/index.ts",
+    "./client": "./src/client/index.ts"
+  },
+  "dependencies": {
+    "@atelier/core": "workspace:*",
+    "@atelier/observable-terminal": "workspace:*",
+    "@atelier/shared": "workspace:*"
+  }
+}

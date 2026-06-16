@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { AtelierCoreError, createAtelierEventBus, invalidArguments, workspaceCommand } from "@atelier/core";
-import { registerTerminalEvents } from "@atelier/terminal/server";
+import { registerTerminalEvents } from "@atelier/workspace-terminal/server";
 import { writeError, writeSuccess } from "./json.ts";
 
 const atelierEvents = createAtelierEventBus();
