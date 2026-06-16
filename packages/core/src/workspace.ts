@@ -1,11 +1,12 @@
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { requireDocker, runDocker } from "./docker.ts";
 import { AtelierCoreError, invalidArguments } from "./errors.ts";
 import type { AtelierEventBus } from "./events.ts";
 import { parseRepositorySpec } from "./repository.ts";
+import { dockerHostAtelierDataPath, getAtelierRuntimeContext } from "./runtime-context.ts";
 import { resolveWorkspaceImage } from "./workspace-image.ts";
+import { ensureAtelierWorkspaceProxy, ensureWorkspaceProxyAuthToken, forgetWorkspaceProxyAuthToken, workspaceProxyUrl } from "./proxy/egress-proxy.ts";
+import { ensureMitmCa } from "./proxy/mitm-ca.ts";
+import { createWorkspaceSecretContext, forgetWorkspaceSecretContext } from "./secrets/workspace-secrets.ts";
 
 const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
@@ -15,8 +16,7 @@ export const workspaceVSCodePort = 8000;
 export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
 
 const workspaceUtf8Environment = ["--env", "LANG=C.UTF-8", "--env", "LC_ALL=C.UTF-8"];
-const githubTokenEnvVar = "GH_TOKEN";
-const workspaceGithubTokenPath = "/run/atelier-gh-token";
+const workspaceMitmCaPath = "/run/atelier-mitm-ca.crt";
 
 export interface WorkspaceNewResult {
   id: string;
@@ -104,14 +104,32 @@ function workspacePublishHost(): string {
   return process.env.ATELIER_WORKSPACE_PUBLISH_HOST || "127.0.0.1";
 }
 
+function workspaceProxyEnvArgs(workspaceId: string, token: string): string[] {
+  const proxy = workspaceProxyUrl(workspaceId, token);
+  return [
+    "--env", `HTTP_PROXY=${proxy}`,
+    "--env", `HTTPS_PROXY=${proxy}`,
+    "--env", `http_proxy=${proxy}`,
+    "--env", `https_proxy=${proxy}`,
+    "--env", "NO_PROXY=localhost,127.0.0.1,::1",
+    "--env", "no_proxy=localhost,127.0.0.1,::1",
+    "--env", "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
+    "--env", "REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt",
+    "--env", "CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt",
+    "--env", "NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/atelier-mitm-ca.crt",
+    "--env", "GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt",
+    "--env", "NPM_CONFIG_CAFILE=/etc/ssl/certs/ca-certificates.crt",
+    "--env", "YARN_CA_FILE=/etc/ssl/certs/ca-certificates.crt",
+    "--env", "PIP_CERT=/etc/ssl/certs/ca-certificates.crt",
+  ];
+}
 
-function workspaceGitHubCredentialDockerArgs(): string[] {
-  if (process.env[githubTokenEnvVar]) return ["--env", githubTokenEnvVar];
+function secretEnvDockerArgs(env: Record<string, string>): string[] {
+  return Object.entries(env).flatMap(([name, value]) => ["--env", `${name}=${value}`]);
+}
 
-  const tokenPath = join(homedir(), githubTokenEnvVar);
-  if (existsSync(tokenPath)) return ["--mount", `type=bind,src=${tokenPath},dst=${workspaceGithubTokenPath},readonly`];
-
-  return [];
+function dockerHostGatewayArgs(): string[] {
+  return ["--add-host", "host.docker.internal:host-gateway"];
 }
 
 function requireArg(value: string | undefined, name: string): string {
@@ -167,6 +185,16 @@ async function ensureWorkspaceFilesystem(id: string): Promise<void> {
     chown -R atelier:atelier ${shellQuote(workspaceRoot)} /.atelier
   `]);
   if (result.exitCode !== 0) throw new AtelierCoreError("workspace_repair_failed", result.stderr.trim() || result.stdout.trim() || `could not prepare workspace filesystem for ${id}`);
+}
+
+async function waitForWorkspaceStartup(id: string): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `test -d ${shellQuote(workspaceRoot)} && test -x /usr/local/bin/atelier-git-credential`]);
+    if (result.exitCode === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new AtelierCoreError("workspace_startup_timeout", `workspace did not finish startup: ${id}`);
 }
 
 export async function resolveWorkspace(id: string): Promise<string> {
@@ -227,8 +255,16 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
   const id = options.id ?? generateWorkspaceId();
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id)) throw invalidArguments(`invalid workspace id: ${id}`);
   const image = await resolveWorkspaceImage({ workspaceId: id, events: options.events });
+  const runtimeContext = await getAtelierRuntimeContext();
 
-  await requireDocker([
+  try {
+    const secretContext = await createWorkspaceSecretContext(id);
+    const proxyAuthToken = await ensureWorkspaceProxyAuthToken(id);
+    await ensureAtelierWorkspaceProxy();
+    const mitmCa = await ensureMitmCa(runtimeContext);
+    const dockerHostMitmCaPath = dockerHostAtelierDataPath(runtimeContext, "proxy-ca", "atelier-mitm-ca.pem");
+
+    await requireDocker([
     "run",
     "-d",
     "--name",
@@ -244,38 +280,37 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     `${workspacePublishHost()}::${workspaceVSCodePort}`,
     ...workspacePreviewPorts.flatMap((port) => ["--publish", `${workspacePublishHost()}::${port}`]),
     ...workspaceUtf8Environment,
-    ...workspaceGitHubCredentialDockerArgs(),
+    ...dockerHostGatewayArgs(),
+    ...secretEnvDockerArgs(secretContext.env),
+    ...workspaceProxyEnvArgs(id, proxyAuthToken),
+    "--mount", `type=bind,src=${dockerHostMitmCaPath},dst=${workspaceMitmCaPath},readonly`,
     "--user",
     "root",
     image,
     "sh",
     "-lc",
-    `mkdir -p /.atelier ${workspaceRoot}; chown -R atelier:atelier /.atelier ${workspaceRoot}; cat > /usr/local/bin/atelier-git-credential <<'EOF'
+    `mkdir -p /.atelier ${workspaceRoot}; chown -R atelier:atelier /.atelier ${workspaceRoot}; if [ -r ${workspaceMitmCaPath} ]; then mkdir -p /usr/local/share/ca-certificates; cp ${workspaceMitmCaPath} /usr/local/share/ca-certificates/atelier-mitm-ca.crt; update-ca-certificates || true; fi; cat > /usr/local/bin/atelier-git-credential <<'EOF'
 #!/bin/sh
 test "$1" = get || exit 0
-token="\${GH_TOKEN:-}"
-if [ -z "$token" ] && [ -r ${workspaceGithubTokenPath} ]; then
-  token="$(cat ${workspaceGithubTokenPath})"
-fi
-[ -n "$token" ] || exit 0
+[ -n "\${GH_TOKEN:-}" ] || exit 0
 echo username=x-access-token
-echo password="$token"
+echo password="$GH_TOKEN"
 EOF
 chmod 755 /usr/local/bin/atelier-git-credential; cat > /etc/profile.d/atelier-github-token.sh <<'EOF'
-if [ -z "\${GH_TOKEN:-}" ] && [ -r ${workspaceGithubTokenPath} ]; then
-  export GH_TOKEN="$(cat ${workspaceGithubTokenPath})"
-fi
+# GH_TOKEN, when present, is an Atelier placeholder. It is not the real secret.
 EOF
-git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; git config --file /home/atelier/.gitconfig credential.helper '!/usr/local/bin/atelier-git-credential'; chown atelier:atelier /home/atelier/.gitconfig; if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'ATELIER_VSCODE_DEFAULT_FOLDER=${workspaceRoot} nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode-server.log 2>&1 &' || true; fi; sleep infinity`,
-  ]);
+git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; git config --file /home/atelier/.gitconfig credential.helper '!/usr/local/bin/atelier-git-credential'; git config --file /home/atelier/.gitconfig http.proxy "$HTTPS_PROXY"; git config --file /home/atelier/.gitconfig http.proxyAuthMethod basic; chown atelier:atelier /home/atelier/.gitconfig; if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'ATELIER_VSCODE_DEFAULT_FOLDER=${workspaceRoot} nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode-server.log 2>&1 &' || true; fi; sleep infinity`,
+    ]);
 
-  try {
+    await waitForWorkspaceStartup(id);
     await resolveWorkspace(id);
     await waitForWorkspaceInit(id);
     const gitUrl = options.gitUrl?.trim();
     if (gitUrl) await cloneGitUrlIntoWorkspace(id, gitUrl, { events: options.events, branch: options.gitBranch?.trim() || null });
   } catch (error) {
     await runDocker(["rm", "-f", workspaceContainerName(id)]).catch(() => undefined);
+    await forgetWorkspaceProxyAuthToken(id).catch(() => undefined);
+    forgetWorkspaceSecretContext(id);
     throw error;
   }
 
@@ -448,6 +483,8 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
     }
   }
   await requireDocker(["rm", "-f", workspaceContainerName(id)]);
+  await forgetWorkspaceProxyAuthToken(id);
+  forgetWorkspaceSecretContext(id);
   return null;
 }
 

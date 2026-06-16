@@ -50,6 +50,27 @@ export {
 export { resolveWorkspaceImage } from "./workspace-image.ts";
 
 export {
+  createHttpHooks,
+  makeDefaultSecretPlaceholder,
+  type CreateHttpHooksOptions,
+  type SecretDefinition,
+  type SecretManager,
+} from "./secrets/placeholder-hooks.ts";
+
+export {
+  createWorkspaceSecretContext,
+  discoverHostGitHubToken,
+  getWorkspaceSecretContext,
+  type WorkspaceSecretContext,
+} from "./secrets/workspace-secrets.ts";
+
+export {
+  atelierWorkspaceProxyPort,
+  ensureAtelierWorkspaceProxy,
+  stopAtelierWorkspaceProxy,
+} from "./proxy/egress-proxy.ts";
+
+export {
   createWorkspace,
   deleteWorkspace,
   generateWorkspaceId,

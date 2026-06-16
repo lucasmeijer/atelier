@@ -1,0 +1,7 @@
+Atelier includes portions adapted from @earendil-works/gondolin.
+
+Source: https://github.com/earendil-works/gondolin
+License: Apache License 2.0
+
+Adapted components include HTTP secret placeholder substitution, host pattern matching,
+and internal IP detection helpers.

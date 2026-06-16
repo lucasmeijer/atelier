@@ -18,6 +18,7 @@ import {
   createWorkspace,
   defaultDataDir,
   deleteWorkspace,
+  ensureAtelierWorkspaceProxy,
   inspectWorkspaceDeleteSafety,
   listWorkspaces,
 } from "@atelier/core";
@@ -341,6 +342,8 @@ function closeWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocke
   const upstream = (ws.data as WorkspaceAppProxySocketData & { upstream?: WebSocket }).upstream;
   if (upstream && upstream.readyState <= WebSocket.OPEN) upstream.close();
 }
+
+await ensureAtelierWorkspaceProxy();
 
 const maxPortAttempts = 100;
 let serverPort = 0;
