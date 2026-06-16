@@ -39,9 +39,13 @@ RUN apt-get update \
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
 
+ARG ATELIER_COMMIT_ID
+ARG ATELIER_COMMIT_DESCRIPTION
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
+ENV ATELIER_COMMIT_ID=${ATELIER_COMMIT_ID}
+ENV ATELIER_COMMIT_DESCRIPTION=${ATELIER_COMMIT_DESCRIPTION}
 
 COPY --from=build /app /app
 

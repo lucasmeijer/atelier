@@ -31,6 +31,9 @@ builder:
   remote: ssh://root@78.47.191.121
   context: .
   dockerfile: apps/web/Dockerfile
+  args:
+    ATELIER_COMMIT_ID: <%= `git rev-parse HEAD`.strip.dump %>
+    ATELIER_COMMIT_DESCRIPTION: <%= `git log -1 --pretty=%s`.strip.dump %>
 
 ssh:
   user: root

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import {
   createNextWorkspaceAgent,
@@ -109,6 +110,30 @@ function turboUpdateStream(target: string, html: string): string {
   return `<turbo-stream action="update" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
 }
 
+function envString(...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function gitOutput(args: string[]): string | undefined {
+  try {
+    return execFileSync("git", args, { cwd: process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function atelierVersionTooltip(): string {
+  const commitId = envString("ATELIER_COMMIT_ID", "ATELIER_COMMIT_SHA", "GIT_COMMIT", "SOURCE_VERSION") ?? gitOutput(["rev-parse", "HEAD"]);
+  const description = envString("ATELIER_COMMIT_DESCRIPTION", "ATELIER_COMMIT_SUBJECT", "GIT_COMMIT_MESSAGE") ?? gitOutput(["log", "-1", "--pretty=%s"]);
+  if (commitId && description) return `${commitId} ${description}`;
+  if (commitId) return commitId;
+  return "Version information unavailable";
+}
+
 let cachedAssetManifest: Record<string, string> | undefined;
 
 function assetPath(logicalPath: string): string {
@@ -122,6 +147,7 @@ function assetPath(logicalPath: string): string {
 export function createWebApp(deps: WebAppDeps): WebApp {
   const { registry, hub, layouts } = deps;
   const logError = deps.logError ?? ((message: string) => console.error(message));
+  const versionTooltip = atelierVersionTooltip();
 
   registerWorkspaceAgentTool("create_or_open_preview_browser", (workspaceId, options) => createOrOpenPreviewBrowserTool(workspaceId, {
     events: options.events,
@@ -359,7 +385,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
     return `<turbo-frame id="workspace_sidebar" data-controller="workspace-list">
     <div class="sidebar-header">
-      <h1>${escapeHtml(atelierName)}</h1>
+      <h1 class="atelier-brand" title="${escapeHtml(versionTooltip)}">${escapeHtml(atelierName)}</h1>
       <div class="sidebar-filter-row">
         <input class="search global-filter" placeholder="Filter…" data-controller="global-filter" data-action="input->global-filter#filter">
       </div>
