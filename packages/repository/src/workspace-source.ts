@@ -24,6 +24,8 @@ export interface GitWorkspaceSourceRequest {
 }
 
 const templateLocks = new Map<string, Promise<void>>();
+const reflinkSupportByDir = new Map<string, Promise<boolean>>();
+const regularCopyWarnings = new Set<string>();
 
 function sourceRoot(): string {
   return defaultDataDir();
@@ -186,17 +188,64 @@ async function ensureTemplate(gitUrl: string, branch: string | null, key: string
   return { repoPath, resolvedCommit: head.stdout.trim(), effectiveBranch };
 }
 
-async function cowCopy(src: string, dest: string): Promise<void> {
+function reflinkCopyArgs(src: string, dest: string): string[] | null {
   const os = platform();
-  if (os === "darwin") {
-    await requireCommand("cp", ["-cR", src, dest], { errorCode: "cow_unavailable" });
+  if (os === "darwin") return ["-cR", src, dest];
+  if (os === "linux") return ["--reflink=always", "-a", src, dest];
+  return null;
+}
+
+function regularCopyArgs(src: string, dest: string): string[] | null {
+  const os = platform();
+  if (os === "darwin") return ["-pR", src, dest];
+  if (os === "linux") return ["-a", src, dest];
+  return null;
+}
+
+async function detectReflinkSupport(dir: string): Promise<boolean> {
+  const realDir = await realpath(dir).catch(() => resolve(dir));
+  const cached = reflinkSupportByDir.get(realDir);
+  if (cached) return await cached;
+
+  const probe = (async () => {
+    const args = reflinkCopyArgs("", "");
+    if (!args) return false;
+
+    const probeDir = join(dir, `.reflink-probe-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    const src = join(probeDir, "src");
+    const dest = join(probeDir, "dest");
+    try {
+      await mkdir(probeDir, { recursive: true });
+      await writeFile(src, "atelier reflink probe\n");
+      const result = await command("cp", reflinkCopyArgs(src, dest)!);
+      return result.exitCode === 0;
+    } finally {
+      await rm(probeDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  })();
+
+  reflinkSupportByDir.set(realDir, probe);
+  return await probe;
+}
+
+function warnRegularCopy(dir: string): void {
+  if (regularCopyWarnings.has(dir)) return;
+  regularCopyWarnings.add(dir);
+  console.warn(`Atelier warning: ${dir} does not appear to support copy-on-write/reflink copies; workspace creation will use regular copies and may be slower than ideal.`);
+}
+
+async function copyWorkspaceTemplate(src: string, dest: string, supportProbeDir: string): Promise<void> {
+  if (await detectReflinkSupport(supportProbeDir)) {
+    const args = reflinkCopyArgs(src, dest);
+    if (!args) throw new AtelierCoreError("cow_unavailable", `copy-on-write workspace copies are not supported on ${platform()}`);
+    await requireCommand("cp", args, { errorCode: "cow_unavailable" });
     return;
   }
-  if (os === "linux") {
-    await requireCommand("cp", ["--reflink=always", "-a", src, dest], { errorCode: "cow_unavailable" });
-    return;
-  }
-  throw new AtelierCoreError("cow_unavailable", `copy-on-write workspace copies are not supported on ${os}`);
+
+  warnRegularCopy(supportProbeDir);
+  const args = regularCopyArgs(src, dest);
+  if (!args) throw new AtelierCoreError("copy_unavailable", `workspace template copies are not supported on ${platform()}`);
+  await requireCommand("cp", args, { errorCode: "copy_unavailable" });
 }
 
 async function verifyStandaloneWorktree(worktreePath: string): Promise<void> {
@@ -231,7 +280,7 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
 
     try {
       const template = await ensureTemplate(gitUrl, branch, key);
-      await cowCopy(template.repoPath, tmpWorkPath);
+      await copyWorkspaceTemplate(template.repoPath, tmpWorkPath, sourceRoot());
       await verifyStandaloneWorktree(tmpWorkPath);
       await rm(worktreePath, { recursive: true, force: true });
       await rename(tmpWorkPath, worktreePath);
