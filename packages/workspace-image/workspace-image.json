@@ -4,6 +4,7 @@
     "ca-certificates",
     "curl",
     "ffmpeg",
+    "file",
     "git",
     "git-lfs",
     "locales",
@@ -16,6 +17,7 @@
     "ninja-build",
     "ripgrep",
     "fd-find",
+    "sqlite3",
     "sudo",
     "cmatrix",
     "xz-utils",
@@ -26,7 +28,6 @@
   ],
   "run": [
     "ln -sf /usr/bin/fdfind /usr/local/bin/fd",
-    "set -eux; bazelisk_arch=\"$(dpkg --print-architecture)\"; case \"$bazelisk_arch\" in amd64) bazelisk_arch=\"amd64\" ;; arm64) bazelisk_arch=\"arm64\" ;; *) echo \"unsupported Bazelisk architecture: $(dpkg --print-architecture)\" >&2; exit 1 ;; esac; curl -fsSL \"https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-${bazelisk_arch}\" -o /usr/local/bin/bazel; chmod +x /usr/local/bin/bazel; bazel version",
     "set -eux; node_arch=\"$(dpkg --print-architecture)\"; case \"$node_arch\" in amd64) node_arch=\"x64\" ;; arm64) node_arch=\"arm64\" ;; armhf) node_arch=\"armv7l\" ;; ppc64el) node_arch=\"ppc64le\" ;; s390x) node_arch=\"s390x\" ;; *) echo \"unsupported Node.js architecture: $(dpkg --print-architecture)\" >&2; exit 1 ;; esac; node_dist_base=\"https://nodejs.org/dist/latest-v22.x\"; mkdir -p /tmp/node-install; curl -fsSL \"$node_dist_base/SHASUMS256.txt\" -o /tmp/node-install/SHASUMS256.txt; node_file=\"$(awk -v suffix=\"-linux-${node_arch}.tar.xz\" 'index($2, \"node-v\") == 1 && substr($2, length($2) - length(suffix) + 1) == suffix { print $2; exit }' /tmp/node-install/SHASUMS256.txt)\"; test -n \"$node_file\"; curl -fsSL \"$node_dist_base/$node_file\" -o \"/tmp/node-install/$node_file\"; awk -v file=\"$node_file\" '$2 == file { print }' /tmp/node-install/SHASUMS256.txt > /tmp/node-install/SHASUMS256.selected; (cd /tmp/node-install && sha256sum -c SHASUMS256.selected); tar -xJf \"/tmp/node-install/$node_file\" -C /usr/local --strip-components=1; rm -rf /tmp/node-install; node --version; npm --version",
     "set -eux; npm install -g playwright@1.60.0 @playwright/test@1.60.0; PLAYWRIGHT_BROWSERS_PATH=/ms-playwright playwright install --with-deps chromium; chmod -R a+rX /ms-playwright /usr/local/lib/node_modules; playwright --version",
     "curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s -- bun-v1.3.14; bun --version",
