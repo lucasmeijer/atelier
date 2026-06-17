@@ -95,6 +95,31 @@ function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan 
   const network = workspaceDockerNetwork();
   return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8" }, mounts: [], publishes: [workspaceVSCodePort, ...workspacePreviewPorts], extraArgs: [...(network ? ["--network", network] : []), ...dockerHostGatewayArgs()], initScripts: [], cleanup: [] };
 }
+
+interface WorkspaceRuntimeManifest {
+  privileged?: boolean;
+  initScripts?: string[];
+}
+
+async function readWorkspaceRuntimeManifest(workHostPath: string): Promise<WorkspaceRuntimeManifest | undefined> {
+  for (const path of [join(workHostPath, "workspace.json"), join(workHostPath, ".atelier", "workspace-image.json")]) {
+    const file = Bun.file(path);
+    if (!(await file.exists())) continue;
+    const manifest = JSON.parse(await file.text()) as WorkspaceRuntimeManifest & { version?: number };
+    if (manifest.version !== undefined && manifest.version !== 1) throw new Error(`unsupported workspace manifest version: ${manifest.version}`);
+    return manifest;
+  }
+  return undefined;
+}
+
+function applyWorkspaceRuntimeManifest(plan: WorkspaceDockerPlan, manifest: WorkspaceRuntimeManifest | undefined): void {
+  if (!manifest) return;
+  if (manifest.privileged) plan.extraArgs.push("--privileged");
+  if (manifest.initScripts) {
+    if (!Array.isArray(manifest.initScripts) || manifest.initScripts.some((script) => typeof script !== "string")) throw new Error("workspace manifest initScripts must be an array of strings");
+    plan.initScripts.push(...manifest.initScripts);
+  }
+}
 function workspaceInitScript(plan: WorkspaceDockerPlan): string {
   return [`mkdir -p /.atelier ${workspaceRoot}`, `chown -R atelier:atelier /.atelier ${workspaceRoot}`, ...plan.initScripts, `if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'ATELIER_VSCODE_DEFAULT_FOLDER=${workspaceRoot} nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode-server.log 2>&1 &' || true; fi`, "sleep infinity"].join("; ");
 }
@@ -111,6 +136,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     if (options.sourceRepositoryId) labels[workspaceSourceRepositoryLabel] = options.sourceRepositoryId;
     if (options.sourceRepositoryName) labels[workspaceSourceRepositoryNameLabel] = options.sourceRepositoryName;
     plan = baseWorkspacePlan(labels);
+    applyWorkspaceRuntimeManifest(plan, await readWorkspaceRuntimeManifest(source.worktreePath));
     plan.mounts.push({ type: "bind", source: source.dockerHostWorktreePath, target: workspaceRoot });
     plan.initScripts.push("git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; chown atelier:atelier /home/atelier/.gitconfig");
     await options.events?.emit("workspace_plan_prepare", { workspaceId: id, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot, plan });
