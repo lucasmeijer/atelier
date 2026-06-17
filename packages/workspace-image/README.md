@@ -2,7 +2,7 @@
 
 Workspace containers are assembled from module contributions instead of one hand-written Dockerfile.
 
-A module contributes a `workspace-image.json` file at its package root. A checked-out repository can also contribute a root-level `workspace.json` file. The manifest can add Ubuntu packages, files/directories to copy into the image, build-time `RUN` scripts, and default environment variables:
+A module contributes a `workspace-image.json` file at its package root. A checked-out repository can also contribute a `.atelier/workspace.json` file. The manifest can add Ubuntu packages, files/directories to copy into the image, build-time `RUN` scripts, and default environment variables:
 
 ```json
 {
@@ -21,7 +21,7 @@ Current contributions:
 - `packages/workspace-terminal/workspace-image.json`: terminal runtime tools, terminfo, `/etc/tmux.conf`.
 - `packages/vscode/workspace-image.json`: VS Code apt repo/package, `atelier-start-vscode`, defaults, server and extension prewarm.
 
-Repository `workspace.json` uses the same shape plus optional `version: 1`:
+Repository `.atelier/workspace.json` uses the same shape plus optional `version: 1`:
 
 ```json
 {
@@ -33,7 +33,7 @@ Repository `workspace.json` uses the same shape plus optional `version: 1`:
 }
 ```
 
-Repo `files[].from` paths are relative to the repository root and may not escape it. Repo contributions are included in the image hash/tag. For compatibility, `.atelier/workspace-image.json` is also accepted when `workspace.json` is absent.
+Repo `files[].from` paths are relative to the repository root and may not escape it. Repo contributions are included in the image hash/tag. For compatibility, root-level `workspace.json` and `.atelier/workspace-image.json` are also accepted when `.atelier/workspace.json` is absent.
 
 On-demand builds:
 

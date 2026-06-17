@@ -42,9 +42,16 @@ for (const path of manifestPaths) {
 }
 
 if (sourceDir) {
-  const repoManifestPath = join(sourceDir, "workspace.json");
+  const atelierRepoManifestPath = join(sourceDir, ".atelier", "workspace.json");
+  const rootRepoManifestPath = join(sourceDir, "workspace.json");
   const legacyRepoManifestPath = join(sourceDir, ".atelier", "workspace-image.json");
-  const path = existsSync(repoManifestPath) ? repoManifestPath : existsSync(legacyRepoManifestPath) ? legacyRepoManifestPath : undefined;
+  const path = existsSync(atelierRepoManifestPath)
+    ? atelierRepoManifestPath
+    : existsSync(rootRepoManifestPath)
+      ? rootRepoManifestPath
+      : existsSync(legacyRepoManifestPath)
+        ? legacyRepoManifestPath
+        : undefined;
   if (path) {
     const manifest = await readJson(path);
     if (manifest.version !== undefined && manifest.version !== 1) throw new Error(`unsupported repo workspace image version: ${manifest.version}`);
