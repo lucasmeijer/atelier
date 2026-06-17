@@ -8,7 +8,7 @@ import { defaultDataDir } from "@atelier/core";
 import type { CommandResult } from "@atelier/core";
 import { AtelierCoreError, invalidArguments } from "@atelier/core";
 import type { AtelierEventBus } from "@atelier/core";
-import { buildObservableSessionCommand, buildKillSessionCommand, shellQuote } from "@atelier/observable-terminal/server";
+import { buildHasSessionCommand, buildKillSessionCommand, buildObservableSessionCommand, shellQuote } from "@atelier/observable-terminal/server";
 
 export interface PreparedWorkspaceSource {
   workspaceId: string;
@@ -107,6 +107,17 @@ async function requireCommand(name: string, args: string[], options: { env?: Rec
     throw new AtelierCoreError(options.errorCode ?? "workspace_source_failed", (result.stderr || result.stdout).trim() || `${name} ${args.join(" ")} failed`);
   }
   return result;
+}
+
+async function startRepositoryProvisionTailSession(session: string, cwd: string, tailCommand: string): Promise<void> {
+  const create = await command("sh", ["-lc", buildObservableSessionCommand({ session, cwd, command: shellQuote(tailCommand), fixedSize: true, remainOnExit: true })]);
+  if (create.exitCode !== 0) throw new AtelierCoreError("provision_terminal_failed", (create.stderr || create.stdout).trim() || `could not start provision terminal ${session}`);
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const exists = await command("sh", ["-lc", buildHasSessionCommand(session)]);
+    if (exists.exitCode === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new AtelierCoreError("provision_terminal_failed", `provision terminal session did not appear: ${session}`);
 }
 
 async function git(args: string[], options: { errorCode?: string } = {}): Promise<CommandResult> {
@@ -283,14 +294,14 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
     }
     const tmpWorkPath = join(cleanupPath, `work.tmp-${process.pid}-${Date.now()}`);
     await rm(tmpWorkPath, { recursive: true, force: true });
+    const logPath = join(cleanupPath, `repository-provision-${Date.now()}.log`);
+    const donePath = `${logPath}.done`;
+    const session = `atelier-provision-git-${crypto.randomUUID().slice(0, 8)}`;
 
     try {
-      const logPath = join(cleanupPath, `repository-provision-${Date.now()}.log`);
-      const donePath = `${logPath}.done`;
-      const session = `atelier-provision-git-${crypto.randomUUID().slice(0, 8)}`;
       await writeFile(logPath, `Preparing repository ${gitUrl}${branch ? `#${branch}` : ""}\n`);
       const tailCommand = `touch ${shellQuote(logPath)}; tail -n +1 -f ${shellQuote(logPath)} & pid=$!; while [ ! -f ${shellQuote(donePath)} ]; do sleep 0.2; done; sleep 0.5; kill "$pid" 2>/dev/null || true`;
-      Bun.spawn(["sh", "-lc", buildObservableSessionCommand({ session, cwd: cleanupPath, command: shellQuote(tailCommand), fixedSize: true, remainOnExit: true })]);
+      await startRepositoryProvisionTailSession(session, cleanupPath, tailCommand);
       await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "running", terminal: { kind: "host-tmux", session } });
       const template = await provisionLog.run(logPath, () => ensureTemplate(gitUrl, branch, key));
       await copyWorkspaceTemplate(template.repoPath, tmpWorkPath, sourceRoot());
@@ -322,6 +333,8 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
         templateKey: key,
       };
     } catch (error) {
+      await writeFile(donePath, "failed\n").catch(() => undefined);
+      setTimeout(() => { Bun.spawn(["sh", "-lc", buildKillSessionCommand(session)]); }, 30_000);
       await rm(tmpWorkPath, { recursive: true, force: true }).catch(() => undefined);
       await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "failed", error: error instanceof Error ? error.message : String(error) });
       throw error;

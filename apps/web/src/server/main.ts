@@ -328,17 +328,25 @@ async function validateSocket(request: Request, url: URL): Promise<SocketData | 
 }
 
 function openProvisionTermSocket(ws: ServerWebSocket<ProvisionTermSocketData>): void {
-  try {
-    const pty = attachHostObservableTerminal({ session: ws.data.session, cols: observableTerminalCols, rows: observableTerminalRows, readonly: true, fixedSize: true });
-    ws.data.pty = pty;
-    pty.onData((chunk) => {
-      try { ws.send(chunk); } catch { /* closed */ }
-    });
-    pty.onExit(() => ws.close());
-  } catch (error) {
-    ws.send(`\r\n[provision terminal attach failed: ${error instanceof Error ? error.message : String(error)}]\r\n`);
+  void (async () => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      try {
+        const pty = attachHostObservableTerminal({ session: ws.data.session, cols: observableTerminalCols, rows: observableTerminalRows, readonly: true, fixedSize: true });
+        ws.data.pty = pty;
+        pty.onData((chunk) => {
+          try { ws.send(chunk); } catch { /* closed */ }
+        });
+        pty.onExit(() => ws.close());
+        return;
+      } catch (error) {
+        lastError = error;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+    try { ws.send(`\r\n[provision terminal attach failed: ${lastError instanceof Error ? lastError.message : String(lastError)}]\r\n`); } catch { /* closed */ }
     ws.close();
-  }
+  })();
 }
 
 function closeProvisionTermSocket(ws: ServerWebSocket<ProvisionTermSocketData>): void {
