@@ -27,9 +27,8 @@ const publishedPorts = new Map<string, Promise<number>>();
 async function ensureVSCodeServerOnce(workspaceId: string): Promise<void> {
   let promise = serverEnsures.get(workspaceId);
   if (!promise) {
-    promise = ensureWorkspaceVSCodeServer(workspaceId).catch((error) => {
+    promise = ensureWorkspaceVSCodeServer(workspaceId).finally(() => {
       serverEnsures.delete(workspaceId);
-      throw error;
     });
     serverEnsures.set(workspaceId, promise);
   }

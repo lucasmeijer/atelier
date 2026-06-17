@@ -2,7 +2,7 @@ import { requireDocker, runDocker, type AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand, shellQuote } from "@atelier/observable-terminal/server";
 
 const extensionIds = ["ms-vscode.cpptools-extension-pack", "ms-dotnettools.csharp"] as const;
-const extensionSetVersion = "2026-06-17";
+const extensionSetVersion = "2026-06-17.1";
 const extensionsMountPath = "/opt/atelier/vscode-extensions";
 
 const ensureTasks = new Map<string, Promise<string>>();
@@ -60,8 +60,9 @@ ${installExtensions}
 su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server --extensions-dir /extensions --list-extensions --show-versions' | tee /tmp/vscode-extensions.log
 ${verifyExtensions}
 chown -R root:root /extensions
+chmod -R a+rX /extensions
 find /extensions -type d -exec chmod 0755 {} +
-find /extensions -type f -exec chmod 0644 {} +
+find /extensions -type f -exec sh -c 'for file do magic="$(head -c 4 "$file" | od -An -tx1 | tr -d " ")"; first2="$(head -c 2 "$file")"; if [ "$magic" = "7f454c46" ] || [ "$first2" = "#!" ]; then chmod 0755 "$file"; fi; done' sh {} +
 `;
 }
 
