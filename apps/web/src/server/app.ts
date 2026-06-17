@@ -21,6 +21,7 @@ import {
   type AtelierEventBus,
   type WorkspaceCreationContext,
 } from "@atelier/core";
+import { desktopTabKey, ensureWorkspaceDesktop } from "@atelier/desktop/server";
 import {
   addRepository,
   formatRepositorySpec,
@@ -917,6 +918,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       }
       case "browser.create":
         return { createdTabKey: createWorkspaceBrowserTabForWorkspace(workspaceId).key };
+      case "desktop.start":
+        await ensureWorkspaceDesktop(workspaceId);
+        return { createdTabKey: desktopTabKey };
       case "agent.launch-source-repo-workspace": {
         const entry = requireWorkspace(workspaceId);
         if (!entry.sourceRepositoryId) throw new AtelierCoreError("source_repo_not_found", `workspace ${workspaceId} was not created from a repository`);

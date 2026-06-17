@@ -14,6 +14,7 @@ import {
 } from "@atelier/agent/server";
 import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "@atelier/browser/server";
 import { createAtelierEventBus, defaultDataDir } from "@atelier/core";
+import { desktopAppKey, resolveDesktopWorkspaceAppTarget } from "@atelier/desktop/server";
 import { inspectWorkspaceDeleteSafety, registerRepositoryWorkspaceEvents } from "@atelier/repository";
 import { createWorkspace, deleteWorkspace, listWorkspaces } from "@atelier/workspace";
 import { ensureAtelierWorkspaceProxy, registerWorkspaceProxyEvents } from "@atelier/workspace-proxy";
@@ -286,6 +287,7 @@ const workspacePortAppKeyPattern = /^port-(\d+)$/;
 
 const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, requestUrl) => {
   if (app.appKey === vscodeAppKey) return await resolveVSCodeWorkspaceAppTarget(app, requestUrl);
+  if (app.appKey === desktopAppKey) return await resolveDesktopWorkspaceAppTarget(app, requestUrl);
   if (isBrowserWorkspaceApp(app.appKey)) return await resolveBrowserWorkspaceAppTarget(app, requestUrl);
   const portMatch = app.appKey.match(workspacePortAppKeyPattern);
   if (portMatch) return await resolveWorkspacePortProxyTarget(app.workspaceId, Number(portMatch[1]), requestUrl.pathname, requestUrl.search);

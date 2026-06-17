@@ -1,0 +1,18 @@
+{
+  "aptPackages": [
+    "dbus-x11",
+    "novnc",
+    "openbox",
+    "websockify",
+    "x11vnc",
+    "xauth",
+    "xvfb"
+  ],
+  "files": [
+    { "from": "rootfs/usr/local/bin/atelier-start-desktop", "to": "/usr/local/bin/atelier-start-desktop", "mode": "0755" },
+    { "from": "rootfs/usr/local/bin/atelier-wrap-playwright-chromium", "to": "/usr/local/bin/atelier-wrap-playwright-chromium", "mode": "0755" }
+  ],
+  "run": [
+    "atelier-wrap-playwright-chromium"
+  ]
+}

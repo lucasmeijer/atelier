@@ -1,0 +1,38 @@
+#!/bin/sh
+set -eu
+
+root="${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}"
+found=0
+
+for chrome in "$root"/chromium-*/chrome-linux/chrome; do
+  [ -f "$chrome" ] || continue
+  found=1
+  real="$chrome.atelier-real"
+  [ -f "$real" ] && continue
+
+  mv "$chrome" "$real"
+  cat > "$chrome" <<'EOF'
+#!/bin/sh
+set -eu
+
+real="$0.atelier-real"
+
+for arg in "$@"; do
+  case "$arg" in
+    --headless|--headless=*|--version|--product-version|--help|-h)
+      exec "$real" "$@"
+      ;;
+  esac
+done
+
+export DISPLAY="${DISPLAY:-:99}"
+atelier-start-desktop
+exec "$real" "$@"
+EOF
+  chmod 0755 "$chrome"
+done
+
+if [ "$found" -eq 0 ]; then
+  echo "No Playwright Chromium browser found under $root" >&2
+  exit 1
+fi

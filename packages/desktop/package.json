@@ -1,0 +1,13 @@
+{
+  "name": "@atelier/desktop",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./server": "./src/server/index.ts"
+  },
+  "dependencies": {
+    "@atelier/shared": "workspace:*",
+    "@atelier/workspace": "workspace:*",
+    "@atelier/workspace-proxy": "workspace:*"
+  }
+}

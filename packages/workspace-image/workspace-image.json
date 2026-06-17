@@ -21,6 +21,9 @@
     "xz-utils",
     "unzip"
   ],
+  "files": [
+    { "from": "rootfs/usr/local/bin/chromium", "to": "/usr/local/bin/chromium", "mode": "0755" }
+  ],
   "run": [
     "ln -sf /usr/bin/fdfind /usr/local/bin/fd",
     "set -eux; bazelisk_arch=\"$(dpkg --print-architecture)\"; case \"$bazelisk_arch\" in amd64) bazelisk_arch=\"amd64\" ;; arm64) bazelisk_arch=\"arm64\" ;; *) echo \"unsupported Bazelisk architecture: $(dpkg --print-architecture)\" >&2; exit 1 ;; esac; curl -fsSL \"https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-${bazelisk_arch}\" -o /usr/local/bin/bazel; chmod +x /usr/local/bin/bazel; bazel version",

@@ -9,6 +9,7 @@ const workspaceIdLabel = "com.atelier.workspace-id";
 const titlePath = "/.atelier/title";
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
+export const workspaceDesktopPort = 6080;
 export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
 export const workspaceSourceRepositoryLabel = "com.atelier.source-repo";
 export const workspaceSourceRepositoryNameLabel = "com.atelier.source-repo-name";
@@ -93,7 +94,7 @@ function dockerMountArg(mount: WorkspaceDockerMount): string { return [`type=${m
 function planEnvDockerArgs(env: Record<string, string>): string[] { return Object.entries(env).flatMap(([name, value]) => ["--env", `${name}=${value}`]); }
 function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan {
   const network = workspaceDockerNetwork();
-  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8" }, mounts: [], publishes: [workspaceVSCodePort, ...workspacePreviewPorts], extraArgs: [...(network ? ["--network", network] : []), ...dockerHostGatewayArgs()], initScripts: [], cleanup: [] };
+  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8" }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: [...(network ? ["--network", network] : []), ...dockerHostGatewayArgs()], initScripts: [], cleanup: [] };
 }
 
 interface WorkspaceRuntimeManifest {
@@ -164,6 +165,7 @@ export async function getWorkspacePublishedPort(id: string, containerPort: numbe
   return port;
 }
 export async function getWorkspaceVSCodePort(id: string): Promise<number> { return await getWorkspacePublishedPort(id, workspaceVSCodePort); }
+export async function getWorkspaceDesktopPort(id: string): Promise<number> { return await getWorkspacePublishedPort(id, workspaceDesktopPort); }
 export async function getWorkspacePreviewPort(id: string, containerPort: number): Promise<number> { if (!(workspacePreviewPorts as readonly number[]).includes(containerPort)) throw invalidArguments(`unsupported workspace preview port: ${containerPort}. Supported ports: ${workspacePreviewPorts.join(", ")}`); return await getWorkspacePublishedPort(id, containerPort); }
 
 export async function listWorkspaces(): Promise<WorkspaceListResult> {
