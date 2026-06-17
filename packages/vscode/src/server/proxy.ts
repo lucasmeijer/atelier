@@ -1,4 +1,4 @@
-import { getWorkspaceVSCodePort } from "@atelier/workspace";
+import { getWorkspaceVSCodePort, workspaceContainerName, workspaceVSCodePort } from "@atelier/workspace";
 import type { WorkspaceAppHost } from "@atelier/workspace-proxy/server";
 import { ensureWorkspaceVSCodeServer } from "./workspace-vscode.ts";
 
@@ -7,6 +7,10 @@ export const vscodeContainerPort = 8000;
 
 function publishedPortHost(): string {
   return process.env.ATELIER_DOCKER_PUBLISHED_PORT_HOST || "127.0.0.1";
+}
+
+function useWorkspaceDockerNetwork(): boolean {
+  return Boolean(process.env.ATELIER_WORKSPACE_DOCKER_NETWORK);
 }
 
 function escapeHtmlAttribute(value: string): string {
@@ -70,6 +74,8 @@ export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, res
 export async function resolveVSCodeWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {
   if (app.appKey !== vscodeAppKey) throw new Error(`unknown workspace app: ${app.appKey}`);
   await ensureVSCodeServerOnce(app.workspaceId);
+  const path = requestUrl.pathname + requestUrl.search;
+  if (useWorkspaceDockerNetwork()) return new URL(path, `http://${workspaceContainerName(app.workspaceId)}:${workspaceVSCodePort}`);
   const hostPort = await getVSCodePublishedPort(app.workspaceId);
-  return new URL(requestUrl.pathname + requestUrl.search, `http://${publishedPortHost()}:${hostPort}`);
+  return new URL(path, `http://${publishedPortHost()}:${hostPort}`);
 }
