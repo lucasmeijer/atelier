@@ -248,9 +248,11 @@ async function handleProxyHttp(workspaceId: string, req: IncomingMessage, res: S
   if (next instanceof Response) return await writeFetchResponse(res, next);
   if (hooks?.isRequestAllowed && !(await hooks.isRequestAllowed(new Request(next.url, { method: next.method, headers: next.headers })))) throw new HttpRequestBlockedError("request blocked by policy");
 
+  const upstreamHeaders = filteredForwardHeaders(next.headers);
+  upstreamHeaders.set("accept-encoding", "identity");
   const upstream = await fetch(next.url, {
     method: next.method,
-    headers: filteredForwardHeaders(next.headers),
+    headers: upstreamHeaders,
     body: ["GET", "HEAD"].includes(next.method.toUpperCase()) ? undefined : next.body,
     redirect: "manual",
     ...(!["GET", "HEAD"].includes(next.method.toUpperCase()) ? ({ duplex: "half" } as const) : {}),
@@ -333,7 +335,7 @@ async function writeFetchResponse(res: ServerResponse, response: Response): Prom
   res.statusCode = response.status;
   res.statusMessage = response.statusText;
   response.headers.forEach((value, key) => {
-    if (/^(connection|keep-alive|proxy-authenticate|proxy-authorization|te|trailer|transfer-encoding|upgrade|content-length)$/i.test(key)) return;
+    if (/^(connection|keep-alive|proxy-authenticate|proxy-authorization|te|trailer|transfer-encoding|upgrade|content-length|content-encoding)$/i.test(key)) return;
     res.setHeader(key, value);
   });
   if (!response.body) { res.end(); return; }
