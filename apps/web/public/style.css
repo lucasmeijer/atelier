@@ -91,7 +91,7 @@ a { color: inherit; text-decoration: none; }
 .repo-launch-btn { width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--muted-2); cursor: pointer; font: 700 16px/1 system-ui, sans-serif; }
 .repo-launch-btn:hover { color: var(--accent); background: var(--accent-soft); border-color: rgba(37,99,235,.18); }
 .repo-launch-btn:active { transform: translateY(1px); }
-.workspace-row { grid-template-columns: minmax(0, 1fr) auto; }
+.workspace-row { grid-template-columns: minmax(0, 1fr) auto; position: relative; }
 .workspace-row-title-frame { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; min-width: 0; }
 .workspace-row-edit { opacity: 0; color: var(--muted-2); font-size: 12px; padding: 2px 4px; border-radius: 5px; }
 .workspace-row:hover .workspace-row-edit { opacity: 1; }
@@ -389,7 +389,7 @@ a.btn { text-decoration: none; }
 .workspace-sidebar-table .r-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .workspace-sidebar-title-form input { padding: 3px 6px; }
 .workspace-sidebar-table .row.head { grid-template-columns: minmax(0, 1fr) auto; }
-.workspace-row.active { background: var(--accent-soft); }
-.workspace-row.active .r-title { color: var(--accent); }
+.workspace-row.active::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 4px; border-radius: 0 999px 999px 0; background: var(--accent); box-shadow: 0 0 0 1px rgba(37,99,235,.08); }
+.workspace-row.active .r-title { color: var(--text); font-weight: 700; }
 .sidebar-host-repos { margin-top: 24px; padding-bottom: 24px; }
 .sidebar-host-repos .section-head { padding: 0 16px; }
