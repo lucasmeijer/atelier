@@ -36,7 +36,7 @@ import {
   type WorkspaceAppResponseTransformer,
   type WorkspaceAppTargetResolver,
 } from "@atelier/workspace-proxy/server";
-import { patchVSCodeWorkspaceAppResponse, resolveVSCodeWorkspaceAppTarget, vscodeAppKey } from "@atelier/vscode/server";
+import { patchVSCodeWorkspaceAppResponse, registerVSCodeEvents, resolveVSCodeWorkspaceAppTarget, vscodeAppKey } from "@atelier/vscode/server";
 import { createWebApp } from "./app.ts";
 import { createFileWebPreferenceStore } from "./preferences.ts";
 import { createStreamHub } from "./stream-hub.ts";
@@ -198,6 +198,7 @@ registerRepositoryWorkspaceEvents(atelierEvents);
 registerWorkspaceProxyEvents(atelierEvents);
 registerPiConfigEvents(atelierEvents);
 registerTerminalEvents(atelierEvents);
+registerVSCodeEvents(atelierEvents);
 registerAgentEvents(atelierEvents);
 
 const registry = createWorkspaceRegistry({

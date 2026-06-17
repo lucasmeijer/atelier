@@ -17,6 +17,33 @@ function unescapeHtmlAttribute(value: string): string {
   return value.replaceAll("&quot;", '"').replaceAll("&amp;", "&");
 }
 
+const serverEnsures = new Map<string, Promise<void>>();
+const publishedPorts = new Map<string, Promise<number>>();
+
+async function ensureVSCodeServerOnce(workspaceId: string): Promise<void> {
+  let promise = serverEnsures.get(workspaceId);
+  if (!promise) {
+    promise = ensureWorkspaceVSCodeServer(workspaceId).catch((error) => {
+      serverEnsures.delete(workspaceId);
+      throw error;
+    });
+    serverEnsures.set(workspaceId, promise);
+  }
+  await promise;
+}
+
+async function getVSCodePublishedPort(workspaceId: string): Promise<number> {
+  let promise = publishedPorts.get(workspaceId);
+  if (!promise) {
+    promise = getWorkspaceVSCodePort(workspaceId).catch((error) => {
+      publishedPorts.delete(workspaceId);
+      throw error;
+    });
+    publishedPorts.set(workspaceId, promise);
+  }
+  return await promise;
+}
+
 export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, response: Response): Promise<Response> {
   if (app.appKey !== vscodeAppKey || !response.ok || !response.headers.get("content-type")?.includes("text/html")) return response;
   const text = await response.text();
@@ -42,7 +69,7 @@ export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, res
 
 export async function resolveVSCodeWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {
   if (app.appKey !== vscodeAppKey) throw new Error(`unknown workspace app: ${app.appKey}`);
-  await ensureWorkspaceVSCodeServer(app.workspaceId);
-  const hostPort = await getWorkspaceVSCodePort(app.workspaceId);
+  await ensureVSCodeServerOnce(app.workspaceId);
+  const hostPort = await getVSCodePublishedPort(app.workspaceId);
   return new URL(requestUrl.pathname + requestUrl.search, `http://${publishedPortHost()}:${hostPort}`);
 }

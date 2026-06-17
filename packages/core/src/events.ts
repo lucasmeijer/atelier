@@ -41,7 +41,7 @@ export interface WorkspaceImageBuildEvent {
 }
 
 export interface WorkspaceDockerMount {
-  type: "bind";
+  type: "bind" | "volume";
   source: string;
   target: string;
   readonly?: boolean;

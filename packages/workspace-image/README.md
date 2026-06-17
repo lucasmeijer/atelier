@@ -19,7 +19,7 @@ Current contributions:
 
 - `packages/workspace-image/workspace-image.json`: base Ubuntu tools, C/C++ toolchain, .NET 10 SDK, Node.js, pi, `atelier` user, `/work`.
 - `packages/workspace-terminal/workspace-image.json`: terminal runtime tools, terminfo, `/etc/tmux.conf`.
-- `packages/vscode/workspace-image.json`: VS Code apt repo/package, `atelier-start-vscode`, defaults, server and extension prewarm.
+- `packages/vscode/workspace-image.json`: VS Code server bootstrap/prewarm, `atelier-start-vscode`, defaults. Heavy C#/C++ VS Code extensions are seeded once into a shared Docker volume and mounted into workspaces at runtime, so normal workspace image changes do not rebake those extensions.
 
 Repository `.atelier/workspace.json` uses the same shape plus optional `version: 1`:
 

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -169,7 +168,7 @@ export async function resolveWorkspaceImage(options: ResolveWorkspaceImageOption
   if (generated.exitCode !== 0) throw new Error(`could not generate workspace image context: ${generated.stderr.toString() || generated.stdout.toString()}`);
 
   const metadata = await contextMetadata(contextDir);
-  const tag = `${metadata.tag}-${createHash("sha256").update(namespaceSlug()).digest("hex").slice(0, 8)}`;
+  const tag = metadata.tag;
   if (await imageExists(tag)) return tag;
 
   const task = startBuildTask(tag, metadata.modules, join(contextDir, "Dockerfile"), contextDir);

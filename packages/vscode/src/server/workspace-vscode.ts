@@ -41,7 +41,7 @@ export function deleteWorkspaceVSCodeTab(workspaceId: string, title: string): vo
 export async function ensureWorkspaceVSCodeServer(workspaceId: string): Promise<void> {
   const result = await execWorkspaceShell(workspaceId, `
     set -eu
-    if pgrep -u atelier -f 'code serve-web' >/dev/null 2>&1; then
+    if pgrep -u atelier -f 'code serve-web|code-server' >/dev/null 2>&1; then
       exit 0
     fi
     mkdir -p /.atelier/vscode
