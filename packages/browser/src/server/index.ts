@@ -9,6 +9,7 @@ export {
 export {
   browserAppKey,
   isBrowserWorkspaceApp,
+  patchBrowserWorkspaceAppResponse,
   resolveBrowserWorkspaceAppTarget,
 } from "./proxy.ts";
 export {

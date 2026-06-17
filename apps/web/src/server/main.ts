@@ -12,7 +12,7 @@ import {
   validateAgentTermSocket,
   type AgentTermSocketData,
 } from "@atelier/agent/server";
-import { isBrowserWorkspaceApp, resolveBrowserWorkspaceAppTarget } from "@atelier/browser/server";
+import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "@atelier/browser/server";
 import { createAtelierEventBus, defaultDataDir } from "@atelier/core";
 import { inspectWorkspaceDeleteSafety, registerRepositoryWorkspaceEvents } from "@atelier/repository";
 import { createWorkspace, deleteWorkspace, listWorkspaces } from "@atelier/workspace";
@@ -33,6 +33,7 @@ import {
   proxyWorkspaceAppRequest,
   workspaceAppWebSocketTarget,
   type WorkspaceAppHost,
+  type WorkspaceAppResponseTransformer,
   type WorkspaceAppTargetResolver,
 } from "@atelier/workspace-proxy/server";
 import { patchVSCodeWorkspaceAppResponse, resolveVSCodeWorkspaceAppTarget, vscodeAppKey } from "@atelier/vscode/server";
@@ -290,6 +291,12 @@ const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, reques
   throw new Error(`unknown workspace app: ${app.appKey}`);
 };
 
+const patchWorkspaceAppResponse: WorkspaceAppResponseTransformer = async (app, response, request) => {
+  if (isBrowserWorkspaceApp(app.appKey)) return await patchBrowserWorkspaceAppResponse(app, response, request);
+  if (app.appKey === vscodeAppKey) return await patchVSCodeWorkspaceAppResponse(app, response);
+  return response;
+};
+
 async function validateSocket(request: Request, url: URL): Promise<SocketData | undefined> {
   const appHost = parseWorkspaceAppHost(request.headers.get("host"));
   if (appHost) {
@@ -367,7 +374,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
         }
 
         if (appHost?.appKey === "file") return await workspaceFileEndpoint(appHost.workspaceId, decodeURIComponent(url.pathname), request);
-        if (appHost) return await proxyWorkspaceAppRequest(appHost, request, resolveWorkspaceAppTarget, patchVSCodeWorkspaceAppResponse);
+        if (appHost) return await proxyWorkspaceAppRequest(appHost, request, resolveWorkspaceAppTarget, patchWorkspaceAppResponse);
 
         const staticResponse = await serveStatic(url.pathname);
         if (staticResponse) return staticResponse;
