@@ -99,7 +99,7 @@ function parseNoProxyValue(value: unknown): string[] {
 }
 
 export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
-  events.on("workspace_plan_prepare", async ({ workspaceId, plan }) => {
+  events.on("workspace_plan_prepare", async ({ workspaceId, workHostPath, plan }) => {
     const runtimeContext = await getAtelierRuntimeContext();
     const secretContext = await createWorkspaceSecretContext(workspaceId);
     Object.assign(plan.env, secretContext.env);
