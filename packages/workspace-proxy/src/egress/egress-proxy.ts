@@ -127,7 +127,7 @@ async function startAtelierWorkspaceProxy(): Promise<AtelierWorkspaceProxy> {
   const server = createServer((req, res) => void handleProxyHttpRequest(req, res).catch((error) => writeError(res, error)));
   server.on("connect", (req, socket, head) => void handleConnect(ca, req, socket as net.Socket, head).catch((error) => {
     const netSocket = socket as net.Socket;
-    netSocket.write(`HTTP/1.1 ${error instanceof HttpRequestBlockedError ? error.status : 502} ${error instanceof HttpRequestBlockedError ? error.statusText : "Bad Gateway"}\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\n${safeErrorMessage(error)}\n`);
+    netSocket.write(connectErrorResponse(error));
     netSocket.destroy();
   }));
   const ownsServer = await new Promise<boolean>((resolve, reject) => {
@@ -349,6 +349,18 @@ function writeError(res: ServerResponse, error: unknown): void {
   if (status === 407) headers["proxy-authenticate"] = "Basic realm=\"Atelier Workspace Proxy\"";
   res.writeHead(status, statusText, headers);
   res.end(`${safeErrorMessage(error)}\n`);
+}
+
+function connectErrorResponse(error: unknown): string {
+  const status = error instanceof HttpRequestBlockedError ? error.status : 502;
+  const statusText = error instanceof HttpRequestBlockedError ? error.statusText : "Bad Gateway";
+  const headers = [
+    `HTTP/1.1 ${status} ${statusText}`,
+    "Connection: close",
+    "Content-Type: text/plain",
+  ];
+  if (status === 407) headers.push("Proxy-Authenticate: Basic realm=\"Atelier Workspace Proxy\"");
+  return `${headers.join("\r\n")}\r\n\r\n${safeErrorMessage(error)}\n`;
 }
 
 function safeErrorMessage(error: unknown): string {
