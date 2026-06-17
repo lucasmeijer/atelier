@@ -124,7 +124,9 @@ export function makeDefaultSecretPlaceholder(): string {
 }
 
 function assertSecretPlaceholderIsSafe(name: string, placeholder: string, value: string, existingEntries: Iterable<SecretEntry>): void {
-  if (value === placeholder) throw new Error(`secret value must not equal placeholder: ${name}`);
+  // In nested Atelier, an inherited outer placeholder can be the inner layer's
+  // effective secret value. Allow value === placeholder so the inner proxy can
+  // pass that placeholder onward for the outer proxy to inject.
   for (const entry of existingEntries) {
     if (placeholder === entry.placeholder) throw new Error(`duplicate secret placeholder: ${placeholder}`);
     if (placeholder.includes(entry.placeholder) || entry.placeholder.includes(placeholder)) {
