@@ -211,8 +211,11 @@ function stringFromContext(context: unknown, key: string): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function sourceRepositoryIdFromContext(context: unknown): string | undefined {
-  return stringFromContext(context, "sourceRepositoryId");
+function sourceRepositoryFromContext(context: unknown): { sourceRepositoryId?: string; sourceRepositoryName?: string } {
+  return {
+    sourceRepositoryId: stringFromContext(context, "sourceRepositoryId"),
+    sourceRepositoryName: stringFromContext(context, "sourceRepositoryName"),
+  };
 }
 
 const app = createWebApp({
@@ -222,7 +225,7 @@ const app = createWebApp({
   events: atelierEvents,
   preferences: createFileWebPreferenceStore(join(defaultDataDir(), "view-state", "preferences.json")),
   async provisionWorkspace(id, options) {
-    await createWorkspace({ id, events: atelierEvents, sourceRepositoryId: sourceRepositoryIdFromContext(options?.context), context: options?.context });
+    await createWorkspace({ id, events: atelierEvents, ...sourceRepositoryFromContext(options?.context), context: options?.context });
     await ensureDefaultWorkspaceAgent(id);
     await atelierEvents.emit("workspace_created", { workspaceId: id, context: options?.context });
   },

@@ -27,7 +27,7 @@ export function repositoriesFile(dataDir = defaultDataDir()): string {
   return join(dataDir, "repositories.json");
 }
 
-function repoNameFromUrl(url: string): string {
+export function repoNameFromUrl(url: string): string {
   const trimmed = url.trim().replace(/[/?#]+$/, "");
   const last = basename(trimmed);
   const withoutGit = last.endsWith(".git") ? last.slice(0, -4) : last;

@@ -207,7 +207,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   function workspaceTitle(entry: WorkspaceEntry): string {
-    return entry.title || `Workspace ${entry.id}`;
+    return entry.title || entry.sourceRepositoryName || `Workspace ${entry.id}`;
   }
 
   function workspaceSidebarTitleFrame(id: string, title: string): string {
@@ -636,11 +636,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const form = await request.formData();
     const text = String(form.get("text") ?? "").trim();
     const id = generateWorkspaceId();
-    registry.add(id, null, repo.id);
+    registry.add(id, null, repo.id, repo.name);
     const model = String(form.get("model") ?? "");
     await rememberPreferredNewAgentModel(model);
     const context: WorkspaceCreationContext = {
       sourceRepositoryId: repo.id,
+      sourceRepositoryName: repo.name,
       gitUrl: repo.gitUrl,
       gitBranch: repo.branch,
       ...(text ? {
@@ -766,12 +767,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   async function updateWorkspaceSidebarTitleFromForm(id: string, request: Request): Promise<Response> {
-    requireWorkspace(id);
+    const entry = requireWorkspace(id);
     const formData = await request.formData();
     const title = String(formData.get("title") ?? "").trim();
     await setWorkspaceTitle(id, title);
     registry.setTitle(id, title || null);
-    return response(workspaceSidebarTitleFrame(id, title || `Workspace ${id}`));
+    return response(workspaceSidebarTitleFrame(id, workspaceTitle(entry)));
   }
 
   // ---------------------------------------------------------------------------

@@ -11,14 +11,15 @@ export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
 export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
 export const workspaceSourceRepositoryLabel = "com.atelier.source-repo";
+export const workspaceSourceRepositoryNameLabel = "com.atelier.source-repo-name";
 
 export interface WorkspaceNewResult { id: string }
-export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; sourceRepositoryId?: string | null }> }
+export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; sourceRepositoryId?: string | null; sourceRepositoryName?: string | null }> }
 export interface WorkspaceExecResult { exitCode: number; stdout: string; stderr: string; durationMs: number }
 export interface WorkspaceCommandOptions { workdir?: string; user?: "atelier" | "root"; stdin?: string }
 export interface WorkspaceCommandContext { events?: AtelierEventBus }
 export interface DeleteWorkspaceOptions { force?: boolean; events?: AtelierEventBus }
-export interface CreateWorkspaceOptions { id?: string; events?: AtelierEventBus; sourceRepositoryId?: string; context?: Record<string, unknown> }
+export interface CreateWorkspaceOptions { id?: string; events?: AtelierEventBus; sourceRepositoryId?: string; sourceRepositoryName?: string; context?: Record<string, unknown> }
 
 function namespace(): string { return process.env.ATELIER_NAMESPACE || "default"; }
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }
@@ -108,6 +109,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     await options.events?.emit("workspace_source_prepare", { workspaceId: id, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot });
     const labels: Record<string, string> = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id };
     if (options.sourceRepositoryId) labels[workspaceSourceRepositoryLabel] = options.sourceRepositoryId;
+    if (options.sourceRepositoryName) labels[workspaceSourceRepositoryNameLabel] = options.sourceRepositoryName;
     plan = baseWorkspacePlan(labels);
     plan.mounts.push({ type: "bind", source: source.dockerHostWorktreePath, target: workspaceRoot });
     plan.initScripts.push("git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; chown atelier:atelier /home/atelier/.gitconfig");
@@ -139,14 +141,15 @@ export async function getWorkspaceVSCodePort(id: string): Promise<number> { retu
 export async function getWorkspacePreviewPort(id: string, containerPort: number): Promise<number> { if (!(workspacePreviewPorts as readonly number[]).includes(containerPort)) throw invalidArguments(`unsupported workspace preview port: ${containerPort}. Supported ports: ${workspacePreviewPorts.join(", ")}`); return await getWorkspacePublishedPort(id, containerPort); }
 
 export async function listWorkspaces(): Promise<WorkspaceListResult> {
-  const listed = await requireDocker(["ps", "-a", "--filter", `label=${workspaceTypeLabel}=workspace`, "--filter", `label=${namespaceLabel}=${namespace()}`, "--format", `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}\t{{.Label "${workspaceSourceRepositoryLabel}"}}`]);
+  const listed = await requireDocker(["ps", "-a", "--filter", `label=${workspaceTypeLabel}=workspace`, "--filter", `label=${namespaceLabel}=${namespace()}`, "--format", `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}\t{{.Label "${workspaceSourceRepositoryLabel}"}}\t{{.Label "${workspaceSourceRepositoryNameLabel}"}}`]);
   const workspaces: WorkspaceListResult["workspaces"] = [];
   for (const line of listed.stdout.trim().split(/\n+/).filter(Boolean)) {
-    const [containerId, labelledId, sourceRepositoryId] = line.split("\t");
+    const [containerId, labelledId, sourceRepositoryId, sourceRepositoryName] = line.split("\t");
     if (!containerId) continue;
     const id = labelledId?.trim() || containerId.slice(0, 8);
     const source = sourceRepositoryId?.trim();
-    workspaces.push({ id, title: await readTitle(containerId), ...(source ? { sourceRepositoryId: source } : {}) });
+    const sourceName = sourceRepositoryName?.trim();
+    workspaces.push({ id, title: await readTitle(containerId), ...(source ? { sourceRepositoryId: source } : {}), ...(sourceName ? { sourceRepositoryName: sourceName } : {}) });
   }
   return { workspaces };
 }

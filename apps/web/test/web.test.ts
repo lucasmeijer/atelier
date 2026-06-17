@@ -1,9 +1,12 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
 import { createWebApp } from "../src/server/app.ts";
 import { createStreamHub } from "../src/server/stream-hub.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
-import type { WorkspaceDeleteBlockedDetails } from "@atelier/repository";
+import { addRepository, type WorkspaceDeleteBlockedDetails } from "@atelier/repository";
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -43,6 +46,14 @@ function createTestApp(options: TestAppOptions = {}) {
 
 function post(path: string): Request {
   return new Request(`http://test.local${path}`, { method: "POST", headers: { accept: "text/vnd.turbo-stream.html" } });
+}
+
+function postForm(path: string, body: URLSearchParams): Request {
+  return new Request(`http://test.local${path}`, {
+    method: "POST",
+    headers: { accept: "text/vnd.turbo-stream.html", "content-type": "application/x-www-form-urlencoded" },
+    body,
+  });
 }
 
 const blockedDetails = (id: string): WorkspaceDeleteBlockedDetails => ({
@@ -95,6 +106,33 @@ describe("web app contracts", () => {
 
     expect(registry.get(id)?.phase).toBe("failed");
     expect(registry.get(id)?.error).toContain("docker exploded");
+  });
+
+  test("repo-created workspaces use the repository name as their temporary title", async () => {
+    const previousDataDir = process.env.ATELIER_DATA_DIR;
+    const dataDir = await mkdtemp(join(tmpdir(), "atelier-web-test-"));
+    process.env.ATELIER_DATA_DIR = dataDir;
+    try {
+      const repo = (await addRepository("https://github.com/org/sample-project.git")).repo;
+      const { app, registry } = createTestApp();
+      await registry.seed([]);
+
+      const response = await app.fetch(postForm(`/repo-agent-workspaces/${encodeURIComponent(repo.id)}`, new URLSearchParams({ text: "do it" })));
+      const body = await response.text();
+      const entry = registry.list()[0]!;
+
+      expect(response.status).toBe(200);
+      expect(entry.title).toBeNull();
+      expect(entry.sourceRepositoryId).toBe(repo.id);
+      expect(entry.sourceRepositoryName).toBe("sample-project");
+      expect(body).toContain("sample-project");
+      expect(body).not.toContain("sample-project.git");
+      expect(body).not.toContain(`Workspace ${entry.id}`);
+    } finally {
+      if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
+      else process.env.ATELIER_DATA_DIR = previousDataDir;
+      await rm(dataDir, { recursive: true, force: true });
+    }
   });
 
   test("blocked delete returns the confirmation modal to the requester and restores the row", async () => {
