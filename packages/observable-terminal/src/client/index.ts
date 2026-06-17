@@ -60,10 +60,8 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
   const fontFamily = options.fontFamily ?? "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
   if (options.loadFont !== false) await document.fonts.load(`${fontSize}px "JetBrains Mono"`);
 
-  const term = new Terminal({
+  const terminalOptions: ConstructorParameters<typeof Terminal>[0] = {
     allowProposedApi: options.mode === "interactive",
-    cols: options.cols,
-    rows: options.rows,
     cursorBlink: options.mode === "interactive",
     disableStdin: options.mode === "fixed-readonly",
     fontSize,
@@ -71,7 +69,11 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
     logLevel: "error",
     scrollback: options.scrollback ?? (options.mode === "fixed-readonly" ? 4000 : 10000),
     theme,
-  });
+  };
+  if (options.cols !== undefined) terminalOptions.cols = options.cols;
+  if (options.rows !== undefined) terminalOptions.rows = options.rows;
+
+  const term = new Terminal(terminalOptions);
 
   let fit: FitAddon | undefined;
   let progress: ProgressAddon | undefined;
