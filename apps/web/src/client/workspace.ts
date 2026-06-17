@@ -13,6 +13,7 @@ import {
   startAgentTab,
 } from "@atelier/agent/client";
 import { createBrowserAddressController, createBrowserPaneController } from "@atelier/browser/client";
+import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { createTerminalPaneController, initializeTerminalTheme, startTerminal, startTerminalTab } from "@atelier/workspace-terminal/client";
 
 declare global {
@@ -893,7 +894,7 @@ class WorkspaceTitleEditController extends Controller {
   }
 }
 
-class WorkspaceBuildLogController extends Controller {
+class AutoScrollController extends Controller {
   declare readonly element: HTMLElement;
 
   connect(): void {
@@ -927,5 +928,6 @@ application.register("modal-opener", ModalOpenerController);
 application.register("global-filter", GlobalFilterController);
 application.register("workspace-list", WorkspaceListController);
 application.register("workspace-title-edit", WorkspaceTitleEditController);
-application.register("workspace-build-log", WorkspaceBuildLogController);
+application.register("provision-terminal", createProvisionTerminalController(Controller));
+application.register("auto-scroll", AutoScrollController);
 application.register("workspace-app-frame", WorkspaceAppFrameController);

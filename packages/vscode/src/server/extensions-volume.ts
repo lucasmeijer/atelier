@@ -1,4 +1,5 @@
 import { requireDocker, runDocker, type AtelierEventBus } from "@atelier/core";
+import { runHostObservableCommand, shellQuote } from "@atelier/observable-terminal/server";
 
 const extensionIds = ["ms-vscode.cpptools-extension-pack", "ms-dotnettools.csharp"] as const;
 const extensionSetVersion = "2026-06-17";
@@ -69,12 +70,12 @@ async function volumeExists(volume: string): Promise<boolean> {
   return inspected.exitCode === 0;
 }
 
-async function ensureVSCodeExtensionsVolumeForArch(arch: string): Promise<string> {
+async function ensureVSCodeExtensionsVolumeForArch(arch: string, options: { events?: AtelierEventBus; workspaceId?: string } = {}): Promise<string> {
   const volume = `atelier-vscode-extensions-${arch}-${slug(extensionSetVersion)}`;
   if (await volumeExists(volume)) return volume;
 
   await requireDocker(["volume", "create", "--label", "com.atelier.type=vscode-extensions", "--label", `com.atelier.version=${extensionSetVersion}`, volume]);
-  const seeded = await runDocker([
+  const args = [
     "run",
     "--rm",
     "--mount",
@@ -83,20 +84,28 @@ async function ensureVSCodeExtensionsVolumeForArch(arch: string): Promise<string
     "sh",
     "-lc",
     seedScript(),
-  ]);
+  ];
+  const seeded = await runHostObservableCommand({
+    session: `atelier-provision-vscode-${crypto.randomUUID().slice(0, 8)}`,
+    cwd: process.cwd(),
+    command: `docker ${args.map(shellQuote).join(" ")}`,
+    onSessionStarted: async (session) => {
+      if (options.events && options.workspaceId) await options.events.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "vscode.extensions", label: "Prepare VS Code extensions", parentId: "workspace.plan", status: "running", terminal: { kind: "host-tmux", session } });
+    },
+  });
   if (seeded.exitCode !== 0) {
     await runDocker(["volume", "rm", "-f", volume]).catch(() => undefined);
-    const output = [seeded.stderr.trim(), seeded.stdout.trim()].filter(Boolean).join("\n");
+    const output = seeded.output.trim();
     throw new Error(output || `could not seed VS Code extensions volume ${volume}`);
   }
   return volume;
 }
 
-async function ensureVSCodeExtensionsVolume(): Promise<string> {
+async function ensureVSCodeExtensionsVolume(options: { events?: AtelierEventBus; workspaceId?: string } = {}): Promise<string> {
   const arch = await dockerArchitecture();
   let task = ensureTasks.get(arch);
   if (!task) {
-    task = ensureVSCodeExtensionsVolumeForArch(arch).catch((error) => {
+    task = ensureVSCodeExtensionsVolumeForArch(arch, options).catch((error) => {
       ensureTasks.delete(arch);
       throw error;
     });
@@ -106,7 +115,9 @@ async function ensureVSCodeExtensionsVolume(): Promise<string> {
 }
 
 export function registerVSCodeEvents(events: AtelierEventBus): void {
-  events.on("workspace_plan_prepare", async ({ plan }) => {
-    plan.mounts.push({ type: "volume", source: await ensureVSCodeExtensionsVolume(), target: extensionsMountPath, readonly: true });
+  events.on("workspace_plan_prepare", async ({ workspaceId, plan }) => {
+    const source = await ensureVSCodeExtensionsVolume({ events, workspaceId });
+    await events.emit("workspace_provision_step", { workspaceId, id: "vscode.extensions", label: "Prepare VS Code extensions", parentId: "workspace.plan", status: "done" });
+    plan.mounts.push({ type: "volume", source, target: extensionsMountPath, readonly: true });
   });
 }

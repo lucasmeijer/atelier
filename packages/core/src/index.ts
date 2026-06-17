@@ -4,17 +4,9 @@ export {
   type AtelierEventContext,
   type AtelierEventHandler,
   type AtelierEventMap,
-  type WorkspaceCreatedEvent,
   type WorkspaceCreationContext,
-  type WorkspaceDeleteInspectEvent,
-  type WorkspaceDeletedEvent,
   type WorkspaceDockerMount,
   type WorkspaceDockerPlan,
-  type WorkspaceImageBuildEvent,
-  type WorkspacePlanPrepareEvent,
-  type WorkspaceSourcePrepareEvent,
-  type WorkspaceTitleChangedEvent,
-  type WorkspaceUserActivityEvent,
 } from "./events.ts";
 
 export {

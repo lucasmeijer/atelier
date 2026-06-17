@@ -13,6 +13,8 @@
       "@atelier/browser/client": ["packages/browser/src/client/index.ts"],
       "@atelier/browser": ["packages/browser/src/server/index.ts"],
       "@atelier/workspace": ["packages/workspace/src/index.ts"],
+      "@atelier/workspace/client": ["packages/workspace/src/client/index.ts"],
+      "@atelier/workspace/server/provisioning": ["packages/workspace/src/server/provisioning-web.ts"],
       "@atelier/repository": ["packages/repository/src/index.ts"],
       "@atelier/workspace-image": ["packages/workspace-image/src/index.ts"],
       "@atelier/workspace-proxy/server": ["packages/workspace-proxy/src/server/index.ts"],

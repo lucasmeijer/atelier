@@ -14,6 +14,7 @@ import {
 } from "@atelier/agent/server";
 import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "@atelier/browser/server";
 import { createAtelierEventBus, defaultDataDir } from "@atelier/core";
+import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
 import { desktopAppKey, resolveDesktopWorkspaceAppTarget } from "@atelier/desktop/server";
 import { inspectWorkspaceDeleteSafety, registerRepositoryWorkspaceEvents } from "@atelier/repository";
 import { createWorkspace, deleteWorkspace, listWorkspaces } from "@atelier/workspace";
@@ -229,8 +230,12 @@ const app = createWebApp({
   preferences: createFileWebPreferenceStore(join(defaultDataDir(), "view-state", "preferences.json")),
   async provisionWorkspace(id, options) {
     await createWorkspace({ id, events: atelierEvents, ...sourceRepositoryFromContext(options?.context), context: options?.context });
+    await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.agent", label: "Prepare default agent", status: "running" });
     await ensureDefaultWorkspaceAgent(id);
+    await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.agent", label: "Prepare default agent", status: "done" });
+    await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "running" });
     await atelierEvents.emit("workspace_created", { workspaceId: id, context: options?.context });
+    await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "done" });
   },
   inspectDeleteSafety: (id) => inspectWorkspaceDeleteSafety(id),
   destroyWorkspace: async (id) => {
@@ -281,7 +286,13 @@ interface WorkspaceAppProxySocketData {
   protocols: string[];
 }
 
-type SocketData = TerminalSocketData | AgentTermSocketData | WorkspaceAppProxySocketData;
+interface ProvisionTermSocketData {
+  kind: "provision-term";
+  session: string;
+  pty?: IPty;
+}
+
+type SocketData = TerminalSocketData | AgentTermSocketData | ProvisionTermSocketData | WorkspaceAppProxySocketData;
 
 const workspacePortAppKeyPattern = /^port-(\d+)$/;
 
@@ -307,7 +318,31 @@ async function validateSocket(request: Request, url: URL): Promise<SocketData | 
     const protocols = (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((protocol) => protocol.trim()).filter(Boolean);
     return { kind: "workspace-app-proxy", target: await workspaceAppWebSocketTarget(appHost, url.pathname, url.search, resolveWorkspaceAppTarget), host: request.headers.get("host") ?? url.host, protocols };
   }
+  const provisionMatch = url.pathname.match(/^\/provision-term\/([^/]+)\/ws$/);
+  if (provisionMatch) {
+    const session = decodeURIComponent(provisionMatch[1]);
+    if (!session.startsWith("atelier-provision-")) return undefined;
+    return { kind: "provision-term", session };
+  }
   return validateAgentTermSocket(url) ?? (await validateTerminalSocket(url));
+}
+
+function openProvisionTermSocket(ws: ServerWebSocket<ProvisionTermSocketData>): void {
+  try {
+    const pty = attachHostObservableTerminal({ session: ws.data.session, cols: observableTerminalCols, rows: observableTerminalRows, readonly: true, fixedSize: true });
+    ws.data.pty = pty;
+    pty.onData((chunk) => {
+      try { ws.send(chunk); } catch { /* closed */ }
+    });
+    pty.onExit(() => ws.close());
+  } catch (error) {
+    ws.send(`\r\n[provision terminal attach failed: ${error instanceof Error ? error.message : String(error)}]\r\n`);
+    ws.close();
+  }
+}
+
+function closeProvisionTermSocket(ws: ServerWebSocket<ProvisionTermSocketData>): void {
+  ws.data.pty?.kill();
 }
 
 function openWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocketData>): void {
@@ -388,6 +423,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
         open(ws) {
           if (ws.data.kind === "terminal") openTerminalSocket(ws as ServerWebSocket<TerminalSocketData>);
           if (ws.data.kind === "agent-term") openAgentTermSocket(ws as ServerWebSocket<AgentTermSocketData>);
+          if (ws.data.kind === "provision-term") openProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
           if (ws.data.kind === "workspace-app-proxy") openWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>);
         },
         message(ws, message) {
@@ -398,6 +434,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
         close(ws) {
           if (ws.data.kind === "terminal") closeTerminalSocket(ws as ServerWebSocket<TerminalSocketData>);
           if (ws.data.kind === "agent-term") closeAgentTermSocket(ws as ServerWebSocket<AgentTermSocketData>);
+          if (ws.data.kind === "provision-term") closeProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
           if (ws.data.kind === "workspace-app-proxy") closeWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>);
         },
       },

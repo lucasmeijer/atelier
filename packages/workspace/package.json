@@ -3,10 +3,13 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./client": "./src/client/index.ts",
+    "./server/provisioning": "./src/server/provisioning-web.ts"
   },
   "dependencies": {
     "@atelier/core": "workspace:*",
+    "@atelier/observable-terminal": "workspace:*",
     "@atelier/workspace-image": "workspace:*"
   }
 }

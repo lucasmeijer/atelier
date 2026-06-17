@@ -33,6 +33,7 @@ import {
   type WorkspaceRepoMergeabilityResult,
 } from "@atelier/repository";
 import { generateWorkspaceId, setWorkspaceTitle } from "@atelier/workspace";
+import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
 import { createWorkspaceTerminal } from "@atelier/workspace-terminal/server";
 import {
   createWorkspaceVSCodeTab,
@@ -157,7 +158,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     layouts,
   }));
   registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, (force) => deleteCurrentWorkspaceFromAgent(workspaceId, force)));
-  const imageBuilds = new Map<string, { state: "building" | "failed"; image: string; modules: string[]; output: string; error?: string }>();
+  const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId) });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
 
   async function preferredNewAgentModel(): Promise<string | undefined> {
@@ -231,7 +232,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       // All phases render single-line rows (no r-sub) so phase changes never
       // change row height.
       case "starting":
-        return `${open("starting")}${workspaceLink(title, ` title="Starting workspace…"`)}<span class="row-actions"><span class="status-spinner sm" aria-label="Starting" title="Starting workspace…"></span></span></div>`;
+        return `${open("starting")}${workspaceLink(title, ` title="Preparing workspace…"`)}<span class="row-actions"><span class="status-spinner sm" aria-label="Preparing" title="Preparing workspace…"></span></span></div>`;
       case "checking_delete":
       case "deleting":
         return `${open("pending-delete")}<div class="row-main" title="Deleting…"><div class="r-title">${escapeHtml(title)}</div></div><span class="row-actions"><span class="status-spinner sm" aria-label="Deleting" title="Deleting…"></span></span></div>`;
@@ -293,6 +294,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 <title>${escapeHtml(atelierName)} · ${escapeHtml(title)}</title>
 <link rel="icon" type="image/svg+xml" href="${assetPath("/favicon.svg")}">
 <link rel="stylesheet" href="${assetPath("/style.css")}">
+<link rel="stylesheet" href="${assetPath("/provisioning.css")}">
 <link rel="stylesheet" href="${assetPath("/terminal.css")}">
 <link rel="stylesheet" href="${assetPath("/agent.css")}">
 <link rel="stylesheet" href="${assetPath("/vscode.css")}">
@@ -493,25 +495,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return `<div class="workspace-detail-resident ${options.active ? "active" : ""}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${await workspaceDetailContent(id)}</div>`;
   }
 
-  function workspaceImageBuildHtml(id: string): string {
-    const build = imageBuilds.get(id);
-    if (!build) return "";
-    const heading = build.state === "failed" ? "Workspace image build failed" : "Building workspace image…";
-    const detail = build.state === "failed"
-      ? escapeHtml(build.error ?? "Docker build failed")
-      : "This is the first workspace using this image configuration, so it can take a few minutes.";
-    return `<div class="workspace-build-status ${build.state}">
-      <div class="workspace-build-heading"><div><b>${heading}</b><div class="r-sub">${detail}</div></div></div>
-      <div class="r-sub">Image: <code>${escapeHtml(build.image)}</code>${build.modules.length ? ` · Modules: ${escapeHtml(build.modules.join(", "))}` : ""}</div>
-      ${build.output ? `<pre class="workspace-build-log" data-controller="workspace-build-log">${escapeHtml(build.output)}</pre>` : `<div class="workspace-build-log empty">Waiting for Docker build output…</div>`}
-    </div>`;
-  }
-
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { active?: boolean } = {}): string {
-    const buildHtml = imageBuilds.get(entry.id) ? workspaceImageBuildHtml(entry.id) : "";
-    const inner = entry.phase === "failed"
-      ? buildHtml || `<div class="pad workspace-boot-pad"><span class="dot err"></span> Workspace creation failed: ${escapeHtml(entry.error ?? "unknown error")}</div>`
-      : buildHtml || `<div class="pad workspace-boot-pad"><span class="status-spinner"></span> Starting workspace…</div>`;
+    const inner = provisioning.render(entry.id, { failed: entry.phase === "failed", error: entry.error });
     return `<div class="workspace-detail-resident workspace-boot ${options.active ? "active" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"><div class="main"><header class="header"><h1>${escapeHtml(workspaceTitle(entry))}</h1></header><div class="body"><div class="panel">${inner}</div></div></div></div>`;
   }
 
@@ -521,24 +506,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     hub.broadcast(turboReplaceStream(workspaceBootId(id), workspaceBootResidentHtml(entry)));
   }
 
-  deps.events?.on("workspace_image_build_started", (event) => {
-    imageBuilds.set(event.workspaceId, { state: "building", image: event.image, modules: event.modules, output: event.output });
-    broadcastWorkspaceBoot(event.workspaceId);
-  });
-
-  deps.events?.on("workspace_image_build_output", (event) => {
-    imageBuilds.set(event.workspaceId, { state: "building", image: event.image, modules: event.modules, output: event.output });
-    broadcastWorkspaceBoot(event.workspaceId);
-  });
-
-  deps.events?.on("workspace_image_build_finished", (event) => {
-    if (event.error) {
-      imageBuilds.set(event.workspaceId, { state: "failed", image: event.image, modules: event.modules, output: event.output, error: event.error });
-    } else {
-      imageBuilds.delete(event.workspaceId);
-    }
-    broadcastWorkspaceBoot(event.workspaceId);
-  });
+  deps.events?.on("workspace_provision_step", (event) => provisioning.apply(event));
 
   async function workspaceResidentFor(entry: WorkspaceEntry, options: { active?: boolean } = {}): Promise<string> {
     if (entry.phase === "starting" || entry.phase === "failed") return workspaceBootResidentHtml(entry, options);
@@ -604,6 +572,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // ---------------------------------------------------------------------------
 
   function startWorkspaceProvisioning(id: string, options: { context?: WorkspaceCreationContext } = {}): void {
+    provisioning.seed(id);
     void (async () => {
       try {
         await deps.provisionWorkspace(id, { context: options.context });
@@ -613,6 +582,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         const message = error instanceof Error ? error.message : String(error);
         logError(`could not provision workspace ${id}: ${message}`);
         registry.setPhase(id, "failed", message);
+        provisioning.apply({ workspaceId: id, id: "workspace.failed", label: "Workspace creation failed", status: "failed", error: message });
         const entry = registry.get(id);
         // No "active" class in broadcasts: each client activates the resident
         // itself iff it is currently looking at this workspace.

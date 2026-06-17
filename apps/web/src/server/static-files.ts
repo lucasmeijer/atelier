@@ -1,4 +1,5 @@
 import type { StaticFileContribution } from "@atelier/shared";
+import { workspaceProvisioningStaticFiles } from "@atelier/workspace/server/provisioning";
 import { workspaceModules } from "./workspace-modules.ts";
 
 export type StaticFileEntry = StaticFileContribution;
@@ -14,6 +15,7 @@ export const clientEntrypoints: Record<string, StaticFileEntry> = {
 export const fingerprintedStaticFiles: Record<string, StaticFileEntry> = {
   "/favicon.svg": { url: new URL("../../public/favicon.svg", import.meta.url), contentType: "image/svg+xml; charset=utf-8" },
   "/style.css": { url: new URL("../../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
+  ...workspaceProvisioningStaticFiles,
   ...workspaceModuleStaticFiles(),
 };
 

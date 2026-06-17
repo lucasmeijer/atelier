@@ -1,12 +1,14 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
 import { defaultDataDir } from "@atelier/core";
 import type { CommandResult } from "@atelier/core";
 import { AtelierCoreError, invalidArguments } from "@atelier/core";
 import type { AtelierEventBus } from "@atelier/core";
+import { buildObservableSessionCommand, buildKillSessionCommand, shellQuote } from "@atelier/observable-terminal/server";
 
 export interface PreparedWorkspaceSource {
   workspaceId: string;
@@ -26,6 +28,7 @@ export interface GitWorkspaceSourceRequest {
 const templateLocks = new Map<string, Promise<void>>();
 const reflinkSupportByDir = new Map<string, Promise<boolean>>();
 const regularCopyWarnings = new Set<string>();
+const provisionLog = new AsyncLocalStorage<string>();
 
 function sourceRoot(): string {
   return defaultDataDir();
@@ -73,6 +76,8 @@ async function withTemplateLock<T>(key: string, fn: () => Promise<T>): Promise<T
 }
 
 async function command(name: string, args: string[], options: { env?: Record<string, string | undefined> } = {}): Promise<CommandResult> {
+  const logPath = provisionLog.getStore();
+  if (logPath) await appendFile(logPath, `\n$ ${[name, ...args].map(shellQuote).join(" ")}\n`).catch(() => undefined);
   let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
   try {
     proc = Bun.spawn([name, ...args], {
@@ -92,6 +97,7 @@ async function command(name: string, args: string[], options: { env?: Record<str
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
+  if (logPath) await appendFile(logPath, `${stdout}${stderr}`).catch(() => undefined);
   return { exitCode, stdout, stderr };
 }
 
@@ -261,7 +267,7 @@ async function verifyStandaloneWorktree(worktreePath: string): Promise<void> {
   }
 }
 
-export async function prepareWorkspaceSource(options: { workspaceId: string; gitUrl: string; branch: string | null; worktreePath?: string }): Promise<PreparedWorkspaceSource> {
+export async function prepareWorkspaceSource(options: { workspaceId: string; gitUrl: string; branch: string | null; worktreePath?: string; events?: AtelierEventBus }): Promise<PreparedWorkspaceSource> {
   const gitUrl = options.gitUrl.trim();
   if (!gitUrl) throw invalidArguments("missing git URL");
   const branch = options.branch?.trim() || null;
@@ -279,7 +285,14 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
     await rm(tmpWorkPath, { recursive: true, force: true });
 
     try {
-      const template = await ensureTemplate(gitUrl, branch, key);
+      const logPath = join(cleanupPath, `repository-provision-${Date.now()}.log`);
+      const donePath = `${logPath}.done`;
+      const session = `atelier-provision-git-${crypto.randomUUID().slice(0, 8)}`;
+      await writeFile(logPath, `Preparing repository ${gitUrl}${branch ? `#${branch}` : ""}\n`);
+      const tailCommand = `touch ${shellQuote(logPath)}; tail -n +1 -f ${shellQuote(logPath)} & pid=$!; while [ ! -f ${shellQuote(donePath)} ]; do sleep 0.2; done; sleep 0.5; kill "$pid" 2>/dev/null || true`;
+      Bun.spawn(["sh", "-lc", buildObservableSessionCommand({ session, cwd: cleanupPath, command: shellQuote(tailCommand), fixedSize: true, remainOnExit: true })]);
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "running", terminal: { kind: "host-tmux", session } });
+      const template = await provisionLog.run(logPath, () => ensureTemplate(gitUrl, branch, key));
       await copyWorkspaceTemplate(template.repoPath, tmpWorkPath, sourceRoot());
       await verifyStandaloneWorktree(tmpWorkPath);
       await rm(worktreePath, { recursive: true, force: true });
@@ -296,6 +309,9 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
       };
       await writeFile(join(cleanupPath, "metadata.json"), `${JSON.stringify(metadata, null, 2)}\n`);
 
+      await writeFile(donePath, "done\n").catch(() => undefined);
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "done" });
+      setTimeout(() => { Bun.spawn(["sh", "-lc", buildKillSessionCommand(session)]); }, 30_000);
       return {
         workspaceId: options.workspaceId,
         worktreePath,
@@ -307,6 +323,7 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
       };
     } catch (error) {
       await rm(tmpWorkPath, { recursive: true, force: true }).catch(() => undefined);
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "failed", error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   });
@@ -332,7 +349,7 @@ export function registerRepositoryWorkspaceSourceEvents(events: AtelierEventBus)
   events.on("workspace_source_prepare", async ({ workspaceId, context, workHostPath }) => {
     const request = parseGitWorkspaceSourceRequest(context);
     if (!request) return;
-    await prepareWorkspaceSource({ workspaceId, gitUrl: request.gitUrl, branch: request.branch, worktreePath: workHostPath });
+    await prepareWorkspaceSource({ workspaceId, gitUrl: request.gitUrl, branch: request.branch, worktreePath: workHostPath, events });
   });
 
   events.on("workspace_plan_prepare", async ({ workspaceId, plan }) => {

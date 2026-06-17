@@ -2,8 +2,8 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runDocker } from "@atelier/core";
-import type { AtelierEventBus } from "@atelier/core";
+import { runDocker, type AtelierEventBus } from "@atelier/core";
+import { runHostObservableCommand, shellQuote } from "@atelier/observable-terminal/server";
 
 interface WorkspaceImageMetadata { tag: string; modules: string[] }
 
@@ -11,6 +11,7 @@ interface WorkspaceImageBuildTask {
   tag: string;
   modules: string[];
   output: string;
+  session?: string;
   promise: Promise<void>;
 }
 
@@ -24,7 +25,6 @@ export interface ResolveWorkspaceImageOptions {
 }
 
 const maxBuildOutputBytes = 64 * 1024;
-const buildUpdateIntervalMs = 5_000;
 const buildTasks = new Map<string, WorkspaceImageBuildTask>();
 
 function repoRoot(): string {
@@ -54,28 +54,22 @@ function tailOutput(output: string): string {
   return lines.slice(-120).join("\n").trimEnd();
 }
 
-async function emitBuildEvent(
-  events: AtelierEventBus | undefined,
-  eventName: "workspace_image_build_started" | "workspace_image_build_output" | "workspace_image_build_finished",
-  workspaceId: string | undefined,
-  task: WorkspaceImageBuildTask,
-  error?: string,
-): Promise<void> {
-  if (!events || !workspaceId) return;
-  await events.emit(eventName, {
-    workspaceId,
-    image: task.tag,
-    modules: task.modules,
-    output: tailOutput(task.output),
-    error,
-  });
+function imageDetail(task: Pick<WorkspaceImageBuildTask, "tag" | "modules">): string {
+  return `Image: ${task.tag}${task.modules.length ? ` · Modules: ${task.modules.join(", ")}` : ""}`;
 }
 
-async function readBuildStream(task: WorkspaceImageBuildTask, stream: ReadableStream<Uint8Array> | null): Promise<void> {
-  if (!stream) return;
-  const decoder = new TextDecoder();
-  for await (const chunk of stream) appendOutput(task, decoder.decode(chunk, { stream: true }));
-  appendOutput(task, decoder.decode());
+async function emitImageStep(events: AtelierEventBus | undefined, workspaceId: string | undefined, task: WorkspaceImageBuildTask, status: "running" | "done" | "failed", error?: string): Promise<void> {
+  if (!events || !workspaceId) return;
+  await events.emit("workspace_provision_step", {
+    workspaceId,
+    id: "workspace.image",
+    label: "Build workspace image",
+    status,
+    detail: imageDetail(task),
+    output: tailOutput(task.output),
+    ...(task.session ? { terminal: { kind: "host-tmux" as const, session: task.session } } : {}),
+    error,
+  });
 }
 
 interface BuildxBuilderListing {
@@ -105,30 +99,24 @@ function dockerBuildxBuilderArgs(): string[] {
   return builder?.Name ? ["--builder", builder.Name] : [];
 }
 
-function startBuildTask(tag: string, modules: string[], dockerfile: string, contextDir: string): WorkspaceImageBuildTask {
+function startBuildTask(tag: string, modules: string[], dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): WorkspaceImageBuildTask {
   const existing = buildTasks.get(tag);
   if (existing) return existing;
 
-  const task: WorkspaceImageBuildTask = {
-    tag,
-    modules,
-    output: "",
-    promise: Promise.resolve(),
-  };
-
+  const task: WorkspaceImageBuildTask = { tag, modules, output: "", promise: Promise.resolve() };
   task.promise = (async () => {
-    const proc = Bun.spawn(["docker", "buildx", "build", ...dockerBuildxBuilderArgs(), "--load", "--progress=plain", "-t", tag, "-f", dockerfile, contextDir], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: {
-        ...process.env,
-        DOCKER_BUILDKIT: "1",
-        BUILDKIT_PROGRESS: "plain",
+    const args = ["buildx", "build", ...dockerBuildxBuilderArgs(), "--load", "--progress=plain", "-t", tag, "-f", dockerfile, contextDir];
+    const result = await runHostObservableCommand({
+      session: `atelier-provision-image-${crypto.randomUUID().slice(0, 8)}`,
+      cwd: contextDir,
+      command: `DOCKER_BUILDKIT=1 BUILDKIT_PROGRESS=plain docker ${args.map(shellQuote).join(" ")}`,
+      onSessionStarted: async (session) => {
+        task.session = session;
+        await emitImageStep(options.events, options.workspaceId, task, "running");
       },
     });
-    await Promise.all([readBuildStream(task, proc.stdout), readBuildStream(task, proc.stderr)]);
-    const exitCode = await proc.exited;
-    if (exitCode !== 0) throw new Error(`docker build failed with exit code ${exitCode}`);
+    appendOutput(task, result.output);
+    if (result.exitCode !== 0) throw new Error(`docker build failed with exit code ${result.exitCode}`);
   })().finally(() => {
     buildTasks.delete(tag);
   });
@@ -138,20 +126,14 @@ function startBuildTask(tag: string, modules: string[], dockerfile: string, cont
 }
 
 async function waitForBuildTask(task: WorkspaceImageBuildTask, options: ResolveWorkspaceImageOptions): Promise<void> {
-  await emitBuildEvent(options.events, "workspace_image_build_started", options.workspaceId, task);
-  const interval = setInterval(() => {
-    void emitBuildEvent(options.events, "workspace_image_build_output", options.workspaceId, task);
-  }, buildUpdateIntervalMs);
-
+  await emitImageStep(options.events, options.workspaceId, task, "running");
   try {
     await task.promise;
-    await emitBuildEvent(options.events, "workspace_image_build_finished", options.workspaceId, task);
+    await emitImageStep(options.events, options.workspaceId, task, "done");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await emitBuildEvent(options.events, "workspace_image_build_finished", options.workspaceId, task, message);
+    await emitImageStep(options.events, options.workspaceId, task, "failed", message);
     throw new Error(`${message}\n\n${tailOutput(task.output)}`.trim());
-  } finally {
-    clearInterval(interval);
   }
 }
 
@@ -171,7 +153,7 @@ export async function resolveWorkspaceImage(options: ResolveWorkspaceImageOption
   const tag = metadata.tag;
   if (await imageExists(tag)) return tag;
 
-  const task = startBuildTask(tag, metadata.modules, join(contextDir, "Dockerfile"), contextDir);
+  const task = startBuildTask(tag, metadata.modules, join(contextDir, "Dockerfile"), contextDir, options);
   await waitForBuildTask(task, options);
   return tag;
 }

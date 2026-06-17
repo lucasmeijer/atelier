@@ -3,5 +3,5 @@
   "private": true,
   "type": "module",
   "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@atelier/core": "workspace:*", "@atelier/workspace": "workspace:*" }
+  "dependencies": { "@atelier/core": "workspace:*", "@atelier/observable-terminal": "workspace:*", "@atelier/workspace": "workspace:*" }
 }

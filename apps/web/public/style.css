@@ -361,12 +361,6 @@ a.btn { text-decoration: none; }
 .workspace-row.starting { opacity: .75; }
 .workspace-row.failed .r-sub { color: var(--red); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-boot-pad { display: flex; align-items: center; gap: 10px; }
-.workspace-build-status { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-.workspace-build-heading { display: flex; align-items: center; gap: 10px; }
-.workspace-build-heading b { font-size: 14px; }
-.workspace-build-status.failed .workspace-build-heading b { color: var(--red); }
-.workspace-build-log { max-height: min(52vh, 520px); overflow: auto; white-space: pre-wrap; word-break: break-word; background: #0f172a; color: #dbeafe; border-radius: 10px; padding: 12px; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
-.workspace-build-log.empty { background: var(--bg); color: var(--muted); font-family: inherit; }
 .workspace-detail-resident { display: none; min-height: 100%; }
 .workspace-detail-resident.active { display: block; }
 .workspace-detail-main { min-height: 100%; }

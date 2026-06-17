@@ -38,7 +38,9 @@ export function registerAgentEvents(events: AtelierEventBus): void {
   events.on("workspace_created", async ({ workspaceId, context }) => {
     const agentContext = parseAgentWorkspaceCreationContext(context?.agent);
     if (!agentContext) return;
+    await events.emit("workspace_provision_step", { workspaceId, id: "agent.initial_prompt", label: "Start initial agent task", parentId: "workspace.integrations", status: "running" });
     await submitInitialAgentPrompt(workspaceId, agentContext, { events });
+    await events.emit("workspace_provision_step", { workspaceId, id: "agent.initial_prompt", label: "Start initial agent task", parentId: "workspace.integrations", status: "done" });
   });
 }
 
