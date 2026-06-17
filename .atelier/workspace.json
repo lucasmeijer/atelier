@@ -7,6 +7,9 @@
   "run": [
     "if getent group docker >/dev/null 2>&1; then usermod -aG docker atelier; fi"
   ],
+  "env": {
+    "PI_CODING_AGENT_DIR": "/home/atelier/.pi/agent"
+  },
   "privileged": true,
   "proxy": {
     "noProxy": [
@@ -14,6 +17,6 @@
     ]
   },
   "initScripts": [
-    "mkdir -p /var/lib/docker; nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs > /.atelier/dockerd.log 2>&1 & for i in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 1; done; docker info >/dev/null 2>&1 || { tail -100 /.atelier/dockerd.log >&2 || true; exit 1; }"
+    "mkdir -p /var/lib/docker /home/atelier/.pi/agent; chown -R atelier:atelier /home/atelier/.pi; if ! docker info >/dev/null 2>&1; then nohup dockerd --host=unix:///var/run/docker.sock > /.atelier/dockerd.log 2>&1 & fi; for i in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 1; done; docker info >/dev/null 2>&1 || { tail -100 /.atelier/dockerd.log >&2 || true; exit 1; }"
   ]
 }
