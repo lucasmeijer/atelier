@@ -335,9 +335,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     action: `/repo-agent-workspaces/${encodeURIComponent(repo.id)}`,
     draftId: crypto.randomUUID(),
     formId,
-    placeholder: "Describe what you want the agent to do…",
+    placeholder: "Describe what you want the agent to do… (optional)",
     initialText,
-    submitLabel: "Create workspace and kick off agent",
+    submitLabel: "Create workspace",
     submitShortcut: "⌘↩",
     rows: 8,
     formActions: "keydown->submit-shortcut#keydown turbo:submit-end->modal#submitted",
@@ -635,7 +635,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const repo = await repositoryById(repoName);
     const form = await request.formData();
     const text = String(form.get("text") ?? "").trim();
-    if (!text) return turboStreamResponse("", { status: 400 });
     const id = generateWorkspaceId();
     registry.add(id, null, repo.id);
     const model = String(form.get("model") ?? "");
@@ -644,12 +643,14 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       sourceRepositoryId: repo.id,
       gitUrl: repo.gitUrl,
       gitBranch: repo.branch,
-      agent: {
-        initialPrompt: text,
-        model,
-        thinkingLevel: String(form.get("level") ?? ""),
-        attachmentDraft: String(form.get("attachmentDraft") ?? ""),
-      },
+      ...(text ? {
+        agent: {
+          initialPrompt: text,
+          model,
+          thinkingLevel: String(form.get("level") ?? ""),
+          attachmentDraft: String(form.get("attachmentDraft") ?? ""),
+        },
+      } : {}),
     };
     startWorkspaceProvisioning(id, { context });
     return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
