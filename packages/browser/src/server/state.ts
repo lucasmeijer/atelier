@@ -88,7 +88,7 @@ export function deleteWorkspaceBrowserState(workspaceId: string): void {
 export function normalizeBrowserUrl(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) return defaultTargetUrl;
-  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) ? trimmed : `http://${trimmed}`;
   let parsed: URL;
   try {
     parsed = new URL(withScheme);
@@ -97,6 +97,5 @@ export function normalizeBrowserUrl(input: string): string {
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") parsed = new URL(defaultTargetUrl);
   if (!parsed.hostname) parsed = new URL(defaultTargetUrl);
-  parsed.hash = "";
   return parsed.toString();
 }

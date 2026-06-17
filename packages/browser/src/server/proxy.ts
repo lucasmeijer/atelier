@@ -31,9 +31,11 @@ export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, re
   }
 
   const text = await response.text();
-  const rewritten = rewriteContainerLocalUrlsInHtml(text, publicOrigin);
+  const rewritten = injectBrowserBridgeScript(rewriteContainerLocalUrlsInHtml(text, publicOrigin));
   headers.delete("content-length");
   headers.delete("content-encoding");
+  headers.delete("content-security-policy");
+  headers.delete("content-security-policy-report-only");
   return new Response(rewritten, { status: response.status, statusText: response.statusText, headers });
 }
 
@@ -83,4 +85,54 @@ function rewriteContainerLocalUrl(raw: string, publicOrigin: string): string {
   const port = Number(url.port || defaultPortForProtocol(url.protocol));
   if (!Number.isInteger(port) || !(workspacePreviewPorts as readonly number[]).includes(port)) return raw;
   return new URL(`${url.pathname}${url.search}${url.hash}`, publicOrigin).toString();
+}
+
+function injectBrowserBridgeScript(html: string): string {
+  if (html.includes("atelier:browser-location")) return html;
+  const script = `<script>${browserBridgeScript()}</script>`;
+  if (/<\/head\s*>/i.test(html)) return html.replace(/<\/head\s*>/i, `${script}</head>`);
+  if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, `${script}</body>`);
+  return `${html}${script}`;
+}
+
+function browserBridgeScript(): string {
+  return `(() => {
+  if (window.__atelierBrowserBridgeInstalled) return;
+  window.__atelierBrowserBridgeInstalled = true;
+  let index = Number(sessionStorage.getItem("atelier.browser.index") || "0");
+  let max = Number(sessionStorage.getItem("atelier.browser.max") || String(index));
+  const save = () => {
+    sessionStorage.setItem("atelier.browser.index", String(index));
+    sessionStorage.setItem("atelier.browser.max", String(max));
+  };
+  const state = () => parent.postMessage({ type: "atelier:browser-state", canGoBack: index > 0 || history.length > 1, canGoForward: index < max }, "*");
+  const locationChanged = () => {
+    parent.postMessage({ type: "atelier:browser-location", href: location.href }, "*");
+    state();
+  };
+  const pushState = history.pushState;
+  history.pushState = function(...args) {
+    const result = pushState.apply(this, args);
+    index += 1;
+    max = index;
+    save();
+    locationChanged();
+    return result;
+  };
+  const replaceState = history.replaceState;
+  history.replaceState = function(...args) {
+    const result = replaceState.apply(this, args);
+    locationChanged();
+    return result;
+  };
+  addEventListener("popstate", () => { if (index > 0) index -= 1; save(); locationChanged(); });
+  addEventListener("hashchange", locationChanged);
+  addEventListener("message", (event) => {
+    if (event.source !== parent || !event.data || event.data.type !== "atelier:browser-command") return;
+    if (event.data.command === "back") history.back();
+    if (event.data.command === "forward") history.forward();
+    if (event.data.command === "reload") location.reload();
+  });
+  locationChanged();
+})();`;
 }

@@ -28,12 +28,15 @@ export function renderBrowserPane(workspaceId: string, tab: WorkspaceBrowserTab)
 export function renderBrowserFrame(workspaceId: string, appKey: string): string {
   const state = getWorkspaceBrowserState(workspaceId, appKey);
   const target = new URL(state.targetUrl);
-  const initialPath = `${target.pathname}${target.search}`;
+  const initialPath = `${target.pathname}${target.search}${target.hash}`;
+  const targetOrigin = target.origin;
   return `<turbo-frame id="${browserFrameId(workspaceId, appKey)}" class="browser-frame">
     <div class="browser-shell">
-      <form class="browser-toolbar" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/browser/${encodeURIComponent(appKey)}/navigate" data-turbo-frame="${browserFrameId(workspaceId, appKey)}" data-controller="browser-address" data-action="submit->browser-address#submit">
+      <form class="browser-toolbar" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/browser/${encodeURIComponent(appKey)}/navigate" data-turbo-frame="${browserFrameId(workspaceId, appKey)}" data-controller="browser-address" data-browser-address-target-origin-value="${escapeHtml(targetOrigin)}" data-action="submit->browser-address#submit">
         <div class="browser-window-controls" aria-hidden="true"><span class="red"></span><span class="amber"></span><span class="green"></span></div>
-        <button class="browser-nav-button" type="submit" name="action" value="reload" title="Reload" aria-label="Reload">↻</button>
+        <button class="browser-nav-button" type="button" data-action="browser-address#back" title="Back" aria-label="Back">←</button>
+        <button class="browser-nav-button" type="button" data-action="browser-address#forward" title="Forward" aria-label="Forward">→</button>
+        <button class="browser-nav-button" type="button" data-action="browser-address#reload" title="Reload" aria-label="Reload">↻</button>
         <input class="browser-address-input" name="url" value="${escapeHtml(state.targetUrl)}" placeholder="http://localhost:3000" spellcheck="false" autocomplete="off" aria-label="Browser URL">
         <a class="browser-open-external" href="#" data-browser-address-target="external" target="_blank" rel="noreferrer" title="Open preview in a new tab">↗</a>
       </form>
