@@ -1,4 +1,4 @@
-import { getWorkspacePreviewPort, workspacePreviewPorts } from "@atelier/workspace";
+import { getWorkspacePreviewPort, workspaceContainerName, workspacePreviewPorts } from "@atelier/workspace";
 import type { WorkspaceAppHost } from "@atelier/workspace-proxy/server";
 import { getWorkspaceBrowserState } from "./state.ts";
 
@@ -6,6 +6,10 @@ export const browserAppKey = "browser";
 
 function publishedPortHost(): string {
   return process.env.ATELIER_DOCKER_PUBLISHED_PORT_HOST || "127.0.0.1";
+}
+
+function useWorkspaceDockerNetwork(): boolean {
+  return Boolean(process.env.ATELIER_WORKSPACE_DOCKER_NETWORK);
 }
 
 export function isBrowserWorkspaceApp(appKey: string): boolean {
@@ -22,6 +26,11 @@ export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, re
   const containerPort = Number(target.port || defaultPortForProtocol(target.protocol));
   if (!Number.isInteger(containerPort) || !(workspacePreviewPorts as readonly number[]).includes(containerPort)) {
     throw new Error(`Port ${target.port || defaultPortForProtocol(target.protocol)} is not published for browser previews. Use one of: ${workspacePreviewPorts.join(", ")}`);
+  }
+
+  if (useWorkspaceDockerNetwork()) {
+    await getWorkspacePreviewPort(app.workspaceId, containerPort);
+    return new URL(`${target.protocol}//${workspaceContainerName(app.workspaceId)}:${containerPort}${target.pathname}${target.search}`);
   }
 
   const hostPort = await getWorkspacePreviewPort(app.workspaceId, containerPort);
