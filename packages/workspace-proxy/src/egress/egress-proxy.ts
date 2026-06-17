@@ -1,7 +1,7 @@
 import dns from "node:dns/promises";
 import { timingSafeEqual as nodeTimingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, rename, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rmdir, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import net from "node:net";
@@ -25,6 +25,7 @@ let proxyAuthFileLock: Promise<void> = Promise.resolve();
 const mitmTargetServers = new Map<string, Promise<MitmTargetServer>>();
 
 type ProxyAuthFile = { version: number; workspaces: Record<string, { token: string }> };
+type WorkspaceProxyManifest = { noProxy?: unknown; proxy?: { noProxy?: unknown } };
 type MitmConnectionContext = { workspaceId: string; hostname: string };
 type MitmTargetServer = { server: ReturnType<typeof createHttpsServer>; port: number; connections: Map<number, MitmConnectionContext> };
 
@@ -36,15 +37,16 @@ export function workspaceProxyUrl(workspaceId: string, token: string): string {
   return `http://${encodeURIComponent(workspaceId)}:${encodeURIComponent(token)}@${workspaceProxyHost()}:${atelierWorkspaceProxyPort}`;
 }
 
-function workspaceProxyEnv(workspaceId: string, token: string): Record<string, string> {
+function workspaceProxyEnv(workspaceId: string, token: string, extraNoProxy: string[] = []): Record<string, string> {
   const proxy = workspaceProxyUrl(workspaceId, token);
+  const noProxy = uniqueNoProxyEntries(["localhost", "127.0.0.1", "::1", ...extraNoProxy]).join(",");
   return {
     HTTP_PROXY: proxy,
     HTTPS_PROXY: proxy,
     http_proxy: proxy,
     https_proxy: proxy,
-    NO_PROXY: "localhost,127.0.0.1,::1",
-    no_proxy: "localhost,127.0.0.1,::1",
+    NO_PROXY: noProxy,
+    no_proxy: noProxy,
     SSL_CERT_FILE: "/etc/ssl/certs/ca-certificates.crt",
     REQUESTS_CA_BUNDLE: "/etc/ssl/certs/ca-certificates.crt",
     CURL_CA_BUNDLE: "/etc/ssl/certs/ca-certificates.crt",
@@ -56,6 +58,46 @@ function workspaceProxyEnv(workspaceId: string, token: string): Record<string, s
   };
 }
 
+function uniqueNoProxyEntries(entries: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of entries) {
+    for (const entry of expandNoProxyEntry(raw)) {
+      const key = entry.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(entry);
+    }
+  }
+  return result;
+}
+
+function expandNoProxyEntry(raw: string): string[] {
+  const entry = raw.trim();
+  if (!entry) return [];
+  const wildcard = entry.match(/^\*\.([^,\s]+)$/);
+  return wildcard ? [entry, `.${wildcard[1]}`] : [entry];
+}
+
+async function readWorkspaceNoProxyEntries(workHostPath: string): Promise<string[]> {
+  const manifestPath = join(workHostPath, ".atelier", "workspace.json");
+  let manifest: WorkspaceProxyManifest;
+  try {
+    manifest = JSON.parse(await readFile(manifestPath, "utf8")) as WorkspaceProxyManifest;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  return uniqueNoProxyEntries([...parseNoProxyValue(manifest.noProxy), ...parseNoProxyValue(manifest.proxy?.noProxy)]);
+}
+
+function parseNoProxyValue(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (typeof value === "string") return value.split(",");
+  if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) return value;
+  throw new Error("workspace manifest noProxy must be a string or array of strings");
+}
+
 export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
   events.on("workspace_plan_prepare", async ({ workspaceId, plan }) => {
     const runtimeContext = await getAtelierRuntimeContext();
@@ -65,7 +107,8 @@ export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
     const proxyAuthToken = await ensureWorkspaceProxyAuthToken(workspaceId);
     await ensureAtelierWorkspaceProxy();
     await ensureMitmCa(runtimeContext);
-    Object.assign(plan.env, workspaceProxyEnv(workspaceId, proxyAuthToken));
+    const extraNoProxy = await readWorkspaceNoProxyEntries(workHostPath);
+    Object.assign(plan.env, workspaceProxyEnv(workspaceId, proxyAuthToken, extraNoProxy));
     plan.mounts.push({ type: "bind", source: dockerHostAtelierDataPath(runtimeContext, "proxy-ca", "atelier-mitm-ca.pem"), target: workspaceMitmCaPath, readonly: true });
     plan.initScripts.push(`if [ -r ${workspaceMitmCaPath} ]; then mkdir -p /usr/local/share/ca-certificates; cp ${workspaceMitmCaPath} /usr/local/share/ca-certificates/atelier-mitm-ca.crt; update-ca-certificates || true; fi`);
     plan.initScripts.push(`cat > /usr/local/bin/atelier-git-credential <<'EOF'
