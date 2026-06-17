@@ -350,8 +350,11 @@ export function renderToolCard(ctx: AgentRenderContext, tool: ToolView, options:
   const emptyResultHtml = renderer.hideEmptyResult ? "" : `<div class="agent-tool-empty">no output</div>`;
   const bodyHtml = `${paramsHtml}${resultHtml || emptyResultHtml}`;
   const flushSingleBlock = Boolean(renderer.flushSingleBlock && ((paramsHtml && !resultHtml) || (!paramsHtml && resultHtml)));
+  const copyButton = tool.name === "bash" && resultHtml
+    ? `<button type="button" class="agent-tool-copy" data-controller="agent-copy" data-action="click->agent-copy#copy" title="Copy output to clipboard" aria-label="Copy bash output to clipboard"><span class="agent-tool-copy-icon" aria-hidden="true">⧉</span></button>`
+    : "";
   return `<details class="agent-tool done ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}"${options.open ? " open" : ""}>
-    <summary class="agent-tool-head">${glyph}<code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span></summary>
+    <summary class="agent-tool-head">${glyph}<code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span>${copyButton}</summary>
     <div class="agent-tool-detail${flushSingleBlock ? " flush" : ""}">${bodyHtml}</div>
   </details>`;
 }

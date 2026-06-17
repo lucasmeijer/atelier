@@ -3,6 +3,7 @@
 import {
   createAgentAttachmentsController,
   createAgentAutosubmitController,
+  createAgentCopyController,
   createAgentElapsedController,
   createAgentNoticeController,
   createAgentPaneController,
@@ -914,6 +915,7 @@ application.register("terminal-pane", createTerminalPaneController(Controller));
 application.register("agent-pane", createAgentPaneController(Controller));
 application.register("agent-attachments", createAgentAttachmentsController(Controller));
 application.register("agent-autosubmit", createAgentAutosubmitController(Controller));
+application.register("agent-copy", createAgentCopyController(Controller));
 application.register("agent-elapsed", createAgentElapsedController(Controller));
 application.register("agent-notice", createAgentNoticeController(Controller));
 application.register("agent-proxy", createAgentProxyController(Controller));

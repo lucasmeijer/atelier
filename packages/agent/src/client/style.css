@@ -141,6 +141,15 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 .agent-tool-livestream { color: var(--text); background: #161a22; color: #d3dae5; border-top: none; border-radius: 0 0 8px 8px; padding: 8px 10px; min-height: 36px; }
 .agent-tool-term { background: #161a22; padding: 4px 6px; overflow-x: auto; }
 .agent-tool-elapsed { margin-left: 8px; flex: none; font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 10.5px; color: var(--muted-2); }
+.agent-tool-copy {
+  flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: auto;
+  border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer;
+  font-size: 13px; line-height: 1; padding: 0;
+}
+.agent-tool-copy:hover { background: rgba(19, 26, 38, .06); border-color: rgba(19, 26, 38, .08); color: var(--text); }
+.agent-tool-copy.copied { color: var(--green); background: var(--green-soft); border-color: #bfe3c8; }
+.agent-tool-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.agent-tool-copy-icon { transform: translateY(-.5px); }
 
 /* ---------------------------------------------------------------------------
  * Markdown

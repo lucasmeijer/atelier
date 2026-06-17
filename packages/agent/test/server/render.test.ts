@@ -53,6 +53,8 @@ describe("tool rendering", () => {
     expect(running).toContain("agent-tool-term");
     const done = renderToolCard(ctx, tool({ name: "bash", args: { command: "npm test" }, resultText: "final output" }));
     expect(done).toContain("final output");
+    expect(done).toContain("agent-tool-copy");
+    expect(done).toContain("agent-copy#copy");
     expect(done).not.toContain("agent-tool-term");
     expect(done).not.toContain("agent-tool-params");
   });

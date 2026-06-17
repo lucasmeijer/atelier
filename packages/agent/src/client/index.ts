@@ -1,6 +1,7 @@
 export {
   createAgentAttachmentsController,
   createAgentAutosubmitController,
+  createAgentCopyController,
   createAgentElapsedController,
   createAgentNoticeController,
   createAgentPaneController,

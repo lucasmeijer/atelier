@@ -225,6 +225,41 @@ export function createAgentElapsedController(Controller: StimulusControllerConst
 }
 
 // ---------------------------------------------------------------------------
+// agent-copy: copy rendered bash output to clipboard
+// ---------------------------------------------------------------------------
+
+export function createAgentCopyController(Controller: StimulusControllerConstructor) {
+  return class AgentCopyController extends Controller {
+    declare readonly element: HTMLButtonElement;
+    private timer?: ReturnType<typeof setTimeout>;
+
+    disconnect(): void {
+      if (this.timer) clearTimeout(this.timer);
+    }
+
+    async copy(event: Event): Promise<void> {
+      event.preventDefault();
+      event.stopPropagation();
+      const tool = this.element.closest(".agent-tool");
+      const result = tool?.querySelector<HTMLElement>(".agent-tool-result");
+      const text = result?.textContent ?? "";
+      if (!text) return;
+      await navigator.clipboard.writeText(text);
+      this.element.classList.add("copied");
+      this.element.setAttribute("aria-label", "Copied bash output");
+      const icon = this.element.querySelector<HTMLElement>(".agent-tool-copy-icon");
+      if (icon) icon.textContent = "✓";
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = setTimeout(() => {
+        this.element.classList.remove("copied");
+        this.element.setAttribute("aria-label", "Copy bash output to clipboard");
+        if (icon) icon.textContent = "⧉";
+      }, 1400);
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
 // agent-notice: transient notice lines auto-dismiss
 // ---------------------------------------------------------------------------
 
