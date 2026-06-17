@@ -4,7 +4,7 @@ set -eu
 root="${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}"
 found=0
 
-for chrome in "$root"/chromium-*/chrome-linux/chrome; do
+for chrome in "$root"/chromium-*/chrome-linux*/chrome; do
   [ -f "$chrome" ] || continue
   found=1
   real="$chrome.atelier-real"

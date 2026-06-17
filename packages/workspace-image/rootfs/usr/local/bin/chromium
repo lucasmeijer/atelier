@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-browser="$(find "${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}" -path '*/chrome-linux/chrome' -type f | sort | tail -n 1)"
+browser="$(find "${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}" -path '*/chrome-linux*/chrome' -type f | sort | tail -n 1)"
 if [ -z "$browser" ]; then
   echo "Playwright Chromium was not found under ${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}" >&2
   exit 127
