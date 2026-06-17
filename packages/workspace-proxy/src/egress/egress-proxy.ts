@@ -200,8 +200,9 @@ async function handleProxyHttpRequest(req: IncomingMessage, res: ServerResponse)
 async function handleConnect(ca: MitmCa, req: IncomingMessage, socket: net.Socket, head: Buffer): Promise<void> {
   const workspaceId = await authenticateProxyRequest(req);
   const { hostname, port } = parseConnectTarget(req.url || "");
-  if (port !== 443) throw new HttpRequestBlockedError("CONNECT only allowed to port 443");
-  await assertDestinationAllowed(workspaceId, hostname, port, "https");
+  await assertDestinationAllowed(workspaceId, hostname, port, port === 443 ? "https" : "http");
+  if (!(await shouldMitmConnectTarget(workspaceId, hostname))) return tunnelConnect(hostname, port, socket, head);
+  if (port !== 443) throw new HttpRequestBlockedError("MITM CONNECT only allowed to port 443");
   socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
 
   const targetServer = await ensureMitmTargetServer(ca, hostname);
@@ -217,6 +218,42 @@ async function handleConnect(ca: MitmCa, req: IncomingMessage, socket: net.Socke
   };
   socket.once("close", cleanup);
   bridge.once("close", cleanup);
+}
+
+async function shouldMitmConnectTarget(workspaceId: string, hostname: string): Promise<boolean> {
+  const context = await getWorkspaceSecretContext(workspaceId);
+  return Boolean(context?.secrets.some((secret) => secret.hosts.some((host) => matchHostnamePattern(hostname, host))));
+}
+
+function matchHostnamePattern(hostname: string, pattern: string): boolean {
+  const normalizedHostname = hostname.trim().toLowerCase().replace(/\.$/, "");
+  const normalizedPattern = pattern.trim().toLowerCase().replace(/\.$/, "");
+  if (!normalizedHostname || !normalizedPattern) return false;
+  if (normalizedPattern === "*") return true;
+  const escaped = normalizedPattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+  return new RegExp(`^${escaped}$`, "i").test(normalizedHostname);
+}
+
+async function tunnelConnect(hostname: string, port: number, socket: net.Socket, head: Buffer): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const upstream = net.connect(port, hostname);
+    const onError = (error: Error) => {
+      socket.destroy();
+      reject(error);
+    };
+    upstream.once("error", onError);
+    upstream.once("connect", () => {
+      upstream.off("error", onError);
+      upstream.on("error", () => socket.destroy());
+      socket.on("error", () => upstream.destroy());
+      socket.once("close", () => upstream.destroy());
+      upstream.once("close", () => socket.destroy());
+      socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+      if (head.length) upstream.write(head);
+      socket.pipe(upstream).pipe(socket);
+      resolve();
+    });
+  });
 }
 
 async function ensureMitmTargetServer(ca: MitmCa, hostname: string): Promise<MitmTargetServer> {
