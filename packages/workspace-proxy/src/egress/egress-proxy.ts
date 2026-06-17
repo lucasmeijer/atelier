@@ -328,6 +328,10 @@ function incomingHeaders(req: IncomingMessage): Headers {
 function filteredForwardHeaders(headers: Headers): Headers {
   const out = new Headers(headers);
   for (const name of ["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "proxy-connection", "te", "trailer", "transfer-encoding", "upgrade"]) out.delete(name);
+  // Keep upstream response framing predictable for strict clients such as
+  // dockerd/BuildKit. If fetch transparently decodes a compressed response,
+  // the upstream Content-Length would no longer match the bytes we forward.
+  out.set("accept-encoding", "identity");
   return out;
 }
 
@@ -335,7 +339,7 @@ async function writeFetchResponse(res: ServerResponse, response: Response): Prom
   res.statusCode = response.status;
   res.statusMessage = response.statusText;
   response.headers.forEach((value, key) => {
-    if (/^(connection|keep-alive|proxy-authenticate|proxy-authorization|te|trailer|transfer-encoding|upgrade|content-length|content-encoding)$/i.test(key)) return;
+    if (/^(connection|keep-alive|proxy-authenticate|proxy-authorization|te|trailer|transfer-encoding|upgrade|content-encoding)$/i.test(key)) return;
     res.setHeader(key, value);
   });
   if (!response.body) { res.end(); return; }
