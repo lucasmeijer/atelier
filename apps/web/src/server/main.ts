@@ -48,6 +48,7 @@ import { createFileWorkspaceActivityStore, createWorkspaceRegistry } from "./wor
 
 const requestedPort = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "localhost";
+const allowPortFallback = process.env.ATELIER_PORT_FALLBACK === "1";
 
 const authPassword = process.env.ATELIER_PASSWORD ?? "";
 const authCookieName = "atelier_session";
@@ -390,7 +391,7 @@ function closeWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocke
 
 await ensureAtelierWorkspaceProxy();
 
-const maxPortAttempts = 100;
+const maxPortAttempts = allowPortFallback ? 100 : 1;
 let serverPort = 0;
 
 for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
@@ -451,7 +452,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
     break;
   } catch (error) {
     const code = (error as { code?: string }).code;
-    if (code !== "EADDRINUSE" || requestedPort === 0) throw error;
+    if (code !== "EADDRINUSE" || requestedPort === 0 || !allowPortFallback) throw error;
   }
 }
 
