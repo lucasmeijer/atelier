@@ -84,7 +84,6 @@ function providerColor(provider: string): string {
     openrouter: "#8a63d2",
     copilot: "#24292f",
     github: "#24292f",
-    fable: "#a855f7",
   };
   return colors[provider] ?? `hsl(${[...provider].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 360} 52% 54%)`;
 }
@@ -198,8 +197,8 @@ async function renderAbout(): Promise<string> {
 
 async function availableModelOptions(): Promise<ConfiguredAgentModel[]> {
   const registry = await createPiModelRegistry();
-  const all = registry.getAll() as Array<{ provider: string; id: string; name?: string }>;
-  return all.map((model) => ({ provider: model.provider, id: model.id, label: model.name ?? model.id }));
+  const available = registry.getAvailable() as Array<{ provider: string; id: string; name?: string }>;
+  return available.map((model) => ({ provider: model.provider, id: model.id, label: model.name ?? model.id }));
 }
 
 async function renderModelPicker(): Promise<string> {

@@ -28,12 +28,6 @@ interface AtelierModelsJson {
   };
 }
 
-const fallbackAgentModels: ConfiguredAgentModel[] = [
-  { provider: "openai-codex", id: "gpt-5.5", label: "GPT-5.5", active: true },
-  { provider: "anthropic", id: "claude-opus-4-8", label: "Opus 4.8" },
-  { provider: "fable", id: "fable", label: "Fable" },
-];
-
 function syncPiConfigSeedDir(): string {
   // Mirrors piConfigSeedDir(), but remains synchronous so runtime constructors
   // can build model lists without async work.
@@ -94,10 +88,9 @@ function configuredFromJson(config: AtelierModelsJson | undefined): ConfiguredAg
       return [{ provider, id, label: typeof entry.label === "string" && entry.label.trim() ? entry.label : id }];
     })
     : [];
-  const selected: ConfiguredAgentModel[] = models.length > 0 ? models : fallbackAgentModels;
-  const activeProvider = typeof active?.provider === "string" ? active.provider : selected.find((model) => model.active)?.provider ?? selected[0]?.provider;
-  const activeId = typeof active?.id === "string" ? active.id : selected.find((model) => model.active)?.id ?? selected[0]?.id;
-  return selected.map((model, index) => ({ ...model, active: activeProvider && activeId ? model.provider === activeProvider && model.id === activeId : index === 0 }));
+  const activeProvider = typeof active?.provider === "string" ? active.provider : models[0]?.provider;
+  const activeId = typeof active?.id === "string" ? active.id : models[0]?.id;
+  return models.map((model, index) => ({ ...model, active: activeProvider && activeId ? model.provider === activeProvider && model.id === activeId : index === 0 }));
 }
 
 export function loadConfiguredAgentModelsSync(): ConfiguredAgentModel[] {
