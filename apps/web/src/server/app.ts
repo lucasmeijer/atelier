@@ -389,7 +389,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     // JavaScript submits this as a Turbo Stream and then switches the resident
     // client-side. Without JavaScript, the endpoint still falls back to a 303.
     const newWorkspaceRow = `<form class="contents" method="post" action="/workspaces" data-turbo="false" data-action="submit->workspace-list#createWorkspace"><button class="row ghost-row addbtn" type="submit">
-    <span class="ic" aria-hidden="true">＋</span><div><div class="r-title">New workspace</div></div>
+    <span class="ic" aria-hidden="true">+</span><div><div class="r-title">New workspace</div></div>
     <span></span>
   </button></form>`;
 
@@ -397,13 +397,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       const modalId = domId("agent_launch_repo_modal", repo.id);
       const spec = formatRepositorySpec(repo);
       return `<div class="row repository-row repo-tinted-row" style="${repoColorStyle(repo.id)}" title="${escapeHtml(spec)}">
-    <span class="repo-swatch" aria-hidden="true"></span><div><div class="r-title">${escapeHtml(repo.name)}${repo.branch ? ` <small>${escapeHtml(repo.branch)}</small>` : ""}</div><div class="r-sub">${escapeHtml(spec)}</div></div>
-    <span class="row-actions"><button class="repo-launch-btn" type="button" title="Start agent workspace from this repo" aria-label="Start agent workspace from ${escapeHtml(repo.name)}" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="${modalId}"><span aria-hidden="true">＋</span></button></span>
+    <span class="repo-swatch" aria-hidden="true"></span><div><div class="r-title">${escapeHtml(repo.name)}</div></div>
+    <span class="row-actions"><button class="repo-launch-btn" type="button" title="Start agent workspace from this repo" aria-label="Start agent workspace from ${escapeHtml(repo.name)}" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="${modalId}"><span aria-hidden="true">+</span></button></span>
   </div>`;
     }).join("");
 
     const addRepoRow = `<button class="row ghost-row addbtn" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="add-repository-modal">
-    <span class="ic" aria-hidden="true">＋</span><div><div class="r-title">Add repository</div></div>
+    <span class="ic" aria-hidden="true">+</span><div><div class="r-title">Add repository</div></div>
     <span></span>
   </button>`;
 

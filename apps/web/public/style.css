@@ -404,17 +404,17 @@ button { border: 0; background: none; cursor: pointer; }
 
 .ghost-row.addbtn { color: var(--muted2); font-weight: 600; display: flex; }
 .addbtn .ic, .repo-swatch { width: 14px; height: 14px; border-radius: 5px; flex: 0 0 auto; }
-.addbtn .ic { border: 1.5px dashed var(--line2); display: grid; place-items: center; font-size: 11px; line-height: 1; }
+.addbtn .ic { border: 1.5px dashed var(--line2); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; line-height: 1; padding-bottom: 1px; }
 .repo-swatch { background: var(--repo-color, var(--accent)); }
 .ghost-row.addbtn:hover { color: var(--accent); background: var(--bg); }
 .ghost-row.addbtn:hover .ic { border-color: var(--accent); }
 .sidebar-host-repos { margin-top: 0; padding: 8px 8px 6px; border-top: 1px solid var(--line); overflow: hidden; }
 .sidebar-host-repos .lh { padding-left: 10px; padding-top: 4px; }
 .repositories-table { overflow-y: auto; overflow-x: hidden; max-height: 34vh; }
-.repository-row { cursor: default; overflow-x: hidden; }
-.repository-row .r-sub { max-width: 170px; }
+.repository-row { cursor: default; overflow-x: hidden; padding-right: 8px; }
+.repository-row .row-actions { margin-left: 0; flex: 0 0 auto; }
 .repo-tinted-row, .repo-tinted-row:hover { background: transparent; }
-.repo-launch-btn { min-width: 24px; padding: 0 5px; display: grid; place-items: center; color: var(--muted2); font-size: 15px; }
+.repo-launch-btn { width: 22px; height: 22px; min-width: 22px; padding: 0; display: grid; place-items: center; color: var(--muted2); font-size: 15px; line-height: 1; }
 .repo-launch-btn:hover { color: var(--accent); }
 .sidebar-host-repos .addbtn .r-sub { display: none; }
 .sidefoot { border-top: 1px solid var(--line); padding: 7px 8px; display: flex; align-items: center; gap: 6px; }
