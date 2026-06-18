@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { completeSimple } from "@earendil-works/pi-ai";
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { piConfigSeedDir } from "./pi-config-seed.ts";
 
@@ -140,11 +141,36 @@ export async function createPiModelRegistry(): Promise<ModelRegistry> {
   return ModelRegistry.create(authStorage, await piModelsJsonPath());
 }
 
-export async function fakeConnectModelProvider(provider: string, method: "api_key" | "oauth" = "api_key"): Promise<void> {
+export async function validateModelProviderApiKey(provider: string, key: string): Promise<void> {
+  const trimmed = key.trim();
+  if (!trimmed) throw new Error("API key is required");
+
+  const auth = AuthStorage.inMemory({ [provider]: { type: "api_key", key: trimmed } });
+  const registry = ModelRegistry.create(auth, await piModelsJsonPath());
+  const models = registry.getAll().filter((model) => model.provider === provider);
+  const model = models[Math.floor(Math.random() * models.length)];
+  if (!model) throw new Error(`No models found for provider "${provider}"`);
+
+  const requestAuth = await registry.getApiKeyAndHeaders(model);
+  if (!requestAuth.ok) throw new Error(requestAuth.error);
+
+  const response = await completeSimple(model, {
+    messages: [{ role: "user", content: "Reply with exactly: ok", timestamp: Date.now() }],
+  }, {
+    apiKey: requestAuth.apiKey,
+    headers: requestAuth.headers,
+    env: requestAuth.env,
+    maxTokens: 1,
+  });
+  if (response.stopReason === "error") throw new Error(response.errorMessage ?? "Provider rejected the API key");
+}
+
+export async function connectModelProviderApiKey(provider: string, key: string, options: { validate?: boolean } = {}): Promise<void> {
+  const trimmed = key.trim();
+  if (!trimmed) throw new Error("API key is required");
+  if (options.validate !== false) await validateModelProviderApiKey(provider, trimmed);
   const auth = await createPiAuthStorage();
-  auth.set(provider, method === "oauth"
-    ? { type: "oauth", access: `atelier-fake-oauth-${provider}`, refresh: `atelier-fake-refresh-${provider}`, expires: Date.now() + 86_400_000 }
-    : { type: "api_key", key: `atelier-fake-api-key-${provider}` });
+  auth.set(provider, { type: "api_key", key: trimmed });
 }
 
 export async function disconnectModelProvider(provider: string): Promise<void> {

@@ -49,15 +49,16 @@ export {
 } from "./pi-config-seed.ts";
 export {
   configuredAgentModels,
+  connectModelProviderApiKey,
   createPiAuthStorage,
   createPiModelRegistry,
   disconnectModelProvider,
-  fakeConnectModelProvider,
   loadConfiguredAgentModelsSync,
   piAuthJsonPath,
   piModelsJsonPath,
   piModelsJsonPathSync,
   setActiveAgentModel,
   setPickerAgentModels,
+  validateModelProviderApiKey,
   type ConfiguredAgentModel,
 } from "./pi-config-models.ts";

@@ -32,7 +32,7 @@ import {
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceRepoMergeabilityResult,
 } from "@atelier/repository";
-import { generateWorkspaceId, setWorkspaceTitle } from "@atelier/workspace";
+import { generateWorkspaceId, listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
 import { createWorkspaceTerminal } from "@atelier/workspace-terminal/server";
 import {
@@ -703,6 +703,29 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     })();
   }
 
+  async function forceDeleteAllWorkspacesFromSettings(): Promise<{ deleted: number; errors: string[] }> {
+    const { workspaces } = await listWorkspaces();
+    let deleted = 0;
+    const errors: string[] = [];
+    for (const workspace of workspaces) {
+      const entry = registry.get(workspace.id);
+      if (entry?.phase === "ready" || entry?.phase === "checking_delete") {
+        try { registry.setPhase(workspace.id, "deleting"); } catch { /* best-effort UI update */ }
+      }
+      try {
+        await deps.destroyWorkspace(workspace.id);
+        registry.remove(workspace.id);
+        deleted += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`${workspace.id}: ${message}`);
+        logError(`could not force delete workspace ${workspace.id}: ${message}`);
+        if (registry.get(workspace.id)?.phase === "deleting") registry.setPhase(workspace.id, "failed", `Delete failed: ${message}`);
+      }
+    }
+    return { deleted, errors };
+  }
+
   async function deleteCurrentWorkspaceFromAgent(id: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }> {
     const entry = requireWorkspace(id);
     if (entry.phase !== "ready") throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not ready for deletion`);
@@ -1044,7 +1067,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       return result ? result.slice(1).map(decodeURIComponent) : undefined;
     };
 
-    const settingsResponse = await handleSettingsRequest(request, url);
+    const settingsResponse = await handleSettingsRequest(request, url, { forceDeleteAllWorkspaces: forceDeleteAllWorkspacesFromSettings });
     if (settingsResponse) return settingsResponse;
 
     const onboardingResponse = await handleOnboardingRequest(request, url);

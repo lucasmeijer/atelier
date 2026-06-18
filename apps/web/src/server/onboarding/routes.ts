@@ -27,7 +27,7 @@ async function renderGithubStep(): Promise<string> {
 
 async function renderLlmStep(): Promise<string> {
   const providers = await providerSummaries();
-  return `<div class="onboarding-step"><h2>Connect a model provider</h2><p>The agent needs at least one provider. These fake flows write to the real pi-compatible auth store.</p><div class="settings-providers" data-provider-list-scope>${providers.map((provider) => providerRow(provider, "onboarding")).join("")}${showMoreProvidersButton(providers)}</div></div>`;
+  return `<div class="onboarding-step"><h2>Connect a model provider</h2><p>The agent needs at least one provider. API keys and OAuth tokens are stored locally in pi-compatible auth storage.</p><div class="settings-providers" data-provider-list-scope>${providers.map((provider) => providerRow(provider, "onboarding")).join("")}${showMoreProvidersButton(providers)}</div></div>`;
 }
 
 registerOnboardingContribution({ id: "github", label: "GitHub", order: 10, isComplete: async () => hasWorkspaceGitHubToken(), render: renderGithubStep });

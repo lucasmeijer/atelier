@@ -1,10 +1,10 @@
 import { clearWorkspaceGitHubToken, hasWorkspaceGitHubToken, setWorkspaceGitHubToken } from "@atelier/core";
 import {
   configuredAgentModels,
+  connectModelProviderApiKey,
   createPiAuthStorage,
   createPiModelRegistry,
   disconnectModelProvider,
-  fakeConnectModelProvider,
   setActiveAgentModel,
   setPickerAgentModels,
   type ConfiguredAgentModel,
@@ -41,12 +41,20 @@ function remove(target: string): string {
   return `<turbo-stream action="remove" target="${escapeHtml(target)}"></turbo-stream>`;
 }
 
+function append(target: string, html: string): string {
+  return `<turbo-stream action="append" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
+}
+
 function domId(...parts: string[]): string {
   return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
 function wantsStream(request: Request): boolean {
   return request.headers.get("accept")?.includes("text/vnd.turbo-stream.html") ?? false;
+}
+
+function devSettingsEnabled(): boolean {
+  return process.env.NODE_ENV !== "production";
 }
 
 async function hasAnyLlmProvider(): Promise<boolean> {
@@ -95,21 +103,38 @@ function githubRow(): string {
   </div>`;
 }
 
-async function providerSummaries(): Promise<Array<{ provider: string; label: string; connected: boolean; methods: string[]; modelCount: number }>> {
+type ProviderSummary = { provider: string; label: string; connected: boolean; stored: boolean; authLabel: string; methods: string[]; modelCount: number };
+
+function providerAuthLabel(source?: string): string {
+  if (source === "stored") return "Connected";
+  if (source === "environment") return "Configured from environment";
+  if (source === "models_json_command") return "Configured by command";
+  if (source === "models_json_key") return "Configured in models.json";
+  if (source === "fallback") return "Configured externally";
+  return "Configured";
+}
+
+async function providerSummaries(): Promise<ProviderSummary[]> {
   const auth = await createPiAuthStorage();
   const registry = await createPiModelRegistry();
-  const providers = new Map<string, { provider: string; label: string; connected: boolean; methods: string[]; modelCount: number }>();
+  const providers = new Map<string, ProviderSummary>();
   for (const model of registry.getAll() as Array<{ provider: string }>) {
     const provider = model.provider;
-    const entry = providers.get(provider) ?? { provider, label: registry.getProviderDisplayName(provider), connected: false, methods: ["api_key"], modelCount: 0 };
+    const status = registry.getProviderAuthStatus(provider);
+    const entry = providers.get(provider) ?? { provider, label: registry.getProviderDisplayName(provider), connected: false, stored: false, authLabel: "Connected", methods: ["api_key"], modelCount: 0 };
     entry.modelCount += 1;
-    entry.connected = registry.getProviderAuthStatus(provider).configured;
+    entry.connected = status.configured;
+    entry.stored = status.source === "stored";
+    entry.authLabel = providerAuthLabel(status.source);
     providers.set(provider, entry);
   }
   for (const oauth of auth.getOAuthProviders() as Array<{ id: string; name?: string }>) {
-    const entry = providers.get(oauth.id) ?? { provider: oauth.id, label: oauth.name ?? registry.getProviderDisplayName(oauth.id), connected: false, methods: [], modelCount: 0 };
+    const status = registry.getProviderAuthStatus(oauth.id);
+    const entry = providers.get(oauth.id) ?? { provider: oauth.id, label: oauth.name ?? registry.getProviderDisplayName(oauth.id), connected: false, stored: false, authLabel: "Connected", methods: [], modelCount: 0 };
     entry.methods = Array.from(new Set(["oauth", ...entry.methods]));
-    entry.connected = registry.getProviderAuthStatus(oauth.id).configured;
+    entry.connected = status.configured;
+    entry.stored = status.source === "stored";
+    entry.authLabel = providerAuthLabel(status.source);
     providers.set(oauth.id, entry);
   }
   return [...providers.values()].sort((a, b) => Number(b.connected) - Number(a.connected) || a.label.localeCompare(b.label));
@@ -119,17 +144,20 @@ function isSuperPopularProvider(provider: string): boolean {
   return provider === "anthropic" || provider === "openai-codex";
 }
 
-function providerRow(provider: { provider: string; label: string; connected: boolean; methods: string[]; modelCount: number }, surface: "settings" | "onboarding" = "settings"): string {
+function providerRow(provider: ProviderSummary, surface: "settings" | "onboarding" = "settings"): string {
   const id = domId(surface, "provider", provider.provider);
   const methods = provider.methods.length ? provider.methods : ["api_key"];
   const hidden = !provider.connected && !isSuperPopularProvider(provider.provider);
   const modelCount = `${provider.modelCount} model${provider.modelCount === 1 ? "" : "s"}`;
+  const actions = provider.stored
+    ? `<form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/disconnect" data-turbo="true"><button class="settings-btn danger" type="submit">Disconnect</button></form>`
+    : provider.connected
+      ? `<span class="settings-provider-desc">Managed outside Atelier</span>`
+      : methods.map((method) => `<form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/flow?method=${encodeURIComponent(method)}" data-turbo="true"><button class="settings-btn ${surface === "onboarding" ? "primary" : ""}" type="submit">${method === "oauth" ? "Sign in" : "Add API key"}</button></form>`).join("");
   return `<div class="settings-provider${hidden ? " provider-extra hidden" : ""}" id="${id}" data-provider-extra="${hidden ? "true" : "false"}">
     <div class="settings-provider-icon" style="--provider-color:${providerColor(provider.provider)}">${escapeHtml(providerInitial(provider.label))}</div>
-    <div class="settings-provider-main"><div class="settings-provider-title">${escapeHtml(provider.label)} <span class="settings-provider-count">${escapeHtml(modelCount)}</span>${provider.connected ? ` ${badge(true, "Connected")}` : ""}</div></div>
-    <div class="settings-provider-actions">${provider.connected
-      ? `<form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/disconnect" data-turbo="true"><button class="settings-btn danger" type="submit">Disconnect</button></form>`
-      : methods.map((method) => `<form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/flow?method=${encodeURIComponent(method)}" data-turbo="true"><button class="settings-btn ${surface === "onboarding" ? "primary" : ""}" type="submit">${method === "oauth" ? "Sign in" : "Add API key"}</button></form>`).join("")}</div>
+    <div class="settings-provider-main"><div class="settings-provider-title">${escapeHtml(provider.label)} <span class="settings-provider-count">${escapeHtml(modelCount)}</span>${provider.connected ? ` ${badge(true, provider.authLabel)}` : ""}</div></div>
+    <div class="settings-provider-actions">${actions}</div>
   </div>`;
 }
 
@@ -147,15 +175,20 @@ async function renderWorkspaceSettings(): Promise<string> {
   return settingsSection("workspaces", "Workspaces", `<div class="settings-providers">${githubRow()}</div>`, "Connect services used to create and provision workspaces.");
 }
 
-async function renderAgentSettings(): Promise<string> {
+async function renderProviderList(surface: "settings" | "onboarding" = "settings"): Promise<string> {
   const providers = await providerSummaries();
-  const providerRows = providers.map((provider) => providerRow(provider)).join("");
+  const id = surface === "settings" ? ` id="settings_agent_provider_list"` : "";
+  return `<div${id} class="settings-providers" data-provider-list-scope>${providers.map((provider) => providerRow(provider, surface)).join("")}${showMoreProvidersButton(providers)}</div>`;
+}
+
+async function renderAgentSettings(): Promise<string> {
   const picker = await renderModelPicker();
-  return settingsSection("agent", "Agent & Models", `<h3 class="settings-subhead">Authentication providers</h3><div class="settings-providers" data-provider-list-scope>${providerRows}${showMoreProvidersButton(providers)}</div><h3 class="settings-subhead">Prompt model picker</h3>${picker}`, "Providers and models are discovered from the pi agent SDK. Connections are fake for now, but stored in pi-compatible auth storage.");
+  return settingsSection("agent", "Agent & Models", `<h3 class="settings-subhead">Authentication providers</h3>${await renderProviderList("settings")}<h3 class="settings-subhead">Prompt model picker</h3>${picker}`, "Providers and models are discovered from the pi agent SDK. Credentials are stored in pi-compatible auth storage.");
 }
 
 async function renderAbout(): Promise<string> {
-  return settingsSection("about", "About", `<div class="settings-field"><div><b>Setup walkthrough</b><p>Reopen onboarding. It will be shown automatically whenever no GitHub or LLM provider is connected.</p></div><a class="settings-btn" href="/onboarding" data-turbo-frame="_top" data-turbo-stream="true">Replay</a></div><div class="settings-version">${escapeHtml(atelierName)} · settings prototype</div>`);
+  const devTools = devSettingsEnabled() ? `<form class="settings-reset-form" method="post" action="/settings/workspaces/force-delete/flow" data-turbo="true"><button class="settings-reset-link danger" type="submit">force delete all workspaces</button></form>` : "";
+  return settingsSection("about", "About", `<div class="settings-field"><div><b>Setup walkthrough</b><p>Reopen onboarding. It will be shown automatically whenever no GitHub or LLM provider is connected.</p></div><a class="settings-btn" href="/onboarding" data-turbo-frame="_top" data-turbo-stream="true">Replay</a></div><div class="settings-version">${escapeHtml(atelierName)} · settings prototype</div><form class="settings-reset-form" method="post" action="/settings/reset" data-turbo="true"><button class="settings-reset-link" type="submit" onclick="return confirm('Delete stored GitHub token and all stored model provider credentials?')">delete all settings</button></form>${devTools}`);
 }
 
 async function availableModelOptions(): Promise<ConfiguredAgentModel[]> {
@@ -208,6 +241,24 @@ export async function renderSettingsDialog(active = "appearance"): Promise<strin
   </dialog>`;
 }
 
+function forceDeleteAllWorkspacesModal(error = ""): string {
+  return `<dialog id="settings_dev_force_delete_workspaces_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
+    <form method="post" action="/settings/workspaces/force-delete" data-turbo="true">
+      <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerColor("github")}">!</div><div><b>Force delete all workspaces?</b><p>Development tool</p></div></div>
+      <div class="settings-flow-body"><p>This force-removes every Atelier workspace container in this namespace and deletes its local workspace data. Uncommitted work will be lost.</p>${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}</div>
+      <div class="settings-flow-actions"><button class="settings-btn" formmethod="dialog">Cancel</button><button class="settings-btn danger" type="submit">Force delete all workspaces</button></div>
+    </form>
+  </dialog>`;
+}
+
+function forceDeleteAllWorkspacesResultModal(deleted: number, errors: string[]): string {
+  return `<dialog id="settings_dev_force_delete_workspaces_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
+    <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${errors.length ? "var(--red)" : "var(--green)"}">${errors.length ? "!" : "✓"}</div><div><b>Workspace cleanup complete</b><p>Development tool</p></div></div>
+    <div class="settings-flow-body"><p>Deleted ${escapeHtml(deleted)} workspace${deleted === 1 ? "" : "s"}.</p>${errors.length ? `<p class="settings-error">${escapeHtml(errors.join("\n"))}</p>` : ""}</div>
+    <div class="settings-flow-actions"><form method="dialog"><button class="settings-btn primary">Done</button></form></div>
+  </dialog>`;
+}
+
 function githubTokenModal(error = ""): string {
   return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <form method="post" action="/settings/github/connect" data-turbo="true">
@@ -225,14 +276,96 @@ gh auth token</pre>
   </dialog>`;
 }
 
-function flowModal(id: string, label: string, method: string, completeAction: string): string {
-  const isApi = method === "api_key";
+function apiKeyModal(id: string, label: string, action: string, error = ""): string {
   return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
-    <form method="post" action="${escapeHtml(completeAction)}" data-turbo="true" data-action="turbo:submit-end->modal#submitted">
-      <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerColor(id)}">${escapeHtml(providerInitial(label))}</div><div><b>${escapeHtml(label)}</b><p>Fake ${isApi ? "API key" : "OAuth/device"} connection</p></div></div>
-      <div class="settings-flow-body">${isApi ? `<p>Paste any key. For now we store a fake credential in the real settings store.</p><input class="settings-input" type="password" name="secret" value="fake-secret" autofocus>` : `<p>In the real implementation this will open the provider authorization flow. For now, continue to store a fake connection.</p><div class="settings-code">WDJB-MJHT</div>`}</div>
-      <div class="settings-flow-actions"><button class="settings-btn" formmethod="dialog">Cancel</button><button class="settings-btn primary" type="submit">Complete</button></div>
+    <form method="post" action="${escapeHtml(action)}" data-turbo="true">
+      <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerColor(id)}">${escapeHtml(providerInitial(label))}</div><div><b>${escapeHtml(label)}</b><p>API key</p></div></div>
+      <div class="settings-flow-body"><p>Paste your provider API key. Atelier stores it locally in pi-compatible auth storage.</p>${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}<input class="settings-input" type="password" name="secret" placeholder="API key" autocomplete="off" required autofocus></div>
+      <div class="settings-flow-actions"><button class="settings-btn" formmethod="dialog">Cancel</button><button class="settings-btn primary" type="submit">Connect</button></div>
     </form>
+  </dialog>`;
+}
+
+type PendingPrompt = { message: string; placeholder?: string; allowEmpty?: boolean; resolve: (value: string) => void };
+type PendingOAuthFlow = {
+  id: string;
+  provider: string;
+  label: string;
+  status: "pending" | "complete" | "error";
+  startedAt: number;
+  abort: AbortController;
+  authUrl?: string;
+  instructions?: string;
+  userCode?: string;
+  verificationUri?: string;
+  progress: string[];
+  prompt?: PendingPrompt;
+  error?: string;
+};
+
+const pendingOAuthFlows = new Map<string, PendingOAuthFlow>();
+
+async function startOAuthFlow(provider: string, label: string): Promise<PendingOAuthFlow> {
+  const auth = await createPiAuthStorage();
+  const oauthProvider = auth.getOAuthProviders().find((candidate) => candidate.id === provider);
+  if (!oauthProvider) throw new Error(`${label} does not support OAuth in this pi installation.`);
+  const flow: PendingOAuthFlow = { id: crypto.randomUUID(), provider, label, status: "pending", startedAt: Date.now(), abort: new AbortController(), progress: [] };
+  pendingOAuthFlows.set(flow.id, flow);
+  void auth.login(provider, {
+    onAuth: (info) => { flow.authUrl = info.url; flow.instructions = info.instructions; },
+    onDeviceCode: (info) => { flow.userCode = info.userCode; flow.verificationUri = info.verificationUri; },
+    onProgress: (message) => { flow.progress = [...flow.progress.slice(-4), message]; },
+    onPrompt: (prompt) => new Promise<string>((resolve) => {
+      if (prompt.allowEmpty) return resolve("");
+      flow.prompt = { message: prompt.message, placeholder: prompt.placeholder, allowEmpty: prompt.allowEmpty, resolve };
+    }),
+    onManualCodeInput: () => new Promise<string>((resolve) => {
+      flow.prompt = { message: "Paste the authorization code from the browser", placeholder: "Authorization code", resolve };
+    }),
+    onSelect: async (prompt) => prompt.options.find((option) => option.id === "device_code")?.id ?? prompt.options[0]?.id,
+    signal: flow.abort.signal,
+  }).then(() => {
+    flow.status = "complete";
+    flow.progress = [...flow.progress.slice(-4), "Connected."];
+  }).catch((error) => {
+    if (flow.abort.signal.aborted) return;
+    flow.status = "error";
+    flow.error = error instanceof Error ? error.message : String(error);
+  });
+  await waitForOAuthFlowReady(flow);
+  return flow;
+}
+
+async function waitForOAuthFlowReady(flow: PendingOAuthFlow): Promise<void> {
+  const deadline = Date.now() + 1500;
+  while (Date.now() < deadline && flow.status === "pending" && !flow.authUrl && !flow.verificationUri && !flow.prompt) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+function oauthFlowModal(flow: PendingOAuthFlow): string {
+  const statusBody = flow.status === "complete"
+    ? `<p>${escapeHtml(flow.label)} is connected.</p>`
+    : flow.status === "error"
+      ? `<p class="settings-error">${escapeHtml(flow.error ?? "OAuth login failed")}</p>`
+      : "";
+  const auth = flow.verificationUri
+    ? `<p class="settings-oauth-instructions">Open <a class="settings-link" href="${escapeHtml(flow.verificationUri)}" target="_blank" rel="noreferrer">${escapeHtml(flow.verificationUri)}</a> and enter:</p><div class="settings-code compact">${escapeHtml(flow.userCode ?? "")}</div>`
+    : flow.authUrl
+      ? `<p><a class="settings-btn primary" href="${escapeHtml(flow.authUrl)}" target="_blank" rel="noreferrer">Open authorization page</a></p>${flow.instructions ? `<p>${escapeHtml(flow.instructions)}</p>` : ""}`
+      : `<p>Starting OAuth flow…</p>`;
+  const prompt = flow.prompt && flow.status === "pending"
+    ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true"><p>${escapeHtml(flow.prompt.message)}</p><input class="settings-input" name="value" placeholder="${escapeHtml(flow.prompt.placeholder ?? "")}" ${flow.prompt.allowEmpty ? "" : "required"}><div class="settings-flow-actions"><button class="settings-btn primary" type="submit">Submit</button></div></form>`
+    : "";
+  const progress = flow.progress.length ? `<ul class="settings-flow-progress">${flow.progress.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : "";
+  return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal oauth-flow" data-modal-auto-show-value="true" data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" ? "true" : "false"}">
+    <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerColor(flow.provider)}">${escapeHtml(providerInitial(flow.label))}</div><div><b>${escapeHtml(flow.label)}</b><p>OAuth sign-in</p></div></div>
+    <div class="settings-flow-body">${statusBody}${flow.status === "pending" ? auth : ""}${progress}${prompt}</div>
+    <div class="settings-flow-actions">
+      ${flow.status === "complete" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="settings-btn primary" type="submit">Done</button></form>` : ""}
+      ${flow.status === "pending" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/cancel" data-turbo="true"><button class="settings-btn danger" type="submit">Cancel</button></form>` : ""}
+      ${flow.status === "error" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="settings-btn" type="submit">Close</button></form>` : ""}
+    </div>
   </dialog>`;
 }
 
@@ -240,10 +373,28 @@ async function refreshAfterConnection(): Promise<string> {
   return `${replace("settings_dialog", await renderSettingsDialog("agent"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`;
 }
 
-export async function handleSettingsRequest(request: Request, url: URL): Promise<Response | undefined> {
+async function deleteAllStoredSettings(): Promise<void> {
+  clearWorkspaceGitHubToken();
+  const auth = await createPiAuthStorage();
+  for (const provider of auth.list()) auth.remove(provider);
+}
+
+export async function handleSettingsRequest(request: Request, url: URL, options: { forceDeleteAllWorkspaces?: () => Promise<{ deleted: number; errors: string[] }> } = {}): Promise<Response | undefined> {
   if (url.pathname === "/settings" && request.method === "GET") {
     const html = await renderSettingsDialog(url.searchParams.get("section") ?? "appearance");
     return wantsStream(request) ? stream(update("settings_modal_host", html)) : response(html);
+  }
+  if (url.pathname === "/settings/reset" && request.method === "POST") {
+    await deleteAllStoredSettings();
+    return stream(`${replace("settings_dialog", await renderSettingsDialog("about"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`);
+  }
+  if (url.pathname === "/settings/workspaces/force-delete/flow" && request.method === "POST" && devSettingsEnabled()) {
+    return stream(append("settings_modal_host", forceDeleteAllWorkspacesModal()));
+  }
+  if (url.pathname === "/settings/workspaces/force-delete" && request.method === "POST" && devSettingsEnabled()) {
+    if (!options.forceDeleteAllWorkspaces) return stream(replace("settings_dev_force_delete_workspaces_dialog", forceDeleteAllWorkspacesModal("Workspace deletion is not available.")));
+    const result = await options.forceDeleteAllWorkspaces();
+    return stream(replace("settings_dev_force_delete_workspaces_dialog", forceDeleteAllWorkspacesResultModal(result.deleted, result.errors)));
   }
   if (url.pathname === "/settings/github/flow" && request.method === "POST") return stream(update("settings_modal_host", `${await renderSettingsDialog("workspaces")}${githubTokenModal()}`));
   if (url.pathname === "/settings/github/connect" && request.method === "POST") {
@@ -264,17 +415,58 @@ export async function handleSettingsRequest(request: Request, url: URL): Promise
     const method = url.searchParams.get("method") ?? "api_key";
     const registry = await createPiModelRegistry();
     const label = registry.getProviderDisplayName(provider);
-    return stream(update("settings_modal_host", `${await renderSettingsDialog("agent")}${flowModal(provider, label, method, `/settings/providers/${encodeURIComponent(provider)}/connect?method=${encodeURIComponent(method)}`)}`));
+    if (method === "oauth") {
+      try {
+        const flow = await startOAuthFlow(provider, label);
+        return stream(update("settings_modal_host", `${await renderSettingsDialog("agent")}${oauthFlowModal(flow)}`));
+      } catch (error) {
+        return stream(update("settings_modal_host", `${await renderSettingsDialog("agent")}${apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect`, error instanceof Error ? error.message : String(error))}`));
+      }
+    }
+    return stream(update("settings_modal_host", `${await renderSettingsDialog("agent")}${apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect`)}`));
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/connect$/);
   if (match && request.method === "POST") {
-    await fakeConnectModelProvider(decodeURIComponent(match[1]!), url.searchParams.get("method") === "oauth" ? "oauth" : "api_key");
+    const provider = decodeURIComponent(match[1]!);
+    const registry = await createPiModelRegistry();
+    const label = registry.getProviderDisplayName(provider);
+    const form = await request.formData();
+    const secret = String(form.get("secret") ?? "");
+    try {
+      await connectModelProviderApiKey(provider, secret);
+    } catch (error) {
+      return stream(replace("settings_flow_dialog", apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect`, error instanceof Error ? error.message : String(error))));
+    }
     return stream(await refreshAfterConnection());
+  }
+  match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/oauth\/([^/]+)\/(status|prompt|finish|cancel)$/);
+  if (match && request.method === "POST") {
+    const provider = decodeURIComponent(match[1]!);
+    const flowId = decodeURIComponent(match[2]!);
+    const action = match[3]!;
+    const flow = pendingOAuthFlows.get(flowId);
+    if (!flow || flow.provider !== provider) return stream(await refreshAfterConnection());
+    if (action === "prompt") {
+      const form = await request.formData();
+      flow.prompt?.resolve(String(form.get("value") ?? ""));
+      flow.prompt = undefined;
+      return stream(replace("settings_flow_dialog", oauthFlowModal(flow)));
+    }
+    if (action === "cancel") {
+      flow.abort.abort();
+      pendingOAuthFlows.delete(flowId);
+      return stream(remove("settings_flow_dialog"));
+    }
+    if (action === "finish") {
+      pendingOAuthFlows.delete(flowId);
+      return stream(await refreshAfterConnection());
+    }
+    return stream(replace("settings_flow_dialog", oauthFlowModal(flow)));
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/disconnect$/);
   if (match && request.method === "POST") {
     await disconnectModelProvider(decodeURIComponent(match[1]!));
-    return stream(await refreshAfterConnection());
+    return stream(`${replace("settings_agent_provider_list", await renderProviderList("settings"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
   }
   if (url.pathname.startsWith("/settings/models/") && request.method === "POST") return await handleModelPickerAction(request, url.pathname);
   return undefined;

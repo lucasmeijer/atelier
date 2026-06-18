@@ -498,6 +498,10 @@ button { border: 0; background: none; cursor: pointer; }
 .settings-nav.active { background: var(--accent-soft); color: var(--accent); }
 .settings-side-fill { flex: 1; }
 .settings-version { font-family: var(--mono); font-size: 10.5px; color: var(--muted2); padding: 8px 2px; }
+.settings-reset-form { margin: 18px 0 0; }
+.settings-reset-link { border: 0; background: transparent; color: var(--muted2); font: inherit; font-size: 10.5px; text-decoration: underline; cursor: pointer; padding: 0; }
+.settings-reset-link.danger { color: color-mix(in srgb, var(--red) 70%, var(--muted2)); }
+.settings-reset-link:hover { color: var(--red); }
 .settings-main { overflow-y: auto; position: relative; }
 .settings-close { position: sticky; top: 16px; float: right; margin: 16px 18px 0 0; width: 30px; height: 30px; border: 0; border-radius: 8px; display: grid; place-items: center; color: var(--muted); background: var(--panel); z-index: 2; cursor: pointer; }
 .settings-close:hover { background: var(--bg); color: var(--text); }
@@ -547,7 +551,12 @@ button { border: 0; background: none; cursor: pointer; }
 .settings-flow-body { padding: 20px 18px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .settings-command { margin: 10px 0 12px; padding: 12px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); font: 12.5px/1.5 var(--mono); white-space: pre-wrap; }
 .settings-error { color: var(--red); background: var(--red-soft); border-radius: 10px; padding: 9px 11px; }
+.settings-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; font-weight: 750; }
+.settings-link:hover { filter: brightness(1.08); text-decoration-thickness: 2px; }
+.settings-oauth-instructions { margin: 0; }
 .settings-code { margin-top: 12px; padding: 18px; border: 1px dashed var(--line2); border-radius: 12px; background: var(--bg); color: var(--text); font: 800 28px var(--mono); letter-spacing: 6px; text-align: center; }
+.settings-code.compact { margin-top: 8px; padding: 10px 12px; font-size: 22px; letter-spacing: 4px; }
+.settings-flow-progress { margin: 10px 0 0; padding-left: 18px; color: var(--muted2); font-size: 12px; }
 .settings-flow-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 0 18px 18px; }
 .onboarding-dialog { width: min(560px, 96vw); height: auto; max-height: 92vh; }
 .onboarding-card { display: flex; flex-direction: column; max-height: 92vh; }

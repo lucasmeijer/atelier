@@ -912,6 +912,32 @@ class ThemeSelectController extends Controller {
   }
 }
 
+class OAuthFlowController extends Controller {
+  static values = { statusUrl: String, active: Boolean };
+  declare readonly statusUrlValue: string;
+  declare readonly activeValue: boolean;
+  private timer: number | undefined;
+
+  connect(): void {
+    if (!this.activeValue || !this.statusUrlValue) return;
+    this.timer = window.setInterval(() => void this.poll(), 1500);
+  }
+
+  disconnect(): void {
+    if (this.timer !== undefined) window.clearInterval(this.timer);
+  }
+
+  private async poll(): Promise<void> {
+    const response = await fetch(this.statusUrlValue, {
+      method: "POST",
+      headers: { Accept: "text/vnd.turbo-stream.html" },
+    }).catch(() => undefined);
+    if (!response?.ok) return;
+    const html = await response.text();
+    window.Turbo?.renderStreamMessage(html);
+  }
+}
+
 class ProviderListController extends Controller {
   static values = { label: String, openLabel: String };
   declare readonly element: HTMLButtonElement;
@@ -1166,6 +1192,7 @@ application.register("provision-terminal", createProvisionTerminalController(Con
 application.register("auto-scroll", AutoScrollController);
 application.register("workspace-app-frame", WorkspaceAppFrameController);
 application.register("theme-select", ThemeSelectController);
+application.register("oauth-flow", OAuthFlowController);
 application.register("provider-list", ProviderListController);
 application.register("model-add-menu", ModelAddMenuController);
 application.register("model-picker", ModelPickerController);
