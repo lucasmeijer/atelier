@@ -18,6 +18,8 @@ import {
 } from "@atelier/browser/server";
 import {
   AtelierCoreError,
+  discoverHostGitHubToken,
+  hasWorkspaceGitHubToken,
   type AtelierEventBus,
   type WorkspaceCreationContext,
 } from "@atelier/core";
@@ -386,6 +388,45 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 </dialog>`;
   }
 
+  function isGitHubRemoteUrl(gitUrl: string): boolean {
+    return /(^|@|\/)github\.com[:/]/i.test(gitUrl.trim());
+  }
+
+  async function canReadRemoteWithConfiguredToken(gitUrl: string): Promise<boolean> {
+    const token = discoverHostGitHubToken();
+    const credentialHelper = `!f() { test "$1" = get || exit 0; token="\${GH_TOKEN:-}"; [ -n "$token" ] || exit 0; echo username=x-access-token; echo password="$token"; }; f`;
+    const proc = Bun.spawn(["git", "-c", `credential.helper=${credentialHelper}`, "ls-remote", "--exit-code", gitUrl, "HEAD"], {
+      stdout: "ignore",
+      stderr: "pipe",
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...(token ? { GH_TOKEN: token } : {}) },
+    });
+    await new Response(proc.stderr).text().catch(() => "");
+    return await proc.exited === 0;
+  }
+
+  async function githubRepoAccessProblem(repo: RepositorySummary): Promise<"missing-token" | "token-denied" | undefined> {
+    if (process.env.NODE_ENV === "test" || !isGitHubRemoteUrl(repo.gitUrl)) return undefined;
+    if (await canReadRemoteWithConfiguredToken(repo.gitUrl).catch(() => false)) return undefined;
+    return hasWorkspaceGitHubToken() ? "token-denied" : "missing-token";
+  }
+
+  function githubRepoAccessProblemModal(repo: RepositorySummary, problem: "missing-token" | "token-denied"): string {
+    const title = problem === "missing-token" ? "Connect GitHub to clone this repository" : "GitHub token cannot access this repository";
+    const body = problem === "missing-token"
+      ? `<p><b>${escapeHtml(repo.name)}</b> looks private, and Atelier does not have a GitHub token yet.</p><p>Connect GitHub in workspace settings, then try creating this workspace again.</p>`
+      : `<p>Atelier has a GitHub token, but GitHub would not allow it to read <b>${escapeHtml(repo.name)}</b>.</p><p>Reconnect GitHub with a token that has access to this repository, then try again.</p>`;
+    return `<dialog id="github-token-required-modal" class="modal" data-controller="modal" data-modal-auto-show-value="true">
+  <form method="dialog">
+    <h2>${escapeHtml(title)}</h2>
+    ${body}
+    <div class="modal-actions">
+      <button class="btn" value="cancel">Cancel</button>
+      <a class="btn primary" href="/settings?section=workspaces" data-turbo-frame="_top" data-turbo-stream="true">Open workspace settings</a>
+    </div>
+  </form>
+</dialog>`;
+  }
+
   async function renderWorkspaceSidebar(): Promise<string> {
     const { repos } = await listRepositories();
 
@@ -640,6 +681,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   async function createRepoAgentWorkspaceEndpoint(repoName: string, request: Request): Promise<Response> {
     const repo = await repositoryById(repoName);
+    const accessProblem = await githubRepoAccessProblem(repo);
+    if (accessProblem) return turboStreamResponse(turboUpdateStream(workspaceCommandModalHostId, githubRepoAccessProblemModal(repo, accessProblem)));
     const form = await request.formData();
     const text = String(form.get("text") ?? "").trim();
     const id = generateWorkspaceId();

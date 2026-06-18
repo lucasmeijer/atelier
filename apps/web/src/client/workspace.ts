@@ -1049,9 +1049,11 @@ class ModelPickerController extends Controller {
 }
 
 class OnboardingController extends Controller {
-  static targets = ["pane", "dot"];
+  static targets = ["pane", "dot", "continue"];
   declare readonly paneTargets: HTMLElement[];
   declare readonly dotTargets: HTMLElement[];
+  declare readonly continueTarget: HTMLButtonElement;
+  declare readonly hasContinueTarget: boolean;
   private index = 0;
 
   connect(): void {
@@ -1074,6 +1076,28 @@ class OnboardingController extends Controller {
     this.index = index;
     this.paneTargets.forEach((pane, paneIndex) => pane.classList.toggle("active", paneIndex === index));
     this.dotTargets.forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex === index));
+    const current = this.paneTargets[index];
+    const complete = current?.dataset.onboardingComplete === "true";
+    if (this.hasContinueTarget) this.continueTarget.classList.toggle("primary", complete);
+  }
+}
+
+class ClipboardController extends Controller {
+  static targets = ["source"];
+  declare readonly sourceTarget: HTMLElement;
+  declare readonly hasSourceTarget: boolean;
+
+  async copy(event: Event): Promise<void> {
+    event.preventDefault();
+    if (!this.hasSourceTarget) return;
+    const text = this.sourceTarget.textContent?.trim() ?? "";
+    if (!text) return;
+    await navigator.clipboard?.writeText(text).catch(() => undefined);
+    const button = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : undefined;
+    if (!button) return;
+    const original = button.textContent ?? "Copy to clipboard";
+    button.textContent = "Copied";
+    window.setTimeout(() => { button.textContent = original; }, 1200);
   }
 }
 
@@ -1197,4 +1221,5 @@ application.register("provider-list", ProviderListController);
 application.register("model-add-menu", ModelAddMenuController);
 application.register("model-picker", ModelPickerController);
 application.register("onboarding", OnboardingController);
+application.register("clipboard", ClipboardController);
 application.register("agent-select-menu", AgentSelectMenuController);

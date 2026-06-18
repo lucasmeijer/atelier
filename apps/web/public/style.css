@@ -488,7 +488,7 @@ button { border: 0; background: none; cursor: pointer; }
 /* Settings + onboarding */
 .contents { display: contents; }
 .settings-dialog, .onboarding-dialog, .settings-flow-dialog { width: min(1040px, 96vw); height: min(88vh, 860px); padding: 0; border: 1px solid var(--line2); border-radius: 18px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); margin: auto; }
-.settings-flow-dialog { width: min(460px, 94vw); height: auto; }
+.settings-flow-dialog { width: min(460px, 94vw); height: fit-content; max-height: min(92vh, 720px); overflow: hidden; }
 .settings-dialog::backdrop, .onboarding-dialog::backdrop, .settings-flow-dialog::backdrop { background: rgba(0,0,0,.5); backdrop-filter: blur(4px); }
 .settings-sheet { height: 100%; display: grid; grid-template-columns: 212px 1fr; overflow: hidden; }
 .settings-side { border-right: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 55%, var(--panel)); display: flex; flex-direction: column; padding: 18px 12px; }
@@ -548,7 +548,7 @@ button { border: 0; background: none; cursor: pointer; }
 .settings-add-model .settings-select { min-width: 280px; max-width: min(560px, 70%); }
 .settings-flow-head { display: flex; align-items: center; gap: 11px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
 .settings-flow-head p { margin: 1px 0 0; color: var(--muted); font-size: 11px; }
-.settings-flow-body { padding: 20px 18px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.settings-flow-body { padding: 20px 18px; color: var(--muted); font-size: 13px; line-height: 1.6; max-height: calc(92vh - 128px); overflow: auto; }
 .settings-command { margin: 10px 0 12px; padding: 12px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); font: 12.5px/1.5 var(--mono); white-space: pre-wrap; }
 .settings-error { color: var(--red); background: var(--red-soft); border-radius: 10px; padding: 9px 11px; }
 .settings-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; font-weight: 750; }
@@ -556,6 +556,8 @@ button { border: 0; background: none; cursor: pointer; }
 .settings-oauth-instructions { margin: 0; }
 .settings-code { margin-top: 12px; padding: 18px; border: 1px dashed var(--line2); border-radius: 12px; background: var(--bg); color: var(--text); font: 800 28px var(--mono); letter-spacing: 6px; text-align: center; }
 .settings-code.compact { margin-top: 8px; padding: 10px 12px; font-size: 22px; letter-spacing: 4px; }
+.settings-code-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.settings-code-row .settings-code { flex: 1; margin-top: 0; }
 .settings-flow-progress { margin: 10px 0 0; padding-left: 18px; color: var(--muted2); font-size: 12px; }
 .settings-flow-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 0 18px 18px; }
 .onboarding-dialog { width: min(560px, 96vw); height: auto; max-height: 92vh; }

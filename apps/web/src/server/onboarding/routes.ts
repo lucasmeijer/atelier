@@ -1,6 +1,6 @@
 import { listOnboardingContributions, registerOnboardingContribution } from "./registry.ts";
 import { hasWorkspaceGitHubToken } from "@atelier/core";
-import { githubRow, isOnboarded, providerRow, providerSummaries, showMoreProvidersButton } from "../settings/routes.ts";
+import { githubRow, hasAnyLlmProvider, isOnboarded, providerRow, providerSummaries, showMoreProvidersButton } from "../settings/routes.ts";
 
 function escapeHtml(value: unknown): string {
   return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
@@ -22,7 +22,7 @@ function update(target: string, html: string): string {
 }
 
 async function renderGithubStep(): Promise<string> {
-  return `<div class="onboarding-step"><h2>Connect GitHub</h2><p>So atelier can clone private repositories, create workspaces, and inject <code>GH_TOKEN</code> safely into workspace network requests.</p><div class="settings-providers">${githubRow()}</div></div>`;
+  return `<div class="onboarding-step"><h2>Connect GitHub</h2><div class="settings-providers">${githubRow()}</div></div>`;
 }
 
 async function renderLlmStep(): Promise<string> {
@@ -31,17 +31,18 @@ async function renderLlmStep(): Promise<string> {
 }
 
 registerOnboardingContribution({ id: "github", label: "GitHub", order: 10, isComplete: async () => hasWorkspaceGitHubToken(), render: renderGithubStep });
-registerOnboardingContribution({ id: "llm", label: "Model provider", order: 20, isComplete: async () => false, render: renderLlmStep });
+registerOnboardingContribution({ id: "llm", label: "Model provider", order: 20, isComplete: hasAnyLlmProvider, render: renderLlmStep });
 
 export async function renderOnboardingDialog(force = false): Promise<string> {
   if (!force && await isOnboarded()) return "";
   const contributions = listOnboardingContributions();
-  const steps = await Promise.all(contributions.map((contribution, index) => contribution.render().then((html) => `<section class="onboarding-pane ${index === 0 ? "active" : ""}" data-onboarding-target="pane">${html}</section>`)));
+  const completions = await Promise.all(contributions.map((contribution) => contribution.isComplete()));
+  const steps = await Promise.all(contributions.map((contribution, index) => contribution.render().then((html) => `<section class="onboarding-pane ${index === 0 ? "active" : ""}" data-onboarding-target="pane" data-onboarding-complete="${completions[index] ? "true" : "false"}">${html}</section>`)));
   return `<dialog id="onboarding_dialog" class="onboarding-dialog" data-controller="modal onboarding" data-modal-auto-show-value="true">
     <div class="onboarding-card">
       <div class="onboarding-dots">${contributions.map((_, index) => `<span class="${index === 0 ? "active" : ""}" data-onboarding-target="dot"></span>`).join("")}</div>
       <div class="onboarding-body">${steps.join("")}</div>
-      <div class="onboarding-foot"><button class="settings-btn" type="button" data-action="onboarding#prev">‹ Back</button><span></span><button class="settings-btn" type="button" data-action="modal#close">Skip</button><button class="settings-btn primary" type="button" data-action="onboarding#next">Continue</button></div>
+      <div class="onboarding-foot"><button class="settings-btn" type="button" data-action="onboarding#prev">‹ Back</button><span></span><button class="settings-btn" type="button" data-onboarding-target="continue" data-action="onboarding#next">Continue</button></div>
     </div>
   </dialog>`;
 }

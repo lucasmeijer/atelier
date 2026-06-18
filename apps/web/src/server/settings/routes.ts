@@ -57,12 +57,12 @@ function devSettingsEnabled(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
-async function hasAnyLlmProvider(): Promise<boolean> {
+export async function hasAnyLlmProvider(): Promise<boolean> {
   return (await createPiAuthStorage()).list().length > 0;
 }
 
 export async function isOnboarded(): Promise<boolean> {
-  return hasWorkspaceGitHubToken() || await hasAnyLlmProvider();
+  return hasWorkspaceGitHubToken() && await hasAnyLlmProvider();
 }
 
 function badge(connected: boolean, label = connected ? "Connected" : "Not connected"): string {
@@ -96,10 +96,10 @@ function githubRow(): string {
   const connected = hasWorkspaceGitHubToken();
   return `<div class="settings-provider" id="settings_provider_github">
     <div class="settings-provider-icon" style="--provider-color:${providerColor("github")}">G</div>
-    <div class="settings-provider-main"><div class="settings-provider-title">GitHub ${badge(connected)}</div><div class="settings-provider-desc">Used by workspace creation and workspace secret injection as <code>GH_TOKEN</code>.</div></div>
+    <div class="settings-provider-main"><div class="settings-provider-title">GitHub ${badge(connected)}</div></div>
     <div class="settings-provider-actions">${connected
       ? `<form method="post" action="/settings/github/disconnect" data-turbo="true"><button class="settings-btn danger" type="submit">Disconnect</button></form>`
-      : `<form method="post" action="/settings/github/flow" data-turbo="true"><button class="settings-btn primary" type="submit">Connect GitHub</button></form>`}</div>
+      : `<form method="post" action="/settings/github/flow" data-turbo="true"><button class="settings-btn primary" type="submit">Connect</button></form>`}</div>
   </div>`;
 }
 
@@ -350,7 +350,7 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
       ? `<p class="settings-error">${escapeHtml(flow.error ?? "OAuth login failed")}</p>`
       : "";
   const auth = flow.verificationUri
-    ? `<p class="settings-oauth-instructions">Open <a class="settings-link" href="${escapeHtml(flow.verificationUri)}" target="_blank" rel="noreferrer">${escapeHtml(flow.verificationUri)}</a> and enter:</p><div class="settings-code compact">${escapeHtml(flow.userCode ?? "")}</div>`
+    ? `<p class="settings-oauth-instructions">Open <a class="settings-link" href="${escapeHtml(flow.verificationUri)}" target="_blank" rel="noreferrer">${escapeHtml(flow.verificationUri)}</a> and enter:</p><div class="settings-code-row" data-controller="clipboard"><div class="settings-code compact" data-clipboard-target="source">${escapeHtml(flow.userCode ?? "")}</div><button class="settings-btn" type="button" data-action="clipboard#copy">Copy to clipboard</button></div>`
     : flow.authUrl
       ? `<p><a class="settings-btn primary" href="${escapeHtml(flow.authUrl)}" target="_blank" rel="noreferrer">Open authorization page</a></p>${flow.instructions ? `<p>${escapeHtml(flow.instructions)}</p>` : ""}`
       : `<p>Starting OAuth flow…</p>`;
