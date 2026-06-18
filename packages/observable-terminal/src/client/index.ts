@@ -21,6 +21,7 @@ export interface ObservableTerminalViewer {
   dispose(): void;
   focus(): void;
   fitToHost(): void;
+  setTheme(theme: ObservableTerminalTheme): void;
 }
 
 export interface ObservableTerminalViewerOptions {
@@ -135,6 +136,9 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
   const viewer: ObservableTerminalViewer = {
     focus: () => term.focus(),
     fitToHost: () => fit?.fit(),
+    setTheme: (nextTheme) => {
+      term.options.theme = nextTheme;
+    },
     dispose: () => {
       ws.onclose = null;
       ws.onerror = null;

@@ -5,6 +5,7 @@ import {
   createObservableTerminalViewer,
   DEFAULT_OBSERVABLE_TERMINAL_THEME,
   observableWebSocketUrl,
+  type ObservableTerminalTheme,
   type ObservableTerminalViewer,
 } from "@atelier/observable-terminal/client";
 import { observableTerminalTabPrefix } from "@atelier/observable-terminal/shared";
@@ -14,13 +15,64 @@ type StimulusControllerConstructor = new (...args: unknown[]) => { element: Elem
 const terminals = new Map<string, ObservableTerminalViewer>();
 const startingTerminals = new Set<string>();
 const pendingTerminalFocus = new Set<string>();
+let terminalThemeInitialized = false;
+let currentTerminalTheme: ObservableTerminalTheme = DEFAULT_OBSERVABLE_TERMINAL_THEME;
 
 function terminalKey(workspaceId: string, title: string): string {
   return `${workspaceId}\u0000${title}`;
 }
 
+function cssVariable(name: string): string | undefined {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || undefined;
+}
+
+function themeColor(name: string, fallbackKey: keyof typeof DEFAULT_OBSERVABLE_TERMINAL_THEME): string {
+  return cssVariable(name) ?? DEFAULT_OBSERVABLE_TERMINAL_THEME[fallbackKey];
+}
+
+function atelierTerminalTheme(): ObservableTerminalTheme {
+  const background = themeColor("--bg", "background");
+  const foreground = themeColor("--text", "foreground");
+  const accent = themeColor("--accent", "brightBlue");
+  const red = cssVariable("--red") ?? foreground;
+  const green = cssVariable("--green") ?? foreground;
+  const amber = cssVariable("--amber") ?? foreground;
+  const violet = cssVariable("--violet") ?? accent;
+  return {
+    background,
+    foreground,
+    cursor: accent,
+    black: themeColor("--panel", "black"),
+    red,
+    green,
+    yellow: amber,
+    blue: accent,
+    magenta: violet,
+    cyan: accent,
+    white: foreground,
+    brightBlack: themeColor("--line-2", "brightBlack"),
+    brightRed: red,
+    brightGreen: green,
+    brightYellow: amber,
+    brightBlue: accent,
+    brightMagenta: violet,
+    brightCyan: accent,
+    brightWhite: foreground,
+  };
+}
+
+function applyTerminalTheme(): void {
+  currentTerminalTheme = atelierTerminalTheme();
+  applyObservableTerminalChromeTheme(currentTerminalTheme);
+  for (const terminal of terminals.values()) terminal.setTheme(currentTerminalTheme);
+}
+
 export function initializeTerminalTheme(): void {
-  applyObservableTerminalChromeTheme(DEFAULT_OBSERVABLE_TERMINAL_THEME);
+  applyTerminalTheme();
+  if (terminalThemeInitialized) return;
+  terminalThemeInitialized = true;
+  document.addEventListener("atelier:theme-change", applyTerminalTheme);
+  new MutationObserver(applyTerminalTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 }
 
 function findTerminalPane(workspaceId: string, title: string): HTMLElement | undefined {
@@ -55,6 +107,7 @@ export async function startTerminal(workspaceId: string, title: string, options:
       host,
       mode: "interactive",
       websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(workspaceId)}/tabs/${encodeURIComponent(tabId)}/ws?cols=80&rows=24`),
+      theme: currentTerminalTheme,
       disconnectedMessage: "\r\n\x1b[31m[terminal disconnected]\x1b[0m\r\n",
       errorMessage: "\r\n\x1b[31m[terminal websocket error]\x1b[0m\r\n",
     });

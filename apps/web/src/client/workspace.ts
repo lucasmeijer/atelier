@@ -789,7 +789,12 @@ class WorkspaceAppFrameController extends Controller {
   declare readonly hasInitialPathValue: boolean;
 
   connect(): void {
+    document.addEventListener("atelier:theme-change", this.themeChanged);
     if (this.isActivePane()) this.load();
+  }
+
+  disconnect(): void {
+    document.removeEventListener("atelier:theme-change", this.themeChanged);
   }
 
   activate(): void {
@@ -810,6 +815,10 @@ class WorkspaceAppFrameController extends Controller {
     if (this.appKeyValue === "vscode") addAtelierThemeParams(url);
     return url.toString();
   }
+
+  private themeChanged = (): void => {
+    if (this.appKeyValue === "vscode" && this.element.src) this.load();
+  };
 
   private isActivePane(): boolean {
     return this.element.closest(".tab-pane")?.classList.contains("active") ?? true;
@@ -846,14 +855,6 @@ function addAtelierThemeParams(url: URL): void {
   url.searchParams.set("atelierText", cssVariable("--text"));
   url.searchParams.set("atelierLine", cssVariable("--line"));
   url.searchParams.set("atelierAccent", cssVariable("--accent"));
-}
-
-function refreshVSCodeFramesForTheme(): void {
-  document.querySelectorAll<HTMLIFrameElement>('iframe[data-workspace-app-frame-app-key-value="vscode"][data-controller~="workspace-app-frame"]').forEach((frame) => {
-    if (!frame.src) return;
-    const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame") as { load?: () => void } | null;
-    controller?.load?.();
-  });
 }
 
 class WorkspaceTitleEditController extends Controller {
@@ -908,7 +909,7 @@ class ThemeSelectController extends Controller {
     document.querySelectorAll<HTMLSelectElement>('select[data-controller~="theme-select"]').forEach((select) => {
       if (select !== this.element) select.value = theme;
     });
-    refreshVSCodeFramesForTheme();
+    document.dispatchEvent(new CustomEvent("atelier:theme-change", { detail: { theme } }));
   }
 }
 
