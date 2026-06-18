@@ -5,6 +5,7 @@ import {
   createPiAuthStorage,
   createPiModelRegistry,
   disconnectModelProvider,
+  renderAgentModelOptions,
   setActiveAgentModel,
   setPickerAgentModels,
   type ConfiguredAgentModel,
@@ -35,6 +36,10 @@ function replace(target: string, html: string): string {
 
 function update(target: string, html: string): string {
   return `<turbo-stream action="update" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
+}
+
+function updateTargets(selector: string, html: string): string {
+  return `<turbo-stream action="update" targets="${escapeHtml(selector)}"><template>${html}</template></turbo-stream>`;
 }
 
 function remove(target: string): string {
@@ -217,7 +222,7 @@ async function renderModelPicker(): Promise<string> {
 
 function modelPickerRow(model: ConfiguredAgentModel, _index: number, _total: number): string {
   const value = `${model.provider}::${model.id}`;
-  return `<div class="settings-model-row" id="${domId("settings_model", model.provider, model.id)}" draggable="true" data-model-picker-model-value="${escapeHtml(value)}" data-action="dragstart->model-picker#dragStart dragover->model-picker#dragOver drop->model-picker#drop dragend->model-picker#dragEnd">
+  return `<div class="settings-model-row" id="${domId("settings_model", model.provider, model.id)}" draggable="true" data-model-picker-model-value="${escapeHtml(value)}" data-model-picker-label="${escapeHtml(model.label)}" data-action="dragstart->model-picker#dragStart dragover->model-picker#dragOver drop->model-picker#drop dragend->model-picker#dragEnd">
     <span class="settings-model-grip" aria-hidden="true">⠿</span>
     <span class="settings-model-dot" style="--provider-color:${providerColor(model.provider)}"></span>
     <div class="settings-model-main"><code>${escapeHtml(model.id)}</code><small>${escapeHtml(model.provider)}</small></div>
@@ -350,7 +355,7 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
       ? `<p class="settings-error">${escapeHtml(flow.error ?? "OAuth login failed")}</p>`
       : "";
   const auth = flow.verificationUri
-    ? `<p class="settings-oauth-instructions">Open <a class="settings-link" href="${escapeHtml(flow.verificationUri)}" target="_blank" rel="noreferrer">${escapeHtml(flow.verificationUri)}</a> and enter:</p><div class="settings-code-row" data-controller="clipboard"><div class="settings-code compact" data-clipboard-target="source">${escapeHtml(flow.userCode ?? "")}</div><button class="settings-btn" type="button" data-action="clipboard#copy">Copy to clipboard</button></div>`
+    ? `<p class="settings-oauth-instructions">Open <a class="settings-link" href="${escapeHtml(flow.verificationUri)}" target="_blank" rel="noreferrer">${escapeHtml(flow.verificationUri)}</a> and enter:</p><div class="settings-code-row" data-controller="clipboard"><div class="settings-code compact" data-clipboard-target="source">${escapeHtml(flow.userCode ?? "")}</div><button class="settings-btn icon" type="button" data-action="clipboard#copy" title="Copy to clipboard" aria-label="Copy to clipboard">⧉</button></div>`
     : flow.authUrl
       ? `<p><a class="settings-btn primary" href="${escapeHtml(flow.authUrl)}" target="_blank" rel="noreferrer">Open authorization page</a></p>${flow.instructions ? `<p>${escapeHtml(flow.instructions)}</p>` : ""}`
       : `<p>Starting OAuth flow…</p>`;
@@ -369,8 +374,12 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
   </dialog>`;
 }
 
+function refreshAgentModelPickerSelects(): string {
+  return updateTargets('select[data-agent-model-picker-select="true"]', renderAgentModelOptions());
+}
+
 async function refreshAfterConnection(): Promise<string> {
-  return `${replace("settings_dialog", await renderSettingsDialog("agent"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`;
+  return `${replace("settings_dialog", await renderSettingsDialog("agent"))}${refreshAgentModelPickerSelects()}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`;
 }
 
 async function deleteAllStoredSettings(): Promise<void> {
@@ -466,7 +475,7 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/disconnect$/);
   if (match && request.method === "POST") {
     await disconnectModelProvider(decodeURIComponent(match[1]!));
-    return stream(`${replace("settings_agent_provider_list", await renderProviderList("settings"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
+    return stream(`${replace("settings_agent_provider_list", await renderProviderList("settings"))}${refreshAgentModelPickerSelects()}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
   }
   if (url.pathname.startsWith("/settings/models/") && request.method === "POST") return await handleModelPickerAction(request, url.pathname);
   return undefined;
@@ -480,7 +489,7 @@ async function handleModelPickerAction(request: Request, pathname: string): Prom
     const reordered = requested.map((key) => byKey.get(key)).filter(Boolean) as ConfiguredAgentModel[];
     for (const model of configuredAgentModels) if (!requested.includes(`${model.provider}::${model.id}`)) reordered.push(model);
     await setPickerAgentModels(reordered, configuredAgentModels.find((model) => model.active));
-    return stream(replace("settings_model_picker", await renderModelPicker()));
+    return stream(`${replace("settings_model_picker", await renderModelPicker())}${refreshAgentModelPickerSelects()}`);
   }
 
   const form = await request.formData();
@@ -496,7 +505,7 @@ async function handleModelPickerAction(request: Request, pathname: string): Prom
   if (pathname === "/settings/models/remove" && index >= 0) current.splice(index, 1);
   if (pathname === "/settings/models/active" && provider && id) await setActiveAgentModel(provider, id);
   else await setPickerAgentModels(current, current.find((model) => model.active));
-  return stream(replace("settings_model_picker", await renderModelPicker()));
+  return stream(`${replace("settings_model_picker", await renderModelPicker())}${refreshAgentModelPickerSelects()}`);
 }
 
 export { providerRow, providerSummaries, githubRow, showMoreProvidersButton };

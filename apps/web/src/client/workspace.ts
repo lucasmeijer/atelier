@@ -1046,6 +1046,7 @@ class ModelPickerController extends Controller {
     }).then((response) => response.text()).catch(() => "");
     if (html) window.Turbo?.renderStreamMessage(html);
   }
+
 }
 
 class OnboardingController extends Controller {
@@ -1096,7 +1097,7 @@ class ClipboardController extends Controller {
     const button = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : undefined;
     if (!button) return;
     const original = button.textContent ?? "Copy to clipboard";
-    button.textContent = "Copied";
+    button.textContent = button.classList.contains("icon") ? "✓" : "Copied";
     window.setTimeout(() => { button.textContent = original; }, 1200);
   }
 }
@@ -1105,6 +1106,7 @@ class AgentSelectMenuController extends Controller {
   declare readonly element: HTMLSelectElement;
   private button?: HTMLButtonElement;
   private menu?: HTMLDivElement;
+  private observer?: MutationObserver;
 
   connect(): void {
     if (this.element.dataset.agentSelectEnhanced === "true") return;
@@ -1119,6 +1121,8 @@ class AgentSelectMenuController extends Controller {
     this.element.after(this.button, this.menu);
     this.element.addEventListener("change", this.sync);
     document.addEventListener("click", this.closeFromOutside);
+    this.observer = new MutationObserver(this.sync);
+    this.observer.observe(this.element, { childList: true, subtree: true, attributes: true, attributeFilter: ["selected"] });
     this.sync();
   }
 
@@ -1126,6 +1130,7 @@ class AgentSelectMenuController extends Controller {
     this.button?.removeEventListener("click", this.toggle);
     this.element.removeEventListener("change", this.sync);
     document.removeEventListener("click", this.closeFromOutside);
+    this.observer?.disconnect();
     this.button?.remove();
     this.menu?.remove();
     this.element.classList.remove("agent-sel-native");

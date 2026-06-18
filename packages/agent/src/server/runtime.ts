@@ -2,7 +2,7 @@ import { mkdir, open } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AtelierEventBus } from "@atelier/core";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
-import { configuredAgentModels } from "./pi-config-models.ts";
+import { configuredAgentModels, createPiModelRegistry } from "./pi-config-models.ts";
 import {
   AuthStorage,
   createAgentSession,
@@ -760,6 +760,15 @@ class RealAgentRuntime extends BaseAgentRuntime {
     }
   }
 
+  private async refreshModelRegistryForCurrentModel(): Promise<void> {
+    const current = this.session.model;
+    const registry = await createPiModelRegistry();
+    this.session.modelRegistry = registry;
+    if (!current?.provider || !current?.id) return;
+    const refreshed = registry.find?.(current.provider, current.id);
+    if (refreshed) this.session.model = refreshed;
+  }
+
   async submit(text: string, options: SubmitOptions): Promise<void> {
     const trimmed = text.trim();
     if (!trimmed && (options.images?.length ?? 0) === 0) return;
@@ -777,6 +786,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       return;
     }
 
+    await this.refreshModelRegistryForCurrentModel().catch(() => undefined);
     this.liveBegin({ text: trimmed, images: options.images ?? [] });
     this.setBusy(true);
     void this.session
@@ -794,14 +804,15 @@ class RealAgentRuntime extends BaseAgentRuntime {
     if (!next) return;
     this.liveBegin({ text: next.displayText === "(attachments)" ? "" : next.displayText, images: next.imageRefs });
     this.setBusy(true);
-    void this.session
-      .prompt(next.fullText, next.imageContent && next.imageContent.length > 0 ? { images: next.imageContent } : undefined)
-      .catch(async (error: unknown) => {
-        this.notice("error", error instanceof Error ? error.message : String(error));
-        await this.liveEnd();
-        this.setBusy(false);
-        await this.emitTurnFinished();
-      });
+    void (async () => {
+      await this.refreshModelRegistryForCurrentModel().catch(() => undefined);
+      await this.session.prompt(next.fullText, next.imageContent && next.imageContent.length > 0 ? { images: next.imageContent } : undefined);
+    })().catch(async (error: unknown) => {
+      this.notice("error", error instanceof Error ? error.message : String(error));
+      await this.liveEnd();
+      this.setBusy(false);
+      await this.emitTurnFinished();
+    });
   }
 
   async abort(): Promise<void> {
@@ -815,14 +826,18 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   async setModel(provider: string, modelId: string): Promise<void> {
-    const option = this.configuredModelOptions().find((candidate) => candidate.provider === provider && candidate.id === modelId)
-      ?? { model: this.session.modelRegistry.find?.(provider, modelId) };
-    if (!option.model) {
+    try {
+      this.session.modelRegistry = await createPiModelRegistry();
+    } catch {
+      // Fall back to the registry held by the session.
+    }
+    const model = this.session.modelRegistry.find?.(provider, modelId);
+    if (!model) {
       this.notice("error", `Model not available: ${provider}/${modelId}`);
       return;
     }
     try {
-      await this.session.setModel(option.model);
+      await this.session.setModel(model);
     } catch (error) {
       this.notice("error", error instanceof Error ? error.message : String(error));
     }

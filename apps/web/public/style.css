@@ -391,11 +391,11 @@ button { border: 0; background: none; cursor: pointer; }
 .r-sub { font-size: 11.5px; color: var(--muted2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .workspace-row.failed .r-sub { color: var(--red); }
 .workspace-row-edit, .workspace-row-delete button { color: var(--muted2); border-radius: 6px; opacity: 0; }
-.workspace-row-edit { display: none; font-size: 12px; padding: 1px 4px; }
-.workspace-row:hover .workspace-row-edit { display: inline-flex; opacity: 1; }
+.workspace-row-edit { display: inline-flex; visibility: hidden; font-size: 12px; padding: 1px 4px; }
+.workspace-row:hover .workspace-row-edit { visibility: visible; opacity: 1; }
 .workspace-row-actions, .row-actions { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; }
-.workspace-row-delete { display: none; }
-.workspace-row:hover .workspace-row-delete { display: flex; justify-content: flex-end; }
+.workspace-row-delete { display: flex; justify-content: flex-end; visibility: hidden; }
+.workspace-row:hover .workspace-row-delete { visibility: visible; }
 .workspace-row-delete button { padding: 2px 4px; }
 .workspace-row:hover .workspace-row-delete button { opacity: .8; }
 .workspace-row-delete button:hover { opacity: 1; color: var(--red); background: var(--red-soft); }

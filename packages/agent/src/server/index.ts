@@ -29,7 +29,7 @@ export {
   agentTmuxPrefix,
   type AgentTermSocketData,
 } from "./bash-tmux.ts";
-export { agentTabKey, renderAgentComposer, renderAgentPane } from "./render.ts";
+export { agentTabKey, renderAgentComposer, renderAgentModelOptions, renderAgentPane } from "./render.ts";
 export { agentWorkspaceModule, listOrCreateWorkspaceAgents, renderWorkspaceAgentTabs } from "./web.ts";
 export {
   applyExactEdits,
