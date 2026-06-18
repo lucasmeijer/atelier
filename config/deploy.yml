@@ -8,10 +8,9 @@ servers:
     hosts:
       - 78.47.191.121
     options:
-      # Let the Atelier container reach host-published workspace ports on Linux.
+      # Fallback host gateway name for Docker-on-Linux deployments.
       add-host: host.docker.internal:host-gateway
-      # Give workspace containers a stable DNS name for Atelier's egress proxy
-      # when they join Kamal's Docker network.
+      # Stable DNS alias; Atelier detects this at runtime for workspace egress proxying.
       network-alias: atelier-web
 
 proxy:
@@ -45,31 +44,11 @@ env:
   clear:
     HOST: 0.0.0.0
     PORT: 3000
-    ATELIER_DATA_DIR: /var/lib/atelier
-    # Pi's AuthStorage.create() reads auth.json from PI_CODING_AGENT_DIR.
-    # Workspace creation also copies these files into each workspace container.
-    PI_CODING_AGENT_DIR: /var/lib/atelier/pi-config
-    ATELIER_NAMESPACE: production
     ATELIER_WORKSPACE_IMAGE: ghcr.io/lucasmeijer/atelier-workspace:latest
-    # Workspace containers publish random host ports. Since Atelier itself runs
-    # in Docker in production, bind those host ports on Docker's host gateway
-    # rather than on public interfaces.
-    ATELIER_WORKSPACE_PUBLISH_HOST: 172.17.0.1
-    ATELIER_DOCKER_PUBLISHED_PORT_HOST: host.docker.internal
-    # Workspaces run as sibling Docker containers. In production Atelier itself
-    # is also in Docker, so host.docker.internal points at the Docker host, not
-    # at Atelier. Put workspaces on Kamal's bridge network and address Atelier's
-    # egress proxy through this app container alias instead.
-    ATELIER_WORKSPACE_DOCKER_NETWORK: kamal
-    ATELIER_WORKSPACE_PROXY_HOST: atelier-web
-    # Scope Atelier's own auth cookie to all preview subdomains, so the
-    # workspace iframe/proxy hosts are authenticated after logging in once.
-    ATELIER_AUTH_COOKIE_DOMAIN: .shockwaving.com
   secret:
-    - GH_TOKEN
     - ATELIER_PASSWORD
     - ATELIER_AUTH_SECRET
 
 volumes:
   - /var/run/docker.sock:/var/run/docker.sock
-  - /var/lib/atelier:/var/lib/atelier
+  - /var/lib/atelier:/storage

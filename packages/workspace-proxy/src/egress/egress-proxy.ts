@@ -29,16 +29,16 @@ type WorkspaceProxyManifest = { noProxy?: unknown; proxy?: { noProxy?: unknown }
 type MitmConnectionContext = { workspaceId: string; hostname: string };
 type MitmTargetServer = { server: ReturnType<typeof createHttpsServer>; port: number; connections: Map<number, MitmConnectionContext> };
 
-export function workspaceProxyHost(): string {
-  return process.env.ATELIER_WORKSPACE_PROXY_HOST || "host.docker.internal";
+export async function workspaceProxyHost(): Promise<string> {
+  return (await getAtelierRuntimeContext()).dockerNetworkHost || "host.docker.internal";
 }
 
-export function workspaceProxyUrl(workspaceId: string, token: string): string {
-  return `http://${encodeURIComponent(workspaceId)}:${encodeURIComponent(token)}@${workspaceProxyHost()}:${atelierWorkspaceProxyPort}`;
+export async function workspaceProxyUrl(workspaceId: string, token: string): Promise<string> {
+  return `http://${encodeURIComponent(workspaceId)}:${encodeURIComponent(token)}@${await workspaceProxyHost()}:${atelierWorkspaceProxyPort}`;
 }
 
-function workspaceProxyEnv(workspaceId: string, token: string, extraNoProxy: string[] = []): Record<string, string> {
-  const proxy = workspaceProxyUrl(workspaceId, token);
+async function workspaceProxyEnv(workspaceId: string, token: string, extraNoProxy: string[] = []): Promise<Record<string, string>> {
+  const proxy = await workspaceProxyUrl(workspaceId, token);
   const noProxy = uniqueNoProxyEntries([...defaultNoProxyEntries(), ...extraNoProxy]).join(",");
   return {
     HTTP_PROXY: proxy,
@@ -63,7 +63,6 @@ function defaultNoProxyEntries(): string[] {
     "localhost",
     "127.0.0.1",
     "::1",
-    ...domainNoProxyEntries(process.env.ATELIER_AUTH_COOKIE_DOMAIN),
     ...parseNoProxyValue(process.env.ATELIER_WORKSPACE_PROXY_NO_PROXY),
     // Legacy/public Atelier domains should be reached directly. The egress
     // proxy can downgrade/MITM TLS to HTTP/1.1 for secret injection, which
@@ -128,7 +127,7 @@ export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
     await ensureAtelierWorkspaceProxy();
     await ensureMitmCa(runtimeContext);
     const extraNoProxy = await readWorkspaceNoProxyEntries(workHostPath);
-    Object.assign(plan.env, workspaceProxyEnv(workspaceId, proxyAuthToken, extraNoProxy));
+    Object.assign(plan.env, await workspaceProxyEnv(workspaceId, proxyAuthToken, extraNoProxy));
     plan.mounts.push({ type: "bind", source: dockerHostAtelierDataPath(runtimeContext, "proxy-ca", "atelier-mitm-ca.pem"), target: workspaceMitmCaPath, readonly: true });
     plan.initScripts.push(`if [ -r ${workspaceMitmCaPath} ]; then mkdir -p /usr/local/share/ca-certificates; cp ${workspaceMitmCaPath} /usr/local/share/ca-certificates/atelier-mitm-ca.crt; update-ca-certificates || true; fi`);
     plan.initScripts.push(`cat > /usr/local/bin/atelier-git-credential <<'EOF'

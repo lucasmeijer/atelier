@@ -36,8 +36,16 @@ export interface CreateWorkspaceOptions { id?: string; events?: AtelierEventBus;
 function namespace(): string { return process.env.ATELIER_NAMESPACE || "default"; }
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }
 export function workspaceContainerName(id: string): string { return `atelier-${id}`; }
-function workspacePublishHost(): string { return process.env.ATELIER_WORKSPACE_PUBLISH_HOST || "127.0.0.1"; }
-function workspaceDockerNetwork(): string | undefined { return process.env.ATELIER_WORKSPACE_DOCKER_NETWORK || undefined; }
+async function workspacePublishHost(): Promise<string> {
+  const runtime = await getAtelierRuntimeContext();
+  return runtime.runningInContainer && !runtime.dockerNetwork ? runtime.dockerHostGateway ?? "0.0.0.0" : "127.0.0.1";
+}
+async function workspaceDockerNetwork(): Promise<string | undefined> { return (await getAtelierRuntimeContext()).dockerNetwork; }
+export async function shouldAddressWorkspaceContainersDirectly(): Promise<boolean> { return Boolean(await workspaceDockerNetwork()); }
+export async function workspacePublishedPortHost(): Promise<string> {
+  const runtime = await getAtelierRuntimeContext();
+  return runtime.runningInContainer && !runtime.dockerNetwork ? "host.docker.internal" : "127.0.0.1";
+}
 function formatDeleteBlockedMessage(id: string, issues: unknown[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
 function dockerHostGatewayArgs(): string[] { return ["--add-host", "host.docker.internal:host-gateway"]; }
 function requireArg(value: string | undefined, name: string): string { if (!value) throw invalidArguments(`missing ${name}`); return value; }
@@ -117,8 +125,7 @@ export async function execWorkspace(id: string, command: string[]): Promise<Work
 function dockerMountArg(mount: WorkspaceDockerMount): string { return [`type=${mount.type}`, `src=${mount.source}`, `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : [])].join(","); }
 function planEnvDockerArgs(env: Record<string, string>): string[] { return Object.entries(env).flatMap(([name, value]) => ["--env", `${name}=${value}`]); }
 function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan {
-  const network = workspaceDockerNetwork();
-  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8" }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: [...(network ? ["--network", network] : []), ...dockerHostGatewayArgs()], initScripts: [], cleanup: [] };
+  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8" }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: [...dockerHostGatewayArgs()], initScripts: [], cleanup: [] };
 }
 
 interface WorkspaceRuntimeManifest {
@@ -174,7 +181,9 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     await provisionStep(options.events, id, "workspace.container", "Start workspace container", async () => {
       const image = activePlan.image;
       if (!image) throw new AtelierCoreError("workspace_image_missing", "workspace image was not resolved");
-      await requireDocker(["run", "-d", "--name", workspaceContainerName(id), ...Object.entries(activePlan.labels).flatMap(([name, value]) => ["--label", `${name}=${value}`]), ...activePlan.publishes.flatMap((port) => ["--publish", `${workspacePublishHost()}::${port}`]), ...planEnvDockerArgs(activePlan.env), ...activePlan.extraArgs, ...activePlan.mounts.flatMap((mount) => ["--mount", dockerMountArg(mount)]), "--user", "root", image, "sh", "-lc", workspaceInitScript(activePlan)]);
+      const network = await workspaceDockerNetwork();
+      const publishHost = await workspacePublishHost();
+      await requireDocker(["run", "-d", "--name", workspaceContainerName(id), ...(network ? ["--network", network] : []), ...Object.entries(activePlan.labels).flatMap(([name, value]) => ["--label", `${name}=${value}`]), ...activePlan.publishes.flatMap((port) => ["--publish", `${publishHost}::${port}`]), ...planEnvDockerArgs(activePlan.env), ...activePlan.extraArgs, ...activePlan.mounts.flatMap((mount) => ["--mount", dockerMountArg(mount)]), "--user", "root", image, "sh", "-lc", workspaceInitScript(activePlan)]);
     });
     await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id));
     await provisionStep(options.events, id, "workspace.verify", "Verify workspace", () => resolveWorkspace(id));

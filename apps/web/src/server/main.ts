@@ -119,15 +119,25 @@ function isHttpsRequest(request: Request): boolean {
   return new URL(request.url).protocol === "https:" || request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
 }
 
+function sharedCookieDomain(request: Request): string | undefined {
+  const hostname = new URL(request.url).hostname.toLowerCase();
+  if (hostname === "localhost" || hostname.endsWith(".localhost") || /^[\d.]+$/.test(hostname) || hostname.includes(":")) return undefined;
+  const labels = hostname.split(".").filter(Boolean);
+  if (labels.length < 2) return undefined;
+  return `.${labels.slice(-2).join(".")}`;
+}
+
 function authCookieAttributes(request: Request): string {
   const secure = isHttpsRequest(request) ? "; Secure" : "";
-  const domain = process.env.ATELIER_AUTH_COOKIE_DOMAIN ? `; Domain=${process.env.ATELIER_AUTH_COOKIE_DOMAIN}` : "";
+  const cookieDomain = sharedCookieDomain(request);
+  const domain = cookieDomain ? `; Domain=${cookieDomain}` : "";
   return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${authCookieMaxAgeSeconds}${secure}${domain}`;
 }
 
 function clearAuthCookieAttributes(request: Request): string {
   const secure = isHttpsRequest(request) ? "; Secure" : "";
-  const domain = process.env.ATELIER_AUTH_COOKIE_DOMAIN ? `; Domain=${process.env.ATELIER_AUTH_COOKIE_DOMAIN}` : "";
+  const cookieDomain = sharedCookieDomain(request);
+  const domain = cookieDomain ? `; Domain=${cookieDomain}` : "";
   return `Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}${domain}`;
 }
 

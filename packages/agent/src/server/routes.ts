@@ -2,7 +2,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AtelierCoreError, defaultDataDir, type AtelierEventBus } from "@atelier/core";
 import { setActiveAgentModel } from "./pi-config-models.ts";
-import { getWorkspacePreviewPort, workspaceContainerName, workspacePreviewPorts, workspaceRoot } from "@atelier/workspace";
+import { getWorkspacePreviewPort, shouldAddressWorkspaceContainersDirectly, workspaceContainerName, workspacePreviewPorts, workspacePublishedPortHost, workspaceRoot } from "@atelier/workspace";
 import { ids, renderAttachmentChip } from "./render.ts";
 import { sseFrame, turboStream, turboStreamResponse } from "./html.ts";
 import { expandPromptTemplate } from "./prompt-templates.ts";
@@ -408,16 +408,14 @@ export async function workspaceFileEndpoint(workspaceId: string, path: string, r
 // Dev-server proxy
 // ---------------------------------------------------------------------------
 
-function publishedPortHost(): string {
-  return process.env.ATELIER_DOCKER_PUBLISHED_PORT_HOST || "127.0.0.1";
-}
-
 export async function resolveWorkspacePortProxyTarget(workspaceId: string, port: number, path: string, search = ""): Promise<URL> {
   if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new Error("bad port");
   if (!(workspacePreviewPorts as readonly number[]).includes(port)) {
     throw new Error(`Port ${port} is not published for previews. Use one of: ${workspacePreviewPorts.join(", ")}`);
   }
+  const normalizedPath = `${path.startsWith("/") ? path : `/${path}`}${search}`;
+  if (await shouldAddressWorkspaceContainersDirectly()) return new URL(normalizedPath, `http://${workspaceContainerName(workspaceId)}:${port}`);
   const hostPort = await getWorkspacePreviewPort(workspaceId, port);
-  return new URL(`${path.startsWith("/") ? path : `/${path}`}${search}`, `http://${publishedPortHost()}:${hostPort}`);
+  return new URL(normalizedPath, `http://${await workspacePublishedPortHost()}:${hostPort}`);
 }
 

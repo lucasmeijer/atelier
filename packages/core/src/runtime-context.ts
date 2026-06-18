@@ -9,7 +9,13 @@ export interface AtelierRuntimeContext {
   atelierDataDir: string;
   /** Same directory as seen by the Docker daemon. Use this for Docker bind mount sources. */
   dockerHostAtelierDataDir: string;
-  /** Diagnostic flag; application code should generally rely on the two paths above instead. */
+  /** Docker network shared by the Atelier container and sibling workspace containers, when detectable. */
+  dockerNetwork?: string;
+  /** Address/name workspaces can use to reach the Atelier container on dockerNetwork, when detectable. */
+  dockerNetworkHost?: string;
+  /** Docker host gateway address as seen from containers on the fallback bridge network, when detectable. */
+  dockerHostGateway?: string;
+  /** Diagnostic flag; application code should generally rely on the fields above instead. */
   runningInContainer: boolean;
 }
 
@@ -17,6 +23,19 @@ interface DockerMount {
   Type?: string;
   Source?: string;
   Destination?: string;
+}
+
+interface DockerNetworkAttachment {
+  IPAddress?: string;
+  Gateway?: string;
+  Aliases?: string[] | null;
+}
+
+interface DockerContainerInspect {
+  Id?: string;
+  Name?: string;
+  Mounts?: DockerMount[];
+  NetworkSettings?: { Networks?: Record<string, DockerNetworkAttachment> };
 }
 
 let cachedRuntimeContext: { atelierDataDir: string; context: Promise<AtelierRuntimeContext> } | undefined;
@@ -46,9 +65,16 @@ export async function discoverAtelierRuntimeContext(atelierDataDir = defaultData
     return { atelierDataDir, dockerHostAtelierDataDir: atelierDataDir, runningInContainer: false };
   }
 
-  const mounts = await inspectSelfContainerMounts();
-  const dockerHostAtelierDataDir = mounts ? translateContainerPathToDockerHostPath(atelierDataDir, mounts) ?? atelierDataDir : atelierDataDir;
-  return { atelierDataDir, dockerHostAtelierDataDir, runningInContainer: true };
+  const inspected = await inspectSelfContainer();
+  const dockerHostAtelierDataDir = inspected?.Mounts ? translateContainerPathToDockerHostPath(atelierDataDir, inspected.Mounts) ?? atelierDataDir : atelierDataDir;
+  const network = chooseDockerNetwork(inspected);
+  return {
+    atelierDataDir,
+    dockerHostAtelierDataDir,
+    ...(network ? { dockerNetwork: network.name, dockerNetworkHost: network.host } : {}),
+    ...(dockerHostGateway(inspected) ? { dockerHostGateway: dockerHostGateway(inspected) } : {}),
+    runningInContainer: true,
+  };
 }
 
 function probablyRunningInContainer(): boolean {
@@ -63,20 +89,41 @@ function probablyRunningInContainer(): boolean {
   });
 }
 
-async function inspectSelfContainerMounts(): Promise<DockerMount[] | undefined> {
+async function inspectSelfContainer(): Promise<DockerContainerInspect | undefined> {
   const candidates = containerIdCandidates();
   for (const id of candidates) {
-    const inspected = await runDocker(["inspect", "--format", "{{json .Mounts}}", id]).catch(() => undefined);
+    const inspected = await runDocker(["inspect", "--format", "{{json .}}", id]).catch(() => undefined);
     if (!inspected || inspected.exitCode !== 0) continue;
 
     try {
       const parsed = JSON.parse(inspected.stdout.trim()) as unknown;
-      if (Array.isArray(parsed)) return parsed as DockerMount[];
+      if (parsed && typeof parsed === "object") return parsed as DockerContainerInspect;
     } catch {
       // Try the next candidate.
     }
   }
   return undefined;
+}
+
+function dockerHostGateway(inspected: DockerContainerInspect | undefined): string | undefined {
+  const networks = inspected?.NetworkSettings?.Networks;
+  return networks ? Object.values(networks).find((network) => network.Gateway)?.Gateway : undefined;
+}
+
+function chooseDockerNetwork(inspected: DockerContainerInspect | undefined): { name: string; host: string } | undefined {
+  const networks = inspected?.NetworkSettings?.Networks;
+  if (!networks) return undefined;
+  const entries = Object.entries(networks).filter(([name]) => name !== "bridge" && name !== "host" && name !== "none");
+  const [name, attachment] = entries[0] ?? [];
+  if (!name || !attachment) return undefined;
+
+  const id = inspected?.Id?.toLowerCase() ?? "";
+  const containerName = inspected?.Name?.replace(/^\//, "");
+  const stableAlias = (attachment.Aliases ?? [])
+    .filter(Boolean)
+    .find((alias) => alias !== containerName && alias.toLowerCase() !== id && alias.toLowerCase() !== id.slice(0, 12));
+  const host = stableAlias || containerName || attachment.IPAddress;
+  return host ? { name, host } : undefined;
 }
 
 function containerIdCandidates(): string[] {
