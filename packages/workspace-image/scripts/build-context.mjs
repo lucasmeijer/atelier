@@ -65,7 +65,7 @@ await rm(outDir, { recursive: true, force: true });
 await mkdir(join(outDir, "files"), { recursive: true });
 
 const hash = createHash("sha256");
-hash.update("atelier-workspace-image-v3\n");
+hash.update("atelier-workspace-image-v5\n");
 const apt = [];
 const env = {};
 const copyInstructions = [];
@@ -95,10 +95,11 @@ for (const { path, dir, name, manifest, repo, hashPath } of manifests) {
 }
 
 const uniqueApt = [...new Set(apt)].sort();
-let dockerfile = `FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04\n\nARG DEBIAN_FRONTEND=noninteractive\nLABEL com.atelier.workspace-image.modules=${quote(moduleNames.join(","))}\n\n`;
+let dockerfile = `FROM oven/bun:1.3.14 AS bun-dist\n\nFROM ubuntu:26.04\n\nARG DEBIAN_FRONTEND=noninteractive\nLABEL com.atelier.workspace-image.modules=${quote(moduleNames.join(","))}\n\n`;
 if (uniqueApt.length) {
   dockerfile += `RUN apt-get update \\\n && apt-get install -y --no-install-recommends \\\n${uniqueApt.map((pkg) => `      ${pkg} \\\n`).join("")} && rm -rf /var/lib/apt/lists/*\n\n`;
 }
+dockerfile += `COPY --from=bun-dist /usr/local/bin/bun /usr/local/bin/bun\nCOPY --from=bun-dist /usr/local/bin/bunx /usr/local/bin/bunx\nRUN bun --version\n\n`;
 for (const copy of copyInstructions) {
   dockerfile += `COPY ${quote(copy.rel)} ${quote(copy.to)}\n`;
   if (copy.mode) dockerfile += `RUN chmod ${quote(copy.mode)} ${quote(copy.to)}\n`;

@@ -1,8 +1,15 @@
 # syntax=docker/dockerfile:1
 
 FROM docker:29-cli AS docker-cli
+FROM oven/bun:1.3.14 AS bun-dist
 
-FROM oven/bun:1.3.14-debian AS deps
+FROM ubuntu:26.04 AS deps
+ARG DEBIAN_FRONTEND=noninteractive
+COPY --from=bun-dist /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=bun-dist /usr/local/bin/bunx /usr/local/bin/bunx
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 COPY package.json bun.lock bunfig.toml tsconfig.json ./
@@ -29,29 +36,21 @@ COPY . .
 RUN bun run --cwd apps/web build:client
 RUN bun run check
 
-FROM oven/bun:1.3.14-debian AS runtime
+FROM ubuntu:26.04 AS runtime
+ARG DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      bison \
-      build-essential \
       ca-certificates \
-      curl \
       git \
       git-lfs \
-      libevent-dev \
-      libncurses-dev \
       openssh-client \
-      pkg-config \
       tmux \
- && curl -fsSL "https://github.com/tmux/tmux/releases/download/3.6a/tmux-3.6a.tar.gz" | tar -xz -C /tmp \
- && cd /tmp/tmux-3.6a \
- && ./configure --prefix=/usr/local \
- && make -j$(nproc) \
- && make install \
- && rm -rf /tmp/tmux-3.6a /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/*
 
+COPY --from=bun-dist /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=bun-dist /usr/local/bin/bunx /usr/local/bin/bunx
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
 
