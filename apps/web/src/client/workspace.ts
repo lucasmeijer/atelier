@@ -150,7 +150,7 @@ class WorkspaceTabsController extends Controller {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ activeTab: tabName, groupId: this.groupIdValue }),
-    }).catch(() => undefined);
+    });
   }
 }
 
@@ -255,7 +255,7 @@ class WorkspaceGroupsController extends Controller {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sizes }),
-    }).catch(() => undefined);
+    });
   };
 
   private highlightDropTarget(event: DragEvent): void {
@@ -895,7 +895,7 @@ class ThemeSelectController extends Controller {
   }
 
   private changed = (): void => {
-    try { localStorage.setItem(this.storageKey, this.element.value); } catch {}
+    localStorage.setItem(this.storageKey, this.element.value);
     this.apply(this.element.value);
   };
 
@@ -931,8 +931,8 @@ class OAuthFlowController extends Controller {
     const response = await fetch(this.statusUrlValue, {
       method: "POST",
       headers: { Accept: "text/vnd.turbo-stream.html" },
-    }).catch(() => undefined);
-    if (!response?.ok) return;
+    });
+    if (!response.ok) return;
     const html = await response.text();
     window.Turbo?.renderStreamMessage(html);
   }
@@ -1093,7 +1093,7 @@ class ClipboardController extends Controller {
     if (!this.hasSourceTarget) return;
     const text = this.sourceTarget.textContent?.trim() ?? "";
     if (!text) return;
-    await navigator.clipboard?.writeText(text).catch(() => undefined);
+    await navigator.clipboard?.writeText(text);
     const button = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : undefined;
     if (!button) return;
     const original = button.textContent ?? "Copy to clipboard";

@@ -786,7 +786,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       return;
     }
 
-    try { this.refreshModelRegistryForCurrentModel(); } catch {}
+    this.refreshModelRegistryForCurrentModel();
     this.liveBegin({ text: trimmed, images: options.images ?? [] });
     this.setBusy(true);
     void this.session
@@ -805,7 +805,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
     this.liveBegin({ text: next.displayText === "(attachments)" ? "" : next.displayText, images: next.imageRefs });
     this.setBusy(true);
     void (async () => {
-      try { this.refreshModelRegistryForCurrentModel(); } catch {}
+      this.refreshModelRegistryForCurrentModel();
       await this.session.prompt(next.fullText, next.imageContent && next.imageContent.length > 0 ? { images: next.imageContent } : undefined);
     })().catch(async (error: unknown) => {
       this.notice("error", error instanceof Error ? error.message : String(error));
@@ -826,7 +826,8 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   async setModel(provider: string, modelId: string): Promise<void> {
-    try { this.session.modelRegistry.authStorage?.reload?.(); this.session.modelRegistry.refresh?.(); } catch {}
+    this.session.modelRegistry.authStorage?.reload?.();
+    this.session.modelRegistry.refresh?.();
     const model = this.session.modelRegistry.find?.(provider, modelId);
     if (!model) {
       this.notice("error", `Model not available: ${provider}/${modelId}`);
