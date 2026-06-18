@@ -62,7 +62,7 @@ export async function hasAnyLlmProvider(): Promise<boolean> {
 }
 
 export async function isOnboarded(): Promise<boolean> {
-  return hasWorkspaceGitHubToken() && await hasAnyLlmProvider();
+  return hasWorkspaceGitHubToken() || await hasAnyLlmProvider();
 }
 
 function badge(connected: boolean, label = connected ? "Connected" : "Not connected"): string {
