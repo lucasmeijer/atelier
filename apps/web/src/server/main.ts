@@ -308,7 +308,7 @@ const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, reques
 
 const patchWorkspaceAppResponse: WorkspaceAppResponseTransformer = async (app, response, request) => {
   if (isBrowserWorkspaceApp(app.appKey)) return await patchBrowserWorkspaceAppResponse(app, response, request);
-  if (app.appKey === vscodeAppKey) return await patchVSCodeWorkspaceAppResponse(app, response);
+  if (app.appKey === vscodeAppKey) return await patchVSCodeWorkspaceAppResponse(app, response, request);
   return response;
 };
 

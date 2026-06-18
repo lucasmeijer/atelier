@@ -797,12 +797,18 @@ class WorkspaceAppFrameController extends Controller {
   }
 
   load(): void {
+    const src = this.frameSrc();
+    if (this.element.src !== src) this.element.src = src;
+    this.element.closest(".browser-shell")?.querySelector<HTMLAnchorElement>(".browser-open-external")?.setAttribute("href", src);
+  }
+
+  private frameSrc(): string {
     const port = window.location.port ? `:${window.location.port}` : "";
     const path = this.hasInitialPathValue && this.initialPathValue ? this.initialPathValue : "/";
     const hostSuffix = window.location.hostname === "localhost" ? "localhost" : window.location.hostname;
-    const src = `${window.location.protocol}//${this.appKeyValue}--${this.workspaceIdValue}.${hostSuffix}${port}${path.startsWith("/") ? path : `/${path}`}`;
-    if (this.element.src !== src) this.element.src = src;
-    this.element.closest(".browser-shell")?.querySelector<HTMLAnchorElement>(".browser-open-external")?.setAttribute("href", src);
+    const url = new URL(`${window.location.protocol}//${this.appKeyValue}--${this.workspaceIdValue}.${hostSuffix}${port}${path.startsWith("/") ? path : `/${path}`}`);
+    if (this.appKeyValue === "vscode") addAtelierThemeParams(url);
+    return url.toString();
   }
 
   private isActivePane(): boolean {
@@ -815,6 +821,36 @@ function startWorkspaceAppFrames(root: ParentNode, tabName: string): void {
   pane?.querySelectorAll<HTMLIFrameElement>('[data-controller~="workspace-app-frame"]').forEach((frame) => {
     const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame") as { activate?: () => void } | null;
     controller?.activate?.();
+  });
+}
+
+function currentAtelierTheme(): string {
+  try {
+    const saved = localStorage.getItem("atelier.theme");
+    if (saved) return saved;
+  } catch {}
+  return document.documentElement.dataset.theme || "cappuccino";
+}
+
+function cssVariable(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function addAtelierThemeParams(url: URL): void {
+  url.searchParams.set("atelierTheme", currentAtelierTheme());
+  url.searchParams.set("atelierBg", cssVariable("--bg"));
+  url.searchParams.set("atelierPanel", cssVariable("--panel"));
+  url.searchParams.set("atelierElev", cssVariable("--elev"));
+  url.searchParams.set("atelierText", cssVariable("--text"));
+  url.searchParams.set("atelierLine", cssVariable("--line"));
+  url.searchParams.set("atelierAccent", cssVariable("--accent"));
+}
+
+function refreshVSCodeFramesForTheme(): void {
+  document.querySelectorAll<HTMLIFrameElement>('iframe[data-workspace-app-frame-app-key-value="vscode"][data-controller~="workspace-app-frame"]').forEach((frame) => {
+    if (!frame.src) return;
+    const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame") as { load?: () => void } | null;
+    controller?.load?.();
   });
 }
 
@@ -857,8 +893,8 @@ class ThemeSelectController extends Controller {
   }
 
   private changed = (): void => {
-    this.apply(this.element.value);
     try { localStorage.setItem(this.storageKey, this.element.value); } catch {}
+    this.apply(this.element.value);
   };
 
   private loadTheme(): string | undefined {
@@ -870,6 +906,7 @@ class ThemeSelectController extends Controller {
     document.querySelectorAll<HTMLSelectElement>('select[data-controller~="theme-select"]').forEach((select) => {
       if (select !== this.element) select.value = theme;
     });
+    refreshVSCodeFramesForTheme();
   }
 }
 
