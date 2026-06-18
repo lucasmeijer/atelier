@@ -34,11 +34,23 @@ WORKDIR /app
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
+      bison \
+      build-essential \
       ca-certificates \
+      curl \
       git \
       git-lfs \
+      libevent-dev \
+      libncurses-dev \
       openssh-client \
- && rm -rf /var/lib/apt/lists/*
+      pkg-config \
+      tmux \
+ && curl -fsSL "https://github.com/tmux/tmux/releases/download/3.6a/tmux-3.6a.tar.gz" | tar -xz -C /tmp \
+ && cd /tmp/tmux-3.6a \
+ && ./configure --prefix=/usr/local \
+ && make -j$(nproc) \
+ && make install \
+ && rm -rf /tmp/tmux-3.6a /var/lib/apt/lists/*
 
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins

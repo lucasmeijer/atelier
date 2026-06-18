@@ -1,9 +1,10 @@
 {
-  "aptPackages": ["ncurses-bin", "ncurses-term", "tmux"],
+  "aptPackages": ["bison", "build-essential", "ca-certificates", "curl", "libevent-dev", "libncurses-dev", "ncurses-bin", "ncurses-term", "pkg-config", "tmux"],
   "files": [
     { "from": "workspace-image/rootfs/etc/tmux.conf", "to": "/etc/tmux.conf" }
   ],
   "run": [
+    "curl -fsSL \"https://github.com/tmux/tmux/releases/download/3.6a/tmux-3.6a.tar.gz\" | tar -xz -C /tmp && cd /tmp/tmux-3.6a && ./configure --prefix=/usr/local && make -j$(nproc) && make install && rm -rf /tmp/tmux-3.6a",
     "curl -fsSL \"https://ftp.gnu.org/pub/gnu/ncurses/ncurses-6.6.tar.gz\" | tar -xz -C /tmp && tic -x -o /usr/share/terminfo /tmp/ncurses-6.6/misc/terminfo.src && infocmp -x ghostty | awk 'BEGIN { replaced=0 } /^#/ { print; next } replaced == 0 { print \"xterm-ghostty|ghostty|Ghostty terminal emulator,\"; replaced=1; next } { print }' | tic -x -o /usr/share/terminfo - && rm -rf /tmp/ncurses-6.6"
   ]
 }

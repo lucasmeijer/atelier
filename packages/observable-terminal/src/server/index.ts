@@ -115,14 +115,26 @@ export function buildObservableSessionCommand(options: ObservableTerminalSession
   for (const [key, value] of Object.entries({ ...observableTerminalEnvironment, ...options.env })) {
     if (value !== undefined) setup.push(`set-environment -g ${key} ${shellQuote(String(value))}`);
   }
-  const flags = ["new-session", "-d", "-s", shellQuote(options.session)];
+  const target = shellQuote(options.session);
+  const flags = ["new-session", "-d", "-s", target];
   if (options.fixedSize) flags.push("-x", String(cols), "-y", String(rows));
   flags.push("-c", shellQuote(options.cwd), options.command);
-  const commands = [...setup, flags.join(" ")];
-  if (options.fixedSize) commands.push(`set-option -t ${shellQuote(options.session)} window-size manual`);
-  if (options.remainOnExit) commands.push(`set-window-option -t ${shellQuote(options.session)} remain-on-exit on`);
-  commands.push(`set-option -t ${shellQuote(options.session)} status ${options.status === true ? "on" : "off"}`);
-  if (options.historyLimit) commands.push(`set-option -t ${shellQuote(options.session)} history-limit ${options.historyLimit}`);
+  const commands = [...setup];
+  if (options.fixedSize) {
+    // tmux 3.5/3.5a on Linux can ignore `new-session -d -x/-y` while another
+    // client is attached, sizing the new pane from that client instead. Seed
+    // the server default as well as passing -x/-y, then force manual size for
+    // later attaches.
+    commands.push(`set-option -g default-size ${cols}x${rows}`);
+  }
+  commands.push(flags.join(" "));
+  if (options.fixedSize) {
+    commands.push(`set-option -t ${target} window-size manual`);
+    commands.push(`resize-window -t ${target} -x ${cols} -y ${rows}`);
+  }
+  if (options.remainOnExit) commands.push(`set-window-option -t ${target} remain-on-exit on`);
+  commands.push(`set-option -t ${target} status ${options.status === true ? "on" : "off"}`);
+  if (options.historyLimit) commands.push(`set-option -t ${target} history-limit ${options.historyLimit}`);
   return `${observableTerminalEnvPrefix()} tmux ${commands.join(" \\; ")}`;
 }
 
@@ -232,6 +244,6 @@ export async function runHostObservableCommand(options: HostObservableCommandOpt
   const output = captured.stdout.toString();
   await rm(exitFile, { force: true }).catch(() => undefined);
   const cleanupAfterMs = options.cleanupAfterMs ?? 5 * 60_000;
-  if (cleanupAfterMs >= 0) setTimeout(() => { Bun.spawn(["sh", "-lc", buildKillSessionCommand(options.session)]); }, cleanupAfterMs);
+  if (cleanupAfterMs >= 0) setTimeout(() => { Bun.spawn(["sh", "-lc", buildKillSessionCommand(options.session)]); }, cleanupAfterMs).unref?.();
   return { exitCode, output };
 }

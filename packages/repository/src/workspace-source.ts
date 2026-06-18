@@ -8,7 +8,7 @@ import { defaultDataDir } from "@atelier/core";
 import type { CommandResult } from "@atelier/core";
 import { AtelierCoreError, invalidArguments } from "@atelier/core";
 import type { AtelierEventBus } from "@atelier/core";
-import { buildHasSessionCommand, buildKillSessionCommand, buildObservableSessionCommand, shellQuote } from "@atelier/observable-terminal/server";
+import { runHostObservableCommand, shellQuote } from "@atelier/observable-terminal/server";
 
 export interface PreparedWorkspaceSource {
   workspaceId: string;
@@ -109,17 +109,6 @@ async function requireCommand(name: string, args: string[], options: { env?: Rec
   return result;
 }
 
-async function startRepositoryProvisionTailSession(session: string, cwd: string, tailCommand: string): Promise<void> {
-  const create = await command("sh", ["-lc", buildObservableSessionCommand({ session, cwd, command: shellQuote(tailCommand), fixedSize: true, remainOnExit: true })]);
-  if (create.exitCode !== 0) throw new AtelierCoreError("provision_terminal_failed", (create.stderr || create.stdout).trim() || `could not start provision terminal ${session}`);
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const exists = await command("sh", ["-lc", buildHasSessionCommand(session)]);
-    if (exists.exitCode === 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new AtelierCoreError("provision_terminal_failed", `provision terminal session did not appear: ${session}`);
-}
-
 async function git(args: string[], options: { errorCode?: string } = {}): Promise<CommandResult> {
   const token = await githubTokenAsync();
   const credentialHelper = `!f() { test "$1" = get || exit 0; token="\${GH_TOKEN:-}"; [ -n "$token" ] || exit 0; echo username=x-access-token; echo password="$token"; }; f`;
@@ -141,68 +130,106 @@ async function pathExists(path: string): Promise<boolean> {
   return await stat(path).then(() => true, () => false);
 }
 
-async function ensureLfs(repoPath: string, branch: string | null): Promise<void> {
-  await requireCommand("git", ["lfs", "version"], { errorCode: "git_lfs_unavailable" });
-  await git(["-C", repoPath, "lfs", "install", "--local"], { errorCode: "git_lfs_error" });
-  const args = branch ? ["-C", repoPath, "lfs", "pull", "origin", branch] : ["-C", repoPath, "lfs", "pull"];
-  await git(args, { errorCode: "git_lfs_error" });
+function tailText(text: string, lines = 120): string {
+  return text.replaceAll("\r", "").split("\n").slice(-lines).join("\n").trimEnd();
 }
 
-async function ensureTemplate(gitUrl: string, branch: string | null, key: string): Promise<{ repoPath: string; resolvedCommit: string; effectiveBranch: string | null }> {
+async function ensureTemplate(gitUrl: string, branch: string | null, key: string, options: { workspaceId: string; events?: AtelierEventBus; logPath: string }): Promise<{ repoPath: string; resolvedCommit: string; effectiveBranch: string | null }> {
   const dir = templateDir(key);
   const repoPath = templateRepoPath(key);
+  const tmpPath = join(dir, `repo.tmp-${process.pid}-${Date.now()}`);
+  const effectiveBranchPath = join(dir, `effective-branch-${process.pid}-${Date.now()}.txt`);
+  const resolvedCommitPath = join(dir, `resolved-commit-${process.pid}-${Date.now()}.txt`);
   await mkdir(dir, { recursive: true });
+  await rm(tmpPath, { recursive: true, force: true });
+  await rm(effectiveBranchPath, { force: true });
+  await rm(resolvedCommitPath, { force: true });
 
-  if (!await pathExists(repoPath)) {
-    const tmpPath = join(dir, `repo.tmp-${process.pid}-${Date.now()}`);
-    await rm(tmpPath, { recursive: true, force: true });
-    try {
-      await git(["clone", gitUrl, tmpPath], { errorCode: "git_clone_failed" });
-      await rename(tmpPath, repoPath);
-    } catch (error) {
-      await rm(tmpPath, { recursive: true, force: true }).catch(() => undefined);
-      throw error;
-    }
-  }
+  const token = await githubTokenAsync();
+  const credentialHelper = `!f() { test "$1" = get || exit 0; token="\${GH_TOKEN:-}"; [ -n "$token" ] || exit 0; echo username=x-access-token; echo password="$token"; }; f`;
+  const script = `
+set -euo pipefail
+export GIT_TERMINAL_PROMPT=0
+repo_path=${shellQuote(repoPath)}
+tmp_path=${shellQuote(tmpPath)}
+git_url=${shellQuote(gitUrl)}
+branch=${shellQuote(branch ?? "")}
+credential_helper=${shellQuote(credentialHelper)}
+effective_branch_file=${shellQuote(effectiveBranchPath)}
+resolved_commit_file=${shellQuote(resolvedCommitPath)}
 
-  await git(["-C", repoPath, "remote", "set-url", "origin", gitUrl]);
-  await git(["-C", repoPath, "fetch", "--prune", "--tags", "origin"]);
+git_cmd() { git -c credential.helper="$credential_helper" "$@"; }
+trap 'rm -rf "$tmp_path"' EXIT
 
-  let effectiveBranch = branch;
-  let resetRef: string;
-  if (branch) {
-    resetRef = `origin/${branch}`;
-    await git(["-C", repoPath, "rev-parse", "--verify", resetRef]);
-    await git(["-C", repoPath, "checkout", "-B", branch, resetRef]);
-  } else {
-    await git(["-C", repoPath, "remote", "set-head", "origin", "-a"]);
-    const head = await git(["-C", repoPath, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
-    const remoteHead = head.stdout.trim();
-    if (!remoteHead.startsWith("origin/")) throw new AtelierCoreError("git_error", `could not resolve origin default branch for ${gitUrl}`);
-    effectiveBranch = remoteHead.slice("origin/".length);
-    resetRef = remoteHead;
-    await git(["-C", repoPath, "checkout", "-B", effectiveBranch, resetRef]);
-  }
+if [ ! -d "$repo_path/.git" ]; then
+  rm -rf "$tmp_path"
+  git_cmd clone "$git_url" "$tmp_path"
+  rm -rf "$repo_path"
+  mv "$tmp_path" "$repo_path"
+fi
 
-  await git(["-C", repoPath, "reset", "--hard", resetRef]);
-  await git(["-C", repoPath, "clean", "-ffdx"]);
-  await ensureLfs(repoPath, effectiveBranch);
+git_cmd -C "$repo_path" remote set-url origin "$git_url"
+git_cmd -C "$repo_path" fetch --prune --tags origin
 
-  const status = await git(["-C", repoPath, "status", "--porcelain=v1"]);
-  if (status.stdout.trim()) throw new AtelierCoreError("git_dirty_template", `template checkout is dirty after reset: ${status.stdout.trim()}`);
+if [ -n "$branch" ]; then
+  effective_branch="$branch"
+  reset_ref="origin/$branch"
+  git_cmd -C "$repo_path" rev-parse --verify "$reset_ref"
+  git_cmd -C "$repo_path" checkout -B "$effective_branch" "$reset_ref"
+else
+  git_cmd -C "$repo_path" remote set-head origin -a
+  remote_head="$(git_cmd -C "$repo_path" symbolic-ref --short refs/remotes/origin/HEAD)"
+  case "$remote_head" in origin/*) ;; *) echo "could not resolve origin default branch for $git_url" >&2; exit 2 ;; esac
+  effective_branch="\${remote_head#origin/}"
+  reset_ref="$remote_head"
+  git_cmd -C "$repo_path" checkout -B "$effective_branch" "$reset_ref"
+fi
 
-  const head = await git(["-C", repoPath, "rev-parse", "HEAD"]);
+git_cmd -C "$repo_path" reset --hard "$reset_ref"
+git_cmd -C "$repo_path" clean -ffdx
+git_cmd lfs version
+git_cmd -C "$repo_path" lfs install --local
+git_cmd -C "$repo_path" lfs pull origin "$effective_branch"
+
+status="$(git_cmd -C "$repo_path" status --porcelain=v1)"
+if [ -n "$status" ]; then
+  echo "template checkout is dirty after reset:" >&2
+  echo "$status" >&2
+  exit 3
+fi
+
+git_cmd -C "$repo_path" rev-parse HEAD > "$resolved_commit_file"
+printf '%s\n' "$effective_branch" > "$effective_branch_file"
+`;
+
+  const result = await runHostObservableCommand({
+    session: `atelier-provision-git-${crypto.randomUUID().slice(0, 8)}`,
+    cwd: dir,
+    command: script,
+    env: token ? { GH_TOKEN: token } : undefined,
+    onSessionStarted: async (session) => {
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "running", terminal: { kind: "host-tmux", session } });
+    },
+  });
+  await appendFile(options.logPath, result.output).catch(() => undefined);
+  if (result.exitCode !== 0) throw new AtelierCoreError("git_error", tailText(result.output) || `git provisioning failed with exit code ${result.exitCode}`);
+
+  const effectiveBranch = (await readFile(effectiveBranchPath, "utf8")).trim() || null;
+  const resolvedCommit = (await readFile(resolvedCommitPath, "utf8")).trim();
+  await rm(effectiveBranchPath, { force: true });
+  await rm(resolvedCommitPath, { force: true });
+
   const metadata = {
     gitUrl,
     branch,
     effectiveBranch,
     templateKey: key,
-    resolvedCommit: head.stdout.trim(),
+    resolvedCommit,
     updatedAt: new Date().toISOString(),
   };
   await writeFile(join(dir, "metadata.json"), `${JSON.stringify(metadata, null, 2)}\n`);
 
-  return { repoPath, resolvedCommit: head.stdout.trim(), effectiveBranch };
+  return { repoPath, resolvedCommit, effectiveBranch };
 }
 
 function reflinkCopyArgs(src: string, dest: string): string[] | null {
@@ -295,15 +322,10 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
     const tmpWorkPath = join(cleanupPath, `work.tmp-${process.pid}-${Date.now()}`);
     await rm(tmpWorkPath, { recursive: true, force: true });
     const logPath = join(cleanupPath, `repository-provision-${Date.now()}.log`);
-    const donePath = `${logPath}.done`;
-    const session = `atelier-provision-git-${crypto.randomUUID().slice(0, 8)}`;
 
     try {
       await writeFile(logPath, `Preparing repository ${gitUrl}${branch ? `#${branch}` : ""}\n`);
-      const tailCommand = `touch ${shellQuote(logPath)}; tail -n +1 -f ${shellQuote(logPath)} & pid=$!; while [ ! -f ${shellQuote(donePath)} ]; do sleep 0.2; done; sleep 0.5; kill "$pid" 2>/dev/null || true`;
-      await startRepositoryProvisionTailSession(session, cleanupPath, tailCommand);
-      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "running", terminal: { kind: "host-tmux", session } });
-      const template = await provisionLog.run(logPath, () => ensureTemplate(gitUrl, branch, key));
+      const template = await provisionLog.run(logPath, () => ensureTemplate(gitUrl, branch, key, { workspaceId: options.workspaceId, events: options.events, logPath }));
       await copyWorkspaceTemplate(template.repoPath, tmpWorkPath, sourceRoot());
       await verifyStandaloneWorktree(tmpWorkPath);
       await rm(worktreePath, { recursive: true, force: true });
@@ -320,9 +342,7 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
       };
       await writeFile(join(cleanupPath, "metadata.json"), `${JSON.stringify(metadata, null, 2)}\n`);
 
-      await writeFile(donePath, "done\n").catch(() => undefined);
-      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "done" });
-      setTimeout(() => { Bun.spawn(["sh", "-lc", buildKillSessionCommand(session)]); }, 30_000);
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "done", output: tailText(await readFile(logPath, "utf8").catch(() => "")) });
       return {
         workspaceId: options.workspaceId,
         worktreePath,
@@ -333,10 +353,8 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
         templateKey: key,
       };
     } catch (error) {
-      await writeFile(donePath, "failed\n").catch(() => undefined);
-      setTimeout(() => { Bun.spawn(["sh", "-lc", buildKillSessionCommand(session)]); }, 30_000);
       await rm(tmpWorkPath, { recursive: true, force: true }).catch(() => undefined);
-      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "failed", error: error instanceof Error ? error.message : String(error) });
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "failed", output: tailText(await readFile(logPath, "utf8").catch(() => "")), error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   });
