@@ -39,7 +39,7 @@ export function workspaceProxyUrl(workspaceId: string, token: string): string {
 
 function workspaceProxyEnv(workspaceId: string, token: string, extraNoProxy: string[] = []): Record<string, string> {
   const proxy = workspaceProxyUrl(workspaceId, token);
-  const noProxy = uniqueNoProxyEntries(["localhost", "127.0.0.1", "::1", ...extraNoProxy]).join(",");
+  const noProxy = uniqueNoProxyEntries([...defaultNoProxyEntries(), ...extraNoProxy]).join(",");
   return {
     HTTP_PROXY: proxy,
     HTTPS_PROXY: proxy,
@@ -56,6 +56,26 @@ function workspaceProxyEnv(workspaceId: string, token: string, extraNoProxy: str
     YARN_CA_FILE: "/etc/ssl/certs/ca-certificates.crt",
     PIP_CERT: "/etc/ssl/certs/ca-certificates.crt",
   };
+}
+
+function defaultNoProxyEntries(): string[] {
+  return [
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    ...domainNoProxyEntries(process.env.ATELIER_AUTH_COOKIE_DOMAIN),
+    ...parseNoProxyValue(process.env.ATELIER_WORKSPACE_PROXY_NO_PROXY),
+    // Legacy/public Atelier domains should be reached directly. The egress
+    // proxy can downgrade/MITM TLS to HTTP/1.1 for secret injection, which
+    // breaks strict HTTP/2 clients such as Subito's gRPC uploader.
+    ...domainNoProxyEntries("luther.lucasmeijer.com"),
+    ...domainNoProxyEntries("shockwaving.com"),
+  ];
+}
+
+function domainNoProxyEntries(domain: string | undefined): string[] {
+  const normalized = domain?.trim().toLowerCase().replace(/^\*\./, "").replace(/^\./, "").replace(/\.$/, "");
+  return normalized ? [normalized, `.${normalized}`, `*.${normalized}`] : [];
 }
 
 function uniqueNoProxyEntries(entries: string[]): string[] {
