@@ -2,7 +2,7 @@ import { mkdir, open } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AtelierEventBus } from "@atelier/core";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
-import { configuredAgentModels, createPiModelRegistry } from "./pi-config-models.ts";
+import { configuredAgentModels } from "./pi-config-models.ts";
 import {
   AuthStorage,
   createAgentSession,
@@ -760,13 +760,13 @@ class RealAgentRuntime extends BaseAgentRuntime {
     }
   }
 
-  private async refreshModelRegistryForCurrentModel(): Promise<void> {
+  private refreshModelRegistryForCurrentModel(): void {
     const current = this.session.model;
-    const registry = await createPiModelRegistry();
-    this.session.modelRegistry = registry;
+    this.session.modelRegistry.authStorage?.reload?.();
+    this.session.modelRegistry.refresh?.();
     if (!current?.provider || !current?.id) return;
-    const refreshed = registry.find?.(current.provider, current.id);
-    if (refreshed) this.session.model = refreshed;
+    const refreshed = this.session.modelRegistry.find?.(current.provider, current.id);
+    if (refreshed) this.session.agent.state.model = refreshed;
   }
 
   async submit(text: string, options: SubmitOptions): Promise<void> {
@@ -786,7 +786,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       return;
     }
 
-    await this.refreshModelRegistryForCurrentModel().catch(() => undefined);
+    try { this.refreshModelRegistryForCurrentModel(); } catch {}
     this.liveBegin({ text: trimmed, images: options.images ?? [] });
     this.setBusy(true);
     void this.session
@@ -805,7 +805,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
     this.liveBegin({ text: next.displayText === "(attachments)" ? "" : next.displayText, images: next.imageRefs });
     this.setBusy(true);
     void (async () => {
-      await this.refreshModelRegistryForCurrentModel().catch(() => undefined);
+      try { this.refreshModelRegistryForCurrentModel(); } catch {}
       await this.session.prompt(next.fullText, next.imageContent && next.imageContent.length > 0 ? { images: next.imageContent } : undefined);
     })().catch(async (error: unknown) => {
       this.notice("error", error instanceof Error ? error.message : String(error));
@@ -826,11 +826,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   async setModel(provider: string, modelId: string): Promise<void> {
-    try {
-      this.session.modelRegistry = await createPiModelRegistry();
-    } catch {
-      // Fall back to the registry held by the session.
-    }
+    try { this.session.modelRegistry.authStorage?.reload?.(); this.session.modelRegistry.refresh?.(); } catch {}
     const model = this.session.modelRegistry.find?.(provider, modelId);
     if (!model) {
       this.notice("error", `Model not available: ${provider}/${modelId}`);
