@@ -396,10 +396,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const repoRows = repos.map((repo) => {
       const modalId = domId("agent_launch_repo_modal", repo.id);
       const spec = formatRepositorySpec(repo);
-      return `<div class="row repository-row repo-tinted-row" style="${repoColorStyle(repo.id)}" title="${escapeHtml(spec)}">
-    <span class="repo-swatch" aria-hidden="true"></span><div><div class="r-title">${escapeHtml(repo.name)}</div></div>
-    <span class="row-actions"><button class="repo-launch-btn" type="button" title="Start agent workspace from this repo" aria-label="Start agent workspace from ${escapeHtml(repo.name)}" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="${modalId}"><span aria-hidden="true">+</span></button></span>
-  </div>`;
+      return `<button class="row repository-row repo-tinted-row" type="button" style="${repoColorStyle(repo.id)}" title="${escapeHtml(spec)}" aria-label="Start agent workspace from ${escapeHtml(repo.name)}" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="${modalId}">
+    <span class="repo-swatch" aria-hidden="true"></span><span class="row-main"><span class="r-title">${escapeHtml(repo.name)}</span></span>
+    <span class="row-actions"><span class="repo-launch-icon" aria-hidden="true">+</span></span>
+  </button>`;
     }).join("");
 
     const addRepoRow = `<button class="row ghost-row addbtn" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="add-repository-modal">

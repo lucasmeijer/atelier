@@ -384,16 +384,18 @@ button { border: 0; background: none; cursor: pointer; }
 .workspace-row.pending-delete .row-main, .workspace-row.pending-delete a { pointer-events: none; }
 .workspace-row::before { content: ""; width: 14px; height: 14px; border-radius: 5px; background: var(--repo-color, var(--accent)); flex: 0 0 auto; }
 .workspace-row.active { background: var(--accent-soft); }
-.workspace-row-title-frame { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.workspace-row-title-frame { display: flex; align-items: center; gap: 3px; flex: 1; min-width: 0; }
 .row-main { flex: 1; min-width: 0; }
 .r-title { font-weight: 550; font-size: 12.5px; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .workspace-row.active .r-title { font-weight: 650; color: var(--text); }
 .r-sub { font-size: 11.5px; color: var(--muted2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .workspace-row.failed .r-sub { color: var(--red); }
 .workspace-row-edit, .workspace-row-delete button { color: var(--muted2); border-radius: 6px; opacity: 0; }
-.workspace-row-edit { font-size: 12px; padding: 1px 4px; }
-.workspace-row:hover .workspace-row-edit { opacity: 1; }
-.workspace-row-actions, .row-actions { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.workspace-row-edit { display: none; font-size: 12px; padding: 1px 4px; }
+.workspace-row:hover .workspace-row-edit { display: inline-flex; opacity: 1; }
+.workspace-row-actions, .row-actions { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; }
+.workspace-row-delete { display: none; }
+.workspace-row:hover .workspace-row-delete { display: flex; justify-content: flex-end; }
 .workspace-row-delete button { padding: 2px 4px; }
 .workspace-row:hover .workspace-row-delete button { opacity: .8; }
 .workspace-row-delete button:hover { opacity: 1; color: var(--red); background: var(--red-soft); }
@@ -411,11 +413,13 @@ button { border: 0; background: none; cursor: pointer; }
 .sidebar-host-repos { margin-top: 0; padding: 8px 8px 6px; border-top: 1px solid var(--line); overflow: hidden; }
 .sidebar-host-repos .lh { padding-left: 10px; padding-top: 4px; }
 .repositories-table { overflow-y: auto; overflow-x: hidden; max-height: 34vh; }
-.repository-row { cursor: default; overflow-x: hidden; padding-right: 8px; }
-.repository-row .row-actions { margin-left: 0; flex: 0 0 auto; }
+.repository-row { cursor: pointer; overflow-x: hidden; padding-right: 10px; }
+.repository-row .row-main { display: block; min-width: 0; }
+.repository-row .row-actions { margin-left: auto; flex: 0 0 auto; }
 .repo-tinted-row, .repo-tinted-row:hover { background: transparent; }
-.repo-launch-btn { width: 22px; height: 22px; min-width: 22px; padding: 0; display: grid; place-items: center; color: var(--muted2); font-size: 15px; line-height: 1; }
-.repo-launch-btn:hover { color: var(--accent); }
+.sidebar-host-repos .repository-row:hover, .sidebar-host-repos .repository-row:focus-visible { background: var(--bg); }
+.repo-launch-icon { display: inline-grid; place-items: center; min-width: 0; padding: 2px 4px; border-radius: 6px; color: var(--muted2); font-size: 15px; font-weight: 700; line-height: 1; }
+.repository-row:hover .repo-launch-icon, .repository-row:focus-visible .repo-launch-icon { color: var(--accent); background: var(--accent-soft); }
 .sidebar-host-repos .addbtn .r-sub { display: none; }
 .sidefoot { border-top: 1px solid var(--line); padding: 7px 8px; display: flex; align-items: center; gap: 6px; }
 .footbtn { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px; color: var(--muted); font-weight: 600; font-size: 12.5px; flex: 1; }
