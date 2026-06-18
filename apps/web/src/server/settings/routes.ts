@@ -11,6 +11,7 @@ import {
 } from "@atelier/agent/server";
 import { atelierName } from "@atelier/shared";
 import { listSettingsContributions, registerSettingsContribution } from "./registry.ts";
+import { validateGitHubToken } from "../github-auth.ts";
 import { renderOnboardingDialogIfNeeded } from "../onboarding/routes.ts";
 
 function escapeHtml(value: unknown): string {
@@ -207,7 +208,24 @@ export async function renderSettingsDialog(active = "appearance"): Promise<strin
   </dialog>`;
 }
 
-function flowModal(kind: "github" | "provider", id: string, label: string, method: string, completeAction: string): string {
+function githubTokenModal(error = ""): string {
+  return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
+    <form method="post" action="/settings/github/connect" data-turbo="true">
+      <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerColor("github")}">G</div><div><b>GitHub</b><p>GitHub CLI token</p></div></div>
+      <div class="settings-flow-body">
+        <p>On your machine, sign in with GitHub CLI if needed, then print your token:</p>
+        <pre class="settings-command">gh auth login
+gh auth token</pre>
+        <p>Paste the token output below. Atelier stores it locally and injects it into workspace GitHub requests as <code>GH_TOKEN</code>.</p>
+        ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
+        <input class="settings-input" type="password" name="token" placeholder="Paste output from gh auth token" autocomplete="off" required autofocus>
+      </div>
+      <div class="settings-flow-actions"><button class="settings-btn" formmethod="dialog">Cancel</button><button class="settings-btn primary" type="submit">Connect</button></div>
+    </form>
+  </dialog>`;
+}
+
+function flowModal(id: string, label: string, method: string, completeAction: string): string {
   const isApi = method === "api_key";
   return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <form method="post" action="${escapeHtml(completeAction)}" data-turbo="true" data-action="turbo:submit-end->modal#submitted">
@@ -227,9 +245,13 @@ export async function handleSettingsRequest(request: Request, url: URL): Promise
     const html = await renderSettingsDialog(url.searchParams.get("section") ?? "appearance");
     return wantsStream(request) ? stream(update("settings_modal_host", html)) : response(html);
   }
-  if (url.pathname === "/settings/github/flow" && request.method === "POST") return stream(update("settings_modal_host", `${await renderSettingsDialog("workspaces")}${flowModal("github", "github", "GitHub", "device", "/settings/github/connect")}`));
+  if (url.pathname === "/settings/github/flow" && request.method === "POST") return stream(update("settings_modal_host", `${await renderSettingsDialog("workspaces")}${githubTokenModal()}`));
   if (url.pathname === "/settings/github/connect" && request.method === "POST") {
-    setWorkspaceGitHubToken("atelier-fake-github-token");
+    const form = await request.formData();
+    const token = String(form.get("token") ?? "").trim();
+    const validation = await validateGitHubToken(token);
+    if (!validation.ok) return stream(replace("settings_flow_dialog", githubTokenModal(validation.message)));
+    setWorkspaceGitHubToken(token);
     return stream(`${replace("settings_dialog", await renderSettingsDialog("workspaces"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`);
   }
   if (url.pathname === "/settings/github/disconnect" && request.method === "POST") {
@@ -242,7 +264,7 @@ export async function handleSettingsRequest(request: Request, url: URL): Promise
     const method = url.searchParams.get("method") ?? "api_key";
     const registry = await createPiModelRegistry();
     const label = registry.getProviderDisplayName(provider);
-    return stream(update("settings_modal_host", `${await renderSettingsDialog("agent")}${flowModal("provider", provider, label, method, `/settings/providers/${encodeURIComponent(provider)}/connect?method=${encodeURIComponent(method)}`)}`));
+    return stream(update("settings_modal_host", `${await renderSettingsDialog("agent")}${flowModal(provider, label, method, `/settings/providers/${encodeURIComponent(provider)}/connect?method=${encodeURIComponent(method)}`)}`));
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/connect$/);
   if (match && request.method === "POST") {

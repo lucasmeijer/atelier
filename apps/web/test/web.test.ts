@@ -6,6 +6,7 @@ import { createWebApp } from "../src/server/app.ts";
 import { createStreamHub } from "../src/server/stream-hub.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
+import { clearWorkspaceGitHubToken } from "@atelier/core";
 import { addRepository, type WorkspaceDeleteBlockedDetails } from "@atelier/repository";
 
 function deferred<T = void>() {
@@ -301,6 +302,45 @@ describe("web app contracts", () => {
     expect(result?.createdGroup).toBe(true);
     expect(after.closedTabs).not.toContain("browser");
     expect(after.groups.some((group) => group.tabs.includes("browser"))).toBe(true);
+  });
+
+  test("GitHub connect flow asks for GitHub CLI token output", async () => {
+    const { app } = createTestApp();
+
+    const response = await app.fetch(post("/settings/github/flow"));
+    const body = await response.text();
+
+    expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
+    expect(body).toContain("GitHub CLI token");
+    expect(body).toContain("gh auth login");
+    expect(body).toContain("gh auth token");
+    expect(body).toContain("Paste output from gh auth token");
+    expect(body).not.toContain("personal-access-tokens");
+  });
+
+  test("GitHub connect validates and stores pasted GitHub CLI token", async () => {
+    const previousDataDir = process.env.ATELIER_DATA_DIR;
+    const dataDir = await mkdtemp(join(tmpdir(), "atelier-web-github-"));
+    const originalFetch = globalThis.fetch;
+    try {
+      process.env.ATELIER_DATA_DIR = dataDir;
+      globalThis.fetch = (() => Promise.resolve(Response.json({ login: "octocat" }))) as unknown as typeof fetch;
+      const { app } = createTestApp();
+
+      const response = await app.fetch(postForm("/settings/github/connect", new URLSearchParams({ token: "cli-token" })));
+      const body = await response.text();
+
+      expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
+      expect(body).toContain('target="settings_dialog"');
+      expect(body).toContain("Connected");
+      expect(body).toContain('target="settings_flow_dialog"');
+    } finally {
+      clearWorkspaceGitHubToken();
+      globalThis.fetch = originalFetch;
+      if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
+      else process.env.ATELIER_DATA_DIR = previousDataDir;
+      await rm(dataDir, { recursive: true, force: true });
+    }
   });
 
   test("SSE stream emits raw turbo-stream HTML in plain data: lines (turbo-stream-source compatible)", async () => {

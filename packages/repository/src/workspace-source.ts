@@ -2,9 +2,9 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { homedir, platform } from "node:os";
+import { platform } from "node:os";
 import { join, resolve } from "node:path";
-import { defaultDataDir } from "@atelier/core";
+import { defaultDataDir, discoverHostGitHubToken } from "@atelier/core";
 import type { CommandResult } from "@atelier/core";
 import { AtelierCoreError, invalidArguments } from "@atelier/core";
 import type { AtelierEventBus } from "@atelier/core";
@@ -119,11 +119,7 @@ async function git(args: string[], options: { errorCode?: string } = {}): Promis
 }
 
 async function githubTokenAsync(): Promise<string | undefined> {
-  if (process.env.GH_TOKEN) return process.env.GH_TOKEN;
-  const tokenPath = join(homedir(), "GH_TOKEN");
-  if (!existsSync(tokenPath)) return undefined;
-  const text = await readFile(tokenPath, "utf8").catch(() => "");
-  return text.trim() || undefined;
+  return discoverHostGitHubToken();
 }
 
 async function pathExists(path: string): Promise<boolean> {

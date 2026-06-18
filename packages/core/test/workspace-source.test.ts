@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { clearWorkspaceGitHubToken, setWorkspaceGitHubToken } from "@atelier/core";
 import { prepareWorkspaceSource } from "@atelier/repository";
 
 async function run(command: string[], options: { cwd?: string } = {}): Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -43,6 +44,7 @@ describe("workspace source preparation", () => {
   });
 
   afterEach(async () => {
+    clearWorkspaceGitHubToken();
     if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
     else process.env.ATELIER_DATA_DIR = previousDataDir;
     await Promise.all(tempRoots.splice(0).map((path) => rm(path, { recursive: true, force: true })));
@@ -59,6 +61,31 @@ describe("workspace source preparation", () => {
     const commonDir = (await run(["git", "-C", source.worktreePath, "rev-parse", "--path-format=absolute", "--git-common-dir"])).stdout.trim();
     expect(await realpath(commonDir)).toBe(await realpath(join(source.worktreePath, ".git")));
     expect(await Bun.file(join(source.worktreePath, ".git", "objects", "info", "alternates")).exists()).toBe(false);
+  });
+
+  test("applies the stored GitHub token to host-side git commands before container creation", async () => {
+    const fixture = await createRemote();
+    tempRoots.push(fixture.root);
+    const realGit = (await run(["which", "git"])).stdout.trim();
+    const fakeBin = await mkdtemp(join(tmpdir(), "atelier-fake-git-"));
+    tempRoots.push(fakeBin);
+    const tokenLog = join(fakeBin, "tokens.log");
+    const fakeGit = join(fakeBin, "git");
+    await writeFile(fakeGit, `#!/bin/sh\nprintf '%s\\n' "\${GH_TOKEN-}" >> ${JSON.stringify(tokenLog)}\nexec ${JSON.stringify(realGit)} "$@"\n`);
+    await chmod(fakeGit, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${fakeBin}:${previousPath ?? ""}`;
+    setWorkspaceGitHubToken("stored-token");
+    try {
+      await prepareWorkspaceSource({ workspaceId: "ws-token", gitUrl: fixture.remote, branch: "main" });
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+    }
+
+    const tokens = (await Bun.file(tokenLog).text()).trim().split("\n");
+    expect(tokens.length).toBeGreaterThan(0);
+    expect(tokens.every((token) => token === "stored-token")).toBe(true);
   });
 
   test("updates the template for later workspaces without changing existing workspaces", async () => {

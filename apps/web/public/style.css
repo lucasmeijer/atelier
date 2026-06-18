@@ -545,6 +545,8 @@ button { border: 0; background: none; cursor: pointer; }
 .settings-flow-head { display: flex; align-items: center; gap: 11px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
 .settings-flow-head p { margin: 1px 0 0; color: var(--muted); font-size: 11px; }
 .settings-flow-body { padding: 20px 18px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.settings-command { margin: 10px 0 12px; padding: 12px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); font: 12.5px/1.5 var(--mono); white-space: pre-wrap; }
+.settings-error { color: var(--red); background: var(--red-soft); border-radius: 10px; padding: 9px 11px; }
 .settings-code { margin-top: 12px; padding: 18px; border: 1px dashed var(--line2); border-radius: 12px; background: var(--bg); color: var(--text); font: 800 28px var(--mono); letter-spacing: 6px; text-align: center; }
 .settings-flow-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 0 18px 18px; }
 .onboarding-dialog { width: min(560px, 96vw); height: auto; max-height: 92vh; }

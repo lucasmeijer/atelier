@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { defaultDataDir } from "../data-dir.ts";
 import { createHttpHooks, type SecretDefinition, type SecretManager } from "./placeholder-hooks.ts";
@@ -23,16 +22,9 @@ function storedGitHubTokenPath(): string {
 }
 
 export function discoverHostGitHubToken(): string | undefined {
-  const envToken = process.env[githubTokenEnvVar];
-  if (envToken) return envToken;
   const storedTokenPath = storedGitHubTokenPath();
-  if (existsSync(storedTokenPath)) {
-    const token = readFileSync(storedTokenPath, "utf8").trim();
-    if (token) return token;
-  }
-  const tokenPath = join(homedir(), githubTokenEnvVar);
-  if (!existsSync(tokenPath)) return undefined;
-  const token = readFileSync(tokenPath, "utf8").trim();
+  if (!existsSync(storedTokenPath)) return undefined;
+  const token = readFileSync(storedTokenPath, "utf8").trim();
   return token || undefined;
 }
 
