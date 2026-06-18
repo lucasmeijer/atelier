@@ -4,5 +4,6 @@ import { join } from "node:path";
 export function defaultDataDir(): string {
   if (process.env.ATELIER_DATA_DIR) return process.env.ATELIER_DATA_DIR;
   if (platform() === "darwin") return join(homedir(), "Library", "Application Support", "atelier");
+  if (platform() === "linux") return "/storage";
   return "/var/lib/atelier";
 }
