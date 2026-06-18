@@ -177,8 +177,8 @@ function renderComposerSettings(formId: string, selectedModel?: string): string 
   }).join("");
   const thinkingLevels = ["off", "low", "medium", "high"];
   return `<span class="agent-stat-right">
-<select class="agent-sel" name="model" form="${escapeHtml(formId)}" title="Model">${modelOptions}</select>
-<select class="agent-sel" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}">${escapeHtml(level)}</option>`).join("")}</select>
+<select class="agent-sel" data-controller="agent-select-menu" name="model" form="${escapeHtml(formId)}" title="Model">${modelOptions}</select>
+<select class="agent-sel" data-controller="agent-select-menu" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}">${escapeHtml(level)}</option>`).join("")}</select>
 </span>`;
 }
 
@@ -209,8 +209,8 @@ export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): 
 <span class="agent-stat" title="Tokens down (output)">↓ <b>${formatTokens(stats.outputTokens)}</b></span>
 <span class="agent-stat" title="Session cost"><b>${formatCost(stats.cost)}</b></span>
 <span class="agent-stat-right">
-<form method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" data-controller="agent-autosubmit"><select class="agent-sel" name="model" data-action="change->agent-autosubmit#submit" title="Model">${modelOptions || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`}</select></form>
-${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" data-controller="agent-autosubmit"><select class="agent-sel" name="level" data-action="change->agent-autosubmit#submit" title="Thinking level">${thinkingOptions}</select></form>` : ""}
+<form method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-select-menu" name="model" data-action="change->agent-autosubmit#submit" title="Model">${modelOptions || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`}</select></form>
+${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-select-menu" name="level" data-action="change->agent-autosubmit#submit" title="Thinking level">${thinkingOptions}</select></form>` : ""}
 </span>`;
 }
 

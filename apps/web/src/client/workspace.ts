@@ -46,70 +46,14 @@ class WorkspaceShellController extends Controller {
   declare readonly hasSidebarTarget: boolean;
   declare readonly toggleTargets: HTMLButtonElement[];
   private readonly storageKey = "atelier.workspaceSidebar";
-  private readonly minWidth = 260;
-  private readonly maxWidth = 720;
-  private readonly collapseThreshold = 180;
-  private readonly expandThreshold = 220;
-  private resize?: { startX: number; startWidth: number; pointerId: number; handle: HTMLElement };
 
   connect(): void {
-    const state = this.savedState();
-    if (state.width) this.setWidth(state.width);
-    this.setCollapsed(Boolean(state.collapsed));
+    this.setCollapsed(Boolean(this.savedState().collapsed));
   }
 
   toggle(): void {
     this.setCollapsed(!this.element.classList.contains("workspace-shell-collapsed"), { persist: true });
   }
-
-  stopPropagation(event: Event): void {
-    event.stopPropagation();
-  }
-
-  startResize(event: PointerEvent): void {
-    if (!this.hasSidebarTarget) return;
-    const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    if (!handle) return;
-    event.preventDefault();
-    const collapsed = this.element.classList.contains("workspace-shell-collapsed");
-    const startWidth = collapsed ? 0 : this.sidebarTarget.getBoundingClientRect().width;
-    this.resize = { startX: event.clientX, startWidth, pointerId: event.pointerId, handle };
-    handle.setPointerCapture(event.pointerId);
-    document.body.classList.add("workspace-shell-resizing");
-    window.addEventListener("pointermove", this.pointerMove);
-    window.addEventListener("pointerup", this.pointerUp, { once: true });
-  }
-
-  private pointerMove = (event: PointerEvent): void => {
-    if (!this.resize) return;
-    const proposedWidth = this.resize.startWidth + event.clientX - this.resize.startX;
-
-    if (proposedWidth <= this.collapseThreshold) {
-      this.setCollapsed(true);
-      return;
-    }
-
-    if (this.element.classList.contains("workspace-shell-collapsed")) {
-      if (proposedWidth < this.expandThreshold) return;
-      this.setCollapsed(false);
-    }
-    this.setWidth(proposedWidth);
-  };
-
-  private pointerUp = (): void => {
-    window.removeEventListener("pointermove", this.pointerMove);
-    document.body.classList.remove("workspace-shell-resizing");
-    const resize = this.resize;
-    this.resize = undefined;
-    const collapsed = this.element.classList.contains("workspace-shell-collapsed");
-    const width = collapsed ? this.savedState().width : this.currentWidth();
-    this.saveState({ ...this.savedState(), width, collapsed });
-    try {
-      resize?.handle.releasePointerCapture(resize.pointerId);
-    } catch {
-      // Ignore browsers that already released capture.
-    }
-  };
 
   private setCollapsed(collapsed: boolean, options: { persist?: boolean } = {}): void {
     this.element.classList.toggle("workspace-shell-collapsed", collapsed);
@@ -121,24 +65,15 @@ class WorkspaceShellController extends Controller {
     if (options.persist) this.saveState({ ...this.savedState(), collapsed });
   }
 
-  private setWidth(width: number): void {
-    const clamped = Math.max(this.minWidth, Math.min(this.maxWidth, width));
-    this.element.style.setProperty("--workspace-sidebar-width", `${clamped}px`);
-  }
-
-  private currentWidth(): number {
-    return this.hasSidebarTarget ? this.sidebarTarget.getBoundingClientRect().width : 360;
-  }
-
-  private savedState(): { width?: number; collapsed?: boolean } {
+  private savedState(): { collapsed?: boolean } {
     try {
-      return JSON.parse(localStorage.getItem(this.storageKey) || "{}") as { width?: number; collapsed?: boolean };
+      return JSON.parse(localStorage.getItem(this.storageKey) || "{}") as { collapsed?: boolean };
     } catch {
       return {};
     }
   }
 
-  private saveState(state: { width?: number; collapsed?: boolean }): void {
+  private saveState(state: { collapsed?: boolean }): void {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify(state));
     } catch {
@@ -586,6 +521,13 @@ class WorkspaceResidencyController extends Controller {
   declare readonly maxResidentValue: number;
   private selectionSeq = 0;
 
+  connect(): void {
+    const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
+    const activeResident = this.residentTargets.find((resident) => resident.classList.contains("active"))
+      ?? (workspaceId ? this.residentTargets.find((resident) => resident.dataset.workspaceId === decodeURIComponent(workspaceId)) : undefined);
+    if (activeResident) this.activateResident(activeResident);
+  }
+
   async selectWorkspace(workspaceId: string, href: string): Promise<void> {
     // Update the URL first: selection state is derived from it, and stream
     // broadcasts arriving while the resident loads must not flip selection back.
@@ -672,10 +614,15 @@ class WorkspaceResidencyController extends Controller {
   private async fetchResident(href: string): Promise<HTMLElement> {
     const url = new URL(href, location.href);
     url.searchParams.set("resident", "1");
-    const html = await fetch(url, { headers: { "Accept": "text/html" } }).then((response) => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30_000);
+    const html = await fetch(url, { headers: { "Accept": "text/html" }, cache: "no-store", signal: controller.signal }).then((response) => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return response.text();
-    });
+    }).catch((error) => {
+      if (error instanceof DOMException && error.name === "AbortError") throw new Error("Timed out loading workspace");
+      throw error;
+    }).finally(() => window.clearTimeout(timeout));
     const template = document.createElement("template");
     template.innerHTML = html.trim();
     const resident = template.content.firstElementChild;
@@ -833,16 +780,6 @@ class WorkspaceListController extends Controller {
   }
 }
 
-class GlobalFilterController extends Controller {
-  declare readonly element: HTMLInputElement;
-  filter(): void {
-    const q = this.element.value.toLowerCase();
-    document.querySelectorAll<HTMLElement>(".table .row:not(.head)").forEach((row) => {
-      row.style.display = row.textContent?.toLowerCase().includes(q) ? "" : "none";
-    });
-  }
-}
-
 class WorkspaceAppFrameController extends Controller {
   static values = { workspaceId: String, appKey: String, initialPath: String };
   declare readonly element: HTMLIFrameElement;
@@ -904,6 +841,126 @@ class AutoScrollController extends Controller {
   }
 }
 
+class ThemeSelectController extends Controller {
+  declare readonly element: HTMLSelectElement;
+  private readonly storageKey = "atelier.theme";
+
+  connect(): void {
+    const saved = this.loadTheme();
+    if (saved) this.element.value = saved;
+    this.apply(this.element.value || "cappuccino");
+    this.element.addEventListener("change", this.changed);
+  }
+
+  disconnect(): void {
+    this.element.removeEventListener("change", this.changed);
+  }
+
+  private changed = (): void => {
+    this.apply(this.element.value);
+    try { localStorage.setItem(this.storageKey, this.element.value); } catch {}
+  };
+
+  private loadTheme(): string | undefined {
+    try { return localStorage.getItem(this.storageKey) || undefined; } catch { return undefined; }
+  }
+
+  private apply(theme: string): void {
+    document.documentElement.dataset.theme = theme;
+    document.querySelectorAll<HTMLSelectElement>('select[data-controller~="theme-select"]').forEach((select) => {
+      if (select !== this.element) select.value = theme;
+    });
+  }
+}
+
+class AgentSelectMenuController extends Controller {
+  declare readonly element: HTMLSelectElement;
+  private button?: HTMLButtonElement;
+  private menu?: HTMLDivElement;
+
+  connect(): void {
+    if (this.element.dataset.agentSelectEnhanced === "true") return;
+    this.element.dataset.agentSelectEnhanced = "true";
+    this.element.classList.add("agent-sel-native");
+    this.button = document.createElement("button");
+    this.button.type = "button";
+    this.button.className = "agent-sel-button";
+    this.button.addEventListener("click", this.toggle);
+    this.menu = document.createElement("div");
+    this.menu.className = "agent-sel-menu hidden";
+    this.element.after(this.button, this.menu);
+    this.element.addEventListener("change", this.sync);
+    document.addEventListener("click", this.closeFromOutside);
+    this.sync();
+  }
+
+  disconnect(): void {
+    this.button?.removeEventListener("click", this.toggle);
+    this.element.removeEventListener("change", this.sync);
+    document.removeEventListener("click", this.closeFromOutside);
+    this.button?.remove();
+    this.menu?.remove();
+    this.element.classList.remove("agent-sel-native");
+    delete this.element.dataset.agentSelectEnhanced;
+  }
+
+  private sync = (): void => {
+    if (!this.button || !this.menu) return;
+    const selected = this.element.selectedOptions[0]?.textContent?.trim() || this.element.value;
+    this.button.textContent = selected;
+    this.menu.innerHTML = "";
+    Array.from(this.element.options).forEach((option) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = `agent-sel-option${option.selected ? " selected" : ""}`;
+      const label = document.createElement("span");
+      label.textContent = option.textContent ?? option.value;
+      item.appendChild(label);
+      if (option.selected) {
+        const check = document.createElement("b");
+        check.textContent = "✓";
+        item.appendChild(check);
+      }
+      item.addEventListener("click", () => {
+        this.element.value = option.value;
+        this.element.dispatchEvent(new Event("change", { bubbles: true }));
+        this.close();
+      });
+      this.menu?.appendChild(item);
+    });
+  };
+
+  private toggle = (event: MouseEvent): void => {
+    event.stopPropagation();
+    document.querySelectorAll(".agent-sel-menu").forEach((menu) => {
+      if (menu !== this.menu) menu.classList.add("hidden");
+    });
+    if (!this.menu || !this.button) return;
+    const opening = this.menu.classList.contains("hidden");
+    this.menu.classList.toggle("hidden", !opening);
+    if (opening) this.positionMenu();
+  };
+
+  private positionMenu(): void {
+    if (!this.menu || !this.button) return;
+    const rect = this.button.getBoundingClientRect();
+    const width = Math.max(184, Math.min(262, rect.width + 120));
+    this.menu.style.width = `${width}px`;
+    this.menu.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, rect.right - width))}px`;
+    this.menu.style.top = `${Math.max(8, rect.top - this.menu.getBoundingClientRect().height - 8)}px`;
+  }
+
+  private closeFromOutside = (event: MouseEvent): void => {
+    const target = event.target instanceof Node ? event.target : null;
+    if (target && (this.menu?.contains(target) || this.button?.contains(target))) return;
+    this.close();
+  };
+
+  private close(): void {
+    this.menu?.classList.add("hidden");
+  }
+}
+
 const application = Application.start();
 application.register("workspace-shell", WorkspaceShellController);
 application.register("workspace-tabs", WorkspaceTabsController);
@@ -925,9 +982,10 @@ application.register("browser-pane", createBrowserPaneController(Controller));
 application.register("browser-address", createBrowserAddressController(Controller));
 application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);
-application.register("global-filter", GlobalFilterController);
 application.register("workspace-list", WorkspaceListController);
 application.register("workspace-title-edit", WorkspaceTitleEditController);
 application.register("provision-terminal", createProvisionTerminalController(Controller));
 application.register("auto-scroll", AutoScrollController);
 application.register("workspace-app-frame", WorkspaceAppFrameController);
+application.register("theme-select", ThemeSelectController);
+application.register("agent-select-menu", AgentSelectMenuController);

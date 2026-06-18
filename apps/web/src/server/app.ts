@@ -85,18 +85,21 @@ type HtmlResponseInit = Omit<ResponseInit, "headers"> & { headers?: Record<strin
 function response(body: string, init: HtmlResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   if (!headers.has("content-type")) headers.set("content-type", "text/html; charset=utf-8");
+  if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
   return new Response(body, { ...init, headers });
 }
 
 function jsonResponse(body: unknown, init: HtmlResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   headers.set("content-type", "application/json; charset=utf-8");
+  if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
   return new Response(JSON.stringify(body), { ...init, headers });
 }
 
 function turboStreamResponse(body: string, init: HtmlResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   headers.set("content-type", "text/vnd.turbo-stream.html; charset=utf-8");
+  if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
   return new Response(body, { ...init, headers });
 }
 
@@ -139,12 +142,27 @@ function atelierVersionTooltip(): string {
 
 let cachedAssetManifest: Record<string, string> | undefined;
 
+function loadAssetManifest(): Record<string, string> {
+  const manifestUrl = new URL("../../public/assets-manifest.json", import.meta.url);
+  return existsSync(manifestUrl) ? JSON.parse(readFileSync(manifestUrl, "utf8")) as Record<string, string> : {};
+}
+
+function publicAssetExists(path: string): boolean {
+  return existsSync(new URL(`../../public/${path.replace(/^\//, "")}`, import.meta.url));
+}
+
 function assetPath(logicalPath: string): string {
-  if (!cachedAssetManifest) {
-    const manifestUrl = new URL("../../public/assets-manifest.json", import.meta.url);
-    cachedAssetManifest = existsSync(manifestUrl) ? JSON.parse(readFileSync(manifestUrl, "utf8")) as Record<string, string> : {};
+  cachedAssetManifest ??= loadAssetManifest();
+  let resolved = cachedAssetManifest[logicalPath] ?? logicalPath;
+  // In development, build:client can rewrite hashed assets while the server is
+  // still running. If the cached manifest now points at a deleted file, reload
+  // it so pages do not render stale /assets/*.js URLs that leave the app without
+  // its workspace controllers.
+  if (resolved.startsWith("/assets/") && !publicAssetExists(resolved)) {
+    cachedAssetManifest = loadAssetManifest();
+    resolved = cachedAssetManifest[logicalPath] ?? logicalPath;
   }
-  return cachedAssetManifest[logicalPath] ?? logicalPath;
+  return resolved;
 }
 
 export function createWebApp(deps: WebAppDeps): WebApp {
@@ -287,10 +305,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   function layout(title: string, body: string): string {
     return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="cappuccino">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="turbo-cache-control" content="no-cache">
 <title>${escapeHtml(atelierName)} · ${escapeHtml(title)}</title>
 <link rel="icon" type="image/svg+xml" href="${assetPath("/favicon.svg")}">
 <link rel="stylesheet" href="${assetPath("/style.css")}">
@@ -334,6 +353,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const formId = options.formId ?? domId("agent_launch_repo_form", repo.id);
     const initialText = "";
     return `<dialog id="${modalId}" class="agent-launch-modal" data-controller="modal submit-shortcut"${options.autoShow ? ` data-modal-auto-show-value="true"` : ""}>
+  <div class="agent-launch-title">Create workspace from <b>${escapeHtml(repo.name)}</b>, and then…</div>
   ${renderAgentComposer({
     action: `/repo-agent-workspaces/${encodeURIComponent(repo.id)}`,
     draftId: crypto.randomUUID(),
@@ -368,44 +388,45 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
     // JavaScript submits this as a Turbo Stream and then switches the resident
     // client-side. Without JavaScript, the endpoint still falls back to a 303.
-    const newWorkspaceRow = `<form class="contents" method="post" action="/workspaces" data-turbo="false" data-action="submit->workspace-list#createWorkspace"><button class="row ghost-row" type="submit">
-    <div><div class="r-title">New workspace</div></div>
+    const newWorkspaceRow = `<form class="contents" method="post" action="/workspaces" data-turbo="false" data-action="submit->workspace-list#createWorkspace"><button class="row ghost-row addbtn" type="submit">
+    <span class="ic" aria-hidden="true">＋</span><div><div class="r-title">New workspace</div></div>
     <span></span>
   </button></form>`;
 
     const repoRows = repos.map((repo) => {
       const modalId = domId("agent_launch_repo_modal", repo.id);
       const spec = formatRepositorySpec(repo);
-      return `<div class="row repository-row repo-tinted-row" style="${repoColorStyle(repo.id)}">
-    <div><div class="r-title">${escapeHtml(repo.name)}${repo.branch ? ` <small>${escapeHtml(repo.branch)}</small>` : ""}</div><div class="r-sub">${escapeHtml(spec)}</div></div>
+      return `<div class="row repository-row repo-tinted-row" style="${repoColorStyle(repo.id)}" title="${escapeHtml(spec)}">
+    <span class="repo-swatch" aria-hidden="true"></span><div><div class="r-title">${escapeHtml(repo.name)}${repo.branch ? ` <small>${escapeHtml(repo.branch)}</small>` : ""}</div><div class="r-sub">${escapeHtml(spec)}</div></div>
     <span class="row-actions"><button class="repo-launch-btn" type="button" title="Start agent workspace from this repo" aria-label="Start agent workspace from ${escapeHtml(repo.name)}" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="${modalId}"><span aria-hidden="true">＋</span></button></span>
   </div>`;
     }).join("");
 
-    const addRepoRow = `<button class="row ghost-row" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="add-repository-modal">
-    <div><div class="r-title">Add repository</div><div class="r-sub">Save a remote URL for workspace clones</div></div>
+    const addRepoRow = `<button class="row ghost-row addbtn" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="add-repository-modal">
+    <span class="ic" aria-hidden="true">＋</span><div><div class="r-title">Add repository</div></div>
     <span></span>
   </button>`;
 
     return `<turbo-frame id="workspace_sidebar" data-controller="workspace-list">
-    <div class="sidebar-header">
-      <h1 class="atelier-brand" title="${escapeHtml(versionTooltip)}">${escapeHtml(atelierName)}</h1>
-      <div class="sidebar-filter-row">
-        <input class="search global-filter" placeholder="Filter…" data-controller="global-filter" data-action="input->global-filter#filter">
+    <div class="sidebar-content">
+      <div class="lh">Workspaces</div>
+      <div class="table workspace-sidebar-table list">
+        <div id="workspaces_table_rows">${renderWorkspaceRows()}</div>
+        ${newWorkspaceRow}
       </div>
-    </div>
-    <div class="table workspace-sidebar-table">
-      <div id="workspaces_table_rows">${renderWorkspaceRows()}</div>
-      ${newWorkspaceRow}
-    </div>
 
-    <section class="host-repos sidebar-host-repos">
-      <div class="section-head"><div><h2>Repositories</h2></div></div>
-      <div class="table repositories-table">
-        ${repoRows || `<div class="row"><div><div class="r-title">No repositories</div><div class="r-sub">Add one below.</div></div><span></span></div>`}
-        ${addRepoRow}
-      </div>
-    </section>
+      <section class="host-repos sidebar-host-repos repos">
+        <div class="lh">Repositories</div>
+        <div class="table repositories-table">
+          ${repoRows || `<div class="row"><span class="repo-swatch" aria-hidden="true"></span><div><div class="r-title">No repositories</div><div class="r-sub">Add one below.</div></div><span></span></div>`}
+          ${addRepoRow}
+        </div>
+      </section>
+    </div>
+    <div class="sidefoot">
+      <button class="footbtn" type="button" title="Settings unavailable in this step"><span class="gi">⚙</span><span class="ftext">Settings</span></button>
+      <button class="footbtn collapse" type="button" aria-label="Collapse workspace list" title="Collapse workspace list" data-workspace-shell-target="toggle" data-action="click->workspace-shell#toggle"><span class="gi">‹</span><span class="ftext">Collapse</span></button>
+    </div>
   </turbo-frame>`;
   }
 
@@ -437,6 +458,18 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       const classList = String(classes).replace(/\bactive\b/g, "").trim();
       return `class="tab-pane${classList ? ` ${classList}` : ""}${active ? " active" : ""}"`;
     });
+  }
+
+  function renderThemeMenu(): string {
+    const themes = [
+      ["daylight", "Daylight"],
+      ["solarized-light", "Solarized Light"],
+      ["cappuccino", "Cappuccino"],
+      ["tokyo-night", "Tokyo Night"],
+      ["midnight", "Midnight"],
+      ["nord", "Nord"],
+    ];
+    return `<label class="theme-settings" title="Theme"><span aria-hidden="true">⚙</span><select data-controller="theme-select" aria-label="Theme">${themes.map(([value, label]) => `<option value="${value}"${value === "cappuccino" ? " selected" : ""}>${label}</option>`).join("")}</select></label>`;
   }
 
   function renderWorkspaceGroups(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {
@@ -539,10 +572,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   async function renderWorkspaceShell(selectedId?: string): Promise<string> {
     return `<div class="app workspace-shell" data-controller="workspace-shell atelier-shortcuts">
     <aside class="workspace-shell-sidebar" data-workspace-shell-target="sidebar">${await renderWorkspaceSidebar()}</aside>
-    <div class="workspace-shell-rail" title="Resize workspace list" data-action="pointerdown->workspace-shell#startResize">
-      <button class="sidebar-collapse-notch" type="button" aria-label="Collapse workspace list" title="Collapse workspace list" data-workspace-shell-target="toggle" data-action="pointerdown->workspace-shell#stopPropagation click->workspace-shell#toggle">‹</button>
-    </div>
     <main class="workspace-shell-main">${await workspaceDetailHostHtml(selectedId)}</main>
+    <div class="top-settings">${renderThemeMenu()}</div>
   </div>
   ${addRepositoryModal()}
   <div id="${workspaceCommandModalHostId}"></div>
