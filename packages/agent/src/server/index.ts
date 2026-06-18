@@ -42,3 +42,22 @@ export {
   type WorkspaceAgentToolOptions,
 } from "./tools.ts";
 export { agentStaticFiles } from "./static.ts";
+export {
+  piConfigSeedDir,
+  registerPiConfigEvents,
+  seedWorkspacePiConfig,
+} from "./pi-config-seed.ts";
+export {
+  configuredAgentModels,
+  createPiAuthStorage,
+  createPiModelRegistry,
+  disconnectModelProvider,
+  fakeConnectModelProvider,
+  loadConfiguredAgentModelsSync,
+  piAuthJsonPath,
+  piModelsJsonPath,
+  piModelsJsonPathSync,
+  setActiveAgentModel,
+  setPickerAgentModels,
+  type ConfiguredAgentModel,
+} from "./pi-config-models.ts";

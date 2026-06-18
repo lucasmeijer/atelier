@@ -12,7 +12,6 @@
     "@atelier/browser": "workspace:*",
     "@atelier/core": "workspace:*",
     "@atelier/desktop": "workspace:*",
-    "@atelier/pi-config": "workspace:*",
     "@atelier/repository": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*",

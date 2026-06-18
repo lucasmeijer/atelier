@@ -2,7 +2,7 @@ import { mkdir, open } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AtelierEventBus } from "@atelier/core";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
-import { configuredAgentModels } from "@atelier/pi-config/server";
+import { configuredAgentModels } from "./pi-config-models.ts";
 import {
   AuthStorage,
   createAgentSession,
@@ -623,7 +623,6 @@ export function recordsFromSessionEntries(entries: any[]): TranscriptRecord[] {
 }
 
 class RealAgentRuntime extends BaseAgentRuntime {
-  private modelOptions: { provider: string; id: string; name: string; model: any }[] = [];
   private summarizing = false;
 
   constructor(agent: WorkspaceAgentInfo, private session: any, options: WorkspaceAgentRuntimeOptions = {}) {
@@ -631,9 +630,13 @@ class RealAgentRuntime extends BaseAgentRuntime {
     session.subscribe((event: any) => {
       void this.handleEvent(event);
     });
-    // Configured model list (hardcoded in pi-config for now), resolved against
-    // the registry. Unresolvable entries stay listed; selecting them errors.
-    this.modelOptions = configuredAgentModels.map((configured) => ({
+  }
+
+  private configuredModelOptions(): { provider: string; id: string; name: string; model: any }[] {
+    // Configured model picker list, resolved against the registry.
+    // Unresolvable entries stay listed; selecting them errors. This is computed
+    // lazily so settings changes are reflected in existing agent prompt boxes.
+    return configuredAgentModels.map((configured) => ({
       provider: configured.provider,
       id: configured.id,
       name: configured.label,
@@ -664,7 +667,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
     const stats = this.session.getSessionStats?.();
     const context = this.session.getContextUsage?.();
     const model = this.session.model;
-    const models = this.modelOptions.map((option) => ({
+    const models = this.configuredModelOptions().map((option) => ({
       provider: option.provider,
       id: option.id,
       name: option.name,
@@ -812,7 +815,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   async setModel(provider: string, modelId: string): Promise<void> {
-    const option = this.modelOptions.find((candidate) => candidate.provider === provider && candidate.id === modelId)
+    const option = this.configuredModelOptions().find((candidate) => candidate.provider === provider && candidate.id === modelId)
       ?? { model: this.session.modelRegistry.find?.(provider, modelId) };
     if (!option.model) {
       this.notice("error", `Model not available: ${provider}/${modelId}`);

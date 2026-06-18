@@ -19,7 +19,7 @@ import { desktopAppKey, resolveDesktopWorkspaceAppTarget } from "@atelier/deskto
 import { inspectWorkspaceDeleteSafety, registerRepositoryWorkspaceEvents } from "@atelier/repository";
 import { createWorkspace, deleteWorkspace, listWorkspaces } from "@atelier/workspace";
 import { ensureAtelierWorkspaceProxy, registerWorkspaceProxyEvents } from "@atelier/workspace-proxy";
-import { registerPiConfigEvents } from "@atelier/pi-config/server";
+import { registerPiConfigEvents } from "@atelier/agent/server";
 import {
   closeTerminalSocket,
   handleTerminalSocketMessage,

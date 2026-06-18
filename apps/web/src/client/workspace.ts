@@ -825,11 +825,13 @@ function startWorkspaceAppFrames(root: ParentNode, tabName: string): void {
 }
 
 function currentAtelierTheme(): string {
+  const active = document.documentElement.dataset.theme;
+  if (active) return active;
   try {
-    const saved = localStorage.getItem("atelier.theme");
-    if (saved) return saved;
-  } catch {}
-  return document.documentElement.dataset.theme || "cappuccino";
+    return localStorage.getItem("atelier.theme") || "cappuccino";
+  } catch {
+    return "cappuccino";
+  }
 }
 
 function cssVariable(name: string): string {
@@ -907,6 +909,145 @@ class ThemeSelectController extends Controller {
       if (select !== this.element) select.value = theme;
     });
     refreshVSCodeFramesForTheme();
+  }
+}
+
+class ProviderListController extends Controller {
+  static values = { label: String, openLabel: String };
+  declare readonly element: HTMLButtonElement;
+  declare readonly labelValue: string;
+  declare readonly openLabelValue: string;
+  private open = false;
+
+  connect(): void {
+    this.sync();
+  }
+
+  toggle(): void {
+    this.open = !this.open;
+    this.sync();
+  }
+
+  private sync(): void {
+    const scope = this.element.closest<HTMLElement>("[data-provider-list-scope]") ?? document.body;
+    scope.querySelectorAll<HTMLElement>('[data-provider-extra="true"]').forEach((row) => row.classList.toggle("hidden", !this.open));
+    this.element.textContent = this.open ? (this.openLabelValue || "Show fewer providers") : (this.labelValue || "Show more providers");
+  }
+}
+
+class ModelAddMenuController extends Controller {
+  static targets = ["filter", "option", "options"];
+  declare readonly element: HTMLDetailsElement;
+  declare readonly filterTarget: HTMLInputElement;
+  declare readonly optionTargets: HTMLElement[];
+  declare readonly hasFilterTarget: boolean;
+
+  connect(): void {
+    this.element.addEventListener("toggle", this.focusFilter);
+  }
+
+  disconnect(): void {
+    this.element.removeEventListener("toggle", this.focusFilter);
+  }
+
+  close(event?: Event): void {
+    event?.preventDefault();
+    this.element.open = false;
+  }
+
+  filter(): void {
+    const query = (this.hasFilterTarget ? this.filterTarget.value : "").trim().toLowerCase();
+    this.optionTargets.forEach((option) => {
+      option.hidden = query.length > 0 && !(option.dataset.searchText ?? "").includes(query);
+    });
+  }
+
+  private focusFilter = (): void => {
+    if (this.element.open && this.hasFilterTarget) requestAnimationFrame(() => this.filterTarget.focus());
+  };
+}
+
+class ModelPickerController extends Controller {
+  declare readonly element: HTMLElement;
+  private dragged?: HTMLElement;
+
+  dragStart(event: DragEvent): void {
+    const row = (event.currentTarget instanceof HTMLElement ? event.currentTarget : null)?.closest<HTMLElement>(".settings-model-row");
+    if (!row) return;
+    this.dragged = row;
+    row.classList.add("dragging");
+    event.dataTransfer?.setData("text/plain", row.dataset.modelPickerModelValue ?? "");
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  }
+
+  dragOver(event: DragEvent): void {
+    if (!this.dragged) return;
+    event.preventDefault();
+    const row = (event.target instanceof HTMLElement ? event.target : null)?.closest<HTMLElement>(".settings-model-row");
+    this.element.querySelectorAll(".settings-model-row").forEach((candidate) => candidate.classList.remove("drop-before", "drop-after"));
+    if (!row || row === this.dragged) return;
+    const rect = row.getBoundingClientRect();
+    const after = event.clientY > rect.top + rect.height / 2;
+    row.insertAdjacentElement(after ? "afterend" : "beforebegin", this.dragged);
+    this.dragged.classList.add(after ? "drop-after" : "drop-before");
+  }
+
+  async drop(event: DragEvent): Promise<void> {
+    if (!this.dragged) return;
+    event.preventDefault();
+    this.clearDropMarkers();
+    await this.persistOrder();
+  }
+
+  dragEnd(): void {
+    this.dragged?.classList.remove("dragging");
+    this.dragged = undefined;
+    this.clearDropMarkers();
+  }
+
+  private clearDropMarkers(): void {
+    this.element.querySelectorAll(".settings-model-row").forEach((candidate) => candidate.classList.remove("drop-before", "drop-after"));
+  }
+
+  private async persistOrder(): Promise<void> {
+    const models = Array.from(this.element.querySelectorAll<HTMLElement>(".settings-model-row"))
+      .map((row) => row.dataset.modelPickerModelValue)
+      .filter((value): value is string => Boolean(value));
+    const html = await fetch("/settings/models/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "text/vnd.turbo-stream.html" },
+      body: JSON.stringify({ models }),
+    }).then((response) => response.text()).catch(() => "");
+    if (html) window.Turbo?.renderStreamMessage(html);
+  }
+}
+
+class OnboardingController extends Controller {
+  static targets = ["pane", "dot"];
+  declare readonly paneTargets: HTMLElement[];
+  declare readonly dotTargets: HTMLElement[];
+  private index = 0;
+
+  connect(): void {
+    this.show(0);
+  }
+
+  next(): void {
+    if (this.index >= this.paneTargets.length - 1) {
+      (this.element as HTMLDialogElement).close?.();
+      return;
+    }
+    this.show(this.index + 1);
+  }
+
+  prev(): void {
+    this.show(Math.max(0, this.index - 1));
+  }
+
+  private show(index: number): void {
+    this.index = index;
+    this.paneTargets.forEach((pane, paneIndex) => pane.classList.toggle("active", paneIndex === index));
+    this.dotTargets.forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex === index));
   }
 }
 
@@ -1025,4 +1166,8 @@ application.register("provision-terminal", createProvisionTerminalController(Con
 application.register("auto-scroll", AutoScrollController);
 application.register("workspace-app-frame", WorkspaceAppFrameController);
 application.register("theme-select", ThemeSelectController);
+application.register("provider-list", ProviderListController);
+application.register("model-add-menu", ModelAddMenuController);
+application.register("model-picker", ModelPickerController);
+application.register("onboarding", OnboardingController);
 application.register("agent-select-menu", AgentSelectMenuController);

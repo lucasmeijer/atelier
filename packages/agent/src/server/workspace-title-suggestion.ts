@@ -3,7 +3,7 @@ import { completeSimple, getModel } from "@earendil-works/pi-ai";
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import type { AtelierEventBus } from "@atelier/core";
 import { listWorkspaces, workspaceCommand } from "@atelier/workspace";
-import { piConfigSeedDir } from "@atelier/pi-config/server";
+import { piConfigSeedDir } from "./pi-config-seed.ts";
 
 const pending = new Set<string>();
 const model = getModel("openai-codex", "gpt-5.4-mini");

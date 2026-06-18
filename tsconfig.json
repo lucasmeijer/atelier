@@ -20,8 +20,6 @@
       "@atelier/workspace-proxy/server": ["packages/workspace-proxy/src/server/index.ts"],
       "@atelier/workspace-proxy/egress": ["packages/workspace-proxy/src/egress/egress-proxy.ts"],
       "@atelier/workspace-proxy": ["packages/workspace-proxy/src/index.ts"],
-      "@atelier/pi-config/server": ["packages/pi-config/src/server/index.ts"],
-      "@atelier/pi-config": ["packages/pi-config/src/server/index.ts"],
       "@atelier/observable-terminal/server": ["packages/observable-terminal/src/server/index.ts"],
       "@atelier/observable-terminal/client": ["packages/observable-terminal/src/client/index.ts"],
       "@atelier/observable-terminal/shared": ["packages/observable-terminal/src/shared/index.ts"],

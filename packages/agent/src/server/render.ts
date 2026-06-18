@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { configuredAgentModels } from "@atelier/pi-config/server";
+import { configuredAgentModels } from "./pi-config-models.ts";
 import { diffStats, renderDiffHtml, type DiffOperation } from "./diff.ts";
 import { highlightCodeHtmlForPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";

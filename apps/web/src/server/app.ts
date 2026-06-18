@@ -45,6 +45,9 @@ import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
 import type { WebPreferenceStore } from "./preferences.ts";
 import type { WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
 import { workspaceModules } from "./workspace-modules.ts";
+import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.ts";
+import { handleOnboardingRequest, renderOnboardingDialogIfNeeded } from "./onboarding/routes.ts";
+import { configuredAgentModels, setActiveAgentModel } from "@atelier/agent/server";
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
@@ -180,13 +183,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const workspaceCommandModalHostId = "workspace_command_modal_host";
 
   async function preferredNewAgentModel(): Promise<string | undefined> {
-    return (await deps.preferences?.load())?.preferredNewAgentModel;
+    const active = configuredAgentModels.find((model) => model.active) ?? configuredAgentModels[0];
+    return active ? `${active.provider}::${active.id}` : undefined;
   }
 
   async function rememberPreferredNewAgentModel(model: string): Promise<void> {
-    if (!deps.preferences || !model.trim()) return;
-    const preferences = await deps.preferences.load();
-    await deps.preferences.save({ ...preferences, preferredNewAgentModel: model.trim() });
+    const [provider, modelId] = String(model ?? "").split("::");
+    if (provider && modelId) await setActiveAgentModel(provider, modelId);
   }
 
   async function applyPreferredNewAgentModel(agent: WorkspaceAgentInfo): Promise<void> {
@@ -424,7 +427,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       </section>
     </div>
     <div class="sidefoot">
-      <button class="footbtn" type="button" title="Settings unavailable in this step"><span class="gi">⚙</span><span class="ftext">Settings</span></button>
+      <a class="footbtn" href="/settings" data-turbo-frame="_top" data-turbo-stream="true"><span class="gi">⚙</span><span class="ftext">Settings</span></a>
       <button class="footbtn collapse" type="button" aria-label="Collapse workspace list" title="Collapse workspace list" data-workspace-shell-target="toggle" data-action="click->workspace-shell#toggle"><span class="gi">‹</span><span class="ftext">Collapse</span></button>
     </div>
   </turbo-frame>`;
@@ -576,6 +579,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     <div class="top-settings">${renderThemeMenu()}</div>
   </div>
   ${addRepositoryModal()}
+  <div id="settings_modal_host"></div>
+  <div id="onboarding_modal_host">${await renderOnboardingDialogIfNeeded()}</div>
   <div id="${workspaceCommandModalHostId}"></div>
   ${await renderRepoLaunchModals()}`;
   }
@@ -1038,6 +1043,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       const result = url.pathname.match(pattern);
       return result ? result.slice(1).map(decodeURIComponent) : undefined;
     };
+
+    const settingsResponse = await handleSettingsRequest(request, url);
+    if (settingsResponse) return settingsResponse;
+
+    const onboardingResponse = await handleOnboardingRequest(request, url);
+    if (onboardingResponse) return onboardingResponse;
 
     const agentResponse = await handleAgentRequest(request, url, { events: deps.events });
     if (agentResponse) return agentResponse;

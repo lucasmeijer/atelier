@@ -43,10 +43,13 @@ export {
 } from "./secrets/placeholder-hooks.ts";
 
 export {
+  clearWorkspaceGitHubToken,
   createWorkspaceSecretContext,
   discoverHostGitHubToken,
   forgetWorkspaceSecretContext,
   getWorkspaceSecretContext,
+  hasWorkspaceGitHubToken,
+  setWorkspaceGitHubToken,
   type WorkspaceSecretContext,
 } from "./secrets/workspace-secrets.ts";
 

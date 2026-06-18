@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { defaultDataDir } from "../data-dir.ts";
 import { createHttpHooks, type SecretDefinition, type SecretManager } from "./placeholder-hooks.ts";
 import type { HttpHooks } from "./types.ts";
 
@@ -16,13 +18,38 @@ export type WorkspaceSecretContext = {
 
 const contexts = new Map<string, WorkspaceSecretContext>();
 
+function storedGitHubTokenPath(): string {
+  return join(defaultDataDir(), "workspace", "github-token");
+}
+
 export function discoverHostGitHubToken(): string | undefined {
   const envToken = process.env[githubTokenEnvVar];
   if (envToken) return envToken;
+  const storedTokenPath = storedGitHubTokenPath();
+  if (existsSync(storedTokenPath)) {
+    const token = readFileSync(storedTokenPath, "utf8").trim();
+    if (token) return token;
+  }
   const tokenPath = join(homedir(), githubTokenEnvVar);
   if (!existsSync(tokenPath)) return undefined;
   const token = readFileSync(tokenPath, "utf8").trim();
   return token || undefined;
+}
+
+export function hasWorkspaceGitHubToken(): boolean {
+  return Boolean(discoverHostGitHubToken());
+}
+
+export function setWorkspaceGitHubToken(token: string): void {
+  const path = storedGitHubTokenPath();
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${token.trim()}\n`, { mode: 0o600 });
+  contexts.clear();
+}
+
+export function clearWorkspaceGitHubToken(): void {
+  rmSync(storedGitHubTokenPath(), { force: true });
+  contexts.clear();
 }
 
 export async function createWorkspaceSecretContext(workspaceId: string): Promise<WorkspaceSecretContext> {

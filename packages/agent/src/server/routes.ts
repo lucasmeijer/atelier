@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AtelierCoreError, defaultDataDir, type AtelierEventBus } from "@atelier/core";
+import { setActiveAgentModel } from "./pi-config-models.ts";
 import { getWorkspacePreviewPort, workspaceContainerName, workspacePreviewPorts, workspaceRoot } from "@atelier/workspace";
 import { ids, renderAttachmentChip } from "./render.ts";
 import { sseFrame, turboStream, turboStreamResponse } from "./html.ts";
@@ -170,7 +171,10 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
     const form = await request.formData();
     const [provider, modelId] = String(form.get("model") ?? "").split("::");
     const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
-    if (provider && modelId) await runtime.setModel(provider, modelId);
+    if (provider && modelId) {
+      await runtime.setModel(provider, modelId);
+      await setActiveAgentModel(provider, modelId);
+    }
     return turboStreamResponse("");
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/thinking$/)) && request.method === "POST") {
