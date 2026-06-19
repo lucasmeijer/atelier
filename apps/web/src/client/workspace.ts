@@ -1040,10 +1040,12 @@ class ModelPickerController extends Controller {
     const models = Array.from(this.element.querySelectorAll<HTMLElement>(".settings-model-row"))
       .map((row) => row.dataset.modelPickerModelValue)
       .filter((value): value is string => Boolean(value));
+    const body = new URLSearchParams();
+    models.forEach((model) => body.append("model", model));
     const html = await fetch("/settings/models/reorder", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "text/vnd.turbo-stream.html" },
-      body: JSON.stringify({ models }),
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "text/vnd.turbo-stream.html" },
+      body,
     }).then((response) => response.text()).catch(() => "");
     if (html) window.Turbo?.renderStreamMessage(html);
   }

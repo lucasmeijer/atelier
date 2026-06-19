@@ -1,6 +1,6 @@
 import { clearWorkspaceGitHubToken, hasWorkspaceGitHubToken, setWorkspaceGitHubToken } from "@atelier/core";
 import {
-  configuredAgentModels,
+  getConfiguredAgentModels,
   connectModelProviderApiKey,
   createPiAuthStorage,
   createPiModelRegistry,
@@ -202,7 +202,7 @@ async function availableModelOptions(): Promise<ConfiguredAgentModel[]> {
 }
 
 async function renderModelPicker(): Promise<string> {
-  const configured = [...configuredAgentModels];
+  const configured = await getConfiguredAgentModels();
   const have = new Set(configured.map((model) => `${model.provider}::${model.id}`));
   const available = (await availableModelOptions()).filter((model) => !have.has(`${model.provider}::${model.id}`)).slice(0, 120);
   return `<div id="settings_model_picker"><div class="settings-models" data-controller="model-picker">${configured.length ? configured.map((model, index) => modelPickerRow(model, index, configured.length)).join("") : `<div class="settings-empty">No models in the picker.</div>`}</div>
@@ -221,11 +221,11 @@ async function renderModelPicker(): Promise<string> {
 
 function modelPickerRow(model: ConfiguredAgentModel, _index: number, _total: number): string {
   const value = `${model.provider}::${model.id}`;
-  return `<div class="settings-model-row" id="${domId("settings_model", model.provider, model.id)}" draggable="true" data-model-picker-model-value="${escapeHtml(value)}" data-model-picker-label="${escapeHtml(model.label)}" data-action="dragstart->model-picker#dragStart dragover->model-picker#dragOver drop->model-picker#drop dragend->model-picker#dragEnd">
+  return `<div class="settings-model-row${model.active ? " active" : ""}" id="${domId("settings_model", model.provider, model.id)}" draggable="true" data-model-picker-model-value="${escapeHtml(value)}" data-model-picker-label="${escapeHtml(model.label)}" data-action="dragstart->model-picker#dragStart dragover->model-picker#dragOver drop->model-picker#drop dragend->model-picker#dragEnd">
     <span class="settings-model-grip" aria-hidden="true">⠿</span>
     <span class="settings-model-dot" style="--provider-color:${providerColor(model.provider)}"></span>
-    <div class="settings-model-main"><code>${escapeHtml(model.id)}</code><small>${escapeHtml(model.provider)}</small></div>
-    <div class="settings-provider-actions"><form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(value)}"><button class="settings-btn danger icon" type="submit">×</button></form></div>
+    <div class="settings-model-main"><code>${escapeHtml(model.id)}</code><small>${escapeHtml(model.provider)}${model.active ? " · default" : ""}</small></div>
+    <div class="settings-provider-actions"><form method="post" action="/settings/models/active" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(value)}"><button class="settings-btn" type="submit"${model.active ? " disabled" : ""}>Default</button></form><form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(value)}"><button class="settings-btn danger icon" type="submit">×</button></form></div>
   </div>`;
 }
 
@@ -373,12 +373,12 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
   </dialog>`;
 }
 
-function refreshAgentModelPickerSelects(): string {
-  return updateTargets('select[data-agent-model-picker-select="true"]', renderAgentModelOptions());
+async function refreshAgentModelPickerSelects(): Promise<string> {
+  return updateTargets('select[data-agent-model-picker-select="true"]:not([data-agent-session-model-select="true"])', await renderAgentModelOptions());
 }
 
 async function refreshAfterConnection(): Promise<string> {
-  return `${replace("settings_dialog", await renderSettingsDialog("agent"))}${refreshAgentModelPickerSelects()}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`;
+  return `${replace("settings_dialog", await renderSettingsDialog("agent"))}${await refreshAgentModelPickerSelects()}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`;
 }
 
 async function deleteAllStoredSettings(): Promise<void> {
@@ -474,28 +474,33 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/disconnect$/);
   if (match && request.method === "POST") {
     await disconnectModelProvider(decodeURIComponent(match[1]!));
-    return stream(`${replace("settings_agent_provider_list", await renderProviderList("settings"))}${refreshAgentModelPickerSelects()}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
+    return stream(`${replace("settings_agent_provider_list", await renderProviderList("settings"))}${await refreshAgentModelPickerSelects()}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
   }
   if (url.pathname.startsWith("/settings/models/") && request.method === "POST") return await handleModelPickerAction(request, url.pathname);
+  for (const contribution of listSettingsContributions()) {
+    const handled = await contribution.handleAction?.({ request, url });
+    if (handled) return handled;
+  }
   return undefined;
 }
 
 async function handleModelPickerAction(request: Request, pathname: string): Promise<Response> {
   if (pathname === "/settings/models/reorder") {
-    const body = await request.json().catch(() => undefined) as { models?: unknown } | undefined;
-    const requested = Array.isArray(body?.models) ? body.models.map(String) : [];
-    const byKey = new Map(configuredAgentModels.map((model) => [`${model.provider}::${model.id}`, model]));
+    const form = await request.formData();
+    const requested = form.getAll("model").map(String);
+    const configured = await getConfiguredAgentModels();
+    const byKey = new Map(configured.map((model) => [`${model.provider}::${model.id}`, model]));
     const reordered = requested.map((key) => byKey.get(key)).filter(Boolean) as ConfiguredAgentModel[];
-    for (const model of configuredAgentModels) if (!requested.includes(`${model.provider}::${model.id}`)) reordered.push(model);
-    await setPickerAgentModels(reordered, configuredAgentModels.find((model) => model.active));
-    return stream(`${replace("settings_model_picker", await renderModelPicker())}${refreshAgentModelPickerSelects()}`);
+    for (const model of configured) if (!requested.includes(`${model.provider}::${model.id}`)) reordered.push(model);
+    await setPickerAgentModels(reordered, configured.find((model) => model.active));
+    return stream(`${replace("settings_model_picker", await renderModelPicker())}${await refreshAgentModelPickerSelects()}`);
   }
 
   const form = await request.formData();
   const split = String(form.get("model") ?? "").split("::");
   const provider = split[0] ?? "";
   const id = split[1] ?? "";
-  const current = [...configuredAgentModels];
+  const current = await getConfiguredAgentModels();
   const index = current.findIndex((model) => model.provider === provider && model.id === id);
   if (pathname === "/settings/models/add" && provider && id && index < 0) {
     const option = (await availableModelOptions()).find((model) => model.provider === provider && model.id === id);
@@ -504,7 +509,7 @@ async function handleModelPickerAction(request: Request, pathname: string): Prom
   if (pathname === "/settings/models/remove" && index >= 0) current.splice(index, 1);
   if (pathname === "/settings/models/active" && provider && id) await setActiveAgentModel(provider, id);
   else await setPickerAgentModels(current, current.find((model) => model.active));
-  return stream(`${replace("settings_model_picker", await renderModelPicker())}${refreshAgentModelPickerSelects()}`);
+  return stream(`${replace("settings_model_picker", await renderModelPicker())}${await refreshAgentModelPickerSelects()}`);
 }
 
 export { providerRow, providerSummaries, githubRow, showMoreProvidersButton };

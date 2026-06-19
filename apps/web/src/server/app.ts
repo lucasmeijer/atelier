@@ -49,7 +49,7 @@ import type { WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts"
 import { workspaceModules } from "./workspace-modules.ts";
 import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.ts";
 import { handleOnboardingRequest, renderOnboardingDialogIfNeeded } from "./onboarding/routes.ts";
-import { configuredAgentModels, setActiveAgentModel } from "@atelier/agent/server";
+import { getConfiguredAgentModels, setActiveAgentModel } from "@atelier/agent/server";
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
@@ -185,7 +185,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const workspaceCommandModalHostId = "workspace_command_modal_host";
 
   async function preferredNewAgentModel(): Promise<string | undefined> {
-    const active = configuredAgentModels.find((model) => model.active) ?? configuredAgentModels[0];
+    const configuredModels = await getConfiguredAgentModels();
+    const active = configuredModels.find((model) => model.active) ?? configuredModels[0];
     return active ? `${active.provider}::${active.id}` : undefined;
   }
 
@@ -353,13 +354,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return `--repo-color:${repoColor(repoName)}`;
   }
 
-  function launchRepoAgentModal(repo: RepositorySummary, selectedModel?: string, options: { autoShow?: boolean; modalId?: string; formId?: string } = {}): string {
+  async function launchRepoAgentModal(repo: RepositorySummary, selectedModel?: string, options: { autoShow?: boolean; modalId?: string; formId?: string } = {}): Promise<string> {
     const modalId = options.modalId ?? domId("agent_launch_repo_modal", repo.id);
     const formId = options.formId ?? domId("agent_launch_repo_form", repo.id);
     const initialText = "";
     return `<dialog id="${modalId}" class="agent-launch-modal" data-controller="modal submit-shortcut"${options.autoShow ? ` data-modal-auto-show-value="true"` : ""}>
   <div class="agent-launch-title">Create workspace from <b>${escapeHtml(repo.name)}</b>, and then…</div>
-  ${renderAgentComposer({
+  ${await renderAgentComposer({
     action: `/repo-agent-workspaces/${encodeURIComponent(repo.id)}`,
     draftId: crypto.randomUUID(),
     formId,
@@ -610,7 +611,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   async function renderRepoLaunchModals(): Promise<string> {
     const { repos } = await listRepositories();
     const selectedModel = await preferredNewAgentModel();
-    return repos.map((repo) => launchRepoAgentModal(repo, selectedModel)).join("");
+    return (await Promise.all(repos.map((repo) => launchRepoAgentModal(repo, selectedModel)))).join("");
   }
 
   async function renderWorkspaceShell(selectedId?: string): Promise<string> {
@@ -997,7 +998,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         const entry = requireWorkspace(workspaceId);
         if (!entry.sourceRepositoryId) throw new AtelierCoreError("source_repo_not_found", `workspace ${workspaceId} was not created from a repository`);
         const repo = await repositoryById(entry.sourceRepositoryId);
-        const modal = launchRepoAgentModal(repo, await preferredNewAgentModel(), {
+        const modal = await launchRepoAgentModal(repo, await preferredNewAgentModel(), {
           autoShow: true,
           modalId: domId("agent_launch_source_repo_modal", workspaceId, repo.id),
           formId: domId("agent_launch_source_repo_form", workspaceId, repo.id),

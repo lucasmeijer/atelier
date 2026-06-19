@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { configuredAgentModels } from "./pi-config-models.ts";
+import { getConfiguredAgentModels } from "./pi-config-models.ts";
 import { diffStats, renderDiffHtml, type DiffOperation } from "./diff.ts";
 import { highlightCodeHtmlForPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
@@ -89,7 +89,7 @@ export interface AgentPaneState {
   stats: AgentStatsView;
 }
 
-export function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { active?: boolean } = {}): string {
+export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { active?: boolean } = {}): Promise<string> {
   const key = agentTabKey(agent.label);
   const draftId = randomUUID();
   const attachRowId = ids.attachRow(ctx);
@@ -102,7 +102,7 @@ export function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentIn
       data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
       <div class="agent-transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
       <div class="agent-pending-followups" id="${ids.pendingFollowups(ctx)}" data-agent-pane-target="pendingFollowups">${renderPendingFollowups(ctx, [])}</div>
-      ${renderAgentComposer({
+      ${await renderAgentComposer({
         ctx,
         action: agentPath(ctx, "/messages"),
         draftId,
@@ -135,7 +135,7 @@ export interface AgentComposerRenderOptions {
   selectedModel?: string;
 }
 
-export function renderAgentComposer(options: AgentComposerRenderOptions): string {
+export async function renderAgentComposer(options: AgentComposerRenderOptions): Promise<string> {
   const draftId = options.draftId;
   const attachRowId = options.ctx ? ids.attachRow(options.ctx) : ids.draftAttachRow(draftId);
   const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
@@ -150,7 +150,7 @@ export function renderAgentComposer(options: AgentComposerRenderOptions): string
   const formId = options.formId ?? `agent_composer_${draftId}`;
   const statbar = options.stats && options.ctx
     ? `<div class="agent-statbar" id="${ids.stats(options.ctx)}">${renderStatsBar(options.ctx, options.stats)}</div>`
-    : `<div class="agent-statbar">${renderComposerSettings(formId, options.selectedModel)}</div>`;
+    : `<div class="agent-statbar">${await renderComposerSettings(formId, options.selectedModel)}</div>`;
   return `<div class="agent-promptwrap">
         <div class="agent-promptbox" data-controller="agent-attachments" data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}" data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
           <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
@@ -169,18 +169,21 @@ export function renderAgentComposer(options: AgentComposerRenderOptions): string
       </div>`;
 }
 
-export function renderAgentModelOptions(selectedModel?: string): string {
-  const selected = configuredAgentModels.some((model) => `${model.provider}::${model.id}` === selectedModel) ? selectedModel : undefined;
-  return configuredAgentModels.map((model, index) => {
+export async function renderAgentModelOptions(selectedModel?: string): Promise<string> {
+  const models = await getConfiguredAgentModels();
+  const active = models.find((model) => model.active);
+  const activeValue = active ? `${active.provider}::${active.id}` : undefined;
+  const selected = models.some((model) => `${model.provider}::${model.id}` === selectedModel) ? selectedModel : activeValue;
+  return models.map((model, index) => {
     const value = `${model.provider}::${model.id}`;
     return `<option value="${escapeHtml(value)}"${(selected ? value === selected : index === 0) ? " selected" : ""}>${escapeHtml(model.label)}</option>`;
   }).join("");
 }
 
-function renderComposerSettings(formId: string, selectedModel?: string): string {
+async function renderComposerSettings(formId: string, selectedModel?: string): Promise<string> {
   const thinkingLevels = ["off", "low", "medium", "high"];
   return `<span class="agent-stat-right">
-<select class="agent-sel" data-controller="agent-select-menu" data-agent-model-picker-select="true" name="model" form="${escapeHtml(formId)}" title="Model">${renderAgentModelOptions(selectedModel)}</select>
+<select class="agent-sel" data-agent-model-picker-select="true" name="model" form="${escapeHtml(formId)}" title="Model">${await renderAgentModelOptions(selectedModel)}</select>
 <select class="agent-sel" data-controller="agent-select-menu" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}">${escapeHtml(level)}</option>`).join("")}</select>
 </span>`;
 }
@@ -212,7 +215,7 @@ export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): 
 <span class="agent-stat" title="Tokens down (output)">↓ <b>${formatTokens(stats.outputTokens)}</b></span>
 <span class="agent-stat" title="Session cost"><b>${formatCost(stats.cost)}</b></span>
 <span class="agent-stat-right">
-<form method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-select-menu" data-agent-model-picker-select="true" name="model" data-action="change->agent-autosubmit#submit" title="Model">${modelOptions || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`}</select></form>
+<form method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-agent-model-picker-select="true" data-agent-session-model-select="true" name="model" data-action="change->agent-autosubmit#submit" title="Model">${modelOptions || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`}</select></form>
 ${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-select-menu" name="level" data-action="change->agent-autosubmit#submit" title="Thinking level">${thinkingOptions}</select></form>` : ""}
 </span>`;
 }

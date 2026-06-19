@@ -20,19 +20,19 @@ const emptyStats: AgentStatsView = {
   models: [],
 };
 
-export function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[]): WorkspaceTabContribution[] {
-  return agents.map((agent, index) => ({
+export async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[]): Promise<WorkspaceTabContribution[]> {
+  return await Promise.all(agents.map(async (agent, index) => ({
     key: agentTabKey(agent.label),
     label: agent.label,
     // The pane renders as an empty shell: the SSE snapshot fills in the
     // transcript, stats, and prompt actions on connect.
-    paneHtml: renderAgentPane(
+    paneHtml: await renderAgentPane(
       { workspaceId, label: agent.label },
       agent,
       { transcriptHtml: "", busy: false, stats: emptyStats },
       { active: index === 0 },
     ),
-  }));
+  })));
 }
 
 export const agentWorkspaceCommands: WorkspaceCommandContribution[] = [
@@ -56,7 +56,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
   async attachToWorkspace({ workspaceId, sourceRepositoryId }) {
     const agents = await listOrCreateWorkspaceAgents(workspaceId);
     return {
-      tabs: renderWorkspaceAgentTabs(workspaceId, agents),
+      tabs: await renderWorkspaceAgentTabs(workspaceId, agents),
       workspaceCommands: sourceRepositoryId ? [...agentWorkspaceCommands, sourceRepoAgentWorkspaceCommand] : agentWorkspaceCommands,
     };
   },

@@ -1,9 +1,15 @@
+export interface SettingsActionContext {
+  request: Request;
+  url: URL;
+}
+
 export interface SettingsContribution {
   id: string;
   label: string;
   icon?: string;
   order?: number;
   render(): Promise<string>;
+  handleAction?(context: SettingsActionContext): Promise<Response | undefined>;
 }
 
 const contributions: SettingsContribution[] = [];

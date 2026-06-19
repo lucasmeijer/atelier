@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { completeSimple } from "@earendil-works/pi-ai";
@@ -9,9 +8,8 @@ import { piConfigSeedDir } from "./pi-config-seed.ts";
  * The configured list of models offered in the agent model picker.
  *
  * Stored in ATELIER_DATA_DIR/pi-config/models.json alongside pi's own model
- * configuration. The `atelier` key is Atelier metadata; pi's schema tolerates
- * extra top-level keys, while its real custom model configuration remains under
- * `providers`.
+ * configuration. Atelier owns this file; custom model/provider definitions stay
+ * under `providers`, while the prompt picker state is top-level settings.
  */
 export interface ConfiguredAgentModel {
   provider: string;
@@ -20,24 +18,10 @@ export interface ConfiguredAgentModel {
   active?: boolean;
 }
 
-interface AtelierModelsJson {
+export interface AgentModelsSettings {
   providers?: Record<string, unknown>;
-  atelier?: {
-    picker?: Array<{ provider?: unknown; id?: unknown; label?: unknown }>;
-    activeModel?: { provider?: unknown; id?: unknown };
-  };
-}
-
-function syncPiConfigSeedDir(): string {
-  // Mirrors piConfigSeedDir(), but remains synchronous so runtime constructors
-  // can build model lists without async work.
-  const dataDir = process.env.ATELIER_DATA_DIR
-    ?? (process.platform === "darwin" ? join(process.env.HOME ?? ".", "Library", "Application Support", "atelier") : "/var/lib/atelier");
-  return join(dataDir, "pi-config");
-}
-
-export function piModelsJsonPathSync(): string {
-  return join(syncPiConfigSeedDir(), "models.json");
+  picker?: Array<{ provider?: unknown; id?: unknown; label?: unknown }>;
+  activeModel?: { provider?: unknown; id?: unknown };
 }
 
 export async function piModelsJsonPath(): Promise<string> {
@@ -48,27 +32,19 @@ export async function piAuthJsonPath(): Promise<string> {
   return join(await piConfigSeedDir(), "auth.json");
 }
 
-function parseModelsJsonSync(path = piModelsJsonPathSync()): AtelierModelsJson | undefined {
-  if (!existsSync(path)) return undefined;
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf8"));
-    return parsed && typeof parsed === "object" ? parsed as AtelierModelsJson : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function loadModelsJson(path?: string): Promise<AtelierModelsJson> {
+export async function getAgentModelsSettings(path?: string): Promise<AgentModelsSettings> {
   path ??= await piModelsJsonPath();
   try {
     const parsed = JSON.parse(await readFile(path, "utf8"));
-    return parsed && typeof parsed === "object" ? parsed as AtelierModelsJson : { providers: {} };
-  } catch {
-    return { providers: {} };
+    if (!parsed || typeof parsed !== "object") throw new Error(`${path} must contain a JSON object`);
+    return parsed as AgentModelsSettings;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return { providers: {} };
+    throw error;
   }
 }
 
-async function saveModelsJson(config: AtelierModelsJson): Promise<void> {
+export async function setAgentModelsSettings(config: AgentModelsSettings): Promise<void> {
   const path = await piModelsJsonPath();
   const normalized = { providers: config.providers ?? {}, ...config };
   await mkdir(dirname(path), { recursive: true });
@@ -77,9 +53,9 @@ async function saveModelsJson(config: AtelierModelsJson): Promise<void> {
   await rename(tmp, path);
 }
 
-function configuredFromJson(config: AtelierModelsJson | undefined): ConfiguredAgentModel[] {
-  const picker = config?.atelier?.picker;
-  const active = config?.atelier?.activeModel;
+function configuredFromJson(config: AgentModelsSettings | undefined): ConfiguredAgentModel[] {
+  const picker = config?.picker;
+  const active = config?.activeModel;
   const models = Array.isArray(picker)
     ? picker.flatMap((entry) => {
       const provider = typeof entry.provider === "string" ? entry.provider : "";
@@ -93,36 +69,26 @@ function configuredFromJson(config: AtelierModelsJson | undefined): ConfiguredAg
   return models.map((model, index) => ({ ...model, active: activeProvider && activeId ? model.provider === activeProvider && model.id === activeId : index === 0 }));
 }
 
-export function loadConfiguredAgentModelsSync(): ConfiguredAgentModel[] {
-  return configuredFromJson(parseModelsJsonSync());
+export async function getConfiguredAgentModels(): Promise<ConfiguredAgentModel[]> {
+  return configuredFromJson(await getAgentModelsSettings());
 }
 
-export const configuredAgentModels: ConfiguredAgentModel[] = loadConfiguredAgentModelsSync();
-
 export async function setActiveAgentModel(provider: string, id: string): Promise<void> {
-  const config = await loadModelsJson();
+  const config = await getAgentModelsSettings();
   const current = configuredFromJson(config);
   const existing = current.find((model) => model.provider === provider && model.id === id);
-  config.atelier = {
-    ...(config.atelier ?? {}),
-    picker: current.map((model) => ({ provider: model.provider, id: model.id, label: model.label })),
-    activeModel: { provider, id },
-  };
-  if (!existing) config.atelier.picker?.unshift({ provider, id, label: id });
-  await saveModelsJson(config);
-  configuredAgentModels.splice(0, configuredAgentModels.length, ...configuredFromJson(config));
+  config.picker = current.map((model) => ({ provider: model.provider, id: model.id, label: model.label }));
+  config.activeModel = { provider, id };
+  if (!existing) config.picker.unshift({ provider, id, label: id });
+  await setAgentModelsSettings(config);
 }
 
 export async function setPickerAgentModels(models: ConfiguredAgentModel[], active?: { provider: string; id: string }): Promise<void> {
-  const config = await loadModelsJson();
+  const config = await getAgentModelsSettings();
   const first = models[0];
-  config.atelier = {
-    ...(config.atelier ?? {}),
-    picker: models.map((model) => ({ provider: model.provider, id: model.id, label: model.label })),
-    activeModel: active ?? models.find((model) => model.active) ?? (first ? { provider: first.provider, id: first.id } : undefined),
-  };
-  await saveModelsJson(config);
-  configuredAgentModels.splice(0, configuredAgentModels.length, ...configuredFromJson(config));
+  config.picker = models.map((model) => ({ provider: model.provider, id: model.id, label: model.label }));
+  config.activeModel = active ?? models.find((model) => model.active) ?? (first ? { provider: first.provider, id: first.id } : undefined);
+  await setAgentModelsSettings(config);
 }
 
 export async function createPiAuthStorage(): Promise<AuthStorage> {

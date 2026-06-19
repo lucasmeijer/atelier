@@ -48,17 +48,18 @@ export {
   seedWorkspacePiConfig,
 } from "./pi-config-seed.ts";
 export {
-  configuredAgentModels,
   connectModelProviderApiKey,
   createPiAuthStorage,
   createPiModelRegistry,
   disconnectModelProvider,
-  loadConfiguredAgentModelsSync,
+  getAgentModelsSettings,
+  getConfiguredAgentModels,
   piAuthJsonPath,
   piModelsJsonPath,
-  piModelsJsonPathSync,
   setActiveAgentModel,
+  setAgentModelsSettings,
   setPickerAgentModels,
   validateModelProviderApiKey,
+  type AgentModelsSettings,
   type ConfiguredAgentModel,
 } from "./pi-config-models.ts";

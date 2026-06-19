@@ -2,7 +2,7 @@ import { mkdir, open } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AtelierEventBus } from "@atelier/core";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
-import { configuredAgentModels } from "./pi-config-models.ts";
+import { getConfiguredAgentModels } from "./pi-config-models.ts";
 import {
   AuthStorage,
   createAgentSession,
@@ -632,11 +632,10 @@ class RealAgentRuntime extends BaseAgentRuntime {
     });
   }
 
-  private configuredModelOptions(): { provider: string; id: string; name: string; model: any }[] {
-    // Configured model picker list, resolved against the registry.
-    // Unresolvable entries stay listed; selecting them errors. This is computed
-    // lazily so settings changes are reflected in existing agent prompt boxes.
-    return configuredAgentModels.map((configured) => ({
+  private async configuredModelOptions(): Promise<{ provider: string; id: string; name: string; model: any }[]> {
+    // Configured model picker list, resolved against the registry at render time.
+    const configuredModels = await getConfiguredAgentModels();
+    return configuredModels.map((configured) => ({
       provider: configured.provider,
       id: configured.id,
       name: configured.label,
@@ -667,7 +666,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
     const stats = this.session.getSessionStats?.();
     const context = this.session.getContextUsage?.();
     const model = this.session.model;
-    const models = this.configuredModelOptions().map((option) => ({
+    const models = (await this.configuredModelOptions()).map((option) => ({
       provider: option.provider,
       id: option.id,
       name: option.name,
