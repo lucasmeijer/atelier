@@ -228,11 +228,24 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   function renderWorkspaceStatus(workspaceId: string): string {
-    return `<span id="${workspaceStatusId(workspaceId)}" class="workspace-status">${registry.isWorkspaceBusy(workspaceId) ? `<span class="status-spinner sm" aria-label="Workspace busy" title="Workspace busy"></span>` : ""}</span>`;
+    const state = registry.workspaceState(workspaceId);
+    const inner = state === "busy"
+      ? `<span class="status-spinner sm" aria-label="Workspace busy" title="Workspace busy"></span>`
+      : state === "unread"
+        ? `<span class="status-dot" aria-label="Workspace unread" title="Workspace unread"></span>`
+        : "";
+    const unreadTabs = registry.unreadTabs(workspaceId);
+    const unreadAttrs = unreadTabs.length > 0 ? ` data-unread-tabs="${escapeHtml(JSON.stringify(unreadTabs))}"` : "";
+    return `<span id="${workspaceStatusId(workspaceId)}" class="workspace-status" data-workspace-state="${state}"${unreadAttrs}>${inner}</span>`;
   }
 
   function renderTabStatus(workspaceId: string, tabKey: string): string {
-    return `<span id="${workspaceTabStatusId(workspaceId, tabKey)}" class="tab-status">${registry.isTabBusy(workspaceId, tabKey) ? `<span class="status-spinner sm" aria-label="Tab busy" title="Tab busy"></span>` : ""}</span>`;
+    const inner = registry.isTabBusy(workspaceId, tabKey)
+      ? `<span class="status-spinner sm" aria-label="Tab busy" title="Tab busy"></span>`
+      : registry.isTabUnread(workspaceId, tabKey)
+        ? `<span class="status-dot" aria-label="Tab unread" title="Tab unread"></span>`
+        : "";
+    return `<span id="${workspaceTabStatusId(workspaceId, tabKey)}" class="tab-status">${inner}</span>`;
   }
 
   function workspaceTitle(entry: WorkspaceEntry): string {
@@ -279,7 +292,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   function workspaceStatusStreams(workspaceId: string): string {
-    return `${turboReplaceStream(workspaceStatusId(workspaceId), renderWorkspaceStatus(workspaceId))}${registry.busyTabs(workspaceId).map((tabKey) => turboReplaceStream(workspaceTabStatusId(workspaceId, tabKey), renderTabStatus(workspaceId, tabKey))).join("")}`;
+    return `${turboReplaceStream(workspaceStatusId(workspaceId), renderWorkspaceStatus(workspaceId))}${registry.statusTabs(workspaceId).map((tabKey) => turboReplaceStream(workspaceTabStatusId(workspaceId, tabKey), renderTabStatus(workspaceId, tabKey))).join("")}`;
   }
 
   function initialStatusStreams(): string {
@@ -1084,6 +1097,18 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return jsonResponse({ ok: true });
   }
 
+  function clearWorkspaceUnreadEndpoint(id: string): Response {
+    requireWorkspace(id);
+    registry.clearWorkspaceUnread(id);
+    return turboStreamResponse("");
+  }
+
+  function openOldestUnreadWorkspaceEndpoint(): Response {
+    const entry = registry.oldestUnreadWorkspace();
+    if (!entry) return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+    return turboStreamResponse("", { headers: { location: `/workspaces/${encodeURIComponent(entry.id)}` } });
+  }
+
   deps.events?.on("workspace_tabs_changed", ({ workspaceId }) => {
     void replaceWorkspaceGroupsTurboStream(workspaceId)
       .then((html) => hub.broadcast(html))
@@ -1108,6 +1133,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     if (url.pathname === "/workspace-events/stream" && request.method === "GET") return hub.sseResponse(initialStatusStreams);
     if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
     if (url.pathname === "/workspaces" && request.method === "POST") return createWorkspaceEndpoint(url, request);
+    if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestUnreadWorkspaceEndpoint();
     if (url.pathname === "/repositories" && request.method === "POST") return await createRepositoryFromForm(request, url);
 
     const match = (pattern: RegExp): string[] | undefined => {
@@ -1134,6 +1160,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       if (request.method === "POST") return await updateWorkspaceSidebarTitleFromForm(params[0], request);
     }
     if ((params = match(/^\/workspaces\/([^/]+)\/view-state$/)) && request.method === "POST") return await updateWorkspaceViewStateEndpoint(params[0], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/unread\/clear$/)) && request.method === "POST") return clearWorkspaceUnreadEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceGroupCommandEndpoint(params[0], params[1], params[2]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/actions\/([^/]+)$/)) && request.method === "POST") return await workspaceGroupActionEndpoint(params[0], params[1], params[2]);

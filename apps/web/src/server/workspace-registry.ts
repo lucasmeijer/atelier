@@ -13,8 +13,10 @@ export interface WorkspaceEntry {
   error?: string;
 }
 
+export type WorkspaceState = "busy" | "unread" | "idle";
+
 export interface WorkspaceRegistryCallbacks {
-  /** A single workspace changed (phase, title, busy). tabKey is set when a tab busy change triggered it. */
+  /** A single workspace changed (phase, title, busy, unread). tabKey is set when a tab status change triggered it. */
   rowChanged?(entry: WorkspaceEntry, context: { tabKey?: string }): void;
   /** List membership or ordering changed. */
   listChanged?(entries: WorkspaceEntry[]): void;
@@ -71,9 +73,19 @@ export interface WorkspaceRegistry {
   touch(id: string): void;
   remove(id: string): void;
   setTabBusy(id: string, tabKey: string, busy: boolean): void;
+  setTabUnread(id: string, tabKey: string, unread: boolean): void;
+  clearWorkspaceUnread(id: string): void;
   isTabBusy(id: string, tabKey: string): boolean;
+  isTabUnread(id: string, tabKey: string): boolean;
+  tabUnreadAt(id: string, tabKey: string): number | undefined;
   isWorkspaceBusy(id: string): boolean;
+  isWorkspaceUnread(id: string): boolean;
+  workspaceUnreadAt(id: string): number | undefined;
+  workspaceState(id: string): WorkspaceState;
+  oldestUnreadWorkspace(): WorkspaceEntry | undefined;
   busyTabs(id: string): string[];
+  unreadTabs(id: string): string[];
+  statusTabs(id: string): string[];
 }
 
 export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}): WorkspaceRegistry {
@@ -81,6 +93,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
   const store = options.activityStore;
   const entries = new Map<string, WorkspaceEntry>();
   const tabBusy = new Map<string, Map<string, boolean>>();
+  const tabUnread = new Map<string, Map<string, number>>();
   let activity: Record<string, number> = {};
   let callbacks: WorkspaceRegistryCallbacks = {};
 
@@ -173,6 +186,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
     remove(id) {
       if (!entries.delete(id)) return;
       tabBusy.delete(id);
+      tabUnread.delete(id);
       callbacks.removed?.(id);
       callbacks.listChanged?.(sorted());
     },
@@ -191,16 +205,77 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       if (entry) callbacks.rowChanged?.(entry, { tabKey });
     },
 
+    setTabUnread(id, tabKey, unread) {
+      let tabs = tabUnread.get(id);
+      if (!tabs) {
+        tabs = new Map();
+        tabUnread.set(id, tabs);
+      }
+      if (tabs.has(tabKey) === unread) return;
+      if (unread) tabs.set(tabKey, now());
+      else tabs.delete(tabKey);
+      if (tabs.size === 0) tabUnread.delete(id);
+      const entry = entries.get(id);
+      if (entry) callbacks.rowChanged?.(entry, { tabKey });
+    },
+
+    clearWorkspaceUnread(id) {
+      const tabs = tabUnread.get(id);
+      if (!tabs) return;
+      const cleared = [...tabs.keys()];
+      tabUnread.delete(id);
+      const entry = entries.get(id);
+      if (!entry) return;
+      for (const tabKey of cleared) callbacks.rowChanged?.(entry, { tabKey });
+    },
+
     isTabBusy(id, tabKey) {
       return tabBusy.get(id)?.get(tabKey) ?? false;
+    },
+
+    isTabUnread(id, tabKey) {
+      return tabUnread.get(id)?.has(tabKey) ?? false;
+    },
+
+    tabUnreadAt(id, tabKey) {
+      return tabUnread.get(id)?.get(tabKey);
     },
 
     isWorkspaceBusy(id) {
       return [...(tabBusy.get(id)?.values() ?? [])].some(Boolean);
     },
 
+    isWorkspaceUnread(id) {
+      return (tabUnread.get(id)?.size ?? 0) > 0;
+    },
+
+    workspaceUnreadAt(id) {
+      const timestamps = [...(tabUnread.get(id)?.values() ?? [])];
+      return timestamps.length > 0 ? Math.min(...timestamps) : undefined;
+    },
+
+    workspaceState(id) {
+      if (this.isWorkspaceBusy(id)) return "busy";
+      if (this.isWorkspaceUnread(id)) return "unread";
+      return "idle";
+    },
+
+    oldestUnreadWorkspace() {
+      return [...entries.values()]
+        .filter((entry) => entry.phase === "ready" && this.isWorkspaceUnread(entry.id))
+        .sort((a, b) => (this.workspaceUnreadAt(a.id)! - this.workspaceUnreadAt(b.id)!) || a.id.localeCompare(b.id))[0];
+    },
+
     busyTabs(id) {
       return [...(tabBusy.get(id)?.keys() ?? [])];
+    },
+
+    unreadTabs(id) {
+      return [...(tabUnread.get(id)?.keys() ?? [])];
+    },
+
+    statusTabs(id) {
+      return [...new Set([...this.busyTabs(id), ...this.unreadTabs(id)])];
     },
   };
 }

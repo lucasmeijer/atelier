@@ -11,6 +11,7 @@ import {
   createAgentTermController,
   registerAgentStreamActions,
   startAgentTab,
+  type AgentPaneControllerInstance,
 } from "@atelier/agent/client";
 import { createBrowserAddressController, createBrowserPaneController } from "@atelier/browser/client";
 import { createProvisionTerminalController } from "@atelier/workspace/client";
@@ -337,6 +338,13 @@ class AtelierShortcutsController extends Controller {
       return;
     }
 
+    if (event.code === "Backspace" || event.key === "Backspace") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void this.openOldestUnreadWorkspace();
+      return;
+    }
+
     const commandId = this.registeredShortcutCommandId(event);
     if (commandId) {
       event.preventDefault();
@@ -377,6 +385,31 @@ class AtelierShortcutsController extends Controller {
     const fromPath = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
     if (fromPath) return decodeURIComponent(fromPath);
     return residencyController()?.activeWorkspaceId();
+  }
+
+  private async openOldestUnreadWorkspace(): Promise<void> {
+    const response = await fetch("/workspaces/open-oldest-unread", {
+      method: "POST",
+      headers: { "Accept": "text/vnd.turbo-stream.html" },
+    });
+    if (response.status === 204) return;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const location = response.headers.get("location");
+    if (!location) return;
+    const url = new URL(location, window.location.href);
+    const workspaceId = decodeURIComponent(url.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1] ?? "");
+    if (!workspaceId) return;
+    const row = document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`);
+    const revealUnreadTab = row ? this.unreadTabs(row).find((tab) => tab.startsWith("agent:")) : undefined;
+    workspaceListController()?.markActiveWorkspace(workspaceId);
+    void residencyController()?.selectWorkspace(workspaceId, url.pathname, { revealUnreadTab });
+  }
+
+  private unreadTabs(row: HTMLElement): string[] {
+    const raw = row.querySelector<HTMLElement>(".workspace-status")?.dataset.unreadTabs;
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
   }
 
   private async executeActiveWorkspaceCommand(commandId: string): Promise<void> {
@@ -528,14 +561,14 @@ class WorkspaceResidencyController extends Controller {
     if (activeResident) this.activateResident(activeResident);
   }
 
-  async selectWorkspace(workspaceId: string, href: string): Promise<void> {
+  async selectWorkspace(workspaceId: string, href: string, options: { revealUnreadTab?: string } = {}): Promise<void> {
     // Update the URL first: selection state is derived from it, and stream
     // broadcasts arriving while the resident loads must not flip selection back.
     const seq = ++this.selectionSeq;
     history.pushState({}, "", href);
     const existing = this.residentTargets.find((resident) => resident.dataset.workspaceId === workspaceId);
     if (existing) {
-      this.activateResident(existing);
+      this.activateResident(existing, options);
       return;
     }
 
@@ -554,7 +587,7 @@ class WorkspaceResidencyController extends Controller {
     this.element.appendChild(resident);
     // Only activate if no newer selection happened while we were fetching;
     // the resident stays cached either way.
-    if (seq === this.selectionSeq) this.activateResident(resident);
+    if (seq === this.selectionSeq) this.activateResident(resident, options);
     this.evictIfNeeded();
   }
 
@@ -630,15 +663,43 @@ class WorkspaceResidencyController extends Controller {
     return resident;
   }
 
-  private activateResident(resident: HTMLElement): void {
+  private activateResident(resident: HTMLElement, options: { revealUnreadTab?: string } = {}): void {
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
     this.loadingTargets.forEach((loading) => { loading.hidden = true; });
     this.residentTargets.forEach((candidate) => candidate.classList.toggle("active", candidate === resident));
     resident.dataset.lastActivatedAt = String(Date.now());
-    const tabs = resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]');
+    const revealTab = options.revealUnreadTab;
+    const tabs = revealTab
+      ? this.tabbarForTab(resident, revealTab) ?? resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]')
+      : resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]');
     const controller = tabs ? application.getControllerForElementAndIdentifier(tabs, "workspace-tabs") as WorkspaceTabsController | null : null;
-    const activeTab = tabs?.querySelector<HTMLElement>(".group-tab.active[data-tab]")?.dataset.tab;
+    const activeTab = revealTab ?? tabs?.querySelector<HTMLElement>(".group-tab.active[data-tab]")?.dataset.tab;
     if (activeTab) controller?.activateTab(activeTab, { persist: false });
+    const workspaceId = resident.dataset.workspaceId;
+    if (workspaceId) void this.clearWorkspaceUnread(workspaceId);
+    if (revealTab?.startsWith("agent:")) this.revealLatestAssistant(resident, revealTab);
+  }
+
+  private tabbarForTab(resident: HTMLElement, tabName: string): HTMLElement | null {
+    const tab = resident.querySelector<HTMLElement>(`.group-tab[data-tab="${CSS.escape(tabName)}"]`);
+    return tab?.closest<HTMLElement>('[data-controller~="workspace-tabs"]') ?? null;
+  }
+
+  private revealLatestAssistant(resident: HTMLElement, tabName: string): void {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const pane = resident.querySelector<HTMLElement>(`.tab-pane.active[data-tab-pane="${CSS.escape(tabName)}"]`);
+      const agentPane = pane?.querySelector<HTMLElement>('[data-controller~="agent-pane"]');
+      const controller = agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
+      controller?.revealLatestAssistant();
+    }));
+  }
+
+  private async clearWorkspaceUnread(workspaceId: string): Promise<void> {
+    const html = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/unread/clear`, {
+      method: "POST",
+      headers: { "Accept": "text/vnd.turbo-stream.html" },
+    }).then((response) => response.text());
+    if (html) window.Turbo?.renderStreamMessage(html);
   }
 
   private evictIfNeeded(): void {
@@ -656,6 +717,11 @@ class WorkspaceResidencyController extends Controller {
 function residencyController(): WorkspaceResidencyController | null {
   const residency = document.querySelector<HTMLElement>('[data-controller~="workspace-residency"]');
   return residency ? application.getControllerForElementAndIdentifier(residency, "workspace-residency") as WorkspaceResidencyController | null : null;
+}
+
+function workspaceListController(): WorkspaceListController | null {
+  const list = document.querySelector<HTMLElement>('[data-controller~="workspace-list"]');
+  return list ? application.getControllerForElementAndIdentifier(list, "workspace-list") as WorkspaceListController | null : null;
 }
 
 /**
@@ -698,7 +764,8 @@ class WorkspaceListController extends Controller {
     }
     event.preventDefault();
     const workspaceId = row.dataset.workspaceId;
-    if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href);
+    const revealUnreadTab = this.unreadTabs(row).find((tab) => tab.startsWith("agent:"));
+    if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href, { revealUnreadTab });
     this.markActive(workspaceId);
   }
 
@@ -738,6 +805,10 @@ class WorkspaceListController extends Controller {
     row?.querySelector<HTMLAnchorElement>("a.row-main")?.click();
   }
 
+  markActiveWorkspace(workspaceId: string): void {
+    this.markActive(workspaceId);
+  }
+
   deleteStarted(event: Event): void {
     const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
     const row = form?.closest<HTMLElement>(".workspace-row");
@@ -747,6 +818,13 @@ class WorkspaceListController extends Controller {
       button.disabled = true;
       button.innerHTML = `<span class="status-spinner sm" aria-label="Deleting"></span>`;
     }
+  }
+
+  private unreadTabs(row: HTMLElement): string[] {
+    const raw = row.querySelector<HTMLElement>(".workspace-status")?.dataset.unreadTabs;
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
   }
 
   private currentWorkspaceId(): string | undefined {

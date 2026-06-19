@@ -256,6 +256,8 @@ const app = createWebApp({
 
 atelierEvents.on("workspace_user_activity", ({ workspaceId }) => registry.touch(workspaceId));
 atelierEvents.on("workspace_title_changed", ({ workspaceId, title }) => registry.setTitle(workspaceId, title || null));
+atelierEvents.on("workspace_agent_turn_finished", ({ workspaceId, agentLabel }) => registry.setTabUnread(workspaceId, `agent:${agentLabel}`, true));
+atelierEvents.on("workspace_tab_unread", ({ workspaceId, tabKey, unread }) => registry.setTabUnread(workspaceId, tabKey, unread));
 subscribeWorkspaceTabBusy(({ workspaceId, tabKey, busy }) => registry.setTabBusy(workspaceId, tabKey, busy));
 subscribeTerminalTabBusy(({ workspaceId, tabKey, busy }) => registry.setTabBusy(workspaceId, tabKey, busy));
 

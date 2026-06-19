@@ -28,6 +28,7 @@ export function registerAgentStreamActions(): void {
 
 export interface AgentPaneControllerInstance {
   start(): void;
+  revealLatestAssistant(): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -93,6 +94,17 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
         window.Turbo?.renderStreamMessage(event.data);
       };
       this.source = source;
+    }
+
+    revealLatestAssistant(): void {
+      const finals = [...this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-final")]
+        .filter((element) => element.textContent?.trim());
+      const target = finals.at(-1);
+      if (!target) return;
+      const transcriptTop = this.transcriptTarget.getBoundingClientRect().top;
+      const targetTop = target.getBoundingClientRect().top;
+      this.stuck = false;
+      this.transcriptTarget.scrollTop += targetTop - transcriptTop;
     }
 
     private path(suffix: string): string {

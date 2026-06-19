@@ -32,6 +32,12 @@ export interface WorkspaceAgentTurnFinishedEvent {
   agentLabel: string;
 }
 
+export interface WorkspaceTabUnreadEvent {
+  workspaceId: string;
+  tabKey: string;
+  unread: boolean;
+}
+
 export interface WorkspaceSourcePrepareEvent {
   workspaceId: string;
   context?: WorkspaceCreationContext;
@@ -54,5 +60,6 @@ declare module "@atelier/core" {
     workspace_title_changed: WorkspaceTitleChangedEvent;
     workspace_tabs_changed: WorkspaceTabsChangedEvent;
     workspace_agent_turn_finished: WorkspaceAgentTurnFinishedEvent;
+    workspace_tab_unread: WorkspaceTabUnreadEvent;
   }
 }
