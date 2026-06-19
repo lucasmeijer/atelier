@@ -2,9 +2,8 @@ import { mkdir, open } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AtelierEventBus } from "@atelier/core";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
-import { getConfiguredAgentModels, getModelThinkingLevel } from "./pi-config-models.ts";
+import { createPiAuthStorage, getConfiguredAgentModels, getModelThinkingLevel, piModelsJsonPath } from "./pi-config-models.ts";
 import {
-  AuthStorage,
   createAgentSession,
   ModelRegistry,
   SessionManager,
@@ -926,8 +925,8 @@ async function loadWorkspaceAgentsFiles(workspaceId: string): Promise<Array<{ pa
 
 async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
   await ensureSessionFile(agent.path);
-  const authStorage = AuthStorage.create();
-  const modelRegistry = ModelRegistry.create(authStorage);
+  const authStorage = await createPiAuthStorage();
+  const modelRegistry = ModelRegistry.create(authStorage, await piModelsJsonPath());
   const agentsFiles = await loadWorkspaceAgentsFiles(agent.workspaceId);
   const sessionManager = SessionManager.open(agent.path, dirname(agent.path), workspaceRoot);
   const { session } = await createAgentSession({
