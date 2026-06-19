@@ -341,6 +341,20 @@ class AtelierShortcutsController extends Controller {
       return;
     }
 
+    if (event.code === "Comma" || event.key === ",") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void this.openAdjacentWorkspace(-1);
+      return;
+    }
+
+    if (event.code === "Period" || event.key === ".") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void this.openAdjacentWorkspace(1);
+      return;
+    }
+
     if (event.code === "Backslash" || event.key === "\\" || event.key === "|" || event.code === "Backspace" || event.key === "Backspace") {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -413,6 +427,22 @@ class AtelierShortcutsController extends Controller {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
+  }
+
+  private async openAdjacentWorkspace(direction: -1 | 1): Promise<void> {
+    const rows = [...document.querySelectorAll<HTMLElement>(".workspace-row[data-workspace-id]")]
+      .filter((row) => !row.classList.contains("pending-delete") && row.dataset.phase !== "checking_delete" && row.dataset.phase !== "deleting");
+    if (rows.length === 0) return;
+    const currentWorkspaceId = this.activeWorkspaceId();
+    const currentIndex = currentWorkspaceId ? rows.findIndex((row) => row.dataset.workspaceId === currentWorkspaceId) : -1;
+    const nextIndex = currentIndex >= 0 ? (currentIndex + direction + rows.length) % rows.length : direction > 0 ? 0 : rows.length - 1;
+    const row = rows[nextIndex];
+    const workspaceId = row?.dataset.workspaceId;
+    const href = row?.querySelector<HTMLAnchorElement>("a.row-main")?.href;
+    if (!row || !workspaceId || !href) return;
+    const revealUnreadTab = this.unreadTabs(row).find((tab) => tab.startsWith("agent:"));
+    workspaceListController()?.markActiveWorkspace(workspaceId);
+    await residencyController()?.selectWorkspace(workspaceId, href, { revealUnreadTab });
   }
 
   private async executeActiveWorkspaceCommand(commandId: string): Promise<void> {
