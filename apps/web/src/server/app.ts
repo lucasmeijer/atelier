@@ -1104,6 +1104,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return turboStreamResponse("");
   }
 
+  function activateWorkspaceEndpoint(id: string): Response {
+    requireWorkspace(id);
+    registry.setActiveWorkspace(id);
+    registry.clearWorkspaceUnread(id);
+    return turboStreamResponse("");
+  }
+
   function openOldestUnreadWorkspaceEndpoint(): Response {
     const entry = registry.oldestUnreadWorkspace();
     if (!entry) return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
@@ -1161,6 +1168,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       if (request.method === "POST") return await updateWorkspaceSidebarTitleFromForm(params[0], request);
     }
     if ((params = match(/^\/workspaces\/([^/]+)\/view-state$/)) && request.method === "POST") return await updateWorkspaceViewStateEndpoint(params[0], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/activate$/)) && request.method === "POST") return activateWorkspaceEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/unread\/clear$/)) && request.method === "POST") return clearWorkspaceUnreadEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceGroupCommandEndpoint(params[0], params[1], params[2]);

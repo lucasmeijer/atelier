@@ -154,6 +154,19 @@ describe("workspace registry", () => {
     expect(registry.oldestUnreadWorkspace()).toBeUndefined();
   });
 
+  test("active workspace tracking ignores unknown ids and is cleared on remove", async () => {
+    const { registry } = setup();
+    await registry.seed([{ id: "a", title: null }]);
+
+    registry.setActiveWorkspace("missing");
+    expect(registry.activeWorkspaceId()).toBeUndefined();
+
+    registry.setActiveWorkspace("a");
+    expect(registry.activeWorkspaceId()).toBe("a");
+    registry.remove("a");
+    expect(registry.activeWorkspaceId()).toBeUndefined();
+  });
+
   test("remove deletes the entry, emits removed + list change; unknown ids are a no-op", async () => {
     const { registry, captured } = setup();
     await registry.seed([{ id: "a", title: null }]);

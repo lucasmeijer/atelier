@@ -676,7 +676,7 @@ class WorkspaceResidencyController extends Controller {
     const activeTab = revealTab ?? tabs?.querySelector<HTMLElement>(".group-tab.active[data-tab]")?.dataset.tab;
     if (activeTab) controller?.activateTab(activeTab, { persist: false });
     const workspaceId = resident.dataset.workspaceId;
-    if (workspaceId) void this.clearWorkspaceUnread(workspaceId);
+    if (workspaceId) void this.activateWorkspace(workspaceId);
     if (revealTab?.startsWith("agent:")) this.revealLatestAssistant(resident, revealTab);
   }
 
@@ -694,8 +694,8 @@ class WorkspaceResidencyController extends Controller {
     }));
   }
 
-  private async clearWorkspaceUnread(workspaceId: string): Promise<void> {
-    const html = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/unread/clear`, {
+  private async activateWorkspace(workspaceId: string): Promise<void> {
+    const html = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/activate`, {
       method: "POST",
       headers: { "Accept": "text/vnd.turbo-stream.html" },
     }).then((response) => response.text());

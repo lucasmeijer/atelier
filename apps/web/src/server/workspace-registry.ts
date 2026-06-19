@@ -72,6 +72,8 @@ export interface WorkspaceRegistry {
   setTitle(id: string, title: string | null): void;
   touch(id: string): void;
   remove(id: string): void;
+  setActiveWorkspace(id: string | undefined): void;
+  activeWorkspaceId(): string | undefined;
   setTabBusy(id: string, tabKey: string, busy: boolean): void;
   setTabUnread(id: string, tabKey: string, unread: boolean): void;
   clearWorkspaceUnread(id: string): void;
@@ -95,6 +97,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
   const tabBusy = new Map<string, Map<string, boolean>>();
   const tabUnread = new Map<string, Map<string, number>>();
   let activity: Record<string, number> = {};
+  let activeWorkspace: string | undefined;
   let callbacks: WorkspaceRegistryCallbacks = {};
 
   function sorted(): WorkspaceEntry[] {
@@ -187,8 +190,17 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       if (!entries.delete(id)) return;
       tabBusy.delete(id);
       tabUnread.delete(id);
+      if (activeWorkspace === id) activeWorkspace = undefined;
       callbacks.removed?.(id);
       callbacks.listChanged?.(sorted());
+    },
+
+    setActiveWorkspace(id) {
+      activeWorkspace = id && entries.has(id) ? id : undefined;
+    },
+
+    activeWorkspaceId() {
+      return activeWorkspace;
     },
 
     setTabBusy(id, tabKey, busy) {
