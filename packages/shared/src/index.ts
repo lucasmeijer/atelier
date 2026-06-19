@@ -41,6 +41,8 @@ export interface WorkspaceCommandContribution<Input = Record<string, never>> {
 export interface WorkspaceAttachment {
   tabs?: WorkspaceTabContribution[];
   workspaceCommands?: WorkspaceCommandContribution[];
+  /** Server-rendered per-workspace chrome layered around tab groups. */
+  workspaceChromeHtml?: string[];
 }
 
 export interface StaticFileContribution {

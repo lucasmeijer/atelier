@@ -326,6 +326,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // Page shell
   // ---------------------------------------------------------------------------
 
+  function moduleStylesHtml(): string {
+    return workspaceModules.flatMap((module) => Object.entries(module.staticFiles ?? {}))
+      .filter(([path, entry]) => path.endsWith(".css") && entry.contentType.toLowerCase().startsWith("text/css"))
+      .map(([path]) => `<link rel="stylesheet" href="${assetPath(path)}">`)
+      .join("\n");
+  }
+
   function layout(title: string, body: string): string {
     return `<!DOCTYPE html>
 <html lang="en" data-theme="cappuccino">
@@ -337,10 +344,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 <link rel="icon" type="image/svg+xml" href="${assetPath("/favicon.svg")}">
 <link rel="stylesheet" href="${assetPath("/style.css")}">
 <link rel="stylesheet" href="${assetPath("/provisioning.css")}">
-<link rel="stylesheet" href="${assetPath("/terminal.css")}">
-<link rel="stylesheet" href="${assetPath("/agent.css")}">
-<link rel="stylesheet" href="${assetPath("/vscode.css")}">
-<link rel="stylesheet" href="${assetPath("/browser.css")}">
+${moduleStylesHtml()}
 <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.13/dist/turbo.es2017-esm.js"></script>
 <script type="module">
   import { Application, Controller } from "https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/+esm";
@@ -569,7 +573,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       ${index === layoutState.groups.length - 1 ? `<div class="new-group-drop-zone" data-new-group-drop-zone="true" data-action="dragover->workspace-groups#dragOver dragleave->workspace-groups#dragLeave drop->workspace-groups#drop" title="Drop here to create a new group" aria-label="Drop tab here to create a new group"></div>` : ""}
     </section>${index < layoutState.groups.length - 1 ? `<div class="group-resizer" data-action="pointerdown->workspace-groups#startResize" data-resizer-index="${index}" role="separator" aria-orientation="vertical"></div>` : ""}`;
     }).join("");
-    return `<div class="workspace-groups" id="${workspaceGroupsId(workspaceId)}" data-controller="workspace-groups" data-workspace-groups-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-command-shortcuts="${escapeHtml(JSON.stringify(shortcutCommands))}">${groups}</div>`;
+    const workspaceChrome = attachments.flatMap((attachment) => attachment.workspaceChromeHtml ?? []).join("");
+    return `<div class="workspace-groups" id="${workspaceGroupsId(workspaceId)}" data-controller="workspace-groups" data-workspace-groups-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-command-shortcuts="${escapeHtml(JSON.stringify(shortcutCommands))}">${groups}${workspaceChrome}</div>`;
   }
 
   async function renderWorkspaceGroupsFor(workspaceId: string): Promise<string> {

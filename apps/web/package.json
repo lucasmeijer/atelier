@@ -12,6 +12,7 @@
     "@atelier/browser": "workspace:*",
     "@atelier/core": "workspace:*",
     "@atelier/desktop": "workspace:*",
+    "@atelier/keypress-probe": "workspace:*",
     "@atelier/repository": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*",

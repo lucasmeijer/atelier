@@ -14,6 +14,7 @@ import {
   type AgentPaneControllerInstance,
 } from "@atelier/agent/client";
 import { createBrowserAddressController, createBrowserPaneController } from "@atelier/browser/client";
+import { createKeypressProbeController, installKeypressProbe } from "@atelier/keypress-probe/client";
 import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { createTerminalPaneController, initializeTerminalTheme, startTerminal, startTerminalTab } from "@atelier/workspace-terminal/client";
 
@@ -36,6 +37,8 @@ async function waitForStimulus(): Promise<typeof window.Stimulus> {
 }
 
 const { Application, Controller } = await waitForStimulus();
+
+installKeypressProbe();
 
 initializeTerminalTheme();
 registerAgentStreamActions();
@@ -1326,6 +1329,7 @@ application.register("workspace-tabs", WorkspaceTabsController);
 application.register("workspace-tab-close", WorkspaceTabCloseController);
 application.register("workspace-groups", WorkspaceGroupsController);
 application.register("workspace-residency", WorkspaceResidencyController);
+application.register("keypress-probe", createKeypressProbeController(Controller));
 application.register("atelier-shortcuts", AtelierShortcutsController);
 application.register("submit-shortcut", SubmitShortcutController);
 application.register("terminal-pane", createTerminalPaneController(Controller));
