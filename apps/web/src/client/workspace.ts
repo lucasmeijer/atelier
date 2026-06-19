@@ -341,7 +341,7 @@ class AtelierShortcutsController extends Controller {
       return;
     }
 
-    if (event.code === "Backspace" || event.key === "Backspace") {
+    if (event.code === "Backslash" || event.key === "\\" || event.key === "|" || event.code === "Backspace" || event.key === "Backspace") {
       event.preventDefault();
       event.stopImmediatePropagation();
       void this.openOldestUnreadWorkspace();
@@ -418,6 +418,10 @@ class AtelierShortcutsController extends Controller {
   private async executeActiveWorkspaceCommand(commandId: string): Promise<void> {
     const workspaceId = this.activeWorkspaceId();
     if (!workspaceId) return;
+    if (commandId === "agent.launch-source-repo-workspace") {
+      this.openPrerenderedSourceRepoLaunchModal();
+      return;
+    }
     try {
       const response = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/commands/${encodeURIComponent(commandId)}`, {
         method: "POST",
@@ -429,6 +433,20 @@ class AtelierShortcutsController extends Controller {
     } catch (error) {
       console.error("Could not execute workspace command", error);
     }
+  }
+
+  private openPrerenderedSourceRepoLaunchModal(): void {
+    const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.active");
+    const sourceRepositoryId = resident?.dataset.sourceRepositoryId;
+    if (!sourceRepositoryId) return;
+    const dialog = document.getElementById(`agent_launch_repo_modal_${this.domIdPart(sourceRepositoryId)}`) as HTMLDialogElement | null;
+    if (!dialog) return;
+    if (!dialog.open) dialog.showModal();
+    focusDialogPromptEnd(dialog);
+  }
+
+  private domIdPart(value: string): string {
+    return value.replace(/[^a-zA-Z0-9_-]/g, "_");
   }
 
   private focusAdjacentGroup(direction: -1 | 1): void {

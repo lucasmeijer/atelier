@@ -592,12 +592,15 @@ ${moduleStylesHtml()}
   }
 
   async function workspaceDetailResidentHtml(id: string, options: { active?: boolean } = {}): Promise<string> {
-    return `<div class="workspace-detail-resident ${options.active ? "active" : ""}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${await workspaceDetailContent(id)}</div>`;
+    const entry = requireWorkspace(id);
+    const sourceRepositoryAttr = entry.sourceRepositoryId ? ` data-source-repository-id="${escapeHtml(entry.sourceRepositoryId)}"` : "";
+    return `<div class="workspace-detail-resident ${options.active ? "active" : ""}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}"${sourceRepositoryAttr}>${await workspaceDetailContent(id)}</div>`;
   }
 
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { active?: boolean } = {}): string {
     const inner = provisioning.render(entry.id, { failed: entry.phase === "failed", error: entry.error });
-    return `<div class="workspace-detail-resident workspace-boot ${options.active ? "active" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"><div class="main"><header class="header"><h1>${escapeHtml(workspaceTitle(entry))}</h1></header><div class="body"><div class="panel">${inner}</div></div></div></div>`;
+    const sourceRepositoryAttr = entry.sourceRepositoryId ? ` data-source-repository-id="${escapeHtml(entry.sourceRepositoryId)}"` : "";
+    return `<div class="workspace-detail-resident workspace-boot ${options.active ? "active" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${sourceRepositoryAttr}><div class="main"><header class="header"><h1>${escapeHtml(workspaceTitle(entry))}</h1></header><div class="body"><div class="panel">${inner}</div></div></div></div>`;
   }
 
   function broadcastWorkspaceBoot(id: string): void {
@@ -1017,17 +1020,6 @@ ${moduleStylesHtml()}
       case "desktop.start":
         await ensureWorkspaceDesktop(workspaceId);
         return { createdTabKey: desktopTabKey };
-      case "agent.launch-source-repo-workspace": {
-        const entry = requireWorkspace(workspaceId);
-        if (!entry.sourceRepositoryId) throw new AtelierCoreError("source_repo_not_found", `workspace ${workspaceId} was not created from a repository`);
-        const repo = await repositoryById(entry.sourceRepositoryId);
-        const modal = await launchRepoAgentModal(repo, await preferredNewAgentModel(), {
-          autoShow: true,
-          modalId: domId("agent_launch_source_repo_modal", workspaceId, repo.id),
-          formId: domId("agent_launch_source_repo_form", workspaceId, repo.id),
-        });
-        return { streamHtml: turboUpdateStream(workspaceCommandModalHostId, modal) };
-      }
       default:
         throw new AtelierCoreError("command_not_implemented", `workspace command not implemented: ${commandId}`);
     }
