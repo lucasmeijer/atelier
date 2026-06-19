@@ -391,6 +391,7 @@ ${moduleStylesHtml()}
     submitShortcut: "⌘↩",
     rows: 8,
     formActions: "keydown->submit-shortcut#keydown turbo:submit-end->modal#submitted",
+    formTurbo: true,
     selectedModel,
   })}
 </dialog>`;

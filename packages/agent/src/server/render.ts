@@ -132,6 +132,7 @@ export interface AgentComposerRenderOptions {
   formId?: string;
   rows?: number;
   formActions?: string;
+  formTurbo?: boolean;
   selectedModel?: string;
 }
 
@@ -151,9 +152,10 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
   const statbar = options.stats && options.ctx
     ? `<div class="agent-statbar" id="${ids.stats(options.ctx)}">${renderStatsBar(options.ctx, options.stats)}</div>`
     : `<div class="agent-statbar">${await renderComposerSettings(formId, options.selectedModel)}</div>`;
+  const turboAttr = options.formTurbo === undefined ? "" : ` data-turbo="${options.formTurbo ? "true" : "false"}"`;
   return `<div class="agent-promptwrap">
         <div class="agent-promptbox" data-controller="agent-attachments" data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}" data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
-          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
+          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
             <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row"></div>
             <textarea class="agent-input" name="text" rows="${options.rows ?? 1}" placeholder="${escapeHtml(options.placeholder)}"${inputTarget}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>
