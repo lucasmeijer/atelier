@@ -402,7 +402,7 @@ button { border: 0; background: none; cursor: pointer; }
 .status-spinner { display: inline-block; flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line2); border-top-color: var(--spin); animation: spin .7s linear infinite; }
 .status-spinner.sm { width: 10px; height: 10px; }
 .workspace-status, .tab-status { display: inline-flex; align-items: center; justify-content: center; min-width: 10px; min-height: 10px; }
-.status-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.status-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); flex: 0 0 auto; }
 .workspace-boot-pad { display: flex; align-items: center; gap: 10px; }
 
 .ghost-row.addbtn { color: var(--muted2); font-weight: 600; display: flex; }
@@ -433,6 +433,7 @@ button { border: 0; background: none; cursor: pointer; }
 .workspace-shell-collapsed .workspace-sidebar-table .row, .workspace-shell-collapsed .sidebar-host-repos .row { display: grid; grid-template-columns: 1fr; place-items: center; width: 46px; min-width: 46px; max-width: 46px; height: 36px; min-height: 36px; padding: 0; margin: 1px auto; gap: 0; }
 .workspace-shell-collapsed .workspace-row::before, .workspace-shell-collapsed .repo-swatch, .workspace-shell-collapsed .addbtn .ic { grid-area: 1 / 1; justify-self: center; align-self: center; }
 .workspace-shell-collapsed .workspace-row-title-frame, .workspace-shell-collapsed .workspace-row-actions, .workspace-shell-collapsed .row-main, .workspace-shell-collapsed .row-actions, .workspace-shell-collapsed .workspace-status, .workspace-shell-collapsed .tab-status, .workspace-shell-collapsed .r-title, .workspace-shell-collapsed .r-sub, .workspace-shell-collapsed .lh, .workspace-shell-collapsed .sidefoot .ftext, .workspace-shell-collapsed .miniS, .workspace-shell-collapsed .attn { display: none; }
+.workspace-shell-collapsed .workspace-row.attn-state::before { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--amber); }
 .workspace-shell-collapsed .sidebar-host-repos { width: 100%; padding: 8px 0 6px; }
 .workspace-shell-collapsed .list { padding: 2px 0; }
 .workspace-shell-collapsed .sidefoot { width: 100%; flex-direction: column; align-items: center; padding: 7px 0; }

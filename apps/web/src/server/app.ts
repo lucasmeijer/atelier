@@ -266,7 +266,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const selectable = entry.phase === "starting" || entry.phase === "failed" || entry.phase === "ready";
     const sourceRepositoryClass = entry.sourceRepositoryId ? "repo-tinted-row" : "";
     const sourceRepositoryStyle = entry.sourceRepositoryId ? ` style="${repoColorStyle(entry.sourceRepositoryId)}"` : "";
-    const open = (extraClass: string) => `<div class="row workspace-row ${sourceRepositoryClass} ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}"${sourceRepositoryStyle}${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
+    const stateClass = registry.workspaceState(id) === "unread" ? "attn-state" : "";
+    const open = (extraClass: string) => `<div class="row workspace-row ${sourceRepositoryClass} ${stateClass} ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}"${sourceRepositoryStyle}${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
     const workspaceLink = (label: string, attrs = "") => `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"${attrs}><div class="r-title">${escapeHtml(label)}</div></a>`;
     switch (entry.phase) {
       // All phases render single-line rows (no r-sub) so phase changes never
