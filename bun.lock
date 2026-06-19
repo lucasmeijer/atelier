@@ -17,6 +17,7 @@
         "@atelier/browser": "workspace:*",
         "@atelier/core": "workspace:*",
         "@atelier/desktop": "workspace:*",
+        "@atelier/keypress-probe": "workspace:*",
         "@atelier/repository": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/vscode": "workspace:*",
@@ -61,6 +62,12 @@
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
         "@atelier/workspace-proxy": "workspace:*",
+      },
+    },
+    "packages/keypress-probe": {
+      "name": "@atelier/keypress-probe",
+      "dependencies": {
+        "@atelier/shared": "workspace:*",
       },
     },
     "packages/observable-terminal": {
@@ -151,6 +158,8 @@
     "@atelier/core": ["@atelier/core@workspace:packages/core"],
 
     "@atelier/desktop": ["@atelier/desktop@workspace:packages/desktop"],
+
+    "@atelier/keypress-probe": ["@atelier/keypress-probe@workspace:packages/keypress-probe"],
 
     "@atelier/observable-terminal": ["@atelier/observable-terminal@workspace:packages/observable-terminal"],
 
