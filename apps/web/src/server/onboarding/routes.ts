@@ -1,6 +1,7 @@
 import { listOnboardingContributions, registerOnboardingContribution } from "./registry.ts";
 import { hasWorkspaceGitHubToken } from "@atelier/core";
-import { githubRow, hasAnyLlmProvider, isOnboarded, providerRow, providerSummaries, showMoreProvidersButton } from "../settings/routes.ts";
+import { hasGitIdentity } from "@atelier/repository";
+import { githubRow, hasAnyLlmProvider, isOnboarded, providerRow, providerSummaries, renderGitIdentityForm, showMoreProvidersButton } from "../settings/routes.ts";
 
 function escapeHtml(value: unknown): string {
   return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
@@ -21,6 +22,10 @@ function update(target: string, html: string): string {
   return `<turbo-stream action="update" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
 }
 
+async function renderGitIdentityStep(): Promise<string> {
+  return `<div class="onboarding-step"><h2>Set your git identity</h2><p>Atelier writes this to new workspace containers so commits made by you or the agent have the right author.</p>${await renderGitIdentityForm("onboarding")}</div>`;
+}
+
 async function renderGithubStep(): Promise<string> {
   return `<div class="onboarding-step"><h2>Connect GitHub</h2><div class="settings-providers">${githubRow()}</div></div>`;
 }
@@ -30,8 +35,9 @@ async function renderLlmStep(): Promise<string> {
   return `<div class="onboarding-step"><h2>Connect a model provider</h2><p>The agent needs at least one provider. API keys and OAuth tokens are stored locally in pi-compatible auth storage.</p><div class="settings-providers" data-provider-list-scope>${providers.map((provider) => providerRow(provider, "onboarding")).join("")}${showMoreProvidersButton(providers)}</div></div>`;
 }
 
-registerOnboardingContribution({ id: "github", label: "GitHub", order: 10, isComplete: async () => hasWorkspaceGitHubToken(), render: renderGithubStep });
-registerOnboardingContribution({ id: "llm", label: "Model provider", order: 20, isComplete: hasAnyLlmProvider, render: renderLlmStep });
+registerOnboardingContribution({ id: "git-identity", label: "Git identity", order: 10, isComplete: hasGitIdentity, render: renderGitIdentityStep });
+registerOnboardingContribution({ id: "github", label: "GitHub", order: 20, isComplete: async () => hasWorkspaceGitHubToken(), render: renderGithubStep });
+registerOnboardingContribution({ id: "llm", label: "Model provider", order: 30, isComplete: hasAnyLlmProvider, render: renderLlmStep });
 
 export async function renderOnboardingDialog(force = false): Promise<string> {
   if (!force && await isOnboarded()) return "";

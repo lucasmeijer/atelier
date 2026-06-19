@@ -1,5 +1,6 @@
 import { AtelierCoreError, invalidArguments, type AtelierEventBus } from "@atelier/core";
 import { execWorkspaceShell, resolveWorkspace, workspaceRoot } from "@atelier/workspace";
+import { registerGitIdentityWorkspaceEvents } from "./git-identity.ts";
 import { registerRepositoryWorkspaceSourceEvents } from "./workspace-source.ts";
 
 export interface WorkspaceRepoListResult { repos: string[] }
@@ -94,6 +95,7 @@ export async function assertWorkspaceDeleteSafe(id: string): Promise<void> {
 }
 export function registerRepositoryWorkspaceEvents(events: AtelierEventBus): void {
   registerRepositoryWorkspaceSourceEvents(events);
+  registerGitIdentityWorkspaceEvents(events);
   events.on("workspace_delete_inspect", async ({ workspaceId, issues }) => { issues.push(...(await inspectWorkspaceDeleteSafety(workspaceId)).issues); });
 }
 

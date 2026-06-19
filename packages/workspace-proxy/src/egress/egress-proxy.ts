@@ -130,17 +130,7 @@ export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
     Object.assign(plan.env, await workspaceProxyEnv(workspaceId, proxyAuthToken, extraNoProxy));
     plan.mounts.push({ type: "bind", source: dockerHostAtelierDataPath(runtimeContext, "proxy-ca", "atelier-mitm-ca.pem"), target: workspaceMitmCaPath, readonly: true });
     plan.initScripts.push(`if [ -r ${workspaceMitmCaPath} ]; then mkdir -p /usr/local/share/ca-certificates; cp ${workspaceMitmCaPath} /usr/local/share/ca-certificates/atelier-mitm-ca.crt; update-ca-certificates || true; fi`);
-    plan.initScripts.push(`cat > /usr/local/bin/atelier-git-credential <<'EOF'
-#!/bin/sh
-test "$1" = get || exit 0
-[ -n "\${GH_TOKEN:-}" ] || exit 0
-echo username=x-access-token
-echo password="$GH_TOKEN"
-EOF
-chmod 755 /usr/local/bin/atelier-git-credential; cat > /etc/profile.d/atelier-github-token.sh <<'EOF'
-# GH_TOKEN, when present, is an Atelier placeholder. It is not the real secret.
-EOF
-git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; git config --file /home/atelier/.gitconfig credential.helper '!/usr/local/bin/atelier-git-credential'; git config --file /home/atelier/.gitconfig http.proxy "$HTTPS_PROXY"; git config --file /home/atelier/.gitconfig http.proxyAuthMethod basic; chown atelier:atelier /home/atelier/.gitconfig`);
+    plan.initScripts.push(`git config --file /home/atelier/.gitconfig http.proxy "$HTTPS_PROXY"; git config --file /home/atelier/.gitconfig http.proxyAuthMethod basic; chown atelier:atelier /home/atelier/.gitconfig`);
     plan.cleanup.push(async () => cleanupWorkspaceProxy(workspaceId));
   });
 

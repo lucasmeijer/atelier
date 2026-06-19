@@ -11,6 +11,7 @@ import {
   type ConfiguredAgentModel,
 } from "@atelier/agent/server";
 import { atelierName } from "@atelier/shared";
+import { clearGitIdentity, getGitIdentity, hasGitIdentity, setGitIdentity } from "@atelier/repository";
 import { listSettingsContributions, registerSettingsContribution } from "./registry.ts";
 import { validateGitHubToken } from "../github-auth.ts";
 import { renderOnboardingDialogIfNeeded } from "../onboarding/routes.ts";
@@ -67,7 +68,7 @@ export async function hasAnyLlmProvider(): Promise<boolean> {
 }
 
 export async function isOnboarded(): Promise<boolean> {
-  return hasWorkspaceGitHubToken() || await hasAnyLlmProvider();
+  return await hasGitIdentity() && (hasWorkspaceGitHubToken() || await hasAnyLlmProvider());
 }
 
 function badge(connected: boolean, label = connected ? "Connected" : "Not connected"): string {
@@ -175,8 +176,19 @@ async function renderAppearance(): Promise<string> {
   return settingsSection("appearance", "Appearance", `<div class="settings-field"><div><b>Theme</b><p>Stored in this browser.</p></div><select class="settings-select" data-controller="theme-select">${themes.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></div>`);
 }
 
+export async function renderGitIdentityForm(surface: "settings" | "onboarding" = "settings", error = ""): Promise<string> {
+  const identity = await getGitIdentity();
+  const action = surface === "onboarding" ? "/settings/git-identity?surface=onboarding" : "/settings/git-identity";
+  return `<form id="${surface === "settings" ? "settings_git_identity" : "onboarding_git_identity"}" class="settings-git-identity" method="post" action="${action}" data-controller="git-identity" data-action="input->git-identity#queue change->git-identity#save submit->git-identity#submit">
+    ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
+    <div class="settings-field"><div><b>Git user name</b><p>Used as <code>user.name</code> in new workspace containers.</p></div><input class="settings-input" name="name" value="${escapeHtml(identity?.name ?? "")}" placeholder="Ada Lovelace" autocomplete="name" required></div>
+    <div class="settings-field"><div><b>Git email</b><p>Used as <code>user.email</code> when commits are created.</p></div><input class="settings-input" type="email" name="email" value="${escapeHtml(identity?.email ?? "")}" placeholder="ada@example.com" autocomplete="email" required></div>
+    <div class="settings-provider-actions"><span class="settings-provider-desc" data-git-identity-target="status">${identity ? "Saved" : "Autosaves when both fields are filled"}</span></div>
+  </form>`;
+}
+
 async function renderWorkspaceSettings(): Promise<string> {
-  return settingsSection("workspaces", "Workspaces", `<div class="settings-providers">${githubRow()}</div>`, "Connect services used to create and provision workspaces.");
+  return settingsSection("workspaces", "Workspaces", `<h3 class="settings-subhead">Git identity</h3>${await renderGitIdentityForm("settings")}<h3 class="settings-subhead">Connections</h3><div class="settings-providers">${githubRow()}</div>`, "Configure repository defaults and connect services used to create and provision workspaces.");
 }
 
 async function renderProviderList(surface: "settings" | "onboarding" = "settings"): Promise<string> {
@@ -192,7 +204,7 @@ async function renderAgentSettings(): Promise<string> {
 
 async function renderAbout(): Promise<string> {
   const devTools = devSettingsEnabled() ? `<form class="settings-reset-form" method="post" action="/settings/workspaces/force-delete/flow" data-turbo="true"><button class="settings-reset-link danger" type="submit">force delete all workspaces</button></form>` : "";
-  return settingsSection("about", "About", `<div class="settings-field"><div><b>Setup walkthrough</b><p>Reopen onboarding. It will be shown automatically whenever no GitHub or LLM provider is connected.</p></div><a class="settings-btn" href="/onboarding" data-turbo-frame="_top" data-turbo-stream="true">Replay</a></div><div class="settings-version">${escapeHtml(atelierName)} · settings prototype</div><form class="settings-reset-form" method="post" action="/settings/reset" data-turbo="true"><button class="settings-reset-link" type="submit" onclick="return confirm('Delete stored GitHub token and all stored model provider credentials?')">delete all settings</button></form>${devTools}`);
+  return settingsSection("about", "About", `<div class="settings-field"><div><b>Setup walkthrough</b><p>Reopen onboarding. It will be shown automatically until your git identity and at least one connection are configured.</p></div><a class="settings-btn" href="/onboarding" data-turbo-frame="_top" data-turbo-stream="true">Replay</a></div><div class="settings-version">${escapeHtml(atelierName)} · settings prototype</div><form class="settings-reset-form" method="post" action="/settings/reset" data-turbo="true"><button class="settings-reset-link" type="submit" onclick="return confirm('Delete stored git identity, GitHub token, and all stored model provider credentials?')">delete all settings</button></form>${devTools}`);
 }
 
 async function availableModelOptions(): Promise<ConfiguredAgentModel[]> {
@@ -383,6 +395,7 @@ async function refreshAfterConnection(): Promise<string> {
 
 async function deleteAllStoredSettings(): Promise<void> {
   clearWorkspaceGitHubToken();
+  await clearGitIdentity();
   const auth = await createPiAuthStorage();
   for (const provider of auth.list()) auth.remove(provider);
 }
@@ -403,6 +416,20 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     if (!options.forceDeleteAllWorkspaces) return stream(replace("settings_dev_force_delete_workspaces_dialog", forceDeleteAllWorkspacesModal("Workspace deletion is not available.")));
     const result = await options.forceDeleteAllWorkspaces();
     return stream(replace("settings_dev_force_delete_workspaces_dialog", forceDeleteAllWorkspacesResultModal(result.deleted, result.errors)));
+  }
+  if (url.pathname === "/settings/git-identity" && request.method === "POST") {
+    const form = await request.formData();
+    const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
+    try {
+      await setGitIdentity({ name: String(form.get("name") ?? ""), email: String(form.get("email") ?? "") });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (surface === "onboarding") return stream(replace("onboarding_git_identity", await renderGitIdentityForm("onboarding", message)));
+      return stream(replace("settings_git_identity", await renderGitIdentityForm("settings", message)));
+    }
+    return surface === "onboarding"
+      ? stream(replace("onboarding_git_identity", await renderGitIdentityForm("onboarding")))
+      : stream(`${replace("settings_dialog", await renderSettingsDialog("workspaces"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
   }
   if (url.pathname === "/settings/github/flow" && request.method === "POST") return stream(update("settings_modal_host", `${await renderSettingsDialog("workspaces")}${githubTokenModal()}`));
   if (url.pathname === "/settings/github/connect" && request.method === "POST") {

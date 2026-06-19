@@ -1017,6 +1017,51 @@ class OAuthFlowController extends Controller {
   }
 }
 
+class GitIdentityController extends Controller {
+  static targets = ["status"];
+  declare readonly element: HTMLFormElement;
+  declare readonly statusTarget: HTMLElement;
+  declare readonly hasStatusTarget: boolean;
+  private timer: number | undefined;
+  private saving = false;
+
+  disconnect(): void {
+    if (this.timer !== undefined) window.clearTimeout(this.timer);
+  }
+
+  queue(): void {
+    if (this.hasStatusTarget) this.statusTarget.textContent = "Unsaved changes";
+    if (this.timer !== undefined) window.clearTimeout(this.timer);
+    this.timer = window.setTimeout(() => void this.save(), 700);
+  }
+
+  submit(event: Event): void {
+    event.preventDefault();
+    void this.save();
+  }
+
+  async save(): Promise<void> {
+    if (this.timer !== undefined) window.clearTimeout(this.timer);
+    this.timer = undefined;
+    if (this.saving || !this.element.checkValidity()) return;
+    this.saving = true;
+    if (this.hasStatusTarget) this.statusTarget.textContent = "Saving…";
+    const response = await fetch(this.element.action, {
+      method: this.element.method || "POST",
+      body: new FormData(this.element),
+      headers: { Accept: "text/vnd.turbo-stream.html" },
+    }).catch(() => undefined);
+    this.saving = false;
+    if (!response?.ok) {
+      if (this.hasStatusTarget) this.statusTarget.textContent = "Could not save";
+      return;
+    }
+    const html = await response.text();
+    window.Turbo?.renderStreamMessage(html);
+    this.element.closest<HTMLElement>("[data-onboarding-target='pane']")?.setAttribute("data-onboarding-complete", "true");
+  }
+}
+
 class ProviderListController extends Controller {
   static values = { label: String, openLabel: String };
   declare readonly element: HTMLButtonElement;
@@ -1303,6 +1348,7 @@ application.register("auto-scroll", AutoScrollController);
 application.register("workspace-app-frame", WorkspaceAppFrameController);
 application.register("theme-select", ThemeSelectController);
 application.register("oauth-flow", OAuthFlowController);
+application.register("git-identity", GitIdentityController);
 application.register("provider-list", ProviderListController);
 application.register("model-add-menu", ModelAddMenuController);
 application.register("model-picker", ModelPickerController);

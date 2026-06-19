@@ -13,7 +13,7 @@ import {
   type WorkspaceExecResult,
 } from "@atelier/workspace";
 import { resolveWorkspaceImage } from "@atelier/workspace-image";
-import { registerRepositoryWorkspaceEvents } from "@atelier/repository";
+import { registerRepositoryWorkspaceEvents, setGitIdentity } from "@atelier/repository";
 import { cleanupNamespace, createTestNamespace, docker } from "./helpers.ts";
 
 // The first workspace-image build is intentionally heavy: it installs VS Code,
@@ -111,14 +111,15 @@ describe("core workspaces", () => {
     expect(read.stdout).toBe("hello from stdin");
   });
 
-  test("createWorkspace configures default git identity", async () => {
+  test("createWorkspace configures saved git identity", async () => {
+    await setGitIdentity({ name: "Test User", email: "test@example.com" });
     const created = await createWorkspace();
 
     const exec = await execWorkspace(created.id, ["git", "config", "--global", "--get-regexp", "^user\\."]);
 
     expect(exec.exitCode).toBe(0);
-    expect(exec.stdout).toContain("user.name Lucas Meijer");
-    expect(exec.stdout).toContain("user.email lucas@lucasmeijer.com");
+    expect(exec.stdout).toContain("user.name Test User");
+    expect(exec.stdout).toContain("user.email test@example.com");
   });
 
   test("execWorkspace returns child command failure as a successful exec result", async () => {

@@ -15,6 +15,16 @@ export {
 } from "./repository.ts";
 
 export {
+  clearGitIdentity,
+  getGitIdentity,
+  gitIdentitySettingsFile,
+  hasGitIdentity,
+  registerGitIdentityWorkspaceEvents,
+  setGitIdentity,
+  type GitIdentitySettings,
+} from "./git-identity.ts";
+
+export {
   parseGitWorkspaceSourceRequest,
   prepareWorkspaceSource,
   type GitWorkspaceSourceRequest,

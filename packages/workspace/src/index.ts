@@ -124,8 +124,22 @@ export async function execWorkspace(id: string, command: string[]): Promise<Work
 
 function dockerMountArg(mount: WorkspaceDockerMount): string { return [`type=${mount.type}`, `src=${mount.source}`, `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : [])].join(","); }
 function planEnvDockerArgs(env: Record<string, string>): string[] { return Object.entries(env).flatMap(([name, value]) => ["--env", `${name}=${value}`]); }
+function workspaceGitCredentialInitScript(): string {
+  return `cat > /usr/local/bin/atelier-git-credential <<'EOF'
+#!/bin/sh
+test "$1" = get || exit 0
+[ -n "\${GH_TOKEN:-}" ] || exit 0
+echo username=x-access-token
+echo password="$GH_TOKEN"
+EOF
+chmod 755 /usr/local/bin/atelier-git-credential; cat > /etc/profile.d/atelier-github-token.sh <<'EOF'
+# GH_TOKEN, when present, is an Atelier placeholder. It is not the real secret.
+EOF
+git config --file /home/atelier/.gitconfig credential.helper '!/usr/local/bin/atelier-git-credential'; chown atelier:atelier /home/atelier/.gitconfig`;
+}
+
 function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan {
-  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8" }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: [...dockerHostGatewayArgs()], initScripts: [], cleanup: [] };
+  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8" }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: [...dockerHostGatewayArgs()], initScripts: [workspaceGitCredentialInitScript()], cleanup: [] };
 }
 
 interface WorkspaceRuntimeManifest {
@@ -172,7 +186,6 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     plan = baseWorkspacePlan(labels);
     applyWorkspaceRuntimeManifest(plan, await readWorkspaceRuntimeManifest(source.worktreePath));
     plan.mounts.push({ type: "bind", source: source.dockerHostWorktreePath, target: workspaceRoot });
-    plan.initScripts.push("git config --file /home/atelier/.gitconfig user.name 'Lucas Meijer'; git config --file /home/atelier/.gitconfig user.email lucas@lucasmeijer.com; chown atelier:atelier /home/atelier/.gitconfig");
     const activePlan = plan;
     await provisionStep(options.events, id, "workspace.plan", "Prepare workspace container plan", async () => {
       await options.events?.emit("workspace_plan_prepare", { workspaceId: id, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot, plan: activePlan });
