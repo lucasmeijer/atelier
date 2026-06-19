@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getConfiguredAgentModels } from "./pi-config-models.ts";
+import { getConfiguredAgentModels, getModelThinkingLevel } from "./pi-config-models.ts";
 import { diffStats, renderDiffHtml, type DiffOperation } from "./diff.ts";
 import { highlightCodeHtmlForPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
@@ -181,10 +181,15 @@ export async function renderAgentModelOptions(selectedModel?: string): Promise<s
 }
 
 async function renderComposerSettings(formId: string, selectedModel?: string): Promise<string> {
+  const models = await getConfiguredAgentModels();
+  const active = models.find((model) => model.active) ?? models[0];
+  const selectedValue = models.some((model) => `${model.provider}::${model.id}` === selectedModel) ? selectedModel : active ? `${active.provider}::${active.id}` : undefined;
+  const [provider, modelId] = selectedValue ? selectedValue.split("::") : [];
+  const selectedThinkingLevel = provider && modelId ? await getModelThinkingLevel(provider, modelId) : undefined;
   const thinkingLevels = ["off", "low", "medium", "high"];
   return `<span class="agent-stat-right">
-<select class="agent-sel" data-agent-model-picker-select="true" name="model" form="${escapeHtml(formId)}" title="Model">${await renderAgentModelOptions(selectedModel)}</select>
-<select class="agent-sel" data-controller="agent-select-menu" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}">${escapeHtml(level)}</option>`).join("")}</select>
+<select class="agent-sel" data-agent-model-picker-select="true" name="model" form="${escapeHtml(formId)}" title="Model">${await renderAgentModelOptions(selectedValue)}</select>
+<select class="agent-sel" data-controller="agent-select-menu" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select>
 </span>`;
 }
 

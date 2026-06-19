@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AtelierCoreError, defaultDataDir, type AtelierEventBus } from "@atelier/core";
-import { setActiveAgentModel } from "./pi-config-models.ts";
+import { getModelThinkingLevel, setActiveAgentModel, setModelThinkingLevel } from "./pi-config-models.ts";
 import { getWorkspacePreviewPort, shouldAddressWorkspaceContainersDirectly, workspaceContainerName, workspacePreviewPorts, workspacePublishedPortHost, workspaceRoot } from "@atelier/workspace";
 import { ids, renderAttachmentChip } from "./render.ts";
 import { sseFrame, turboStream, turboStreamResponse } from "./html.ts";
@@ -181,7 +181,11 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
     const form = await request.formData();
     const level = String(form.get("level") ?? "");
     const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
-    if (level) await runtime.setThinkingLevel(level);
+    if (level) {
+      await runtime.setThinkingLevel(level);
+      const model = runtime.currentModel();
+      if (model) await setModelThinkingLevel(model.provider, model.id, level);
+    }
     return turboStreamResponse("");
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/rewind$/)) && request.method === "POST") {
@@ -280,11 +284,10 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
 async function submitInitialAgentPrompt(workspaceId: string, context: AgentWorkspaceCreationContext, options: AgentRouteOptions): Promise<void> {
   const agent = await ensureDefaultWorkspaceAgent(workspaceId);
   const runtime = await getWorkspaceAgentRuntime(agent, options);
-  if (context.model) {
-    const [provider, modelId] = context.model.split("::");
-    if (provider && modelId) await runtime.setModel(provider, modelId);
-  }
-  if (context.thinkingLevel) await runtime.setThinkingLevel(context.thinkingLevel);
+  const [provider, modelId] = context.model ? context.model.split("::") : [];
+  if (provider && modelId) await runtime.setModel(provider, modelId);
+  const thinkingLevel = context.thinkingLevel || (provider && modelId ? await getModelThinkingLevel(provider, modelId) : undefined);
+  if (thinkingLevel) await runtime.setThinkingLevel(thinkingLevel);
 
   const images: ImageRef[] = [];
   const attachmentNotes: string[] = [];

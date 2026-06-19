@@ -49,7 +49,7 @@ import type { WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts"
 import { workspaceModules } from "./workspace-modules.ts";
 import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.ts";
 import { handleOnboardingRequest, renderOnboardingDialogIfNeeded } from "./onboarding/routes.ts";
-import { getConfiguredAgentModels, setActiveAgentModel } from "@atelier/agent/server";
+import { getConfiguredAgentModels, setActiveAgentModel, setModelThinkingLevel } from "@atelier/agent/server";
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
@@ -190,9 +190,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return active ? `${active.provider}::${active.id}` : undefined;
   }
 
-  async function rememberPreferredNewAgentModel(model: string): Promise<void> {
+  async function rememberPreferredNewAgentModel(model: string, thinkingLevel?: string): Promise<void> {
     const [provider, modelId] = String(model ?? "").split("::");
-    if (provider && modelId) await setActiveAgentModel(provider, modelId);
+    if (provider && modelId) {
+      await setActiveAgentModel(provider, modelId);
+      if (thinkingLevel) await setModelThinkingLevel(provider, modelId, thinkingLevel);
+    }
   }
 
   async function applyPreferredNewAgentModel(agent: WorkspaceAgentInfo): Promise<void> {
@@ -689,7 +692,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const id = generateWorkspaceId();
     registry.add(id, null, repo.id, repo.name);
     const model = String(form.get("model") ?? "");
-    await rememberPreferredNewAgentModel(model);
+    const thinkingLevel = String(form.get("level") ?? "");
+    await rememberPreferredNewAgentModel(model, thinkingLevel);
     const context: WorkspaceCreationContext = {
       sourceRepositoryId: repo.id,
       sourceRepositoryName: repo.name,
@@ -699,7 +703,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         agent: {
           initialPrompt: text,
           model,
-          thinkingLevel: String(form.get("level") ?? ""),
+          thinkingLevel,
           attachmentDraft: String(form.get("attachmentDraft") ?? ""),
         },
       } : {}),

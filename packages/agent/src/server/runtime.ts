@@ -2,7 +2,7 @@ import { mkdir, open } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AtelierEventBus } from "@atelier/core";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
-import { getConfiguredAgentModels } from "./pi-config-models.ts";
+import { getConfiguredAgentModels, getModelThinkingLevel } from "./pi-config-models.ts";
 import {
   AuthStorage,
   createAgentSession,
@@ -78,6 +78,8 @@ export interface WorkspaceAgentRuntime {
   submit(text: string, options: SubmitOptions): Promise<void>;
   cancelFollowup(id: string): Promise<void>;
   abort(): Promise<void>;
+  currentModel(): { provider: string; id: string } | undefined;
+  availableThinkingLevels(): string[];
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: string): Promise<void>;
   rewind(entryId: string, mode: RewindMode, note?: string): Promise<void>;
@@ -532,6 +534,8 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected abstract statsView(): Promise<AgentStatsView>;
   abstract submit(text: string, options: SubmitOptions): Promise<void>;
   abstract abort(): Promise<void>;
+  abstract currentModel(): { provider: string; id: string } | undefined;
+  abstract availableThinkingLevels(): string[];
   abstract setModel(provider: string, modelId: string): Promise<void>;
   abstract setThinkingLevel(level: string): Promise<void>;
   abstract rewind(entryId: string, mode: RewindMode, note?: string): Promise<void>;
@@ -647,6 +651,15 @@ class RealAgentRuntime extends BaseAgentRuntime {
     return this.session.systemPrompt ?? "";
   }
 
+  currentModel(): { provider: string; id: string } | undefined {
+    const model = this.session.model;
+    return model?.provider && model?.id ? { provider: model.provider, id: model.id } : undefined;
+  }
+
+  availableThinkingLevels(): string[] {
+    return this.session.supportsThinking?.() ? this.session.getAvailableThinkingLevels() : [];
+  }
+
   userMessages(): string[] {
     try {
       return recordsFromSessionEntries(this.session.sessionManager.getBranch())
@@ -684,7 +697,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       modelName: model?.name ?? model?.id,
       provider: model?.provider,
       thinkingLevel: this.session.thinkingLevel ?? "off",
-      thinkingLevels: this.session.supportsThinking?.() ? this.session.getAvailableThinkingLevels() : [],
+      thinkingLevels: this.availableThinkingLevels(),
       models,
     };
   }
@@ -834,6 +847,8 @@ class RealAgentRuntime extends BaseAgentRuntime {
     }
     try {
       await this.session.setModel(model);
+      const remembered = await getModelThinkingLevel(provider, modelId);
+      if (remembered && this.availableThinkingLevels().includes(remembered)) this.session.setThinkingLevel(remembered);
     } catch (error) {
       this.notice("error", error instanceof Error ? error.message : String(error));
     }

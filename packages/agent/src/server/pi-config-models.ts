@@ -18,10 +18,15 @@ export interface ConfiguredAgentModel {
   active?: boolean;
 }
 
+export interface ModelPreference {
+  thinkingLevel?: string;
+}
+
 export interface AgentModelsSettings {
   providers?: Record<string, unknown>;
   picker?: Array<{ provider?: unknown; id?: unknown; label?: unknown }>;
   activeModel?: { provider?: unknown; id?: unknown };
+  modelPreferences?: Record<string, ModelPreference>;
 }
 
 export async function piModelsJsonPath(): Promise<string> {
@@ -51,6 +56,10 @@ export async function setAgentModelsSettings(config: AgentModelsSettings): Promi
   const tmp = `${path}.tmp`;
   await writeFile(tmp, `${JSON.stringify(normalized, null, 2)}\n`);
   await rename(tmp, path);
+}
+
+export function modelSettingsKey(provider: string, id: string): string {
+  return `${provider}::${id}`;
 }
 
 function configuredFromJson(config: AgentModelsSettings | undefined): ConfiguredAgentModel[] {
@@ -88,6 +97,22 @@ export async function setPickerAgentModels(models: ConfiguredAgentModel[], activ
   const first = models[0];
   config.picker = models.map((model) => ({ provider: model.provider, id: model.id, label: model.label }));
   config.activeModel = active ?? models.find((model) => model.active) ?? (first ? { provider: first.provider, id: first.id } : undefined);
+  await setAgentModelsSettings(config);
+}
+
+export async function getModelThinkingLevel(provider: string, id: string): Promise<string | undefined> {
+  const config = await getAgentModelsSettings();
+  const level = config.modelPreferences?.[modelSettingsKey(provider, id)]?.thinkingLevel;
+  return typeof level === "string" && level ? level : undefined;
+}
+
+export async function setModelThinkingLevel(provider: string, id: string, thinkingLevel: string): Promise<void> {
+  const config = await getAgentModelsSettings();
+  config.modelPreferences = { ...(config.modelPreferences ?? {}) };
+  config.modelPreferences[modelSettingsKey(provider, id)] = {
+    ...(config.modelPreferences[modelSettingsKey(provider, id)] ?? {}),
+    thinkingLevel,
+  };
   await setAgentModelsSettings(config);
 }
 
