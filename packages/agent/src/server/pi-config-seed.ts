@@ -5,7 +5,7 @@ export async function piConfigSeedDir(): Promise<string> {
   return atelierDataPath(runtimeContext, "pi-config");
 }
 
-export async function seedWorkspacePiConfig(_workspaceId: string): Promise<void> {
+async function seedWorkspacePiConfig(_workspaceId: string): Promise<void> {
   // Atelier no longer copies host pi configuration into workspace containers.
 }
 

@@ -11,11 +11,11 @@ import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentIn
 import type { ImageRef } from "./transcript.ts";
 import { maybeNameWorkspaceFromAgentPrompt } from "./workspace-title-suggestion.ts";
 
-export interface AgentRouteOptions {
+interface AgentRouteOptions {
   events?: AtelierEventBus;
 }
 
-export interface AgentWorkspaceCreationContext {
+interface AgentWorkspaceCreationContext {
   initialPrompt?: string;
   model?: string;
   thinkingLevel?: string;

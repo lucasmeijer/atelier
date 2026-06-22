@@ -10,7 +10,7 @@ import { getConfiguredAgentModels, setActiveAgentModel, setModelThinkingLevel } 
 import type { AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
 
-export async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgentInfo[]> {
+async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgentInfo[]> {
   const agents = await listWorkspaceAgents(workspaceId);
   return agents.length > 0 ? agents : [await ensureDefaultWorkspaceAgent(workspaceId)];
 }
@@ -27,7 +27,7 @@ const emptyStats: AgentStatsView = {
   models: [],
 };
 
-export async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[]): Promise<WorkspaceTabContribution[]> {
+async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[]): Promise<WorkspaceTabContribution[]> {
   return await Promise.all(agents.map(async (agent, index) => ({
     key: agentTabKey(agent.label),
     label: agent.label,

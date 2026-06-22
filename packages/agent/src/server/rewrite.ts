@@ -23,7 +23,7 @@ function workspaceProxyController(workspaceId: string, appKey: string, path: str
   ].join(" ");
 }
 
-export function containsAtelierEmbed(text: string): boolean {
+function containsAtelierEmbed(text: string): boolean {
   return text.includes("{{") && text.includes("atelier:embed");
 }
 
@@ -103,7 +103,7 @@ export function rewriteSegment(workspaceId: string, rawText: string): string | u
   return html;
 }
 
-export const atelierMediaPromptInstructions = `To show the user workspace media or an app preview, use an explicit Atelier embed directive:
+const atelierMediaPromptInstructions = `To show the user workspace media or an app preview, use an explicit Atelier embed directive:
 
 {{atelier:embed <target>}}
 

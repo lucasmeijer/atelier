@@ -10,7 +10,7 @@ export interface WorkspaceAgentInfo {
 
 const agentFilePattern = /^Agent ([1-9]\d*)\.jsonl$/;
 
-export function workspaceAgentsDir(workspaceId: string, dataDir = defaultDataDir()): string {
+function workspaceAgentsDir(workspaceId: string, dataDir = defaultDataDir()): string {
   return join(dataDir, "workspace-agents", workspaceId);
 }
 

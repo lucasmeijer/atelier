@@ -10,7 +10,7 @@ import { highlightCodeHtml } from "./highlight.ts";
  * into HTML; it receives raw (unescaped) text segments outside of code
  * spans/blocks and returns HTML.
  */
-export interface MarkdownOptions {
+interface MarkdownOptions {
   rewriteSegment?: (rawText: string) => string | undefined;
   highlightCode?: boolean;
 }

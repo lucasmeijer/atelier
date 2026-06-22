@@ -43,8 +43,8 @@ import {
 // Public surface
 // ---------------------------------------------------------------------------
 
-export type AgentSubscriber = (streamHtml: string) => void;
-export type WorkspaceTabBusyListener = (event: { workspaceId: string; tabKey: string; busy: boolean }) => void;
+type AgentSubscriber = (streamHtml: string) => void;
+type WorkspaceTabBusyListener = (event: { workspaceId: string; tabKey: string; busy: boolean }) => void;
 
 const workspaceTabBusyListeners = new Set<WorkspaceTabBusyListener>();
 
@@ -55,7 +55,7 @@ export function subscribeWorkspaceTabBusy(listener: WorkspaceTabBusyListener): (
 
 export type SubmitMode = "send" | "steer" | "followup";
 
-export interface SubmitOptions {
+interface SubmitOptions {
   mode: SubmitMode;
   images?: ImageRef[];
   /** Extra lines appended to the prompt describing non-image attachments. */
@@ -64,7 +64,7 @@ export interface SubmitOptions {
 
 export type RewindMode = "discard" | "summary" | "custom";
 
-export interface WorkspaceAgentRuntime {
+interface WorkspaceAgentRuntime {
   workspaceId: string;
   label: string;
   sessionFile: string;
@@ -90,7 +90,7 @@ function runtimeKey(workspaceId: string, label: string): string {
   return `${workspaceId}\u0000${label}`;
 }
 
-export interface WorkspaceAgentRuntimeOptions {
+interface WorkspaceAgentRuntimeOptions {
   events?: AtelierEventBus;
 }
 

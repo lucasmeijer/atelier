@@ -64,7 +64,7 @@ function markdown(ctx: AgentRenderContext, text: string, options: { highlightCod
 // Pane
 // ---------------------------------------------------------------------------
 
-export interface AgentModelOption {
+interface AgentModelOption {
   provider: string;
   id: string;
   name: string;
@@ -83,7 +83,7 @@ export interface AgentStatsView {
   models: AgentModelOption[];
 }
 
-export interface AgentPaneState {
+interface AgentPaneState {
   transcriptHtml: string;
   busy: boolean;
   stats: AgentStatsView;
@@ -117,7 +117,7 @@ export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceA
   </section>`;
 }
 
-export interface AgentComposerRenderOptions {
+interface AgentComposerRenderOptions {
   ctx?: AgentRenderContext;
   action: string;
   draftId: string;
@@ -237,7 +237,7 @@ export function renderTranscript(ctx: AgentRenderContext, sections: SectionView[
   return `${renderSystemPromptCard(ctx, systemPrompt)}<div class="agent-notices" id="${ids.notices(ctx)}"></div>${sections.map((section) => renderSection(ctx, section, { collapsed: Boolean(section.user) && section.sid !== latestUserSid })).join("")}`;
 }
 
-export function renderSystemPromptCard(ctx: AgentRenderContext, systemPrompt?: string): string {
+function renderSystemPromptCard(ctx: AgentRenderContext, systemPrompt?: string): string {
   const prompt = systemPrompt?.trim();
   if (!prompt) return "";
   return `<details class="agent-tool done tool-system-prompt" id="${ids.systemPrompt(ctx)}">
@@ -274,7 +274,7 @@ function renderRewindZone(ctx: AgentRenderContext, section: SectionView): string
     data-user-text="${escapeHtml(section.user?.text ?? "")}">⟲ Rewind to here</button></div>`;
 }
 
-export function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images: { mimeType: string; data: string }[] }): string {
+function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images: { mimeType: string; data: string }[] }): string {
   const images = user.images.length > 0
     ? `<div class="agent-user-attachments">${user.images.map((image) => `<img src="data:${escapeHtml(image.mimeType)};base64,${escapeHtml(image.data)}" alt="attachment">`).join("")}</div>`
     : "";

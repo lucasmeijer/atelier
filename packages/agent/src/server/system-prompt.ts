@@ -28,7 +28,7 @@ preview browser to it. It can be by recording a video. You will optimize for you
 
 `;
 
-export interface AtelierAgentsFile {
+interface AtelierAgentsFile {
   path: string;
   content: string;
 }

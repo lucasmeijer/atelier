@@ -11,7 +11,7 @@ export interface ImageRef {
   data: string; // base64
 }
 
-export type AssistantPart =
+type AssistantPart =
   | { type: "thinking"; text: string }
   | { type: "text"; text: string }
   | { type: "toolCall"; callId: string; name: string; args: unknown };
@@ -22,7 +22,7 @@ export type TranscriptRecord =
   | { kind: "toolResult"; callId: string; text: string; isError: boolean; timestamp: number; details?: unknown }
   | { kind: "note"; id?: string; text: string; tone: NoteTone; timestamp?: number };
 
-export type NoteTone = "system" | "summary" | "error";
+type NoteTone = "system" | "summary" | "error";
 
 export interface ToolView {
   callId: string;
@@ -50,7 +50,7 @@ export type SectionItem =
   | { type: "tool"; tool: ToolView }
   | { type: "note"; text: string; tone: NoteTone };
 
-export interface SectionStats {
+interface SectionStats {
   tools: number;
   durationMs: number;
   outTokens: number;

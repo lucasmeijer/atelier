@@ -18,7 +18,7 @@ declare global {
 type TurboStreamActionThis = { targetElements: Element[]; templateContent: DocumentFragment };
 
 /** Registers the custom `append_text` turbo-stream action used for token streaming. */
-export function registerAgentStreamActions(): void {
+function registerAgentStreamActions(): void {
   const actions = (window.Turbo as unknown as { StreamActions?: Record<string, (this: TurboStreamActionThis) => void> } | undefined)?.StreamActions;
   if (!actions || actions.append_text) return;
   actions.append_text = function appendText(this: TurboStreamActionThis) {
@@ -27,7 +27,7 @@ export function registerAgentStreamActions(): void {
   };
 }
 
-export interface AgentPaneControllerInstance {
+interface AgentPaneControllerInstance {
   start(): void;
   revealLatestAssistant(): void;
 }
@@ -36,7 +36,7 @@ export interface AgentPaneControllerInstance {
 // agent-pane: SSE lifecycle, scroll anchoring, prompt behavior, rewind dialog
 // ---------------------------------------------------------------------------
 
-export function createAgentPaneController(Controller: StimulusControllerConstructor) {
+function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
     static values = { workspaceId: String, label: String };
     static targets = ["transcript", "pendingFollowups", "input", "form", "rewindDialog", "rewindEntry", "rewindPreview"];
@@ -191,7 +191,7 @@ export function createAgentPaneController(Controller: StimulusControllerConstruc
 // agent-autosubmit: submit a small form when its select changes
 // ---------------------------------------------------------------------------
 
-export function createAgentAutosubmitController(Controller: StimulusControllerConstructor) {
+function createAgentAutosubmitController(Controller: StimulusControllerConstructor) {
   return class AgentAutosubmitController extends Controller {
     declare readonly element: HTMLFormElement;
 
@@ -205,7 +205,7 @@ export function createAgentAutosubmitController(Controller: StimulusControllerCo
 // agent-elapsed: ticking elapsed time inside the stop button
 // ---------------------------------------------------------------------------
 
-export function createAgentElapsedController(Controller: StimulusControllerConstructor) {
+function createAgentElapsedController(Controller: StimulusControllerConstructor) {
   return class AgentElapsedController extends Controller {
     static values = { since: Number, max: Number };
     static targets = ["time"];
@@ -241,7 +241,7 @@ export function createAgentElapsedController(Controller: StimulusControllerConst
 // agent-copy: copy rendered bash output to clipboard
 // ---------------------------------------------------------------------------
 
-export function createAgentCopyController(Controller: StimulusControllerConstructor) {
+function createAgentCopyController(Controller: StimulusControllerConstructor) {
   return class AgentCopyController extends Controller {
     declare readonly element: HTMLButtonElement;
     private timer?: ReturnType<typeof setTimeout>;
@@ -276,7 +276,7 @@ export function createAgentCopyController(Controller: StimulusControllerConstruc
 // agent-notice: transient notice lines auto-dismiss
 // ---------------------------------------------------------------------------
 
-export function createAgentNoticeController(Controller: StimulusControllerConstructor) {
+function createAgentNoticeController(Controller: StimulusControllerConstructor) {
   return class AgentNoticeController extends Controller {
     declare readonly element: HTMLElement;
     private timer?: ReturnType<typeof setTimeout>;
@@ -307,7 +307,7 @@ function workspaceProxyUrl(workspaceId: string, appKey: string, path: string): s
   return `/workspaces/${encodeURIComponent(workspaceId)}/apps/${encodeURIComponent(appKey)}${normalizedPath}`;
 }
 
-export function createAgentProxyController(Controller: StimulusControllerConstructor) {
+function createAgentProxyController(Controller: StimulusControllerConstructor) {
   return class AgentProxyController extends Controller {
     static values = { workspaceId: String, appKey: String, path: String };
     declare readonly element: HTMLElement;
@@ -389,7 +389,7 @@ function installDropGuard(): void {
   window.addEventListener("drop", (event) => event.preventDefault());
 }
 
-export function createAgentAttachmentsController(Controller: StimulusControllerConstructor) {
+function createAgentAttachmentsController(Controller: StimulusControllerConstructor) {
   return class AgentAttachmentsController extends Controller {
     static values = { uploadUrl: String };
     static targets = ["row", "hint"];
@@ -465,7 +465,7 @@ export function createAgentAttachmentsController(Controller: StimulusControllerC
 // agent-term: inline read-only xterm attached to an agent tmux session
 // ---------------------------------------------------------------------------
 
-export function createAgentTermController(Controller: StimulusControllerConstructor) {
+function createAgentTermController(Controller: StimulusControllerConstructor) {
   return class AgentTermController extends Controller {
     static values = { workspaceId: String, label: String, session: String };
     declare readonly element: HTMLElement;
@@ -504,7 +504,7 @@ export function createAgentTermController(Controller: StimulusControllerConstruc
 // Tab activation hook
 // ---------------------------------------------------------------------------
 
-export function startAgentTab(application: StimulusApplication, tabName: string, workspaceId?: string): void {
+function startAgentTab(application: StimulusApplication, tabName: string, workspaceId?: string): void {
   if (!tabName.startsWith("agent:")) return;
   const candidates = Array.from(document.querySelectorAll<HTMLElement>(`.tab-pane[data-tab-pane="${CSS.escape(tabName)}"] [data-controller~="agent-pane"]`));
   const pane = workspaceId ? candidates.find((candidate) => candidate.dataset.agentPaneWorkspaceIdValue === workspaceId) : candidates[0];

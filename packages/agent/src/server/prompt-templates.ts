@@ -1,4 +1,4 @@
-export interface PromptTemplate {
+interface PromptTemplate {
   /** Short command users type into the agent composer. */
   trigger: string;
   /** Prompt text sent to the agent when the trigger is submitted. */
@@ -6,7 +6,7 @@ export interface PromptTemplate {
   description: string;
 }
 
-export const atelierPromptTemplates: readonly PromptTemplate[] = [
+const atelierPromptTemplates: readonly PromptTemplate[] = [
   {
     trigger: "/land",
     description: "Commit, push, and discard this Atelier workspace.",

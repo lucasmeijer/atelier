@@ -65,11 +65,11 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
-export interface WorkspaceAgentToolOptions {
+interface WorkspaceAgentToolOptions {
   events?: AtelierEventBus;
 }
 
-export type WorkspaceAgentToolFactory = (workspaceId: string, options: WorkspaceAgentToolOptions) => ToolDefinition<any, any>;
+type WorkspaceAgentToolFactory = (workspaceId: string, options: WorkspaceAgentToolOptions) => ToolDefinition<any, any>;
 
 const registeredWorkspaceAgentTools = new Map<string, WorkspaceAgentToolFactory>();
 

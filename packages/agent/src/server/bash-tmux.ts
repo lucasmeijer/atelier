@@ -38,7 +38,7 @@ const maxDisplayAnsiBytes = 200_000;
 const tmuxHistoryLimit = observableTerminalHistoryLimit;
 const pollIntervalMs = 350;
 
-export interface TmuxBashHooks {
+interface TmuxBashHooks {
   /** Called when the tmux session is up: lets the runtime show a live terminal. */
   onSessionStarted?: (toolCallId: string, tmuxSession: string) => void;
 }
@@ -181,7 +181,7 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
 // Inline terminal websocket: read-only attach to an agent tmux session.
 // ---------------------------------------------------------------------------
 
-export interface AgentTermSocketData {
+interface AgentTermSocketData {
   kind: "agent-term";
   workspaceId: string;
   session: string;

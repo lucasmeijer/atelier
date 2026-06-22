@@ -18,11 +18,11 @@ export interface ConfiguredAgentModel {
   active?: boolean;
 }
 
-export interface ModelPreference {
+interface ModelPreference {
   thinkingLevel?: string;
 }
 
-export interface AgentModelsSettings {
+interface AgentModelsSettings {
   providers?: Record<string, unknown>;
   picker?: Array<{ provider?: unknown; id?: unknown; label?: unknown }>;
   activeModel?: { provider?: unknown; id?: unknown };
@@ -33,11 +33,11 @@ export async function piModelsJsonPath(): Promise<string> {
   return join(await piConfigSeedDir(), "models.json");
 }
 
-export async function piAuthJsonPath(): Promise<string> {
+async function piAuthJsonPath(): Promise<string> {
   return join(await piConfigSeedDir(), "auth.json");
 }
 
-export async function getAgentModelsSettings(path?: string): Promise<AgentModelsSettings> {
+async function getAgentModelsSettings(path?: string): Promise<AgentModelsSettings> {
   path ??= await piModelsJsonPath();
   try {
     const parsed = JSON.parse(await readFile(path, "utf8"));
@@ -49,7 +49,7 @@ export async function getAgentModelsSettings(path?: string): Promise<AgentModels
   }
 }
 
-export async function setAgentModelsSettings(config: AgentModelsSettings): Promise<void> {
+async function setAgentModelsSettings(config: AgentModelsSettings): Promise<void> {
   const path = await piModelsJsonPath();
   const normalized = { providers: config.providers ?? {}, ...config };
   await mkdir(dirname(path), { recursive: true });
@@ -58,7 +58,7 @@ export async function setAgentModelsSettings(config: AgentModelsSettings): Promi
   await rename(tmp, path);
 }
 
-export function modelSettingsKey(provider: string, id: string): string {
+function modelSettingsKey(provider: string, id: string): string {
   return `${provider}::${id}`;
 }
 
@@ -125,7 +125,7 @@ export async function createPiModelRegistry(): Promise<ModelRegistry> {
   return ModelRegistry.create(authStorage, await piModelsJsonPath());
 }
 
-export async function validateModelProviderApiKey(provider: string, key: string): Promise<void> {
+async function validateModelProviderApiKey(provider: string, key: string): Promise<void> {
   const trimmed = key.trim();
   if (!trimmed) throw new Error("API key is required");
 
