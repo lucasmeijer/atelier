@@ -300,7 +300,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   function layout(title: string, body: string): string {
     return `<!DOCTYPE html>
-<html lang="en" data-theme="cappuccino">
+<html lang="en" data-theme="nord">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -503,7 +503,7 @@ ${moduleStylesHtml()}
       ["midnight", "Midnight"],
       ["nord", "Nord"],
     ];
-    return `<label class="theme-settings" title="Theme"><span aria-hidden="true">⚙</span><select data-controller="theme-select" aria-label="Theme">${themes.map(([value, label]) => `<option value="${value}"${value === "cappuccino" ? " selected" : ""}>${label}</option>`).join("")}</select></label>`;
+    return `<label class="theme-settings" title="Theme"><span aria-hidden="true">⚙</span><select data-controller="theme-select" aria-label="Theme">${themes.map(([value, label]) => `<option value="${value}"${value === "nord" ? " selected" : ""}>${label}</option>`).join("")}</select></label>`;
   }
 
   function renderWorkspaceGroups(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {

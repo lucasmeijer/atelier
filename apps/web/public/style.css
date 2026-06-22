@@ -489,6 +489,7 @@ button { border: 0; background: none; cursor: pointer; }
 .settings-dialog, .onboarding-dialog, .settings-flow-dialog { width: min(1040px, 96vw); height: min(88vh, 860px); padding: 0; border: 1px solid var(--line2); border-radius: 18px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); margin: auto; }
 .settings-flow-dialog { width: min(460px, 94vw); height: fit-content; max-height: min(92vh, 720px); overflow: hidden; }
 .settings-dialog::backdrop, .onboarding-dialog::backdrop, .settings-flow-dialog::backdrop { background: rgba(0,0,0,.5); backdrop-filter: blur(4px); }
+.onboarding-dialog::backdrop { background: var(--bg); backdrop-filter: none; }
 .settings-sheet { height: 100%; display: grid; grid-template-columns: 212px 1fr; overflow: hidden; }
 .settings-side { border-right: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 55%, var(--panel)); display: flex; flex-direction: column; padding: 18px 12px; }
 .settings-title { font-size: 16px; font-weight: 720; letter-spacing: -.3px; padding: 4px 10px 14px; }
@@ -524,6 +525,7 @@ button { border: 0; background: none; cursor: pointer; }
 .settings-providers { display: flex; flex-direction: column; gap: 8px; }
 .settings-provider { display: flex; align-items: center; gap: 13px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 13px; background: var(--bg); }
 .settings-provider-icon { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: var(--provider-color); color: #fff; font-weight: 800; flex-shrink: 0; }
+.settings-provider-icon-github { color: #fff; }
 .settings-provider-main { flex: 1; min-width: 0; }
 .settings-provider-title { font-weight: 680; font-size: 13.5px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .settings-provider-desc { font-size: 12px; color: var(--muted); margin-top: 1px; }
@@ -548,6 +550,7 @@ button { border: 0; background: none; cursor: pointer; }
 .settings-flow-head { display: flex; align-items: center; gap: 11px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
 .settings-flow-head p { margin: 1px 0 0; color: var(--muted); font-size: 11px; }
 .settings-flow-body { padding: 20px 18px; color: var(--muted); font-size: 13px; line-height: 1.6; max-height: calc(92vh - 128px); overflow: auto; }
+.settings-token-input { margin-top: 10px; }
 .settings-command { margin: 10px 0 12px; padding: 12px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); font: 12.5px/1.5 var(--mono); white-space: pre-wrap; }
 .settings-error { color: var(--red); background: var(--red-soft); border-radius: 10px; padding: 9px 11px; }
 .settings-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; font-weight: 750; }
@@ -560,6 +563,7 @@ button { border: 0; background: none; cursor: pointer; }
 .settings-flow-progress { margin: 10px 0 0; padding-left: 18px; color: var(--muted2); font-size: 12px; }
 .settings-flow-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 0 18px 18px; }
 .onboarding-dialog { width: min(560px, 96vw); height: auto; max-height: 92vh; }
+.onboarding-dialog:has(.onboarding-pane.active .onboarding-step-model-provider) { width: min(760px, 96vw); }
 .onboarding-card { display: flex; flex-direction: column; max-height: 92vh; }
 .onboarding-dots { display: flex; gap: 6px; padding: 18px 24px 4px; }
 .onboarding-dots span { width: 24px; height: 4px; border-radius: 3px; background: var(--line2); }
@@ -570,6 +574,7 @@ button { border: 0; background: none; cursor: pointer; }
 .onboarding-step h2 { margin: 0; font-size: 21px; font-weight: 750; letter-spacing: -.4px; }
 .onboarding-step p { color: var(--muted); font-size: 13.5px; line-height: 1.6; }
 .onboarding-foot { display: flex; align-items: center; gap: 8px; padding: 14px 24px 18px; border-top: 1px solid var(--line); margin-top: 14px; }
+.onboarding-step .settings-provider { padding-right: 0; }
 .onboarding-foot span { flex: 1; }
 
 /* Settings refinements */

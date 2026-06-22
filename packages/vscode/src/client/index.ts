@@ -6,9 +6,9 @@ function currentAtelierTheme(): string {
   const active = document.documentElement.dataset.theme;
   if (active) return active;
   try {
-    return localStorage.getItem("atelier.theme") || "cappuccino";
+    return localStorage.getItem("atelier.theme") || "nord";
   } catch {
-    return "cappuccino";
+    return "nord";
   }
 }
 

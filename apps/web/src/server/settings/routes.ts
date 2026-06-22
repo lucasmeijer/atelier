@@ -97,14 +97,20 @@ function settingsSection(id: string, title: string, body: string, subtitle = "")
   return `<section class="settings-sec" id="settings-sec-${escapeHtml(id)}"><h2>${escapeHtml(title)}</h2>${subtitle ? `<p class="settings-sub">${escapeHtml(subtitle)}</p>` : ""}${body}</section>`;
 }
 
-function githubRow(): string {
+function githubIcon(): string {
+  return `<svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.6 7.6 0 0 1 8 3.86c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>`;
+}
+
+function githubRow(surface: "settings" | "onboarding" = "settings"): string {
   const connected = hasWorkspaceGitHubToken();
-  return `<div class="settings-provider" id="settings_provider_github">
-    <div class="settings-provider-icon" style="--provider-color:${providerColor("github")}">G</div>
-    <div class="settings-provider-main"><div class="settings-provider-title">GitHub ${badge(connected)}</div></div>
+  const flowAction = surface === "onboarding" ? "/settings/github/flow?surface=onboarding" : "/settings/github/flow";
+  const disconnectAction = surface === "onboarding" ? "/settings/github/disconnect?surface=onboarding" : "/settings/github/disconnect";
+  return `<div class="settings-provider" id="${domId(surface, "provider", "github")}">
+    <div class="settings-provider-icon settings-provider-icon-github" style="--provider-color:${providerColor("github")}">${githubIcon()}</div>
+    <div class="settings-provider-main"><div class="settings-provider-title">GitHub${connected ? ` ${badge(true)}` : ""}</div><div class="settings-provider-desc">Atelier injects your GitHub auth token outside of the workspace container your agent runs in, so it is not visible to your coding agent, but it can still push and pull from your private repos.</div></div>
     <div class="settings-provider-actions">${connected
-      ? `<form method="post" action="/settings/github/disconnect" data-turbo="true"><button class="settings-btn danger" type="submit">Disconnect</button></form>`
-      : `<form method="post" action="/settings/github/flow" data-turbo="true"><button class="settings-btn primary" type="submit">Connect</button></form>`}</div>
+      ? `<form method="post" action="${disconnectAction}" data-turbo="true"><button class="settings-btn danger" type="submit">Disconnect</button></form>`
+      : `<form method="post" action="${flowAction}" data-turbo="true"><button class="settings-btn primary" type="submit">Connect</button></form>`}</div>
   </div>`;
 }
 
@@ -275,19 +281,20 @@ function forceDeleteAllWorkspacesResultModal(deleted: number, errors: string[]):
   </dialog>`;
 }
 
-function githubTokenModal(error = ""): string {
+function githubTokenModal(error = "", surface: "settings" | "onboarding" = "settings"): string {
+  const action = surface === "onboarding" ? "/settings/github/connect?surface=onboarding" : "/settings/github/connect";
   return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
-    <form method="post" action="/settings/github/connect" data-turbo="true">
-      <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerColor("github")}">G</div><div><b>GitHub</b><p>GitHub CLI token</p></div></div>
+    <form method="post" action="${action}" data-turbo="true">
+      <div class="settings-flow-head"><div class="settings-provider-icon settings-provider-icon-github" style="--provider-color:${providerColor("github")}">${githubIcon()}</div><div><b>GitHub</b><p>GitHub CLI token</p></div></div>
       <div class="settings-flow-body">
         <p>On your machine, sign in with GitHub CLI if needed, then print your token:</p>
         <pre class="settings-command">gh auth login
 gh auth token</pre>
         <p>Paste the token output below. Atelier stores it locally and injects it into workspace GitHub requests as <code>GH_TOKEN</code>.</p>
         ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
-        <input class="settings-input" type="password" name="token" placeholder="Paste output from gh auth token" autocomplete="off" required autofocus>
+        <input class="settings-input settings-token-input" type="password" name="token" placeholder="Paste output from gh auth token" autocomplete="off" required autofocus>
       </div>
-      <div class="settings-flow-actions"><button class="settings-btn" formmethod="dialog">Cancel</button><button class="settings-btn primary" type="submit">Connect</button></div>
+      <div class="settings-flow-actions"><button class="settings-btn" type="button" data-action="modal#close">Cancel</button><button class="settings-btn primary" type="submit">Connect</button></div>
     </form>
   </dialog>`;
 }
@@ -396,6 +403,7 @@ async function refreshAfterConnection(): Promise<string> {
 async function deleteAllStoredSettings(): Promise<void> {
   clearWorkspaceGitHubToken();
   await clearGitIdentity();
+  await setPickerAgentModels([]);
   const auth = await createPiAuthStorage();
   for (const provider of auth.list()) auth.remove(provider);
 }
@@ -431,18 +439,29 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
       ? stream(replace("onboarding_git_identity", await renderGitIdentityForm("onboarding")))
       : stream(`${replace("settings_dialog", await renderSettingsDialog("workspaces"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
   }
-  if (url.pathname === "/settings/github/flow" && request.method === "POST") return stream(update("settings_modal_host", `${await renderSettingsDialog("workspaces")}${githubTokenModal()}`));
+  if (url.pathname === "/settings/github/flow" && request.method === "POST") {
+    const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
+    return surface === "onboarding"
+      ? stream(append("onboarding_modal_host", githubTokenModal("", "onboarding")))
+      : stream(update("settings_modal_host", `${await renderSettingsDialog("workspaces")}${githubTokenModal()}`));
+  }
   if (url.pathname === "/settings/github/connect" && request.method === "POST") {
+    const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
     const form = await request.formData();
     const token = String(form.get("token") ?? "").trim();
     const validation = await validateGitHubToken(token);
-    if (!validation.ok) return stream(replace("settings_flow_dialog", githubTokenModal(validation.message)));
+    if (!validation.ok) return stream(replace("settings_flow_dialog", githubTokenModal(validation.message, surface)));
     setWorkspaceGitHubToken(token);
-    return stream(`${replace("settings_dialog", await renderSettingsDialog("workspaces"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`);
+    return surface === "onboarding"
+      ? stream(`${remove("settings_flow_dialog")}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`)
+      : stream(`${replace("settings_dialog", await renderSettingsDialog("workspaces"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`);
   }
   if (url.pathname === "/settings/github/disconnect" && request.method === "POST") {
+    const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
     clearWorkspaceGitHubToken();
-    return stream(`${replace("settings_dialog", await renderSettingsDialog("workspaces"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
+    return surface === "onboarding"
+      ? stream(update("onboarding_modal_host", await renderOnboardingDialogIfNeeded()))
+      : stream(`${replace("settings_dialog", await renderSettingsDialog("workspaces"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
   }
   let match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/flow$/);
   if (match && request.method === "POST") {

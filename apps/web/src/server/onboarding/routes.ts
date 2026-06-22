@@ -27,12 +27,12 @@ async function renderGitIdentityStep(): Promise<string> {
 }
 
 async function renderGithubStep(): Promise<string> {
-  return `<div class="onboarding-step"><h2>Connect GitHub</h2><div class="settings-providers">${githubRow()}</div></div>`;
+  return `<div class="onboarding-step"><h2>Connect GitHub</h2><div class="settings-providers">${githubRow("onboarding")}</div></div>`;
 }
 
 async function renderLlmStep(): Promise<string> {
   const providers = await providerSummaries();
-  return `<div class="onboarding-step"><h2>Connect a model provider</h2><p>The agent needs at least one provider. API keys and OAuth tokens are stored locally in pi-compatible auth storage.</p><div class="settings-providers" data-provider-list-scope>${providers.map((provider) => providerRow(provider, "onboarding")).join("")}${showMoreProvidersButton(providers)}</div></div>`;
+  return `<div class="onboarding-step onboarding-step-model-provider"><h2>Connect a model provider</h2><div class="settings-providers" data-provider-list-scope>${providers.map((provider) => providerRow(provider, "onboarding")).join("")}${showMoreProvidersButton(providers)}</div></div>`;
 }
 
 registerOnboardingContribution({ id: "git-identity", label: "Git identity", order: 10, isComplete: hasGitIdentity, render: renderGitIdentityStep });

@@ -996,9 +996,9 @@ class ThemeSelectController extends Controller {
   private readonly storageKey = "atelier.theme";
 
   connect(): void {
-    const saved = this.loadTheme();
-    if (saved) this.element.value = saved;
-    this.apply(this.element.value || "cappuccino");
+    const theme = this.loadTheme() ?? document.documentElement.dataset.theme ?? "nord";
+    this.element.value = theme;
+    this.apply(theme);
     this.element.addEventListener("change", this.changed);
   }
 
