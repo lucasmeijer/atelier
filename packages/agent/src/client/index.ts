@@ -1,5 +1,6 @@
 export {
   agentClientModule,
+  agentClientModule as atelierClientModule,
   createAgentAttachmentsController,
   createAgentAutosubmitController,
   createAgentCopyController,

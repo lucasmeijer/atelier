@@ -1,16 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import {
-  createDeleteCurrentWorkspaceTool,
-  registerWorkspaceAgentTool,
   getConfiguredAgentModels,
   renderAgentComposer,
   rememberPreferredNewAgentModel as rememberAgentPreferredNewAgentModel,
 } from "@atelier/agent/server";
-import {
-  createOrOpenPreviewBrowserTool,
-  deleteWorkspaceBrowserState,
-} from "@atelier/browser/server";
 import {
   AtelierCoreError,
   discoverHostGitHubToken,
@@ -54,10 +48,13 @@ export interface WebAppDeps {
   destroyWorkspace(id: string): Promise<void>;
   /** Receives background task failures. Defaults to console.error. */
   logError?(message: string): void;
+  workspaceRemovedHandlers?: Array<(workspaceId: string) => void | Promise<void>>;
 }
 
 export interface WebApp {
   fetch(request: Request): Promise<Response>;
+  tabKeysFor(workspaceId: string): Promise<string[]>;
+  deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }>;
 }
 
 export function escapeHtml(value: unknown): string {
@@ -163,12 +160,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const logError = deps.logError ?? ((message: string) => console.error(message));
   const versionTooltip = atelierVersionTooltip();
 
-  registerWorkspaceAgentTool("create_or_open_preview_browser", (workspaceId, options) => createOrOpenPreviewBrowserTool(workspaceId, {
-    events: options.events,
-    getTabKeys: () => tabKeysFor(workspaceId),
-    layouts,
-  }));
-  registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, (force) => deleteCurrentWorkspaceFromAgent(workspaceId, force)));
   const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId) });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
 
@@ -290,7 +281,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     },
     removed(id) {
       layouts.delete(id);
-      deleteWorkspaceBrowserState(id);
+      for (const handler of deps.workspaceRemovedHandlers ?? []) void handler(id);
       hub.broadcast(turboRemoveStream(workspaceRowId(id)));
     },
   });
@@ -476,7 +467,9 @@ ${moduleStylesHtml()}
 
   async function attachWorkspaceModules(workspaceId: string): Promise<WorkspaceAttachment[]> {
     const entry = requireWorkspace(workspaceId);
-    return await Promise.all(workspaceModules.map((module) => module.attachToWorkspace({ workspaceId, sourceRepositoryId: entry.sourceRepositoryId })));
+    return await Promise.all(workspaceModules
+      .filter((module) => module.attachToWorkspace)
+      .map((module) => module.attachToWorkspace!({ workspaceId, sourceRepositoryId: entry.sourceRepositoryId })));
   }
 
   async function workspaceTabsAndAttachments(workspaceId: string): Promise<{ attachments: WorkspaceAttachment[]; tabs: WorkspaceTabContribution[] }> {
@@ -1147,6 +1140,8 @@ ${moduleStylesHtml()}
   }
 
   return {
+    tabKeysFor,
+    deleteCurrentWorkspaceFromAgent,
     async fetch(request) {
       try {
         return await route(request);

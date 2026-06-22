@@ -2,6 +2,9 @@ import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContrib
 import { renderVSCodePane, vscodeTabKey } from "./render.ts";
 import { createWorkspaceVSCodeTab, deleteWorkspaceVSCodeTab, listWorkspaceVSCodeTabs, type WorkspaceVSCodeTab } from "./workspace-vscode.ts";
 import { vscodeStaticFiles } from "./static.ts";
+import { patchVSCodeWorkspaceAppResponse, resolveVSCodeWorkspaceAppTarget, vscodeAppKey } from "./proxy.ts";
+import { registerVSCodeEvents } from "./extensions-volume.ts";
+import type { AtelierEventBus } from "@atelier/core";
 
 export function renderWorkspaceVSCodeTabs(workspaceId: string, tabs: WorkspaceVSCodeTab[]): WorkspaceTabContribution[] {
   return tabs.map((tab) => ({
@@ -25,6 +28,14 @@ export const vscodeWorkspaceCommands: WorkspaceCommandContribution[] = [
 export const vscodeWorkspaceModule: WorkspaceModule = {
   id: "vscode",
   staticFiles: vscodeStaticFiles,
+  initialize(context) {
+    registerVSCodeEvents(context.events as AtelierEventBus);
+    context.registerWorkspaceAppHandler({
+      matches: (app) => app.appKey === vscodeAppKey,
+      resolveTarget: (app, requestUrl) => resolveVSCodeWorkspaceAppTarget(app, requestUrl),
+      transformResponse: (app, response, request) => patchVSCodeWorkspaceAppResponse(app, response, request),
+    });
+  },
   commands: [{
     id: "vscode.open",
     async execute({ workspaceId, tabKeys }) {

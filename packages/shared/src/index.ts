@@ -79,13 +79,51 @@ export interface WorkspaceModuleTabLifecycleHandler {
   close?(context: { workspaceId: string; tabKey: string }): Promise<void> | void;
 }
 
+export interface WorkspaceServerSocketHandler {
+  validate?(request: Request, url: URL): Promise<unknown | undefined> | unknown | undefined;
+  open?(socket: unknown): void;
+  message?(socket: unknown, message: unknown): void;
+  close?(socket: unknown): void;
+}
+
+export interface WorkspaceServerAppHandler {
+  matches(app: { appKey: string; workspaceId: string }): boolean;
+  handleRequest?(app: { appKey: string; workspaceId: string }, request: Request, url: URL): Promise<Response | undefined> | Response | undefined;
+  resolveTarget?(app: { appKey: string; workspaceId: string }, requestUrl: URL): Promise<URL | undefined> | URL | undefined;
+  transformResponse?(app: { appKey: string; workspaceId: string }, response: Response, request: Request): Promise<Response> | Response;
+}
+
+export interface WorkspaceServerProvisioningHook {
+  id: string;
+  label: string;
+  parentId?: string;
+  run(context: { workspaceId: string; creationContext?: unknown; events?: unknown }): Promise<void> | void;
+}
+
+export interface WorkspaceServerModuleContext {
+  events: unknown;
+  registry: {
+    activeWorkspaceId(): string | undefined;
+    setTabBusy(workspaceId: string, tabKey: string, busy: boolean): void;
+    setTabUnread(workspaceId: string, tabKey: string, unread: boolean): void;
+  };
+  layouts: unknown;
+  getTabKeys(workspaceId: string): Promise<string[]>;
+  deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<unknown>;
+  registerSocketHandler(handler: WorkspaceServerSocketHandler): void;
+  registerWorkspaceAppHandler(handler: WorkspaceServerAppHandler): void;
+  registerProvisioningHook(hook: WorkspaceServerProvisioningHook): void;
+  onWorkspaceRemoved(handler: (workspaceId: string) => void | Promise<void>): void;
+}
+
 export interface WorkspaceModule {
   id: string;
   staticFiles?: Record<string, StaticFileContribution>;
   commands?: WorkspaceModuleCommandHandler[];
   routes?: WorkspaceModuleRouteHandler[];
   tabs?: WorkspaceModuleTabLifecycleHandler[];
-  attachToWorkspace(context: WorkspaceAttachContext): Promise<WorkspaceAttachment> | WorkspaceAttachment;
+  initialize?(context: WorkspaceServerModuleContext): Promise<void> | void;
+  attachToWorkspace?(context: WorkspaceAttachContext): Promise<WorkspaceAttachment> | WorkspaceAttachment;
 }
 
 export interface WorkspaceClientApplication {

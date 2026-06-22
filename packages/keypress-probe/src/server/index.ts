@@ -18,3 +18,5 @@ export const keypressProbeWorkspaceModule: WorkspaceModule = {
     return { workspaceChromeHtml: [renderKeypressProbe()] };
   },
 };
+
+export { keypressProbeWorkspaceModule as atelierServerModule };

@@ -1,6 +1,7 @@
 import type { WorkspaceCommandContribution, WorkspaceModule } from "@atelier/shared";
-import { desktopTabKey, ensureWorkspaceDesktop, isWorkspaceDesktopEnabled } from "./runtime.ts";
+import { desktopAppKey, desktopTabKey, ensureWorkspaceDesktop, isWorkspaceDesktopEnabled } from "./runtime.ts";
 import { renderDesktopTab } from "./render.ts";
+import { resolveDesktopWorkspaceAppTarget } from "./proxy.ts";
 
 export function desktopWorkspaceCommand(enabled: boolean): WorkspaceCommandContribution {
   return {
@@ -12,6 +13,12 @@ export function desktopWorkspaceCommand(enabled: boolean): WorkspaceCommandContr
 
 export const desktopWorkspaceModule: WorkspaceModule = {
   id: "desktop",
+  initialize(context) {
+    context.registerWorkspaceAppHandler({
+      matches: (app) => app.appKey === desktopAppKey,
+      resolveTarget: (app, requestUrl) => resolveDesktopWorkspaceAppTarget(app, requestUrl),
+    });
+  },
   commands: [{
     id: "desktop.start",
     async execute({ workspaceId }) {

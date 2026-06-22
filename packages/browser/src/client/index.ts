@@ -182,3 +182,5 @@ export const browserClientModule: WorkspaceClientModule = {
     });
   },
 };
+
+export { browserClientModule as atelierClientModule };

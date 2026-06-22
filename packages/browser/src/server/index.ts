@@ -1,6 +1,7 @@
 export { browserStaticFiles } from "./static.ts";
 export {
   browserWorkspaceModule,
+  browserWorkspaceModule as atelierServerModule,
   browserNavigateEndpoint,
   createWorkspaceBrowserTabForWorkspace,
   deleteWorkspaceBrowserTabForWorkspace,

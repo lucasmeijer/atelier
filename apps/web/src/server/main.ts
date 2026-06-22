@@ -1,35 +1,10 @@
 import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
-import {
-  closeAgentTermSocket,
-  ensureDefaultWorkspaceAgent,
-  handleAgentTermSocketMessage,
-  openAgentTermSocket,
-  registerAgentEvents,
-  resolveWorkspacePortProxyTarget,
-  workspaceFileEndpoint,
-  subscribeWorkspaceTabBusy,
-  validateAgentTermSocket,
-  type AgentTermSocketData,
-} from "@atelier/agent/server";
-import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "@atelier/browser/server";
 import { createAtelierEventBus, defaultDataDir } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
-import { desktopAppKey, resolveDesktopWorkspaceAppTarget } from "@atelier/desktop/server";
-import { inspectWorkspaceDeleteSafety, registerRepositoryWorkspaceEvents } from "@atelier/repository";
 import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace } from "@atelier/workspace";
-import { ensureAtelierWorkspaceProxy, registerWorkspaceProxyEvents } from "@atelier/workspace-proxy";
-import { registerPiConfigEvents } from "@atelier/agent/server";
-import {
-  closeTerminalSocket,
-  handleTerminalSocketMessage,
-  openTerminalSocket,
-  registerTerminalEvents,
-  subscribeTerminalTabBusy,
-  validateTerminalSocket,
-  type TerminalSocketData,
-} from "@atelier/workspace-terminal/server";
-import { atelierName } from "@atelier/shared";
+import type { WorkspaceDeleteSafetyIssue } from "@atelier/repository";
+import { atelierName, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler } from "@atelier/shared";
 import {
   ensureWorkspacePublicProxyRoute,
   listWorkspacePublicProxyRoutes,
@@ -43,13 +18,13 @@ import {
   type WorkspaceAppResponseTransformer,
   type WorkspaceAppTargetResolver,
 } from "@atelier/workspace-proxy/server";
-import { patchVSCodeWorkspaceAppResponse, registerVSCodeEvents, resolveVSCodeWorkspaceAppTarget, vscodeAppKey } from "@atelier/vscode/server";
 import { createWebApp } from "./app.ts";
 import { createFileWebPreferenceStore } from "./preferences.ts";
 import { createStreamHub } from "./stream-hub.ts";
 import { legacyStaticFiles } from "./static-files.ts";
 import { createWorkspaceLayoutStore } from "./workspace-layout.ts";
 import { createFileWorkspaceActivityStore, createWorkspaceRegistry } from "./workspace-registry.ts";
+import { workspaceModules } from "./workspace-modules.ts";
 
 const requestedPort = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "localhost";
@@ -212,12 +187,10 @@ async function authResponse(request: Request): Promise<Response | undefined> {
 }
 
 const atelierEvents = createAtelierEventBus();
-registerRepositoryWorkspaceEvents(atelierEvents);
-registerWorkspaceProxyEvents(atelierEvents);
-registerPiConfigEvents(atelierEvents);
-registerTerminalEvents(atelierEvents);
-registerVSCodeEvents(atelierEvents);
-registerAgentEvents(atelierEvents);
+const socketHandlers: WorkspaceServerSocketHandler[] = [];
+const workspaceAppHandlers: WorkspaceServerAppHandler[] = [];
+const provisioningHooks: WorkspaceServerProvisioningHook[] = [];
+const workspaceRemovedHandlers: Array<(workspaceId: string) => void | Promise<void>> = [];
 
 const registry = createWorkspaceRegistry({
   activityStore: createFileWorkspaceActivityStore(join(defaultDataDir(), "view-state", "workspace-activity.json")),
@@ -244,16 +217,23 @@ const app = createWebApp({
   layouts,
   events: atelierEvents,
   preferences: createFileWebPreferenceStore(join(defaultDataDir(), "view-state", "preferences.json")),
+  workspaceRemovedHandlers,
   async provisionWorkspace(id, options) {
     await createWorkspace({ id, events: atelierEvents, ...sourceRepositoryFromContext(options?.context), context: options?.context });
-    await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.agent", label: "Prepare default agent", status: "running" });
-    await ensureDefaultWorkspaceAgent(id);
-    await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.agent", label: "Prepare default agent", status: "done" });
+    for (const hook of provisioningHooks) {
+      await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: hook.id, label: hook.label, parentId: hook.parentId, status: "running" });
+      await hook.run({ workspaceId: id, creationContext: options?.context, events: atelierEvents });
+      await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: hook.id, label: hook.label, parentId: hook.parentId, status: "done" });
+    }
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "running" });
     await atelierEvents.emit("workspace_created", { workspaceId: id, context: options?.context });
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "done" });
   },
-  inspectDeleteSafety: (id) => inspectWorkspaceDeleteSafety(id),
+  inspectDeleteSafety: async (id) => {
+    const issues: WorkspaceDeleteSafetyIssue[] = [];
+    await atelierEvents.emit("workspace_delete_inspect", { workspaceId: id, issues });
+    return { workspaceId: id, issues };
+  },
   destroyWorkspace: async (id) => {
     await stopPublicProxyRoutesForWorkspace(id);
     await releaseWorkspacePublicProxyRoutes(id);
@@ -263,12 +243,20 @@ const app = createWebApp({
 
 atelierEvents.on("workspace_user_activity", ({ workspaceId }) => registry.touch(workspaceId));
 atelierEvents.on("workspace_title_changed", ({ workspaceId, title }) => registry.setTitle(workspaceId, title || null));
-atelierEvents.on("workspace_agent_turn_finished", ({ workspaceId, agentLabel }) => {
-  if (registry.activeWorkspaceId() !== workspaceId) registry.setTabUnread(workspaceId, `agent:${agentLabel}`, true);
-});
 atelierEvents.on("workspace_tab_unread", ({ workspaceId, tabKey, unread }) => registry.setTabUnread(workspaceId, tabKey, unread));
-subscribeWorkspaceTabBusy(({ workspaceId, tabKey, busy }) => registry.setTabBusy(workspaceId, tabKey, busy));
-subscribeTerminalTabBusy(({ workspaceId, tabKey, busy }) => registry.setTabBusy(workspaceId, tabKey, busy));
+for (const module of workspaceModules) {
+  await module.initialize?.({
+    events: atelierEvents,
+    registry,
+    layouts,
+    getTabKeys: (workspaceId) => app.tabKeysFor(workspaceId),
+    deleteCurrentWorkspace: (workspaceId, force) => app.deleteCurrentWorkspaceFromAgent(workspaceId, force),
+    registerSocketHandler: (handler) => socketHandlers.push(handler),
+    registerWorkspaceAppHandler: (handler) => workspaceAppHandlers.push(handler),
+    registerProvisioningHook: (hook) => provisioningHooks.push(hook),
+    onWorkspaceRemoved: (handler) => workspaceRemovedHandlers.push(handler),
+  });
+}
 
 // Docker is the persistent truth for which workspaces exist; seed the registry from it.
 await registry.seed((await listWorkspaces()).workspaces);
@@ -314,23 +302,24 @@ interface ProvisionTermSocketData {
   pty?: IPty;
 }
 
-type SocketData = TerminalSocketData | AgentTermSocketData | ProvisionTermSocketData | WorkspaceAppProxySocketData;
-
-const workspacePortAppKeyPattern = /^port-(\d+)$/;
+type SocketData = ({ kind: string } & Record<string, unknown>) | ProvisionTermSocketData | WorkspaceAppProxySocketData;
+const socketHandlersByKind = new Map<string, WorkspaceServerSocketHandler>();
 
 const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, requestUrl) => {
-  if (app.appKey === vscodeAppKey) return await resolveVSCodeWorkspaceAppTarget(app, requestUrl);
-  if (app.appKey === desktopAppKey) return await resolveDesktopWorkspaceAppTarget(app, requestUrl);
-  if (isBrowserWorkspaceApp(app.appKey)) return await resolveBrowserWorkspaceAppTarget(app, requestUrl);
-  const portMatch = app.appKey.match(workspacePortAppKeyPattern);
-  if (portMatch) return await resolveWorkspacePortProxyTarget(app.workspaceId, Number(portMatch[1]), requestUrl.pathname, requestUrl.search);
+  for (const handler of workspaceAppHandlers) {
+    if (!handler.matches(app) || !handler.resolveTarget) continue;
+    const target = await handler.resolveTarget(app, requestUrl);
+    if (target) return target;
+  }
   throw new Error(`unknown workspace app: ${app.appKey}`);
 };
 
 const patchWorkspaceAppResponse: WorkspaceAppResponseTransformer = async (app, response, request) => {
-  if (isBrowserWorkspaceApp(app.appKey)) return await patchBrowserWorkspaceAppResponse(app, response, request);
-  if (app.appKey === vscodeAppKey) return await patchVSCodeWorkspaceAppResponse(app, response, request);
-  return response;
+  let next = response;
+  for (const handler of workspaceAppHandlers) {
+    if (handler.matches(app) && handler.transformResponse) next = await handler.transformResponse(app, next, request);
+  }
+  return next;
 };
 
 const publicProxyPortRange = publicProxyPortRangeFromEnv();
@@ -427,6 +416,15 @@ async function startPersistedPublicProxyRoutes(): Promise<void> {
   }
 }
 
+async function handleWorkspaceAppRequest(app: WorkspaceAppHost, request: Request, url: URL): Promise<Response | undefined> {
+  for (const handler of workspaceAppHandlers) {
+    if (!handler.matches(app) || !handler.handleRequest) continue;
+    const response = await handler.handleRequest(app, request, url);
+    if (response) return response;
+  }
+  return undefined;
+}
+
 async function handleCanonicalProxyRequest(url: URL, request: Request): Promise<Response | undefined> {
   const appMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/apps\/([^/]+)(\/.*)?$/);
   if (appMatch) {
@@ -445,7 +443,13 @@ async function handleCanonicalProxyRequest(url: URL, request: Request): Promise<
   }
 
   const fileMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/files(\/.*)$/);
-  if (fileMatch) return await workspaceFileEndpoint(decodeURIComponent(fileMatch[1] ?? ""), decodeURIComponent(fileMatch[2] ?? "/"), request);
+  if (fileMatch) {
+    const workspaceId = decodeURIComponent(fileMatch[1] ?? "");
+    const path = decodeURIComponent(fileMatch[2] ?? "/");
+    const fileUrl = new URL(request.url);
+    fileUrl.pathname = path;
+    return await handleWorkspaceAppRequest({ workspaceId, appKey: "file" }, request, fileUrl);
+  }
 
   return undefined;
 }
@@ -457,7 +461,13 @@ async function validateSocket(request: Request, url: URL): Promise<SocketData | 
     if (!session.startsWith("atelier-provision-")) return undefined;
     return { kind: "provision-term", session };
   }
-  return validateAgentTermSocket(url) ?? (await validateTerminalSocket(url));
+  for (const handler of socketHandlers) {
+    const data = await handler.validate?.(request, url);
+    if (!data || typeof data !== "object" || typeof (data as { kind?: unknown }).kind !== "string") continue;
+    socketHandlersByKind.set((data as { kind: string }).kind, handler);
+    return data as SocketData;
+  }
+  return undefined;
 }
 
 function openProvisionTermSocket(ws: ServerWebSocket<ProvisionTermSocketData>): void {
@@ -521,9 +531,7 @@ function closeWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocke
   if (upstream && upstream.readyState <= WebSocket.OPEN) upstream.close();
 }
 
-await ensureAtelierWorkspaceProxy();
 await startPersistedPublicProxyRoutes();
-
 const maxPortAttempts = allowPortFallback ? 100 : 1;
 let serverPort = 0;
 
@@ -562,21 +570,18 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       },
       websocket: {
         open(ws) {
-          if (ws.data.kind === "terminal") openTerminalSocket(ws as ServerWebSocket<TerminalSocketData>);
-          if (ws.data.kind === "agent-term") openAgentTermSocket(ws as ServerWebSocket<AgentTermSocketData>);
           if (ws.data.kind === "provision-term") openProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
-          if (ws.data.kind === "workspace-app-proxy") openWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>);
+          else if (ws.data.kind === "workspace-app-proxy") openWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>);
+          else socketHandlersByKind.get(ws.data.kind)?.open?.(ws);
         },
         message(ws, message) {
-          if (ws.data.kind === "terminal") handleTerminalSocketMessage(ws as ServerWebSocket<TerminalSocketData>, message);
-          if (ws.data.kind === "agent-term") handleAgentTermSocketMessage(ws as ServerWebSocket<AgentTermSocketData>, message);
           if (ws.data.kind === "workspace-app-proxy") handleWorkspaceAppProxySocketMessage(ws as ServerWebSocket<WorkspaceAppProxySocketData>, message as string | Buffer);
+          else socketHandlersByKind.get(ws.data.kind)?.message?.(ws, message);
         },
         close(ws) {
-          if (ws.data.kind === "terminal") closeTerminalSocket(ws as ServerWebSocket<TerminalSocketData>);
-          if (ws.data.kind === "agent-term") closeAgentTermSocket(ws as ServerWebSocket<AgentTermSocketData>);
           if (ws.data.kind === "provision-term") closeProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
-          if (ws.data.kind === "workspace-app-proxy") closeWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>);
+          else if (ws.data.kind === "workspace-app-proxy") closeWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>);
+          else socketHandlersByKind.get(ws.data.kind)?.close?.(ws);
         },
       },
     });

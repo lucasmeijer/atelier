@@ -30,7 +30,7 @@ export {
   type AgentTermSocketData,
 } from "./bash-tmux.ts";
 export { agentTabKey, renderAgentComposer, renderAgentModelOptions, renderAgentPane } from "./render.ts";
-export { agentWorkspaceModule, listOrCreateWorkspaceAgents, rememberPreferredNewAgentModel, renderWorkspaceAgentTabs } from "./web.ts";
+export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule, listOrCreateWorkspaceAgents, rememberPreferredNewAgentModel, renderWorkspaceAgentTabs } from "./web.ts";
 export {
   applyExactEdits,
   createDeleteCurrentWorkspaceTool,

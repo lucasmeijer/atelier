@@ -113,3 +113,5 @@ export const keypressProbeClientModule: WorkspaceClientModule = {
     application.register("keypress-probe", createKeypressProbeController(Controller));
   },
 };
+
+export { keypressProbeClientModule as atelierClientModule };

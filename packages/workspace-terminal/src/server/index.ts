@@ -16,6 +16,7 @@ export {
 export {
   renderWorkspaceTerminalTabs,
   terminalWorkspaceModule,
+  terminalWorkspaceModule as atelierServerModule,
 } from "./web.ts";
 export { terminalStaticFiles } from "./static.ts";
 export {

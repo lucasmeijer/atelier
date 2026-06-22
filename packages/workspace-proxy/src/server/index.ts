@@ -1,3 +1,15 @@
+import type { WorkspaceModule } from "@atelier/shared";
+import type { AtelierEventBus } from "@atelier/core";
+import { ensureAtelierWorkspaceProxy, registerWorkspaceProxyEvents } from "../egress/egress-proxy.ts";
+
+export const atelierServerModule: WorkspaceModule = {
+  id: "workspace-proxy",
+  async initialize(context) {
+    registerWorkspaceProxyEvents(context.events as AtelierEventBus);
+    await ensureAtelierWorkspaceProxy();
+  },
+};
+
 export interface WorkspaceAppHost {
   appKey: string;
   workspaceId: string;

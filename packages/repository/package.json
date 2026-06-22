@@ -2,6 +2,6 @@
   "name": "@atelier/repository",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": { ".": "./src/index.ts", "./server": "./src/server/index.ts" },
   "dependencies": { "@atelier/core": "workspace:*", "@atelier/observable-terminal": "workspace:*", "@atelier/workspace": "workspace:*" }
 }

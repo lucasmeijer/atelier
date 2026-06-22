@@ -1,9 +1,12 @@
 import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
+import { createDeleteCurrentWorkspaceTool, registerWorkspaceAgentTool, type DeleteCurrentWorkspaceResult } from "./tools.ts";
+import { closeAgentTermSocket, handleAgentTermSocketMessage, openAgentTermSocket, validateAgentTermSocket } from "./bash-tmux.ts";
+import { getWorkspaceAgentRuntime, subscribeWorkspaceTabBusy } from "./runtime.ts";
+import { handleAgentRequest, registerAgentEvents, resolveWorkspacePortProxyTarget, workspaceFileEndpoint } from "./routes.ts";
+import { registerPiConfigEvents } from "./pi-config-seed.ts";
 import { createNextWorkspaceAgent, ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
-import { getWorkspaceAgentRuntime } from "./runtime.ts";
 import { agentTabKey, renderAgentPane, type AgentStatsView } from "./render.ts";
 import { getConfiguredAgentModels, setActiveAgentModel, setModelThinkingLevel } from "./pi-config-models.ts";
-import { handleAgentRequest } from "./routes.ts";
 import type { AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
 
@@ -94,6 +97,37 @@ export const agentWorkspaceModule: WorkspaceModule = {
   tabs: [{
     owns: (tabKey) => tabKey.startsWith("agent:"),
   }],
+  initialize(context) {
+    const events = context.events as AtelierEventBus;
+    registerPiConfigEvents(events);
+    registerAgentEvents(events);
+    events.on("workspace_agent_turn_finished", ({ workspaceId, agentLabel }) => {
+      if (context.registry.activeWorkspaceId() !== workspaceId) context.registry.setTabUnread(workspaceId, agentTabKey(agentLabel), true);
+    });
+    context.registerProvisioningHook({
+      id: "workspace.agent",
+      label: "Prepare default agent",
+      async run({ workspaceId }) {
+        await ensureDefaultWorkspaceAgent(workspaceId);
+      },
+    });
+    context.registerSocketHandler({
+      validate: (_request, url) => validateAgentTermSocket(url),
+      open: (socket) => openAgentTermSocket(socket as Parameters<typeof openAgentTermSocket>[0]),
+      message: (socket, message) => handleAgentTermSocketMessage(socket as Parameters<typeof handleAgentTermSocketMessage>[0], message as string | Buffer),
+      close: (socket) => closeAgentTermSocket(socket as Parameters<typeof closeAgentTermSocket>[0]),
+    });
+    context.registerWorkspaceAppHandler({
+      matches: (app) => app.appKey === "file" || /^port-(\d+)$/.test(app.appKey),
+      handleRequest: (app, request, url) => app.appKey === "file" ? workspaceFileEndpoint(app.workspaceId, decodeURIComponent(url.pathname), request) : undefined,
+      resolveTarget: (app, requestUrl) => {
+        const portMatch = app.appKey.match(/^port-(\d+)$/);
+        return portMatch ? resolveWorkspacePortProxyTarget(app.workspaceId, Number(portMatch[1]), requestUrl.pathname, requestUrl.search) : undefined;
+      },
+    });
+    subscribeWorkspaceTabBusy(({ workspaceId, tabKey, busy }) => context.registry.setTabBusy(workspaceId, tabKey, busy));
+    registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force) as DeleteCurrentWorkspaceResult));
+  },
   async attachToWorkspace({ workspaceId, sourceRepositoryId }) {
     const agents = await listOrCreateWorkspaceAgents(workspaceId);
     return {

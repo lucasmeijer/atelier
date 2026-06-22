@@ -37,3 +37,5 @@ export const vscodeClientModule: WorkspaceClientModule = {
     });
   },
 };
+
+export { vscodeClientModule as atelierClientModule };
