@@ -62,7 +62,7 @@ describe("rewriteSegment", () => {
     const html = rewriteSegment("ws", "try {{atelier:embed http://localhost:3000/app?x=1&y=2}}")!;
     expect(html).toContain(`data-agent-proxy-app-key-value="port-3000"`);
     expect(html).toContain(`data-agent-proxy-path-value="/app?x=1&amp;y=2"`);
-    expect(html).toContain(`<iframe data-controller="agent-proxy"`);
+    expect(html).toContain(`<iframe data-controller="agent-proxy agent-html-preview"`);
   });
 
   test("rewrites remote url embeds to direct iframes", () => {

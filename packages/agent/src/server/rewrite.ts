@@ -51,7 +51,7 @@ function renderFileEmbed(workspaceId: string, path: string): string {
     return `</p><video class="agent-media-video" ${proxy} controls preload="metadata"></video><p>`;
   }
   if (ext === "html" || ext === "htm") {
-    return `</p><div class="agent-media-frame"><div class="agent-media-frame-bar"><span>${escapeHtml(path)}</span><a ${proxy} target="_blank" rel="noopener">open ↗</a></div><iframe ${proxy} loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe></div><p>`;
+    return `</p><div class="agent-media-frame"><div class="agent-media-frame-bar"><span>${escapeHtml(path)}</span><a ${proxy} target="_blank" rel="noopener">open ↗</a></div><iframe data-controller="agent-proxy agent-html-preview" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="file" data-agent-proxy-path-value="${escapeHtml(path)}" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe></div><p>`;
   }
   return `<a class="agent-media-link" ${proxy} target="_blank" rel="noopener">${escapeHtml(name)}</a>`;
 }
@@ -70,7 +70,7 @@ function renderUrlEmbed(workspaceId: string, rawTarget: string): string {
     const appKey = `port-${port}`;
     const path = `${parsed.pathname}${parsed.search}`;
     const proxy = workspaceProxyController(workspaceId, appKey, path);
-    return `</p><div class="agent-media-frame"><div class="agent-media-frame-bar"><span>${escapeHtml(rawTarget)}</span><a ${proxy} target="_blank" rel="noopener">open ↗</a></div><iframe ${proxy} loading="lazy"></iframe></div><p>`;
+    return `</p><div class="agent-media-frame"><div class="agent-media-frame-bar"><span>${escapeHtml(rawTarget)}</span><a ${proxy} target="_blank" rel="noopener">open ↗</a></div><iframe data-controller="agent-proxy agent-html-preview" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="${escapeHtml(appKey)}" data-agent-proxy-path-value="${escapeHtml(path)}" loading="lazy"></iframe></div><p>`;
   }
 
   const src = parsed.toString();

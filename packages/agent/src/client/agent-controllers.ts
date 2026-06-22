@@ -324,6 +324,58 @@ export function createAgentProxyController(Controller: StimulusControllerConstru
 }
 
 // ---------------------------------------------------------------------------
+// agent-html-preview: expand same-origin HTML previews to their content height
+// ---------------------------------------------------------------------------
+
+function createAgentHtmlPreviewController(Controller: StimulusControllerConstructor) {
+  return class AgentHtmlPreviewController extends Controller {
+    declare readonly element: HTMLIFrameElement;
+    private resizeObserver?: ResizeObserver;
+    private mutationObserver?: MutationObserver;
+    private readonly loaded = (): void => this.attach();
+
+    connect(): void {
+      this.element.addEventListener("load", this.loaded);
+      if (this.element.contentDocument?.readyState === "complete") this.attach();
+    }
+
+    disconnect(): void {
+      this.element.removeEventListener("load", this.loaded);
+      this.resizeObserver?.disconnect();
+      this.mutationObserver?.disconnect();
+    }
+
+    private attach(): void {
+      this.resizeObserver?.disconnect();
+      this.mutationObserver?.disconnect();
+
+      const doc = this.element.contentDocument!;
+      const html = doc.documentElement;
+      const body = doc.body;
+      const resize = (): void => {
+        this.element.style.height = `${Math.max(
+          420,
+          html.scrollHeight,
+          html.offsetHeight,
+          html.clientHeight,
+          body.scrollHeight,
+          body.offsetHeight,
+          body.clientHeight,
+        )}px`;
+      };
+
+      resize();
+      this.resizeObserver = new ResizeObserver(resize);
+      this.resizeObserver.observe(html);
+      this.resizeObserver.observe(body);
+      this.mutationObserver = new MutationObserver(resize);
+      this.mutationObserver.observe(html, { attributes: true, childList: true, characterData: true, subtree: true });
+      void doc.fonts.ready.then(resize);
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
 // agent-attachments: drag & drop + uploads with progress chips
 // ---------------------------------------------------------------------------
 
@@ -469,6 +521,7 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-autosubmit", createAgentAutosubmitController(Controller));
     application.register("agent-copy", createAgentCopyController(Controller));
     application.register("agent-elapsed", createAgentElapsedController(Controller));
+    application.register("agent-html-preview", createAgentHtmlPreviewController(Controller));
     application.register("agent-notice", createAgentNoticeController(Controller));
     application.register("agent-proxy", createAgentProxyController(Controller));
     application.register("agent-term", createAgentTermController(Controller));

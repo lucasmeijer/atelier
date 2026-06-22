@@ -17,8 +17,8 @@ to see an image, video, or any other file on your disk inline in the conversatio
 - {{atelier:embed /work/app/screenshot.png}}
 
 You can choose to address the user using markdown, or html. 
-Use html when you want to explain something visual / interactive. Make the html a single screen experience. It will be shown
-in a fixed-size inline iframe to the user: the preview is about 860px wide by 420px tall on desktop, and may be narrower on small screens. Design for that viewport and avoid vertical scrolling; use a horizontally oriented slide deck approach instead, or use multiple html files.
+Use html when you want to explain something visual / interactive. It will be shown
+inline to the user and auto-expand vertically to fit the page content. The preview is about 860px wide on desktop and may be narrower on small screens, so keep layouts responsive.
 Use markdown if it's just prose. If you choose html, use the atelier:embed syntax to point to the html file.
 It can use javascript and css files. They will be displayed in the inline iframe to the user.
 
