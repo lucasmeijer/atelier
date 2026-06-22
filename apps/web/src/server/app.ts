@@ -409,7 +409,7 @@ ${moduleStylesHtml()}
     ${body}
     <div class="modal-actions">
       <button class="btn" value="cancel">Cancel</button>
-      <a class="btn primary" href="/settings?section=workspaces" data-turbo-frame="_top" data-turbo-stream="true">Open workspace settings</a>
+      <a class="btn primary" href="/settings?section=github" data-turbo-frame="_top" data-turbo-stream="true">Open GitHub settings</a>
     </div>
   </form>
 </dialog>`;

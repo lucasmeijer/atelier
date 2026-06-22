@@ -177,9 +177,9 @@ function showMoreProvidersButton(providers: Array<{ connected: boolean; provider
   return extraCount > 0 ? `<button class="settings-btn show-more-providers" type="button" data-controller="provider-list" data-action="provider-list#toggle" data-provider-list-label-value="Show ${extraCount} more providers" data-provider-list-open-label-value="Show fewer providers">Show ${extraCount} more providers</button>` : "";
 }
 
-async function renderAppearance(): Promise<string> {
+async function renderThemeSettings(): Promise<string> {
   const themes = [["daylight", "Daylight"], ["solarized-light", "Solarized Light"], ["cappuccino", "Cappuccino"], ["tokyo-night", "Tokyo Night"], ["midnight", "Midnight"], ["nord", "Nord"]];
-  return settingsSection("appearance", "Appearance", `<div class="settings-field"><div><b>Theme</b><p>Stored in this browser.</p></div><select class="settings-select" data-controller="theme-select">${themes.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></div>`);
+  return `<section class="settings-sec settings-sec-inline" id="settings-sec-theme"><h2>Theme</h2><select class="settings-select" data-controller="theme-select">${themes.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></section>`;
 }
 
 export async function renderGitIdentityForm(surface: "settings" | "onboarding" = "settings", error = ""): Promise<string> {
@@ -189,12 +189,16 @@ export async function renderGitIdentityForm(surface: "settings" | "onboarding" =
     ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
     <div class="settings-field"><div><b>Git user name</b><p>Used as <code>user.name</code> in new workspace containers.</p></div><input class="settings-input" name="name" value="${escapeHtml(identity?.name ?? "")}" placeholder="Ada Lovelace" autocomplete="name" required></div>
     <div class="settings-field"><div><b>Git email</b><p>Used as <code>user.email</code> when commits are created.</p></div><input class="settings-input" type="email" name="email" value="${escapeHtml(identity?.email ?? "")}" placeholder="ada@example.com" autocomplete="email" required></div>
-    <div class="settings-provider-actions"><span class="settings-provider-desc" data-git-identity-target="status">${identity ? "Saved" : "Autosaves when both fields are filled"}</span></div>
+    ${surface === "onboarding" ? `<div class="settings-provider-actions"><span class="settings-provider-desc" data-git-identity-target="status">${identity ? "Saved" : "Autosaves when both fields are filled"}</span></div>` : ""}
   </form>`;
 }
 
-async function renderWorkspaceSettings(): Promise<string> {
-  return settingsSection("workspaces", "Workspaces", `<h3 class="settings-subhead">Git identity</h3>${await renderGitIdentityForm("settings")}<h3 class="settings-subhead">Connections</h3><div class="settings-providers">${githubRow()}</div>`, "Configure repository defaults and connect services used to create and provision workspaces.");
+async function renderGitIdentitySettings(): Promise<string> {
+  return settingsSection("git-identity", "Git identity", await renderGitIdentityForm("settings"));
+}
+
+async function renderGitHubSettings(): Promise<string> {
+  return settingsSection("github", "GitHub", `<div class="settings-providers">${githubRow()}</div>`);
 }
 
 async function renderProviderList(surface: "settings" | "onboarding" = "settings"): Promise<string> {
@@ -203,14 +207,17 @@ async function renderProviderList(surface: "settings" | "onboarding" = "settings
   return `<div${id} class="settings-providers" data-provider-list-scope>${providers.map((provider) => providerRow(provider, surface)).join("")}${showMoreProvidersButton(providers)}</div>`;
 }
 
-async function renderAgentSettings(): Promise<string> {
-  const picker = await renderModelPicker();
-  return settingsSection("agent", "Agent & Models", `<h3 class="settings-subhead">Authentication providers</h3>${await renderProviderList("settings")}<h3 class="settings-subhead">Prompt model picker</h3>${picker}`, "Providers and models are discovered from the pi agent SDK. Credentials are stored in pi-compatible auth storage.");
+async function renderModelProviderSettings(): Promise<string> {
+  return settingsSection("model-providers", "Model providers", await renderProviderList("settings"), "Providers and models are discovered from the pi agent SDK. Credentials are stored in pi-compatible auth storage.");
 }
 
-async function renderAbout(): Promise<string> {
+async function renderModelPickerSettings(): Promise<string> {
+  return settingsSection("model-picker", "Prompt model picker", await renderModelPicker());
+}
+
+async function renderDevelopmentSettings(): Promise<string> {
   const devTools = devSettingsEnabled() ? `<form class="settings-reset-form" method="post" action="/settings/workspaces/force-delete/flow" data-turbo="true"><button class="settings-reset-link danger" type="submit">force delete all workspaces</button></form>` : "";
-  return settingsSection("about", "About", `<div class="settings-field"><div><b>Setup walkthrough</b><p>Reopen onboarding. It will be shown automatically until your git identity and at least one connection are configured.</p></div><a class="settings-btn" href="/onboarding" data-turbo-frame="_top" data-turbo-stream="true">Replay</a></div><div class="settings-version">${escapeHtml(atelierName)} · settings prototype</div><form class="settings-reset-form" method="post" action="/settings/reset" data-turbo="true"><button class="settings-reset-link" type="submit" onclick="return confirm('Delete stored git identity, GitHub token, and all stored model provider credentials?')">delete all settings</button></form>${devTools}`);
+  return settingsSection("development", "Development settings", `<div class="settings-field"><div><b>Setup walkthrough</b><p>Reopen onboarding. It will be shown automatically until your git identity and at least one connection are configured.</p></div><a class="settings-btn" href="/onboarding" data-turbo-frame="_top" data-turbo-stream="true">Replay</a></div><div class="settings-version">${escapeHtml(atelierName)} · settings prototype</div><form class="settings-reset-form" method="post" action="/settings/reset" data-turbo="true"><button class="settings-reset-link" type="submit" onclick="return confirm('Delete stored git identity, GitHub token, and all stored model provider credentials?')">delete all settings</button></form>${devTools}`);
 }
 
 async function availableModelOptions(): Promise<ConfiguredAgentModel[]> {
@@ -247,18 +254,26 @@ function modelPickerRow(model: ConfiguredAgentModel, _index: number, _total: num
   </div>`;
 }
 
-registerSettingsContribution({ id: "appearance", label: "Appearance", order: 10, render: renderAppearance });
-registerSettingsContribution({ id: "workspaces", label: "Workspaces", order: 20, render: renderWorkspaceSettings });
-registerSettingsContribution({ id: "agent", label: "Agent & Models", order: 30, render: renderAgentSettings });
-registerSettingsContribution({ id: "about", label: "About", order: 90, render: renderAbout });
+registerSettingsContribution({ id: "theme", label: "Theme", order: 10, render: renderThemeSettings });
+registerSettingsContribution({ id: "git-identity", label: "Git identity", order: 20, render: renderGitIdentitySettings });
+registerSettingsContribution({ id: "github", label: "GitHub", order: 30, render: renderGitHubSettings });
+registerSettingsContribution({ id: "model-providers", label: "Model providers", order: 40, render: renderModelProviderSettings });
+registerSettingsContribution({ id: "model-picker", label: "Prompt model picker", order: 50, render: renderModelPickerSettings });
 
-export async function renderSettingsDialog(active = "appearance"): Promise<string> {
+export async function renderSettingsDialog(_active = "theme"): Promise<string> {
   const contributions = listSettingsContributions();
   const sections = await Promise.all(contributions.map((contribution) => contribution.render()));
   return `<dialog id="settings_dialog" class="settings-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <div class="settings-sheet">
-      <aside class="settings-side"><div class="settings-title">Settings</div>${contributions.map((contribution) => `<a class="settings-nav ${contribution.id === active ? "active" : ""}" href="#settings-sec-${escapeHtml(contribution.id)}">${escapeHtml(contribution.label)}</a>`).join("")}<div class="settings-side-fill"></div><div class="settings-version">atelier</div></aside>
-      <main class="settings-main"><form method="dialog"><button class="settings-close" value="close">✕</button></form>${sections.join("")}</main>
+      <main class="settings-main"><form method="dialog"><button class="settings-close" value="close">✕</button></form><div class="settings-title">Settings</div>${sections.join("")}<div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>
+    </div>
+  </dialog>`;
+}
+
+export async function renderDevelopmentSettingsDialog(): Promise<string> {
+  return `<dialog id="settings_dialog" class="settings-dialog" data-controller="modal" data-modal-auto-show-value="true">
+    <div class="settings-sheet">
+      <main class="settings-main"><form method="dialog"><button class="settings-close" value="close">✕</button></form><div class="settings-title"><a class="settings-back-link" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">Settings</a></div>${await renderDevelopmentSettings()}</main>
     </div>
   </dialog>`;
 }
@@ -397,7 +412,7 @@ async function refreshAgentModelPickerSelects(): Promise<string> {
 }
 
 async function refreshAfterConnection(): Promise<string> {
-  return `${replace("settings_dialog", await renderSettingsDialog("agent"))}${await refreshAgentModelPickerSelects()}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`;
+  return `${replace("settings_dialog", await renderSettingsDialog("model-providers"))}${await refreshAgentModelPickerSelects()}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`;
 }
 
 async function deleteAllStoredSettings(): Promise<void> {
@@ -410,12 +425,16 @@ async function deleteAllStoredSettings(): Promise<void> {
 
 export async function handleSettingsRequest(request: Request, url: URL, options: { forceDeleteAllWorkspaces?: () => Promise<{ deleted: number; errors: string[] }> } = {}): Promise<Response | undefined> {
   if (url.pathname === "/settings" && request.method === "GET") {
-    const html = await renderSettingsDialog(url.searchParams.get("section") ?? "appearance");
+    const html = await renderSettingsDialog(url.searchParams.get("section") ?? "theme");
+    return wantsStream(request) ? stream(update("settings_modal_host", html)) : response(html);
+  }
+  if (url.pathname === "/settings/development" && request.method === "GET") {
+    const html = await renderDevelopmentSettingsDialog();
     return wantsStream(request) ? stream(update("settings_modal_host", html)) : response(html);
   }
   if (url.pathname === "/settings/reset" && request.method === "POST") {
     await deleteAllStoredSettings();
-    return stream(`${replace("settings_dialog", await renderSettingsDialog("about"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`);
+    return stream(`${replace("settings_dialog", await renderDevelopmentSettingsDialog())}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`);
   }
   if (url.pathname === "/settings/workspaces/force-delete/flow" && request.method === "POST" && devSettingsEnabled()) {
     return stream(append("settings_modal_host", forceDeleteAllWorkspacesModal()));
@@ -437,13 +456,13 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     }
     return surface === "onboarding"
       ? stream(replace("onboarding_git_identity", await renderGitIdentityForm("onboarding")))
-      : stream(`${replace("settings_dialog", await renderSettingsDialog("workspaces"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
+      : stream(`${replace("settings_dialog", await renderSettingsDialog("git-identity"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
   }
   if (url.pathname === "/settings/github/flow" && request.method === "POST") {
     const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
     return surface === "onboarding"
       ? stream(append("onboarding_modal_host", githubTokenModal("", "onboarding")))
-      : stream(update("settings_modal_host", `${await renderSettingsDialog("workspaces")}${githubTokenModal()}`));
+      : stream(update("settings_modal_host", `${await renderSettingsDialog("github")}${githubTokenModal()}`));
   }
   if (url.pathname === "/settings/github/connect" && request.method === "POST") {
     const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
@@ -454,14 +473,14 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     setWorkspaceGitHubToken(token);
     return surface === "onboarding"
       ? stream(`${remove("settings_flow_dialog")}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`)
-      : stream(`${replace("settings_dialog", await renderSettingsDialog("workspaces"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`);
+      : stream(`${replace("settings_dialog", await renderSettingsDialog("github"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`);
   }
   if (url.pathname === "/settings/github/disconnect" && request.method === "POST") {
     const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
     clearWorkspaceGitHubToken();
     return surface === "onboarding"
       ? stream(update("onboarding_modal_host", await renderOnboardingDialogIfNeeded()))
-      : stream(`${replace("settings_dialog", await renderSettingsDialog("workspaces"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
+      : stream(`${replace("settings_dialog", await renderSettingsDialog("github"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
   }
   let match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/flow$/);
   if (match && request.method === "POST") {
@@ -472,12 +491,12 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     if (method === "oauth") {
       try {
         const flow = await startOAuthFlow(provider, label);
-        return stream(update("settings_modal_host", `${await renderSettingsDialog("agent")}${oauthFlowModal(flow)}`));
+        return stream(update("settings_modal_host", `${await renderSettingsDialog("model-providers")}${oauthFlowModal(flow)}`));
       } catch (error) {
-        return stream(update("settings_modal_host", `${await renderSettingsDialog("agent")}${apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect`, error instanceof Error ? error.message : String(error))}`));
+        return stream(update("settings_modal_host", `${await renderSettingsDialog("model-providers")}${apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect`, error instanceof Error ? error.message : String(error))}`));
       }
     }
-    return stream(update("settings_modal_host", `${await renderSettingsDialog("agent")}${apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect`)}`));
+    return stream(update("settings_modal_host", `${await renderSettingsDialog("model-providers")}${apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect`)}`));
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/connect$/);
   if (match && request.method === "POST") {
