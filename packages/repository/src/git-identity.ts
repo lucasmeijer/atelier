@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { defaultDataDir, invalidArguments, type AtelierEventBus } from "@atelier/core";
@@ -48,8 +49,37 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+function execGitConfig(key: string): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    execFile("git", ["config", "--global", "--get", key], { encoding: "utf8" }, (error, stdout) => {
+      if (error) return resolve(undefined);
+      const value = stdout.trim();
+      resolve(value || undefined);
+    });
+  });
+}
+
+async function getHostGlobalGitIdentity(): Promise<GitIdentitySettings | undefined> {
+  const [name, email] = await Promise.all([execGitConfig("user.name"), execGitConfig("user.email")]);
+  if (!name || !email) return undefined;
+  try {
+    return validateGitIdentity({ name, email });
+  } catch {
+    return undefined;
+  }
+}
+
+function shouldAdoptHostGlobalGitIdentity(file: string): boolean {
+  return file === gitIdentitySettingsFile();
+}
+
 export async function getGitIdentity(file = gitIdentitySettingsFile()): Promise<GitIdentitySettings | undefined> {
-  return (await readStore(file)).gitIdentity;
+  const stored = (await readStore(file)).gitIdentity;
+  if (stored || !shouldAdoptHostGlobalGitIdentity(file)) return stored;
+  const hostIdentity = await getHostGlobalGitIdentity();
+  if (!hostIdentity) return undefined;
+  await writeStore(file, { gitIdentity: hostIdentity });
+  return hostIdentity;
 }
 
 export async function hasGitIdentity(file = gitIdentitySettingsFile()): Promise<boolean> {

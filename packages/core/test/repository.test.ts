@@ -1,8 +1,8 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { addRepository, getGitIdentity, hasGitIdentity, listRepositories, parseRepositorySpec, setGitIdentity } from "@atelier/repository";
+import { addRepository, getGitIdentity, gitIdentitySettingsFile, hasGitIdentity, listRepositories, parseRepositorySpec, setGitIdentity } from "@atelier/repository";
 
 describe("repositories", () => {
   test("parseRepositorySpec supports an optional #branch suffix", () => {
@@ -29,5 +29,25 @@ describe("repositories", () => {
 
     expect(await hasGitIdentity(file)).toBe(true);
     expect(await getGitIdentity(file)).toEqual({ name: "Ada Lovelace", email: "ada@example.com" });
+  });
+
+  test("git identity adopts the host global git config when app settings are empty", async () => {
+    const previousDataDir = process.env.ATELIER_DATA_DIR;
+    const previousGlobalConfig = process.env.GIT_CONFIG_GLOBAL;
+    const dataDir = await mkdtemp(join(tmpdir(), "atelier-repository-settings-"));
+    const gitConfig = join(await mkdtemp(join(tmpdir(), "atelier-git-config-")), ".gitconfig");
+    process.env.ATELIER_DATA_DIR = dataDir;
+    process.env.GIT_CONFIG_GLOBAL = gitConfig;
+    try {
+      await writeFile(gitConfig, "[user]\n\tname = Grace Hopper\n\temail = grace@example.com\n", "utf8");
+
+      expect(await getGitIdentity()).toEqual({ name: "Grace Hopper", email: "grace@example.com" });
+      expect(JSON.parse(await readFile(gitIdentitySettingsFile(), "utf8"))).toEqual({ gitIdentity: { name: "Grace Hopper", email: "grace@example.com" } });
+    } finally {
+      if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
+      else process.env.ATELIER_DATA_DIR = previousDataDir;
+      if (previousGlobalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+      else process.env.GIT_CONFIG_GLOBAL = previousGlobalConfig;
+    }
   });
 });

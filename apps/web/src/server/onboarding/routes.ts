@@ -41,8 +41,11 @@ registerOnboardingContribution({ id: "llm", label: "Model provider", order: 30, 
 
 export async function renderOnboardingDialog(force = false): Promise<string> {
   if (!force && await isOnboarded()) return "";
-  const contributions = listOnboardingContributions();
-  const completions = await Promise.all(contributions.map((contribution) => contribution.isComplete()));
+  const allContributions = listOnboardingContributions();
+  const allCompletions = await Promise.all(allContributions.map((contribution) => contribution.isComplete()));
+  const contributions = force ? allContributions : allContributions.filter((_, index) => !allCompletions[index]);
+  const completions = force ? allCompletions : contributions.map(() => false);
+  if (!contributions.length) return "";
   const steps = await Promise.all(contributions.map((contribution, index) => contribution.render().then((html) => `<section class="onboarding-pane ${index === 0 ? "active" : ""}" data-onboarding-target="pane" data-onboarding-complete="${completions[index] ? "true" : "false"}">${html}</section>`)));
   return `<dialog id="onboarding_dialog" class="onboarding-dialog" data-controller="modal onboarding" data-modal-auto-show-value="true">
     <div class="onboarding-card">
