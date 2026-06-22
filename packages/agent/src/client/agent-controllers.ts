@@ -328,6 +328,120 @@ function createAgentProxyController(Controller: StimulusControllerConstructor) {
 }
 
 // ---------------------------------------------------------------------------
+// agent-frame-fullscreen: show inline HTML previews in a fullscreen modal
+// ---------------------------------------------------------------------------
+
+function createAgentFrameFullscreenController(Controller: StimulusControllerConstructor) {
+  return class AgentFrameFullscreenController extends Controller {
+    declare readonly element: HTMLElement;
+    private dialog?: HTMLDialogElement;
+    private frame?: HTMLIFrameElement;
+    private readonly loaded = (): void => this.attachFrameShortcut();
+    private readonly frameKeydown = (event: KeyboardEvent): void => {
+      if (!this.consumePlainF(event)) return;
+      if (this.dialog?.open) this.dialog.close();
+      else this.open();
+    };
+    private readonly dialogKeydown = (event: KeyboardEvent): void => {
+      if (!this.consumePlainF(event)) return;
+      this.dialog?.close();
+    };
+
+    connect(): void {
+      this.frame = this.element.querySelector<HTMLIFrameElement>("iframe") ?? undefined;
+      this.frame?.addEventListener("load", this.loaded);
+      this.attachFrameShortcut();
+    }
+
+    disconnect(): void {
+      this.frame?.removeEventListener("load", this.loaded);
+      this.detachFrameShortcut();
+      this.dialog?.close();
+      this.dialog?.remove();
+      this.dialog = undefined;
+    }
+
+    open(): void {
+      const source = this.frame ?? this.element.querySelector<HTMLIFrameElement>("iframe");
+      if (!source) return;
+      const src = source.src || this.proxyUrl(source);
+      if (!src) return;
+
+      const dialog = document.createElement("dialog");
+      dialog.className = "agent-frame-fullscreen-dialog";
+
+      const header = document.createElement("div");
+      header.className = "agent-frame-fullscreen-bar";
+      const title = document.createElement("span");
+      title.textContent = this.element.querySelector(".agent-media-frame-bar span")?.textContent || "Preview";
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "agent-frame-fullscreen-close";
+      close.textContent = "Close";
+      close.addEventListener("click", () => dialog.close());
+      header.append(title, close);
+
+      const frame = document.createElement("iframe");
+      frame.className = "agent-frame-fullscreen-iframe";
+      frame.src = src;
+      for (const attr of ["sandbox", "allow", "referrerpolicy"] as const) {
+        const value = source.getAttribute(attr);
+        if (value !== null) frame.setAttribute(attr, value);
+      }
+      const attachModalShortcut = (): void => {
+        const doc = frame.contentDocument;
+        if (!doc) return;
+        doc.removeEventListener("keydown", this.dialogKeydown);
+        doc.addEventListener("keydown", this.dialogKeydown);
+      };
+      frame.addEventListener("load", attachModalShortcut);
+
+      dialog.append(header, frame);
+      dialog.addEventListener("keydown", this.dialogKeydown);
+      dialog.addEventListener("close", () => {
+        frame.removeEventListener("load", attachModalShortcut);
+        frame.contentDocument?.removeEventListener("keydown", this.dialogKeydown);
+        dialog.removeEventListener("keydown", this.dialogKeydown);
+        dialog.remove();
+        if (this.dialog === dialog) this.dialog = undefined;
+      }, { once: true });
+      document.body.append(dialog);
+      this.dialog = dialog;
+      dialog.showModal();
+      attachModalShortcut();
+    }
+
+    private consumePlainF(event: KeyboardEvent): boolean {
+      if (event.key.toLowerCase() !== "f" || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.repeat) return false;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']")) return false;
+      event.preventDefault();
+      return true;
+    }
+
+    private attachFrameShortcut(): void {
+      const doc = this.frame?.contentDocument;
+      if (!doc) return;
+      doc.removeEventListener("keydown", this.frameKeydown);
+      doc.addEventListener("keydown", this.frameKeydown);
+    }
+
+    private detachFrameShortcut(): void {
+      const doc = this.frame?.contentDocument;
+      doc?.removeEventListener("keydown", this.frameKeydown);
+    }
+
+    private proxyUrl(frame: HTMLIFrameElement): string {
+      const workspaceId = frame.dataset.agentProxyWorkspaceIdValue;
+      const appKey = frame.dataset.agentProxyAppKeyValue;
+      const path = frame.dataset.agentProxyPathValue;
+      if (!workspaceId || !appKey) return "";
+      return workspaceProxyUrl(workspaceId, appKey, path || "/");
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
 // agent-html-preview: expand same-origin HTML previews to their content height
 // ---------------------------------------------------------------------------
 
@@ -525,6 +639,7 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-autosubmit", createAgentAutosubmitController(Controller));
     application.register("agent-copy", createAgentCopyController(Controller));
     application.register("agent-elapsed", createAgentElapsedController(Controller));
+    application.register("agent-frame-fullscreen", createAgentFrameFullscreenController(Controller));
     application.register("agent-html-preview", createAgentHtmlPreviewController(Controller));
     application.register("agent-notice", createAgentNoticeController(Controller));
     application.register("agent-proxy", createAgentProxyController(Controller));
