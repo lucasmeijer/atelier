@@ -412,8 +412,8 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 0; }
 
 .agent-promptwrap { flex: none; padding: 12px 40px 22px; background: linear-gradient(transparent, var(--bg) 45%); }
 .agent-promptbox { position: relative; max-width: 820px; margin: 0; background: var(--panel); border: 1.5px solid var(--line2); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; padding-bottom: 30px; }
-.agent-promptbox form { min-height: 126px; }
-.agent-input { font: inherit; font-size: 15px; line-height: 1.5; padding: 15px 58px 6px 17px; min-height: 78px; max-height: 260px; }
+.agent-promptbox form { min-height: calc(1.5em * 2 + 21px); }
+.agent-input { font: inherit; font-size: 15px; line-height: 1.5; padding: 15px 58px 6px 17px; min-height: calc(1.5em * 2 + 21px); max-height: 260px; }
 .agent-input::placeholder { color: var(--muted2); }
 .agent-prompt-actions { position: absolute; left: 10px; right: 10px; bottom: 38px; display: flex; align-items: center; gap: 6px; padding: 0; pointer-events: none; }
 .agent-prompt-actions > * { pointer-events: auto; }
