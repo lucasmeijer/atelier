@@ -494,17 +494,6 @@ ${moduleStylesHtml()}
     });
   }
 
-  function renderThemeMenu(): string {
-    const themes = [
-      ["daylight", "Daylight"],
-      ["solarized-light", "Solarized Light"],
-      ["cappuccino", "Cappuccino"],
-      ["tokyo-night", "Tokyo Night"],
-      ["midnight", "Midnight"],
-      ["nord", "Nord"],
-    ];
-    return `<label class="theme-settings" title="Theme"><span aria-hidden="true">⚙</span><select data-controller="theme-select" aria-label="Theme">${themes.map(([value, label]) => `<option value="${value}"${value === "nord" ? " selected" : ""}>${label}</option>`).join("")}</select></label>`;
-  }
 
   function renderWorkspaceGroups(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {
     const layoutState = layouts.normalize(workspaceId, tabs.map((tab) => tab.key));
@@ -611,7 +600,6 @@ ${moduleStylesHtml()}
     return `<div class="app workspace-shell" data-controller="workspace-shell atelier-shortcuts">
     <aside class="workspace-shell-sidebar" data-workspace-shell-target="sidebar">${await renderWorkspaceSidebar()}</aside>
     <main class="workspace-shell-main">${await workspaceDetailHostHtml(selectedId)}</main>
-    <div class="top-settings">${renderThemeMenu()}</div>
   </div>
   ${addRepositoryModal()}
   <div id="settings_modal_host"></div>
