@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getConfiguredAgentModels, getModelThinkingLevel } from "./pi-config-models.ts";
+import { createPiModelRegistry, getConfiguredAgentModels, getModelThinkingLevel } from "./pi-config-models.ts";
 import { diffStats, renderDiffHtml, type DiffOperation } from "./diff.ts";
 import { highlightCodeHtmlForPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
@@ -90,6 +90,8 @@ interface AgentModelOption {
   id: string;
   name: string;
   selected: boolean;
+  available?: boolean;
+  unavailableReason?: string;
 }
 
 export interface AgentStatsView {
@@ -193,13 +195,16 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
 }
 
 export async function renderAgentModelOptions(selectedModel?: string): Promise<string> {
+  const registry = await createPiModelRegistry();
+  const available = new Set((registry.getAvailable() as Array<{ provider: string; id: string }>).map((model) => `${model.provider}::${model.id}`));
   const models = await getConfiguredAgentModels();
-  const active = models.find((model) => model.active);
+  const active = models.find((model) => model.active && available.has(`${model.provider}::${model.id}`)) ?? models.find((model) => available.has(`${model.provider}::${model.id}`));
   const activeValue = active ? `${active.provider}::${active.id}` : undefined;
-  const selected = models.some((model) => `${model.provider}::${model.id}` === selectedModel) ? selectedModel : activeValue;
+  const selected = models.some((model) => `${model.provider}::${model.id}` === selectedModel && available.has(`${model.provider}::${model.id}`)) ? selectedModel : activeValue;
   return models.map((model, index) => {
     const value = `${model.provider}::${model.id}`;
-    return `<option value="${escapeHtml(value)}"${(selected ? value === selected : index === 0) ? " selected" : ""}>${escapeHtml(model.label)}</option>`;
+    const isAvailable = available.has(value);
+    return `<option value="${escapeHtml(value)}"${(selected ? value === selected : isAvailable && index === 0) ? " selected" : ""}${isAvailable ? "" : ` disabled data-unavailable-reason="Provider disconnected"`}>${escapeHtml(model.label)}</option>`;
   }).join("");
 }
 
@@ -211,7 +216,7 @@ async function renderComposerSettings(formId: string, selectedModel?: string): P
   const selectedThinkingLevel = provider && modelId ? await getModelThinkingLevel(provider, modelId) : undefined;
   const thinkingLevels = ["off", "low", "medium", "high"];
   return `<span class="agent-stat-right">
-<select class="agent-sel" data-agent-model-picker-select="true" name="model" form="${escapeHtml(formId)}" title="Model">${await renderAgentModelOptions(selectedValue)}</select>
+<select class="agent-sel" data-controller="agent-model-menu" data-agent-model-picker-select="true" name="model" form="${escapeHtml(formId)}" title="Model">${await renderAgentModelOptions(selectedValue)}</select>
 <select class="agent-sel" data-controller="agent-select-menu" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select>
 </span>`;
 }
@@ -234,8 +239,10 @@ export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): 
   const meter = percent === null
     ? ""
     : `<span class="agent-stat" title="Context window used"><span class="agent-ctx-meter"><i style="width:${Math.min(100, Math.max(0, percent)).toFixed(0)}%"></i></span><b>${percent.toFixed(0)}%</b></span>`;
-  const modelOptions = stats.models.map((model) =>
-    `<option value="${escapeHtml(`${model.provider}::${model.id}`)}"${model.selected ? " selected" : ""}>${escapeHtml(model.name)}</option>`).join("");
+  const modelOptions = stats.models.map((model) => {
+    const available = model.available !== false;
+    return `<option value="${escapeHtml(`${model.provider}::${model.id}`)}"${model.selected ? " selected" : ""}${available ? "" : ` disabled data-unavailable-reason="${escapeHtml(model.unavailableReason ?? "Unavailable")}"`}>${escapeHtml(model.name)}</option>`;
+  }).join("");
   const thinkingOptions = stats.thinkingLevels.map((level) =>
     `<option value="${escapeHtml(level)}"${level === stats.thinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("");
   return `${meter}
@@ -243,7 +250,7 @@ export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): 
 <span class="agent-stat" title="Tokens down (output)">↓ <b>${formatTokens(stats.outputTokens)}</b></span>
 <span class="agent-stat" title="Session cost"><b>${formatCost(stats.cost)}</b></span>
 <span class="agent-stat-right">
-<form method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-agent-model-picker-select="true" data-agent-session-model-select="true" name="model" data-action="change->agent-autosubmit#submit" title="Model">${modelOptions || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`}</select></form>
+<form method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-model-menu" data-agent-model-picker-select="true" data-agent-session-model-select="true" name="model" data-action="change->agent-autosubmit#submit" title="Model">${modelOptions || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`}</select></form>
 ${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-select-menu" name="level" data-action="change->agent-autosubmit#submit" title="Thinking level">${thinkingOptions}</select></form>` : ""}
 </span>`;
 }

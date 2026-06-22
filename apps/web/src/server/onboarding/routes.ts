@@ -1,7 +1,7 @@
 import { listOnboardingContributions, registerOnboardingContribution } from "./registry.ts";
 import { hasWorkspaceGitHubToken } from "@atelier/core";
 import { hasGitIdentity } from "@atelier/repository";
-import { githubRow, hasAnyLlmProvider, isOnboarded, providerRow, providerSummaries, renderGitIdentityForm, showMoreProvidersButton } from "../settings/routes.ts";
+import { githubRow, hasAvailableFavoriteModel, isOnboarded, renderGitIdentityForm, renderModelSetup } from "../settings/routes.ts";
 
 function escapeHtml(value: unknown): string {
   return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
@@ -31,27 +31,34 @@ async function renderGithubStep(): Promise<string> {
 }
 
 async function renderLlmStep(): Promise<string> {
-  const providers = await providerSummaries();
-  return `<div class="onboarding-step onboarding-step-model-provider"><h2>Connect a model provider</h2><div class="settings-providers" data-provider-list-scope>${providers.map((provider) => providerRow(provider, "onboarding")).join("")}${showMoreProvidersButton(providers)}</div></div>`;
+  return `<div class="onboarding-step onboarding-step-model-provider">${await renderModelSetup("onboarding")}</div>`;
+}
+
+function renderDoneStep(items: Array<{ id: string; label: string; complete: boolean }>): string {
+  const completed = items.filter((item) => item.complete).length;
+  const allComplete = completed === items.length;
+  const title = allComplete ? "You’re all set up and ready to start using Atelier" : `${completed}/${items.length} onboarding steps completed`;
+  return `<div class="onboarding-step onboarding-step-done" data-onboarding-done-complete="${allComplete ? "true" : "false"}"><h2>${escapeHtml(title)}</h2><ul class="onboarding-checklist">${items.map((item) => `<li data-onboarding-check="${escapeHtml(item.id)}" data-onboarding-check-complete="${item.complete ? "true" : "false"}"><span>${item.complete ? "✓" : "○"}</span>${escapeHtml(item.label)}</li>`).join("")}</ul></div>`;
 }
 
 registerOnboardingContribution({ id: "git-identity", label: "Git identity", order: 10, isComplete: hasGitIdentity, render: renderGitIdentityStep });
 registerOnboardingContribution({ id: "github", label: "GitHub", order: 20, isComplete: async () => hasWorkspaceGitHubToken(), render: renderGithubStep });
-registerOnboardingContribution({ id: "llm", label: "Model provider", order: 30, isComplete: hasAnyLlmProvider, render: renderLlmStep });
+registerOnboardingContribution({ id: "llm", label: "Models", order: 30, isComplete: hasAvailableFavoriteModel, render: renderLlmStep });
 
 export async function renderOnboardingDialog(force = false): Promise<string> {
   if (!force && await isOnboarded()) return "";
   const allContributions = listOnboardingContributions();
   const allCompletions = await Promise.all(allContributions.map((contribution) => contribution.isComplete()));
-  const contributions = force ? allContributions : allContributions.filter((_, index) => !allCompletions[index]);
-  const completions = force ? allCompletions : contributions.map(() => false);
+  const contributions = allContributions.filter((_, index) => !allCompletions[index]);
   if (!contributions.length) return "";
-  const steps = await Promise.all(contributions.map((contribution, index) => contribution.render().then((html) => `<section class="onboarding-pane ${index === 0 ? "active" : ""}" data-onboarding-target="pane" data-onboarding-complete="${completions[index] ? "true" : "false"}">${html}</section>`)));
+  const rendered = await Promise.all(contributions.map((contribution) => contribution.render()));
+  rendered.push(renderDoneStep(allContributions.map((contribution, index) => ({ id: contribution.id, label: contribution.label, complete: Boolean(allCompletions[index]) }))));
+  const steps = rendered.map((html, index) => `<section class="onboarding-pane ${index === 0 ? "active" : ""}" data-onboarding-target="pane" data-onboarding-complete="${index === rendered.length - 1 ? "true" : "false"}" data-onboarding-kind="${index === rendered.length - 1 ? "done" : contributions[index]?.id ?? ""}">${html}</section>`);
   return `<dialog id="onboarding_dialog" class="onboarding-dialog" data-controller="modal onboarding" data-modal-auto-show-value="true">
     <div class="onboarding-card">
-      <div class="onboarding-dots">${contributions.map((_, index) => `<span class="${index === 0 ? "active" : ""}" data-onboarding-target="dot"></span>`).join("")}</div>
+      <div class="onboarding-dots">${rendered.map((_, index) => `<span class="${index === 0 ? "active" : ""}" data-onboarding-target="dot"></span>`).join("")}</div>
       <div class="onboarding-body">${steps.join("")}</div>
-      <div class="onboarding-foot"><button class="settings-btn" type="button" data-action="onboarding#prev">‹ Back</button><span></span><button class="settings-btn" type="button" data-onboarding-target="continue" data-action="onboarding#next">Continue</button></div>
+      <div class="onboarding-foot"><button class="settings-btn" type="button" data-onboarding-target="back" data-action="onboarding#prev">‹ Back</button><span></span><button class="settings-btn" type="button" data-onboarding-target="continue" data-action="onboarding#next">Continue</button></div>
     </div>
   </dialog>`;
 }

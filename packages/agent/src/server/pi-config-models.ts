@@ -82,6 +82,12 @@ export async function getConfiguredAgentModels(): Promise<ConfiguredAgentModel[]
   return configuredFromJson(await getAgentModelsSettings());
 }
 
+export async function hasAvailableConfiguredAgentModel(): Promise<boolean> {
+  const registry = await createPiModelRegistry();
+  const available = new Set((registry.getAvailable() as Array<{ provider: string; id: string }>).map((model) => modelSettingsKey(model.provider, model.id)));
+  return (await getConfiguredAgentModels()).some((model) => available.has(modelSettingsKey(model.provider, model.id)));
+}
+
 export async function setActiveAgentModel(provider: string, id: string): Promise<void> {
   const config = await getAgentModelsSettings();
   const current = configuredFromJson(config);

@@ -1025,26 +1025,45 @@ class ThemeSelectController extends Controller {
 }
 
 class OAuthFlowController extends Controller {
-  static values = { statusUrl: String, active: Boolean };
+  static values = { statusUrl: String, active: Boolean, pollMs: Number };
   declare readonly statusUrlValue: string;
   declare readonly activeValue: boolean;
+  declare readonly pollMsValue: number;
+  declare readonly hasPollMsValue: boolean;
   private timer: number | undefined;
+  private polling = false;
 
   connect(): void {
     if (!this.activeValue || !this.statusUrlValue) return;
-    this.timer = window.setInterval(() => void this.poll(), 1500);
+    this.timer = window.setInterval(() => void this.poll(), this.hasPollMsValue ? this.pollMsValue : 3000);
+    window.addEventListener("focus", this.pollSoon);
+    document.addEventListener("visibilitychange", this.pollIfVisible);
   }
 
   disconnect(): void {
     if (this.timer !== undefined) window.clearInterval(this.timer);
+    window.removeEventListener("focus", this.pollSoon);
+    document.removeEventListener("visibilitychange", this.pollIfVisible);
   }
 
+  private pollSoon = (): void => {
+    window.setTimeout(() => void this.poll(), 100);
+  };
+
+  private pollIfVisible = (): void => {
+    if (document.visibilityState === "visible") void this.poll();
+  };
+
   private async poll(): Promise<void> {
+    if (this.polling) return;
+    this.polling = true;
     const response = await fetch(this.statusUrlValue, {
       method: "POST",
+      cache: "no-store",
       headers: { Accept: "text/vnd.turbo-stream.html" },
-    });
-    if (!response.ok) return;
+    }).catch(() => undefined);
+    this.polling = false;
+    if (!response?.ok) return;
     const html = await response.text();
     window.Turbo?.renderStreamMessage(html);
   }
@@ -1119,23 +1138,13 @@ class ProviderListController extends Controller {
 }
 
 class ModelAddMenuController extends Controller {
-  static targets = ["filter", "option", "options"];
-  declare readonly element: HTMLDetailsElement;
+  static targets = ["filter", "option"];
   declare readonly filterTarget: HTMLInputElement;
   declare readonly optionTargets: HTMLElement[];
   declare readonly hasFilterTarget: boolean;
 
   connect(): void {
-    this.element.addEventListener("toggle", this.focusFilter);
-  }
-
-  disconnect(): void {
-    this.element.removeEventListener("toggle", this.focusFilter);
-  }
-
-  close(event?: Event): void {
-    event?.preventDefault();
-    this.element.open = false;
+    if (this.hasFilterTarget) requestAnimationFrame(() => this.filterTarget.focus());
   }
 
   filter(): void {
@@ -1143,81 +1152,32 @@ class ModelAddMenuController extends Controller {
     this.optionTargets.forEach((option) => {
       option.hidden = query.length > 0 && !(option.dataset.searchText ?? "").includes(query);
     });
+    this.element.querySelectorAll<HTMLElement>(".settings-add-model-group").forEach((group) => {
+      const options = Array.from(group.querySelectorAll<HTMLElement>("[data-model-add-menu-target~='option']"));
+      group.hidden = options.length > 0 && options.every((option) => option.hidden);
+    });
   }
-
-  private focusFilter = (): void => {
-    if (this.element.open && this.hasFilterTarget) requestAnimationFrame(() => this.filterTarget.focus());
-  };
-}
-
-class ModelPickerController extends Controller {
-  declare readonly element: HTMLElement;
-  private dragged?: HTMLElement;
-
-  dragStart(event: DragEvent): void {
-    const row = (event.currentTarget instanceof HTMLElement ? event.currentTarget : null)?.closest<HTMLElement>(".settings-model-row");
-    if (!row) return;
-    this.dragged = row;
-    row.classList.add("dragging");
-    event.dataTransfer?.setData("text/plain", row.dataset.modelPickerModelValue ?? "");
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-  }
-
-  dragOver(event: DragEvent): void {
-    if (!this.dragged) return;
-    event.preventDefault();
-    const row = (event.target instanceof HTMLElement ? event.target : null)?.closest<HTMLElement>(".settings-model-row");
-    this.element.querySelectorAll(".settings-model-row").forEach((candidate) => candidate.classList.remove("drop-before", "drop-after"));
-    if (!row || row === this.dragged) return;
-    const rect = row.getBoundingClientRect();
-    const after = event.clientY > rect.top + rect.height / 2;
-    row.insertAdjacentElement(after ? "afterend" : "beforebegin", this.dragged);
-    this.dragged.classList.add(after ? "drop-after" : "drop-before");
-  }
-
-  async drop(event: DragEvent): Promise<void> {
-    if (!this.dragged) return;
-    event.preventDefault();
-    this.clearDropMarkers();
-    await this.persistOrder();
-  }
-
-  dragEnd(): void {
-    this.dragged?.classList.remove("dragging");
-    this.dragged = undefined;
-    this.clearDropMarkers();
-  }
-
-  private clearDropMarkers(): void {
-    this.element.querySelectorAll(".settings-model-row").forEach((candidate) => candidate.classList.remove("drop-before", "drop-after"));
-  }
-
-  private async persistOrder(): Promise<void> {
-    const models = Array.from(this.element.querySelectorAll<HTMLElement>(".settings-model-row"))
-      .map((row) => row.dataset.modelPickerModelValue)
-      .filter((value): value is string => Boolean(value));
-    const body = new URLSearchParams();
-    models.forEach((model) => body.append("model", model));
-    const html = await fetch("/settings/models/reorder", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "text/vnd.turbo-stream.html" },
-      body,
-    }).then((response) => response.text()).catch(() => "");
-    if (html) window.Turbo?.renderStreamMessage(html);
-  }
-
 }
 
 class OnboardingController extends Controller {
-  static targets = ["pane", "dot", "continue"];
+  static targets = ["pane", "dot", "continue", "back"];
   declare readonly paneTargets: HTMLElement[];
   declare readonly dotTargets: HTMLElement[];
   declare readonly continueTarget: HTMLButtonElement;
   declare readonly hasContinueTarget: boolean;
+  declare readonly backTarget: HTMLButtonElement;
+  declare readonly hasBackTarget: boolean;
   private index = 0;
+  private observer?: MutationObserver;
 
   connect(): void {
+    this.observer = new MutationObserver(() => this.show(this.index));
+    this.observer.observe(this.element, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-model-setup-working", "data-onboarding-complete"] });
     this.show(0);
+  }
+
+  disconnect(): void {
+    this.observer?.disconnect();
   }
 
   next(): void {
@@ -1233,12 +1193,188 @@ class OnboardingController extends Controller {
   }
 
   private show(index: number): void {
-    this.index = index;
-    this.paneTargets.forEach((pane, paneIndex) => pane.classList.toggle("active", paneIndex === index));
-    this.dotTargets.forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex === index));
-    const current = this.paneTargets[index];
-    const complete = current?.dataset.onboardingComplete === "true";
-    if (this.hasContinueTarget) this.continueTarget.classList.toggle("primary", complete);
+    this.index = Math.max(0, Math.min(index, this.paneTargets.length - 1));
+    this.paneTargets.forEach((pane, paneIndex) => pane.classList.toggle("active", paneIndex === this.index));
+    this.dotTargets.forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex === this.index));
+    const current = this.paneTargets[this.index];
+    const kind = current?.dataset.onboardingKind;
+    const modelSetup = current?.querySelector<HTMLElement>(".model-setup");
+    const workingModel = modelSetup?.dataset.modelSetupWorking === "true";
+    const complete = current?.dataset.onboardingComplete === "true" || (kind === "llm" && workingModel);
+    if (kind === "done") this.refreshChecklist(current);
+    const doneComplete = kind === "done" && current?.querySelector<HTMLElement>(".onboarding-step-done")?.dataset.onboardingDoneComplete === "true";
+    if (this.hasBackTarget) {
+      this.backTarget.hidden = this.index === 0;
+      this.backTarget.disabled = this.index === 0;
+    }
+    if (this.hasContinueTarget) {
+      this.continueTarget.classList.toggle("primary", kind === "done" ? Boolean(doneComplete) : complete);
+      const label = kind === "done" ? (doneComplete ? "Let’s start!" : "Start anyway") : kind === "llm" && !workingModel ? "No model configured yet" : "Continue";
+      if (this.continueTarget.textContent !== label) this.continueTarget.textContent = label;
+    }
+  }
+
+  private refreshChecklist(donePane?: HTMLElement): void {
+    const done = donePane?.querySelector<HTMLElement>(".onboarding-step-done");
+    if (!done) return;
+    done.querySelectorAll<HTMLElement>("[data-onboarding-check]").forEach((item) => {
+      const id = item.dataset.onboardingCheck;
+      const pane = this.paneTargets.find((candidate) => candidate.dataset.onboardingKind === id);
+      const modelSetup = pane?.querySelector<HTMLElement>(".model-setup");
+      const complete = pane ? (pane.dataset.onboardingComplete === "true" || (id === "llm" && modelSetup?.dataset.modelSetupWorking === "true")) : item.dataset.onboardingCheckComplete === "true";
+      const completeValue = complete ? "true" : "false";
+      if (item.dataset.onboardingCheckComplete !== completeValue) item.dataset.onboardingCheckComplete = completeValue;
+      const marker = item.querySelector("span");
+      const markerText = complete ? "✓" : "○";
+      if (marker && marker.textContent !== markerText) marker.textContent = markerText;
+    });
+    const checks = Array.from(done.querySelectorAll<HTMLElement>("[data-onboarding-check]"));
+    const completed = checks.filter((item) => item.dataset.onboardingCheckComplete === "true").length;
+    const allComplete = completed === checks.length;
+    done.dataset.onboardingDoneComplete = allComplete ? "true" : "false";
+    const title = done.querySelector("h2");
+    const titleText = allComplete ? "You’re all set up and ready to start using Atelier" : `${completed}/${checks.length} onboarding steps completed`;
+    if (title && title.textContent !== titleText) title.textContent = titleText;
+  }
+}
+
+class AgentModelMenuController extends Controller {
+  declare readonly element: HTMLSelectElement;
+  private button?: HTMLButtonElement;
+  private menu?: HTMLDivElement;
+  private observer?: MutationObserver;
+  private form?: HTMLFormElement | null;
+
+  connect(): void {
+    if (this.element.dataset.agentModelEnhanced === "true") return;
+    this.element.dataset.agentModelEnhanced = "true";
+    this.element.classList.add("agent-sel-native");
+    this.button = document.createElement("button");
+    this.button.type = "button";
+    this.button.className = "agent-sel-button agent-model-button";
+    this.button.addEventListener("click", this.toggle);
+    this.menu = document.createElement("div");
+    this.menu.className = "agent-sel-menu agent-model-menu hidden";
+    this.element.after(this.button, this.menu);
+    this.element.addEventListener("change", this.changed);
+    this.form = this.element.form;
+    this.form?.addEventListener("submit", this.submit, true);
+    document.addEventListener("click", this.closeFromOutside);
+    this.observer = new MutationObserver(this.sync);
+    this.observer.observe(this.element, { childList: true, subtree: true, attributes: true, attributeFilter: ["selected", "disabled"] });
+    this.sync();
+  }
+
+  disconnect(): void {
+    this.button?.removeEventListener("click", this.toggle);
+    this.element.removeEventListener("change", this.changed);
+    this.form?.removeEventListener("submit", this.submit, true);
+    document.removeEventListener("click", this.closeFromOutside);
+    this.observer?.disconnect();
+    this.button?.remove();
+    this.menu?.remove();
+    this.element.classList.remove("agent-sel-native");
+    delete this.element.dataset.agentModelEnhanced;
+  }
+
+  private hasAvailableModel(): boolean {
+    return Array.from(this.element.options).some((option) => !option.disabled && option.value);
+  }
+
+  private sync = (): void => {
+    if (!this.button || !this.menu) return;
+    const selected = this.element.selectedOptions[0];
+    this.button.textContent = this.hasAvailableModel() ? (selected?.textContent?.trim() || "Select model") : "Configure favorite models";
+    this.menu.innerHTML = "";
+    const configure = document.createElement("button");
+    configure.type = "button";
+    configure.className = "agent-sel-option configure";
+    configure.textContent = "Configure favorite models";
+    configure.addEventListener("click", () => { this.close(); void this.openSetup(); });
+    this.menu.appendChild(configure);
+    Array.from(this.element.options).forEach((option) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = `agent-sel-option${option.selected ? " selected" : ""}${option.disabled ? " disabled" : ""}`;
+      item.disabled = option.disabled;
+      const label = document.createElement("span");
+      label.textContent = option.textContent ?? option.value;
+      item.appendChild(label);
+      if (option.disabled) {
+        const reason = document.createElement("small");
+        reason.textContent = option.dataset.unavailableReason ?? "Unavailable";
+        item.appendChild(reason);
+      } else if (option.selected) {
+        const check = document.createElement("b");
+        check.textContent = "✓";
+        item.appendChild(check);
+      }
+      item.addEventListener("click", () => {
+        if (option.disabled) return;
+        this.element.value = option.value;
+        this.element.dispatchEvent(new Event("change", { bubbles: true }));
+        this.close();
+      });
+      this.menu?.appendChild(item);
+    });
+  };
+
+  private changed = (): void => {
+    this.sync();
+    if (this.element.dataset.agentSessionModelSelect === "true") return;
+    const value = this.element.value;
+    if (!value) return;
+    void fetch("/settings/models/active", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "text/vnd.turbo-stream.html" },
+      body: new URLSearchParams({ model: value }),
+    }).then((response) => response.text()).then((html) => { if (html) window.Turbo?.renderStreamMessage(html); }).catch(() => undefined);
+  };
+
+  private submit = (event: Event): void => {
+    if (this.hasAvailableModel()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    void this.openSetup();
+  };
+
+  private async openSetup(): Promise<void> {
+    const html = await fetch("/settings/models/dialog", { headers: { Accept: "text/vnd.turbo-stream.html" } }).then((response) => response.text()).catch(() => "");
+    if (html) window.Turbo?.renderStreamMessage(html);
+  }
+
+  private toggle = (event: MouseEvent): void => {
+    event.stopPropagation();
+    if (!this.hasAvailableModel()) {
+      void this.openSetup();
+      return;
+    }
+    document.querySelectorAll(".agent-sel-menu").forEach((menu) => {
+      if (menu !== this.menu) menu.classList.add("hidden");
+    });
+    if (!this.menu || !this.button) return;
+    const opening = this.menu.classList.contains("hidden");
+    this.menu.classList.toggle("hidden", !opening);
+    if (opening) this.positionMenu();
+  };
+
+  private positionMenu(): void {
+    if (!this.menu || !this.button) return;
+    const rect = this.button.getBoundingClientRect();
+    const width = Math.max(220, Math.min(340, rect.width + 160));
+    this.menu.style.width = `${width}px`;
+    this.menu.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, rect.right - width))}px`;
+    this.menu.style.top = `${Math.max(8, rect.top - this.menu.getBoundingClientRect().height - 8)}px`;
+  }
+
+  private closeFromOutside = (event: MouseEvent): void => {
+    const target = event.target instanceof Node ? event.target : null;
+    if (target && (this.menu?.contains(target) || this.button?.contains(target))) return;
+    this.close();
+  };
+
+  private close(): void {
+    this.menu?.classList.add("hidden");
   }
 }
 
@@ -1374,7 +1510,7 @@ application.register("oauth-flow", OAuthFlowController);
 application.register("git-identity", GitIdentityController);
 application.register("provider-list", ProviderListController);
 application.register("model-add-menu", ModelAddMenuController);
-application.register("model-picker", ModelPickerController);
 application.register("onboarding", OnboardingController);
 application.register("clipboard", ClipboardController);
 application.register("agent-select-menu", AgentSelectMenuController);
+application.register("agent-model-menu", AgentModelMenuController);

@@ -635,14 +635,16 @@ class RealAgentRuntime extends BaseAgentRuntime {
     });
   }
 
-  private async configuredModelOptions(): Promise<{ provider: string; id: string; name: string; model: any }[]> {
+  private async configuredModelOptions(): Promise<{ provider: string; id: string; name: string; model: any; available: boolean }[]> {
     // Configured model picker list, resolved against the registry at render time.
     const configuredModels = await getConfiguredAgentModels();
+    const available = new Set((this.session.modelRegistry.getAvailable?.() as Array<{ provider: string; id: string }> | undefined ?? []).map((model) => `${model.provider}::${model.id}`));
     return configuredModels.map((configured) => ({
       provider: configured.provider,
       id: configured.id,
       name: configured.label,
       model: this.session.modelRegistry.find?.(configured.provider, configured.id),
+      available: available.has(`${configured.provider}::${configured.id}`),
     }));
   }
 
@@ -683,10 +685,14 @@ class RealAgentRuntime extends BaseAgentRuntime {
       id: option.id,
       name: option.name,
       selected: model ? option.provider === model.provider && option.id === model.id : false,
+      available: option.available,
+      unavailableReason: option.available ? undefined : "Provider disconnected",
     }));
     // Current model outside the configured list: show it as a selected extra entry.
     if (model && !models.some((option) => option.selected)) {
-      models.unshift({ provider: model.provider, id: model.id, name: model.name ?? model.id, selected: true });
+      // Show the current session model for accuracy, but do not offer it as a
+      // selectable choice unless it is also in the user's favorites list.
+      models.unshift({ provider: model.provider, id: model.id, name: model.name ?? model.id, selected: true, available: false, unavailableReason: "Not in favorite models" });
     }
     return {
       contextPercent: context?.percent ?? null,

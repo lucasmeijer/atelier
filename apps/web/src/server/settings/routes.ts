@@ -5,6 +5,7 @@ import {
   createPiAuthStorage,
   createPiModelRegistry,
   disconnectModelProvider,
+  hasAvailableConfiguredAgentModel,
   renderAgentModelOptions,
   setActiveAgentModel,
   setPickerAgentModels,
@@ -43,6 +44,10 @@ function updateTargets(selector: string, html: string): string {
   return `<turbo-stream action="update" targets="${escapeHtml(selector)}"><template>${html}</template></turbo-stream>`;
 }
 
+function replaceTargets(selector: string, html: string): string {
+  return `<turbo-stream action="replace" targets="${escapeHtml(selector)}"><template>${html}</template></turbo-stream>`;
+}
+
 function remove(target: string): string {
   return `<turbo-stream action="remove" target="${escapeHtml(target)}"></turbo-stream>`;
 }
@@ -63,12 +68,8 @@ function devSettingsEnabled(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
-export async function hasAnyLlmProvider(): Promise<boolean> {
-  return (await createPiAuthStorage()).list().length > 0;
-}
-
 export async function isOnboarded(): Promise<boolean> {
-  return await hasGitIdentity() && (hasWorkspaceGitHubToken() || await hasAnyLlmProvider());
+  return await hasGitIdentity() && hasWorkspaceGitHubToken() && await hasAvailableFavoriteModel();
 }
 
 function badge(connected: boolean, label = connected ? "Connected" : "Not connected"): string {
@@ -105,7 +106,7 @@ function githubRow(surface: "settings" | "onboarding" = "settings"): string {
   const connected = hasWorkspaceGitHubToken();
   const flowAction = surface === "onboarding" ? "/settings/github/flow?surface=onboarding" : "/settings/github/flow";
   const disconnectAction = surface === "onboarding" ? "/settings/github/disconnect?surface=onboarding" : "/settings/github/disconnect";
-  return `<div class="settings-provider" id="${domId(surface, "provider", "github")}">
+  return `<div class="settings-provider settings-provider-github" id="${domId(surface, "provider", "github")}">
     <div class="settings-provider-icon settings-provider-icon-github" style="--provider-color:${providerColor("github")}">${githubIcon()}</div>
     <div class="settings-provider-main"><div class="settings-provider-title">GitHub${connected ? ` ${badge(true)}` : ""}</div><div class="settings-provider-desc">Atelier injects your GitHub auth token outside of the workspace container your agent runs in, so it is not visible to your coding agent, but it can still push and pull from your private repos.</div></div>
     <div class="settings-provider-actions">${connected
@@ -160,11 +161,13 @@ function providerRow(provider: ProviderSummary, surface: "settings" | "onboardin
   const methods = provider.methods.length ? provider.methods : ["api_key"];
   const hidden = !provider.connected && !isSuperPopularProvider(provider.provider);
   const modelCount = `${provider.modelCount} model${provider.modelCount === 1 ? "" : "s"}`;
+  const surfaceParam = surface === "onboarding" ? "&surface=onboarding" : "";
+  const disconnectSurfaceParam = surface === "onboarding" ? "?surface=onboarding" : "";
   const actions = provider.stored
-    ? `<form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/disconnect" data-turbo="true"><button class="settings-btn danger" type="submit">Disconnect</button></form>`
+    ? `<form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/disconnect${disconnectSurfaceParam}" data-turbo="true"><button class="settings-btn danger" type="submit">Disconnect</button></form>`
     : provider.connected
       ? `<span class="settings-provider-desc">Managed outside Atelier</span>`
-      : methods.map((method) => `<form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/flow?method=${encodeURIComponent(method)}" data-turbo="true"><button class="settings-btn ${surface === "onboarding" ? "primary" : ""}" type="submit">${method === "oauth" ? "Sign in" : "Add API key"}</button></form>`).join("");
+      : methods.map((method) => `<form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/flow?method=${encodeURIComponent(method)}${surfaceParam}" data-turbo="true"><button class="settings-btn ${surface === "onboarding" ? "primary" : ""}" type="submit">${method === "oauth" ? "Sign in" : "Add API key"}</button></form>`).join("");
   return `<div class="settings-provider${hidden ? " provider-extra hidden" : ""}" id="${id}" data-provider-extra="${hidden ? "true" : "false"}">
     <div class="settings-provider-icon" style="--provider-color:${providerColor(provider.provider)}">${escapeHtml(providerInitial(provider.label))}</div>
     <div class="settings-provider-main"><div class="settings-provider-title">${escapeHtml(provider.label)} <span class="settings-provider-count">${escapeHtml(modelCount)}</span>${provider.connected ? ` ${badge(true, provider.authLabel)}` : ""}</div></div>
@@ -203,21 +206,20 @@ async function renderGitHubSettings(): Promise<string> {
 
 async function renderProviderList(surface: "settings" | "onboarding" = "settings"): Promise<string> {
   const providers = await providerSummaries();
-  const id = surface === "settings" ? ` id="settings_agent_provider_list"` : "";
-  return `<div${id} class="settings-providers" data-provider-list-scope>${providers.map((provider) => providerRow(provider, surface)).join("")}${showMoreProvidersButton(providers)}</div>`;
+  return `<div class="settings-providers" data-provider-list-scope>${providers.map((provider) => providerRow(provider, surface)).join("")}${showMoreProvidersButton(providers)}</div>`;
 }
 
-async function renderModelProviderSettings(): Promise<string> {
-  return settingsSection("model-providers", "Model providers", await renderProviderList("settings"), "Providers and models are discovered from the pi agent SDK. Credentials are stored in pi-compatible auth storage.");
-}
-
-async function renderModelPickerSettings(): Promise<string> {
-  return settingsSection("model-picker", "Prompt model picker", await renderModelPicker());
+async function renderModelSetupSettings(): Promise<string> {
+  return settingsSection("models", "Models", await renderModelSetup("settings"), "Connect model providers and choose the favorite models shown in prompt boxes.");
 }
 
 async function renderDevelopmentSettings(): Promise<string> {
   const devTools = devSettingsEnabled() ? `<form class="settings-reset-form" method="post" action="/settings/workspaces/force-delete/flow" data-turbo="true"><button class="settings-reset-link danger" type="submit">force delete all workspaces</button></form>` : "";
-  return settingsSection("development", "Development settings", `<div class="settings-field"><div><b>Setup walkthrough</b><p>Reopen onboarding. It will be shown automatically until your git identity and at least one connection are configured.</p></div><a class="settings-btn" href="/onboarding" data-turbo-frame="_top" data-turbo-stream="true">Replay</a></div><div class="settings-version">${escapeHtml(atelierName)} · settings prototype</div><form class="settings-reset-form" method="post" action="/settings/reset" data-turbo="true"><button class="settings-reset-link" type="submit" onclick="return confirm('Delete stored git identity, GitHub token, and all stored model provider credentials?')">delete all settings</button></form>${devTools}`);
+  return settingsSection("development", "Development settings", `<div class="settings-field"><div><b>Setup walkthrough</b><p>Reopen onboarding. It will be shown automatically until your git identity, GitHub, and a working favorite model are configured.</p></div><a class="settings-btn" href="/onboarding" data-turbo-frame="_top" data-turbo-stream="true">Replay</a></div><div class="settings-version">${escapeHtml(atelierName)} · settings prototype</div><form class="settings-reset-form" method="post" action="/settings/reset" data-turbo="true"><button class="settings-reset-link" type="submit" onclick="return confirm('Delete stored git identity, GitHub token, and all stored model provider credentials?')">delete all settings</button></form>${devTools}`);
+}
+
+function modelKey(model: { provider: string; id: string }): string {
+  return `${model.provider}::${model.id}`;
 }
 
 async function availableModelOptions(): Promise<ConfiguredAgentModel[]> {
@@ -226,46 +228,85 @@ async function availableModelOptions(): Promise<ConfiguredAgentModel[]> {
   return available.map((model) => ({ provider: model.provider, id: model.id, label: model.name ?? model.id }));
 }
 
-async function renderModelPicker(): Promise<string> {
+type FavoriteModelView = ConfiguredAgentModel & { available: boolean; reason?: string };
+
+async function favoriteModelViews(): Promise<FavoriteModelView[]> {
   const configured = await getConfiguredAgentModels();
-  const have = new Set(configured.map((model) => `${model.provider}::${model.id}`));
-  const available = (await availableModelOptions()).filter((model) => !have.has(`${model.provider}::${model.id}`)).slice(0, 120);
-  return `<div id="settings_model_picker"><div class="settings-models" data-controller="model-picker">${configured.length ? configured.map((model, index) => modelPickerRow(model, index, configured.length)).join("") : `<div class="settings-empty">No models in the picker.</div>`}</div>
-  <details class="settings-add-model" data-controller="model-add-menu">
-    <summary class="settings-btn">＋ Add model</summary>
-    <div class="settings-add-model-backdrop" data-action="click->model-add-menu#close"></div>
-    <div class="settings-add-model-menu">
-      <div class="settings-add-model-head"><b>Add model</b><button class="settings-btn icon" type="button" data-action="model-add-menu#close">×</button></div>
-      <input class="settings-input settings-model-filter" type="search" placeholder="Filter models…" data-model-add-menu-target="filter" data-action="input->model-add-menu#filter" autocomplete="off">
-      <div class="settings-add-model-options" data-model-add-menu-target="options">
-        ${available.map((model) => `<form method="post" action="/settings/models/add" data-turbo="true" data-model-add-menu-target="option" data-search-text="${escapeHtml(`${model.label} ${model.provider} ${model.id}`.toLowerCase())}"><input type="hidden" name="model" value="${escapeHtml(`${model.provider}::${model.id}`)}"><button class="settings-add-model-option" type="submit"><span>${escapeHtml(model.label)}</span><small>${escapeHtml(model.provider)} · ${escapeHtml(model.id)}</small></button></form>`).join("")}
-      </div>
-    </div>
-  </details></div>`;
+  const available = new Set((await availableModelOptions()).map(modelKey));
+  return configured.map((model) => ({ ...model, available: available.has(modelKey(model)), reason: available.has(modelKey(model)) ? undefined : "Provider disconnected" }));
 }
 
-function modelPickerRow(model: ConfiguredAgentModel, _index: number, _total: number): string {
-  const value = `${model.provider}::${model.id}`;
-  return `<div class="settings-model-row${model.active ? " active" : ""}" id="${domId("settings_model", model.provider, model.id)}" draggable="true" data-model-picker-model-value="${escapeHtml(value)}" data-model-picker-label="${escapeHtml(model.label)}" data-action="dragstart->model-picker#dragStart dragover->model-picker#dragOver drop->model-picker#drop dragend->model-picker#dragEnd">
-    <span class="settings-model-grip" aria-hidden="true">⠿</span>
-    <span class="settings-model-dot" style="--provider-color:${providerColor(model.provider)}"></span>
-    <div class="settings-model-main"><code>${escapeHtml(model.id)}</code><small>${escapeHtml(model.provider)}${model.active ? " · default" : ""}</small></div>
-    <div class="settings-provider-actions"><form method="post" action="/settings/models/active" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(value)}"><button class="settings-btn" type="submit"${model.active ? " disabled" : ""}>Default</button></form><form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(value)}"><button class="settings-btn danger icon" type="submit">×</button></form></div>
+export async function hasAvailableFavoriteModel(): Promise<boolean> {
+  return await hasAvailableConfiguredAgentModel();
+}
+
+export async function renderModelSetup(surface: "settings" | "onboarding" | "dialog" = "settings"): Promise<string> {
+  const providers = await providerSummaries();
+  const favorites = await favoriteModelViews();
+  const connectedProviderCount = providers.filter((provider) => provider.connected).length;
+  const hasAvailableFavorite = favorites.some((model) => model.available);
+  const empty = !favorites.length
+    ? connectedProviderCount > 0
+      ? `<form method="post" action="/settings/models/add-flow" data-turbo="true" class="model-setup-empty add"><button type="submit"><b>Add your first favorite model</b><span>Choose from models provided by your connected providers.</span></button></form>`
+      : `<div class="model-setup-empty"><b>First connect a model provider</b><span>After a provider is connected, you can add favorite models here.</span></div>`
+    : "";
+  const head = surface === "settings" ? "" : `<div class="model-setup-head"><h2>Configure favorite models</h2><p>Connect providers, then choose the models that should appear in prompt boxes.</p></div>`;
+  const id = surface === "dialog" ? "model_setup_dialog_content" : `model_setup_${surface}`;
+  return `<div class="model-setup model-setup-surface-${surface}" id="${id}" data-model-setup-working="${hasAvailableFavorite ? "true" : "false"}">
+    ${head}
+    <section class="model-setup-section"><h3>Model providers</h3>${await renderProviderList(surface === "onboarding" ? "onboarding" : "settings")}</section>
+    <section class="model-setup-section model-setup-favorites"><div class="model-setup-section-title"><h3>Favorite models</h3>${connectedProviderCount > 0 ? `<form method="post" action="/settings/models/add-flow" data-turbo="true"><button class="settings-btn" type="submit">＋ Add favorite model</button></form>` : ""}</div>
+      <div class="settings-models">${favorites.length ? favorites.map(modelFavoriteRow).join("") : empty}</div>
+    </section>
   </div>`;
+}
+
+function modelFavoriteRow(model: FavoriteModelView): string {
+  const value = `${model.provider}::${model.id}`;
+  return `<div class="settings-model-row${model.available ? "" : " unavailable"}" id="${domId("settings_model", model.provider, model.id)}">
+    <span class="settings-model-dot" style="--provider-color:${providerColor(model.provider)}"></span>
+    <div class="settings-model-main"><code>${escapeHtml(model.label)}</code><small>${escapeHtml(model.provider)}${model.available ? "" : ` · ${escapeHtml(model.reason ?? "Unavailable")}`}</small></div>
+    <div class="settings-provider-actions"><form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(value)}"><button class="settings-btn danger icon" type="submit" title="Remove favorite model" aria-label="Remove favorite model">🗑</button></form></div>
+  </div>`;
+}
+
+async function renderAddModelDialog(): Promise<string> {
+  const configured = await getConfiguredAgentModels();
+  const have = new Set(configured.map(modelKey));
+  const available = (await availableModelOptions()).filter((model) => !have.has(modelKey(model)));
+  const byProvider = new Map<string, ConfiguredAgentModel[]>();
+  for (const model of available) byProvider.set(model.provider, [...(byProvider.get(model.provider) ?? []), model]);
+  const groups = [...byProvider.entries()].sort(([a], [b]) => a.localeCompare(b));
+  return `<dialog id="settings_add_model_dialog" class="settings-flow-dialog add-model-dialog" data-controller="modal" data-modal-auto-show-value="true">
+    <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:var(--accent)">＋</div><div><b>Add favorite model</b><p>Models from connected providers</p></div></div>
+    <div class="settings-flow-body" data-controller="model-add-menu">
+      <input class="settings-input settings-model-filter" type="search" placeholder="Filter models…" data-model-add-menu-target="filter" data-action="input->model-add-menu#filter" autocomplete="off" autofocus>
+      <div class="settings-add-model-options grouped" data-model-add-menu-target="options">
+        ${groups.length ? groups.map(([provider, models]) => `<section class="settings-add-model-group"><h3>${escapeHtml(provider)}</h3>${models.map((model) => `<form method="post" action="/settings/models/add" data-turbo="true" data-model-add-menu-target="option" data-search-text="${escapeHtml(`${model.label} ${model.provider} ${model.id}`.toLowerCase())}"><input type="hidden" name="model" value="${escapeHtml(modelKey(model))}"><button class="settings-add-model-option" type="submit"><span>${escapeHtml(model.label)}</span><small>${escapeHtml(model.id)}</small></button></form>`).join("")}</section>`).join("") : `<div class="settings-empty">No more models available from connected providers.</div>`}
+      </div>
+    </div>
+    <div class="settings-flow-actions"><button class="settings-btn" type="button" data-action="modal#close">Close</button></div>
+  </dialog>`;
+}
+
+export async function renderModelSetupDialog(): Promise<string> {
+  const hasWorking = await hasAvailableFavoriteModel();
+  return `<dialog id="model_setup_dialog" class="settings-dialog model-setup-dialog" data-controller="modal" data-modal-auto-show-value="true">
+    <div class="settings-sheet"><main class="settings-main">${await renderModelSetup("dialog")}<div class="settings-flow-actions model-setup-ok"><form method="dialog"><button class="settings-btn ${hasWorking ? "" : "warning"}">${hasWorking ? "OK" : "No model configured yet"}</button></form></div></main></div>
+  </dialog>`;
 }
 
 registerSettingsContribution({ id: "theme", label: "Theme", order: 10, render: renderThemeSettings });
 registerSettingsContribution({ id: "git-identity", label: "Git identity", order: 20, render: renderGitIdentitySettings });
 registerSettingsContribution({ id: "github", label: "GitHub", order: 30, render: renderGitHubSettings });
-registerSettingsContribution({ id: "model-providers", label: "Model providers", order: 40, render: renderModelProviderSettings });
-registerSettingsContribution({ id: "model-picker", label: "Prompt model picker", order: 50, render: renderModelPickerSettings });
+registerSettingsContribution({ id: "models", label: "Models", order: 40, render: renderModelSetupSettings });
 
 export async function renderSettingsDialog(_active = "theme"): Promise<string> {
   const contributions = listSettingsContributions();
   const sections = await Promise.all(contributions.map((contribution) => contribution.render()));
   return `<dialog id="settings_dialog" class="settings-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <div class="settings-sheet">
-      <main class="settings-main"><form method="dialog"><button class="settings-close" value="close">✕</button></form><div class="settings-title">Settings</div>${sections.join("")}<div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>
+      <main class="settings-main"><form method="dialog"><button class="settings-close" value="close">✕</button></form><div class="settings-title">Settings</div>${sections.join("")}<p class="settings-autosave-note">All changes are auto saved</p><div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>
     </div>
   </dialog>`;
 }
@@ -336,6 +377,7 @@ type PendingOAuthFlow = {
   instructions?: string;
   userCode?: string;
   verificationUri?: string;
+  intervalSeconds?: number;
   progress: string[];
   prompt?: PendingPrompt;
   error?: string;
@@ -351,7 +393,7 @@ async function startOAuthFlow(provider: string, label: string): Promise<PendingO
   pendingOAuthFlows.set(flow.id, flow);
   void auth.login(provider, {
     onAuth: (info) => { flow.authUrl = info.url; flow.instructions = info.instructions; },
-    onDeviceCode: (info) => { flow.userCode = info.userCode; flow.verificationUri = info.verificationUri; },
+    onDeviceCode: (info) => { flow.userCode = info.userCode; flow.verificationUri = info.verificationUri; flow.intervalSeconds = info.intervalSeconds; },
     onProgress: (message) => { flow.progress = [...flow.progress.slice(-4), message]; },
     onPrompt: (prompt) => new Promise<string>((resolve) => {
       if (prompt.allowEmpty) return resolve("");
@@ -360,7 +402,9 @@ async function startOAuthFlow(provider: string, label: string): Promise<PendingO
     onManualCodeInput: () => new Promise<string>((resolve) => {
       flow.prompt = { message: "Paste the authorization code from the browser", placeholder: "Authorization code", resolve };
     }),
-    onSelect: async (prompt) => prompt.options.find((option) => option.id === "device_code")?.id ?? prompt.options[0]?.id,
+    onSelect: async (prompt) => prompt.options.find((option) => /default/i.test(option.label ?? ""))?.id
+      ?? prompt.options.find((option) => !/device|headless/i.test(`${option.id} ${option.label ?? ""}`))?.id
+      ?? prompt.options[0]?.id,
     signal: flow.abort.signal,
   }).then(() => {
     flow.status = "complete";
@@ -369,6 +413,7 @@ async function startOAuthFlow(provider: string, label: string): Promise<PendingO
     if (flow.abort.signal.aborted) return;
     flow.status = "error";
     flow.error = error instanceof Error ? error.message : String(error);
+    flow.progress = [...flow.progress.slice(-4), flow.error];
   });
   await waitForOAuthFlowReady(flow);
   return flow;
@@ -387,19 +432,21 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
     : flow.status === "error"
       ? `<p class="settings-error">${escapeHtml(flow.error ?? "OAuth login failed")}</p>`
       : "";
-  const auth = flow.verificationUri
-    ? `<p class="settings-oauth-instructions">Open <a class="settings-link" href="${escapeHtml(flow.verificationUri)}" target="_blank" rel="noreferrer">${escapeHtml(flow.verificationUri)}</a> and enter:</p><div class="settings-code-row" data-controller="clipboard"><div class="settings-code compact" data-clipboard-target="source">${escapeHtml(flow.userCode ?? "")}</div><button class="settings-btn icon" type="button" data-action="clipboard#copy" title="Copy to clipboard" aria-label="Copy to clipboard">⧉</button></div>`
-    : flow.authUrl
-      ? `<p><a class="settings-btn primary" href="${escapeHtml(flow.authUrl)}" target="_blank" rel="noreferrer">Open authorization page</a></p>${flow.instructions ? `<p>${escapeHtml(flow.instructions)}</p>` : ""}`
-      : `<p>Starting OAuth flow…</p>`;
-  const prompt = flow.prompt && flow.status === "pending"
-    ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true"><p>${escapeHtml(flow.prompt.message)}</p><input class="settings-input" name="value" placeholder="${escapeHtml(flow.prompt.placeholder ?? "")}" ${flow.prompt.allowEmpty ? "" : "required"}><div class="settings-flow-actions"><button class="settings-btn primary" type="submit">Submit</button></div></form>`
+  const manualPrompt = flow.prompt && flow.status === "pending"
+    ? `<details class="settings-oauth-manual"><summary>Having trouble? Paste redirect URL manually</summary><form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true"><p>${escapeHtml(flow.prompt.message)}</p><input class="settings-input" name="value" placeholder="${escapeHtml(flow.prompt.placeholder ?? "Authorization code or redirect URL")}" ${flow.prompt.allowEmpty ? "" : "required"}><div class="settings-oauth-manual-actions"><button class="settings-btn" type="submit">Submit manual code</button></div></form></details>`
     : "";
+  const auth = flow.verificationUri
+    ? `<div class="settings-oauth-card"><h3>Sign in with ${escapeHtml(flow.label)}</h3><p>Open the authorization page, enter this code, then return here. Atelier will continue automatically.</p><a class="settings-btn primary" href="${escapeHtml(flow.verificationUri)}" target="_blank" rel="noreferrer">Open authorization page</a><div class="settings-code-row" data-controller="clipboard"><div class="settings-code compact" data-clipboard-target="source">${escapeHtml(flow.userCode ?? "")}</div><button class="settings-btn icon" type="button" data-action="clipboard#copy" title="Copy to clipboard" aria-label="Copy to clipboard">⧉</button></div>${manualPrompt}</div>`
+    : flow.authUrl
+      ? `<div class="settings-oauth-card"><h3>Sign in with ${escapeHtml(flow.label)}</h3><p>Complete authorization in your browser. Atelier will continue automatically when sign-in finishes.</p><a class="settings-btn primary" href="${escapeHtml(flow.authUrl)}" target="_blank" rel="noreferrer">Open ${escapeHtml(flow.label)} authorization page</a>${flow.instructions ? `<p class="settings-provider-desc">${escapeHtml(flow.instructions)}</p>` : ""}${manualPrompt}</div>`
+      : `<div class="settings-oauth-card"><h3>Starting OAuth flow…</h3><p>Preparing authorization with ${escapeHtml(flow.label)}.</p></div>`;
   const progress = flow.progress.length ? `<ul class="settings-flow-progress">${flow.progress.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : "";
-  return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal oauth-flow" data-modal-auto-show-value="true" data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" ? "true" : "false"}">
+  const pollMs = Math.max(1500, Math.min(15000, (flow.intervalSeconds ?? 3) * 1000));
+  return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal oauth-flow" data-modal-auto-show-value="true" data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" ? "true" : "false"}" data-oauth-flow-poll-ms-value="${pollMs}">
     <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerColor(flow.provider)}">${escapeHtml(providerInitial(flow.label))}</div><div><b>${escapeHtml(flow.label)}</b><p>OAuth sign-in</p></div></div>
-    <div class="settings-flow-body">${statusBody}${flow.status === "pending" ? auth : ""}${progress}${prompt}</div>
-    <div class="settings-flow-actions">
+    <div class="settings-flow-body">${statusBody}${flow.status === "pending" ? auth : ""}${progress}</div>
+    <div class="settings-flow-actions settings-oauth-actions">
+      ${flow.status === "pending" ? `<span class="settings-oauth-waiting"><span class="status-spinner sm"></span> Waiting for browser authorization…</span>` : ""}
       ${flow.status === "complete" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="settings-btn primary" type="submit">Done</button></form>` : ""}
       ${flow.status === "pending" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/cancel" data-turbo="true"><button class="settings-btn danger" type="submit">Cancel</button></form>` : ""}
       ${flow.status === "error" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="settings-btn" type="submit">Close</button></form>` : ""}
@@ -408,11 +455,16 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
 }
 
 async function refreshAgentModelPickerSelects(): Promise<string> {
-  return updateTargets('select[data-agent-model-picker-select="true"]:not([data-agent-session-model-select="true"])', await renderAgentModelOptions());
+  const options = await renderAgentModelOptions();
+  return `${updateTargets('select[data-agent-model-picker-select="true"]:not([data-agent-session-model-select="true"])', options)}${updateTargets('select[data-agent-model-picker-select="true"][data-agent-session-model-select="true"]', options)}`;
+}
+
+async function refreshModelSetupSurfaces(): Promise<string> {
+  return `${replaceTargets(".model-setup-surface-settings", await renderModelSetup("settings"))}${replaceTargets(".model-setup-surface-onboarding", await renderModelSetup("onboarding"))}${replace("model_setup_dialog", await renderModelSetupDialog())}${await refreshAgentModelPickerSelects()}`;
 }
 
 async function refreshAfterConnection(): Promise<string> {
-  return `${replace("settings_dialog", await renderSettingsDialog("model-providers"))}${await refreshAgentModelPickerSelects()}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`;
+  return `${await refreshModelSetupSurfaces()}${remove("settings_flow_dialog")}`;
 }
 
 async function deleteAllStoredSettings(): Promise<void> {
@@ -427,6 +479,9 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
   if (url.pathname === "/settings" && request.method === "GET") {
     const html = await renderSettingsDialog(url.searchParams.get("section") ?? "theme");
     return wantsStream(request) ? stream(update("settings_modal_host", html)) : response(html);
+  }
+  if (url.pathname === "/settings/models/dialog" && request.method === "GET") {
+    return wantsStream(request) ? stream(update("settings_modal_host", await renderModelSetupDialog())) : response(await renderModelSetupDialog());
   }
   if (url.pathname === "/settings/development" && request.method === "GET") {
     const html = await renderDevelopmentSettingsDialog();
@@ -486,21 +541,23 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
   if (match && request.method === "POST") {
     const provider = decodeURIComponent(match[1]!);
     const method = url.searchParams.get("method") ?? "api_key";
+    const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
     const registry = await createPiModelRegistry();
     const label = registry.getProviderDisplayName(provider);
     if (method === "oauth") {
       try {
         const flow = await startOAuthFlow(provider, label);
-        return stream(update("settings_modal_host", `${await renderSettingsDialog("model-providers")}${oauthFlowModal(flow)}`));
+        return surface === "onboarding" ? stream(append("onboarding_modal_host", oauthFlowModal(flow))) : stream(update("settings_modal_host", `${await renderModelSetupDialog()}${oauthFlowModal(flow)}`));
       } catch (error) {
-        return stream(update("settings_modal_host", `${await renderSettingsDialog("model-providers")}${apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect`, error instanceof Error ? error.message : String(error))}`));
+        return surface === "onboarding" ? stream(append("onboarding_modal_host", apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect?surface=onboarding`, error instanceof Error ? error.message : String(error)))) : stream(update("settings_modal_host", `${await renderModelSetupDialog()}${apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect`, error instanceof Error ? error.message : String(error))}`));
       }
     }
-    return stream(update("settings_modal_host", `${await renderSettingsDialog("model-providers")}${apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect`)}`));
+    return surface === "onboarding" ? stream(append("onboarding_modal_host", apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect?surface=onboarding`))) : stream(update("settings_modal_host", `${await renderModelSetupDialog()}${apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect`)}`));
   }
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/connect$/);
   if (match && request.method === "POST") {
     const provider = decodeURIComponent(match[1]!);
+    const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
     const registry = await createPiModelRegistry();
     const label = registry.getProviderDisplayName(provider);
     const form = await request.formData();
@@ -508,7 +565,7 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     try {
       await connectModelProviderApiKey(provider, secret);
     } catch (error) {
-      return stream(replace("settings_flow_dialog", apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect`, error instanceof Error ? error.message : String(error))));
+      return stream(replace("settings_flow_dialog", apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect${surface === "onboarding" ? "?surface=onboarding" : ""}`, error instanceof Error ? error.message : String(error))));
     }
     return stream(await refreshAfterConnection());
   }
@@ -539,8 +596,9 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
   match = url.pathname.match(/^\/settings\/providers\/([^/]+)\/disconnect$/);
   if (match && request.method === "POST") {
     await disconnectModelProvider(decodeURIComponent(match[1]!));
-    return stream(`${replace("settings_agent_provider_list", await renderProviderList("settings"))}${await refreshAgentModelPickerSelects()}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
+    return stream(await refreshModelSetupSurfaces());
   }
+  if (url.pathname === "/settings/models/add-flow" && request.method === "POST") return stream(append("settings_modal_host", await renderAddModelDialog()));
   if (url.pathname.startsWith("/settings/models/") && request.method === "POST") return await handleModelPickerAction(request, url.pathname);
   for (const contribution of listSettingsContributions()) {
     const handled = await contribution.handleAction?.({ request, url });
@@ -550,17 +608,6 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
 }
 
 async function handleModelPickerAction(request: Request, pathname: string): Promise<Response> {
-  if (pathname === "/settings/models/reorder") {
-    const form = await request.formData();
-    const requested = form.getAll("model").map(String);
-    const configured = await getConfiguredAgentModels();
-    const byKey = new Map(configured.map((model) => [`${model.provider}::${model.id}`, model]));
-    const reordered = requested.map((key) => byKey.get(key)).filter(Boolean) as ConfiguredAgentModel[];
-    for (const model of configured) if (!requested.includes(`${model.provider}::${model.id}`)) reordered.push(model);
-    await setPickerAgentModels(reordered, configured.find((model) => model.active));
-    return stream(`${replace("settings_model_picker", await renderModelPicker())}${await refreshAgentModelPickerSelects()}`);
-  }
-
   const form = await request.formData();
   const split = String(form.get("model") ?? "").split("::");
   const provider = split[0] ?? "";
@@ -574,7 +621,7 @@ async function handleModelPickerAction(request: Request, pathname: string): Prom
   if (pathname === "/settings/models/remove" && index >= 0) current.splice(index, 1);
   if (pathname === "/settings/models/active" && provider && id) await setActiveAgentModel(provider, id);
   else await setPickerAgentModels(current, current.find((model) => model.active));
-  return stream(`${replace("settings_model_picker", await renderModelPicker())}${await refreshAgentModelPickerSelects()}`);
+  return stream(`${await refreshModelSetupSurfaces()}${pathname === "/settings/models/add" ? remove("settings_add_model_dialog") : ""}`);
 }
 
-export { providerRow, providerSummaries, githubRow, showMoreProvidersButton };
+export { githubRow };

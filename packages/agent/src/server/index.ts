@@ -45,6 +45,7 @@ export {
   disconnectModelProvider,
   getConfiguredAgentModels,
   getModelThinkingLevel,
+  hasAvailableConfiguredAgentModel,
   piModelsJsonPath,
   setActiveAgentModel,
   setModelThinkingLevel,
