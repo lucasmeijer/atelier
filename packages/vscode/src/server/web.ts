@@ -1,6 +1,6 @@
 import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { renderVSCodePane, vscodeTabKey } from "./render.ts";
-import { createWorkspaceVSCodeTab, listWorkspaceVSCodeTabs, type WorkspaceVSCodeTab } from "./workspace-vscode.ts";
+import { createWorkspaceVSCodeTab, deleteWorkspaceVSCodeTab, listWorkspaceVSCodeTabs, type WorkspaceVSCodeTab } from "./workspace-vscode.ts";
 import { vscodeStaticFiles } from "./static.ts";
 
 export function renderWorkspaceVSCodeTabs(workspaceId: string, tabs: WorkspaceVSCodeTab[]): WorkspaceTabContribution[] {
@@ -25,6 +25,17 @@ export const vscodeWorkspaceCommands: WorkspaceCommandContribution[] = [
 export const vscodeWorkspaceModule: WorkspaceModule = {
   id: "vscode",
   staticFiles: vscodeStaticFiles,
+  commands: [{
+    id: "vscode.open",
+    async execute({ workspaceId, tabKeys }) {
+      const existing = (await tabKeys()).find((key) => key.startsWith("vscode:"));
+      return { createdTabKey: existing ?? vscodeTabKey(createWorkspaceVSCodeTab(workspaceId).title) };
+    },
+  }],
+  tabs: [{
+    owns: (tabKey) => tabKey.startsWith("vscode:"),
+    close: ({ workspaceId, tabKey }) => deleteWorkspaceVSCodeTab(workspaceId, tabKey.slice("vscode:".length)),
+  }],
   attachToWorkspace({ workspaceId }) {
     return {
       tabs: renderWorkspaceVSCodeTabs(workspaceId, listWorkspaceVSCodeTabs(workspaceId)),

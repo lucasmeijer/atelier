@@ -1,20 +1,15 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import {
-  createNextWorkspaceAgent,
-  getWorkspaceAgentRuntime,
   createDeleteCurrentWorkspaceTool,
-  handleAgentRequest,
   registerWorkspaceAgentTool,
+  getConfiguredAgentModels,
   renderAgentComposer,
-  type WorkspaceAgentInfo,
+  rememberPreferredNewAgentModel as rememberAgentPreferredNewAgentModel,
 } from "@atelier/agent/server";
 import {
-  browserNavigateEndpoint,
   createOrOpenPreviewBrowserTool,
-  createWorkspaceBrowserTabForWorkspace,
   deleteWorkspaceBrowserState,
-  deleteWorkspaceBrowserTabForWorkspace,
 } from "@atelier/browser/server";
 import {
   AtelierCoreError,
@@ -23,7 +18,6 @@ import {
   type AtelierEventBus,
   type WorkspaceCreationContext,
 } from "@atelier/core";
-import { desktopTabKey, ensureWorkspaceDesktop } from "@atelier/desktop/server";
 import {
   addRepository,
   formatRepositorySpec,
@@ -36,12 +30,7 @@ import {
 } from "@atelier/repository";
 import { generateWorkspaceId, listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
-import { createWorkspaceTerminal } from "@atelier/workspace-terminal/server";
-import {
-  createWorkspaceVSCodeTab,
-  deleteWorkspaceVSCodeTab,
-} from "@atelier/vscode/server";
-import { atelierName, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceTabContribution } from "@atelier/shared";
+import { atelierName, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceTabContribution } from "@atelier/shared";
 import type { StreamHub } from "./stream-hub.ts";
 import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
 import type { WebPreferenceStore } from "./preferences.ts";
@@ -49,7 +38,6 @@ import type { WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts"
 import { workspaceModules } from "./workspace-modules.ts";
 import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.ts";
 import { handleOnboardingRequest, renderOnboardingDialogIfNeeded } from "./onboarding/routes.ts";
-import { getConfiguredAgentModels, setActiveAgentModel, setModelThinkingLevel } from "@atelier/agent/server";
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
@@ -188,21 +176,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const configuredModels = await getConfiguredAgentModels();
     const active = configuredModels.find((model) => model.active) ?? configuredModels[0];
     return active ? `${active.provider}::${active.id}` : undefined;
-  }
-
-  async function rememberPreferredNewAgentModel(model: string, thinkingLevel?: string): Promise<void> {
-    const [provider, modelId] = String(model ?? "").split("::");
-    if (provider && modelId) {
-      await setActiveAgentModel(provider, modelId);
-      if (thinkingLevel) await setModelThinkingLevel(provider, modelId, thinkingLevel);
-    }
-  }
-
-  async function applyPreferredNewAgentModel(agent: WorkspaceAgentInfo): Promise<void> {
-    const model = await preferredNewAgentModel();
-    const [provider, modelId] = String(model ?? "").split("::");
-    if (!provider || !modelId) return;
-    await (await getWorkspaceAgentRuntime(agent, { events: deps.events })).setModel(provider, modelId);
   }
 
   // ---------------------------------------------------------------------------
@@ -716,7 +689,7 @@ ${moduleStylesHtml()}
     registry.add(id, null, repo.id, repo.name);
     const model = String(form.get("model") ?? "");
     const thinkingLevel = String(form.get("level") ?? "");
-    await rememberPreferredNewAgentModel(model, thinkingLevel);
+    await rememberAgentPreferredNewAgentModel(model, thinkingLevel);
     const context: WorkspaceCreationContext = {
       sourceRepositoryId: repo.id,
       sourceRepositoryName: repo.name,
@@ -1002,28 +975,23 @@ ${moduleStylesHtml()}
     }
   }
 
+  function workspaceModuleCommands(): WorkspaceModuleCommandHandler[] {
+    return workspaceModules.flatMap((module) => module.commands ?? []);
+  }
+
+  function workspaceModuleRoutes(): WorkspaceModuleRouteHandler[] {
+    return workspaceModules.flatMap((module) => module.routes ?? []);
+  }
+
+  function workspaceModuleTabLifecycles(): WorkspaceModuleTabLifecycleHandler[] {
+    return workspaceModules.flatMap((module) => module.tabs ?? []);
+  }
+
   async function executeWorkspaceCommand(workspaceId: string, commandId: string): Promise<{ createdTabKey?: string; streamHtml?: string }> {
     await assertWorkspaceCommandExists(workspaceId, commandId);
-    switch (commandId) {
-      case "agent.create": {
-        const agent = await createNextWorkspaceAgent(workspaceId);
-        await applyPreferredNewAgentModel(agent);
-        return { createdTabKey: `agent:${agent.label}` };
-      }
-      case "terminal.create":
-        return { createdTabKey: `terminal:${(await createWorkspaceTerminal(workspaceId)).title}` };
-      case "vscode.open": {
-        const existing = (await tabKeysFor(workspaceId)).find((key) => key.startsWith("vscode:"));
-        return { createdTabKey: existing ?? `vscode:${createWorkspaceVSCodeTab(workspaceId).title}` };
-      }
-      case "browser.create":
-        return { createdTabKey: createWorkspaceBrowserTabForWorkspace(workspaceId).key };
-      case "desktop.start":
-        await ensureWorkspaceDesktop(workspaceId);
-        return { createdTabKey: desktopTabKey };
-      default:
-        throw new AtelierCoreError("command_not_implemented", `workspace command not implemented: ${commandId}`);
-    }
+    const command = workspaceModuleCommands().find((candidate) => candidate.id === commandId);
+    if (!command) throw new AtelierCoreError("command_not_implemented", `workspace command not implemented: ${commandId}`);
+    return await command.execute({ workspaceId, events: deps.events, tabKeys: () => tabKeysFor(workspaceId) });
   }
 
   function workspaceGroupsTurboStream(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {
@@ -1048,20 +1016,10 @@ ${moduleStylesHtml()}
     return turboStreamResponse(`${workspaceGroupsTurboStream(workspaceId, tabs, attachments)}${result.streamHtml ?? ""}`);
   }
 
-  async function workspaceGroupActionEndpoint(workspaceId: string, groupId: string, actionKey: string): Promise<Response> {
-    const legacyCommandId = new Map([
-      ["agent:create", "agent.create"],
-      ["terminal:create", "terminal.create"],
-      ["vscode:create", "vscode.open"],
-      ["browser:create", "browser.create"],
-    ]).get(actionKey);
-    if (!legacyCommandId) throw new AtelierCoreError("command_not_found", `workspace action not found: ${actionKey}`);
-    return await workspaceGroupCommandEndpoint(workspaceId, groupId, legacyCommandId);
-  }
-
   async function closeWorkspaceTabEndpoint(workspaceId: string, tab: string): Promise<Response> {
-    if (tab.startsWith("vscode:")) deleteWorkspaceVSCodeTab(workspaceId, tab.slice("vscode:".length));
-    if (/^browser-\d+$/.test(tab)) deleteWorkspaceBrowserTabForWorkspace(workspaceId, tab);
+    await Promise.all(workspaceModuleTabLifecycles()
+      .filter((lifecycle) => lifecycle.owns(tab))
+      .map((lifecycle) => lifecycle.close?.({ workspaceId, tabKey: tab })));
     layouts.closeTab(workspaceId, await tabKeysFor(workspaceId), tab);
     return replaceWorkspaceGroupsStream(workspaceId);
   }
@@ -1153,8 +1111,10 @@ ${moduleStylesHtml()}
     const onboardingResponse = await handleOnboardingRequest(request, url);
     if (onboardingResponse) return onboardingResponse;
 
-    const agentResponse = await handleAgentRequest(request, url, { events: deps.events });
-    if (agentResponse) return agentResponse;
+    for (const moduleRoute of workspaceModuleRoutes()) {
+      const moduleResponse = await moduleRoute.handle(request, url, { events: deps.events });
+      if (moduleResponse) return moduleResponse;
+    }
 
     let params: string[] | undefined;
 
@@ -1170,7 +1130,6 @@ ${moduleStylesHtml()}
     if ((params = match(/^\/workspaces\/([^/]+)\/unread\/clear$/)) && request.method === "POST") return clearWorkspaceUnreadEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceGroupCommandEndpoint(params[0], params[1], params[2]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/actions\/([^/]+)$/)) && request.method === "POST") return await workspaceGroupActionEndpoint(params[0], params[1], params[2]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/split$/)) && request.method === "POST") return await splitWorkspaceGroupEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/remove$/)) && request.method === "POST") return await removeWorkspaceGroupEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/close$/)) && request.method === "POST") return await closeWorkspaceGroupEndpoint(params[0], params[1]);
@@ -1178,8 +1137,6 @@ ${moduleStylesHtml()}
     if ((params = match(/^\/workspaces\/([^/]+)\/layout\/move-tab$/)) && request.method === "POST") return await moveWorkspaceTabEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/tabs\/(.+)\/close$/)) && request.method === "POST") return await closeWorkspaceTabEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/layout\/resize$/)) && request.method === "POST") return await resizeWorkspaceGroupsEndpoint(params[0], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/browser\/navigate$/)) && request.method === "POST") return await browserNavigateEndpoint(params[0], "browser", request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/browser\/([^/]+)\/navigate$/)) && request.method === "POST") return await browserNavigateEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/push$/)) && request.method === "POST") return await pushRepoEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/mergeability$/)) && request.method === "GET") return await mergeabilityFrame(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteWorkspaceEndpoint(params[0], url.searchParams.get("force") === "1");

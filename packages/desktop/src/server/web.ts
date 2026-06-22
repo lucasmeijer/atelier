@@ -1,5 +1,5 @@
 import type { WorkspaceCommandContribution, WorkspaceModule } from "@atelier/shared";
-import { isWorkspaceDesktopEnabled } from "./runtime.ts";
+import { desktopTabKey, ensureWorkspaceDesktop, isWorkspaceDesktopEnabled } from "./runtime.ts";
 import { renderDesktopTab } from "./render.ts";
 
 export function desktopWorkspaceCommand(enabled: boolean): WorkspaceCommandContribution {
@@ -12,6 +12,16 @@ export function desktopWorkspaceCommand(enabled: boolean): WorkspaceCommandContr
 
 export const desktopWorkspaceModule: WorkspaceModule = {
   id: "desktop",
+  commands: [{
+    id: "desktop.start",
+    async execute({ workspaceId }) {
+      await ensureWorkspaceDesktop(workspaceId);
+      return { createdTabKey: desktopTabKey };
+    },
+  }],
+  tabs: [{
+    owns: (tabKey) => tabKey === desktopTabKey,
+  }],
   async attachToWorkspace({ workspaceId }) {
     const enabled = await isWorkspaceDesktopEnabled(workspaceId);
     return {

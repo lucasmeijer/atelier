@@ -50,8 +50,40 @@ export interface StaticFileContribution {
   contentType: string;
 }
 
+export interface WorkspaceModuleCommandResult {
+  createdTabKey?: string;
+  streamHtml?: string;
+}
+
+export interface WorkspaceModuleCommandContext {
+  workspaceId: string;
+  events?: unknown;
+  tabKeys(): Promise<string[]>;
+}
+
+export interface WorkspaceModuleCommandHandler {
+  id: string;
+  execute(context: WorkspaceModuleCommandContext): Promise<WorkspaceModuleCommandResult> | WorkspaceModuleCommandResult;
+}
+
+export interface WorkspaceModuleRouteContext {
+  events?: unknown;
+}
+
+export interface WorkspaceModuleRouteHandler {
+  handle(request: Request, url: URL, context: WorkspaceModuleRouteContext): Promise<Response | undefined> | Response | undefined;
+}
+
+export interface WorkspaceModuleTabLifecycleHandler {
+  owns(tabKey: string): boolean;
+  close?(context: { workspaceId: string; tabKey: string }): Promise<void> | void;
+}
+
 export interface WorkspaceModule {
   id: string;
   staticFiles?: Record<string, StaticFileContribution>;
+  commands?: WorkspaceModuleCommandHandler[];
+  routes?: WorkspaceModuleRouteHandler[];
+  tabs?: WorkspaceModuleTabLifecycleHandler[];
   attachToWorkspace(context: WorkspaceAttachContext): Promise<WorkspaceAttachment> | WorkspaceAttachment;
 }

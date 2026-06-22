@@ -1,5 +1,5 @@
 import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
-import { listWorkspaceTerminals, type WorkspaceTerminalListResult } from "./workspace-terminals.ts";
+import { createWorkspaceTerminal, listWorkspaceTerminals, type WorkspaceTerminalListResult } from "./workspace-terminals.ts";
 import { renderTerminalPane } from "./render.ts";
 import { observableTerminalTabPrefix } from "@atelier/observable-terminal/shared";
 import { terminalStaticFiles } from "./static.ts";
@@ -23,6 +23,15 @@ export const terminalWorkspaceCommands: WorkspaceCommandContribution[] = [
 export const terminalWorkspaceModule: WorkspaceModule = {
   id: "terminal",
   staticFiles: terminalStaticFiles,
+  commands: [{
+    id: "terminal.create",
+    async execute({ workspaceId }) {
+      return { createdTabKey: `${observableTerminalTabPrefix}${(await createWorkspaceTerminal(workspaceId)).title}` };
+    },
+  }],
+  tabs: [{
+    owns: (tabKey) => tabKey.startsWith(observableTerminalTabPrefix),
+  }],
   async attachToWorkspace({ workspaceId }) {
     const { terminals } = await listWorkspaceTerminals(workspaceId);
     return {

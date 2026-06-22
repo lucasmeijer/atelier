@@ -18,6 +18,23 @@ export const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
 export const browserWorkspaceModule: WorkspaceModule = {
   id: "browser",
   staticFiles: browserStaticFiles,
+  commands: [{
+    id: "browser.create",
+    execute({ workspaceId }) {
+      return { createdTabKey: createWorkspaceBrowserTabForWorkspace(workspaceId).key };
+    },
+  }],
+  routes: [{
+    async handle(request, url) {
+      const match = url.pathname.match(/^\/workspaces\/([^/]+)\/browser(?:\/([^/]+))?\/navigate$/);
+      if (!match || request.method !== "POST") return undefined;
+      return await browserNavigateEndpoint(decodeURIComponent(match[1]!), match[2] ? decodeURIComponent(match[2]) : "browser", request);
+    },
+  }],
+  tabs: [{
+    owns: (tabKey) => /^browser-\d+$/.test(tabKey),
+    close: ({ workspaceId, tabKey }) => deleteWorkspaceBrowserTabForWorkspace(workspaceId, tabKey),
+  }],
   attachToWorkspace({ workspaceId }) {
     return {
       tabs: renderWorkspaceBrowserTabs(workspaceId),
