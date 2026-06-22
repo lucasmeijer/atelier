@@ -5,6 +5,7 @@ interface Captured {
   rows: Array<{ entry: WorkspaceEntry; tabKey?: string }>;
   lists: WorkspaceEntry[][];
   removed: string[];
+  parked: WorkspaceEntry[];
 }
 
 function memoryStore(initial: Record<string, number> = {}): WorkspaceActivityStore & { saved: Record<string, number>[] } {
@@ -23,9 +24,10 @@ function memoryStore(initial: Record<string, number> = {}): WorkspaceActivitySto
 function setup(options: { activity?: Record<string, number>; now?: () => number } = {}) {
   const store = memoryStore(options.activity);
   const registry = createWorkspaceRegistry({ activityStore: store, now: options.now });
-  const captured: Captured = { rows: [], lists: [], removed: [] };
+  const captured: Captured = { rows: [], lists: [], removed: [], parked: [] };
   registry.setCallbacks({
     rowChanged: (entry, { tabKey }) => captured.rows.push({ entry: { ...entry }, tabKey }),
+    parkedChanged: (entry) => captured.parked.push({ ...entry }),
     listChanged: (entries) => captured.lists.push(entries.map((entry) => ({ ...entry }))),
     removed: (id) => captured.removed.push(id),
   });
@@ -44,6 +46,40 @@ describe("workspace registry", () => {
     expect(registry.list().map((entry) => entry.id)).toEqual(["b", "a", "c"]);
     expect(registry.list().every((entry) => entry.phase === "ready")).toBe(true);
     expect(captured.lists).toHaveLength(1);
+  });
+
+  test("parked workspaces sort below unparked workspaces", async () => {
+    const { registry, captured } = setup({ activity: { parked: 300, active: 100, older: 50 } });
+    await registry.seed([
+      { id: "parked", title: "Parked", parked: true },
+      { id: "active", title: "Active" },
+      { id: "older", title: "Older" },
+    ]);
+
+    expect(registry.list().map((entry) => entry.id)).toEqual(["active", "older", "parked"]);
+
+    captured.lists.length = 0;
+    registry.setParked("active", true);
+    expect(captured.parked.at(-1)?.id).toBe("active");
+    expect(registry.list().map((entry) => entry.id)).toEqual(["older", "parked", "active"]);
+    expect(captured.lists).toHaveLength(1);
+  });
+
+  test("busy parked workspaces auto unpark and move back into active ordering", async () => {
+    const { registry, captured } = setup({ activity: { parked: 300, active: 100 } });
+    await registry.seed([
+      { id: "parked", title: "Parked", parked: true },
+      { id: "active", title: "Active" },
+    ]);
+    captured.lists.length = 0;
+
+    registry.setTabBusy("parked", "agent:1", true);
+
+    expect(registry.get("parked")?.parked).toBe(false);
+    expect(captured.parked.at(-1)?.id).toBe("parked");
+    expect(captured.rows.map((row) => row.tabKey)).toEqual(["agent:1"]);
+    expect(captured.lists).toHaveLength(1);
+    expect(registry.list().map((entry) => entry.id)).toEqual(["parked", "active"]);
   });
 
   test("add inserts a starting entry at the top and emits a list change", async () => {

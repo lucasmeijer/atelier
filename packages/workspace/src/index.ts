@@ -18,6 +18,7 @@ const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
 const workspaceIdLabel = "com.atelier.workspace-id";
 const titlePath = "/.atelier/title";
+const parkedPath = "/.atelier/parked";
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
 export const workspaceDesktopPort = 6080;
@@ -26,7 +27,7 @@ export const workspaceSourceRepositoryLabel = "com.atelier.source-repo";
 export const workspaceSourceRepositoryNameLabel = "com.atelier.source-repo-name";
 
 export interface WorkspaceNewResult { id: string }
-export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; sourceRepositoryId?: string | null; sourceRepositoryName?: string | null }> }
+export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; parked?: boolean; sourceRepositoryId?: string | null; sourceRepositoryName?: string | null }> }
 export interface WorkspaceExecResult { exitCode: number; stdout: string; stderr: string; durationMs: number }
 export interface WorkspaceCommandOptions { workdir?: string; user?: "atelier" | "root"; stdin?: string }
 export interface DeleteWorkspaceOptions { force?: boolean; events?: AtelierEventBus }
@@ -108,6 +109,11 @@ async function readTitle(containerRef: string): Promise<string | null> {
   const result = await runDocker(["exec", containerRef, "cat", titlePath]);
   if (result.exitCode !== 0) return null;
   return result.stdout.replace(/\n$/, "");
+}
+
+async function readParked(containerRef: string): Promise<boolean> {
+  const result = await runDocker(["exec", containerRef, "test", "-f", parkedPath]);
+  return result.exitCode === 0;
 }
 
 export async function execWorkspaceCommand(id: string, command: string[], options: WorkspaceCommandOptions = {}): Promise<WorkspaceExecResult> {
@@ -229,7 +235,8 @@ export async function listWorkspaces(): Promise<WorkspaceListResult> {
     const id = labelledId?.trim() || containerId.slice(0, 8);
     const source = sourceRepositoryId?.trim();
     const sourceName = sourceRepositoryName?.trim();
-    workspaces.push({ id, title: await readTitle(containerId), ...(source ? { sourceRepositoryId: source } : {}), ...(sourceName ? { sourceRepositoryName: sourceName } : {}) });
+    const parked = await readParked(containerId);
+    workspaces.push({ id, title: await readTitle(containerId), ...(parked ? { parked } : {}), ...(source ? { sourceRepositoryId: source } : {}), ...(sourceName ? { sourceRepositoryName: sourceName } : {}) });
   }
   return { workspaces };
 }
@@ -250,6 +257,12 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
 export async function setWorkspaceTitle(id: string, title: string): Promise<null> {
   await resolveWorkspace(id);
   await requireDocker(["exec", "-i", workspaceContainerName(id), "sh", "-c", `mkdir -p /.atelier && cat > ${titlePath}`], { stdin: title });
+  return null;
+}
+
+export async function setWorkspaceParked(id: string, parked: boolean): Promise<null> {
+  await resolveWorkspace(id);
+  await requireDocker(["exec", workspaceContainerName(id), "sh", "-c", parked ? `mkdir -p /.atelier && touch ${parkedPath}` : `rm -f ${parkedPath}`]);
   return null;
 }
 

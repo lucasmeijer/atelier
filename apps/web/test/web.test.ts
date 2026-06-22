@@ -23,6 +23,7 @@ interface TestAppOptions {
   provision?: (id: string) => Promise<void>;
   inspect?: (id: string) => Promise<WorkspaceDeleteBlockedDetails>;
   destroy?: (id: string) => Promise<void>;
+  persistParked?: (id: string, parked: boolean) => Promise<void>;
 }
 
 function createTestApp(options: TestAppOptions = {}) {
@@ -40,6 +41,7 @@ function createTestApp(options: TestAppOptions = {}) {
     provisioningHooks: [],
     inspectDeleteSafety: options.inspect ?? (async (id) => ({ workspaceId: id, issues: [] })),
     destroyWorkspace: options.destroy ?? (async () => {}),
+    persistWorkspaceParked: options.persistParked ?? (async () => {}),
     logError: () => {},
   });
   hub.subscribe((html) => broadcasts.push(html));
@@ -172,7 +174,28 @@ describe("web app contracts", () => {
     expect(broadcasts.some((html) => html.includes('<turbo-stream action="remove" target="workspace_row_abc">'))).toBe(true);
   });
 
-  test("ready workspace rows include a busy status slot before the delete button", async () => {
+  test("park and unpark toggle workspace rows with zzz icon before the delete button", async () => {
+    const parked: Array<{ id: string; parked: boolean }> = [];
+    const { app, registry } = createTestApp({ persistParked: async (id, value) => { parked.push({ id, parked: value }); } });
+    await registry.seed([{ id: "a", title: "A", parked: false }, { id: "b", title: "B", parked: true }]);
+
+    expect(registry.list().map((entry) => entry.id)).toEqual(["a", "b"]);
+
+    const parkResponse = await app.fetch(post("/workspaces/a/park"));
+    const parkBody = await parkResponse.text();
+    expect(registry.get("a")?.parked).toBe(true);
+    expect(parked.at(-1)).toEqual({ id: "a", parked: true });
+    expect(parkBody).toContain("parked");
+    expect(parkBody).toContain('aria-label="Unpark workspace"');
+    expect(parkBody).toContain("💤");
+    expect(parkBody.indexOf('class="workspace-row-park"')).toBeLessThan(parkBody.indexOf('class="workspace-row-delete"'));
+
+    await app.fetch(post("/workspaces/a/unpark"));
+    expect(registry.get("a")?.parked).toBe(false);
+    expect(parked.at(-1)).toEqual({ id: "a", parked: false });
+  });
+
+  test("ready workspace rows include a busy status slot before the park and delete buttons", async () => {
     const { app, registry, broadcasts } = createTestApp();
     await registry.seed([{ id: "abc", title: "A" }]);
 

@@ -10,6 +10,7 @@ export interface WorkspaceEntry {
   lastActivityAt: number;
   sourceRepositoryId: string | null;
   sourceRepositoryName: string | null;
+  parked: boolean;
   error?: string;
 }
 
@@ -18,6 +19,8 @@ export type WorkspaceState = "busy" | "unread" | "idle";
 export interface WorkspaceRegistryCallbacks {
   /** A single workspace changed (phase, title, busy, unread). tabKey is set when a tab status change triggered it. */
   rowChanged?(entry: WorkspaceEntry, context: { tabKey?: string }): void;
+  /** A workspace's parked state changed and should be persisted. */
+  parkedChanged?(entry: WorkspaceEntry): void;
   /** List membership or ordering changed. */
   listChanged?(entries: WorkspaceEntry[]): void;
   /** A workspace was removed from the registry. */
@@ -64,12 +67,13 @@ export function createFileWorkspaceActivityStore(path: string): WorkspaceActivit
 export interface WorkspaceRegistry {
   setCallbacks(callbacks: WorkspaceRegistryCallbacks): void;
   /** Seed from the containers Docker knows about. Replaces all current entries with phase "ready". */
-  seed(workspaces: Array<{ id: string; title: string | null; sourceRepositoryId?: string | null; sourceRepositoryName?: string | null }>): Promise<void>;
+  seed(workspaces: Array<{ id: string; title: string | null; parked?: boolean; sourceRepositoryId?: string | null; sourceRepositoryName?: string | null }>): Promise<void>;
   list(): WorkspaceEntry[];
   get(id: string): WorkspaceEntry | undefined;
   add(id: string, title?: string | null, sourceRepositoryId?: string | null, sourceRepositoryName?: string | null): WorkspaceEntry;
   setPhase(id: string, phase: WorkspacePhase, error?: string): void;
   setTitle(id: string, title: string | null): void;
+  setParked(id: string, parked: boolean): void;
   touch(id: string): void;
   remove(id: string): void;
   setActiveWorkspace(id: string | undefined): void;
@@ -101,7 +105,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
   let callbacks: WorkspaceRegistryCallbacks = {};
 
   function sorted(): WorkspaceEntry[] {
-    return [...entries.values()].sort((a, b) => (b.lastActivityAt - a.lastActivityAt) || a.id.localeCompare(b.id));
+    return [...entries.values()].sort((a, b) => Number(a.parked) - Number(b.parked) || (b.lastActivityAt - a.lastActivityAt) || a.id.localeCompare(b.id));
   }
 
   function order(): string {
@@ -135,6 +139,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
           lastActivityAt: activity[workspace.id] ?? 0,
           sourceRepositoryId: workspace.sourceRepositoryId ?? null,
           sourceRepositoryName: workspace.sourceRepositoryName ?? null,
+          parked: workspace.parked ?? false,
         });
       }
       callbacks.listChanged?.(sorted());
@@ -150,7 +155,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
 
     add(id, title = null, sourceRepositoryId = null, sourceRepositoryName = null) {
       if (entries.has(id)) throw new Error(`workspace already in registry: ${id}`);
-      const entry: WorkspaceEntry = { id, title, phase: "starting", lastActivityAt: now(), sourceRepositoryId, sourceRepositoryName };
+      const entry: WorkspaceEntry = { id, title, phase: "starting", lastActivityAt: now(), sourceRepositoryId, sourceRepositoryName, parked: false };
       entries.set(id, entry);
       activity[id] = entry.lastActivityAt;
       persistActivity();
@@ -174,6 +179,14 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       if (!entry || entry.title === title) return;
       entry.title = title;
       callbacks.rowChanged?.(entry, {});
+    },
+
+    setParked(id, parked) {
+      const entry = entries.get(id);
+      if (!entry || entry.parked === parked) return;
+      entry.parked = parked;
+      callbacks.parkedChanged?.(entry);
+      callbacks.listChanged?.(sorted());
     },
 
     touch(id) {
@@ -214,7 +227,15 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       else tabs.delete(tabKey);
       if (tabs.size === 0) tabBusy.delete(id);
       const entry = entries.get(id);
-      if (entry) callbacks.rowChanged?.(entry, { tabKey });
+      if (!entry) return;
+      if (busy && entry.parked) {
+        entry.parked = false;
+        callbacks.parkedChanged?.(entry);
+        callbacks.rowChanged?.(entry, { tabKey });
+        callbacks.listChanged?.(sorted());
+        return;
+      }
+      callbacks.rowChanged?.(entry, { tabKey });
     },
 
     setTabUnread(id, tabKey, unread) {

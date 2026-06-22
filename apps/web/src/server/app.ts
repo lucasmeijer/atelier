@@ -22,7 +22,7 @@ import {
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceRepoMergeabilityResult,
 } from "@atelier/repository";
-import { generateWorkspaceId, listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
+import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
 import { atelierName, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
 import type { StreamHub } from "./stream-hub.ts";
@@ -46,6 +46,8 @@ export interface WebAppDeps {
   inspectDeleteSafety(id: string): Promise<WorkspaceDeleteBlockedDetails>;
   /** Force-remove the workspace container. */
   destroyWorkspace(id: string): Promise<void>;
+  /** Persist parked state in the workspace container. Defaults to setWorkspaceParked. */
+  persistWorkspaceParked?(id: string, parked: boolean): Promise<void>;
   /** Receives background task failures. Defaults to console.error. */
   logError?(message: string): void;
   provisioningHooks: WorkspaceServerProvisioningHook[];
@@ -232,7 +234,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const sourceRepositoryClass = entry.sourceRepositoryId ? "repo-tinted-row" : "";
     const sourceRepositoryStyle = entry.sourceRepositoryId ? ` style="${repoColorStyle(entry.sourceRepositoryId)}"` : "";
     const stateClass = registry.workspaceState(id) === "unread" ? "attn-state" : "";
-    const open = (extraClass: string) => `<div class="row workspace-row ${sourceRepositoryClass} ${stateClass} ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}"${sourceRepositoryStyle}${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
+    const parkedClass = entry.parked ? "parked" : "";
+    const open = (extraClass: string) => `<div class="row workspace-row ${sourceRepositoryClass} ${stateClass} ${parkedClass} ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}" data-parked="${entry.parked ? "true" : "false"}"${sourceRepositoryStyle}${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
     const workspaceLink = (label: string, attrs = "") => `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"${attrs}><div class="r-title">${escapeHtml(label)}</div></a>`;
     switch (entry.phase) {
       // All phases render single-line rows (no r-sub) so phase changes never
@@ -244,8 +247,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         return `${open("pending-delete")}<div class="row-main" title="Deleting…"><div class="r-title">${escapeHtml(title)}</div></div><span class="row-actions"><span class="status-spinner sm" aria-label="Deleting" title="Deleting…"></span></span></div>`;
       case "failed":
         return `${open("failed")}${workspaceLink(title, ` title="${escapeHtml(entry.error ?? "Workspace failed")}"`)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/dismiss"><button type="submit" title="${escapeHtml(entry.error ?? "Workspace failed")} — dismiss" aria-label="Dismiss">✕</button></form></div>`;
-      case "ready":
-        return `${open("")}${workspaceSidebarTitleFrame(id, title)}<div class="workspace-row-actions">${renderWorkspaceStatus(id)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></div></div>`;
+      case "ready": {
+        const parkedAction = entry.parked ? "unpark" : "park";
+        const parkedLabel = entry.parked ? "Unpark workspace" : "Park workspace";
+        return `${open("")}${workspaceSidebarTitleFrame(id, title)}<div class="workspace-row-actions">${renderWorkspaceStatus(id)}<form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form><form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></div></div>`;
+      }
     }
   }
 
@@ -279,6 +285,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       // "update" (not "replace"): the rows container must survive so later
       // list broadcasts still find their target.
       hub.broadcast(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
+    },
+    parkedChanged(entry) {
+      void (deps.persistWorkspaceParked ?? setWorkspaceParked)(entry.id, entry.parked).catch((error) => logError(`could not persist parked state for workspace ${entry.id}: ${error instanceof Error ? error.message : String(error)}`));
     },
     removed(id) {
       layouts.delete(id);
@@ -803,6 +812,13 @@ ${moduleStylesHtml()}
     return turboStreamResponse("");
   }
 
+  function parkWorkspaceEndpoint(id: string, parked: boolean): Response {
+    const entry = requireWorkspace(id);
+    if (entry.phase !== "ready") return turboStreamResponse("", { status: 409 });
+    registry.setParked(id, parked);
+    return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
+  }
+
   // ---------------------------------------------------------------------------
   // Titles
   // ---------------------------------------------------------------------------
@@ -1121,6 +1137,8 @@ ${moduleStylesHtml()}
     if ((params = match(/^\/workspaces\/([^/]+)\/layout\/resize$/)) && request.method === "POST") return await resizeWorkspaceGroupsEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/push$/)) && request.method === "POST") return await pushRepoEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/mergeability$/)) && request.method === "GET") return await mergeabilityFrame(params[0], params[1]);
+    if ((params = match(/^\/workspaces\/([^/]+)\/park$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], true);
+    if ((params = match(/^\/workspaces\/([^/]+)\/unpark$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], false);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteWorkspaceEndpoint(params[0], url.searchParams.get("force") === "1");
     if ((params = match(/^\/workspaces\/([^/]+)\/dismiss$/)) && request.method === "POST") return dismissWorkspaceEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)$/)) && request.method === "GET") return await workspacePage(params[0], request);
