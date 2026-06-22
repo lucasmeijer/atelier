@@ -38,7 +38,6 @@ export {
   listWorkspaceRepos,
   pushWorkspaceRepo,
   registerRepositoryWorkspaceEvents,
-  workspaceRepoCommand,
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceDeleteSafetyIssue,
   type WorkspaceRepoListResult,

@@ -132,27 +132,3 @@ export async function pushWorkspaceRepo(id: string, repo: string): Promise<Works
   return { state: "pushed" };
 }
 
-function requireArg(value: string | undefined, name: string): string { if (!value) throw invalidArguments(`missing ${name}`); return value; }
-
-export async function workspaceRepoCommand(args: string[]): Promise<unknown> {
-  const id = requireArg(args[0], "workspace id");
-  if (args[1] !== "repo") throw invalidArguments("usage: atelier workspace <workspace-id> repo <command>");
-  const [command, ...rest] = args.slice(2);
-  switch (command) {
-    case "list":
-      if (rest.length !== 0) throw invalidArguments("workspace repo list takes no arguments");
-      return await listWorkspaceRepos(id);
-    case "mergeability": {
-      const repo = requireArg(rest[0], "repo name");
-      if (rest.length !== 1) throw invalidArguments("usage: atelier workspace <workspace-id> repo mergeability <repo>");
-      return await getWorkspaceRepoMergeability(id, repo);
-    }
-    case "push": {
-      const repo = requireArg(rest[0], "repo name");
-      if (rest.length !== 1) throw invalidArguments("usage: atelier workspace <workspace-id> repo push <repo>");
-      return await pushWorkspaceRepo(id, repo);
-    }
-    default:
-      throw invalidArguments(`unknown repo command: ${command ?? ""}`);
-  }
-}

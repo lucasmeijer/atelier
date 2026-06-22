@@ -29,7 +29,6 @@ export interface WorkspaceNewResult { id: string }
 export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; sourceRepositoryId?: string | null; sourceRepositoryName?: string | null }> }
 export interface WorkspaceExecResult { exitCode: number; stdout: string; stderr: string; durationMs: number }
 export interface WorkspaceCommandOptions { workdir?: string; user?: "atelier" | "root"; stdin?: string }
-export interface WorkspaceCommandContext { events?: AtelierEventBus }
 export interface DeleteWorkspaceOptions { force?: boolean; events?: AtelierEventBus }
 export interface CreateWorkspaceOptions { id?: string; events?: AtelierEventBus; sourceRepositoryId?: string; sourceRepositoryName?: string; context?: Record<string, unknown> }
 
@@ -48,7 +47,6 @@ export async function workspacePublishedPortHost(): Promise<string> {
 }
 function formatDeleteBlockedMessage(id: string, issues: unknown[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
 function dockerHostGatewayArgs(): string[] { return ["--add-host", "host.docker.internal:host-gateway"]; }
-function requireArg(value: string | undefined, name: string): string { if (!value) throw invalidArguments(`missing ${name}`); return value; }
 function shellQuote(value: string): string { return `'${value.replaceAll("'", `'\\''`)}'`; }
 async function provisionStep<T>(events: AtelierEventBus | undefined, workspaceId: string, id: string, label: string, fn: () => Promise<T>, options: { parentId?: string } = {}): Promise<T> {
   await events?.emit("workspace_provision_step", { workspaceId, id, label, status: "running", parentId: options.parentId });
@@ -120,7 +118,6 @@ export async function execWorkspaceCommand(id: string, command: string[], option
   return { ...result, durationMs: Date.now() - startedAt };
 }
 export async function execWorkspaceShell(id: string, script: string, options: WorkspaceCommandOptions = {}): Promise<WorkspaceExecResult> { return await execWorkspaceCommand(id, ["sh", "-lc", script], options); }
-export async function execWorkspace(id: string, command: string[]): Promise<WorkspaceExecResult> { if (command.length === 0) throw invalidArguments("workspace exec requires a command"); return await execWorkspaceCommand(id, command); }
 
 function dockerMountArg(mount: WorkspaceDockerMount): string { return [`type=${mount.type}`, `src=${mount.source}`, `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : [])].join(","); }
 function planEnvDockerArgs(env: Record<string, string>): string[] { return Object.entries(env).flatMap(([name, value]) => ["--env", `${name}=${value}`]); }
@@ -256,31 +253,3 @@ export async function setWorkspaceTitle(id: string, title: string): Promise<null
   return null;
 }
 
-export async function workspaceCommand(args: string[], context: WorkspaceCommandContext = {}): Promise<unknown> {
-  const [subcommand, ...rest] = args;
-  switch (subcommand) {
-    case "new": {
-      if (rest.length > 1) throw invalidArguments("usage: atelier workspace new [git-url]");
-      const creationContext = rest[0] ? { gitUrl: rest[0] } : undefined;
-      const created = await createWorkspace({ events: context.events, context: creationContext });
-      await context.events?.emit("workspace_created", { workspaceId: created.id, context: creationContext });
-      return created;
-    }
-    case "list": if (rest.length !== 0) throw invalidArguments("workspace list takes no arguments"); return await listWorkspaces();
-    case "delete": {
-      const force = rest.includes("--force");
-      const ids = rest.filter((arg) => arg !== "--force");
-      const id = requireArg(ids[0], "workspace id");
-      if (ids.length !== 1) throw invalidArguments("usage: atelier workspace delete [--force] <workspace-id>");
-      return await deleteWorkspace(id, { force, events: context.events });
-    }
-    case "title": return await setWorkspaceTitle(requireArg(rest[0], "workspace id"), rest.slice(1).join(" "));
-    case "exec": {
-      const id = requireArg(rest[0], "workspace id");
-      const separatorIndex = rest.indexOf("--");
-      if (separatorIndex !== 1) throw invalidArguments("usage: atelier workspace exec <workspace-id> -- <command...>");
-      return await execWorkspace(id, rest.slice(separatorIndex + 1));
-    }
-    default: throw invalidArguments(`unknown workspace command: ${subcommand ?? ""}`);
-  }
-}

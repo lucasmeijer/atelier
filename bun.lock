@@ -132,19 +132,6 @@
         "@atelier/workspace": "workspace:*",
       },
     },
-    "tools/atelier": {
-      "name": "@atelier/cli",
-      "bin": {
-        "atelier": "./src/main.ts",
-      },
-      "dependencies": {
-        "@atelier/core": "workspace:*",
-        "@atelier/repository": "workspace:*",
-        "@atelier/workspace": "workspace:*",
-        "@atelier/workspace-proxy": "workspace:*",
-        "@atelier/workspace-terminal": "workspace:*",
-      },
-    },
   },
   "packages": {
     "@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.91.1", "", { "dependencies": { "json-schema-to-ts": "^3.1.1" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-LAmu761tSN9r66ixvmciswUj/ZC+1Q4iAfpedTfSVLeswRwnY3n2Nb6Tsk+cLPP28aLOPWeMgIuTuCcMC6W/iw=="],
@@ -153,7 +140,6 @@
 
     "@atelier/browser": ["@atelier/browser@workspace:packages/browser"],
 
-    "@atelier/cli": ["@atelier/cli@workspace:tools/atelier"],
 
     "@atelier/core": ["@atelier/core@workspace:packages/core"],
 

@@ -47,7 +47,6 @@
   },
   "include": [
     "apps/**/*.ts",
-    "packages/**/*.ts",
-    "tools/**/*.ts"
+    "packages/**/*.ts"
   ]
 }

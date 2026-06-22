@@ -4,14 +4,12 @@
   "type": "module",
   "workspaces": [
     "apps/*",
-    "packages/*",
-    "tools/*"
+    "packages/*"
   ],
   "scripts": {
     "check": "bunx tsc --noEmit -p tsconfig.json",
     "test": "bun test",
     "ci": "bun ci && bun run check && bun test",
-    "atelier": "bun run tools/atelier/src/main.ts",
     "web": "bun run --cwd apps/web build:client && bun --watch run apps/web/src/server/main.ts",
     "smoke:vscode": "node apps/web/smoke/vscode-smoke.mjs"
   },

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
-import { execWorkspace, workspaceCommand, type WorkspaceExecResult, type WorkspaceNewResult } from "@atelier/workspace";
+import { createWorkspace, execWorkspaceCommand, type WorkspaceExecResult } from "@atelier/workspace";
 import { cleanupNamespace, createTestNamespace } from "../../../core/test/helpers.ts";
 import { registerTerminalEvents } from "../../src/server/events.ts";
 
@@ -22,9 +22,10 @@ describe("terminal workspace events", () => {
     const events = createAtelierEventBus();
     registerTerminalEvents(events);
 
-    const created = await workspaceCommand(["new"], { events }) as WorkspaceNewResult;
+    const created = await createWorkspace({ events });
+    await events.emit("workspace_created", { workspaceId: created.id });
 
-    const exec = await execWorkspace(created.id, ["tmux", "list-sessions", "-F", "#S"]) as WorkspaceExecResult;
+    const exec = await execWorkspaceCommand(created.id, ["tmux", "list-sessions", "-F", "#S"]) as WorkspaceExecResult;
     expect(exec.exitCode).toBe(0);
     expect(exec.stdout.trim().split(/\n+/)).toEqual(["Terminal 1"]);
   });

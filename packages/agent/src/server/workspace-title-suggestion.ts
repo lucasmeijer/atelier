@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { completeSimple, getModel } from "@earendil-works/pi-ai";
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import type { AtelierEventBus } from "@atelier/core";
-import { listWorkspaces, workspaceCommand } from "@atelier/workspace";
+import { listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
 import { piConfigSeedDir } from "./pi-config-seed.ts";
 
 const pending = new Set<string>();
@@ -87,7 +87,7 @@ export function maybeNameWorkspaceFromAgentPrompt(workspaceId: string, userMessa
         return;
       }
       if (!(await workspaceIsUnnamed(workspaceId))) return;
-      await workspaceCommand(["title", workspaceId, title]);
+      await setWorkspaceTitle(workspaceId, title);
       await options.events?.emit("workspace_title_changed", { workspaceId, title });
     } catch (error) {
       logWorkspaceTitleSuggestionError(workspaceId, error instanceof Error ? error.message : String(error), { error });

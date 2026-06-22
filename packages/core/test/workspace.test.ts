@@ -3,12 +3,11 @@ import { AtelierCoreError, createAtelierEventBus } from "../src/index.ts";
 import {
   createWorkspace,
   deleteWorkspace,
-  execWorkspace,
+  execWorkspaceCommand,
   execWorkspaceShell,
   generateWorkspaceId,
   listWorkspaces,
   setWorkspaceTitle,
-  workspaceCommand,
   workspaceContainerName,
   type WorkspaceExecResult,
 } from "@atelier/workspace";
@@ -79,10 +78,10 @@ describe("core workspaces", () => {
     expect(sourceRepoName.stdout.trim()).toBe("atelier");
   });
 
-  test("execWorkspace captures stdout, stderr, exit code, and duration", async () => {
+  test("execWorkspaceCommand captures stdout, stderr, exit code, and duration", async () => {
     const created = await createWorkspace();
 
-    const exec = await execWorkspace(created.id, ["sh", "-c", "printf hello && printf error >&2"]);
+    const exec = await execWorkspaceCommand(created.id, ["sh", "-c", "printf hello && printf error >&2"]);
 
     expect(exec.exitCode).toBe(0);
     expect(exec.stdout).toBe("hello");
@@ -90,10 +89,10 @@ describe("core workspaces", () => {
     expect(exec.durationMs).toBeGreaterThanOrEqual(0);
   });
 
-  test("execWorkspace runs commands as the non-root atelier user", async () => {
+  test("execWorkspaceCommand runs commands as the non-root atelier user", async () => {
     const created = await createWorkspace();
 
-    const exec = await execWorkspace(created.id, ["whoami"]);
+    const exec = await execWorkspaceCommand(created.id, ["whoami"]);
 
     expect(exec.exitCode).toBe(0);
     expect(exec.stdout.trim()).toBe("atelier");
@@ -104,7 +103,7 @@ describe("core workspaces", () => {
     const created = await createWorkspace();
 
     const write = await execWorkspaceShell(created.id, "cat > /work/stdin.txt", { stdin: "hello from stdin" });
-    const read = await execWorkspace(created.id, ["cat", "/work/stdin.txt"]);
+    const read = await execWorkspaceCommand(created.id, ["cat", "/work/stdin.txt"]);
 
     expect(write.exitCode).toBe(0);
     expect(read.exitCode).toBe(0);
@@ -113,19 +112,21 @@ describe("core workspaces", () => {
 
   test("createWorkspace configures saved git identity", async () => {
     await setGitIdentity({ name: "Test User", email: "test@example.com" });
-    const created = await createWorkspace();
+    const events = createAtelierEventBus();
+    registerRepositoryWorkspaceEvents(events);
+    const created = await createWorkspace({ events });
 
-    const exec = await execWorkspace(created.id, ["git", "config", "--global", "--get-regexp", "^user\\."]);
+    const exec = await execWorkspaceCommand(created.id, ["git", "config", "--global", "--get-regexp", "^user\\."]);
 
     expect(exec.exitCode).toBe(0);
     expect(exec.stdout).toContain("user.name Test User");
     expect(exec.stdout).toContain("user.email test@example.com");
   });
 
-  test("execWorkspace returns child command failure as a successful exec result", async () => {
+  test("execWorkspaceCommand returns child command failure as a successful exec result", async () => {
     const created = await createWorkspace();
 
-    const exec = await execWorkspace(created.id, ["sh", "-c", "exit 7"]);
+    const exec = await execWorkspaceCommand(created.id, ["sh", "-c", "exit 7"]);
 
     expect(exec.exitCode).toBe(7);
     expect(exec.stdout).toBe("");
@@ -142,7 +143,7 @@ describe("core workspaces", () => {
 
   test("deleteWorkspace fails with uncommitted changes unless forced", async () => {
     const created = await createWorkspace();
-    const setup = await execWorkspace(created.id, ["sh", "-lc", "cd /work && git init && printf hello > changed.txt"]);
+    const setup = await execWorkspaceCommand(created.id, ["sh", "-lc", "cd /work && git init && printf hello > changed.txt"]);
     expect(setup.exitCode).toBe(0);
 
     const events = createAtelierEventBus();
@@ -154,11 +155,11 @@ describe("core workspaces", () => {
     expect(await deleteWorkspace(created.id, { force: true })).toBeNull();
   });
 
-  test("execWorkspace on a deleted workspace throws workspace_not_found", async () => {
+  test("execWorkspaceCommand on a deleted workspace throws workspace_not_found", async () => {
     const created = await createWorkspace();
     await deleteWorkspace(created.id);
 
-    const error = await expectCoreError(() => execWorkspace(created.id, ["echo", "hello"]));
+    const error = await expectCoreError(() => execWorkspaceCommand(created.id, ["echo", "hello"]));
     expect(error.code).toBe("workspace_not_found");
   });
 
@@ -186,22 +187,10 @@ describe("core workspaces", () => {
     }
   });
 
-  test("workspaceCommand rejects invalid workspace list arguments", async () => {
-    const error = await expectCoreError(() => workspaceCommand(["list", "unexpected"]));
-    expect(error.code).toBe("invalid_arguments");
-  });
-
-  test("workspaceCommand exec rejects missing command separator", async () => {
+  test("execWorkspaceCommand rejects an empty command", async () => {
     const created = await createWorkspace();
 
-    const error = await expectCoreError(() => workspaceCommand(["exec", created.id, "echo", "hello"]));
-    expect(error.code).toBe("invalid_arguments");
-  });
-
-  test("workspaceCommand exec rejects an empty command", async () => {
-    const created = await createWorkspace();
-
-    const error = await expectCoreError(() => workspaceCommand(["exec", created.id, "--"]));
+    const error = await expectCoreError(() => execWorkspaceCommand(created.id, []));
     expect(error.code).toBe("invalid_arguments");
   });
 
