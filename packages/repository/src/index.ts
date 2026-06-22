@@ -33,6 +33,7 @@ export {
 
 export {
   assertWorkspaceDeleteSafe,
+  getWorkspaceRepoLineStats,
   getWorkspaceRepoMergeability,
   inspectWorkspaceDeleteSafety,
   listWorkspaceRepos,
@@ -40,6 +41,7 @@ export {
   registerRepositoryWorkspaceEvents,
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceDeleteSafetyIssue,
+  type WorkspaceRepoLineStats,
   type WorkspaceRepoListResult,
   type WorkspaceRepoMergeabilityResult,
   type WorkspaceRepoPushResult,

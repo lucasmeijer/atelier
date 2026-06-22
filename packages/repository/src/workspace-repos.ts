@@ -5,6 +5,7 @@ import { registerRepositoryWorkspaceSourceEvents } from "./workspace-source.ts";
 
 export interface WorkspaceRepoListResult { repos: string[] }
 export interface WorkspaceRepoWorkingTreeStatus { stagedFiles: string[]; addedFiles: string[]; modifiedFiles: string[]; removedFiles: string[]; untrackedFiles: string[] }
+export interface WorkspaceRepoLineStats { added: number; removed: number }
 export interface WorkspaceDeleteSafetyIssue { repo: string; uncommittedPaths: string[]; outgoingCommits: Array<{ hash: string; subject: string }> }
 export interface WorkspaceDeleteBlockedDetails { workspaceId: string; issues: WorkspaceDeleteSafetyIssue[] }
 export type WorkspaceRepoMergeabilityResult =
@@ -119,7 +120,27 @@ async function calculateMergeability(id: string, repo: string): Promise<Workspac
   const match = mergeCheck.stdout.trim().match(/^conflicts\s+(\d+)$/); if (match) return { state: "has_conflicts", ahead, behind, conflictCount: Number(match[1]), workingTree };
   throw new AtelierCoreError("git_error", `could not parse mergeability for ${repo}`);
 }
+function parseNumstat(output: string): WorkspaceRepoLineStats {
+  let added = 0;
+  let removed = 0;
+  for (const line of output.split("\n")) {
+    const [addText, removeText] = line.trim().split(/\s+/, 3);
+    const add = Number(addText);
+    const remove = Number(removeText);
+    if (Number.isFinite(add)) added += add;
+    if (Number.isFinite(remove)) removed += remove;
+  }
+  return { added, removed };
+}
+async function calculateLineStats(id: string, repo: string): Promise<WorkspaceRepoLineStats> {
+  await ensureRepo(id, repo);
+  const path = repoPath(repo); const quotedPath = shellQuote(path);
+  const result = await execWorkspaceShell(id, `set -eu; cd ${quotedPath}; git diff --numstat HEAD -- .; git ls-files --others --exclude-standard -z | xargs -0 -r awk 'FNR==1{files[FILENAME]=1} {lines[FILENAME]++} END{for (file in files) printf "%d\\t0\\t%s\\n", lines[file]+0, file}'`);
+  if (result.exitCode !== 0) throw new AtelierCoreError("git_error", result.stderr.trim() || `could not calculate line stats for ${repo}`);
+  return parseNumstat(result.stdout);
+}
 export async function listWorkspaceRepos(id: string): Promise<WorkspaceRepoListResult> { await resolveWorkspace(id); return { repos: await listRepos(id) }; }
+export async function getWorkspaceRepoLineStats(id: string, repo: string): Promise<WorkspaceRepoLineStats> { await resolveWorkspace(id); return await calculateLineStats(id, repo); }
 export async function getWorkspaceRepoMergeability(id: string, repo: string): Promise<WorkspaceRepoMergeabilityResult> { await resolveWorkspace(id); return await calculateMergeability(id, repo); }
 export async function pushWorkspaceRepo(id: string, repo: string): Promise<WorkspaceRepoPushResult> {
   await resolveWorkspace(id); const mergeability = await calculateMergeability(id, repo);

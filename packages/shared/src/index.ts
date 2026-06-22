@@ -100,6 +100,11 @@ export interface WorkspaceServerProvisioningHook {
   run(context: { workspaceId: string; creationContext?: unknown; events?: unknown }): Promise<void> | void;
 }
 
+export interface WorkspaceRowContributionRegistry {
+  /** Set server-rendered inline HTML for a module contribution; empty/undefined clears it. */
+  set(workspaceId: string, contributionId: string, html?: string): void;
+}
+
 export interface WorkspaceServerModuleContext {
   events: unknown;
   registry: {
@@ -107,6 +112,7 @@ export interface WorkspaceServerModuleContext {
     setTabBusy(workspaceId: string, tabKey: string, busy: boolean): void;
     setTabUnread(workspaceId: string, tabKey: string, unread: boolean): void;
   };
+  workspaceRowContributions: WorkspaceRowContributionRegistry;
   layouts: unknown;
   getTabKeys(workspaceId: string): Promise<string[]>;
   deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<unknown>;

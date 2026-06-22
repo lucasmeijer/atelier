@@ -24,7 +24,7 @@ import {
 } from "@atelier/repository";
 import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
-import { atelierName, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
+import { atelierName, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceRowContributionRegistry, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
 import type { StreamHub } from "./stream-hub.ts";
 import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
 import type { WebPreferenceStore } from "./preferences.ts";
@@ -58,6 +58,7 @@ export interface WebApp {
   fetch(request: Request): Promise<Response>;
   tabKeysFor(workspaceId: string): Promise<string[]>;
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }>;
+  workspaceRowContributions: WorkspaceRowContributionRegistry;
 }
 
 export function escapeHtml(value: unknown): string {
@@ -215,6 +216,28 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return `<span id="${workspaceTabStatusId(workspaceId, tabKey)}" class="tab-status">${inner}</span>`;
   }
 
+  const workspaceRowContributionStore = new Map<string, Map<string, string>>();
+
+  function workspaceRowContributionsId(workspaceId: string): string {
+    return domId("workspace_row_contributions", workspaceId);
+  }
+
+  function renderWorkspaceRowContributions(workspaceId: string): string {
+    const contributions = Array.from(workspaceRowContributionStore.get(workspaceId)?.values() ?? []).filter(Boolean).join("");
+    return `<span id="${workspaceRowContributionsId(workspaceId)}" class="workspace-row-contributions">${contributions}</span>`;
+  }
+
+  const workspaceRowContributions: WorkspaceRowContributionRegistry = {
+    set(workspaceId: string, contributionId: string, html?: string) {
+      if (!registry.get(workspaceId)) return;
+      let workspaceContributions = workspaceRowContributionStore.get(workspaceId);
+      if (!workspaceContributions) workspaceRowContributionStore.set(workspaceId, workspaceContributions = new Map());
+      if (html) workspaceContributions.set(contributionId, html);
+      else workspaceContributions.delete(contributionId);
+      hub.broadcast(turboReplaceStream(workspaceRowContributionsId(workspaceId), renderWorkspaceRowContributions(workspaceId)));
+    },
+  };
+
   function workspaceTitle(entry: WorkspaceEntry): string {
     return entry.title || entry.sourceRepositoryName || `Workspace ${entry.id}`;
   }
@@ -250,7 +273,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       case "ready": {
         const parkedAction = entry.parked ? "unpark" : "park";
         const parkedLabel = entry.parked ? "Unpark workspace" : "Park workspace";
-        return `${open("")}${workspaceSidebarTitleFrame(id, title)}<div class="workspace-row-actions">${renderWorkspaceStatus(id)}<form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form><form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></div></div>`;
+        return `${open("")}${workspaceSidebarTitleFrame(id, title)}<div class="workspace-row-actions">${renderWorkspaceRowContributions(id)}<span class="workspace-row-hover-actions">${renderWorkspaceStatus(id)}<form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form><form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></span></div></div>`;
       }
     }
   }
@@ -291,6 +314,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     },
     removed(id) {
       layouts.delete(id);
+      workspaceRowContributionStore.delete(id);
       for (const handler of deps.workspaceRemovedHandlers ?? []) void handler(id);
       hub.broadcast(turboRemoveStream(workspaceRowId(id)));
     },
@@ -1149,6 +1173,7 @@ ${moduleStylesHtml()}
   return {
     tabKeysFor,
     deleteCurrentWorkspaceFromAgent,
+    workspaceRowContributions,
     async fetch(request) {
       try {
         return await route(request);

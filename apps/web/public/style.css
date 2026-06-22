@@ -396,7 +396,15 @@ button { border: 0; background: none; cursor: pointer; }
 .workspace-row-edit, .workspace-row-park button, .workspace-row-delete button { color: var(--muted2); border-radius: 6px; opacity: 0; }
 .workspace-row-edit { display: inline-flex; visibility: hidden; font-size: 12px; padding: 1px 4px; }
 .workspace-row:hover .workspace-row-edit { visibility: visible; opacity: 1; }
-.workspace-row-actions, .row-actions { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; }
+.row-actions { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; }
+.workspace-row-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; margin-left: auto; flex: 0 0 auto; }
+.workspace-row-hover-actions { display: none; align-items: center; gap: 3px; }
+.workspace-row:hover .workspace-row-hover-actions { display: inline-flex; }
+.workspace-row:hover .workspace-row-contributions { display: none; }
+.workspace-row-contributions { display: inline-flex; align-items: center; justify-content: flex-end; min-height: 18px; }
+.repository-line-stats { display: inline-flex; align-items: center; gap: 5px; font: 700 11px/1 var(--mono); }
+.workspace-row-stat-add { color: var(--green); }
+.workspace-row-stat-del { color: var(--red); }
 .workspace-row-park, .workspace-row-delete { display: flex; justify-content: flex-end; visibility: hidden; }
 .workspace-row:hover .workspace-row-park, .workspace-row:hover .workspace-row-delete { visibility: visible; }
 .workspace-row-park button, .workspace-row-delete button { padding: 2px 4px; }

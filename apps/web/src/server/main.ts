@@ -254,6 +254,7 @@ for (const module of workspaceModules) {
   await module.initialize?.({
     events: atelierEvents,
     registry,
+    workspaceRowContributions: app.workspaceRowContributions,
     layouts,
     getTabKeys: (workspaceId) => app.tabKeysFor(workspaceId),
     deleteCurrentWorkspace: (workspaceId, force) => app.deleteCurrentWorkspaceFromAgent(workspaceId, force),
