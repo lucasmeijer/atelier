@@ -4,7 +4,7 @@ import { diffStats, renderDiffHtml, type DiffOperation } from "./diff.ts";
 import { highlightCodeHtmlForPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { rewriteSegment } from "./rewrite.ts";
+import { renderAtelierEmbed, rewriteSegment, splitAtelierEmbeds } from "./rewrite.ts";
 import type { WorkspaceAgentInfo } from "./session-store.ts";
 import {
   formatCost,
@@ -58,6 +58,27 @@ function agentPath(ctx: AgentRenderContext, suffix: string): string {
 
 function markdown(ctx: AgentRenderContext, text: string, options: { highlightCode?: boolean } = {}): string {
   return renderMarkdown(text, { rewriteSegment: (segment) => rewriteSegment(ctx.workspaceId, segment), highlightCode: options.highlightCode });
+}
+
+function markdownWithoutEmbeds(_ctx: AgentRenderContext, text: string, options: { highlightCode?: boolean } = {}): string {
+  return renderMarkdown(text, { highlightCode: options.highlightCode });
+}
+
+function readingRow(html: string): string {
+  return `<div class="agent-row agent-row-reading"><div class="agent-reading-column">${html}</div></div>`;
+}
+
+function wideRow(html: string): string {
+  return `<div class="agent-row agent-row-wide"><div class="agent-wide-column">${html}</div></div>`;
+}
+
+function renderMarkdownRows(ctx: AgentRenderContext, text: string, options: { highlightCode?: boolean; className?: string } = {}): string {
+  const className = options.className ?? "agent-md";
+  return splitAtelierEmbeds(text).map((segment) => {
+    if (segment.type === "embed") return wideRow(renderAtelierEmbed(ctx.workspaceId, segment.target));
+    const body = markdownWithoutEmbeds(ctx, segment.text, { highlightCode: options.highlightCode }).trim();
+    return body ? readingRow(`<div class="${className}">${body}</div>`) : "";
+  }).join("");
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +270,7 @@ function renderSystemPromptCard(ctx: AgentRenderContext, systemPrompt?: string):
 export function renderSection(ctx: AgentRenderContext, section: SectionView, options: { collapsed?: boolean } = {}): string {
   if (section.summaryNote !== undefined) {
     return `<div class="agent-section agent-summary-section" id="${ids.section(ctx, section.sid)}" data-sid="${escapeHtml(section.sid)}">
-      <div class="agent-note summary">${markdown(ctx, section.summaryNote)}</div>
+      ${renderMarkdownRows(ctx, section.summaryNote, { className: "agent-note summary" })}
     </div>`;
   }
   const hasActivity = section.items.length > 0 || section.streaming;
@@ -261,7 +282,7 @@ export function renderSection(ctx: AgentRenderContext, section: SectionView, opt
       <div class="agent-actbody" id="${ids.activityBody(ctx, section.sid)}">${section.items.map((item, index) => renderItem(ctx, section.sid, index, item, { live: section.streaming && index === section.items.length - 1, collapsed })).join("")}</div>
     </div>
     <div class="agent-final" id="${ids.final(ctx, section.sid)}">${section.finalText ? renderFinalText(ctx, section.finalText) : ""}</div>
-    ${section.errorMessage ? `<div class="agent-error">${escapeHtml(section.errorMessage)}</div>` : ""}
+    ${section.errorMessage ? readingRow(`<div class="agent-error">${escapeHtml(section.errorMessage)}</div>`) : ""}
   </div>`;
 }
 
@@ -278,11 +299,11 @@ function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images
   const images = user.images.length > 0
     ? `<div class="agent-user-attachments">${user.images.map((image) => `<img src="data:${escapeHtml(image.mimeType)};base64,${escapeHtml(image.data)}" alt="attachment">`).join("")}</div>`
     : "";
-  return `<div class="agent-user"><div class="agent-user-bubble">${markdown(ctx, user.text)}${images}</div></div>`;
+  return readingRow(`<div class="agent-user"><div class="agent-user-bubble">${markdown(ctx, user.text)}${images}</div></div>`);
 }
 
 export function renderFinalText(ctx: AgentRenderContext, text: string, options: { highlightCode?: boolean } = {}): string {
-  return `<div class="agent-md">${markdown(ctx, text, { highlightCode: options.highlightCode })}</div>`;
+  return renderMarkdownRows(ctx, text, { highlightCode: options.highlightCode, className: "agent-md" });
 }
 
 // ---------------------------------------------------------------------------
@@ -292,26 +313,26 @@ export function renderFinalText(ctx: AgentRenderContext, text: string, options: 
 export function renderItem(ctx: AgentRenderContext, sid: string, index: number, item: SectionItem, options: { live?: boolean; collapsed?: boolean } = {}): string {
   const id = ids.item(ctx, sid, index);
   if (item.type === "thinking") {
-    return `<div class="agent-item agent-thinking" id="${id}"><div class="agent-thinking-text" id="${ids.itemText(ctx, sid, index)}">${escapeHtml(item.text)}</div></div>`;
+    return `<div class="agent-item" id="${id}">${readingRow(`<div class="agent-thinking"><div class="agent-thinking-text" id="${ids.itemText(ctx, sid, index)}">${escapeHtml(item.text)}</div></div>`)}</div>`;
   }
   if (item.type === "text") {
     if (options.live) {
-      return `<div class="agent-item agent-itext" id="${id}"><div class="agent-stream-text" id="${ids.itemText(ctx, sid, index)}">${escapeHtml(item.text)}</div></div>`;
+      return `<div class="agent-item" id="${id}">${readingRow(`<div class="agent-itext"><div class="agent-stream-text" id="${ids.itemText(ctx, sid, index)}">${escapeHtml(item.text)}</div></div>`)}</div>`;
     }
-    return `<div class="agent-item agent-itext" id="${id}"><div class="agent-md">${markdown(ctx, item.text)}</div></div>`;
+    return `<div class="agent-item" id="${id}">${renderMarkdownRows(ctx, item.text, { className: "agent-md agent-itext-md" })}</div>`;
   }
   if (item.type === "note") {
-    return `<div class="agent-item agent-note ${escapeHtml(item.tone)}" id="${id}">${markdown(ctx, item.text)}</div>`;
+    return `<div class="agent-item" id="${id}">${renderMarkdownRows(ctx, item.text, { className: `agent-note ${escapeHtml(item.tone)}` })}</div>`;
   }
   if (item.tool.status === "streaming") {
     return renderStreamingToolItem(ctx, sid, index, item.tool.name, item.tool.argsStream ?? "");
   }
-  return `<div class="agent-item" id="${id}">${renderToolCard(ctx, item.tool, { open: !options.collapsed })}</div>`;
+  return `<div class="agent-item" id="${id}">${readingRow(renderToolCard(ctx, item.tool, { open: !options.collapsed }))}</div>`;
 }
 
 /** Streaming placeholders used by the live pipeline (content streamed into the text target). */
 export function renderStreamingThinkingItem(ctx: AgentRenderContext, sid: string, index: number): string {
-  return `<div class="agent-item agent-thinking" id="${ids.item(ctx, sid, index)}"><div class="agent-thinking-text" id="${ids.itemText(ctx, sid, index)}"></div></div>`;
+  return `<div class="agent-item" id="${ids.item(ctx, sid, index)}">${readingRow(`<div class="agent-thinking"><div class="agent-thinking-text" id="${ids.itemText(ctx, sid, index)}"></div></div>`)}</div>`;
 }
 
 export function renderStreamingToolItem(ctx: AgentRenderContext, sid: string, index: number, name: string, argsStream = ""): string {
@@ -324,10 +345,10 @@ export function renderStreamingToolItem(ctx: AgentRenderContext, sid: string, in
   const stream = renderer.known
     ? `${knownBody ? `<div class="agent-tool-detail">${knownBody}</div>` : `<div class="agent-tool-empty agent-tool-stream">composing arguments…</div>`}<span id="${streamTarget}" hidden></span>`
     : `<pre class="agent-tool-stream" id="${streamTarget}">${escapeHtml(argsStream)}</pre>`;
-  return `<div class="agent-item" id="${ids.item(ctx, sid, index)}"><div class="agent-tool streaming ${toolClass(name)}">
+  return `<div class="agent-item" id="${ids.item(ctx, sid, index)}">${readingRow(`<div class="agent-tool streaming ${toolClass(name)}">
     <div class="agent-tool-head"><span class="agent-tool-glyph pending">…</span><code class="agent-tool-name">${escapeHtml(name || "tool")}</code><span class="agent-tool-args">${escapeHtml(summary || "composing…")}</span></div>
     ${stream}
-  </div></div>`;
+  </div>`)}</div>`;
 }
 
 export function renderRunningToolCard(ctx: AgentRenderContext, tool: ToolView): string {

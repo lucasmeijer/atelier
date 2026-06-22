@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderMarkdown } from "../../src/server/markdown.ts";
-import { rewriteSegment } from "../../src/server/rewrite.ts";
+import { splitAtelierEmbeds, rewriteSegment } from "../../src/server/rewrite.ts";
 
 describe("renderMarkdown", () => {
   test("paragraphs, bold, inline code", () => {
@@ -37,6 +37,18 @@ describe("renderMarkdown", () => {
   test("links only for http(s)", () => {
     expect(renderMarkdown("[x](https://example.com)")).toContain(`href="https://example.com"`);
     expect(renderMarkdown("[x](javascript:alert(1))")).not.toContain("href");
+  });
+});
+
+describe("splitAtelierEmbeds", () => {
+  test("splits embed directives outside code", () => {
+    expect(splitAtelierEmbeds("before {{atelier:embed /tmp/a.html}} after")).toEqual([
+      { type: "text", text: "before " },
+      { type: "embed", target: "/tmp/a.html" },
+      { type: "text", text: " after" },
+    ]);
+    expect(splitAtelierEmbeds("`{{atelier:embed /tmp/a.html}}`\n```\n{{atelier:embed /tmp/b.html}}\n```"))
+      .toEqual([{ type: "text", text: "`{{atelier:embed /tmp/a.html}}`\n```\n{{atelier:embed /tmp/b.html}}\n```" }]);
   });
 });
 
