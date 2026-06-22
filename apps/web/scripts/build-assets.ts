@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { clientEntrypoints, fingerprintedStaticFiles, type StaticFileEntry } from "../src/server/static-files.ts";
+import "./generate-client-modules.ts";
 
 const publicDir = new URL("../public/", import.meta.url);
 const assetsDir = new URL("../public/assets/", import.meta.url);

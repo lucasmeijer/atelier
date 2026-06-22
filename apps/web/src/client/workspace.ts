@@ -7,7 +7,7 @@ import type {
   WorkspaceClientWorkspaceAppFrameContext,
 } from "@atelier/shared";
 import { createProvisionTerminalController } from "@atelier/workspace/client";
-import { workspaceClientModules } from "./workspace-client-modules.ts";
+import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
 
 declare global {
   interface Window {
