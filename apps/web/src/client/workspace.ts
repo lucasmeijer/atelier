@@ -1064,8 +1064,14 @@ class OAuthFlowController extends Controller {
     }).catch(() => undefined);
     this.polling = false;
     if (!response?.ok) return;
+    const manualTroubleOpen = this.element.querySelector<HTMLDetailsElement>(".settings-oauth-manual")?.open ?? false;
     const html = await response.text();
     window.Turbo?.renderStreamMessage(html);
+    if (manualTroubleOpen) {
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLDetailsElement>("#settings_flow_dialog .settings-oauth-manual")?.setAttribute("open", "");
+      });
+    }
   }
 }
 
