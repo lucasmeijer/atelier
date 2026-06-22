@@ -58,7 +58,7 @@ describe("rewriteSegment", () => {
     expect(html).toContain("controls");
   });
 
-  test("rewrites localhost url embeds to iframes through the workspace app subdomain proxy", () => {
+  test("rewrites localhost url embeds to iframes through the workspace app proxy", () => {
     const html = rewriteSegment("ws", "try {{atelier:embed http://localhost:3000/app?x=1&y=2}}")!;
     expect(html).toContain(`data-agent-proxy-app-key-value="port-3000"`);
     expect(html).toContain(`data-agent-proxy-path-value="/app?x=1&amp;y=2"`);

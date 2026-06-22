@@ -49,7 +49,7 @@ try {
   await frame.waitFor({ timeout: 10_000 });
   await page.waitForFunction(() => {
     const iframe = document.querySelector('iframe.vscode-frame');
-    return iframe?.src?.includes('vscode--') && iframe.src.includes('.localhost');
+    return iframe?.src?.includes('/workspaces/') && iframe.src.includes('/apps/vscode');
   }, null, { timeout: 10_000 });
   const src = await frame.getAttribute('src');
   const response = await fetch(src);

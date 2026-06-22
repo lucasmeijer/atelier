@@ -17,7 +17,7 @@ import { createAtelierEventBus, defaultDataDir } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
 import { desktopAppKey, resolveDesktopWorkspaceAppTarget } from "@atelier/desktop/server";
 import { inspectWorkspaceDeleteSafety, registerRepositoryWorkspaceEvents } from "@atelier/repository";
-import { createWorkspace, deleteWorkspace, listWorkspaces } from "@atelier/workspace";
+import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace } from "@atelier/workspace";
 import { ensureAtelierWorkspaceProxy, registerWorkspaceProxyEvents } from "@atelier/workspace-proxy";
 import { registerPiConfigEvents } from "@atelier/agent/server";
 import {
@@ -31,9 +31,14 @@ import {
 } from "@atelier/workspace-terminal/server";
 import { atelierName } from "@atelier/shared";
 import {
-  parseWorkspaceAppHost,
+  ensureWorkspacePublicProxyRoute,
+  listWorkspacePublicProxyRoutes,
+  readWorkspacePublicProxyState,
   proxyWorkspaceAppRequest,
+  publicProxyPortRangeFromEnv,
+  releaseWorkspacePublicProxyRoutes,
   workspaceAppWebSocketTarget,
+  writeWorkspacePublicProxyState,
   type WorkspaceAppHost,
   type WorkspaceAppResponseTransformer,
   type WorkspaceAppTargetResolver,
@@ -250,6 +255,8 @@ const app = createWebApp({
   },
   inspectDeleteSafety: (id) => inspectWorkspaceDeleteSafety(id),
   destroyWorkspace: async (id) => {
+    await stopPublicProxyRoutesForWorkspace(id);
+    await releaseWorkspacePublicProxyRoutes(id);
     await deleteWorkspace(id, { force: true, events: atelierEvents });
   },
 });
@@ -326,13 +333,124 @@ const patchWorkspaceAppResponse: WorkspaceAppResponseTransformer = async (app, r
   return response;
 };
 
-async function validateSocket(request: Request, url: URL): Promise<SocketData | undefined> {
-  const appHost = parseWorkspaceAppHost(request.headers.get("host"));
-  if (appHost) {
-    if (appHost.appKey === "file") return undefined;
-    const protocols = (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((protocol) => protocol.trim()).filter(Boolean);
-    return { kind: "workspace-app-proxy", target: await workspaceAppWebSocketTarget(appHost, url.pathname, url.search, resolveWorkspaceAppTarget), host: request.headers.get("host") ?? url.host, protocols };
+const publicProxyPortRange = publicProxyPortRangeFromEnv();
+const publicProxyServers = new Map<number, ReturnType<typeof Bun.serve<SocketData>>>();
+const publicProxyRoutes = new Map<number, WorkspaceAppHost>();
+
+function publicProxyHostFor(request: Request): string {
+  return request.headers.get("x-forwarded-host")?.split(",")[0]?.trim().split(":")[0] || new URL(request.url).hostname;
+}
+
+function publicProxyOrigin(request: Request, publicPort: number): string {
+  const url = new URL(request.url);
+  const proto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || url.protocol.replace(/:$/, "");
+  return `${proto}://${publicProxyHostFor(request)}:${publicPort}`;
+}
+
+async function ensurePublicProxyListener(route: WorkspaceAppHost & { publicPort: number }): Promise<void> {
+  const existing = publicProxyRoutes.get(route.publicPort);
+  if (existing) {
+    if (existing.workspaceId === route.workspaceId && existing.appKey === route.appKey && publicProxyServers.has(route.publicPort)) return;
+    throw new Error(`public proxy port ${route.publicPort} is already assigned`);
   }
+  if (publicProxyServers.has(route.publicPort)) throw new Error(`public proxy port ${route.publicPort} is already listening`);
+  publicProxyRoutes.set(route.publicPort, { workspaceId: route.workspaceId, appKey: route.appKey });
+  try {
+    const server = Bun.serve<SocketData>({
+      hostname,
+      port: route.publicPort,
+      idleTimeout: 255,
+      async fetch(request, server) {
+        const auth = await authResponse(request);
+        if (auth) return auth;
+        const url = new URL(request.url);
+        const app = publicProxyRoutes.get(route.publicPort);
+        if (!app) return new Response("not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
+        if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+          const protocols = (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((protocol) => protocol.trim()).filter(Boolean);
+          const target = await workspaceAppWebSocketTarget(app, url.pathname, url.search, resolveWorkspaceAppTarget);
+          if (server.upgrade(request, { data: { kind: "workspace-app-proxy", target, host: request.headers.get("host") ?? url.host, protocols } satisfies WorkspaceAppProxySocketData })) return undefined;
+          return new Response("websocket upgrade failed", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });
+        }
+        return await proxyWorkspaceAppRequest(app, request, resolveWorkspaceAppTarget, patchWorkspaceAppResponse);
+      },
+      websocket: {
+        open(ws) { if (ws.data.kind === "workspace-app-proxy") openWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>); },
+        message(ws, message) { if (ws.data.kind === "workspace-app-proxy") handleWorkspaceAppProxySocketMessage(ws as ServerWebSocket<WorkspaceAppProxySocketData>, message as string | Buffer); },
+        close(ws) { if (ws.data.kind === "workspace-app-proxy") closeWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>); },
+      },
+    });
+    publicProxyServers.set(route.publicPort, server);
+  } catch (error) {
+    publicProxyRoutes.delete(route.publicPort);
+    throw error;
+  }
+}
+
+async function ensurePublicProxyRoute(workspaceId: string, appKey: string): Promise<WorkspaceAppHost & { publicPort: number }> {
+  const unavailable = new Set<number>();
+  for (;;) {
+    const route = await ensureWorkspacePublicProxyRoute(workspaceId, appKey, { range: publicProxyPortRange, reservedPorts: unavailable });
+    try {
+      await ensurePublicProxyListener({ workspaceId, appKey, publicPort: route.publicPort });
+      return { workspaceId, appKey, publicPort: route.publicPort };
+    } catch {
+      unavailable.add(route.publicPort);
+      const state = await readWorkspacePublicProxyState(workspaceId);
+      delete state.routes[appKey];
+      await writeWorkspacePublicProxyState(workspaceId, state);
+      if (unavailable.size > publicProxyPortRange.end - publicProxyPortRange.start + 1) throw new Error(`no public proxy ports available in range ${publicProxyPortRange.start}-${publicProxyPortRange.end}`);
+    }
+  }
+}
+
+async function redirectToPublicProxyRoute(workspaceId: string, appKey: string, path: string, request: Request): Promise<Response> {
+  await resolveWorkspace(workspaceId);
+  const route = await ensurePublicProxyRoute(workspaceId, appKey);
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return Response.redirect(`${publicProxyOrigin(request, route.publicPort)}${normalizedPath}`, 302);
+}
+
+function stopPublicProxyRoutesForWorkspace(workspaceId: string): void {
+  for (const [port, route] of publicProxyRoutes) {
+    if (route.workspaceId !== workspaceId) continue;
+    publicProxyServers.get(port)?.stop(true);
+    publicProxyServers.delete(port);
+    publicProxyRoutes.delete(port);
+  }
+}
+
+async function startPersistedPublicProxyRoutes(): Promise<void> {
+  const ids = (await listWorkspaces()).workspaces.map((workspace) => workspace.id);
+  for (const route of await listWorkspacePublicProxyRoutes(ids)) {
+    try { await ensurePublicProxyListener(route); } catch { /* stale/unavailable route will be reallocated on next canonical request */ }
+  }
+}
+
+async function handleCanonicalProxyRequest(url: URL, request: Request): Promise<Response | undefined> {
+  const appMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/apps\/([^/]+)(\/.*)?$/);
+  if (appMatch) {
+    const workspaceId = decodeURIComponent(appMatch[1] ?? "");
+    const appKey = decodeURIComponent(appMatch[2] ?? "");
+    const path = `${appMatch[3] || "/"}${url.search}`;
+    return await redirectToPublicProxyRoute(workspaceId, appKey, path, request);
+  }
+
+  const portMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/ports\/(\d+)(\/.*)?$/);
+  if (portMatch) {
+    const workspaceId = decodeURIComponent(portMatch[1] ?? "");
+    const port = Number(portMatch[2]);
+    const path = `${portMatch[3] || "/"}${url.search}`;
+    return await redirectToPublicProxyRoute(workspaceId, `port-${port}`, path, request);
+  }
+
+  const fileMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/files(\/.*)$/);
+  if (fileMatch) return await workspaceFileEndpoint(decodeURIComponent(fileMatch[1] ?? ""), decodeURIComponent(fileMatch[2] ?? "/"), request);
+
+  return undefined;
+}
+
+async function validateSocket(request: Request, url: URL): Promise<SocketData | undefined> {
   const provisionMatch = url.pathname.match(/^\/provision-term\/([^/]+)\/ws$/);
   if (provisionMatch) {
     const session = decodeURIComponent(provisionMatch[1]);
@@ -404,6 +522,7 @@ function closeWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocke
 }
 
 await ensureAtelierWorkspaceProxy();
+await startPersistedPublicProxyRoutes();
 
 const maxPortAttempts = allowPortFallback ? 100 : 1;
 let serverPort = 0;
@@ -423,7 +542,6 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       idleTimeout: 255,
       async fetch(request, server) {
         const url = new URL(request.url);
-        const appHost = parseWorkspaceAppHost(request.headers.get("host"));
         const auth = await authResponse(request);
         if (auth) return auth;
 
@@ -434,8 +552,8 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
           return new Response("websocket upgrade failed", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });
         }
 
-        if (appHost?.appKey === "file") return await workspaceFileEndpoint(appHost.workspaceId, decodeURIComponent(url.pathname), request);
-        if (appHost) return await proxyWorkspaceAppRequest(appHost, request, resolveWorkspaceAppTarget, patchWorkspaceAppResponse);
+        const canonical = await handleCanonicalProxyRequest(url, request);
+        if (canonical) return canonical;
 
         const staticResponse = await serveStatic(url.pathname);
         if (staticResponse) return staticResponse;

@@ -292,7 +292,7 @@ export function createAgentNoticeController(Controller: StimulusControllerConstr
 }
 
 // ---------------------------------------------------------------------------
-// agent-proxy: fill subdomain proxy URLs for server-rendered embeds
+// agent-proxy: fill canonical proxy URLs for server-rendered embeds
 // ---------------------------------------------------------------------------
 
 function encodeFilePath(path: string): string {
@@ -300,11 +300,11 @@ function encodeFilePath(path: string): string {
 }
 
 function workspaceProxyUrl(workspaceId: string, appKey: string, path: string): string {
-  const port = window.location.port ? `:${window.location.port}` : "";
-  const hostSuffix = window.location.hostname === "localhost" ? "localhost" : window.location.hostname;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const proxyPath = appKey === "file" ? encodeFilePath(normalizedPath) : normalizedPath;
-  return `${window.location.protocol}//${appKey}--${workspaceId}.${hostSuffix}${port}${proxyPath}`;
+  if (appKey === "file") return `/workspaces/${encodeURIComponent(workspaceId)}/files${encodeFilePath(normalizedPath)}`;
+  const portMatch = appKey.match(/^port-(\d+)$/);
+  if (portMatch) return `/workspaces/${encodeURIComponent(workspaceId)}/ports/${portMatch[1]}${normalizedPath}`;
+  return `/workspaces/${encodeURIComponent(workspaceId)}/apps/${encodeURIComponent(appKey)}${normalizedPath}`;
 }
 
 export function createAgentProxyController(Controller: StimulusControllerConstructor) {

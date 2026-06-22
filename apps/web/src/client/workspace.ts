@@ -944,10 +944,9 @@ class WorkspaceAppFrameController extends Controller {
   }
 
   private frameSrc(): string {
-    const port = window.location.port ? `:${window.location.port}` : "";
     const path = this.hasInitialPathValue && this.initialPathValue ? this.initialPathValue : "/";
-    const hostSuffix = window.location.hostname === "localhost" ? "localhost" : window.location.hostname;
-    const url = new URL(`${window.location.protocol}//${this.appKeyValue}--${this.workspaceIdValue}.${hostSuffix}${port}${path.startsWith("/") ? path : `/${path}`}`);
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    const url = new URL(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/apps/${encodeURIComponent(this.appKeyValue)}${normalizedPath}`, window.location.href);
     clientHooks.workspaceAppFrameUrl({ appKey: this.appKeyValue, url, frame: this.element });
     return url.toString();
   }

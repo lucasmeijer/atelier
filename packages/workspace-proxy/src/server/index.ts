@@ -3,19 +3,21 @@ export interface WorkspaceAppHost {
   workspaceId: string;
 }
 
+export {
+  defaultPublicProxyPortRange,
+  ensureWorkspacePublicProxyRoute,
+  listWorkspacePublicProxyRoutes,
+  publicProxyPortRangeFromEnv,
+  readWorkspacePublicProxyState,
+  releaseWorkspacePublicProxyRoutes,
+  writeWorkspacePublicProxyState,
+  type PublicProxyPortRange,
+  type WorkspacePublicProxyRoute,
+  type WorkspacePublicProxyState,
+} from "./route-state.ts";
+
 export type WorkspaceAppTargetResolver = (app: WorkspaceAppHost, requestUrl: URL) => Promise<URL> | URL;
 export type WorkspaceAppResponseTransformer = (app: WorkspaceAppHost, response: Response, request: Request) => Promise<Response> | Response;
-
-export function parseWorkspaceAppHost(hostHeader: string | null): WorkspaceAppHost | undefined {
-  const host = (hostHeader ?? "").split(":")[0]?.toLowerCase() ?? "";
-  const label = host.split(".")[0] ?? "";
-  const separator = label.lastIndexOf("--");
-  if (separator <= 0 || separator === label.length - 2) return undefined;
-  const appKey = label.slice(0, separator);
-  const workspaceId = label.slice(separator + 2);
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(appKey) || !/^[a-z0-9][a-z0-9_.-]*$/.test(workspaceId)) return undefined;
-  return { appKey, workspaceId };
-}
 
 function stripHopByHop(headers: Headers): Headers {
   const next = new Headers(headers);
