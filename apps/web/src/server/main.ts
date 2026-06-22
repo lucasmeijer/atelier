@@ -27,7 +27,7 @@ import { createFileWorkspaceActivityStore, createWorkspaceRegistry } from "./wor
 import { workspaceModules } from "./workspace-modules.ts";
 
 const requestedPort = Number(process.env.PORT ?? 3000);
-const hostname = process.env.HOST ?? "localhost";
+const hostname = process.env.HOST ?? "0.0.0.0";
 const allowPortFallback = process.env.ATELIER_PORT_FALLBACK === "1";
 
 const authPassword = process.env.ATELIER_PASSWORD ?? "";
