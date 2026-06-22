@@ -31,6 +31,12 @@ describe("observable terminal normalization", () => {
     expect(command).toContain("status off");
   });
 
+  test("hides tmux dead-pane footer when panes remain on exit", () => {
+    const command = buildObservableSessionCommand({ session: "s", cwd: "/work", command: "/bin/bash", remainOnExit: true });
+    expect(command).toContain("remain-on-exit on");
+    expect(command).toContain("remain-on-exit-format ''");
+  });
+
   test("builds readonly fixed-size attach arguments", () => {
     const args = buildAttachArgs({ containerName: "atelier-ws", session: "s", cols: 120, rows: 30, readonly: true, fixedSize: true });
     expect(args).toContain("resize-window");

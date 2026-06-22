@@ -133,6 +133,7 @@ export function buildObservableSessionCommand(options: ObservableTerminalSession
     commands.push(`resize-window -t ${target} -x ${cols} -y ${rows}`);
   }
   if (options.remainOnExit) commands.push(`set-window-option -t ${target} remain-on-exit on`);
+  if (options.remainOnExit) commands.push(`set-window-option -t ${target} remain-on-exit-format ''`);
   commands.push(`set-option -t ${target} status ${options.status === true ? "on" : "off"}`);
   if (options.historyLimit) commands.push(`set-option -t ${target} history-limit ${options.historyLimit}`);
   return `${observableTerminalEnvPrefix()} tmux ${commands.join(" \\; ")}`;
@@ -147,7 +148,7 @@ export function buildCapturePaneCommand(options: { session: string; historyLimit
 }
 
 export function buildSetRemainOnExitCommand(): string {
-  return "tmux set-window-option remain-on-exit on";
+  return "tmux set-window-option remain-on-exit on; tmux set-window-option remain-on-exit-format ''";
 }
 
 export function buildListSessionsCommand(): string {

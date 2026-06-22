@@ -377,6 +377,10 @@ function toolClass(name: string): string {
   return `tool-${slug}`;
 }
 
+function domIdFragment(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "item";
+}
+
 interface ToolRenderer {
   known?: boolean;
   summary?: (tool: ToolView) => string;
@@ -593,17 +597,36 @@ function bashOutputHtml(text: string): string {
   return colorizePlainBuildOutput(text);
 }
 
+function bashResultHtml(tool: ToolView): string {
+  const displayAnsi = bashDetails(tool)?.displayAnsi;
+  const terminalHtml = typeof displayAnsi === "string" && displayAnsi.trim()
+    ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(displayAnsi)}</pre>`
+    : "";
+  const modelText = trimResult(tool);
+  const modelHtml = resultPreHtml(modelText, "agent-tool-result agent-tool-model");
+  if (!terminalHtml) return modelHtml;
+  if (!modelHtml) return terminalHtml;
+
+  const id = `bash-${domIdFragment(tool.callId)}`;
+  const terminalId = `${id}-terminal`;
+  const modelId = `${id}-model`;
+  return `<div class="agent-bash-result">
+    <input class="agent-bash-mode-input agent-bash-mode-terminal" type="radio" name="${escapeHtml(id)}" id="${escapeHtml(terminalId)}" checked>
+    <input class="agent-bash-mode-input agent-bash-mode-model" type="radio" name="${escapeHtml(id)}" id="${escapeHtml(modelId)}">
+    <div class="agent-bash-mode-tabs" aria-label="Bash output view">
+      <label class="agent-bash-mode-tab agent-bash-mode-tab-terminal" for="${escapeHtml(terminalId)}">Terminal</label>
+      <label class="agent-bash-mode-tab agent-bash-mode-tab-model" for="${escapeHtml(modelId)}">Model</label>
+    </div>
+    <div class="agent-bash-pane agent-bash-pane-terminal">${terminalHtml}</div>
+    <div class="agent-bash-pane agent-bash-pane-model">${modelHtml}</div>
+  </div>`;
+}
+
 const bashRenderer: ToolRenderer = {
   known: true,
   flushSingleBlock: true,
   summary: commandSummary,
-  resultHtml: (_ctx, tool) => {
-    const displayAnsi = bashDetails(tool)?.displayAnsi;
-    if (typeof displayAnsi === "string" && displayAnsi.trim()) {
-      return `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(displayAnsi)}</pre>`;
-    }
-    return resultPreHtml(trimResult(tool));
-  },
+  resultHtml: (_ctx, tool) => bashResultHtml(tool),
 };
 
 const readRenderer: ToolRenderer = {

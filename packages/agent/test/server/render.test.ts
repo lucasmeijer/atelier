@@ -59,18 +59,23 @@ describe("tool rendering", () => {
     expect(done).not.toContain("agent-tool-params");
   });
 
-  test("bash renders ANSI display details instead of model text", () => {
+  test("bash defaults to terminal display with a model output toggle", () => {
     const html = renderToolCard(ctx, tool({
       name: "bash",
       args: { command: "printf color" },
       resultText: "plain model text",
       details: { displayAnsi: "\x1b[31mred\x1b[0m <tag>" },
     }));
+    expect(html).toContain("agent-bash-result");
+    expect(html).toContain("Terminal");
+    expect(html).toContain("Model");
+    expect(html).toContain("checked");
     expect(html).toContain("agent-tool-ansi");
     expect(html).toContain("color:#cd0000");
     expect(html).toContain("red");
     expect(html).toContain("&lt;tag&gt;");
-    expect(html).not.toContain("plain model text");
+    expect(html).toContain("agent-tool-model");
+    expect(html).toContain("plain model text");
   });
 
   test("bash colorizes plain CMake build output when tools emit no ANSI", () => {

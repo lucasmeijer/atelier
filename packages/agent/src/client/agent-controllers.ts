@@ -254,7 +254,11 @@ function createAgentCopyController(Controller: StimulusControllerConstructor) {
       event.preventDefault();
       event.stopPropagation();
       const tool = this.element.closest(".agent-tool");
-      const result = tool?.querySelector<HTMLElement>(".agent-tool-result");
+      const checked = tool?.querySelector<HTMLInputElement>(".agent-bash-mode-input:checked");
+      const pane = checked?.classList.contains("agent-bash-mode-model")
+        ? tool?.querySelector<HTMLElement>(".agent-bash-pane-model")
+        : tool?.querySelector<HTMLElement>(".agent-bash-pane-terminal");
+      const result = pane?.querySelector<HTMLElement>(".agent-tool-result") ?? tool?.querySelector<HTMLElement>(".agent-tool-result");
       const text = result?.textContent ?? "";
       if (!text) return;
       await navigator.clipboard.writeText(text);
