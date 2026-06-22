@@ -17,7 +17,7 @@
     "check": "bun run generate:workspace-modules && bunx tsc --noEmit -p tsconfig.json",
     "test": "bun run generate:workspace-modules && bun test",
     "ci": "bun ci && bun run check && bun run test",
-    "web": "bun run --cwd apps/web build:client && bun --watch run apps/web/src/server/main.ts",
+    "web": "bun run --cwd apps/web dev",
     "smoke:vscode": "node apps/web/smoke/vscode-smoke.mjs"
   },
   "devDependencies": {
