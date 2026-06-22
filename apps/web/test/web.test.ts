@@ -37,6 +37,7 @@ function createTestApp(options: TestAppOptions = {}) {
     hub,
     layouts,
     provisionWorkspace: options.provision ?? (async () => {}),
+    provisioningHooks: [],
     inspectDeleteSafety: options.inspect ?? (async (id) => ({ workspaceId: id, issues: [] })),
     destroyWorkspace: options.destroy ?? (async () => {}),
     logError: () => {},
@@ -222,6 +223,7 @@ describe("web app contracts", () => {
       hub,
       layouts: createWorkspaceLayoutStore(),
       provisionWorkspace: async () => {},
+      provisioningHooks: [],
       inspectDeleteSafety: async (id) => ({ workspaceId: id, issues: [] }),
       destroyWorkspace: async () => {},
     });

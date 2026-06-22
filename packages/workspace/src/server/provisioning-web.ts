@@ -41,11 +41,17 @@ export interface WorkspaceProvisioningStore {
   render(workspaceId: string, options?: { failed?: boolean; error?: string }): string;
 }
 
+export interface WorkspaceProvisionSeedStep {
+  id: string;
+  label: string;
+  parentId?: string;
+}
+
 export const workspaceProvisioningStaticFiles = {
   "/provisioning.css": { url: new URL("../client/provisioning.css", import.meta.url), contentType: "text/css; charset=utf-8" },
 } as const;
 
-const seedSteps: Array<{ id: string; label: string }> = [
+const workspaceCreationSeedSteps: WorkspaceProvisionSeedStep[] = [
   { id: "workspace.workdir", label: "Create workspace directory" },
   { id: "workspace.source", label: "Prepare workspace source" },
   { id: "workspace.plan", label: "Prepare workspace container plan" },
@@ -53,9 +59,9 @@ const seedSteps: Array<{ id: string; label: string }> = [
   { id: "workspace.container", label: "Start workspace container" },
   { id: "workspace.startup", label: "Wait for workspace startup" },
   { id: "workspace.verify", label: "Verify workspace" },
-  { id: "workspace.agent", label: "Prepare default agent" },
-  { id: "workspace.integrations", label: "Run workspace startup integrations" },
 ];
+
+const workspaceIntegrationSeedStep: WorkspaceProvisionSeedStep = { id: "workspace.integrations", label: "Run workspace startup integrations" };
 
 function escapeHtml(value: unknown): string {
   return String(value)
@@ -82,7 +88,7 @@ function renderProvisionStep(step: WorkspaceProvisionStep, children: WorkspacePr
   return `<li class="provision-step ${step.status}"><div class="provision-step-row"><span class="provision-step-icon">${statusIcon(step.status)}</span><div><b>${escapeHtml(step.label)}</b>${detail}</div></div>${terminal}${output}${error}${childHtml ? `<ol class="provision-children">${childHtml}</ol>` : ""}</li>`;
 }
 
-export function createWorkspaceProvisioningStore(options: { onChange?: (workspaceId: string) => void } = {}): WorkspaceProvisioningStore {
+export function createWorkspaceProvisioningStore(options: { onChange: (workspaceId: string) => void; seedSteps: WorkspaceProvisionSeedStep[] }): WorkspaceProvisioningStore {
   const stepsByWorkspace = new Map<string, Map<string, WorkspaceProvisionStep>>();
   let order = 0;
 
@@ -108,14 +114,14 @@ export function createWorkspaceProvisioningStore(options: { onChange?: (workspac
       error: event.error ?? existing?.error,
       order: existing?.order ?? ++order,
     });
-    options.onChange?.(event.workspaceId);
+    options.onChange(event.workspaceId);
   }
 
   return {
     apply,
 
     seed(workspaceId) {
-      for (const step of seedSteps) apply({ workspaceId, ...step, status: "pending" });
+      for (const step of [...workspaceCreationSeedSteps, ...options.seedSteps, workspaceIntegrationSeedStep]) apply({ workspaceId, ...step, status: "pending" });
     },
 
     render(workspaceId, renderOptions = {}) {

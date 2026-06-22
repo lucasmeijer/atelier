@@ -217,13 +217,19 @@ const app = createWebApp({
   layouts,
   events: atelierEvents,
   preferences: createFileWebPreferenceStore(join(defaultDataDir(), "view-state", "preferences.json")),
+  provisioningHooks,
   workspaceRemovedHandlers,
   async provisionWorkspace(id, options) {
     await createWorkspace({ id, events: atelierEvents, ...sourceRepositoryFromContext(options?.context), context: options?.context });
     for (const hook of provisioningHooks) {
       await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: hook.id, label: hook.label, parentId: hook.parentId, status: "running" });
-      await hook.run({ workspaceId: id, creationContext: options?.context, events: atelierEvents });
-      await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: hook.id, label: hook.label, parentId: hook.parentId, status: "done" });
+      try {
+        await hook.run({ workspaceId: id, creationContext: options?.context, events: atelierEvents });
+        await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: hook.id, label: hook.label, parentId: hook.parentId, status: "done" });
+      } catch (error) {
+        await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: hook.id, label: hook.label, parentId: hook.parentId, status: "failed", error: error instanceof Error ? error.message : String(error) });
+        throw error;
+      }
     }
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "running" });
     await atelierEvents.emit("workspace_created", { workspaceId: id, context: options?.context });

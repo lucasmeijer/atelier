@@ -24,7 +24,7 @@ import {
 } from "@atelier/repository";
 import { generateWorkspaceId, listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
-import { atelierName, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceTabContribution } from "@atelier/shared";
+import { atelierName, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
 import type { StreamHub } from "./stream-hub.ts";
 import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
 import type { WebPreferenceStore } from "./preferences.ts";
@@ -48,6 +48,7 @@ export interface WebAppDeps {
   destroyWorkspace(id: string): Promise<void>;
   /** Receives background task failures. Defaults to console.error. */
   logError?(message: string): void;
+  provisioningHooks: WorkspaceServerProvisioningHook[];
   workspaceRemovedHandlers?: Array<(workspaceId: string) => void | Promise<void>>;
 }
 
@@ -160,7 +161,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const logError = deps.logError ?? ((message: string) => console.error(message));
   const versionTooltip = atelierVersionTooltip();
 
-  const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId) });
+  const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId), seedSteps: deps.provisioningHooks });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
 
   async function preferredNewAgentModel(): Promise<string | undefined> {
