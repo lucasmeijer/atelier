@@ -12,8 +12,8 @@
     "@atelier/core": "workspace:*",
     "@atelier/observable-terminal": "workspace:*",
     "@atelier/shared": "workspace:*",
-    "@earendil-works/pi-ai": "^0.79.0",
-    "@earendil-works/pi-coding-agent": "^0.79.0",
+    "@earendil-works/pi-ai": "catalog:",
+    "@earendil-works/pi-coding-agent": "catalog:",
     "highlight.js": "^11.11.1",
     "typebox": "^1.0.57",
     "@atelier/workspace": "workspace:*"

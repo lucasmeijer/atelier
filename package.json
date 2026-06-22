@@ -2,10 +2,16 @@
   "name": "atelier",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*"
+    ],
+    "catalog": {
+      "@earendil-works/pi-ai": "^0.79.10",
+      "@earendil-works/pi-coding-agent": "^0.79.10"
+    }
+  },
   "scripts": {
     "generate:workspace-modules": "bun run --cwd apps/web scripts/generate-workspace-modules.ts",
     "check": "bun run generate:workspace-modules && bunx tsc --noEmit -p tsconfig.json",
