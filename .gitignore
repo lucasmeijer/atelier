@@ -5,3 +5,4 @@ node_modules/
 apps/web/public/*.js
 apps/web/public/assets/
 apps/web/public/assets-manifest.json
+apps/web/src/server/workspace-modules.generated.ts

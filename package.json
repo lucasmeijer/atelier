@@ -7,9 +7,10 @@
     "packages/*"
   ],
   "scripts": {
-    "check": "bunx tsc --noEmit -p tsconfig.json",
-    "test": "bun test",
-    "ci": "bun ci && bun run check && bun test",
+    "generate:workspace-modules": "bun run --cwd apps/web scripts/generate-workspace-modules.ts",
+    "check": "bun run generate:workspace-modules && bunx tsc --noEmit -p tsconfig.json",
+    "test": "bun run generate:workspace-modules && bun test",
+    "ci": "bun ci && bun run check && bun run test",
     "web": "bun run --cwd apps/web build:client && bun --watch run apps/web/src/server/main.ts",
     "smoke:vscode": "node apps/web/smoke/vscode-smoke.mjs"
   },
