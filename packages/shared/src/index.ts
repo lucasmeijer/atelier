@@ -87,3 +87,52 @@ export interface WorkspaceModule {
   tabs?: WorkspaceModuleTabLifecycleHandler[];
   attachToWorkspace(context: WorkspaceAttachContext): Promise<WorkspaceAttachment> | WorkspaceAttachment;
 }
+
+export interface WorkspaceClientApplication {
+  register(identifier: string, controllerConstructor: unknown): void;
+  getControllerForElementAndIdentifier(element: Element, identifier: string): unknown;
+}
+
+export type WorkspaceClientControllerConstructor = new (...args: unknown[]) => { element: Element };
+
+export interface WorkspaceClientActivateTabContext {
+  workspaceId: string;
+  tabKey: string;
+  group: Element;
+  application: WorkspaceClientApplication;
+}
+
+export interface WorkspaceClientFocusContext {
+  workspaceId?: string;
+  tabKey?: string;
+  pane?: HTMLElement | null;
+  group: HTMLElement;
+  application: WorkspaceClientApplication;
+}
+
+export interface WorkspaceClientWorkspaceAppFrameContext {
+  appKey: string;
+  url: URL;
+  frame: HTMLIFrameElement;
+}
+
+export interface WorkspaceClientHooks {
+  onActivateTab(handler: (context: WorkspaceClientActivateTabContext) => void): void;
+  onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void;
+  onRevealTab(handler: (context: WorkspaceClientActivateTabContext) => void): void;
+  onChooseUnreadTab(handler: (tabs: string[]) => string | undefined): void;
+  onWorkspaceCommand(handler: (commandId: string) => boolean | void | Promise<boolean | void>): void;
+  onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void;
+  onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void;
+}
+
+export interface WorkspaceClientModuleContext {
+  application: WorkspaceClientApplication;
+  Controller: WorkspaceClientControllerConstructor;
+  hooks: WorkspaceClientHooks;
+}
+
+export interface WorkspaceClientModule {
+  id: string;
+  install(context: WorkspaceClientModuleContext): void | Promise<void>;
+}

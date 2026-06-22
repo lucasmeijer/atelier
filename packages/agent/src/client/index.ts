@@ -1,4 +1,5 @@
 export {
+  agentClientModule,
   createAgentAttachmentsController,
   createAgentAutosubmitController,
   createAgentCopyController,

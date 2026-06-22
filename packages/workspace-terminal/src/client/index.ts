@@ -4,4 +4,5 @@ export {
   startTerminal,
   startTerminalTab,
   stopTerminal,
+  terminalClientModule,
 } from "./terminal-controllers.ts";

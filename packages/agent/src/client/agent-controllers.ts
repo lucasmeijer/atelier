@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 
 import { createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
+import type { WorkspaceClientModule } from "@atelier/shared";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
@@ -458,3 +459,51 @@ export function startAgentTab(application: StimulusApplication, tabName: string,
   const controller = pane ? application.getControllerForElementAndIdentifier(pane, "agent-pane") as AgentPaneControllerInstance | null : null;
   controller?.start();
 }
+
+export const agentClientModule: WorkspaceClientModule = {
+  id: "agent",
+  install({ application, Controller, hooks }) {
+    registerAgentStreamActions();
+    application.register("agent-pane", createAgentPaneController(Controller));
+    application.register("agent-attachments", createAgentAttachmentsController(Controller));
+    application.register("agent-autosubmit", createAgentAutosubmitController(Controller));
+    application.register("agent-copy", createAgentCopyController(Controller));
+    application.register("agent-elapsed", createAgentElapsedController(Controller));
+    application.register("agent-notice", createAgentNoticeController(Controller));
+    application.register("agent-proxy", createAgentProxyController(Controller));
+    application.register("agent-term", createAgentTermController(Controller));
+
+    hooks.onActivateTab(({ tabKey, workspaceId }) => startAgentTab(application, tabKey, workspaceId));
+    hooks.onChooseUnreadTab((tabs) => tabs.find((tab) => tab.startsWith("agent:")));
+    hooks.onFocusGroup(({ pane }) => {
+      const agentInput = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
+      if (!agentInput) return false;
+      agentInput.focus();
+      return true;
+    });
+    hooks.onRevealTab(({ tabKey, group }) => {
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        const pane = group.querySelector<HTMLElement>(`.tab-pane.active[data-tab-pane="${CSS.escape(tabKey)}"]`);
+        const agentPane = pane?.querySelector<HTMLElement>('[data-controller~="agent-pane"]');
+        const controller = agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
+        controller?.revealLatestAssistant();
+      }));
+    });
+    hooks.onWorkspaceCommand((commandId) => {
+      if (commandId !== "agent.launch-source-repo-workspace") return false;
+      const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.active");
+      const sourceRepositoryId = resident?.dataset.sourceRepositoryId;
+      if (!sourceRepositoryId) return true;
+      const modalIdPart = sourceRepositoryId.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const dialog = document.getElementById(`agent_launch_repo_modal_${modalIdPart}`) as HTMLDialogElement | null;
+      if (!dialog) return true;
+      if (!dialog.open) dialog.showModal();
+      const input = dialog.querySelector<HTMLTextAreaElement>("textarea");
+      if (input) requestAnimationFrame(() => {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      });
+      return true;
+    });
+  },
+};

@@ -1,22 +1,13 @@
 /// <reference lib="dom" />
 
-import {
-  createAgentAttachmentsController,
-  createAgentAutosubmitController,
-  createAgentCopyController,
-  createAgentElapsedController,
-  createAgentNoticeController,
-  createAgentPaneController,
-  createAgentProxyController,
-  createAgentTermController,
-  registerAgentStreamActions,
-  startAgentTab,
-  type AgentPaneControllerInstance,
-} from "@atelier/agent/client";
-import { createBrowserAddressController, createBrowserPaneController } from "@atelier/browser/client";
-import { createKeypressProbeController, installKeypressProbe } from "@atelier/keypress-probe/client";
+import type {
+  WorkspaceClientActivateTabContext,
+  WorkspaceClientFocusContext,
+  WorkspaceClientHooks,
+  WorkspaceClientWorkspaceAppFrameContext,
+} from "@atelier/shared";
 import { createProvisionTerminalController } from "@atelier/workspace/client";
-import { createTerminalPaneController, initializeTerminalTheme, startTerminal, startTerminalTab } from "@atelier/workspace-terminal/client";
+import { workspaceClientModules } from "./workspace-client-modules.ts";
 
 declare global {
   interface Window {
@@ -38,10 +29,63 @@ async function waitForStimulus(): Promise<typeof window.Stimulus> {
 
 const { Application, Controller } = await waitForStimulus();
 
-installKeypressProbe();
+class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
+  private readonly activateTabHandlers: Array<(context: WorkspaceClientActivateTabContext) => void> = [];
+  private readonly focusGroupHandlers: Array<(context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>> = [];
+  private readonly revealTabHandlers: Array<(context: WorkspaceClientActivateTabContext) => void> = [];
+  private readonly chooseUnreadTabHandlers: Array<(tabs: string[]) => string | undefined> = [];
+  private readonly workspaceCommandHandlers: Array<(commandId: string) => boolean | void | Promise<boolean | void>> = [];
+  private readonly workspaceAppFrameUrlHandlers: Array<(context: WorkspaceClientWorkspaceAppFrameContext) => void> = [];
+  private readonly workspaceAppFrameRefreshHandlers: Array<(context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void> = [];
 
-initializeTerminalTheme();
-registerAgentStreamActions();
+  onActivateTab(handler: (context: WorkspaceClientActivateTabContext) => void): void { this.activateTabHandlers.push(handler); }
+  onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void { this.focusGroupHandlers.push(handler); }
+  onRevealTab(handler: (context: WorkspaceClientActivateTabContext) => void): void { this.revealTabHandlers.push(handler); }
+  onChooseUnreadTab(handler: (tabs: string[]) => string | undefined): void { this.chooseUnreadTabHandlers.push(handler); }
+  onWorkspaceCommand(handler: (commandId: string) => boolean | void | Promise<boolean | void>): void { this.workspaceCommandHandlers.push(handler); }
+  onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void { this.workspaceAppFrameUrlHandlers.push(handler); }
+  onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void { this.workspaceAppFrameRefreshHandlers.push(handler); }
+
+  activateTab(context: WorkspaceClientActivateTabContext): void {
+    this.activateTabHandlers.forEach((handler) => handler(context));
+  }
+
+  async focusGroup(context: WorkspaceClientFocusContext): Promise<boolean> {
+    for (const handler of this.focusGroupHandlers) {
+      if (await handler(context)) return true;
+    }
+    return false;
+  }
+
+  revealTab(context: WorkspaceClientActivateTabContext): void {
+    this.revealTabHandlers.forEach((handler) => handler(context));
+  }
+
+  chooseUnreadTab(tabs: string[]): string | undefined {
+    for (const handler of this.chooseUnreadTabHandlers) {
+      const tab = handler(tabs);
+      if (tab) return tab;
+    }
+    return tabs[0];
+  }
+
+  async handleWorkspaceCommand(commandId: string): Promise<boolean> {
+    for (const handler of this.workspaceCommandHandlers) {
+      if (await handler(commandId)) return true;
+    }
+    return false;
+  }
+
+  workspaceAppFrameUrl(context: WorkspaceClientWorkspaceAppFrameContext): void {
+    this.workspaceAppFrameUrlHandlers.forEach((handler) => handler(context));
+  }
+
+  workspaceAppFrameRefresh(context: { appKey: string; frame: HTMLIFrameElement; load(): void }): void {
+    this.workspaceAppFrameRefreshHandlers.forEach((handler) => handler(context));
+  }
+}
+
+const clientHooks = new WorkspaceClientHookRegistry();
 
 class WorkspaceShellController extends Controller {
   static targets = ["sidebar", "toggle"];
@@ -99,9 +143,8 @@ class WorkspaceTabsController extends Controller {
       this.activateTab(this.initialTabValue, { persist: false });
       return;
     }
-    const activeTerminal = this.root.querySelector<HTMLElement>(".tab-pane.active[data-tab-pane^='terminal:']");
-    const title = activeTerminal?.dataset.tabPane?.slice("terminal:".length);
-    if (title) void startTerminal(this.workspaceIdValue, title);
+    const activeTab = this.element.querySelector<HTMLElement>(".group-tab.active[data-tab]")?.dataset.tab;
+    if (activeTab) this.activateTab(activeTab, { persist: false });
   }
 
   private get root(): ParentNode {
@@ -139,8 +182,7 @@ class WorkspaceTabsController extends Controller {
       pane.classList.toggle("active", pane.dataset.tabPane === tabName);
     });
 
-    startTerminalTab(this.workspaceIdValue, tabName);
-    startAgentTab(application, tabName, this.workspaceIdValue);
+    clientHooks.activateTab({ workspaceId: this.workspaceIdValue, tabKey: tabName, group: this.group, application });
     startWorkspaceAppFrames(this.group, tabName);
     if (options.persist !== false) void this.persistActiveTab(tabName);
   }
@@ -417,7 +459,7 @@ class AtelierShortcutsController extends Controller {
     const workspaceId = decodeURIComponent(url.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1] ?? "");
     if (!workspaceId) return;
     const row = document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`);
-    const revealUnreadTab = row ? this.unreadTabs(row).find((tab) => tab.startsWith("agent:")) : undefined;
+    const revealUnreadTab = row ? clientHooks.chooseUnreadTab(this.unreadTabs(row)) : undefined;
     workspaceListController()?.markActiveWorkspace(workspaceId);
     void residencyController()?.selectWorkspace(workspaceId, url.pathname, { revealUnreadTab });
   }
@@ -440,7 +482,7 @@ class AtelierShortcutsController extends Controller {
     const workspaceId = row?.dataset.workspaceId;
     const href = row?.querySelector<HTMLAnchorElement>("a.row-main")?.href;
     if (!row || !workspaceId || !href) return;
-    const revealUnreadTab = this.unreadTabs(row).find((tab) => tab.startsWith("agent:"));
+    const revealUnreadTab = clientHooks.chooseUnreadTab(this.unreadTabs(row));
     workspaceListController()?.markActiveWorkspace(workspaceId);
     await residencyController()?.selectWorkspace(workspaceId, href, { revealUnreadTab });
   }
@@ -448,10 +490,7 @@ class AtelierShortcutsController extends Controller {
   private async executeActiveWorkspaceCommand(commandId: string): Promise<void> {
     const workspaceId = this.activeWorkspaceId();
     if (!workspaceId) return;
-    if (commandId === "agent.launch-source-repo-workspace") {
-      this.openPrerenderedSourceRepoLaunchModal();
-      return;
-    }
+    if (await clientHooks.handleWorkspaceCommand(commandId)) return;
     try {
       const response = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/commands/${encodeURIComponent(commandId)}`, {
         method: "POST",
@@ -465,20 +504,6 @@ class AtelierShortcutsController extends Controller {
     }
   }
 
-  private openPrerenderedSourceRepoLaunchModal(): void {
-    const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.active");
-    const sourceRepositoryId = resident?.dataset.sourceRepositoryId;
-    if (!sourceRepositoryId) return;
-    const dialog = document.getElementById(`agent_launch_repo_modal_${this.domIdPart(sourceRepositoryId)}`) as HTMLDialogElement | null;
-    if (!dialog) return;
-    if (!dialog.open) dialog.showModal();
-    focusDialogPromptEnd(dialog);
-  }
-
-  private domIdPart(value: string): string {
-    return value.replace(/[^a-zA-Z0-9_-]/g, "_");
-  }
-
   private focusAdjacentGroup(direction: -1 | 1): void {
     const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.active");
     if (!resident) return;
@@ -489,10 +514,10 @@ class AtelierShortcutsController extends Controller {
     const current = activeElement?.closest<HTMLElement>(".workspace-group");
     const currentIndex = current && groups.includes(current) ? groups.indexOf(current) : 0;
     const nextIndex = (currentIndex + direction + groups.length) % groups.length;
-    this.focusGroup(groups[nextIndex] ?? groups[0]);
+    void this.focusGroup(groups[nextIndex] ?? groups[0]);
   }
 
-  private focusGroup(group: HTMLElement | undefined): void {
+  private async focusGroup(group: HTMLElement | undefined): Promise<void> {
     if (!group) return;
     const workspaceId = group.closest<HTMLElement>("[data-workspace-id]")?.dataset.workspaceId;
     const tabName = group.querySelector<HTMLElement>(".group-tab.active[data-tab]")?.dataset.tab;
@@ -500,16 +525,7 @@ class AtelierShortcutsController extends Controller {
       ? group.querySelector<HTMLElement>(`.tab-pane.active[data-tab-pane="${CSS.escape(tabName)}"]`)
       : group.querySelector<HTMLElement>(".tab-pane.active[data-tab-pane]");
 
-    if (workspaceId && tabName?.startsWith("terminal:")) {
-      void startTerminal(workspaceId, tabName.slice("terminal:".length), { focus: true });
-      return;
-    }
-
-    const agentInput = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
-    if (agentInput) {
-      agentInput.focus();
-      return;
-    }
+    if (await clientHooks.focusGroup({ workspaceId, tabKey: tabName, pane, group, application })) return;
 
     const iframe = pane?.querySelector<HTMLIFrameElement>("iframe");
     if (iframe) {
@@ -728,21 +744,13 @@ class WorkspaceResidencyController extends Controller {
     if (activeTab) controller?.activateTab(activeTab, { persist: false });
     const workspaceId = resident.dataset.workspaceId;
     if (workspaceId) void this.activateWorkspace(workspaceId);
-    if (revealTab?.startsWith("agent:")) this.revealLatestAssistant(resident, revealTab);
+    const group = tabs?.closest(".workspace-group") ?? resident;
+    if (revealTab && workspaceId) clientHooks.revealTab({ workspaceId, tabKey: revealTab, group, application });
   }
 
   private tabbarForTab(resident: HTMLElement, tabName: string): HTMLElement | null {
     const tab = resident.querySelector<HTMLElement>(`.group-tab[data-tab="${CSS.escape(tabName)}"]`);
     return tab?.closest<HTMLElement>('[data-controller~="workspace-tabs"]') ?? null;
-  }
-
-  private revealLatestAssistant(resident: HTMLElement, tabName: string): void {
-    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-      const pane = resident.querySelector<HTMLElement>(`.tab-pane.active[data-tab-pane="${CSS.escape(tabName)}"]`);
-      const agentPane = pane?.querySelector<HTMLElement>('[data-controller~="agent-pane"]');
-      const controller = agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
-      controller?.revealLatestAssistant();
-    }));
   }
 
   private async activateWorkspace(workspaceId: string): Promise<void> {
@@ -815,7 +823,7 @@ class WorkspaceListController extends Controller {
     }
     event.preventDefault();
     const workspaceId = row.dataset.workspaceId;
-    const revealUnreadTab = this.unreadTabs(row).find((tab) => tab.startsWith("agent:"));
+    const revealUnreadTab = clientHooks.chooseUnreadTab(this.unreadTabs(row));
     if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href, { revealUnreadTab });
     this.markActive(workspaceId);
   }
@@ -933,7 +941,6 @@ class WorkspaceAppFrameController extends Controller {
   load(): void {
     const src = this.frameSrc();
     if (this.element.src !== src) this.element.src = src;
-    this.element.closest(".browser-shell")?.querySelector<HTMLAnchorElement>(".browser-open-external")?.setAttribute("href", src);
   }
 
   private frameSrc(): string {
@@ -941,12 +948,12 @@ class WorkspaceAppFrameController extends Controller {
     const path = this.hasInitialPathValue && this.initialPathValue ? this.initialPathValue : "/";
     const hostSuffix = window.location.hostname === "localhost" ? "localhost" : window.location.hostname;
     const url = new URL(`${window.location.protocol}//${this.appKeyValue}--${this.workspaceIdValue}.${hostSuffix}${port}${path.startsWith("/") ? path : `/${path}`}`);
-    if (this.appKeyValue === "vscode") addAtelierThemeParams(url);
+    clientHooks.workspaceAppFrameUrl({ appKey: this.appKeyValue, url, frame: this.element });
     return url.toString();
   }
 
   private themeChanged = (): void => {
-    if (this.appKeyValue === "vscode" && this.element.src) this.load();
+    clientHooks.workspaceAppFrameRefresh({ appKey: this.appKeyValue, frame: this.element, load: () => this.load() });
   };
 
   private isActivePane(): boolean {
@@ -960,30 +967,6 @@ function startWorkspaceAppFrames(root: ParentNode, tabName: string): void {
     const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame") as { activate?: () => void } | null;
     controller?.activate?.();
   });
-}
-
-function currentAtelierTheme(): string {
-  const active = document.documentElement.dataset.theme;
-  if (active) return active;
-  try {
-    return localStorage.getItem("atelier.theme") || "cappuccino";
-  } catch {
-    return "cappuccino";
-  }
-}
-
-function cssVariable(name: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-}
-
-function addAtelierThemeParams(url: URL): void {
-  url.searchParams.set("atelierTheme", currentAtelierTheme());
-  url.searchParams.set("atelierBg", cssVariable("--bg"));
-  url.searchParams.set("atelierPanel", cssVariable("--panel"));
-  url.searchParams.set("atelierElev", cssVariable("--elev"));
-  url.searchParams.set("atelierText", cssVariable("--text"));
-  url.searchParams.set("atelierLine", cssVariable("--line"));
-  url.searchParams.set("atelierAccent", cssVariable("--accent"));
 }
 
 class WorkspaceTitleEditController extends Controller {
@@ -1372,25 +1355,14 @@ class AgentSelectMenuController extends Controller {
 }
 
 const application = Application.start();
+for (const module of workspaceClientModules) await module.install({ application, Controller, hooks: clientHooks });
 application.register("workspace-shell", WorkspaceShellController);
 application.register("workspace-tabs", WorkspaceTabsController);
 application.register("workspace-tab-close", WorkspaceTabCloseController);
 application.register("workspace-groups", WorkspaceGroupsController);
 application.register("workspace-residency", WorkspaceResidencyController);
-application.register("keypress-probe", createKeypressProbeController(Controller));
 application.register("atelier-shortcuts", AtelierShortcutsController);
 application.register("submit-shortcut", SubmitShortcutController);
-application.register("terminal-pane", createTerminalPaneController(Controller));
-application.register("agent-pane", createAgentPaneController(Controller));
-application.register("agent-attachments", createAgentAttachmentsController(Controller));
-application.register("agent-autosubmit", createAgentAutosubmitController(Controller));
-application.register("agent-copy", createAgentCopyController(Controller));
-application.register("agent-elapsed", createAgentElapsedController(Controller));
-application.register("agent-notice", createAgentNoticeController(Controller));
-application.register("agent-proxy", createAgentProxyController(Controller));
-application.register("agent-term", createAgentTermController(Controller));
-application.register("browser-pane", createBrowserPaneController(Controller));
-application.register("browser-address", createBrowserAddressController(Controller));
 application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);
 application.register("workspace-list", WorkspaceListController);

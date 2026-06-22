@@ -1,5 +1,7 @@
 /// <reference lib="dom" />
 
+import type { WorkspaceClientModule } from "@atelier/shared";
+
 type StimulusControllerBase = new (...args: unknown[]) => { element: Element };
 
 export type KeypressProbeDetail = {
@@ -103,3 +105,11 @@ export function createKeypressProbeController(Controller: StimulusControllerBase
     }
   };
 }
+
+export const keypressProbeClientModule: WorkspaceClientModule = {
+  id: "keypress-probe",
+  install({ application, Controller }) {
+    installKeypressProbe();
+    application.register("keypress-probe", createKeypressProbeController(Controller));
+  },
+};

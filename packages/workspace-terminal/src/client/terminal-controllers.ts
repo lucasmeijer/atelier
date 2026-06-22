@@ -9,6 +9,7 @@ import {
   type ObservableTerminalViewer,
 } from "@atelier/observable-terminal/client";
 import { observableTerminalTabPrefix } from "@atelier/observable-terminal/shared";
+import type { WorkspaceClientModule } from "@atelier/shared";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
@@ -161,3 +162,17 @@ export function createTerminalPaneController(Controller: StimulusControllerConst
     }
   };
 }
+
+export const terminalClientModule: WorkspaceClientModule = {
+  id: "terminal",
+  install({ application, Controller, hooks }) {
+    initializeTerminalTheme();
+    application.register("terminal-pane", createTerminalPaneController(Controller));
+    hooks.onActivateTab(({ workspaceId, tabKey }) => startTerminalTab(workspaceId, tabKey));
+    hooks.onFocusGroup(({ workspaceId, tabKey }) => {
+      if (!workspaceId || !tabKey?.startsWith(observableTerminalTabPrefix)) return false;
+      void startTerminal(workspaceId, tabKey.slice(observableTerminalTabPrefix.length), { focus: true });
+      return true;
+    });
+  },
+};

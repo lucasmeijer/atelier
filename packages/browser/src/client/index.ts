@@ -1,5 +1,7 @@
 /// <reference lib="dom" />
 
+import type { WorkspaceClientModule } from "@atelier/shared";
+
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
 type BrowserBridgeLocationMessage = {
@@ -169,3 +171,14 @@ function mapProxyUrlToBrowserUrl(proxyHref: string, targetOrigin: string): strin
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
+
+export const browserClientModule: WorkspaceClientModule = {
+  id: "browser",
+  install({ application, Controller, hooks }) {
+    application.register("browser-pane", createBrowserPaneController(Controller));
+    application.register("browser-address", createBrowserAddressController(Controller));
+    hooks.onWorkspaceAppFrameUrl(({ frame, url }) => {
+      frame.closest(".browser-shell")?.querySelector<HTMLAnchorElement>(".browser-open-external")?.setAttribute("href", url.toString());
+    });
+  },
+};
