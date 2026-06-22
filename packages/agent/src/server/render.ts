@@ -261,10 +261,10 @@ export function renderTranscript(ctx: AgentRenderContext, sections: SectionView[
 function renderSystemPromptCard(ctx: AgentRenderContext, systemPrompt?: string): string {
   const prompt = systemPrompt?.trim();
   if (!prompt) return "";
-  return `<details class="agent-tool done tool-system-prompt" id="${ids.systemPrompt(ctx)}">
+  return readingRow(`<details class="agent-tool done tool-system-prompt" id="${ids.systemPrompt(ctx)}">
     <summary class="agent-tool-head"><code class="agent-tool-name">system prompt</code></summary>
     <div class="agent-tool-detail flush"><pre class="agent-tool-code agent-system-prompt-body">${escapeHtml(prompt)}</pre></div>
-  </details>`;
+  </details>`);
 }
 
 export function renderSection(ctx: AgentRenderContext, section: SectionView, options: { collapsed?: boolean } = {}): string {
