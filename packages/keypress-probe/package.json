@@ -7,10 +7,6 @@
     "./server": "./src/server/index.ts",
     "./client": "./src/client/index.ts"
   },
-  "atelier": {
-    "clientModule": "keypressProbeClientModule",
-    "clientModuleOrder": 50
-  },
   "dependencies": {
     "@atelier/shared": "workspace:*"
   }

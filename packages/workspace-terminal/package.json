@@ -7,10 +7,6 @@
     "./server": "./src/server/index.ts",
     "./client": "./src/client/index.ts"
   },
-  "atelier": {
-    "clientModule": "terminalClientModule",
-    "clientModuleOrder": 20
-  },
   "dependencies": {
     "@atelier/core": "workspace:*",
     "@atelier/observable-terminal": "workspace:*",

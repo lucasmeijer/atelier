@@ -163,7 +163,7 @@ export function createTerminalPaneController(Controller: StimulusControllerConst
   };
 }
 
-export const terminalClientModule: WorkspaceClientModule = {
+export const workspaceTerminalClientModule: WorkspaceClientModule = {
   id: "terminal",
   install({ application, Controller, hooks }) {
     initializeTerminalTheme();

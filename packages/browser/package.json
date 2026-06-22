@@ -7,10 +7,6 @@
     "./server": "./src/server/index.ts",
     "./client": "./src/client/index.ts"
   },
-  "atelier": {
-    "clientModule": "browserClientModule",
-    "clientModuleOrder": 40
-  },
   "dependencies": {
     "@atelier/core": "workspace:*",
     "@atelier/shared": "workspace:*",

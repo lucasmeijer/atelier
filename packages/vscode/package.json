@@ -7,10 +7,6 @@
     "./client": "./src/client/index.ts",
     ".": "./src/server/index.ts"
   },
-  "atelier": {
-    "clientModule": "vscodeClientModule",
-    "clientModuleOrder": 30
-  },
   "dependencies": {
     "@atelier/core": "workspace:*",
     "@atelier/observable-terminal": "workspace:*",
