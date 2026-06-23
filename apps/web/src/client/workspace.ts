@@ -868,6 +868,19 @@ class WorkspaceListController extends Controller {
     this.markActive(workspaceId);
   }
 
+  parkToggled(event: Event): void {
+    const detail = (event as CustomEvent<{ success?: boolean }>).detail;
+    if (detail && detail.success === false) return;
+    const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
+    if (!form || !new URL(form.action, window.location.href).pathname.endsWith("/unpark")) return;
+    const row = form.closest<HTMLElement>(".workspace-row");
+    const workspaceId = row?.dataset.workspaceId;
+    const href = row?.querySelector<HTMLAnchorElement>("a.row-main")?.href;
+    if (!workspaceId || !href) return;
+    this.markActive(workspaceId);
+    void residencyController()?.selectWorkspace(workspaceId, href);
+  }
+
   deleteStarted(event: Event): void {
     const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
     const row = form?.closest<HTMLElement>(".workspace-row");

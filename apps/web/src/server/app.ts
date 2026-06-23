@@ -273,7 +273,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       case "ready": {
         const parkedAction = entry.parked ? "unpark" : "park";
         const parkedLabel = entry.parked ? "Unpark workspace" : "Park workspace";
-        return `${open("")}${workspaceSidebarTitleFrame(id, title)}<div class="workspace-row-actions">${renderWorkspaceRowContributions(id)}<span class="workspace-row-hover-actions">${renderWorkspaceStatus(id)}<form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form><form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></span></div></div>`;
+        return `${open("")}${workspaceSidebarTitleFrame(id, title)}<div class="workspace-row-actions"><span class="workspace-row-idle-actions">${renderWorkspaceRowContributions(id)}${renderWorkspaceStatus(id)}</span><span class="workspace-row-hover-actions"><form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}" data-turbo="true" data-action="turbo:submit-end->workspace-list#parkToggled"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form><form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></span></div></div>`;
       }
     }
   }
@@ -836,11 +836,12 @@ ${moduleStylesHtml()}
     return turboStreamResponse("");
   }
 
-  function parkWorkspaceEndpoint(id: string, parked: boolean): Response {
+  function parkWorkspaceEndpoint(id: string, parked: boolean, request: Request): Response {
     const entry = requireWorkspace(id);
-    if (entry.phase !== "ready") return turboStreamResponse("", { status: 409 });
+    if (entry.phase !== "ready") return wantsTurboStream(request) ? turboStreamResponse("", { status: 409 }) : response("Workspace is not ready", { status: 409 });
     registry.setParked(id, parked);
-    return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
+    if (wantsTurboStream(request)) return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
+    return Response.redirect(request.headers.get("referer") ?? "/", 303);
   }
 
   // ---------------------------------------------------------------------------
@@ -1161,8 +1162,8 @@ ${moduleStylesHtml()}
     if ((params = match(/^\/workspaces\/([^/]+)\/layout\/resize$/)) && request.method === "POST") return await resizeWorkspaceGroupsEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/push$/)) && request.method === "POST") return await pushRepoEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/mergeability$/)) && request.method === "GET") return await mergeabilityFrame(params[0], params[1]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/park$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], true);
-    if ((params = match(/^\/workspaces\/([^/]+)\/unpark$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], false);
+    if ((params = match(/^\/workspaces\/([^/]+)\/park$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], true, request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/unpark$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], false, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteWorkspaceEndpoint(params[0], url.searchParams.get("force") === "1");
     if ((params = match(/^\/workspaces\/([^/]+)\/dismiss$/)) && request.method === "POST") return dismissWorkspaceEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)$/)) && request.method === "GET") return await workspacePage(params[0], request);

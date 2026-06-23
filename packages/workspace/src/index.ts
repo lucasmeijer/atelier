@@ -84,7 +84,7 @@ async function inspectLabels(id: string): Promise<Record<string, string>> {
 }
 
 async function ensureWorkspaceFilesystem(id: string): Promise<void> {
-  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `mkdir -p ${shellQuote(workspaceRoot)} /.atelier && chown -R atelier:atelier ${shellQuote(workspaceRoot)} /.atelier`]);
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `mkdir -p ${shellQuote(workspaceRoot)} /.atelier && chown -R atelier:atelier /.atelier && { chown atelier:atelier ${shellQuote(workspaceRoot)} 2>/dev/null || true; }`]);
   if (result.exitCode !== 0) throw new AtelierCoreError("workspace_repair_failed", result.stderr.trim() || result.stdout.trim() || `could not prepare workspace filesystem for ${id}`);
 }
 
@@ -170,7 +170,7 @@ function applyWorkspaceRuntimeManifest(plan: WorkspaceDockerPlan, manifest: Work
   }
 }
 function workspaceInitScript(plan: WorkspaceDockerPlan): string {
-  return [`mkdir -p /.atelier ${workspaceRoot}`, `chown -R atelier:atelier /.atelier ${workspaceRoot}`, ...plan.initScripts, `if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'ATELIER_VSCODE_DEFAULT_FOLDER=${workspaceRoot} nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode-server.log 2>&1 &' || true; fi`, "sleep infinity"].join("; ");
+  return [`mkdir -p /.atelier ${workspaceRoot}`, `chown -R atelier:atelier /.atelier && { chown atelier:atelier ${workspaceRoot} 2>/dev/null || true; }`, ...plan.initScripts, `if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'ATELIER_VSCODE_DEFAULT_FOLDER=${workspaceRoot} nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode-server.log 2>&1 &' || true; fi`, "sleep infinity"].join("; ");
 }
 
 export async function createWorkspace(options: CreateWorkspaceOptions = {}): Promise<WorkspaceNewResult> {

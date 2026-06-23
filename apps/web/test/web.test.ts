@@ -188,11 +188,17 @@ describe("web app contracts", () => {
     expect(parkBody).toContain("parked");
     expect(parkBody).toContain('aria-label="Unpark workspace"');
     expect(parkBody).toContain("💤");
+    expect(parkBody).toContain('data-turbo="true" data-action="turbo:submit-end->workspace-list#parkToggled"');
     expect(parkBody.indexOf('class="workspace-row-park"')).toBeLessThan(parkBody.indexOf('class="workspace-row-delete"'));
 
     await app.fetch(post("/workspaces/a/unpark"));
     expect(registry.get("a")?.parked).toBe(false);
     expect(parked.at(-1)).toEqual({ id: "a", parked: false });
+
+    const fallback = await app.fetch(new Request("http://test.local/workspaces/a/park", { method: "POST", headers: { referer: "http://test.local/" } }));
+    expect(fallback.status).toBe(303);
+    expect(fallback.headers.get("location")).toBe("http://test.local/");
+    expect(registry.get("a")?.parked).toBe(true);
   });
 
   test("ready workspace rows include a busy status slot before the park and delete buttons", async () => {
