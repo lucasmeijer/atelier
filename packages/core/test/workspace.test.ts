@@ -7,6 +7,7 @@ import {
   execWorkspaceShell,
   generateWorkspaceId,
   listWorkspaces,
+  setWorkspaceParked,
   setWorkspaceTitle,
   workspaceContainerName,
   type WorkspaceExecResult,
@@ -64,6 +65,16 @@ describe("core workspaces", () => {
 
     expect(await setWorkspaceTitle(created.id, "Add dark mode toggle")).toBeNull();
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: "Add dark mode toggle" });
+  });
+
+  test("setWorkspaceParked sets parked state and listWorkspaces reflects it", async () => {
+    const created = await createWorkspace();
+
+    expect(await setWorkspaceParked(created.id, true)).toBeNull();
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, parked: true });
+
+    expect(await setWorkspaceParked(created.id, false)).toBeNull();
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
   });
 
   test("createWorkspace persists source repo id and name as Docker labels", async () => {

@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, type AtelierEventBus, type WorkspaceDockerMount, type WorkspaceDockerPlan } from "@atelier/core";
 import { resolveWorkspaceImage } from "@atelier/workspace-image";
@@ -17,8 +17,8 @@ export type {
 const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
 const workspaceIdLabel = "com.atelier.workspace-id";
-const titlePath = "/.atelier/title";
-const parkedPath = "/.atelier/parked";
+const titlePath = "title";
+const parkedPath = "parked";
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
 export const workspaceDesktopPort = 6080;
@@ -105,15 +105,22 @@ export async function resolveWorkspace(id: string): Promise<string> {
   return id;
 }
 
-async function readTitle(containerRef: string): Promise<string | null> {
-  const result = await runDocker(["exec", containerRef, "cat", titlePath]);
-  if (result.exitCode !== 0) return null;
-  return result.stdout.replace(/\n$/, "");
+function workspaceMetadataDir(context: Awaited<ReturnType<typeof getAtelierRuntimeContext>>, id: string): string {
+  return atelierDataPath(context, "workspaces", id, "metadata");
 }
 
-async function readParked(containerRef: string): Promise<boolean> {
-  const result = await runDocker(["exec", containerRef, "test", "-f", parkedPath]);
-  return result.exitCode === 0;
+function workspaceMetadataPath(context: Awaited<ReturnType<typeof getAtelierRuntimeContext>>, id: string, name: string): string {
+  return join(workspaceMetadataDir(context, id), name);
+}
+
+async function readTitle(context: Awaited<ReturnType<typeof getAtelierRuntimeContext>>, id: string): Promise<string | null> {
+  const file = Bun.file(workspaceMetadataPath(context, id, titlePath));
+  if (!(await file.exists())) return null;
+  return (await file.text()).replace(/\n$/, "");
+}
+
+async function readParked(context: Awaited<ReturnType<typeof getAtelierRuntimeContext>>, id: string): Promise<boolean> {
+  return await Bun.file(workspaceMetadataPath(context, id, parkedPath)).exists();
 }
 
 export async function execWorkspaceCommand(id: string, command: string[], options: WorkspaceCommandOptions = {}): Promise<WorkspaceExecResult> {
@@ -227,6 +234,7 @@ export async function getWorkspaceDesktopPort(id: string): Promise<number> { ret
 export async function getWorkspacePreviewPort(id: string, containerPort: number): Promise<number> { if (!(workspacePreviewPorts as readonly number[]).includes(containerPort)) throw invalidArguments(`unsupported workspace preview port: ${containerPort}. Supported ports: ${workspacePreviewPorts.join(", ")}`); return await getWorkspacePublishedPort(id, containerPort); }
 
 export async function listWorkspaces(): Promise<WorkspaceListResult> {
+  const context = await getAtelierRuntimeContext();
   const listed = await requireDocker(["ps", "-a", "--filter", `label=${workspaceTypeLabel}=workspace`, "--filter", `label=${namespaceLabel}=${namespace()}`, "--format", `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}\t{{.Label "${workspaceSourceRepositoryLabel}"}}\t{{.Label "${workspaceSourceRepositoryNameLabel}"}}`]);
   const workspaces: WorkspaceListResult["workspaces"] = [];
   for (const line of listed.stdout.trim().split(/\n+/).filter(Boolean)) {
@@ -235,8 +243,8 @@ export async function listWorkspaces(): Promise<WorkspaceListResult> {
     const id = labelledId?.trim() || containerId.slice(0, 8);
     const source = sourceRepositoryId?.trim();
     const sourceName = sourceRepositoryName?.trim();
-    const parked = await readParked(containerId);
-    workspaces.push({ id, title: await readTitle(containerId), ...(parked ? { parked } : {}), ...(source ? { sourceRepositoryId: source } : {}), ...(sourceName ? { sourceRepositoryName: sourceName } : {}) });
+    const parked = await readParked(context, id);
+    workspaces.push({ id, title: await readTitle(context, id), ...(parked ? { parked } : {}), ...(source ? { sourceRepositoryId: source } : {}), ...(sourceName ? { sourceRepositoryName: sourceName } : {}) });
   }
   return { workspaces };
 }
@@ -256,13 +264,19 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
 
 export async function setWorkspaceTitle(id: string, title: string): Promise<null> {
   await resolveWorkspace(id);
-  await requireDocker(["exec", "-i", workspaceContainerName(id), "sh", "-c", `mkdir -p /.atelier && cat > ${titlePath}`], { stdin: title });
+  const context = await getAtelierRuntimeContext();
+  await mkdir(workspaceMetadataDir(context, id), { recursive: true });
+  await writeFile(workspaceMetadataPath(context, id, titlePath), title);
   return null;
 }
 
 export async function setWorkspaceParked(id: string, parked: boolean): Promise<null> {
   await resolveWorkspace(id);
-  await requireDocker(["exec", workspaceContainerName(id), "sh", "-c", parked ? `mkdir -p /.atelier && touch ${parkedPath}` : `rm -f ${parkedPath}`]);
+  const context = await getAtelierRuntimeContext();
+  await mkdir(workspaceMetadataDir(context, id), { recursive: true });
+  const path = workspaceMetadataPath(context, id, parkedPath);
+  if (parked) await writeFile(path, "");
+  else await rm(path, { force: true });
   return null;
 }
 
