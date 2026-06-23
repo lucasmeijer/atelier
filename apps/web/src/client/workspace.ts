@@ -457,6 +457,13 @@ class AtelierShortcutsController extends Controller {
       binding: "Meta+Alt+Slash",
       run: () => this.openOldestUnreadWorkspace(),
     });
+    this.registerCommand({
+      id: "agent.launch-empty-workspace",
+      label: "New Empty Agent Workspace",
+      scope: "global",
+      binding: "Meta+Alt+Semicolon",
+      run: () => this.openDialogPrompt("agent_launch_empty_workspace_modal"),
+    });
   }
 
   private currentCommands(): CommandRegistration[] {
@@ -533,6 +540,7 @@ class AtelierShortcutsController extends Controller {
         case "Period": return ".";
         case "Slash": return "/";
         case "Quote": return "'";
+        case "Semicolon": return ";";
         default: return part.replace(/^Key/, "");
       }
     }).join("");
@@ -558,8 +566,16 @@ class AtelierShortcutsController extends Controller {
       case "Comma": return event.key === ",";
       case "Period": return event.key === ".";
       case "Slash": return event.key === "/" || event.key === "?";
+      case "Semicolon": return event.key === ";" || event.key === ":";
       default: return false;
     }
+  }
+
+  private openDialogPrompt(id: string): void {
+    const dialog = document.getElementById(id) as HTMLDialogElement | null;
+    if (!dialog) return;
+    if (!dialog.open) dialog.showModal();
+    focusDialogPromptEnd(dialog);
   }
 
   private activeWorkspaceId(): string | undefined {

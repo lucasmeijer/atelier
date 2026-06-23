@@ -372,26 +372,44 @@ ${moduleStylesHtml()}
     return `--repo-color:${repoColor(repoName)}`;
   }
 
-  async function launchRepoAgentModal(repo: RepositorySummary, selectedModel?: string, options: { autoShow?: boolean; modalId?: string; formId?: string } = {}): Promise<string> {
-    const modalId = options.modalId ?? domId("agent_launch_repo_modal", repo.id);
-    const formId = options.formId ?? domId("agent_launch_repo_form", repo.id);
-    const initialText = "";
-    return `<dialog id="${modalId}" class="agent-launch-modal" data-controller="modal submit-shortcut"${options.autoShow ? ` data-modal-auto-show-value="true"` : ""}>
-  <div class="agent-launch-title">Create workspace from <b>${escapeHtml(repo.name)}</b>, and then…</div>
+  async function launchAgentWorkspaceModal(options: { titleHtml: string; action: string; modalId: string; formId: string; selectedModel?: string; autoShow?: boolean }): Promise<string> {
+    return `<dialog id="${options.modalId}" class="agent-launch-modal" data-controller="modal submit-shortcut"${options.autoShow ? ` data-modal-auto-show-value="true"` : ""}>
+  <div class="agent-launch-title">${options.titleHtml}</div>
   ${await renderAgentComposer({
-    action: `/repo-agent-workspaces/${encodeURIComponent(repo.id)}`,
+    action: options.action,
     draftId: crypto.randomUUID(),
-    formId,
+    formId: options.formId,
     placeholder: "Describe what you want the agent to do… (optional)",
-    initialText,
+    initialText: "",
     submitLabel: "Create workspace",
     submitShortcut: "⌘↩",
     rows: 8,
     formActions: "keydown->submit-shortcut#keydown turbo:submit-end->modal#submitted",
     formTurbo: true,
-    selectedModel,
+    selectedModel: options.selectedModel,
   })}
 </dialog>`;
+  }
+
+  async function launchRepoAgentModal(repo: RepositorySummary, selectedModel?: string, options: { autoShow?: boolean; modalId?: string; formId?: string } = {}): Promise<string> {
+    return await launchAgentWorkspaceModal({
+      titleHtml: `Create workspace from <b>${escapeHtml(repo.name)}</b>, and then…`,
+      action: `/repo-agent-workspaces/${encodeURIComponent(repo.id)}`,
+      modalId: options.modalId ?? domId("agent_launch_repo_modal", repo.id),
+      formId: options.formId ?? domId("agent_launch_repo_form", repo.id),
+      selectedModel,
+      autoShow: options.autoShow,
+    });
+  }
+
+  async function launchEmptyAgentModal(selectedModel?: string): Promise<string> {
+    return await launchAgentWorkspaceModal({
+      titleHtml: "Create empty workspace, and then…",
+      action: "/agent-workspaces",
+      modalId: "agent_launch_empty_workspace_modal",
+      formId: "agent_launch_empty_workspace_form",
+      selectedModel,
+    });
   }
 
   function addRepositoryModal(): string {
@@ -628,7 +646,10 @@ ${moduleStylesHtml()}
   async function renderRepoLaunchModals(): Promise<string> {
     const { repos } = await listRepositories();
     const selectedModel = await preferredNewAgentModel();
-    return (await Promise.all(repos.map((repo) => launchRepoAgentModal(repo, selectedModel)))).join("");
+    return [
+      await launchEmptyAgentModal(selectedModel),
+      ...(await Promise.all(repos.map((repo) => launchRepoAgentModal(repo, selectedModel)))),
+    ].join("");
   }
 
   async function renderWorkspaceShell(selectedId?: string): Promise<string> {
@@ -697,22 +718,21 @@ ${moduleStylesHtml()}
     return Response.redirect(location, 303);
   }
 
-  async function createRepoAgentWorkspaceEndpoint(repoName: string, request: Request): Promise<Response> {
-    const repo = await repositoryById(repoName);
-    const accessProblem = await githubRepoAccessProblem(repo);
-    if (accessProblem) return turboStreamResponse(turboUpdateStream(workspaceCommandModalHostId, githubRepoAccessProblemModal(repo, accessProblem)));
+  async function createAgentWorkspaceFromForm(request: Request, options: { repo?: RepositorySummary } = {}): Promise<Response> {
     const form = await request.formData();
     const text = String(form.get("text") ?? "").trim();
     const id = generateWorkspaceId();
-    registry.add(id, null, repo.id, repo.name);
+    registry.add(id, null, options.repo?.id, options.repo?.name);
     const model = String(form.get("model") ?? "");
     const thinkingLevel = String(form.get("level") ?? "");
     await rememberAgentPreferredNewAgentModel(model, thinkingLevel);
     const context: WorkspaceCreationContext = {
-      sourceRepositoryId: repo.id,
-      sourceRepositoryName: repo.name,
-      gitUrl: repo.gitUrl,
-      gitBranch: repo.branch,
+      ...(options.repo ? {
+        sourceRepositoryId: options.repo.id,
+        sourceRepositoryName: options.repo.name,
+        gitUrl: options.repo.gitUrl,
+        gitBranch: options.repo.branch,
+      } : {}),
       ...(text ? {
         agent: {
           initialPrompt: text,
@@ -724,6 +744,17 @@ ${moduleStylesHtml()}
     };
     startWorkspaceProvisioning(id, { context });
     return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
+  }
+
+  async function createEmptyAgentWorkspaceEndpoint(request: Request): Promise<Response> {
+    return await createAgentWorkspaceFromForm(request);
+  }
+
+  async function createRepoAgentWorkspaceEndpoint(repoName: string, request: Request): Promise<Response> {
+    const repo = await repositoryById(repoName);
+    const accessProblem = await githubRepoAccessProblem(repo);
+    if (accessProblem) return turboStreamResponse(turboUpdateStream(workspaceCommandModalHostId, githubRepoAccessProblemModal(repo, accessProblem)));
+    return await createAgentWorkspaceFromForm(request, { repo });
   }
 
   async function broadcastWorkspaceReady(id: string): Promise<void> {
@@ -1149,6 +1180,7 @@ ${moduleStylesHtml()}
 
     let params: string[] | undefined;
 
+    if (url.pathname === "/agent-workspaces" && request.method === "POST") return await createEmptyAgentWorkspaceEndpoint(request);
     if ((params = match(/^\/repo-agent-workspaces\/([^/]+)$/)) && request.method === "POST") return await createRepoAgentWorkspaceEndpoint(params[0], request);
 
     if ((params = match(/^\/workspaces\/([^/]+)\/sidebar-title\/edit$/)) && request.method === "GET") return workspaceSidebarTitleEditFrame(params[0]);
