@@ -203,11 +203,12 @@ export function buildHostAttachArgs(options: HostObservableTerminalAttachOptions
 }
 
 export function attachHostObservableTerminal(options: HostObservableTerminalAttachOptions): IPty {
-  return spawn("tmux", buildHostAttachArgs(options), {
+  const env = { ...observableTerminalEnvironment, ...options.env };
+  return spawn("env", [...Object.entries(env).map(([key, value]) => `${key}=${value}`), "tmux", ...buildHostAttachArgs(options)], {
     name: "xterm-256color",
     cols: options.cols,
     rows: options.rows,
-    env: { ...process.env, ...observableTerminalEnvironment, ...options.env },
+    env: { ...process.env, ...env },
   });
 }
 

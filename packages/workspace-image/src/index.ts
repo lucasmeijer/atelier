@@ -72,44 +72,17 @@ async function emitImageStep(events: AtelierEventBus | undefined, workspaceId: s
   });
 }
 
-interface BuildxBuilderListing {
-  Current?: boolean;
-  Driver?: string;
-  Name?: string;
-  Nodes?: Array<{ Endpoint?: string; Status?: string }>;
-}
-
-function dockerBuildxBuilderArgs(): string[] {
-  const context = Bun.spawnSync(["docker", "context", "show"], { stdout: "pipe", stderr: "ignore" }).stdout.toString().trim();
-  const listed = Bun.spawnSync(["docker", "buildx", "ls", "--format", "{{json .}}"], { stdout: "pipe", stderr: "ignore" });
-  if (listed.exitCode !== 0) return [];
-
-  const builders = listed.stdout.toString().split("\n").map((line) => line.trim()).filter(Boolean).flatMap((line): BuildxBuilderListing[] => {
-    try {
-      return [JSON.parse(line) as BuildxBuilderListing];
-    } catch {
-      return [];
-    }
-  });
-  const dockerBuilders = builders.filter((builder) => builder.Driver === "docker" && builder.Name);
-  const contextBuilder = dockerBuilders.find((builder) => builder.Nodes?.some((node) => node.Endpoint === context && node.Status === "running"));
-  const currentBuilder = dockerBuilders.find((builder) => builder.Current && builder.Nodes?.some((node) => node.Status === "running"));
-  const runningBuilder = dockerBuilders.find((builder) => builder.Nodes?.some((node) => node.Status === "running"));
-  const builder = contextBuilder ?? currentBuilder ?? runningBuilder;
-  return builder?.Name ? ["--builder", builder.Name] : [];
-}
-
 function startBuildTask(tag: string, modules: string[], dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): WorkspaceImageBuildTask {
   const existing = buildTasks.get(tag);
   if (existing) return existing;
 
   const task: WorkspaceImageBuildTask = { tag, modules, output: "", promise: Promise.resolve() };
   task.promise = (async () => {
-    const args = ["buildx", "build", ...dockerBuildxBuilderArgs(), "--load", "--progress=plain", "-t", tag, "-f", dockerfile, contextDir];
+    const args = ["build", ...(process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1" ? ["--no-cache"] : []), "-t", tag, "-f", dockerfile, contextDir];
     const result = await runHostObservableCommand({
       session: `atelier-provision-image-${crypto.randomUUID().slice(0, 8)}`,
       cwd: contextDir,
-      command: `DOCKER_BUILDKIT=1 BUILDKIT_PROGRESS=plain docker ${args.map(shellQuote).join(" ")}`,
+      command: `echo "Starting Docker image build..."\nDOCKER_BUILDKIT=1 docker ${args.map(shellQuote).join(" ")}`,
       onSessionStarted: async (session) => {
         task.session = session;
         await emitImageStep(options.events, options.workspaceId, task, "running");

@@ -64,7 +64,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
   const terminalOptions: ConstructorParameters<typeof Terminal>[0] = {
     allowProposedApi: options.mode === "interactive",
     cursorBlink: options.mode === "interactive",
-    disableStdin: options.mode === "fixed-readonly",
+    disableStdin: false,
     fontSize,
     fontFamily,
     logLevel: "error",
@@ -75,6 +75,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
   if (options.rows !== undefined) terminalOptions.rows = options.rows;
 
   const term = new Terminal(terminalOptions);
+  if (options.mode === "fixed-readonly") term.attachCustomKeyEventHandler(() => false);
 
   let fit: FitAddon | undefined;
   let progress: ProgressAddon | undefined;
@@ -109,13 +110,14 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
         if (ws.readyState === WebSocket.OPEN) ws.send(encodeObservableTerminalMessage({ type: "progress", ...event }));
       });
     }
-    term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(data);
-    });
     term.onResize((size) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(encodeObservableTerminalMessage({ type: "resize", cols: size.cols, rows: size.rows }));
     });
   }
+
+  term.onData((data) => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(data);
+  });
 
   ws.onopen = () => {
     if (options.mode === "interactive") ws.send(encodeObservableTerminalMessage({ type: "resize", cols: term.cols, rows: term.rows }));

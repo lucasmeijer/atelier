@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { $ } from "bun";
 import {
+  attachHostObservableTerminal,
   buildCapturePaneCommand,
   buildKillSessionCommand,
   buildObservableSessionCommand,
   normalizeCarriageReturns,
   observableTerminalCols,
   observableTerminalRows,
+  runHostObservableCommand,
   shellQuote,
 } from "../../src/server/index.ts";
 
@@ -45,5 +47,42 @@ maybe("observable terminal integration", () => {
     await sh(buildObservableSessionCommand({ session, cwd: process.cwd(), command: "sleep 5", fixedSize: true, remainOnExit: true }));
     const size = (await sh(`tmux display-message -p -t ${session} '#{pane_width}x#{pane_height}'`)).trim();
     expect(size).toBe(`${observableTerminalCols}x${observableTerminalRows}`);
+  });
+
+  test("host readonly attach works when parent TERM is dumb", async () => {
+    const originalTerm = process.env.TERM;
+    const session = `atelier-observable-test-${Date.now()}`;
+    sessions.push(session);
+    process.env.TERM = "dumb";
+    try {
+      const result = await runHostObservableCommand({
+        session,
+        cwd: process.cwd(),
+        command: "printf 'docker build progress\\n'; sleep 1",
+        onSessionStarted: () => new Promise<void>((resolve, reject) => {
+          let output = "";
+          const pty = attachHostObservableTerminal({ session, cols: observableTerminalCols, rows: observableTerminalRows, readonly: true, fixedSize: true });
+          const timer = setTimeout(() => reject(new Error(output || "timed out waiting for attach output")), 3_000);
+          pty.onData((chunk) => {
+            output += chunk;
+            if (output.includes("docker build progress")) {
+              clearTimeout(timer);
+              pty.kill();
+              resolve();
+            }
+          });
+          pty.onExit(({ exitCode }) => {
+            if (!output.includes("docker build progress")) {
+              clearTimeout(timer);
+              reject(new Error(`${output || "attach exited before output"} (exit ${exitCode})`));
+            }
+          });
+        }),
+      });
+      expect(result.exitCode).toBe(0);
+    } finally {
+      if (originalTerm === undefined) delete process.env.TERM;
+      else process.env.TERM = originalTerm;
+    }
   });
 });
