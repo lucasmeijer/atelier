@@ -8,13 +8,22 @@
       "packages/*"
     ],
     "catalog": {
-      "@earendil-works/pi-ai": "^0.79.10",
-      "@earendil-works/pi-coding-agent": "^0.79.10"
+      "@earendil-works/pi-agent-core": "file:vendor/pi/packages/agent",
+      "@earendil-works/pi-ai": "file:vendor/pi/packages/ai",
+      "@earendil-works/pi-coding-agent": "file:vendor/pi/packages/coding-agent",
+      "@earendil-works/pi-tui": "file:vendor/pi/packages/tui"
     }
+  },
+  "overrides": {
+    "@earendil-works/pi-agent-core": "file:vendor/pi/packages/agent",
+    "@earendil-works/pi-ai": "file:vendor/pi/packages/ai",
+    "@earendil-works/pi-coding-agent": "file:vendor/pi/packages/coding-agent",
+    "@earendil-works/pi-tui": "file:vendor/pi/packages/tui"
   },
   "scripts": {
     "generate:workspace-modules": "bun run --cwd apps/web scripts/generate-workspace-modules.ts",
-    "check": "bun run generate:workspace-modules && bunx tsc --noEmit -p tsconfig.json",
+    "build:vendor-pi": "npm --prefix vendor/pi ci --ignore-scripts --no-audit --no-fund && cd vendor/pi/packages/tui && ../../node_modules/.bin/tsgo -p tsconfig.build.json && cd ../ai && ../../node_modules/.bin/tsgo -p tsconfig.build.json && cd ../agent && ../../node_modules/.bin/tsgo -p tsconfig.build.json && cd ../coding-agent && ../../node_modules/.bin/tsgo -p tsconfig.build.json && ../../node_modules/.bin/shx chmod +x dist/cli.js && ../../node_modules/.bin/shx mkdir -p dist/modes/interactive/theme && ../../node_modules/.bin/shx cp src/modes/interactive/theme/*.json dist/modes/interactive/theme/ && ../../node_modules/.bin/shx mkdir -p dist/modes/interactive/assets && ../../node_modules/.bin/shx cp src/modes/interactive/assets/*.png dist/modes/interactive/assets/ && ../../node_modules/.bin/shx mkdir -p dist/core/export-html/vendor && ../../node_modules/.bin/shx cp src/core/export-html/template.html src/core/export-html/template.css src/core/export-html/template.js dist/core/export-html/ && ../../node_modules/.bin/shx cp src/core/export-html/vendor/*.js dist/core/export-html/vendor/ && cd ../../../.. && rm -rf vendor/pi/node_modules && bun install --force",
+    "check": "bun run generate:workspace-modules && bun run build:vendor-pi && bunx tsc --noEmit -p tsconfig.json",
     "test": "bun run generate:workspace-modules && bun test",
     "ci": "bun ci && bun run check && bun run test",
     "web": "bun run --cwd apps/web dev",
