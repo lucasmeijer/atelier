@@ -6,6 +6,7 @@
     "build:assets": "bun run scripts/build-assets.ts",
     "build:client": "bun run build:assets",
     "dev": "bun run scripts/dev.ts",
+    "kill": "bun run scripts/kill.ts",
     "start": "bun run build:assets && bun run src/server/main.ts"
   },
   "dependencies": {
