@@ -1115,8 +1115,13 @@ ${moduleStylesHtml()}
   async function route(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.pathname === "/up" && request.method === "GET") return new Response("ok\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
-    if (url.pathname === "/" && request.method === "GET") return await homePage();
+    if (url.pathname === "/up" && (request.method === "GET" || request.method === "HEAD")) {
+      return new Response(request.method === "HEAD" ? null : "ok\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
+    }
+    if (url.pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
+      const page = await homePage();
+      return request.method === "HEAD" ? new Response(null, { status: page.status, statusText: page.statusText, headers: page.headers }) : page;
+    }
     if (url.pathname === "/workspace-events/stream" && request.method === "GET") return hub.sseResponse(initialStatusStreams);
     if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
     if (url.pathname === "/workspaces" && request.method === "POST") return createWorkspaceEndpoint(url, request);

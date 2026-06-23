@@ -411,7 +411,7 @@ class AtelierShortcutsController extends Controller {
       return;
     }
 
-    if (event.code === "Backslash" || event.key === "\\" || event.key === "|" || event.code === "Backspace" || event.key === "Backspace") {
+    if (event.code === "Slash" || event.key === "/" || event.key === "?") {
       event.preventDefault();
       event.stopImmediatePropagation();
       void this.openOldestUnreadWorkspace();

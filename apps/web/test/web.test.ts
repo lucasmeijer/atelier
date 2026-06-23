@@ -66,6 +66,17 @@ const blockedDetails = (id: string): WorkspaceDeleteBlockedDetails => ({
 });
 
 describe("web app contracts", () => {
+  test("HEAD / and /up match their GET status without a body", async () => {
+    const { app } = createTestApp();
+    const home = await app.fetch(new Request("http://test.local/", { method: "HEAD" }));
+    const up = await app.fetch(new Request("http://test.local/up", { method: "HEAD" }));
+
+    expect(home.status).toBe(200);
+    expect(await home.text()).toBe("");
+    expect(up.status).toBe(200);
+    expect(await up.text()).toBe("");
+  });
+
   test("POST /workspaces responds with streams and Location before provisioning finishes", async () => {
     const provision = deferred();
     const { app, registry, broadcasts } = createTestApp({ provision: () => provision.promise });
