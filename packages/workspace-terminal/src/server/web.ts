@@ -19,6 +19,7 @@ export const terminalWorkspaceCommands: WorkspaceCommandContribution[] = [
   {
     id: "terminal.create",
     label: "New Terminal",
+    scope: "workspace",
     surfaces: { ui: { placement: "group-menu" } },
   },
 ];
@@ -49,7 +50,7 @@ export const terminalWorkspaceModule: WorkspaceModule = {
     const { terminals } = await listWorkspaceTerminals(workspaceId);
     return {
       tabs: renderWorkspaceTerminalTabs(workspaceId, terminals),
-      workspaceCommands: terminalWorkspaceCommands,
+      commands: terminalWorkspaceCommands,
     };
   },
 };

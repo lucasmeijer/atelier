@@ -27,10 +27,13 @@ export interface WorkspaceCommandSurfaces {
   shortcut?: WorkspaceCommandShortcutSurface;
 }
 
+export type WorkspaceCommandScope = "global" | "workspace" | "group" | "tab";
+
 export interface WorkspaceCommandContribution<Input = Record<string, never>> {
   id: string;
   label: string;
   description?: string;
+  scope: WorkspaceCommandScope;
   /** Runtime schema placeholder for future typed form/palette generation. */
   inputSchema?: unknown;
   surfaces?: WorkspaceCommandSurfaces;
@@ -40,7 +43,7 @@ export interface WorkspaceCommandContribution<Input = Record<string, never>> {
 
 export interface WorkspaceAttachment {
   tabs?: WorkspaceTabContribution[];
-  workspaceCommands?: WorkspaceCommandContribution[];
+  commands?: WorkspaceCommandContribution[];
   /** Server-rendered per-workspace chrome layered around tab groups. */
   workspaceChromeHtml?: string[];
 }

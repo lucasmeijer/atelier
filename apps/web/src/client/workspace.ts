@@ -364,100 +364,207 @@ class WorkspaceGroupsController extends Controller {
   }
 }
 
-type WorkspaceShortcutCommand = { id: string; binding: string };
+type CommandRegistration = {
+  id: string;
+  label: string;
+  description?: string;
+  scope: "global" | "workspace" | "group" | "tab";
+  binding?: string;
+  run: () => void | Promise<void>;
+};
+type WorkspaceCommandRegistration = Omit<CommandRegistration, "run">;
 
 class AtelierShortcutsController extends Controller {
   declare readonly element: HTMLElement;
+  private readonly commands = new Map<string, CommandRegistration>();
+  private shortcutOverlayTimer: ReturnType<typeof setTimeout> | undefined;
+  private shortcutOverlay: HTMLElement | undefined;
 
   connect(): void {
+    this.registerBuiltinCommands();
     // Listen at window capture so we get first chance at shortcuts that focused
     // Atelier-owned widgets (not iframes) might otherwise consume.
     window.addEventListener("keydown", this.keydown, true);
+    window.addEventListener("keyup", this.keyup, true);
+    window.addEventListener("blur", this.hideShortcutOverlay);
   }
 
   disconnect(): void {
     window.removeEventListener("keydown", this.keydown, true);
+    window.removeEventListener("keyup", this.keyup, true);
+    window.removeEventListener("blur", this.hideShortcutOverlay);
+    this.hideShortcutOverlay();
   }
 
   private readonly keydown = (event: KeyboardEvent): void => {
     if (event.repeat || event.isComposing) return;
     if (!event.metaKey || !event.altKey || event.ctrlKey || event.shiftKey) return;
 
-    if (event.code === "BracketLeft" || event.key === "[" || event.key === "“") {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      this.focusAdjacentGroup(-1);
+    if (event.key === "Meta" || event.key === "Alt") {
+      this.scheduleShortcutOverlay();
       return;
     }
 
-    if (event.code === "BracketRight" || event.key === "]" || event.key === "‘") {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      this.focusAdjacentGroup(1);
-      return;
-    }
-
-    if (event.code === "Comma" || event.key === ",") {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      void this.openAdjacentWorkspace(-1);
-      return;
-    }
-
-    if (event.code === "Period" || event.key === ".") {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      void this.openAdjacentWorkspace(1);
-      return;
-    }
-
-    if (event.code === "Slash" || event.key === "/" || event.key === "?") {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      void this.openOldestUnreadWorkspace();
-      return;
-    }
-
-    const commandId = this.registeredShortcutCommandId(event);
-    if (commandId) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      void this.executeActiveWorkspaceCommand(commandId);
-    }
+    this.hideShortcutOverlay();
+    const command = this.currentCommands().find((candidate) => candidate.binding && this.matchesBinding(event, candidate.binding));
+    if (!command) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    void command.run();
   };
 
-  private registeredShortcutCommandId(event: KeyboardEvent): string | undefined {
+  private readonly keyup = (event: KeyboardEvent): void => {
+    if (!event.metaKey || !event.altKey) this.hideShortcutOverlay();
+  };
+
+  private registerCommand(command: CommandRegistration): void {
+    this.commands.set(command.id, command);
+  }
+
+  private registerBuiltinCommands(): void {
+    this.registerCommand({
+      id: "workspace.focus-previous-group",
+      label: "Focus previous group",
+      scope: "workspace",
+      binding: "Meta+Alt+BracketLeft",
+      run: () => this.focusAdjacentGroup(-1),
+    });
+    this.registerCommand({
+      id: "workspace.focus-next-group",
+      label: "Focus next group",
+      scope: "workspace",
+      binding: "Meta+Alt+BracketRight",
+      run: () => this.focusAdjacentGroup(1),
+    });
+    this.registerCommand({
+      id: "workspace.open-previous",
+      label: "Open previous workspace",
+      scope: "global",
+      binding: "Meta+Alt+Comma",
+      run: () => this.openAdjacentWorkspace(-1),
+    });
+    this.registerCommand({
+      id: "workspace.open-next",
+      label: "Open next workspace",
+      scope: "global",
+      binding: "Meta+Alt+Period",
+      run: () => this.openAdjacentWorkspace(1),
+    });
+    this.registerCommand({
+      id: "workspace.open-oldest-unread",
+      label: "Open oldest unread workspace",
+      scope: "global",
+      binding: "Meta+Alt+Slash",
+      run: () => this.openOldestUnreadWorkspace(),
+    });
+  }
+
+  private currentCommands(): CommandRegistration[] {
+    return [
+      ...this.commands.values(),
+      ...this.workspaceCommands().map((command) => ({
+        ...command,
+        run: () => this.executeActiveWorkspaceCommand(command.id),
+      })),
+    ];
+  }
+
+  private workspaceCommands(): WorkspaceCommandRegistration[] {
     const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.active");
-    const groups = resident?.querySelector<HTMLElement>(".workspace-groups[data-workspace-command-shortcuts]");
-    if (!groups?.dataset.workspaceCommandShortcuts) return undefined;
-    let shortcuts: unknown;
-    try {
-      shortcuts = JSON.parse(groups.dataset.workspaceCommandShortcuts);
-    } catch {
-      return undefined;
+    const groups = resident?.querySelector<HTMLElement>(".workspace-groups[data-workspace-commands]");
+    return groups ? JSON.parse(groups.dataset.workspaceCommands!) as WorkspaceCommandRegistration[] : [];
+  }
+
+  private scheduleShortcutOverlay(): void {
+    if (this.shortcutOverlay || this.shortcutOverlayTimer) return;
+    this.shortcutOverlayTimer = setTimeout(() => {
+      this.shortcutOverlayTimer = undefined;
+      this.showShortcutOverlay();
+    }, 2000);
+  }
+
+  private readonly hideShortcutOverlay = (): void => {
+    if (this.shortcutOverlayTimer) clearTimeout(this.shortcutOverlayTimer);
+    this.shortcutOverlayTimer = undefined;
+    this.shortcutOverlay?.remove();
+    this.shortcutOverlay = undefined;
+  };
+
+  private showShortcutOverlay(): void {
+    const commands = this.currentCommands()
+      .filter((command): command is CommandRegistration & { binding: string } => Boolean(command.binding))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    const overlay = document.createElement("aside");
+    overlay.className = "shortcut-overlay";
+    overlay.setAttribute("role", "status");
+    overlay.setAttribute("aria-live", "polite");
+
+    const title = document.createElement("div");
+    title.className = "shortcut-overlay-title";
+    title.textContent = "Keyboard shortcuts";
+    overlay.append(title);
+
+    const list = document.createElement("dl");
+    list.className = "shortcut-overlay-list";
+    for (const command of commands) {
+      const label = document.createElement("dt");
+      label.textContent = command.label;
+      const binding = document.createElement("dd");
+      binding.textContent = this.formatBinding(command.binding);
+      list.append(label, binding);
     }
-    if (!Array.isArray(shortcuts)) return undefined;
-    return shortcuts.find((shortcut): shortcut is WorkspaceShortcutCommand => {
-      return typeof shortcut?.id === "string" && typeof shortcut?.binding === "string" && this.matchesBinding(event, shortcut.binding);
-    })?.id;
+    overlay.append(list);
+
+    document.body.append(overlay);
+    this.shortcutOverlay = overlay;
+  }
+
+  private formatBinding(binding: string): string {
+    return binding.split("+").map((part) => {
+      switch (part) {
+        case "Meta": return "⌘";
+        case "Alt": return "⌥";
+        case "Control": return "⌃";
+        case "Shift": return "⇧";
+        case "BracketLeft": return "[";
+        case "BracketRight": return "]";
+        case "Comma": return ",";
+        case "Period": return ".";
+        case "Slash": return "/";
+        case "Quote": return "'";
+        default: return part.replace(/^Key/, "");
+      }
+    }).join("");
   }
 
   private matchesBinding(event: KeyboardEvent, binding: string): boolean {
     const parts = new Set(binding.split("+").map((part) => part.trim()).filter(Boolean));
     const modifiers = new Set(["Meta", "Alt", "Control", "Shift"]);
     const code = [...parts].find((part) => !modifiers.has(part));
-    return Boolean(code)
-      && event.code === code
+    if (!code) return false;
+    return this.matchesShortcutKey(event, code)
       && event.metaKey === parts.has("Meta")
       && event.altKey === parts.has("Alt")
       && event.ctrlKey === parts.has("Control")
       && event.shiftKey === parts.has("Shift");
   }
 
+  private matchesShortcutKey(event: KeyboardEvent, code: string): boolean {
+    if (event.code === code) return true;
+    switch (code) {
+      case "BracketLeft": return event.key === "[" || event.key === "“";
+      case "BracketRight": return event.key === "]" || event.key === "‘";
+      case "Comma": return event.key === ",";
+      case "Period": return event.key === ".";
+      case "Slash": return event.key === "/" || event.key === "?";
+      default: return false;
+    }
+  }
+
   private activeWorkspaceId(): string | undefined {
-    const fromPath = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
-    if (fromPath) return decodeURIComponent(fromPath);
-    return residencyController()?.activeWorkspaceId();
+    return document.querySelector<HTMLElement>(".workspace-row.active[data-workspace-id]")?.dataset.workspaceId
+      ?? residencyController()?.activeWorkspaceId();
   }
 
   private async openOldestUnreadWorkspace(): Promise<void> {

@@ -18,6 +18,7 @@ export const vscodeWorkspaceCommands: WorkspaceCommandContribution[] = [
   {
     id: "vscode.open",
     label: "Open VS Code",
+    scope: "workspace",
     surfaces: {
       ui: { placement: "group-menu", label: "New VS Code" },
       shortcut: { defaultBinding: "Meta+Alt+KeyV" },
@@ -50,7 +51,7 @@ export const vscodeWorkspaceModule: WorkspaceModule = {
   attachToWorkspace({ workspaceId }) {
     return {
       tabs: renderWorkspaceVSCodeTabs(workspaceId, listWorkspaceVSCodeTabs(workspaceId)),
-      workspaceCommands: vscodeWorkspaceCommands,
+      commands: vscodeWorkspaceCommands,
     };
   },
 };

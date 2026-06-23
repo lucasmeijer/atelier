@@ -14,6 +14,7 @@ export const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
   {
     id: "browser.create",
     label: "New Browser",
+    scope: "workspace",
     surfaces: { ui: { placement: "group-menu" } },
   },
 ];
@@ -54,7 +55,7 @@ export const browserWorkspaceModule: WorkspaceModule = {
   attachToWorkspace({ workspaceId }) {
     return {
       tabs: renderWorkspaceBrowserTabs(workspaceId),
-      workspaceCommands: browserWorkspaceCommands,
+      commands: browserWorkspaceCommands,
     };
   },
 };

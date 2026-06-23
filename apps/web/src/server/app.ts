@@ -530,12 +530,15 @@ ${moduleStylesHtml()}
   function renderWorkspaceGroups(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {
     const layoutState = layouts.normalize(workspaceId, tabs.map((tab) => tab.key));
     const tabByKey = new Map(tabs.map((tab) => [tab.key, tab]));
-    const allCommands = attachments.flatMap((attachment) => attachment.workspaceCommands ?? []);
+    const allCommands = attachments.flatMap((attachment) => attachment.commands ?? []);
     const commands = allCommands.filter((command) => command.surfaces?.ui?.placement === "group-menu");
-    const shortcutCommands = allCommands.flatMap((command) => {
-      const binding = command.surfaces?.shortcut?.defaultBinding;
-      return binding ? [{ id: command.id, binding }] : [];
-    });
+    const serializedCommands = allCommands.map((command) => ({
+      id: command.id,
+      label: command.label,
+      description: command.description,
+      scope: command.scope,
+      binding: command.surfaces?.shortcut?.defaultBinding,
+    }));
     const actionMenu = (group: { id: string }, index: number) => `<details class="group-add-menu"><summary class="group-icon-btn" title="Add tab or group">+</summary><div class="group-menu-panel">
       ${commands.map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/commands/${encodeURIComponent(command.id)}"><button type="submit">${escapeHtml(command.surfaces?.ui?.label ?? command.label)}</button></form>`).join("")}
       <form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/split"><button type="submit">New Group</button></form>
@@ -563,7 +566,7 @@ ${moduleStylesHtml()}
     </section>${index < layoutState.groups.length - 1 ? `<div class="group-resizer" data-action="pointerdown->workspace-groups#startResize" data-resizer-index="${index}" role="separator" aria-orientation="vertical"></div>` : ""}`;
     }).join("");
     const workspaceChrome = attachments.flatMap((attachment) => attachment.workspaceChromeHtml ?? []).join("");
-    return `<div class="workspace-groups" id="${workspaceGroupsId(workspaceId)}" data-controller="workspace-groups" data-workspace-groups-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-command-shortcuts="${escapeHtml(JSON.stringify(shortcutCommands))}">${groups}${workspaceChrome}</div>`;
+    return `<div class="workspace-groups" id="${workspaceGroupsId(workspaceId)}" data-controller="workspace-groups" data-workspace-groups-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-commands="${escapeHtml(JSON.stringify(serializedCommands))}">${groups}${workspaceChrome}</div>`;
   }
 
   async function renderWorkspaceGroupsFor(workspaceId: string): Promise<string> {
@@ -992,7 +995,7 @@ ${moduleStylesHtml()}
   }
 
   async function assertWorkspaceCommandExists(workspaceId: string, commandId: string): Promise<void> {
-    const commands = (await workspaceTabsAndAttachments(workspaceId)).attachments.flatMap((attachment) => attachment.workspaceCommands ?? []);
+    const commands = (await workspaceTabsAndAttachments(workspaceId)).attachments.flatMap((attachment) => attachment.commands ?? []);
     if (!commands.some((command: WorkspaceCommandContribution) => command.id === commandId)) {
       throw new AtelierCoreError("command_not_found", `workspace command not found: ${commandId}`);
     }

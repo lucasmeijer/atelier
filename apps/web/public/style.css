@@ -651,3 +651,9 @@ button { border: 0; background: none; cursor: pointer; }
 .onboarding-card { height: auto; }
 .settings-provider-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .settings-provider-count { color: var(--muted); font-weight: 500; font-size: 12px; }
+
+.shortcut-overlay { position: fixed; right: 24px; bottom: 24px; z-index: 10000; width: min(420px, calc(100vw - 48px)); max-height: min(520px, calc(100vh - 48px)); overflow: auto; padding: 14px; color: var(--text); background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line2); border-radius: 16px; box-shadow: var(--shadow); backdrop-filter: blur(12px); }
+.shortcut-overlay-title { margin: 0 0 10px; font-weight: 700; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.shortcut-overlay-list { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 14px; margin: 0; align-items: center; }
+.shortcut-overlay-list dt { min-width: 0; font-size: 13px; font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shortcut-overlay-list dd { margin: 0; padding: 3px 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }

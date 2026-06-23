@@ -7,6 +7,7 @@ export function desktopWorkspaceCommand(enabled: boolean): WorkspaceCommandContr
   return {
     id: "desktop.start",
     label: enabled ? "Open Desktop" : "Turn on Desktop",
+    scope: "workspace",
     surfaces: { ui: { placement: "group-menu" } },
   };
 }
@@ -33,7 +34,7 @@ export const desktopWorkspaceModule: WorkspaceModule = {
     const enabled = await isWorkspaceDesktopEnabled(workspaceId);
     return {
       tabs: enabled ? [renderDesktopTab(workspaceId)] : [],
-      workspaceCommands: [desktopWorkspaceCommand(enabled)],
+      commands: [desktopWorkspaceCommand(enabled)],
     };
   },
 };

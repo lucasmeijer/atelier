@@ -46,6 +46,7 @@ export const agentWorkspaceCommands: WorkspaceCommandContribution[] = [
   {
     id: "agent.create",
     label: "New Agent",
+    scope: "workspace",
     surfaces: { ui: { placement: "group-menu" } },
   },
 ];
@@ -54,6 +55,7 @@ const sourceRepoAgentWorkspaceCommand: WorkspaceCommandContribution = {
   id: "agent.launch-source-repo-workspace",
   label: "New Workspace From Source Repo",
   description: "Open the source repository agent workspace prompt.",
+  scope: "global",
   surfaces: { shortcut: { defaultBinding: "Meta+Alt+Quote" } },
 };
 
@@ -132,7 +134,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
     const agents = await listOrCreateWorkspaceAgents(workspaceId);
     return {
       tabs: await renderWorkspaceAgentTabs(workspaceId, agents),
-      workspaceCommands: sourceRepositoryId ? [...agentWorkspaceCommands, sourceRepoAgentWorkspaceCommand] : agentWorkspaceCommands,
+      commands: sourceRepositoryId ? [...agentWorkspaceCommands, sourceRepoAgentWorkspaceCommand] : agentWorkspaceCommands,
     };
   },
 };
