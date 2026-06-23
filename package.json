@@ -28,6 +28,7 @@
     "ci": "bun ci && bun run check && bun run test",
     "web": "bun run --cwd apps/web dev",
     "kill": "bun run --cwd apps/web kill",
+    "list": "bun run --cwd apps/web list",
     "smoke:vscode": "node apps/web/smoke/vscode-smoke.mjs"
   },
   "devDependencies": {
