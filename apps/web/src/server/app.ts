@@ -246,7 +246,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const frameId = domId("workspace_sidebar_title", id);
     return `<turbo-frame id="${frameId}" class="workspace-row-title-frame">
     <a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"><div class="r-title">${escapeHtml(title)}</div></a>
-    <a class="workspace-row-edit" href="/workspaces/${encodeURIComponent(id)}/sidebar-title/edit" data-turbo-frame="${frameId}" title="Rename workspace">✎</a>
   </turbo-frame>`;
   }
 
@@ -273,7 +272,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       case "ready": {
         const parkedAction = entry.parked ? "unpark" : "park";
         const parkedLabel = entry.parked ? "Unpark workspace" : "Park workspace";
-        return `${open("")}${workspaceSidebarTitleFrame(id, title)}<div class="workspace-row-actions"><span class="workspace-row-notifiers">${renderWorkspaceRowContributions(id)}${renderWorkspaceStatus(id)}</span><span class="workspace-row-buttons"><form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}" data-turbo="true" data-action="turbo:submit-end->workspace-list#parkToggled"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form><form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></span></div></div>`;
+        return `${open("")}${workspaceSidebarTitleFrame(id, title)}<div class="workspace-row-actions"><span class="workspace-row-notifiers">${renderWorkspaceRowContributions(id)}${renderWorkspaceStatus(id)}</span><span class="workspace-row-buttons"><a class="workspace-row-edit" href="/workspaces/${encodeURIComponent(id)}/sidebar-title/edit" data-turbo-frame="${domId("workspace_sidebar_title", id)}" title="Rename workspace" aria-label="Rename workspace">✎</a><form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}" data-turbo="true" data-action="turbo:submit-end->workspace-list#parkToggled"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form><form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></span></div></div>`;
       }
     }
   }
@@ -632,6 +631,7 @@ ${moduleStylesHtml()}
   async function renderWorkspaceShell(selectedId?: string): Promise<string> {
     return `<div class="app workspace-shell" data-controller="workspace-shell atelier-shortcuts">
     <aside class="workspace-shell-sidebar" data-workspace-shell-target="sidebar">${await renderWorkspaceSidebar()}</aside>
+    <div class="workspace-shell-resizer" data-action="pointerdown->workspace-shell#startResize"></div>
     <main class="workspace-shell-main">${await workspaceDetailHostHtml(selectedId)}</main>
   </div>
   ${addRepositoryModal()}

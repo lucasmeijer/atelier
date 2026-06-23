@@ -94,14 +94,36 @@ class WorkspaceShellController extends Controller {
   declare readonly hasSidebarTarget: boolean;
   declare readonly toggleTargets: HTMLButtonElement[];
   private readonly storageKey = "atelier.workspaceSidebar";
+  private resizeStart: { x: number; width: number } | undefined;
 
   connect(): void {
-    this.setCollapsed(Boolean(this.savedState().collapsed));
+    const state = this.savedState();
+    this.element.style.setProperty("--workspace-sidebar-width", `${state.width ?? 250}px`);
+    this.setCollapsed(Boolean(state.collapsed));
   }
 
   toggle(): void {
     this.setCollapsed(!this.element.classList.contains("workspace-shell-collapsed"), { persist: true });
   }
+
+  startResize(event: PointerEvent): void {
+    this.setCollapsed(false, { persist: true });
+    this.resizeStart = { x: event.clientX, width: this.sidebarTarget.getBoundingClientRect().width };
+    window.addEventListener("pointermove", this.resizeMove);
+    window.addEventListener("pointerup", this.resizeEnd, { once: true });
+  }
+
+  private readonly resizeMove = (event: PointerEvent): void => {
+    const width = Math.round(Math.min(520, Math.max(180, this.resizeStart!.width + event.clientX - this.resizeStart!.x)));
+    this.element.style.setProperty("--workspace-sidebar-width", `${width}px`);
+  };
+
+  private readonly resizeEnd = (): void => {
+    window.removeEventListener("pointermove", this.resizeMove);
+    const width = Math.round(this.sidebarTarget.getBoundingClientRect().width);
+    this.saveState({ ...this.savedState(), width });
+    this.resizeStart = undefined;
+  };
 
   private setCollapsed(collapsed: boolean, options: { persist?: boolean } = {}): void {
     this.element.classList.toggle("workspace-shell-collapsed", collapsed);
@@ -113,20 +135,12 @@ class WorkspaceShellController extends Controller {
     if (options.persist) this.saveState({ ...this.savedState(), collapsed });
   }
 
-  private savedState(): { collapsed?: boolean } {
-    try {
-      return JSON.parse(localStorage.getItem(this.storageKey) || "{}") as { collapsed?: boolean };
-    } catch {
-      return {};
-    }
+  private savedState(): { collapsed?: boolean; width?: number } {
+    return JSON.parse(localStorage.getItem(this.storageKey) || "{}") as { collapsed?: boolean; width?: number };
   }
 
-  private saveState(state: { collapsed?: boolean }): void {
-    try {
-      localStorage.setItem(this.storageKey, JSON.stringify(state));
-    } catch {
-      // Ignore unavailable storage.
-    }
+  private saveState(state: { collapsed?: boolean; width?: number }): void {
+    localStorage.setItem(this.storageKey, JSON.stringify(state));
   }
 }
 
@@ -861,7 +875,13 @@ class WorkspaceListController extends Controller {
     const target = event.target instanceof HTMLElement ? event.target : null;
     if (target?.closest("a, button, input, textarea, form")) return;
     const row = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    row?.querySelector<HTMLAnchorElement>("a.row-main")?.click();
+    const link = row?.querySelector<HTMLAnchorElement>("a.row-main");
+    if (!row || !link) return;
+    if (row.classList.contains("pending-delete") || row.dataset.phase === "checking_delete" || row.dataset.phase === "deleting") return;
+    const workspaceId = row.dataset.workspaceId;
+    const revealUnreadTab = clientHooks.chooseUnreadTab(this.unreadTabs(row));
+    if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href, { revealUnreadTab });
+    this.markActive(workspaceId);
   }
 
   markActiveWorkspace(workspaceId: string): void {
