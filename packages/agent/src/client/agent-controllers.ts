@@ -29,6 +29,7 @@ function registerAgentStreamActions(): void {
 
 interface AgentPaneControllerInstance {
   start(): void;
+  stop(): void;
   revealLatestAssistant(): void;
 }
 
@@ -84,8 +85,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.observer?.disconnect();
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
       document.removeEventListener("keydown", this.onKeydown);
-      this.source?.close();
-      this.source = undefined;
+      this.stop();
     }
 
     start(): void {
@@ -96,6 +96,11 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
         window.Turbo?.renderStreamMessage(event.data);
       };
       this.source = source;
+    }
+
+    stop(): void {
+      this.source?.close();
+      this.source = undefined;
     }
 
     revealLatestAssistant(): void {
@@ -628,11 +633,19 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
 // Tab activation hook
 // ---------------------------------------------------------------------------
 
-function startAgentTab(application: StimulusApplication, tabName: string, workspaceId?: string): void {
-  if (!tabName.startsWith("agent:")) return;
-  const candidates = Array.from(document.querySelectorAll<HTMLElement>(`.tab-pane[data-tab-pane="${CSS.escape(tabName)}"] [data-controller~="agent-pane"]`));
-  const pane = workspaceId ? candidates.find((candidate) => candidate.dataset.agentPaneWorkspaceIdValue === workspaceId) : candidates[0];
-  const controller = pane ? application.getControllerForElementAndIdentifier(pane, "agent-pane") as AgentPaneControllerInstance | null : null;
+function activateAgentTab(application: StimulusApplication, group: Element, tabName: string, workspaceId?: string): void {
+  const targetPane = tabName.startsWith("agent:")
+    ? group.querySelector<HTMLElement>(`.tab-pane[data-tab-pane="${CSS.escape(tabName)}"] [data-controller~="agent-pane"]`)
+    : null;
+
+  for (const pane of document.querySelectorAll<HTMLElement>('[data-controller~="agent-pane"]')) {
+    if (workspaceId && pane.dataset.agentPaneWorkspaceIdValue === workspaceId && pane === targetPane) continue;
+    const controller = application.getControllerForElementAndIdentifier(pane, "agent-pane") as AgentPaneControllerInstance | null;
+    controller?.stop();
+  }
+
+  if (!targetPane) return;
+  const controller = application.getControllerForElementAndIdentifier(targetPane, "agent-pane") as AgentPaneControllerInstance | null;
   controller?.start();
 }
 
@@ -651,7 +664,7 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-proxy", createAgentProxyController(Controller));
     application.register("agent-term", createAgentTermController(Controller));
 
-    hooks.onActivateTab(({ tabKey, workspaceId }) => startAgentTab(application, tabKey, workspaceId));
+    hooks.onActivateTab(({ tabKey, workspaceId, group }) => activateAgentTab(application, group, tabKey, workspaceId));
     hooks.onChooseUnreadTab((tabs) => tabs.find((tab) => tab.startsWith("agent:")));
     hooks.onFocusGroup(({ pane }) => {
       const agentInput = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
