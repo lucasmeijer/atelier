@@ -192,7 +192,6 @@ export async function renderGitIdentityForm(surface: "settings" | "onboarding" =
     ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
     <div class="settings-field"><div><b>Git user name</b><p>Used as <code>user.name</code> in new workspace containers.</p></div><input class="settings-input" name="name" value="${escapeHtml(identity?.name ?? "")}" placeholder="Ada Lovelace" autocomplete="name" required></div>
     <div class="settings-field"><div><b>Git email</b><p>Used as <code>user.email</code> when commits are created.</p></div><input class="settings-input" type="email" name="email" value="${escapeHtml(identity?.email ?? "")}" placeholder="ada@example.com" autocomplete="email" required></div>
-    ${surface === "onboarding" ? `<div class="settings-provider-actions"><span class="settings-provider-desc" data-git-identity-target="status">${identity ? "Saved" : "Autosaves when both fields are filled"}</span></div>` : ""}
   </form>`;
 }
 
