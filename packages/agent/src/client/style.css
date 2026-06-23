@@ -271,9 +271,15 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 .agent-promptbox form { cursor: text; position: relative; }
 .agent-promptbox .agent-prompt-actions, .agent-promptbox .agent-attach-row { cursor: default; }
 .agent-input {
+  --agent-input-max-height: 260px;
   width: 100%; border: none; resize: none; font-family: inherit; font-size: 13px; line-height: 1.5;
-  padding: 10px 12px 2px; outline: none; background: transparent; color: var(--text); min-height: calc(1.5em * 4 + 12px); max-height: 220px; display: block;
+  padding: 10px 12px 2px; outline: none; background: transparent; color: var(--text); min-height: calc(1.5em * 4 + 12px); max-height: var(--agent-input-max-height); display: block;
+  box-sizing: border-box; overflow-y: hidden; scrollbar-color: var(--line2) transparent; scrollbar-width: thin;
 }
+.agent-input::-webkit-scrollbar { width: 10px; height: 10px; }
+.agent-input::-webkit-scrollbar-track { background: transparent; }
+.agent-input::-webkit-scrollbar-thumb { background: var(--line2); border: 2px solid transparent; border-radius: 999px; background-clip: padding-box; }
+.agent-input::-webkit-scrollbar-thumb:hover { background-color: var(--muted2); }
 .agent-input::placeholder { color: var(--muted-2); }
 
 .agent-prompt-actions { position: absolute; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 8px; padding: 0; z-index: 1; }
@@ -413,7 +419,7 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 0; }
 .agent-promptwrap { flex: none; padding: 12px 40px 22px; background: linear-gradient(transparent, var(--bg) 45%); }
 .agent-promptbox { position: relative; max-width: 820px; margin: 0; background: var(--panel); border: 1.5px solid var(--line2); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; padding-bottom: 30px; }
 .agent-promptbox form { min-height: calc(1.5em * 2 + 21px); }
-.agent-input { font: inherit; font-size: 15px; line-height: 1.5; padding: 15px 58px 6px 17px; min-height: calc(1.5em * 2 + 21px); max-height: 260px; }
+.agent-input { font: inherit; font-size: 15px; line-height: 1.5; padding: 15px 58px 6px 17px; min-height: calc(1.5em * 2 + 21px); max-height: var(--agent-input-max-height); }
 .agent-input::placeholder { color: var(--muted2); }
 .agent-prompt-actions { position: absolute; left: 10px; right: 10px; bottom: 38px; display: flex; align-items: center; gap: 6px; padding: 0; pointer-events: none; }
 .agent-prompt-actions > * { pointer-events: auto; }

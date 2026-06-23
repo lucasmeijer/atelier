@@ -89,6 +89,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     }
 
     start(): void {
+      requestAnimationFrame(() => this.autosize());
       if (this.source && this.source.readyState !== EventSource.CLOSED) return;
       const source = new EventSource(this.path("/events"));
       source.onmessage = (event) => {
@@ -135,8 +136,13 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     autosize(): void {
       const input = this.inputTarget;
+      const maxHeight = Number.parseFloat(getComputedStyle(input).getPropertyValue("--agent-input-max-height")) || 260;
       input.style.height = "auto";
-      input.style.height = `${Math.min(input.scrollHeight, 220)}px`;
+      // Add a small buffer for fractional line-height/browser rounding so a
+      // one-pixel overflow doesn't flash a scrollbar before the real limit.
+      const nextHeight = Math.ceil(input.scrollHeight) + 2;
+      input.style.height = `${Math.min(nextHeight, maxHeight)}px`;
+      input.style.overflowY = nextHeight > maxHeight ? "auto" : "hidden";
     }
 
     submitted(event: Event): void {
