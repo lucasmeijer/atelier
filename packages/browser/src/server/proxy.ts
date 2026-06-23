@@ -1,4 +1,4 @@
-import { getWorkspacePreviewPort, shouldAddressWorkspaceContainersDirectly, workspaceContainerName, workspacePreviewPorts, workspacePublishedPortHost } from "@atelier/workspace";
+import { workspacePreviewPortUrl, workspacePreviewPorts } from "@atelier/workspace";
 import { publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/workspace-proxy/server";
 import { getWorkspaceBrowserState } from "./state.ts";
 
@@ -43,13 +43,7 @@ export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, re
     throw new Error(`Port ${target.port || defaultPortForProtocol(target.protocol)} is not published for browser previews. Use one of: ${workspacePreviewPorts.join(", ")}`);
   }
 
-  if (await shouldAddressWorkspaceContainersDirectly()) {
-    await getWorkspacePreviewPort(app.workspaceId, containerPort);
-    return new URL(`${target.protocol}//${workspaceContainerName(app.workspaceId)}:${containerPort}${target.pathname}${target.search}`);
-  }
-
-  const hostPort = await getWorkspacePreviewPort(app.workspaceId, containerPort);
-  return new URL(`${target.protocol}//${await workspacePublishedPortHost()}:${hostPort}${target.pathname}${target.search}`);
+  return await workspacePreviewPortUrl(app.workspaceId, containerPort, target.pathname + target.search, target.protocol);
 }
 
 function defaultPortForProtocol(protocol: string): number {

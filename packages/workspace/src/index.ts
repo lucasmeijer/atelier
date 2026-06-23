@@ -41,11 +41,7 @@ async function workspacePublishHost(): Promise<string> {
   return runtime.runningInContainer && !runtime.dockerNetwork ? runtime.dockerHostGateway ?? "0.0.0.0" : "127.0.0.1";
 }
 async function workspaceDockerNetwork(): Promise<string | undefined> { return (await getAtelierRuntimeContext()).dockerNetwork; }
-export async function shouldAddressWorkspaceContainersDirectly(): Promise<boolean> { return Boolean(await workspaceDockerNetwork()); }
-export async function workspacePublishedPortHost(): Promise<string> {
-  const runtime = await getAtelierRuntimeContext();
-  return runtime.runningInContainer && !runtime.dockerNetwork ? "host.docker.internal" : "127.0.0.1";
-}
+async function shouldAddressWorkspaceContainersDirectly(): Promise<boolean> { return Boolean(await workspaceDockerNetwork()); }
 function formatDeleteBlockedMessage(id: string, issues: unknown[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
 function dockerHostGatewayArgs(): string[] { return ["--add-host", "host.docker.internal:host-gateway"]; }
 function shellQuote(value: string): string { return `'${value.replaceAll("'", `'\\''`)}'`; }
@@ -219,19 +215,39 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
   return { id };
 }
 
-export async function getWorkspacePublishedPort(id: string, containerPort: number): Promise<number> {
+interface WorkspacePublishedEndpoint { host: string; port: number }
+
+async function workspacePublishedEndpoint(id: string, containerPort: number): Promise<WorkspacePublishedEndpoint> {
   await resolveWorkspace(id);
   const result = await runDocker(["port", workspaceContainerName(id), `${containerPort}/tcp`]);
   if (result.exitCode !== 0) throw new AtelierCoreError("workspace_port_not_found", result.stderr.trim() || `workspace ${id} does not publish port ${containerPort}`);
   const line = result.stdout.trim().split(/\n+/)[0] ?? "";
-  const match = line.match(/(?:0\.0\.0\.0|127\.0\.0\.1|\[?::1\]?):(\d+)$/) ?? line.match(/:(\d+)$/);
-  const port = match ? Number(match[1]) : NaN;
-  if (!Number.isInteger(port) || port <= 0) throw new AtelierCoreError("workspace_port_not_found", `could not parse published port for ${id}:${containerPort}: ${line}`);
-  return port;
+  const match = line.match(/^\[([^\]]+)\]:(\d+)$/) ?? line.match(/^(.+):(\d+)$/);
+  if (!match) throw new AtelierCoreError("workspace_port_not_found", `could not parse published port for ${id}:${containerPort}: ${line}`);
+  return { host: match[1]!, port: Number(match[2]!) };
 }
-export async function getWorkspaceVSCodePort(id: string): Promise<number> { return await getWorkspacePublishedPort(id, workspaceVSCodePort); }
-export async function getWorkspaceDesktopPort(id: string): Promise<number> { return await getWorkspacePublishedPort(id, workspaceDesktopPort); }
-export async function getWorkspacePreviewPort(id: string, containerPort: number): Promise<number> { if (!(workspacePreviewPorts as readonly number[]).includes(containerPort)) throw invalidArguments(`unsupported workspace preview port: ${containerPort}. Supported ports: ${workspacePreviewPorts.join(", ")}`); return await getWorkspacePublishedPort(id, containerPort); }
+
+async function reachableWorkspacePublishedEndpoint(id: string, containerPort: number): Promise<WorkspacePublishedEndpoint> {
+  const endpoint = await workspacePublishedEndpoint(id, containerPort);
+  const runtime = await getAtelierRuntimeContext();
+  if (runtime.runningInContainer && !runtime.dockerNetwork) return { host: "host.docker.internal", port: endpoint.port };
+  return { host: endpoint.host === "0.0.0.0" || endpoint.host === "::" ? "127.0.0.1" : endpoint.host, port: endpoint.port };
+}
+
+function endpointAuthority({ host, port }: WorkspacePublishedEndpoint): string {
+  return `${host.includes(":") && !host.startsWith("[") ? `[${host}]` : host}:${port}`;
+}
+
+export async function workspacePortUrl(id: string, containerPort: number, pathAndSearch: string, protocol = "http:"): Promise<URL> {
+  const path = pathAndSearch.startsWith("/") ? pathAndSearch : `/${pathAndSearch}`;
+  if (await shouldAddressWorkspaceContainersDirectly()) return new URL(path, `${protocol}//${workspaceContainerName(id)}:${containerPort}`);
+  return new URL(path, `${protocol}//${endpointAuthority(await reachableWorkspacePublishedEndpoint(id, containerPort))}`);
+}
+
+export async function workspacePreviewPortUrl(id: string, containerPort: number, pathAndSearch: string, protocol = "http:"): Promise<URL> {
+  if (!(workspacePreviewPorts as readonly number[]).includes(containerPort)) throw invalidArguments(`unsupported workspace preview port: ${containerPort}. Supported ports: ${workspacePreviewPorts.join(", ")}`);
+  return await workspacePortUrl(id, containerPort, pathAndSearch, protocol);
+}
 
 export async function listWorkspaces(): Promise<WorkspaceListResult> {
   const context = await getAtelierRuntimeContext();

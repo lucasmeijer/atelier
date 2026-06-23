@@ -1,4 +1,4 @@
-import { getWorkspaceVSCodePort, shouldAddressWorkspaceContainersDirectly, workspaceContainerName, workspaceVSCodePort, workspacePublishedPortHost } from "@atelier/workspace";
+import { workspacePortUrl, workspaceVSCodePort } from "@atelier/workspace";
 import type { WorkspaceAppHost } from "@atelier/workspace-proxy/server";
 import { ensureWorkspaceVSCodeServer } from "./workspace-vscode.ts";
 
@@ -14,7 +14,6 @@ function unescapeHtmlAttribute(value: string): string {
 }
 
 const serverEnsures = new Map<string, Promise<void>>();
-const publishedPorts = new Map<string, Promise<number>>();
 
 type VSCodeThemeDefaults = {
   colorTheme: string;
@@ -71,18 +70,6 @@ async function ensureVSCodeServerOnce(workspaceId: string): Promise<void> {
   await promise;
 }
 
-async function getVSCodePublishedPort(workspaceId: string): Promise<number> {
-  let promise = publishedPorts.get(workspaceId);
-  if (!promise) {
-    promise = getWorkspaceVSCodePort(workspaceId).catch((error) => {
-      publishedPorts.delete(workspaceId);
-      throw error;
-    });
-    publishedPorts.set(workspaceId, promise);
-  }
-  return await promise;
-}
-
 export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, response: Response, request: Request): Promise<Response> {
   if (app.appKey !== vscodeAppKey || !response.ok || !response.headers.get("content-type")?.includes("text/html")) return response;
   const themeDefaults = themeDefaultsForRequest(request);
@@ -116,7 +103,5 @@ export async function resolveVSCodeWorkspaceAppTarget(app: WorkspaceAppHost, req
     if (key.startsWith("atelier")) targetUrl.searchParams.delete(key);
   });
   const path = targetUrl.pathname + targetUrl.search;
-  if (await shouldAddressWorkspaceContainersDirectly()) return new URL(path, `http://${workspaceContainerName(app.workspaceId)}:${workspaceVSCodePort}`);
-  const hostPort = await getVSCodePublishedPort(app.workspaceId);
-  return new URL(path, `http://${await workspacePublishedPortHost()}:${hostPort}`);
+  return await workspacePortUrl(app.workspaceId, workspaceVSCodePort, path);
 }

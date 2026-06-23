@@ -77,16 +77,25 @@ export async function discoverAtelierRuntimeContext(atelierDataDir = defaultData
   };
 }
 
+const containerPathPattern = /docker|containerd|kubepods|podman|containers\//i;
+
 function probablyRunningInContainer(): boolean {
   if (existsSync("/.dockerenv")) return true;
-  return ["/proc/self/cgroup", "/proc/1/cgroup", "/proc/self/mountinfo"].some((path) => {
-    try {
-      const text = readFileSync(path, "utf8");
-      return /docker|containerd|kubepods|podman|containers\//i.test(text);
-    } catch {
-      return false;
-    }
-  });
+  if (process.env.container) return true;
+  return ["/proc/self/cgroup", "/proc/1/cgroup"].some(fileContainsContainerPath)
+    || ["/proc/self/mountinfo", "/proc/1/mountinfo"].some(rootMountContainsContainerPath);
+}
+
+function fileContainsContainerPath(path: string): boolean {
+  return existsSync(path) && containerPathPattern.test(readFileSync(path, "utf8"));
+}
+
+function rootMountContainsContainerPath(path: string): boolean {
+  return existsSync(path) && rootMountinfoLines(readFileSync(path, "utf8")).some((line) => containerPathPattern.test(line));
+}
+
+function rootMountinfoLines(text: string): string[] {
+  return text.split("\n").filter((line) => line.split(" ")[4] === "/");
 }
 
 async function inspectSelfContainer(): Promise<DockerContainerInspect | undefined> {
@@ -132,16 +141,14 @@ function containerIdCandidates(): string[] {
   if (process.env.HOSTNAME) candidates.add(process.env.HOSTNAME);
   candidates.add(hostname());
 
-  for (const path of ["/proc/self/cgroup", "/proc/1/cgroup", "/proc/self/mountinfo"]) {
-    try {
-      const text = readFileSync(path, "utf8");
-      for (const match of text.matchAll(/[0-9a-f]{64}/gi)) candidates.add(match[0]);
-    } catch {
-      // Ignore unreadable proc files.
-    }
-  }
+  for (const path of ["/proc/self/cgroup", "/proc/1/cgroup"]) addContainerIds(candidates, existsSync(path) ? readFileSync(path, "utf8") : "");
+  for (const path of ["/proc/self/mountinfo", "/proc/1/mountinfo"]) addContainerIds(candidates, existsSync(path) ? rootMountinfoLines(readFileSync(path, "utf8")).join("\n") : "");
 
   return [...candidates].filter(Boolean);
+}
+
+function addContainerIds(candidates: Set<string>, text: string): void {
+  for (const match of text.matchAll(/[0-9a-f]{64}/gi)) candidates.add(match[0]);
 }
 
 function translateContainerPathToDockerHostPath(containerPath: string, mounts: DockerMount[]): string | undefined {
