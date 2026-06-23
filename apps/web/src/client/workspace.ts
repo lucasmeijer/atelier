@@ -491,14 +491,23 @@ class AtelierShortcutsController extends Controller {
     if (rows.length === 0) return;
     const currentWorkspaceId = this.activeWorkspaceId();
     const currentIndex = currentWorkspaceId ? rows.findIndex((row) => row.dataset.workspaceId === currentWorkspaceId) : -1;
-    const nextIndex = currentIndex >= 0 ? (currentIndex + direction + rows.length) % rows.length : direction > 0 ? 0 : rows.length - 1;
-    const row = rows[nextIndex];
+    const row = this.adjacentUnparkedWorkspaceRow(rows, currentIndex, direction);
     const workspaceId = row?.dataset.workspaceId;
     const href = row?.querySelector<HTMLAnchorElement>("a.row-main")?.href;
     if (!row || !workspaceId || !href) return;
     const revealUnreadTab = clientHooks.chooseUnreadTab(this.unreadTabs(row));
     workspaceListController()?.markActiveWorkspace(workspaceId);
     await residencyController()?.selectWorkspace(workspaceId, href, { revealUnreadTab });
+  }
+
+  private adjacentUnparkedWorkspaceRow(rows: HTMLElement[], currentIndex: number, direction: -1 | 1): HTMLElement | undefined {
+    const selectable = (row: HTMLElement): boolean => row.dataset.parked !== "true" && !row.classList.contains("parked");
+    if (currentIndex < 0) return direction > 0 ? rows.find(selectable) : rows.findLast(selectable);
+    for (let offset = 1; offset < rows.length; offset += 1) {
+      const row = rows[(currentIndex + (direction * offset) + rows.length) % rows.length];
+      if (row && selectable(row)) return row;
+    }
+    return undefined;
   }
 
   private async executeActiveWorkspaceCommand(commandId: string): Promise<void> {
