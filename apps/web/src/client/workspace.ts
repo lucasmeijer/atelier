@@ -1118,10 +1118,7 @@ class OAuthFlowController extends Controller {
 }
 
 class GitIdentityController extends Controller {
-  static targets = ["status"];
   declare readonly element: HTMLFormElement;
-  declare readonly statusTarget: HTMLElement;
-  declare readonly hasStatusTarget: boolean;
   private timer: number | undefined;
   private saving = false;
 
@@ -1130,7 +1127,6 @@ class GitIdentityController extends Controller {
   }
 
   queue(): void {
-    if (this.hasStatusTarget) this.statusTarget.textContent = "Unsaved changes";
     if (this.timer !== undefined) window.clearTimeout(this.timer);
     this.timer = window.setTimeout(() => void this.save(), 700);
   }
@@ -1145,17 +1141,13 @@ class GitIdentityController extends Controller {
     this.timer = undefined;
     if (this.saving || !this.element.checkValidity()) return;
     this.saving = true;
-    if (this.hasStatusTarget) this.statusTarget.textContent = "Saving…";
     const response = await fetch(this.element.action, {
       method: this.element.method || "POST",
       body: new FormData(this.element),
       headers: { Accept: "text/vnd.turbo-stream.html" },
     }).catch(() => undefined);
     this.saving = false;
-    if (!response?.ok) {
-      if (this.hasStatusTarget) this.statusTarget.textContent = "Could not save";
-      return;
-    }
+    if (!response?.ok) return;
     const html = await response.text();
     window.Turbo?.renderStreamMessage(html);
     this.element.closest<HTMLElement>("[data-onboarding-target='pane']")?.setAttribute("data-onboarding-complete", "true");
