@@ -6,8 +6,11 @@ const repoRoot = resolve(cwd, "../..");
 
 let building = false;
 let dirty = false;
+let buildPromise: Promise<void> | undefined;
 let timer: Timer | undefined;
+let serverRestartTimer: Timer | undefined;
 let server: ReturnType<typeof Bun.spawn> | undefined;
+let stoppingServer = false;
 
 function prefixed(prefix: string, stream: ReadableStream<Uint8Array> | null): void {
   if (!stream) return;
@@ -31,18 +34,26 @@ function prefixed(prefix: string, stream: ReadableStream<Uint8Array> | null): vo
 async function runBuild(): Promise<void> {
   if (building) {
     dirty = true;
+    await buildPromise;
     return;
   }
-  building = true;
-  dirty = false;
-  console.log("[assets] rebuilding…");
-  const proc = Bun.spawn(["bun", "run", "build:assets"], { cwd, stdout: "pipe", stderr: "pipe" });
-  prefixed("[assets]", proc.stdout);
-  prefixed("[assets]", proc.stderr);
-  const code = await proc.exited;
-  building = false;
-  console.log(code === 0 ? "[assets] ready" : `[assets] failed (${code})`);
-  if (dirty) void runBuild();
+
+  buildPromise = (async () => {
+    do {
+      building = true;
+      dirty = false;
+      console.log("[assets] rebuilding…");
+      const proc = Bun.spawn(["bun", "run", "build:assets"], { cwd, stdout: "pipe", stderr: "pipe" });
+      prefixed("[assets]", proc.stdout);
+      prefixed("[assets]", proc.stderr);
+      const code = await proc.exited;
+      console.log(code === 0 ? "[assets] ready" : `[assets] failed (${code})`);
+    } while (dirty);
+    building = false;
+    buildPromise = undefined;
+  })();
+
+  await buildPromise;
 }
 
 function scheduleBuild(): void {
@@ -60,23 +71,62 @@ function ignored(path: string): boolean {
     || normalized.endsWith(`${sep}apps${sep}web${sep}src${sep}server${sep}workspace-modules.generated.ts`);
 }
 
-function watchRecursive(path: string): void {
+function watchRecursive(path: string, onChange: (changed: string) => void): void {
   watch(path, { recursive: true }, (_event, filename) => {
     const changed = filename ? resolve(path, filename.toString()) : path;
-    if (!ignored(changed)) scheduleBuild();
+    if (!ignored(changed)) onChange(changed);
   });
+}
+
+function startServer(): void {
+  stoppingServer = false;
+  server = Bun.spawn(["bun", "run", "src/server/main.ts"], { cwd, stdout: "inherit", stderr: "inherit", stdin: "inherit" });
+  void (async () => {
+    const code = await server!.exited;
+    if (stoppingServer) return;
+    process.exit(code ?? 1);
+  })();
+}
+
+async function restartServer(): Promise<void> {
+  if (!server) {
+    startServer();
+    return;
+  }
+  stoppingServer = true;
+  server.kill();
+  await server.exited.catch(() => {});
+  startServer();
+}
+
+function scheduleServerRestart(): void {
+  if (serverRestartTimer) clearTimeout(serverRestartTimer);
+  serverRestartTimer = setTimeout(() => void restartServer(), 100);
+}
+
+function scheduleBuildThenServerRestart(): void {
+  if (serverRestartTimer) clearTimeout(serverRestartTimer);
+  if (timer) clearTimeout(timer);
+  serverRestartTimer = setTimeout(() => void (async () => {
+    await runBuild();
+    await restartServer();
+  })(), 100);
 }
 
 await runBuild();
 
-watchRecursive(resolve(cwd, "src/client"));
-watchRecursive(resolve(cwd, "public"));
-watchRecursive(resolve(repoRoot, "packages"));
-watch(resolve(cwd, "src/server/static-files.ts"), () => scheduleBuild());
+watchRecursive(resolve(cwd, "src/client"), () => scheduleBuild());
+watchRecursive(resolve(cwd, "public"), () => scheduleBuild());
+watchRecursive(resolve(cwd, "src/server"), (changed) => {
+  if (changed.endsWith(`${sep}static-files.ts`)) scheduleBuildThenServerRestart();
+  else scheduleServerRestart();
+});
+watchRecursive(resolve(repoRoot, "packages"), () => scheduleBuildThenServerRestart());
 
-server = Bun.spawn(["bun", "--watch", "run", "src/server/main.ts"], { cwd, stdout: "inherit", stderr: "inherit", stdin: "inherit" });
+startServer();
 
 function shutdown(): void {
+  stoppingServer = true;
   server?.kill();
   process.exit(0);
 }
@@ -84,4 +134,4 @@ function shutdown(): void {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-await server.exited;
+await new Promise(() => {});
