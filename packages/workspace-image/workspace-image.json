@@ -8,6 +8,7 @@
     "git",
     "git-lfs",
     "locales",
+    "nano",
     "python3",
     "python-is-python3",
     "cmake",
