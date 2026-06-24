@@ -8,11 +8,11 @@ import { registerWorkspaceAgentTool } from "@atelier/agent/server";
 
 const browserCreateCommandId = "browser.create";
 
-export function renderWorkspaceBrowserTabs(workspaceId: string): WorkspaceTabContribution[] {
+function renderWorkspaceBrowserTabs(workspaceId: string): WorkspaceTabContribution[] {
   return listWorkspaceBrowserTabs(workspaceId).map((tab) => renderBrowserTab(workspaceId, tab));
 }
 
-export const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
+const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
   {
     id: browserCreateCommandId,
     label: "New Browser",
@@ -27,7 +27,7 @@ export const browserWorkspaceModule: WorkspaceModule = {
   commands: [{
     id: browserCreateCommandId,
     execute({ workspaceId }) {
-      return { createdTabKey: createWorkspaceBrowserTabForWorkspace(workspaceId).key };
+      return { createdTabKey: createWorkspaceBrowserTab(workspaceId).key };
     },
   }],
   routes: [{
@@ -52,7 +52,7 @@ export const browserWorkspaceModule: WorkspaceModule = {
   },
   tabs: [{
     owns: (tabKey) => /^browser-\d+$/.test(tabKey),
-    close: ({ workspaceId, tabKey }) => deleteWorkspaceBrowserTabForWorkspace(workspaceId, tabKey),
+    close: ({ workspaceId, tabKey }) => deleteWorkspaceBrowserTab(workspaceId, tabKey),
   }],
   attachToWorkspace({ workspaceId }) {
     return {
@@ -62,16 +62,7 @@ export const browserWorkspaceModule: WorkspaceModule = {
   },
 };
 
-export function createWorkspaceBrowserTabForWorkspace(workspaceId: string): { key: string; label: string } {
-  const tab = createWorkspaceBrowserTab(workspaceId);
-  return { key: tab.key, label: tab.label };
-}
-
-export function deleteWorkspaceBrowserTabForWorkspace(workspaceId: string, appKey: string): void {
-  deleteWorkspaceBrowserTab(workspaceId, appKey);
-}
-
-export async function browserNavigateEndpoint(workspaceId: string, appKey: string, request: Request): Promise<Response> {
+async function browserNavigateEndpoint(workspaceId: string, appKey: string, request: Request): Promise<Response> {
   const formData = await request.formData();
   const tab = setWorkspaceBrowserTarget(workspaceId, appKey, String(formData.get("url") ?? ""));
   if (!tab) return new Response("browser tab not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
