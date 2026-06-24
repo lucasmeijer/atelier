@@ -43,7 +43,7 @@ export async function createWorkspaceSecretContext(workspaceId: string): Promise
   return created;
 }
 
-export async function getWorkspaceSecretContext(workspaceId: string): Promise<WorkspaceSecretContext | undefined> {
+export async function getWorkspaceSecretContext(workspaceId: string): Promise<WorkspaceSecretContext> {
   return contexts.get(workspaceId) ?? await createWorkspaceSecretContext(workspaceId);
 }
 

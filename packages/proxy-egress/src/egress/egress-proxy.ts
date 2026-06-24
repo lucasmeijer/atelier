@@ -145,7 +145,7 @@ async function handleConnect(ca: MitmCa, req: IncomingMessage, socket: net.Socke
 
 async function shouldMitmConnectTarget(workspaceId: string, hostname: string): Promise<boolean> {
   const context = await getWorkspaceSecretContext(workspaceId);
-  return Boolean(context?.secrets.some((secret) => secret.hosts.some((host) => matchHostname(hostname, host))));
+  return context.secrets.some((secret) => secret.hosts.some((host) => matchHostname(hostname, host)));
 }
 
 function matchHostname(hostname: string, pattern: string): boolean {
@@ -242,7 +242,7 @@ async function handleProxyHttp(workspaceId: string, req: IncomingMessage, res: S
   });
 
   const context = await getWorkspaceSecretContext(workspaceId);
-  const hooks = context?.hooks;
+  const hooks = context.hooks;
   let next: Request | Response = request;
   if (hooks?.onRequest) {
     const updated = await hooks.onRequest(request);
@@ -265,8 +265,8 @@ async function handleProxyHttp(workspaceId: string, req: IncomingMessage, res: S
 
 async function assertDestinationAllowed(workspaceId: string, hostname: string, port: number, protocol: "http" | "https"): Promise<void> {
   const context = await getWorkspaceSecretContext(workspaceId);
-  const hooks = context?.hooks;
-  if (!hooks?.isIpAllowed) return;
+  const hooks = context.hooks;
+  if (!hooks.isIpAllowed) return;
   const addresses = await dns.lookup(hostname, { all: true, verbatim: false });
   if (addresses.length === 0) throw new HttpRequestBlockedError(`could not resolve host: ${hostname}`);
   for (const address of addresses) {
