@@ -4,9 +4,6 @@ export {
   type AtelierEventContext,
   type AtelierEventHandler,
   type AtelierEventMap,
-  type WorkspaceCreationContext,
-  type WorkspaceDockerMount,
-  type WorkspaceDockerPlan,
 } from "./events.ts";
 
 export {

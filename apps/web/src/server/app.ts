@@ -10,7 +10,6 @@ import {
   discoverHostGitHubToken,
   hasWorkspaceGitHubToken,
   type AtelierEventBus,
-  type WorkspaceCreationContext,
 } from "@atelier/core";
 import {
   addRepository,
@@ -22,7 +21,7 @@ import {
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceRepoMergeabilityResult,
 } from "@atelier/repository";
-import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle } from "@atelier/workspace";
+import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
 import { atelierName, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceRowContributionRegistry, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
 import type { StreamHub } from "./stream-hub.ts";

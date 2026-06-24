@@ -1,7 +1,10 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, shellQuote, type AtelierEventBus, type WorkspaceDockerMount, type WorkspaceDockerPlan } from "@atelier/core";
+import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { resolveWorkspaceImage } from "@atelier/workspace-image";
+import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan } from "./types.ts";
+export type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan } from "./types.ts";
+
 export type {
   WorkspaceAgentTurnFinishedEvent,
   WorkspaceCreatedEvent,
@@ -31,7 +34,7 @@ export interface WorkspaceListResult { workspaces: Array<{ id: string; title: st
 export interface WorkspaceExecResult { exitCode: number; stdout: string; stderr: string; durationMs: number }
 export interface WorkspaceCommandOptions { workdir?: string; user?: "atelier" | "root"; stdin?: string }
 export interface DeleteWorkspaceOptions { force?: boolean; events?: AtelierEventBus }
-export interface CreateWorkspaceOptions { id?: string; events?: AtelierEventBus; sourceRepositoryId?: string; sourceRepositoryName?: string; context?: Record<string, unknown> }
+export interface CreateWorkspaceOptions { id?: string; events?: AtelierEventBus; sourceRepositoryId?: string; sourceRepositoryName?: string; context?: WorkspaceCreationContext }
 
 function namespace(): string { return process.env.ATELIER_NAMESPACE || "default"; }
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }

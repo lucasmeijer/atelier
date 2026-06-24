@@ -5,8 +5,9 @@ import {
   dockerHostAtelierDataPath,
   getAtelierRuntimeContext,
 } from "@atelier/core";
-import type { AtelierRuntimeContext, WorkspaceDockerMount } from "@atelier/core";
+import type { AtelierRuntimeContext } from "@atelier/core";
 import type { WorkspaceModule } from "@atelier/shared";
+import type { WorkspaceDockerMount } from "../types.ts";
 
 const docsSourceUrl = new URL("../../../../docs/atelier.md", import.meta.url);
 const docsMountPath = "/opt/atelier/docs";

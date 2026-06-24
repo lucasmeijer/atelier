@@ -1,4 +1,4 @@
-import type { WorkspaceCreationContext, WorkspaceDockerPlan } from "@atelier/core";
+import type { WorkspaceCreationContext, WorkspaceDockerPlan } from "./types.ts";
 
 export interface WorkspaceCreatedEvent {
   workspaceId: string;
