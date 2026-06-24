@@ -1,9 +1,1 @@
-export {
-  createTerminalPaneController,
-  initializeTerminalTheme,
-  startTerminal,
-  startTerminalTab,
-  stopTerminal,
-  workspaceTerminalClientModule,
-  workspaceTerminalClientModule as atelierClientModule,
-} from "./terminal-controllers.ts";
+export { workspaceTerminalClientModule as atelierClientModule } from "./terminal-controllers.ts";
