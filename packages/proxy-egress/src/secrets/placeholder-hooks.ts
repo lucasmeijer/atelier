@@ -43,7 +43,6 @@ export function createHttpHooks(options: CreateHttpHooksOptions = {}): CreateHtt
   const secrets = getEntries().map((entry) => ({ name: entry.name, placeholder: entry.placeholder, hosts: [...entry.hosts] }));
 
   const applySecretsToRequest = (request: Request): Request => {
-    assertRequestShape(request);
     const hostname = getHostname(request.url);
     const entries = getEntries();
     assertSecretValuesAllowedForHost(request, hostname, entries, options.replaceSecretsInQuery ?? false);
@@ -60,11 +59,8 @@ export function createHttpHooks(options: CreateHttpHooksOptions = {}): CreateHtt
     let nextRequest = request;
     if (options.onRequest) {
       const updated = await options.onRequest(nextRequest);
-      if (updated) {
-        if ("status" in updated) return normalizeResponse(updated);
-        assertRequestShape(updated);
-        nextRequest = updated;
-      }
+      if (updated instanceof Response) return updated;
+      if (updated) nextRequest = updated;
     }
     return applySecretsToRequest(nextRequest);
   };
@@ -114,10 +110,8 @@ function cloneRequestWith(request: Request, options: { url: string; headers: Hea
   const canHaveBody = method !== "GET" && method !== "HEAD";
   return new Request(options.url, { method: request.method, headers: options.headers, body: canHaveBody ? request.body : undefined, ...(canHaveBody && request.body ? ({ duplex: "half" } as const) : {}) });
 }
-function normalizeResponse(response: Response): Response { return new Response(response.body, { status: response.status, statusText: response.statusText, headers: new Headers(response.headers) }); }
-function assertRequestShape(value: unknown): asserts value is Request { if (typeof value !== "object" || value === null || typeof (value as any).url !== "string" || typeof (value as any).headers?.forEach !== "function") throw new TypeError("onRequest must return Request, Response, or undefined"); }
 function syncHeaders(target: Headers, source: Headers): void { const keys = new Set<string>(); source.forEach((_v, k) => keys.add(k.toLowerCase())); const del: string[] = []; target.forEach((_v, k) => { if (!keys.has(k.toLowerCase())) del.push(k); }); del.forEach((k) => target.delete(k)); source.forEach((v, k) => target.set(k, v)); }
-function getHostname(url: string): string { try { return new URL(url).hostname.toLowerCase(); } catch { return ""; } }
+function getHostname(url: string): string { return new URL(url).hostname.toLowerCase(); }
 
 function assertSecretValuesAllowedForHost(request: Request, hostname: string, entries: SecretEntry[], checkQuery: boolean) {
   for (const entry of entries) {
@@ -133,7 +127,7 @@ function requestContainsSecretValuesInHeaders(headers: Headers, values: string[]
   }
   return false;
 }
-function requestContainsSecretValuesInQuery(url: string, values: string[]): boolean { try { const parsed = new URL(url); return [...parsed.searchParams].some(([n, v]) => values.filter(Boolean).some((s) => n.includes(s) || v.includes(s))); } catch { return false; } }
+function requestContainsSecretValuesInQuery(url: string, values: string[]): boolean { const parsed = new URL(url); return [...parsed.searchParams].some(([n, v]) => values.filter(Boolean).some((s) => n.includes(s) || v.includes(s))); }
 function decodeBasicAuth(value: string): string | null { const match = value.match(/^(Basic)(\s+)(\S+)(\s*)$/i); if (!match) return null; try { return Buffer.from(match[3]!, "base64").toString("utf8"); } catch { return null; } }
 function collectStringMatchRanges(container: string, search: string): Array<{ start: number; end: number }> { const out: Array<{ start: number; end: number }> = []; if (!search) return out; for (let start = container.indexOf(search); start !== -1; start = container.indexOf(search, start + 1)) out.push({ start, end: start + search.length }); return out; }
 
@@ -148,11 +142,9 @@ function replaceSecretPlaceholdersInHeaders(incomingHeaders: Headers, hostname: 
 }
 function replaceSecretPlaceholdersInUrlParameters(url: string, hostname: string, entries: SecretEntry[], enabled: boolean): string {
   if (!enabled) return url;
-  try {
-    const parsed = new URL(url); let changed = false; const params = new URLSearchParams();
-    for (const [n, v] of parsed.searchParams) { const nn = replaceSecretPlaceholdersInString(n, hostname, entries); const vv = replaceSecretPlaceholdersInString(v, hostname, entries); changed ||= nn !== n || vv !== v; params.append(nn, vv); }
-    if (!changed) return url; parsed.search = params.toString(); return parsed.toString();
-  } catch { return url; }
+  const parsed = new URL(url); let changed = false; const params = new URLSearchParams();
+  for (const [n, v] of parsed.searchParams) { const nn = replaceSecretPlaceholdersInString(n, hostname, entries); const vv = replaceSecretPlaceholdersInString(v, hostname, entries); changed ||= nn !== n || vv !== v; params.append(nn, vv); }
+  if (!changed) return url; parsed.search = params.toString(); return parsed.toString();
 }
 function replaceBasicAuthSecretPlaceholders(headerName: string, headerValue: string, hostname: string, entries: SecretEntry[]): string {
   if (!/^(authorization|proxy-authorization)$/i.test(headerName)) return headerValue;
