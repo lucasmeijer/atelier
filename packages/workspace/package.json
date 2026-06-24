@@ -5,11 +5,13 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client/index.ts",
+    "./server": "./src/server/index.ts",
     "./server/provisioning": "./src/server/provisioning-web.ts"
   },
   "dependencies": {
     "@atelier/core": "workspace:*",
     "@atelier/observable-terminal": "workspace:*",
+    "@atelier/shared": "workspace:*",
     "@atelier/workspace-image": "workspace:*"
   }
 }
