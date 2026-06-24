@@ -97,6 +97,7 @@ export function registerGitIdentityWorkspaceEvents(events: AtelierEventBus): voi
   events.on("workspace_plan_prepare", async ({ plan }) => {
     const identity = await getGitIdentity();
     if (!identity) return;
-    plan.initScripts.push(`git config --file /home/atelier/.gitconfig user.name ${shellQuote(identity.name)}; git config --file /home/atelier/.gitconfig user.email ${shellQuote(identity.email)}; chown atelier:atelier /home/atelier/.gitconfig`);
+    const script = `git config --global user.name ${shellQuote(identity.name)}; git config --global user.email ${shellQuote(identity.email)}`;
+    plan.initScripts.push(`su atelier -c ${shellQuote(script)}`);
   });
 }

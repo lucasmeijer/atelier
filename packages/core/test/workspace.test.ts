@@ -152,6 +152,15 @@ describe("core workspaces", () => {
     expect((await listWorkspaces()).workspaces.some((workspace) => workspace.id === created.id)).toBe(false);
   });
 
+  test("workspace user matches the host user configured for the bind mount", async () => {
+    const created = await createWorkspace();
+    const setup = await execWorkspaceCommand(created.id, ["sh", "-lc", "test \"$(id -u)\" = \"$ATELIER_HOST_UID\" && test \"$(id -g)\" = \"$ATELIER_HOST_GID\" && printf hello > owned-by-workspace-user.txt"]);
+    expect(setup.exitCode).toBe(0);
+
+    expect(await deleteWorkspace(created.id)).toBeNull();
+    expect((await listWorkspaces()).workspaces.some((workspace) => workspace.id === created.id)).toBe(false);
+  });
+
   test("deleteWorkspace fails with uncommitted changes unless forced", async () => {
     const created = await createWorkspace();
     const setup = await execWorkspaceCommand(created.id, ["sh", "-lc", "cd /work && git init && printf hello > changed.txt"]);

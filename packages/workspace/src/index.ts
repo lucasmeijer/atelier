@@ -79,14 +79,14 @@ async function inspectLabels(id: string): Promise<Record<string, string>> {
 }
 
 async function ensureWorkspaceFilesystem(id: string): Promise<void> {
-  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `mkdir -p ${shellQuote(workspaceRoot)} /.atelier && chown -R atelier:atelier /.atelier && { chown atelier:atelier ${shellQuote(workspaceRoot)} 2>/dev/null || true; }`]);
-  if (result.exitCode !== 0) throw new AtelierCoreError("workspace_repair_failed", result.stderr.trim() || result.stdout.trim() || `could not prepare workspace filesystem for ${id}`);
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `test -d ${shellQuote(workspaceRoot)} && test -d /.atelier`]);
+  if (result.exitCode !== 0) throw new AtelierCoreError("workspace_repair_failed", result.stderr.trim() || result.stdout.trim() || `workspace filesystem is not ready for ${id}`);
 }
 
 async function waitForWorkspaceStartup(id: string): Promise<void> {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
-    const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `test -d ${shellQuote(workspaceRoot)}`]);
+    const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", "test -f /.atelier/ready"]);
     if (result.exitCode === 0) return;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
@@ -140,11 +140,16 @@ EOF
 chmod 755 /usr/local/bin/atelier-git-credential; cat > /etc/profile.d/atelier-github-token.sh <<'EOF'
 # GH_TOKEN, when present, is an Atelier placeholder. It is not the real secret.
 EOF
-git config --file /home/atelier/.gitconfig credential.helper '!/usr/local/bin/atelier-git-credential'; chown atelier:atelier /home/atelier/.gitconfig`;
+su atelier -c ${shellQuote("git config --global credential.helper '!/usr/local/bin/atelier-git-credential'")}`;
+}
+
+function hostUserEnv(): Record<string, string> {
+  if (typeof process.getuid !== "function" || typeof process.getgid !== "function") throw new AtelierCoreError("unsupported_platform", "workspace containers require a POSIX host uid/gid");
+  return { ATELIER_HOST_UID: String(process.getuid()), ATELIER_HOST_GID: String(process.getgid()) };
 }
 
 function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan {
-  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8" }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: [...dockerHostGatewayArgs()], initScripts: [workspaceGitCredentialInitScript()], cleanup: [] };
+  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: [...dockerHostGatewayArgs()], initScripts: [workspaceGitCredentialInitScript()], cleanup: [] };
 }
 
 interface WorkspaceRuntimeManifest {
@@ -171,8 +176,18 @@ function applyWorkspaceRuntimeManifest(plan: WorkspaceDockerPlan, manifest: Work
     plan.initScripts.push(...manifest.initScripts);
   }
 }
+function alignWorkspaceUserScript(): string {
+  return `work_uid="\${ATELIER_HOST_UID:?}"
+work_gid="\${ATELIER_HOST_GID:?}"
+if [ "$work_uid" = 0 ] || [ "$work_gid" = 0 ]; then echo "Atelier must run as a non-root host user" >&2; exit 1; fi
+conflict_user="$(getent passwd "$work_uid" | cut -d: -f1 || true)"
+if [ -n "$conflict_user" ] && [ "$conflict_user" != atelier ]; then userdel "$conflict_user"; fi
+if [ "$(id -g atelier)" != "$work_gid" ]; then groupmod -o -g "$work_gid" atelier; fi
+if [ "$(id -u atelier)" != "$work_uid" ] || [ "$(id -g atelier)" != "$work_gid" ]; then usermod -u "$work_uid" -g "$work_gid" atelier; fi`;
+}
+
 function workspaceInitScript(plan: WorkspaceDockerPlan): string {
-  return [`mkdir -p /.atelier ${workspaceRoot}`, `chown -R atelier:atelier /.atelier && { chown atelier:atelier ${workspaceRoot} 2>/dev/null || true; }`, ...plan.initScripts, `if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'ATELIER_VSCODE_DEFAULT_FOLDER=${workspaceRoot} nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode-server.log 2>&1 &' || true; fi`, "sleep infinity"].join("; ");
+  return [alignWorkspaceUserScript(), `install -d -o atelier -g atelier /.atelier`, ...plan.initScripts, `if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'ATELIER_VSCODE_DEFAULT_FOLDER=${workspaceRoot} nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode-server.log 2>&1 &' || true; fi`, "touch /.atelier/ready", "sleep infinity"].join("; ");
 }
 
 export async function createWorkspace(options: CreateWorkspaceOptions = {}): Promise<WorkspaceNewResult> {

@@ -51,15 +51,13 @@ set -eux
 export DEBIAN_FRONTEND=noninteractive
 ${codeAptSetupScript()}
 id -u atelier >/dev/null 2>&1 || useradd --create-home --shell /bin/bash atelier
-mkdir -p /extensions /home/atelier/.vscode-server
-chown -R atelier:atelier /extensions /home/atelier
+install -d -o atelier -g atelier /extensions /home/atelier/.vscode-server
 su atelier -c 'nohup code serve-web --accept-server-license-terms --host 127.0.0.1 --port 8000 --without-connection-token --server-data-dir /home/atelier/.vscode-server > /tmp/vscode-extension-seed.log 2>&1 &'
 ${waitForVSCodeServerScript("/tmp/vscode-extension-seed.log")}
 pkill -u atelier -f 'code serve-web|code-server' || true
 ${installExtensions}
 su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server --extensions-dir /extensions --list-extensions --show-versions' | tee /tmp/vscode-extensions.log
 ${verifyExtensions}
-chown -R root:root /extensions
 chmod -R a+rX /extensions
 find /extensions -type d -exec chmod 0755 {} +
 find /extensions -type f -exec sh -c 'for file do magic="$(head -c 4 "$file" | od -An -tx1 | tr -d " ")"; first2="$(head -c 2 "$file")"; if [ "$magic" = "7f454c46" ] || [ "$first2" = "#!" ]; then chmod 0755 "$file"; fi; done' sh {} +
