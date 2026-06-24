@@ -5,8 +5,9 @@ import { createServer as createHttpsServer } from "node:https";
 import net from "node:net";
 import { Readable } from "node:stream";
 import tls from "node:tls";
-import { dockerHostAtelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
+import { dockerHostAtelierDataPath, getAtelierRuntimeContext, shellQuote } from "@atelier/core";
 import { HttpRequestBlockedError } from "../secrets/errors.ts";
+import { matchHostname } from "../secrets/patterns.ts";
 import { createWorkspaceSecretContext, forgetWorkspaceSecretContext, getWorkspaceSecretContext } from "../secrets/workspace-secrets.ts";
 import type { AtelierEventBus } from "@atelier/core";
 import { isHopByHopHeader, stripHopByHopHeaders } from "../proxy-headers.ts";
@@ -52,10 +53,6 @@ async function workspaceProxyEnv(workspaceId: string, token: string, extraNoProx
     YARN_CA_FILE: "/etc/ssl/certs/ca-certificates.crt",
     PIP_CERT: "/etc/ssl/certs/ca-certificates.crt",
   };
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
@@ -146,15 +143,6 @@ async function handleConnect(ca: MitmCa, req: IncomingMessage, socket: net.Socke
 async function shouldMitmConnectTarget(workspaceId: string, hostname: string): Promise<boolean> {
   const context = await getWorkspaceSecretContext(workspaceId);
   return context.secrets.some((secret) => secret.hosts.some((host) => matchHostname(hostname, host)));
-}
-
-function matchHostname(hostname: string, pattern: string): boolean {
-  const normalizedHostname = hostname.trim().toLowerCase().replace(/\.$/, "");
-  const normalizedPattern = pattern.trim().toLowerCase().replace(/\.$/, "");
-  if (!normalizedHostname || !normalizedPattern) return false;
-  if (normalizedPattern === "*") return true;
-  const escaped = normalizedPattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
-  return new RegExp(`^${escaped}$`, "i").test(normalizedHostname);
 }
 
 async function tunnelConnect(hostname: string, port: number, socket: net.Socket, head: Buffer): Promise<void> {
