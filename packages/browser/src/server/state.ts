@@ -1,4 +1,4 @@
-const defaultTargetUrl = "http://localhost:3000";
+const defaultTargetUrl = "http://localhost:3000/";
 export const defaultBrowserAppKey = "browser";
 
 export interface WorkspaceBrowserTab {

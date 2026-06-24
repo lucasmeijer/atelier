@@ -37,7 +37,7 @@ export function renderBrowserFrame(workspaceId: string, appKey: string): string 
         <button class="browser-nav-button" type="button" data-action="browser-address#back" title="Back" aria-label="Back">←</button>
         <button class="browser-nav-button" type="button" data-action="browser-address#forward" title="Forward" aria-label="Forward">→</button>
         <button class="browser-nav-button" type="button" data-action="browser-address#reload" title="Reload" aria-label="Reload">↻</button>
-        <input class="browser-address-input" name="url" value="${escapeHtml(state.targetUrl)}" placeholder="http://localhost:3000" spellcheck="false" autocomplete="off" aria-label="Browser URL">
+        <input class="browser-address-input" name="url" value="${escapeHtml(state.targetUrl)}" placeholder="http://localhost:3000/" spellcheck="false" autocomplete="off" aria-label="Browser URL">
         <a class="browser-open-external" href="#" data-browser-address-target="external" target="_blank" rel="noreferrer" title="Open preview in a new tab">↗</a>
       </form>
       <div class="browser-viewport" data-browser-pane-target="viewport">

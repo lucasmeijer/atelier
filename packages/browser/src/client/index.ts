@@ -139,7 +139,7 @@ export function createBrowserAddressController(Controller: StimulusControllerCon
       if (current) {
         try { return new URL(current).origin; } catch {}
       }
-      return "http://localhost:3000";
+      return "http://localhost:3000/";
     }
 
     private isTrustedFrameOrigin(origin: string, iframe: HTMLIFrameElement): boolean {
@@ -154,7 +154,7 @@ export function createBrowserAddressController(Controller: StimulusControllerCon
 
 function normalizeBrowserInput(value: string): string {
   const trimmed = value.trim();
-  if (!trimmed) return "http://localhost:3000";
+  if (!trimmed) return "http://localhost:3000/";
   return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) ? trimmed : `http://${trimmed}`;
 }
 

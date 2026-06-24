@@ -17,10 +17,10 @@ export function createOrOpenPreviewBrowserTool(workspaceId: string, deps: Create
   return defineTool({
     name: "create_or_open_preview_browser",
     label: "Open Preview Browser",
-    description: "Instruct Atelier to show the user a preview browser that loads the specified url. Write the url from the network perspective of the container itself. So you can use http://localhost:3000.",
+    description: "Instruct Atelier to show the user a preview browser that loads the specified url. Write the url from the network perspective of the container itself. So you can use http://localhost:3000/.",
     parameters: Type.Object({
       url: Type.String({
-        description: "URL to load in the preview browser, written from the network perspective of the container itself. For example: http://localhost:3000",
+        description: "URL to load in the preview browser, written from the network perspective of the container itself. For example: http://localhost:3000/",
       }),
     }),
     execute: async (_toolCallId: string, params: { url: string }) => {
