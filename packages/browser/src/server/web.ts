@@ -6,13 +6,15 @@ import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppResponse, resolveBrowser
 import { createOrOpenPreviewBrowserTool } from "./agent-tool.ts";
 import { registerWorkspaceAgentTool } from "@atelier/agent/server";
 
+const browserCreateCommandId = "browser.create";
+
 export function renderWorkspaceBrowserTabs(workspaceId: string): WorkspaceTabContribution[] {
   return listWorkspaceBrowserTabs(workspaceId).map((tab) => renderBrowserTab(workspaceId, tab));
 }
 
 export const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
   {
-    id: "browser.create",
+    id: browserCreateCommandId,
     label: "New Browser",
     scope: "workspace",
     surfaces: { ui: { placement: "group-menu" } },
@@ -23,7 +25,7 @@ export const browserWorkspaceModule: WorkspaceModule = {
   id: "browser",
   staticFiles: browserStaticFiles,
   commands: [{
-    id: "browser.create",
+    id: browserCreateCommandId,
     execute({ workspaceId }) {
       return { createdTabKey: createWorkspaceBrowserTabForWorkspace(workspaceId).key };
     },
