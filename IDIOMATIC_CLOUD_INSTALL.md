@@ -19,6 +19,14 @@ accomplish everything in this document in a single turn.
 
 Do not lock down public SSH or HTTP until Tailscale access has been verified from the human's machine. Once verified, lock down the machine for any other incoming traffic.
 
+When locking down incoming traffic with a default-deny firewall, keep the Docker bridge able to reach Atelier's workspace egress proxy on TCP port 58123. For the default Docker bridge subnet this is typically:
+
+```sh
+sudo ufw allow in on docker0 proto tcp from 172.17.0.0/16 to any port 58123 comment 'Atelier workspace egress proxy'
+```
+
+If Docker uses a different bridge subnet, derive it with `docker network inspect bridge` and allow that subnet on the Docker bridge interface. Do not open this proxy on public interfaces.
+
 Once tailscale install has been established, and the machine is locked down from other traffic, proceed to installing and running atelier itself:
 
 Add an 'atelier' user with sudo powers.
