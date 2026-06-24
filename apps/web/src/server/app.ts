@@ -520,7 +520,7 @@ ${moduleStylesHtml()}
     const entry = requireWorkspace(workspaceId);
     return await Promise.all(workspaceModules
       .filter((module) => module.attachToWorkspace)
-      .map((module) => module.attachToWorkspace!({ workspaceId, sourceRepositoryId: entry.sourceRepositoryId })));
+      .map((module) => module.attachToWorkspace!({ workspaceId, sourceRepositoryId: entry.sourceRepositoryId, events: deps.events })));
   }
 
   async function workspaceTabsAndAttachments(workspaceId: string): Promise<{ attachments: WorkspaceAttachment[]; tabs: WorkspaceTabContribution[] }> {

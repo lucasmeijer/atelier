@@ -106,8 +106,9 @@ export interface AgentStatsView {
   models: AgentModelOption[];
 }
 
-interface AgentPaneState {
+export interface AgentPaneState {
   transcriptHtml: string;
+  pendingFollowupsHtml?: string;
   busy: boolean;
   stats: AgentStatsView;
 }
@@ -124,7 +125,7 @@ export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceA
       data-agent-attachments-upload-url-value="${escapeHtml(`/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`)}"
       data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
       <div class="agent-transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
-      <div class="agent-pending-followups" id="${ids.pendingFollowups(ctx)}" data-agent-pane-target="pendingFollowups">${renderPendingFollowups(ctx, [])}</div>
+      <div class="agent-pending-followups" id="${ids.pendingFollowups(ctx)}" data-agent-pane-target="pendingFollowups">${state.pendingFollowupsHtml ?? renderPendingFollowups(ctx, [])}</div>
       ${await renderAgentComposer({
         ctx,
         action: agentPath(ctx, "/messages"),

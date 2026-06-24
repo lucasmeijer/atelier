@@ -3,7 +3,7 @@ import { createWorkspaceTerminal, listWorkspaceTerminals, type WorkspaceTerminal
 import { renderTerminalPane } from "./render.ts";
 import { observableTerminalTabPrefix } from "@atelier/observable-terminal/shared";
 import { terminalStaticFiles } from "./static.ts";
-import { registerTerminalEvents } from "./events.ts";
+import { registerTerminalEvents, rememberWorkspaceTerminalSignature } from "./events.ts";
 import { closeTerminalSocket, handleTerminalSocketMessage, openTerminalSocket, subscribeTerminalTabBusy, validateTerminalSocket } from "./sockets.ts";
 import type { AtelierEventBus } from "@atelier/core";
 
@@ -48,6 +48,7 @@ export const terminalWorkspaceModule: WorkspaceModule = {
   }],
   async attachToWorkspace({ workspaceId }) {
     const { terminals } = await listWorkspaceTerminals(workspaceId);
+    rememberWorkspaceTerminalSignature(workspaceId, terminals);
     return {
       tabs: renderWorkspaceTerminalTabs(workspaceId, terminals),
       commands: terminalWorkspaceCommands,

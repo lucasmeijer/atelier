@@ -24,6 +24,7 @@ import {
   renderStreamingToolItem,
   renderToolCard,
   renderTranscript,
+  type AgentPaneState,
   type AgentRenderContext,
   type AgentStatsView,
 } from "./render.ts";
@@ -72,6 +73,8 @@ interface WorkspaceAgentRuntime {
   subscribe(listener: AgentSubscriber): () => void;
   /** Turbo-stream HTML bringing a fresh client fully up to date. */
   snapshotStream(): Promise<string>;
+  /** Server-rendered state for initial pane HTML. */
+  paneState(): Promise<AgentPaneState>;
   systemPrompt(): string;
   userMessages(): string[];
   submit(text: string, options: SubmitOptions): Promise<void>;
@@ -518,13 +521,22 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   async snapshotStream(): Promise<string> {
-    const sections = await this.sectionsForDisplay();
+    const state = await this.paneState();
     return (
-      turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, sections, this.systemPrompt())) +
-      turboStream("update", ids.pendingFollowups(this.ctx), renderPendingFollowups(this.ctx, this.pendingFollowups)) +
-      turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, this.busy)) +
-      turboStream("update", ids.stats(this.ctx), renderStatsBar(this.ctx, await this.statsView()))
+      turboStream("update", ids.transcript(this.ctx), state.transcriptHtml) +
+      turboStream("update", ids.pendingFollowups(this.ctx), state.pendingFollowupsHtml ?? "") +
+      turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, state.busy)) +
+      turboStream("update", ids.stats(this.ctx), renderStatsBar(this.ctx, state.stats))
     );
+  }
+
+  async paneState(): Promise<AgentPaneState> {
+    return {
+      transcriptHtml: renderTranscript(this.ctx, await this.sectionsForDisplay(), this.systemPrompt()),
+      pendingFollowupsHtml: renderPendingFollowups(this.ctx, this.pendingFollowups),
+      busy: this.busy,
+      stats: await this.statsView(),
+    };
   }
 
   abstract systemPrompt(): string;

@@ -5,7 +5,7 @@ import { getWorkspaceAgentRuntime, subscribeWorkspaceTabBusy } from "./runtime.t
 import { handleAgentRequest, registerAgentEvents, resolveWorkspacePortProxyTarget, workspaceFileEndpoint } from "./routes.ts";
 import { registerPiConfigEvents } from "./pi-config-seed.ts";
 import { createNextWorkspaceAgent, ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
-import { agentTabKey, renderAgentPane, type AgentStatsView } from "./render.ts";
+import { agentTabKey, renderAgentPane, type AgentPaneState, type AgentStatsView } from "./render.ts";
 import { getConfiguredAgentModels, setActiveAgentModel, setModelThinkingLevel } from "./pi-config-models.ts";
 import type { AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
@@ -27,19 +27,25 @@ const emptyStats: AgentStatsView = {
   models: [],
 };
 
-async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[]): Promise<WorkspaceTabContribution[]> {
-  return await Promise.all(agents.map(async (agent, index) => ({
-    key: agentTabKey(agent.label),
-    label: agent.label,
-    // The pane renders as an empty shell: the SSE snapshot fills in the
-    // transcript, stats, and prompt actions on connect.
-    paneHtml: await renderAgentPane(
-      { workspaceId, label: agent.label },
-      agent,
-      { transcriptHtml: "", busy: false, stats: emptyStats },
-      { active: index === 0 },
-    ),
-  })));
+async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[], events?: AtelierEventBus): Promise<WorkspaceTabContribution[]> {
+  return await Promise.all(agents.map(async (agent, index) => {
+    let state: AgentPaneState = { transcriptHtml: "", busy: false, stats: emptyStats };
+    try {
+      state = await (await getWorkspaceAgentRuntime(agent, { events })).paneState();
+    } catch {
+      // Keep the workspace chrome renderable even if a persisted agent session is unreadable.
+    }
+    return {
+      key: agentTabKey(agent.label),
+      label: agent.label,
+      paneHtml: await renderAgentPane(
+        { workspaceId, label: agent.label },
+        agent,
+        state,
+        { active: index === 0 },
+      ),
+    };
+  }));
 }
 
 export const agentWorkspaceCommands: WorkspaceCommandContribution[] = [
@@ -130,10 +136,10 @@ export const agentWorkspaceModule: WorkspaceModule = {
     subscribeWorkspaceTabBusy(({ workspaceId, tabKey, busy }) => context.registry.setTabBusy(workspaceId, tabKey, busy));
     registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force) as DeleteCurrentWorkspaceResult));
   },
-  async attachToWorkspace({ workspaceId, sourceRepositoryId }) {
+  async attachToWorkspace({ workspaceId, sourceRepositoryId, events }) {
     const agents = await listOrCreateWorkspaceAgents(workspaceId);
     return {
-      tabs: await renderWorkspaceAgentTabs(workspaceId, agents),
+      tabs: await renderWorkspaceAgentTabs(workspaceId, agents, events as AtelierEventBus | undefined),
       commands: sourceRepositoryId ? [...agentWorkspaceCommands, sourceRepoAgentWorkspaceCommand] : agentWorkspaceCommands,
     };
   },

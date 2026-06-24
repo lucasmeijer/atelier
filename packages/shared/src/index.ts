@@ -3,6 +3,7 @@ export const atelierName = "Atelier" as const;
 export interface WorkspaceAttachContext {
   workspaceId: string;
   sourceRepositoryId?: string | null;
+  events?: unknown;
 }
 
 export interface WorkspaceTabContribution {
