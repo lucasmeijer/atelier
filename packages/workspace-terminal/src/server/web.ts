@@ -1,7 +1,7 @@
 import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { createWorkspaceTerminal, listWorkspaceTerminals, type WorkspaceTerminalListResult } from "./workspace-terminals.ts";
 import { renderTerminalPane } from "./render.ts";
-import { observableTerminalTabPrefix } from "@atelier/observable-terminal/shared";
+import { terminalTabKey, terminalTitleFromTabKey } from "../shared.ts";
 import { terminalStaticFiles } from "./static.ts";
 import { registerTerminalEvents, rememberWorkspaceTerminalSignature } from "./events.ts";
 import { closeTerminalSocket, handleTerminalSocketMessage, openTerminalSocket, subscribeTerminalTabBusy, validateTerminalSocket } from "./sockets.ts";
@@ -9,7 +9,7 @@ import type { AtelierEventBus } from "@atelier/core";
 
 export function renderWorkspaceTerminalTabs(workspaceId: string, terminals: WorkspaceTerminalListResult["terminals"]): WorkspaceTabContribution[] {
   return terminals.map((terminal) => ({
-    key: `${observableTerminalTabPrefix}${terminal.title}`,
+    key: terminalTabKey(terminal.title),
     label: terminal.title,
     paneHtml: renderTerminalPane(workspaceId, terminal.title),
   }));
@@ -40,11 +40,11 @@ export const terminalWorkspaceModule: WorkspaceModule = {
   commands: [{
     id: "terminal.create",
     async execute({ workspaceId }) {
-      return { createdTabKey: `${observableTerminalTabPrefix}${(await createWorkspaceTerminal(workspaceId)).title}` };
+      return { createdTabKey: terminalTabKey((await createWorkspaceTerminal(workspaceId)).title) };
     },
   }],
   tabs: [{
-    owns: (tabKey) => tabKey.startsWith(observableTerminalTabPrefix),
+    owns: (tabKey) => terminalTitleFromTabKey(tabKey) !== undefined,
   }],
   async attachToWorkspace({ workspaceId }) {
     const { terminals } = await listWorkspaceTerminals(workspaceId);

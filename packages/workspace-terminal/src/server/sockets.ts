@@ -3,7 +3,8 @@ import type { ServerWebSocket } from "bun";
 import { AtelierCoreError } from "@atelier/core";
 import { workspaceContainerName, workspaceRoot } from "@atelier/workspace";
 import { attachObservableTerminal } from "@atelier/observable-terminal/server";
-import { observableTerminalTabPrefix, parseObservableTerminalMessage } from "@atelier/observable-terminal/shared";
+import { parseObservableTerminalMessage } from "@atelier/observable-terminal/shared";
+import { terminalTabKey, terminalTitleFromTabKey } from "../shared.ts";
 import { listWorkspaceTerminals } from "./workspace-terminals.ts";
 
 export interface TerminalSocketData {
@@ -23,10 +24,6 @@ const terminalTabBusy = new Map<string, boolean>();
 export function subscribeTerminalTabBusy(listener: TerminalTabBusyListener): () => void {
   terminalTabBusyListeners.add(listener);
   return () => terminalTabBusyListeners.delete(listener);
-}
-
-function terminalTabKey(title: string): string {
-  return `${observableTerminalTabPrefix}${title}`;
 }
 
 function terminalBusyKey(workspaceId: string, title: string): string {
@@ -51,8 +48,8 @@ export async function validateTerminalSocket(url: URL): Promise<TerminalSocketDa
   if (!match) return undefined;
   const workspaceId = decodeURIComponent(match[1]);
   const tabId = decodeURIComponent(match[2]);
-  if (!tabId.startsWith(observableTerminalTabPrefix)) return undefined;
-  const title = tabId.slice(observableTerminalTabPrefix.length);
+  const title = terminalTitleFromTabKey(tabId);
+  if (!title) return undefined;
   const { terminals } = await listWorkspaceTerminals(workspaceId);
   if (!terminals.some((terminal) => terminal.title === title)) throw new AtelierCoreError("terminal_not_found", `terminal not found: ${title}`);
   return {

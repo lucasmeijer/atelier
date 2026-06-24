@@ -1,4 +1,4 @@
-import { observableTerminalTabPrefix } from "@atelier/observable-terminal/shared";
+import { terminalTabKey as workspaceTerminalTabKey } from "../shared.ts";
 
 export function escapeHtml(value: unknown): string {
   return String(value)
@@ -14,7 +14,7 @@ export function domId(...parts: string[]): string {
 }
 
 export function terminalTabKey(title: string): string {
-  return `${observableTerminalTabPrefix}${title}`;
+  return workspaceTerminalTabKey(title);
 }
 
 export function renderTerminalPane(id: string, title: string, options: { autostart?: boolean; active?: boolean } = {}): string {

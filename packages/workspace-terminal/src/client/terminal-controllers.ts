@@ -8,8 +8,8 @@ import {
   type ObservableTerminalTheme,
   type ObservableTerminalViewer,
 } from "@atelier/observable-terminal/client";
-import { observableTerminalTabPrefix } from "@atelier/observable-terminal/shared";
 import type { WorkspaceClientModule } from "@atelier/shared";
+import { terminalTabKey, terminalTitleFromTabKey } from "../shared.ts";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
@@ -103,7 +103,7 @@ export async function startTerminal(workspaceId: string, title: string, options:
   startingTerminals.add(key);
 
   try {
-    const tabId = `${observableTerminalTabPrefix}${title}`;
+    const tabId = terminalTabKey(title);
     const viewer = await createObservableTerminalViewer({
       host,
       mode: "interactive",
@@ -141,7 +141,8 @@ export function stopTerminal(workspaceId: string, title: string): void {
 }
 
 export function startTerminalTab(workspaceId: string, tabName: string): void {
-  if (tabName.startsWith(observableTerminalTabPrefix)) void startTerminal(workspaceId, tabName.slice(observableTerminalTabPrefix.length));
+  const title = terminalTitleFromTabKey(tabName);
+  if (title) void startTerminal(workspaceId, title);
 }
 
 export function createTerminalPaneController(Controller: StimulusControllerConstructor) {
@@ -170,8 +171,9 @@ export const workspaceTerminalClientModule: WorkspaceClientModule = {
     application.register("terminal-pane", createTerminalPaneController(Controller));
     hooks.onActivateTab(({ workspaceId, tabKey }) => startTerminalTab(workspaceId, tabKey));
     hooks.onFocusGroup(({ workspaceId, tabKey }) => {
-      if (!workspaceId || !tabKey?.startsWith(observableTerminalTabPrefix)) return false;
-      void startTerminal(workspaceId, tabKey.slice(observableTerminalTabPrefix.length), { focus: true });
+      const title = tabKey ? terminalTitleFromTabKey(tabKey) : undefined;
+      if (!workspaceId || !title) return false;
+      void startTerminal(workspaceId, title, { focus: true });
       return true;
     });
   },

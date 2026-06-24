@@ -1,5 +1,3 @@
-export const observableTerminalTabPrefix = "terminal:";
-
 export interface ObservableTerminalResizeMessage {
   type: "resize";
   cols: number;
