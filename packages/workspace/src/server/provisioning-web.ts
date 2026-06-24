@@ -1,5 +1,7 @@
 export type WorkspaceProvisionStepStatus = "pending" | "running" | "done" | "failed";
 
+import { observableTerminalStaticFiles } from "@atelier/observable-terminal/server";
+
 export interface WorkspaceProvisionTerminal {
   kind: "host-tmux";
   session: string;
@@ -49,6 +51,7 @@ export interface WorkspaceProvisionSeedStep {
 
 export const workspaceProvisioningStaticFiles = {
   "/provisioning.css": { url: new URL("../client/provisioning.css", import.meta.url), contentType: "text/css; charset=utf-8" },
+  ...observableTerminalStaticFiles,
 } as const;
 
 const workspaceCreationSeedSteps: WorkspaceProvisionSeedStep[] = [

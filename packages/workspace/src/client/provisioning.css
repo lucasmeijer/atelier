@@ -1,3 +1,5 @@
+@import url("/observable-terminal.css");
+
 .provision-heading { display: flex; align-items: center; gap: 10px; }
 .provision-heading b { font-size: 14px; }
 .provision-output-log { max-height: min(52vh, 520px); overflow: auto; white-space: pre-wrap; word-break: break-word; background: #0f172a; color: #dbeafe; border-radius: 10px; padding: 12px; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }

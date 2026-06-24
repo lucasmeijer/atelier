@@ -1,5 +1,4 @@
 @import url("/observable-terminal.css");
-@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: block; src: url("/fonts/jetbrains-mono-latin-300-normal.woff2") format("woff2"); }
 
 .workspace-group .workspace-panes:has(> .terminal-tab-pane.active) { padding: 0; overflow: hidden; background: var(--terminal-bg, #2e3440); }
 .terminal-tab-pane.active { height: 100%; min-height: 0; }
