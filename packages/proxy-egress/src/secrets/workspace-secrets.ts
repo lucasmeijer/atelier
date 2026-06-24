@@ -1,5 +1,5 @@
 import { clearWorkspaceGitHubToken as clearStoredWorkspaceGitHubToken, discoverHostGitHubToken, hasWorkspaceGitHubToken as hasStoredWorkspaceGitHubToken, setWorkspaceGitHubToken as setStoredWorkspaceGitHubToken } from "@atelier/core";
-import { createHttpHooks, type SecretDefinition, type SecretManager } from "./placeholder-hooks.ts";
+import { createHttpHooks, type SecretDefinition } from "./placeholder-hooks.ts";
 import type { HttpHooks } from "./types.ts";
 
 export const githubTokenEnvVar = "GH_TOKEN";
@@ -8,7 +8,6 @@ export type WorkspaceSecretContext = {
   workspaceId: string;
   env: Record<string, string>;
   hooks: HttpHooks;
-  secretManager: SecretManager;
   secrets: Array<{ name: string; placeholder: string; hosts: string[] }>;
 };
 
@@ -62,8 +61,7 @@ function buildContext(workspaceId: string, secrets: Record<string, SecretDefinit
     workspaceId,
     env: hooks.env,
     hooks: hooks.httpHooks,
-    secretManager: hooks.secretManager,
-    secrets: hooks.secretManager.listSecrets().map(({ name, placeholder, hosts }) => ({ name, placeholder, hosts })),
+    secrets: hooks.secrets,
   };
 }
 
