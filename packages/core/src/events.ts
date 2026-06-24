@@ -1,13 +1,6 @@
 export interface AtelierEventMap {}
 
-export interface AtelierEventContext {
-  eventName: keyof AtelierEventMap;
-}
-
-export type AtelierEventHandler<K extends keyof AtelierEventMap> = (
-  event: AtelierEventMap[K],
-  context: AtelierEventContext & { eventName: K },
-) => void | Promise<void>;
+export type AtelierEventHandler<K extends keyof AtelierEventMap> = (event: AtelierEventMap[K]) => void | Promise<void>;
 
 export interface AtelierEventBus {
   on<K extends keyof AtelierEventMap>(eventName: K, handler: AtelierEventHandler<K>): () => void;
@@ -19,21 +12,17 @@ export function createAtelierEventBus(): AtelierEventBus {
 
   return {
     on(eventName, handler) {
-      let eventHandlers = handlers.get(eventName);
-      if (!eventHandlers) {
-        eventHandlers = new Set();
-        handlers.set(eventName, eventHandlers);
-      }
+      const eventHandlers = handlers.get(eventName) ?? new Set<AtelierEventHandler<typeof eventName>>();
+      handlers.set(eventName, eventHandlers);
       eventHandlers.add(handler);
-      return () => eventHandlers?.delete(handler);
+      return () => eventHandlers.delete(handler);
     },
 
     async emit(eventName, event) {
       const eventHandlers = handlers.get(eventName);
       if (!eventHandlers) return;
-      const context = { eventName } as AtelierEventContext & { eventName: typeof eventName };
       for (const handler of eventHandlers) {
-        await handler(event, context);
+        await handler(event);
       }
     },
   };

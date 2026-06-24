@@ -1,7 +1,6 @@
 export {
   createAtelierEventBus,
   type AtelierEventBus,
-  type AtelierEventContext,
   type AtelierEventHandler,
   type AtelierEventMap,
 } from "./events.ts";
