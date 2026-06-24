@@ -1,5 +1,5 @@
 import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
-import { createWorkspaceTerminal, listWorkspaceTerminals, type WorkspaceTerminalListResult } from "./workspace-terminals.ts";
+import { createWorkspaceTerminal, deleteWorkspaceTerminal, listWorkspaceTerminals, type WorkspaceTerminalListResult } from "./workspace-terminals.ts";
 import { renderTerminalPane } from "./render.ts";
 import { terminalTabKey, terminalTitleFromTabKey } from "../shared.ts";
 import { terminalStaticFiles } from "./static.ts";
@@ -41,6 +41,10 @@ export const terminalWorkspaceModule: WorkspaceModule = {
   }],
   tabs: [{
     owns: (tabKey) => terminalTitleFromTabKey(tabKey) !== undefined,
+    async close({ workspaceId, tabKey }) {
+      const title = terminalTitleFromTabKey(tabKey);
+      if (title) await deleteWorkspaceTerminal(workspaceId, title);
+    },
   }],
   async attachToWorkspace({ workspaceId }) {
     const { terminals } = await listWorkspaceTerminals(workspaceId);
