@@ -9,13 +9,12 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { turboAppendText, turboStream } from "./html.ts";
+import { escapeHtml, turboStream } from "./html.ts";
 import {
   ids,
   renderFinalText,
   renderItem,
   renderNotice,
-  renderPendingFollowups,
   renderPromptActions,
   renderRunningToolCard,
   renderSection,
@@ -54,7 +53,7 @@ export function subscribeWorkspaceTabBusy(listener: WorkspaceTabBusyListener): (
   return () => workspaceTabBusyListeners.delete(listener);
 }
 
-export type SubmitMode = "send" | "steer" | "followup";
+export type SubmitMode = "send" | "steer";
 
 interface SubmitOptions {
   mode: SubmitMode;
@@ -78,7 +77,6 @@ interface WorkspaceAgentRuntime {
   systemPrompt(): string;
   userMessages(): string[];
   submit(text: string, options: SubmitOptions): Promise<void>;
-  cancelFollowup(id: string): Promise<void>;
   abort(): Promise<void>;
   currentModel(): { provider: string; id: string } | undefined;
   availableThinkingLevels(): string[];
@@ -130,14 +128,6 @@ interface StreamingMarkdownState {
   getText: () => string;
 }
 
-interface PendingFollowup {
-  id: string;
-  displayText: string;
-  fullText: string;
-  imageRefs: ImageRef[];
-  imageContent?: { type: "image"; data: string; mimeType: string }[];
-}
-
 /** Only attach the inline terminal when a tool call has been running this long. */
 const terminalRevealMs = 3000;
 
@@ -147,12 +137,9 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   sessionFile: string;
   protected ctx: AgentRenderContext;
   protected live?: LiveState;
-  private busy = false;
+  private announcedBusy = false;
   private subscribers = new Set<AgentSubscriber>();
-  private pendingDeltas = new Map<string, string>();
-  private deltaTimer: ReturnType<typeof setTimeout> | undefined;
   private streamingMarkdown = new Map<string, StreamingMarkdownState>();
-  private pendingFollowups: PendingFollowup[] = [];
 
   constructor(agent: WorkspaceAgentInfo, protected readonly options: WorkspaceAgentRuntimeOptions = {}) {
     this.workspaceId = agent.workspaceId;
@@ -166,7 +153,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   get isStreaming(): boolean {
-    return this.busy;
+    return this.announcedBusy;
   }
 
   subscribe(listener: AgentSubscriber): () => void {
@@ -178,30 +165,8 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     for (const subscriber of this.subscribers) subscriber(streamHtml);
   }
 
-  /** Structural op: flushes pending text deltas first to preserve ordering. */
   protected stream(html: string): void {
-    this.flushDeltas();
     this.broadcastRaw(html);
-  }
-
-  protected delta(target: string, text: string): void {
-    if (!text) return;
-    this.pendingDeltas.set(target, (this.pendingDeltas.get(target) ?? "") + text);
-    if (!this.deltaTimer) {
-      this.deltaTimer = setTimeout(() => this.flushDeltas(), deltaFlushMs);
-    }
-  }
-
-  protected flushDeltas(): void {
-    if (this.deltaTimer) {
-      clearTimeout(this.deltaTimer);
-      this.deltaTimer = undefined;
-    }
-    if (this.pendingDeltas.size === 0) return;
-    let payload = "";
-    for (const [target, text] of this.pendingDeltas) payload += turboAppendText(target, text);
-    this.pendingDeltas.clear();
-    this.broadcastRaw(payload);
   }
 
   private scheduleStreamingMarkdown(target: string, getText: () => string): void {
@@ -254,38 +219,14 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   protected setBusy(busy: boolean): void {
-    if (this.busy === busy) return;
-    this.busy = busy;
+    if (this.announcedBusy === busy) return;
+    this.announcedBusy = busy;
     for (const listener of workspaceTabBusyListeners) listener({ workspaceId: this.workspaceId, tabKey: `agent:${this.label}`, busy });
     this.stream(turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, busy)));
   }
 
   protected notice(level: "info" | "error", message: string): void {
     this.stream(turboStream("append", ids.notices(this.ctx), renderNotice(level, message)));
-  }
-
-  protected queuePendingFollowup(item: Omit<PendingFollowup, "id">): string {
-    const id = crypto.randomUUID();
-    this.pendingFollowups.push({ id, ...item });
-    this.renderPendingFollowups();
-    return id;
-  }
-
-  protected shiftPendingFollowup(): PendingFollowup | undefined {
-    const next = this.pendingFollowups.shift();
-    if (next) this.renderPendingFollowups();
-    return next;
-  }
-
-  async cancelFollowup(id: string): Promise<void> {
-    const index = this.pendingFollowups.findIndex((item) => item.id === id);
-    if (index === -1) return;
-    this.pendingFollowups.splice(index, 1);
-    this.renderPendingFollowups();
-  }
-
-  private renderPendingFollowups(): void {
-    this.stream(turboStream("update", ids.pendingFollowups(this.ctx), renderPendingFollowups(this.ctx, this.pendingFollowups)));
   }
 
   // ---- live section streaming -------------------------------------------
@@ -358,7 +299,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     }
     const item = live.view.items[live.open.index];
     if (item.type === "thinking") item.text += text;
-    this.delta(ids.itemText(this.ctx, live.view.sid, live.open.index), text);
+    this.stream(turboStream("update", ids.itemText(this.ctx, live.view.sid, live.open.index), escapeHtml(item.type === "thinking" ? item.text : "")));
   }
 
   protected liveToolStreamStart(name: string): number {
@@ -377,7 +318,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (!live || live.open?.kind !== "toolargs") return;
     const item = live.view.items[live.open.index];
     if (item.type === "tool") item.tool.argsStream = (item.tool.argsStream ?? "") + text;
-    this.delta(ids.itemText(this.ctx, live.view.sid, live.open.index), text);
+    this.stream(turboStream("update", ids.itemText(this.ctx, live.view.sid, live.open.index), escapeHtml(item.type === "tool" ? item.tool.argsStream ?? "" : "")));
   }
 
   /** Tool call arguments fully parsed (execution may not have started yet). */
@@ -496,17 +437,13 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     await this.refreshStats();
   }
 
-  /**
-   * Canonical sections plus the live section. The persisted store usually
-   * already contains the in-progress run's user message, so a trailing
-   * canonical section matching the live section's user message is dropped.
-   */
+  /** Canonical sections plus the live section. */
   private async sectionsForDisplay(): Promise<SectionView[]> {
     const sections = await this.canonicalSections();
     const live = this.live;
     if (live) {
       const last = sections[sections.length - 1];
-      if (last && live.view.user !== undefined && last.user?.text === live.view.user.text) sections.pop();
+      if (last && live.view.userEntryId && last.userEntryId === live.view.userEntryId) sections.pop();
       sections.push(live.view);
     }
     return sections;
@@ -524,7 +461,6 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const state = await this.paneState();
     return (
       turboStream("update", ids.transcript(this.ctx), state.transcriptHtml) +
-      turboStream("update", ids.pendingFollowups(this.ctx), state.pendingFollowupsHtml ?? "") +
       turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, state.busy)) +
       turboStream("update", ids.stats(this.ctx), renderStatsBar(this.ctx, state.stats))
     );
@@ -533,8 +469,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   async paneState(): Promise<AgentPaneState> {
     return {
       transcriptHtml: renderTranscript(this.ctx, await this.sectionsForDisplay(), this.systemPrompt()),
-      pendingFollowupsHtml: renderPendingFollowups(this.ctx, this.pendingFollowups),
-      busy: this.busy,
+      busy: this.isStreaming,
       stats: await this.statsView(),
     };
   }
@@ -647,6 +582,10 @@ class RealAgentRuntime extends BaseAgentRuntime {
     });
   }
 
+  override get isStreaming(): boolean {
+    return Boolean(this.session.isStreaming || this.summarizing);
+  }
+
   private async configuredModelOptions(): Promise<{ provider: string; id: string; name: string; model: any; available: boolean }[]> {
     // Configured model picker list, resolved against the registry at render time.
     const configuredModels = await getConfiguredAgentModels();
@@ -674,13 +613,9 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   userMessages(): string[] {
-    try {
-      return recordsFromSessionEntries(this.session.sessionManager.getBranch())
-        .filter((record) => record.kind === "user")
-        .map((record) => (record as { text: string }).text);
-    } catch {
-      return [];
-    }
+    return recordsFromSessionEntries(this.session.sessionManager.getBranch())
+      .filter((record) => record.kind === "user")
+      .map((record) => (record as { text: string }).text);
   }
 
   protected async canonicalSections(leafId?: string): Promise<SectionView[]> {
@@ -719,10 +654,24 @@ class RealAgentRuntime extends BaseAgentRuntime {
     };
   }
 
+  private syncLiveUserEntry(): void {
+    const live = this.live;
+    if (!live?.view.user || live.view.userEntryId) return;
+    const entries = this.session.sessionManager.getBranch();
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index];
+      if (entry?.type === "message" && entry.message?.role === "user") {
+        live.view.userEntryId = entry.id;
+        return;
+      }
+    }
+  }
+
   private async handleEvent(event: any): Promise<void> {
     switch (event.type) {
       case "agent_start":
         this.liveEnsure();
+        this.syncLiveUserEntry();
         this.setBusy(true);
         break;
       case "message_update": {
@@ -772,7 +721,6 @@ class RealAgentRuntime extends BaseAgentRuntime {
         await this.liveEnd();
         this.setBusy(false);
         await this.emitTurnFinished();
-        this.startNextPendingFollowup();
         break;
       case "compaction_start":
         this.notice("info", "Compacting context…");
@@ -806,12 +754,8 @@ class RealAgentRuntime extends BaseAgentRuntime {
     const images = (options.images ?? []).map((image) => ({ type: "image" as const, data: image.data, mimeType: image.mimeType }));
 
     if (this.session.isStreaming) {
-      if (options.mode === "followup") {
-        this.queuePendingFollowup({ displayText: trimmed || "(attachments)", fullText, imageRefs: options.images ?? [], imageContent: images.length > 0 ? images : undefined });
-      } else {
-        await this.session.steer(fullText, images.length > 0 ? images : undefined);
-        this.liveNote(`Steer: ${trimmed}`, "system");
-      }
+      await this.session.steer(fullText, images.length > 0 ? images : undefined);
+      this.liveNote(`Steer: ${trimmed}`, "system");
       return;
     }
 
@@ -828,22 +772,6 @@ class RealAgentRuntime extends BaseAgentRuntime {
       });
   }
 
-  private startNextPendingFollowup(): void {
-    const next = this.shiftPendingFollowup();
-    if (!next) return;
-    this.liveBegin({ text: next.displayText === "(attachments)" ? "" : next.displayText, images: next.imageRefs });
-    this.setBusy(true);
-    void (async () => {
-      this.refreshModelRegistryForCurrentModel();
-      await this.session.prompt(next.fullText, next.imageContent && next.imageContent.length > 0 ? { images: next.imageContent } : undefined);
-    })().catch(async (error: unknown) => {
-      this.notice("error", error instanceof Error ? error.message : String(error));
-      await this.liveEnd();
-      this.setBusy(false);
-      await this.emitTurnFinished();
-    });
-  }
-
   async abort(): Promise<void> {
     if (this.summarizing) {
       this.session.abortBranchSummary?.();
@@ -858,44 +786,24 @@ class RealAgentRuntime extends BaseAgentRuntime {
     this.session.modelRegistry.authStorage?.reload?.();
     this.session.modelRegistry.refresh?.();
     const model = this.session.modelRegistry.find?.(provider, modelId);
-    if (!model) {
-      this.notice("error", `Model not available: ${provider}/${modelId}`);
-      return;
-    }
-    try {
-      await this.session.setModel(model);
-      const remembered = await getModelThinkingLevel(provider, modelId);
-      if (remembered && this.availableThinkingLevels().includes(remembered)) this.session.setThinkingLevel(remembered);
-    } catch (error) {
-      this.notice("error", error instanceof Error ? error.message : String(error));
-    }
+    if (!model) throw new Error(`Model not available: ${provider}/${modelId}`);
+    await this.session.setModel(model);
+    const remembered = await getModelThinkingLevel(provider, modelId);
+    if (remembered && this.availableThinkingLevels().includes(remembered)) this.session.setThinkingLevel(remembered);
     await this.refreshStats();
   }
 
   async setThinkingLevel(level: string): Promise<void> {
-    try {
-      this.session.setThinkingLevel(level);
-    } catch (error) {
-      this.notice("error", error instanceof Error ? error.message : String(error));
-    }
+    this.session.setThinkingLevel(level);
     await this.refreshStats();
   }
 
   async rewind(entryId: string, mode: RewindMode, note?: string): Promise<void> {
-    if (this.session.isStreaming) {
-      this.notice("error", "Stop the agent before rewinding.");
-      return;
-    }
+    if (this.session.isStreaming) throw new Error("Stop the agent before rewinding.");
     const entry = this.session.sessionManager.getEntry(entryId);
-    if (!entry) {
-      this.notice("error", "Rewind target no longer exists.");
-      return;
-    }
+    if (!entry) throw new Error("Rewind target no longer exists.");
     const target = entry.parentId;
-    if (!target) {
-      this.notice("error", "Cannot rewind past the first message.");
-      return;
-    }
+    if (!target) throw new Error("Cannot rewind past the first message.");
     if (mode === "summary") {
       // Show the truncated transcript immediately and treat the summarizer like
       // any other busy agent: a streaming pseudo-section with a stop button.
@@ -914,16 +822,12 @@ class RealAgentRuntime extends BaseAgentRuntime {
         });
       return;
     }
-    try {
-      await this.session.navigateTree(target, { summarize: false });
-      if (mode === "custom" && note?.trim()) {
-        await this.session.sendCustomMessage(
-          { customType: "atelier-branch-note", content: `Note about an abandoned attempt that was rewound: ${note.trim()}`, display: true, details: undefined },
-          { triggerTurn: false },
-        );
-      }
-    } catch (error) {
-      this.notice("error", error instanceof Error ? error.message : String(error));
+    await this.session.navigateTree(target, { summarize: false });
+    if (mode === "custom" && note?.trim()) {
+      await this.session.sendCustomMessage(
+        { customType: "atelier-branch-note", content: `Note about an abandoned attempt that was rewound: ${note.trim()}`, display: true, details: undefined },
+        { triggerTurn: false },
+      );
     }
     await this.refreshTranscript();
     await this.refreshStats();
@@ -932,13 +836,9 @@ class RealAgentRuntime extends BaseAgentRuntime {
 
 async function loadWorkspaceAgentsFiles(workspaceId: string): Promise<Array<{ path: string; content: string }>> {
   const agentsPath = `${workspaceRoot}/AGENTS.md`;
-  try {
-    const result = await execWorkspaceCommand(workspaceId, ["cat", agentsPath], { workdir: workspaceRoot });
-    if (result.exitCode === 0 && result.stdout.trim()) return [{ path: agentsPath, content: result.stdout }];
-  } catch {
-    // AGENTS.md context is best-effort; workspace startup should not fail if it cannot be read.
-  }
-  return [];
+  const result = await execWorkspaceCommand(workspaceId, ["sh", "-c", `if test -s ${agentsPath}; then cat ${agentsPath}; fi`], { workdir: workspaceRoot });
+  if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `could not read ${agentsPath}`);
+  return result.stdout.trim() ? [{ path: agentsPath, content: result.stdout }] : [];
 }
 
 async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {

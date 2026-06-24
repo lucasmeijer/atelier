@@ -13,16 +13,11 @@ export function domId(...parts: string[]): string {
   return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
-type TurboAction = "append" | "prepend" | "replace" | "update" | "remove" | "append_text";
+type TurboAction = "append" | "prepend" | "replace" | "update" | "remove";
 
 export function turboStream(action: TurboAction, target: string, html = ""): string {
   if (action === "remove") return `<turbo-stream action="remove" target="${escapeHtml(target)}"></turbo-stream>`;
   return `<turbo-stream action="${action}" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
-}
-
-/** Append raw text (custom client-side action; preserves whitespace, no HTML parsing cost). */
-export function turboAppendText(target: string, text: string): string {
-  return `<turbo-stream action="append_text" target="${escapeHtml(target)}"><template>${escapeHtml(text)}</template></turbo-stream>`;
 }
 
 export function turboStreamResponse(body: string, init: ResponseInit = {}): Response {
