@@ -15,18 +15,6 @@ declare global {
   }
 }
 
-type TurboStreamActionThis = { targetElements: Element[]; templateContent: DocumentFragment };
-
-/** Registers the custom `append_text` turbo-stream action used for token streaming. */
-function registerAgentStreamActions(): void {
-  const actions = (window.Turbo as unknown as { StreamActions?: Record<string, (this: TurboStreamActionThis) => void> } | undefined)?.StreamActions;
-  if (!actions || actions.append_text) return;
-  actions.append_text = function appendText(this: TurboStreamActionThis) {
-    const text = this.templateContent.textContent ?? "";
-    for (const element of this.targetElements) element.appendChild(document.createTextNode(text));
-  };
-}
-
 interface AgentPaneControllerInstance {
   start(): void;
   stop(): void;
@@ -40,19 +28,18 @@ interface AgentPaneControllerInstance {
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
     static values = { workspaceId: String, label: String };
-    static targets = ["transcript", "pendingFollowups", "input", "form", "rewindDialog", "rewindEntry", "rewindPreview"];
+    static targets = ["stream", "transcript", "input", "form", "rewindDialog", "rewindEntry", "rewindPreview"];
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
     declare readonly labelValue: string;
+    declare readonly streamTarget: HTMLElement;
     declare readonly transcriptTarget: HTMLElement;
-    declare readonly pendingFollowupsTarget: HTMLElement;
     declare readonly inputTarget: HTMLTextAreaElement;
     declare readonly formTarget: HTMLFormElement;
     declare readonly rewindDialogTarget: HTMLDialogElement;
     declare readonly rewindEntryTarget: HTMLInputElement;
     declare readonly rewindPreviewTarget: HTMLElement;
 
-    private source?: EventSource;
     private stuck = true;
     private observer?: MutationObserver;
     private rewindUserText = "";
@@ -66,7 +53,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       }
     };
     connect(): void {
-      registerAgentStreamActions();
       this.observer = new MutationObserver(() => {
         if (this.stuck) {
           requestAnimationFrame(() => {
@@ -75,7 +61,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
         }
       });
       this.observer.observe(this.transcriptTarget, { childList: true, subtree: true, characterData: true });
-      this.observer.observe(this.pendingFollowupsTarget, { childList: true, subtree: true, characterData: true });
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       document.addEventListener("keydown", this.onKeydown);
       if (this.element.closest(".tab-pane")?.classList.contains("active")) this.start();
@@ -90,17 +75,15 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     start(): void {
       requestAnimationFrame(() => this.autosize());
-      if (this.source && this.source.readyState !== EventSource.CLOSED) return;
-      const source = new EventSource(this.path("/events"));
-      source.onmessage = (event) => {
-        window.Turbo?.renderStreamMessage(event.data);
-      };
-      this.source = source;
+      const src = this.path("/events");
+      if (this.streamTarget.querySelector("turbo-stream-source")?.getAttribute("src") === src) return;
+      const source = document.createElement("turbo-stream-source");
+      source.setAttribute("src", src);
+      this.streamTarget.replaceChildren(source);
     }
 
     stop(): void {
-      this.source?.close();
-      this.source = undefined;
+      this.streamTarget.replaceChildren();
     }
 
     revealLatestAssistant(): void {
@@ -125,7 +108,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         if (this.inputTarget.value.trim() || this.formTarget.querySelector(".agent-chip")) {
-          const submitter = this.formTarget.querySelector<HTMLButtonElement>('button[value="send"], button[value="followup"]');
+          const submitter = this.formTarget.querySelector<HTMLButtonElement>('button[value="send"], button[value="steer"]');
           this.formTarget.requestSubmit(submitter ?? undefined);
         }
       }
@@ -554,7 +537,10 @@ function createAgentAttachmentsController(Controller: StimulusControllerConstruc
       const button = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
       const attachmentId = button?.dataset.attachmentId;
       if (!attachmentId) return;
-      void fetch(`${this.uploadUrlValue}/${encodeURIComponent(attachmentId)}/delete`, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } })
+      const url = new URL(this.uploadUrlValue, window.location.href);
+      url.search = "";
+      url.pathname = `${url.pathname}/${encodeURIComponent(attachmentId)}/delete`;
+      void fetch(url, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } })
         .then((response) => response.text())
         .then((html) => window.Turbo?.renderStreamMessage(html));
     }
@@ -616,8 +602,8 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
       }).then((viewer) => {
         if (this.disposed) viewer.dispose();
         else this.viewer = viewer;
-      }).catch(() => {
-        // Inline terminal is best-effort; the completed tool card still shows captured output.
+      }).catch((error: unknown) => {
+        this.element.textContent = `[terminal attach failed: ${error instanceof Error ? error.message : String(error)}]`;
       });
     }
 
@@ -652,7 +638,6 @@ function activateAgentTab(application: StimulusApplication, group: Element, tabN
 export const agentClientModule: WorkspaceClientModule = {
   id: "agent",
   install({ application, Controller, hooks }) {
-    registerAgentStreamActions();
     application.register("agent-pane", createAgentPaneController(Controller));
     application.register("agent-attachments", createAgentAttachmentsController(Controller));
     application.register("agent-autosubmit", createAgentAutosubmitController(Controller));
