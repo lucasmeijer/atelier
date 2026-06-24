@@ -86,23 +86,12 @@ function browserBridgeScript(): string {
   return `(() => {
   if (window.__atelierBrowserBridgeInstalled) return;
   window.__atelierBrowserBridgeInstalled = true;
-  let index = Number(sessionStorage.getItem("atelier.browser.index") || "0");
-  let max = Number(sessionStorage.getItem("atelier.browser.max") || String(index));
-  const save = () => {
-    sessionStorage.setItem("atelier.browser.index", String(index));
-    sessionStorage.setItem("atelier.browser.max", String(max));
-  };
-  const state = () => parent.postMessage({ type: "atelier:browser-state", canGoBack: index > 0 || history.length > 1, canGoForward: index < max }, "*");
   const locationChanged = () => {
     parent.postMessage({ type: "atelier:browser-location", href: location.href }, "*");
-    state();
   };
   const pushState = history.pushState;
   history.pushState = function(...args) {
     const result = pushState.apply(this, args);
-    index += 1;
-    max = index;
-    save();
     locationChanged();
     return result;
   };
@@ -112,7 +101,7 @@ function browserBridgeScript(): string {
     locationChanged();
     return result;
   };
-  addEventListener("popstate", () => { if (index > 0) index -= 1; save(); locationChanged(); });
+  addEventListener("popstate", locationChanged);
   addEventListener("hashchange", locationChanged);
   addEventListener("message", (event) => {
     if (event.source !== parent || !event.data || event.data.type !== "atelier:browser-command") return;

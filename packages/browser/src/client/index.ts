@@ -9,12 +9,6 @@ type BrowserBridgeLocationMessage = {
   href: string;
 };
 
-type BrowserBridgeStateMessage = {
-  type: "atelier:browser-state";
-  canGoBack?: boolean;
-  canGoForward?: boolean;
-};
-
 function createBrowserAddressController(Controller: StimulusControllerConstructor): unknown {
   return class BrowserAddressController extends Controller {
     static values = { targetOrigin: String };
@@ -67,7 +61,6 @@ function createBrowserAddressController(Controller: StimulusControllerConstructo
         this.setLocationFromFrame(event.data as BrowserBridgeLocationMessage);
         return;
       }
-      if (event.data.type === "atelier:browser-state") this.setNavState(event.data as BrowserBridgeStateMessage);
     }
 
     private setLocationFromFrame(message: BrowserBridgeLocationMessage): void {
@@ -78,14 +71,6 @@ function createBrowserAddressController(Controller: StimulusControllerConstructo
       input.value = mapped;
       this.updateExternalLink(message.href);
       this.persist(mapped);
-    }
-
-    private setNavState(_message: BrowserBridgeStateMessage): void {
-      // Cross-document iframe history is intentionally opaque to the parent.
-      // Keep controls available; a no-op history.back()/forward() is less
-      // surprising than disabling a button from incomplete same-document state.
-      this.button("back").disabled = false;
-      this.button("forward").disabled = false;
     }
 
     private sendCommand(command: "back" | "forward" | "reload"): boolean {
@@ -117,10 +102,6 @@ function createBrowserAddressController(Controller: StimulusControllerConstructo
 
     private input(): HTMLInputElement | null {
       return this.element.querySelector<HTMLInputElement>(".browser-address-input");
-    }
-
-    private button(action: "back" | "forward"): HTMLButtonElement {
-      return this.element.querySelector<HTMLButtonElement>(`[data-action~="browser-address#${action}"]`) ?? document.createElement("button");
     }
 
     private iframe(): HTMLIFrameElement | null {
