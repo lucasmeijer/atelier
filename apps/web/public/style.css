@@ -376,6 +376,10 @@ button { border: 0; background: none; cursor: pointer; }
 .workspace-detail-empty[hidden], .workspace-detail-loading[hidden] { display: none; }
 .workspace-detail-resident { display: none; min-height: 100%; }
 .workspace-detail-resident.active { display: block; }
+.workspace-boot { height: 100%; min-height: 0; overflow: auto; scrollbar-color: var(--line2) transparent; scrollbar-width: thin; }
+.workspace-boot::-webkit-scrollbar { width: 10px; height: 10px; }
+.workspace-boot::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+.workspace-boot::-webkit-scrollbar-thumb:hover { background-color: var(--muted2); }
 .workspace-detail-main { min-height: 100%; background: var(--bg); }
 
 #workspace_sidebar { display: flex; flex-direction: column; height: 100%; min-height: 0; }

@@ -2,7 +2,10 @@
 
 .provision-heading { display: flex; align-items: center; gap: 10px; }
 .provision-heading b { font-size: 14px; }
-.provision-output-log { max-height: min(52vh, 520px); overflow: auto; white-space: pre-wrap; word-break: break-word; background: #0f172a; color: #dbeafe; border-radius: 10px; padding: 12px; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.provision-output-log { max-height: min(52vh, 520px); overflow: auto; white-space: pre-wrap; word-break: break-word; background: #0f172a; color: #dbeafe; border-radius: 10px; padding: 12px; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; scrollbar-color: var(--line2, var(--line)) transparent; scrollbar-width: thin; }
+.provision-output-log::-webkit-scrollbar { width: 10px; height: 10px; }
+.provision-output-log::-webkit-scrollbar-thumb { background: var(--line2, var(--line)); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+.provision-output-log::-webkit-scrollbar-thumb:hover { background-color: var(--muted2, var(--muted)); }
 .workspace-provision { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 .provision-list, .provision-children { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .provision-children { margin: 10px 0 0 26px; }
