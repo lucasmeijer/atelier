@@ -1,6 +1,6 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, type AtelierEventBus, type WorkspaceDockerMount, type WorkspaceDockerPlan } from "@atelier/core";
+import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, shellQuote, type AtelierEventBus, type WorkspaceDockerMount, type WorkspaceDockerPlan } from "@atelier/core";
 import { resolveWorkspaceImage } from "@atelier/workspace-image";
 export type {
   WorkspaceAgentTurnFinishedEvent,
@@ -44,7 +44,6 @@ async function workspaceDockerNetwork(): Promise<string | undefined> { return (a
 async function shouldAddressWorkspaceContainersDirectly(): Promise<boolean> { return Boolean(await workspaceDockerNetwork()); }
 function formatDeleteBlockedMessage(id: string, issues: unknown[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
 function dockerHostGatewayArgs(): string[] { return ["--add-host", "host.docker.internal:host-gateway"]; }
-function shellQuote(value: string): string { return `'${value.replaceAll("'", `'\\''`)}'`; }
 async function provisionStep<T>(events: AtelierEventBus | undefined, workspaceId: string, id: string, label: string, fn: () => Promise<T>, options: { parentId?: string } = {}): Promise<T> {
   await events?.emit("workspace_provision_step", { workspaceId, id, label, status: "running", parentId: options.parentId });
   try {

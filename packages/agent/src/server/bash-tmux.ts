@@ -1,3 +1,4 @@
+import { shellQuote } from "@atelier/core";
 import type { ServerWebSocket } from "bun";
 import { execWorkspaceCommand, execWorkspaceShell, workspaceContainerName, workspaceRoot } from "@atelier/workspace";
 import {
@@ -11,7 +12,6 @@ import {
   observableTerminalCols,
   observableTerminalHistoryLimit,
   observableTerminalRows,
-  shellQuote,
   stripObservablePaneFraming,
   stripTerminalControls,
   type IPty,

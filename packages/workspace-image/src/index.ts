@@ -2,8 +2,8 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runDocker, type AtelierEventBus } from "@atelier/core";
-import { runHostObservableCommand, shellQuote } from "@atelier/observable-terminal/server";
+import { runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
+import { runHostObservableCommand } from "@atelier/observable-terminal/server";
 
 interface WorkspaceImageMetadata { tag: string; modules: string[] }
 

@@ -26,6 +26,10 @@ export {
 } from "./data-dir.ts";
 
 export {
+  shellQuote,
+} from "./shell.ts";
+
+export {
   atelierDataPath,
   discoverAtelierRuntimeContext,
   dockerHostAtelierDataPath,

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { defaultDataDir, invalidArguments, type AtelierEventBus } from "@atelier/core";
+import { defaultDataDir, invalidArguments, shellQuote, type AtelierEventBus } from "@atelier/core";
 
 export interface GitIdentitySettings {
   name: string;
@@ -45,9 +45,6 @@ function validateGitIdentity(identity: GitIdentitySettings): GitIdentitySettings
   return { name, email };
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
-}
 
 function execGitConfig(key: string): Promise<string | undefined> {
   return new Promise((resolve) => {

@@ -1,3 +1,4 @@
+import { shellQuote } from "@atelier/core";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -8,7 +9,7 @@ import { defaultDataDir, discoverHostGitHubToken } from "@atelier/core";
 import type { CommandResult } from "@atelier/core";
 import { AtelierCoreError, invalidArguments } from "@atelier/core";
 import type { AtelierEventBus } from "@atelier/core";
-import { runHostObservableCommand, shellQuote } from "@atelier/observable-terminal/server";
+import { runHostObservableCommand } from "@atelier/observable-terminal/server";
 
 export interface PreparedWorkspaceSource {
   workspaceId: string;

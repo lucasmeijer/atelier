@@ -2,6 +2,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn, type IPty } from "@zenyr/bun-pty";
+import { shellQuote } from "@atelier/core";
 
 export { type IPty } from "@zenyr/bun-pty";
 export { observableTerminalStaticFiles } from "./static.ts";
@@ -65,10 +66,6 @@ export interface HostObservableCommandOptions {
 export interface HostObservableCommandResult {
   exitCode: number;
   output: string;
-}
-
-export function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 function envPrefix(env: Record<string, string | number | boolean | undefined>): string {

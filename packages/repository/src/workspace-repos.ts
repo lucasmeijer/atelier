@@ -1,4 +1,4 @@
-import { AtelierCoreError, invalidArguments, type AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, invalidArguments, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { execWorkspaceShell, resolveWorkspace, workspaceRoot } from "@atelier/workspace";
 import { registerGitIdentityWorkspaceEvents } from "./git-identity.ts";
 import { registerRepositoryWorkspaceSourceEvents } from "./workspace-source.ts";
@@ -16,7 +16,6 @@ export type WorkspaceRepoMergeabilityResult =
 export type WorkspaceRepoPushResult = { state: "pushed" } | { state: "skipped"; reason: "nothing_to_push" | "has_conflicts" | "fetch_failed" } | { state: "failed"; message: string };
 
 const singleWorkspaceRepoName = "work";
-function shellQuote(value: string): string { return `'${value.replaceAll("'", `'\\''`)}'`; }
 function validateRepoName(repo: string): void { if (repo === "" || repo.includes("/") || repo === "." || repo === "..") throw invalidArguments(`invalid repo name: ${repo}`); }
 function repoPath(repo: string): string { validateRepoName(repo); if (repo !== singleWorkspaceRepoName) throw new AtelierCoreError("repo_not_found", `repo not found: ${repo}`); return workspaceRoot; }
 

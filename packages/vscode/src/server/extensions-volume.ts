@@ -1,5 +1,5 @@
-import { requireDocker, runDocker, type AtelierEventBus } from "@atelier/core";
-import { runHostObservableCommand, shellQuote } from "@atelier/observable-terminal/server";
+import { requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
+import { runHostObservableCommand } from "@atelier/observable-terminal/server";
 
 const extensionIds = ["ms-vscode.cpptools-extension-pack", "ms-dotnettools.csdevkit"] as const;
 const extensionSetVersion = "2026-06-17.2";

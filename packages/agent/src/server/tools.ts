@@ -1,5 +1,5 @@
 import { dirname, posix } from "node:path";
-import type { AtelierEventBus } from "@atelier/core";
+import { shellQuote, type AtelierEventBus } from "@atelier/core";
 import { execWorkspaceCommand, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import {
   createEditToolDefinition,
@@ -59,10 +59,6 @@ async function writeFile(workspaceId: string, absolutePath: string, content: str
 async function accessFile(workspaceId: string, absolutePath: string): Promise<void> {
   const result = await execWorkspaceCommand(workspaceId, ["test", "-r", absolutePath]);
   if (result.exitCode !== 0) throw new Error(`file is not readable: ${absolutePath}`);
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 interface WorkspaceAgentToolOptions {

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { $ } from "bun";
+import { shellQuote } from "@atelier/core";
 import {
   attachHostObservableTerminal,
   buildCapturePaneCommand,
@@ -9,7 +10,6 @@ import {
   observableTerminalCols,
   observableTerminalRows,
   runHostObservableCommand,
-  shellQuote,
 } from "../../src/server/index.ts";
 
 const runIntegration = process.env.ATELIER_OBSERVABLE_TERMINAL_INTEGRATION === "1";
