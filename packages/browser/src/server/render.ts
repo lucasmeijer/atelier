@@ -20,7 +20,7 @@ export function renderBrowserTab(workspaceId: string, tab: WorkspaceBrowserTab):
 }
 
 export function renderBrowserPane(workspaceId: string, tab: WorkspaceBrowserTab): string {
-  return `<div class="browser-pane" data-controller="browser-pane">
+  return `<div class="browser-pane">
     ${renderBrowserFrame(workspaceId, tab.key)}
   </div>`;
 }
@@ -40,7 +40,7 @@ export function renderBrowserFrame(workspaceId: string, appKey: string): string 
         <input class="browser-address-input" name="url" value="${escapeHtml(targetUrl)}" placeholder="http://localhost:3000/" spellcheck="false" autocomplete="off" aria-label="Browser URL">
         <a class="browser-open-external" href="#" data-browser-address-target="external" target="_blank" rel="noreferrer" title="Open preview in a new tab">↗</a>
       </form>
-      <div class="browser-viewport" data-browser-pane-target="viewport">
+      <div class="browser-viewport">
         <iframe data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-app-frame-app-key-value="${escapeHtml(appKey)}" data-workspace-app-frame-initial-path-value="${escapeHtml(initialPath)}" title="Workspace browser preview" loading="eager" referrerpolicy="no-referrer"></iframe>
       </div>
     </div>
