@@ -53,8 +53,9 @@ describe("secret placeholder hooks", () => {
     expect(() => createHttpHooks({ secrets: { A: { value: "a", hosts: ["*"], placeholder: "ATELIER_SECRET_abc" }, B: { value: "b", hosts: ["*"], placeholder: "ATELIER_SECRET_abc123" } } })).toThrow(/overlaps/);
   });
 
-  test("rejects placeholder equal to secret", () => {
-    expect(() => createHttpHooks({ secrets: { A: { value: "same", hosts: ["*"], placeholder: "same" } } })).toThrow(/must not equal/);
+  test("allows placeholder equal to secret for nested hooks", () => {
+    const hooks = createHttpHooks({ secrets: { A: { value: "same", hosts: ["*"], placeholder: "same" } } });
+    expect(hooks.env.A).toBe("same");
   });
 
   test("blocks real secret value sent to disallowed host", async () => {
