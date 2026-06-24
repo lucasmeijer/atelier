@@ -2,8 +2,6 @@ import { workspacePreviewPortUrl, workspacePreviewPorts } from "@atelier/workspa
 import { publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/workspace-proxy/server";
 import { getWorkspaceBrowserTab } from "./state.ts";
 
-export const browserAppKey = "browser";
-
 export function isBrowserWorkspaceApp(workspaceId: string, appKey: string): boolean {
   return Boolean(getWorkspaceBrowserTab(workspaceId, appKey));
 }

@@ -1,5 +1,5 @@
 const defaultTargetUrl = "http://localhost:3000/";
-export const defaultBrowserAppKey = "browser";
+const defaultBrowserAppKey = "browser";
 
 export interface WorkspaceBrowserTab {
   key: string;
@@ -15,10 +15,6 @@ function defaultTabs(): WorkspaceBrowserTab[] {
 
 export function browserFrameId(workspaceId: string, appKey = defaultBrowserAppKey): string {
   return ["browser_frame", workspaceId, appKey].join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
-}
-
-export function browserTabKey(appKey = defaultBrowserAppKey): string {
-  return appKey;
 }
 
 export function listWorkspaceBrowserTabs(workspaceId: string): WorkspaceBrowserTab[] {

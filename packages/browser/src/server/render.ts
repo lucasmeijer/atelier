@@ -1,5 +1,5 @@
 import type { WorkspaceTabContribution } from "@atelier/shared";
-import { browserFrameId, browserTabKey, getWorkspaceBrowserTargetUrl, type WorkspaceBrowserTab } from "./state.ts";
+import { browserFrameId, getWorkspaceBrowserTargetUrl, type WorkspaceBrowserTab } from "./state.ts";
 
 export function escapeHtml(value: unknown): string {
   return String(value)
@@ -11,7 +11,7 @@ export function escapeHtml(value: unknown): string {
 }
 
 export function renderBrowserTab(workspaceId: string, tab: WorkspaceBrowserTab): WorkspaceTabContribution {
-  const key = browserTabKey(tab.key);
+  const key = tab.key;
   return {
     key,
     label: tab.label,
