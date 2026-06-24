@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { createPiModelRegistry, getConfiguredAgentModels, getModelThinkingLevel } from "./pi-config-models.ts";
+import { composerThinkingLevel, configuredModelOptionViews, modelRefValue, selectedComposerModel } from "./model-state.ts";
 import { diffStats, renderDiffHtml, type DiffOperation } from "./diff.ts";
 import { highlightCodeHtmlForPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
@@ -49,7 +49,6 @@ export const ids = {
   draftAttachRow: (draftId: string) => domId("agent_draft_attach", draftId),
   draftChip: (draftId: string, attachmentId: string) => domId("agent_draft_chip", draftId, attachmentId),
   notices: (ctx: AgentRenderContext) => `${prefix(ctx)}_notices`,
-  pendingFollowups: (ctx: AgentRenderContext) => `${prefix(ctx)}_pending_followups`,
 };
 
 function agentPath(ctx: AgentRenderContext, suffix: string): string {
@@ -108,7 +107,6 @@ export interface AgentStatsView {
 
 export interface AgentPaneState {
   transcriptHtml: string;
-  pendingFollowupsHtml?: string;
   busy: boolean;
   stats: AgentStatsView;
 }
@@ -124,8 +122,8 @@ export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceA
       data-agent-pane-label-value="${escapeHtml(ctx.label)}"
       data-agent-attachments-upload-url-value="${escapeHtml(`/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`)}"
       data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
+      <div hidden data-agent-pane-target="stream"></div>
       <div class="agent-transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
-      <div class="agent-pending-followups" id="${ids.pendingFollowups(ctx)}" data-agent-pane-target="pendingFollowups">${state.pendingFollowupsHtml ?? renderPendingFollowups(ctx, [])}</div>
       ${await renderAgentComposer({
         ctx,
         action: agentPath(ctx, "/messages"),
@@ -196,34 +194,22 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
 }
 
 export async function renderAgentModelOptions(selectedModel?: string): Promise<string> {
-  const registry = await createPiModelRegistry();
-  const available = new Set((registry.getAvailable() as Array<{ provider: string; id: string }>).map((model) => `${model.provider}::${model.id}`));
-  const models = await getConfiguredAgentModels();
-  const active = models.find((model) => model.active && available.has(`${model.provider}::${model.id}`)) ?? models.find((model) => available.has(`${model.provider}::${model.id}`));
-  const activeValue = active ? `${active.provider}::${active.id}` : undefined;
-  const selected = models.some((model) => `${model.provider}::${model.id}` === selectedModel && available.has(`${model.provider}::${model.id}`)) ? selectedModel : activeValue;
+  const selected = await selectedComposerModel(selectedModel);
+  const models = await configuredModelOptionViews(selected);
   return models.map((model, index) => {
-    const value = `${model.provider}::${model.id}`;
-    const isAvailable = available.has(value);
-    return `<option value="${escapeHtml(value)}"${(selected ? value === selected : isAvailable && index === 0) ? " selected" : ""}${isAvailable ? "" : ` disabled data-unavailable-reason="Provider disconnected"`}>${escapeHtml(model.label)}</option>`;
+    const value = modelRefValue(model);
+    return `<option value="${escapeHtml(value)}"${(selected ? value === modelRefValue(selected) : index === 0) ? " selected" : ""}${model.available ? "" : ` disabled data-unavailable-reason="${escapeHtml(model.unavailableReason ?? "Unavailable")}"`}>${escapeHtml(model.name)}</option>`;
   }).join("");
 }
 
 async function renderComposerSettings(formId: string, selectedModel?: string): Promise<string> {
-  const models = await getConfiguredAgentModels();
-  const active = models.find((model) => model.active) ?? models[0];
-  const selectedValue = models.some((model) => `${model.provider}::${model.id}` === selectedModel) ? selectedModel : active ? `${active.provider}::${active.id}` : undefined;
-  const [provider, modelId] = selectedValue ? selectedValue.split("::") : [];
-  const selectedThinkingLevel = provider && modelId ? await getModelThinkingLevel(provider, modelId) : undefined;
+  const selected = await selectedComposerModel(selectedModel);
+  const selectedThinkingLevel = await composerThinkingLevel(selected);
   const thinkingLevels = ["off", "low", "medium", "high"];
   return `<span class="agent-stat-right">
-<select class="agent-sel" data-controller="agent-model-menu" data-agent-model-picker-select="true" name="model" form="${escapeHtml(formId)}" title="Model">${await renderAgentModelOptions(selectedValue)}</select>
+<select class="agent-sel" data-controller="agent-model-menu" data-agent-model-picker-select="true" name="model" form="${escapeHtml(formId)}" title="Model">${await renderAgentModelOptions(selected ? modelRefValue(selected) : undefined)}</select>
 <select class="agent-sel" data-controller="agent-select-menu" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select>
 </span>`;
-}
-
-export function renderPendingFollowups(ctx: AgentRenderContext, messages: Array<{ id: string; displayText: string }>): string {
-  return messages.map((message) => `<div class="agent-pending-followup"><form method="post" action="${escapeHtml(agentPath(ctx, `/followups/${encodeURIComponent(message.id)}/cancel`))}"><button class="agent-pending-x" type="submit" title="Cancel follow-up" aria-label="Cancel follow-up">×</button></form><span class="agent-pending-label">Queued follow-up</span><div class="agent-pending-text">${escapeHtml(message.displayText)}</div></div>`).join("");
 }
 
 export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): string {
@@ -231,8 +217,7 @@ export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): str
     return `<button class="agent-btn primary" type="submit" name="mode" value="send">Send <kbd>⌘↩</kbd></button>`;
   }
   return `<button class="agent-btn stop" type="submit" form="${ids.abortForm(ctx)}" title="Stop the agent"><span class="agent-stop-dot"></span> Stop</button>
-<button class="agent-btn steer" type="submit" name="mode" value="steer" title="Deliver between turns, while the agent keeps working">Steer</button>
-<button class="agent-btn primary" type="submit" name="mode" value="followup" title="Deliver after the agent finishes">Follow-up <kbd>⌘↩</kbd></button>`;
+<button class="agent-btn primary" type="submit" name="mode" value="steer" title="Deliver a steering note while the agent keeps working">Steer <kbd>⌘↩</kbd></button>`;
 }
 
 export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): string {
