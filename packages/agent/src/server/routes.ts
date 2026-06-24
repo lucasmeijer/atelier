@@ -1,14 +1,21 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { AtelierCoreError, defaultDataDir, type AtelierEventBus } from "@atelier/core";
-import { getModelThinkingLevel, setActiveAgentModel, setModelThinkingLevel } from "./pi-config-models.ts";
-import { workspaceContainerName, workspacePreviewPortUrl, workspaceRoot } from "@atelier/workspace";
+import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
+import { getModelThinkingLevel, setModelThinkingLevel } from "./pi-config-models.ts";
+import { parseModelRef, rememberPreferredAgentModel } from "./model-state.ts";
+import { workspaceContainerName, workspacePreviewPortUrl } from "@atelier/workspace";
+import {
+  deliverAttachmentDraft,
+  extensionOf,
+  findStagedAttachment,
+  imageMimeByExtension,
+  removeStagedAttachment,
+  stageAttachment,
+  validDraftId,
+} from "./attachment-drafts.ts";
 import { ids, renderAttachmentChip } from "./render.ts";
 import { sseFrame, turboStream, turboStreamResponse } from "./html.ts";
 import { expandPromptTemplate } from "./prompt-templates.ts";
 import { getWorkspaceAgentRuntime, type RewindMode, type SubmitMode } from "./runtime.ts";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
-import type { ImageRef } from "./transcript.ts";
 import { maybeNameWorkspaceFromAgentPrompt } from "./workspace-title-suggestion.ts";
 
 interface AgentRouteOptions {
@@ -45,17 +52,6 @@ export function registerAgentEvents(events: AtelierEventBus): void {
   });
 }
 
-const imageMimeByExtension: Record<string, string> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  svg: "image/svg+xml",
-  avif: "image/avif",
-  bmp: "image/bmp",
-};
-
 const mimeByExtension: Record<string, string> = {
   ...imageMimeByExtension,
   mp4: "video/mp4",
@@ -72,10 +68,6 @@ const mimeByExtension: Record<string, string> = {
   pdf: "application/pdf",
 };
 
-function extensionOf(path: string): string {
-  return (path.split(".").pop() ?? "").toLowerCase();
-}
-
 function contentTypeFor(path: string): string {
   return mimeByExtension[extensionOf(path)] ?? "application/octet-stream";
 }
@@ -85,51 +77,6 @@ async function requireAgent(workspaceId: string, label: string): Promise<Workspa
   const agent = agents.find((candidate) => candidate.label === label);
   if (!agent) throw new AtelierCoreError("agent_not_found", `agent not found: ${label}`);
   return agent;
-}
-
-// ---------------------------------------------------------------------------
-// Attachment staging
-// ---------------------------------------------------------------------------
-
-function attachmentDraftsDir(): string {
-  return join(defaultDataDir(), "agent-attachment-drafts");
-}
-
-function attachmentDraftDir(draftId: string): string {
-  return join(attachmentDraftsDir(), draftId);
-}
-
-function validDraftId(draftId: string): boolean {
-  return /^[a-zA-Z0-9_-]{8,80}$/.test(draftId);
-}
-
-function sanitizeFilename(name: string): string {
-  const base = name.split(/[\\/]/).pop() ?? "file";
-  return base.replace(/[^a-zA-Z0-9._ ()-]/g, "_").slice(0, 120) || "file";
-}
-
-interface StagedAttachment {
-  id: string;
-  name: string;
-  path: string;
-  size: number;
-  isImage: boolean;
-}
-
-async function findStagedAttachment(draftId: string, attachmentId: string): Promise<StagedAttachment | undefined> {
-  if (!validDraftId(draftId) || !/^[a-f0-9-]{8,40}$/.test(attachmentId)) return undefined;
-  const dir = join(attachmentDraftDir(draftId), attachmentId);
-  let names: string[];
-  try {
-    names = await readdir(dir);
-  } catch {
-    return undefined;
-  }
-  const name = names[0];
-  if (!name) return undefined;
-  const path = join(dir, name);
-  const file = Bun.file(path);
-  return { id: attachmentId, name, path, size: file.size, isImage: Boolean(imageMimeByExtension[extensionOf(name)]) };
 }
 
 // ---------------------------------------------------------------------------
@@ -157,11 +104,6 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/messages$/)) && request.method === "POST") {
     return await agentMessagesEndpoint(params[0], params[1], request, options);
   }
-  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/followups\/([^/]+)\/cancel$/)) && request.method === "POST") {
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
-    await runtime.cancelFollowup(params[2]);
-    return turboStreamResponse("");
-  }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/abort$/)) && request.method === "POST") {
     const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
     await runtime.abort();
@@ -169,11 +111,11 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/model$/)) && request.method === "POST") {
     const form = await request.formData();
-    const [provider, modelId] = String(form.get("model") ?? "").split("::");
+    const modelRef = parseModelRef(String(form.get("model") ?? ""));
     const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
-    if (provider && modelId) {
-      await runtime.setModel(provider, modelId);
-      await setActiveAgentModel(provider, modelId);
+    if (modelRef) {
+      await runtime.setModel(modelRef.provider, modelRef.id);
+      await rememberPreferredAgentModel(`${modelRef.provider}::${modelRef.id}`);
     }
     return turboStreamResponse("");
   }
@@ -253,23 +195,12 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
   const form = await request.formData();
   const text = String(form.get("text") ?? "");
   const modeRaw = String(form.get("mode") ?? "send");
-  const mode: SubmitMode = modeRaw === "steer" || modeRaw === "followup" ? modeRaw : "send";
+  const mode: SubmitMode = modeRaw === "steer" ? "steer" : "send";
   const attachmentIds = form.getAll("attachment").map(String);
   const attachmentDraft = String(form.get("attachmentDraft") ?? "");
-
-  const images: ImageRef[] = [];
-  const attachmentNotes: string[] = [];
-  for (const attachmentId of attachmentIds) {
-    const staged = await findStagedAttachment(attachmentDraft, attachmentId);
-    if (!staged) continue;
-    if (staged.isImage) {
-      const data = await readFile(staged.path);
-      images.push({ mimeType: imageMimeByExtension[extensionOf(staged.name)] ?? "image/png", data: data.toString("base64") });
-    } else {
-      attachmentNotes.push(await deliverFileAttachment(workspaceId, staged));
-    }
-    await rm(join(attachmentDraftDir(attachmentDraft), staged.id), { recursive: true, force: true });
-  }
+  const { images, attachmentNotes } = attachmentIds.length > 0
+    ? await deliverAttachmentDraft(workspaceId, attachmentDraft, attachmentIds)
+    : { images: [], attachmentNotes: [] };
 
   const expandedText = expandPromptTemplate(text);
   const trimmed = expandedText.trim();
@@ -284,55 +215,20 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
 async function submitInitialAgentPrompt(workspaceId: string, context: AgentWorkspaceCreationContext, options: AgentRouteOptions): Promise<void> {
   const agent = await ensureDefaultWorkspaceAgent(workspaceId);
   const runtime = await getWorkspaceAgentRuntime(agent, options);
-  const [provider, modelId] = context.model ? context.model.split("::") : [];
-  if (provider && modelId) await runtime.setModel(provider, modelId);
-  const thinkingLevel = context.thinkingLevel || (provider && modelId ? await getModelThinkingLevel(provider, modelId) : undefined);
+  const modelRef = context.model ? parseModelRef(context.model) : undefined;
+  if (modelRef) await runtime.setModel(modelRef.provider, modelRef.id);
+  const thinkingLevel = context.thinkingLevel || (modelRef ? await getModelThinkingLevel(modelRef.provider, modelRef.id) : undefined);
   if (thinkingLevel) await runtime.setThinkingLevel(thinkingLevel);
 
-  const images: ImageRef[] = [];
-  const attachmentNotes: string[] = [];
   const draftId = context.attachmentDraft ?? "";
-  if (validDraftId(draftId)) {
-    let entries: string[] = [];
-    try {
-      entries = await readdir(attachmentDraftDir(draftId));
-    } catch {
-      entries = [];
-    }
-    for (const attachmentId of entries) {
-      const staged = await findStagedAttachment(draftId, attachmentId);
-      if (!staged) continue;
-      if (staged.isImage) {
-        const data = await readFile(staged.path);
-        images.push({ mimeType: imageMimeByExtension[extensionOf(staged.name)] ?? "image/png", data: data.toString("base64") });
-      } else {
-        attachmentNotes.push(await deliverFileAttachment(workspaceId, staged));
-      }
-    }
-    await rm(attachmentDraftDir(draftId), { recursive: true, force: true });
-  }
+  const { images, attachmentNotes } = validDraftId(draftId)
+    ? await deliverAttachmentDraft(workspaceId, draftId)
+    : { images: [], attachmentNotes: [] };
 
   const prompt = expandPromptTemplate(context.initialPrompt ?? "");
   await options.events?.emit("workspace_user_activity", { workspaceId });
   maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), prompt.trim()], { events: options.events });
   await runtime.submit(prompt, { mode: "send", images, attachmentNotes });
-}
-
-async function deliverFileAttachment(workspaceId: string, staged: StagedAttachment): Promise<string> {
-  const target = `${workspaceRoot}/.atelier-attachments/${staged.name}`;
-  try {
-    const content = await readFile(staged.path);
-    const { execWorkspaceCommand } = await import("@atelier/workspace");
-    const result = await execWorkspaceCommand(
-      workspaceId,
-      ["sh", "-c", `mkdir -p ${workspaceRoot}/.atelier-attachments && base64 -d > '${target.replaceAll("'", `'\\''`)}'`],
-      { stdin: content.toString("base64") },
-    );
-    if (result.exitCode !== 0) return `[Attached file ${staged.name}: failed to copy into workspace]`;
-    return `[Attached file copied into the workspace at ${target}]`;
-  } catch {
-    return `[Attached file ${staged.name}: failed to copy into workspace]`;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -344,18 +240,14 @@ async function uploadAttachmentEndpoint(draftId: string, request: Request, rowId
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File)) return turboStreamResponse("", { status: 400 });
-  const attachmentId = crypto.randomUUID();
-  const name = sanitizeFilename(file.name || "file");
-  const dir = join(attachmentDraftDir(draftId), attachmentId);
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, name), Buffer.from(await file.arrayBuffer()));
-  const chip = renderAttachmentChip(undefined, { id: attachmentId, name, size: file.size, isImage: Boolean(imageMimeByExtension[extensionOf(name)]) }, { draftId });
+  const staged = await stageAttachment(draftId, file);
+  const chip = renderAttachmentChip(undefined, staged, { draftId });
   return turboStreamResponse(turboStream("append", rowId || ids.draftAttachRow(draftId), chip));
 }
 
 async function deleteAttachmentEndpoint(draftId: string, attachmentId: string): Promise<Response> {
-  const staged = await findStagedAttachment(draftId, attachmentId);
-  if (staged) await rm(join(attachmentDraftDir(draftId), staged.id), { recursive: true, force: true });
+  if (!await findStagedAttachment(draftId, attachmentId)) return turboStreamResponse("", { status: 404 });
+  await removeStagedAttachment(draftId, attachmentId);
   return turboStreamResponse(turboStream("remove", ids.draftChip(draftId, attachmentId)));
 }
 

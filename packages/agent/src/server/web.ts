@@ -5,8 +5,8 @@ import { getWorkspaceAgentRuntime, subscribeWorkspaceTabBusy } from "./runtime.t
 import { handleAgentRequest, registerAgentEvents, resolveWorkspacePortProxyTarget, workspaceFileEndpoint } from "./routes.ts";
 import { registerPiConfigEvents } from "./pi-config-seed.ts";
 import { createNextWorkspaceAgent, ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
-import { agentTabKey, renderAgentPane, type AgentPaneState, type AgentStatsView } from "./render.ts";
-import { getConfiguredAgentModels, setActiveAgentModel, setModelThinkingLevel } from "./pi-config-models.ts";
+import { agentTabKey, renderAgentPane, type AgentPaneState } from "./render.ts";
+import { modelRefValue, parseModelRef, preferredAgentModel, rememberPreferredAgentModel } from "./model-state.ts";
 import type { AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
 
@@ -15,26 +15,9 @@ async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<Workspa
   return agents.length > 0 ? agents : [await ensureDefaultWorkspaceAgent(workspaceId)];
 }
 
-const emptyStats: AgentStatsView = {
-  contextPercent: null,
-  inputTokens: 0,
-  outputTokens: 0,
-  cost: 0,
-  modelName: undefined,
-  provider: undefined,
-  thinkingLevel: "off",
-  thinkingLevels: [],
-  models: [],
-};
-
 async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[], events?: AtelierEventBus): Promise<WorkspaceTabContribution[]> {
   return await Promise.all(agents.map(async (agent, index) => {
-    let state: AgentPaneState = { transcriptHtml: "", busy: false, stats: emptyStats };
-    try {
-      state = await (await getWorkspaceAgentRuntime(agent, { events })).paneState();
-    } catch {
-      // Keep the workspace chrome renderable even if a persisted agent session is unreadable.
-    }
+    const state: AgentPaneState = await (await getWorkspaceAgentRuntime(agent, { events })).paneState();
     return {
       key: agentTabKey(agent.label),
       label: agent.label,
@@ -66,24 +49,18 @@ const sourceRepoAgentWorkspaceCommand: WorkspaceCommandContribution = {
 };
 
 async function preferredNewAgentModel(): Promise<string | undefined> {
-  const configuredModels = await getConfiguredAgentModels();
-  const active = configuredModels.find((model) => model.active) ?? configuredModels[0];
-  return active ? `${active.provider}::${active.id}` : undefined;
+  const model = await preferredAgentModel();
+  return model ? modelRefValue(model) : undefined;
 }
 
 async function applyPreferredNewAgentModel(agent: WorkspaceAgentInfo, events?: unknown): Promise<void> {
-  const model = await preferredNewAgentModel();
-  const [provider, modelId] = String(model ?? "").split("::");
-  if (!provider || !modelId) return;
-  await (await getWorkspaceAgentRuntime(agent, { events: events as AtelierEventBus | undefined })).setModel(provider, modelId);
+  const model = parseModelRef(String(await preferredNewAgentModel() ?? ""));
+  if (!model) return;
+  await (await getWorkspaceAgentRuntime(agent, { events: events as AtelierEventBus | undefined })).setModel(model.provider, model.id);
 }
 
 export async function rememberPreferredNewAgentModel(model: string, thinkingLevel?: string): Promise<void> {
-  const [provider, modelId] = String(model ?? "").split("::");
-  if (provider && modelId) {
-    await setActiveAgentModel(provider, modelId);
-    if (thinkingLevel) await setModelThinkingLevel(provider, modelId, thinkingLevel);
-  }
+  await rememberPreferredAgentModel(model, thinkingLevel);
 }
 
 export const agentWorkspaceModule: WorkspaceModule = {
