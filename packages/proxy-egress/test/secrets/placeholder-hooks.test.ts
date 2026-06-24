@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { HttpRequestBlockedError } from "../../../proxy-egress/src/secrets/errors.ts";
-import { createHttpHooks } from "../../../proxy-egress/src/secrets/placeholder-hooks.ts";
-import { matchHostname } from "../../../proxy-egress/src/secrets/patterns.ts";
-import { isInternalAddress } from "../../../proxy-egress/src/secrets/ip.ts";
+import { HttpRequestBlockedError } from "../../src/secrets/errors.ts";
+import { createHttpHooks } from "../../src/secrets/placeholder-hooks.ts";
+import { matchHostname } from "../../src/secrets/patterns.ts";
+import { isInternalAddress } from "../../src/secrets/ip.ts";
 
 describe("secret placeholder hooks", () => {
   test("creates placeholder env var, not real secret", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, setDefaultTimeout, test, beforeAll, afterAll } from "bun:test";
-import { AtelierCoreError, createAtelierEventBus } from "../src/index.ts";
+import { AtelierCoreError, createAtelierEventBus } from "@atelier/core";
 import {
   createWorkspace,
   deleteWorkspace,
@@ -22,7 +22,7 @@ import { cleanupNamespace, createTestNamespace, docker } from "./helpers.ts";
 // timeout above the image build's own 120s VS Code prewarm watchdog.
 setDefaultTimeout(300_000);
 
-const testNamespace = createTestNamespace("test-core-workspace");
+const testNamespace = createTestNamespace("test-workspace");
 
 async function expectCoreError(action: () => Promise<unknown>): Promise<AtelierCoreError> {
   try {

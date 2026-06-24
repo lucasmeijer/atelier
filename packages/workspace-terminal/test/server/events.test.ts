@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
 import { createWorkspace, execWorkspaceCommand, type WorkspaceExecResult } from "@atelier/workspace";
-import { cleanupNamespace, createTestNamespace } from "../../../core/test/helpers.ts";
+import { cleanupNamespace, createTestNamespace } from "../../../workspace/test/helpers.ts";
 import { registerTerminalEvents } from "../../src/server/events.ts";
 
 setDefaultTimeout(30_000);

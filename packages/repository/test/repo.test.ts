@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { AtelierCoreError } from "../src/index.ts";
+import { AtelierCoreError } from "@atelier/core";
 import { createWorkspace, deleteWorkspace, execWorkspaceCommand, type WorkspaceExecResult } from "@atelier/workspace";
 import {
   getWorkspaceRepoMergeability,
@@ -7,11 +7,11 @@ import {
   pushWorkspaceRepo,
   type WorkspaceRepoWorkingTreeStatus,
 } from "@atelier/repository";
-import { cleanupNamespace, createTestNamespace } from "./helpers.ts";
+import { cleanupNamespace, createTestNamespace } from "../../workspace/test/helpers.ts";
 
 setDefaultTimeout(120_000);
 
-const testNamespace = createTestNamespace("test-core-repo");
+const testNamespace = createTestNamespace("test-repository-workspace");
 const emptyWorkingTree: WorkspaceRepoWorkingTreeStatus = {
   stagedFiles: [],
   addedFiles: [],
