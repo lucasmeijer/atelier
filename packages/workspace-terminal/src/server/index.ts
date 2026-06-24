@@ -20,11 +20,7 @@ export {
 } from "./web.ts";
 export { terminalStaticFiles } from "./static.ts";
 export {
-  closeTerminalSocket,
-  handleTerminalSocketMessage,
-  openTerminalSocket,
-  subscribeTerminalTabBusy,
-  validateTerminalSocket,
+  createTerminalSocketHandler,
   type TerminalSocketData,
-  type TerminalTabBusyListener,
+  type TerminalSocketHandlerOptions,
 } from "./sockets.ts";
