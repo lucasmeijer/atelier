@@ -37,7 +37,7 @@ export const browserWorkspaceModule: WorkspaceModule = {
   }],
   initialize(context) {
     context.registerWorkspaceAppHandler({
-      matches: (app) => isBrowserWorkspaceApp(app.appKey),
+      matches: (app) => isBrowserWorkspaceApp(app.workspaceId, app.appKey),
       resolveTarget: (app, requestUrl) => resolveBrowserWorkspaceAppTarget(app, requestUrl),
       transformResponse: (app, response, request) => patchBrowserWorkspaceAppResponse(app, response, request),
     });
@@ -71,6 +71,7 @@ export function deleteWorkspaceBrowserTabForWorkspace(workspaceId: string, appKe
 
 export async function browserNavigateEndpoint(workspaceId: string, appKey: string, request: Request): Promise<Response> {
   const formData = await request.formData();
-  setWorkspaceBrowserTarget(workspaceId, appKey, String(formData.get("url") ?? ""));
+  const tab = setWorkspaceBrowserTarget(workspaceId, appKey, String(formData.get("url") ?? ""));
+  if (!tab) return new Response("browser tab not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
   return new Response(renderBrowserFrame(workspaceId, appKey), { headers: { "content-type": "text/html; charset=utf-8" } });
 }

@@ -1,15 +1,15 @@
 import { workspacePreviewPortUrl, workspacePreviewPorts } from "@atelier/workspace";
 import { publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/workspace-proxy/server";
-import { getWorkspaceBrowserTargetUrl } from "./state.ts";
+import { getWorkspaceBrowserTab } from "./state.ts";
 
 export const browserAppKey = "browser";
 
-export function isBrowserWorkspaceApp(appKey: string): boolean {
-  return appKey === browserAppKey || /^browser-\d+$/.test(appKey);
+export function isBrowserWorkspaceApp(workspaceId: string, appKey: string): boolean {
+  return Boolean(getWorkspaceBrowserTab(workspaceId, appKey));
 }
 
 export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, response: Response, request: Request): Promise<Response> {
-  if (!isBrowserWorkspaceApp(app.appKey)) return response;
+  if (!isBrowserWorkspaceApp(app.workspaceId, app.appKey)) return response;
 
   const publicOrigin = publicWorkspaceAppOrigin(request);
   const headers = new Headers(response.headers);
@@ -32,8 +32,9 @@ export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, re
 }
 
 export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {
-  if (!isBrowserWorkspaceApp(app.appKey)) throw new Error(`unknown workspace app: ${app.appKey}`);
-  const targetBase = new URL(getWorkspaceBrowserTargetUrl(app.workspaceId, app.appKey));
+  const browserTab = getWorkspaceBrowserTab(app.workspaceId, app.appKey);
+  if (!browserTab) throw new Error(`unknown workspace app: ${app.appKey}`);
+  const targetBase = new URL(browserTab.targetUrl);
   const target = new URL(requestUrl.pathname + requestUrl.search, targetBase);
 
   if (!isLoopbackHost(target.hostname)) return target;
