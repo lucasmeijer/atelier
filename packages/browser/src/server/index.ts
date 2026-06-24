@@ -20,11 +20,11 @@ export {
   defaultBrowserAppKey,
   deleteWorkspaceBrowserState,
   deleteWorkspaceBrowserTab,
-  getWorkspaceBrowserState,
+  getWorkspaceBrowserTab,
+  getWorkspaceBrowserTargetUrl,
   listWorkspaceBrowserTabs,
   normalizeBrowserUrl,
   setWorkspaceBrowserTarget,
-  type WorkspaceBrowserState,
   type WorkspaceBrowserTab,
 } from "./state.ts";
 export { renderBrowserFrame, renderBrowserPane, renderBrowserTab } from "./render.ts";

@@ -1,5 +1,5 @@
 import type { WorkspaceTabContribution } from "@atelier/shared";
-import { browserFrameId, browserTabKey, getWorkspaceBrowserState, type WorkspaceBrowserTab } from "./state.ts";
+import { browserFrameId, browserTabKey, getWorkspaceBrowserTargetUrl, type WorkspaceBrowserTab } from "./state.ts";
 
 export function escapeHtml(value: unknown): string {
   return String(value)
@@ -11,7 +11,7 @@ export function escapeHtml(value: unknown): string {
 }
 
 export function renderBrowserTab(workspaceId: string, tab: WorkspaceBrowserTab): WorkspaceTabContribution {
-  const key = browserTabKey(tab.appKey);
+  const key = browserTabKey(tab.key);
   return {
     key,
     label: tab.label,
@@ -21,13 +21,13 @@ export function renderBrowserTab(workspaceId: string, tab: WorkspaceBrowserTab):
 
 export function renderBrowserPane(workspaceId: string, tab: WorkspaceBrowserTab): string {
   return `<div class="browser-pane" data-controller="browser-pane">
-    ${renderBrowserFrame(workspaceId, tab.appKey)}
+    ${renderBrowserFrame(workspaceId, tab.key)}
   </div>`;
 }
 
 export function renderBrowserFrame(workspaceId: string, appKey: string): string {
-  const state = getWorkspaceBrowserState(workspaceId, appKey);
-  const target = new URL(state.targetUrl);
+  const targetUrl = getWorkspaceBrowserTargetUrl(workspaceId, appKey);
+  const target = new URL(targetUrl);
   const initialPath = `${target.pathname}${target.search}${target.hash}`;
   const targetOrigin = target.origin;
   return `<turbo-frame id="${browserFrameId(workspaceId, appKey)}" class="browser-frame">
@@ -37,7 +37,7 @@ export function renderBrowserFrame(workspaceId: string, appKey: string): string 
         <button class="browser-nav-button" type="button" data-action="browser-address#back" title="Back" aria-label="Back">←</button>
         <button class="browser-nav-button" type="button" data-action="browser-address#forward" title="Forward" aria-label="Forward">→</button>
         <button class="browser-nav-button" type="button" data-action="browser-address#reload" title="Reload" aria-label="Reload">↻</button>
-        <input class="browser-address-input" name="url" value="${escapeHtml(state.targetUrl)}" placeholder="http://localhost:3000/" spellcheck="false" autocomplete="off" aria-label="Browser URL">
+        <input class="browser-address-input" name="url" value="${escapeHtml(targetUrl)}" placeholder="http://localhost:3000/" spellcheck="false" autocomplete="off" aria-label="Browser URL">
         <a class="browser-open-external" href="#" data-browser-address-target="external" target="_blank" rel="noreferrer" title="Open preview in a new tab">↗</a>
       </form>
       <div class="browser-viewport" data-browser-pane-target="viewport">

@@ -25,18 +25,18 @@ export function createOrOpenPreviewBrowserTool(workspaceId: string, deps: Create
     }),
     execute: async (_toolCallId: string, params: { url: string }) => {
       const browserTab = listWorkspaceBrowserTabs(workspaceId)[0] ?? createWorkspaceBrowserTab(workspaceId);
-      const state = setWorkspaceBrowserTarget(workspaceId, browserTab.appKey, params.url);
-      const placement = deps.layouts.ensureTabInAgentFreeGroup(workspaceId, await deps.getTabKeys(), browserTab.appKey);
+      const tab = setWorkspaceBrowserTarget(workspaceId, browserTab.key, params.url) ?? browserTab;
+      const placement = deps.layouts.ensureTabInAgentFreeGroup(workspaceId, await deps.getTabKeys(), browserTab.key);
       await deps.events?.emit("workspace_tabs_changed", { workspaceId });
       const details = {
-        tab: browserTab.appKey,
-        url: state.targetUrl,
+        tab: browserTab.key,
+        url: tab.targetUrl,
         groupId: placement?.groupId,
         moved: placement?.moved ?? false,
         createdGroup: placement?.createdGroup ?? false,
       };
       return {
-        content: [{ type: "text" as const, text: `Preview browser opened at ${state.targetUrl}` }],
+        content: [{ type: "text" as const, text: `Preview browser opened at ${tab.targetUrl}` }],
         details,
       };
     },

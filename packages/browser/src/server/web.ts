@@ -62,7 +62,7 @@ export const browserWorkspaceModule: WorkspaceModule = {
 
 export function createWorkspaceBrowserTabForWorkspace(workspaceId: string): { key: string; label: string } {
   const tab = createWorkspaceBrowserTab(workspaceId);
-  return { key: tab.appKey, label: tab.label };
+  return { key: tab.key, label: tab.label };
 }
 
 export function deleteWorkspaceBrowserTabForWorkspace(workspaceId: string, appKey: string): void {

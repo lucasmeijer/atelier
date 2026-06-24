@@ -2,19 +2,15 @@ const defaultTargetUrl = "http://localhost:3000/";
 export const defaultBrowserAppKey = "browser";
 
 export interface WorkspaceBrowserTab {
-  appKey: string;
+  key: string;
   label: string;
-}
-
-export interface WorkspaceBrowserState {
   targetUrl: string;
 }
 
 const browserTabsByWorkspace = new Map<string, WorkspaceBrowserTab[]>();
-const browserStateByWorkspace = new Map<string, Map<string, WorkspaceBrowserState>>();
 
 function defaultTabs(): WorkspaceBrowserTab[] {
-  return [{ appKey: defaultBrowserAppKey, label: "Browser" }];
+  return [{ key: defaultBrowserAppKey, label: "Browser", targetUrl: defaultTargetUrl }];
 }
 
 export function browserFrameId(workspaceId: string, appKey = defaultBrowserAppKey): string {
@@ -33,56 +29,42 @@ export function listWorkspaceBrowserTabs(workspaceId: string): WorkspaceBrowserT
   return seeded;
 }
 
+export function getWorkspaceBrowserTab(workspaceId: string, appKey = defaultBrowserAppKey): WorkspaceBrowserTab | undefined {
+  return listWorkspaceBrowserTabs(workspaceId).find((tab) => tab.key === appKey);
+}
+
+export function getWorkspaceBrowserTargetUrl(workspaceId: string, appKey = defaultBrowserAppKey): string {
+  return getWorkspaceBrowserTab(workspaceId, appKey)?.targetUrl ?? defaultTargetUrl;
+}
+
 export function createWorkspaceBrowserTab(workspaceId: string): WorkspaceBrowserTab {
   const existing = listWorkspaceBrowserTabs(workspaceId);
-  const used = new Set(existing.map((tab) => tab.appKey));
+  const used = new Set(existing.map((tab) => tab.key));
   let index = existing.length + 1;
-  let appKey = `browser-${index}`;
-  while (used.has(appKey)) {
+  let key = `browser-${index}`;
+  while (used.has(key)) {
     index += 1;
-    appKey = `browser-${index}`;
+    key = `browser-${index}`;
   }
-  const tab = { appKey, label: `Browser ${index}` };
+  const tab = { key, label: `Browser ${index}`, targetUrl: defaultTargetUrl };
   existing.push(tab);
-  browserTabsByWorkspace.set(workspaceId, existing);
   return tab;
 }
 
 export function deleteWorkspaceBrowserTab(workspaceId: string, appKey: string): void {
   if (appKey === defaultBrowserAppKey) return;
-  browserTabsByWorkspace.set(workspaceId, listWorkspaceBrowserTabs(workspaceId).filter((tab) => tab.appKey !== appKey));
-  browserStateByWorkspace.get(workspaceId)?.delete(appKey);
+  browserTabsByWorkspace.set(workspaceId, listWorkspaceBrowserTabs(workspaceId).filter((tab) => tab.key !== appKey));
 }
 
-export function getWorkspaceBrowserState(workspaceId: string, appKey = defaultBrowserAppKey): WorkspaceBrowserState {
-  let workspaceState = browserStateByWorkspace.get(workspaceId);
-  if (!workspaceState) {
-    workspaceState = new Map();
-    browserStateByWorkspace.set(workspaceId, workspaceState);
-  }
-  let state = workspaceState.get(appKey);
-  if (!state) {
-    state = { targetUrl: defaultTargetUrl };
-    workspaceState.set(appKey, state);
-  }
-  return state;
-}
-
-export function setWorkspaceBrowserTarget(workspaceId: string, appKey: string, input: string): WorkspaceBrowserState {
-  const targetUrl = normalizeBrowserUrl(input);
-  const state = { targetUrl };
-  let workspaceState = browserStateByWorkspace.get(workspaceId);
-  if (!workspaceState) {
-    workspaceState = new Map();
-    browserStateByWorkspace.set(workspaceId, workspaceState);
-  }
-  workspaceState.set(appKey, state);
-  return state;
+export function setWorkspaceBrowserTarget(workspaceId: string, appKey: string, input: string): WorkspaceBrowserTab | undefined {
+  const tab = getWorkspaceBrowserTab(workspaceId, appKey);
+  if (!tab) return undefined;
+  tab.targetUrl = normalizeBrowserUrl(input);
+  return tab;
 }
 
 export function deleteWorkspaceBrowserState(workspaceId: string): void {
   browserTabsByWorkspace.delete(workspaceId);
-  browserStateByWorkspace.delete(workspaceId);
 }
 
 export function normalizeBrowserUrl(input: string): string {

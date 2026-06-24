@@ -1,6 +1,6 @@
 import { workspacePreviewPortUrl, workspacePreviewPorts } from "@atelier/workspace";
 import { publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/workspace-proxy/server";
-import { getWorkspaceBrowserState } from "./state.ts";
+import { getWorkspaceBrowserTargetUrl } from "./state.ts";
 
 export const browserAppKey = "browser";
 
@@ -33,7 +33,7 @@ export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, re
 
 export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {
   if (!isBrowserWorkspaceApp(app.appKey)) throw new Error(`unknown workspace app: ${app.appKey}`);
-  const targetBase = new URL(getWorkspaceBrowserState(app.workspaceId, app.appKey).targetUrl);
+  const targetBase = new URL(getWorkspaceBrowserTargetUrl(app.workspaceId, app.appKey));
   const target = new URL(requestUrl.pathname + requestUrl.search, targetBase);
 
   if (!isLoopbackHost(target.hostname)) return target;
