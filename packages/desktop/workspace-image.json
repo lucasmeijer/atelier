@@ -1,5 +1,6 @@
 {
   "aptPackages": [
+    "dbus",
     "dbus-x11",
     "novnc",
     "openbox",
