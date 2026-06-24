@@ -16,10 +16,11 @@
     "@atelier/core": "workspace:*",
     "@atelier/desktop": "workspace:*",
     "@atelier/keypress-probe": "workspace:*",
+    "@atelier/proxy-egress": "workspace:*",
+    "@atelier/proxy-ingress": "workspace:*",
     "@atelier/repository": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*",
-    "@atelier/workspace-proxy": "workspace:*",
     "@atelier/workspace-terminal": "workspace:*",
     "@atelier/vscode": "workspace:*"
   }

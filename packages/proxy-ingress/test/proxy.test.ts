@@ -7,9 +7,9 @@ import {
   ensureWorkspacePublicProxyRoute,
   listWorkspacePublicProxyRoutes,
   publicProxyPortRangeFromEnv,
-  readWorkspacePublicProxyState,
+  releaseWorkspacePublicProxyRoute,
   releaseWorkspacePublicProxyRoutes,
-} from "@atelier/workspace-proxy/server";
+} from "@atelier/proxy-ingress/server";
 
 let dataDir = "";
 let previousDataDir: string | undefined;
@@ -45,10 +45,10 @@ describe("workspace public proxy route state", () => {
     expect(await ensureWorkspacePublicProxyRoute("ws1", "vscode", { range })).toEqual({ appKey: "vscode", publicPort: 43100 });
     expect(await ensureWorkspacePublicProxyRoute("ws1", "port-3000", { range })).toEqual({ appKey: "port-3000", publicPort: 43101 });
 
-    expect(await readWorkspacePublicProxyState("ws1")).toEqual({
-      version: 1,
-      routes: { vscode: { publicPort: 43100 }, "port-3000": { publicPort: 43101 } },
-    });
+    expect(await listWorkspacePublicProxyRoutes(["ws1"])).toEqual([
+      { workspaceId: "ws1", appKey: "vscode", publicPort: 43100 },
+      { workspaceId: "ws1", appKey: "port-3000", publicPort: 43101 },
+    ]);
   });
 
   test("allocates different ports across workspaces", async () => {
@@ -64,7 +64,12 @@ describe("workspace public proxy route state", () => {
   test("can reserve unavailable ports and release all workspace routes", async () => {
     const range = { start: 43100, end: 43102 };
     expect(await ensureWorkspacePublicProxyRoute("ws1", "vscode", { range, reservedPorts: [43100] })).toEqual({ appKey: "vscode", publicPort: 43101 });
-    expect(await releaseWorkspacePublicProxyRoutes("ws1")).toEqual([43101]);
-    expect(await readWorkspacePublicProxyState("ws1")).toEqual({ version: 1, routes: {} });
+    expect(await releaseWorkspacePublicProxyRoute("ws1", "missing")).toBeUndefined();
+    expect(await releaseWorkspacePublicProxyRoute("ws1", "vscode")).toBe(43101);
+    expect(await listWorkspacePublicProxyRoutes(["ws1"])).toEqual([]);
+
+    expect(await ensureWorkspacePublicProxyRoute("ws1", "vscode", { range })).toEqual({ appKey: "vscode", publicPort: 43100 });
+    expect(await releaseWorkspacePublicProxyRoutes("ws1")).toEqual([43100]);
+    expect(await listWorkspacePublicProxyRoutes(["ws1"])).toEqual([]);
   });
 });

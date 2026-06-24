@@ -1,0 +1,12 @@
+{
+  "name": "@atelier/proxy-ingress",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/server/index.ts",
+    "./server": "./src/server/index.ts"
+  },
+  "dependencies": {
+    "@atelier/core": "workspace:*"
+  }
+}

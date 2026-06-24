@@ -6,18 +6,12 @@ import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace } fr
 import type { WorkspaceDeleteSafetyIssue } from "@atelier/repository";
 import { atelierName, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler } from "@atelier/shared";
 import {
-  ensureWorkspacePublicProxyRoute,
-  listWorkspacePublicProxyRoutes,
-  readWorkspacePublicProxyState,
-  proxyWorkspaceAppRequest,
-  publicProxyPortRangeFromEnv,
+  createWorkspaceIngressProxy,
   releaseWorkspacePublicProxyRoutes,
-  workspaceAppWebSocketTarget,
-  writeWorkspacePublicProxyState,
   type WorkspaceAppHost,
   type WorkspaceAppResponseTransformer,
   type WorkspaceAppTargetResolver,
-} from "@atelier/workspace-proxy/server";
+} from "@atelier/proxy-ingress/server";
 import { createWebApp } from "./app.ts";
 import { createFileWebPreferenceStore } from "./preferences.ts";
 import { createStreamHub } from "./stream-hub.ts";
@@ -241,7 +235,7 @@ const app = createWebApp({
     return { workspaceId: id, issues };
   },
   destroyWorkspace: async (id) => {
-    await stopPublicProxyRoutesForWorkspace(id);
+    publicWorkspaceAppProxy.stopWorkspace(id);
     await releaseWorkspacePublicProxyRoutes(id);
     await deleteWorkspace(id, { force: true, events: atelierEvents });
   },
@@ -296,20 +290,13 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
   return new Response(file, { headers });
 }
 
-interface WorkspaceAppProxySocketData {
-  kind: "workspace-app-proxy";
-  target: string;
-  host: string;
-  protocols: string[];
-}
-
 interface ProvisionTermSocketData {
   kind: "provision-term";
   session: string;
   pty?: IPty;
 }
 
-type SocketData = ({ kind: string } & Record<string, unknown>) | ProvisionTermSocketData | WorkspaceAppProxySocketData;
+type SocketData = ({ kind: string } & Record<string, unknown>) | ProvisionTermSocketData;
 const socketHandlersByKind = new Map<string, WorkspaceServerSocketHandler>();
 
 const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, requestUrl) => {
@@ -329,99 +316,14 @@ const patchWorkspaceAppResponse: WorkspaceAppResponseTransformer = async (app, r
   return next;
 };
 
-const publicProxyPortRange = publicProxyPortRangeFromEnv();
-const publicProxyServers = new Map<number, ReturnType<typeof Bun.serve<SocketData>>>();
-const publicProxyRoutes = new Map<number, WorkspaceAppHost>();
-
-function publicProxyHostFor(request: Request): string {
-  return request.headers.get("x-forwarded-host")?.split(",")[0]?.trim().split(":")[0] || new URL(request.url).hostname;
-}
-
-function publicProxyOrigin(request: Request, publicPort: number): string {
-  const url = new URL(request.url);
-  const proto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || url.protocol.replace(/:$/, "");
-  return `${proto}://${publicProxyHostFor(request)}:${publicPort}`;
-}
-
-async function ensurePublicProxyListener(route: WorkspaceAppHost & { publicPort: number }): Promise<void> {
-  const existing = publicProxyRoutes.get(route.publicPort);
-  if (existing) {
-    if (existing.workspaceId === route.workspaceId && existing.appKey === route.appKey && publicProxyServers.has(route.publicPort)) return;
-    throw new Error(`public proxy port ${route.publicPort} is already assigned`);
-  }
-  if (publicProxyServers.has(route.publicPort)) throw new Error(`public proxy port ${route.publicPort} is already listening`);
-  publicProxyRoutes.set(route.publicPort, { workspaceId: route.workspaceId, appKey: route.appKey });
-  try {
-    const server = Bun.serve<SocketData>({
-      hostname,
-      port: route.publicPort,
-      idleTimeout: 255,
-      async fetch(request, server) {
-        const auth = await authResponse(request);
-        if (auth) return auth;
-        const url = new URL(request.url);
-        const app = publicProxyRoutes.get(route.publicPort);
-        if (!app) return new Response("not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
-        if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
-          const protocols = (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((protocol) => protocol.trim()).filter(Boolean);
-          const target = await workspaceAppWebSocketTarget(app, url.pathname, url.search, resolveWorkspaceAppTarget);
-          if (server.upgrade(request, { data: { kind: "workspace-app-proxy", target, host: request.headers.get("host") ?? url.host, protocols } satisfies WorkspaceAppProxySocketData })) return undefined;
-          return new Response("websocket upgrade failed", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });
-        }
-        return await proxyWorkspaceAppRequest(app, request, resolveWorkspaceAppTarget, patchWorkspaceAppResponse);
-      },
-      websocket: {
-        open(ws) { if (ws.data.kind === "workspace-app-proxy") openWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>); },
-        message(ws, message) { if (ws.data.kind === "workspace-app-proxy") handleWorkspaceAppProxySocketMessage(ws as ServerWebSocket<WorkspaceAppProxySocketData>, message as string | Buffer); },
-        close(ws) { if (ws.data.kind === "workspace-app-proxy") closeWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>); },
-      },
-    });
-    publicProxyServers.set(route.publicPort, server);
-  } catch (error) {
-    publicProxyRoutes.delete(route.publicPort);
-    throw error;
-  }
-}
-
-async function ensurePublicProxyRoute(workspaceId: string, appKey: string): Promise<WorkspaceAppHost & { publicPort: number }> {
-  const unavailable = new Set<number>();
-  for (;;) {
-    const route = await ensureWorkspacePublicProxyRoute(workspaceId, appKey, { range: publicProxyPortRange, reservedPorts: unavailable });
-    try {
-      await ensurePublicProxyListener({ workspaceId, appKey, publicPort: route.publicPort });
-      return { workspaceId, appKey, publicPort: route.publicPort };
-    } catch {
-      unavailable.add(route.publicPort);
-      const state = await readWorkspacePublicProxyState(workspaceId);
-      delete state.routes[appKey];
-      await writeWorkspacePublicProxyState(workspaceId, state);
-      if (unavailable.size > publicProxyPortRange.end - publicProxyPortRange.start + 1) throw new Error(`no public proxy ports available in range ${publicProxyPortRange.start}-${publicProxyPortRange.end}`);
-    }
-  }
-}
-
-async function redirectToPublicProxyRoute(workspaceId: string, appKey: string, path: string, request: Request): Promise<Response> {
-  await resolveWorkspace(workspaceId);
-  const route = await ensurePublicProxyRoute(workspaceId, appKey);
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return Response.redirect(`${publicProxyOrigin(request, route.publicPort)}${normalizedPath}`, 302);
-}
-
-function stopPublicProxyRoutesForWorkspace(workspaceId: string): void {
-  for (const [port, route] of publicProxyRoutes) {
-    if (route.workspaceId !== workspaceId) continue;
-    publicProxyServers.get(port)?.stop(true);
-    publicProxyServers.delete(port);
-    publicProxyRoutes.delete(port);
-  }
-}
-
-async function startPersistedPublicProxyRoutes(): Promise<void> {
-  const ids = (await listWorkspaces()).workspaces.map((workspace) => workspace.id);
-  for (const route of await listWorkspacePublicProxyRoutes(ids)) {
-    try { await ensurePublicProxyListener(route); } catch { /* stale/unavailable route will be reallocated on next canonical request */ }
-  }
-}
+const publicWorkspaceAppProxy = createWorkspaceIngressProxy({
+  hostname,
+  authResponse,
+  resolveWorkspace,
+  listWorkspaceIds: async () => (await listWorkspaces()).workspaces.map((workspace) => workspace.id),
+  resolveTarget: resolveWorkspaceAppTarget,
+  transformResponse: patchWorkspaceAppResponse,
+});
 
 async function handleWorkspaceAppRequest(app: WorkspaceAppHost, request: Request, url: URL): Promise<Response | undefined> {
   for (const handler of workspaceAppHandlers) {
@@ -438,7 +340,7 @@ async function handleCanonicalProxyRequest(url: URL, request: Request): Promise<
     const workspaceId = decodeURIComponent(appMatch[1] ?? "");
     const appKey = decodeURIComponent(appMatch[2] ?? "");
     const path = `${appMatch[3] || "/"}${url.search}`;
-    return await redirectToPublicProxyRoute(workspaceId, appKey, path, request);
+    return await publicWorkspaceAppProxy.redirectToRoute(workspaceId, appKey, path, request);
   }
 
   const portMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/ports\/(\d+)(\/.*)?$/);
@@ -446,7 +348,7 @@ async function handleCanonicalProxyRequest(url: URL, request: Request): Promise<
     const workspaceId = decodeURIComponent(portMatch[1] ?? "");
     const port = Number(portMatch[2]);
     const path = `${portMatch[3] || "/"}${url.search}`;
-    return await redirectToPublicProxyRoute(workspaceId, `port-${port}`, path, request);
+    return await publicWorkspaceAppProxy.redirectToRoute(workspaceId, `port-${port}`, path, request);
   }
 
   const fileMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/files(\/.*)$/);
@@ -503,42 +405,7 @@ function closeProvisionTermSocket(ws: ServerWebSocket<ProvisionTermSocketData>):
   ws.data.pty?.kill();
 }
 
-function openWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocketData>): void {
-  const WebSocketWithOptions = WebSocket as unknown as new (url: string, options: { headers?: Record<string, string>; protocols?: string[] }) => WebSocket;
-  const upstream = new WebSocketWithOptions(ws.data.target, { headers: { Host: ws.data.host }, protocols: ws.data.protocols });
-  upstream.binaryType = "arraybuffer";
-  const pending: Array<string | ArrayBuffer> = [];
-  (ws.data as WorkspaceAppProxySocketData & { upstream?: WebSocket; pending?: Array<string | ArrayBuffer> }).upstream = upstream;
-  (ws.data as WorkspaceAppProxySocketData & { pending?: Array<string | ArrayBuffer> }).pending = pending;
-  upstream.addEventListener("open", () => {
-    for (const message of pending.splice(0)) upstream.send(message);
-  });
-  upstream.addEventListener("message", (event) => {
-    if (typeof event.data === "string") {
-      ws.send(event.data);
-    } else if (event.data instanceof ArrayBuffer) {
-      ws.send(event.data);
-    } else if (event.data instanceof Blob) {
-      void event.data.arrayBuffer().then((buffer) => ws.send(buffer)).catch(() => ws.close());
-    }
-  });
-  upstream.addEventListener("close", () => ws.close());
-  upstream.addEventListener("error", () => ws.close());
-}
-
-function handleWorkspaceAppProxySocketMessage(ws: ServerWebSocket<WorkspaceAppProxySocketData>, message: string | Buffer): void {
-  const data = ws.data as WorkspaceAppProxySocketData & { upstream?: WebSocket; pending?: Array<string | ArrayBuffer> };
-  const payload = typeof message === "string" ? message : new Uint8Array(message).slice().buffer;
-  if (data.upstream?.readyState === WebSocket.OPEN) data.upstream.send(payload);
-  else data.pending?.push(payload);
-}
-
-function closeWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocketData>): void {
-  const upstream = (ws.data as WorkspaceAppProxySocketData & { upstream?: WebSocket }).upstream;
-  if (upstream && upstream.readyState <= WebSocket.OPEN) upstream.close();
-}
-
-await startPersistedPublicProxyRoutes();
+await publicWorkspaceAppProxy.startPersistedRoutes();
 const maxPortAttempts = allowPortFallback ? 100 : 1;
 let serverPort = 0;
 
@@ -578,16 +445,13 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       websocket: {
         open(ws) {
           if (ws.data.kind === "provision-term") openProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
-          else if (ws.data.kind === "workspace-app-proxy") openWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>);
           else socketHandlersByKind.get(ws.data.kind)?.open?.(ws);
         },
         message(ws, message) {
-          if (ws.data.kind === "workspace-app-proxy") handleWorkspaceAppProxySocketMessage(ws as ServerWebSocket<WorkspaceAppProxySocketData>, message as string | Buffer);
-          else socketHandlersByKind.get(ws.data.kind)?.message?.(ws, message);
+          socketHandlersByKind.get(ws.data.kind)?.message?.(ws, message);
         },
         close(ws) {
           if (ws.data.kind === "provision-term") closeProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
-          else if (ws.data.kind === "workspace-app-proxy") closeWorkspaceAppProxySocket(ws as ServerWebSocket<WorkspaceAppProxySocketData>);
           else socketHandlersByKind.get(ws.data.kind)?.close?.(ws);
         },
       },

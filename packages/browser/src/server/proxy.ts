@@ -1,5 +1,5 @@
 import { workspacePreviewPortUrl, workspacePreviewPorts } from "@atelier/workspace";
-import { publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/workspace-proxy/server";
+import { publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/proxy-ingress/server";
 import { getWorkspaceBrowserTab } from "./state.ts";
 
 export function isBrowserWorkspaceApp(workspaceId: string, appKey: string): boolean {

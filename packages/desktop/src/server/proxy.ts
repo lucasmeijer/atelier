@@ -1,5 +1,5 @@
 import { workspaceDesktopPort, workspacePortUrl } from "@atelier/workspace";
-import type { WorkspaceAppHost } from "@atelier/workspace-proxy/server";
+import type { WorkspaceAppHost } from "@atelier/proxy-ingress/server";
 import { desktopAppKey, ensureWorkspaceDesktop } from "./runtime.ts";
 
 export async function resolveDesktopWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {

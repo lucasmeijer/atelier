@@ -18,11 +18,12 @@
         "@atelier/core": "workspace:*",
         "@atelier/desktop": "workspace:*",
         "@atelier/keypress-probe": "workspace:*",
+        "@atelier/proxy-egress": "workspace:*",
+        "@atelier/proxy-ingress": "workspace:*",
         "@atelier/repository": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/vscode": "workspace:*",
         "@atelier/workspace": "workspace:*",
-        "@atelier/workspace-proxy": "workspace:*",
         "@atelier/workspace-terminal": "workspace:*",
       },
     },
@@ -44,9 +45,9 @@
       "dependencies": {
         "@atelier/agent": "workspace:*",
         "@atelier/core": "workspace:*",
+        "@atelier/proxy-ingress": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
-        "@atelier/workspace-proxy": "workspace:*",
         "@earendil-works/pi-coding-agent": "catalog:",
         "typebox": "^1.0.57",
       },
@@ -60,9 +61,9 @@
     "packages/desktop": {
       "name": "@atelier/desktop",
       "dependencies": {
+        "@atelier/proxy-ingress": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
-        "@atelier/workspace-proxy": "workspace:*",
       },
     },
     "packages/keypress-probe": {
@@ -82,6 +83,19 @@
         "@zenyr/bun-pty": "^0.4.4",
       },
     },
+    "packages/proxy-egress": {
+      "name": "@atelier/proxy-egress",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+        "@atelier/shared": "workspace:*",
+      },
+    },
+    "packages/proxy-ingress": {
+      "name": "@atelier/proxy-ingress",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+      },
+    },
     "packages/repository": {
       "name": "@atelier/repository",
       "dependencies": {
@@ -99,8 +113,8 @@
         "@atelier/core": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/shared": "workspace:*",
+        "@atelier/proxy-ingress": "workspace:*",
         "@atelier/workspace": "workspace:*",
-        "@atelier/workspace-proxy": "workspace:*",
       },
     },
     "packages/workspace": {
@@ -116,12 +130,6 @@
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
-      },
-    },
-    "packages/workspace-proxy": {
-      "name": "@atelier/workspace-proxy",
-      "dependencies": {
-        "@atelier/core": "workspace:*",
       },
     },
     "packages/workspace-terminal": {
@@ -153,6 +161,10 @@
 
     "@atelier/observable-terminal": ["@atelier/observable-terminal@workspace:packages/observable-terminal"],
 
+    "@atelier/proxy-egress": ["@atelier/proxy-egress@workspace:packages/proxy-egress"],
+
+    "@atelier/proxy-ingress": ["@atelier/proxy-ingress@workspace:packages/proxy-ingress"],
+
     "@atelier/repository": ["@atelier/repository@workspace:packages/repository"],
 
     "@atelier/shared": ["@atelier/shared@workspace:packages/shared"],
@@ -164,8 +176,6 @@
     "@atelier/workspace": ["@atelier/workspace@workspace:packages/workspace"],
 
     "@atelier/workspace-image": ["@atelier/workspace-image@workspace:packages/workspace-image"],
-
-    "@atelier/workspace-proxy": ["@atelier/workspace-proxy@workspace:packages/workspace-proxy"],
 
     "@atelier/workspace-terminal": ["@atelier/workspace-terminal@workspace:packages/workspace-terminal"],
 

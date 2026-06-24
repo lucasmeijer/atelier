@@ -11,7 +11,7 @@
     "@atelier/core": "workspace:*",
     "@atelier/observable-terminal": "workspace:*",
     "@atelier/shared": "workspace:*",
-    "@atelier/workspace-proxy": "workspace:*",
+    "@atelier/proxy-ingress": "workspace:*",
     "@atelier/workspace": "workspace:*"
   }
 }

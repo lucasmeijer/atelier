@@ -8,6 +8,6 @@
   "dependencies": {
     "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*",
-    "@atelier/workspace-proxy": "workspace:*"
+    "@atelier/proxy-ingress": "workspace:*"
   }
 }

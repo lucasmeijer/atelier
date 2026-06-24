@@ -1,5 +1,5 @@
 import { workspacePortUrl, workspaceVSCodePort } from "@atelier/workspace";
-import type { WorkspaceAppHost } from "@atelier/workspace-proxy/server";
+import type { WorkspaceAppHost } from "@atelier/proxy-ingress/server";
 import { ensureWorkspaceVSCodeServer } from "./workspace-vscode.ts";
 
 export const vscodeAppKey = "vscode";

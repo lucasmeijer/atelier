@@ -1,39 +1,35 @@
 import dns from "node:dns/promises";
-import { timingSafeEqual as nodeTimingSafeEqual } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { mkdir, readFile, rename, rmdir, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import net from "node:net";
-import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import tls from "node:tls";
 import { HttpRequestBlockedError } from "@atelier/core";
 import { createWorkspaceSecretContext, forgetWorkspaceSecretContext, getWorkspaceSecretContext } from "@atelier/core";
-import { atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
+import { dockerHostAtelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
 import type { AtelierEventBus } from "@atelier/core";
+import { isHopByHopHeader, stripHopByHopHeaders } from "../proxy-headers.ts";
+import { authenticateProxyRequest, ensureWorkspaceProxyAuthToken, forgetWorkspaceProxyAuthToken } from "./auth-store.ts";
+import { defaultNoProxyEntries, readWorkspaceNoProxyEntries, uniqueNoProxyEntries } from "./no-proxy.ts";
 import { ensureLeafCertificate, ensureMitmCa, type MitmCa } from "./mitm-ca.ts";
 
 export const atelierWorkspaceProxyPort = 58123;
-export type AtelierWorkspaceProxy = { port: number; close(): Promise<void> };
+type AtelierWorkspaceProxy = { port: number; close(): Promise<void> };
 
 const workspaceMitmCaPath = "/run/atelier-mitm-ca.crt";
 
-const proxyAuthVersion = 1;
 let sharedProxy: Promise<AtelierWorkspaceProxy> | undefined;
-let proxyAuthFileLock: Promise<void> = Promise.resolve();
 const mitmTargetServers = new Map<string, Promise<MitmTargetServer>>();
 
-type ProxyAuthFile = { version: number; workspaces: Record<string, { token: string }> };
-type WorkspaceProxyManifest = { noProxy?: unknown; proxy?: { noProxy?: unknown } };
 type MitmConnectionContext = { workspaceId: string; hostname: string };
 type MitmTargetServer = { server: ReturnType<typeof createHttpsServer>; port: number; connections: Map<number, MitmConnectionContext> };
 
-export async function workspaceProxyHost(): Promise<string> {
+async function workspaceProxyHost(): Promise<string> {
   return (await getAtelierRuntimeContext()).dockerNetworkHost || "host.docker.internal";
 }
 
-export async function workspaceProxyUrl(workspaceId: string, token: string): Promise<string> {
+async function workspaceProxyUrl(workspaceId: string, token: string): Promise<string> {
   return `http://${encodeURIComponent(workspaceId)}:${encodeURIComponent(token)}@${await workspaceProxyHost()}:${atelierWorkspaceProxyPort}`;
 }
 
@@ -60,65 +56,6 @@ async function workspaceProxyEnv(workspaceId: string, token: string, extraNoProx
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
-}
-
-function defaultNoProxyEntries(): string[] {
-  return [
-    "localhost",
-    "127.0.0.1",
-    "::1",
-    ...parseNoProxyValue(process.env.ATELIER_WORKSPACE_PROXY_NO_PROXY),
-    // Legacy/public Atelier domains should be reached directly. The egress
-    // proxy can downgrade/MITM TLS to HTTP/1.1 for secret injection, which
-    // breaks strict HTTP/2 clients such as Subito's gRPC uploader.
-    ...domainNoProxyEntries("luther.lucasmeijer.com"),
-    ...domainNoProxyEntries("shockwaving.com"),
-  ];
-}
-
-function domainNoProxyEntries(domain: string | undefined): string[] {
-  const normalized = domain?.trim().toLowerCase().replace(/^\*\./, "").replace(/^\./, "").replace(/\.$/, "");
-  return normalized ? [normalized, `.${normalized}`, `*.${normalized}`] : [];
-}
-
-function uniqueNoProxyEntries(entries: string[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const raw of entries) {
-    for (const entry of expandNoProxyEntry(raw)) {
-      const key = entry.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      result.push(entry);
-    }
-  }
-  return result;
-}
-
-function expandNoProxyEntry(raw: string): string[] {
-  const entry = raw.trim();
-  if (!entry) return [];
-  const wildcard = entry.match(/^\*\.([^,\s]+)$/);
-  return wildcard ? [entry, `.${wildcard[1]}`] : [entry];
-}
-
-async function readWorkspaceNoProxyEntries(workHostPath: string): Promise<string[]> {
-  const manifestPath = join(workHostPath, ".atelier", "workspace.json");
-  let manifest: WorkspaceProxyManifest;
-  try {
-    manifest = JSON.parse(await readFile(manifestPath, "utf8")) as WorkspaceProxyManifest;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
-  }
-  return uniqueNoProxyEntries([...parseNoProxyValue(manifest.noProxy), ...parseNoProxyValue(manifest.proxy?.noProxy)]);
-}
-
-function parseNoProxyValue(value: unknown): string[] {
-  if (value === undefined) return [];
-  if (typeof value === "string") return value.split(",");
-  if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) return value;
-  throw new Error("workspace manifest noProxy must be a string or array of strings");
 }
 
 export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
@@ -155,27 +92,11 @@ export async function ensureAtelierWorkspaceProxy(): Promise<AtelierWorkspacePro
   return sharedProxy;
 }
 
-export async function stopAtelierWorkspaceProxy(): Promise<void> {
+async function stopAtelierWorkspaceProxy(): Promise<void> {
   const proxy = await sharedProxy?.catch(() => undefined);
   sharedProxy = undefined;
   await proxy?.close();
   await closeMitmTargetServers();
-}
-
-export async function ensureWorkspaceProxyAuthToken(workspaceId: string): Promise<string> {
-  return await updateProxyAuthFile((file) => {
-    const existing = file.workspaces[workspaceId]?.token;
-    if (existing) return existing;
-    const token = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
-    file.workspaces[workspaceId] = { token };
-    return token;
-  });
-}
-
-export async function forgetWorkspaceProxyAuthToken(workspaceId: string): Promise<void> {
-  await updateProxyAuthFile((file) => {
-    delete file.workspaces[workspaceId];
-  });
 }
 
 async function startAtelierWorkspaceProxy(): Promise<AtelierWorkspaceProxy> {
@@ -186,21 +107,10 @@ async function startAtelierWorkspaceProxy(): Promise<AtelierWorkspaceProxy> {
     netSocket.write(connectErrorResponse(error));
     netSocket.destroy();
   }));
-  const ownsServer = await new Promise<boolean>((resolve, reject) => {
-    const onError = (error: NodeJS.ErrnoException) => {
-      server.off("listening", onListening);
-      if (error.code === "EADDRINUSE") resolve(false);
-      else reject(error);
-    };
-    const onListening = () => {
-      server.off("error", onError);
-      resolve(true);
-    };
-    server.once("error", onError);
-    server.once("listening", onListening);
-    server.listen(atelierWorkspaceProxyPort, "0.0.0.0");
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(atelierWorkspaceProxyPort, "0.0.0.0", () => { server.off("error", reject); resolve(); });
   });
-  if (!ownsServer) return { port: atelierWorkspaceProxyPort, close: async () => {} };
   server.unref();
   return { port: atelierWorkspaceProxyPort, close: () => new Promise((resolve) => server.close(() => resolve())) };
 }
@@ -235,10 +145,10 @@ async function handleConnect(ca: MitmCa, req: IncomingMessage, socket: net.Socke
 
 async function shouldMitmConnectTarget(workspaceId: string, hostname: string): Promise<boolean> {
   const context = await getWorkspaceSecretContext(workspaceId);
-  return Boolean(context?.secrets.some((secret) => secret.hosts.some((host) => matchHostnamePattern(hostname, host))));
+  return Boolean(context?.secrets.some((secret) => secret.hosts.some((host) => matchHostname(hostname, host))));
 }
 
-function matchHostnamePattern(hostname: string, pattern: string): boolean {
+function matchHostname(hostname: string, pattern: string): boolean {
   const normalizedHostname = hostname.trim().toLowerCase().replace(/\.$/, "");
   const normalizedPattern = pattern.trim().toLowerCase().replace(/\.$/, "");
   if (!normalizedHostname || !normalizedPattern) return false;
@@ -342,7 +252,6 @@ async function handleProxyHttp(workspaceId: string, req: IncomingMessage, res: S
   if (hooks?.isRequestAllowed && !(await hooks.isRequestAllowed(new Request(next.url, { method: next.method, headers: next.headers })))) throw new HttpRequestBlockedError("request blocked by policy");
 
   const upstreamHeaders = filteredForwardHeaders(next.headers);
-  upstreamHeaders.set("accept-encoding", "identity");
   const upstream = await fetch(next.url, {
     method: next.method,
     headers: upstreamHeaders,
@@ -352,33 +261,6 @@ async function handleProxyHttp(workspaceId: string, req: IncomingMessage, res: S
   });
   const finalResponse = hooks?.onResponse ? await hooks.onResponse(upstream, next) ?? upstream : upstream;
   await writeFetchResponse(res, finalResponse);
-}
-
-async function authenticateProxyRequest(req: IncomingMessage): Promise<string> {
-  const header = req.headers["proxy-authorization"];
-  const value = Array.isArray(header) ? header[0] : header;
-  const credentials = decodeProxyBasicAuth(value ?? "");
-  if (!credentials) throw new HttpRequestBlockedError("proxy authentication required", 407, "Proxy Authentication Required");
-  const file = await readProxyAuthFile();
-  const expected = file.workspaces[credentials.username]?.token;
-  if (!expected || !timingSafeEqual(credentials.password, expected)) throw new HttpRequestBlockedError("invalid proxy authentication", 407, "Proxy Authentication Required");
-  return credentials.username;
-}
-
-function decodeProxyBasicAuth(value: string): { username: string; password: string } | undefined {
-  const match = value.match(/^Basic\s+(\S+)$/i);
-  if (!match) return undefined;
-  const decoded = Buffer.from(match[1]!, "base64").toString("utf8");
-  const separator = decoded.indexOf(":");
-  if (separator === -1) return undefined;
-  return { username: decoded.slice(0, separator), password: decoded.slice(separator + 1) };
-}
-
-function timingSafeEqual(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  if (left.length !== right.length) return false;
-  return nodeTimingSafeEqual(left, right);
 }
 
 async function assertDestinationAllowed(workspaceId: string, hostname: string, port: number, protocol: "http" | "https"): Promise<void> {
@@ -419,8 +301,7 @@ function incomingHeaders(req: IncomingMessage): Headers {
 }
 
 function filteredForwardHeaders(headers: Headers): Headers {
-  const out = new Headers(headers);
-  for (const name of ["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "proxy-connection", "te", "trailer", "transfer-encoding", "upgrade"]) out.delete(name);
+  const out = stripHopByHopHeaders(headers, ["proxy-connection"]);
   // Keep upstream response framing predictable for strict clients such as
   // dockerd/BuildKit. If fetch transparently decodes a compressed response,
   // the upstream Content-Length would no longer match the bytes we forward.
@@ -432,7 +313,7 @@ async function writeFetchResponse(res: ServerResponse, response: Response): Prom
   res.statusCode = response.status;
   res.statusMessage = response.statusText;
   response.headers.forEach((value, key) => {
-    if (/^(connection|keep-alive|proxy-authenticate|proxy-authorization|te|trailer|transfer-encoding|upgrade|content-encoding)$/i.test(key)) return;
+    if (isHopByHopHeader(key) || key.toLowerCase() === "content-encoding") return;
     res.setHeader(key, value);
   });
   if (!response.body) { res.end(); return; }
@@ -465,66 +346,4 @@ function connectErrorResponse(error: unknown): string {
 function safeErrorMessage(error: unknown): string {
   if (error instanceof HttpRequestBlockedError) return error.message;
   return error instanceof Error ? error.message : String(error);
-}
-
-async function updateProxyAuthFile<T>(update: (file: ProxyAuthFile) => T): Promise<T> {
-  const previous = proxyAuthFileLock;
-  let releaseProcessLock!: () => void;
-  proxyAuthFileLock = new Promise<void>((resolve) => { releaseProcessLock = resolve; });
-  await previous;
-
-  let releaseFileLock: (() => Promise<void>) | undefined;
-  try {
-    const filePath = await proxyAuthFilePath();
-    releaseFileLock = await acquireProxyAuthFileLock(filePath);
-    const file = await readProxyAuthFileAt(filePath);
-    const result = update(file);
-    await writeProxyAuthFileAt(filePath, file);
-    return result;
-  } finally {
-    await releaseFileLock?.();
-    releaseProcessLock();
-  }
-}
-
-async function readProxyAuthFile(): Promise<ProxyAuthFile> {
-  return await readProxyAuthFileAt(await proxyAuthFilePath());
-}
-
-async function readProxyAuthFileAt(path: string): Promise<ProxyAuthFile> {
-  if (!existsSync(path)) return { version: proxyAuthVersion, workspaces: {} };
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as ProxyAuthFile;
-    if (parsed.version === proxyAuthVersion && parsed.workspaces && typeof parsed.workspaces === "object") return parsed;
-  } catch {}
-  return { version: proxyAuthVersion, workspaces: {} };
-}
-
-async function writeProxyAuthFileAt(path: string, file: ProxyAuthFile): Promise<void> {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const tempPath = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  await writeFile(tempPath, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
-  await rename(tempPath, path);
-}
-
-async function acquireProxyAuthFileLock(path: string): Promise<() => Promise<void>> {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const lockDir = `${path}.lock`;
-  const deadline = Date.now() + 10_000;
-  for (;;) {
-    try {
-      await mkdir(lockDir, { mode: 0o700 });
-      return async () => { await rmdir(lockDir).catch(() => {}); };
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "EEXIST") throw error;
-      if (Date.now() > deadline) throw new Error(`timed out waiting for proxy auth lock: ${lockDir}`);
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-  }
-}
-
-async function proxyAuthFilePath(): Promise<string> {
-  const context = await getAtelierRuntimeContext();
-  return atelierDataPath(context, "proxy", "workspace-auth.json");
 }

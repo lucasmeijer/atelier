@@ -11,7 +11,7 @@
     "@atelier/agent": "workspace:*",
     "@atelier/core": "workspace:*",
     "@atelier/shared": "workspace:*",
-    "@atelier/workspace-proxy": "workspace:*",
+    "@atelier/proxy-ingress": "workspace:*",
     "@earendil-works/pi-coding-agent": "catalog:",
     "typebox": "^1.0.57",
     "@atelier/workspace": "workspace:*"

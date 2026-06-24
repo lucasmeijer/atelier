@@ -26,7 +26,8 @@ COPY packages/browser/package.json packages/browser/package.json
 COPY packages/desktop/package.json packages/desktop/package.json
 COPY packages/keypress-probe/package.json packages/keypress-probe/package.json
 COPY packages/vscode/package.json packages/vscode/package.json
-COPY packages/workspace-proxy/package.json packages/workspace-proxy/package.json
+COPY packages/proxy-egress/package.json packages/proxy-egress/package.json
+COPY packages/proxy-ingress/package.json packages/proxy-ingress/package.json
 
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile

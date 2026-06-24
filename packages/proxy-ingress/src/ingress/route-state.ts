@@ -1,5 +1,5 @@
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, readdir, readFile, rename, rmdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
 
 export interface WorkspacePublicProxyRoute {
@@ -7,7 +7,7 @@ export interface WorkspacePublicProxyRoute {
   publicPort: number;
 }
 
-export interface WorkspacePublicProxyState {
+interface WorkspacePublicProxyState {
   version: 1;
   routes: Record<string, { publicPort: number }>;
 }
@@ -18,6 +18,8 @@ export interface PublicProxyPortRange {
 }
 
 export const defaultPublicProxyPortRange: PublicProxyPortRange = { start: 41000, end: 41999 };
+
+let publicRoutesProcessLock: Promise<void> = Promise.resolve();
 
 export function publicProxyPortRangeFromEnv(value = process.env.ATELIER_PROXY_PORT_RANGE): PublicProxyPortRange {
   if (!value?.trim()) return defaultPublicProxyPortRange;
@@ -38,6 +40,18 @@ async function workspaceProxyStatePath(workspaceId: string): Promise<string> {
   return atelierDataPath(runtime, "workspaces", workspaceId, "proxy-routes.json");
 }
 
+async function readWorkspacePublicProxyState(workspaceId: string): Promise<WorkspacePublicProxyState> {
+  return await readStatePath(await workspaceProxyStatePath(workspaceId));
+}
+
+async function writeWorkspacePublicProxyState(workspaceId: string, state: WorkspacePublicProxyState): Promise<void> {
+  const path = await workspaceProxyStatePath(workspaceId);
+  await mkdir(dirname(path), { recursive: true });
+  const temp = `${path}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`;
+  await writeFile(temp, `${JSON.stringify(state, null, 2)}\n`);
+  await rename(temp, path);
+}
+
 async function readStatePath(path: string): Promise<WorkspacePublicProxyState> {
   try {
     const parsed = JSON.parse(await readFile(path, "utf8")) as Partial<WorkspacePublicProxyState>;
@@ -52,18 +66,6 @@ async function readStatePath(path: string): Promise<WorkspacePublicProxyState> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyState();
     throw error;
   }
-}
-
-export async function readWorkspacePublicProxyState(workspaceId: string): Promise<WorkspacePublicProxyState> {
-  return await readStatePath(await workspaceProxyStatePath(workspaceId));
-}
-
-export async function writeWorkspacePublicProxyState(workspaceId: string, state: WorkspacePublicProxyState): Promise<void> {
-  const path = await workspaceProxyStatePath(workspaceId);
-  await mkdir(dirname(path), { recursive: true });
-  const temp = `${path}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(temp, `${JSON.stringify(state, null, 2)}\n`);
-  await rename(temp, path);
 }
 
 export async function listWorkspacePublicProxyRoutes(workspaceIds?: string[]): Promise<Array<{ workspaceId: string; appKey: string; publicPort: number }>> {
@@ -89,27 +91,76 @@ async function listWorkspaceDirs(): Promise<string[]> {
 
 export async function ensureWorkspacePublicProxyRoute(workspaceId: string, appKey: string, options: { range?: PublicProxyPortRange; reservedPorts?: Iterable<number> } = {}): Promise<WorkspacePublicProxyRoute> {
   if (!isValidAppKey(appKey)) throw new Error(`invalid workspace proxy app key: ${appKey}`);
-  const range = options.range ?? publicProxyPortRangeFromEnv();
-  const state = await readWorkspacePublicProxyState(workspaceId);
-  const existing = state.routes[appKey]?.publicPort;
-  if (existing && portInRange(existing, range) && !isReserved(existing, options.reservedPorts)) return { appKey, publicPort: existing };
+  return await withPublicRoutesLock(async () => {
+    const range = options.range ?? publicProxyPortRangeFromEnv();
+    const state = await readWorkspacePublicProxyState(workspaceId);
+    const existing = state.routes[appKey]?.publicPort;
+    if (existing && portInRange(existing, range) && !isReserved(existing, options.reservedPorts)) return { appKey, publicPort: existing };
 
-  const used = new Set((await listWorkspacePublicProxyRoutes()).map((route) => route.publicPort));
-  for (const port of options.reservedPorts ?? []) used.add(port);
-  if (existing && !isReserved(existing, options.reservedPorts)) used.delete(existing);
+    const used = new Set((await listWorkspacePublicProxyRoutes()).map((route) => route.publicPort));
+    for (const port of options.reservedPorts ?? []) used.add(port);
+    if (existing && !isReserved(existing, options.reservedPorts)) used.delete(existing);
 
-  const publicPort = firstFreePort(range, used);
-  if (!publicPort) throw new Error(`no public proxy ports available in range ${range.start}-${range.end}`);
-  state.routes[appKey] = { publicPort };
-  await writeWorkspacePublicProxyState(workspaceId, state);
-  return { appKey, publicPort };
+    const publicPort = firstFreePort(range, used);
+    if (!publicPort) throw new Error(`no public proxy ports available in range ${range.start}-${range.end}`);
+    state.routes[appKey] = { publicPort };
+    await writeWorkspacePublicProxyState(workspaceId, state);
+    return { appKey, publicPort };
+  });
+}
+
+export async function releaseWorkspacePublicProxyRoute(workspaceId: string, appKey: string): Promise<number | undefined> {
+  return await withPublicRoutesLock(async () => {
+    const state = await readWorkspacePublicProxyState(workspaceId);
+    const publicPort = state.routes[appKey]?.publicPort;
+    if (publicPort === undefined) return undefined;
+    delete state.routes[appKey];
+    await writeWorkspacePublicProxyState(workspaceId, state);
+    return publicPort;
+  });
 }
 
 export async function releaseWorkspacePublicProxyRoutes(workspaceId: string): Promise<number[]> {
-  const state = await readWorkspacePublicProxyState(workspaceId);
-  const ports = Object.values(state.routes).map((route) => route.publicPort);
-  if (ports.length) await writeWorkspacePublicProxyState(workspaceId, emptyState());
-  return ports;
+  return await withPublicRoutesLock(async () => {
+    const state = await readWorkspacePublicProxyState(workspaceId);
+    const ports = Object.values(state.routes).map((route) => route.publicPort);
+    if (ports.length) await writeWorkspacePublicProxyState(workspaceId, emptyState());
+    return ports;
+  });
+}
+
+async function withPublicRoutesLock<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = publicRoutesProcessLock;
+  let releaseProcessLock!: () => void;
+  publicRoutesProcessLock = new Promise<void>((resolve) => { releaseProcessLock = resolve; });
+  await previous;
+
+  let releaseFileLock: (() => Promise<void>) | undefined;
+  try {
+    releaseFileLock = await acquirePublicRoutesFileLock();
+    return await fn();
+  } finally {
+    await releaseFileLock?.();
+    releaseProcessLock();
+  }
+}
+
+async function acquirePublicRoutesFileLock(): Promise<() => Promise<void>> {
+  const runtime = await getAtelierRuntimeContext();
+  const lockDir = atelierDataPath(runtime, "proxy", "public-routes.lock");
+  await mkdir(dirname(lockDir), { recursive: true, mode: 0o700 });
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      await mkdir(lockDir, { mode: 0o700 });
+      return async () => { await rmdir(lockDir).catch(() => {}); };
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST") throw error;
+      if (Date.now() > deadline) throw new Error(`timed out waiting for public proxy route lock: ${lockDir}`);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
 }
 
 function isReserved(port: number, reservedPorts: Iterable<number> | undefined): boolean {
