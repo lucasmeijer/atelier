@@ -29,25 +29,15 @@ function observableTerminalEnvPrefix(extra: Record<string, string | number | boo
 export function buildObservableSessionCommand(options: ObservableTerminalSessionOptions): string {
   const cols = options.cols ?? observableTerminalCols;
   const rows = options.rows ?? observableTerminalRows;
-  const setup: string[] = [];
-  if (options.passthrough) setup.push("set-option -g allow-passthrough on");
-  setup.push(`set-option -g status ${options.status === true ? "on" : "off"}`);
-  for (const [key, value] of Object.entries({ ...observableTerminalEnvironment, ...options.env })) {
-    if (value !== undefined) setup.push(`set-environment -g ${key} ${shellQuote(String(value))}`);
-  }
   const target = shellQuote(options.session);
   const flags = ["new-session", "-d", "-s", target];
+  for (const [key, value] of Object.entries({ ...observableTerminalEnvironment, ...options.env })) {
+    if (value !== undefined) flags.push("-e", shellQuote(`${key}=${String(value)}`));
+  }
   if (options.fixedSize) flags.push("-x", String(cols), "-y", String(rows));
   flags.push("-c", shellQuote(options.cwd), options.command);
-  const commands = [...setup];
-  if (options.fixedSize) {
-    // tmux 3.5/3.5a on Linux can ignore `new-session -d -x/-y` while another
-    // client is attached, sizing the new pane from that client instead. Seed
-    // the server default as well as passing -x/-y, then force manual size for
-    // later attaches.
-    commands.push(`set-option -g default-size ${cols}x${rows}`);
-  }
-  commands.push(flags.join(" "));
+  const commands = [flags.join(" ")];
+  if (options.passthrough) commands.push(`set-option -t ${target} allow-passthrough on`);
   if (options.fixedSize) {
     commands.push(`set-option -t ${target} window-size manual`);
     commands.push(`resize-window -t ${target} -x ${cols} -y ${rows}`);

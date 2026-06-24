@@ -24,7 +24,7 @@ describe("observable terminal normalization", () => {
 
   test("builds fixed-size observable sessions", () => {
     const command = buildObservableSessionCommand({ session: "s", cwd: "/work", command: "/bin/bash", fixedSize: true });
-    expect(command).toContain(`set-option -g default-size ${observableTerminalCols}x${observableTerminalRows}`);
+    expect(command).not.toContain("set-option -g");
     expect(command).toContain(`-x ${observableTerminalCols} -y ${observableTerminalRows}`);
     expect(command).toContain("window-size manual");
     expect(command).toContain(`resize-window -t 's' -x ${observableTerminalCols} -y ${observableTerminalRows}`);
