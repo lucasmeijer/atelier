@@ -6,7 +6,7 @@ import { createWebApp } from "../src/server/app.ts";
 import { createStreamHub } from "../src/server/stream-hub.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
-import { clearWorkspaceGitHubToken } from "@atelier/core";
+import { clearWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { addRepository, type WorkspaceDeleteBlockedDetails } from "@atelier/repository";
 
 function deferred<T = void>() {

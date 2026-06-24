@@ -1,5 +1,5 @@
 import { listOnboardingContributions, registerOnboardingContribution } from "./registry.ts";
-import { hasWorkspaceGitHubToken } from "@atelier/core";
+import { hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { hasGitIdentity } from "@atelier/repository";
 import { githubRow, hasAvailableFavoriteModel, isOnboarded, renderGitIdentityForm, renderModelSetup } from "../settings/routes.ts";
 

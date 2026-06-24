@@ -7,10 +7,9 @@ import {
 } from "@atelier/agent/server";
 import {
   AtelierCoreError,
-  discoverHostGitHubToken,
-  hasWorkspaceGitHubToken,
   type AtelierEventBus,
 } from "@atelier/core";
+import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
   addRepository,
   formatRepositorySpec,

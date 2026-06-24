@@ -1,0 +1,27 @@
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { defaultDataDir } from "./data-dir.ts";
+
+function storedGitHubTokenPath(): string {
+  return join(defaultDataDir(), "workspace", "github-token");
+}
+
+export function discoverHostGitHubToken(): string | undefined {
+  const path = storedGitHubTokenPath();
+  if (!existsSync(path)) return undefined;
+  return readFileSync(path, "utf8").trim() || undefined;
+}
+
+export function hasWorkspaceGitHubToken(): boolean {
+  return Boolean(discoverHostGitHubToken());
+}
+
+export function setWorkspaceGitHubToken(token: string): void {
+  const path = storedGitHubTokenPath();
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${token.trim()}\n`, { mode: 0o600 });
+}
+
+export function clearWorkspaceGitHubToken(): void {
+  rmSync(storedGitHubTokenPath(), { force: true });
+}

@@ -3,7 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, rename, rmdir, writeFile } from "node:fs/promises";
 import type { IncomingMessage } from "node:http";
 import { dirname } from "node:path";
-import { atelierDataPath, getAtelierRuntimeContext, HttpRequestBlockedError } from "@atelier/core";
+import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
+import { HttpRequestBlockedError } from "../secrets/errors.ts";
 
 const proxyAuthVersion = 1;
 let proxyAuthFileLock: Promise<void> = Promise.resolve();

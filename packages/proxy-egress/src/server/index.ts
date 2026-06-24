@@ -11,3 +11,14 @@ export const proxyEgressServerModule: WorkspaceModule = {
 };
 
 export { proxyEgressServerModule as atelierServerModule };
+export {
+  clearWorkspaceGitHubToken,
+  createWorkspaceSecretContext,
+  discoverHostGitHubToken,
+  forgetWorkspaceSecretContext,
+  getWorkspaceSecretContext,
+  hasWorkspaceGitHubToken,
+  setWorkspaceGitHubToken,
+  type WorkspaceSecretContext,
+} from "../secrets/workspace-secrets.ts";
+export { HttpRequestBlockedError } from "../secrets/errors.ts";

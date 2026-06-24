@@ -35,22 +35,8 @@ export {
 } from "./runtime-context.ts";
 
 export {
-  createHttpHooks,
-  makeDefaultSecretPlaceholder,
-  type CreateHttpHooksOptions,
-  type SecretDefinition,
-  type SecretManager,
-} from "./secrets/placeholder-hooks.ts";
-
-export {
   clearWorkspaceGitHubToken,
-  createWorkspaceSecretContext,
   discoverHostGitHubToken,
-  forgetWorkspaceSecretContext,
-  getWorkspaceSecretContext,
   hasWorkspaceGitHubToken,
   setWorkspaceGitHubToken,
-  type WorkspaceSecretContext,
-} from "./secrets/workspace-secrets.ts";
-
-export { HttpRequestBlockedError } from "./secrets/errors.ts";
+} from "./github-token.ts";
