@@ -5,7 +5,5 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "dependencies": {
-    "@atelier/observable-terminal": "workspace:*"
-  }
+  "dependencies": {}
 }
