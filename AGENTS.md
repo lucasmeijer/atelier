@@ -9,3 +9,6 @@ When working on the web app, prefer server-rendered HTML over client-rendered UI
 - Use client JavaScript only for behavior that cannot reasonably be expressed server-side, such as WebSocket terminals, focusing/activating tabs, dialogs, or browser-only APIs.
 - When JavaScript is necessary, implement it as Stimulus controllers rather than inline scripts or ad-hoc global event listeners.
 - Keep Stimulus controllers small and behavior-focused; keep markup generation on the server.
+
+- Never implement fallbacks of migrations unless expliticly asked to do so.
+- Do not use defensive programming.  We don't want to swallow errors, we want to notice them. Only be defensive when parsing external inputs.
