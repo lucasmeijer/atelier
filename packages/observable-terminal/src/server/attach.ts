@@ -24,18 +24,23 @@ export interface HostObservableTerminalAttachOptions {
   env?: Record<string, string>;
 }
 
-export function buildAttachArgs(options: ObservableTerminalAttachOptions): string[] {
-  const env = { ...observableTerminalEnvironment, ...options.env };
-  const args = ["exec", "-it", "--user", options.user ?? "atelier"];
-  if (options.workdir) args.push("--workdir", options.workdir);
-  for (const [key, value] of Object.entries(env)) args.push("-e", `${key}=${value}`);
-  args.push(options.containerName, "tmux");
+function tmuxAttachArgs(options: { session: string; cols: number; rows: number; readonly?: boolean; fixedSize?: boolean }): string[] {
+  const args: string[] = [];
   if (options.fixedSize) {
     args.push("set-option", "-t", options.session, "window-size", "manual", ";", "resize-window", "-t", options.session, "-x", String(options.cols), "-y", String(options.rows), ";");
   }
   args.push("attach-session");
   if (options.readonly) args.push("-r");
   args.push("-t", options.session);
+  return args;
+}
+
+export function buildAttachArgs(options: ObservableTerminalAttachOptions): string[] {
+  const env = { ...observableTerminalEnvironment, ...options.env };
+  const args = ["exec", "-it", "--user", options.user ?? "atelier"];
+  if (options.workdir) args.push("--workdir", options.workdir);
+  for (const [key, value] of Object.entries(env)) args.push("-e", `${key}=${value}`);
+  args.push(options.containerName, "tmux", ...tmuxAttachArgs(options));
   return args;
 }
 
@@ -49,14 +54,7 @@ export function attachObservableTerminal(options: ObservableTerminalAttachOption
 }
 
 export function buildHostAttachArgs(options: HostObservableTerminalAttachOptions): string[] {
-  const args: string[] = [];
-  if (options.fixedSize) {
-    args.push("set-option", "-t", options.session, "window-size", "manual", ";", "resize-window", "-t", options.session, "-x", String(options.cols), "-y", String(options.rows), ";");
-  }
-  args.push("attach-session");
-  if (options.readonly) args.push("-r");
-  args.push("-t", options.session);
-  return args;
+  return tmuxAttachArgs(options);
 }
 
 export function attachHostObservableTerminal(options: HostObservableTerminalAttachOptions): IPty {
