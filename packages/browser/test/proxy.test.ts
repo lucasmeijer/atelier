@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeBrowserUrl, patchBrowserWorkspaceAppResponse, renderBrowserFrame, setWorkspaceBrowserTarget } from "@atelier/browser/server";
+import { patchBrowserWorkspaceAppResponse } from "../src/server/proxy.ts";
+import { renderBrowserFrame } from "../src/server/render.ts";
+import { normalizeBrowserUrl, setWorkspaceBrowserTarget } from "../src/server/state.ts";
 
 describe("browser proxy response patching", () => {
   test("rewrites localhost links and injects the browser bridge", async () => {

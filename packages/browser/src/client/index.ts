@@ -15,13 +15,13 @@ type BrowserBridgeStateMessage = {
   canGoForward?: boolean;
 };
 
-export function createBrowserPaneController(Controller: StimulusControllerConstructor): unknown {
+function createBrowserPaneController(Controller: StimulusControllerConstructor): unknown {
   return class BrowserPaneController extends Controller {
     declare readonly element: HTMLElement;
   };
 }
 
-export function createBrowserAddressController(Controller: StimulusControllerConstructor): unknown {
+function createBrowserAddressController(Controller: StimulusControllerConstructor): unknown {
   return class BrowserAddressController extends Controller {
     static values = { targetOrigin: String };
 
@@ -172,7 +172,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-export const browserClientModule: WorkspaceClientModule = {
+const browserClientModule: WorkspaceClientModule = {
   id: "browser",
   install({ application, Controller, hooks }) {
     application.register("browser-pane", createBrowserPaneController(Controller));
