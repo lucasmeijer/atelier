@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { completeSimple, getModel } from "@earendil-works/pi-ai";
+import { completeSimple, getModel } from "@earendil-works/pi-ai/compat";
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import type { AtelierEventBus } from "@atelier/core";
 import { listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
