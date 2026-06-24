@@ -1,7 +1,9 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { completeSimple } from "@earendil-works/pi-ai";
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
+import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
+import type { AuthEvent, AuthLoginCallbacks, AuthPrompt } from "@earendil-works/pi-ai";
+import { AuthStorage, ModelRegistry, type AuthCredential } from "@earendil-works/pi-coding-agent";
 import { piConfigSeedDir } from "./pi-config-seed.ts";
 
 /**
@@ -129,6 +131,30 @@ export async function createPiAuthStorage(): Promise<AuthStorage> {
 export async function createPiModelRegistry(): Promise<ModelRegistry> {
   const authStorage = await createPiAuthStorage();
   return ModelRegistry.create(authStorage, await piModelsJsonPath());
+}
+
+export type PiAuthPrompt = AuthPrompt;
+export type PiAuthEvent = AuthEvent;
+export type PiAuthLoginCallbacks = AuthLoginCallbacks;
+export interface PiOAuthProviderSummary { id: string; name: string }
+
+function piOAuthProviders(): PiOAuthProviderSummary[] {
+  return builtinProviders()
+    .filter((provider) => Boolean(provider.auth.oauth))
+    .map((provider) => ({ id: provider.id, name: provider.auth.oauth?.name ?? provider.name ?? provider.id }));
+}
+
+export function getPiOAuthProviders(): PiOAuthProviderSummary[] {
+  return piOAuthProviders();
+}
+
+export async function loginPiOAuthProvider(providerId: string, callbacks: PiAuthLoginCallbacks): Promise<void> {
+  const provider = builtinProviders().find((candidate) => candidate.id === providerId);
+  const oauth = provider?.auth.oauth;
+  if (!oauth) throw new Error(`Unknown OAuth provider: ${providerId}`);
+  const credential = await oauth.login(callbacks);
+  const auth = await createPiAuthStorage();
+  auth.set(providerId, credential as AuthCredential);
 }
 
 async function validateModelProviderApiKey(provider: string, key: string): Promise<void> {

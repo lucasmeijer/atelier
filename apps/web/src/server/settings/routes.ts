@@ -5,11 +5,14 @@ import {
   createPiAuthStorage,
   createPiModelRegistry,
   disconnectModelProvider,
+  getPiOAuthProviders,
   hasAvailableConfiguredAgentModel,
+  loginPiOAuthProvider,
   renderAgentModelOptions,
   setActiveAgentModel,
   setPickerAgentModels,
   type ConfiguredAgentModel,
+  type PiAuthPrompt,
 } from "@atelier/agent/server";
 import { atelierName } from "@atelier/shared";
 import { clearGitIdentity, getGitIdentity, hasGitIdentity, setGitIdentity } from "@atelier/repository";
@@ -127,7 +130,6 @@ function providerAuthLabel(source?: string): string {
 }
 
 async function providerSummaries(): Promise<ProviderSummary[]> {
-  const auth = await createPiAuthStorage();
   const registry = await createPiModelRegistry();
   const providers = new Map<string, ProviderSummary>();
   for (const model of registry.getAll() as Array<{ provider: string }>) {
@@ -140,7 +142,7 @@ async function providerSummaries(): Promise<ProviderSummary[]> {
     entry.authLabel = providerAuthLabel(status.source);
     providers.set(provider, entry);
   }
-  for (const oauth of auth.getOAuthProviders() as Array<{ id: string; name?: string }>) {
+  for (const oauth of getPiOAuthProviders()) {
     const status = registry.getProviderAuthStatus(oauth.id);
     const entry = providers.get(oauth.id) ?? { provider: oauth.id, label: oauth.name ?? registry.getProviderDisplayName(oauth.id), connected: false, stored: false, authLabel: "Connected", methods: [], modelCount: 0 };
     entry.methods = Array.from(new Set(["oauth", ...entry.methods]));
@@ -364,7 +366,7 @@ function apiKeyModal(id: string, label: string, action: string, error = ""): str
   </dialog>`;
 }
 
-type PendingPrompt = { message: string; placeholder?: string; allowEmpty?: boolean; resolve: (value: string) => void };
+type PendingPrompt = { message: string; placeholder?: string; resolve: (value: string) => void; reject: (error: Error) => void };
 type PendingOAuthFlow = {
   id: string;
   provider: string;
@@ -385,37 +387,63 @@ type PendingOAuthFlow = {
 const pendingOAuthFlows = new Map<string, PendingOAuthFlow>();
 
 async function startOAuthFlow(provider: string, label: string): Promise<PendingOAuthFlow> {
-  const auth = await createPiAuthStorage();
-  const oauthProvider = auth.getOAuthProviders().find((candidate) => candidate.id === provider);
-  if (!oauthProvider) throw new Error(`${label} does not support OAuth in this pi installation.`);
+  if (!getPiOAuthProviders().some((candidate) => candidate.id === provider)) throw new Error(`${label} does not support OAuth in this pi installation.`);
   const flow: PendingOAuthFlow = { id: crypto.randomUUID(), provider, label, status: "pending", startedAt: Date.now(), abort: new AbortController(), progress: [] };
   pendingOAuthFlows.set(flow.id, flow);
-  void auth.login(provider, {
-    onAuth: (info) => { flow.authUrl = info.url; flow.instructions = info.instructions; },
-    onDeviceCode: (info) => { flow.userCode = info.userCode; flow.verificationUri = info.verificationUri; flow.intervalSeconds = info.intervalSeconds; },
-    onProgress: (message) => { flow.progress = [...flow.progress.slice(-4), message]; },
-    onPrompt: (prompt) => new Promise<string>((resolve) => {
-      if (prompt.allowEmpty) return resolve("");
-      flow.prompt = { message: prompt.message, placeholder: prompt.placeholder, allowEmpty: prompt.allowEmpty, resolve };
-    }),
-    onManualCodeInput: () => new Promise<string>((resolve) => {
-      flow.prompt = { message: "Paste the authorization code from the browser", placeholder: "Authorization code", resolve };
-    }),
-    onSelect: async (prompt) => prompt.options.find((option) => /default/i.test(option.label ?? ""))?.id
-      ?? prompt.options.find((option) => !/device|headless/i.test(`${option.id} ${option.label ?? ""}`))?.id
-      ?? prompt.options[0]?.id,
+  void loginPiOAuthProvider(provider, {
     signal: flow.abort.signal,
+    notify: (event) => {
+      if (event.type === "auth_url") { flow.authUrl = event.url; flow.instructions = event.instructions; }
+      else if (event.type === "device_code") { flow.userCode = event.userCode; flow.verificationUri = event.verificationUri; flow.intervalSeconds = event.intervalSeconds; }
+      else if (event.type === "progress") flow.progress = [...flow.progress.slice(-4), event.message];
+    },
+    prompt: (prompt) => handleOAuthPrompt(flow, prompt),
   }).then(() => {
     flow.status = "complete";
+    flow.prompt = undefined;
     flow.progress = [...flow.progress.slice(-4), "Connected."];
   }).catch((error) => {
     if (flow.abort.signal.aborted) return;
     flow.status = "error";
+    flow.prompt = undefined;
     flow.error = error instanceof Error ? error.message : String(error);
     flow.progress = [...flow.progress.slice(-4), flow.error];
   });
   await waitForOAuthFlowReady(flow);
   return flow;
+}
+
+function handleOAuthPrompt(flow: PendingOAuthFlow, prompt: PiAuthPrompt): Promise<string> {
+  if (prompt.type === "select") {
+    const selected = prompt.options.find((option) => /default/i.test(option.label ?? ""))?.id
+      ?? prompt.options.find((option) => !/device|headless/i.test(`${option.id} ${option.label ?? ""}`))?.id
+      ?? prompt.options[0]?.id;
+    if (!selected) return Promise.reject(new Error("No OAuth login option available"));
+    return Promise.resolve(selected);
+  }
+
+  return new Promise<string>((resolve, reject) => {
+    const abort = () => {
+      if (flow.prompt?.reject === reject) flow.prompt = undefined;
+      reject(new Error("OAuth prompt cancelled"));
+    };
+    if (prompt.signal?.aborted || flow.abort.signal.aborted) return abort();
+    prompt.signal?.addEventListener("abort", abort, { once: true });
+    flow.abort.signal.addEventListener("abort", abort, { once: true });
+    const cleanup = () => {
+      prompt.signal?.removeEventListener("abort", abort);
+      flow.abort.signal.removeEventListener("abort", abort);
+    };
+    const finish = (value: string) => {
+      cleanup();
+      resolve(value);
+    };
+    const fail = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    flow.prompt = { message: prompt.message, placeholder: prompt.placeholder, resolve: finish, reject: fail };
+  });
 }
 
 async function waitForOAuthFlowReady(flow: PendingOAuthFlow): Promise<void> {
@@ -432,7 +460,7 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
       ? `<p class="settings-error">${escapeHtml(flow.error ?? "OAuth login failed")}</p>`
       : "";
   const manualForm = flow.prompt && flow.status === "pending"
-    ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true"><p>${escapeHtml(flow.prompt.message)}</p><input class="settings-input" name="value" placeholder="${escapeHtml(flow.prompt.placeholder ?? "Authorization code or redirect URL")}" ${flow.prompt.allowEmpty ? "" : "required"}><div class="settings-oauth-manual-actions"><button class="settings-btn" type="submit">Submit</button></div></form>`
+    ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true"><p>${escapeHtml(flow.prompt.message)}</p><input class="settings-input" name="value" placeholder="${escapeHtml(flow.prompt.placeholder ?? "Authorization code or redirect URL")}" required><div class="settings-oauth-manual-actions"><button class="settings-btn" type="submit">Submit</button></div></form>`
     : "";
   const troubleContent = `${flow.instructions ? `<p class="settings-provider-desc">${escapeHtml(flow.instructions)}</p>` : ""}${manualForm}${flow.progress.length ? `<ul class="settings-flow-progress">${flow.progress.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}` || `<p>Leave this dialog open after approving in your browser.</p>`;
   const trouble = flow.status === "pending" ? `<details class="settings-oauth-manual"><summary>Having trouble?</summary>${troubleContent}</details>` : "";
