@@ -64,7 +64,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
   const terminalOptions: ConstructorParameters<typeof Terminal>[0] = {
     allowProposedApi: options.mode === "interactive",
     cursorBlink: options.mode === "interactive",
-    disableStdin: false,
+    disableStdin: options.mode === "fixed-readonly",
     fontSize,
     fontFamily,
     logLevel: "error",
@@ -115,9 +115,11 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
     });
   }
 
-  term.onData((data) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(data);
-  });
+  if (options.mode === "interactive") {
+    term.onData((data) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(data);
+    });
+  }
 
   ws.onopen = () => {
     if (options.mode === "interactive") ws.send(encodeObservableTerminalMessage({ type: "resize", cols: term.cols, rows: term.rows }));
