@@ -82,6 +82,21 @@ function findTerminalPane(workspaceId: string, title: string): HTMLElement | und
   );
 }
 
+function isTerminalPaneActive(pane: HTMLElement): boolean {
+  const resident = pane.closest<HTMLElement>(".workspace-detail-resident");
+  if (resident && !resident.classList.contains("active")) return false;
+  return pane.closest<HTMLElement>(".tab-pane[data-tab-pane]")?.classList.contains("active") ?? true;
+}
+
+function stopInactiveTerminals(): void {
+  for (const key of [...terminals.keys(), ...startingTerminals.keys()]) {
+    const [workspaceId, title] = key.split("\u0000");
+    if (!workspaceId || !title) continue;
+    const pane = findTerminalPane(workspaceId, title);
+    if (!pane || !isTerminalPaneActive(pane)) stopTerminal(workspaceId, title);
+  }
+}
+
 export async function startTerminal(workspaceId: string, title: string, options: { focus?: boolean } = {}): Promise<void> {
   const focus = options.focus !== false;
   const key = terminalKey(workspaceId, title);
@@ -154,8 +169,9 @@ export function createTerminalPaneController(Controller: StimulusControllerConst
     declare readonly autostartValue: boolean;
 
     connect(): void {
-      const pane = this.element.closest<HTMLElement>(".tab-pane[data-tab-pane]");
-      void startTerminal(this.workspaceIdValue, this.titleValue, { focus: this.autostartValue || pane?.classList.contains("active") });
+      if (this.autostartValue || isTerminalPaneActive(this.element)) {
+        void startTerminal(this.workspaceIdValue, this.titleValue, { focus: true });
+      }
     }
 
     disconnect(): void {
@@ -169,7 +185,10 @@ export const workspaceTerminalClientModule: WorkspaceClientModule = {
   install({ application, Controller, hooks }) {
     initializeTerminalTheme();
     application.register("terminal-pane", createTerminalPaneController(Controller));
-    hooks.onActivateTab(({ workspaceId, tabKey }) => startTerminalTab(workspaceId, tabKey));
+    hooks.onActivateTab(({ workspaceId, tabKey }) => {
+      stopInactiveTerminals();
+      startTerminalTab(workspaceId, tabKey);
+    });
     hooks.onFocusGroup(({ workspaceId, tabKey }) => {
       const title = tabKey ? terminalTitleFromTabKey(tabKey) : undefined;
       if (!workspaceId || !title) return false;
