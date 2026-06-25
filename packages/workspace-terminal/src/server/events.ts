@@ -1,5 +1,5 @@
 import type { AtelierEventBus } from "@atelier/core";
-import { createWorkspaceTerminal, listWorkspaceTerminals } from "./workspace-terminals.ts";
+import { listWorkspaceTerminals } from "./workspace-terminals.ts";
 
 function terminalSignature(terminals: Array<{ title: string }>): string {
   return terminals.map((terminal) => terminal.title).sort().join("\n");
@@ -16,12 +16,8 @@ async function rememberSignature(workspaceId: string): Promise<void> {
 }
 
 export function registerTerminalEvents(events: AtelierEventBus): void {
-
   events.on("workspace_created", async ({ workspaceId }) => {
-    await events.emit("workspace_provision_step", { workspaceId, id: "terminal.default", label: "Start default terminal", parentId: "workspace.integrations", status: "running" });
-    await createWorkspaceTerminal(workspaceId);
     await rememberSignature(workspaceId);
-    await events.emit("workspace_provision_step", { workspaceId, id: "terminal.default", label: "Start default terminal", parentId: "workspace.integrations", status: "done" });
   });
 
   events.on("workspace_agent_turn_finished", async ({ workspaceId }) => {

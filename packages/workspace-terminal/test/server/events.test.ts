@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
-import { createWorkspace, execWorkspaceCommand, type WorkspaceExecResult } from "@atelier/workspace";
+import { createWorkspace } from "@atelier/workspace";
 import { cleanupNamespace, createTestNamespace } from "../../../workspace/test/helpers.ts";
 import { registerTerminalEvents } from "../../src/server/events.ts";
+import { listWorkspaceTerminals } from "../../src/server/workspace-terminals.ts";
 
 setDefaultTimeout(30_000);
 
@@ -18,15 +19,13 @@ afterAll(async () => {
 });
 
 describe("terminal workspace events", () => {
-  test("workspace_created starts a default tmux terminal session", async () => {
+  test("workspace_created does not start a default terminal session", async () => {
     const events = createAtelierEventBus();
     registerTerminalEvents(events);
 
     const created = await createWorkspace({ events });
     await events.emit("workspace_created", { workspaceId: created.id });
 
-    const exec = await execWorkspaceCommand(created.id, ["tmux", "list-sessions", "-F", "#S"]) as WorkspaceExecResult;
-    expect(exec.exitCode).toBe(0);
-    expect(exec.stdout.trim().split(/\n+/)).toEqual(["Terminal 1"]);
+    expect((await listWorkspaceTerminals(created.id)).terminals).toEqual([]);
   });
 });
