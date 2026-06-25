@@ -4,7 +4,7 @@ import { createAtelierEventBus, defaultDataDir } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
 import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace } from "@atelier/workspace";
 import type { WorkspaceDeleteSafetyIssue } from "@atelier/repository";
-import { atelierName, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler } from "@atelier/shared";
+import { atelierName, escapeHtml, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler } from "@atelier/shared";
 import {
   createWorkspaceIngressProxy,
   releaseWorkspacePublicProxyRoutes,
@@ -113,10 +113,6 @@ function clearAuthCookieAttributes(request: Request): string {
   const cookieDomain = sharedCookieDomain(request);
   const domain = cookieDomain ? `; Domain=${cookieDomain}` : "";
   return `Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}${domain}`;
-}
-
-function escapeHtml(value: unknown): string {
-  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 }
 
 function loginPage(next: string, error = ""): Response {

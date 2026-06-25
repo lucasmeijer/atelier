@@ -14,15 +14,12 @@ import {
   type ConfiguredAgentModel,
   type PiAuthPrompt,
 } from "@atelier/agent/server";
-import { atelierName } from "@atelier/shared";
+import { atelierName, domId, escapeHtml, turboStream, turboStreamResponse } from "@atelier/shared";
 import { clearGitIdentity, getGitIdentity, hasGitIdentity, setGitIdentity } from "@atelier/repository";
 import { listSettingsContributions, registerSettingsContribution } from "./registry.ts";
+import { workspaceModules } from "../workspace-modules.ts";
 import { validateGitHubToken } from "../github-auth.ts";
 import { renderOnboardingDialogIfNeeded } from "../onboarding/routes.ts";
-
-function escapeHtml(value: unknown): string {
-  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
-}
 
 function response(body: string, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -32,35 +29,31 @@ function response(body: string, init: ResponseInit = {}): Response {
 }
 
 function stream(body: string): Response {
-  return response(body, { headers: { "content-type": "text/vnd.turbo-stream.html; charset=utf-8" } });
+  return turboStreamResponse(body);
 }
 
 function replace(target: string, html: string): string {
-  return `<turbo-stream action="replace" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
+  return turboStream("replace", target, html);
 }
 
 function update(target: string, html: string): string {
-  return `<turbo-stream action="update" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
+  return turboStream("update", target, html);
 }
 
 function updateTargets(selector: string, html: string): string {
-  return `<turbo-stream action="update" targets="${escapeHtml(selector)}"><template>${html}</template></turbo-stream>`;
+  return turboStream("update", selector, html, { targets: true });
 }
 
 function replaceTargets(selector: string, html: string): string {
-  return `<turbo-stream action="replace" targets="${escapeHtml(selector)}"><template>${html}</template></turbo-stream>`;
+  return turboStream("replace", selector, html, { targets: true });
 }
 
 function remove(target: string): string {
-  return `<turbo-stream action="remove" target="${escapeHtml(target)}"></turbo-stream>`;
+  return turboStream("remove", target);
 }
 
 function append(target: string, html: string): string {
-  return `<turbo-stream action="append" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
-}
-
-function domId(...parts: string[]): string {
-  return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
+  return turboStream("append", target, html);
 }
 
 function wantsStream(request: Request): boolean {
@@ -301,6 +294,9 @@ registerSettingsContribution({ id: "theme", label: "Theme", order: 10, render: r
 registerSettingsContribution({ id: "git-identity", label: "Git identity", order: 20, render: renderGitIdentitySettings });
 registerSettingsContribution({ id: "github", label: "GitHub", order: 30, render: renderGitHubSettings });
 registerSettingsContribution({ id: "models", label: "Models", order: 40, render: renderModelSetupSettings });
+for (const module of workspaceModules) {
+  for (const contribution of module.settingsContributions ?? []) registerSettingsContribution(contribution);
+}
 
 export async function renderSettingsDialog(_active = "theme"): Promise<string> {
   const contributions = listSettingsContributions();

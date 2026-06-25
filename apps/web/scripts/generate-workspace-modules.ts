@@ -15,26 +15,12 @@ const packagesDir = new URL("packages/", root);
 const clientOutputUrl = new URL("../src/client/workspace-client-modules.generated.ts", import.meta.url);
 const serverOutputUrl = new URL("../src/server/workspace-modules.generated.ts", import.meta.url);
 
-const truthyEnvValues = new Set(["1", "true", "yes", "on"]);
-const keypressProbePackageName = "@atelier/keypress-probe";
-
-function envFlag(name: string): boolean {
-  return truthyEnvValues.has((process.env[name] ?? "").trim().toLowerCase());
-}
-
 function disabledPackageNames(): Set<string> {
   const disabled = new Set<string>();
-
-  // The keypress probe is a debugging/logger overlay. Keep the package installed
-  // so it can be re-enabled quickly with:
-  //   ATELIER_ENABLE_KEYPRESS_PROBE=1 bun run build:assets
-  if (!envFlag("ATELIER_ENABLE_KEYPRESS_PROBE")) disabled.add(keypressProbePackageName);
-
   for (const name of (process.env.ATELIER_DISABLED_WORKSPACE_MODULES ?? "").split(",")) {
     const trimmed = name.trim();
     if (trimmed) disabled.add(trimmed);
   }
-
   return disabled;
 }
 

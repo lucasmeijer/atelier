@@ -1,11 +1,8 @@
 import { listOnboardingContributions, registerOnboardingContribution } from "./registry.ts";
+import { escapeHtml, turboStream, turboStreamResponse } from "@atelier/shared";
 import { hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { hasGitIdentity } from "@atelier/repository";
 import { githubRow, hasAvailableFavoriteModel, isOnboarded, renderGitIdentityForm, renderModelSetup } from "../settings/routes.ts";
-
-function escapeHtml(value: unknown): string {
-  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
-}
 
 function response(body: string, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -15,11 +12,11 @@ function response(body: string, init: ResponseInit = {}): Response {
 }
 
 function stream(body: string): Response {
-  return response(body, { headers: { "content-type": "text/vnd.turbo-stream.html; charset=utf-8" } });
+  return turboStreamResponse(body);
 }
 
 function update(target: string, html: string): string {
-  return `<turbo-stream action="update" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
+  return turboStream("update", target, html);
 }
 
 async function renderGitIdentityStep(): Promise<string> {

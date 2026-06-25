@@ -1240,6 +1240,24 @@ class OAuthFlowController extends Controller {
   }
 }
 
+class SettingsCheckboxController extends Controller {
+  declare readonly element: HTMLFormElement;
+
+  submit(event: Event): void {
+    event.preventDefault();
+    void this.save();
+  }
+
+  async save(): Promise<void> {
+    const response = await fetch(this.element.action, {
+      method: this.element.method || "POST",
+      body: new FormData(this.element),
+      headers: { Accept: "text/vnd.turbo-stream.html" },
+    });
+    window.Turbo?.renderStreamMessage(await response.text());
+  }
+}
+
 class GitIdentityController extends Controller {
   declare readonly element: HTMLFormElement;
   private timer: number | undefined;
@@ -1671,6 +1689,7 @@ application.register("workspace-app-frame", WorkspaceAppFrameController);
 application.register("theme-select", ThemeSelectController);
 application.register("oauth-flow", OAuthFlowController);
 application.register("git-identity", GitIdentityController);
+application.register("settings-checkbox", SettingsCheckboxController);
 application.register("provider-list", ProviderListController);
 application.register("model-add-menu", ModelAddMenuController);
 application.register("onboarding", OnboardingController);

@@ -22,7 +22,7 @@ import {
 } from "@atelier/repository";
 import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
-import { atelierName, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceRowContributionRegistry, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
+import { atelierName, domId, escapeHtml, turboStream, turboStreamResponse, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceRowContributionRegistry, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
 import type { StreamHub } from "./stream-hub.ts";
 import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
 import type { WebPreferenceStore } from "./preferences.ts";
@@ -59,19 +59,6 @@ export interface WebApp {
   workspaceRowContributions: WorkspaceRowContributionRegistry;
 }
 
-export function escapeHtml(value: unknown): string {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-export function domId(...parts: string[]): string {
-  return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
-}
-
 type HtmlResponseInit = Omit<ResponseInit, "headers"> & { headers?: Record<string, string> };
 
 function response(body: string, init: HtmlResponseInit = {}): Response {
@@ -88,24 +75,17 @@ function jsonResponse(body: unknown, init: HtmlResponseInit = {}): Response {
   return new Response(JSON.stringify(body), { ...init, headers });
 }
 
-function turboStreamResponse(body: string, init: HtmlResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  headers.set("content-type", "text/vnd.turbo-stream.html; charset=utf-8");
-  if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
-  return new Response(body, { ...init, headers });
-}
-
 function turboReplaceStream(target: string, html: string): string {
-  return `<turbo-stream action="replace" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
+  return turboStream("replace", target, html);
 }
 
 function turboRemoveStream(target: string): string {
-  return `<turbo-stream action="remove" target="${escapeHtml(target)}"></turbo-stream>`;
+  return turboStream("remove", target);
 }
 
 /** Replaces the children of the target, keeping the container element itself alive. */
 function turboUpdateStream(target: string, html: string): string {
-  return `<turbo-stream action="update" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
+  return turboStream("update", target, html);
 }
 
 function envString(...names: string[]): string | undefined {
@@ -855,7 +835,7 @@ ${moduleStylesHtml()}
       }
       if (details.issues.length > 0) {
         registry.setPhase(id, "ready");
-        return turboStreamResponse(`${turboRemoveStream("delete-workspace-modal")}<turbo-stream action="append" target="body"><template>${deleteBlockedModal(id, details)}</template></turbo-stream>`);
+        return turboStreamResponse(`${turboRemoveStream("delete-workspace-modal")}${turboStream("append", "body", deleteBlockedModal(id, details))}`);
       }
     }
     scheduleWorkspaceDeletion(id);
@@ -984,7 +964,7 @@ ${moduleStylesHtml()}
       }
       const result = await getWorkspaceRepoMergeability(id, repo);
       const body = `<turbo-frame id="${frameId}">${mergeabilityRow(id, repo, result)}</turbo-frame>`;
-      if (wantsTurboStream(request)) return turboStreamResponse(`<turbo-stream action="replace" target="${frameId}"><template>${body}</template></turbo-stream>`);
+      if (wantsTurboStream(request)) return turboStreamResponse(turboStream("replace", frameId, body));
       return response(body);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -997,7 +977,7 @@ ${moduleStylesHtml()}
   // ---------------------------------------------------------------------------
 
   async function replaceWorkspaceGroupsTurboStream(workspaceId: string): Promise<string> {
-    return `<turbo-stream action="replace" target="${workspaceGroupsId(workspaceId)}"><template>${await renderWorkspaceGroupsFor(workspaceId)}</template></turbo-stream>`;
+    return turboStream("replace", workspaceGroupsId(workspaceId), await renderWorkspaceGroupsFor(workspaceId));
   }
 
   async function replaceWorkspaceGroupsStream(workspaceId: string): Promise<Response> {

@@ -36,11 +36,16 @@ function keyCombo(event: KeyboardEvent): string {
   return parts.join("+") || key;
 }
 
-export function installKeypressProbe(): void {
-  if (document.documentElement.dataset.keypressProbeInstalled === "true") return;
-  document.documentElement.dataset.keypressProbeInstalled = "true";
-  (["keydown", "keypress", "keyup"] as const).forEach((type) => {
-    window.addEventListener(type, (event) => {
+const eventTypes = ["keydown", "keypress", "keyup"] as const;
+type KeypressProbeEventType = typeof eventTypes[number];
+
+let activeProbeControllers = 0;
+let installedListeners: Array<{ type: KeypressProbeEventType; listener: (event: KeyboardEvent) => void }> = [];
+
+function installKeypressProbe(): void {
+  if (installedListeners.length > 0) return;
+  installedListeners = eventTypes.map((type) => {
+    const listener = (event: KeyboardEvent) => {
       const detail: KeypressProbeDetail = {
         type,
         combo: keyCombo(event),
@@ -57,11 +62,18 @@ export function installKeypressProbe(): void {
         detail.defaultPrevented = event.defaultPrevented;
         document.dispatchEvent(new CustomEvent<KeypressProbeDetail>("atelier:keypress-probe", { detail }));
       }, 0);
-    }, true);
+    };
+    window.addEventListener(type, listener, true);
+    return { type, listener };
   });
 }
 
-export function createKeypressProbeController(Controller: StimulusControllerBase): unknown {
+function uninstallKeypressProbe(): void {
+  for (const { type, listener } of installedListeners) window.removeEventListener(type, listener, true);
+  installedListeners = [];
+}
+
+function createKeypressProbeController(Controller: StimulusControllerBase): unknown {
   return class KeypressProbeController extends Controller {
     static targets = ["list", "count"];
     declare readonly listTarget: HTMLOListElement;
@@ -71,11 +83,15 @@ export function createKeypressProbeController(Controller: StimulusControllerBase
     private count = 0;
 
     connect(): void {
+      activeProbeControllers += 1;
+      installKeypressProbe();
       document.addEventListener("atelier:keypress-probe", this.record as EventListener);
     }
 
     disconnect(): void {
       document.removeEventListener("atelier:keypress-probe", this.record as EventListener);
+      activeProbeControllers -= 1;
+      if (activeProbeControllers === 0) uninstallKeypressProbe();
     }
 
     clear(): void {
@@ -106,10 +122,9 @@ export function createKeypressProbeController(Controller: StimulusControllerBase
   };
 }
 
-export const keypressProbeClientModule: WorkspaceClientModule = {
+const keypressProbeClientModule: WorkspaceClientModule = {
   id: "keypress-probe",
   install({ application, Controller }) {
-    installKeypressProbe();
     application.register("keypress-probe", createKeypressProbeController(Controller));
   },
 };

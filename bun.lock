@@ -54,9 +54,6 @@
     },
     "packages/core": {
       "name": "@atelier/core",
-      "dependencies": {
-        "@atelier/observable-terminal": "workspace:*",
-      },
     },
     "packages/desktop": {
       "name": "@atelier/desktop",
@@ -69,12 +66,14 @@
     "packages/keypress-probe": {
       "name": "@atelier/keypress-probe",
       "dependencies": {
+        "@atelier/core": "workspace:*",
         "@atelier/shared": "workspace:*",
       },
     },
     "packages/observable-terminal": {
       "name": "@atelier/observable-terminal",
       "dependencies": {
+        "@atelier/core": "workspace:*",
         "@fontsource/jetbrains-mono": "5.2.8",
         "@xterm/addon-fit": "0.11.0",
         "@xterm/addon-progress": "0.2.0",
@@ -112,8 +111,8 @@
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
-        "@atelier/shared": "workspace:*",
         "@atelier/proxy-ingress": "workspace:*",
+        "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
       },
     },
@@ -122,6 +121,7 @@
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
+        "@atelier/shared": "workspace:*",
         "@atelier/workspace-image": "workspace:*",
       },
     },

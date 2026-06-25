@@ -1,5 +1,29 @@
 export const atelierName = "Atelier" as const;
 
+export function escapeHtml(value: unknown): string {
+  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+export function domId(...parts: string[]): string {
+  return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+export type TurboStreamAction = "append" | "prepend" | "replace" | "update" | "remove";
+
+export function turboStream(action: TurboStreamAction, target: string, html = "", options: { targets?: boolean } = {}): string {
+  const targetAttribute = options.targets ? "targets" : "target";
+  const targetValue = escapeHtml(target);
+  if (action === "remove") return `<turbo-stream action="remove" ${targetAttribute}="${targetValue}"></turbo-stream>`;
+  return `<turbo-stream action="${action}" ${targetAttribute}="${targetValue}"><template>${html}</template></turbo-stream>`;
+}
+
+export function turboStreamResponse(body: string, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set("content-type", "text/vnd.turbo-stream.html; charset=utf-8");
+  headers.set("cache-control", headers.get("cache-control") ?? "no-store");
+  return new Response(body, { ...init, headers });
+}
+
 export interface WorkspaceAttachContext {
   workspaceId: string;
   sourceRepositoryId?: string | null;
@@ -109,6 +133,20 @@ export interface WorkspaceRowContributionRegistry {
   set(workspaceId: string, contributionId: string, html?: string): void;
 }
 
+export interface SettingsActionContext {
+  request: Request;
+  url: URL;
+}
+
+export interface SettingsContribution {
+  id: string;
+  label: string;
+  icon?: string;
+  order?: number;
+  render(): Promise<string>;
+  handleAction?(context: SettingsActionContext): Promise<Response | undefined>;
+}
+
 export interface WorkspaceServerModuleContext {
   events: unknown;
   registry: {
@@ -129,6 +167,7 @@ export interface WorkspaceServerModuleContext {
 export interface WorkspaceModule {
   id: string;
   staticFiles?: Record<string, StaticFileContribution>;
+  settingsContributions?: SettingsContribution[];
   commands?: WorkspaceModuleCommandHandler[];
   routes?: WorkspaceModuleRouteHandler[];
   tabs?: WorkspaceModuleTabLifecycleHandler[];
