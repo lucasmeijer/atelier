@@ -527,6 +527,20 @@ function ansiToHtml(text: string): string {
     openSpan();
   };
   for (let i = 0; i < text.length;) {
+    if (text[i] === "\x1b" && text[i + 1] === "]") {
+      const rest = text.slice(i + 2);
+      const bel = rest.indexOf("\x07");
+      const st = rest.indexOf("\x1b\\");
+      const end = bel >= 0 && (st < 0 || bel < st) ? bel + 3 : st >= 0 ? st + 4 : -1;
+      if (end >= 0) {
+        i += end;
+        continue;
+      }
+    }
+    if (text[i] === "\x1b" && /[=>78]/.test(text[i + 1] ?? "")) {
+      i += 2;
+      continue;
+    }
     if (text[i] === "\x1b" && text[i + 1] === "[") {
       const end = text.slice(i + 2).search(/[A-Za-z]/);
       if (end >= 0) {

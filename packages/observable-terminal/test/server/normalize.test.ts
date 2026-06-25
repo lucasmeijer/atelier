@@ -6,6 +6,7 @@ import {
   observableTerminalCols,
   observableTerminalRows,
   stripObservablePaneFraming,
+  stripTerminalControls,
 } from "../../src/server/index.ts";
 
 describe("observable terminal normalization", () => {
@@ -20,6 +21,13 @@ describe("observable terminal normalization", () => {
     expect(stripObservablePaneFraming("ok\nPane is dead\n")).toBe("ok");
     expect(stripObservablePaneFraming("ok\n\u001b[2mPane is dead\u001b[0m\r\n")).toBe("ok");
     expect(stripObservablePaneFraming("ok\nPane is dea")).toBe("ok");
+  });
+
+  test("strips terminal control sequences without leaking their final bytes", () => {
+    expect(stripTerminalControls("\u001b[?1h\u001b=ok\u001b>")).toBe("ok");
+    expect(stripTerminalControls("a\u001b[2Kb\u001b[39;49mc")).toBe("abc");
+    expect(stripTerminalControls("a\u001b]8;;file:///tmp/x\u001b\\b\u001b]8;;\u001b\\c")).toBe("abc");
+    expect(stripTerminalControls("a\u001bPignored\u001b\\b")).toBe("ab");
   });
 
   test("builds fixed-size observable sessions", () => {

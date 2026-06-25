@@ -57,6 +57,24 @@ function byteLimitUtf8(text: string, maxBytes: number): { text: string; truncate
   return { text: out, truncated: true };
 }
 
+function plainModelOutput(text: string): string {
+  return stripScriptFraming(stripTerminalControls(text)).trim();
+}
+
+function outputLineCount(text: string): number {
+  const trimmed = text.trimEnd();
+  return trimmed ? trimmed.split(/\r\n|\r|\n/).length : 0;
+}
+
+function terminalSummary(raw: string, displayText: string, modelText: string): string {
+  const rawBytes = Buffer.byteLength(raw, "utf8");
+  const displayBytes = Buffer.byteLength(displayText, "utf8");
+  const displayLines = outputLineCount(displayText);
+  if (displayLines === 0 || displayBytes <= Math.max(Buffer.byteLength(modelText, "utf8") * 4, 120)) return "";
+  const rawPart = rawBytes > 0 ? `; raw PTY log was ${rawBytes} bytes` : "";
+  return `Terminal display captured ${displayLines} line${displayLines === 1 ? "" : "s"} (${displayBytes} bytes) of rendered output${rawPart}.`;
+}
+
 /** Remove the `script` typescript header/footer lines from captured output. */
 function stripScriptFraming(text: string): string {
   return text
@@ -150,25 +168,32 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
       const pane = await execWorkspaceShell(workspaceId, buildCapturePaneCommand({ session: sessionName, historyLimit: tmuxHistoryLimit }));
       await execWorkspaceShell(workspaceId, `${buildKillSessionCommand(sessionName)}; rm -f ${shellQuote(outFile)} ${shellQuote(exitFile)}; true`);
 
+      const paneRaw = stripTmuxPaneFraming(pane.stdout);
       const modelLimited = byteLimitUtf8(raw, maxModelOutputBytes);
-      let output = stripScriptFraming(stripTerminalControls(modelLimited.text)).trim();
+      let output = plainModelOutput(modelLimited.text);
       if (modelLimited.truncated) output += `\n… output truncated at ${maxModelOutputBytes} bytes`;
+      const displayLimited = byteLimitUtf8(paneRaw || raw, maxDisplayAnsiBytes);
+      let displayAnsi = normalizeCarriageReturns(stripScriptFraming(displayLimited.text)).trimEnd();
+      if (displayLimited.truncated) displayAnsi += `\n… output truncated at ${maxDisplayAnsiBytes} bytes`;
+      const displayText = plainModelOutput(displayLimited.text);
+      const displaySummary = terminalSummary(raw, displayText, output);
       const aborted = signal?.aborted ?? false;
       const timedOut = exitCode === undefined && !aborted;
-      let body = output || "(no output)";
+      let body = output || (displaySummary ? "(model transcript empty after stripping terminal controls)" : "(no output)");
+      if (displaySummary) body = `${body}\n\n${displaySummary}`;
       if (aborted) body = `${body}\n\nCommand aborted`;
       else if (timedOut) body = `${body}\n\nCommand timed out after ${Math.round(timeoutMs / 1000)} seconds`;
       else if (exitCode !== 0) body = `${body}\n\nCommand exited with code ${exitCode}`;
 
-      const displayLimited = byteLimitUtf8(stripTmuxPaneFraming(pane.stdout) || raw, maxDisplayAnsiBytes);
-      let displayAnsi = normalizeCarriageReturns(stripScriptFraming(displayLimited.text)).trimEnd();
-      if (displayLimited.truncated) displayAnsi += `\n… output truncated at ${maxDisplayAnsiBytes} bytes`;
       return {
         content: [{ type: "text" as const, text: body }],
         details: {
           exitCode,
           tmuxSession: sessionName,
           displayAnsi,
+          terminalDisplayBytes: Buffer.byteLength(displayText, "utf8"),
+          terminalDisplayLines: outputLineCount(displayText),
+          rawPtyLogBytes: Buffer.byteLength(raw, "utf8"),
           aborted,
           timedOut,
         },

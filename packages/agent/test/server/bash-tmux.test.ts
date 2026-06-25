@@ -75,6 +75,34 @@ describe("tmux bash tool", () => {
     expect(result.details.exitCode).toBe(0);
   });
 
+  test("reports terminal display volume when rich terminal controls erase the model transcript", async () => {
+    const paneText = [
+      "Restore succeeded with 3 warning(s) in 1.1s",
+      "  LanguageModels succeeded (0.4s) → LanguageModels/bin/Debug/net9.0/LanguageModels.dll",
+      "  ProfessionalReportServer succeeded (0.6s) → ProfessionalReportServer/bin/Debug/net9.0/ProfessionalReportServer.dll",
+      "",
+      "Build succeeded with 6 warning(s) in 3.1s",
+    ].join("\n");
+    const raw = `\u001b[?25lRestore running\r\u001b[2KBuild running\r\u001b=`;
+    execWorkspaceCommand.mockImplementation(async () => ({
+      stdout: raw,
+      stderr: "",
+      exitCode: 0,
+    }));
+    execWorkspaceShell.mockImplementation(async (_workspaceId: string, command: string) => {
+      if (command.includes("capture-pane")) return { stdout: `\u001b[32m${paneText}\u001b[0m\nPane is dead\n`, stderr: "", exitCode: 0 };
+      if (command.includes("cat '/tmp/atelier-agent-") && command.includes(".exit")) return { stdout: "0\n", stderr: "", exitCode: 0 };
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+
+    const result = await executeBash({ command: "dotnet build ProfessionalReport.sln -v:minimal" });
+
+    expect(textResult(result)).toBe(`(model transcript empty after stripping terminal controls)\n\nTerminal display captured 5 lines (${Buffer.byteLength(paneText, "utf8")} bytes) of rendered output; raw PTY log was ${Buffer.byteLength(raw, "utf8")} bytes.`);
+    expect(result.details).toMatchObject({ terminalDisplayLines: 5, terminalDisplayBytes: Buffer.byteLength(paneText, "utf8"), rawPtyLogBytes: Buffer.byteLength(raw, "utf8") });
+    expect(result.details.displayAnsi).toContain("\u001b[32mRestore succeeded");
+    expect(result.details.displayAnsi).not.toContain("Pane is dea");
+  });
+
   test("removes full and partial tmux dead-pane markers from captured display output", () => {
     expect(stripTmuxPaneFraming("ok\nPane is dead\n")).toBe("ok");
     expect(stripTmuxPaneFraming("ok\n\u001b[2mPane is dead\u001b[0m\r\n")).toBe("ok");
