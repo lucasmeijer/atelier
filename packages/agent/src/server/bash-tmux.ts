@@ -1,6 +1,6 @@
 import { shellQuote } from "@atelier/core";
 import type { ServerWebSocket } from "bun";
-import { execWorkspaceCommand, execWorkspaceShell, workspaceContainerName, workspaceRoot } from "@atelier/workspace";
+import { execWorkspaceShell, workspaceContainerName, workspaceRoot } from "@atelier/workspace";
 import {
   attachObservableTerminal,
   buildCapturePaneCommand,
@@ -23,8 +23,7 @@ import { Type } from "typebox";
  * Bash tool that runs commands inside the workspace container under a PTY,
  * via a marked tmux session. Display is decoupled from execution: the browser
  * can attach an inline xterm to the tmux session while the command runs; the
- * tool result is captured independently with `script`, so it is complete even
- * when no browser is attached.
+ * tool result is captured from tmux's rendered scrollback and active screen.
  */
 
 export const agentTmuxPrefix = "atelier-agent-";
@@ -58,28 +57,11 @@ function byteLimitUtf8(text: string, maxBytes: number): { text: string; truncate
 }
 
 function plainModelOutput(text: string): string {
-  return stripScriptFraming(stripTerminalControls(text)).trim();
+  return stripTerminalControls(text).trim();
 }
 
-function outputLineCount(text: string): number {
-  const trimmed = text.trimEnd();
-  return trimmed ? trimmed.split(/\r\n|\r|\n/).length : 0;
-}
-
-function terminalSummary(raw: string, displayText: string, modelText: string): string {
-  const rawBytes = Buffer.byteLength(raw, "utf8");
-  const displayBytes = Buffer.byteLength(displayText, "utf8");
-  const displayLines = outputLineCount(displayText);
-  if (displayLines === 0 || displayBytes <= Math.max(Buffer.byteLength(modelText, "utf8") * 4, 120)) return "";
-  const rawPart = rawBytes > 0 ? `; raw PTY log was ${rawBytes} bytes` : "";
-  return `Terminal display captured ${displayLines} line${displayLines === 1 ? "" : "s"} (${displayBytes} bytes) of rendered output${rawPart}.`;
-}
-
-/** Remove the `script` typescript header/footer lines from captured output. */
-function stripScriptFraming(text: string): string {
-  return text
-    .replace(/^Script started on [^\n]*\n?/, "")
-    .replace(/\n?Script done on [^\n]*\n?$/, "");
+function shellExport(assignments: Record<string, string | number>): string {
+  return `export ${Object.entries(assignments).map(([key, value]) => `${key}=${shellQuote(String(value))}`).join(" ")}`;
 }
 
 export function stripTmuxPaneFraming(text: string): string {
@@ -97,40 +79,37 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
     }),
     execute: async (toolCallId: string, params: { command: string; timeout?: number }, signal?: AbortSignal, onUpdate?: (partial: any) => void) => {
       const sessionName = `${agentTmuxPrefix}${crypto.randomUUID().slice(0, 8)}`;
-      const outFile = `/tmp/${sessionName}.out`;
       const exitFile = `/tmp/${sessionName}.exit`;
       const timeoutMs = Math.max(1, params.timeout ?? 600) * 1000;
 
-      // `script` runs the command under a PTY and tees everything to outFile,
-      // independent of any attached viewer. The tmux session exists for live
-      // viewing and final ANSI-preserving pane capture.
-      //
       // Interactive editors/pagers/prompts are neutralized (GIT_EDITOR=true,
       // PAGER=cat, GIT_TERMINAL_PROMPT=0) so commands like a bare `git commit`
       // fail fast instead of opening vim. stdin stays on the PTY — full-screen
       // programs (ncurses, progress UIs) need a tty on stdin to render.
       //
-      // The command goes straight to `script -c` (which runs it via sh -c
-      // itself). Do NOT add another sh wrapper: an extra shell between script
-      // and the command lands the command in a background process group and
-      // full-screen programs get stopped by SIGTTOU before drawing anything.
-      const guards = "EDITOR=true GIT_EDITOR=true VISUAL=true GIT_PAGER=cat PAGER=cat GIT_TERMINAL_PROMPT=0";
+      // The command runs directly in tmux's PTY. After it exits, the model and
+      // UI outputs are both captured from tmux's rendered scrollback and active
+      // screen: plain capture for the model, ANSI-preserving capture for UI.
+      const guards = shellExport({ EDITOR: "true", GIT_EDITOR: "true", VISUAL: "true", GIT_PAGER: "cat", PAGER: "cat", GIT_TERMINAL_PROMPT: 0 });
       // Encourage color in tools that otherwise default to `auto` detection.
-      // The AI-facing result is still ANSI-stripped; these settings are for the
-      // tmux/UI display channel. COLOR is used by CMake-generated Makefiles,
-      // FORCE_COLOR by many JS/Rust tools, CLICOLOR_FORCE by BSD-ish tools, and
-      // NINJA_STATUS gives direct ninja invocations a colored progress prefix.
-      const colorEnv = `TERM=xterm-256color COLORTERM=truecolor COLUMNS=${agentTermCols} LINES=${agentTermRows} CLICOLOR_FORCE=1 FORCE_COLOR=1 COLOR=1`;
-      const ninjaStatus = "NINJA_STATUS=$(printf '\\033[36m[%%f/%%t %%p]\\033[0m ')";
-      // Force the tmux pane's tty size immediately before `script` starts.
-      // `script` copies the parent tty size to the command's PTY; if the size
-      // is briefly reported as very narrow, carriage-return progress UIs (for
-      // example `git clone`) wrap and then each `\r` returns only to the start
-      // of the wrapped physical row, producing concatenated progress text in
-      // the live browser terminal.
+      // COLOR is used by CMake-generated Makefiles, FORCE_COLOR by many JS/Rust
+      // tools, CLICOLOR_FORCE by BSD-ish tools, and NINJA_STATUS gives direct
+      // ninja invocations a colored progress prefix.
+      const colorEnv = shellExport({ TERM: "xterm-256color", COLORTERM: "truecolor", COLUMNS: agentTermCols, LINES: agentTermRows, CLICOLOR_FORCE: 1, FORCE_COLOR: 1, COLOR: 1 });
+      const ninjaStatus = "export NINJA_STATUS=$(printf '\\033[36m[%%f/%%t %%p]\\033[0m ')";
+      // Force the tmux pane's tty size immediately before the command starts. If
+      // the size is briefly reported as very narrow, carriage-return progress UIs
+      // (for example `git clone`) wrap and then each `\r` returns only to the
+      // start of the wrapped physical row, producing concatenated progress text
+      // in the live browser terminal.
       const forceTtySize = `stty cols ${agentTermCols} rows ${agentTermRows} 2>/dev/null || true`;
-      const scriptCommand = `${forceTtySize}; ${params.command}`;
-      const inner = `${buildSetRemainOnExitCommand()}; ${forceTtySize}; ${ninjaStatus} ${colorEnv} ${guards} script -qefc ${shellQuote(scriptCommand)} ${shellQuote(outFile)}; echo $? > ${shellQuote(exitFile)}`;
+      const runCommand = `(
+${forceTtySize}
+${params.command}
+)
+status=$?
+printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
+      const inner = `${buildSetRemainOnExitCommand()}; ${forceTtySize}; ${ninjaStatus}; ${colorEnv}; ${guards}; ${runCommand}`;
       const create = await execWorkspaceShell(
         workspaceId,
         buildObservableSessionCommand({ session: sessionName, cwd: workspaceRoot, command: shellQuote(inner), cols: agentTermCols, rows: agentTermRows, fixedSize: true, remainOnExit: true, historyLimit: tmuxHistoryLimit }),
@@ -160,27 +139,21 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
         await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
       }
 
-      // Capture whatever output exists. The model result comes from `script`'s
-      // raw log and is stripped of terminal control codes; the UI result comes
-      // from tmux scrollback with SGR color escapes preserved (`capture-pane -e`).
-      const captured = await execWorkspaceCommand(workspaceId, ["sh", "-c", `head -c ${maxModelOutputBytes + 1} ${shellQuote(outFile)} 2>/dev/null`]);
-      const raw = captured.stdout;
-      const pane = await execWorkspaceShell(workspaceId, buildCapturePaneCommand({ session: sessionName, historyLimit: tmuxHistoryLimit }));
-      await execWorkspaceShell(workspaceId, `${buildKillSessionCommand(sessionName)}; rm -f ${shellQuote(outFile)} ${shellQuote(exitFile)}; true`);
+      // Capture tmux's rendered scrollback and active screen. Plain capture feeds
+      // the model; ANSI-preserving capture feeds the UI terminal view.
+      const modelPane = await execWorkspaceShell(workspaceId, buildCapturePaneCommand({ session: sessionName, historyLimit: tmuxHistoryLimit, ansi: false }));
+      const displayPane = await execWorkspaceShell(workspaceId, buildCapturePaneCommand({ session: sessionName, historyLimit: tmuxHistoryLimit }));
+      await execWorkspaceShell(workspaceId, `${buildKillSessionCommand(sessionName)}; rm -f ${shellQuote(exitFile)}; true`);
 
-      const paneRaw = stripTmuxPaneFraming(pane.stdout);
-      const modelLimited = byteLimitUtf8(raw, maxModelOutputBytes);
+      const modelLimited = byteLimitUtf8(stripTmuxPaneFraming(modelPane.stdout), maxModelOutputBytes);
       let output = plainModelOutput(modelLimited.text);
       if (modelLimited.truncated) output += `\n… output truncated at ${maxModelOutputBytes} bytes`;
-      const displayLimited = byteLimitUtf8(paneRaw || raw, maxDisplayAnsiBytes);
-      let displayAnsi = normalizeCarriageReturns(stripScriptFraming(displayLimited.text)).trimEnd();
+      const displayLimited = byteLimitUtf8(stripTmuxPaneFraming(displayPane.stdout), maxDisplayAnsiBytes);
+      let displayAnsi = normalizeCarriageReturns(displayLimited.text).trimEnd();
       if (displayLimited.truncated) displayAnsi += `\n… output truncated at ${maxDisplayAnsiBytes} bytes`;
-      const displayText = plainModelOutput(displayLimited.text);
-      const displaySummary = terminalSummary(raw, displayText, output);
       const aborted = signal?.aborted ?? false;
       const timedOut = exitCode === undefined && !aborted;
-      let body = output || (displaySummary ? "(model transcript empty after stripping terminal controls)" : "(no output)");
-      if (displaySummary) body = `${body}\n\n${displaySummary}`;
+      let body = output || "(no output)";
       if (aborted) body = `${body}\n\nCommand aborted`;
       else if (timedOut) body = `${body}\n\nCommand timed out after ${Math.round(timeoutMs / 1000)} seconds`;
       else if (exitCode !== 0) body = `${body}\n\nCommand exited with code ${exitCode}`;
@@ -191,9 +164,6 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
           exitCode,
           tmuxSession: sessionName,
           displayAnsi,
-          terminalDisplayBytes: Buffer.byteLength(displayText, "utf8"),
-          terminalDisplayLines: outputLineCount(displayText),
-          rawPtyLogBytes: Buffer.byteLength(raw, "utf8"),
           aborted,
           timedOut,
         },

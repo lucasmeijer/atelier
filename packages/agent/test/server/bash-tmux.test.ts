@@ -30,7 +30,6 @@ async function executeBash(params: { command: string; timeout?: number }) {
 describe("tmux bash tool", () => {
   beforeEach(() => {
     execWorkspaceShell.mockClear();
-    execWorkspaceCommand.mockClear();
   });
 
   afterEach(() => {
@@ -41,7 +40,6 @@ describe("tmux bash tool", () => {
       if (command.includes("kill-session")) return { stdout: "", stderr: "", exitCode: 0 };
       return { stdout: "", stderr: "", exitCode: 0 };
     });
-    execWorkspaceCommand.mockImplementation(async () => ({ stdout: "", stderr: "", exitCode: 0 }));
   });
 
   test("forces a stable tty size for carriage-return progress UIs", async () => {
@@ -52,15 +50,12 @@ describe("tmux bash tool", () => {
     const command = createCall![1];
     expect(command).toContain(`-x ${agentTermCols} -y ${agentTermRows}`);
     expect(command).toContain(`stty cols ${agentTermCols} rows ${agentTermRows}`);
-    expect(command).toContain(`COLUMNS=${agentTermCols} LINES=${agentTermRows}`);
+    expect(command).toContain(`COLUMNS='\\''${agentTermCols}'\\''`);
+    expect(command).toContain(`LINES='\\''${agentTermRows}'\\''`);
+    expect(command).not.toContain("script -qefc");
   });
 
-  test("returns ANSI-stripped model output while storing colored pane output", async () => {
-    execWorkspaceCommand.mockImplementation(async () => ({
-      stdout: "Script started on 2026-06-13\n\u001b[31mred\u001b[0m\r\nScript done on 2026-06-13\n",
-      stderr: "",
-      exitCode: 0,
-    }));
+  test("returns plain model output from rendered pane while storing colored pane output", async () => {
     execWorkspaceShell.mockImplementation(async (_workspaceId: string, command: string) => {
       if (command.includes("capture-pane")) return { stdout: "\u001b[31mred\u001b[0m\nPane is dead\n", stderr: "", exitCode: 0 };
       if (command.includes("cat '/tmp/atelier-agent-") && command.includes(".exit")) return { stdout: "0\n", stderr: "", exitCode: 0 };
@@ -75,7 +70,7 @@ describe("tmux bash tool", () => {
     expect(result.details.exitCode).toBe(0);
   });
 
-  test("reports terminal display volume when rich terminal controls erase the model transcript", async () => {
+  test("uses tmux rendered pane output for dotnet-style terminal UI output", async () => {
     const paneText = [
       "Restore succeeded with 3 warning(s) in 1.1s",
       "  LanguageModels succeeded (0.4s) → LanguageModels/bin/Debug/net9.0/LanguageModels.dll",
@@ -83,12 +78,6 @@ describe("tmux bash tool", () => {
       "",
       "Build succeeded with 6 warning(s) in 3.1s",
     ].join("\n");
-    const raw = `\u001b[?25lRestore running\r\u001b[2KBuild running\r\u001b=`;
-    execWorkspaceCommand.mockImplementation(async () => ({
-      stdout: raw,
-      stderr: "",
-      exitCode: 0,
-    }));
     execWorkspaceShell.mockImplementation(async (_workspaceId: string, command: string) => {
       if (command.includes("capture-pane")) return { stdout: `\u001b[32m${paneText}\u001b[0m\nPane is dead\n`, stderr: "", exitCode: 0 };
       if (command.includes("cat '/tmp/atelier-agent-") && command.includes(".exit")) return { stdout: "0\n", stderr: "", exitCode: 0 };
@@ -97,8 +86,7 @@ describe("tmux bash tool", () => {
 
     const result = await executeBash({ command: "dotnet build ProfessionalReport.sln -v:minimal" });
 
-    expect(textResult(result)).toBe(`(model transcript empty after stripping terminal controls)\n\nTerminal display captured 5 lines (${Buffer.byteLength(paneText, "utf8")} bytes) of rendered output; raw PTY log was ${Buffer.byteLength(raw, "utf8")} bytes.`);
-    expect(result.details).toMatchObject({ terminalDisplayLines: 5, terminalDisplayBytes: Buffer.byteLength(paneText, "utf8"), rawPtyLogBytes: Buffer.byteLength(raw, "utf8") });
+    expect(textResult(result)).toBe(paneText);
     expect(result.details.displayAnsi).toContain("\u001b[32mRestore succeeded");
     expect(result.details.displayAnsi).not.toContain("Pane is dea");
   });
@@ -109,25 +97,23 @@ describe("tmux bash tool", () => {
     expect(stripTmuxPaneFraming("ok\nPane is dea")).toBe("ok");
   });
 
-  test("collapses carriage-return progress in display fallback output", async () => {
-    const raw = "Cloning into 'repo'...\r\nremote: Counting objects:   1% (1/94)\rremote: Counting objects:   2% (2/94)\rremote: Counting objects: 100% (94/94)\r\n";
-    execWorkspaceCommand.mockImplementation(async () => ({ stdout: raw, stderr: "", exitCode: 0 }));
+  test("uses rendered tmux capture for carriage-return progress output", async () => {
+    const rendered = "Cloning into 'repo'...\nremote: Counting objects: 100% (94/94)";
     execWorkspaceShell.mockImplementation(async (_workspaceId: string, command: string) => {
-      if (command.includes("capture-pane")) return { stdout: "", stderr: "", exitCode: 0 };
+      if (command.includes("capture-pane")) return { stdout: `${rendered}\nPane is dead\n`, stderr: "", exitCode: 0 };
       if (command.includes("cat '/tmp/atelier-agent-") && command.includes(".exit")) return { stdout: "0\n", stderr: "", exitCode: 0 };
       return { stdout: "", stderr: "", exitCode: 0 };
     });
 
     const result = await executeBash({ command: "git clone https://example.com/repo.git" });
 
-    expect(result.details.displayAnsi).toBe("Cloning into 'repo'...\nremote: Counting objects: 100% (94/94)");
-    expect(result.details.displayAnsi).not.toContain("1% (1/94)remote:");
+    expect(textResult(result)).toBe(rendered);
+    expect(result.details.displayAnsi).toBe(rendered);
   });
 
-  test("captures 100 lines from the model log and tmux scrollback display", async () => {
+  test("captures 100 lines from tmux scrollback for model and terminal display", async () => {
     const plainLines = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`);
     const ansiLines = plainLines.map((line) => `\u001b[32m${line}\u001b[0m`);
-    execWorkspaceCommand.mockImplementation(async () => ({ stdout: `${plainLines.join("\n")}\n`, stderr: "", exitCode: 0 }));
     execWorkspaceShell.mockImplementation(async (_workspaceId: string, command: string) => {
       if (command.includes("capture-pane")) return { stdout: `${ansiLines.join("\n")}\nPane is dead\n`, stderr: "", exitCode: 0 };
       if (command.includes("cat '/tmp/atelier-agent-") && command.includes(".exit")) return { stdout: "0\n", stderr: "", exitCode: 0 };
@@ -141,11 +127,11 @@ describe("tmux bash tool", () => {
     expect(result.details.displayAnsi).toStartWith("\u001b[32mline 1\u001b[0m");
     expect(result.details.displayAnsi).toEndWith("\u001b[32mline 100\u001b[0m");
     expect(result.details.displayAnsi).not.toContain("Pane is dea");
-    expect(execWorkspaceShell.mock.calls.some(([, command]) => command.includes("capture-pane") && command.includes("-S -100000"))).toBe(true);
+    expect(execWorkspaceShell.mock.calls.some(([, command]) => command.includes("capture-pane") && command.includes("-S -100000") && !command.includes(" -e"))).toBe(true);
+    expect(execWorkspaceShell.mock.calls.some(([, command]) => command.includes("capture-pane") && command.includes("-S -100000") && command.includes(" -e"))).toBe(true);
   });
 
   test("reports non-zero exit codes to the model result without adding them to displayAnsi", async () => {
-    execWorkspaceCommand.mockImplementation(async () => ({ stdout: "failure\n", stderr: "", exitCode: 0 }));
     execWorkspaceShell.mockImplementation(async (_workspaceId: string, command: string) => {
       if (command.includes("capture-pane")) return { stdout: "\u001b[31mfailure\u001b[0m\nPane is dea", stderr: "", exitCode: 0 };
       if (command.includes("cat '/tmp/atelier-agent-") && command.includes(".exit")) return { stdout: "7\n", stderr: "", exitCode: 0 };
