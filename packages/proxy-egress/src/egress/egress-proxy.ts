@@ -27,7 +27,7 @@ type MitmConnectionContext = { workspaceId: string; hostname: string };
 type MitmTargetServer = { server: ReturnType<typeof createHttpsServer>; port: number; connections: Map<number, MitmConnectionContext> };
 
 async function workspaceProxyHost(): Promise<string> {
-  return (await getAtelierRuntimeContext()).atelierHostFromWorkspace;
+  return (await getAtelierRuntimeContext()).dockerBridgeHost;
 }
 
 async function workspaceProxyUrl(workspaceId: string, token: string): Promise<string> {

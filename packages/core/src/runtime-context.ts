@@ -6,10 +6,8 @@ export interface AtelierRuntimeContext {
   atelierDataDir: string;
   /** Same directory as seen by the Docker daemon. Use this for Docker bind mount sources. */
   dockerHostAtelierDataDir: string;
-  /** Host/IP where Docker publishes workspace ports, as seen by Atelier. */
-  workspacePortHostFromAtelier: string;
-  /** Host/IP workspace containers use to reach Atelier. */
-  atelierHostFromWorkspace: string;
+  /** Host-side Docker bridge IP used for Atelier/workspace traffic. */
+  dockerBridgeHost: string;
 }
 
 let cachedRuntimeContext: AtelierRuntimeContext | undefined;
@@ -24,9 +22,10 @@ export function dockerHostAtelierDataPath(context: AtelierRuntimeContext, ...seg
 }
 
 export function getAtelierRuntimeContext(): AtelierRuntimeContext {
-  const key = runtimeContextKey();
+  const context = readRuntimeContextFromEnv();
+  const key = runtimeContextKey(context);
   if (!cachedRuntimeContext || cachedRuntimeContextKey !== key) {
-    cachedRuntimeContext = discoverAtelierRuntimeContext();
+    cachedRuntimeContext = context;
     cachedRuntimeContextKey = key;
   }
   return cachedRuntimeContext;
@@ -38,25 +37,35 @@ export function resetAtelierRuntimeContextForTests(): void {
 }
 
 export function discoverAtelierRuntimeContext(): AtelierRuntimeContext {
+  return readRuntimeContextFromEnv();
+}
+
+function readRuntimeContextFromEnv(): AtelierRuntimeContext {
   const atelierDataDir = envString("ATELIER_DATA_DIR") ?? defaultDataDir();
   return {
     atelierDataDir,
     dockerHostAtelierDataDir: envString("ATELIER_DOCKER_HOST_DATA_DIR") ?? atelierDataDir,
-    workspacePortHostFromAtelier: envString("ATELIER_WORKSPACE_PORT_HOST_FROM_ATELIER") ?? "127.0.0.1",
-    atelierHostFromWorkspace: envString("ATELIER_HOST_FROM_WORKSPACE") ?? "host.docker.internal",
+    dockerBridgeHost: inspectDockerBridgeHost(),
   };
 }
 
-function runtimeContextKey(): string {
+function runtimeContextKey(context: AtelierRuntimeContext): string {
   return [
-    envString("ATELIER_DATA_DIR") ?? "",
-    envString("ATELIER_DOCKER_HOST_DATA_DIR") ?? "",
-    envString("ATELIER_WORKSPACE_PORT_HOST_FROM_ATELIER") ?? "",
-    envString("ATELIER_HOST_FROM_WORKSPACE") ?? "",
+    context.atelierDataDir,
+    context.dockerHostAtelierDataDir,
+    context.dockerBridgeHost,
   ].join("\0");
 }
 
 function envString(name: string): string | undefined {
   const value = process.env[name]?.trim();
   return value ? value : undefined;
+}
+
+function inspectDockerBridgeHost(): string {
+  const result = Bun.spawnSync(["docker", "network", "inspect", "bridge", "--format", "{{(index .IPAM.Config 0).Gateway}}"], { stdout: "pipe", stderr: "pipe" });
+  if (result.exitCode !== 0) throw new Error(`could not inspect Docker bridge gateway: ${new TextDecoder().decode(result.stderr).trim()}`);
+  const host = new TextDecoder().decode(result.stdout).trim();
+  if (!host) throw new Error("Docker bridge gateway is empty");
+  return host;
 }

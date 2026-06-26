@@ -40,7 +40,7 @@ function namespace(): string { return process.env.ATELIER_NAMESPACE || "default"
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }
 export function workspaceContainerName(id: string): string { return `atelier-${id}`; }
 async function workspacePublishHost(): Promise<string> {
-  return (await getAtelierRuntimeContext()).workspacePortHostFromAtelier;
+  return (await getAtelierRuntimeContext()).dockerBridgeHost;
 }
 function formatDeleteBlockedMessage(id: string, issues: unknown[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
 function dockerHostGatewayArgs(): string[] { return ["--add-host", "host.docker.internal:host-gateway"]; }
@@ -269,7 +269,7 @@ async function workspacePublishedEndpoint(id: string, containerPort: number): Pr
 async function reachableWorkspacePublishedEndpoint(id: string, containerPort: number): Promise<WorkspacePublishedEndpoint> {
   const endpoint = await workspacePublishedEndpoint(id, containerPort);
   const runtime = await getAtelierRuntimeContext();
-  return { host: runtime.workspacePortHostFromAtelier, port: endpoint.port };
+  return { host: runtime.dockerBridgeHost, port: endpoint.port };
 }
 
 function endpointAuthority({ host, port }: WorkspacePublishedEndpoint): string {
