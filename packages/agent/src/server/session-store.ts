@@ -1,6 +1,6 @@
 import { mkdir, open, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { defaultDataDir } from "@atelier/core";
+import { getAtelierRuntimeContext } from "@atelier/core";
 
 export interface WorkspaceAgentInfo {
   workspaceId: string;
@@ -10,11 +10,11 @@ export interface WorkspaceAgentInfo {
 
 const agentFilePattern = /^Agent ([1-9]\d*)\.jsonl$/;
 
-function workspaceAgentsDir(workspaceId: string, dataDir = defaultDataDir()): string {
+function workspaceAgentsDir(workspaceId: string, dataDir = getAtelierRuntimeContext().atelierDataDir): string {
   return join(dataDir, "workspace-agents", workspaceId);
 }
 
-export function workspaceAgentSessionPath(workspaceId: string, label: string, dataDir = defaultDataDir()): string {
+export function workspaceAgentSessionPath(workspaceId: string, label: string, dataDir = getAtelierRuntimeContext().atelierDataDir): string {
   return join(workspaceAgentsDir(workspaceId, dataDir), `${label}.jsonl`);
 }
 

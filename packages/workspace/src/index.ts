@@ -40,11 +40,8 @@ function namespace(): string { return process.env.ATELIER_NAMESPACE || "default"
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }
 export function workspaceContainerName(id: string): string { return `atelier-${id}`; }
 async function workspacePublishHost(): Promise<string> {
-  const runtime = await getAtelierRuntimeContext();
-  return runtime.runningInContainer && !runtime.dockerNetwork ? runtime.dockerHostGateway ?? "0.0.0.0" : "127.0.0.1";
+  return (await getAtelierRuntimeContext()).workspacePortHostFromAtelier;
 }
-async function workspaceDockerNetwork(): Promise<string | undefined> { return (await getAtelierRuntimeContext()).dockerNetwork; }
-async function shouldAddressWorkspaceContainersDirectly(): Promise<boolean> { return Boolean(await workspaceDockerNetwork()); }
 function formatDeleteBlockedMessage(id: string, issues: unknown[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
 function dockerHostGatewayArgs(): string[] { return ["--add-host", "host.docker.internal:host-gateway"]; }
 async function provisionStep<T>(events: AtelierEventBus | undefined, workspaceId: string, id: string, label: string, fn: () => Promise<T>, options: { parentId?: string } = {}): Promise<T> {
@@ -217,9 +214,8 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     await provisionStep(options.events, id, "workspace.container", "Start workspace container", async () => {
       const image = activePlan.image;
       if (!image) throw new AtelierCoreError("workspace_image_missing", "workspace image was not resolved");
-      const network = await workspaceDockerNetwork();
       const publishHost = await workspacePublishHost();
-      await requireDocker(["run", "-d", "--name", workspaceContainerName(id), ...(network ? ["--network", network] : []), ...Object.entries(activePlan.labels).flatMap(([name, value]) => ["--label", `${name}=${value}`]), ...activePlan.publishes.flatMap((port) => ["--publish", `${publishHost}::${port}`]), ...planEnvDockerArgs(activePlan.env), ...activePlan.extraArgs, ...activePlan.mounts.flatMap((mount) => ["--mount", dockerMountArg(mount)]), "--user", "root", image, "sh", "-lc", workspaceInitScript(activePlan)]);
+      await requireDocker(["run", "-d", "--name", workspaceContainerName(id), ...Object.entries(activePlan.labels).flatMap(([name, value]) => ["--label", `${name}=${value}`]), ...activePlan.publishes.flatMap((port) => ["--publish", `${publishHost}::${port}`]), ...planEnvDockerArgs(activePlan.env), ...activePlan.extraArgs, ...activePlan.mounts.flatMap((mount) => ["--mount", dockerMountArg(mount)]), "--user", "root", image, "sh", "-lc", workspaceInitScript(activePlan)]);
     });
     await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id));
     await provisionStep(options.events, id, "workspace.verify", "Verify workspace", () => resolveWorkspace(id));
@@ -247,8 +243,7 @@ async function workspacePublishedEndpoint(id: string, containerPort: number): Pr
 async function reachableWorkspacePublishedEndpoint(id: string, containerPort: number): Promise<WorkspacePublishedEndpoint> {
   const endpoint = await workspacePublishedEndpoint(id, containerPort);
   const runtime = await getAtelierRuntimeContext();
-  if (runtime.runningInContainer && !runtime.dockerNetwork) return { host: "host.docker.internal", port: endpoint.port };
-  return { host: endpoint.host === "0.0.0.0" || endpoint.host === "::" ? "127.0.0.1" : endpoint.host, port: endpoint.port };
+  return { host: runtime.workspacePortHostFromAtelier, port: endpoint.port };
 }
 
 function endpointAuthority({ host, port }: WorkspacePublishedEndpoint): string {
@@ -257,7 +252,6 @@ function endpointAuthority({ host, port }: WorkspacePublishedEndpoint): string {
 
 export async function workspacePortUrl(id: string, containerPort: number, pathAndSearch: string, protocol = "http:"): Promise<URL> {
   const path = pathAndSearch.startsWith("/") ? pathAndSearch : `/${pathAndSearch}`;
-  if (await shouldAddressWorkspaceContainersDirectly()) return new URL(path, `${protocol}//${workspaceContainerName(id)}:${containerPort}`);
   return new URL(path, `${protocol}//${endpointAuthority(await reachableWorkspacePublishedEndpoint(id, containerPort))}`);
 }
 

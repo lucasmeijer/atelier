@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { platform } from "node:os";
 import { join, resolve } from "node:path";
-import { defaultDataDir, discoverHostGitHubToken } from "@atelier/core";
+import { discoverHostGitHubToken, getAtelierRuntimeContext } from "@atelier/core";
 import type { CommandResult } from "@atelier/core";
 import { AtelierCoreError, invalidArguments } from "@atelier/core";
 import type { AtelierEventBus } from "@atelier/core";
@@ -32,7 +32,7 @@ const regularCopyWarnings = new Set<string>();
 const provisionLog = new AsyncLocalStorage<string>();
 
 function sourceRoot(): string {
-  return defaultDataDir();
+  return getAtelierRuntimeContext().atelierDataDir;
 }
 
 function templateKey(gitUrl: string, branch: string | null): string {
@@ -57,7 +57,7 @@ function workspaceWorktreePath(workspaceId: string): string {
 
 async function withTemplateLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   // This is intentionally process-local. If Atelier is ever run as multiple
-  // server processes against the same ATELIER_DATA_DIR, replace this with a
+  // server processes against the same Atelier data dir, replace this with a
   // file lock around the same critical section.
   const previous = templateLocks.get(key) ?? Promise.resolve();
   let release!: () => void;

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
-import { createAtelierEventBus, defaultDataDir } from "@atelier/core";
+import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
 import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace } from "@atelier/workspace";
 import type { WorkspaceDeleteSafetyIssue } from "@atelier/repository";
@@ -182,8 +182,10 @@ const workspaceAppHandlers: WorkspaceServerAppHandler[] = [];
 const provisioningHooks: WorkspaceServerProvisioningHook[] = [];
 const workspaceRemovedHandlers: Array<(workspaceId: string) => void | Promise<void>> = [];
 
+const runtimeContext = getAtelierRuntimeContext();
+
 const registry = createWorkspaceRegistry({
-  activityStore: createFileWorkspaceActivityStore(join(defaultDataDir(), "view-state", "workspace-activity.json")),
+  activityStore: createFileWorkspaceActivityStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-activity.json")),
 });
 const hub = createStreamHub();
 const layouts = createWorkspaceLayoutStore();
@@ -206,7 +208,7 @@ const app = createWebApp({
   hub,
   layouts,
   events: atelierEvents,
-  preferences: createFileWebPreferenceStore(join(defaultDataDir(), "view-state", "preferences.json")),
+  preferences: createFileWebPreferenceStore(join(runtimeContext.atelierDataDir, "view-state", "preferences.json")),
   provisioningHooks,
   workspaceRemovedHandlers,
   async provisionWorkspace(id, options) {

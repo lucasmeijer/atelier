@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { defaultDataDir, invalidArguments, shellQuote, type AtelierEventBus } from "@atelier/core";
+import { getAtelierRuntimeContext, invalidArguments, shellQuote, type AtelierEventBus } from "@atelier/core";
 
 export interface GitIdentitySettings {
   name: string;
@@ -12,7 +12,7 @@ interface GitIdentityStore {
   gitIdentity?: GitIdentitySettings;
 }
 
-export function gitIdentitySettingsFile(dataDir = defaultDataDir()): string {
+export function gitIdentitySettingsFile(dataDir = getAtelierRuntimeContext().atelierDataDir): string {
   return join(dataDir, "repository-settings.json");
 }
 

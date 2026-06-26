@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { defaultDataDir, shellQuote } from "@atelier/core";
+import { getAtelierRuntimeContext, shellQuote } from "@atelier/core";
 import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import type { ImageRef } from "./transcript.ts";
 
@@ -33,7 +33,7 @@ export function extensionOf(path: string): string {
 }
 
 export function attachmentDraftsDir(): string {
-  return join(defaultDataDir(), "agent-attachment-drafts");
+  return join(getAtelierRuntimeContext().atelierDataDir, "agent-attachment-drafts");
 }
 
 export function attachmentDraftDir(draftId: string): string {

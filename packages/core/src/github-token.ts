@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { defaultDataDir } from "./data-dir.ts";
+import { getAtelierRuntimeContext } from "./runtime-context.ts";
 
 function storedGitHubTokenPath(): string {
-  return join(defaultDataDir(), "workspace", "github-token");
+  return join(getAtelierRuntimeContext().atelierDataDir, "workspace", "github-token");
 }
 
 export function discoverHostGitHubToken(): string | undefined {

@@ -9,7 +9,7 @@ import { piConfigSeedDir } from "./pi-config-seed.ts";
 /**
  * The configured list of models offered in the agent model picker.
  *
- * Stored in ATELIER_DATA_DIR/pi-config/models.json alongside pi's own model
+ * Stored in the Atelier data dir under pi-config/models.json alongside pi's own model
  * configuration. Atelier owns this file; custom model/provider definitions stay
  * under `providers`, while the prompt picker state is top-level settings.
  */

@@ -1,8 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { createHash } from "node:crypto";
-import { defaultDataDir } from "@atelier/core";
-import { AtelierCoreError } from "@atelier/core";
+import { AtelierCoreError, getAtelierRuntimeContext } from "@atelier/core";
 
 export interface RepositorySummary {
   id: string;
@@ -23,7 +22,7 @@ interface RepositoryStore {
   repositories: RepositorySummary[];
 }
 
-export function repositoriesFile(dataDir = defaultDataDir()): string {
+export function repositoriesFile(dataDir = getAtelierRuntimeContext().atelierDataDir): string {
   return join(dataDir, "repositories.json");
 }
 
