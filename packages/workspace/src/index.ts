@@ -230,7 +230,20 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
 
 interface WorkspacePublishedEndpoint { host: string; port: number }
 
-async function workspacePublishedEndpoint(id: string, containerPort: number): Promise<WorkspacePublishedEndpoint> {
+const workspacePublishedEndpointCache = new Map<string, Promise<WorkspacePublishedEndpoint>>();
+
+function workspacePublishedEndpointCacheKey(id: string, containerPort: number): string {
+  return `${namespace()}\0${id}\0${containerPort}`;
+}
+
+function clearWorkspacePublishedEndpointCache(id: string): void {
+  const prefix = `${namespace()}\0${id}\0`;
+  for (const key of workspacePublishedEndpointCache.keys()) {
+    if (key.startsWith(prefix)) workspacePublishedEndpointCache.delete(key);
+  }
+}
+
+async function inspectWorkspacePublishedEndpoint(id: string, containerPort: number): Promise<WorkspacePublishedEndpoint> {
   await resolveWorkspace(id);
   const result = await runDocker(["port", workspaceContainerName(id), `${containerPort}/tcp`]);
   if (result.exitCode !== 0) throw new AtelierCoreError("workspace_port_not_found", result.stderr.trim() || `workspace ${id} does not publish port ${containerPort}`);
@@ -238,6 +251,19 @@ async function workspacePublishedEndpoint(id: string, containerPort: number): Pr
   const match = line.match(/^\[([^\]]+)\]:(\d+)$/) ?? line.match(/^(.+):(\d+)$/);
   if (!match) throw new AtelierCoreError("workspace_port_not_found", `could not parse published port for ${id}:${containerPort}: ${line}`);
   return { host: match[1]!, port: Number(match[2]!) };
+}
+
+async function workspacePublishedEndpoint(id: string, containerPort: number): Promise<WorkspacePublishedEndpoint> {
+  const key = workspacePublishedEndpointCacheKey(id, containerPort);
+  const cached = workspacePublishedEndpointCache.get(key);
+  if (cached) return await cached;
+
+  const inspected = inspectWorkspacePublishedEndpoint(id, containerPort).catch((error) => {
+    workspacePublishedEndpointCache.delete(key);
+    throw error;
+  });
+  workspacePublishedEndpointCache.set(key, inspected);
+  return await inspected;
 }
 
 async function reachableWorkspacePublishedEndpoint(id: string, containerPort: number): Promise<WorkspacePublishedEndpoint> {
@@ -284,6 +310,7 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
     if (issues.length > 0) throw new AtelierCoreError("workspace_delete_blocked", formatDeleteBlockedMessage(id, issues), { workspaceId: id, issues });
   }
   await requireDocker(["rm", "-f", workspaceContainerName(id)]);
+  clearWorkspacePublishedEndpointCache(id);
   await options.events?.emit("workspace_deleted", { workspaceId: id });
   await deleteWorkspaceWorkDir(id);
   return null;
