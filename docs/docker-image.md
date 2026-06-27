@@ -29,19 +29,21 @@ bun run image:publish -- --image ghcr.io/example/atelier --tag v0.1.0 --platform
 
 `image:publish` is the same build pipeline with `--push` enabled. Multi-platform builds require `--push`.
 
-The resulting container expects access to Docker so it can create Atelier workspace containers. Its entrypoint starts as root, grants the fixed container user `1000:1000` access to the mounted Docker socket, prepares the Atelier data directory, and then runs Atelier as that fixed user. Docker-run workspace containers use the same numeric uid/gid and the `default` namespace.
+The resulting container expects access to Docker so it can create Atelier workspace containers. Its entrypoint starts as root, grants the fixed container user `1000:1000` access to the mounted Docker socket, prepares the Atelier data directory, and then runs Atelier as that fixed user. Docker-run workspace containers use the same numeric uid/gid and the `default` namespace. Workspace app ports are published on the Docker host loopback and always reached through `host.docker.internal`.
 
 A typical local run mounts the host Docker socket and bind-mounts a host data directory. `ATELIER_DOCKER_HOST_DATA_DIR` must be the host path for that same data directory so workspace containers can mount files created by the Atelier container:
 
 ```sh
-mkdir -p "$HOME/.atelier"
+ATELIER_HOST_DATA_DIR="$HOME/Library/Application Support/atelier"
+mkdir -p "$ATELIER_HOST_DATA_DIR"
 
 docker run --rm -it --init \
   -p 3000:3000 \
   -p 41000-41999:41000-41999 \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  --mount "type=bind,src=$HOME/.atelier,dst=/data/atelier" \
+  --add-host host.docker.internal:host-gateway \
+  --mount "type=bind,src=$ATELIER_HOST_DATA_DIR,dst=/data/atelier" \
   -e ATELIER_DATA_DIR=/data/atelier \
-  -e ATELIER_DOCKER_HOST_DATA_DIR="$HOME/.atelier" \
+  -e ATELIER_DOCKER_HOST_DATA_DIR="$ATELIER_HOST_DATA_DIR" \
   atelier:latest
 ```

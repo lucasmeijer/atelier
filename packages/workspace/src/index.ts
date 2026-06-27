@@ -40,9 +40,8 @@ function namespace(): string { return process.env.ATELIER_NAMESPACE || "host"; }
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }
 export function workspaceContainerName(id: string): string { return `atelier-${id}`; }
 
-async function workspacePublishHost(): Promise<string> {
-  return (await getAtelierRuntimeContext()).dockerBridgeHost;
-}
+function workspacePublishHost(): string { return "127.0.0.1"; }
+function workspaceConnectHost(): string { return "host.docker.internal"; }
 function formatDeleteBlockedMessage(id: string, issues: unknown[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
 function dockerHostGatewayArgs(): string[] { return ["--add-host", "host.docker.internal:host-gateway"]; }
 async function provisionStep<T>(events: AtelierEventBus | undefined, workspaceId: string, id: string, label: string, fn: () => Promise<T>, options: { parentId?: string } = {}): Promise<T> {
@@ -218,7 +217,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     await provisionStep(options.events, id, "workspace.container", "Start workspace container", async () => {
       const image = activePlan.image;
       if (!image) throw new AtelierCoreError("workspace_image_missing", "workspace image was not resolved");
-      const publishHost = await workspacePublishHost();
+      const publishHost = workspacePublishHost();
       await requireDocker(["run", "-d", "--name", workspaceContainerName(id), ...Object.entries(activePlan.labels).flatMap(([name, value]) => ["--label", `${name}=${value}`]), ...activePlan.publishes.flatMap((port) => ["--publish", `${publishHost}::${port}`]), ...planEnvDockerArgs(activePlan.env), ...activePlan.extraArgs, ...activePlan.mounts.flatMap((mount) => ["--mount", dockerMountArg(mount)]), "--user", "root", image, "sh", "-lc", workspaceInitScript(activePlan)]);
     });
     await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id));
@@ -272,8 +271,7 @@ async function workspacePublishedEndpoint(id: string, containerPort: number): Pr
 
 async function reachableWorkspacePublishedEndpoint(id: string, containerPort: number): Promise<WorkspacePublishedEndpoint> {
   const endpoint = await workspacePublishedEndpoint(id, containerPort);
-  const runtime = await getAtelierRuntimeContext();
-  return { host: runtime.dockerBridgeHost, port: endpoint.port };
+  return { host: workspaceConnectHost(), port: endpoint.port };
 }
 
 function endpointAuthority({ host, port }: WorkspacePublishedEndpoint): string {

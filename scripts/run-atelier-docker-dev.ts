@@ -156,6 +156,7 @@ const runArgs = [
   "-p", publish,
   "-p", proxyPublish,
   "-v", "/var/run/docker.sock:/var/run/docker.sock",
+  "--add-host", "host.docker.internal:host-gateway",
   "--mount", `type=bind,src=${options.dataDir},dst=/data/atelier`,
   "--env", "ATELIER_DATA_DIR=/data/atelier",
   "--env", `ATELIER_DOCKER_HOST_DATA_DIR=${options.dataDir}`,
