@@ -181,7 +181,8 @@ function hostForOrigin(host: string): string {
 
 function publicProxyHostFor(request: Request, url = new URL(request.url)): string {
   const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-  return hostnameWithoutPort(forwardedHost || url.host) || url.hostname;
+  const host = hostnameWithoutPort(forwardedHost || url.host) || url.hostname;
+  return host === "0.0.0.0" ? "127.0.0.1" : host;
 }
 
 function hostnameWithoutPort(host: string): string | undefined {

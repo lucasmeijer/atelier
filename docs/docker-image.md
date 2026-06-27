@@ -38,6 +38,7 @@ mkdir -p "$HOME/.atelier"
 
 docker run --rm -it --init \
   -p 3000:3000 \
+  -p 41000-41999:41000-41999 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   --mount "type=bind,src=$HOME/.atelier,dst=/data/atelier" \
   -e ATELIER_DATA_DIR=/data/atelier \

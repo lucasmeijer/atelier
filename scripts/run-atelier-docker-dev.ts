@@ -128,6 +128,7 @@ function unique(values: string[]): string[] {
 const options = parseArgs(process.argv.slice(2));
 const imageRef = `${options.image}:${options.tag}`;
 const publish = options.bind ? `${options.bind}:${options.port}:3000` : `${options.port}:3000`;
+const proxyPublish = options.bind ? `${options.bind}:41000-41999:41000-41999` : "41000-41999:41000-41999";
 
 const existing = unique([
   ...containerIdsForFilter(`name=^/${options.name}$`),
@@ -153,6 +154,7 @@ const runArgs = [
   "--label", "com.atelier.type=server",
   "--init",
   "-p", publish,
+  "-p", proxyPublish,
   "-v", "/var/run/docker.sock:/var/run/docker.sock",
   "--mount", `type=bind,src=${options.dataDir},dst=/data/atelier`,
   "--env", "ATELIER_DATA_DIR=/data/atelier",

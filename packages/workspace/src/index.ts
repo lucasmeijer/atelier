@@ -39,6 +39,7 @@ export interface CreateWorkspaceOptions { id?: string; events?: AtelierEventBus;
 function namespace(): string { return process.env.ATELIER_NAMESPACE || "host"; }
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }
 export function workspaceContainerName(id: string): string { return `atelier-${id}`; }
+
 async function workspacePublishHost(): Promise<string> {
   return (await getAtelierRuntimeContext()).dockerBridgeHost;
 }
