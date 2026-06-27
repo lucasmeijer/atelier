@@ -34,7 +34,7 @@ interface AtelierAgentsFile {
   content: string;
 }
 
-export function createAtelierResourceLoader(agentsFiles: AtelierAgentsFile[] = []): ResourceLoader {
+export function createAtelierResourceLoader(agentsFiles: AtelierAgentsFile[] = [], appendSystemPrompt: string[] = []): ResourceLoader {
   return {
     getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
     getSkills: () => ({ skills: [], diagnostics: [] }),
@@ -42,7 +42,7 @@ export function createAtelierResourceLoader(agentsFiles: AtelierAgentsFile[] = [
     getThemes: () => ({ themes: [], diagnostics: [] }),
     getAgentsFiles: () => ({ agentsFiles }),
     getSystemPrompt: () => atelierSystemPrompt,
-    getAppendSystemPrompt: () => [],
+    getAppendSystemPrompt: () => appendSystemPrompt,
     extendResources: () => {},
     reload: async () => {},
   };

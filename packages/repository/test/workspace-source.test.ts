@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmod, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { clearWorkspaceGitHubToken, setWorkspaceGitHubToken } from "@atelier/core";
-import { prepareWorkspaceSource } from "@atelier/repository";
+import { clearWorkspaceGitHubToken, createAtelierEventBus, setWorkspaceGitHubToken } from "@atelier/core";
+import { prepareWorkspaceSource, registerRepositoryWorkspaceSourceEvents } from "@atelier/repository";
+import type { WorkspaceDockerPlan } from "@atelier/workspace";
 
 async function run(command: string[], options: { cwd?: string } = {}): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = Bun.spawn(command, { cwd: options.cwd, stdout: "pipe", stderr: "pipe" });
@@ -103,6 +105,28 @@ describe("workspace source preparation", () => {
     expect(await Bun.file(join(first.worktreePath, "file.txt")).text()).toBe("one\n");
     expect(await Bun.file(join(second.worktreePath, "file.txt")).text()).toBe("two\n");
     expect(first.resolvedCommit).not.toBe(second.resolvedCommit);
+  });
+
+  test("adds a shared /persistent bind mount for workspaces from the same saved repository", async () => {
+    const events = createAtelierEventBus();
+    registerRepositoryWorkspaceSourceEvents(events);
+    const planFor = async (workspaceId: string, sourceRepositoryId: string): Promise<WorkspaceDockerPlan> => {
+      const plan: WorkspaceDockerPlan = { labels: {}, env: {}, mounts: [], publishes: [], extraArgs: [], initScripts: [], cleanup: [] };
+      await events.emit("workspace_plan_prepare", { workspaceId, context: { sourceRepositoryId }, workHostPath: join(dataDir, "workspaces", workspaceId, "work"), workContainerPath: "/work", plan });
+      return plan;
+    };
+
+    const first = await planFor("ws1", "repo-a");
+    const second = await planFor("ws2", "repo-a");
+    const other = await planFor("ws3", "repo-b");
+    const repoAKey = createHash("sha256").update("repo-a").digest("hex").slice(0, 16);
+    const repoAPath = join(dataDir, "repositories", repoAKey, "persistent");
+
+    expect(first.mounts).toEqual([{ type: "bind", source: repoAPath, target: "/persistent" }]);
+    expect(second.mounts).toEqual(first.mounts);
+    expect(other.mounts[0]!.source).not.toBe(repoAPath);
+    expect((await stat(repoAPath)).isDirectory()).toBe(true);
+    expect(first.initScripts).toEqual([]);
   });
 
 });

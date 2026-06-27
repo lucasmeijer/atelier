@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { platform } from "node:os";
 import { join, resolve } from "node:path";
-import { discoverHostGitHubToken, getAtelierRuntimeContext } from "@atelier/core";
+import { atelierDataPath, discoverHostGitHubToken, dockerHostAtelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
 import type { CommandResult } from "@atelier/core";
 import { AtelierCoreError, invalidArguments } from "@atelier/core";
 import type { AtelierEventBus } from "@atelier/core";
@@ -49,6 +49,17 @@ function templateRepoPath(key: string): string {
 
 function workspaceSourceDir(workspaceId: string): string {
   return join(sourceRoot(), "workspaces", workspaceId);
+}
+
+function repositoryPersistentDirKey(sourceRepositoryId: string): string {
+  return createHash("sha256").update(sourceRepositoryId).digest("hex").slice(0, 16);
+}
+
+export async function repositoryPersistentMount(sourceRepositoryId: string): Promise<{ source: string; target: "/persistent" }> {
+  const runtime = getAtelierRuntimeContext();
+  const key = repositoryPersistentDirKey(sourceRepositoryId);
+  await mkdir(atelierDataPath(runtime, "repositories", key, "persistent"), { recursive: true });
+  return { source: dockerHostAtelierDataPath(runtime, "repositories", key, "persistent"), target: "/persistent" };
 }
 
 function workspaceWorktreePath(workspaceId: string): string {
@@ -380,7 +391,10 @@ export function registerRepositoryWorkspaceSourceEvents(events: AtelierEventBus)
     await prepareWorkspaceSource({ workspaceId, gitUrl: request.gitUrl, branch: request.branch, worktreePath: workHostPath, events });
   });
 
-  events.on("workspace_plan_prepare", async ({ workspaceId, plan }) => {
+  events.on("workspace_plan_prepare", async ({ workspaceId, context, plan }) => {
+    const sourceRepositoryId = context?.sourceRepositoryId as string | undefined;
+    if (sourceRepositoryId) plan.mounts.push({ type: "bind", ...(await repositoryPersistentMount(sourceRepositoryId)) });
+
     const metadataPath = join(workspaceSourceDir(workspaceId), "metadata.json");
     if (!existsSync(metadataPath)) return;
     const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as Partial<PreparedWorkspaceSource>;

@@ -846,13 +846,15 @@ async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAg
   const authStorage = await createPiAuthStorage();
   const modelRegistry = ModelRegistry.create(authStorage, await piModelsJsonPath());
   const agentsFiles = await loadWorkspaceAgentsFiles(agent.workspaceId);
+  const appendSystemPrompt: string[] = [];
+  await options.events?.emit("agent_system_prompt_prepare", { workspaceId: agent.workspaceId, lines: appendSystemPrompt });
   const sessionManager = SessionManager.open(agent.path, dirname(agent.path), workspaceRoot);
   const { session } = await createAgentSession({
     cwd: workspaceRoot,
     agentDir: dirname(agent.path),
     authStorage,
     modelRegistry,
-    resourceLoader: createAtelierResourceLoader(agentsFiles),
+    resourceLoader: createAtelierResourceLoader(agentsFiles, appendSystemPrompt),
     customTools: createWorkspaceAgentTools(agent.workspaceId, { events: options.events }),
     tools: workspaceAgentToolNames(),
     sessionManager,

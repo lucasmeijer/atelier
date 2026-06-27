@@ -3,6 +3,7 @@ export {
   type AtelierEventBus,
   type AtelierEventHandler,
   type AtelierEventMap,
+  type AgentSystemPromptPrepareEvent,
 } from "./events.ts";
 
 export {

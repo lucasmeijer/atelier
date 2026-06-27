@@ -76,6 +76,8 @@ The token is handled by Atelier for Git operations. It is not stored as the real
 
 Before deleting a workspace, Atelier checks for uncommitted changes and unpushed commits. If work should be kept, commit and push it before deleting.
 
+Repository workspaces also include `/persistent`, a directory shared by all workspaces for that saved repository. Use it for files you want to keep across workspaces but not commit to Git.
+
 ## 8. Customizing Workspaces
 
 A repository can customize its workspace image with `.atelier/workspace.json`:

@@ -27,6 +27,7 @@ export {
 export {
   parseGitWorkspaceSourceRequest,
   prepareWorkspaceSource,
+  registerRepositoryWorkspaceSourceEvents,
   type GitWorkspaceSourceRequest,
   type PreparedWorkspaceSource,
 } from "./workspace-source.ts";

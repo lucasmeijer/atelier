@@ -1,4 +1,11 @@
-export interface AtelierEventMap {}
+export interface AgentSystemPromptPrepareEvent {
+  workspaceId: string;
+  lines: string[];
+}
+
+export interface AtelierEventMap {
+  agent_system_prompt_prepare: AgentSystemPromptPrepareEvent;
+}
 
 export type AtelierEventHandler<K extends keyof AtelierEventMap> = (event: AtelierEventMap[K]) => void | Promise<void>;
 
