@@ -50,13 +50,13 @@ function renderFileEmbed(workspaceId: string, path: string): string {
   const proxy = workspaceProxyController(workspaceId, "file", path);
 
   if (imageExtensions.has(ext)) {
-    return `<a class="agent-media-link" ${proxy} target="_blank" rel="noopener"><img class="agent-media-img" ${proxy} alt="${escapeHtml(name)}" loading="lazy"></a>`;
+    return `<a class="agent-media-link" ${proxy} target="_blank" rel="noopener"><img class="agent-media-img" data-controller="agent-proxy agent-media-fullscreen" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="file" data-agent-proxy-path-value="${escapeHtml(path)}" alt="${escapeHtml(name)}" loading="lazy"></a>`;
   }
   if (videoExtensions.has(ext)) {
-    return `<video class="agent-media-video" ${proxy} controls preload="metadata"></video>`;
+    return `<video class="agent-media-video" data-controller="agent-proxy agent-media-fullscreen" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="file" data-agent-proxy-path-value="${escapeHtml(path)}" controls preload="metadata"></video>`;
   }
   if (ext === "html" || ext === "htm") {
-    return `<div class="agent-media-frame" data-controller="agent-frame-fullscreen"><div class="agent-media-frame-bar"><span>${escapeHtml(path)}</span><div class="agent-media-frame-actions"><button class="agent-media-frame-action" type="button" data-action="agent-frame-fullscreen#open"><span class="agent-shortcut">f</span>ullscreen</button><span class="agent-media-frame-sep" aria-hidden="true">–</span><a ${proxy} target="_blank" rel="noopener">in new tab ↗</a></div></div><iframe data-controller="agent-proxy agent-html-preview" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="file" data-agent-proxy-path-value="${escapeHtml(path)}" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe></div>`;
+    return `<div class="agent-media-frame" data-controller="agent-media-fullscreen"><div class="agent-media-frame-bar"><span>${escapeHtml(path)}</span><div class="agent-media-frame-actions"><button class="agent-media-frame-action" type="button" data-action="agent-media-fullscreen#open"><span class="agent-shortcut">f</span>ullscreen</button><span class="agent-media-frame-sep" aria-hidden="true">–</span><a ${proxy} target="_blank" rel="noopener">in new tab ↗</a></div></div><iframe data-controller="agent-proxy agent-html-preview" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="file" data-agent-proxy-path-value="${escapeHtml(path)}" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe></div>`;
   }
   return `<a class="agent-media-link" ${proxy} target="_blank" rel="noopener">${escapeHtml(name)}</a>`;
 }
@@ -75,11 +75,11 @@ function renderUrlEmbed(workspaceId: string, rawTarget: string): string {
     const appKey = `port-${port}`;
     const path = `${parsed.pathname}${parsed.search}`;
     const proxy = workspaceProxyController(workspaceId, appKey, path);
-    return `<div class="agent-media-frame" data-controller="agent-frame-fullscreen"><div class="agent-media-frame-bar"><span>${escapeHtml(rawTarget)}</span><div class="agent-media-frame-actions"><button class="agent-media-frame-action" type="button" data-action="agent-frame-fullscreen#open"><span class="agent-shortcut">f</span>ullscreen</button><span class="agent-media-frame-sep" aria-hidden="true">–</span><a ${proxy} target="_blank" rel="noopener">in new tab ↗</a></div></div><iframe data-controller="agent-proxy agent-html-preview" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="${escapeHtml(appKey)}" data-agent-proxy-path-value="${escapeHtml(path)}" loading="lazy"></iframe></div>`;
+    return `<div class="agent-media-frame" data-controller="agent-media-fullscreen"><div class="agent-media-frame-bar"><span>${escapeHtml(rawTarget)}</span><div class="agent-media-frame-actions"><button class="agent-media-frame-action" type="button" data-action="agent-media-fullscreen#open"><span class="agent-shortcut">f</span>ullscreen</button><span class="agent-media-frame-sep" aria-hidden="true">–</span><a ${proxy} target="_blank" rel="noopener">in new tab ↗</a></div></div><iframe data-controller="agent-proxy agent-html-preview" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="${escapeHtml(appKey)}" data-agent-proxy-path-value="${escapeHtml(path)}" loading="lazy"></iframe></div>`;
   }
 
   const src = parsed.toString();
-  return `<div class="agent-media-frame" data-controller="agent-frame-fullscreen"><div class="agent-media-frame-bar"><span>${escapeHtml(rawTarget)}</span><div class="agent-media-frame-actions"><button class="agent-media-frame-action" type="button" data-action="agent-frame-fullscreen#open"><span class="agent-shortcut">f</span>ullscreen</button><span class="agent-media-frame-sep" aria-hidden="true">–</span><a href="${escapeHtml(src)}" target="_blank" rel="noopener">in new tab ↗</a></div></div><iframe src="${escapeHtml(src)}" loading="lazy"></iframe></div>`;
+  return `<div class="agent-media-frame" data-controller="agent-media-fullscreen"><div class="agent-media-frame-bar"><span>${escapeHtml(rawTarget)}</span><div class="agent-media-frame-actions"><button class="agent-media-frame-action" type="button" data-action="agent-media-fullscreen#open"><span class="agent-shortcut">f</span>ullscreen</button><span class="agent-media-frame-sep" aria-hidden="true">–</span><a href="${escapeHtml(src)}" target="_blank" rel="noopener">in new tab ↗</a></div></div><iframe src="${escapeHtml(src)}" loading="lazy"></iframe></div>`;
 }
 
 export function renderAtelierEmbed(workspaceId: string, rawTarget: string): string {
