@@ -183,14 +183,12 @@ interface WorkspaceRuntimeManifest {
 }
 
 async function readWorkspaceRuntimeManifest(workHostPath: string): Promise<WorkspaceRuntimeManifest | undefined> {
-  for (const path of [join(workHostPath, "workspace.json"), join(workHostPath, ".atelier", "workspace-image.json")]) {
-    const file = Bun.file(path);
-    if (!(await file.exists())) continue;
-    const manifest = JSON.parse(await file.text()) as WorkspaceRuntimeManifest & { version?: number };
-    if (manifest.version !== undefined && manifest.version !== 1) throw new Error(`unsupported workspace manifest version: ${manifest.version}`);
-    return manifest;
-  }
-  return undefined;
+  const path = join(workHostPath, ".atelier", "workspace.json");
+  const file = Bun.file(path);
+  if (!(await file.exists())) return undefined;
+  const manifest = JSON.parse(await file.text()) as WorkspaceRuntimeManifest & { version?: number };
+  if (manifest.version !== undefined && manifest.version !== 1) throw new Error(`unsupported workspace manifest version: ${manifest.version}`);
+  return manifest;
 }
 
 function applyWorkspaceRuntimeManifest(plan: WorkspaceDockerPlan, manifest: WorkspaceRuntimeManifest | undefined): void {
@@ -235,7 +233,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     await provisionStep(options.events, id, "workspace.plan", "Prepare workspace container plan", async () => {
       await options.events?.emit("workspace_plan_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot, plan: activePlan });
     });
-    activePlan.image ??= await provisionStep(options.events, id, "workspace.image", "Build workspace image", () => resolveWorkspaceImage({ workspaceId: id, events: options.events, sourcePath: source.worktreePath }));
+    activePlan.image ??= await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImage({ workspaceId: id, events: options.events, sourcePath: source.worktreePath }));
     await provisionStep(options.events, id, "workspace.container", "Start workspace container", async () => {
       const image = activePlan.image;
       if (!image) throw new AtelierCoreError("workspace_image_missing", "workspace image was not resolved");

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand } from "@atelier/observable-terminal/server";
 
-interface WorkspaceImageMetadata { tag: string; modules: string[] }
+interface WorkspaceImageMetadata { tag: string; modules: string[]; baseImage?: string }
 
 interface WorkspaceImageBuildTask {
   tag: string;
@@ -18,14 +18,12 @@ interface WorkspaceImageBuildTask {
 export interface ResolveWorkspaceImageOptions {
   workspaceId?: string;
   events?: AtelierEventBus;
-  // Source checkout path is available before the container starts. Current image
-  // resolution does not inspect it yet, but repo-aware image selection/building
-  // can use this path without needing docker exec cloning.
   sourcePath?: string;
 }
 
 const maxBuildOutputBytes = 64 * 1024;
 const buildTasks = new Map<string, WorkspaceImageBuildTask>();
+const defaultImageRefFile = join(repoRoot(), ".atelier-default-workspace-image");
 
 function repoRoot(): string {
   return join(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -35,6 +33,18 @@ function namespaceSlug(): string {
   return (process.env.ATELIER_NAMESPACE || "host").replaceAll(/[^a-zA-Z0-9_.-]/g, "-");
 }
 
+function contextBaseDir(): string {
+  return join("/tmp", "atelier-workspace-image-context", namespaceSlug());
+}
+
+function defaultContextDir(): string {
+  return join(contextBaseDir(), "default");
+}
+
+function workspaceContextDir(workspaceId: string | undefined): string {
+  return join(contextBaseDir(), workspaceId ?? crypto.randomUUID());
+}
+
 async function contextMetadata(contextDir: string): Promise<WorkspaceImageMetadata> {
   return JSON.parse(await readFile(join(contextDir, "metadata.json"), "utf8")) as WorkspaceImageMetadata;
 }
@@ -42,6 +52,12 @@ async function contextMetadata(contextDir: string): Promise<WorkspaceImageMetada
 async function imageExists(tag: string): Promise<boolean> {
   const result = await runDocker(["image", "inspect", tag]);
   return result.exitCode === 0;
+}
+
+async function pullImage(tag: string): Promise<void> {
+  if (await imageExists(tag)) return;
+  const result = await runDocker(["pull", tag]);
+  if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `docker pull ${tag} failed`);
 }
 
 function appendOutput(task: WorkspaceImageBuildTask, chunk: string): void {
@@ -63,7 +79,7 @@ async function emitImageStep(events: AtelierEventBus | undefined, workspaceId: s
   await events.emit("workspace_provision_step", {
     workspaceId,
     id: "workspace.image",
-    label: "Build workspace image",
+    label: "Resolve workspace image",
     status,
     detail: imageDetail(task),
     output: tailOutput(task.output),
@@ -110,23 +126,54 @@ async function waitForBuildTask(task: WorkspaceImageBuildTask, options: ResolveW
   }
 }
 
-export async function resolveWorkspaceImage(options: ResolveWorkspaceImageOptions = {}): Promise<string> {
+async function generateContext(contextDir: string, args: string[] = []): Promise<void> {
   const root = repoRoot();
   const script = join(root, "packages/workspace-image/scripts/build-context.mjs");
   if (!existsSync(script)) throw new Error(`workspace image context generator not found: ${script}`);
-
-  const contextDir = process.env.ATELIER_WORKSPACE_IMAGE_CONTEXT || join(root, ".atelier-workspace-image-context", namespaceSlug(), options.workspaceId ?? crypto.randomUUID());
   await rm(contextDir, { recursive: true, force: true });
   await mkdir(contextDir, { recursive: true });
-
-  const generated = Bun.spawnSync(["bun", script, contextDir, ...(options.sourcePath ? [options.sourcePath] : [])], { cwd: root, stdout: "pipe", stderr: "pipe" });
+  const generated = Bun.spawnSync(["bun", script, contextDir, ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
   if (generated.exitCode !== 0) throw new Error(`could not generate workspace image context: ${generated.stderr.toString() || generated.stdout.toString()}`);
+}
 
-  const metadata = await contextMetadata(contextDir);
-  const tag = metadata.tag;
-  if (await imageExists(tag)) return tag;
+async function bakedDefaultWorkspaceImageRef(): Promise<string | undefined> {
+  const file = Bun.file(defaultImageRefFile);
+  if (!(await file.exists())) return undefined;
+  const ref = (await file.text()).trim();
+  return ref || undefined;
+}
 
-  const task = startBuildTask(tag, metadata.modules, join(contextDir, "Dockerfile"), contextDir, options);
+async function ensureBuiltImage(contextDir: string, metadata: WorkspaceImageMetadata, options: ResolveWorkspaceImageOptions = {}): Promise<string> {
+  if (await imageExists(metadata.tag)) return metadata.tag;
+  const task = startBuildTask(metadata.tag, metadata.modules, join(contextDir, "Dockerfile"), contextDir, options);
   await waitForBuildTask(task, options);
-  return tag;
+  return metadata.tag;
+}
+
+export async function ensureDefaultWorkspaceImage(): Promise<string> {
+  const baked = await bakedDefaultWorkspaceImageRef();
+  if (baked) {
+    await pullImage(baked);
+    return baked;
+  }
+
+  const contextDir = defaultContextDir();
+  await generateContext(contextDir);
+  const metadata = await contextMetadata(contextDir);
+  return await ensureBuiltImage(contextDir, metadata);
+}
+
+async function hasRepoWorkspaceImageManifest(sourcePath: string | undefined): Promise<boolean> {
+  if (!sourcePath) return false;
+  return await Bun.file(join(sourcePath, ".atelier", "workspace.json")).exists();
+}
+
+export async function resolveWorkspaceImage(options: ResolveWorkspaceImageOptions = {}): Promise<string> {
+  const baseImage = await ensureDefaultWorkspaceImage();
+  if (!(await hasRepoWorkspaceImageManifest(options.sourcePath))) return baseImage;
+
+  const contextDir = workspaceContextDir(options.workspaceId);
+  await generateContext(contextDir, [options.sourcePath!, "--base-image", baseImage]);
+  const metadata = await contextMetadata(contextDir);
+  return await ensureBuiltImage(contextDir, metadata, options);
 }

@@ -58,6 +58,7 @@ COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/
 
 ARG ATELIER_COMMIT_ID
 ARG ATELIER_COMMIT_DESCRIPTION
+ARG ATELIER_DEFAULT_WORKSPACE_IMAGE
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
@@ -65,9 +66,9 @@ ENV ATELIER_COMMIT_ID=${ATELIER_COMMIT_ID}
 ENV ATELIER_COMMIT_DESCRIPTION=${ATELIER_COMMIT_DESCRIPTION}
 ENV ATELIER_NAMESPACE=default
 ENV ATELIER_WORKSPACE_CONNECT_HOST=host.docker.internal
-ENV ATELIER_WORKSPACE_IMAGE_CONTEXT=/data/atelier/workspace-image-context
 
 COPY --from=build /app /app
+RUN printf '%s\n' "$ATELIER_DEFAULT_WORKSPACE_IMAGE" > /app/.atelier-default-workspace-image
 RUN chmod 755 /app/apps/web/docker-entrypoint.sh
 
 EXPOSE 3000

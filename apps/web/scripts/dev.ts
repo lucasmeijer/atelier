@@ -1,5 +1,6 @@
 import { watch } from "node:fs";
 import { relative, resolve, sep } from "node:path";
+import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
 
 const cwd = resolve(new URL("..", import.meta.url).pathname);
 const repoRoot = resolve(cwd, "../..");
@@ -9,6 +10,9 @@ let dirty = false;
 let buildPromise: Promise<void> | undefined;
 let timer: Timer | undefined;
 let serverRestartTimer: Timer | undefined;
+let workspaceImageTimer: Timer | undefined;
+let workspaceImageEnsuring = false;
+let workspaceImageDirty = false;
 let server: ReturnType<typeof Bun.spawn> | undefined;
 let stoppingServer = false;
 const pendingRestartReasons = new Set<string>();
@@ -97,6 +101,28 @@ function isPackageRuntimeChange(path: string): boolean {
   return firstPackagePathPart === "package.json" || firstPackagePathPart === "src";
 }
 
+async function ensureWorkspaceImage(): Promise<void> {
+  if (workspaceImageEnsuring) {
+    workspaceImageDirty = true;
+    return;
+  }
+  workspaceImageEnsuring = true;
+  try {
+    do {
+      workspaceImageDirty = false;
+      console.log("[workspace-image] ensuring default workspace image…");
+      console.log(`[workspace-image] ready: ${await ensureDefaultWorkspaceImage()}`);
+    } while (workspaceImageDirty);
+  } finally {
+    workspaceImageEnsuring = false;
+  }
+}
+
+function scheduleWorkspaceImageEnsure(): void {
+  if (workspaceImageTimer) clearTimeout(workspaceImageTimer);
+  workspaceImageTimer = setTimeout(() => void ensureWorkspaceImage(), 250);
+}
+
 function watchRecursive(path: string, onChange: (changed: string) => void): void {
   watch(path, { recursive: true }, (_event, filename) => {
     const changed = filename ? resolve(path, filename.toString()) : path;
@@ -145,6 +171,7 @@ function scheduleBuildThenServerRestart(reason: string, changed: string): void {
 }
 
 await runBuild();
+await ensureWorkspaceImage();
 
 watchRecursive(resolve(cwd, "src/client"), () => scheduleBuild());
 watchRecursive(resolve(cwd, "public"), () => scheduleBuild());
@@ -153,6 +180,7 @@ watchRecursive(resolve(cwd, "src/server"), (changed) => {
   else scheduleServerRestart("server source changed", changed);
 });
 watchRecursive(resolve(repoRoot, "packages"), (changed) => {
+  scheduleWorkspaceImageEnsure();
   if (isPackageRuntimeChange(changed)) scheduleBuildThenServerRestart("shared package runtime changed", changed);
 });
 
