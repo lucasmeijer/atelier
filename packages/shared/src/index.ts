@@ -26,7 +26,7 @@ export function turboStreamResponse(body: string, init: ResponseInit = {}): Resp
 
 export interface WorkspaceAttachContext {
   workspaceId: string;
-  sourceRepositoryId?: string | null;
+  init?: unknown;
   events?: unknown;
 }
 

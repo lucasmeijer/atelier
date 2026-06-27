@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import type { WorkspaceInitInstruction } from "@atelier/workspace";
 
 export type WorkspacePhase = "starting" | "ready" | "checking_delete" | "deleting" | "failed";
 
@@ -8,8 +9,7 @@ export interface WorkspaceEntry {
   title: string | null;
   phase: WorkspacePhase;
   lastActivityAt: number;
-  sourceRepositoryId: string | null;
-  sourceRepositoryName: string | null;
+  init: WorkspaceInitInstruction | undefined;
   parked: boolean;
   error?: string;
 }
@@ -67,10 +67,10 @@ export function createFileWorkspaceActivityStore(path: string): WorkspaceActivit
 export interface WorkspaceRegistry {
   setCallbacks(callbacks: WorkspaceRegistryCallbacks): void;
   /** Seed from the containers Docker knows about. Replaces all current entries with phase "ready". */
-  seed(workspaces: Array<{ id: string; title: string | null; parked?: boolean; sourceRepositoryId?: string | null; sourceRepositoryName?: string | null }>): Promise<void>;
+  seed(workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction }>): Promise<void>;
   list(): WorkspaceEntry[];
   get(id: string): WorkspaceEntry | undefined;
-  add(id: string, title?: string | null, sourceRepositoryId?: string | null, sourceRepositoryName?: string | null): WorkspaceEntry;
+  add(id: string, title?: string | null, init?: WorkspaceInitInstruction): WorkspaceEntry;
   setPhase(id: string, phase: WorkspacePhase, error?: string): void;
   setTitle(id: string, title: string | null): void;
   setParked(id: string, parked: boolean): void;
@@ -137,8 +137,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
           title: workspace.title,
           phase: "ready",
           lastActivityAt: activity[workspace.id] ?? 0,
-          sourceRepositoryId: workspace.sourceRepositoryId ?? null,
-          sourceRepositoryName: workspace.sourceRepositoryName ?? null,
+          init: workspace.init,
           parked: workspace.parked ?? false,
         });
       }
@@ -153,9 +152,9 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       return entries.get(id);
     },
 
-    add(id, title = null, sourceRepositoryId = null, sourceRepositoryName = null) {
+    add(id, title = null, init) {
       if (entries.has(id)) throw new Error(`workspace already in registry: ${id}`);
-      const entry: WorkspaceEntry = { id, title, phase: "starting", lastActivityAt: now(), sourceRepositoryId, sourceRepositoryName, parked: false };
+      const entry: WorkspaceEntry = { id, title, phase: "starting", lastActivityAt: now(), init, parked: false };
       entries.set(id, entry);
       activity[id] = entry.lastActivityAt;
       persistActivity();

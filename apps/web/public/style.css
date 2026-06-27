@@ -335,7 +335,7 @@ a.btn { text-decoration: none; }
 .contents { display: contents; }
 .modal-input { width: 100%; border: 1px solid var(--line-2); border-radius: 10px; padding: 10px; font: inherit; }
 .modal-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.repositories-table .r-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.projects-table .r-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* workspace shell */
 :root {
@@ -414,7 +414,7 @@ button { border: 0; background: none; cursor: pointer; }
 .workspace-row.active:not(:hover) .workspace-row-notifiers { display: inline-flex; }
 .workspace-row.active:not(:hover) .workspace-row-buttons { display: none; }
 .workspace-row-contributions { display: inline-flex; align-items: center; justify-content: flex-end; min-height: 18px; }
-.repository-line-stats { display: inline-flex; align-items: center; gap: 5px; font: 700 11px/1 var(--mono); }
+.project-line-stats { display: inline-flex; align-items: center; gap: 5px; font: 700 11px/1 var(--mono); }
 .workspace-row-stat-add { color: var(--green); }
 .workspace-row-stat-del { color: var(--red); }
 .workspace-row-buttons .workspace-row-park, .workspace-row-buttons .workspace-row-delete { display: flex; justify-content: flex-end; }
@@ -437,14 +437,14 @@ button { border: 0; background: none; cursor: pointer; }
 .ghost-row.addbtn:hover .ic { border-color: var(--accent); }
 .sidebar-host-repos { margin-top: 0; padding: 8px 8px 6px; border-top: 1px solid var(--line); overflow: hidden; }
 .sidebar-host-repos .lh { padding-left: 10px; padding-top: 4px; }
-.repositories-table { overflow-y: auto; overflow-x: hidden; max-height: 34vh; }
-.repository-row { cursor: pointer; overflow-x: hidden; padding-right: 10px; }
-.repository-row .row-main { display: block; min-width: 0; }
-.repository-row .row-actions { margin-left: auto; flex: 0 0 auto; }
+.projects-table { overflow-y: auto; overflow-x: hidden; max-height: 34vh; }
+.project-row { cursor: pointer; overflow-x: hidden; padding-right: 10px; }
+.project-row .row-main { display: block; min-width: 0; }
+.project-row .row-actions { margin-left: auto; flex: 0 0 auto; }
 .repo-tinted-row, .repo-tinted-row:hover { background: transparent; }
-.sidebar-host-repos .repository-row:hover, .sidebar-host-repos .repository-row:focus-visible { background: var(--bg); }
+.sidebar-host-repos .project-row:hover, .sidebar-host-repos .project-row:focus-visible { background: var(--bg); }
 .repo-launch-icon { display: inline-grid; place-items: center; min-width: 0; padding: 2px 4px; border-radius: 6px; color: var(--muted2); font-size: 15px; font-weight: 700; line-height: 1; }
-.repository-row:hover .repo-launch-icon, .repository-row:focus-visible .repo-launch-icon { color: var(--accent); background: var(--accent-soft); }
+.project-row:hover .repo-launch-icon, .project-row:focus-visible .repo-launch-icon { color: var(--accent); background: var(--accent-soft); }
 .sidebar-host-repos .addbtn .r-sub { display: none; }
 .sidefoot { border-top: 1px solid var(--line); padding: 7px 8px; display: flex; align-items: center; gap: 6px; }
 .footbtn { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px; color: var(--muted); font-weight: 600; font-size: 12.5px; flex: 1; text-decoration: none; }
@@ -453,7 +453,7 @@ button { border: 0; background: none; cursor: pointer; }
 .footbtn.collapse { flex: 0 0 auto; color: var(--muted2); }
 
 .workspace-shell-collapsed .sidebar-content { align-items: center; }
-.workspace-shell-collapsed .workspace-sidebar-table, .workspace-shell-collapsed .repositories-table { width: 100%; }
+.workspace-shell-collapsed .workspace-sidebar-table, .workspace-shell-collapsed .projects-table { width: 100%; }
 .workspace-shell-collapsed .workspace-sidebar-table .row, .workspace-shell-collapsed .sidebar-host-repos .row { display: grid; grid-template-columns: 1fr; place-items: center; width: 46px; min-width: 46px; max-width: 46px; height: 36px; min-height: 36px; padding: 0; margin: 1px auto; gap: 0; }
 .workspace-shell-collapsed .workspace-row::before, .workspace-shell-collapsed .repo-swatch, .workspace-shell-collapsed .addbtn .ic { grid-area: 1 / 1; justify-self: center; align-self: center; }
 .workspace-shell-collapsed .workspace-row-title-frame, .workspace-shell-collapsed .row-main, .workspace-shell-collapsed .row-actions, .workspace-shell-collapsed .tab-status, .workspace-shell-collapsed .r-title, .workspace-shell-collapsed .r-sub, .workspace-shell-collapsed .lh, .workspace-shell-collapsed .sidefoot .ftext, .workspace-shell-collapsed .miniS, .workspace-shell-collapsed .attn { display: none; }

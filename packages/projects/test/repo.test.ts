@@ -6,7 +6,7 @@ import {
   listWorkspaceRepos,
   pushWorkspaceRepo,
   type WorkspaceRepoWorkingTreeStatus,
-} from "@atelier/repository";
+} from "@atelier/projects";
 import { cleanupNamespace, createTestNamespace } from "../../workspace/test/helpers.ts";
 
 setDefaultTimeout(120_000);

@@ -1,5 +1,9 @@
 export type WorkspaceCreationContext = Record<string, unknown>;
 
+export interface WorkspaceInitInstructionMap {}
+
+export type WorkspaceInitInstruction = WorkspaceInitInstructionMap[keyof WorkspaceInitInstructionMap];
+
 export interface WorkspaceDockerMount {
   type: "bind" | "volume";
   source: string;

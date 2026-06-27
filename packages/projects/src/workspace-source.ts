@@ -10,6 +10,7 @@ import type { CommandResult } from "@atelier/core";
 import { AtelierCoreError, invalidArguments } from "@atelier/core";
 import type { AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand } from "@atelier/observable-terminal/server";
+import { isGitProjectInit } from "./project.ts";
 
 export interface PreparedWorkspaceSource {
   workspaceId: string;
@@ -51,15 +52,15 @@ function workspaceSourceDir(workspaceId: string): string {
   return join(sourceRoot(), "workspaces", workspaceId);
 }
 
-function repositoryPersistentDirKey(sourceRepositoryId: string): string {
-  return createHash("sha256").update(sourceRepositoryId).digest("hex").slice(0, 16);
+function projectPersistentDirKey(projectId: string): string {
+  return createHash("sha256").update(projectId).digest("hex").slice(0, 16);
 }
 
-export async function repositoryPersistentMount(sourceRepositoryId: string): Promise<{ source: string; target: "/persistent" }> {
+export async function projectPersistentMount(projectId: string): Promise<{ source: string; target: "/persistent" }> {
   const runtime = getAtelierRuntimeContext();
-  const key = repositoryPersistentDirKey(sourceRepositoryId);
-  await mkdir(atelierDataPath(runtime, "repositories", key, "persistent"), { recursive: true });
-  return { source: dockerHostAtelierDataPath(runtime, "repositories", key, "persistent"), target: "/persistent" };
+  const key = projectPersistentDirKey(projectId);
+  await mkdir(atelierDataPath(runtime, "projects", key, "persistent"), { recursive: true });
+  return { source: dockerHostAtelierDataPath(runtime, "projects", key, "persistent"), target: "/persistent" };
 }
 
 function workspaceWorktreePath(workspaceId: string): string {
@@ -216,7 +217,7 @@ printf '%s\n' "$effective_branch" > "$effective_branch_file"
     command: script,
     env: token ? { GH_TOKEN: token } : undefined,
     onSessionStarted: async (session) => {
-      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "running", terminal: { kind: "host-tmux", session } });
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "project.git", label: "Clone project", parentId: "workspace.init", status: "running", terminal: { kind: "host-tmux", session } });
     },
   });
   await appendFile(options.logPath, result.output).catch(() => undefined);
@@ -329,10 +330,10 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
     }
     const tmpWorkPath = join(cleanupPath, `work.tmp-${process.pid}-${Date.now()}`);
     await rm(tmpWorkPath, { recursive: true, force: true });
-    const logPath = join(cleanupPath, `repository-provision-${Date.now()}.log`);
+    const logPath = join(cleanupPath, `project-provision-${Date.now()}.log`);
 
     try {
-      await writeFile(logPath, `Preparing repository ${gitUrl}${branch ? `#${branch}` : ""}\n`);
+      await writeFile(logPath, `Preparing project ${gitUrl}${branch ? `#${branch}` : ""}\n`);
       const template = await provisionLog.run(logPath, () => ensureTemplate(gitUrl, branch, key, { workspaceId: options.workspaceId, events: options.events, logPath }));
       await copyWorkspaceTemplate(template.repoPath, tmpWorkPath, sourceRoot());
       await verifyStandaloneWorktree(tmpWorkPath);
@@ -350,7 +351,7 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
       };
       await writeFile(join(cleanupPath, "metadata.json"), `${JSON.stringify(metadata, null, 2)}\n`);
 
-      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "done", output: tailText(await readFile(logPath, "utf8").catch(() => "")) });
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "project.git", label: "Clone project", parentId: "workspace.init", status: "done", output: tailText(await readFile(logPath, "utf8").catch(() => "")) });
       return {
         workspaceId: options.workspaceId,
         worktreePath,
@@ -362,43 +363,25 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
       };
     } catch (error) {
       await rm(tmpWorkPath, { recursive: true, force: true }).catch(() => undefined);
-      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "repository.source", label: "Clone repository", parentId: "workspace.source", status: "failed", output: tailText(await readFile(logPath, "utf8").catch(() => "")), error: error instanceof Error ? error.message : String(error) });
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "project.git", label: "Clone project", parentId: "workspace.init", status: "failed", output: tailText(await readFile(logPath, "utf8").catch(() => "")), error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   });
 }
 
-export function parseGitWorkspaceSourceRequest(context: unknown): GitWorkspaceSourceRequest | undefined {
-  if (!context || typeof context !== "object") return undefined;
-  const record = context as Record<string, unknown>;
-  const directGitUrl = typeof record.gitUrl === "string" ? record.gitUrl : undefined;
-  const directBranch = typeof record.gitBranch === "string" ? record.gitBranch : undefined;
-  const git = record.git && typeof record.git === "object" ? record.git as Record<string, unknown> : undefined;
-  const gitUrl = directGitUrl ?? (typeof git?.url === "string" ? git.url : typeof git?.gitUrl === "string" ? git.gitUrl : undefined);
-  if (!gitUrl?.trim()) return undefined;
-  const branch = directBranch ?? (typeof git?.branch === "string" ? git.branch : null);
-  if (branch === null) {
-    const [url, parsedBranch] = gitUrl.trim().split(/#(.+)/, 2).map((part) => part.trim());
-    if (url && parsedBranch) return { gitUrl: url, branch: parsedBranch };
-  }
-  return { gitUrl, branch };
-}
-
-export function registerRepositoryWorkspaceSourceEvents(events: AtelierEventBus): void {
-  events.on("workspace_source_prepare", async ({ workspaceId, context, workHostPath }) => {
-    const request = parseGitWorkspaceSourceRequest(context);
-    if (!request) return;
-    await prepareWorkspaceSource({ workspaceId, gitUrl: request.gitUrl, branch: request.branch, worktreePath: workHostPath, events });
+export function registerProjectWorkspaceInitEvents(events: AtelierEventBus): void {
+  events.on("workspace_init_prepare", async ({ workspaceId, init, workHostPath }) => {
+    if (!isGitProjectInit(init)) return;
+    await prepareWorkspaceSource({ workspaceId, gitUrl: init.gitUrl, branch: init.branch, worktreePath: workHostPath, events });
   });
 
-  events.on("workspace_plan_prepare", async ({ workspaceId, context, plan }) => {
-    const sourceRepositoryId = context?.sourceRepositoryId as string | undefined;
-    if (sourceRepositoryId) plan.mounts.push({ type: "bind", ...(await repositoryPersistentMount(sourceRepositoryId)) });
+  events.on("workspace_plan_prepare", async ({ workspaceId, init, plan }) => {
+    if (isGitProjectInit(init)) plan.mounts.push({ type: "bind", ...(await projectPersistentMount(init.projectId)) });
 
     const metadataPath = join(workspaceSourceDir(workspaceId), "metadata.json");
     if (!existsSync(metadataPath)) return;
-    const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as Partial<PreparedWorkspaceSource>;
-    if (typeof metadata.resolvedCommit === "string") plan.labels["com.atelier.source-commit"] = metadata.resolvedCommit;
-    if (typeof metadata.templateKey === "string") plan.labels["com.atelier.source-template"] = metadata.templateKey;
+    const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as PreparedWorkspaceSource;
+    plan.labels["com.atelier.source-commit"] = metadata.resolvedCommit;
+    plan.labels["com.atelier.source-template"] = metadata.templateKey;
   });
 }

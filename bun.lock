@@ -20,7 +20,7 @@
         "@atelier/keypress-probe": "workspace:*",
         "@atelier/proxy-egress": "workspace:*",
         "@atelier/proxy-ingress": "workspace:*",
-        "@atelier/repository": "workspace:*",
+        "@atelier/projects": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/vscode": "workspace:*",
         "@atelier/workspace": "workspace:*",
@@ -95,8 +95,8 @@
         "@atelier/core": "workspace:*",
       },
     },
-    "packages/repository": {
-      "name": "@atelier/repository",
+    "packages/projects": {
+      "name": "@atelier/projects",
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
@@ -165,7 +165,7 @@
 
     "@atelier/proxy-ingress": ["@atelier/proxy-ingress@workspace:packages/proxy-ingress"],
 
-    "@atelier/repository": ["@atelier/repository@workspace:packages/repository"],
+    "@atelier/projects": ["@atelier/projects@workspace:packages/projects"],
 
     "@atelier/shared": ["@atelier/shared@workspace:packages/shared"],
 

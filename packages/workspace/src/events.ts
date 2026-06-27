@@ -1,7 +1,8 @@
-import type { WorkspaceCreationContext, WorkspaceDockerPlan } from "./types.ts";
+import type { WorkspaceCreationContext, WorkspaceDockerPlan, WorkspaceInitInstruction } from "./types.ts";
 
 export interface WorkspaceCreatedEvent {
   workspaceId: string;
+  init?: WorkspaceInitInstruction;
   context?: WorkspaceCreationContext;
 }
 
@@ -38,20 +39,21 @@ export interface WorkspaceTabUnreadEvent {
   unread: boolean;
 }
 
-export interface WorkspaceSourcePrepareEvent {
+export interface WorkspaceInitPrepareEvent {
   workspaceId: string;
+  init?: WorkspaceInitInstruction;
   context?: WorkspaceCreationContext;
   workHostPath: string;
   workContainerPath: string;
 }
 
-export interface WorkspacePlanPrepareEvent extends WorkspaceSourcePrepareEvent {
+export interface WorkspacePlanPrepareEvent extends WorkspaceInitPrepareEvent {
   plan: WorkspaceDockerPlan;
 }
 
 declare module "@atelier/core" {
   interface AtelierEventMap {
-    workspace_source_prepare: WorkspaceSourcePrepareEvent;
+    workspace_init_prepare: WorkspaceInitPrepareEvent;
     workspace_plan_prepare: WorkspacePlanPrepareEvent;
     workspace_created: WorkspaceCreatedEvent;
     workspace_deleted: WorkspaceDeletedEvent;

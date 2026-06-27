@@ -10,10 +10,12 @@ import {
   setWorkspaceParked,
   setWorkspaceTitle,
   workspaceContainerName,
+  getWorkspaceInit,
   type WorkspaceExecResult,
+  type WorkspaceInitInstruction,
 } from "@atelier/workspace";
 import { resolveWorkspaceImage } from "@atelier/workspace-image";
-import { registerRepositoryWorkspaceEvents, setGitIdentity } from "@atelier/repository";
+import { registerProjectWorkspaceEvents, setGitIdentity } from "@atelier/projects";
 import { cleanupNamespace, createTestNamespace, docker } from "./helpers.ts";
 
 // The first workspace-image build is intentionally heavy: it installs VS Code,
@@ -77,16 +79,12 @@ describe("core workspaces", () => {
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
   });
 
-  test("createWorkspace persists source repo id and name as Docker labels", async () => {
-    const created = await createWorkspace({ sourceRepositoryId: "atelier-12345678", sourceRepositoryName: "atelier" });
+  test("createWorkspace persists init instructions", async () => {
+    const init = { type: "test.init", value: "atelier" } as unknown as WorkspaceInitInstruction;
+    const created = await createWorkspace({ init });
 
-    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, sourceRepositoryId: "atelier-12345678", sourceRepositoryName: "atelier" });
-    const sourceRepo = await docker(["inspect", "--format", `{{index .Config.Labels "com.atelier.source-repo"}}`, workspaceContainerName(created.id)]);
-    expect(sourceRepo.exitCode).toBe(0);
-    expect(sourceRepo.stdout.trim()).toBe("atelier-12345678");
-    const sourceRepoName = await docker(["inspect", "--format", `{{index .Config.Labels "com.atelier.source-repo-name"}}`, workspaceContainerName(created.id)]);
-    expect(sourceRepoName.exitCode).toBe(0);
-    expect(sourceRepoName.stdout.trim()).toBe("atelier");
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, init });
+    expect(await getWorkspaceInit(created.id)).toEqual(init);
   });
 
   test("execWorkspaceCommand captures stdout, stderr, exit code, and duration", async () => {
@@ -124,7 +122,7 @@ describe("core workspaces", () => {
   test("createWorkspace configures saved git identity", async () => {
     await setGitIdentity({ name: "Test User", email: "test@example.com" });
     const events = createAtelierEventBus();
-    registerRepositoryWorkspaceEvents(events);
+    registerProjectWorkspaceEvents(events);
     const created = await createWorkspace({ events });
 
     const exec = await execWorkspaceCommand(created.id, ["git", "config", "--global", "--get-regexp", "^user\\."]);
@@ -167,7 +165,7 @@ describe("core workspaces", () => {
     expect(setup.exitCode).toBe(0);
 
     const events = createAtelierEventBus();
-    registerRepositoryWorkspaceEvents(events);
+    registerProjectWorkspaceEvents(events);
     const error = await expectCoreError(() => deleteWorkspace(created.id, { events }));
     expect(error.code).toBe("workspace_delete_blocked");
     expect(error.message).toContain("changed.txt");

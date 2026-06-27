@@ -1,5 +1,5 @@
 {
-  "name": "@atelier/repository",
+  "name": "@atelier/projects",
   "private": true,
   "type": "module",
   "exports": { ".": "./src/index.ts", "./server": "./src/server/index.ts" },

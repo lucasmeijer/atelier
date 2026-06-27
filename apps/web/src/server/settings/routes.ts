@@ -15,7 +15,7 @@ import {
   type PiAuthPrompt,
 } from "@atelier/agent/server";
 import { atelierName, domId, escapeHtml, turboStream, turboStreamResponse } from "@atelier/shared";
-import { clearGitIdentity, getGitIdentity, hasGitIdentity, setGitIdentity } from "@atelier/repository";
+import { clearGitIdentity, getGitIdentity, hasGitIdentity, setGitIdentity } from "@atelier/projects";
 import { listSettingsContributions, registerSettingsContribution } from "./registry.ts";
 import { workspaceModules } from "../workspace-modules.ts";
 import { validateGitHubToken } from "../github-auth.ts";

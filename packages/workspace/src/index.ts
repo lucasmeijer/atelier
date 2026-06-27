@@ -1,9 +1,9 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { resolveWorkspaceImage } from "@atelier/workspace-image";
-import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan } from "./types.ts";
-export type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan } from "./types.ts";
+import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction } from "./types.ts";
+export type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction, WorkspaceInitInstructionMap } from "./types.ts";
 
 export type {
   WorkspaceAgentTurnFinishedEvent,
@@ -11,7 +11,7 @@ export type {
   WorkspaceDeletedEvent,
   WorkspaceDeleteInspectEvent,
   WorkspacePlanPrepareEvent,
-  WorkspaceSourcePrepareEvent,
+  WorkspaceInitPrepareEvent,
   WorkspaceTabsChangedEvent,
   WorkspaceTitleChangedEvent,
   WorkspaceUserActivityEvent,
@@ -22,19 +22,18 @@ const namespaceLabel = "com.atelier.namespace";
 const workspaceIdLabel = "com.atelier.workspace-id";
 const titlePath = "title";
 const parkedPath = "parked";
+const initPath = "init.json";
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
 export const workspaceDesktopPort = 6080;
 export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
-export const workspaceSourceRepositoryLabel = "com.atelier.source-repo";
-export const workspaceSourceRepositoryNameLabel = "com.atelier.source-repo-name";
 
 export interface WorkspaceNewResult { id: string }
-export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; parked?: boolean; sourceRepositoryId?: string | null; sourceRepositoryName?: string | null }> }
+export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction }> }
 export interface WorkspaceExecResult { exitCode: number; stdout: string; stderr: string; durationMs: number }
 export interface WorkspaceCommandOptions { workdir?: string; user?: "atelier" | "root"; stdin?: string }
 export interface DeleteWorkspaceOptions { force?: boolean; events?: AtelierEventBus }
-export interface CreateWorkspaceOptions { id?: string; events?: AtelierEventBus; sourceRepositoryId?: string; sourceRepositoryName?: string; context?: WorkspaceCreationContext }
+export interface CreateWorkspaceOptions { id?: string; events?: AtelierEventBus; init?: WorkspaceInitInstruction; context?: WorkspaceCreationContext }
 
 function namespace(): string { return process.env.ATELIER_NAMESPACE || "host"; }
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }
@@ -123,6 +122,24 @@ async function readParked(context: Awaited<ReturnType<typeof getAtelierRuntimeCo
   return await Bun.file(workspaceMetadataPath(context, id, parkedPath)).exists();
 }
 
+async function writeWorkspaceInit(context: Awaited<ReturnType<typeof getAtelierRuntimeContext>>, id: string, init: WorkspaceInitInstruction | undefined): Promise<void> {
+  if (init === undefined) return;
+  await mkdir(workspaceMetadataDir(context, id), { recursive: true });
+  await writeFile(workspaceMetadataPath(context, id, initPath), `${JSON.stringify(init, null, 2)}\n`);
+}
+
+export async function getWorkspaceInit(id: string): Promise<WorkspaceInitInstruction | undefined> {
+  await resolveWorkspace(id);
+  const context = await getAtelierRuntimeContext();
+  return JSON.parse(await readFile(workspaceMetadataPath(context, id, initPath), "utf8")) as WorkspaceInitInstruction;
+}
+
+async function readWorkspaceInit(context: Awaited<ReturnType<typeof getAtelierRuntimeContext>>, id: string): Promise<WorkspaceInitInstruction | undefined> {
+  const file = Bun.file(workspaceMetadataPath(context, id, initPath));
+  if (!(await file.exists())) return undefined;
+  return JSON.parse(await file.text()) as WorkspaceInitInstruction;
+}
+
 export async function execWorkspaceCommand(id: string, command: string[], options: WorkspaceCommandOptions = {}): Promise<WorkspaceExecResult> {
   if (command.length === 0) throw invalidArguments("command is required");
   const resolved = await resolveWorkspace(id);
@@ -202,21 +219,21 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
   const id = options.id ?? generateWorkspaceId();
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id)) throw invalidArguments(`invalid workspace id: ${id}`);
   const context = options.context && Object.keys(options.context).length ? options.context : undefined;
+  const init = options.init;
   const source = await provisionStep(options.events, id, "workspace.workdir", "Create workspace directory", () => createWorkspaceWorkDir(id));
   let plan: WorkspaceDockerPlan | undefined;
   try {
-    await provisionStep(options.events, id, "workspace.source", "Prepare workspace source", async () => {
-      await options.events?.emit("workspace_source_prepare", { workspaceId: id, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot });
+    await writeWorkspaceInit(await getAtelierRuntimeContext(), id, init);
+    await provisionStep(options.events, id, "workspace.init", "Prepare workspace", async () => {
+      await options.events?.emit("workspace_init_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot });
     });
     const labels: Record<string, string> = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id };
-    if (options.sourceRepositoryId) labels[workspaceSourceRepositoryLabel] = options.sourceRepositoryId;
-    if (options.sourceRepositoryName) labels[workspaceSourceRepositoryNameLabel] = options.sourceRepositoryName;
     plan = baseWorkspacePlan(labels);
     applyWorkspaceRuntimeManifest(plan, await readWorkspaceRuntimeManifest(source.worktreePath));
     plan.mounts.push({ type: "bind", source: source.dockerHostWorktreePath, target: workspaceRoot });
     const activePlan = plan;
     await provisionStep(options.events, id, "workspace.plan", "Prepare workspace container plan", async () => {
-      await options.events?.emit("workspace_plan_prepare", { workspaceId: id, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot, plan: activePlan });
+      await options.events?.emit("workspace_plan_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot, plan: activePlan });
     });
     activePlan.image ??= await provisionStep(options.events, id, "workspace.image", "Build workspace image", () => resolveWorkspaceImage({ workspaceId: id, events: options.events, sourcePath: source.worktreePath }));
     await provisionStep(options.events, id, "workspace.container", "Start workspace container", async () => {
@@ -295,16 +312,15 @@ export async function workspacePreviewPortUrl(id: string, containerPort: number,
 
 export async function listWorkspaces(): Promise<WorkspaceListResult> {
   const context = await getAtelierRuntimeContext();
-  const listed = await requireDocker(["ps", "-a", "--filter", `label=${workspaceTypeLabel}=workspace`, "--filter", `label=${namespaceLabel}=${namespace()}`, "--format", `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}\t{{.Label "${workspaceSourceRepositoryLabel}"}}\t{{.Label "${workspaceSourceRepositoryNameLabel}"}}`]);
+  const listed = await requireDocker(["ps", "-a", "--filter", `label=${workspaceTypeLabel}=workspace`, "--filter", `label=${namespaceLabel}=${namespace()}`, "--format", `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}`]);
   const workspaces: WorkspaceListResult["workspaces"] = [];
   for (const line of listed.stdout.trim().split(/\n+/).filter(Boolean)) {
-    const [containerId, labelledId, sourceRepositoryId, sourceRepositoryName] = line.split("\t");
+    const [containerId, labelledId] = line.split("\t");
     if (!containerId) continue;
     const id = labelledId?.trim() || containerId.slice(0, 8);
-    const source = sourceRepositoryId?.trim();
-    const sourceName = sourceRepositoryName?.trim();
     const parked = await readParked(context, id);
-    workspaces.push({ id, title: await readTitle(context, id), ...(parked ? { parked } : {}), ...(source ? { sourceRepositoryId: source } : {}), ...(sourceName ? { sourceRepositoryName: sourceName } : {}) });
+    const init = await readWorkspaceInit(context, id);
+    workspaces.push({ id, title: await readTitle(context, id), ...(parked ? { parked } : {}), ...(init !== undefined ? { init } : {}) });
   }
   return { workspaces };
 }

@@ -1,7 +1,7 @@
 import { listOnboardingContributions, registerOnboardingContribution } from "./registry.ts";
 import { escapeHtml, turboStream, turboStreamResponse } from "@atelier/shared";
 import { hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
-import { hasGitIdentity } from "@atelier/repository";
+import { hasGitIdentity } from "@atelier/projects";
 import { githubRow, hasAvailableFavoriteModel, isOnboarded, renderGitIdentityForm, renderModelSetup } from "../settings/routes.ts";
 
 function response(body: string, init: ResponseInit = {}): Response {

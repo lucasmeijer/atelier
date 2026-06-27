@@ -3,7 +3,7 @@ import type { ServerWebSocket } from "bun";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
 import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace } from "@atelier/workspace";
-import type { WorkspaceDeleteSafetyIssue } from "@atelier/repository";
+import type { WorkspaceDeleteSafetyIssue } from "@atelier/projects";
 import { atelierName, escapeHtml, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler } from "@atelier/shared";
 import {
   createWorkspaceIngressProxy,
@@ -190,19 +190,6 @@ const registry = createWorkspaceRegistry({
 const hub = createStreamHub();
 const layouts = createWorkspaceLayoutStore();
 
-function stringFromContext(context: unknown, key: string): string | undefined {
-  if (!context || typeof context !== "object" || !(key in context)) return undefined;
-  const value = (context as Record<string, unknown>)[key];
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function sourceRepositoryFromContext(context: unknown): { sourceRepositoryId?: string; sourceRepositoryName?: string } {
-  return {
-    sourceRepositoryId: stringFromContext(context, "sourceRepositoryId"),
-    sourceRepositoryName: stringFromContext(context, "sourceRepositoryName"),
-  };
-}
-
 const app = createWebApp({
   registry,
   hub,
@@ -212,7 +199,7 @@ const app = createWebApp({
   provisioningHooks,
   workspaceRemovedHandlers,
   async provisionWorkspace(id, options) {
-    await createWorkspace({ id, events: atelierEvents, ...sourceRepositoryFromContext(options?.context), context: options?.context });
+    await createWorkspace({ id, events: atelierEvents, init: options?.init, context: options?.context });
     for (const hook of provisioningHooks) {
       await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: hook.id, label: hook.label, parentId: hook.parentId, status: "running" });
       try {
@@ -224,7 +211,7 @@ const app = createWebApp({
       }
     }
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "running" });
-    await atelierEvents.emit("workspace_created", { workspaceId: id, context: options?.context });
+    await atelierEvents.emit("workspace_created", { workspaceId: id, init: options?.init, context: options?.context });
     await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: "workspace.integrations", label: "Run workspace startup integrations", status: "done" });
   },
   inspectDeleteSafety: async (id) => {

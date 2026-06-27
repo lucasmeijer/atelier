@@ -4,7 +4,7 @@ import { chmod, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { clearWorkspaceGitHubToken, createAtelierEventBus, setWorkspaceGitHubToken } from "@atelier/core";
-import { prepareWorkspaceSource, registerRepositoryWorkspaceSourceEvents } from "@atelier/repository";
+import { prepareWorkspaceSource, registerProjectWorkspaceInitEvents, type GitProjectInitInstruction } from "@atelier/projects";
 import type { WorkspaceDockerPlan } from "@atelier/workspace";
 
 async function run(command: string[], options: { cwd?: string } = {}): Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -107,25 +107,26 @@ describe("workspace source preparation", () => {
     expect(first.resolvedCommit).not.toBe(second.resolvedCommit);
   });
 
-  test("adds a shared /persistent bind mount for workspaces from the same saved repository", async () => {
+  test("adds a shared /persistent bind mount for workspaces from the same saved project", async () => {
     const events = createAtelierEventBus();
-    registerRepositoryWorkspaceSourceEvents(events);
-    const planFor = async (workspaceId: string, sourceRepositoryId: string): Promise<WorkspaceDockerPlan> => {
+    registerProjectWorkspaceInitEvents(events);
+    const planFor = async (workspaceId: string, projectId: string): Promise<WorkspaceDockerPlan> => {
+      const init: GitProjectInitInstruction = { type: "project.git", projectId, name: projectId, gitUrl: `https://example.test/${projectId}.git`, branch: null };
       const plan: WorkspaceDockerPlan = { labels: {}, env: {}, mounts: [], publishes: [], extraArgs: [], initScripts: [], cleanup: [] };
-      await events.emit("workspace_plan_prepare", { workspaceId, context: { sourceRepositoryId }, workHostPath: join(dataDir, "workspaces", workspaceId, "work"), workContainerPath: "/work", plan });
+      await events.emit("workspace_plan_prepare", { workspaceId, init, workHostPath: join(dataDir, "workspaces", workspaceId, "work"), workContainerPath: "/work", plan });
       return plan;
     };
 
-    const first = await planFor("ws1", "repo-a");
-    const second = await planFor("ws2", "repo-a");
-    const other = await planFor("ws3", "repo-b");
-    const repoAKey = createHash("sha256").update("repo-a").digest("hex").slice(0, 16);
-    const repoAPath = join(dataDir, "repositories", repoAKey, "persistent");
+    const first = await planFor("ws1", "project-a");
+    const second = await planFor("ws2", "project-a");
+    const other = await planFor("ws3", "project-b");
+    const projectAKey = createHash("sha256").update("project-a").digest("hex").slice(0, 16);
+    const projectAPath = join(dataDir, "projects", projectAKey, "persistent");
 
-    expect(first.mounts).toEqual([{ type: "bind", source: repoAPath, target: "/persistent" }]);
+    expect(first.mounts).toEqual([{ type: "bind", source: projectAPath, target: "/persistent" }]);
     expect(second.mounts).toEqual(first.mounts);
-    expect(other.mounts[0]!.source).not.toBe(repoAPath);
-    expect((await stat(repoAPath)).isDirectory()).toBe(true);
+    expect(other.mounts[0]!.source).not.toBe(projectAPath);
+    expect((await stat(projectAPath)).isDirectory()).toBe(true);
     expect(first.initScripts).toEqual([]);
   });
 

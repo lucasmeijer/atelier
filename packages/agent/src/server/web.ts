@@ -40,10 +40,10 @@ export const agentWorkspaceCommands: WorkspaceCommandContribution[] = [
   },
 ];
 
-const sourceRepoAgentWorkspaceCommand: WorkspaceCommandContribution = {
-  id: "agent.launch-source-repo-workspace",
-  label: "New Workspace From Source Repo",
-  description: "Open the source repository agent workspace prompt.",
+const projectAgentWorkspaceCommand: WorkspaceCommandContribution = {
+  id: "agent.launch-project-workspace",
+  label: "New Workspace From Project",
+  description: "Open the project agent workspace prompt.",
   scope: "global",
   surfaces: { shortcut: { defaultBinding: "Meta+Alt+Quote" } },
 };
@@ -113,11 +113,12 @@ export const agentWorkspaceModule: WorkspaceModule = {
     subscribeWorkspaceTabBusy(({ workspaceId, tabKey, busy }) => context.registry.setTabBusy(workspaceId, tabKey, busy));
     registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force) as DeleteCurrentWorkspaceResult));
   },
-  async attachToWorkspace({ workspaceId, sourceRepositoryId, events }) {
+  async attachToWorkspace({ workspaceId, init, events }) {
     const agents = await listOrCreateWorkspaceAgents(workspaceId);
+    const hasProject = typeof init === "object" && init !== null && "type" in init && init.type === "project.git";
     return {
       tabs: await renderWorkspaceAgentTabs(workspaceId, agents, events as AtelierEventBus | undefined),
-      commands: sourceRepositoryId ? [...agentWorkspaceCommands, sourceRepoAgentWorkspaceCommand] : agentWorkspaceCommands,
+      commands: hasProject ? [...agentWorkspaceCommands, projectAgentWorkspaceCommand] : agentWorkspaceCommands,
     };
   },
 };

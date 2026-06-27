@@ -745,12 +745,12 @@ export const agentClientModule: WorkspaceClientModule = {
       }));
     });
     hooks.onWorkspaceCommand((commandId) => {
-      if (commandId !== "agent.launch-source-repo-workspace") return false;
+      if (commandId !== "agent.launch-project-workspace") return false;
       const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.active");
-      const sourceRepositoryId = resident?.dataset.sourceRepositoryId;
-      if (!sourceRepositoryId) return true;
-      const modalIdPart = sourceRepositoryId.replace(/[^a-zA-Z0-9_-]/g, "_");
-      const dialog = document.getElementById(`agent_launch_repo_modal_${modalIdPart}`) as HTMLDialogElement | null;
+      const projectId = resident?.dataset.projectId;
+      if (!projectId) return true;
+      const modalIdPart = projectId.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const dialog = document.getElementById(`agent_launch_project_modal_${modalIdPart}`) as HTMLDialogElement | null;
       if (!dialog) return true;
       if (!dialog.open) dialog.showModal();
       const input = dialog.querySelector<HTMLTextAreaElement>("textarea");

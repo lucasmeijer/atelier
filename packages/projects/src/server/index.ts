@@ -1,16 +1,17 @@
 import type { WorkspaceModule, WorkspaceRowContributionRegistry } from "@atelier/shared";
 import type { AtelierEventBus } from "@atelier/core";
 import { listWorkspaces } from "@atelier/workspace";
-import { getWorkspaceRepoLineStats, listWorkspaceRepos, registerRepositoryWorkspaceEvents } from "../workspace-repos.ts";
+import { isGitProjectInit } from "../project.ts";
+import { getWorkspaceRepoLineStats, listWorkspaceRepos, registerProjectWorkspaceEvents } from "../workspace-repos.ts";
 
-const rowContributionId = "repository.line-stats";
-const persistentSystemPromptLine = "The /persistent directory is shared by all workspaces for this repository; use it for files you and the user want to keep across workspaces but not commit to git.";
+const rowContributionId = "project.line-stats";
+const persistentSystemPromptLine = "The /persistent directory is shared by all workspaces for this project; use it for files you and the user want to keep across workspaces but not commit to git.";
 
 function renderLineStats(added: number, removed: number): string | undefined {
   if (added === 0 && removed === 0) return undefined;
   const additions = added > 0 ? `<span class="workspace-row-stat workspace-row-stat-add">+${added}</span>` : "";
   const removals = removed > 0 ? `<span class="workspace-row-stat workspace-row-stat-del">-${removed}</span>` : "";
-  return `<span class="repository-line-stats" title="Repository line changes">${additions}${removals}</span>`;
+  return `<span class="project-line-stats" title="Project line changes">${additions}${removals}</span>`;
 }
 
 async function updateLineStats(workspaceId: string, contributions: WorkspaceRowContributionRegistry): Promise<void> {
@@ -30,16 +31,16 @@ async function updateLineStats(workspaceId: string, contributions: WorkspaceRowC
 }
 
 export const atelierServerModule: WorkspaceModule = {
-  id: "repository",
+  id: "projects",
   initialize(context) {
     const events = context.events as AtelierEventBus;
-    registerRepositoryWorkspaceEvents(events);
+    registerProjectWorkspaceEvents(events);
     events.on("workspace_agent_turn_finished", ({ workspaceId }) => {
       void updateLineStats(workspaceId, context.workspaceRowContributions);
     });
     events.on("agent_system_prompt_prepare", async ({ workspaceId, lines }) => {
       const workspace = (await listWorkspaces()).workspaces.find((entry) => entry.id === workspaceId);
-      if (workspace?.sourceRepositoryId) lines.push(persistentSystemPromptLine);
+      if (isGitProjectInit(workspace?.init)) lines.push(persistentSystemPromptLine);
     });
   },
 };

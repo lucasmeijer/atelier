@@ -18,7 +18,7 @@
     "@atelier/keypress-probe": "workspace:*",
     "@atelier/proxy-egress": "workspace:*",
     "@atelier/proxy-ingress": "workspace:*",
-    "@atelier/repository": "workspace:*",
+    "@atelier/projects": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*",
     "@atelier/workspace-terminal": "workspace:*",

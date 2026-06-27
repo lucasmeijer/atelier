@@ -13,7 +13,7 @@ interface GitIdentityStore {
 }
 
 export function gitIdentitySettingsFile(dataDir = getAtelierRuntimeContext().atelierDataDir): string {
-  return join(dataDir, "repository-settings.json");
+  return join(dataDir, "project-settings.json");
 }
 
 async function readStore(file: string): Promise<GitIdentityStore> {

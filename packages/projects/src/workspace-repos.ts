@@ -1,7 +1,7 @@
 import { AtelierCoreError, invalidArguments, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { execWorkspaceShell, resolveWorkspace, workspaceRoot } from "@atelier/workspace";
 import { registerGitIdentityWorkspaceEvents } from "./git-identity.ts";
-import { registerRepositoryWorkspaceSourceEvents } from "./workspace-source.ts";
+import { registerProjectWorkspaceInitEvents } from "./workspace-source.ts";
 
 export interface WorkspaceRepoListResult { repos: string[] }
 export interface WorkspaceRepoWorkingTreeStatus { stagedFiles: string[]; addedFiles: string[]; modifiedFiles: string[]; removedFiles: string[]; untrackedFiles: string[] }
@@ -93,8 +93,8 @@ export async function assertWorkspaceDeleteSafe(id: string): Promise<void> {
   const details = await inspectWorkspaceDeleteSafety(id);
   if (details.issues.length > 0) throw new AtelierCoreError("workspace_delete_blocked", formatDeleteBlockedMessage(id, details.issues), details);
 }
-export function registerRepositoryWorkspaceEvents(events: AtelierEventBus): void {
-  registerRepositoryWorkspaceSourceEvents(events);
+export function registerProjectWorkspaceEvents(events: AtelierEventBus): void {
+  registerProjectWorkspaceInitEvents(events);
   registerGitIdentityWorkspaceEvents(events);
   events.on("workspace_delete_inspect", async ({ workspaceId, issues }) => { issues.push(...(await inspectWorkspaceDeleteSafety(workspaceId)).issues); });
 }

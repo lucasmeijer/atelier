@@ -2,27 +2,27 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { addRepository, getGitIdentity, gitIdentitySettingsFile, hasGitIdentity, listRepositories, parseRepositorySpec, setGitIdentity } from "@atelier/repository";
+import { addProject, getGitIdentity, gitIdentitySettingsFile, hasGitIdentity, listProjects, parseProjectSpec, setGitIdentity } from "@atelier/projects";
 
-describe("repositories", () => {
-  test("parseRepositorySpec supports an optional #branch suffix", () => {
-    expect(parseRepositorySpec("https://github.com/org/repo.git#main")).toEqual({ gitUrl: "https://github.com/org/repo.git", branch: "main" });
-    expect(parseRepositorySpec("git@github.com:org/repo.git")).toEqual({ gitUrl: "git@github.com:org/repo.git", branch: null });
+describe("projects", () => {
+  test("parseProjectSpec supports an optional #branch suffix", () => {
+    expect(parseProjectSpec("https://github.com/org/repo.git#main")).toEqual({ gitUrl: "https://github.com/org/repo.git", branch: "main" });
+    expect(parseProjectSpec("git@github.com:org/repo.git")).toEqual({ gitUrl: "git@github.com:org/repo.git", branch: null });
   });
 
-  test("addRepository records a remote URL without cloning it", async () => {
-    const file = join(await mkdtemp(join(tmpdir(), "atelier-repositories-")), "repositories.json");
+  test("addProject records a remote URL without cloning it", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "atelier-projects-")), "projects.json");
 
-    const result = await addRepository("https://github.com/org/repo.git#feature", file);
-    expect(result.repo.name).toBe("repo");
-    expect(result.repo.gitUrl).toBe("https://github.com/org/repo.git");
-    expect(result.repo.branch).toBe("feature");
+    const result = await addProject("https://github.com/org/repo.git#feature", file);
+    expect(result.project.name).toBe("repo");
+    expect(result.project.gitUrl).toBe("https://github.com/org/repo.git");
+    expect(result.project.branch).toBe("feature");
 
-    expect(await listRepositories(file)).toEqual({ repos: [result.repo] });
+    expect(await listProjects(file)).toEqual({ projects: [result.project] });
   });
 
-  test("git identity settings are stored by the repository module", async () => {
-    const file = join(await mkdtemp(join(tmpdir(), "atelier-repository-settings-")), "repository-settings.json");
+  test("git identity settings are stored by the projects module", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "atelier-project-settings-")), "project-settings.json");
 
     expect(await hasGitIdentity(file)).toBe(false);
     await setGitIdentity({ name: " Ada Lovelace ", email: " ada@example.com " }, file);
@@ -34,7 +34,7 @@ describe("repositories", () => {
   test("git identity adopts the host global git config when app settings are empty", async () => {
     const previousDataDir = process.env.ATELIER_DATA_DIR;
     const previousGlobalConfig = process.env.GIT_CONFIG_GLOBAL;
-    const dataDir = await mkdtemp(join(tmpdir(), "atelier-repository-settings-"));
+    const dataDir = await mkdtemp(join(tmpdir(), "atelier-project-settings-"));
     const gitConfig = join(await mkdtemp(join(tmpdir(), "atelier-git-config-")), ".gitconfig");
     process.env.ATELIER_DATA_DIR = dataDir;
     process.env.GIT_CONFIG_GLOBAL = gitConfig;

@@ -11,15 +11,17 @@ import {
 } from "@atelier/core";
 import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
-  addRepository,
-  formatRepositorySpec,
+  addProject,
+  formatProjectSpec,
   getWorkspaceRepoMergeability,
-  listRepositories,
+  isGitProjectInit,
+  listProjects,
+  projectWorkspaceInit,
   pushWorkspaceRepo,
-  type RepositorySummary,
+  type ProjectSummary,
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceRepoMergeabilityResult,
-} from "@atelier/repository";
+} from "@atelier/projects";
 import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
 import { atelierName, domId, escapeHtml, turboStream, turboStreamResponse, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceRowContributionRegistry, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
@@ -40,7 +42,7 @@ export interface WebAppDeps {
   /** File-backed UI preferences for future/new agent creation flows. */
   preferences?: WebPreferenceStore;
   /** Create the container + default agent etc. for an already-registered workspace id. */
-  provisionWorkspace(id: string, options?: { context?: WorkspaceCreationContext }): Promise<void>;
+  provisionWorkspace(id: string, options?: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext }): Promise<void>;
   inspectDeleteSafety(id: string): Promise<WorkspaceDeleteBlockedDetails>;
   /** Force-remove the workspace container. */
   destroyWorkspace(id: string): Promise<void>;
@@ -217,7 +219,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   };
 
   function workspaceTitle(entry: WorkspaceEntry): string {
-    return entry.title || entry.sourceRepositoryName || `Workspace ${entry.id}`;
+    return entry.title || (isGitProjectInit(entry.init) ? entry.init.name : undefined) || `Workspace ${entry.id}`;
   }
 
   function workspaceSidebarTitleFrame(id: string, title: string): string {
@@ -231,11 +233,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const id = entry.id;
     const title = workspaceTitle(entry);
     const selectable = entry.phase === "starting" || entry.phase === "failed" || entry.phase === "ready";
-    const sourceRepositoryClass = entry.sourceRepositoryId ? "repo-tinted-row" : "";
-    const sourceRepositoryStyle = entry.sourceRepositoryId ? ` style="${repoColorStyle(entry.sourceRepositoryId)}"` : "";
+    const projectClass = isGitProjectInit(entry.init) ? "repo-tinted-row" : "";
+    const projectStyle = isGitProjectInit(entry.init) ? ` style="${repoColorStyle(entry.init.projectId)}"` : "";
     const stateClass = registry.workspaceState(id) === "unread" ? "attn-state" : "";
     const parkedClass = entry.parked ? "parked" : "";
-    const open = (extraClass: string) => `<div class="row workspace-row ${sourceRepositoryClass} ${stateClass} ${parkedClass} ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}" data-parked="${entry.parked ? "true" : "false"}"${sourceRepositoryStyle}${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
+    const open = (extraClass: string) => `<div class="row workspace-row ${projectClass} ${stateClass} ${parkedClass} ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}" data-parked="${entry.parked ? "true" : "false"}"${projectStyle}${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
     const workspaceLink = (label: string, attrs = "") => `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"${attrs}><div class="r-title">${escapeHtml(label)}</div></a>`;
     switch (entry.phase) {
       // All phases render single-line rows (no r-sub) so phase changes never
@@ -369,12 +371,12 @@ ${moduleStylesHtml()}
 </dialog>`;
   }
 
-  async function launchRepoAgentModal(repo: RepositorySummary, selectedModel?: string, options: { autoShow?: boolean; modalId?: string; formId?: string } = {}): Promise<string> {
+  async function launchProjectAgentModal(project: ProjectSummary, selectedModel?: string, options: { autoShow?: boolean; modalId?: string; formId?: string } = {}): Promise<string> {
     return await launchAgentWorkspaceModal({
-      titleHtml: `Create workspace from <b>${escapeHtml(repo.name)}</b>, and then…`,
-      action: `/repo-agent-workspaces/${encodeURIComponent(repo.id)}`,
-      modalId: options.modalId ?? domId("agent_launch_repo_modal", repo.id),
-      formId: options.formId ?? domId("agent_launch_repo_form", repo.id),
+      titleHtml: `Create workspace from <b>${escapeHtml(project.name)}</b>, and then…`,
+      action: `/project-agent-workspaces/${encodeURIComponent(project.id)}`,
+      modalId: options.modalId ?? domId("agent_launch_project_modal", project.id),
+      formId: options.formId ?? domId("agent_launch_project_form", project.id),
       selectedModel,
       autoShow: options.autoShow,
     });
@@ -390,15 +392,15 @@ ${moduleStylesHtml()}
     });
   }
 
-  function addRepositoryModal(): string {
-    return `<dialog id="add-repository-modal" class="modal" data-controller="modal">
-  <form method="post" action="/repositories" data-action="turbo:submit-end->modal#submitted">
-    <h2>Add repository</h2>
+  function addProjectModal(): string {
+    return `<dialog id="add-project-modal" class="modal" data-controller="modal">
+  <form method="post" action="/projects" data-action="turbo:submit-end->modal#submitted">
+    <h2>Add project</h2>
     <p>Save a remote URL. Add <code>#branch</code> to clone a specific branch.</p>
     <input class="modal-input" name="gitUrl" type="text" placeholder="https://github.com/org/repo.git#main or /path/to/repo#feature" required autofocus>
     <div class="modal-actions">
       <button class="btn" type="button" data-action="modal#close">Cancel</button>
-      <button class="btn primary" type="submit">Add repository</button>
+      <button class="btn primary" type="submit">Add project</button>
     </div>
   </form>
 </dialog>`;
@@ -420,17 +422,17 @@ ${moduleStylesHtml()}
     return await proc.exited === 0;
   }
 
-  async function githubRepoAccessProblem(repo: RepositorySummary): Promise<"missing-token" | "token-denied" | undefined> {
-    if (process.env.NODE_ENV === "test" || !isGitHubRemoteUrl(repo.gitUrl)) return undefined;
-    if (await canReadRemoteWithConfiguredToken(repo.gitUrl).catch(() => false)) return undefined;
+  async function githubRepoAccessProblem(project: ProjectSummary): Promise<"missing-token" | "token-denied" | undefined> {
+    if (process.env.NODE_ENV === "test" || !isGitHubRemoteUrl(project.gitUrl)) return undefined;
+    if (await canReadRemoteWithConfiguredToken(project.gitUrl).catch(() => false)) return undefined;
     return hasWorkspaceGitHubToken() ? "token-denied" : "missing-token";
   }
 
-  function githubRepoAccessProblemModal(repo: RepositorySummary, problem: "missing-token" | "token-denied"): string {
-    const title = problem === "missing-token" ? "Connect GitHub to clone this repository" : "GitHub token cannot access this repository";
+  function githubRepoAccessProblemModal(project: ProjectSummary, problem: "missing-token" | "token-denied"): string {
+    const title = problem === "missing-token" ? "Connect GitHub to clone this project" : "GitHub token cannot access this project";
     const body = problem === "missing-token"
-      ? `<p><b>${escapeHtml(repo.name)}</b> looks private, and Atelier does not have a GitHub token yet.</p><p>Connect GitHub in workspace settings, then try creating this workspace again.</p>`
-      : `<p>Atelier has a GitHub token, but GitHub would not allow it to read <b>${escapeHtml(repo.name)}</b>.</p><p>Reconnect GitHub with a token that has access to this repository, then try again.</p>`;
+      ? `<p><b>${escapeHtml(project.name)}</b> looks private, and Atelier does not have a GitHub token yet.</p><p>Connect GitHub in workspace settings, then try creating this workspace again.</p>`
+      : `<p>Atelier has a GitHub token, but GitHub would not allow it to read <b>${escapeHtml(project.name)}</b>.</p><p>Reconnect GitHub with a token that has access to this project, then try again.</p>`;
     return `<dialog id="github-token-required-modal" class="modal" data-controller="modal" data-modal-auto-show-value="true">
   <form method="dialog">
     <h2>${escapeHtml(title)}</h2>
@@ -444,7 +446,7 @@ ${moduleStylesHtml()}
   }
 
   async function renderWorkspaceSidebar(): Promise<string> {
-    const { repos } = await listRepositories();
+    const { projects } = await listProjects();
 
     // JavaScript submits this as a Turbo Stream and then switches the resident
     // client-side. Without JavaScript, the endpoint still falls back to a 303.
@@ -453,17 +455,17 @@ ${moduleStylesHtml()}
     <span></span>
   </button></form>`;
 
-    const repoRows = repos.map((repo) => {
-      const modalId = domId("agent_launch_repo_modal", repo.id);
-      const spec = formatRepositorySpec(repo);
-      return `<button class="row repository-row repo-tinted-row" type="button" style="${repoColorStyle(repo.id)}" title="${escapeHtml(spec)}" aria-label="Start agent workspace from ${escapeHtml(repo.name)}" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="${modalId}">
-    <span class="repo-swatch" aria-hidden="true"></span><span class="row-main"><span class="r-title">${escapeHtml(repo.name)}</span></span>
+    const projectRows = projects.map((project) => {
+      const modalId = domId("agent_launch_project_modal", project.id);
+      const spec = formatProjectSpec(project);
+      return `<button class="row project-row repo-tinted-row" type="button" style="${repoColorStyle(project.id)}" title="${escapeHtml(spec)}" aria-label="Start agent workspace from ${escapeHtml(project.name)}" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="${modalId}">
+    <span class="repo-swatch" aria-hidden="true"></span><span class="row-main"><span class="r-title">${escapeHtml(project.name)}</span></span>
     <span class="row-actions"><span class="repo-launch-icon" aria-hidden="true">+</span></span>
   </button>`;
     }).join("");
 
-    const addRepoRow = `<button class="row ghost-row addbtn" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="add-repository-modal">
-    <span class="ic" aria-hidden="true">+</span><div><div class="r-title">Add repository</div></div>
+    const addProjectRow = `<button class="row ghost-row addbtn" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="add-project-modal">
+    <span class="ic" aria-hidden="true">+</span><div><div class="r-title">Add project</div></div>
     <span></span>
   </button>`;
 
@@ -476,10 +478,10 @@ ${moduleStylesHtml()}
       </div>
 
       <section class="host-repos sidebar-host-repos repos">
-        <div class="lh">Repositories</div>
-        <div class="table repositories-table">
-          ${repoRows || `<div class="row"><span class="repo-swatch" aria-hidden="true"></span><div><div class="r-title">No repositories</div><div class="r-sub">Add one below.</div></div><span></span></div>`}
-          ${addRepoRow}
+        <div class="lh">Projects</div>
+        <div class="table projects-table">
+          ${projectRows || `<div class="row"><span class="repo-swatch" aria-hidden="true"></span><div><div class="r-title">No projects</div><div class="r-sub">Add one below.</div></div><span></span></div>`}
+          ${addProjectRow}
         </div>
       </section>
     </div>
@@ -498,7 +500,7 @@ ${moduleStylesHtml()}
     const entry = requireWorkspace(workspaceId);
     return await Promise.all(workspaceModules
       .filter((module) => module.attachToWorkspace)
-      .map((module) => module.attachToWorkspace!({ workspaceId, sourceRepositoryId: entry.sourceRepositoryId, events: deps.events })));
+      .map((module) => module.attachToWorkspace!({ workspaceId, init: entry.init, events: deps.events })));
   }
 
   async function workspaceTabsAndAttachments(workspaceId: string): Promise<{ attachments: WorkspaceAttachment[]; tabs: WorkspaceTabContribution[] }> {
@@ -581,14 +583,14 @@ ${moduleStylesHtml()}
 
   async function workspaceDetailResidentHtml(id: string, options: { active?: boolean } = {}): Promise<string> {
     const entry = requireWorkspace(id);
-    const sourceRepositoryAttr = entry.sourceRepositoryId ? ` data-source-repository-id="${escapeHtml(entry.sourceRepositoryId)}"` : "";
-    return `<div class="workspace-detail-resident ${options.active ? "active" : ""}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}"${sourceRepositoryAttr}>${await workspaceDetailContent(id)}</div>`;
+    const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
+    return `<div class="workspace-detail-resident ${options.active ? "active" : ""}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}"${projectAttr}>${await workspaceDetailContent(id)}</div>`;
   }
 
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { active?: boolean } = {}): string {
     const inner = provisioning.render(entry.id, { failed: entry.phase === "failed", error: entry.error });
-    const sourceRepositoryAttr = entry.sourceRepositoryId ? ` data-source-repository-id="${escapeHtml(entry.sourceRepositoryId)}"` : "";
-    return `<div class="workspace-detail-resident workspace-boot ${options.active ? "active" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${sourceRepositoryAttr}><div class="main"><header class="header"><h1>${escapeHtml(workspaceTitle(entry))}</h1></header><div class="body"><div class="panel">${inner}</div></div></div></div>`;
+    const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
+    return `<div class="workspace-detail-resident workspace-boot ${options.active ? "active" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><header class="header"><h1>${escapeHtml(workspaceTitle(entry))}</h1></header><div class="body"><div class="panel">${inner}</div></div></div></div>`;
   }
 
   function broadcastWorkspaceBoot(id: string): void {
@@ -614,19 +616,19 @@ ${moduleStylesHtml()}
     </div>`;
   }
 
-  async function repositoryById(id: string): Promise<RepositorySummary> {
-    const { repos } = await listRepositories();
-    const repo = repos.find((candidate) => candidate.id === id);
-    if (!repo) throw new AtelierCoreError("repository_not_found", `repository not found: ${id}`);
-    return repo;
+  async function projectById(id: string): Promise<ProjectSummary> {
+    const { projects } = await listProjects();
+    const project = projects.find((candidate) => candidate.id === id);
+    if (!project) throw new AtelierCoreError("project_not_found", `project not found: ${id}`);
+    return project;
   }
 
-  async function renderRepoLaunchModals(): Promise<string> {
-    const { repos } = await listRepositories();
+  async function renderProjectLaunchModals(): Promise<string> {
+    const { projects } = await listProjects();
     const selectedModel = await preferredNewAgentModel();
     return [
       await launchEmptyAgentModal(selectedModel),
-      ...(await Promise.all(repos.map((repo) => launchRepoAgentModal(repo, selectedModel)))),
+      ...(await Promise.all(projects.map((project) => launchProjectAgentModal(project, selectedModel)))),
     ].join("");
   }
 
@@ -636,11 +638,11 @@ ${moduleStylesHtml()}
     <div class="workspace-shell-resizer" data-action="pointerdown->workspace-shell#startResize"></div>
     <main class="workspace-shell-main">${await workspaceDetailHostHtml(selectedId)}</main>
   </div>
-  ${addRepositoryModal()}
+  ${addProjectModal()}
   <div id="settings_modal_host"></div>
   <div id="onboarding_modal_host">${await renderOnboardingDialogIfNeeded()}</div>
   <div id="${workspaceCommandModalHostId}"></div>
-  ${await renderRepoLaunchModals()}`;
+  ${await renderProjectLaunchModals()}`;
   }
 
   async function homePage(): Promise<Response> {
@@ -665,11 +667,11 @@ ${moduleStylesHtml()}
   // Create / delete / dismiss
   // ---------------------------------------------------------------------------
 
-  function startWorkspaceProvisioning(id: string, options: { context?: WorkspaceCreationContext } = {}): void {
+  function startWorkspaceProvisioning(id: string, options: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext } = {}): void {
     provisioning.seed(id);
     void (async () => {
       try {
-        await deps.provisionWorkspace(id, { context: options.context });
+        await deps.provisionWorkspace(id, { init: options.init, context: options.context });
         registry.setPhase(id, "ready");
         await broadcastWorkspaceReady(id);
       } catch (error) {
@@ -696,21 +698,16 @@ ${moduleStylesHtml()}
     return Response.redirect(location, 303);
   }
 
-  async function createAgentWorkspaceFromForm(request: Request, options: { repo?: RepositorySummary } = {}): Promise<Response> {
+  async function createAgentWorkspaceFromForm(request: Request, options: { project?: ProjectSummary } = {}): Promise<Response> {
     const form = await request.formData();
     const text = String(form.get("text") ?? "").trim();
     const id = generateWorkspaceId();
-    registry.add(id, null, options.repo?.id, options.repo?.name);
+    const init = options.project ? projectWorkspaceInit(options.project) : undefined;
+    registry.add(id, null, init);
     const model = String(form.get("model") ?? "");
     const thinkingLevel = String(form.get("level") ?? "");
     await rememberAgentPreferredNewAgentModel(model, thinkingLevel);
     const context: WorkspaceCreationContext = {
-      ...(options.repo ? {
-        sourceRepositoryId: options.repo.id,
-        sourceRepositoryName: options.repo.name,
-        gitUrl: options.repo.gitUrl,
-        gitBranch: options.repo.branch,
-      } : {}),
       ...(text ? {
         agent: {
           initialPrompt: text,
@@ -720,7 +717,7 @@ ${moduleStylesHtml()}
         },
       } : {}),
     };
-    startWorkspaceProvisioning(id, { context });
+    startWorkspaceProvisioning(id, { init, context });
     return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
   }
 
@@ -728,11 +725,11 @@ ${moduleStylesHtml()}
     return await createAgentWorkspaceFromForm(request);
   }
 
-  async function createRepoAgentWorkspaceEndpoint(repoName: string, request: Request): Promise<Response> {
-    const repo = await repositoryById(repoName);
-    const accessProblem = await githubRepoAccessProblem(repo);
-    if (accessProblem) return turboStreamResponse(turboUpdateStream(workspaceCommandModalHostId, githubRepoAccessProblemModal(repo, accessProblem)));
-    return await createAgentWorkspaceFromForm(request, { repo });
+  async function createProjectAgentWorkspaceEndpoint(projectId: string, request: Request): Promise<Response> {
+    const project = await projectById(projectId);
+    const accessProblem = await githubRepoAccessProblem(project);
+    if (accessProblem) return turboStreamResponse(turboUpdateStream(workspaceCommandModalHostId, githubRepoAccessProblemModal(project, accessProblem)));
+    return await createAgentWorkspaceFromForm(request, { project });
   }
 
   async function broadcastWorkspaceReady(id: string): Promise<void> {
@@ -885,13 +882,13 @@ ${moduleStylesHtml()}
   }
 
   // ---------------------------------------------------------------------------
-  // Repositories / mergeability / push
+  // Projects / mergeability / push
   // ---------------------------------------------------------------------------
 
-  async function createRepositoryFromForm(request: Request, url: URL): Promise<Response> {
+  async function createProjectFromForm(request: Request, url: URL): Promise<Response> {
     const formData = await request.formData();
     const gitUrl = String(formData.get("gitUrl") ?? "");
-    await addRepository(gitUrl);
+    await addProject(gitUrl);
     return Response.redirect(new URL("/", url).toString(), 303);
   }
 
@@ -1119,7 +1116,7 @@ ${moduleStylesHtml()}
   // ---------------------------------------------------------------------------
 
   function errorPage(error: unknown): Response {
-    const status = error instanceof AtelierCoreError && ["workspace_not_found", "repo_not_found", "terminal_not_found", "agent_not_found"].includes(error.code) ? 404 : 500;
+    const status = error instanceof AtelierCoreError && ["workspace_not_found", "project_not_found", "repo_not_found", "terminal_not_found", "agent_not_found"].includes(error.code) ? 404 : 500;
     const message = error instanceof Error ? error.message : String(error);
     return response(layout("Error", `<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p><a class="btn" href="/">Back home</a></p></div></div></div>`), { status });
   }
@@ -1138,7 +1135,7 @@ ${moduleStylesHtml()}
     if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
     if (url.pathname === "/workspaces" && request.method === "POST") return createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestUnreadWorkspaceEndpoint();
-    if (url.pathname === "/repositories" && request.method === "POST") return await createRepositoryFromForm(request, url);
+    if (url.pathname === "/projects" && request.method === "POST") return await createProjectFromForm(request, url);
 
     const match = (pattern: RegExp): string[] | undefined => {
       const result = url.pathname.match(pattern);
@@ -1159,7 +1156,7 @@ ${moduleStylesHtml()}
     let params: string[] | undefined;
 
     if (url.pathname === "/agent-workspaces" && request.method === "POST") return await createEmptyAgentWorkspaceEndpoint(request);
-    if ((params = match(/^\/repo-agent-workspaces\/([^/]+)$/)) && request.method === "POST") return await createRepoAgentWorkspaceEndpoint(params[0], request);
+    if ((params = match(/^\/project-agent-workspaces\/([^/]+)$/)) && request.method === "POST") return await createProjectAgentWorkspaceEndpoint(params[0], request);
 
     if ((params = match(/^\/workspaces\/([^/]+)\/sidebar-title\/edit$/)) && request.method === "GET") return workspaceSidebarTitleEditFrame(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/sidebar-title$/))) {

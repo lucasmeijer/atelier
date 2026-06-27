@@ -1,18 +1,22 @@
 export {
-  createWorkspaceForRepository,
-  type CreateWorkspaceForRepositoryOptions,
+  createWorkspaceForProject,
+  type CreateWorkspaceForProjectOptions,
 } from "./create-workspace.ts";
 
 export {
-  addRepository,
-  formatRepositorySpec,
-  listRepositories,
-  parseRepositorySpec,
-  repositoriesFile,
-  type AddRepositoryResult,
-  type RepositoryListResult,
-  type RepositorySummary,
-} from "./repository.ts";
+  addProject,
+  formatProjectSpec,
+  isGitProjectInit,
+  listProjects,
+  parseProjectSpec,
+  projectsFile,
+  projectNameFromGitUrl,
+  projectWorkspaceInit,
+  type AddProjectResult,
+  type GitProjectInitInstruction,
+  type ProjectListResult,
+  type ProjectSummary,
+} from "./project.ts";
 
 export {
   clearGitIdentity,
@@ -25,10 +29,8 @@ export {
 } from "./git-identity.ts";
 
 export {
-  parseGitWorkspaceSourceRequest,
   prepareWorkspaceSource,
-  registerRepositoryWorkspaceSourceEvents,
-  type GitWorkspaceSourceRequest,
+  registerProjectWorkspaceInitEvents,
   type PreparedWorkspaceSource,
 } from "./workspace-source.ts";
 
@@ -39,7 +41,7 @@ export {
   inspectWorkspaceDeleteSafety,
   listWorkspaceRepos,
   pushWorkspaceRepo,
-  registerRepositoryWorkspaceEvents,
+  registerProjectWorkspaceEvents,
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceDeleteSafetyIssue,
   type WorkspaceRepoLineStats,

@@ -56,7 +56,7 @@ export const workspaceProvisioningStaticFiles = {
 
 const workspaceCreationSeedSteps: WorkspaceProvisionSeedStep[] = [
   { id: "workspace.workdir", label: "Create workspace directory" },
-  { id: "workspace.source", label: "Prepare workspace source" },
+  { id: "workspace.init", label: "Prepare workspace" },
   { id: "workspace.plan", label: "Prepare workspace container plan" },
   { id: "workspace.image", label: "Build workspace image" },
   { id: "workspace.container", label: "Start workspace container" },

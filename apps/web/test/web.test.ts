@@ -7,7 +7,7 @@ import { createStreamHub } from "../src/server/stream-hub.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { clearWorkspaceGitHubToken } from "@atelier/proxy-egress";
-import { addRepository, type WorkspaceDeleteBlockedDetails } from "@atelier/repository";
+import { addProject, isGitProjectInit, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -123,23 +123,24 @@ describe("web app contracts", () => {
     expect(registry.get(id)?.error).toContain("docker exploded");
   });
 
-  test("repo-created workspaces use the repository name as their temporary title", async () => {
+  test("project-created workspaces use the project name as their temporary title", async () => {
     const previousDataDir = process.env.ATELIER_DATA_DIR;
     const dataDir = await mkdtemp(join(tmpdir(), "atelier-web-test-"));
     process.env.ATELIER_DATA_DIR = dataDir;
     try {
-      const repo = (await addRepository("https://github.com/org/sample-project.git")).repo;
+      const project = (await addProject("https://github.com/org/sample-project.git")).project;
       const { app, registry } = createTestApp();
       await registry.seed([]);
 
-      const response = await app.fetch(postForm(`/repo-agent-workspaces/${encodeURIComponent(repo.id)}`, new URLSearchParams({ text: "do it" })));
+      const response = await app.fetch(postForm(`/project-agent-workspaces/${encodeURIComponent(project.id)}`, new URLSearchParams({ text: "do it" })));
       const body = await response.text();
       const entry = registry.list()[0]!;
 
       expect(response.status).toBe(200);
       expect(entry.title).toBeNull();
-      expect(entry.sourceRepositoryId).toBe(repo.id);
-      expect(entry.sourceRepositoryName).toBe("sample-project");
+      expect(isGitProjectInit(entry.init)).toBe(true);
+      expect(isGitProjectInit(entry.init) && entry.init.projectId).toBe(project.id);
+      expect(isGitProjectInit(entry.init) && entry.init.name).toBe("sample-project");
       expect(body).toContain("sample-project");
       expect(body).not.toContain("sample-project.git");
       expect(body).not.toContain(`Workspace ${entry.id}`);
