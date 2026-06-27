@@ -40,8 +40,13 @@ function namespace(): string { return process.env.ATELIER_NAMESPACE || "host"; }
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }
 export function workspaceContainerName(id: string): string { return `atelier-${id}`; }
 
+function envString(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value ? value : undefined;
+}
+
 function workspacePublishHost(): string { return "127.0.0.1"; }
-function workspaceConnectHost(): string { return "host.docker.internal"; }
+function workspaceConnectHost(): string { return envString("ATELIER_WORKSPACE_CONNECT_HOST") ?? "127.0.0.1"; }
 function formatDeleteBlockedMessage(id: string, issues: unknown[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
 function dockerHostGatewayArgs(): string[] { return ["--add-host", "host.docker.internal:host-gateway"]; }
 async function provisionStep<T>(events: AtelierEventBus | undefined, workspaceId: string, id: string, label: string, fn: () => Promise<T>, options: { parentId?: string } = {}): Promise<T> {

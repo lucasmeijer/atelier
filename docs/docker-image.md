@@ -29,7 +29,7 @@ bun run image:publish -- --image ghcr.io/example/atelier --tag v0.1.0 --platform
 
 `image:publish` is the same build pipeline with `--push` enabled. Multi-platform builds require `--push`.
 
-The resulting container expects access to Docker so it can create Atelier workspace containers. Its entrypoint starts as root, grants the fixed container user `1000:1000` access to the mounted Docker socket, prepares the Atelier data directory, and then runs Atelier as that fixed user. Docker-run workspace containers use the same numeric uid/gid and the `default` namespace. Workspace app ports are published on the Docker host loopback and always reached through `host.docker.internal`.
+The resulting container expects access to Docker so it can create Atelier workspace containers. Its entrypoint starts as root, grants the fixed container user `1000:1000` access to the mounted Docker socket, prepares the Atelier data directory, and then runs Atelier as that fixed user. Docker-run workspace containers use the same numeric uid/gid and the `default` namespace. Workspace app ports are published on the Docker host loopback; host-run Atelier connects to `127.0.0.1`, while the Docker image sets `ATELIER_WORKSPACE_CONNECT_HOST=host.docker.internal`.
 
 A typical local run mounts the host Docker socket and bind-mounts a host data directory. `ATELIER_DOCKER_HOST_DATA_DIR` must be the host path for that same data directory so workspace containers can mount files created by the Atelier container:
 
