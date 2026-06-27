@@ -94,11 +94,25 @@ function describeRestartReasons(): string {
   return `${shown.join(", ")}${suffix}`;
 }
 
-function isPackageRuntimeChange(path: string): boolean {
+function packageRelativePath(path: string): string | undefined {
   const rel = relative(resolve(repoRoot, "packages"), path);
-  if (!rel || rel === ".." || rel.startsWith(`..${sep}`)) return false;
+  if (!rel || rel === ".." || rel.startsWith(`..${sep}`)) return undefined;
+  return rel;
+}
+
+function isPackageRuntimeChange(path: string): boolean {
+  const rel = packageRelativePath(path);
+  if (!rel) return false;
   const [, firstPackagePathPart] = rel.split(sep);
   return firstPackagePathPart === "package.json" || firstPackagePathPart === "src";
+}
+
+function isWorkspaceImageInputChange(path: string): boolean {
+  const rel = packageRelativePath(path);
+  if (!rel) return false;
+  return rel.endsWith(`${sep}workspace-image.json`)
+    || rel.startsWith(`workspace-image${sep}scripts${sep}`)
+    || rel.includes(`${sep}workspace-image${sep}`);
 }
 
 async function ensureWorkspaceImage(): Promise<void> {
@@ -180,7 +194,7 @@ watchRecursive(resolve(cwd, "src/server"), (changed) => {
   else scheduleServerRestart("server source changed", changed);
 });
 watchRecursive(resolve(repoRoot, "packages"), (changed) => {
-  scheduleWorkspaceImageEnsure();
+  if (isWorkspaceImageInputChange(changed)) scheduleWorkspaceImageEnsure();
   if (isPackageRuntimeChange(changed)) scheduleBuildThenServerRestart("shared package runtime changed", changed);
 });
 

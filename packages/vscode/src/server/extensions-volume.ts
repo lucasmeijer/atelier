@@ -4,11 +4,20 @@ import { runHostObservableCommand } from "@atelier/observable-terminal/server";
 const extensionIds = ["ms-vscode.cpptools-extension-pack", "ms-dotnettools.csdevkit"] as const;
 const extensionSetVersion = "2026-06-17.2";
 const extensionsMountPath = "/opt/atelier/vscode-extensions";
+const seedImage = "mcr.microsoft.com/devcontainers/base:ubuntu-24.04";
 
 const ensureTasks = new Map<string, Promise<string>>();
 
 function slug(value: string): string {
   return value.replaceAll(/[^a-zA-Z0-9_.-]/g, "-");
+}
+
+function namespace(): string {
+  return process.env.ATELIER_NAMESPACE || "host";
+}
+
+function workspaceExtensionsVolumeName(workspaceId: string, arch: string): string {
+  return `atelier-vscode-extensions-${slug(namespace())}-${slug(workspaceId)}-${arch}-${slug(extensionSetVersion)}`;
 }
 
 async function dockerArchitecture(): Promise<string> {
@@ -79,7 +88,7 @@ async function ensureVSCodeExtensionsVolumeForArch(arch: string, options: { even
     "--rm",
     "--mount",
     `type=volume,src=${volume},dst=/extensions`,
-    "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+    seedImage,
     "sh",
     "-lc",
     seedScript(),
@@ -100,7 +109,7 @@ async function ensureVSCodeExtensionsVolumeForArch(arch: string, options: { even
   return volume;
 }
 
-async function ensureVSCodeExtensionsVolume(options: { events?: AtelierEventBus; workspaceId?: string } = {}): Promise<string> {
+async function ensureSharedVSCodeExtensionsVolume(options: { events?: AtelierEventBus; workspaceId?: string } = {}): Promise<{ arch: string; volume: string }> {
   const arch = await dockerArchitecture();
   let task = ensureTasks.get(arch);
   if (!task) {
@@ -110,13 +119,60 @@ async function ensureVSCodeExtensionsVolume(options: { events?: AtelierEventBus;
     });
     ensureTasks.set(arch, task);
   }
-  return await task;
+  return { arch, volume: await task };
+}
+
+async function copyVSCodeExtensionsVolume(source: string, target: string): Promise<void> {
+  const args = [
+    "run",
+    "--rm",
+    "--mount",
+    `type=volume,src=${source},dst=/source,readonly`,
+    "--mount",
+    `type=volume,src=${target},dst=/target`,
+    seedImage,
+    "sh",
+    "-lc",
+    "rm -rf /target/* /target/.[!.]* /target/..?*; cp -a /source/. /target/",
+  ];
+  await requireDocker(args);
+}
+
+async function ensureWorkspaceVSCodeExtensionsVolume(workspaceId: string, options: { events?: AtelierEventBus } = {}): Promise<string> {
+  const shared = await ensureSharedVSCodeExtensionsVolume({ events: options.events, workspaceId });
+  const volume = workspaceExtensionsVolumeName(workspaceId, shared.arch);
+  if (await volumeExists(volume)) return volume;
+  await requireDocker([
+    "volume", "create",
+    "--label", "com.atelier.type=vscode-extensions-workspace",
+    "--label", `com.atelier.namespace=${namespace()}`,
+    "--label", `com.atelier.workspace-id=${workspaceId}`,
+    "--label", `com.atelier.version=${extensionSetVersion}`,
+    volume,
+  ]);
+  try {
+    await copyVSCodeExtensionsVolume(shared.volume, volume);
+  } catch (error) {
+    await runDocker(["volume", "rm", "-f", volume]).catch(() => undefined);
+    throw error;
+  }
+  return volume;
+}
+
+async function deleteWorkspaceVSCodeExtensionsVolume(volume: string): Promise<void> {
+  await runDocker(["volume", "rm", "-f", volume]);
 }
 
 export function registerVSCodeEvents(events: AtelierEventBus): void {
   events.on("workspace_plan_prepare", async ({ workspaceId, plan }) => {
-    const source = await ensureVSCodeExtensionsVolume({ events, workspaceId });
+    const source = await ensureWorkspaceVSCodeExtensionsVolume(workspaceId, { events });
     await events.emit("workspace_provision_step", { workspaceId, id: "vscode.extensions", label: "Prepare VS Code extensions", parentId: "workspace.plan", status: "done" });
-    plan.mounts.push({ type: "volume", source, target: extensionsMountPath, readonly: true });
+    plan.mounts.push({ type: "volume", source, target: extensionsMountPath });
+    plan.initScripts.push(`chown -R atelier:atelier ${extensionsMountPath}`);
+    plan.cleanup.push(() => deleteWorkspaceVSCodeExtensionsVolume(source));
+  });
+  events.on("workspace_deleted", async ({ workspaceId }) => {
+    const arch = await dockerArchitecture();
+    await deleteWorkspaceVSCodeExtensionsVolume(workspaceExtensionsVolumeName(workspaceId, arch));
   });
 }
