@@ -46,6 +46,7 @@ RUN apt-get update \
       ca-certificates \
       git \
       git-lfs \
+      gosu \
       openssh-client \
       tmux \
  && rm -rf /var/lib/apt/lists/*
@@ -62,9 +63,13 @@ ENV HOST=0.0.0.0
 ENV PORT=3000
 ENV ATELIER_COMMIT_ID=${ATELIER_COMMIT_ID}
 ENV ATELIER_COMMIT_DESCRIPTION=${ATELIER_COMMIT_DESCRIPTION}
+ENV ATELIER_NAMESPACE=default
+ENV ATELIER_WORKSPACE_IMAGE_CONTEXT=/data/atelier/workspace-image-context
 
 COPY --from=build /app /app
+RUN chmod 755 /app/apps/web/docker-entrypoint.sh
 
 EXPOSE 3000
 
+ENTRYPOINT ["/app/apps/web/docker-entrypoint.sh"]
 CMD ["bun", "run", "apps/web/src/server/main.ts"]

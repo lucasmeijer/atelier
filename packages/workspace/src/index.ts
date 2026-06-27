@@ -36,7 +36,7 @@ export interface WorkspaceCommandOptions { workdir?: string; user?: "atelier" | 
 export interface DeleteWorkspaceOptions { force?: boolean; events?: AtelierEventBus }
 export interface CreateWorkspaceOptions { id?: string; events?: AtelierEventBus; sourceRepositoryId?: string; sourceRepositoryName?: string; context?: WorkspaceCreationContext }
 
-function namespace(): string { return process.env.ATELIER_NAMESPACE || "default"; }
+function namespace(): string { return process.env.ATELIER_NAMESPACE || "host"; }
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }
 export function workspaceContainerName(id: string): string { return `atelier-${id}`; }
 async function workspacePublishHost(): Promise<string> {
@@ -145,7 +145,10 @@ su atelier -c ${shellQuote("git config --global credential.helper '!/usr/local/b
 
 function hostUserEnv(): Record<string, string> {
   if (typeof process.getuid !== "function" || typeof process.getgid !== "function") throw new AtelierCoreError("unsupported_platform", "workspace containers require a POSIX host uid/gid");
-  return { ATELIER_HOST_UID: String(process.getuid()), ATELIER_HOST_GID: String(process.getgid()) };
+  const uid = process.getuid();
+  const gid = process.getgid();
+  if (uid === 0 || gid === 0) throw new AtelierCoreError("unsupported_root_user", "workspace containers require a non-root Atelier process");
+  return { ATELIER_HOST_UID: String(uid), ATELIER_HOST_GID: String(gid) };
 }
 
 function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan {

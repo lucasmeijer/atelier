@@ -32,7 +32,7 @@ function repoRoot(): string {
 }
 
 function namespaceSlug(): string {
-  return (process.env.ATELIER_NAMESPACE || "default").replaceAll(/[^a-zA-Z0-9_.-]/g, "-");
+  return (process.env.ATELIER_NAMESPACE || "host").replaceAll(/[^a-zA-Z0-9_.-]/g, "-");
 }
 
 async function contextMetadata(contextDir: string): Promise<WorkspaceImageMetadata> {

@@ -8,7 +8,7 @@ function xdgDataHome(): string {
 }
 
 export function defaultDataDir(): string {
-  if (platform() === "darwin") return join(homedir(), "Library", "Application Support", "atelier");
-  if (platform() === "linux") return join(xdgDataHome(), "atelier");
-  return "/var/lib/atelier";
+  if (platform() === "darwin") return join(homedir(), "Library", "Application Support", "atelier-host");
+  if (platform() === "linux") return join(xdgDataHome(), "atelier-host");
+  return "/var/lib/atelier-host";
 }
