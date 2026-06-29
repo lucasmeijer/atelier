@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-atelier_image="ghcr.io/lucasmeijer/atelier:stable"
+atelier_repository="ghcr.io/lucasmeijer/atelier"
+atelier_channel="stable"
+atelier_image=""
 atelier_name="atelier"
 atelier_data_dir="/var/lib/atelier"
 atelier_port="80"
@@ -33,6 +35,71 @@ success() {
 fail() {
   printf 'error: %s\n' "$*" >&2
   exit 1
+}
+
+usage() {
+  cat <<'EOF'
+Usage: install-docker-linux.sh [options]
+
+Options:
+  --channel <stable|latest>  Atelier release channel to install (default: stable)
+  --image <image>            Exact Atelier image reference to install
+  -h, --help                 Show this help
+
+Examples:
+  curl -fsSL https://lucasmeijer.com/get-atelier | sudo bash
+  curl -fsSL https://lucasmeijer.com/get-atelier | sudo bash -s -- --channel latest
+  curl -fsSL https://lucasmeijer.com/get-atelier | sudo bash -s -- --image ghcr.io/lucasmeijer/atelier:v0.1.0
+EOF
+}
+
+parse_args() {
+  image_specified=0
+  channel_specified=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --channel)
+        [ "$#" -ge 2 ] || fail "--channel requires a value"
+        atelier_channel="$2"
+        channel_specified=1
+        shift 2
+        ;;
+      --channel=*)
+        atelier_channel="${1#--channel=}"
+        channel_specified=1
+        shift
+        ;;
+      --image)
+        [ "$#" -ge 2 ] || fail "--image requires a value"
+        atelier_image="$2"
+        image_specified=1
+        shift 2
+        ;;
+      --image=*)
+        atelier_image="${1#--image=}"
+        image_specified=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        fail "unknown option: $1"
+        ;;
+    esac
+  done
+
+  [ "$image_specified" -eq 0 ] || [ "$channel_specified" -eq 0 ] || fail "--image and --channel cannot be used together"
+  if [ "$image_specified" -eq 0 ]; then
+    case "$atelier_channel" in
+      stable|latest) ;;
+      *) fail "unsupported channel: $atelier_channel (expected stable or latest)" ;;
+    esac
+    atelier_image="$atelier_repository:$atelier_channel"
+  fi
+  [ -n "$atelier_image" ] || fail "image reference cannot be empty"
 }
 
 require_linux() {
@@ -137,7 +204,10 @@ install_atelier() {
 }
 
 main() {
+  parse_args "$@"
+
   log "${bold}Installing Atelier${reset}"
+  log "Image: $atelier_image"
   log ""
 
   require_linux
