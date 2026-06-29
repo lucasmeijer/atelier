@@ -25,9 +25,15 @@ export function parseContainerIdFromCgroup(text: string): string | undefined {
   return undefined;
 }
 
+export function parseContainerIdFromMountInfo(text: string): string | undefined {
+  const match = text.match(/\/containers\/([0-9a-f]{64})\/(?:hostname|hosts|resolv\.conf)(?:\s|$)/);
+  return match?.[1];
+}
+
 export async function ownContainerId(): Promise<string | undefined> {
   const cgroup = await readFile("/proc/self/cgroup", "utf8").catch(() => "");
-  return parseContainerIdFromCgroup(cgroup) ?? hostname();
+  const mountInfo = await readFile("/proc/self/mountinfo", "utf8").catch(() => "");
+  return parseContainerIdFromCgroup(cgroup) ?? parseContainerIdFromMountInfo(mountInfo) ?? hostname();
 }
 
 export interface DockerInspect {

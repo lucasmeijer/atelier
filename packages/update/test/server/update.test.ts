@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseContainerIdFromCgroup, pullStableImage, replacementCreateArgs, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
+import { parseContainerIdFromCgroup, parseContainerIdFromMountInfo, pullStableImage, replacementCreateArgs, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
 import { createUpdateRouteHandler, UpdateManager } from "../../src/server/index.ts";
 import { parseWwwAuthenticate, selectManifestFromIndex, fetchStableImageMetadata } from "../../src/server/registry.ts";
 import { fetchReleaseNotes, releaseNoteFilenames, renderMarkdown } from "../../src/server/release-notes.ts";
@@ -17,6 +17,11 @@ describe("self container parsing", () => {
 
   test("returns undefined outside a container", () => {
     expect(parseContainerIdFromCgroup("0::/user.slice/user-501.slice/session.scope\n")).toBeUndefined();
+  });
+
+  test("parses container id from mountinfo when cgroup v2 is namespaced", () => {
+    const id = "c".repeat(64);
+    expect(parseContainerIdFromMountInfo(`451 439 8:1 /var/lib/docker/containers/${id}/hostname /etc/hostname rw,relatime - ext4 /dev/sda1 rw\n`)).toBe(id);
   });
 });
 
