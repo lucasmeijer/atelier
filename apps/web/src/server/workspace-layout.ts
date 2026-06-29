@@ -32,8 +32,8 @@ export interface WorkspaceLayoutStore {
   setActiveTab(workspaceId: string, groupId: string, tab: string): void;
   /** Place a newly available tab into a group and activate it. */
   placeNewTab(workspaceId: string, tabKeys: string[], groupId: string, tabKey: string): void;
-  /** Ensure a tab is visible and active in a group that contains no agent tabs. */
-  ensureTabInAgentFreeGroup(workspaceId: string, tabKeys: string[], tabKey: string): { groupId: string; moved: boolean; createdGroup: boolean } | undefined;
+  /** Ensure a tab is visible and active in the preview group: the first group with no agent tabs, creating one if needed. */
+  ensureTabInPreviewGroup(workspaceId: string, tabKeys: string[], tabKey: string): { groupId: string; moved: boolean; createdGroup: boolean } | undefined;
   delete(workspaceId: string): void;
 }
 
@@ -165,7 +165,7 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
       group.activeTab = tabKey;
     },
 
-    ensureTabInAgentFreeGroup(workspaceId, tabKeys, tabKey) {
+    ensureTabInPreviewGroup(workspaceId, tabKeys, tabKey) {
       if (!tabKeys.includes(tabKey)) return undefined;
       const layout = normalize(workspaceId, tabKeys);
       layout.closedTabs = (layout.closedTabs ?? []).filter((tab) => tab !== tabKey);

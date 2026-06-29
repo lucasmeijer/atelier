@@ -38,7 +38,7 @@ export const vscodeWorkspaceModule: WorkspaceModule = {
     id: "vscode.open",
     async execute({ workspaceId, tabKeys }) {
       const existing = (await tabKeys()).find((key) => key.startsWith("vscode:"));
-      return { createdTabKey: existing ?? vscodeTabKey(createWorkspaceVSCodeTab(workspaceId).title) };
+      return { createdTabKey: existing ?? vscodeTabKey(createWorkspaceVSCodeTab(workspaceId).title), tabPlacement: "preview-group" };
     },
   }],
   tabs: [{

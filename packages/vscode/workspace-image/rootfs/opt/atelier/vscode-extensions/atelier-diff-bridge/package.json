@@ -1,0 +1,24 @@
+{
+  "name": "atelier-diff-bridge",
+  "displayName": "Atelier Diff Bridge",
+  "description": "Receives Atelier commands and opens focused VS Code diff snippets.",
+  "version": "0.0.1",
+  "publisher": "atelier",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "extensionKind": ["workspace"],
+  "activationEvents": [
+    "onCommand:atelier.openDiffSnippet"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "atelier.openDiffSnippet",
+        "title": "Atelier: Open Diff Snippet"
+      }
+    ]
+  }
+}

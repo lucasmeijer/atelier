@@ -1,15 +1,12 @@
 import type { AtelierEventBus } from "@atelier/core";
+import type { WorkspaceLayoutPlacementController } from "@atelier/shared";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { createWorkspaceBrowserTab, listWorkspaceBrowserTabs, setWorkspaceBrowserTarget } from "./state.ts";
 
-export interface PreviewBrowserLayoutController {
-  ensureTabInAgentFreeGroup(workspaceId: string, tabKeys: string[], tabKey: string): { groupId: string; moved: boolean; createdGroup: boolean } | undefined;
-}
-
 export interface CreateOrOpenPreviewBrowserToolDeps {
   getTabKeys(): Promise<string[]>;
-  layouts: PreviewBrowserLayoutController;
+  layouts: WorkspaceLayoutPlacementController;
   events?: AtelierEventBus;
 }
 
@@ -26,7 +23,7 @@ export function createOrOpenPreviewBrowserTool(workspaceId: string, deps: Create
     execute: async (_toolCallId: string, params: { url: string }) => {
       const browserTab = listWorkspaceBrowserTabs(workspaceId)[0] ?? createWorkspaceBrowserTab(workspaceId);
       const tab = setWorkspaceBrowserTarget(workspaceId, browserTab.key, params.url) ?? browserTab;
-      const placement = deps.layouts.ensureTabInAgentFreeGroup(workspaceId, await deps.getTabKeys(), browserTab.key);
+      const placement = deps.layouts.ensureTabInPreviewGroup(workspaceId, await deps.getTabKeys(), browserTab.key);
       await deps.events?.emit("workspace_tabs_changed", { workspaceId });
       const details = {
         tab: browserTab.key,

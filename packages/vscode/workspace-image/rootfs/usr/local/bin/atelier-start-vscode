@@ -32,12 +32,9 @@ set -- \
   --default-folder "${ATELIER_VSCODE_DEFAULT_FOLDER:-/work}" \
   --server-data-dir "$server_data_dir"
 
-if [ -d "$extensions_dir" ]; then
-  export VSCODE_EXTENSIONS="$extensions_dir"
-fi
-
 if [ -n "$server_bin" ]; then
-  exec "$server_bin" "$@"
+  exec "$server_bin" "$@" --extensions-dir "$extensions_dir"
 fi
 
+export VSCODE_EXTENSIONS="$extensions_dir"
 exec code serve-web "$@"

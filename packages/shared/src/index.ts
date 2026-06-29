@@ -78,8 +78,25 @@ export interface StaticFileContribution {
   contentType: string;
 }
 
+export type WorkspaceTabPlacement = "active-group" | "preview-group";
+
+export interface WorkspaceTabPlacementResult {
+  groupId: string;
+  moved: boolean;
+  createdGroup: boolean;
+}
+
+export interface WorkspaceLayoutPlacementController {
+  /**
+   * Ensure a tab is visible and active in the preview layout group: the first
+   * group without an agent tab, creating a new group when every group has one.
+   */
+  ensureTabInPreviewGroup(workspaceId: string, tabKeys: string[], tabKey: string): WorkspaceTabPlacementResult | undefined;
+}
+
 export interface WorkspaceModuleCommandResult {
   createdTabKey?: string;
+  tabPlacement?: WorkspaceTabPlacement;
   streamHtml?: string;
 }
 
@@ -87,6 +104,7 @@ export interface WorkspaceModuleCommandContext {
   workspaceId: string;
   events?: unknown;
   tabKeys(): Promise<string[]>;
+  layouts: WorkspaceLayoutPlacementController;
 }
 
 export interface WorkspaceModuleCommandHandler {

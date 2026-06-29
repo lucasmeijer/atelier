@@ -25,7 +25,7 @@ import {
 } from "@atelier/projects";
 import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
-import { atelierName, domId, escapeHtml, turboStream, turboStreamResponse, type GlobalSidebarContributionRegistry, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceRowContributionRegistry, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
+import { atelierName, domId, escapeHtml, turboStream, turboStreamResponse, type GlobalSidebarContributionRegistry, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleCommandResult, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceRowContributionRegistry, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
 import type { StreamHub } from "./stream-hub.ts";
 import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
 import type { WebPreferenceStore } from "./preferences.ts";
@@ -1115,21 +1115,30 @@ ${moduleStylesHtml()}
     return workspaceModules.flatMap((module) => module.tabs ?? []);
   }
 
-  async function executeWorkspaceCommand(workspaceId: string, commandId: string): Promise<{ createdTabKey?: string; streamHtml?: string }> {
+  async function executeWorkspaceCommand(workspaceId: string, commandId: string): Promise<WorkspaceModuleCommandResult> {
     await assertWorkspaceCommandExists(workspaceId, commandId);
     const command = workspaceModuleCommands().find((candidate) => candidate.id === commandId);
     if (!command) throw new AtelierCoreError("command_not_implemented", `workspace command not implemented: ${commandId}`);
-    return await command.execute({ workspaceId, events: deps.events, tabKeys: () => tabKeysFor(workspaceId) });
+    return await command.execute({ workspaceId, events: deps.events, tabKeys: () => tabKeysFor(workspaceId), layouts });
   }
 
   function workspaceGroupsTurboStream(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {
     return turboReplaceStream(workspaceGroupsId(workspaceId), renderWorkspaceGroups(workspaceId, tabs, attachments));
   }
 
+  function placeCommandTab(workspaceId: string, tabKeys: string[], result: WorkspaceModuleCommandResult, fallbackGroupId?: string): void {
+    if (!result.createdTabKey) return;
+    if (result.tabPlacement === "preview-group") {
+      layouts.ensureTabInPreviewGroup(workspaceId, tabKeys, result.createdTabKey);
+      return;
+    }
+    if (fallbackGroupId) layouts.placeNewTab(workspaceId, tabKeys, fallbackGroupId, result.createdTabKey);
+  }
+
   async function workspaceGroupCommandEndpoint(workspaceId: string, groupId: string, commandId: string): Promise<Response> {
     const result = await executeWorkspaceCommand(workspaceId, commandId);
     const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
-    if (result.createdTabKey) layouts.placeNewTab(workspaceId, tabs.map((tab) => tab.key), groupId, result.createdTabKey);
+    placeCommandTab(workspaceId, tabs.map((tab) => tab.key), result, groupId);
     return turboStreamResponse(`${workspaceGroupsTurboStream(workspaceId, tabs, attachments)}${result.streamHtml ?? ""}`);
   }
 
@@ -1140,7 +1149,7 @@ ${moduleStylesHtml()}
     const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
     const tabKeys = tabs.map((tab) => tab.key);
     const groupId = layouts.normalize(workspaceId, tabKeys).groups.find((group) => group.activeTab)?.id;
-    if (groupId) layouts.placeNewTab(workspaceId, tabKeys, groupId, result.createdTabKey);
+    placeCommandTab(workspaceId, tabKeys, result, groupId);
     return turboStreamResponse(`${workspaceGroupsTurboStream(workspaceId, tabs, attachments)}${result.streamHtml ?? ""}`);
   }
 

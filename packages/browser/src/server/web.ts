@@ -27,7 +27,7 @@ export const browserWorkspaceModule: WorkspaceModule = {
   commands: [{
     id: browserCreateCommandId,
     execute({ workspaceId }) {
-      return { createdTabKey: createWorkspaceBrowserTab(workspaceId).key };
+      return { createdTabKey: createWorkspaceBrowserTab(workspaceId).key, tabPlacement: "preview-group" };
     },
   }],
   routes: [{

@@ -364,7 +364,7 @@ describe("web app contracts", () => {
     expect(after.groups[0]!.tabs).toEqual(["b", "a"]);
   });
 
-  test("preview browser layout helper keeps browser in an agent-free group", () => {
+  test("preview group helper keeps browser in the first non-agent group", () => {
     const layouts = createWorkspaceLayoutStore();
     const tabs = ["agent:Agent 1", "browser", "notes"];
     const initial = layouts.normalize("w", tabs);
@@ -372,7 +372,7 @@ describe("web app contracts", () => {
     const right = layouts.normalize("w", tabs).groups[1]!;
     layouts.moveTab("w", tabs, { tab: "notes", toGroup: right.id });
 
-    const result = layouts.ensureTabInAgentFreeGroup("w", tabs, "browser");
+    const result = layouts.ensureTabInPreviewGroup("w", tabs, "browser");
 
     const after = layouts.normalize("w", tabs);
     expect(result?.moved).toBe(true);
@@ -381,12 +381,12 @@ describe("web app contracts", () => {
     expect(right.tabs).not.toContain("agent:Agent 1");
   });
 
-  test("preview browser layout helper creates an agent-free group when required", () => {
+  test("preview group helper creates a non-agent group when required", () => {
     const layouts = createWorkspaceLayoutStore();
     const tabs = ["agent:Agent 1", "browser"];
     layouts.normalize("w", tabs);
 
-    const result = layouts.ensureTabInAgentFreeGroup("w", tabs, "browser");
+    const result = layouts.ensureTabInPreviewGroup("w", tabs, "browser");
 
     const after = layouts.normalize("w", tabs);
     expect(result?.moved).toBe(true);
@@ -396,12 +396,12 @@ describe("web app contracts", () => {
     expect(after.groups[1]!.activeTab).toBe("browser");
   });
 
-  test("preview browser layout helper reopens a closed browser tab", () => {
+  test("preview group helper reopens a closed browser tab", () => {
     const layouts = createWorkspaceLayoutStore();
     const tabs = ["agent:Agent 1", "browser"];
     layouts.closeTab("w", tabs, "browser");
 
-    const result = layouts.ensureTabInAgentFreeGroup("w", tabs, "browser");
+    const result = layouts.ensureTabInPreviewGroup("w", tabs, "browser");
 
     const after = layouts.normalize("w", tabs);
     expect(result?.createdGroup).toBe(true);
