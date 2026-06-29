@@ -47,12 +47,14 @@ RUN apt-get update \
       git \
       git-lfs \
       gosu \
+      libcap2-bin \
       openssh-client \
       tmux \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=bun-dist /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=bun-dist /usr/local/bin/bunx /usr/local/bin/bunx
+RUN setcap cap_net_bind_service=+ep /usr/local/bin/bun
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
 

@@ -25,6 +25,12 @@ const hostname = process.env.HOST ?? "0.0.0.0";
 const allowPortFallback = process.env.ATELIER_PORT_FALLBACK === "1";
 
 const authPassword = process.env.ATELIER_PASSWORD ?? "";
+
+function displayUrl(host: string, port: number): string {
+  const displayHost = host === "0.0.0.0" ? "127.0.0.1" : host;
+  const formattedHost = displayHost.includes(":") && !displayHost.startsWith("[") ? `[${displayHost}]` : displayHost;
+  return `http://${formattedHost}${port === 80 ? "" : `:${port}`}`;
+}
 const authCookieName = "atelier_session";
 const authCookieMaxAgeSeconds = 60 * 60 * 24 * 30;
 
@@ -451,4 +457,4 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
 
 if (serverPort === 0) throw new Error(`No available port found from ${requestedPort} through ${requestedPort + maxPortAttempts - 1}`);
 
-console.log(`${atelierName} web listening on http://${hostname}:${serverPort}`);
+console.log(`${atelierName} is available at ${displayUrl(hostname, serverPort)}`);
