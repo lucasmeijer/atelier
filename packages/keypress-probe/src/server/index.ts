@@ -36,12 +36,12 @@ function renderKeypressProbe(): string {
 
 async function renderKeypressProbeSettings(): Promise<string> {
   const enabled = await isKeypressProbeEnabled();
-  return `<section class="settings-sec" id="${settingsSectionId}"><h2>Shortcut debug</h2><form id="settings_keypress_probe" class="settings-checkbox-form" method="post" action="${settingsPath}" data-controller="settings-checkbox" data-action="change->settings-checkbox#save submit->settings-checkbox#submit"><label class="settings-field settings-checkbox-field"><div><b>Enable keylogging probe</b><p>Shows a local, visible keyboard-event overlay in workspaces so you can debug why shortcuts are not firing. Events are not stored; browser, OS, and iframe-reserved shortcuts may never reach Atelier.</p></div><input class="settings-checkbox" type="checkbox" name="enabled" value="1"${enabled ? " checked" : ""}></label></form></section>`;
+  return `<section class="settings-sec settings-sec-keypress-probe" id="${settingsSectionId}"><h2>Shortcut probe</h2><form id="settings_keypress_probe" class="settings-checkbox-form" method="post" action="${settingsPath}" data-controller="settings-checkbox" data-action="change->settings-checkbox#save submit->settings-checkbox#submit"><label class="settings-field settings-checkbox-field"><div><b>Enable keylogging probe</b><p>Shows a local, visible keyboard-event overlay in workspaces so you can debug why shortcuts are not firing. Events are not stored; browser, OS, and iframe-reserved shortcuts may never reach Atelier.</p></div><input class="settings-checkbox" type="checkbox" name="enabled" value="1"${enabled ? " checked" : ""}></label></form></section>`;
 }
 
 const keypressProbeSettingsContribution: SettingsContribution = {
   id: "keypress-probe",
-  label: "Shortcut debug",
+  label: "Shortcut probe",
   order: 90,
   render: renderKeypressProbeSettings,
   async handleAction({ request, url }) {

@@ -14,7 +14,7 @@ import {
   type ConfiguredAgentModel,
   type PiAuthPrompt,
 } from "@atelier/agent/server";
-import { atelierName, domId, escapeHtml, turboStream, turboStreamResponse } from "@atelier/shared";
+import { domId, escapeHtml, turboStream, turboStreamResponse } from "@atelier/shared";
 import { clearGitIdentity, getGitIdentity, hasGitIdentity, setGitIdentity } from "@atelier/projects";
 import { listSettingsContributions, registerSettingsContribution } from "./registry.ts";
 import { workspaceModules } from "../workspace-modules.ts";
@@ -208,8 +208,10 @@ async function renderModelSetupSettings(): Promise<string> {
 }
 
 async function renderDevelopmentSettings(): Promise<string> {
-  const devTools = devSettingsEnabled() ? `<form class="settings-reset-form" method="post" action="/settings/workspaces/force-delete/flow" data-turbo="true"><button class="settings-reset-link danger" type="submit">force delete all workspaces</button></form>` : "";
-  return settingsSection("development", "Development settings", `<div class="settings-field"><div><b>Setup walkthrough</b><p>Reopen onboarding. It will be shown automatically until your git identity, GitHub, and a working favorite model are configured.</p></div><a class="settings-btn" href="/onboarding" data-turbo-frame="_top" data-turbo-stream="true">Replay</a></div><div class="settings-version">${escapeHtml(atelierName)} · settings prototype</div><form class="settings-reset-form" method="post" action="/settings/reset" data-turbo="true"><button class="settings-reset-link" type="submit" onclick="return confirm('Delete stored git identity, GitHub token, and all stored model provider credentials?')">delete all settings</button></form>${devTools}`);
+  const forceDeleteWorkspaces = devSettingsEnabled() ? `<form class="settings-reset-form" method="post" action="/settings/workspaces/force-delete/flow" data-turbo="true"><button class="settings-reset-link danger" type="submit">force delete all workspaces</button></form>` : "";
+  const keypressProbeSettings = await listSettingsContributions().find((contribution) => contribution.id === "keypress-probe")?.render() ?? "";
+  const resetSettings = `<form class="settings-reset-form" method="post" action="/settings/reset" data-turbo="true"><button class="settings-reset-link" type="submit" onclick="return confirm('Delete stored git identity, GitHub token, and all stored model provider credentials?')">delete all settings</button></form>`;
+  return `${settingsSection("development", "Development settings", "")}${keypressProbeSettings}<div class="settings-dev-actions">${resetSettings}${forceDeleteWorkspaces}</div>`;
 }
 
 function modelKey(model: { provider: string; id: string }): string {
@@ -299,11 +301,11 @@ for (const module of workspaceModules) {
 }
 
 export async function renderSettingsDialog(_active = "theme"): Promise<string> {
-  const contributions = listSettingsContributions();
+  const contributions = listSettingsContributions().filter((contribution) => contribution.id !== "keypress-probe");
   const sections = await Promise.all(contributions.map((contribution) => contribution.render()));
   return `<dialog id="settings_dialog" class="settings-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <div class="settings-sheet">
-      <main class="settings-main"><form method="dialog"><button class="settings-close" value="close">✕</button></form><div class="settings-title">Settings</div>${sections.join("")}<p class="settings-autosave-note">All changes are auto saved</p><div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>
+      <main class="settings-main"><form method="dialog"><button class="settings-close" value="close">✕</button></form><div class="settings-title">Settings</div>${sections.join("")}<div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>
     </div>
   </dialog>`;
 }
@@ -311,7 +313,7 @@ export async function renderSettingsDialog(_active = "theme"): Promise<string> {
 export async function renderDevelopmentSettingsDialog(): Promise<string> {
   return `<dialog id="settings_dialog" class="settings-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <div class="settings-sheet">
-      <main class="settings-main"><form method="dialog"><button class="settings-close" value="close">✕</button></form><div class="settings-title"><a class="settings-back-link" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">Settings</a></div>${await renderDevelopmentSettings()}</main>
+      <main class="settings-main settings-main-dev"><form method="dialog"><button class="settings-close" value="close">✕</button></form><div class="settings-title"><a class="settings-back-link" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">Settings</a></div>${await renderDevelopmentSettings()}</main>
     </div>
   </dialog>`;
 }
