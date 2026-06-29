@@ -32,9 +32,9 @@ export const browserWorkspaceModule: WorkspaceModule = {
   }],
   routes: [{
     async handle(request, url) {
-      const match = url.pathname.match(/^\/workspaces\/([^/]+)\/browser(?:\/([^/]+))?\/navigate$/);
+      const match = url.pathname.match(/^\/workspaces\/([^/]+)\/browser\/([^/]+)\/navigate$/);
       if (!match || request.method !== "POST") return undefined;
-      return await browserNavigateEndpoint(decodeURIComponent(match[1]!), match[2] ? decodeURIComponent(match[2]) : "browser", request);
+      return await browserNavigateEndpoint(decodeURIComponent(match[1]!), decodeURIComponent(match[2]!), request);
     },
   }],
   initialize(context) {
@@ -66,5 +66,5 @@ async function browserNavigateEndpoint(workspaceId: string, appKey: string, requ
   const formData = await request.formData();
   const tab = setWorkspaceBrowserTarget(workspaceId, appKey, String(formData.get("url") ?? ""));
   if (!tab) return new Response("browser tab not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
-  return new Response(renderBrowserFrame(workspaceId, appKey), { headers: { "content-type": "text/html; charset=utf-8" } });
+  return new Response(renderBrowserFrame(workspaceId, tab), { headers: { "content-type": "text/html; charset=utf-8" } });
 }

@@ -32,6 +32,7 @@ export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, re
 export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {
   const browserTab = getWorkspaceBrowserTab(app.workspaceId, app.appKey);
   if (!browserTab) throw new Error(`unknown workspace app: ${app.appKey}`);
+  if (!browserTab.targetUrl) throw new Error(`browser tab has no target url: ${app.appKey}`);
   const targetBase = new URL(browserTab.targetUrl);
   const target = new URL(requestUrl.pathname + requestUrl.search, targetBase);
 

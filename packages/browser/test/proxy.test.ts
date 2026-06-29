@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "../src/server/proxy.ts";
 import { renderBrowserFrame } from "../src/server/render.ts";
-import { normalizeBrowserUrl, setWorkspaceBrowserTarget } from "../src/server/state.ts";
+import { createWorkspaceBrowserTab, listWorkspaceBrowserTabs, normalizeBrowserUrl, setWorkspaceBrowserTarget } from "../src/server/state.ts";
+
+function browserApp(workspaceId: string): { appKey: string; workspaceId: string } {
+  const tab = createWorkspaceBrowserTab(workspaceId);
+  setWorkspaceBrowserTarget(workspaceId, tab.key, "http://localhost:3000/");
+  return { appKey: tab.key, workspaceId };
+}
 
 describe("browser proxy response patching", () => {
   test("rewrites localhost links and injects the browser bridge", async () => {
@@ -13,7 +19,7 @@ describe("browser proxy response patching", () => {
     });
 
     const patched = await patchBrowserWorkspaceAppResponse(
-      { appKey: "browser", workspaceId: "work_1" },
+      browserApp("work_1"),
       response,
       new Request("https://browser--work_1.localhost/start"),
     );
@@ -25,10 +31,13 @@ describe("browser proxy response patching", () => {
   });
 
   test("browser state and iframe source preserve hash fragments", () => {
-    expect(normalizeBrowserUrl("")).toBe("http://localhost:3000/");
+    expect(listWorkspaceBrowserTabs("empty_work")).toEqual([]);
+    expect(normalizeBrowserUrl("")).toBe("");
     expect(normalizeBrowserUrl("localhost:3000/page#section")).toBe("http://localhost:3000/page#section");
-    setWorkspaceBrowserTarget("hash_work", "browser", "http://localhost:3000/page?x=1#section");
-    expect(renderBrowserFrame("hash_work", "browser")).toContain(`data-workspace-app-frame-initial-path-value="/page?x=1#section"`);
+    const tab = createWorkspaceBrowserTab("hash_work");
+    expect(renderBrowserFrame("hash_work", tab)).not.toContain("data-controller=\"workspace-app-frame\"");
+    setWorkspaceBrowserTarget("hash_work", tab.key, "http://localhost:3000/page?x=1#section");
+    expect(renderBrowserFrame("hash_work", tab)).toContain(`data-workspace-app-frame-initial-path-value="/page?x=1#section"`);
   });
 
   test("rejects browser app keys that do not belong to a workspace tab", async () => {
@@ -44,7 +53,7 @@ describe("browser proxy response patching", () => {
     });
 
     const patched = await patchBrowserWorkspaceAppResponse(
-      { appKey: "browser", workspaceId: "ports_work" },
+      browserApp("ports_work"),
       response,
       new Request("https://browser--ports.localhost/current"),
     );
@@ -65,7 +74,7 @@ describe("browser proxy response patching", () => {
     });
 
     const patched = await patchBrowserWorkspaceAppResponse(
-      { appKey: "browser", workspaceId: "redirect_work" },
+      browserApp("redirect_work"),
       response,
       new Request("https://browser--redirect.localhost/current"),
     );

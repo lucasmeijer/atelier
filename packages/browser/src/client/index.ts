@@ -108,13 +108,11 @@ function createBrowserAddressController(Controller: StimulusControllerConstructo
       return this.element.closest(".browser-shell")?.querySelector<HTMLIFrameElement>("iframe") ?? null;
     }
 
-    private targetOrigin(): string {
+    private targetOrigin(): string | undefined {
       if (this.hasTargetOriginValue && this.targetOriginValue) return this.targetOriginValue;
       const current = this.input()?.value;
-      if (current) {
-        try { return new URL(current).origin; } catch {}
-      }
-      return "http://localhost:3000/";
+      if (!current) return undefined;
+      try { return new URL(current).origin; } catch { return undefined; }
     }
 
     private isTrustedFrameOrigin(origin: string, iframe: HTMLIFrameElement): boolean {
@@ -129,11 +127,12 @@ function createBrowserAddressController(Controller: StimulusControllerConstructo
 
 function normalizeBrowserInput(value: string): string {
   const trimmed = value.trim();
-  if (!trimmed) return "http://localhost:3000/";
+  if (!trimmed) return "";
   return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) ? trimmed : `http://${trimmed}`;
 }
 
-function mapProxyUrlToBrowserUrl(proxyHref: string, targetOrigin: string): string | undefined {
+function mapProxyUrlToBrowserUrl(proxyHref: string, targetOrigin: string | undefined): string | undefined {
+  if (!targetOrigin) return undefined;
   try {
     const proxy = new URL(proxyHref);
     const target = new URL(targetOrigin);
