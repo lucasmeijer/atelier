@@ -1,5 +1,6 @@
 import { dirname, posix } from "node:path";
 import { shellQuote, type AtelierEventBus } from "@atelier/core";
+import type { AgentWorkspaceCreateRequest, AgentWorkspaceCreateResult } from "@atelier/shared";
 import { execWorkspaceCommand, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import {
   createEditToolDefinition,
@@ -84,6 +85,32 @@ export interface DeleteCurrentWorkspaceResult {
   deleted: boolean;
   blocked: boolean;
   details?: unknown;
+}
+
+export function createWorkspaceTool(createWorkspace: (request: AgentWorkspaceCreateRequest) => Promise<AgentWorkspaceCreateResult>): ToolDefinition<any, any> {
+  return defineTool({
+    name: "create_workspace",
+    label: "Create Workspace",
+    description: "Create a new Atelier workspace.",
+    parameters: Type.Object({
+      seedWithCurrentProjectClone: Type.Boolean({
+        description: "Seed the new workspace with a fresh git clone of the same project remote and branch that this workspace was originally seeded with. Local changes in this workspace are not included unless they have been pushed.",
+      }),
+      title: Type.Optional(Type.String({
+        description: "Optional display title for the new workspace.",
+      })),
+      initialPrompt: Type.Optional(Type.String({
+        description: "Optional prompt to send to the default agent in the new workspace after it is created.",
+      })),
+    }),
+    execute: async (_toolCallId: string, params: AgentWorkspaceCreateRequest) => {
+      const result = await createWorkspace(params);
+      return {
+        content: [{ type: "text" as const, text: `Created workspace ${result.id}: ${result.url}` }],
+        details: { workspace: result },
+      };
+    },
+  });
 }
 
 export function createDeleteCurrentWorkspaceTool(workspaceId: string, deleteCurrentWorkspace: (force: boolean) => Promise<DeleteCurrentWorkspaceResult>): ToolDefinition<any, any> {

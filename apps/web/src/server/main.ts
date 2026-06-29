@@ -244,6 +244,7 @@ for (const module of workspaceModules) {
     layouts,
     getTabKeys: (workspaceId) => app.tabKeysFor(workspaceId),
     deleteCurrentWorkspace: (workspaceId, force) => app.deleteCurrentWorkspaceFromAgent(workspaceId, force),
+    createWorkspaceFromAgent: (workspaceId, request) => app.createWorkspaceFromAgent(workspaceId, request),
     registerSocketHandler: (handler) => socketHandlers.push(handler),
     registerWorkspaceAppHandler: (handler) => workspaceAppHandlers.push(handler),
     registerProvisioningHook: (hook) => provisioningHooks.push(hook),

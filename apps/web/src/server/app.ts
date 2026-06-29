@@ -23,9 +23,9 @@ import {
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceRepoMergeabilityResult,
 } from "@atelier/projects";
-import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext } from "@atelier/workspace";
+import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
-import { atelierName, domId, escapeHtml, turboStream, turboStreamResponse, type GlobalSidebarContributionRegistry, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleCommandResult, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceRowContributionRegistry, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
+import { atelierName, domId, escapeHtml, turboStream, turboStreamResponse, type AgentWorkspaceCreateRequest, type AgentWorkspaceCreateResult, type GlobalSidebarContributionRegistry, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleCommandResult, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceRowContributionRegistry, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
 import type { StreamHub } from "./stream-hub.ts";
 import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
 import type { WebPreferenceStore } from "./preferences.ts";
@@ -59,6 +59,7 @@ export interface WebApp {
   fetch(request: Request): Promise<Response>;
   tabKeysFor(workspaceId: string): Promise<string[]>;
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }>;
+  createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult>;
   workspaceRowContributions: WorkspaceRowContributionRegistry;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
 }
@@ -695,11 +696,12 @@ ${moduleStylesHtml()}
   // Create / delete / dismiss
   // ---------------------------------------------------------------------------
 
-  function startWorkspaceProvisioning(id: string, options: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext } = {}): void {
+  function startWorkspaceProvisioning(id: string, options: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext; title?: string } = {}): void {
     provisioning.seed(id);
     void (async () => {
       try {
         await deps.provisionWorkspace(id, { init: options.init, context: options.context });
+        if (options.title) await setWorkspaceTitle(id, options.title);
         registry.setPhase(id, "ready");
         await broadcastWorkspaceReady(id);
       } catch (error) {
@@ -715,18 +717,19 @@ ${moduleStylesHtml()}
     })();
   }
 
-  type WorkspaceCreateSource = { type: "empty" } | { type: "project"; project: ProjectSummary };
+  type WorkspaceCreateSource = { type: "empty" } | { type: "project"; project: ProjectSummary } | { type: "init"; init: WorkspaceInitInstruction };
   type WorkspaceCreateAgent = { initialPrompt?: string; model?: string; thinkingLevel?: string; attachmentDraft?: string };
 
-  function createWorkspaceFromCommand(command: { source: WorkspaceCreateSource; agent?: WorkspaceCreateAgent }): { id: string } {
+  function createWorkspaceFromCommand(command: { source: WorkspaceCreateSource; agent?: WorkspaceCreateAgent; title?: string }): { id: string } {
     const id = generateWorkspaceId();
-    const init = command.source.type === "project" ? projectWorkspaceInit(command.source.project) : undefined;
-    registry.add(id, null, init);
+    const init = command.source.type === "project" ? projectWorkspaceInit(command.source.project) : command.source.type === "init" ? command.source.init : undefined;
+    const title = command.title?.trim() ?? "";
+    registry.add(id, title || null, init);
     const initialPrompt = command.agent?.initialPrompt?.trim() ?? "";
     const context: WorkspaceCreationContext | undefined = initialPrompt
       ? { agent: { initialPrompt, model: command.agent?.model ?? "", thinkingLevel: command.agent?.thinkingLevel ?? "", attachmentDraft: command.agent?.attachmentDraft ?? "" } }
       : undefined;
-    startWorkspaceProvisioning(id, { ...(init !== undefined ? { init } : {}), ...(context ? { context } : {}) });
+    startWorkspaceProvisioning(id, { ...(init !== undefined ? { init } : {}), ...(context ? { context } : {}), ...(title ? { title } : {}) });
     return { id };
   }
 
@@ -819,6 +822,18 @@ ${moduleStylesHtml()}
     } catch (error) {
       return problemJsonResponse(error);
     }
+  }
+
+  async function createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult> {
+    const source: WorkspaceCreateSource = request.seedWithCurrentProjectClone
+      ? (() => {
+          const entry = registry.get(workspaceId);
+          if (!isGitProjectInit(entry?.init)) throw invalidArguments("current workspace was not seeded from a project git clone");
+          return { type: "init", init: entry.init };
+        })()
+      : { type: "empty" };
+    const { id } = createWorkspaceFromCommand({ source, title: request.title, agent: { initialPrompt: request.initialPrompt } });
+    return { id, url: `/workspaces/${encodeURIComponent(id)}`, phase: "starting" };
   }
 
   async function createProjectAgentWorkspaceEndpoint(projectId: string, request: Request): Promise<Response> {
@@ -1295,6 +1310,7 @@ ${moduleStylesHtml()}
   return {
     tabKeysFor,
     deleteCurrentWorkspaceFromAgent,
+    createWorkspaceFromAgent,
     workspaceRowContributions,
     globalSidebarContributions,
     async fetch(request) {

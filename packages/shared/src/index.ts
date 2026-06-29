@@ -170,6 +170,18 @@ export interface SettingsContribution {
   handleAction?(context: SettingsActionContext): Promise<Response | undefined>;
 }
 
+export interface AgentWorkspaceCreateRequest {
+  title?: string;
+  seedWithCurrentProjectClone: boolean;
+  initialPrompt?: string;
+}
+
+export interface AgentWorkspaceCreateResult {
+  id: string;
+  url: string;
+  phase: "starting";
+}
+
 export interface WorkspaceServerModuleContext {
   events: unknown;
   registry: {
@@ -182,6 +194,7 @@ export interface WorkspaceServerModuleContext {
   layouts: unknown;
   getTabKeys(workspaceId: string): Promise<string[]>;
   deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<unknown>;
+  createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult>;
   registerSocketHandler(handler: WorkspaceServerSocketHandler): void;
   registerWorkspaceAppHandler(handler: WorkspaceServerAppHandler): void;
   registerProvisioningHook(hook: WorkspaceServerProvisioningHook): void;
