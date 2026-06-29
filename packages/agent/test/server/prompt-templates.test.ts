@@ -1,16 +1,29 @@
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
-import { expandPromptTemplate } from "../../src/server/prompt-templates.ts";
+import { expandPromptTemplateText, loadPromptTemplatesFromRoot } from "../../src/server/prompt-templates.ts";
 
 describe("prompt templates", () => {
-  test("expands /land into the landing prompt", () => {
-    expect(expandPromptTemplate("/land")).toBe("commit and push your work to origin/main.  when succesful, use the delete_current_workspace toolcall to discard this session and the associated atelier execution environment");
+  test("loads .atelier and .pi prompt templates", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atelier-prompts-"));
+    await mkdir(join(root, ".atelier/prompts"), { recursive: true });
+    await mkdir(join(root, ".pi/prompts"), { recursive: true });
+    await writeFile(join(root, ".atelier/prompts/land.md"), `---\ndescription: Land the workspace\nargument-hint: "[branch]"\n---\ncommit to ${"$"}{1:-main}`);
+    await writeFile(join(root, ".pi/prompts/review.md"), "Review $ARGUMENTS");
+
+    const templates = await loadPromptTemplatesFromRoot(root);
+    expect(templates.map((template) => template.trigger)).toEqual(["/land", "/review"]);
+    expect(templates.find((template) => template.name === "land")?.argumentHint).toBe("[branch]");
   });
 
-  test("matches template triggers after trimming whitespace", () => {
-    expect(expandPromptTemplate("  /land\n")).toBe(expandPromptTemplate("/land"));
+  test("expands triggers with arguments", () => {
+    const templates = [{ name: "land", trigger: "/land", description: "Land", argumentHint: "[branch]", prompt: 'push to ${1:-main}: $@' }];
+    expect(expandPromptTemplateText("/land", templates)).toBe("push to main: ");
+    expect(expandPromptTemplateText("/land release candidate", templates)).toBe("push to release: release candidate");
   });
 
   test("leaves normal prompts unchanged", () => {
-    expect(expandPromptTemplate("please run tests")).toBe("please run tests");
+    expect(expandPromptTemplateText("please run tests", [])).toBe("please run tests");
   });
 });

@@ -582,6 +582,147 @@ function createAgentHtmlPreviewController(Controller: StimulusControllerConstruc
 }
 
 // ---------------------------------------------------------------------------
+// agent-prompt-templates: slash-command autocomplete for repository templates
+// ---------------------------------------------------------------------------
+
+function createAgentPromptTemplatesController(Controller: StimulusControllerConstructor) {
+  return class AgentPromptTemplatesController extends Controller {
+    static values = { url: String };
+    static targets = ["input", "menu"];
+    declare readonly element: HTMLElement;
+    declare readonly urlValue: string;
+    declare readonly inputTarget: HTMLTextAreaElement;
+    declare readonly menuTarget: HTMLElement;
+    private requestId = 0;
+
+    connect(): void {
+      this.menuTarget.addEventListener("click", this.click);
+      this.menuTarget.addEventListener("pointerover", this.pointerover);
+    }
+
+    disconnect(): void {
+      this.menuTarget.removeEventListener("click", this.click);
+      this.menuTarget.removeEventListener("pointerover", this.pointerover);
+    }
+
+    input(): void {
+      void this.refresh();
+    }
+
+    keydown(event: KeyboardEvent): void {
+      if (this.menuTarget.hidden) {
+        if (event.key === "/") requestAnimationFrame(() => void this.refresh());
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.close();
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        this.move(event.key === "ArrowDown" ? 1 : -1);
+        return;
+      }
+      if (event.key.toLowerCase() === "f" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+        const active = this.activeOption();
+        if (!active) return;
+        event.preventDefault();
+        active.dispatchEvent(new KeyboardEvent("keydown", { key: "f", bubbles: true, cancelable: true }));
+        return;
+      }
+      if (event.key === "Tab" || event.key === "Enter") {
+        const active = this.activeOption();
+        if (!active) return;
+        event.preventDefault();
+        this.insert(active);
+      }
+    }
+
+    private readonly click = (event: Event): void => {
+      const option = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(".agent-template-option") : null;
+      if (!option) return;
+      event.preventDefault();
+      this.insert(option);
+    };
+
+    private readonly pointerover = (event: Event): void => {
+      const option = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(".agent-template-option") : null;
+      if (option) this.activate(option);
+    };
+
+    private commandQuery(): string | undefined {
+      const input = this.inputTarget;
+      const before = input.value.slice(0, input.selectionStart ?? 0);
+      const after = input.value.slice(input.selectionEnd ?? 0);
+      if (after && !/^\s/.test(after)) return undefined;
+      const match = before.match(/^\/([^\s]*)$/);
+      return match ? match[1] : undefined;
+    }
+
+    private async refresh(): Promise<void> {
+      const query = this.commandQuery();
+      if (query === undefined) {
+        this.close();
+        return;
+      }
+      const id = ++this.requestId;
+      const url = new URL(this.urlValue, window.location.href);
+      url.searchParams.set("q", query);
+      const html = await fetch(url, { headers: { Accept: "text/html" } }).then((response) => response.text());
+      if (id !== this.requestId) return;
+      this.menuTarget.innerHTML = html;
+      this.menuTarget.hidden = false;
+    }
+
+    private close(): void {
+      this.requestId++;
+      this.menuTarget.hidden = true;
+      this.menuTarget.replaceChildren();
+    }
+
+    private options(): HTMLElement[] {
+      return [...this.menuTarget.querySelectorAll<HTMLElement>(".agent-template-option")];
+    }
+
+    private activeOption(): HTMLElement | undefined {
+      return this.menuTarget.querySelector<HTMLElement>(".agent-template-option.active") ?? this.options()[0];
+    }
+
+    private activate(option: HTMLElement): void {
+      for (const candidate of this.options()) {
+        const active = candidate === option;
+        candidate.classList.toggle("active", active);
+        candidate.setAttribute("aria-selected", active ? "true" : "false");
+      }
+    }
+
+    private move(delta: number): void {
+      const options = this.options();
+      if (options.length === 0) return;
+      const current = this.activeOption();
+      const index = current ? options.indexOf(current) : 0;
+      this.activate(options[(index + delta + options.length) % options.length]);
+    }
+
+    private insert(option: HTMLElement): void {
+      const trigger = option.dataset.templateTrigger;
+      if (!trigger) return;
+      const input = this.inputTarget;
+      const end = input.selectionEnd ?? 0;
+      const before = input.value.slice(0, input.selectionStart ?? 0);
+      const after = input.value.slice(end);
+      const start = before.match(/^\/[^\s]*$/)?.index ?? 0;
+      input.value = `${input.value.slice(0, start)}${trigger} ${after}`;
+      const cursor = start + trigger.length + 1;
+      input.setSelectionRange(cursor, cursor);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      this.close();
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
 // agent-attachments: drag & drop + uploads with progress chips
 // ---------------------------------------------------------------------------
 
@@ -740,6 +881,7 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-fullscreen", createAgentFullscreenController(Controller));
     application.register("agent-html-preview", createAgentHtmlPreviewController(Controller));
     application.register("agent-notice", createAgentNoticeController(Controller));
+    application.register("agent-prompt-templates", createAgentPromptTemplatesController(Controller));
     application.register("agent-proxy", createAgentProxyController(Controller));
     application.register("agent-term", createAgentTermController(Controller));
 

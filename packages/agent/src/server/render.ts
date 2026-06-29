@@ -164,8 +164,13 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
   const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
   const actionAttrs = ["turbo:submit-end->agent-pane#submitted", "click->agent-pane#focusInput"];
   const targetAttrs = options.formTarget ? ` data-agent-pane-target="form"` : "";
-  const inputTarget = options.formTarget ? ` data-agent-pane-target="input"` : "";
-  const inputActions = options.formTarget ? ` data-action="keydown->agent-pane#inputKeydown input->agent-pane#autosize"` : "";
+  const promptTemplateEnabled = Boolean(options.ctx);
+  const inputTarget = [options.formTarget ? `data-agent-pane-target="input"` : "", promptTemplateEnabled ? `data-agent-prompt-templates-target="input"` : ""].filter(Boolean).join(" ");
+  const inputActionsList = [
+    ...(options.formTarget ? ["keydown->agent-pane#inputKeydown", "input->agent-pane#autosize"] : []),
+    ...(promptTemplateEnabled ? ["keydown->agent-prompt-templates#keydown", "input->agent-prompt-templates#input"] : []),
+  ];
+  const inputActions = inputActionsList.length ? ` data-action="${inputActionsList.join(" ")}"` : "";
   const shortcut = options.submitShortcut ? ` <kbd>${escapeHtml(options.submitShortcut)}</kbd>` : "";
   const actions = options.includePaneActions && options.ctx
     ? `<span id="${ids.actions(options.ctx)}">${renderPromptActions(options.ctx, Boolean(options.busy))}</span>`
@@ -175,12 +180,13 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
     ? `<div class="agent-statbar" id="${ids.stats(options.ctx)}">${renderStatsBar(options.ctx, options.stats)}</div>`
     : `<div class="agent-statbar">${await renderComposerSettings(formId, options.selectedModel)}</div>`;
   const turboAttr = options.formTurbo === undefined ? "" : ` data-turbo="${options.formTurbo ? "true" : "false"}"`;
-  return `<div class="agent-promptwrap">
-        <div class="agent-promptbox" data-controller="agent-attachments" data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}" data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
+  return `<div class="agent-promptwrap" data-controller="agent-attachments${promptTemplateEnabled ? " agent-prompt-templates" : ""}" data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}"${options.ctx ? ` data-agent-prompt-templates-url-value="${escapeHtml(agentPath(options.ctx, "/prompt-templates"))}"` : ""} data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
+        ${promptTemplateEnabled ? `<div class="agent-template-menu-host" data-agent-prompt-templates-target="menu" hidden></div>` : ""}
+        <div class="agent-promptbox">
           <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
             <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row"></div>
-            <textarea class="agent-input" name="text" rows="${options.rows ?? 2}" placeholder="${escapeHtml(options.placeholder)}"${inputTarget}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>
+            <textarea class="agent-input" name="text" rows="${options.rows ?? 2}" placeholder="${escapeHtml(options.placeholder)}"${inputTarget ? ` ${inputTarget}` : ""}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>
             <div class="agent-prompt-actions">
               <span class="agent-drop-hint" data-agent-attachments-target="hint">Drop files to attach</span>
               <span class="spacer"></span>

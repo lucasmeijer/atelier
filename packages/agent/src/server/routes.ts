@@ -13,7 +13,7 @@ import {
 } from "./attachment-drafts.ts";
 import { ids, renderAttachmentChip } from "./render.ts";
 import { sseFrame, turboStream, turboStreamResponse } from "./html.ts";
-import { expandPromptTemplate } from "./prompt-templates.ts";
+import { expandPromptTemplate, listPromptTemplates, renderPromptTemplateMenu } from "./prompt-templates.ts";
 import { getWorkspaceAgentRuntime, type RewindMode, type SubmitMode } from "./runtime.ts";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
 import { maybeNameWorkspaceFromAgentPrompt } from "./workspace-title-suggestion.ts";
@@ -104,6 +104,9 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/messages$/)) && request.method === "POST") {
     return await agentMessagesEndpoint(params[0], params[1], request, options);
   }
+  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/prompt-templates$/)) && request.method === "GET") {
+    return await promptTemplatesEndpoint(params[0], url);
+  }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/abort$/)) && request.method === "POST") {
     const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
     await runtime.abort();
@@ -186,8 +189,14 @@ async function agentEventsEndpoint(workspaceId: string, label: string, options: 
 }
 
 // ---------------------------------------------------------------------------
-// Messages
+// Prompt templates + messages
 // ---------------------------------------------------------------------------
+
+async function promptTemplatesEndpoint(workspaceId: string, url: URL): Promise<Response> {
+  const templates = await listPromptTemplates(workspaceId);
+  const q = url.searchParams.get("q") ?? "";
+  return new Response(renderPromptTemplateMenu(templates, q), { headers: { "content-type": "text/html; charset=utf-8" } });
+}
 
 async function agentMessagesEndpoint(workspaceId: string, label: string, request: Request, options: AgentRouteOptions): Promise<Response> {
   const agent = await requireAgent(workspaceId, label);
@@ -202,7 +211,7 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
     ? await deliverAttachmentDraft(workspaceId, attachmentDraft, attachmentIds)
     : { images: [], attachmentNotes: [] };
 
-  const expandedText = expandPromptTemplate(text);
+  const expandedText = await expandPromptTemplate(workspaceId, text);
   const trimmed = expandedText.trim();
   if (trimmed) {
     await options.events?.emit("workspace_user_activity", { workspaceId });
@@ -225,7 +234,7 @@ async function submitInitialAgentPrompt(workspaceId: string, context: AgentWorks
     ? await deliverAttachmentDraft(workspaceId, draftId)
     : { images: [], attachmentNotes: [] };
 
-  const prompt = expandPromptTemplate(context.initialPrompt ?? "");
+  const prompt = await expandPromptTemplate(workspaceId, context.initialPrompt ?? "");
   await options.events?.emit("workspace_user_activity", { workspaceId });
   maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), prompt.trim()], { events: options.events });
   await runtime.submit(prompt, { mode: "send", images, attachmentNotes });

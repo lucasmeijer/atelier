@@ -103,6 +103,11 @@ export async function resolveWorkspace(id: string): Promise<string> {
   return id;
 }
 
+export function workspaceWorkHostPath(id: string): string {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id)) throw invalidArguments(`invalid workspace id: ${id}`);
+  return atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "work");
+}
+
 function workspaceMetadataDir(context: Awaited<ReturnType<typeof getAtelierRuntimeContext>>, id: string): string {
   return atelierDataPath(context, "workspaces", id, "metadata");
 }
