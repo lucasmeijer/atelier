@@ -423,20 +423,6 @@ class AtelierShortcutsController extends Controller {
 
   private registerBuiltinCommands(): void {
     this.registerCommand({
-      id: "workspace.focus-previous-group",
-      label: "Focus previous group",
-      scope: "workspace",
-      binding: "Meta+Alt+BracketLeft",
-      run: () => this.focusAdjacentGroup(-1),
-    });
-    this.registerCommand({
-      id: "workspace.focus-next-group",
-      label: "Focus next group",
-      scope: "workspace",
-      binding: "Meta+Alt+BracketRight",
-      run: () => this.focusAdjacentGroup(1),
-    });
-    this.registerCommand({
       id: "workspace.open-previous",
       label: "Open previous workspace",
       scope: "global",
@@ -534,8 +520,6 @@ class AtelierShortcutsController extends Controller {
         case "Alt": return "⌥";
         case "Control": return "⌃";
         case "Shift": return "⇧";
-        case "BracketLeft": return "[";
-        case "BracketRight": return "]";
         case "Comma": return ",";
         case "Period": return ".";
         case "Slash": return "/";
@@ -561,8 +545,6 @@ class AtelierShortcutsController extends Controller {
   private matchesShortcutKey(event: KeyboardEvent, code: string): boolean {
     if (event.code === code) return true;
     switch (code) {
-      case "BracketLeft": return event.key === "[" || event.key === "“";
-      case "BracketRight": return event.key === "]" || event.key === "‘";
       case "Comma": return event.key === ",";
       case "Period": return event.key === ".";
       case "Slash": return event.key === "/" || event.key === "?";
@@ -650,43 +632,6 @@ class AtelierShortcutsController extends Controller {
     }
   }
 
-  private focusAdjacentGroup(direction: -1 | 1): void {
-    const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.active");
-    if (!resident) return;
-    const groups = [...resident.querySelectorAll<HTMLElement>(".workspace-group")];
-    if (groups.length === 0) return;
-
-    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const current = activeElement?.closest<HTMLElement>(".workspace-group");
-    const currentIndex = current && groups.includes(current) ? groups.indexOf(current) : 0;
-    const nextIndex = (currentIndex + direction + groups.length) % groups.length;
-    void this.focusGroup(groups[nextIndex] ?? groups[0]);
-  }
-
-  private async focusGroup(group: HTMLElement | undefined): Promise<void> {
-    if (!group) return;
-    const workspaceId = group.closest<HTMLElement>("[data-workspace-id]")?.dataset.workspaceId;
-    const tabName = group.querySelector<HTMLElement>(".group-tab.active[data-tab]")?.dataset.tab;
-    const pane = tabName
-      ? group.querySelector<HTMLElement>(`.tab-pane.active[data-tab-pane="${CSS.escape(tabName)}"]`)
-      : group.querySelector<HTMLElement>(".tab-pane.active[data-tab-pane]");
-
-    if (await clientHooks.focusGroup({ workspaceId, tabKey: tabName, pane, group, application })) return;
-
-    const iframe = pane?.querySelector<HTMLIFrameElement>("iframe");
-    if (iframe) {
-      iframe.focus();
-      return;
-    }
-
-    const focusable = pane?.querySelector<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])");
-    if (focusable) {
-      focusable.focus();
-      return;
-    }
-
-    group.querySelector<HTMLButtonElement>(".group-tab.active .group-tab-label")?.focus();
-  }
 }
 
 function focusDialogPromptEnd(dialog: ParentNode): void {
