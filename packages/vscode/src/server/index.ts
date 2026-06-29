@@ -3,4 +3,3 @@ export { deleteWorkspaceVSCodeTab, ensureWorkspaceVSCodeServer, listWorkspaceVSC
 export { renderVSCodePane, vscodeTabKey } from "./render.ts";
 export { patchVSCodeWorkspaceAppResponse, resolveVSCodeWorkspaceAppTarget, vscodeAppKey, vscodeContainerPort } from "./proxy.ts";
 export { vscodeStaticFiles } from "./static.ts";
-export { registerVSCodeEvents } from "./extensions-volume.ts";

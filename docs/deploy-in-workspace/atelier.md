@@ -105,3 +105,5 @@ RUN chmod 0644 /etc/example.conf
 ```
 
 Use this to install packages, add image files, set environment variables, or run build-time setup commands for future workspaces from that repository.
+
+For repository-specific VS Code extensions, see [VS Code extensions](./vscode.md).

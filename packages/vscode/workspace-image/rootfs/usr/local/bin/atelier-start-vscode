@@ -33,7 +33,7 @@ set -- \
   --server-data-dir "$server_data_dir"
 
 if [ -d "$extensions_dir" ]; then
-  set -- "$@" --extensions-dir "$extensions_dir"
+  export VSCODE_EXTENSIONS="$extensions_dir"
 fi
 
 if [ -n "$server_bin" ]; then

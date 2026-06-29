@@ -35,21 +35,30 @@ async function packageManifests() {
 }
 
 const manifests = await packageManifests();
-manifests.sort((a, b) => (a.name === "base" ? -1 : b.name === "base" ? 1 : a.name.localeCompare(b.name)));
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(join(outDir, "files"), { recursive: true });
 
 const hash = createHash("sha256");
-hash.update("atelier-workspace-image-v7\n");
+hash.update("atelier-workspace-image-v8\n");
 const apt = [];
 const env = {};
-const copyInstructions = [];
-const runInstructions = [];
 const moduleNames = [];
+const modules = [];
+
+// Keep slow, broadly-shared layers early so small later module changes do not
+// force VS Code server/extension installation to run again.
+function moduleSortKey(manifest) {
+  if (manifest.name === "base") return "00-base";
+  if (manifest.name === "vscode") return "01-vscode";
+  return `10-${manifest.name}`;
+}
+
+manifests.sort((a, b) => moduleSortKey(a).localeCompare(moduleSortKey(b)));
 
 for (const { path, dir, name, manifest, hashPath } of manifests) {
   moduleNames.push(name);
+  const moduleCopyInstructions = [];
   const manifestText = await readFile(path, "utf8");
   hash.update(hashPath); hash.update("\0"); hash.update(manifestText); hash.update("\0");
   apt.push(...(manifest.aptPackages ?? []));
@@ -62,9 +71,9 @@ for (const { path, dir, name, manifest, hashPath } of manifests) {
     await cp(from, dest, { recursive: true });
     const proc = Bun.spawnSync(["sh", "-c", `find ${quote(from)} -type f -print0 | sort -z | xargs -0 sha256sum`]);
     hash.update(proc.stdout);
-    copyInstructions.push({ rel: `files/${rel}`, to: file.to, mode: file.mode });
+    moduleCopyInstructions.push({ rel: `files/${rel}`, to: file.to, mode: file.mode });
   }
-  runInstructions.push(...(manifest.run ?? []));
+  modules.push({ name, copyInstructions: moduleCopyInstructions, runInstructions: manifest.run ?? [] });
 }
 
 const uniqueApt = [...new Set(apt)].sort();
@@ -73,12 +82,15 @@ if (uniqueApt.length) {
   dockerfile += `RUN apt-get update \\\n && apt-get install -y --no-install-recommends \\\n${uniqueApt.map((pkg) => `      ${pkg} \\\n`).join("")} && rm -rf /var/lib/apt/lists/*\n\n`;
 }
 dockerfile += `COPY --from=bun-dist /usr/local/bin/bun /usr/local/bin/bun\nCOPY --from=bun-dist /usr/local/bin/bunx /usr/local/bin/bunx\nRUN bun --version\n\n`;
-for (const copy of copyInstructions) {
-  dockerfile += `COPY ${quote(copy.rel)} ${quote(copy.to)}\n`;
-  if (copy.mode) dockerfile += `RUN chmod ${quote(copy.mode)} ${quote(copy.to)}\n`;
+for (const module of modules) {
+  dockerfile += `# Module: ${module.name}\n`;
+  for (const copy of module.copyInstructions) {
+    dockerfile += `COPY ${quote(copy.rel)} ${quote(copy.to)}\n`;
+    if (copy.mode) dockerfile += `RUN chmod ${quote(copy.mode)} ${quote(copy.to)}\n`;
+  }
+  if (module.copyInstructions.length) dockerfile += "\n";
+  for (const script of module.runInstructions) dockerfile += `RUN ${dockerEscapeRun(script)}\n\n`;
 }
-if (copyInstructions.length) dockerfile += "\n";
-for (const script of runInstructions) dockerfile += `RUN ${dockerEscapeRun(script)}\n\n`;
 if (Object.keys(env).length) dockerfile += `ENV ${Object.entries(env).map(([key, value]) => `${key}=${quote(value)}`).join(" \\\n    ")}\n\n`;
 dockerfile += `WORKDIR /work\n`;
 await writeFile(join(outDir, "Dockerfile"), dockerfile);
