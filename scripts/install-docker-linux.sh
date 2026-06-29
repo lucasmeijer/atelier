@@ -71,7 +71,9 @@ require_tailscale() {
 }
 
 install_atelier() {
-  install -d -o 1000 -g 1000 -m 0755 "$atelier_data_dir"
+  mkdir -p "$atelier_data_dir"
+  chown 1000:1000 "$atelier_data_dir"
+  chmod 0755 "$atelier_data_dir"
 
   log "Pulling $atelier_image..."
   docker pull "$atelier_image"
