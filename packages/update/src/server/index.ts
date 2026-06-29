@@ -64,7 +64,13 @@ export class UpdateManager {
 
   private notify(): void {
     const snapshot = this.snapshot();
-    for (const subscriber of this.subscribers) subscriber(snapshot);
+    for (const subscriber of [...this.subscribers]) {
+      try {
+        subscriber(snapshot);
+      } catch {
+        this.subscribers.delete(subscriber);
+      }
+    }
   }
 
   private updateSidebar(): void {
@@ -141,14 +147,14 @@ export class UpdateManager {
   }
 
   sseResponse(): Response {
+    let unsubscribe = () => {};
     const stream = new ReadableStream({
       start: (controller) => {
         const encoder = new TextEncoder();
         const send = (snapshot: StateSnapshot) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(snapshot)}\n\n`));
-        const unsubscribe = this.subscribe(send);
-        return () => unsubscribe();
+        unsubscribe = this.subscribe(send);
       },
-      cancel: () => {},
+      cancel: () => unsubscribe(),
     });
     return new Response(stream, { headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", connection: "keep-alive" } });
   }
