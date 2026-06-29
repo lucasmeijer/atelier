@@ -240,7 +240,13 @@ describe("update routes", () => {
     await manager.initialize(ctx);
     const route = createUpdateRouteHandler(manager);
     const whatsNew = await route(new Request("http://test/update/whats-new"), new URL("http://test/update/whats-new"));
-    expect(await whatsNew!.text()).toContain("Changes since your current version");
+    const whatsNewText = await whatsNew!.text();
+    expect(whatsNewText).toContain("Changes since your current version");
+    expect(whatsNewText).toContain("Preparing what’s new…");
+    expect(whatsNewText).toContain("src=\"/update/whats-new/notes\"");
+    expect(whatsNewText).not.toContain("<section>notes</section>");
+    const notes = await route(new Request("http://test/update/whats-new/notes"), new URL("http://test/update/whats-new/notes"));
+    expect(await notes!.text()).toContain("<section>notes</section>");
     const restart = await route(new Request("http://test/update/restart-confirm"), new URL("http://test/update/restart-confirm"));
     const text = await restart!.text();
     expect(text).toContain("Restart Atelier to finish updating?");

@@ -2,3 +2,7 @@
 @keyframes update-progress-indeterminate { 0% { transform: translateX(-120%); } 100% { transform: translateX(260%); } }
 .update-release-notes img, .update-release-notes video { display: block; max-width: 100%; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); }
 .update-release-notes pre { overflow: auto; padding: 10px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
+.update-notes-loading { display: flex; align-items: flex-start; gap: 12px; padding: 18px; color: var(--muted); }
+.update-notes-loading .status-spinner { display: inline-block; flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line-2, var(--line)); border-top-color: var(--muted); animation: spin .8s linear infinite; }
+.update-notes-loading b { display: block; color: var(--text); margin-bottom: 3px; }
+@keyframes spin { to { transform: rotate(360deg); } }

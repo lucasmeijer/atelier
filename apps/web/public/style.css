@@ -745,6 +745,8 @@ button { border: 0; background: none; cursor: pointer; }
 .update-whats-new-dialog .settings-main { padding: 0; }
 .update-whats-new-dialog .settings-close { position: sticky; top: 16px; float: right; margin: 16px 18px 0 0; }
 .update-whats-new-dialog .update-notes-sec { padding-top: 10px; border-bottom: 0; }
+.update-notes-loading { display: flex; align-items: flex-start; gap: 12px; padding: 18px; color: var(--muted); }
+.update-notes-loading b { display: block; color: var(--text); margin-bottom: 3px; }
 .update-whats-new-dialog .update-release-notes { gap: 28px; }
 .update-whats-new-dialog .update-note { border: 0; border-radius: 0; padding: 0; background: transparent; }
 .update-whats-new-dialog .update-note + .update-note { padding-top: 26px; border-top: 1px solid var(--line); }

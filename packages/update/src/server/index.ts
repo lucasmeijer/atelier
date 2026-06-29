@@ -193,14 +193,25 @@ export function renderSidebarRow(snapshot: StateSnapshot): string {
   return `<section class="update-sidebar-section"><div id="update_sidebar_row" class="update-sidebar-row" data-controller="update-progress" data-update-state="${escapeHtml(dataState)}"><div class="update-sidebar-primary">${left}</div>${whatsNew}</div></section>`;
 }
 
-async function renderWhatsNewModal(updateManager: UpdateManager, autoShow = true): Promise<string> {
+function renderWhatsNewModal(autoShow = true): string {
   return `<dialog id="whats-new-modal" class="settings-dialog update-whats-new-dialog" data-controller="modal"${autoShow ? ` data-modal-auto-show-value="true"` : ""}>
   <div class="settings-sheet"><main class="settings-main">
     <button class="settings-close" type="button" aria-label="Close" data-action="modal#close">×</button>
     <div class="settings-title">Changes since your current version</div>
-    <section class="settings-sec update-notes-sec">${await updateManager.releaseNotes()}</section>
+    <section class="settings-sec update-notes-sec">
+      <turbo-frame id="update_whats_new_notes" src="/update/whats-new/notes">
+        <div class="update-notes-loading" role="status" aria-live="polite">
+          <span class="status-spinner" aria-hidden="true"></span>
+          <div><b>Preparing what’s new…</b><p>Comparing releases can take a moment. The notes will appear here when they’re ready.</p></div>
+        </div>
+      </turbo-frame>
+    </section>
   </main></div>
 </dialog>`;
+}
+
+async function renderWhatsNewNotes(updateManager: UpdateManager): Promise<string> {
+  return `<turbo-frame id="update_whats_new_notes">${await updateManager.releaseNotes()}</turbo-frame>`;
 }
 
 async function renderRestartModal(updateManager: UpdateManager): Promise<string> {
@@ -224,7 +235,8 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
       void updateManager.startPull();
       return turboStreamResponse("");
     }
-    if (url.pathname === "/update/whats-new" && request.method === "GET") return modalStream(await renderWhatsNewModal(updateManager));
+    if (url.pathname === "/update/whats-new" && request.method === "GET") return modalStream(renderWhatsNewModal());
+    if (url.pathname === "/update/whats-new/notes" && request.method === "GET") return new Response(await renderWhatsNewNotes(updateManager), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
     if (url.pathname === "/update/restart-confirm" && request.method === "GET") return modalStream(await renderRestartModal(updateManager));
     if (url.pathname === "/update/restart" && request.method === "POST") return await updateManager.launchUpdater(url);
     if (url.pathname === "/update/state" && request.method === "GET") return new Response(JSON.stringify(updateManager.snapshot()), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
