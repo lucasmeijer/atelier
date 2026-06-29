@@ -47,6 +47,35 @@ Use an Agent tab to ask for code changes, explanations, reviews, or debugging he
 
 Agents run inside the workspace and can read and edit files under `/work`.
 
+### Prompt templates
+
+Prompt templates are reusable prompts stored in the workspace repository. Add Markdown files under `.atelier/prompts`; `.atelier` is the idiomatic Atelier configuration directory. Atelier also reads `.pi/prompts` for convenience and compatibility, but prefer `.atelier/prompts` for new templates. If both directories contain a template with the same filename, the `.atelier` template is used.
+
+Each `*.md` file becomes a slash command named after the file. For example, `.atelier/prompts/land.md` is available as `/land` in the agent prompt box. Type `/` to see matching templates, then submit the slash command with any arguments to expand it into the full prompt.
+
+To add a new prompt template:
+
+1. Create `.atelier/prompts/<name>.md` in the repository.
+2. Optionally add frontmatter with `description` and `argument-hint`.
+3. Write the prompt body, using argument placeholders if needed.
+
+Example `.atelier/prompts/land.md`:
+
+```markdown
+---
+description: Land the workspace
+argument-hint: "[branch]"
+---
+Review the current changes, run the relevant checks, commit them, and prepare to push to ${1:-main}.
+```
+
+Supported placeholders in the body:
+
+- `$ARGUMENTS` or `$@`: all arguments as typed.
+- `$1`, `$2`, etc.: individual arguments.
+- `${1:-main}`: an argument with a fallback value.
+- `${@:2}` or `${@:2:3}`: an argument slice.
+
 ## 5. Workspace Tools
 
 Use the tab group `+` menu to open tools:
