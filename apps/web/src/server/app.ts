@@ -7,6 +7,7 @@ import {
 } from "@atelier/agent/server";
 import {
   AtelierCoreError,
+  invalidArguments,
   type AtelierEventBus,
 } from "@atelier/core";
 import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
@@ -75,6 +76,15 @@ function jsonResponse(body: unknown, init: HtmlResponseInit = {}): Response {
   headers.set("content-type", "application/json; charset=utf-8");
   if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
   return new Response(JSON.stringify(body), { ...init, headers });
+}
+
+function problemJsonResponse(error: unknown): Response {
+  const status = error instanceof AtelierCoreError && error.code === "invalid_arguments" ? 400
+    : error instanceof AtelierCoreError && ["project_not_found", "workspace_not_found"].includes(error.code) ? 404
+      : 500;
+  const message = error instanceof Error ? error.message : String(error);
+  const code = error instanceof AtelierCoreError ? error.code : "internal_error";
+  return jsonResponse({ error: { code, message } }, { status });
 }
 
 function turboReplaceStream(target: string, html: string): string {
@@ -687,10 +697,23 @@ ${moduleStylesHtml()}
     })();
   }
 
-  function createWorkspaceEndpoint(url: URL, request: Request): Response {
+  type WorkspaceCreateSource = { type: "empty" } | { type: "project"; project: ProjectSummary };
+  type WorkspaceCreateAgent = { initialPrompt?: string; model?: string; thinkingLevel?: string; attachmentDraft?: string };
+
+  function createWorkspaceFromCommand(command: { source: WorkspaceCreateSource; agent?: WorkspaceCreateAgent }): { id: string } {
     const id = generateWorkspaceId();
-    registry.add(id);
-    startWorkspaceProvisioning(id);
+    const init = command.source.type === "project" ? projectWorkspaceInit(command.source.project) : undefined;
+    registry.add(id, null, init);
+    const initialPrompt = command.agent?.initialPrompt?.trim() ?? "";
+    const context: WorkspaceCreationContext | undefined = initialPrompt
+      ? { agent: { initialPrompt, model: command.agent?.model ?? "", thinkingLevel: command.agent?.thinkingLevel ?? "", attachmentDraft: command.agent?.attachmentDraft ?? "" } }
+      : undefined;
+    startWorkspaceProvisioning(id, { ...(init !== undefined ? { init } : {}), ...(context ? { context } : {}) });
+    return { id };
+  }
+
+  function createWorkspaceEndpoint(url: URL, request: Request): Response {
+    const { id } = createWorkspaceFromCommand({ source: { type: "empty" } });
     const location = new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString();
     if (wantsTurboStream(request)) {
       return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()), { headers: { location } });
@@ -700,29 +723,84 @@ ${moduleStylesHtml()}
 
   async function createAgentWorkspaceFromForm(request: Request, options: { project?: ProjectSummary } = {}): Promise<Response> {
     const form = await request.formData();
-    const text = String(form.get("text") ?? "").trim();
-    const id = generateWorkspaceId();
-    const init = options.project ? projectWorkspaceInit(options.project) : undefined;
-    registry.add(id, null, init);
     const model = String(form.get("model") ?? "");
     const thinkingLevel = String(form.get("level") ?? "");
     await rememberAgentPreferredNewAgentModel(model, thinkingLevel);
-    const context: WorkspaceCreationContext = {
-      ...(text ? {
-        agent: {
-          initialPrompt: text,
-          model,
-          thinkingLevel,
-          attachmentDraft: String(form.get("attachmentDraft") ?? ""),
-        },
-      } : {}),
-    };
-    startWorkspaceProvisioning(id, { init, context });
+    createWorkspaceFromCommand({
+      source: options.project ? { type: "project", project: options.project } : { type: "empty" },
+      agent: {
+        initialPrompt: String(form.get("text") ?? ""),
+        model,
+        thinkingLevel,
+        attachmentDraft: String(form.get("attachmentDraft") ?? ""),
+      },
+    });
     return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
   }
 
   async function createEmptyAgentWorkspaceEndpoint(request: Request): Promise<Response> {
     return await createAgentWorkspaceFromForm(request);
+  }
+
+  type ApiCreateWorkspaceBody = {
+    source?: { type?: unknown; project?: unknown };
+    prompt?: unknown;
+    agent?: { prompt?: unknown; initialPrompt?: unknown; model?: unknown; thinkingLevel?: unknown; attachmentDraft?: unknown };
+  };
+
+  async function readApiJson(request: Request): Promise<ApiCreateWorkspaceBody> {
+    try {
+      const body = await request.json();
+      if (!body || typeof body !== "object" || Array.isArray(body)) throw invalidArguments("JSON object body is required");
+      const record = body as Record<string, unknown>;
+      if (record.source !== undefined && (!record.source || typeof record.source !== "object" || Array.isArray(record.source))) throw invalidArguments("source must be an object");
+      if (record.agent !== undefined && (!record.agent || typeof record.agent !== "object" || Array.isArray(record.agent))) throw invalidArguments("agent must be an object");
+      return body as ApiCreateWorkspaceBody;
+    } catch (error) {
+      if (error instanceof AtelierCoreError) throw error;
+      throw invalidArguments("valid JSON object body is required");
+    }
+  }
+
+  function stringField(value: unknown, name: string): string | undefined {
+    if (value === undefined || value === null) return undefined;
+    if (typeof value !== "string") throw invalidArguments(`${name} must be a string`);
+    return value.trim();
+  }
+
+  async function projectByReference(reference: string): Promise<ProjectSummary> {
+    const { projects } = await listProjects();
+    const byId = projects.find((project) => project.id === reference);
+    if (byId) return byId;
+    const byName = projects.filter((project) => project.name === reference);
+    if (byName.length === 1) return byName[0]!;
+    if (byName.length > 1) throw invalidArguments(`project name is ambiguous: ${reference}`);
+    throw new AtelierCoreError("project_not_found", `project not found: ${reference}`);
+  }
+
+  async function createWorkspaceApiEndpoint(request: Request, url: URL): Promise<Response> {
+    try {
+      const body = await readApiJson(request);
+      const sourceType = stringField(body.source?.type, "source.type") ?? "empty";
+      if (sourceType !== "empty" && sourceType !== "project") throw invalidArguments("source.type must be empty or project");
+      const projectReference = stringField(body.source?.project, "source.project");
+      let source: WorkspaceCreateSource = { type: "empty" };
+      if (sourceType === "project") {
+        if (!projectReference) throw invalidArguments("source.project is required for project workspaces");
+        source = { type: "project", project: await projectByReference(projectReference) };
+      }
+
+      const prompt = stringField(body.agent?.initialPrompt ?? body.agent?.prompt ?? body.prompt, "prompt") ?? "";
+      const model = stringField(body.agent?.model, "agent.model") ?? "";
+      const thinkingLevel = stringField(body.agent?.thinkingLevel, "agent.thinkingLevel") ?? "";
+      const attachmentDraft = stringField(body.agent?.attachmentDraft, "agent.attachmentDraft") ?? "";
+      const { id } = createWorkspaceFromCommand({ source, agent: { initialPrompt: prompt, model, thinkingLevel, attachmentDraft } });
+
+      const workspaceUrl = new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString();
+      return jsonResponse({ workspace: { id, url: workspaceUrl, phase: "starting" } }, { status: 202, headers: { location: workspaceUrl } });
+    } catch (error) {
+      return problemJsonResponse(error);
+    }
   }
 
   async function createProjectAgentWorkspaceEndpoint(projectId: string, request: Request): Promise<Response> {
@@ -1132,6 +1210,7 @@ ${moduleStylesHtml()}
       return request.method === "HEAD" ? new Response(null, { status: page.status, statusText: page.statusText, headers: page.headers }) : page;
     }
     if (url.pathname === "/workspace-events/stream" && request.method === "GET") return hub.sseResponse(initialStatusStreams);
+    if (url.pathname === "/api/workspaces" && request.method === "POST") return await createWorkspaceApiEndpoint(request, url);
     if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
     if (url.pathname === "/workspaces" && request.method === "POST") return createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestUnreadWorkspaceEndpoint();

@@ -19,8 +19,11 @@ function deferred<T = void>() {
   return { promise, resolve, reject };
 }
 
+type ProvisionWorkspace = Parameters<typeof createWebApp>[0]["provisionWorkspace"];
+type ProvisionWorkspaceOptions = Parameters<ProvisionWorkspace>[1];
+
 interface TestAppOptions {
-  provision?: (id: string) => Promise<void>;
+  provision?: (id: string, options?: ProvisionWorkspaceOptions) => Promise<void>;
   inspect?: (id: string) => Promise<WorkspaceDeleteBlockedDetails>;
   destroy?: (id: string) => Promise<void>;
   persistParked?: (id: string, parked: boolean) => Promise<void>;
@@ -58,6 +61,27 @@ function postForm(path: string, body: URLSearchParams): Request {
     headers: { accept: "text/vnd.turbo-stream.html", "content-type": "application/x-www-form-urlencoded" },
     body,
   });
+}
+
+function postJson(path: string, body: unknown): Request {
+  return new Request(`http://test.local${path}`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function withTempDataDir<T>(fn: () => Promise<T>): Promise<T> {
+  const previousDataDir = process.env.ATELIER_DATA_DIR;
+  const dataDir = await mkdtemp(join(tmpdir(), "atelier-web-test-"));
+  process.env.ATELIER_DATA_DIR = dataDir;
+  try {
+    return await fn();
+  } finally {
+    if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
+    else process.env.ATELIER_DATA_DIR = previousDataDir;
+    await rm(dataDir, { recursive: true, force: true });
+  }
 }
 
 const blockedDetails = (id: string): WorkspaceDeleteBlockedDetails => ({
@@ -123,11 +147,53 @@ describe("web app contracts", () => {
     expect(registry.get(id)?.error).toContain("docker exploded");
   });
 
+  test("POST /api/workspaces creates an empty workspace asynchronously", async () => {
+    const provision = deferred();
+    const seen: Array<{ id: string; options: unknown }> = [];
+    const { app, registry } = createTestApp({ provision: (id, options) => { seen.push({ id, options }); return provision.promise; } });
+    await registry.seed([]);
+
+    const response = await app.fetch(postJson("/api/workspaces", {}));
+    const body = await response.json() as { workspace: { id: string; url: string; phase: string } };
+
+    expect(response.status).toBe(202);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.headers.get("location")).toBe(body.workspace.url);
+    expect(body.workspace.phase).toBe("starting");
+    expect(registry.get(body.workspace.id)?.phase).toBe("starting");
+    expect(registry.get(body.workspace.id)?.init).toBeUndefined();
+    expect(seen[0]?.id).toBe(body.workspace.id);
+
+    provision.resolve();
+  });
+
+  test("POST /api/workspaces creates a project workspace with an initial prompt", async () => {
+    await withTempDataDir(async () => {
+      const project = (await addProject("https://github.com/org/sample-project.git#main")).project;
+      const seen: Array<{ id: string; options: ProvisionWorkspaceOptions }> = [];
+      const { app, registry } = createTestApp({ provision: async (id, options) => { seen.push({ id, options }); } });
+      await registry.seed([]);
+
+      const response = await app.fetch(postJson("/api/workspaces", {
+        source: { type: "project", project: "sample-project" },
+        prompt: "Add tests",
+        agent: { model: "openai::gpt", thinkingLevel: "medium" },
+      }));
+      const body = await response.json() as { workspace: { id: string } };
+      const entry = registry.get(body.workspace.id)!;
+
+      expect(response.status).toBe(202);
+      expect(isGitProjectInit(entry.init)).toBe(true);
+      expect(isGitProjectInit(entry.init) && entry.init.projectId).toBe(project.id);
+      expect(isGitProjectInit(entry.init) && entry.init.name).toBe("sample-project");
+      expect(isGitProjectInit(entry.init) && entry.init.gitUrl).toBe("https://github.com/org/sample-project.git");
+      expect(isGitProjectInit(entry.init) && entry.init.branch).toBe("main");
+      expect(seen[0]?.options?.context).toEqual({ agent: { initialPrompt: "Add tests", model: "openai::gpt", thinkingLevel: "medium", attachmentDraft: "" } });
+    });
+  });
+
   test("project-created workspaces use the project name as their temporary title", async () => {
-    const previousDataDir = process.env.ATELIER_DATA_DIR;
-    const dataDir = await mkdtemp(join(tmpdir(), "atelier-web-test-"));
-    process.env.ATELIER_DATA_DIR = dataDir;
-    try {
+    await withTempDataDir(async () => {
       const project = (await addProject("https://github.com/org/sample-project.git")).project;
       const { app, registry } = createTestApp();
       await registry.seed([]);
@@ -144,11 +210,7 @@ describe("web app contracts", () => {
       expect(body).toContain("sample-project");
       expect(body).not.toContain("sample-project.git");
       expect(body).not.toContain(`Workspace ${entry.id}`);
-    } finally {
-      if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
-      else process.env.ATELIER_DATA_DIR = previousDataDir;
-      await rm(dataDir, { recursive: true, force: true });
-    }
+    });
   });
 
   test("blocked delete returns the confirmation modal to the requester and restores the row", async () => {

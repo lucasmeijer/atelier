@@ -19,6 +19,8 @@ On first use, Atelier guides you through setup:
 
 Open **Settings** from the sidebar to change these later.
 
+For programmatic workspace creation, see [REST API](./rest-api.md).
+
 ## 3. Workspaces
 
 Create a workspace from the sidebar:

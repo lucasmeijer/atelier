@@ -1,4 +1,4 @@
-import { mkdir, rename, writeFile, chmod } from "node:fs/promises";
+import { chmod, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
   atelierDataPath,
@@ -9,9 +9,8 @@ import type { AtelierRuntimeContext } from "@atelier/core";
 import type { WorkspaceModule } from "@atelier/shared";
 import type { WorkspaceDockerMount } from "../types.ts";
 
-const docsSourceUrl = new URL("../../../../docs/atelier.md", import.meta.url);
+const docsSourceUrl = new URL("../../../../docs/deploy-in-workspace/", import.meta.url);
 const docsMountPath = "/opt/atelier/docs";
-const docsFileName = "atelier.md";
 
 type WorkspacePlanEvents = {
   on(eventName: "workspace_plan_prepare", handler: (event: { plan: { mounts: WorkspaceDockerMount[] } }) => void | Promise<void>): void;
@@ -28,7 +27,11 @@ async function installReadOnlyFile(sourceUrl: URL, destinationPath: string): Pro
 
 async function syncAtelierDocs(runtime?: AtelierRuntimeContext): Promise<{ hostDocsDir: string }> {
   runtime ??= await getAtelierRuntimeContext();
-  await installReadOnlyFile(docsSourceUrl, atelierDataPath(runtime, "docs", docsFileName));
+  const docsDir = atelierDataPath(runtime, "docs");
+  await rm(docsDir, { recursive: true, force: true });
+  for (const entry of await readdir(docsSourceUrl, { withFileTypes: true })) {
+    if (entry.isFile()) await installReadOnlyFile(new URL(entry.name, docsSourceUrl), atelierDataPath(runtime, "docs", entry.name));
+  }
   return { hostDocsDir: dockerHostAtelierDataPath(runtime, "docs") };
 }
 
