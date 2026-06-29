@@ -215,6 +215,7 @@ describe("update state machine", () => {
       fetchMetadata: async () => ({ digest: "sha256:new", revision: "new" }),
       pullImage: async () => {},
       docker: async (args) => { dockerCalls.push(args); return { stdout: "updater", stderr: "", code: 0 }; },
+      waitForUpdater: async (url) => { expect(url).toBe("http://atelier.test:81/up"); },
       setInterval: noInterval(),
     });
     await manager.initialize(ctx);
@@ -239,11 +240,12 @@ describe("update routes", () => {
     await manager.initialize(ctx);
     const route = createUpdateRouteHandler(manager);
     const whatsNew = await route(new Request("http://test/update/whats-new"), new URL("http://test/update/whats-new"));
-    expect(await whatsNew!.text()).toContain("What’s new");
+    expect(await whatsNew!.text()).toContain("Changes since your current version");
     const restart = await route(new Request("http://test/update/restart-confirm"), new URL("http://test/update/restart-confirm"));
     const text = await restart!.text();
     expect(text).toContain("Restart Atelier to finish updating?");
     expect(text).toContain("Active agent sessions and terminal connections will be interrupted");
+    expect(text).not.toContain("<section>notes</section>");
   });
 
   test("start route kicks off pulling against the shared manager", async () => {

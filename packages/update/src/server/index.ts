@@ -1,5 +1,5 @@
 import { escapeHtml, turboStream, turboStreamResponse, type WorkspaceModule, type WorkspaceServerModuleContext } from "@atelier/shared";
-import { targetImage, updateSidebarContributionId } from "./constants.ts";
+import { targetImage, updaterPort, updateSidebarContributionId } from "./constants.ts";
 import { detectSelfUpdateRuntime, dockerExec, pullStableImage, type DockerExec, type PullProgress, type SelfUpdateRuntime } from "./docker.ts";
 import { fetchStableImageMetadata, type ImageMetadata } from "./registry.ts";
 import { fetchReleaseNotes } from "./release-notes.ts";
@@ -21,6 +21,7 @@ export interface UpdateManagerDeps {
   pullImage?: (onProgress: (progress: PullProgress) => void) => Promise<void>;
   fetchNotes?: (currentSha: string | undefined, stableSha: string | undefined) => Promise<string>;
   docker?: DockerExec;
+  waitForUpdater?: (url: string) => Promise<void>;
   setInterval?: typeof setInterval;
 }
 
@@ -143,7 +144,9 @@ export class UpdateManager {
     ]);
     if (result.code !== 0) throw new Error(result.stderr.trim() || "could not start update helper");
     const theme = url.searchParams.get("theme") ?? "";
-    return Response.redirect(`http://${host}:81/?theme=${encodeURIComponent(theme)}`, 303);
+    const updaterUrl = `http://${host}:${updaterPort}`;
+    await (this.deps.waitForUpdater ?? waitForUpdater)(`${updaterUrl}/up`);
+    return Response.redirect(`${updaterUrl}/?theme=${encodeURIComponent(theme)}`, 303);
   }
 
   sseResponse(): Response {
@@ -158,6 +161,16 @@ export class UpdateManager {
     });
     return new Response(stream, { headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", connection: "keep-alive" } });
   }
+}
+
+async function waitForUpdater(url: string): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const response = await fetch(url).catch(() => undefined);
+    if (response?.ok) return;
+    await Bun.sleep(250);
+  }
+  throw new Error("Update helper did not become ready within 30 seconds");
 }
 
 const manager = new UpdateManager();
@@ -184,7 +197,7 @@ async function renderWhatsNewModal(updateManager: UpdateManager, autoShow = true
   return `<dialog id="whats-new-modal" class="settings-dialog update-whats-new-dialog" data-controller="modal"${autoShow ? ` data-modal-auto-show-value="true"` : ""}>
   <div class="settings-sheet"><main class="settings-main">
     <button class="settings-close" type="button" aria-label="Close" data-action="modal#close">×</button>
-    <div class="settings-title">What’s new</div>
+    <div class="settings-title">Changes since your current version</div>
     <section class="settings-sec update-notes-sec">${await updateManager.releaseNotes()}</section>
   </main></div>
 </dialog>`;
@@ -196,7 +209,6 @@ async function renderRestartModal(updateManager: UpdateManager): Promise<string>
     <h2>Restart Atelier to finish updating?</h2>
     <p>Active agent sessions and terminal connections will be interrupted. Your projects, workspaces, and containers will remain in place.</p>
     <p>Atelier should be back in a few seconds.</p>
-    <div class="update-modal-notes"><h3>What’s new</h3>${await updateManager.releaseNotes()}</div>
     <div class="modal-actions"><button class="btn" type="button" data-action="modal#close">Cancel</button><button class="btn primary" type="submit">Restart Atelier</button></div>
   </form>
 </dialog>`;

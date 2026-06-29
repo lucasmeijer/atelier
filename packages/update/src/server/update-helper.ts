@@ -77,6 +77,7 @@ Bun.serve({
   port: updaterPort,
   fetch(request) {
     const url = new URL(request.url);
+    if (url.pathname === "/up") return new Response("ok", { headers: { "cache-control": "no-store" } });
     if (url.pathname === "/state") return Response.json({ failed, redirect: steps.find((s) => s.id === "redirect")?.status === "running" ? `http://${options.returnHost}/` : undefined, steps });
     if (url.pathname === "/style.css") return new Response(Bun.file("/app/apps/web/public/style.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
     return new Response(page(url.searchParams.get("theme") ?? ""), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
