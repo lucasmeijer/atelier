@@ -5,7 +5,7 @@ export {};
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 
-const usage = `Build and run Atelier in Docker for local development.
+const usage = `Build and run Atelier in Docker for local development. On Linux the container uses host networking.
 
 Usage:
   bun run docker:dev [options]
@@ -127,6 +127,7 @@ function unique(values: string[]): string[] {
 
 const options = parseArgs(process.argv.slice(2));
 const imageRef = `${options.image}:${options.tag}`;
+const useHostNetwork = platform() === "linux";
 const publish = options.bind ? `${options.bind}:${options.port}:3000` : `${options.port}:3000`;
 const proxyPublish = options.bind ? `${options.bind}:41000-41999:41000-41999` : "41000-41999:41000-41999";
 
@@ -153,13 +154,12 @@ const runArgs = [
   "--name", options.name,
   "--label", "com.atelier.type=server",
   "--init",
-  "-p", publish,
-  "-p", proxyPublish,
+  ...(useHostNetwork ? ["--network", "host"] : ["-p", publish, "-p", proxyPublish]),
   "-v", "/var/run/docker.sock:/var/run/docker.sock",
-  "--add-host", "host.docker.internal:host-gateway",
   "--mount", `type=bind,src=${options.dataDir},dst=/data/atelier`,
   "--env", "ATELIER_DATA_DIR=/data/atelier",
   "--env", `ATELIER_DOCKER_HOST_DATA_DIR=${options.dataDir}`,
+  ...(useHostNetwork ? ["--env", `PORT=${options.port}`, ...(options.bind ? ["--env", `HOST=${options.bind}`] : [])] : []),
   imageRef,
 ];
 

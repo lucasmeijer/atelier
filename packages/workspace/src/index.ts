@@ -45,9 +45,8 @@ function envString(name: string): string | undefined {
 }
 
 function workspacePublishHost(): string { return "127.0.0.1"; }
-function workspaceConnectHost(): string { return envString("ATELIER_WORKSPACE_CONNECT_HOST") ?? "127.0.0.1"; }
+function workspaceConnectHost(): string { return "127.0.0.1"; }
 function formatDeleteBlockedMessage(id: string, issues: unknown[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
-function dockerHostGatewayArgs(): string[] { return ["--add-host", "host.docker.internal:host-gateway"]; }
 async function provisionStep<T>(events: AtelierEventBus | undefined, workspaceId: string, id: string, label: string, fn: () => Promise<T>, options: { parentId?: string } = {}): Promise<T> {
   await events?.emit("workspace_provision_step", { workspaceId, id, label, status: "running", parentId: options.parentId });
   try {
@@ -174,7 +173,7 @@ function hostUserEnv(): Record<string, string> {
 }
 
 function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan {
-  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: [...dockerHostGatewayArgs()], initScripts: [workspaceGitCredentialInitScript()], cleanup: [] };
+  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: [], initScripts: [workspaceGitCredentialInitScript()], cleanup: [] };
 }
 
 interface WorkspaceRuntimeManifest {
