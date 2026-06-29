@@ -413,8 +413,8 @@ async function startOAuthFlow(provider: string, label: string): Promise<PendingO
 
 function handleOAuthPrompt(flow: PendingOAuthFlow, prompt: PiAuthPrompt): Promise<string> {
   if (prompt.type === "select") {
-    const selected = prompt.options.find((option) => /default/i.test(option.label ?? ""))?.id
-      ?? prompt.options.find((option) => !/device|headless/i.test(`${option.id} ${option.label ?? ""}`))?.id
+    const selected = prompt.options.find((option) => /device|headless/i.test(`${option.id} ${option.label ?? ""}`))?.id
+      ?? prompt.options.find((option) => /default/i.test(option.label ?? ""))?.id
       ?? prompt.options[0]?.id;
     if (!selected) return Promise.reject(new Error("No OAuth login option available"));
     return Promise.resolve(selected);
