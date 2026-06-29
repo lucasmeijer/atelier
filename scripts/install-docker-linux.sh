@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-atelier_image="ghcr.io/lucasmeijer/atelier:latest"
+atelier_image="ghcr.io/lucasmeijer/atelier:stable"
 atelier_name="atelier"
 atelier_data_dir="/var/lib/atelier"
 atelier_port="80"

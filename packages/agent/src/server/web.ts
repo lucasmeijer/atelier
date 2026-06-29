@@ -7,12 +7,17 @@ import { registerPiConfigEvents } from "./pi-config-seed.ts";
 import { createNextWorkspaceAgent, ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
 import { agentTabKey, renderAgentPane, type AgentPaneState } from "./render.ts";
 import { modelRefValue, parseModelRef, preferredAgentModel, rememberPreferredAgentModel } from "./model-state.ts";
-import type { AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
 
 async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgentInfo[]> {
-  const agents = await listWorkspaceAgents(workspaceId);
-  return agents.length > 0 ? agents : [await ensureDefaultWorkspaceAgent(workspaceId)];
+  try {
+    const agents = await listWorkspaceAgents(workspaceId);
+    return agents.length > 0 ? agents : [await ensureDefaultWorkspaceAgent(workspaceId)];
+  } catch (error) {
+    if (error instanceof AtelierCoreError && error.code === "workspace_not_found") return [];
+    throw error;
+  }
 }
 
 async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[], events?: AtelierEventBus): Promise<WorkspaceTabContribution[]> {
@@ -114,11 +119,16 @@ export const agentWorkspaceModule: WorkspaceModule = {
     registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force) as DeleteCurrentWorkspaceResult));
   },
   async attachToWorkspace({ workspaceId, init, events }) {
-    const agents = await listOrCreateWorkspaceAgents(workspaceId);
     const hasProject = typeof init === "object" && init !== null && "type" in init && init.type === "project.git";
-    return {
-      tabs: await renderWorkspaceAgentTabs(workspaceId, agents, events as AtelierEventBus | undefined),
-      commands: hasProject ? [...agentWorkspaceCommands, projectAgentWorkspaceCommand] : agentWorkspaceCommands,
-    };
+    try {
+      const agents = await listOrCreateWorkspaceAgents(workspaceId);
+      return {
+        tabs: await renderWorkspaceAgentTabs(workspaceId, agents, events as AtelierEventBus | undefined),
+        commands: hasProject ? [...agentWorkspaceCommands, projectAgentWorkspaceCommand] : agentWorkspaceCommands,
+      };
+    } catch (error) {
+      if (error instanceof AtelierCoreError && error.code === "workspace_not_found") return { tabs: [], commands: hasProject ? [...agentWorkspaceCommands, projectAgentWorkspaceCommand] : agentWorkspaceCommands };
+      throw error;
+    }
   },
 };

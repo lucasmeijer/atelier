@@ -11,6 +11,7 @@ Options:
   --image <name>        Image repository/name (default: ghcr.io/lucasmeijer/atelier)
   --tag <tag>           Tag to apply. May be passed more than once (default: git describe/short sha)
   --latest             Also tag the image as <image>:latest
+  --stable             Also tag the image as <image>:stable
   --push               Push the built images instead of only loading them locally
   --platform <value>   Docker platform(s), e.g. linux/amd64 or linux/amd64,linux/arm64
   --no-cache           Build without Docker cache
@@ -21,13 +22,14 @@ Options:
 Examples:
   bun run image:build
   bun run image:build -- --tag v0.1.0 --latest
-  bun run image:publish -- --tag v0.1.0 --platform linux/amd64,linux/arm64
+  bun run image:publish -- --stable --platform linux/amd64,linux/arm64
 `;
 
 interface Options {
   image: string;
   tags: string[];
   latest: boolean;
+  stable: boolean;
   push: boolean;
   platform?: string;
   noCache: boolean;
@@ -56,6 +58,7 @@ function parseArgs(args: string[]): Options {
     image: "ghcr.io/lucasmeijer/atelier",
     tags: [],
     latest: false,
+    stable: false,
     push: false,
     noCache: false,
     buildArgs: [],
@@ -74,6 +77,8 @@ function parseArgs(args: string[]): Options {
       i++;
     } else if (arg === "--latest") {
       options.latest = true;
+    } else if (arg === "--stable") {
+      options.stable = true;
     } else if (arg === "--push") {
       options.push = true;
     } else if (arg === "--platform") {
@@ -144,6 +149,10 @@ function gitCommitDescription(): string {
   return maybeRun(["git", "log", "-1", "--pretty=%s"]) || "local build";
 }
 
+function imageCreated(): string {
+  return new Date().toISOString();
+}
+
 function workspaceImageRepository(appImage: string): string {
   if (appImage === "ghcr.io/lucasmeijer/atelier") return "ghcr.io/lucasmeijer/atelier-workspace";
   return `${appImage}-workspace`;
@@ -166,6 +175,7 @@ function dockerBuildCommand(options: Options): string[] {
 const options = parseArgs(process.argv.slice(2));
 const tags = options.tags.length > 0 ? options.tags.map(sanitizeTag) : [defaultTag()];
 if (options.latest) tags.push("latest");
+if (options.stable) tags.push("stable");
 const uniqueTags = [...new Set(tags)];
 const imageRefs = uniqueTags.map((tag) => `${options.image}:${tag}`);
 
@@ -191,6 +201,7 @@ const defaultBuildArgs = [
   `ATELIER_COMMIT_ID=${gitCommitId()}`,
   `ATELIER_COMMIT_DESCRIPTION=${gitCommitDescription()}`,
   `ATELIER_DEFAULT_WORKSPACE_IMAGE=${defaultWorkspaceImageRef}`,
+  `ATELIER_IMAGE_CREATED=${imageCreated()}`,
 ];
 const allBuildArgs = [...defaultBuildArgs, ...options.buildArgs];
 

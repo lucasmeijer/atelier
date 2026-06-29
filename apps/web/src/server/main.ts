@@ -240,6 +240,7 @@ for (const module of workspaceModules) {
     events: atelierEvents,
     registry,
     workspaceRowContributions: app.workspaceRowContributions,
+    globalSidebarContributions: app.globalSidebarContributions,
     layouts,
     getTabKeys: (workspaceId) => app.tabKeysFor(workspaceId),
     deleteCurrentWorkspace: (workspaceId, force) => app.deleteCurrentWorkspaceFromAgent(workspaceId, force),

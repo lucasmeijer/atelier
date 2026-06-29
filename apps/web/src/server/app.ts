@@ -25,7 +25,7 @@ import {
 } from "@atelier/projects";
 import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
-import { atelierName, domId, escapeHtml, turboStream, turboStreamResponse, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceRowContributionRegistry, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
+import { atelierName, domId, escapeHtml, turboStream, turboStreamResponse, type GlobalSidebarContributionRegistry, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceRowContributionRegistry, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
 import type { StreamHub } from "./stream-hub.ts";
 import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
 import type { WebPreferenceStore } from "./preferences.ts";
@@ -60,6 +60,7 @@ export interface WebApp {
   tabKeysFor(workspaceId: string): Promise<string[]>;
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }>;
   workspaceRowContributions: WorkspaceRowContributionRegistry;
+  globalSidebarContributions: GlobalSidebarContributionRegistry;
 }
 
 type HtmlResponseInit = Omit<ResponseInit, "headers"> & { headers?: Record<string, string> };
@@ -225,6 +226,20 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       if (html) workspaceContributions.set(contributionId, html);
       else workspaceContributions.delete(contributionId);
       hub.broadcast(turboReplaceStream(workspaceRowContributionsId(workspaceId), renderWorkspaceRowContributions(workspaceId)));
+    },
+  };
+
+  const globalSidebarContributionStore = new Map<string, string>();
+
+  function renderGlobalSidebarContributions(): string {
+    return Array.from(globalSidebarContributionStore.values()).filter(Boolean).join("");
+  }
+
+  const globalSidebarContributions: GlobalSidebarContributionRegistry = {
+    set(contributionId: string, html?: string) {
+      if (html) globalSidebarContributionStore.set(contributionId, html);
+      else globalSidebarContributionStore.delete(contributionId);
+      hub.broadcast(turboUpdateStream("global_sidebar_contributions", renderGlobalSidebarContributions()));
     },
   };
 
@@ -494,6 +509,8 @@ ${moduleStylesHtml()}
           ${addProjectRow}
         </div>
       </section>
+
+      <section id="global_sidebar_contributions">${renderGlobalSidebarContributions()}</section>
     </div>
     <div class="sidefoot">
       <a class="footbtn" href="/settings" data-turbo-frame="_top" data-turbo-stream="true"><span class="gi">⚙</span><span class="ftext">Settings</span></a>
@@ -642,13 +659,14 @@ ${moduleStylesHtml()}
     ].join("");
   }
 
-  async function renderWorkspaceShell(selectedId?: string): Promise<string> {
+  async function renderWorkspaceShell(selectedId?: string, options: { mainHtml?: string; showWhatsNew?: boolean } = {}): Promise<string> {
     return `<div class="app workspace-shell" data-controller="workspace-shell atelier-shortcuts">
     <aside class="workspace-shell-sidebar" data-workspace-shell-target="sidebar">${await renderWorkspaceSidebar()}</aside>
     <div class="workspace-shell-resizer" data-action="pointerdown->workspace-shell#startResize"></div>
-    <main class="workspace-shell-main">${await workspaceDetailHostHtml(selectedId)}</main>
+    <main class="workspace-shell-main">${options.mainHtml ?? await workspaceDetailHostHtml(selectedId)}</main>
   </div>
   ${addProjectModal()}
+  <div id="update_modal_host"></div>
   <div id="settings_modal_host"></div>
   <div id="onboarding_modal_host">${await renderOnboardingDialogIfNeeded()}</div>
   <div id="${workspaceCommandModalHostId}"></div>
@@ -1269,6 +1287,7 @@ ${moduleStylesHtml()}
     tabKeysFor,
     deleteCurrentWorkspaceFromAgent,
     workspaceRowContributions,
+    globalSidebarContributions,
     async fetch(request) {
       try {
         return await route(request);

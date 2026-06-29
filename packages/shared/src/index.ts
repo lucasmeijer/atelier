@@ -133,6 +133,11 @@ export interface WorkspaceRowContributionRegistry {
   set(workspaceId: string, contributionId: string, html?: string): void;
 }
 
+export interface GlobalSidebarContributionRegistry {
+  /** Set server-rendered sidebar HTML for a module contribution; empty/undefined clears it. */
+  set(contributionId: string, html?: string): void;
+}
+
 export interface SettingsActionContext {
   request: Request;
   url: URL;
@@ -155,6 +160,7 @@ export interface WorkspaceServerModuleContext {
     setTabUnread(workspaceId: string, tabKey: string, unread: boolean): void;
   };
   workspaceRowContributions: WorkspaceRowContributionRegistry;
+  globalSidebarContributions: GlobalSidebarContributionRegistry;
   layouts: unknown;
   getTabKeys(workspaceId: string): Promise<string[]>;
   deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<unknown>;

@@ -22,6 +22,7 @@
         "@atelier/proxy-ingress": "workspace:*",
         "@atelier/projects": "workspace:*",
         "@atelier/shared": "workspace:*",
+        "@atelier/update": "workspace:*",
         "@atelier/vscode": "workspace:*",
         "@atelier/workspace": "workspace:*",
         "@atelier/workspace-terminal": "workspace:*",
@@ -106,6 +107,12 @@
     "packages/shared": {
       "name": "@atelier/shared",
     },
+    "packages/update": {
+      "name": "@atelier/update",
+      "dependencies": {
+        "@atelier/shared": "workspace:*",
+      },
+    },
     "packages/vscode": {
       "name": "@atelier/vscode",
       "dependencies": {
@@ -168,6 +175,8 @@
     "@atelier/projects": ["@atelier/projects@workspace:packages/projects"],
 
     "@atelier/shared": ["@atelier/shared@workspace:packages/shared"],
+
+    "@atelier/update": ["@atelier/update@workspace:packages/update"],
 
     "@atelier/vscode": ["@atelier/vscode@workspace:packages/vscode"],
 

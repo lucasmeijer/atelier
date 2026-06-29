@@ -28,6 +28,7 @@ COPY packages/keypress-probe/package.json packages/keypress-probe/package.json
 COPY packages/vscode/package.json packages/vscode/package.json
 COPY packages/proxy-egress/package.json packages/proxy-egress/package.json
 COPY packages/proxy-ingress/package.json packages/proxy-ingress/package.json
+COPY packages/update/package.json packages/update/package.json
 
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
@@ -61,16 +62,21 @@ COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/
 ARG ATELIER_COMMIT_ID
 ARG ATELIER_COMMIT_DESCRIPTION
 ARG ATELIER_DEFAULT_WORKSPACE_IMAGE
+ARG ATELIER_IMAGE_CREATED
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
 ENV ATELIER_COMMIT_ID=${ATELIER_COMMIT_ID}
 ENV ATELIER_COMMIT_DESCRIPTION=${ATELIER_COMMIT_DESCRIPTION}
 ENV ATELIER_NAMESPACE=default
+LABEL org.opencontainers.image.source="https://github.com/lucasmeijer/atelier" \
+      org.opencontainers.image.revision="${ATELIER_COMMIT_ID}" \
+      org.opencontainers.image.created="${ATELIER_IMAGE_CREATED}"
 
 COPY --from=build /app /app
 RUN printf '%s\n' "$ATELIER_DEFAULT_WORKSPACE_IMAGE" > /app/.atelier-default-workspace-image
-RUN chmod 755 /app/apps/web/docker-entrypoint.sh
+RUN printf '%s\n' '#!/usr/bin/env sh' 'exec bun /app/packages/update/src/server/update-helper.ts "$@"' > /usr/local/bin/atelier-update-helper \
+ && chmod 755 /usr/local/bin/atelier-update-helper /app/apps/web/docker-entrypoint.sh
 
 EXPOSE 3000
 

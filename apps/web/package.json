@@ -20,6 +20,7 @@
     "@atelier/proxy-ingress": "workspace:*",
     "@atelier/projects": "workspace:*",
     "@atelier/shared": "workspace:*",
+    "@atelier/update": "workspace:*",
     "@atelier/workspace": "workspace:*",
     "@atelier/workspace-terminal": "workspace:*",
     "@atelier/vscode": "workspace:*"
