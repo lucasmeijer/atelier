@@ -176,28 +176,6 @@ function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan 
   return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: [], initScripts: [workspaceGitCredentialInitScript()], cleanup: [] };
 }
 
-interface WorkspaceRuntimeManifest {
-  privileged?: boolean;
-  initScripts?: string[];
-}
-
-async function readWorkspaceRuntimeManifest(workHostPath: string): Promise<WorkspaceRuntimeManifest | undefined> {
-  const path = join(workHostPath, ".atelier", "workspace.json");
-  const file = Bun.file(path);
-  if (!(await file.exists())) return undefined;
-  const manifest = JSON.parse(await file.text()) as WorkspaceRuntimeManifest & { version?: number };
-  if (manifest.version !== undefined && manifest.version !== 1) throw new Error(`unsupported workspace manifest version: ${manifest.version}`);
-  return manifest;
-}
-
-function applyWorkspaceRuntimeManifest(plan: WorkspaceDockerPlan, manifest: WorkspaceRuntimeManifest | undefined): void {
-  if (!manifest) return;
-  if (manifest.privileged) plan.extraArgs.push("--privileged");
-  if (manifest.initScripts) {
-    if (!Array.isArray(manifest.initScripts) || manifest.initScripts.some((script) => typeof script !== "string")) throw new Error("workspace manifest initScripts must be an array of strings");
-    plan.initScripts.push(...manifest.initScripts);
-  }
-}
 function alignWorkspaceUserScript(): string {
   return `work_uid="\${ATELIER_HOST_UID:?}"
 work_gid="\${ATELIER_HOST_GID:?}"
@@ -226,7 +204,6 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     });
     const labels: Record<string, string> = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id };
     plan = baseWorkspacePlan(labels);
-    applyWorkspaceRuntimeManifest(plan, await readWorkspaceRuntimeManifest(source.worktreePath));
     plan.mounts.push({ type: "bind", source: source.dockerHostWorktreePath, target: workspaceRoot });
     const activePlan = plan;
     await provisionStep(options.events, id, "workspace.plan", "Prepare workspace container plan", async () => {

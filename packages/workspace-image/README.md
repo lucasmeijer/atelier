@@ -1,30 +1,17 @@
 # Atelier workspace image
 
-Workspace containers are assembled from module contributions instead of one hand-written Dockerfile.
+Workspace containers are assembled in two layers:
 
-Atelier package modules contribute `workspace-image.json` files at their package roots. These compose the default Atelier workspace image:
+1. Atelier modules contribute `workspace-image.json` files at their package roots. These compose the default Atelier workspace image.
+2. A repository can optionally add `.atelier/Dockerfile` to build its final workspace image on top of that default image.
+
+Module manifests are internal to Atelier packages, for example:
 
 ```txt
 packages/workspace-image/workspace-image.json
 packages/workspace-terminal/workspace-image.json
 packages/vscode/workspace-image.json
 ```
-
-A checked-out repository can extend that default image with `.atelier/workspace.json`. The manifest can add Ubuntu packages, files/directories to copy into the image, build-time `RUN` scripts, default environment variables, and runtime options:
-
-```json
-{
-  "version": 1,
-  "aptPackages": ["libpq-dev", "postgresql-client"],
-  "env": { "EXAMPLE": "value" },
-  "run": ["corepack enable"],
-  "files": [{ "from": ".atelier/image/rootfs/etc/example.conf", "to": "/etc/example.conf", "mode": "0644" }],
-  "initScripts": ["echo runtime startup step"],
-  "privileged": false
-}
-```
-
-Repo `files[].from` paths are relative to the repository root and may not escape it.
 
 ## Default image
 
@@ -38,13 +25,26 @@ ghcr.io/lucasmeijer/atelier-workspace:<hash>
 
 The Atelier app image is built with that exact default workspace image reference baked into `/app/.atelier-default-workspace-image`.
 
-## Repository extensions
+## Repository Dockerfile
 
-If a workspace repo has `.atelier/workspace.json`, Atelier builds a local derived image on demand:
+If a workspace repo has `.atelier/Dockerfile`, Atelier builds a local derived image on demand. The Dockerfile must start with:
 
 ```Dockerfile
-FROM ghcr.io/lucasmeijer/atelier-workspace:<hash>
-# repo additions from .atelier/workspace.json
+FROM atelier-workspace
 ```
 
-If the repo has no `.atelier/workspace.json`, workspace creation pulls/uses the baked default workspace image directly and does not build a workspace image.
+Before building the repository Dockerfile, Atelier tags the resolved default workspace image as the local Docker image `atelier-workspace`. The repository Dockerfile can then use normal Dockerfile features:
+
+```Dockerfile
+FROM atelier-workspace
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libpq-dev postgresql-client \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV EXAMPLE=value
+COPY .atelier/image/example.conf /etc/example.conf
+RUN chmod 0644 /etc/example.conf
+```
+
+If the repo has no `.atelier/Dockerfile`, workspace creation pulls/uses the baked default workspace image directly and does not build a repository image.

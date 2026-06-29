@@ -12,7 +12,7 @@ import { createWorkspaceSecretContext, forgetWorkspaceSecretContext, getWorkspac
 import type { AtelierEventBus } from "@atelier/core";
 import { isHopByHopHeader, stripHopByHopHeaders } from "../proxy-headers.ts";
 import { authenticateProxyRequest, ensureWorkspaceProxyAuthToken, forgetWorkspaceProxyAuthToken } from "./auth-store.ts";
-import { defaultNoProxyEntries, readWorkspaceNoProxyEntries, uniqueNoProxyEntries } from "./no-proxy.ts";
+import { defaultNoProxyEntries, uniqueNoProxyEntries } from "./no-proxy.ts";
 import { ensureLeafCertificate, ensureMitmCa, type MitmCa } from "./mitm-ca.ts";
 
 export const atelierWorkspaceProxyPort = 58123;
@@ -34,9 +34,9 @@ async function workspaceProxyUrl(workspaceId: string, token: string): Promise<st
   return `http://${encodeURIComponent(workspaceId)}:${encodeURIComponent(token)}@${await workspaceProxyHost()}:${atelierWorkspaceProxyPort}`;
 }
 
-async function workspaceProxyEnv(workspaceId: string, token: string, extraNoProxy: string[] = []): Promise<Record<string, string>> {
+async function workspaceProxyEnv(workspaceId: string, token: string): Promise<Record<string, string>> {
   const proxy = await workspaceProxyUrl(workspaceId, token);
-  const noProxy = uniqueNoProxyEntries([...defaultNoProxyEntries(), ...extraNoProxy]).join(",");
+  const noProxy = uniqueNoProxyEntries(defaultNoProxyEntries()).join(",");
   return {
     HTTP_PROXY: proxy,
     HTTPS_PROXY: proxy,
@@ -56,7 +56,7 @@ async function workspaceProxyEnv(workspaceId: string, token: string, extraNoProx
 }
 
 export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
-  events.on("workspace_plan_prepare", async ({ workspaceId, workHostPath, plan }) => {
+  events.on("workspace_plan_prepare", async ({ workspaceId, plan }) => {
     const runtimeContext = await getAtelierRuntimeContext();
     const secretContext = await createWorkspaceSecretContext(workspaceId);
     Object.assign(plan.env, secretContext.env);
@@ -64,8 +64,7 @@ export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
     const proxyAuthToken = await ensureWorkspaceProxyAuthToken(workspaceId);
     await ensureAtelierWorkspaceProxy();
     await ensureMitmCa(runtimeContext);
-    const extraNoProxy = await readWorkspaceNoProxyEntries(workHostPath);
-    Object.assign(plan.env, await workspaceProxyEnv(workspaceId, proxyAuthToken, extraNoProxy));
+    Object.assign(plan.env, await workspaceProxyEnv(workspaceId, proxyAuthToken));
     plan.mounts.push({ type: "bind", source: dockerHostAtelierDataPath(runtimeContext, "proxy-ca", "atelier-mitm-ca.pem"), target: workspaceMitmCaPath, readonly: true });
     plan.initScripts.push(`if [ -r ${workspaceMitmCaPath} ]; then mkdir -p /usr/local/share/ca-certificates; cp ${workspaceMitmCaPath} /usr/local/share/ca-certificates/atelier-mitm-ca.crt; update-ca-certificates || true; fi`);
     plan.initScripts.push(`su atelier -c ${shellQuote('git config --global http.proxy "$HTTPS_PROXY"; git config --global http.proxyAuthMethod basic')}`);

@@ -1,11 +1,12 @@
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand } from "@atelier/observable-terminal/server";
 
-interface WorkspaceImageMetadata { tag: string; modules: string[]; baseImage?: string }
+interface WorkspaceImageMetadata { tag: string; modules: string[] }
 
 interface WorkspaceImageBuildTask {
   tag: string;
@@ -39,10 +40,6 @@ function contextBaseDir(): string {
 
 function defaultContextDir(): string {
   return join(contextBaseDir(), "default");
-}
-
-function workspaceContextDir(workspaceId: string | undefined): string {
-  return join(contextBaseDir(), workspaceId ?? crypto.randomUUID());
 }
 
 async function contextMetadata(contextDir: string): Promise<WorkspaceImageMetadata> {
@@ -143,9 +140,9 @@ async function bakedDefaultWorkspaceImageRef(): Promise<string | undefined> {
   return ref || undefined;
 }
 
-async function ensureBuiltImage(contextDir: string, metadata: WorkspaceImageMetadata, options: ResolveWorkspaceImageOptions = {}): Promise<string> {
+async function ensureBuiltImage(contextDir: string, dockerfile: string, metadata: WorkspaceImageMetadata, options: ResolveWorkspaceImageOptions = {}): Promise<string> {
   if (await imageExists(metadata.tag)) return metadata.tag;
-  const task = startBuildTask(metadata.tag, metadata.modules, join(contextDir, "Dockerfile"), contextDir, options);
+  const task = startBuildTask(metadata.tag, metadata.modules, dockerfile, contextDir, options);
   await waitForBuildTask(task, options);
   return metadata.tag;
 }
@@ -160,20 +157,51 @@ export async function ensureDefaultWorkspaceImage(): Promise<string> {
   const contextDir = defaultContextDir();
   await generateContext(contextDir);
   const metadata = await contextMetadata(contextDir);
-  return await ensureBuiltImage(contextDir, metadata);
+  return await ensureBuiltImage(contextDir, join(contextDir, "Dockerfile"), metadata);
 }
 
-async function hasRepoWorkspaceImageManifest(sourcePath: string | undefined): Promise<boolean> {
-  if (!sourcePath) return false;
-  return await Bun.file(join(sourcePath, ".atelier", "workspace.json")).exists();
+async function hashBuildContext(hash: ReturnType<typeof createHash>, root: string, dir = root): Promise<void> {
+  for (const entry of (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+    if (dir === root && entry.name === ".git") continue;
+    const path = join(dir, entry.name);
+    const rel = relative(root, path).replaceAll("\\", "/");
+    hash.update(rel); hash.update("\0");
+    if (entry.isDirectory()) {
+      await hashBuildContext(hash, root, path);
+    } else {
+      const info = await stat(path);
+      hash.update(String(info.mode)); hash.update("\0"); hash.update(await readFile(path)); hash.update("\0");
+    }
+  }
+}
+
+async function assertWorkspaceDockerfileBase(dockerfile: string): Promise<void> {
+  const firstLine = (await readFile(dockerfile, "utf8")).split("\n")[0].trim();
+  if (firstLine !== "FROM atelier-workspace") throw new Error(`${dockerfile} must start with FROM atelier-workspace`);
+}
+
+async function repoWorkspaceImageMetadata(sourcePath: string, dockerfile: string, baseImage: string): Promise<WorkspaceImageMetadata> {
+  await assertWorkspaceDockerfileBase(dockerfile);
+  const hash = createHash("sha256");
+  hash.update("atelier-repo-workspace-dockerfile-v2\n");
+  hash.update(baseImage); hash.update("\0");
+  await hashBuildContext(hash, sourcePath);
+  return { tag: `atelier-workspace:${hash.digest("hex").slice(0, 16)}`, modules: ["repo"] };
+}
+
+async function tagAtelierWorkspaceBase(baseImage: string): Promise<void> {
+  const result = await runDocker(["tag", baseImage, "atelier-workspace"]);
+  if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `docker tag ${baseImage} atelier-workspace failed`);
 }
 
 export async function resolveWorkspaceImage(options: ResolveWorkspaceImageOptions = {}): Promise<string> {
   const baseImage = await ensureDefaultWorkspaceImage();
-  if (!(await hasRepoWorkspaceImageManifest(options.sourcePath))) return baseImage;
+  if (!options.sourcePath) return baseImage;
 
-  const contextDir = workspaceContextDir(options.workspaceId);
-  await generateContext(contextDir, [options.sourcePath!, "--base-image", baseImage]);
-  const metadata = await contextMetadata(contextDir);
-  return await ensureBuiltImage(contextDir, metadata, options);
+  const dockerfile = join(options.sourcePath, ".atelier", "Dockerfile");
+  if (!(await Bun.file(dockerfile).exists())) return baseImage;
+
+  await tagAtelierWorkspaceBase(baseImage);
+  const metadata = await repoWorkspaceImageMetadata(options.sourcePath, dockerfile, baseImage);
+  return await ensureBuiltImage(options.sourcePath, dockerfile, metadata, options);
 }

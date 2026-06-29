@@ -80,18 +80,26 @@ Repository workspaces also include `/persistent`, a directory shared by all work
 
 ## 8. Customizing Workspaces
 
-A repository can customize its workspace image with `.atelier/workspace.json`:
+A repository can customize its workspace image with `.atelier/Dockerfile`. The Dockerfile must start with:
 
-```json
-{
-  "version": 1,
-  "aptPackages": ["libpq-dev"],
-  "env": { "EXAMPLE": "value" },
-  "run": ["corepack enable"],
-  "files": [
-    { "from": ".atelier/image/example.conf", "to": "/etc/example.conf", "mode": "0644" }
-  ]
-}
+```Dockerfile
+FROM atelier-workspace
+```
+
+Atelier first resolves the default workspace image produced by Atelier's module build, tags that image locally as `atelier-workspace`, and then builds the repository Dockerfile on top of it.
+
+Example:
+
+```Dockerfile
+FROM atelier-workspace
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libpq-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV EXAMPLE=value
+COPY .atelier/image/example.conf /etc/example.conf
+RUN chmod 0644 /etc/example.conf
 ```
 
 Use this to install packages, add image files, set environment variables, or run build-time setup commands for future workspaces from that repository.
