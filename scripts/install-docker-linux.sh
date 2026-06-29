@@ -71,7 +71,7 @@ require_tailscale() {
 }
 
 install_atelier() {
-  mkdir -p "$atelier_data_dir"
+  install -d -o 1000 -g 1000 -m 0755 "$atelier_data_dir"
 
   log "Pulling $atelier_image..."
   docker pull "$atelier_image"
