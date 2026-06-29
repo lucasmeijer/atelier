@@ -359,9 +359,11 @@ export function renderRunningToolCard(ctx: AgentRenderContext, tool: ToolView): 
   const elapsed = tool.startedAt
     ? `<span class="agent-tool-elapsed" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}"${tool.timeoutSeconds ? ` data-agent-elapsed-max-value="${tool.timeoutSeconds}"` : ""}><span data-agent-elapsed-target="time">0s</span></span>`
     : "";
-  return `<div class="agent-tool running ${toolClass(tool.name)}">
+  const fullscreenTemplate = renderFullscreenTemplate(tool, renderer, argsSummary);
+  const fullscreen = fullscreenTemplate ? ` data-controller="agent-fullscreen" data-agent-fullscreen-title-value="${escapeHtml(fullscreenTitle(tool, argsSummary))}"` : "";
+  return `<div class="agent-tool running ${toolClass(tool.name)}"${fullscreen}>
     <div class="agent-tool-head"><span class="agent-tool-glyph pending">…</span><code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span>${elapsed}</div>
-    ${terminal}
+    ${terminal}${fullscreenTemplate}
   </div>`;
 }
 
@@ -380,9 +382,12 @@ export function renderToolCard(ctx: AgentRenderContext, tool: ToolView, options:
   const copyButton = tool.name === "bash" && resultHtml
     ? `<button type="button" class="agent-tool-copy" data-controller="agent-copy" data-action="click->agent-copy#copy" title="Copy output to clipboard" aria-label="Copy bash output to clipboard"><span class="agent-tool-copy-icon" aria-hidden="true">⧉</span></button>`
     : "";
-  return `<details class="agent-tool done ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}"${options.open ? " open" : ""}>
+  const fullscreenTemplate = renderFullscreenTemplate(tool, renderer, argsSummary);
+  const fullscreen = fullscreenTemplate ? ` data-controller="agent-fullscreen" data-agent-fullscreen-title-value="${escapeHtml(fullscreenTitle(tool, argsSummary))}"` : "";
+  return `<details class="agent-tool done ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}"${options.open ? " open" : ""}${fullscreen}>
     <summary class="agent-tool-head">${glyph}<code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span>${copyButton}</summary>
     <div class="agent-tool-detail${flushSingleBlock ? " flush" : ""}">${bodyHtml}</div>
+    ${fullscreenTemplate}
   </details>`;
 }
 
@@ -402,6 +407,7 @@ interface ToolRenderer {
   resultHtml?: (ctx: AgentRenderContext, tool: ToolView) => string;
   hideEmptyResult?: boolean;
   flushSingleBlock?: boolean;
+  fullscreenHtml?: (tool: ToolView) => string;
 }
 
 function toolRenderer(name: string): ToolRenderer {
@@ -410,6 +416,16 @@ function toolRenderer(name: string): ToolRenderer {
   if (name === "write") return writeRenderer;
   if (name === "edit") return editRenderer;
   return {};
+}
+
+function fullscreenTitle(tool: ToolView, argsSummary: string): string {
+  return [tool.name, argsSummary].filter(Boolean).join(" ");
+}
+
+function renderFullscreenTemplate(tool: ToolView, renderer: ToolRenderer, argsSummary: string): string {
+  const html = renderer.fullscreenHtml?.(tool);
+  if (!html) return "";
+  return `<template data-agent-fullscreen-target="content"><section class="agent-tool agent-tool-fullscreen ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}"><div class="agent-tool-head"><code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span></div><div class="agent-tool-detail flush">${html}</div></section></template>`;
 }
 
 function toolArgs(tool: ToolView): Record<string, unknown> | undefined {
@@ -657,15 +673,25 @@ const bashRenderer: ToolRenderer = {
   resultHtml: (_ctx, tool) => bashResultHtml(tool),
 };
 
+function readResultHtml(tool: ToolView): string {
+  const result = trimResult(tool);
+  if (!result) return "";
+  return codeBlockHtml(result, stringArg(toolArgs(tool), "path", "file_path"), "agent-tool-result agent-tool-code");
+}
+
+function writeContentHtml(tool: ToolView, limit?: { lines: number; chars: number }): string {
+  const args = toolArgs(tool);
+  const content = stringArg(args, "content");
+  if (content === undefined) return genericParamsHtml(tool);
+  return codeBlockHtml(content, stringArg(args, "path", "file_path"), "agent-tool-code", limit);
+}
+
 const readRenderer: ToolRenderer = {
   known: true,
   flushSingleBlock: true,
   summary: (tool) => pathSummary(tool, formatReadRange(toolArgs(tool))),
-  resultHtml: (_ctx, tool) => {
-    const result = trimResult(tool);
-    if (!result) return "";
-    return codeBlockHtml(result, stringArg(toolArgs(tool), "path", "file_path"), "agent-tool-result agent-tool-code");
-  },
+  resultHtml: (_ctx, tool) => readResultHtml(tool),
+  fullscreenHtml: readResultHtml,
 };
 
 const writeRenderer: ToolRenderer = {
@@ -673,13 +699,9 @@ const writeRenderer: ToolRenderer = {
   hideEmptyResult: true,
   flushSingleBlock: true,
   summary: (tool) => pathSummary(tool),
-  paramsHtml: (_ctx, tool) => {
-    const args = toolArgs(tool);
-    const content = stringArg(args, "content");
-    if (content === undefined) return genericParamsHtml(tool);
-    return codeBlockHtml(content, stringArg(args, "path", "file_path"), "agent-tool-code", { lines: tool.status === "running" ? 80 : 120, chars: tool.status === "running" ? 8000 : 12000 });
-  },
+  paramsHtml: (_ctx, tool) => writeContentHtml(tool, { lines: tool.status === "running" ? 80 : 120, chars: tool.status === "running" ? 8000 : 12000 }),
   resultHtml: (_ctx, tool) => tool.status === "error" ? resultPreHtml(trimResult(tool)) : "",
+  fullscreenHtml: (tool) => `${writeContentHtml(tool)}${tool.status === "error" ? resultPreHtml(trimResult(tool)) : ""}`,
 };
 
 const editRenderer: ToolRenderer = {

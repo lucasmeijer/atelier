@@ -322,12 +322,13 @@ function createAgentProxyController(Controller: StimulusControllerConstructor) {
 }
 
 // ---------------------------------------------------------------------------
-// agent-media-fullscreen: show inline HTML/image/video previews in a fullscreen modal
+// agent-fullscreen: show media and explicit fullscreen templates in a modal
 // ---------------------------------------------------------------------------
 
 type FullscreenMediaElement = HTMLIFrameElement | HTMLImageElement | HTMLVideoElement;
+type FullscreenViewer = { element: HTMLElement; connect?: () => void; disconnect?: () => void };
 
-function createAgentMediaFullscreenController(Controller: StimulusControllerConstructor) {
+function createAgentFullscreenController(Controller: StimulusControllerConstructor) {
   let hovered: { open(): void } | undefined;
   let connected = 0;
 
@@ -344,7 +345,7 @@ function createAgentMediaFullscreenController(Controller: StimulusControllerCons
     hovered.open();
   };
 
-  return class AgentMediaFullscreenController extends Controller {
+  return class AgentFullscreenController extends Controller {
     declare readonly element: HTMLElement;
     private dialog?: HTMLDialogElement;
     private media?: FullscreenMediaElement;
@@ -391,26 +392,23 @@ function createAgentMediaFullscreenController(Controller: StimulusControllerCons
         this.dialog.close();
         return;
       }
-      const source = this.media ?? this.findMedia();
-      if (!source) return;
-      const src = this.mediaSrc(source);
-      if (!src) return;
+      const viewer = this.createViewer();
+      if (!viewer) return;
 
       const dialog = document.createElement("dialog");
-      dialog.className = "agent-media-fullscreen-dialog";
+      dialog.className = "agent-fullscreen-dialog";
 
       const header = document.createElement("div");
-      header.className = "agent-media-fullscreen-bar";
+      header.className = "agent-fullscreen-bar";
       const title = document.createElement("span");
-      title.textContent = this.title(source);
+      title.textContent = this.title();
       const close = document.createElement("button");
       close.type = "button";
-      close.className = "agent-media-fullscreen-close";
+      close.className = "agent-fullscreen-close";
       close.textContent = "Close";
       close.addEventListener("click", () => dialog.close());
       header.append(title, close);
 
-      const viewer = this.createViewer(source, src);
       dialog.append(header, viewer.element);
       dialog.addEventListener("keydown", this.dialogKeydown);
       dialog.addEventListener("close", () => {
@@ -430,10 +428,24 @@ function createAgentMediaFullscreenController(Controller: StimulusControllerCons
       return this.element.querySelector<HTMLIFrameElement | HTMLImageElement | HTMLVideoElement>("iframe, img, video") ?? undefined;
     }
 
-    private createViewer(source: FullscreenMediaElement, src: string): { element: HTMLElement; connect?: () => void; disconnect?: () => void } {
+    private createViewer(): FullscreenViewer | undefined {
+      const template = this.element.querySelector<HTMLTemplateElement>("template[data-agent-fullscreen-target='content']");
+      if (template) {
+        const container = document.createElement("div");
+        container.className = "agent-fullscreen-html";
+        container.append(template.content.cloneNode(true));
+        return { element: container };
+      }
+
+      const media = this.media ?? this.findMedia();
+      const src = media ? this.mediaSrc(media) : "";
+      return media && src ? this.createMediaViewer(media, src) : undefined;
+    }
+
+    private createMediaViewer(source: FullscreenMediaElement, src: string): FullscreenViewer {
       if (source instanceof HTMLIFrameElement) {
         const frame = document.createElement("iframe");
-        frame.className = "agent-media-fullscreen-iframe";
+        frame.className = "agent-fullscreen-iframe";
         frame.src = src;
         for (const attr of ["sandbox", "allow", "referrerpolicy"] as const) {
           const value = source.getAttribute(attr);
@@ -458,7 +470,7 @@ function createAgentMediaFullscreenController(Controller: StimulusControllerCons
 
       if (source instanceof HTMLVideoElement) {
         const video = document.createElement("video");
-        video.className = "agent-media-fullscreen-video";
+        video.className = "agent-fullscreen-video";
         video.src = src;
         video.controls = true;
         video.autoplay = !source.paused;
@@ -475,7 +487,7 @@ function createAgentMediaFullscreenController(Controller: StimulusControllerCons
       }
 
       const image = document.createElement("img");
-      image.className = "agent-media-fullscreen-img";
+      image.className = "agent-fullscreen-img";
       image.src = src;
       image.alt = source.alt;
       return { element: image };
@@ -507,9 +519,12 @@ function createAgentMediaFullscreenController(Controller: StimulusControllerCons
       return workspaceProxyUrl(workspaceId, appKey, path || "/");
     }
 
-    private title(media: FullscreenMediaElement): string {
+    private title(): string {
+      const explicitTitle = this.element.dataset.agentFullscreenTitleValue;
+      if (explicitTitle) return explicitTitle;
+      const media = this.media ?? this.findMedia();
       if (media instanceof HTMLImageElement) return media.alt || "Image";
-      return this.element.querySelector(".agent-media-frame-bar span")?.textContent || media.getAttribute("title") || "Preview";
+      return this.element.querySelector(".agent-media-frame-bar span")?.textContent || media?.getAttribute("title") || "Preview";
     }
   };
 }
@@ -722,7 +737,7 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-autosubmit", createAgentAutosubmitController(Controller));
     application.register("agent-copy", createAgentCopyController(Controller));
     application.register("agent-elapsed", createAgentElapsedController(Controller));
-    application.register("agent-media-fullscreen", createAgentMediaFullscreenController(Controller));
+    application.register("agent-fullscreen", createAgentFullscreenController(Controller));
     application.register("agent-html-preview", createAgentHtmlPreviewController(Controller));
     application.register("agent-notice", createAgentNoticeController(Controller));
     application.register("agent-proxy", createAgentProxyController(Controller));

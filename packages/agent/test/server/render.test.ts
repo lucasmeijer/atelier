@@ -27,6 +27,8 @@ describe("tool rendering", () => {
     expect(html).not.toContain("Successfully wrote");
     expect(html).not.toContain("no output");
     expect(html).toContain("agent-tool-detail flush");
+    expect(html).toContain('data-controller="agent-fullscreen"');
+    expect(html).toContain('template data-agent-fullscreen-target="content"');
   });
 
   test("edit renders diff instead of raw JSON", () => {

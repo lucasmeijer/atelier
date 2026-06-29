@@ -226,14 +226,21 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 .agent-media-frame-bar a, .agent-media-frame-action { color: var(--accent); text-decoration: none; font: inherit; border: 0; background: transparent; padding: 0; cursor: pointer; }
 .agent-media-frame-bar a:hover, .agent-media-frame-action:hover { text-decoration: underline; }
 .agent-media-frame iframe { display: block; width: 100%; height: 420px; border: 0; background: #fff; }
-.agent-media-fullscreen-dialog { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; margin: 0; padding: 0; border: 0; background: #000; color: var(--text); }
-.agent-media-fullscreen-dialog::backdrop { background: rgba(0,0,0,.65); }
-.agent-media-fullscreen-bar { height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 11px; color: var(--muted); }
-.agent-media-fullscreen-bar span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-media-fullscreen-close { flex: none; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--text); font: inherit; padding: 4px 9px; cursor: pointer; }
-.agent-media-fullscreen-close:hover { border-color: var(--accent); color: var(--accent); }
-.agent-media-fullscreen-iframe { display: block; width: 100%; height: calc(100vh - 37px); border: 0; background: #fff; }
-.agent-media-fullscreen-img, .agent-media-fullscreen-video { display: block; width: 100%; height: calc(100vh - 37px); object-fit: contain; background: #000; }
+.agent-fullscreen-dialog { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; margin: 0; padding: 0; border: 0; background: #000; color: var(--text); }
+.agent-fullscreen-dialog::backdrop { background: rgba(0,0,0,.65); }
+.agent-fullscreen-bar { height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 11px; color: var(--muted); }
+.agent-fullscreen-bar span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-fullscreen-close { flex: none; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--text); font: inherit; padding: 4px 9px; cursor: pointer; }
+.agent-fullscreen-close:hover { border-color: var(--accent); color: var(--accent); }
+.agent-fullscreen-iframe { display: block; width: 100%; height: calc(100vh - 37px); border: 0; background: #fff; }
+.agent-fullscreen-img, .agent-fullscreen-video { display: block; width: 100%; height: calc(100vh - 37px); object-fit: contain; background: #000; }
+.agent-fullscreen-html { height: calc(100vh - 37px); overflow: auto; padding: 14px; background: var(--bg); box-sizing: border-box; }
+.agent-fullscreen-html .agent-tool { max-width: none; width: 100%; }
+.agent-fullscreen-html .agent-tool-params,
+.agent-fullscreen-html .agent-tool-result,
+.agent-fullscreen-html .agent-tool-stream,
+.agent-fullscreen-html .agent-tool-code,
+.agent-fullscreen-html .agent-diff { max-height: none; }
 
 /* ---------------------------------------------------------------------------
  * Prompt box
