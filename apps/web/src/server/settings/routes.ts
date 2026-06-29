@@ -6,9 +6,11 @@ import {
   createPiModelRegistry,
   disconnectModelProvider,
   getPiOAuthProviders,
+  getProviderApiKeyExample,
   hasAvailableConfiguredAgentModel,
   loginPiOAuthProvider,
   renderAgentModelOptions,
+  addHardcodedProviderModels,
   setActiveAgentModel,
   setPickerAgentModels,
   type ConfiguredAgentModel,
@@ -147,14 +149,14 @@ async function providerSummaries(): Promise<ProviderSummary[]> {
   return [...providers.values()].sort((a, b) => Number(b.connected) - Number(a.connected) || a.label.localeCompare(b.label));
 }
 
-function isSuperPopularProvider(provider: string): boolean {
+function isHighlightedProvider(provider: string): boolean {
   return provider === "anthropic" || provider === "openai-codex";
 }
 
 function providerRow(provider: ProviderSummary, surface: "settings" | "onboarding" = "settings"): string {
   const id = domId(surface, "provider", provider.provider);
   const methods = provider.methods.length ? provider.methods : ["api_key"];
-  const hidden = !provider.connected && !isSuperPopularProvider(provider.provider);
+  const hidden = !provider.connected && !isHighlightedProvider(provider.provider);
   const modelCount = `${provider.modelCount} model${provider.modelCount === 1 ? "" : "s"}`;
   const surfaceParam = surface === "onboarding" ? "&surface=onboarding" : "";
   const disconnectSurfaceParam = surface === "onboarding" ? "?surface=onboarding" : "";
@@ -171,7 +173,7 @@ function providerRow(provider: ProviderSummary, surface: "settings" | "onboardin
 }
 
 function showMoreProvidersButton(providers: Array<{ connected: boolean; provider: string }>): string {
-  const extraCount = providers.filter((provider) => !provider.connected && !isSuperPopularProvider(provider.provider)).length;
+  const extraCount = providers.filter((provider) => !provider.connected && !isHighlightedProvider(provider.provider)).length;
   return extraCount > 0 ? `<button class="settings-btn show-more-providers" type="button" data-controller="provider-list" data-action="provider-list#toggle" data-provider-list-label-value="Show ${extraCount} more providers" data-provider-list-open-label-value="Show fewer providers">Show ${extraCount} more providers</button>` : "";
 }
 
@@ -238,6 +240,7 @@ export async function hasAvailableFavoriteModel(): Promise<boolean> {
 
 export async function renderModelSetup(surface: "settings" | "onboarding" | "dialog" = "settings"): Promise<string> {
   const providers = await providerSummaries();
+  for (const provider of providers.filter((candidate) => candidate.connected)) await addHardcodedProviderModels(provider.provider);
   const favorites = await favoriteModelViews();
   const connectedProviderCount = providers.filter((provider) => provider.connected).length;
   const hasAvailableFavorite = favorites.some((model) => model.available);
@@ -358,8 +361,11 @@ function apiKeyModal(id: string, label: string, action: string, error = ""): str
   return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <form method="post" action="${escapeHtml(action)}" data-turbo="true">
       <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerColor(id)}">${escapeHtml(providerInitial(label))}</div><div><b>${escapeHtml(label)}</b><p>API key</p></div></div>
-      <div class="settings-flow-body"><p>Paste your provider API key. Atelier stores it locally in pi-compatible auth storage.</p>${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}<input class="settings-input" type="password" name="secret" placeholder="API key" autocomplete="off" required autofocus></div>
-      <div class="settings-flow-actions"><button class="settings-btn" formmethod="dialog">Cancel</button><button class="settings-btn primary" type="submit">Connect</button></div>
+      <div class="settings-flow-body"><div class="settings-oauth-card">
+        ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
+        <div class="settings-oauth-input-row"><input class="settings-input" type="password" name="secret" placeholder="${escapeHtml(getProviderApiKeyExample(id) ?? "API key")}" autocomplete="off" required autofocus><button class="settings-btn primary" type="submit">Connect</button></div>
+      </div></div>
+      <div class="settings-flow-actions"><button class="settings-btn" formmethod="dialog">Cancel</button></div>
     </form>
   </dialog>`;
 }
@@ -377,8 +383,9 @@ type PendingOAuthFlow = {
   userCode?: string;
   verificationUri?: string;
   intervalSeconds?: number;
-  progress: string[];
   prompt?: PendingPrompt;
+  redirectSubmitted?: boolean;
+  loadingModels?: boolean;
   error?: string;
 };
 
@@ -386,26 +393,26 @@ const pendingOAuthFlows = new Map<string, PendingOAuthFlow>();
 
 async function startOAuthFlow(provider: string, label: string): Promise<PendingOAuthFlow> {
   if (!getPiOAuthProviders().some((candidate) => candidate.id === provider)) throw new Error(`${label} does not support OAuth in this pi installation.`);
-  const flow: PendingOAuthFlow = { id: crypto.randomUUID(), provider, label, status: "pending", startedAt: Date.now(), abort: new AbortController(), progress: [] };
+  const flow: PendingOAuthFlow = { id: crypto.randomUUID(), provider, label, status: "pending", startedAt: Date.now(), abort: new AbortController() };
   pendingOAuthFlows.set(flow.id, flow);
   void loginPiOAuthProvider(provider, {
     signal: flow.abort.signal,
     notify: (event) => {
       if (event.type === "auth_url") { flow.authUrl = event.url; flow.instructions = event.instructions; }
       else if (event.type === "device_code") { flow.userCode = event.userCode; flow.verificationUri = event.verificationUri; flow.intervalSeconds = event.intervalSeconds; }
-      else if (event.type === "progress") flow.progress = [...flow.progress.slice(-4), event.message];
+      else if (event.type === "progress") { /* progress is reflected by polling status rows */ }
     },
     prompt: (prompt) => handleOAuthPrompt(flow, prompt),
-  }).then(() => {
+  }).then(async () => {
+    flow.loadingModels = true;
+    await addHardcodedProviderModels(provider);
     flow.status = "complete";
     flow.prompt = undefined;
-    flow.progress = [...flow.progress.slice(-4), "Connected."];
   }).catch((error) => {
     if (flow.abort.signal.aborted) return;
     flow.status = "error";
     flow.prompt = undefined;
     flow.error = error instanceof Error ? error.message : String(error);
-    flow.progress = [...flow.progress.slice(-4), flow.error];
   });
   await waitForOAuthFlowReady(flow);
   return flow;
@@ -451,26 +458,56 @@ async function waitForOAuthFlowReady(flow: PendingOAuthFlow): Promise<void> {
   }
 }
 
+function oauthProgressItem(kind: "pending" | "done", title: string, detail: string, meta: string): string {
+  return `<div class="settings-oauth-progress-item ${kind}"><i class="settings-oauth-status-icon ${kind}">${kind === "done" ? "✓" : ""}</i><div><strong>${escapeHtml(title)}</strong>${escapeHtml(detail)}</div><small>${escapeHtml(meta)}</small><div class="settings-oauth-bar"></div></div>`;
+}
+
+function oauthDeviceCodeBody(flow: PendingOAuthFlow, pollMs: number): string {
+  const code = escapeHtml(flow.userCode ?? "");
+  const authUrl = escapeHtml(flow.verificationUri ?? "#");
+  const loadingModels = flow.loadingModels === true;
+  const hidden = loadingModels ? "" : " hidden";
+  const progress = loadingModels
+    ? `${oauthProgressItem("done", `${flow.label} approval received`, "Your device code was accepted.", "done")}${oauthProgressItem("pending", "Getting model list", "This can take a few seconds. Please keep this dialog open.", `every ${Math.round(pollMs / 1000)}s`)}`
+    : oauthProgressItem("pending", `Waiting for ${flow.label} approval`, "Checking whether the code has been accepted.", `every ${Math.round(pollMs / 1000)}s`);
+  return `<div class="settings-oauth-card" data-controller="clipboard oauth-progress-reveal">
+    <div class="settings-oauth-code-label">Copy this code into your clipboard</div>
+    <div class="settings-oauth-code"><code data-clipboard-target="source">${code}</code><button class="settings-btn" type="button" data-oauth-copy-button="true" data-action="clipboard#copy oauth-progress-reveal#showAuth">Copy code</button></div>
+    <div class="settings-oauth-action" data-oauth-progress-reveal-target="auth"${loadingModels ? "" : " hidden"}><div class="settings-oauth-action-row"><div><small>${loadingModels ? "Now loading available models." : "The next page will ask for your copied code."}</small></div><a class="settings-btn ${loadingModels ? "" : "primary"}" href="${authUrl}" target="_blank" rel="noreferrer" data-action="oauth-progress-reveal#showProgress">${loadingModels ? `Reopen ${escapeHtml(flow.label)}` : `Authenticate at ${escapeHtml(flow.label)}`}</a></div></div>
+    <div class="settings-oauth-progress" data-oauth-progress-reveal-target="progress"${hidden}>${progress}</div>
+  </div>`;
+}
+
+function oauthBrowserRedirectBody(flow: PendingOAuthFlow, pollMs: number): string {
+  const authUrl = escapeHtml(flow.authUrl ?? "#");
+  const prompt = flow.prompt;
+  const promptForm = prompt ? `<form class="settings-oauth-input-row" method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true" data-oauth-progress-reveal-target="prompt" hidden><input class="settings-input" name="value" placeholder="http://localhost:1455/callback?code=abc123...&state=..." required><button class="settings-btn primary" type="submit">Submit URL</button></form>` : "";
+  return `<div class="settings-oauth-card" data-controller="oauth-progress-reveal">
+    <div class="settings-oauth-callout"><b>Before you start</b>${escapeHtml(flow.label)} assumes you will sign in on your local machine, but that’s not how Atelier works.<br><br>${escapeHtml(flow.label)} will redirect you to a localhost URL after you sign in. That URL will fail to load. You need to copy the long URL from the address bar, and paste it here.</div>
+    <div class="settings-oauth-action"><div class="settings-oauth-action-row"><div><small>Sign in, approve access, then copy the final localhost URL.</small></div><a class="settings-btn primary" href="${authUrl}" target="_blank" rel="noreferrer" data-action="oauth-progress-reveal#showPrompt">Authenticate at ${escapeHtml(flow.label)}</a></div></div>
+    ${promptForm}
+    ${!prompt && (flow.redirectSubmitted || flow.loadingModels) ? `<div class="settings-oauth-progress">${flow.loadingModels ? `${oauthProgressItem("done", `${flow.label} approval received`, "The redirect URL was accepted.", "done")}${oauthProgressItem("pending", "Getting model list", "This can take a few seconds. Please keep this dialog open.", `every ${Math.round(pollMs / 1000)}s`)}` : oauthProgressItem("pending", `Waiting for ${flow.label}`, "Confirming the pasted redirect URL.", `every ${Math.round(pollMs / 1000)}s`)}</div>` : ""}
+  </div>`;
+}
+
+function oauthCompleteBody(flow: PendingOAuthFlow): string {
+  return `<div class="settings-oauth-card"><div class="settings-oauth-progress">${oauthProgressItem("done", `${flow.label} approval received`, "Your sign-in was accepted.", "done")}${oauthProgressItem("done", "Model list loaded", `${flow.label} models are ready to use.`, "done")}</div></div>`;
+}
+
 function oauthFlowModal(flow: PendingOAuthFlow): string {
-  const statusBody = flow.status === "complete"
-    ? `<p>${escapeHtml(flow.label)} is connected.</p>`
+  const pollMs = Math.max(1500, Math.min(15000, (flow.intervalSeconds ?? 3) * 1000));
+  const body = flow.status === "complete"
+    ? oauthCompleteBody(flow)
     : flow.status === "error"
       ? `<p class="settings-error">${escapeHtml(flow.error ?? "OAuth login failed")}</p>`
-      : "";
-  const manualForm = flow.prompt && flow.status === "pending"
-    ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true"><p>${escapeHtml(flow.prompt.message)}</p><input class="settings-input" name="value" placeholder="${escapeHtml(flow.prompt.placeholder ?? "Authorization code or redirect URL")}" required><div class="settings-oauth-manual-actions"><button class="settings-btn" type="submit">Submit</button></div></form>`
-    : "";
-  const troubleContent = `${flow.instructions ? `<p class="settings-provider-desc">${escapeHtml(flow.instructions)}</p>` : ""}${manualForm}${flow.progress.length ? `<ul class="settings-flow-progress">${flow.progress.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}` || `<p>Leave this dialog open after approving in your browser.</p>`;
-  const trouble = flow.status === "pending" ? `<details class="settings-oauth-manual"><summary>Having trouble?</summary>${troubleContent}</details>` : "";
-  const auth = flow.verificationUri
-    ? `<div class="settings-oauth-card"><a class="settings-btn primary" href="${escapeHtml(flow.verificationUri)}" target="_blank" rel="noreferrer">Open auth page</a><div class="settings-code-row" data-controller="clipboard"><div class="settings-code compact" data-clipboard-target="source">${escapeHtml(flow.userCode ?? "")}</div><button class="settings-btn icon" type="button" data-action="clipboard#copy" title="Copy to clipboard" aria-label="Copy to clipboard">⧉</button></div>${trouble}</div>`
-    : flow.authUrl
-      ? `<div class="settings-oauth-card"><a class="settings-btn primary" href="${escapeHtml(flow.authUrl)}" target="_blank" rel="noreferrer">Open auth page</a>${trouble}</div>`
-      : `<div class="settings-oauth-card"><p>Starting OAuth flow…</p></div>`;
-  const pollMs = Math.max(1500, Math.min(15000, (flow.intervalSeconds ?? 3) * 1000));
+      : flow.verificationUri
+        ? oauthDeviceCodeBody(flow, pollMs)
+        : flow.authUrl
+          ? oauthBrowserRedirectBody(flow, pollMs)
+          : `<div class="settings-oauth-card"><div class="settings-oauth-progress">${oauthProgressItem("pending", "Starting OAuth flow", "Waiting for the provider to respond.", `every ${Math.round(pollMs / 1000)}s`)}</div></div>`;
   return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal oauth-flow" data-modal-auto-show-value="true" data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" ? "true" : "false"}" data-oauth-flow-poll-ms-value="${pollMs}">
-    <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerColor(flow.provider)}">${escapeHtml(providerInitial(flow.label))}</div><div><b>Sign in with ${escapeHtml(flow.label)}</b></div></div>
-    <div class="settings-flow-body">${statusBody}${flow.status === "pending" ? auth : ""}</div>
+    <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerColor(flow.provider)}">${escapeHtml(providerInitial(flow.label))}</div><div><b>Sign in with ${escapeHtml(flow.label)}</b><p>${flow.verificationUri ? "Device code" : "Browser redirect"}</p></div></div>
+    <div class="settings-flow-body">${body}</div>
     <div class="settings-flow-actions settings-oauth-actions">
       ${flow.status === "complete" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="settings-btn primary" type="submit">Done</button></form>` : ""}
       ${flow.status === "pending" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/cancel" data-turbo="true"><button class="settings-btn danger" type="submit">Cancel</button></form>` : ""}
@@ -589,6 +626,7 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     const secret = String(form.get("secret") ?? "");
     try {
       await connectModelProviderApiKey(provider, secret);
+      await addHardcodedProviderModels(provider);
     } catch (error) {
       return stream(replace("settings_flow_dialog", apiKeyModal(provider, label, `/settings/providers/${encodeURIComponent(provider)}/connect${surface === "onboarding" ? "?surface=onboarding" : ""}`, error instanceof Error ? error.message : String(error))));
     }
@@ -603,6 +641,7 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     if (!flow || flow.provider !== provider) return stream(await refreshAfterConnection());
     if (action === "prompt") {
       const form = await request.formData();
+      flow.redirectSubmitted = true;
       flow.prompt?.resolve(String(form.get("value") ?? ""));
       flow.prompt = undefined;
       return stream(replace("settings_flow_dialog", oauthFlowModal(flow)));

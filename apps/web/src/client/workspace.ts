@@ -1136,6 +1136,7 @@ class ThemeSelectController extends Controller {
 
 class OAuthFlowController extends Controller {
   static values = { statusUrl: String, active: Boolean, pollMs: Number };
+  declare readonly element: HTMLElement;
   declare readonly statusUrlValue: string;
   declare readonly activeValue: boolean;
   declare readonly pollMsValue: number;
@@ -1174,14 +1175,44 @@ class OAuthFlowController extends Controller {
     }).catch(() => undefined);
     this.polling = false;
     if (!response?.ok) return;
-    const manualTroubleOpen = this.element.querySelector<HTMLDetailsElement>(".settings-oauth-manual")?.open ?? false;
+    const visibleTargets = ["auth", "progress", "prompt"].filter((target) => this.element.querySelector<HTMLElement>(`[data-oauth-progress-reveal-target~="${target}"]:not([hidden])`));
+    if (this.element.dataset.oauthPromptRequested === "true" && !visibleTargets.includes("prompt")) visibleTargets.push("prompt");
+    const codeCopied = this.element.dataset.oauthCodeCopied === "true";
     const html = await response.text();
     window.Turbo?.renderStreamMessage(html);
-    if (manualTroubleOpen) {
+    if (visibleTargets.length || codeCopied) {
       window.requestAnimationFrame(() => {
-        document.querySelector<HTMLDetailsElement>("#settings_flow_dialog .settings-oauth-manual")?.setAttribute("open", "");
+        const dialog = document.querySelector<HTMLElement>("#settings_flow_dialog");
+        for (const target of visibleTargets) dialog?.querySelectorAll<HTMLElement>(`[data-oauth-progress-reveal-target~="${target}"]`).forEach((item) => { item.hidden = false; });
+        if (visibleTargets.includes("prompt")) dialog?.setAttribute("data-oauth-prompt-requested", "true");
+        if (codeCopied) {
+          dialog?.setAttribute("data-oauth-code-copied", "true");
+          const copyButton = dialog?.querySelector<HTMLButtonElement>('[data-oauth-copy-button="true"]');
+          if (copyButton) copyButton.textContent = "Copied ✓";
+        }
       });
     }
+  }
+}
+
+class OAuthProgressRevealController extends Controller {
+  static targets = ["auth", "progress", "prompt"];
+  declare readonly authTargets: HTMLElement[];
+  declare readonly progressTargets: HTMLElement[];
+  declare readonly promptTargets: HTMLElement[];
+
+  showAuth(): void {
+    this.element.closest<HTMLElement>("#settings_flow_dialog")?.setAttribute("data-oauth-code-copied", "true");
+    for (const item of this.authTargets) item.hidden = false;
+  }
+
+  showProgress(): void {
+    for (const item of this.progressTargets) item.hidden = false;
+  }
+
+  showPrompt(): void {
+    this.element.closest<HTMLElement>("#settings_flow_dialog")?.setAttribute("data-oauth-prompt-requested", "true");
+    for (const item of this.promptTargets) item.hidden = false;
   }
 }
 
@@ -1514,12 +1545,14 @@ class ClipboardController extends Controller {
     if (!this.hasSourceTarget) return;
     const text = this.sourceTarget.textContent?.trim() ?? "";
     if (!text) return;
-    await navigator.clipboard?.writeText(text);
     const button = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : undefined;
-    if (!button) return;
-    const original = button.textContent ?? "Copy to clipboard";
-    button.textContent = button.classList.contains("icon") ? "✓" : "Copied";
-    window.setTimeout(() => { button.textContent = original; }, 1200);
+    const original = button?.textContent ?? "Copy to clipboard";
+    if (button) {
+      this.element.closest<HTMLElement>("#settings_flow_dialog")?.setAttribute("data-oauth-code-copied", "true");
+      button.textContent = button.classList.contains("icon") ? "✓" : "Copied ✓";
+      if (button.dataset.oauthCopyButton !== "true") window.setTimeout(() => { button.textContent = original; }, 3000);
+    }
+    await navigator.clipboard?.writeText(text);
   }
 }
 
@@ -1633,6 +1666,7 @@ application.register("auto-scroll", AutoScrollController);
 application.register("workspace-app-frame", WorkspaceAppFrameController);
 application.register("theme-select", ThemeSelectController);
 application.register("oauth-flow", OAuthFlowController);
+application.register("oauth-progress-reveal", OAuthProgressRevealController);
 application.register("git-identity", GitIdentityController);
 application.register("settings-checkbox", SettingsCheckboxController);
 application.register("provider-list", ProviderListController);
