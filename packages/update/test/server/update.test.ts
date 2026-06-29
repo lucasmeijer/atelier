@@ -287,11 +287,11 @@ describe("update routes", () => {
 describe("docker pull progress", () => {
   test("parses streaming Docker JSON layer progress", async () => {
     const events: Array<{ percent?: number }> = [];
-    const lines = [
+    const lines = `stable: Pulling from lucasmeijer/atelier\n${[
       { id: "a", status: "Downloading", progressDetail: { current: 25, total: 100 } },
       { id: "b", status: "Downloading", progressDetail: { current: 50, total: 100 } },
       { id: "a", status: "Download complete", progressDetail: { current: 100, total: 100 } },
-    ].map((line) => `${JSON.stringify(line)}\n`).join("");
+    ].map((line) => `${JSON.stringify(line)}\n`).join("")}`;
     await pullStableImage((progress) => events.push(progress), () => ({
       stdout: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(lines)); controller.close(); } }),
       stderr: new ReadableStream({ start(controller) { controller.close(); } }),

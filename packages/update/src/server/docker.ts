@@ -104,8 +104,13 @@ export async function pullStableImage(onProgress: (progress: PullProgress) => vo
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";
     for (const line of lines) {
-      if (!line.trim()) continue;
-      const event = JSON.parse(line) as { id?: string; status?: string; progressDetail?: { current?: number; total?: number }; error?: string };
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (!trimmed.startsWith("{")) {
+        onProgress({ kind: "progress", message: trimmed });
+        continue;
+      }
+      const event = JSON.parse(trimmed) as { id?: string; status?: string; progressDetail?: { current?: number; total?: number }; error?: string };
       if (event.error) throw new Error(event.error);
       if (event.id && event.progressDetail?.total) layers.set(event.id, { current: event.progressDetail.current ?? 0, total: event.progressDetail.total });
       const totals = Array.from(layers.values());
