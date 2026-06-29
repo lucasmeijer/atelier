@@ -457,4 +457,4 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
 
 if (serverPort === 0) throw new Error(`No available port found from ${requestedPort} through ${requestedPort + maxPortAttempts - 1}`);
 
-console.log(`${atelierName} is available at ${displayUrl(hostname, serverPort)}`);
+console.log(`${atelierName} is available at ${process.env.ATELIER_PUBLIC_URL || displayUrl(hostname, serverPort)}`);

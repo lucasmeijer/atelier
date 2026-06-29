@@ -68,6 +68,8 @@ require_tailscale() {
 
   tailscale_ip="$(tailscale ip -4 | head -n 1)"
   [ -n "$tailscale_ip" ] || fail "could not determine this machine's Tailscale IPv4 address"
+  tailscale_dns="$(tailscale status --json | sed -n 's/.*"DNSName": "\([^"]*\)".*/\1/p' | head -n 1 | sed 's/\.$//')"
+  atelier_public_host="${tailscale_dns:-$tailscale_ip}"
 }
 
 install_atelier() {
@@ -96,6 +98,7 @@ install_atelier() {
     --env "ATELIER_DOCKER_HOST_DATA_DIR=$atelier_data_dir" \
     --env "HOST=$tailscale_ip" \
     --env "PORT=$atelier_port" \
+    --env "ATELIER_PUBLIC_URL=http://$atelier_public_host" \
     "$atelier_image" >/dev/null
 }
 
