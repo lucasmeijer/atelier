@@ -26,11 +26,34 @@ function addAtelierThemeParams(url: URL): void {
   url.searchParams.set("atelierAccent", cssVariable("--accent"));
 }
 
+function showStartingForNavigation(frame: HTMLIFrameElement, url: URL): void {
+  if (frame.src !== url.toString()) frame.closest(".vscode-frame-shell")?.classList.add("vscode-loading");
+}
+
 export const vscodeClientModule: WorkspaceClientModule = {
   id: "vscode",
-  install({ hooks }) {
-    hooks.onWorkspaceAppFrameUrl(({ appKey, url }) => {
-      if (appKey === "vscode") addAtelierThemeParams(url);
+  install({ application, Controller, hooks }) {
+    class VSCodeStartingController extends Controller {
+      declare readonly element: HTMLIFrameElement;
+
+      connect(): void {
+        this.element.addEventListener("load", this.loaded);
+      }
+
+      disconnect(): void {
+        this.element.removeEventListener("load", this.loaded);
+      }
+
+      private loaded = (): void => {
+        this.element.closest(".vscode-frame-shell")?.classList.remove("vscode-loading");
+      };
+    }
+
+    application.register("vscode-starting", VSCodeStartingController);
+    hooks.onWorkspaceAppFrameUrl(({ appKey, url, frame }) => {
+      if (appKey !== "vscode") return;
+      addAtelierThemeParams(url);
+      showStartingForNavigation(frame, url);
     });
     hooks.onWorkspaceAppFrameRefresh(({ appKey, frame, load }) => {
       if (appKey === "vscode" && frame.src) load();

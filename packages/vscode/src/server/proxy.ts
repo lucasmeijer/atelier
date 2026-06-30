@@ -13,7 +13,8 @@ function unescapeHtmlAttribute(value: string): string {
   return value.replaceAll("&quot;", '"').replaceAll("&amp;", "&");
 }
 
-const serverEnsures = new Map<string, Promise<void>>();
+const serverCheckTtlMs = 30_000;
+const serverChecks = new Map<string, { promise: Promise<void>; checkedAt: number }>();
 
 type VSCodeThemeDefaults = {
   colorTheme: string;
@@ -59,14 +60,17 @@ function themeDefaultsForRequest(request: Request): VSCodeThemeDefaults | undefi
   };
 }
 
-async function ensureVSCodeServerOnce(workspaceId: string): Promise<void> {
-  let promise = serverEnsures.get(workspaceId);
-  if (!promise) {
-    promise = ensureWorkspaceVSCodeServer(workspaceId).finally(() => {
-      serverEnsures.delete(workspaceId);
-    });
-    serverEnsures.set(workspaceId, promise);
+async function ensureRecentVSCodeServer(workspaceId: string): Promise<void> {
+  const cached = serverChecks.get(workspaceId);
+  if (cached && Date.now() - cached.checkedAt < serverCheckTtlMs) {
+    await cached.promise;
+    return;
   }
+  const promise = ensureWorkspaceVSCodeServer(workspaceId).catch((error) => {
+    serverChecks.delete(workspaceId);
+    throw error;
+  });
+  serverChecks.set(workspaceId, { promise, checkedAt: Date.now() });
   await promise;
 }
 
@@ -142,7 +146,7 @@ export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, res
 
 export async function resolveVSCodeWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {
   if (app.appKey !== vscodeAppKey) throw new Error(`unknown workspace app: ${app.appKey}`);
-  await ensureVSCodeServerOnce(app.workspaceId);
+  await ensureRecentVSCodeServer(app.workspaceId);
   const targetUrl = new URL(requestUrl.pathname + requestUrl.search, "http://atelier.local");
   [...targetUrl.searchParams.keys()].forEach((key) => {
     if (key.startsWith("atelier")) targetUrl.searchParams.delete(key);
