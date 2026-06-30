@@ -1,12 +1,11 @@
-import { join } from "node:path";
-import { completeSimple, getModel } from "@earendil-works/pi-ai/compat";
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 import type { AtelierEventBus } from "@atelier/core";
 import { listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
-import { piConfigSeedDir } from "./pi-config-seed.ts";
+import { getProviderFastModel } from "./hardcoded-provider-knowledge.ts";
+import type { ModelRef } from "./model-state.ts";
+import { createPiModelRegistry } from "./pi-config-models.ts";
 
 const pending = new Set<string>();
-const model = getModel("openai-codex", "gpt-5.4-mini");
 
 function promptFor(userPrompt: string): string {
   return `Your job is to come with a slug to describe work that is going to happen in a git branch. the work is initiated with this user prompt:
@@ -44,35 +43,51 @@ async function workspaceIsUnnamed(workspaceId: string): Promise<boolean> {
   return workspaces.find((workspace) => workspace.id === workspaceId)?.title === null;
 }
 
-async function getCodexApiKeyFromPiConfig(): Promise<string | undefined> {
-  const authStorage = AuthStorage.create(join(await piConfigSeedDir(), "auth.json"));
-  return await authStorage.getApiKey("openai-codex");
+function workspaceTitleModelFor(agentModel: ModelRef): ModelRef {
+  const fastModel = getProviderFastModel(agentModel.provider);
+  return { provider: agentModel.provider, id: fastModel?.id ?? agentModel.id };
 }
 
-function logWorkspaceTitleSuggestionError(workspaceId: string, message: string, details: Record<string, unknown> = {}): void {
-  console.error("could not suggest workspace title", { workspaceId, model: `${model.provider}/${model.id}`, message, ...details });
+function logWorkspaceTitleSuggestionError(workspaceId: string, model: ModelRef | undefined, message: string, details: Record<string, unknown> = {}): void {
+  console.error("could not suggest workspace title", { workspaceId, model: model ? `${model.provider}/${model.id}` : undefined, message, ...details });
 }
 
-export function maybeNameWorkspaceFromAgentPrompt(workspaceId: string, userMessages: string[], options: { events?: AtelierEventBus } = {}): void {
+export function maybeNameWorkspaceFromAgentPrompt(workspaceId: string, userMessages: string[], options: { events?: AtelierEventBus; agentModel?: ModelRef } = {}): void {
   if (pending.has(workspaceId)) return;
   const promptText = userMessages.map((message) => message.trim()).filter(Boolean).join("\n\n");
   if (!promptText) return;
 
   pending.add(workspaceId);
   void (async () => {
+    const titleModelRef = options.agentModel ? workspaceTitleModelFor(options.agentModel) : undefined;
     try {
       if (!(await workspaceIsUnnamed(workspaceId))) return;
-      const apiKey = await getCodexApiKeyFromPiConfig();
-      if (!apiKey) logWorkspaceTitleSuggestionError(workspaceId, "openai-codex auth is not configured in pi-config auth.json");
+      if (!titleModelRef) {
+        logWorkspaceTitleSuggestionError(workspaceId, undefined, "agent model is not selected");
+        return;
+      }
+      const registry = await createPiModelRegistry();
+      const model = registry.find?.(titleModelRef.provider, titleModelRef.id);
+      if (!model) {
+        logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, "model is not available");
+        return;
+      }
+      const requestAuth = await registry.getApiKeyAndHeaders(model);
+      if (!requestAuth.ok) {
+        logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, requestAuth.error);
+        return;
+      }
       const response = await completeSimple(model, {
         messages: [{ role: "user", content: promptFor(promptText), timestamp: Date.now() }],
       }, {
-        apiKey,
+        apiKey: requestAuth.apiKey,
+        headers: requestAuth.headers,
+        env: requestAuth.env,
         reasoning: "minimal",
         maxTokens: 32,
       });
       if (response.stopReason === "error") {
-        logWorkspaceTitleSuggestionError(workspaceId, response.errorMessage ?? "model returned an error", {
+        logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, response.errorMessage ?? "model returned an error", {
           stopReason: response.stopReason,
           diagnostics: response.diagnostics,
         });
@@ -82,7 +97,7 @@ export function maybeNameWorkspaceFromAgentPrompt(workspaceId: string, userMessa
       const title = normalizeSlug(responseText);
       if (!title) {
         if (responseText && responseText.toLowerCase() !== "error") {
-          logWorkspaceTitleSuggestionError(workspaceId, "model returned an unusable workspace title", { responseText, stopReason: response.stopReason });
+          logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, "model returned an unusable workspace title", { responseText, stopReason: response.stopReason });
         }
         return;
       }
@@ -90,7 +105,7 @@ export function maybeNameWorkspaceFromAgentPrompt(workspaceId: string, userMessa
       await setWorkspaceTitle(workspaceId, title);
       await options.events?.emit("workspace_title_changed", { workspaceId, title });
     } catch (error) {
-      logWorkspaceTitleSuggestionError(workspaceId, error instanceof Error ? error.message : String(error), { error });
+      logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, error instanceof Error ? error.message : String(error), { error });
     } finally {
       pending.delete(workspaceId);
     }

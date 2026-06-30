@@ -8,25 +8,33 @@ export interface HardcodedProviderModel {
 export interface HardcodedProviderKnowledge {
   apiKeyExample?: string;
   models: readonly HardcodedProviderModel[];
+  fastModel?: HardcodedProviderModel;
 }
 
 export const hardcodedProviderKnowledge: Readonly<Record<string, HardcodedProviderKnowledge>> = {
   openai: {
     apiKeyExample: "sk-proj-abc123def456...",
     models: [{ id: "gpt-5.5" }],
+    fastModel: { id: "gpt-5.4-mini" },
   },
   "openai-codex": {
     apiKeyExample: "sk-proj-abc123def456...",
     models: [{ id: "gpt-5.5" }],
+    fastModel: { id: "gpt-5.4-mini" },
   },
   anthropic: {
     apiKeyExample: "sk-ant-api03-abc123def456...",
     models: [{ id: "claude-opus-4-8" }],
+    fastModel: { id: "claude-haiku-4-5" },
   },
 };
 
 export function getProviderApiKeyExample(provider: string): string | undefined {
   return hardcodedProviderKnowledge[provider]?.apiKeyExample;
+}
+
+export function getProviderFastModel(provider: string): HardcodedProviderModel | undefined {
+  return hardcodedProviderKnowledge[provider]?.fastModel;
 }
 
 function sameModel(a: { provider: string; id: string }, b: { provider: string; id: string }): boolean {

@@ -215,7 +215,7 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
   const trimmed = expandedText.trim();
   if (trimmed) {
     await options.events?.emit("workspace_user_activity", { workspaceId });
-    maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), trimmed], { events: options.events });
+    maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), trimmed], { events: options.events, agentModel: runtime.currentModel() });
   }
   await runtime.submit(expandedText, { mode, images, attachmentNotes });
   return turboStreamResponse("");
@@ -236,7 +236,7 @@ async function submitInitialAgentPrompt(workspaceId: string, context: AgentWorks
 
   const prompt = await expandPromptTemplate(workspaceId, context.initialPrompt ?? "");
   await options.events?.emit("workspace_user_activity", { workspaceId });
-  maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), prompt.trim()], { events: options.events });
+  maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), prompt.trim()], { events: options.events, agentModel: runtime.currentModel() });
   await runtime.submit(prompt, { mode: "send", images, attachmentNotes });
 }
 
