@@ -202,12 +202,23 @@ class WorkspaceTabsController extends Controller {
   declare readonly groupIdValue: string;
   declare readonly initialTabValue: string;
   declare readonly hasInitialTabValue: boolean;
+  private resizeObserver: ResizeObserver | undefined;
+  private overflowFrame = 0;
 
   connect(): void {
     const visibleTab = this.hasInitialTabValue && this.initialTabValue
       ? this.initialTabValue
       : this.element.querySelector<HTMLElement>(".group-tab.visible[data-tab]")?.dataset.tab;
     if (visibleTab) this.showTab(visibleTab, { persist: false, emitCurrent: true });
+    this.resizeObserver = new ResizeObserver(() => this.scheduleOverflowLayout());
+    this.resizeObserver.observe(this.element);
+    document.fonts.ready.then(() => this.scheduleOverflowLayout());
+    this.scheduleOverflowLayout();
+  }
+
+  disconnect(): void {
+    this.resizeObserver?.disconnect();
+    cancelAnimationFrame(this.overflowFrame);
   }
 
   private get root(): ParentNode {
@@ -217,6 +228,7 @@ class WorkspaceTabsController extends Controller {
   show(event: Event & { params?: { tab?: string } }): void {
     const tabName = event.params?.tab ?? (event.currentTarget instanceof HTMLElement ? event.currentTarget.dataset.tab : undefined);
     if (!tabName) return;
+    this.element.querySelector<HTMLDetailsElement>(".group-overflow-menu")?.removeAttribute("open");
     this.showTab(tabName);
   }
 
@@ -239,7 +251,43 @@ class WorkspaceTabsController extends Controller {
       if (after && before === after && options.emitCurrent && isPaneEffectivelyVisible(after)) emitBecomeVisible(after);
     }
     if (after) startWorkspaceAppFrames(group, tabName);
+    this.scheduleOverflowLayout();
     if (options.persist !== false) void this.persistVisibleTab(tabName);
+  }
+
+  private scheduleOverflowLayout(): void {
+    cancelAnimationFrame(this.overflowFrame);
+    this.overflowFrame = requestAnimationFrame(() => this.layoutOverflow());
+  }
+
+  private layoutOverflow(): void {
+    const tabsContainer = this.element.querySelector<HTMLElement>(".group-tabs")!;
+    const overflowMenu = this.element.querySelector<HTMLElement>(".group-overflow-menu")!;
+    const tabs = [...tabsContainer.querySelectorAll<HTMLElement>(".group-tab[data-tab]")];
+    const overflowTabs = [...overflowMenu.querySelectorAll<HTMLElement>(".group-overflow-tab[data-overflow-tab]")];
+
+    for (const tab of tabs) tab.classList.remove("overflowed");
+    for (const tab of overflowTabs) tab.classList.remove("overflowed", "visible");
+    overflowMenu.classList.remove("has-overflow");
+    overflowMenu.removeAttribute("open");
+
+    if (tabsContainer.scrollWidth <= tabsContainer.clientWidth) return;
+
+    overflowMenu.classList.add("has-overflow");
+    const candidates = tabs.filter((tab) => !tab.classList.contains("visible")).reverse();
+    for (const tab of candidates) {
+      if (tabsContainer.scrollWidth <= tabsContainer.clientWidth) break;
+      tab.classList.add("overflowed");
+    }
+
+    const hiddenTabs = new Set(tabs.filter((tab) => tab.classList.contains("overflowed")).map((tab) => tab.dataset.tab!));
+    const visibleTab = tabs.find((tab) => tab.classList.contains("visible"))?.dataset.tab;
+    for (const tab of overflowTabs) {
+      const tabName = tab.dataset.overflowTab!;
+      tab.classList.toggle("overflowed", hiddenTabs.has(tabName));
+      tab.classList.toggle("visible", tabName === visibleTab);
+    }
+    overflowMenu.classList.toggle("has-overflow", hiddenTabs.size > 0);
   }
 
   private get group(): ParentNode & Element {

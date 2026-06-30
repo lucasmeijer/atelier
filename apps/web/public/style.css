@@ -136,13 +136,15 @@ a { color: inherit; text-decoration: none; }
 .workspace-groups { display: flex; gap: 0; height: 100%; width: 100%; border: 0; border-radius: 0; overflow: hidden; background: #f8fafc; box-shadow: none; position: relative; }
 .workspace-group { flex: var(--group-size) 1 0; min-width: 180px; display: flex; flex-direction: column; background: var(--panel); position: relative; }
 .group-tabbar { display: flex; align-items: stretch; min-height: 38px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg,#fbfcff,#f4f7fb); }
-.group-tabs { display: flex; align-items: stretch; gap: 1px; min-width: 0; overflow-x: auto; flex: 1; }
-.group-tab { border-right: 1px solid transparent; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 620; white-space: nowrap; position: relative; display: inline-flex; align-items: stretch; }
+.group-tabs { display: flex; align-items: stretch; gap: 1px; min-width: 0; overflow: hidden; flex: 1; }
+.group-tab { border-right: 1px solid transparent; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 620; white-space: nowrap; position: relative; display: inline-flex; align-items: stretch; max-width: 190px; }
+.group-tab.overflowed { display: none; }
 .group-tab:hover { background: rgba(37,99,235,.055); color: var(--text); }
 .group-tab.visible { color: var(--accent); border-bottom-color: var(--accent); background: var(--panel); }
 .group-tab.muted { color: var(--muted); }
 .group-tab:active { cursor: grabbing; }
 .group-tab-label { appearance: none; border: 0; background: transparent; color: inherit; font: inherit; font-size: inherit; font-weight: inherit; padding: 9px 5px 9px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.group-tab-label span { overflow: hidden; text-overflow: ellipsis; }
 .group-tab-close-form { display: flex; align-items: center; margin: 0; padding: 0 6px 0 0; }
 .group-tab-close { appearance: none; border: 0; background: transparent; color: var(--muted-2); width: 18px; height: 18px; border-radius: 4px; display: inline-grid; place-items: center; padding: 0; font: inherit; font-size: 16px; line-height: 1; cursor: pointer; }
 .group-tab-close:hover { color: var(--text); }
@@ -158,12 +160,22 @@ a { color: inherit; text-decoration: none; }
 .group-tab.drop-after::after { right: 0; }
 .group-icon-btn { width: 34px; height: 100%; display: grid; place-items: center; border-left: 1px solid var(--line); color: var(--muted); cursor: pointer; user-select: none; font-weight: 700; }
 .group-icon-btn:hover { color: var(--accent); background: var(--accent-soft); }
-.group-add-menu { position: relative; }
-.group-add-menu summary { list-style: none; }
-.group-add-menu summary::-webkit-details-marker { display: none; }
+.group-add-menu, .group-overflow-menu { position: relative; }
+.group-add-menu summary, .group-overflow-menu summary { list-style: none; }
+.group-add-menu summary::-webkit-details-marker, .group-overflow-menu summary::-webkit-details-marker { display: none; }
+.group-overflow-menu:not(.has-overflow) { display: none; }
 .group-menu-panel { position: absolute; z-index: 20; right: 4px; top: calc(100% + 4px); min-width: 160px; padding: 6px; background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: 0 12px 30px rgba(19,26,38,.15); }
 .group-menu-panel button { width: 100%; border: 0; background: transparent; border-radius: 7px; padding: 7px 9px; text-align: left; font: inherit; font-weight: 560; color: var(--text); cursor: pointer; }
 .group-menu-panel button:hover { background: var(--accent-soft); color: var(--accent); }
+.group-overflow-panel { min-width: 220px; max-width: min(340px, 70vw); max-height: min(420px, 70vh); overflow-y: auto; }
+.group-overflow-tab { display: none; align-items: center; gap: 4px; border-radius: 7px; }
+.group-overflow-tab.overflowed { display: flex; }
+.group-overflow-tab.visible { background: var(--accent-soft); }
+.group-overflow-tab-label { min-width: 0; flex: 1; display: flex; align-items: center; gap: 7px; }
+.group-overflow-tab-label span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-overflow-tab-close-form { display: flex; margin: 0; padding: 0 4px 0 0; }
+.group-overflow-tab-close { appearance: none; border: 0; background: transparent; color: var(--muted-2); width: 22px; height: 22px; border-radius: 5px; display: inline-grid; place-items: center; padding: 0; font: inherit; font-size: 16px; line-height: 1; cursor: pointer; }
+.group-overflow-tab-close:hover { color: var(--text); background: var(--line); }
 .group-resizer { flex: 0 0 7px; cursor: col-resize; background: linear-gradient(90deg, transparent, var(--line), transparent); position: relative; }
 .group-resizer:hover { background: var(--accent-soft); }
 .workspace-group .workspace-panes { flex: 1; min-height: 0; overflow: auto; padding: 14px; }

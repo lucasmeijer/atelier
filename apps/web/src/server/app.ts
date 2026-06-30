@@ -631,12 +631,20 @@ ${moduleStylesHtml()}
     </div></details>`;
     const groups = layoutState.groups.map((group, index) => {
       const visibleTab = group.visibleTab && group.tabs.includes(group.visibleTab) ? group.visibleTab : group.tabs[0];
-      const headers = group.tabs.map((key, tabIndex) => {
+      const tabHeader = (key: string, tabIndex: number) => {
         const tab = tabByKey.get(key);
         if (!tab) return "";
         const label = tabLabel(tab);
         return `<div class="group-tab ${key === visibleTab ? "visible" : "muted"}" draggable="true" data-tab="${escapeHtml(key)}" data-action="dragstart->workspace-groups#dragStart dragend->workspace-groups#dragEnd dragover->workspace-groups#dragOver drop->workspace-groups#drop" data-group-id="${escapeHtml(group.id)}" data-tab-index="${tabIndex}"><button class="group-tab-label" data-action="click->workspace-tabs#show" data-workspace-tabs-tab-param="${escapeHtml(key)}" type="button"><span>${escapeHtml(label)}</span>${renderTabStatus(workspaceId, key)}</button><form class="group-tab-close-form" data-turbo="true" data-controller="workspace-tab-close" data-workspace-tab-close-label-value="${escapeHtml(label)}" data-action="submit->workspace-tab-close#confirm" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/tabs/${encodeURIComponent(key)}/close"><button class="group-tab-close" type="submit" title="Close ${escapeHtml(label)}" aria-label="Close ${escapeHtml(label)}">×</button></form></div>`;
-      }).join("");
+      };
+      const overflowTab = (key: string) => {
+        const tab = tabByKey.get(key);
+        if (!tab) return "";
+        const label = tabLabel(tab);
+        return `<div class="group-overflow-tab" data-overflow-tab="${escapeHtml(key)}"><button class="group-overflow-tab-label" data-action="click->workspace-tabs#show" data-workspace-tabs-tab-param="${escapeHtml(key)}" type="button"><span>${escapeHtml(label)}</span>${renderTabStatus(workspaceId, key)}</button><form class="group-overflow-tab-close-form" data-turbo="true" data-controller="workspace-tab-close" data-workspace-tab-close-label-value="${escapeHtml(label)}" data-action="submit->workspace-tab-close#confirm" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/tabs/${encodeURIComponent(key)}/close"><button class="group-overflow-tab-close" type="submit" title="Close ${escapeHtml(label)}" aria-label="Close ${escapeHtml(label)}">×</button></form></div>`;
+      };
+      const headers = group.tabs.map(tabHeader).join("");
+      const overflowTabs = group.tabs.map(overflowTab).join("");
       const panes = group.tabs.map((key) => {
         const tab = tabByKey.get(key);
         return tab ? renderTabPane(tab, key === visibleTab) : "";
@@ -644,7 +652,7 @@ ${moduleStylesHtml()}
       const empty = group.tabs.length === 0;
       return `<section class="workspace-group" data-group-id="${escapeHtml(group.id)}" data-workspace-groups-target="group" style="--group-size:${group.size}">
       <div class="group-tabbar" data-controller="workspace-tabs" data-workspace-tabs-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-tabs-group-id-value="${escapeHtml(group.id)}" data-workspace-tabs-initial-tab-value="${escapeHtml(visibleTab ?? "")}" data-action="dragover->workspace-groups#dragOver drop->workspace-groups#drop">
-        <div class="group-tabs">${headers}</div>${actionMenu(group, index)}
+        <div class="group-tabs">${headers}</div><details class="group-overflow-menu"><summary class="group-icon-btn" title="Hidden tabs" aria-label="Hidden tabs">…</summary><div class="group-menu-panel group-overflow-panel">${overflowTabs}</div></details>${actionMenu(group, index)}
       </div>
       <div class="workspace-panes" id="${domId("workspace_panes", workspaceId, group.id)}">${empty ? `<div class="empty-group"><p>This group is empty.</p>${layoutState.groups.length > 1 ? `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/remove"><button class="btn sm" type="submit">Remove Empty Group</button></form>` : ""}</div>` : panes}</div>
       ${index === layoutState.groups.length - 1 ? `<div class="new-group-drop-zone" data-new-group-drop-zone="true" data-action="dragover->workspace-groups#dragOver dragleave->workspace-groups#dragLeave drop->workspace-groups#drop" title="Drop here to create a new group" aria-label="Drop tab here to create a new group"></div>` : ""}
