@@ -108,9 +108,26 @@ parse_args() {
   fi
 }
 
+unsupported_day_to_day_computer() {
+  cat >&2 <<'EOF'
+Atelier is not software you should install on your day to day computer.
+You put it on a cloud computer. I rent mine at hetzner.de, other people use Digital Ocean, exe.dev, or they use a linux server they have laying around.
+EOF
+  exit 1
+}
+
 require_linux() {
-  [ "$(uname -s)" = "Linux" ] || fail "this installer only supports Linux"
-  success "Linux detected"
+  case "$(uname -s)" in
+    Linux)
+      success "Linux detected"
+      ;;
+    Darwin|MINGW*|MSYS*|CYGWIN*)
+      unsupported_day_to_day_computer
+      ;;
+    *)
+      fail "this installer only supports Linux"
+      ;;
+  esac
 }
 
 require_root() {
