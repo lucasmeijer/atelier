@@ -1,4 +1,5 @@
-import { targetImage } from "./constants.ts";
+import { type ReleaseChannel } from "./channels.ts";
+import { repository } from "./constants.ts";
 
 export interface ImageMetadata { digest: string; revision?: string; created?: string; platformDigest?: string }
 
@@ -38,13 +39,12 @@ function currentArch(): string {
 
 export function selectManifestFromIndex(index: { manifests?: Array<{ digest: string; platform?: { os?: string; architecture?: string } }> }, platform = { os: "linux", architecture: currentArch() }): string {
   const manifest = index.manifests?.find((candidate) => candidate.platform?.os === platform.os && candidate.platform?.architecture === platform.architecture);
-  if (!manifest) throw new Error(`no ${platform.os}/${platform.architecture} manifest found for ${targetImage}`);
+  if (!manifest) throw new Error(`no ${platform.os}/${platform.architecture} manifest found`);
   return manifest.digest;
 }
 
-export async function fetchStableImageMetadata(fetcher: typeof fetch = fetch): Promise<ImageMetadata> {
-  const repo = "lucasmeijer/atelier";
-  const manifestUrl = `https://ghcr.io/v2/${repo}/manifests/stable`;
+export async function fetchChannelImageMetadata(channel: ReleaseChannel, fetcher: typeof fetch = fetch): Promise<ImageMetadata> {
+  const manifestUrl = `https://ghcr.io/v2/${repository}/manifests/${channel}`;
   const accept = [
     "application/vnd.oci.image.index.v1+json",
     "application/vnd.docker.distribution.manifest.list.v2+json",
@@ -58,12 +58,12 @@ export async function fetchStableImageMetadata(fetcher: typeof fetch = fetch): P
   let platformDigest: string | undefined;
   if (manifest.manifests) {
     platformDigest = selectManifestFromIndex(manifest as { manifests?: Array<{ digest: string; platform?: { os?: string; architecture?: string } }> });
-    response = await authFetch(`https://ghcr.io/v2/${repo}/manifests/${platformDigest}`, { headers: { accept } }, fetcher);
+    response = await authFetch(`https://ghcr.io/v2/${repository}/manifests/${platformDigest}`, { headers: { accept } }, fetcher);
     if (!response.ok) throw new Error(`registry platform manifest request failed: ${response.status}`);
     manifest = await response.json() as { config?: { digest: string; mediaType?: string } };
   }
   if (!manifest.config?.digest) throw new Error("registry manifest did not include config digest");
-  const configResponse = await authFetch(`https://ghcr.io/v2/${repo}/blobs/${manifest.config.digest}`, { headers: { accept: "application/vnd.oci.image.config.v1+json, application/vnd.docker.container.image.v1+json" } }, fetcher);
+  const configResponse = await authFetch(`https://ghcr.io/v2/${repository}/blobs/${manifest.config.digest}`, { headers: { accept: "application/vnd.oci.image.config.v1+json, application/vnd.docker.container.image.v1+json" } }, fetcher);
   if (!configResponse.ok) throw new Error(`registry config request failed: ${configResponse.status}`);
   const config = await configResponse.json() as { config?: { Labels?: Record<string, string> }; created?: string };
   return {

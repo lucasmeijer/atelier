@@ -1,7 +1,10 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { parseContainerIdFromCgroup, parseContainerIdFromMountInfo, pullStableImage, replacementCreateArgs, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
+import { parseContainerIdFromCgroup, parseContainerIdFromMountInfo, pullChannelImage, replacementCreateArgs, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
 import { createUpdateRouteHandler, UpdateManager } from "../../src/server/index.ts";
-import { parseWwwAuthenticate, selectManifestFromIndex, fetchStableImageMetadata } from "../../src/server/registry.ts";
+import { parseWwwAuthenticate, selectManifestFromIndex, fetchChannelImageMetadata } from "../../src/server/registry.ts";
 import { fetchReleaseNotes, releaseNoteFilenames, renderMarkdown } from "../../src/server/release-notes.ts";
 
 describe("self container parsing", () => {
@@ -29,6 +32,7 @@ function runtime(currentRevision = "old"): SelfUpdateRuntime {
   return {
     containerId: "container-id",
     imageId: "sha256:old-image",
+    releaseChannel: "stable",
     currentRevision,
     currentDigest: "sha256:old-digest",
     container: { Id: "container-id", Image: "sha256:old-image", Config: { Image: "ghcr.io/lucasmeijer/atelier:stable", Labels: { "com.atelier.type": "server" } } },
@@ -89,7 +93,7 @@ describe("registry helpers", () => {
       if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { "org.opencontainers.image.revision": "new" } }, created: "today" });
       throw new Error(`unexpected fetch ${url}`);
     }) as typeof fetch;
-    await expect(fetchStableImageMetadata(fetcher)).resolves.toEqual({ digest: "sha256:manifest", platformDigest: undefined, revision: "new", created: "today" });
+    await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({ digest: "sha256:manifest", platformDigest: undefined, revision: "new", created: "today" });
   });
 
   test("selects current linux platform manifest", () => {
@@ -144,7 +148,7 @@ describe("update state machine", () => {
     const manager = new UpdateManager({
       detectRuntime: async () => runtime("old"),
       fetchMetadata: async () => ({ digest: "sha256:new", revision: "new" }),
-      pullImage: async (onProgress) => { onProgress({ kind: "progress", percent: 43 }); },
+      pullImage: async (_channel, onProgress) => { onProgress({ kind: "progress", percent: 43 }); },
       setInterval: noInterval(),
     });
     await manager.initialize(ctx);
@@ -208,6 +212,34 @@ describe("update state machine", () => {
     expect(manager.snapshot().state).toBe("ready_to_restart");
   });
 
+  test("switching release channels invalidates status and persists the selected target", async () => {
+    const previousDataDir = process.env.ATELIER_DATA_DIR;
+    const dataDir = await mkdtemp(join(tmpdir(), "atelier-update-test-"));
+    process.env.ATELIER_DATA_DIR = dataDir;
+    try {
+      const { ctx } = context();
+      const channels: string[] = [];
+      const manager = new UpdateManager({
+        detectRuntime: async () => runtime("old"),
+        fetchMetadata: async (channel) => {
+          channels.push(channel);
+          return channel === "stable" ? { digest: "sha256:old-digest", revision: "old" } : { digest: "sha256:new", revision: "new" };
+        },
+        setInterval: noInterval(),
+      });
+      await manager.initialize(ctx);
+      expect(manager.snapshot()).toMatchObject({ state: "idle", releaseChannel: "stable" });
+      await manager.setReleaseChannel("latest");
+      expect(channels).toEqual(["stable", "latest"]);
+      expect(manager.snapshot()).toMatchObject({ state: "available", releaseChannel: "latest" });
+      expect(await readFile(join(dataDir, "update.json"), "utf8")).toContain('"releaseChannel": "latest"');
+    } finally {
+      if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
+      else process.env.ATELIER_DATA_DIR = previousDataDir;
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   test("restart launches updater once and redirects to port 81 with theme", async () => {
     const { ctx } = context();
     const dockerCalls: string[][] = [];
@@ -225,6 +257,8 @@ describe("update state machine", () => {
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe("http://atelier.test:81/?theme=dracula");
     expect(dockerCalls[0]).toContain("atelier-update-helper");
+    expect(dockerCalls[0]).toContain("--release-channel");
+    expect(dockerCalls[0]).toContain("stable");
     await expect(manager.launchUpdater(new URL("http://atelier.test/update/restart"))).rejects.toThrow("Restart is already in progress");
   });
 });
@@ -301,7 +335,7 @@ describe("docker pull progress", () => {
       { id: "b", status: "Downloading", progressDetail: { current: 50, total: 100 } },
       { id: "a", status: "Download complete", progressDetail: { current: 100, total: 100 } },
     ].map((line) => `${JSON.stringify(line)}\n`).join("")}`;
-    await pullStableImage((progress) => events.push(progress), () => ({
+    await pullChannelImage("stable", (progress) => events.push(progress), () => ({
       stdout: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(lines)); controller.close(); } }),
       stderr: new ReadableStream({ start(controller) { controller.close(); } }),
       exited: Promise.resolve(0),

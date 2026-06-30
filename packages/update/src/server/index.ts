@@ -1,10 +1,12 @@
-import { escapeHtml, turboStream, turboStreamResponse, type WorkspaceModule, type WorkspaceServerModuleContext } from "@atelier/shared";
-import { targetImage, updaterPort, updateSidebarContributionId } from "./constants.ts";
-import { detectSelfUpdateRuntime, dockerExec, pullStableImage, type DockerExec, type PullProgress, type SelfUpdateRuntime } from "./docker.ts";
-import { fetchStableImageMetadata, type ImageMetadata } from "./registry.ts";
+import { escapeHtml, turboStream, turboStreamResponse, type SettingsContribution, type WorkspaceModule, type WorkspaceServerModuleContext } from "@atelier/shared";
+import { pollIntervalMs, updaterPort, updateSidebarContributionId } from "./constants.ts";
+import { isReleaseChannel, targetImageForChannel, type ReleaseChannel } from "./channels.ts";
+import { detectSelfUpdateRuntime, dockerExec, pullChannelImage, type DockerExec, type PullProgress, type SelfUpdateRuntime } from "./docker.ts";
+import { fetchChannelImageMetadata, type ImageMetadata } from "./registry.ts";
 import { fetchReleaseNotes } from "./release-notes.ts";
+import { readStoredReleaseChannel, writeStoredReleaseChannel } from "./settings-store.ts";
 
-export type UpdateState = "idle" | "available" | "pulling" | "ready_to_restart" | "failed" | "restarting";
+export type UpdateState = "idle" | "checking" | "available" | "pulling" | "ready_to_restart" | "failed" | "restarting";
 
 export interface StateSnapshot {
   state: UpdateState;
@@ -13,12 +15,13 @@ export interface StateSnapshot {
   selfUpdatable: boolean;
   currentRevision?: string;
   target?: ImageMetadata;
+  releaseChannel: ReleaseChannel;
 }
 
 export interface UpdateManagerDeps {
   detectRuntime?: () => Promise<SelfUpdateRuntime | undefined>;
-  fetchMetadata?: () => Promise<ImageMetadata>;
-  pullImage?: (onProgress: (progress: PullProgress) => void) => Promise<void>;
+  fetchMetadata?: (channel: ReleaseChannel) => Promise<ImageMetadata>;
+  pullImage?: (channel: ReleaseChannel, onProgress: (progress: PullProgress) => void) => Promise<void>;
   fetchNotes?: (currentSha: string | undefined, stableSha: string | undefined) => Promise<string>;
   docker?: DockerExec;
   waitForUpdater?: (url: string) => Promise<void>;
@@ -32,6 +35,7 @@ export class UpdateManager {
   private percent: number | undefined;
   private error: string | undefined;
   private target: ImageMetadata | undefined;
+  private releaseChannel: ReleaseChannel = "stable";
   private pullPromise: Promise<void> | undefined;
   private restarting = false;
   private releaseNotesHtml: string | undefined;
@@ -42,15 +46,16 @@ export class UpdateManager {
   async initialize(context: WorkspaceServerModuleContext): Promise<void> {
     this.context = context;
     this.runtime = await (this.deps.detectRuntime ?? detectSelfUpdateRuntime)();
+    if (this.runtime) this.releaseChannel = await readStoredReleaseChannel() ?? this.runtime.releaseChannel;
     this.updateSidebar();
     if (!this.runtime) return;
     await this.checkNow();
-    const interval = (this.deps.setInterval ?? setInterval)(() => void this.checkNow().catch((error) => this.fail(error)), 5 * 60 * 1000);
+    const interval = (this.deps.setInterval ?? setInterval)(() => void this.checkNow().catch((error) => this.fail(error)), pollIntervalMs);
     interval.unref?.();
   }
 
   snapshot(): StateSnapshot {
-    return { state: this.state, percent: this.percent, error: this.error, selfUpdatable: Boolean(this.runtime), currentRevision: this.runtime?.currentRevision, target: this.target };
+    return { state: this.state, percent: this.percent, error: this.error, selfUpdatable: Boolean(this.runtime), currentRevision: this.runtime?.currentRevision, target: this.target, releaseChannel: this.releaseChannel };
   }
 
   subscribe(handler: (snapshot: StateSnapshot) => void): () => void {
@@ -60,7 +65,7 @@ export class UpdateManager {
   }
 
   private visible(): boolean {
-    return Boolean(this.runtime) && this.state !== "idle";
+    return Boolean(this.runtime) && this.state !== "idle" && this.state !== "checking";
   }
 
   private notify(): void {
@@ -92,7 +97,9 @@ export class UpdateManager {
 
   async checkNow(): Promise<void> {
     if (!this.runtime) return;
-    const target = await (this.deps.fetchMetadata ?? fetchStableImageMetadata)();
+    const channel = this.releaseChannel;
+    if (this.state === "idle") this.setState("checking");
+    const target = await (this.deps.fetchMetadata ?? fetchChannelImageMetadata)(channel);
     const oldDigest = this.target?.digest;
     this.target = target;
     this.releaseNotesHtml = undefined;
@@ -100,19 +107,33 @@ export class UpdateManager {
     const remote = target.revision ?? target.digest;
     const available = Boolean(remote && current && remote !== current);
     if (!available) this.setState("idle");
-    else if (this.state === "idle") this.setState("available");
+    else if (this.state === "idle" || this.state === "checking") this.setState("available");
     else if (this.state === "ready_to_restart" && oldDigest && oldDigest !== target.digest) await this.startPull();
     else this.updateSidebar();
+  }
+
+  async setReleaseChannel(channel: ReleaseChannel): Promise<void> {
+    if (!this.runtime) throw new Error("Atelier is not running in a self-updatable Docker container");
+    if (this.pullPromise || this.restarting) throw new Error("Cannot switch release channels while an update is in progress");
+    if (this.releaseChannel === channel) return await this.checkNow();
+    await writeStoredReleaseChannel(channel);
+    this.releaseChannel = channel;
+    this.target = undefined;
+    this.releaseNotesHtml = undefined;
+    this.setState("checking");
+    await this.checkNow();
   }
 
   async startPull(): Promise<void> {
     if (!this.runtime) throw new Error("Atelier is not running in a self-updatable Docker container");
     if (this.pullPromise) return await this.pullPromise;
     this.setState("pulling", { percent: undefined });
-    this.pullPromise = (this.deps.pullImage ?? pullStableImage)((progress) => {
+    const onProgress = (progress: PullProgress) => {
       this.percent = progress.percent;
       this.updateSidebar();
-    }).then(() => {
+    };
+    const pull = (this.deps.pullImage ?? pullChannelImage)(this.releaseChannel, onProgress);
+    this.pullPromise = pull.then(() => {
       this.setState("ready_to_restart", { percent: 100 });
     }).catch((error) => {
       this.fail(error);
@@ -140,7 +161,7 @@ export class UpdateManager {
       "run", "-d", "--rm", "--name", name, "--network", "host",
       "-v", "/var/run/docker.sock:/var/run/docker.sock",
       this.runtime.imageId,
-      "atelier-update-helper", "--server-container", this.runtime.containerId, "--target-image", targetImage, "--return-host", host,
+      "atelier-update-helper", "--server-container", this.runtime.containerId, "--target-image", targetImageForChannel(this.releaseChannel), "--release-channel", this.releaseChannel, "--return-host", host,
     ]);
     if (result.code !== 0) throw new Error(result.stderr.trim() || "could not start update helper");
     const theme = url.searchParams.get("theme") ?? "";
@@ -179,6 +200,46 @@ function progressBar(percent?: number): string {
   const style = typeof percent === "number" ? ` style="width:${percent}%"` : "";
   return `<div class="update-sidebar-progress${percent === undefined ? " indeterminate" : ""}" aria-label="Pulling update" title="Pulling update…"><span${style}></span></div>`;
 }
+
+function updateStatusText(snapshot: StateSnapshot): { label: string; detail: string } {
+  if (!snapshot.selfUpdatable) return { label: "Self-update unavailable", detail: "Atelier is not running in a managed Docker install." };
+  if (snapshot.state === "checking") return { label: "Checking for updates…", detail: `Checking the ${snapshot.releaseChannel} channel.` };
+  if (snapshot.state === "idle") return { label: "Up to date", detail: `Atelier is up to date on the ${snapshot.releaseChannel} channel.` };
+  if (snapshot.state === "available") return { label: "Update available", detail: `A newer ${snapshot.releaseChannel} build is available.` };
+  if (snapshot.state === "pulling") return { label: "Pulling update…", detail: snapshot.percent === undefined ? "Downloading the update." : `Downloading the update (${snapshot.percent}%).` };
+  if (snapshot.state === "ready_to_restart") return { label: "Restart required", detail: "The update has been downloaded and is ready to install." };
+  if (snapshot.state === "failed") return { label: "Update failed", detail: snapshot.error ?? "The update failed." };
+  return { label: "Restarting", detail: "Atelier is restarting to finish the update." };
+}
+
+function renderUpdateSettings(updateManager: UpdateManager): string {
+  const snapshot = updateManager.snapshot();
+  const status = updateStatusText(snapshot);
+  const disabled = snapshot.selfUpdatable && snapshot.state !== "pulling" && snapshot.state !== "restarting" ? "" : " disabled";
+  const options = (["stable", "latest"] as const).map((channel) => `<option value="${channel}"${snapshot.releaseChannel === channel ? " selected" : ""}>${channel === "stable" ? "Stable" : "Latest"}</option>`).join("");
+  const action = snapshot.state === "available" || snapshot.state === "failed"
+    ? `<form method="post" action="/update/start" data-turbo="true"><button class="settings-btn primary" type="submit">${snapshot.state === "failed" ? "Retry update" : "Update now"}</button></form>`
+    : snapshot.state === "ready_to_restart"
+      ? `<form method="get" action="/update/restart-confirm" data-turbo="true"><button class="settings-btn primary" type="submit">Restart to update</button></form>`
+      : "";
+  return `<section class="settings-sec settings-sec-inline update-settings-row" id="settings-sec-update"><div><h2>Updates</h2><p class="settings-sub">${escapeHtml(status.label)} — ${escapeHtml(status.detail)}</p></div><div class="settings-provider-actions"><form method="post" action="/settings/update-channel" data-turbo="true"><select class="settings-select" name="channel"${disabled}>${options}</select><button class="settings-btn" type="submit"${disabled}>Save</button></form>${action}</div></section>`;
+}
+
+const updateSettingsContribution: SettingsContribution = {
+  id: "update",
+  label: "Updates",
+  order: 15,
+  render: async () => renderUpdateSettings(manager),
+  async handleAction({ request, url }) {
+    if (url.pathname !== "/settings/update-channel" || request.method !== "POST") return undefined;
+    if (!manager.snapshot().selfUpdatable) return turboStreamResponse(turboStream("replace", "settings-sec-update", renderUpdateSettings(manager)));
+    const form = await request.formData();
+    const channel = String(form.get("channel") ?? "");
+    if (!isReleaseChannel(channel)) throw new Error(`unsupported release channel: ${channel}`);
+    await manager.setReleaseChannel(channel);
+    return turboStreamResponse(turboStream("replace", "settings-sec-update", renderUpdateSettings(manager)));
+  },
+};
 
 export function renderSidebarRow(snapshot: StateSnapshot): string {
   const dataState = snapshot.state === "ready_to_restart" ? "ready" : snapshot.state === "failed" ? "failed" : snapshot.state;
@@ -233,7 +294,7 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
   return async (request, url) => {
     if (url.pathname === "/update/start" && request.method === "POST") {
       void updateManager.startPull();
-      return turboStreamResponse("");
+      return turboStreamResponse(turboStream("replace", "settings-sec-update", renderUpdateSettings(updateManager)));
     }
     if (url.pathname === "/update/whats-new" && request.method === "GET") return modalStream(renderWhatsNewModal());
     if (url.pathname === "/update/whats-new/notes" && request.method === "GET") return new Response(await renderWhatsNewNotes(updateManager), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
@@ -247,6 +308,7 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
 
 export const atelierServerModule: WorkspaceModule = {
   id: "atelier-update",
+  settingsContributions: [updateSettingsContribution],
   staticFiles: {
     "/update-client.css": { url: new URL("../client/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   },

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { hostname } from "node:os";
-import { targetImage } from "./constants.ts";
+import { isReleaseChannel, targetImageForChannel, type ReleaseChannel } from "./channels.ts";
 
 export interface DockerExecResult { stdout: string; stderr: string; code: number }
 export interface DockerExec { (args: string[]): Promise<DockerExecResult> }
@@ -68,10 +68,18 @@ export function inspectRevision(inspect: DockerInspect): string | undefined {
   return labelsFromInspect(inspect)["org.opencontainers.image.revision"];
 }
 
-export interface SelfUpdateRuntime { container: DockerInspect; containerId: string; imageId: string; currentRevision?: string; currentDigest?: string }
+export interface SelfUpdateRuntime { container: DockerInspect; containerId: string; imageId: string; releaseChannel: ReleaseChannel; currentRevision?: string; currentDigest?: string }
 
 function atelierRepoDigest(inspect: DockerInspect): string | undefined {
   return inspect.RepoDigests?.find((digest) => digest.startsWith("ghcr.io/lucasmeijer/atelier@"))?.split("@")[1];
+}
+
+export function releaseChannelFromInspect(inspect: DockerInspect): ReleaseChannel {
+  const label = inspect.Config?.Labels?.["com.atelier.release-channel"];
+  if (isReleaseChannel(label)) return label;
+  const image = inspect.Config?.Image ?? "";
+  if (image.endsWith(":latest")) return "latest";
+  return "stable";
 }
 
 export async function detectSelfUpdateRuntime(exec: DockerExec = dockerExec): Promise<SelfUpdateRuntime | undefined> {
@@ -86,13 +94,13 @@ export async function detectSelfUpdateRuntime(exec: DockerExec = dockerExec): Pr
   const image = await dockerInspect(container.Image, exec).catch(() => undefined);
   const repoDigest = atelierRepoDigest(image ?? container) ?? atelierRepoDigest(container);
   if (!isAtelierImageRef(container.Config?.Image) && !repoDigest) return undefined;
-  return { container, containerId: container.Id, imageId: container.Image, currentRevision: inspectRevision(image ?? container) ?? inspectRevision(container), currentDigest: repoDigest ?? container.Image };
+  return { container, containerId: container.Id, imageId: container.Image, releaseChannel: releaseChannelFromInspect(container), currentRevision: inspectRevision(image ?? container) ?? inspectRevision(container), currentDigest: repoDigest ?? container.Image };
 }
 
 export interface PullProgress { kind: "progress"; percent?: number; message?: string }
 
-export async function pullStableImage(onProgress: (progress: PullProgress) => void, execCommand = (args: string[]) => Bun.spawn(["docker", ...args], { stdout: "pipe", stderr: "pipe" })): Promise<void> {
-  const proc = execCommand(["pull", targetImage]);
+export async function pullChannelImage(channel: ReleaseChannel, onProgress: (progress: PullProgress) => void, execCommand = (args: string[]) => Bun.spawn(["docker", ...args], { stdout: "pipe", stderr: "pipe" })): Promise<void> {
+  const proc = execCommand(["pull", targetImageForChannel(channel)]);
   const reader = proc.stdout.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -124,11 +132,11 @@ export async function pullStableImage(onProgress: (progress: PullProgress) => vo
   onProgress({ kind: "progress", percent: 100 });
 }
 
-export function replacementCreateArgs(inspect: DockerInspect): string[] {
+export function replacementCreateArgs(inspect: DockerInspect, targetImage = inspect.Config?.Image ?? targetImageForChannel(releaseChannelFromInspect(inspect)), releaseChannel = releaseChannelFromInspect(inspect)): string[] {
   const name = (inspect.Name ?? "atelier").replace(/^\//, "");
   const args = ["create", "--name", name];
   for (const env of inspect.Config?.Env ?? []) args.push("--env", env);
-  for (const [key, value] of Object.entries(inspect.Config?.Labels ?? {})) args.push("--label", `${key}=${value}`);
+  for (const [key, value] of Object.entries({ ...(inspect.Config?.Labels ?? {}), "com.atelier.release-channel": releaseChannel })) args.push("--label", `${key}=${value}`);
   for (const mount of inspect.Mounts ?? []) {
     const m = mount as { Type?: string; Source?: string; Destination?: string; RW?: boolean };
     if (m.Type === "bind" && m.Source && m.Destination) args.push("--mount", `type=bind,src=${m.Source},dst=${m.Destination}${m.RW === false ? ",readonly" : ""}`);

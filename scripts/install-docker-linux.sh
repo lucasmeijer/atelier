@@ -100,6 +100,12 @@ parse_args() {
     atelier_image="$atelier_repository:$atelier_channel"
   fi
   [ -n "$atelier_image" ] || fail "image reference cannot be empty"
+  if [ "$image_specified" -eq 1 ]; then
+    case "$atelier_image" in
+      *:latest) atelier_channel="latest" ;;
+      *) atelier_channel="stable" ;;
+    esac
+  fi
 }
 
 require_linux() {
@@ -189,6 +195,7 @@ install_atelier() {
   docker run -d \
     --name "$atelier_name" \
     --label com.atelier.type=server \
+    --label "com.atelier.release-channel=$atelier_channel" \
     --restart unless-stopped \
     --init \
     --network host \
