@@ -192,6 +192,18 @@ require_tailscale() {
   success "Tailscale is up: $atelier_public_host"
 }
 
+pull_required_workspace_images() {
+  local default_workspace_image
+
+  info "Reading default workspace image from $atelier_image..."
+  default_workspace_image="$(docker run --rm --entrypoint cat "$atelier_image" /app/.atelier-default-workspace-image | tr -d '\r' | head -n 1)"
+  [ -n "$default_workspace_image" ] || fail "could not determine Atelier's default workspace image"
+
+  info "Pulling workspace image $default_workspace_image..."
+  docker pull "$default_workspace_image"
+  success "Workspace image is ready"
+}
+
 install_atelier() {
   mkdir -p "$atelier_data_dir"
   chown 1000:1000 "$atelier_data_dir"
@@ -201,6 +213,8 @@ install_atelier() {
   info "Pulling $atelier_image..."
   docker pull "$atelier_image"
   success "Atelier image is ready"
+
+  pull_required_workspace_images
 
   if docker ps -aq --filter "name=^/${atelier_name}$" | grep -q .; then
     info "Replacing existing Atelier container..."
