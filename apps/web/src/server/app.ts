@@ -383,7 +383,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="turbo-cache-control" content="no-cache">
 <title>${escapeHtml(atelierName)} · ${escapeHtml(title)}</title>
-<link rel="icon" type="image/svg+xml" href="${assetPath("/favicon.svg")}">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="${assetPath("/style.css")}">
 <link rel="stylesheet" href="${assetPath("/provisioning.css")}">
 ${moduleStylesHtml()}
