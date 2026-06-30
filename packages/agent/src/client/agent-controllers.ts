@@ -27,7 +27,6 @@ declare global {
 interface AgentPaneControllerInstance {
   start(): void;
   stop(): void;
-  revealLatestAssistant(): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,17 +97,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     stop(): void {
       this.streamTarget.replaceChildren();
-    }
-
-    revealLatestAssistant(): void {
-      const finals = [...this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-final")]
-        .filter((element) => element.textContent?.trim());
-      const target = finals.at(-1);
-      if (!target) return;
-      const transcriptTop = this.transcriptTarget.getBoundingClientRect().top;
-      const targetTop = target.getBoundingClientRect().top;
-      this.stuck = false;
-      this.transcriptTarget.scrollTop += targetTop - transcriptTop;
     }
 
     private path(suffix: string): string {
@@ -943,20 +931,11 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-term", createAgentTermController(Controller));
 
     hooks.onBecomeVisible(({ pane }) => agentTabBecameVisible(application, pane));
-    hooks.onChooseUnreadTab((tabs) => tabs.find((tab) => tab.startsWith("agent:")));
     hooks.onFocusGroup(({ pane }) => {
       const agentInput = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
       if (!agentInput) return false;
       agentInput.focus();
       return true;
-    });
-    hooks.onRevealTab(({ tabKey, group }) => {
-      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-        const pane = group.querySelector<HTMLElement>(`.tab-pane.visible[data-tab-pane="${CSS.escape(tabKey)}"]`);
-        const agentPane = pane?.querySelector<HTMLElement>('[data-controller~="agent-pane"]');
-        const controller = agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
-        controller?.revealLatestAssistant();
-      }));
     });
     hooks.onWorkspaceCommand((commandId) => {
       if (commandId !== "agent.launch-project-workspace") return false;

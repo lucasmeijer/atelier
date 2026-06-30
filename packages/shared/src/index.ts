@@ -251,8 +251,6 @@ export interface WorkspaceClientHooks {
   onBecomeVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void;
   onNoLongerVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void;
   onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void;
-  onRevealTab(handler: (context: WorkspaceClientTabVisibilityContext) => void): void;
-  onChooseUnreadTab(handler: (tabs: string[]) => string | undefined): void;
   onWorkspaceCommand(handler: (commandId: string) => boolean | void | Promise<boolean | void>): void;
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void;
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void;

@@ -37,8 +37,6 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   private readonly becomeVisibleHandlers: Array<(context: WorkspaceClientTabVisibilityContext) => void> = [];
   private readonly noLongerVisibleHandlers: Array<(context: WorkspaceClientTabVisibilityContext) => void> = [];
   private readonly focusGroupHandlers: Array<(context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>> = [];
-  private readonly revealTabHandlers: Array<(context: WorkspaceClientTabVisibilityContext) => void> = [];
-  private readonly chooseUnreadTabHandlers: Array<(tabs: string[]) => string | undefined> = [];
   private readonly workspaceCommandHandlers: Array<(commandId: string) => boolean | void | Promise<boolean | void>> = [];
   private readonly workspaceAppFrameUrlHandlers: Array<(context: WorkspaceClientWorkspaceAppFrameContext) => void> = [];
   private readonly workspaceAppFrameRefreshHandlers: Array<(context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void> = [];
@@ -46,8 +44,6 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   onBecomeVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void { this.becomeVisibleHandlers.push(handler); }
   onNoLongerVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void { this.noLongerVisibleHandlers.push(handler); }
   onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void { this.focusGroupHandlers.push(handler); }
-  onRevealTab(handler: (context: WorkspaceClientTabVisibilityContext) => void): void { this.revealTabHandlers.push(handler); }
-  onChooseUnreadTab(handler: (tabs: string[]) => string | undefined): void { this.chooseUnreadTabHandlers.push(handler); }
   onWorkspaceCommand(handler: (commandId: string) => boolean | void | Promise<boolean | void>): void { this.workspaceCommandHandlers.push(handler); }
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void { this.workspaceAppFrameUrlHandlers.push(handler); }
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void { this.workspaceAppFrameRefreshHandlers.push(handler); }
@@ -65,18 +61,6 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
       if (await handler(context)) return true;
     }
     return false;
-  }
-
-  revealTab(context: WorkspaceClientTabVisibilityContext): void {
-    this.revealTabHandlers.forEach((handler) => handler(context));
-  }
-
-  chooseUnreadTab(tabs: string[]): string | undefined {
-    for (const handler of this.chooseUnreadTabHandlers) {
-      const tab = handler(tabs);
-      if (tab) return tab;
-    }
-    return tabs[0];
   }
 
   async handleWorkspaceCommand(commandId: string): Promise<boolean> {
@@ -666,17 +650,8 @@ class AtelierShortcutsController extends Controller {
     const url = new URL(location, window.location.href);
     const workspaceId = decodeURIComponent(url.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1] ?? "");
     if (!workspaceId) return;
-    const row = document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`);
-    const revealUnreadTab = row ? clientHooks.chooseUnreadTab(this.unreadTabs(row)) : undefined;
     workspaceListController()?.markVisibleWorkspace(workspaceId);
-    void residencyController()?.selectWorkspace(workspaceId, url.pathname, { revealUnreadTab });
-  }
-
-  private unreadTabs(row: HTMLElement): string[] {
-    const raw = row.querySelector<HTMLElement>(".workspace-status")?.dataset.unreadTabs;
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
+    void residencyController()?.selectWorkspace(workspaceId, url.pathname);
   }
 
   private async openAdjacentWorkspace(direction: -1 | 1): Promise<void> {
@@ -689,9 +664,8 @@ class AtelierShortcutsController extends Controller {
     const workspaceId = row?.dataset.workspaceId;
     const href = row?.querySelector<HTMLAnchorElement>("a.row-main")?.href;
     if (!row || !workspaceId || !href) return;
-    const revealUnreadTab = clientHooks.chooseUnreadTab(this.unreadTabs(row));
     workspaceListController()?.markVisibleWorkspace(workspaceId);
-    await residencyController()?.selectWorkspace(workspaceId, href, { revealUnreadTab });
+    await residencyController()?.selectWorkspace(workspaceId, href);
   }
 
   private adjacentUnparkedWorkspaceRow(rows: HTMLElement[], currentIndex: number, direction: -1 | 1): HTMLElement | undefined {
@@ -805,20 +779,27 @@ class WorkspaceResidencyController extends Controller {
   private selectionSeq = 0;
 
   connect(): void {
+    document.addEventListener("visibilitychange", this.visibilityChanged);
+    window.addEventListener("pagehide", this.pageHidden);
     const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
     const visibleResident = this.residentTargets.find((resident) => resident.classList.contains("visible"))
       ?? (workspaceId ? this.residentTargets.find((resident) => resident.dataset.workspaceId === decodeURIComponent(workspaceId)) : undefined);
     if (visibleResident) this.showResident(visibleResident);
   }
 
-  async selectWorkspace(workspaceId: string, href: string, options: { revealUnreadTab?: string } = {}): Promise<void> {
+  disconnect(): void {
+    document.removeEventListener("visibilitychange", this.visibilityChanged);
+    window.removeEventListener("pagehide", this.pageHidden);
+  }
+
+  async selectWorkspace(workspaceId: string, href: string): Promise<void> {
     // Update the URL first: selection state is derived from it, and stream
     // broadcasts arriving while the resident loads must not flip selection back.
     const seq = ++this.selectionSeq;
     history.pushState({}, "", href);
     const existing = this.residentTargets.find((resident) => resident.dataset.workspaceId === workspaceId);
     if (existing) {
-      this.showResident(existing, options);
+      this.showResident(existing);
       return;
     }
 
@@ -837,7 +818,7 @@ class WorkspaceResidencyController extends Controller {
     this.element.appendChild(resident);
     // Only show it if no newer selection happened while we were fetching;
     // the resident stays cached either way.
-    if (seq === this.selectionSeq) this.showResident(resident, options);
+    if (seq === this.selectionSeq) this.showResident(resident);
     this.evictIfNeeded();
   }
 
@@ -872,6 +853,7 @@ class WorkspaceResidencyController extends Controller {
     const before = visiblePanes(this.element);
     this.residentTargets.forEach((resident) => resident.classList.remove("visible"));
     emitPaneVisibilityChanges(before, visiblePanes(this.element));
+    if (before.length > 0) this.clearActiveWorkspace();
   }
 
   private showEmpty(): void {
@@ -921,42 +903,44 @@ class WorkspaceResidencyController extends Controller {
     return resident;
   }
 
-  private showResident(resident: HTMLElement, options: { revealUnreadTab?: string } = {}): void {
+  private showResident(resident: HTMLElement): void {
     const before = visiblePanes(this.element);
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
     this.loadingTargets.forEach((loading) => { loading.hidden = true; });
     resident.dataset.lastActivatedAt = String(Date.now());
-    const revealTab = options.revealUnreadTab;
-    const tabs = revealTab
-      ? this.tabbarForTab(resident, revealTab) ?? resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]')
-      : resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]');
+    const tabs = resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]');
     const controller = tabs ? application.getControllerForElementAndIdentifier(tabs, "workspace-tabs") as WorkspaceTabsController | null : null;
-    const visibleTab = revealTab ?? tabs?.querySelector<HTMLElement>(".group-tab.visible[data-tab]")?.dataset.tab;
+    const visibleTab = tabs?.querySelector<HTMLElement>(".group-tab.visible[data-tab]")?.dataset.tab;
     if (visibleTab) controller?.showTab(visibleTab, { persist: false, emitLifecycle: false });
     this.residentTargets.forEach((candidate) => candidate.classList.toggle("visible", candidate === resident));
-    const after = visiblePanes(this.element);
-    emitPaneVisibilityChanges(before, after);
+    emitPaneVisibilityChanges(before, visiblePanes(this.element));
     const workspaceId = resident.dataset.workspaceId;
-    if (workspaceId) void this.clearWorkspaceUnread(workspaceId);
-    if (revealTab && workspaceId) {
-      const pane = after.find((candidate) => candidate.dataset.tabPane === revealTab);
-      const context = pane ? tabVisibilityContext(pane) : undefined;
-      if (context) clientHooks.revealTab(context);
-    }
+    if (workspaceId) void this.markActiveWorkspace(workspaceId);
   }
 
-  private tabbarForTab(resident: HTMLElement, tabName: string): HTMLElement | null {
-    const tab = resident.querySelector<HTMLElement>(`.group-tab[data-tab="${CSS.escape(tabName)}"]`);
-    return tab?.closest<HTMLElement>('[data-controller~="workspace-tabs"]') ?? null;
-  }
-
-  private async clearWorkspaceUnread(workspaceId: string): Promise<void> {
-    const html = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/unread/clear`, {
+  private async markActiveWorkspace(workspaceId: string): Promise<void> {
+    if (document.visibilityState !== "visible") return;
+    const html = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/active`, {
       method: "POST",
       headers: { "Accept": "text/vnd.turbo-stream.html" },
     }).then((response) => response.text());
     if (html) window.Turbo?.renderStreamMessage(html);
   }
+
+  private clearActiveWorkspace(): void {
+    void fetch("/workspaces/active/clear", { method: "POST", headers: { "Accept": "text/vnd.turbo-stream.html" }, keepalive: true });
+  }
+
+  private readonly visibilityChanged = (): void => {
+    if (document.visibilityState !== "visible") {
+      this.clearActiveWorkspace();
+      return;
+    }
+    const workspaceId = this.visibleWorkspaceId();
+    if (workspaceId) void this.markActiveWorkspace(workspaceId);
+  };
+
+  private readonly pageHidden = (): void => this.clearActiveWorkspace();
 
   private evictIfNeeded(): void {
     const max = this.maxResidentValue || 10;
@@ -1020,8 +1004,7 @@ class WorkspaceListController extends Controller {
     }
     event.preventDefault();
     const workspaceId = row.dataset.workspaceId;
-    const revealUnreadTab = clientHooks.chooseUnreadTab(this.unreadTabs(row));
-    if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href, { revealUnreadTab });
+    if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href);
     this.markVisible(workspaceId);
   }
 
@@ -1062,8 +1045,7 @@ class WorkspaceListController extends Controller {
     if (!row || !link) return;
     if (row.classList.contains("pending-delete") || row.dataset.phase === "checking_delete" || row.dataset.phase === "deleting") return;
     const workspaceId = row.dataset.workspaceId;
-    const revealUnreadTab = clientHooks.chooseUnreadTab(this.unreadTabs(row));
-    if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href, { revealUnreadTab });
+    if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href);
     this.markVisible(workspaceId);
   }
 
@@ -1093,13 +1075,6 @@ class WorkspaceListController extends Controller {
       button.disabled = true;
       button.innerHTML = `<span class="status-spinner sm" aria-label="Deleting"></span>`;
     }
-  }
-
-  private unreadTabs(row: HTMLElement): string[] {
-    const raw = row.querySelector<HTMLElement>(".workspace-status")?.dataset.unreadTabs;
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
   }
 
   private currentWorkspaceId(): string | undefined {

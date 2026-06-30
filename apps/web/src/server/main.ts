@@ -18,7 +18,7 @@ import { createFileWebPreferenceStore } from "./preferences.ts";
 import { createStreamHub } from "./stream-hub.ts";
 import { legacyStaticFiles } from "./static-files.ts";
 import { createWorkspaceLayoutStore } from "./workspace-layout.ts";
-import { createFileWorkspaceActivityStore, createWorkspaceRegistry } from "./workspace-registry.ts";
+import { createFileWorkspaceActivityStore, createFileWorkspaceUnreadStore, createWorkspaceRegistry } from "./workspace-registry.ts";
 import { workspaceModules } from "./workspace-modules.ts";
 
 const requestedPort = Number(process.env.PORT ?? 3000);
@@ -193,6 +193,7 @@ const runtimeContext = getAtelierRuntimeContext();
 
 const registry = createWorkspaceRegistry({
   activityStore: createFileWorkspaceActivityStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-activity.json")),
+  unreadStore: createFileWorkspaceUnreadStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-unread.json")),
 });
 const hub = createStreamHub();
 const layouts = createWorkspaceLayoutStore();

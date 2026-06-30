@@ -19,7 +19,7 @@ export type WorkspaceState = "busy" | "unread" | "idle";
 
 export interface WorkspaceRegistryCallbacks {
   /** A single workspace changed (phase, title, busy, unread). tabKey is set when a tab status change triggered it. */
-  rowChanged?(entry: WorkspaceEntry, context: { tabKey?: string }): void;
+  rowChanged?(entry: WorkspaceEntry, context: { tabKey?: string; unread?: boolean }): void;
   /** A workspace's parked state changed and should be persisted. */
   parkedChanged?(entry: WorkspaceEntry): void;
   /** List membership or ordering changed. */
@@ -33,8 +33,11 @@ export interface WorkspaceActivityStore {
   save(activity: Record<string, number>): Promise<void>;
 }
 
+export type WorkspaceUnreadStore = WorkspaceActivityStore;
+
 export interface WorkspaceRegistryOptions {
   activityStore?: WorkspaceActivityStore;
+  unreadStore?: WorkspaceUnreadStore;
   now?(): number;
 }
 
@@ -46,14 +49,14 @@ const allowedTransitions: Record<WorkspacePhase, WorkspacePhase[]> = {
   failed: [],
 };
 
-export function createFileWorkspaceActivityStore(path: string): WorkspaceActivityStore {
+function createFileTimestampStore(path: string): WorkspaceActivityStore {
   let saveChain = Promise.resolve();
   let tempCounter = 0;
 
-  async function writeActivity(activity: Record<string, number>): Promise<void> {
+  async function writeTimestamps(timestamps: Record<string, number>): Promise<void> {
     await mkdir(dirname(path), { recursive: true });
     const tempPath = `${path}.${process.pid}.${++tempCounter}.tmp`;
-    await writeFile(tempPath, `${JSON.stringify(activity, null, 2)}\n`);
+    await writeFile(tempPath, `${JSON.stringify(timestamps, null, 2)}\n`);
     await rename(tempPath, path);
   }
 
@@ -66,12 +69,20 @@ export function createFileWorkspaceActivityStore(path: string): WorkspaceActivit
         return {};
       }
     },
-    save(activity) {
-      const nextSave = saveChain.catch(() => undefined).then(() => writeActivity(activity));
+    save(timestamps) {
+      const nextSave = saveChain.catch(() => undefined).then(() => writeTimestamps(timestamps));
       saveChain = nextSave;
       return nextSave;
     },
   };
+}
+
+export function createFileWorkspaceActivityStore(path: string): WorkspaceActivityStore {
+  return createFileTimestampStore(path);
+}
+
+export function createFileWorkspaceUnreadStore(path: string): WorkspaceUnreadStore {
+  return createFileTimestampStore(path);
 }
 
 export interface WorkspaceRegistry {
@@ -84,31 +95,29 @@ export interface WorkspaceRegistry {
   setPhase(id: string, phase: WorkspacePhase, error?: string): void;
   setTitle(id: string, title: string | null): void;
   setParked(id: string, parked: boolean): void;
+  setActiveWorkspace(id: string | undefined): void;
   touch(id: string): void;
   remove(id: string): void;
   setTabBusy(id: string, tabKey: string, busy: boolean): void;
   setTabUnread(id: string, tabKey: string, unread: boolean): void;
-  clearWorkspaceUnread(id: string): void;
   isTabBusy(id: string, tabKey: string): boolean;
-  isTabUnread(id: string, tabKey: string): boolean;
-  tabUnreadAt(id: string, tabKey: string): number | undefined;
   isWorkspaceBusy(id: string): boolean;
   isWorkspaceUnread(id: string): boolean;
   workspaceUnreadAt(id: string): number | undefined;
   workspaceState(id: string): WorkspaceState;
   oldestUnreadWorkspace(): WorkspaceEntry | undefined;
   busyTabs(id: string): string[];
-  unreadTabs(id: string): string[];
-  statusTabs(id: string): string[];
 }
 
 export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}): WorkspaceRegistry {
   const now = options.now ?? Date.now;
   const store = options.activityStore;
+  const unreadStore = options.unreadStore;
   const entries = new Map<string, WorkspaceEntry>();
   const tabBusy = new Map<string, Map<string, boolean>>();
-  const tabUnread = new Map<string, Map<string, number>>();
+  let workspaceUnread: Record<string, number> = {};
   let activity: Record<string, number> = {};
+  let activeWorkspaceId: string | undefined;
   let callbacks: WorkspaceRegistryCallbacks = {};
 
   function sorted(): WorkspaceEntry[] {
@@ -124,6 +133,11 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
     void store.save(activity).catch((error) => console.error("could not persist workspace activity", error));
   }
 
+  function persistUnread(): void {
+    if (!unreadStore) return;
+    void unreadStore.save(workspaceUnread).catch((error) => console.error("could not persist workspace unread state", error));
+  }
+
   function requireEntry(id: string): WorkspaceEntry {
     const entry = entries.get(id);
     if (!entry) throw new Error(`workspace not in registry: ${id}`);
@@ -137,6 +151,8 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
 
     async seed(workspaces) {
       activity = store ? await store.load() : {};
+      const workspaceIds = new Set(workspaces.map((workspace) => workspace.id));
+      workspaceUnread = Object.fromEntries(Object.entries(unreadStore ? await unreadStore.load() : {}).filter(([id]) => workspaceIds.has(id)));
       entries.clear();
       for (const workspace of workspaces) {
         entries.set(workspace.id, {
@@ -196,6 +212,15 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       callbacks.listChanged?.(sorted());
     },
 
+    setActiveWorkspace(id) {
+      activeWorkspaceId = id;
+      if (!id || workspaceUnread[id] === undefined) return;
+      delete workspaceUnread[id];
+      persistUnread();
+      const entry = entries.get(id);
+      if (entry) callbacks.rowChanged?.(entry, {});
+    },
+
     touch(id) {
       const entry = entries.get(id);
       if (!entry) return;
@@ -208,12 +233,15 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
 
     remove(id) {
       if (!entries.delete(id)) return;
+      if (activeWorkspaceId === id) activeWorkspaceId = undefined;
       tabBusy.delete(id);
-      tabUnread.delete(id);
+      if (workspaceUnread[id] !== undefined) {
+        delete workspaceUnread[id];
+        persistUnread();
+      }
       callbacks.removed?.(id);
       callbacks.listChanged?.(sorted());
     },
-
 
     setTabBusy(id, tabKey, busy) {
       let tabs = tabBusy.get(id);
@@ -238,39 +266,19 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
     },
 
     setTabUnread(id, tabKey, unread) {
-      let tabs = tabUnread.get(id);
-      if (!tabs) {
-        tabs = new Map();
-        tabUnread.set(id, tabs);
-      }
-      if (tabs.has(tabKey) === unread) return;
-      if (unread) tabs.set(tabKey, now());
-      else tabs.delete(tabKey);
-      if (tabs.size === 0) tabUnread.delete(id);
-      const entry = entries.get(id);
-      if (entry) callbacks.rowChanged?.(entry, { tabKey });
-    },
-
-    clearWorkspaceUnread(id) {
-      const tabs = tabUnread.get(id);
-      if (!tabs) return;
-      const cleared = [...tabs.keys()];
-      tabUnread.delete(id);
       const entry = entries.get(id);
       if (!entry) return;
-      for (const tabKey of cleared) callbacks.rowChanged?.(entry, { tabKey });
+      const wasUnread = workspaceUnread[id] !== undefined;
+      if (unread && id !== activeWorkspaceId) {
+        if (!wasUnread) workspaceUnread[id] = now();
+      } else delete workspaceUnread[id];
+      const isUnread = workspaceUnread[id] !== undefined;
+      if (isUnread !== wasUnread) persistUnread();
+      if (unread || isUnread !== wasUnread) callbacks.rowChanged?.(entry, { tabKey, unread });
     },
 
     isTabBusy(id, tabKey) {
       return tabBusy.get(id)?.get(tabKey) ?? false;
-    },
-
-    isTabUnread(id, tabKey) {
-      return tabUnread.get(id)?.has(tabKey) ?? false;
-    },
-
-    tabUnreadAt(id, tabKey) {
-      return tabUnread.get(id)?.get(tabKey);
     },
 
     isWorkspaceBusy(id) {
@@ -278,12 +286,11 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
     },
 
     isWorkspaceUnread(id) {
-      return (tabUnread.get(id)?.size ?? 0) > 0;
+      return workspaceUnread[id] !== undefined;
     },
 
     workspaceUnreadAt(id) {
-      const timestamps = [...(tabUnread.get(id)?.values() ?? [])];
-      return timestamps.length > 0 ? Math.min(...timestamps) : undefined;
+      return workspaceUnread[id];
     },
 
     workspaceState(id) {
@@ -300,14 +307,6 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
 
     busyTabs(id) {
       return [...(tabBusy.get(id)?.keys() ?? [])];
-    },
-
-    unreadTabs(id) {
-      return [...(tabUnread.get(id)?.keys() ?? [])];
-    },
-
-    statusTabs(id) {
-      return [...new Set([...this.busyTabs(id), ...this.unreadTabs(id)])];
     },
   };
 }

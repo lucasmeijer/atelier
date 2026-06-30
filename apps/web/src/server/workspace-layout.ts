@@ -30,6 +30,8 @@ export interface WorkspaceLayoutStore {
   closeTab(workspaceId: string, tabKeys: string[], tab: string): void;
   resize(workspaceId: string, tabKeys: string[], sizes: number[]): void;
   setVisibleTab(workspaceId: string, groupId: string, tab: string): void;
+  /** Make the tab visible in whichever group already contains it. */
+  revealTab(workspaceId: string, tabKeys: string[], tab: string): boolean;
   /** Place a newly available tab into a group and make it visible. */
   placeNewTab(workspaceId: string, tabKeys: string[], groupId: string, tabKey: string): void;
   /** Ensure a tab is visible in the preview group: the first group with no agent tabs, creating one if needed. */
@@ -151,6 +153,15 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
     setVisibleTab(workspaceId, groupId, tab) {
       const group = layouts.get(workspaceId)?.groups.find((candidate) => candidate.id === groupId);
       if (group?.tabs.includes(tab)) group.visibleTab = tab;
+    },
+
+    revealTab(workspaceId, tabKeys, tab) {
+      if (!tabKeys.includes(tab)) return false;
+      const group = normalize(workspaceId, tabKeys).groups.find((candidate) => candidate.tabs.includes(tab));
+      if (!group) return false;
+      if (group.visibleTab === tab) return false;
+      group.visibleTab = tab;
+      return true;
     },
 
     placeNewTab(workspaceId, tabKeys, groupId, tabKey) {

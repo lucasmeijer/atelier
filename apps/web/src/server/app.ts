@@ -220,17 +220,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       : state === "unread"
         ? `<span class="status-dot" aria-label="Workspace unread" title="Workspace unread"></span>`
         : "";
-    const unreadTabs = registry.unreadTabs(workspaceId);
-    const unreadAttrs = unreadTabs.length > 0 ? ` data-unread-tabs="${escapeHtml(JSON.stringify(unreadTabs))}"` : "";
-    return `<span id="${workspaceStatusId(workspaceId)}" class="workspace-status" data-workspace-state="${state}"${unreadAttrs}>${inner}</span>`;
+    return `<span id="${workspaceStatusId(workspaceId)}" class="workspace-status" data-workspace-state="${state}">${inner}</span>`;
   }
 
   function renderTabStatus(workspaceId: string, tabKey: string): string {
     const inner = registry.isTabBusy(workspaceId, tabKey)
       ? `<span class="status-spinner sm" aria-label="Tab busy" title="Tab busy"></span>`
-      : registry.isTabUnread(workspaceId, tabKey)
-        ? `<span class="status-dot" aria-label="Tab unread" title="Tab unread"></span>`
-        : "";
+      : "";
     return `<span id="${workspaceTabStatusId(workspaceId, tabKey)}" class="tab-status">${inner}</span>`;
   }
 
@@ -331,7 +327,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   function workspaceStatusStreams(workspaceId: string): string {
-    return `${turboReplaceStream(workspaceStatusId(workspaceId), renderWorkspaceStatus(workspaceId))}${registry.statusTabs(workspaceId).map((tabKey) => turboReplaceStream(workspaceTabStatusId(workspaceId, tabKey), renderTabStatus(workspaceId, tabKey))).join("")}`;
+    return `${turboReplaceStream(workspaceStatusId(workspaceId), renderWorkspaceStatus(workspaceId))}${registry.busyTabs(workspaceId).map((tabKey) => turboReplaceStream(workspaceTabStatusId(workspaceId, tabKey), renderTabStatus(workspaceId, tabKey))).join("")}`;
   }
 
   function initialStatusStreams(): string {
@@ -339,9 +335,15 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   registry.setCallbacks({
-    rowChanged(entry, { tabKey }) {
+    rowChanged(entry, { tabKey, unread }) {
       if (tabKey !== undefined) {
-        // Busy changes replace only the status spans so they cannot clobber an
+        if (unread) {
+          void (async () => {
+            const tabKeys = await tabKeysFor(entry.id);
+            if (layouts.revealTab(entry.id, tabKeys, tabKey)) hub.broadcast(await replaceWorkspaceGroupsTurboStream(entry.id));
+          })().catch((error) => logError(`could not reveal unread tab for workspace ${entry.id}: ${error instanceof Error ? error.message : String(error)}`));
+        }
+        // Status changes replace only the status spans so they cannot clobber an
         // in-progress title edit in the row.
         hub.broadcast(`${turboReplaceStream(workspaceStatusId(entry.id), renderWorkspaceStatus(entry.id))}${turboReplaceStream(workspaceTabStatusId(entry.id, tabKey), renderTabStatus(entry.id, tabKey))}`);
         return;
@@ -1323,9 +1325,14 @@ ${moduleStylesHtml()}
     return jsonResponse({ ok: true });
   }
 
-  function clearWorkspaceUnreadEndpoint(id: string): Response {
+  function activeWorkspaceEndpoint(id: string): Response {
     requireWorkspace(id);
-    registry.clearWorkspaceUnread(id);
+    registry.setActiveWorkspace(id);
+    return turboStreamResponse("");
+  }
+
+  function clearActiveWorkspaceEndpoint(): Response {
+    registry.setActiveWorkspace(undefined);
     return turboStreamResponse("");
   }
 
@@ -1367,6 +1374,7 @@ ${moduleStylesHtml()}
     if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
     if (url.pathname === "/workspaces" && request.method === "POST") return createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestUnreadWorkspaceEndpoint();
+    if (url.pathname === "/workspaces/active/clear" && request.method === "POST") return clearActiveWorkspaceEndpoint();
     if (url.pathname === "/projects" && request.method === "POST") return await createProjectFromForm(request, url);
     if (url.pathname === "/projects/github-search" && request.method === "GET") return await githubRepositorySearchEndpoint(url);
 
@@ -1399,7 +1407,7 @@ ${moduleStylesHtml()}
       if (request.method === "POST") return await updateWorkspaceSidebarTitleFromForm(params[0], request);
     }
     if ((params = match(/^\/workspaces\/([^/]+)\/view-state$/)) && request.method === "POST") return await updateWorkspaceViewStateEndpoint(params[0], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/unread\/clear$/)) && request.method === "POST") return clearWorkspaceUnreadEndpoint(params[0]);
+    if ((params = match(/^\/workspaces\/([^/]+)\/active$/)) && request.method === "POST") return activeWorkspaceEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceGroupCommandEndpoint(params[0], params[1], params[2]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/split$/)) && request.method === "POST") return await splitWorkspaceGroupEndpoint(params[0], params[1]);
