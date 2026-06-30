@@ -230,11 +230,11 @@ async function renderComposerSettings(formId: string, selectedModel?: string): P
 }
 
 export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): string {
-  if (!busy) {
-    return `<button class="agent-btn primary" type="submit" name="mode" value="send">Send <kbd>⌘↩</kbd></button>`;
-  }
-  return `<button class="agent-btn stop" type="submit" form="${ids.abortForm(ctx)}" title="Stop the agent"><span class="agent-stop-dot"></span> Stop</button>
-<button class="agent-btn primary" type="submit" name="mode" value="steer" title="Deliver a steering note while the agent keeps working">Steer <kbd>⌘↩</kbd></button>`;
+  const busyAttrs = busy ? ` data-agent-busy="true" data-agent-abort-form-id="${ids.abortForm(ctx)}"` : ` data-agent-busy="false"`;
+  const label = busy ? "Steer" : "Send";
+  const value = busy ? "steer" : "send";
+  const title = busy ? "Deliver a steering note while the agent keeps working" : "Send prompt";
+  return `<button class="agent-btn primary agent-sendstop" type="submit" name="mode" value="${value}" title="${title}"${busyAttrs}>${label} <kbd>⌘↩</kbd></button>`;
 }
 
 export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): string {

@@ -447,6 +447,13 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 0; }
 .agent-btn.primary:hover { background: var(--accent); filter: brightness(1.05); }
 .agent-btn.primary kbd { display: none; }
 .agent-btn.primary::before { content: "↑"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -53%); color: #2b2018; font-size: 17px; font-weight: 800; line-height: 1; font-family: var(--sans); }
+.agent-btn.primary.agent-sendstop { transition: background .15s, box-shadow .15s, transform .15s, filter .15s; }
+.agent-btn.primary.agent-sendstop:active { transform: translateY(1px); }
+.agent-btn.primary.agent-sendstop[data-mode="stop"] { background: transparent; overflow: visible; }
+.agent-btn.primary.agent-sendstop[data-mode="stop"]:hover { background: transparent; filter: none; }
+.agent-btn.primary.agent-sendstop[data-mode="stop"]::before { content: ""; width: 9px; height: 9px; border-radius: 2.5px; background: var(--accent); transform: translate(-50%, -50%); }
+.agent-btn.primary.agent-sendstop[data-mode="stop"]::after { content: ""; position: absolute; inset: 0; border: 1.5px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent); border-radius: inherit; pointer-events: none; animation: agent-sendstop-orbit 1.1s linear infinite; }
+@keyframes agent-sendstop-orbit { to { transform: rotate(360deg); } }
 .agent-btn.stop { color: var(--red); background: var(--red-soft); border: 1px solid var(--line); }
 
 .agent-template-menu-host { position: absolute; left: 40px; bottom: calc(100% - 5px); z-index: 20; width: min(820px, calc(100% - 80px)); }

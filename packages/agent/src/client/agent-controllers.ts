@@ -51,6 +51,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     private stuck = true;
     private observer?: MutationObserver;
+    private promptObserver?: MutationObserver;
     private rewindUserText = "";
     private readonly onScroll = (): void => {
       const el = this.transcriptTarget;
@@ -70,13 +71,17 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
         }
       });
       this.observer.observe(this.transcriptTarget, { childList: true, subtree: true, characterData: true });
+      this.promptObserver = new MutationObserver(() => this.updateSendStopButton());
+      this.promptObserver.observe(this.formTarget, { childList: true, subtree: true });
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       document.addEventListener("keydown", this.onKeydown);
+      this.updateSendStopButton();
       if (this.element.closest(".tab-pane")?.classList.contains("active")) this.start();
     }
 
     disconnect(): void {
       this.observer?.disconnect();
+      this.promptObserver?.disconnect();
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
       document.removeEventListener("keydown", this.onKeydown);
       this.stop();
@@ -140,6 +145,31 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       const nextHeight = Math.ceil(input.scrollHeight) + 2;
       input.style.height = `${Math.min(nextHeight, maxHeight)}px`;
       input.style.overflowY = nextHeight > maxHeight ? "auto" : "hidden";
+      this.updateSendStopButton();
+    }
+
+    updateSendStopButton(): void {
+      const button = this.formTarget.querySelector<HTMLButtonElement>(".agent-sendstop");
+      if (!button) return;
+      const busy = button.dataset.agentBusy === "true";
+      const empty = this.inputTarget.value.trim().length === 0;
+      if (busy && empty) {
+        button.dataset.mode = "stop";
+        button.type = "submit";
+        button.removeAttribute("name");
+        button.removeAttribute("value");
+        button.setAttribute("form", button.dataset.agentAbortFormId ?? "");
+        button.title = "Agent is working — click to stop";
+        button.setAttribute("aria-label", button.title);
+        return;
+      }
+      button.dataset.mode = "send";
+      button.type = "submit";
+      button.name = "mode";
+      button.value = busy ? "steer" : "send";
+      button.removeAttribute("form");
+      button.title = busy ? "Deliver a steering note while the agent keeps working" : "Send prompt";
+      button.setAttribute("aria-label", button.title);
     }
 
     submitted(event: Event): void {
