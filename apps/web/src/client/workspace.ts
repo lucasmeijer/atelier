@@ -477,7 +477,7 @@ class AtelierShortcutsController extends Controller {
     this.shortcutOverlayTimer = setTimeout(() => {
       this.shortcutOverlayTimer = undefined;
       this.showShortcutOverlay();
-    }, 2000);
+    }, 500);
   }
 
   private readonly hideShortcutOverlay = (): void => {
