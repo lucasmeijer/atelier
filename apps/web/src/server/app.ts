@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import {
   getConfiguredAgentModels,
@@ -380,9 +381,17 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       .join("\n");
   }
 
-  function layout(title: string, body: string): string {
+  function workspaceEventsStreamSrc(pageId: string, workspaceId?: string): string {
+    const params = new URLSearchParams({ kind: "shell", page_id: pageId });
+    if (workspaceId) params.set("workspace_id", workspaceId);
+    return `/workspace-events/stream?${params.toString()}`;
+  }
+
+  function layout(title: string, body: string, workspaceId?: string): string {
+    const pageId = randomUUID();
+    const streamSrc = workspaceEventsStreamSrc(pageId, workspaceId);
     return `<!DOCTYPE html>
-<html lang="en" data-theme="nord">
+<html lang="en" data-theme="nord" data-atelier-page-id="${escapeHtml(pageId)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -400,7 +409,7 @@ ${moduleStylesHtml()}
 <script type="module" src="${assetPath("/workspace.js")}"></script>
 </head>
 <body id="body">${body}
-<turbo-stream-source src="/workspace-events/stream"></turbo-stream-source>
+<turbo-stream-source src="${escapeHtml(streamSrc)}"></turbo-stream-source>
 </body>
 </html>`;
   }
@@ -749,7 +758,7 @@ ${moduleStylesHtml()}
 
   async function homePage(): Promise<Response> {
     const selected = registry.list().find((entry) => entry.phase !== "failed");
-    return response(layout("Workspaces", await renderWorkspaceShell(selected?.id)));
+    return response(layout("Workspaces", await renderWorkspaceShell(selected?.id), selected?.id));
   }
 
   function requireWorkspace(id: string): WorkspaceEntry {
@@ -762,7 +771,7 @@ ${moduleStylesHtml()}
     const entry = requireWorkspace(id);
     const url = new URL(request.url);
     if (url.searchParams.get("resident") === "1") return response(await workspaceResidentFor(entry, { visible: true }));
-    return response(layout(workspaceTitle(entry), await renderWorkspaceShell(id)));
+    return response(layout(workspaceTitle(entry), await renderWorkspaceShell(id), id));
   }
 
   // ---------------------------------------------------------------------------

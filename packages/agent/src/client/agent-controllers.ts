@@ -88,7 +88,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     start(): void {
       requestAnimationFrame(() => this.autosize());
-      const src = this.path("/events");
+      const src = this.eventStreamSrc();
       if (this.streamTarget.querySelector("turbo-stream-source")?.getAttribute("src") === src) return;
       const source = document.createElement("turbo-stream-source");
       source.setAttribute("src", src);
@@ -101,6 +101,16 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     private path(suffix: string): string {
       return `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agents/${encodeURIComponent(this.labelValue)}${suffix}`;
+    }
+
+    private eventStreamSrc(): string {
+      const params = new URLSearchParams();
+      params.set("kind", "agent");
+      params.set("workspace_id", this.workspaceIdValue);
+      params.set("agent_label", this.labelValue);
+      const pageId = document.documentElement.dataset.atelierPageId;
+      if (pageId) params.set("page_id", pageId);
+      return `${this.path("/events")}?${params.toString()}`;
     }
 
     // ---- prompt box ----
