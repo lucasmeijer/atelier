@@ -350,6 +350,8 @@ a.btn { text-decoration: none; }
 .contents { display: contents; }
 .modal-input { width: 100%; border: 1px solid var(--line-2); border-radius: 10px; padding: 10px; font: inherit; }
 .modal-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.project-github-search { position: relative; }
+.project-github-search-menu.agent-template-menu-host { left: 0; right: 0; top: calc(100% + 6px); bottom: auto; width: auto; z-index: 50; }
 .projects-table .r-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* workspace shell */
@@ -519,7 +521,8 @@ button { border: 0; background: none; cursor: pointer; }
 .panel { background: var(--panel); border-color: var(--line); border-radius: 12px; }
 .btn { background: var(--panel); border-color: var(--line2); color: var(--text); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #2b2018; }
-.modal { background: var(--panel); color: var(--text); border-color: var(--line2); box-shadow: var(--shadow); }
+.modal { background: var(--panel); color: var(--text); border-color: var(--line2); box-shadow: var(--shadow); overflow: visible; }
+.modal form { overflow: visible; }
 .modal::backdrop { background: rgba(0,0,0,.5); backdrop-filter: blur(4px); }
 .modal-input, .search, .workspace-sidebar-title-form input { background: var(--bg); border-color: var(--line2); color: var(--text); }
 

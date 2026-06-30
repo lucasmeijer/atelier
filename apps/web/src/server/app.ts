@@ -54,6 +54,7 @@ import type { WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts"
 import { workspaceModules } from "./workspace-modules.ts";
 import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.ts";
 import { handleOnboardingRequest, renderOnboardingDialogIfNeeded } from "./onboarding/routes.ts";
+import { GitHubRepositorySearchRateLimitError, renderGitHubRepositorySearchMenu, renderGitHubRepositorySearchRateLimitMenu, searchGitHubRepositories, shouldSearchGitHubRepositories } from "./github-repo-search.ts";
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
@@ -460,8 +461,11 @@ ${moduleStylesHtml()}
     return `<dialog id="add-project-modal" class="modal" data-controller="modal">
   <form method="post" action="/projects" data-action="turbo:submit-end->modal#submitted">
     <h2>Add project</h2>
-    <p>Save a remote URL. Add <code>#branch</code> to clone a specific branch.</p>
-    <input class="modal-input" name="gitUrl" type="text" placeholder="https://github.com/org/repo.git#main" required autofocus>
+    <p>Save a remote URL, or type a repository name to search GitHub. Add <code>#branch</code> to clone a specific branch.</p>
+    <div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search">
+      <input class="modal-input" name="gitUrl" type="text" placeholder="github repo, https://github.com/org/repo.git#main, or /path/to/repo#feature" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input">
+      <div class="agent-template-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div>
+    </div>
     <div class="modal-actions">
       <button class="btn" type="button" data-action="modal#close">Cancel</button>
       <button class="btn primary" type="submit">Add project</button>
@@ -1081,6 +1085,17 @@ ${moduleStylesHtml()}
     ].join(""));
   }
 
+  async function githubRepositorySearchEndpoint(url: URL): Promise<Response> {
+    const query = url.searchParams.get("q") ?? "";
+    try {
+      const repositories = shouldSearchGitHubRepositories(query) ? await searchGitHubRepositories(query) : [];
+      return new Response(renderGitHubRepositorySearchMenu(repositories, query), { headers: { "content-type": "text/html; charset=utf-8" } });
+    } catch (error) {
+      if (error instanceof GitHubRepositorySearchRateLimitError) return new Response(renderGitHubRepositorySearchRateLimitMenu(error), { status: 429, headers: { "content-type": "text/html; charset=utf-8" } });
+      throw error;
+    }
+  }
+
   function statusBadge(className: string, label: string, title: string): string {
     return `<span class="git-status-badge ${className}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
   }
@@ -1335,6 +1350,7 @@ ${moduleStylesHtml()}
     if (url.pathname === "/workspaces" && request.method === "POST") return createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestUnreadWorkspaceEndpoint();
     if (url.pathname === "/projects" && request.method === "POST") return await createProjectFromForm(request, url);
+    if (url.pathname === "/projects/github-search" && request.method === "GET") return await githubRepositorySearchEndpoint(url);
 
     const match = (pattern: RegExp): string[] | undefined => {
       const result = url.pathname.match(pattern);

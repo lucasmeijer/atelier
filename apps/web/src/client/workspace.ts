@@ -1,7 +1,9 @@
 /// <reference lib="dom" />
 
+import { createHtmlAutocompleteController } from "@atelier/agent/client";
 import {
   escapeHtml,
+  looksLikeProjectSpec,
   providerBrandIconHtml,
   type WorkspaceClientActivateTabContext,
   type WorkspaceClientFocusContext,
@@ -1661,6 +1663,23 @@ class AgentSelectMenuController extends Controller {
   }
 }
 
+const ProjectGithubSearchController = createHtmlAutocompleteController(Controller, {
+  optionSelector: ".agent-template-option",
+  debounceMs: 200,
+  loadingHtml: `<div class="agent-template-menu empty"><span class="agent-template-spinner" aria-hidden="true"></span>Searching GitHub…</div>`,
+  query(input) {
+    const query = input.value.trim();
+    if (query.length < 2 || looksLikeProjectSpec(query)) return undefined;
+    return query;
+  },
+  select(option, input) {
+    const gitUrl = option.dataset.gitUrl;
+    if (!gitUrl) return;
+    input.value = gitUrl;
+    input.setSelectionRange(gitUrl.length, gitUrl.length);
+  },
+});
+
 const application = Application.start();
 for (const module of workspaceClientModules) await module.install({ application, Controller, hooks: clientHooks });
 application.register("workspace-shell", WorkspaceShellController);
@@ -1672,6 +1691,7 @@ application.register("atelier-shortcuts", AtelierShortcutsController);
 application.register("submit-shortcut", SubmitShortcutController);
 application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);
+application.register("project-github-search", ProjectGithubSearchController);
 application.register("workspace-list", WorkspaceListController);
 application.register("workspace-title-edit", WorkspaceTitleEditController);
 application.register("provision-terminal", createProvisionTerminalController(Controller));

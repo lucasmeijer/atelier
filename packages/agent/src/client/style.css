@@ -451,8 +451,14 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 0; }
 
 .agent-template-menu-host { position: absolute; left: 40px; bottom: calc(100% - 5px); z-index: 20; width: min(820px, calc(100% - 80px)); }
 .agent-template-menu-host[hidden] { display: none; }
-.agent-template-menu { max-height: 260px; overflow: auto; padding: 5px; background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; box-shadow: var(--shadow); }
+.agent-template-menu { max-height: 260px; overflow: auto; padding: 5px; background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; box-shadow: var(--shadow); scrollbar-color: var(--line2) transparent; scrollbar-width: thin; }
+.agent-template-menu::-webkit-scrollbar { width: 10px; height: 10px; }
+.agent-template-menu::-webkit-scrollbar-track { background: transparent; }
+.agent-template-menu::-webkit-scrollbar-thumb { background: var(--line2); border: 2px solid transparent; border-radius: 999px; background-clip: padding-box; }
+.agent-template-menu::-webkit-scrollbar-thumb:hover { background-color: var(--muted2); }
 .agent-template-menu.empty { padding: 9px 10px; color: var(--muted2); font-size: 12px; }
+.agent-template-spinner { display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -2px; border-radius: 50%; border: 2px solid var(--line2); border-top-color: var(--accent); animation: agent-template-spin .75s linear infinite; }
+@keyframes agent-template-spin { to { transform: rotate(360deg); } }
 .agent-template-option { width: 100%; display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 8px; align-items: baseline; padding: 7px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .agent-template-option:hover, .agent-template-option.active { background: var(--bg); }
 .agent-template-name { font-family: var(--mono); font-size: 12px; font-weight: 750; color: var(--accent); }

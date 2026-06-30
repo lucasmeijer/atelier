@@ -10,6 +10,10 @@ export function domId(...parts: string[]): string {
   return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
+export function looksLikeProjectSpec(value: string): boolean {
+  return /^(https?:\/\/|git@|ssh:\/\/|\/|\.\/|\.\.\/|[A-Za-z]:\\)/.test(value.trim());
+}
+
 export type TurboStreamAction = "append" | "prepend" | "replace" | "update" | "remove";
 
 export function turboStream(action: TurboStreamAction, target: string, html = "", options: { targets?: boolean } = {}): string {

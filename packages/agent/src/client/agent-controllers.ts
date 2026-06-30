@@ -5,6 +5,15 @@ import type { WorkspaceClientModule } from "@atelier/shared";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
+type HtmlAutocompleteOptions = {
+  optionSelector: string;
+  query(input: HTMLInputElement | HTMLTextAreaElement): string | undefined;
+  select(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): void;
+  debounceMs?: number;
+  loadingHtml?: string;
+  triggerKeysWhenClosed?: string[];
+};
+
 type StimulusApplication = {
   getControllerForElementAndIdentifier(element: Element, identifier: string): unknown;
 };
@@ -582,18 +591,19 @@ function createAgentHtmlPreviewController(Controller: StimulusControllerConstruc
 }
 
 // ---------------------------------------------------------------------------
-// agent-prompt-templates: slash-command autocomplete for repository templates
+// HTML autocomplete: server-rendered menu + shared keyboard/pointer behavior
 // ---------------------------------------------------------------------------
 
-function createAgentPromptTemplatesController(Controller: StimulusControllerConstructor) {
-  return class AgentPromptTemplatesController extends Controller {
+export function createHtmlAutocompleteController(Controller: StimulusControllerConstructor, autocomplete: HtmlAutocompleteOptions) {
+  return class HtmlAutocompleteController extends Controller {
     static values = { url: String };
     static targets = ["input", "menu"];
     declare readonly element: HTMLElement;
     declare readonly urlValue: string;
-    declare readonly inputTarget: HTMLTextAreaElement;
+    declare readonly inputTarget: HTMLInputElement | HTMLTextAreaElement;
     declare readonly menuTarget: HTMLElement;
     private requestId = 0;
+    private debounceTimer: number | undefined;
 
     connect(): void {
       this.menuTarget.addEventListener("click", this.click);
@@ -603,15 +613,16 @@ function createAgentPromptTemplatesController(Controller: StimulusControllerCons
     disconnect(): void {
       this.menuTarget.removeEventListener("click", this.click);
       this.menuTarget.removeEventListener("pointerover", this.pointerover);
+      window.clearTimeout(this.debounceTimer);
     }
 
     input(): void {
-      void this.refresh();
+      this.scheduleRefresh();
     }
 
     keydown(event: KeyboardEvent): void {
       if (this.menuTarget.hidden) {
-        if (event.key === "/") requestAnimationFrame(() => void this.refresh());
+        if (autocomplete.triggerKeysWhenClosed?.includes(event.key)) requestAnimationFrame(() => this.scheduleRefresh());
         return;
       }
       if (event.key === "Escape") {
@@ -639,34 +650,39 @@ function createAgentPromptTemplatesController(Controller: StimulusControllerCons
       }
     }
 
+    private scheduleRefresh(): void {
+      window.clearTimeout(this.debounceTimer);
+      const debounceMs = autocomplete.debounceMs ?? 0;
+      if (debounceMs === 0) {
+        void this.refresh();
+        return;
+      }
+      this.debounceTimer = window.setTimeout(() => void this.refresh(), debounceMs);
+    }
+
     private readonly click = (event: Event): void => {
-      const option = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(".agent-template-option") : null;
+      const option = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(autocomplete.optionSelector) : null;
       if (!option) return;
       event.preventDefault();
       this.insert(option);
     };
 
     private readonly pointerover = (event: Event): void => {
-      const option = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(".agent-template-option") : null;
+      const option = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(autocomplete.optionSelector) : null;
       if (option) this.activate(option);
     };
 
-    private commandQuery(): string | undefined {
-      const input = this.inputTarget;
-      const before = input.value.slice(0, input.selectionStart ?? 0);
-      const after = input.value.slice(input.selectionEnd ?? 0);
-      if (after && !/^\s/.test(after)) return undefined;
-      const match = before.match(/^\/([^\s]*)$/);
-      return match ? match[1] : undefined;
-    }
-
     private async refresh(): Promise<void> {
-      const query = this.commandQuery();
+      const query = autocomplete.query(this.inputTarget);
       if (query === undefined) {
         this.close();
         return;
       }
       const id = ++this.requestId;
+      if (autocomplete.loadingHtml) {
+        this.menuTarget.innerHTML = autocomplete.loadingHtml;
+        this.menuTarget.hidden = false;
+      }
       const url = new URL(this.urlValue, window.location.href);
       url.searchParams.set("q", query);
       const html = await fetch(url, { headers: { Accept: "text/html" } }).then((response) => response.text());
@@ -677,16 +693,17 @@ function createAgentPromptTemplatesController(Controller: StimulusControllerCons
 
     private close(): void {
       this.requestId++;
+      window.clearTimeout(this.debounceTimer);
       this.menuTarget.hidden = true;
       this.menuTarget.replaceChildren();
     }
 
     private options(): HTMLElement[] {
-      return [...this.menuTarget.querySelectorAll<HTMLElement>(".agent-template-option")];
+      return [...this.menuTarget.querySelectorAll<HTMLElement>(autocomplete.optionSelector)];
     }
 
     private activeOption(): HTMLElement | undefined {
-      return this.menuTarget.querySelector<HTMLElement>(".agent-template-option.active") ?? this.options()[0];
+      return this.menuTarget.querySelector<HTMLElement>(`${autocomplete.optionSelector}.active`) ?? this.options()[0];
     }
 
     private activate(option: HTMLElement): void {
@@ -706,9 +723,31 @@ function createAgentPromptTemplatesController(Controller: StimulusControllerCons
     }
 
     private insert(option: HTMLElement): void {
+      autocomplete.select(option, this.inputTarget);
+      this.inputTarget.dispatchEvent(new Event("input", { bubbles: true }));
+      this.close();
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// agent-prompt-templates: slash-command autocomplete for repository templates
+// ---------------------------------------------------------------------------
+
+function createAgentPromptTemplatesController(Controller: StimulusControllerConstructor) {
+  return createHtmlAutocompleteController(Controller, {
+    optionSelector: ".agent-template-option",
+    triggerKeysWhenClosed: ["/"],
+    query(input) {
+      const before = input.value.slice(0, input.selectionStart ?? 0);
+      const after = input.value.slice(input.selectionEnd ?? 0);
+      if (after && !/^\s/.test(after)) return undefined;
+      const match = before.match(/^\/([^\s]*)$/);
+      return match ? match[1] : undefined;
+    },
+    select(option, input) {
       const trigger = option.dataset.templateTrigger;
       if (!trigger) return;
-      const input = this.inputTarget;
       const end = input.selectionEnd ?? 0;
       const before = input.value.slice(0, input.selectionStart ?? 0);
       const after = input.value.slice(end);
@@ -716,10 +755,8 @@ function createAgentPromptTemplatesController(Controller: StimulusControllerCons
       input.value = `${input.value.slice(0, start)}${trigger} ${after}`;
       const cursor = start + trigger.length + 1;
       input.setSelectionRange(cursor, cursor);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      this.close();
-    }
-  };
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ import { createWebApp } from "../src/server/app.ts";
 import { createStreamHub } from "../src/server/stream-hub.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
-import { clearWorkspaceGitHubToken } from "@atelier/proxy-egress";
+import { clearWorkspaceGitHubToken, setWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { addProject, clearGitIdentity, getGitIdentity, isGitProjectInit, listProjects, projectWorkspaceInit, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
 
 function deferred<T = void>() {
@@ -99,6 +99,87 @@ describe("web app contracts", () => {
     expect(await home.text()).toBe("");
     expect(up.status).toBe(200);
     expect(await up.text()).toBe("");
+  });
+
+  test("GET /projects/github-search renders GitHub repository options for non-url queries", async () => {
+    await withTempDataDir(async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => {
+        const url = new URL(String(input));
+        expect(url.pathname).toBe("/search/repositories");
+        expect(url.searchParams.get("q")).toBe("atelier in:name,description is:public");
+        expect(url.searchParams.get("sort")).toBe("stars");
+        expect(url.searchParams.get("order")).toBe("desc");
+        return Response.json({
+          items: [{
+            full_name: "org/atelier",
+            description: "server-rendered agents",
+            private: false,
+            clone_url: "https://github.com/org/atelier.git",
+            html_url: "https://github.com/org/atelier",
+            default_branch: "main",
+          }],
+        });
+      }, originalFetch);
+      try {
+        const { app } = createTestApp();
+        const response = await app.fetch(new Request("http://test.local/projects/github-search?q=atelier"));
+        const body = await response.text();
+
+        expect(response.headers.get("content-type")).toContain("text/html");
+        expect(body).toContain("org/atelier");
+        expect(body).toContain("data-git-url=\"https://github.com/org/atelier.git\"");
+        expect(body).not.toContain("public");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
+  test("GET /projects/github-search prioritizes private repositories when GitHub is connected", async () => {
+    await withTempDataDir(async () => {
+      setWorkspaceGitHubToken("github-token");
+      const queries: string[] = [];
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        queries.push(url.searchParams.get("q") ?? "");
+        expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer github-token");
+        return Response.json({
+          items: url.searchParams.get("q")?.includes("is:private")
+            ? [{ full_name: "me/private-atelier", description: "mine", private: true, clone_url: "https://github.com/me/private-atelier.git", html_url: "https://github.com/me/private-atelier", default_branch: "main" }]
+            : [{ full_name: "public/atelier", description: "public", private: false, clone_url: "https://github.com/public/atelier.git", html_url: "https://github.com/public/atelier", default_branch: "main" }],
+        });
+      }, originalFetch);
+      try {
+        const { app } = createTestApp();
+        const response = await app.fetch(new Request("http://test.local/projects/github-search?q=atelier"));
+        const body = await response.text();
+
+        expect(queries.toSorted()).toEqual(["atelier in:name,description is:private", "atelier in:name,description is:public"]);
+        expect(body.indexOf("me/private-atelier")).toBeLessThan(body.indexOf("public/atelier"));
+        expect(body).toContain("🔒");
+        expect(body).toContain("Private repository");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
+  test("GET /projects/github-search skips URL-like project specs", async () => {
+    await withTempDataDir(async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = Object.assign(async () => {
+        throw new Error("unexpected fetch");
+      }, originalFetch);
+      try {
+        const { app } = createTestApp();
+        const response = await app.fetch(new Request("http://test.local/projects/github-search?q=https%3A%2F%2Fgithub.com%2Forg%2Frepo.git"));
+        expect(await response.text()).toBe("");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
   });
 
   test("POST /workspaces responds with streams and Location before provisioning finishes", async () => {
