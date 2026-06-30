@@ -42,7 +42,11 @@ export function sessionShareKeySlug(value: string): string {
 
 export function sessionShareKeyForInit(init: unknown): string {
   const workspaceInit = init as Parameters<typeof isGitProjectInit>[0];
-  return isGitProjectInit(workspaceInit) ? sessionShareKeySlug(workspaceInit.sessionShareKey) : projectlessSessionShareKey;
+  if (!isGitProjectInit(workspaceInit)) return projectlessSessionShareKey;
+  const key = typeof workspaceInit.sessionShareKey === "string" && workspaceInit.sessionShareKey.trim()
+    ? workspaceInit.sessionShareKey
+    : workspaceInit.name;
+  return sessionShareKeySlug(key);
 }
 
 export async function workspaceSessionShareKey(workspaceId: string, dataDir = getAtelierRuntimeContext().atelierDataDir): Promise<string> {
