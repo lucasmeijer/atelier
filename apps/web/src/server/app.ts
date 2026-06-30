@@ -423,7 +423,7 @@ ${moduleStylesHtml()}
   <form method="post" action="/projects" data-action="turbo:submit-end->modal#submitted">
     <h2>Add project</h2>
     <p>Save a remote URL. Add <code>#branch</code> to clone a specific branch.</p>
-    <input class="modal-input" name="gitUrl" type="text" placeholder="https://github.com/org/repo.git#main or /path/to/repo#feature" required autofocus>
+    <input class="modal-input" name="gitUrl" type="text" placeholder="https://github.com/org/repo.git#main" required autofocus>
     <div class="modal-actions">
       <button class="btn" type="button" data-action="modal#close">Cancel</button>
       <button class="btn primary" type="submit">Add project</button>
