@@ -5,6 +5,7 @@ export {
 
 export {
   addProject,
+  deleteProject,
   formatProjectSpec,
   isGitProjectInit,
   listProjects,
@@ -13,6 +14,7 @@ export {
   projectNameFromGitUrl,
   projectWorkspaceInit,
   type AddProjectResult,
+  type DeleteProjectResult,
   type GitProjectInitInstruction,
   type ProjectListResult,
   type ProjectSummary,

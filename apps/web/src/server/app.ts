@@ -13,6 +13,7 @@ import {
 import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
   addProject,
+  deleteProject,
   formatProjectSpec,
   getWorkspaceRepoMergeability,
   isGitProjectInit,
@@ -158,6 +159,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId), seedSteps: deps.provisioningHooks });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
+  const projectLaunchModalsId = "project_launch_modals";
 
   async function preferredNewAgentModel(): Promise<string | undefined> {
     const configuredModels = await getConfiguredAgentModels();
@@ -378,6 +380,10 @@ ${moduleStylesHtml()}
     return `--repo-color:${repoColor(repoName)}`;
   }
 
+  function repoSwatch(projectId: string): string {
+    return `<span class="repo-swatch" style="${repoColorStyle(projectId)}" aria-hidden="true"></span>`;
+  }
+
   async function launchAgentWorkspaceModal(options: { titleHtml: string; action: string; modalId: string; formId: string; selectedModel?: string; autoShow?: boolean }): Promise<string> {
     return `<dialog id="${options.modalId}" class="agent-launch-modal" data-controller="modal submit-shortcut"${options.autoShow ? ` data-modal-auto-show-value="true"` : ""}>
   <div class="agent-launch-title">${options.titleHtml}</div>
@@ -416,6 +422,18 @@ ${moduleStylesHtml()}
       formId: "agent_launch_empty_workspace_form",
       selectedModel,
     });
+  }
+
+  function deleteProjectModal(project: ProjectSummary): string {
+    return `<dialog id="${domId("delete_project_modal", project.id)}" class="modal project-delete-modal" data-controller="modal">
+  <form method="post" action="/projects/${encodeURIComponent(project.id)}/delete" data-action="turbo:submit-end->modal#submitted">
+    <h2 class="project-delete-title">Delete ${repoSwatch(project.id)} ${escapeHtml(project.name)}?</h2>
+    <div class="modal-actions">
+      <button class="btn" type="button" data-action="modal#close">Cancel</button>
+      <button class="btn danger" type="submit">Delete</button>
+    </div>
+  </form>
+</dialog>`;
   }
 
   function addProjectModal(): string {
@@ -483,11 +501,12 @@ ${moduleStylesHtml()}
 
     const projectRows = projects.map((project) => {
       const modalId = domId("agent_launch_project_modal", project.id);
+      const deleteModalId = domId("delete_project_modal", project.id);
       const spec = formatProjectSpec(project);
-      return `<button class="row project-row repo-tinted-row" type="button" style="${repoColorStyle(project.id)}" title="${escapeHtml(spec)}" aria-label="Start agent workspace from ${escapeHtml(project.name)}" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="${modalId}">
-    <span class="repo-swatch" aria-hidden="true"></span><span class="row-main"><span class="r-title">${escapeHtml(project.name)}</span></span>
-    <span class="row-actions"><span class="repo-launch-icon" aria-hidden="true">+</span></span>
-  </button>`;
+      return `<div class="row project-row repo-tinted-row" role="button" tabindex="0" style="${repoColorStyle(project.id)}" title="${escapeHtml(spec)}" aria-label="Start agent workspace from ${escapeHtml(project.name)}" data-controller="modal-opener" data-action="click->modal-opener#open keydown.enter->modal-opener#open" data-modal-opener-target-id-value="${modalId}">
+    ${repoSwatch(project.id)}<span class="row-main"><span class="r-title">${escapeHtml(project.name)}</span></span>
+    <span class="row-actions"><button class="project-row-delete" type="button" title="Delete project" aria-label="Delete project" data-controller="modal-opener" data-action="click->modal-opener#open" data-modal-opener-target-id-value="${deleteModalId}">🗑</button></span>
+  </div>`;
     }).join("");
 
     const addProjectRow = `<button class="row ghost-row addbtn" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="add-project-modal">
@@ -657,6 +676,7 @@ ${moduleStylesHtml()}
     return [
       await launchEmptyAgentModal(selectedModel),
       ...(await Promise.all(projects.map((project) => launchProjectAgentModal(project, selectedModel)))),
+      ...projects.map((project) => deleteProjectModal(project)),
     ].join("");
   }
 
@@ -671,7 +691,7 @@ ${moduleStylesHtml()}
   <div id="settings_modal_host"></div>
   <div id="onboarding_modal_host">${await renderOnboardingDialogIfNeeded()}</div>
   <div id="${workspaceCommandModalHostId}"></div>
-  ${await renderProjectLaunchModals()}`;
+  <div id="${projectLaunchModalsId}">${await renderProjectLaunchModals()}</div>`;
   }
 
   async function homePage(): Promise<Response> {
@@ -1003,6 +1023,44 @@ ${moduleStylesHtml()}
     return Response.redirect(new URL("/", url).toString(), 303);
   }
 
+  function projectReferencingWorkspaces(projectId: string): WorkspaceEntry[] {
+    return registry.list().filter((entry) => isGitProjectInit(entry.init) && entry.init.projectId === projectId);
+  }
+
+  function deleteProjectBlockedModal(project: ProjectSummary, references: WorkspaceEntry[]): string {
+    const count = references.length;
+    return `<dialog id="delete-project-blocked-modal" class="modal project-delete-blocked-modal" data-controller="modal" data-modal-auto-show-value="true">
+  <form method="dialog">
+    <div class="modal-header project-delete-header">
+      <div class="modal-icon warning" aria-hidden="true">!</div>
+      <div>
+        <h2>Project is in use</h2>
+        <p><b>${escapeHtml(project.name)}</b> is referenced by ${count === 1 ? "1 workspace" : `${count} workspaces`}.</p>
+      </div>
+    </div>
+    <div class="project-delete-workspaces" aria-label="Referencing workspaces">
+      ${references.map((entry) => `<div class="project-delete-workspace">${repoSwatch(project.id)}<span class="project-delete-workspace-title">${escapeHtml(workspaceTitle(entry))}</span><span class="project-delete-workspace-id">${escapeHtml(entry.id)}</span></div>`).join("")}
+    </div>
+    <p class="project-delete-help">Delete these workspaces first, then try deleting the project again.</p>
+    <div class="modal-actions"><button class="btn primary" value="close">OK</button></div>
+  </form>
+</dialog>`;
+  }
+
+  async function deleteProjectEndpoint(projectId: string): Promise<Response> {
+    const project = await projectById(projectId);
+    const references = projectReferencingWorkspaces(projectId);
+    if (references.length > 0) {
+      return turboStreamResponse(`${turboUpdateStream(projectLaunchModalsId, await renderProjectLaunchModals())}${turboUpdateStream(workspaceCommandModalHostId, deleteProjectBlockedModal(project, references))}`);
+    }
+    await deleteProject(projectId);
+    return turboStreamResponse([
+      turboReplaceStream("workspace_sidebar", await renderWorkspaceSidebar()),
+      turboUpdateStream(projectLaunchModalsId, await renderProjectLaunchModals()),
+      turboUpdateStream(workspaceCommandModalHostId, ""),
+    ].join(""));
+  }
+
   function statusBadge(className: string, label: string, title: string): string {
     return `<span class="git-status-badge ${className}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
   }
@@ -1275,6 +1333,8 @@ ${moduleStylesHtml()}
     }
 
     let params: string[] | undefined;
+
+    if ((params = match(/^\/projects\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectEndpoint(params[0]);
 
     if (url.pathname === "/agent-workspaces" && request.method === "POST") return await createEmptyAgentWorkspaceEndpoint(request);
     if ((params = match(/^\/project-agent-workspaces\/([^/]+)$/)) && request.method === "POST") return await createProjectAgentWorkspaceEndpoint(params[0], request);

@@ -7,7 +7,7 @@ import { createStreamHub } from "../src/server/stream-hub.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { clearWorkspaceGitHubToken } from "@atelier/proxy-egress";
-import { addProject, clearGitIdentity, getGitIdentity, isGitProjectInit, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
+import { addProject, clearGitIdentity, getGitIdentity, isGitProjectInit, listProjects, projectWorkspaceInit, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -189,6 +189,60 @@ describe("web app contracts", () => {
       expect(isGitProjectInit(entry.init) && entry.init.gitUrl).toBe("https://github.com/org/sample-project.git");
       expect(isGitProjectInit(entry.init) && entry.init.branch).toBe("main");
       expect(seen[0]?.options?.context).toEqual({ agent: { initialPrompt: "Add tests", model: "openai::gpt", thinkingLevel: "medium", attachmentDraft: "" } });
+    });
+  });
+
+  test("project rows launch from the whole row and expose delete confirmation without a plus icon", async () => {
+    await withTempDataDir(async () => {
+      const project = (await addProject("https://github.com/org/sample-project.git")).project;
+      const { app, registry } = createTestApp();
+      await registry.seed([]);
+
+      const html = await (await app.fetch(new Request("http://test.local/"))).text();
+
+      expect(html).toContain('class="row project-row repo-tinted-row" role="button"');
+      expect(html).toContain(`data-modal-opener-target-id-value="agent_launch_project_modal_${project.id}"`);
+      expect(html).not.toContain("repo-launch-icon");
+      expect(html).toContain('class="project-row-delete"');
+      expect(html).toContain(`id="delete_project_modal_${project.id}"`);
+      expect(html).toContain(`action="/projects/${project.id}/delete"`);
+      expect(html).not.toContain("This is only allowed when no workspaces reference this project.");
+    });
+  });
+
+  test("deleting an unreferenced project removes it from the sidebar", async () => {
+    await withTempDataDir(async () => {
+      const project = (await addProject("https://github.com/org/sample-project.git")).project;
+      const { app, registry } = createTestApp();
+      await registry.seed([]);
+
+      const response = await app.fetch(post(`/projects/${encodeURIComponent(project.id)}/delete`));
+      const body = await response.text();
+
+      expect(response.status).toBe(200);
+      expect((await listProjects()).projects).toEqual([]);
+      expect(body).toContain('target="workspace_sidebar"');
+      expect(body).toContain('target="project_launch_modals"');
+      expect(body).not.toContain("sample-project");
+    });
+  });
+
+  test("deleting a referenced project is blocked", async () => {
+    await withTempDataDir(async () => {
+      const project = (await addProject("https://github.com/org/sample-project.git")).project;
+      const { app, registry } = createTestApp();
+      await registry.seed([{ id: "abc", title: "A", init: projectWorkspaceInit(project) }]);
+
+      const response = await app.fetch(post(`/projects/${encodeURIComponent(project.id)}/delete`));
+      const body = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(body).toContain("Project is in use");
+      expect(body).toContain("A");
+      expect(body).toContain('target="project_launch_modals"');
+      expect(body).toContain(`id="delete_project_modal_${project.id}"`);
+      expect(body).not.toContain(`action="remove" target="delete_project_modal_${project.id}"`);
+      expect((await listProjects()).projects).toEqual([project]);
     });
   });
 

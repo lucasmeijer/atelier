@@ -33,6 +33,10 @@ export interface AddProjectResult {
   project: ProjectSummary;
 }
 
+export interface DeleteProjectResult {
+  project: ProjectSummary;
+}
+
 interface ProjectStore {
   projects: ProjectSummary[];
 }
@@ -98,6 +102,15 @@ export async function addProject(spec: string, file = projectsFile()): Promise<A
   }
   const project = { id, name: projectNameFromGitUrl(gitUrl), gitUrl, branch };
   store.projects.push(project);
+  await writeStore(file, store);
+  return { project };
+}
+
+export async function deleteProject(id: string, file = projectsFile()): Promise<DeleteProjectResult> {
+  const store = await readStore(file);
+  const project = store.projects.find((candidate) => candidate.id === id);
+  if (!project) throw new AtelierCoreError("project_not_found", `project not found: ${id}`);
+  store.projects = store.projects.filter((candidate) => candidate.id !== id);
   await writeStore(file, store);
   return { project };
 }

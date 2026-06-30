@@ -693,7 +693,10 @@ class ModalOpenerController extends Controller {
   declare readonly element: HTMLElement;
   declare readonly targetIdValue: string;
 
-  open(): void {
+  open(event?: Event): void {
+    const target = event?.target instanceof HTMLElement ? event.target : null;
+    const interactive = target?.closest("a, button, input, textarea, select, form");
+    if (interactive && interactive !== this.element) return;
     const dialog = document.getElementById(this.targetIdValue) as HTMLDialogElement | null;
     if (!dialog || dialog.open) return;
     dialog.showModal();

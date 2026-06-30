@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { addProject, getGitIdentity, getStoredGitIdentity, gitIdentitySettingsFile, hasGitIdentity, listProjects, parseProjectSpec, setGitIdentity } from "@atelier/projects";
+import { addProject, deleteProject, getGitIdentity, getStoredGitIdentity, gitIdentitySettingsFile, hasGitIdentity, listProjects, parseProjectSpec, setGitIdentity } from "@atelier/projects";
 
 describe("projects", () => {
   test("parseProjectSpec supports an optional #branch suffix", () => {
@@ -19,6 +19,16 @@ describe("projects", () => {
     expect(result.project.branch).toBe("feature");
 
     expect(await listProjects(file)).toEqual({ projects: [result.project] });
+  });
+
+  test("deleteProject removes a project by id", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "atelier-projects-")), "projects.json");
+    const first = (await addProject("https://github.com/org/first.git", file)).project;
+    const second = (await addProject("https://github.com/org/second.git", file)).project;
+
+    expect(await deleteProject(first.id, file)).toEqual({ project: first });
+
+    expect(await listProjects(file)).toEqual({ projects: [second] });
   });
 
   test("git identity settings are stored by the projects module", async () => {
