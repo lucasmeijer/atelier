@@ -17,7 +17,7 @@ import {
   type PiAuthPrompt,
 } from "@atelier/agent/server";
 import { domId, escapeHtml, turboStream, turboStreamResponse } from "@atelier/shared";
-import { clearGitIdentity, getGitIdentity, hasGitIdentity, setGitIdentity } from "@atelier/projects";
+import { clearGitIdentity, getGitIdentity, getStoredGitIdentity, setGitIdentity } from "@atelier/projects";
 import { listSettingsContributions, registerSettingsContribution } from "./registry.ts";
 import { workspaceModules } from "../workspace-modules.ts";
 import { validateGitHubToken } from "../github-auth.ts";
@@ -67,7 +67,7 @@ function devSettingsEnabled(): boolean {
 }
 
 export async function isOnboarded(): Promise<boolean> {
-  return await hasGitIdentity() && hasWorkspaceGitHubToken() && await hasAvailableFavoriteModel();
+  return hasWorkspaceGitHubToken() && await hasAvailableFavoriteModel();
 }
 
 function badge(connected: boolean, label = connected ? "Connected" : "Not connected"): string {
@@ -182,10 +182,9 @@ async function renderThemeSettings(): Promise<string> {
   return `<section class="settings-sec settings-sec-inline" id="settings-sec-theme"><h2>Theme</h2><select class="settings-select" data-controller="theme-select">${themes.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></section>`;
 }
 
-export async function renderGitIdentityForm(surface: "settings" | "onboarding" = "settings", error = ""): Promise<string> {
+async function renderGitIdentityForm(error = ""): Promise<string> {
   const identity = await getGitIdentity();
-  const action = surface === "onboarding" ? "/settings/git-identity?surface=onboarding" : "/settings/git-identity";
-  return `<form id="${surface === "settings" ? "settings_git_identity" : "onboarding_git_identity"}" class="settings-git-identity" method="post" action="${action}" data-controller="git-identity" data-action="input->git-identity#queue change->git-identity#save submit->git-identity#submit">
+  return `<form id="settings_git_identity" class="settings-git-identity" method="post" action="/settings/git-identity" data-controller="git-identity" data-action="input->git-identity#queue change->git-identity#save submit->git-identity#submit">
     ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
     <div class="settings-field"><div><b>Git user name</b><p>Used as <code>user.name</code> in new workspace containers.</p></div><input class="settings-input" name="name" value="${escapeHtml(identity?.name ?? "")}" placeholder="Ada Lovelace" autocomplete="name" required></div>
     <div class="settings-field"><div><b>Git email</b><p>Used as <code>user.email</code> when commits are created.</p></div><input class="settings-input" type="email" name="email" value="${escapeHtml(identity?.email ?? "")}" placeholder="ada@example.com" autocomplete="email" required></div>
@@ -193,7 +192,7 @@ export async function renderGitIdentityForm(surface: "settings" | "onboarding" =
 }
 
 async function renderGitIdentitySettings(): Promise<string> {
-  return settingsSection("git-identity", "Git identity", await renderGitIdentityForm("settings"));
+  return settingsSection("git-identity", "Git identity", await renderGitIdentityForm());
 }
 
 async function renderGitHubSettings(): Promise<string> {
@@ -563,17 +562,13 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
   }
   if (url.pathname === "/settings/git-identity" && request.method === "POST") {
     const form = await request.formData();
-    const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
     try {
       await setGitIdentity({ name: String(form.get("name") ?? ""), email: String(form.get("email") ?? "") });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (surface === "onboarding") return stream(replace("onboarding_git_identity", await renderGitIdentityForm("onboarding", message)));
-      return stream(replace("settings_git_identity", await renderGitIdentityForm("settings", message)));
+      return stream(replace("settings_git_identity", await renderGitIdentityForm(message)));
     }
-    return surface === "onboarding"
-      ? stream(replace("onboarding_git_identity", await renderGitIdentityForm("onboarding")))
-      : stream(`${replace("settings_dialog", await renderSettingsDialog("git-identity"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
+    return stream(`${replace("settings_dialog", await renderSettingsDialog("git-identity"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`);
   }
   if (url.pathname === "/settings/github/flow" && request.method === "POST") {
     const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
@@ -588,6 +583,7 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     const validation = await validateGitHubToken(token);
     if (!validation.ok) return stream(replace("settings_flow_dialog", githubTokenModal(validation.message, surface)));
     setWorkspaceGitHubToken(token);
+    if (!await getStoredGitIdentity()) await setGitIdentity({ name: validation.name, email: validation.email });
     return surface === "onboarding"
       ? stream(`${remove("settings_flow_dialog")}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}`)
       : stream(`${replace("settings_dialog", await renderSettingsDialog("github"))}${update("onboarding_modal_host", await renderOnboardingDialogIfNeeded())}${remove("settings_flow_dialog")}`);

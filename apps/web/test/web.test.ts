@@ -7,7 +7,7 @@ import { createStreamHub } from "../src/server/stream-hub.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { clearWorkspaceGitHubToken } from "@atelier/proxy-egress";
-import { addProject, isGitProjectInit, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
+import { addProject, clearGitIdentity, getGitIdentity, isGitProjectInit, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -429,7 +429,11 @@ describe("web app contracts", () => {
     const originalFetch = globalThis.fetch;
     try {
       process.env.ATELIER_DATA_DIR = dataDir;
-      globalThis.fetch = (() => Promise.resolve(Response.json({ login: "octocat" }))) as unknown as typeof fetch;
+      globalThis.fetch = ((url: Parameters<typeof fetch>[0]) => {
+        if (url === "https://api.github.com/user") return Promise.resolve(Response.json({ login: "octocat", name: "Mona Lisa", email: "octocat@github.com" }));
+        if (url === "https://api.github.com/user/emails") return Promise.resolve(Response.json([]));
+        throw new Error(`unexpected fetch ${String(url)}`);
+      }) as unknown as typeof fetch;
       const { app } = createTestApp();
 
       const response = await app.fetch(postForm("/settings/github/connect", new URLSearchParams({ token: "cli-token" })));
@@ -439,8 +443,10 @@ describe("web app contracts", () => {
       expect(body).toContain('target="settings_dialog"');
       expect(body).toContain("Connected");
       expect(body).toContain('target="settings_flow_dialog"');
+      expect(await getGitIdentity()).toEqual({ name: "Mona Lisa", email: "octocat@github.com" });
     } finally {
       clearWorkspaceGitHubToken();
+      await clearGitIdentity();
       globalThis.fetch = originalFetch;
       if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
       else process.env.ATELIER_DATA_DIR = previousDataDir;

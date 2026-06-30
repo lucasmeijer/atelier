@@ -1,8 +1,7 @@
 import { listOnboardingContributions, registerOnboardingContribution } from "./registry.ts";
 import { escapeHtml, turboStream, turboStreamResponse } from "@atelier/shared";
 import { hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
-import { hasGitIdentity } from "@atelier/projects";
-import { githubRow, hasAvailableFavoriteModel, isOnboarded, renderGitIdentityForm, renderModelSetup } from "../settings/routes.ts";
+import { githubRow, hasAvailableFavoriteModel, isOnboarded, renderModelSetup } from "../settings/routes.ts";
 
 function response(body: string, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -17,10 +16,6 @@ function stream(body: string): Response {
 
 function update(target: string, html: string): string {
   return turboStream("update", target, html);
-}
-
-async function renderGitIdentityStep(): Promise<string> {
-  return `<div class="onboarding-step"><h2>Set your git identity</h2><p>Atelier writes this to new workspace containers so commits made by you or the agent have the right author.</p>${await renderGitIdentityForm("onboarding")}</div>`;
 }
 
 async function renderGithubStep(): Promise<string> {
@@ -38,7 +33,6 @@ function renderDoneStep(items: Array<{ id: string; label: string; complete: bool
   return `<div class="onboarding-step onboarding-step-done" data-onboarding-done-complete="${allComplete ? "true" : "false"}"><h2>${escapeHtml(title)}</h2><ul class="onboarding-checklist">${items.map((item) => `<li data-onboarding-check="${escapeHtml(item.id)}" data-onboarding-check-complete="${item.complete ? "true" : "false"}"><span>${item.complete ? "✓" : "○"}</span>${escapeHtml(item.label)}</li>`).join("")}</ul></div>`;
 }
 
-registerOnboardingContribution({ id: "git-identity", label: "Git identity", order: 10, isComplete: hasGitIdentity, render: renderGitIdentityStep });
 registerOnboardingContribution({ id: "github", label: "GitHub", order: 20, isComplete: async () => hasWorkspaceGitHubToken(), render: renderGithubStep });
 registerOnboardingContribution({ id: "llm", label: "Models", order: 30, isComplete: hasAvailableFavoriteModel, render: renderLlmStep });
 

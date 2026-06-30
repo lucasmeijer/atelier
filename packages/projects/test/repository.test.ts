@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { addProject, getGitIdentity, gitIdentitySettingsFile, hasGitIdentity, listProjects, parseProjectSpec, setGitIdentity } from "@atelier/projects";
+import { addProject, getGitIdentity, getStoredGitIdentity, gitIdentitySettingsFile, hasGitIdentity, listProjects, parseProjectSpec, setGitIdentity } from "@atelier/projects";
 
 describe("projects", () => {
   test("parseProjectSpec supports an optional #branch suffix", () => {
@@ -41,6 +41,7 @@ describe("projects", () => {
     try {
       await writeFile(gitConfig, "[user]\n\tname = Grace Hopper\n\temail = grace@example.com\n", "utf8");
 
+      expect(await getStoredGitIdentity()).toBeUndefined();
       expect(await getGitIdentity()).toEqual({ name: "Grace Hopper", email: "grace@example.com" });
       expect(JSON.parse(await readFile(gitIdentitySettingsFile(), "utf8"))).toEqual({ gitIdentity: { name: "Grace Hopper", email: "grace@example.com" } });
     } finally {

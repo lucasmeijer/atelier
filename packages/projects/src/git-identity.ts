@@ -70,8 +70,12 @@ function shouldAdoptHostGlobalGitIdentity(file: string): boolean {
   return file === gitIdentitySettingsFile();
 }
 
+export async function getStoredGitIdentity(file = gitIdentitySettingsFile()): Promise<GitIdentitySettings | undefined> {
+  return (await readStore(file)).gitIdentity;
+}
+
 export async function getGitIdentity(file = gitIdentitySettingsFile()): Promise<GitIdentitySettings | undefined> {
-  const stored = (await readStore(file)).gitIdentity;
+  const stored = await getStoredGitIdentity(file);
   if (stored || !shouldAdoptHostGlobalGitIdentity(file)) return stored;
   const hostIdentity = await getHostGlobalGitIdentity();
   if (!hostIdentity) return undefined;

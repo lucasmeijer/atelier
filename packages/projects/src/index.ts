@@ -21,6 +21,7 @@ export {
 export {
   clearGitIdentity,
   getGitIdentity,
+  getStoredGitIdentity,
   gitIdentitySettingsFile,
   hasGitIdentity,
   registerGitIdentityWorkspaceEvents,
