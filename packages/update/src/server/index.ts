@@ -216,13 +216,15 @@ function renderUpdateSettings(updateManager: UpdateManager): string {
   const snapshot = updateManager.snapshot();
   const status = updateStatusText(snapshot);
   const disabled = snapshot.selfUpdatable && snapshot.state !== "pulling" && snapshot.state !== "restarting" ? "" : " disabled";
+  const checkDisabled = snapshot.selfUpdatable && snapshot.state !== "checking" && snapshot.state !== "pulling" && snapshot.state !== "restarting" ? "" : " disabled";
   const options = (["stable", "latest"] as const).map((channel) => `<option value="${channel}"${snapshot.releaseChannel === channel ? " selected" : ""}>${channel === "stable" ? "Stable" : "Latest"}</option>`).join("");
+  const checkNow = `<form method="post" action="/update/check-now" data-turbo="true"><button class="settings-link" type="submit"${checkDisabled}>Check now</button></form>`;
   const action = snapshot.state === "available" || snapshot.state === "failed"
     ? `<form method="post" action="/update/start" data-turbo="true"><button class="settings-btn primary" type="submit">${snapshot.state === "failed" ? "Retry update" : "Update now"}</button></form>`
     : snapshot.state === "ready_to_restart"
       ? `<form method="get" action="/update/restart-confirm" data-turbo="true"><button class="settings-btn primary" type="submit">Restart to update</button></form>`
       : "";
-  return `<section class="settings-sec settings-sec-inline update-settings-row" id="settings-sec-update"><div><h2>Updates</h2><p class="settings-sub">${escapeHtml(status.label)} — ${escapeHtml(status.detail)}</p></div><div class="settings-provider-actions"><form method="post" action="/settings/update-channel" data-turbo="true"><select class="settings-select" name="channel"${disabled}>${options}</select><button class="settings-btn" type="submit"${disabled}>Save</button></form>${action}</div></section>`;
+  return `<section class="settings-sec settings-sec-inline update-settings-row" id="settings-sec-update"><div><h2>Updates</h2><p class="settings-sub">${escapeHtml(status.label)} — ${escapeHtml(status.detail)}</p></div><div class="settings-provider-actions">${checkNow}<form method="post" action="/settings/update-channel" data-turbo="true" data-controller="settings-autosave" data-action="change->settings-autosave#save submit->settings-autosave#submit"><select class="settings-select" name="channel"${disabled}>${options}</select></form>${action}</div></section>`;
 }
 
 const updateSettingsContribution: SettingsContribution = {
@@ -294,6 +296,10 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
   return async (request, url) => {
     if (url.pathname === "/update/start" && request.method === "POST") {
       void updateManager.startPull();
+      return turboStreamResponse(turboStream("replace", "settings-sec-update", renderUpdateSettings(updateManager)));
+    }
+    if (url.pathname === "/update/check-now" && request.method === "POST") {
+      await updateManager.checkNow();
       return turboStreamResponse(turboStream("replace", "settings-sec-update", renderUpdateSettings(updateManager)));
     }
     if (url.pathname === "/update/whats-new" && request.method === "GET") return modalStream(renderWhatsNewModal());

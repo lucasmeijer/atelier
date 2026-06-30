@@ -307,6 +307,23 @@ describe("update routes", () => {
     expect(manager.snapshot().state).toBe("ready_to_restart");
   });
 
+  test("check-now route refreshes update status", async () => {
+    const { ctx } = context();
+    const metadata = [{ digest: "sha256:old-digest", revision: "old" }, { digest: "sha256:new", revision: "new" }];
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime("old"),
+      fetchMetadata: async () => metadata.shift()!,
+      setInterval: noInterval(),
+    });
+    await manager.initialize(ctx);
+    expect(manager.snapshot().state).toBe("idle");
+    const route = createUpdateRouteHandler(manager);
+    const response = await route(new Request("http://test/update/check-now", { method: "POST" }), new URL("http://test/update/check-now"));
+    expect(response!.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
+    expect(await response!.text()).toContain("Update available");
+    expect(manager.snapshot().state).toBe("available");
+  });
+
   test("state endpoint and SSE expose shared update state", async () => {
     const { ctx } = context();
     const manager = new UpdateManager({

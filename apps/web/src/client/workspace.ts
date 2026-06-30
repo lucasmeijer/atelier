@@ -1274,7 +1274,7 @@ class OAuthProgressRevealController extends Controller {
   }
 }
 
-class SettingsCheckboxController extends Controller {
+class SettingsAutosaveController extends Controller {
   declare readonly element: HTMLFormElement;
 
   submit(event: Event): void {
@@ -1752,7 +1752,8 @@ application.register("theme-select", ThemeSelectController);
 application.register("oauth-flow", OAuthFlowController);
 application.register("oauth-progress-reveal", OAuthProgressRevealController);
 application.register("git-identity", GitIdentityController);
-application.register("settings-checkbox", SettingsCheckboxController);
+application.register("settings-autosave", SettingsAutosaveController);
+application.register("settings-checkbox", SettingsAutosaveController);
 application.register("provider-list", ProviderListController);
 application.register("model-add-menu", ModelAddMenuController);
 application.register("onboarding", OnboardingController);
