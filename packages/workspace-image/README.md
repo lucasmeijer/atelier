@@ -37,14 +37,18 @@ Before building the repository Dockerfile, Atelier tags the resolved default wor
 
 ```Dockerfile
 FROM atelier-workspace
+# Atelier image version: 1
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libpq-dev postgresql-client \
- && rm -rf /var/lib/apt/lists/*
+ && apt-get install -y --no-install-recommends libpq-dev postgresql-client
 
 ENV EXAMPLE=value
 COPY .atelier/image/example.conf /etc/example.conf
 RUN chmod 0644 /etc/example.conf
 ```
+
+Atelier automatically adds BuildKit apt cache mounts to simple repository Dockerfile instructions that start with `RUN apt-get update`, so users can keep these Dockerfiles readable without writing cache mount boilerplate.
+
+Repository image reuse is based on the default workspace image plus `.atelier/Dockerfile` contents only, not the full repository contents. Normal source changes therefore do not rebuild the workspace image. If the Dockerfile depends on another repository file through `COPY` or `ADD`, bump a version comment in `.atelier/Dockerfile` when that file changes.
 
 If the repo has no `.atelier/Dockerfile`, workspace creation pulls/uses the baked default workspace image directly and does not build a repository image.

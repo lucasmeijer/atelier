@@ -14,6 +14,7 @@ Install extensions during the image build with the bundled VS Code server CLI an
 
 ```Dockerfile
 FROM atelier-workspace
+# Atelier image version: 1
 
 RUN su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server \
   --extensions-dir /opt/atelier/vscode-extensions \
@@ -25,6 +26,7 @@ You can install multiple extensions in one Dockerfile:
 
 ```Dockerfile
 FROM atelier-workspace
+# Atelier image version: 1
 
 RUN su atelier -c '/home/atelier/.vscode/cli/serve-web/*/bin/code-server \
   --extensions-dir /opt/atelier/vscode-extensions \
@@ -40,6 +42,6 @@ Atelier starts VS Code with `/opt/atelier/vscode-extensions`, so extensions inst
 
 ## Notes
 
-- Repository Dockerfiles are built once per Dockerfile/source hash and then reused.
+- Repository Dockerfiles are built once per default workspace image plus `.atelier/Dockerfile` contents and then reused; regular source changes do not rebuild them.
 - Installing extensions in `.atelier/Dockerfile` makes first workspace creation for that repository slower, but later workspaces reuse the built image.
 - The default Atelier extensions are already in `/opt/atelier/vscode-extensions`; do not replace that directory unless you intentionally want to remove them.

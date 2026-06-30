@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand } from "@atelier/observable-terminal/server";
@@ -160,32 +160,62 @@ export async function ensureDefaultWorkspaceImage(): Promise<string> {
   return await ensureBuiltImage(contextDir, join(contextDir, "Dockerfile"), metadata);
 }
 
-async function hashBuildContext(hash: ReturnType<typeof createHash>, root: string, dir = root): Promise<void> {
-  for (const entry of (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
-    if (dir === root && entry.name === ".git") continue;
-    const path = join(dir, entry.name);
-    const rel = relative(root, path).replaceAll("\\", "/");
-    hash.update(rel); hash.update("\0");
-    if (entry.isDirectory()) {
-      await hashBuildContext(hash, root, path);
-    } else {
-      const info = await stat(path);
-      hash.update(String(info.mode)); hash.update("\0"); hash.update(await readFile(path)); hash.update("\0");
-    }
-  }
-}
-
 async function assertWorkspaceDockerfileBase(dockerfile: string): Promise<void> {
   const firstLine = (await readFile(dockerfile, "utf8")).split("\n")[0].trim();
   if (firstLine !== "FROM atelier-workspace") throw new Error(`${dockerfile} must start with FROM atelier-workspace`);
 }
 
-async function repoWorkspaceImageMetadata(sourcePath: string, dockerfile: string, baseImage: string): Promise<WorkspaceImageMetadata> {
+function splitDockerfileInstructions(dockerfile: string): string[] {
+  const instructions: string[] = [];
+  let current = "";
+  for (const line of dockerfile.split("\n")) {
+    current = current ? `${current}\n${line}` : line;
+    if (!line.trimEnd().endsWith("\\")) {
+      instructions.push(current);
+      current = "";
+    }
+  }
+  if (current) instructions.push(current);
+  return instructions;
+}
+
+function removeAptListCleanup(instruction: string): string {
+  return instruction
+    .replaceAll(/\\\n\s*&&\s*rm\s+-rf\s+\/var\/lib\/apt\/lists\/\*\s*/g, "")
+    .replaceAll(/\s*&&\s*rm\s+-rf\s+\/var\/lib\/apt\/lists\/\*/g, "");
+}
+
+function addAptCacheMount(instruction: string): { instruction: string; changed: boolean } {
+  const cleaned = removeAptListCleanup(instruction);
+  const next = cleaned.replace(/^(\s*)RUN\s+apt-get\s+update\b/, "$1RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \\\n    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\\n    apt-get update");
+  return { instruction: next, changed: next !== cleaned || cleaned !== instruction };
+}
+
+async function optimizedRepoDockerfile(sourcePath: string, dockerfile: string): Promise<string> {
+  const source = await readFile(dockerfile, "utf8");
+  const instructions = splitDockerfileInstructions(source);
+  let changed = false;
+  const optimized = instructions.map((instruction) => {
+    const result = addAptCacheMount(instruction);
+    changed ||= result.changed;
+    return result.instruction;
+  });
+  if (!changed) return dockerfile;
+
+  optimized.splice(1, 0, "RUN rm -f /etc/apt/apt.conf.d/docker-clean \\\n && printf '%s\\n' 'Binary::apt::APT::Keep-Downloaded-Packages \"true\";' > /etc/apt/apt.conf.d/keep-cache");
+  const generatedDir = join(contextBaseDir(), "repo-dockerfiles");
+  await mkdir(generatedDir, { recursive: true });
+  const generated = join(generatedDir, `${createHash("sha256").update(sourcePath).digest("hex").slice(0, 16)}.Dockerfile`);
+  await writeFile(generated, `# syntax=docker/dockerfile:1\n${optimized.join("\n")}\n`);
+  return generated;
+}
+
+async function repoWorkspaceImageMetadata(dockerfile: string, baseImage: string): Promise<WorkspaceImageMetadata> {
   await assertWorkspaceDockerfileBase(dockerfile);
   const hash = createHash("sha256");
-  hash.update("atelier-repo-workspace-dockerfile-v2\n");
+  hash.update("atelier-repo-workspace-dockerfile-v5\n");
   hash.update(baseImage); hash.update("\0");
-  await hashBuildContext(hash, sourcePath);
+  hash.update(await readFile(dockerfile)); hash.update("\0");
   return { tag: `atelier-workspace:${hash.digest("hex").slice(0, 16)}`, modules: ["repo"] };
 }
 
@@ -202,6 +232,7 @@ export async function resolveWorkspaceImage(options: ResolveWorkspaceImageOption
   if (!(await Bun.file(dockerfile).exists())) return baseImage;
 
   await tagAtelierWorkspaceBase(baseImage);
-  const metadata = await repoWorkspaceImageMetadata(options.sourcePath, dockerfile, baseImage);
-  return await ensureBuiltImage(options.sourcePath, dockerfile, metadata, options);
+  const metadata = await repoWorkspaceImageMetadata(dockerfile, baseImage);
+  const buildDockerfile = await optimizedRepoDockerfile(options.sourcePath, dockerfile);
+  return await ensureBuiltImage(options.sourcePath, buildDockerfile, metadata, options);
 }

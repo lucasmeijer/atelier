@@ -133,16 +133,18 @@ Example:
 
 ```Dockerfile
 FROM atelier-workspace
+# Atelier image version: 1
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libpq-dev \
- && rm -rf /var/lib/apt/lists/*
+ && apt-get install -y --no-install-recommends libpq-dev
 
 ENV EXAMPLE=value
 COPY .atelier/image/example.conf /etc/example.conf
 RUN chmod 0644 /etc/example.conf
 ```
 
-Use this to install packages, add image files, set environment variables, or run build-time setup commands for future workspaces from that repository.
+Use this to install packages, add image files, set environment variables, or run build-time setup commands for future workspaces from that repository. Atelier automatically applies fast BuildKit apt caching to simple instructions that start with `RUN apt-get update`, so you do not need to write cache mounts or apt list cleanup in repository Dockerfiles.
+
+Atelier reuses repository images based on the default workspace image plus `.atelier/Dockerfile` contents only. Regular source changes do not rebuild the image. If your Dockerfile copies another file from the repo, bump a version comment in `.atelier/Dockerfile` when that copied file changes.
 
 For repository-specific VS Code extensions, see [VS Code extensions](./vscode.md).
