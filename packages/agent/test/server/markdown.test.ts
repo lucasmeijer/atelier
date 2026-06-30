@@ -12,9 +12,11 @@ describe("renderMarkdown", () => {
     expect(renderMarkdown("<script>alert(1)</script>")).toContain("&lt;script&gt;");
   });
 
-  test("fenced code blocks are highlighted but markdown is not formatted", () => {
+  test("fenced code blocks are highlighted and copyable but markdown is not formatted", () => {
     const html = renderMarkdown("```bash\nls **/work**\n```");
-    expect(html.startsWith(`<pre data-lang="bash" class="language-bash"><code>`)).toBe(true);
+    expect(html.startsWith(`<div class="agent-code-block" data-controller="agent-code-copy">`)).toBe(true);
+    expect(html).toContain(`data-action="agent-code-copy#copy"`);
+    expect(html).toContain(`<pre data-lang="bash" class="language-bash"><code data-agent-code-copy-target="code">`);
     expect(html).toContain("**/work**");
     expect(html).not.toContain("<strong>");
   });

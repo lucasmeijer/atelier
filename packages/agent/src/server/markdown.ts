@@ -74,7 +74,8 @@ export function renderMarkdown(text: string, options: MarkdownOptions = {}): str
         rawLang ? `data-lang="${escapeHtml(rawLang)}"` : "",
         highlighted.language ? `class="language-${escapeHtml(highlighted.language)}"` : "",
       ].filter(Boolean).join(" ");
-      out.push(`<pre${attrs ? ` ${attrs}` : ""}><code>${highlighted.html}</code></pre>`);
+      const label = rawLang ? `Copy ${escapeHtml(rawLang)} code to clipboard` : "Copy code to clipboard";
+      out.push(`<div class="agent-code-block" data-controller="agent-code-copy"><button type="button" class="agent-code-copy" data-action="agent-code-copy#copy" aria-label="${label}" title="Copy code"><span class="agent-code-copy-icon" aria-hidden="true">⧉</span></button><pre${attrs ? ` ${attrs}` : ""}><code data-agent-code-copy-target="code">${highlighted.html}</code></pre></div>`);
       continue;
     }
 

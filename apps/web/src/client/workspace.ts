@@ -2,6 +2,7 @@
 
 import { createHtmlAutocompleteController } from "@atelier/agent/client";
 import {
+  copyTextToClipboard,
   escapeHtml,
   looksLikeProjectSpec,
   providerBrandIconHtml,
@@ -1634,6 +1635,7 @@ class ClipboardController extends Controller {
     if (!this.hasSourceTarget) return;
     const text = this.sourceTarget.textContent?.trim() ?? "";
     if (!text) return;
+    await copyTextToClipboard(text);
     const button = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : undefined;
     const original = button?.textContent ?? "Copy to clipboard";
     if (button) {
@@ -1641,7 +1643,6 @@ class ClipboardController extends Controller {
       button.textContent = button.classList.contains("icon") ? "✓" : "Copied ✓";
       if (button.dataset.oauthCopyButton !== "true") window.setTimeout(() => { button.textContent = original; }, 3000);
     }
-    await navigator.clipboard?.writeText(text);
   }
 }
 

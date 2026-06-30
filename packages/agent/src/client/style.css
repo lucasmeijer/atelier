@@ -188,8 +188,19 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 .agent-md li { margin-bottom: 2px; }
 .agent-md h3, .agent-md h4, .agent-md h5, .agent-md h6 { margin: 10px 0 6px; font-size: 13.5px; letter-spacing: -.1px; }
 .agent-md code { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 12px; background: rgba(19, 26, 38, .055); border-radius: 4px; padding: 0 4px; }
-.agent-md pre { background: #161a22; color: #d3dae5; border-radius: 8px; padding: 9px 11px; overflow-x: auto; margin: 6px 0 8px; }
-.agent-md pre code { background: none; padding: 0; color: inherit; font-size: 11.5px; line-height: 1.55; }
+.agent-code-block { position: relative; margin: 6px 0 8px; }
+.agent-md pre, .agent-code-block pre { background: #161a22; color: #d3dae5; border-radius: 8px; padding: 9px 11px; overflow-x: auto; margin: 6px 0 8px; }
+.agent-code-block pre { margin: 0; }
+.agent-md pre code, .agent-code-block pre code { background: none; padding: 0; color: inherit; font-size: 11.5px; line-height: 1.55; }
+.agent-code-copy {
+  position: absolute; top: 6px; right: 6px; z-index: 1; display: inline-grid; place-items: center; width: 24px; height: 24px;
+  border: 1px solid rgba(255,255,255,.08); border-radius: 6px; background: rgba(19,26,38,.78); color: #d3dae5; cursor: pointer;
+  font-size: 13px; line-height: 1; padding: 0; opacity: 0; transition: opacity .12s, background .12s, color .12s;
+}
+.agent-code-block:hover .agent-code-copy, .agent-code-copy:focus-visible, .agent-code-copy.copied { opacity: 1; }
+.agent-code-copy:hover { background: rgba(19,26,38,.95); color: #fff; }
+.agent-code-copy.copied { color: var(--green); background: var(--green-soft); border-color: #bfe3c8; }
+.agent-code-copy-icon { transform: translateY(-.5px); }
 .hljs-keyword { color: #ff7b72; }
 .hljs-string { color: #a5d6ff; }
 .hljs-number { color: #79c0ff; }
@@ -401,14 +412,14 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 .agent-user-bubble { max-width: 80%; width: fit-content; margin-left: auto; color: var(--text); background: var(--elev); border-color: var(--line); border-radius: 13px; padding: 10px 14px; font-size: 14px; font-weight: 400; line-height: 1.7; }
 .agent-final { color: var(--text); font-size: 14px; line-height: 1.7; }
 .agent-md code { font-family: var(--mono); font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
-.agent-md pre, .agent-tool-ansi, .agent-tool-code, .agent-tool-term, .agent-tool-livestream { background: color-mix(in srgb, var(--bg) 45%, #000 14%); color: var(--text); }
-.agent-md pre { border: 1px solid var(--line); border-radius: 9px; }
-.agent-md pre code { display: block; background: transparent; border: 0; border-radius: 0; padding: 0; }
-.agent-md pre, .agent-tool-ansi, .agent-tool-code, .agent-tool-term, .agent-tool-livestream { scrollbar-color: var(--line2) transparent; scrollbar-width: thin; }
-.agent-md pre::-webkit-scrollbar, .agent-tool-ansi::-webkit-scrollbar, .agent-tool-code::-webkit-scrollbar, .agent-tool-term::-webkit-scrollbar, .agent-tool-livestream::-webkit-scrollbar { width: 10px; height: 10px; }
-.agent-md pre::-webkit-scrollbar-track, .agent-tool-ansi::-webkit-scrollbar-track, .agent-tool-code::-webkit-scrollbar-track, .agent-tool-term::-webkit-scrollbar-track, .agent-tool-livestream::-webkit-scrollbar-track { background: transparent; }
-.agent-md pre::-webkit-scrollbar-thumb, .agent-tool-ansi::-webkit-scrollbar-thumb, .agent-tool-code::-webkit-scrollbar-thumb, .agent-tool-term::-webkit-scrollbar-thumb, .agent-tool-livestream::-webkit-scrollbar-thumb { background: var(--line2); border: 2px solid transparent; border-radius: 999px; background-clip: padding-box; }
-.agent-md pre::-webkit-scrollbar-thumb:hover, .agent-tool-ansi::-webkit-scrollbar-thumb:hover, .agent-tool-code::-webkit-scrollbar-thumb:hover, .agent-tool-term::-webkit-scrollbar-thumb:hover, .agent-tool-livestream::-webkit-scrollbar-thumb:hover { background-color: var(--muted2); }
+.agent-md pre, .agent-code-block pre, .agent-tool-ansi, .agent-tool-code, .agent-tool-term, .agent-tool-livestream { background: color-mix(in srgb, var(--bg) 45%, #000 14%); color: var(--text); }
+.agent-md pre, .agent-code-block pre { border: 1px solid var(--line); border-radius: 9px; }
+.agent-md pre code, .agent-code-block pre code { display: block; background: transparent; border: 0; border-radius: 0; padding: 0; }
+.agent-md pre, .agent-code-block pre, .agent-tool-ansi, .agent-tool-code, .agent-tool-term, .agent-tool-livestream { scrollbar-color: var(--line2) transparent; scrollbar-width: thin; }
+.agent-md pre::-webkit-scrollbar, .agent-code-block pre::-webkit-scrollbar, .agent-tool-ansi::-webkit-scrollbar, .agent-tool-code::-webkit-scrollbar, .agent-tool-term::-webkit-scrollbar, .agent-tool-livestream::-webkit-scrollbar { width: 10px; height: 10px; }
+.agent-md pre::-webkit-scrollbar-track, .agent-code-block pre::-webkit-scrollbar-track, .agent-tool-ansi::-webkit-scrollbar-track, .agent-tool-code::-webkit-scrollbar-track, .agent-tool-term::-webkit-scrollbar-track, .agent-tool-livestream::-webkit-scrollbar-track { background: transparent; }
+.agent-md pre::-webkit-scrollbar-thumb, .agent-code-block pre::-webkit-scrollbar-thumb, .agent-tool-ansi::-webkit-scrollbar-thumb, .agent-tool-code::-webkit-scrollbar-thumb, .agent-tool-term::-webkit-scrollbar-thumb, .agent-tool-livestream::-webkit-scrollbar-thumb { background: var(--line2); border: 2px solid transparent; border-radius: 999px; background-clip: padding-box; }
+.agent-md pre::-webkit-scrollbar-thumb:hover, .agent-code-block pre::-webkit-scrollbar-thumb:hover, .agent-tool-ansi::-webkit-scrollbar-thumb:hover, .agent-tool-code::-webkit-scrollbar-thumb:hover, .agent-tool-term::-webkit-scrollbar-thumb:hover, .agent-tool-livestream::-webkit-scrollbar-thumb:hover { background-color: var(--muted2); }
 .agent-thinking { font-size: 13px; line-height: 1.65; color: color-mix(in srgb, var(--text) 52%, var(--bg)); font-style: italic; padding: 0; border: 0; border-radius: 0; background: transparent; }
 .agent-thinking-text { color: inherit; font-size: 13px; }
 .agent-itext { background: transparent; border: 0; border-radius: 0; padding: 0; }

@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import type { WorkspaceClientModule } from "@atelier/shared";
+import { copyTextToClipboard, type WorkspaceClientModule } from "@atelier/shared";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
@@ -259,6 +259,31 @@ function createAgentElapsedController(Controller: StimulusControllerConstructor)
 }
 
 // ---------------------------------------------------------------------------
+// Clipboard feedback
+// ---------------------------------------------------------------------------
+
+type CopiedFeedbackOptions = {
+  iconSelector: string;
+  copiedLabel: string;
+  resetLabel: string;
+  resetIcon: string;
+  timer?: ReturnType<typeof setTimeout>;
+};
+
+function flashCopied(button: HTMLButtonElement, options: CopiedFeedbackOptions): ReturnType<typeof setTimeout> {
+  if (options.timer) clearTimeout(options.timer);
+  button.classList.add("copied");
+  button.setAttribute("aria-label", options.copiedLabel);
+  const icon = button.querySelector<HTMLElement>(options.iconSelector);
+  if (icon) icon.textContent = "✓";
+  return setTimeout(() => {
+    button.classList.remove("copied");
+    button.setAttribute("aria-label", options.resetLabel);
+    if (icon) icon.textContent = options.resetIcon;
+  }, 1400);
+}
+
+// ---------------------------------------------------------------------------
 // agent-copy: copy rendered bash output to clipboard
 // ---------------------------------------------------------------------------
 
@@ -282,17 +307,48 @@ function createAgentCopyController(Controller: StimulusControllerConstructor) {
       const result = pane?.querySelector<HTMLElement>(".agent-tool-result") ?? tool?.querySelector<HTMLElement>(".agent-tool-result");
       const text = result?.textContent ?? "";
       if (!text) return;
-      await navigator.clipboard.writeText(text);
-      this.element.classList.add("copied");
-      this.element.setAttribute("aria-label", "Copied bash output");
-      const icon = this.element.querySelector<HTMLElement>(".agent-tool-copy-icon");
-      if (icon) icon.textContent = "✓";
+      await copyTextToClipboard(text);
+      this.timer = flashCopied(this.element, {
+        iconSelector: ".agent-tool-copy-icon",
+        copiedLabel: "Copied bash output",
+        resetLabel: "Copy bash output to clipboard",
+        resetIcon: "⧉",
+        timer: this.timer,
+      });
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// agent-code-copy: copy markdown code blocks to clipboard
+// ---------------------------------------------------------------------------
+
+function createAgentCodeCopyController(Controller: StimulusControllerConstructor) {
+  return class AgentCodeCopyController extends Controller {
+    static targets = ["code"];
+    declare readonly element: HTMLElement;
+    declare readonly codeTarget: HTMLElement;
+    private timer?: ReturnType<typeof setTimeout>;
+
+    disconnect(): void {
       if (this.timer) clearTimeout(this.timer);
-      this.timer = setTimeout(() => {
-        this.element.classList.remove("copied");
-        this.element.setAttribute("aria-label", "Copy bash output to clipboard");
-        if (icon) icon.textContent = "⧉";
-      }, 1400);
+    }
+
+    async copy(event: Event): Promise<void> {
+      event.preventDefault();
+      const button = event.currentTarget as HTMLButtonElement;
+      const text = this.codeTarget.textContent ?? "";
+      if (!text) return;
+      await copyTextToClipboard(text);
+      const label = button.dataset.resetLabel ?? button.getAttribute("aria-label") ?? "Copy code to clipboard";
+      button.dataset.resetLabel = label;
+      this.timer = flashCopied(button, {
+        iconSelector: ".agent-code-copy-icon",
+        copiedLabel: "Copied code",
+        resetLabel: label,
+        resetIcon: "⧉",
+        timer: this.timer,
+      });
     }
   };
 }
@@ -921,6 +977,7 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-pane", createAgentPaneController(Controller));
     application.register("agent-attachments", createAgentAttachmentsController(Controller));
     application.register("agent-autosubmit", createAgentAutosubmitController(Controller));
+    application.register("agent-code-copy", createAgentCodeCopyController(Controller));
     application.register("agent-copy", createAgentCopyController(Controller));
     application.register("agent-elapsed", createAgentElapsedController(Controller));
     application.register("agent-fullscreen", createAgentFullscreenController(Controller));
