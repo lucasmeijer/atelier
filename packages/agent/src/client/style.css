@@ -379,8 +379,12 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 /* Quiet redesign pass for agent tab */
 .workspace-group .workspace-panes:has(> .agent-tab-pane.visible) { padding: 0; overflow: hidden; scrollbar-width: none; }
 .workspace-group .workspace-panes:has(> .agent-tab-pane.visible)::-webkit-scrollbar, .agent-transcript::-webkit-scrollbar { display: none; }
-.agent-pane { background: var(--bg); }
-.agent-transcript { padding: 30px 40px 10px; display: block; scrollbar-width: none; }
+.agent-pane { --agent-prompt-overlap: 60px; --agent-transcript-fade: 56px; background: var(--bg); }
+.agent-transcript {
+  padding: 30px 40px 10px; display: block; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--agent-transcript-fade)), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--agent-transcript-fade)), transparent 100%);
+}
 .agent-transcript::before { display: none; }
 .agent-transcript > * { max-width: none; width: 100%; margin-left: 0; margin-right: 0; }
 .agent-row { width: 100%; min-width: 0; }
@@ -432,7 +436,7 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 0; }
 .agent-diff-line.del { color: var(--del); background: var(--delbg); }
 .agent-diff-line.ctx { color: var(--muted); }
 
-.agent-promptwrap { position: relative; flex: none; padding: 12px 40px 22px; background: linear-gradient(transparent, var(--bg) 45%); }
+.agent-promptwrap { position: relative; z-index: 2; flex: none; margin-top: calc(-1 * var(--agent-prompt-overlap)); padding: 40px 40px 22px; }
 .agent-promptbox { position: relative; max-width: 820px; margin: 0; background: var(--panel); border: 1.5px solid var(--line2); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; padding-bottom: 30px; }
 .agent-promptbox form { min-height: calc(1.5em * 2 + 21px); }
 .agent-input { font: inherit; font-size: 15px; line-height: 1.5; padding: 15px 58px 6px 17px; min-height: calc(1.5em * 2 + 21px); max-height: var(--agent-input-max-height); }
@@ -510,7 +514,7 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 0; }
 .agent-launch-modal:focus-within { border-color: var(--accent); }
 .agent-launch-modal .agent-launch-title { width: 100%; margin: 0; padding: 14px 16px 9px; background: var(--panel); border: 0; border-radius: 0; font-size: 12.5px; color: var(--muted); font-weight: 600; }
 .agent-launch-modal .agent-launch-title b { color: var(--text); font-weight: 700; }
-.agent-launch-modal .agent-promptwrap { padding: 0; background: transparent; }
+.agent-launch-modal .agent-promptwrap { --agent-prompt-overlap: 0px; padding: 0; }
 .agent-launch-modal .agent-promptbox { width: 100%; max-width: none; margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; }
 .agent-launch-modal .agent-promptbox:focus-within { border-color: var(--line); }
 .agent-launch-modal .agent-promptbox form { min-height: 260px; }
