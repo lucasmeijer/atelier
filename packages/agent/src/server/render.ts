@@ -274,8 +274,8 @@ function renderModelContextCard(ctx: AgentRenderContext, modelContext: AgentMode
   if (!prompt && tools.length === 0) return "";
   const meta = [prompt ? "system prompt" : undefined, tools.length ? `${tools.length} tools` : undefined].filter(Boolean).join(" · ");
   const toolRows = tools.map((tool) => `<article class="agent-context-tool">
-    <div class="agent-context-tool-head"><code>${escapeHtml(tool.name)}</code><span>${escapeHtml(tool.description)}</span></div>
-    ${codeBlockHtml(JSON.stringify(tool.parameters, null, 2) ?? "null", "schema.json", "agent-context-tool-schema")}
+    <div class="agent-context-tool-head"><code>${escapeHtml(tool.name)}</code></div>
+    ${codeBlockHtml(JSON.stringify({ name: tool.name, description: tool.description, parameters: tool.parameters }, null, 2), "schema.json", "agent-context-tool-schema")}
   </article>`).join("");
   return readingRow(`<details class="agent-model-context" id="${ids.systemPrompt(ctx)}">
     <summary class="agent-model-context-head">
