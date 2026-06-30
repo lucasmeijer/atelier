@@ -12,7 +12,7 @@ Usage:
 Options:
   --image <name>        Image repository/name (default: ghcr.io/lucasmeijer/atelier)
   --tag <tag>           Tag to apply. May be passed more than once (default: git describe/short sha)
-  --latest             Also tag the image as <image>:latest
+  --latest             Tag the image as <image>:latest (default)
   --stable             Also tag the image as <image>:stable
   --push               Push the built images instead of only loading them locally
   --platform <value>   Docker platform(s), e.g. linux/amd64 or linux/amd64,linux/arm64
@@ -63,7 +63,7 @@ function parseArgs(args: string[]): Options {
   const options: Options = {
     image: "ghcr.io/lucasmeijer/atelier",
     tags: [],
-    latest: false,
+    latest: true,
     stable: false,
     push: false,
     noCache: false,
