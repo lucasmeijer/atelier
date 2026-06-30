@@ -309,6 +309,10 @@ export function renderFinalText(ctx: AgentRenderContext, text: string, options: 
 // Items
 // ---------------------------------------------------------------------------
 
+export function renderToolItemBody(ctx: AgentRenderContext, tool: ToolView, options: { open?: boolean } = {}): string {
+  return readingRow(renderToolCard(ctx, tool, options));
+}
+
 export function renderItem(ctx: AgentRenderContext, sid: string, index: number, item: SectionItem, options: { live?: boolean; collapsed?: boolean } = {}): string {
   const id = ids.item(ctx, sid, index);
   if (item.type === "thinking") {
@@ -326,7 +330,7 @@ export function renderItem(ctx: AgentRenderContext, sid: string, index: number, 
   if (item.tool.status === "streaming") {
     return renderStreamingToolItem(ctx, sid, index, item.tool.name, item.tool.argsStream ?? "");
   }
-  return `<div class="agent-item" id="${id}">${readingRow(renderToolCard(ctx, item.tool, { open: !options.collapsed }))}</div>`;
+  return `<div class="agent-item" id="${id}">${renderToolItemBody(ctx, item.tool, { open: !options.collapsed })}</div>`;
 }
 
 /** Streaming placeholders used by the live pipeline (content streamed into the text target). */

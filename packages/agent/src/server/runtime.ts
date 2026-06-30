@@ -16,12 +16,11 @@ import {
   renderItem,
   renderNotice,
   renderPromptActions,
-  renderRunningToolCard,
   renderSection,
   renderStatsBar,
   renderStreamingThinkingItem,
   renderStreamingToolItem,
-  renderToolCard,
+  renderToolItemBody,
   renderTranscript,
   type AgentPaneState,
   type AgentRenderContext,
@@ -346,7 +345,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       item.tool.timeoutSeconds = typeof timeout === "number" && timeout > 0 ? timeout : 600;
     }
     live.toolIndexByCallId.set(callId, index);
-    this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderRunningToolCard(this.ctx, item.tool)));
+    this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderToolItemBody(this.ctx, item.tool)));
   }
 
   protected liveToolExecStart(callId: string, name: string, args: unknown): void {
@@ -370,13 +369,13 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
         const revisit = current.view.items[index];
         if (revisit?.type !== "tool" || revisit.tool.status !== "running") return;
         revisit.tool.terminalVisible = true;
-        this.stream(turboStream("update", ids.item(this.ctx, current.view.sid, index), renderRunningToolCard(this.ctx, revisit.tool)));
+        this.stream(turboStream("update", ids.item(this.ctx, current.view.sid, index), renderToolItemBody(this.ctx, revisit.tool)));
       }, terminalRevealMs);
       live.terminalTimers.set(callId, timer);
     }
     if (update.outputText !== undefined) item.tool.resultText = update.outputText;
     if (update.details !== undefined) item.tool.details = update.details;
-    this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderRunningToolCard(this.ctx, item.tool)));
+    this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderToolItemBody(this.ctx, item.tool)));
   }
 
   protected liveToolEnd(callId: string, resultText: string, isError: boolean, details?: unknown): void {
@@ -396,7 +395,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     item.tool.details = details;
     item.tool.tmuxSession = undefined;
     live.view.stats.tools += 1;
-    this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderToolCard(this.ctx, item.tool, { open: true })));
+    this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderToolItemBody(this.ctx, item.tool, { open: true })));
   }
 
   protected liveNote(text: string, tone: "system" | "summary" | "error"): void {
