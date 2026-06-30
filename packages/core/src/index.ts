@@ -19,6 +19,10 @@ export {
 } from "./errors.ts";
 
 export {
+  currentAtelierContainerImageId,
+} from "./container-version.ts";
+
+export {
   defaultDataDir,
 } from "./data-dir.ts";
 

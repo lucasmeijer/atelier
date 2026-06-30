@@ -7,6 +7,7 @@ import {
 } from "@atelier/agent/server";
 import {
   AtelierCoreError,
+  currentAtelierContainerImageId,
   invalidArguments,
   type AtelierEventBus,
 } from "@atelier/core";
@@ -140,7 +141,8 @@ function gitOutput(args: string[]): string | undefined {
   }
 }
 
-function atelierVersionTooltip(): string {
+function atelierVersionTooltip(imageId = currentAtelierContainerImageId()): string {
+  if (imageId) return `Container image ${imageId}`;
   const commitId = envString("ATELIER_COMMIT_ID", "ATELIER_COMMIT_SHA", "GIT_COMMIT", "SOURCE_VERSION") ?? gitOutput(["rev-parse", "HEAD"]);
   const description = envString("ATELIER_COMMIT_DESCRIPTION", "ATELIER_COMMIT_SUBJECT", "GIT_COMMIT_MESSAGE") ?? gitOutput(["log", "-1", "--pretty=%s"]);
   if (commitId && description) return `${commitId} ${description}`;
@@ -176,7 +178,8 @@ function assetPath(logicalPath: string): string {
 export function createWebApp(deps: WebAppDeps): WebApp {
   const { registry, hub, layouts } = deps;
   const logError = deps.logError ?? ((message: string) => console.error(message));
-  const versionTooltip = atelierVersionTooltip();
+  const currentAtelierImageId = currentAtelierContainerImageId();
+  const versionTooltip = atelierVersionTooltip(currentAtelierImageId);
 
   const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId), seedSteps: deps.provisioningHooks });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
@@ -237,19 +240,30 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return domId("workspace_row_contributions", workspaceId);
   }
 
-  function renderWorkspaceRowContributions(workspaceId: string): string {
-    const contributions = Array.from(workspaceRowContributionStore.get(workspaceId)?.values() ?? []).filter(Boolean).join("");
+  function workspaceHasVersionWarning(entry: WorkspaceEntry): boolean {
+    return Boolean(currentAtelierImageId && entry.createdByAtelierImageId !== currentAtelierImageId);
+  }
+
+  function renderWorkspaceVersionContribution(entry: WorkspaceEntry): string {
+    if (!workspaceHasVersionWarning(entry)) return "";
+    return `<span class="workspace-version-warning" aria-label="Workspace created with an older version of Atelier" data-tooltip="This workspace was created with an older version of Atelier. This is usually fine, but some newer features might only work in a new workspace">⚠︎</span>`;
+  }
+
+  function renderWorkspaceRowContributions(entry: WorkspaceEntry): string {
+    const workspaceId = entry.id;
+    const contributions = [renderWorkspaceVersionContribution(entry), ...Array.from(workspaceRowContributionStore.get(workspaceId)?.values() ?? [])].filter(Boolean).join("");
     return `<span id="${workspaceRowContributionsId(workspaceId)}" class="workspace-row-contributions">${contributions}</span>`;
   }
 
   const workspaceRowContributions: WorkspaceRowContributionRegistry = {
     set(workspaceId: string, contributionId: string, html?: string) {
-      if (!registry.get(workspaceId)) return;
+      const entry = registry.get(workspaceId);
+      if (!entry) return;
       let workspaceContributions = workspaceRowContributionStore.get(workspaceId);
       if (!workspaceContributions) workspaceRowContributionStore.set(workspaceId, workspaceContributions = new Map());
       if (html) workspaceContributions.set(contributionId, html);
       else workspaceContributions.delete(contributionId);
-      hub.broadcast(turboReplaceStream(workspaceRowContributionsId(workspaceId), renderWorkspaceRowContributions(workspaceId)));
+      hub.broadcast(turboReplaceStream(workspaceRowContributionsId(workspaceId), renderWorkspaceRowContributions(entry)));
     },
   };
 
@@ -271,10 +285,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return entry.title || (isGitProjectInit(entry.init) ? entry.init.name : undefined) || `Workspace ${entry.id}`;
   }
 
-  function workspaceSidebarTitleFrame(id: string, title: string): string {
+  function workspaceSidebarTitleFrame(entry: WorkspaceEntry): string {
+    const id = entry.id;
     const frameId = domId("workspace_sidebar_title", id);
     return `<turbo-frame id="${frameId}" class="workspace-row-title-frame">
-    <a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"><div class="r-title">${escapeHtml(title)}</div></a>
+    <a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"><div class="r-title">${escapeHtml(workspaceTitle(entry))}</div></a>
   </turbo-frame>`;
   }
 
@@ -286,7 +301,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const projectStyle = isGitProjectInit(entry.init) ? ` style="${repoColorStyle(entry.init.projectId)}"` : "";
     const stateClass = registry.workspaceState(id) === "unread" ? "attn-state" : "";
     const parkedClass = entry.parked ? "parked" : "";
-    const open = (extraClass: string) => `<div class="row workspace-row ${projectClass} ${stateClass} ${parkedClass} ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}" data-parked="${entry.parked ? "true" : "false"}"${projectStyle}${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
+    const versionWarningClass = workspaceHasVersionWarning(entry) ? "has-version-warning" : "";
+    const open = (extraClass: string) => `<div class="row workspace-row ${projectClass} ${stateClass} ${parkedClass} ${versionWarningClass} ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}" data-parked="${entry.parked ? "true" : "false"}"${projectStyle}${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
     const workspaceLink = (label: string, attrs = "") => `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"${attrs}><div class="r-title">${escapeHtml(label)}</div></a>`;
     switch (entry.phase) {
       // All phases render single-line rows (no r-sub) so phase changes never
@@ -301,7 +317,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       case "ready": {
         const parkedAction = entry.parked ? "unpark" : "park";
         const parkedLabel = entry.parked ? "Unpark workspace" : "Park workspace";
-        return `${open("")}${workspaceSidebarTitleFrame(id, title)}<div class="workspace-row-actions"><span class="workspace-row-notifiers">${renderWorkspaceRowContributions(id)}${renderWorkspaceStatus(id)}</span><span class="workspace-row-buttons"><a class="workspace-row-edit" href="/workspaces/${encodeURIComponent(id)}/sidebar-title/edit" data-turbo-frame="${domId("workspace_sidebar_title", id)}" title="Rename workspace" aria-label="Rename workspace">✎</a><form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}" data-turbo="true" data-action="turbo:submit-end->workspace-list#parkToggled"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form><form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></span></div></div>`;
+        return `${open("")}${workspaceSidebarTitleFrame(entry)}<div class="workspace-row-actions"><span class="workspace-row-notifiers">${renderWorkspaceRowContributions(entry)}${renderWorkspaceStatus(id)}</span><span class="workspace-row-buttons"><a class="workspace-row-edit" href="/workspaces/${encodeURIComponent(id)}/sidebar-title/edit" data-turbo-frame="${domId("workspace_sidebar_title", id)}" title="Rename workspace" aria-label="Rename workspace">✎</a><form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}" data-turbo="true" data-action="turbo:submit-end->workspace-list#parkToggled"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form><form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></span></div></div>`;
       }
     }
   }
@@ -768,7 +784,7 @@ ${moduleStylesHtml()}
     const id = generateWorkspaceId();
     const init = command.source.type === "project" ? projectWorkspaceInit(command.source.project) : command.source.type === "init" ? command.source.init : undefined;
     const title = command.title?.trim() ?? "";
-    registry.add(id, title || null, init);
+    registry.add(id, title || null, init, currentAtelierImageId);
     const initialPrompt = command.agent?.initialPrompt?.trim() ?? "";
     const context: WorkspaceCreationContext | undefined = initialPrompt
       ? { agent: { initialPrompt, model: command.agent?.model ?? "", thinkingLevel: command.agent?.thinkingLevel ?? "", attachmentDraft: command.agent?.attachmentDraft ?? "" } }
@@ -1024,7 +1040,7 @@ ${moduleStylesHtml()}
 
   function workspaceSidebarTitleShowFrame(id: string): Response {
     const entry = requireWorkspace(id);
-    return response(workspaceSidebarTitleFrame(id, workspaceTitle(entry)));
+    return response(workspaceSidebarTitleFrame(entry));
   }
 
   async function updateWorkspaceSidebarTitleFromForm(id: string, request: Request): Promise<Response> {
@@ -1033,7 +1049,7 @@ ${moduleStylesHtml()}
     const title = String(formData.get("title") ?? "").trim();
     await setWorkspaceTitle(id, title);
     registry.setTitle(id, title || null);
-    return response(workspaceSidebarTitleFrame(id, workspaceTitle(entry)));
+    return response(workspaceSidebarTitleFrame(entry));
   }
 
   // ---------------------------------------------------------------------------

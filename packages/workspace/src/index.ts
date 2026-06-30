@@ -1,6 +1,6 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, atelierDataPath, currentAtelierContainerImageId, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { resolveWorkspaceImage } from "@atelier/workspace-image";
 import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction } from "./types.ts";
 export type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction, WorkspaceInitInstructionMap } from "./types.ts";
@@ -20,6 +20,7 @@ export type {
 const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
 const workspaceIdLabel = "com.atelier.workspace-id";
+const workspaceCreatedByAtelierImageIdLabel = "com.atelier.created-by-image-id";
 const titlePath = "title";
 const parkedPath = "parked";
 const initPath = "init.json";
@@ -29,7 +30,7 @@ export const workspaceDesktopPort = 6080;
 export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
 
 export interface WorkspaceNewResult { id: string }
-export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction }> }
+export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; createdByAtelierImageId?: string }> }
 export interface WorkspaceExecResult { exitCode: number; stdout: string; stderr: string; durationMs: number }
 export interface WorkspaceCommandOptions { workdir?: string; user?: "atelier" | "root"; stdin?: string }
 export interface DeleteWorkspaceOptions { force?: boolean; events?: AtelierEventBus }
@@ -207,7 +208,8 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     await provisionStep(options.events, id, "workspace.init", "Prepare workspace", async () => {
       await options.events?.emit("workspace_init_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot });
     });
-    const labels: Record<string, string> = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id };
+    const currentImageId = currentAtelierContainerImageId();
+    const labels: Record<string, string> = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id, ...(currentImageId ? { [workspaceCreatedByAtelierImageIdLabel]: currentImageId } : {}) };
     plan = baseWorkspacePlan(labels);
     plan.mounts.push({ type: "bind", source: source.dockerHostWorktreePath, target: workspaceRoot });
     const activePlan = plan;
@@ -291,15 +293,15 @@ export async function workspacePreviewPortUrl(id: string, containerPort: number,
 
 export async function listWorkspaces(): Promise<WorkspaceListResult> {
   const context = await getAtelierRuntimeContext();
-  const listed = await requireDocker(["ps", "-a", "--filter", `label=${workspaceTypeLabel}=workspace`, "--filter", `label=${namespaceLabel}=${namespace()}`, "--format", `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}`]);
+  const listed = await requireDocker(["ps", "-a", "--filter", `label=${workspaceTypeLabel}=workspace`, "--filter", `label=${namespaceLabel}=${namespace()}`, "--format", `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}\t{{.Label "${workspaceCreatedByAtelierImageIdLabel}"}}`]);
   const workspaces: WorkspaceListResult["workspaces"] = [];
   for (const line of listed.stdout.trim().split(/\n+/).filter(Boolean)) {
-    const [containerId, labelledId] = line.split("\t");
+    const [containerId, labelledId, createdByAtelierImageId] = line.split("\t");
     if (!containerId) continue;
     const id = labelledId?.trim() || containerId.slice(0, 8);
     const parked = await readParked(context, id);
     const init = await readWorkspaceInit(context, id);
-    workspaces.push({ id, title: await readTitle(context, id), ...(parked ? { parked } : {}), ...(init !== undefined ? { init } : {}) });
+    workspaces.push({ id, title: await readTitle(context, id), ...(parked ? { parked } : {}), ...(init !== undefined ? { init } : {}), ...(createdByAtelierImageId?.trim() ? { createdByAtelierImageId: createdByAtelierImageId.trim() } : {}) });
   }
   return { workspaces };
 }
