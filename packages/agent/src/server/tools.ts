@@ -1,6 +1,6 @@
 import { dirname, posix } from "node:path";
 import { shellQuote, type AtelierEventBus } from "@atelier/core";
-import type { AgentWorkspaceCreateRequest, AgentWorkspaceCreateResult } from "@atelier/shared";
+import type { AgentWorkspaceCreateRequest, AgentWorkspaceCreateResult, AgentWorkspaceForkRequest } from "@atelier/shared";
 import { execWorkspaceCommand, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import {
   createEditToolDefinition,
@@ -87,6 +87,21 @@ export interface DeleteCurrentWorkspaceResult {
   details?: unknown;
 }
 
+const agentWorkspaceParameterSchemas = {
+  initialPrompt: Type.Optional(Type.String({
+    description: "Optional prompt to send to the default agent in the new workspace after it is created.",
+  })),
+  model: Type.Optional(Type.String({
+    description: "Optional model reference for the initial agent prompt.",
+  })),
+  thinkingLevel: Type.Optional(Type.String({
+    description: "Optional thinking level for the initial agent prompt.",
+  })),
+  attachmentDraft: Type.Optional(Type.String({
+    description: "Optional attachment draft id for the initial agent prompt.",
+  })),
+};
+
 export function createWorkspaceTool(createWorkspace: (request: AgentWorkspaceCreateRequest) => Promise<AgentWorkspaceCreateResult>): ToolDefinition<any, any> {
   return defineTool({
     name: "create_workspace",
@@ -99,14 +114,33 @@ export function createWorkspaceTool(createWorkspace: (request: AgentWorkspaceCre
       title: Type.Optional(Type.String({
         description: "Optional display title for the new workspace.",
       })),
-      initialPrompt: Type.Optional(Type.String({
-        description: "Optional prompt to send to the default agent in the new workspace after it is created.",
-      })),
+      ...agentWorkspaceParameterSchemas,
     }),
     execute: async (_toolCallId: string, params: AgentWorkspaceCreateRequest) => {
       const result = await createWorkspace(params);
       return {
         content: [{ type: "text" as const, text: `Created workspace ${result.id}: ${result.url}` }],
+        details: { workspace: result },
+      };
+    },
+  });
+}
+
+export function createForkCurrentWorkspaceTool(forkCurrentWorkspace: (request: AgentWorkspaceForkRequest) => Promise<AgentWorkspaceCreateResult>): ToolDefinition<any, any> {
+  return defineTool({
+    name: "fork_current_workspace",
+    label: "Fork Current Workspace",
+    description: "Create a new Atelier workspace by copying the current workspace's /work directory into a fresh container based on the current workspace container image. The copy includes the entire /work folder, including unversioned files. This does not copy terminal sessions, tab layout, or agent conversation history. initialPrompt, when provided, runs in a new fresh agent context in the fork. For repository workspaces, the fork and this spawning workspace share /persistent and can use it as a communication channel.",
+    parameters: Type.Object({
+      title: Type.String({
+        description: "Required display title for the forked workspace.",
+      }),
+      ...agentWorkspaceParameterSchemas,
+    }),
+    execute: async (_toolCallId: string, params: AgentWorkspaceForkRequest) => {
+      const result = await forkCurrentWorkspace(params);
+      return {
+        content: [{ type: "text" as const, text: `Forked current workspace into ${result.id}: ${result.url}` }],
         details: { workspace: result },
       };
     },

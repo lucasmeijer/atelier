@@ -207,7 +207,7 @@ const app = createWebApp({
   provisioningHooks,
   workspaceRemovedHandlers,
   async provisionWorkspace(id, options) {
-    await createWorkspace({ id, events: atelierEvents, init: options?.init, context: options?.context });
+    await createWorkspace({ id, events: atelierEvents, init: options?.init, context: options?.context, fork: options?.fork });
     for (const hook of provisioningHooks) {
       await atelierEvents.emit("workspace_provision_step", { workspaceId: id, id: hook.id, label: hook.label, parentId: hook.parentId, status: "running" });
       try {
@@ -247,6 +247,7 @@ for (const module of workspaceModules) {
     getTabKeys: (workspaceId) => app.tabKeysFor(workspaceId),
     deleteCurrentWorkspace: (workspaceId, force) => app.deleteCurrentWorkspaceFromAgent(workspaceId, force),
     createWorkspaceFromAgent: (workspaceId, request) => app.createWorkspaceFromAgent(workspaceId, request),
+    forkCurrentWorkspaceFromAgent: (workspaceId, request) => app.forkCurrentWorkspaceFromAgent(workspaceId, request),
     registerSocketHandler: (handler) => socketHandlers.push(handler),
     registerWorkspaceAppHandler: (handler) => workspaceAppHandlers.push(handler),
     registerProvisioningHook: (hook) => provisioningHooks.push(hook),

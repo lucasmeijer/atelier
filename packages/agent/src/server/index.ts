@@ -30,6 +30,7 @@ export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule, reme
 export {
   applyExactEdits,
   createDeleteCurrentWorkspaceTool,
+  createForkCurrentWorkspaceTool,
   createWorkspaceAgentTools,
   normalizeWorkspacePath,
   registerWorkspaceAgentTool,

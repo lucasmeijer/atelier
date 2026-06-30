@@ -119,6 +119,31 @@ describe("core workspaces", () => {
     expect(read.stdout).toBe("hello from stdin");
   });
 
+  test("createWorkspace can fork /work into a new container from the source image", async () => {
+    const source = await createWorkspace();
+    const init = { type: "test.init", value: "fork" } as unknown as WorkspaceInitInstruction;
+    const write = await execWorkspaceShell(source.id, "printf forked > /work/copied.txt");
+    expect(write.exitCode).toBe(0);
+    const sourceImage = (await docker(["inspect", "--format", "{{.Image}}", workspaceContainerName(source.id)])).stdout.trim();
+
+    const events = createAtelierEventBus();
+    let sourcePrepareEmitted = false;
+    let planContextFork: string | undefined;
+    events.on("workspace_source_prepare", () => { sourcePrepareEmitted = true; });
+    events.on("workspace_plan_prepare", ({ context }) => { planContextFork = context?.fork?.sourceWorkspaceId; });
+
+    const fork = await createWorkspace({ init, context: { fork: { sourceWorkspaceId: source.id } }, fork: { sourceWorkspaceId: source.id }, events });
+    const read = await execWorkspaceCommand(fork.id, ["cat", "/work/copied.txt"]);
+    const forkImage = (await docker(["inspect", "--format", "{{.Image}}", workspaceContainerName(fork.id)])).stdout.trim();
+
+    expect(read.exitCode).toBe(0);
+    expect(read.stdout).toBe("forked");
+    expect(sourcePrepareEmitted).toBe(false);
+    expect(planContextFork).toBe(source.id);
+    expect(forkImage).toBe(sourceImage);
+    expect(await getWorkspaceInit(fork.id)).toEqual(init);
+  });
+
   test("createWorkspace configures saved git identity", async () => {
     await setGitIdentity({ name: "Test User", email: "test@example.com" });
     const events = createAtelierEventBus();

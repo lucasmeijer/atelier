@@ -195,10 +195,20 @@ export interface SettingsContribution {
   handleAction?(context: SettingsActionContext): Promise<Response | undefined>;
 }
 
-export interface AgentWorkspaceCreateRequest {
+export interface AgentWorkspaceParameters {
+  initialPrompt?: string;
+  model?: string;
+  thinkingLevel?: string;
+  attachmentDraft?: string;
+}
+
+export interface AgentWorkspaceCreateRequest extends AgentWorkspaceParameters {
   title?: string;
   seedWithCurrentProjectClone: boolean;
-  initialPrompt?: string;
+}
+
+export interface AgentWorkspaceForkRequest extends AgentWorkspaceParameters {
+  title: string;
 }
 
 export interface AgentWorkspaceCreateResult {
@@ -219,6 +229,7 @@ export interface WorkspaceServerModuleContext {
   getTabKeys(workspaceId: string): Promise<string[]>;
   deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<unknown>;
   createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult>;
+  forkCurrentWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceForkRequest): Promise<AgentWorkspaceCreateResult>;
   registerSocketHandler(handler: WorkspaceServerSocketHandler): void;
   registerWorkspaceAppHandler(handler: WorkspaceServerAppHandler): void;
   registerProvisioningHook(hook: WorkspaceServerProvisioningHook): void;

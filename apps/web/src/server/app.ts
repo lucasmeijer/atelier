@@ -37,6 +37,8 @@ import {
   turboStreamResponse,
   type AgentWorkspaceCreateRequest,
   type AgentWorkspaceCreateResult,
+  type AgentWorkspaceForkRequest,
+  type AgentWorkspaceParameters,
   type GlobalSidebarContributionRegistry,
   type WorkspaceAttachment,
   type WorkspaceCommandContribution,
@@ -66,7 +68,7 @@ export interface WebAppDeps {
   /** File-backed UI preferences for future/new agent creation flows. */
   preferences?: WebPreferenceStore;
   /** Create the container + default agent etc. for an already-registered workspace id. */
-  provisionWorkspace(id: string, options?: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext }): Promise<void>;
+  provisionWorkspace(id: string, options?: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext; fork?: { sourceWorkspaceId: string } }): Promise<void>;
   inspectDeleteSafety(id: string): Promise<WorkspaceDeleteBlockedDetails>;
   /** Force-remove the workspace container. */
   destroyWorkspace(id: string): Promise<void>;
@@ -83,6 +85,7 @@ export interface WebApp {
   tabKeysFor(workspaceId: string): Promise<string[]>;
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }>;
   createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult>;
+  forkCurrentWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceForkRequest): Promise<AgentWorkspaceCreateResult>;
   workspaceRowContributions: WorkspaceRowContributionRegistry;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
 }
@@ -766,11 +769,11 @@ ${moduleStylesHtml()}
   // Create / delete / dismiss
   // ---------------------------------------------------------------------------
 
-  function startWorkspaceProvisioning(id: string, options: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext; title?: string } = {}): void {
+  function startWorkspaceProvisioning(id: string, options: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext; title?: string; fork?: { sourceWorkspaceId: string } } = {}): void {
     provisioning.seed(id);
     void (async () => {
       try {
-        await deps.provisionWorkspace(id, { init: options.init, context: options.context });
+        await deps.provisionWorkspace(id, { init: options.init, context: options.context, fork: options.fork });
         if (options.title) await setWorkspaceTitle(id, options.title);
         registry.setPhase(id, "ready");
         await broadcastWorkspaceReady(id);
@@ -787,19 +790,39 @@ ${moduleStylesHtml()}
     })();
   }
 
-  type WorkspaceCreateSource = { type: "empty" } | { type: "project"; project: ProjectSummary } | { type: "init"; init: WorkspaceInitInstruction };
-  type WorkspaceCreateAgent = { initialPrompt?: string; model?: string; thinkingLevel?: string; attachmentDraft?: string };
+  type WorkspaceCreateSource = { type: "empty" } | { type: "project"; project: ProjectSummary } | { type: "init"; init: WorkspaceInitInstruction } | { type: "fork"; sourceWorkspaceId: string; init?: WorkspaceInitInstruction };
 
-  function createWorkspaceFromCommand(command: { source: WorkspaceCreateSource; agent?: WorkspaceCreateAgent; title?: string }): { id: string } {
+  function initForSource(source: WorkspaceCreateSource): WorkspaceInitInstruction | undefined {
+    if (source.type === "project") return projectWorkspaceInit(source.project);
+    if (source.type === "init" || source.type === "fork") return source.init;
+    return undefined;
+  }
+
+  function forkForSource(source: WorkspaceCreateSource): { sourceWorkspaceId: string } | undefined {
+    return source.type === "fork" ? { sourceWorkspaceId: source.sourceWorkspaceId } : undefined;
+  }
+
+  function agentContext(agent: AgentWorkspaceParameters | undefined): AgentWorkspaceParameters | undefined {
+    const initialPrompt = agent?.initialPrompt?.trim() ?? "";
+    if (!initialPrompt) return undefined;
+    return { initialPrompt, model: agent?.model ?? "", thinkingLevel: agent?.thinkingLevel ?? "", attachmentDraft: agent?.attachmentDraft ?? "" };
+  }
+
+  function creationContext(source: WorkspaceCreateSource, agent: AgentWorkspaceParameters | undefined): WorkspaceCreationContext | undefined {
+    const fork = forkForSource(source);
+    const agentParameters = agentContext(agent);
+    if (!fork && !agentParameters) return undefined;
+    return { ...(fork ? { fork } : {}), ...(agentParameters ? { agent: agentParameters } : {}) };
+  }
+
+  function createWorkspaceFromCommand(command: { source: WorkspaceCreateSource; agent?: AgentWorkspaceParameters; title?: string }): { id: string } {
     const id = generateWorkspaceId();
-    const init = command.source.type === "project" ? projectWorkspaceInit(command.source.project) : command.source.type === "init" ? command.source.init : undefined;
+    const init = initForSource(command.source);
     const title = command.title?.trim() ?? "";
+    const context = creationContext(command.source, command.agent);
+    const fork = forkForSource(command.source);
     registry.add(id, title || null, init, currentAtelierImageId);
-    const initialPrompt = command.agent?.initialPrompt?.trim() ?? "";
-    const context: WorkspaceCreationContext | undefined = initialPrompt
-      ? { agent: { initialPrompt, model: command.agent?.model ?? "", thinkingLevel: command.agent?.thinkingLevel ?? "", attachmentDraft: command.agent?.attachmentDraft ?? "" } }
-      : undefined;
-    startWorkspaceProvisioning(id, { ...(init !== undefined ? { init } : {}), ...(context ? { context } : {}), ...(title ? { title } : {}) });
+    startWorkspaceProvisioning(id, { ...(init !== undefined ? { init } : {}), ...(context ? { context } : {}), ...(title ? { title } : {}), ...(fork ? { fork } : {}) });
     return { id };
   }
 
@@ -902,7 +925,16 @@ ${moduleStylesHtml()}
           return { type: "init", init: entry.init };
         })()
       : { type: "empty" };
-    const { id } = createWorkspaceFromCommand({ source, title: request.title, agent: { initialPrompt: request.initialPrompt } });
+    const { id } = createWorkspaceFromCommand({ source, title: request.title, agent: request });
+    return { id, url: `/workspaces/${encodeURIComponent(id)}`, phase: "starting" };
+  }
+
+  async function forkCurrentWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceForkRequest): Promise<AgentWorkspaceCreateResult> {
+    const title = request.title.trim();
+    if (!title) throw invalidArguments("title is required");
+    const entry = registry.get(workspaceId);
+    if (!entry || entry.phase !== "ready") throw new AtelierCoreError("workspace_not_found", `workspace not found: ${workspaceId}`);
+    const { id } = createWorkspaceFromCommand({ source: { type: "fork", sourceWorkspaceId: workspaceId, init: entry.init }, title, agent: request });
     return { id, url: `/workspaces/${encodeURIComponent(id)}`, phase: "starting" };
   }
 
@@ -1432,6 +1464,7 @@ ${moduleStylesHtml()}
     tabKeysFor,
     deleteCurrentWorkspaceFromAgent,
     createWorkspaceFromAgent,
+    forkCurrentWorkspaceFromAgent,
     workspaceRowContributions,
     globalSidebarContributions,
     async fetch(request) {

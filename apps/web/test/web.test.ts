@@ -327,6 +327,23 @@ describe("web app contracts", () => {
     });
   });
 
+  test("forkCurrentWorkspaceFromAgent creates a fork source with required title and agent options", async () => {
+    let captured: { id: string; options?: ProvisionWorkspaceOptions } | undefined;
+    const { app, registry } = createTestApp({ provision: async (id, options) => { captured = { id, options }; } });
+    const init = projectWorkspaceInit({ id: "project-1", name: "demo", gitUrl: "https://example.test/demo.git", branch: "main", sessionShareKey: "share-1" });
+    registry.add("source", "Source", init);
+    registry.setPhase("source", "ready");
+
+    const result = await app.forkCurrentWorkspaceFromAgent("source", { title: "Forked", initialPrompt: "continue", model: "provider/model", thinkingLevel: "high", attachmentDraft: "draft-1" });
+
+    expect(result.url).toBe(`/workspaces/${result.id}`);
+    expect(registry.get(result.id)?.title).toBe("Forked");
+    expect(captured?.id).toBe(result.id);
+    expect(captured?.options?.init).toEqual(init);
+    expect(captured?.options?.fork).toEqual({ sourceWorkspaceId: "source" });
+    expect(captured?.options?.context).toEqual({ fork: { sourceWorkspaceId: "source" }, agent: { initialPrompt: "continue", model: "provider/model", thinkingLevel: "high", attachmentDraft: "draft-1" } });
+  });
+
   test("project-created workspaces use the project name as their temporary title", async () => {
     await withTempDataDir(async () => {
       const project = (await addProject("https://github.com/org/sample-project.git")).project;

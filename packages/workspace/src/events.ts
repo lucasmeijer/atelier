@@ -39,7 +39,7 @@ export interface WorkspaceTabUnreadEvent {
   unread: boolean;
 }
 
-export interface WorkspaceInitPrepareEvent {
+export interface WorkspaceSourcePrepareEvent {
   workspaceId: string;
   init?: WorkspaceInitInstruction;
   context?: WorkspaceCreationContext;
@@ -47,13 +47,13 @@ export interface WorkspaceInitPrepareEvent {
   workContainerPath: string;
 }
 
-export interface WorkspacePlanPrepareEvent extends WorkspaceInitPrepareEvent {
+export interface WorkspacePlanPrepareEvent extends WorkspaceSourcePrepareEvent {
   plan: WorkspaceDockerPlan;
 }
 
 declare module "@atelier/core" {
   interface AtelierEventMap {
-    workspace_init_prepare: WorkspaceInitPrepareEvent;
+    workspace_source_prepare: WorkspaceSourcePrepareEvent;
     workspace_plan_prepare: WorkspacePlanPrepareEvent;
     workspace_created: WorkspaceCreatedEvent;
     workspace_deleted: WorkspaceDeletedEvent;

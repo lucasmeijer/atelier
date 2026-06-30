@@ -370,7 +370,7 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
 }
 
 export function registerProjectWorkspaceInitEvents(events: AtelierEventBus): void {
-  events.on("workspace_init_prepare", async ({ workspaceId, init, workHostPath }) => {
+  events.on("workspace_source_prepare", async ({ workspaceId, init, workHostPath }) => {
     if (!isGitProjectInit(init)) return;
     await prepareWorkspaceSource({ workspaceId, gitUrl: init.gitUrl, branch: init.branch, worktreePath: workHostPath, events });
   });

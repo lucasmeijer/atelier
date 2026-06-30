@@ -52,6 +52,7 @@ function context() {
       getTabKeys: async () => [],
       deleteCurrentWorkspace: async () => ({ deleted: false, blocked: false }),
       createWorkspaceFromAgent: async () => ({ id: "workspace-id", url: "/workspaces/workspace-id", phase: "starting" as const }),
+      forkCurrentWorkspaceFromAgent: async () => ({ id: "workspace-id", url: "/workspaces/workspace-id", phase: "starting" as const }),
       registerSocketHandler: () => {},
       registerWorkspaceAppHandler: () => {},
       registerProvisioningHook: () => {},
