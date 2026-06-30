@@ -12,3 +12,4 @@ When working on the web app, prefer server-rendered HTML over client-rendered UI
 - Never implement fallbacks of migrations unless expliticly asked to do so.
 - Do not use defensive programming.  We don't want to swallow errors, we want to notice them. Only be defensive when parsing external inputs.
 - Never add a new environment variable to the codebase without explicit instructions to do so. We're striving for minimal configuration, and minimal environment variables.
+- Run `bun run generate:workspace-modules` before raw TypeScript checks; otherwise missing ignored generated modules cause cascading unrelated server errors.
