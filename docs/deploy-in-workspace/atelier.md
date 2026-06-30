@@ -47,6 +47,12 @@ Use an Agent tab to ask for code changes, explanations, reviews, or debugging he
 
 Agents run inside the workspace and can read and edit files under `/work`.
 
+### Agent instructions
+
+Atelier loads repository agent instructions from `AGENTS.md` and, if present, `.atelier/AGENTS.md`. Use `AGENTS.md` for normal coding-agent instructions that should apply in any agent tool. Use `.atelier/AGENTS.md` for Atelier-specific instructions about how agents should present their work, such as when to use previews, screenshots, embedded files, videos, or other Atelier UI affordances.
+
+When both files exist, Atelier applies `AGENTS.md` first and `.atelier/AGENTS.md` second.
+
 ### Prompt templates
 
 Prompt templates are reusable prompts stored in the workspace repository. Add Markdown files under `.atelier/prompts`; `.atelier` is the idiomatic Atelier configuration directory. Atelier also reads `.pi/prompts` for convenience and compatibility, but prefer `.atelier/prompts` for new templates. If both directories contain a template with the same filename, the `.atelier` template is used.

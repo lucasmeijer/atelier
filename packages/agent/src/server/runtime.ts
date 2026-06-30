@@ -1,6 +1,6 @@
 import { mkdir, open } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { AtelierEventBus } from "@atelier/core";
+import { shellQuote, type AtelierEventBus } from "@atelier/core";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
 import { createPiAuthStorage, getConfiguredAgentModels, getModelThinkingLevel, piModelsJsonPath } from "./pi-config-models.ts";
 import {
@@ -835,10 +835,16 @@ class RealAgentRuntime extends BaseAgentRuntime {
 }
 
 async function loadWorkspaceAgentsFiles(workspaceId: string): Promise<Array<{ path: string; content: string }>> {
-  const agentsPath = `${workspaceRoot}/AGENTS.md`;
-  const result = await execWorkspaceCommand(workspaceId, ["sh", "-c", `if test -s ${agentsPath}; then cat ${agentsPath}; fi`], { workdir: workspaceRoot });
-  if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `could not read ${agentsPath}`);
-  return result.stdout.trim() ? [{ path: agentsPath, content: result.stdout }] : [];
+  const agentsPaths = [`${workspaceRoot}/AGENTS.md`, `${workspaceRoot}/.atelier/AGENTS.md`];
+  const agentsFiles: Array<{ path: string; content: string }> = [];
+
+  for (const path of agentsPaths) {
+    const result = await execWorkspaceCommand(workspaceId, ["sh", "-c", `if test -s ${shellQuote(path)}; then cat ${shellQuote(path)}; fi`], { workdir: workspaceRoot });
+    if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `could not read ${path}`);
+    if (result.stdout.trim()) agentsFiles.push({ path, content: result.stdout });
+  }
+
+  return agentsFiles;
 }
 
 async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
