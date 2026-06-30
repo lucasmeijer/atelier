@@ -156,18 +156,24 @@ export class UpdateManager {
     this.restarting = true;
     this.setState("restarting");
     const name = `atelier-updater-${crypto.randomUUID().slice(0, 8)}`;
-    const host = url.hostname;
+    const returnUrl = new URL("/", url);
+    const updaterUrl = new URL(returnUrl);
+    updaterUrl.protocol = "http:";
+    updaterUrl.port = String(updaterPort);
     const result = await (this.deps.docker ?? dockerExec)([
       "run", "-d", "--rm", "--name", name, "--network", "host",
       "-v", "/var/run/docker.sock:/var/run/docker.sock",
       this.runtime.imageId,
-      "atelier-update-helper", "--server-container", this.runtime.containerId, "--target-image", targetImageForChannel(this.releaseChannel), "--release-channel", this.releaseChannel, "--return-host", host,
+      "atelier-update-helper", "--server-container", this.runtime.containerId, "--target-image", targetImageForChannel(this.releaseChannel), "--release-channel", this.releaseChannel, "--return-url", returnUrl.toString(),
     ]);
     if (result.code !== 0) throw new Error(result.stderr.trim() || "could not start update helper");
     const theme = url.searchParams.get("theme") ?? "";
-    const updaterUrl = `http://${host}:${updaterPort}`;
-    await (this.deps.waitForUpdater ?? waitForUpdater)(`${updaterUrl}/up`);
-    return Response.redirect(`${updaterUrl}/?theme=${encodeURIComponent(theme)}`, 303);
+    updaterUrl.pathname = "/up";
+    updaterUrl.search = "";
+    await (this.deps.waitForUpdater ?? waitForUpdater)(updaterUrl.toString());
+    updaterUrl.pathname = "/";
+    updaterUrl.searchParams.set("theme", theme);
+    return Response.redirect(updaterUrl.toString(), 303);
   }
 
   sseResponse(): Response {
@@ -294,6 +300,7 @@ function modalStream(html: string): Response {
 
 export function createUpdateRouteHandler(updateManager: UpdateManager): (request: Request, url: URL) => Promise<Response | undefined> {
   return async (request, url) => {
+    if (url.pathname === "/update" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 303);
     if (url.pathname === "/update/start" && request.method === "POST") {
       void updateManager.startPull();
       return turboStreamResponse(turboStream("replace", "settings-sec-update", renderUpdateSettings(updateManager)));

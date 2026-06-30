@@ -2,7 +2,7 @@ import { replacementCreateArgs, dockerExec, dockerInspect } from "./docker.ts";
 import { updaterPort } from "./constants.ts";
 import { isReleaseChannel, type ReleaseChannel } from "./channels.ts";
 
-interface Options { serverContainer: string; targetImage: string; releaseChannel: ReleaseChannel; returnHost: string }
+interface Options { serverContainer: string; targetImage: string; releaseChannel: ReleaseChannel; returnUrl: string }
 interface Step { id: string; label: string; status: "pending" | "running" | "done" | "failed"; log?: string }
 
 function parseArgs(argv: string[]): Options {
@@ -14,9 +14,10 @@ function parseArgs(argv: string[]): Options {
       const channel = argv[++i];
       if (!isReleaseChannel(channel)) throw new Error(`unsupported release channel: ${channel}`);
       out.releaseChannel = channel;
-    } else if (argv[i] === "--return-host") out.returnHost = argv[++i];
+    } else if (argv[i] === "--return-url") out.returnUrl = argv[++i];
+    else if (argv[i] === "--return-host") out.returnUrl = `http://${argv[++i]}/`;
   }
-  if (!out.serverContainer || !out.targetImage || !out.returnHost) throw new Error("missing update helper arguments");
+  if (!out.serverContainer || !out.targetImage || !out.returnUrl) throw new Error("missing update helper arguments");
   out.releaseChannel ??= out.targetImage.endsWith(":latest") ? "latest" : "stable";
   return out as Options;
 }
@@ -67,7 +68,7 @@ async function run(): Promise<void> {
     setStep("wait", "running");
     const deadline = Date.now() + 120_000;
     while (Date.now() < deadline) {
-      const up = await fetch(`http://${options.returnHost}:80/up`).catch(() => undefined);
+      const up = await fetch(new URL("/up", options.returnUrl)).catch(() => undefined);
       if (up?.ok) { setStep("wait", "done"); setStep("redirect", "running"); return; }
       await Bun.sleep(1000);
     }
@@ -84,7 +85,7 @@ Bun.serve({
   fetch(request) {
     const url = new URL(request.url);
     if (url.pathname === "/up") return new Response("ok", { headers: { "cache-control": "no-store" } });
-    if (url.pathname === "/state") return Response.json({ failed, redirect: steps.find((s) => s.id === "redirect")?.status === "running" ? `http://${options.returnHost}/` : undefined, steps });
+    if (url.pathname === "/state") return Response.json({ failed, redirect: steps.find((s) => s.id === "redirect")?.status === "running" ? options.returnUrl : undefined, steps });
     if (url.pathname === "/style.css") return new Response(Bun.file("/app/apps/web/public/style.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
     return new Response(page(url.searchParams.get("theme") ?? ""), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   },
