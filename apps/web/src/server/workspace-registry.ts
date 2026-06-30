@@ -47,6 +47,16 @@ const allowedTransitions: Record<WorkspacePhase, WorkspacePhase[]> = {
 };
 
 export function createFileWorkspaceActivityStore(path: string): WorkspaceActivityStore {
+  let saveChain = Promise.resolve();
+  let tempCounter = 0;
+
+  async function writeActivity(activity: Record<string, number>): Promise<void> {
+    await mkdir(dirname(path), { recursive: true });
+    const tempPath = `${path}.${process.pid}.${++tempCounter}.tmp`;
+    await writeFile(tempPath, `${JSON.stringify(activity, null, 2)}\n`);
+    await rename(tempPath, path);
+  }
+
   return {
     async load() {
       try {
@@ -56,11 +66,10 @@ export function createFileWorkspaceActivityStore(path: string): WorkspaceActivit
         return {};
       }
     },
-    async save(activity) {
-      await mkdir(dirname(path), { recursive: true });
-      const tempPath = `${path}.tmp`;
-      await writeFile(tempPath, `${JSON.stringify(activity, null, 2)}\n`);
-      await rename(tempPath, path);
+    save(activity) {
+      const nextSave = saveChain.catch(() => undefined).then(() => writeActivity(activity));
+      saveChain = nextSave;
+      return nextSave;
     },
   };
 }
