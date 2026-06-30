@@ -1,4 +1,4 @@
-import { mkdir, open } from "node:fs/promises";
+import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { shellQuote, type AtelierEventBus } from "@atelier/core";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
@@ -847,8 +847,19 @@ async function loadWorkspaceAgentsFiles(workspaceId: string): Promise<Array<{ pa
   return agentsFiles;
 }
 
+const bootstrapOnlySessionEntryTypes = new Set(["model_change", "thinking_level_change"]);
+
+export async function discardBootstrapOnlySession(path: string): Promise<void> {
+  const content = await readFile(path, "utf8");
+  const lines = content.split("\n").filter((line) => line.trim().length > 0);
+  if (lines.length === 0) return;
+  const entries = lines.map((line) => JSON.parse(line) as { type: string });
+  if (entries.every((entry) => bootstrapOnlySessionEntryTypes.has(entry.type))) await writeFile(path, "");
+}
+
 async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
   await ensureSessionFile(agent.path);
+  await discardBootstrapOnlySession(agent.path);
   const authStorage = await createPiAuthStorage();
   const modelRegistry = ModelRegistry.create(authStorage, await piModelsJsonPath());
   const agentsFiles = await loadWorkspaceAgentsFiles(agent.workspaceId);
