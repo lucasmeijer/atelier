@@ -2,7 +2,8 @@
   "version": 1,
   "aptPackages": [
     "docker.io",
-    "docker-buildx"
+    "docker-buildx",
+    "openssh-client"
   ],
   "run": [
     "if getent group docker >/dev/null 2>&1; then usermod -aG docker atelier; fi"
