@@ -423,9 +423,9 @@ button { border: 0; background: none; cursor: pointer; }
 .workspace-row-edit { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; font-size: 12px; }
 .row-actions { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; }
 .workspace-row-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; margin-left: auto; flex: 0 0 auto; }
-.workspace-row-notifiers, .workspace-row-buttons { align-items: center; justify-content: flex-end; gap: 3px; min-height: 24px; }
-.workspace-row-notifiers { display: inline-flex; }
-.workspace-row-buttons { display: none; }
+.workspace-row-notifiers, .workspace-row-buttons { align-items: center; justify-content: flex-end; min-height: 24px; }
+.workspace-row-notifiers { display: inline-flex; gap: 5px; }
+.workspace-row-buttons { display: none; gap: 3px; }
 .workspace-row:hover .workspace-row-buttons { display: inline-flex; }
 .workspace-row:hover .workspace-row-notifiers { display: none; }
 .workspace-row.visible:not(:hover) .workspace-row-notifiers { display: inline-flex; }
