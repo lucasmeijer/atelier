@@ -23,8 +23,10 @@ import {
   renderToolItemBody,
   renderTranscript,
   type AgentPaneState,
+  type AgentModelContextView,
   type AgentRenderContext,
   type AgentStatsView,
+  type AgentToolDefinitionView,
 } from "./render.ts";
 import type { WorkspaceAgentInfo } from "./session-store.ts";
 import { atelierSystemPrompt, createAtelierResourceLoader } from "./system-prompt.ts";
@@ -73,7 +75,6 @@ interface WorkspaceAgentRuntime {
   snapshotStream(): Promise<string>;
   /** Server-rendered state for initial pane HTML. */
   paneState(): Promise<AgentPaneState>;
-  systemPrompt(): string;
   userMessages(): string[];
   submit(text: string, options: SubmitOptions): Promise<void>;
   abort(): Promise<void>;
@@ -449,7 +450,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   protected async refreshTranscript(): Promise<void> {
-    this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, await this.sectionsForDisplay(), this.systemPrompt())));
+    this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, await this.sectionsForDisplay(), this.modelContext())));
   }
 
   protected async refreshStats(): Promise<void> {
@@ -467,13 +468,13 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   async paneState(): Promise<AgentPaneState> {
     return {
-      transcriptHtml: renderTranscript(this.ctx, await this.sectionsForDisplay(), this.systemPrompt()),
+      transcriptHtml: renderTranscript(this.ctx, await this.sectionsForDisplay(), this.modelContext()),
       busy: this.isStreaming,
       stats: await this.statsView(),
     };
   }
 
-  abstract systemPrompt(): string;
+  protected abstract modelContext(): AgentModelContextView;
   abstract userMessages(): string[];
   protected abstract canonicalSections(): Promise<SectionView[]>;
   protected abstract statsView(): Promise<AgentStatsView>;
@@ -574,7 +575,7 @@ export function recordsFromSessionEntries(entries: any[]): TranscriptRecord[] {
 class RealAgentRuntime extends BaseAgentRuntime {
   private summarizing = false;
 
-  constructor(agent: WorkspaceAgentInfo, private session: any, options: WorkspaceAgentRuntimeOptions = {}) {
+  constructor(agent: WorkspaceAgentInfo, private session: any, private readonly toolsForModel: AgentToolDefinitionView[], options: WorkspaceAgentRuntimeOptions = {}) {
     super(agent, options);
     session.subscribe((event: any) => {
       void this.handleEvent(event);
@@ -598,8 +599,8 @@ class RealAgentRuntime extends BaseAgentRuntime {
     }));
   }
 
-  systemPrompt(): string {
-    return this.session.systemPrompt ?? "";
+  protected modelContext(): AgentModelContextView {
+    return { systemPrompt: this.session.systemPrompt ?? "", tools: this.toolsForModel };
   }
 
   currentModel(): { provider: string; id: string } | undefined {
@@ -811,7 +812,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       this.liveNote("Summarizing the abandoned branch…", "system");
       const truncated = await this.canonicalSections(target);
       if (this.live) truncated.push(this.live.view);
-      this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, truncated, this.systemPrompt())));
+      this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, truncated, this.modelContext())));
       void this.session
         .navigateTree(target, { summarize: true })
         .catch((error: unknown) => this.notice("error", error instanceof Error ? error.message : String(error)))
@@ -854,18 +855,20 @@ async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAg
   const appendSystemPrompt: string[] = [];
   await options.events?.emit("agent_system_prompt_prepare", { workspaceId: agent.workspaceId, lines: appendSystemPrompt });
   const sessionManager = SessionManager.open(agent.path, dirname(agent.path), workspaceRoot);
+  const customTools = createWorkspaceAgentTools(agent.workspaceId, { events: options.events });
   const { session } = await createAgentSession({
     cwd: workspaceRoot,
     agentDir: dirname(agent.path),
     authStorage,
     modelRegistry,
     resourceLoader: createAtelierResourceLoader(agentsFiles, appendSystemPrompt),
-    customTools: createWorkspaceAgentTools(agent.workspaceId, { events: options.events }),
+    customTools,
     tools: workspaceAgentToolNames(),
     sessionManager,
     settingsManager: SettingsManager.inMemory({ compaction: { enabled: true } } as any),
   });
-  return new RealAgentRuntime(agent, session, options);
+  const toolViews = customTools.map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters }));
+  return new RealAgentRuntime(agent, session, toolViews, options);
 }
 
 async function ensureSessionFile(path: string): Promise<void> {

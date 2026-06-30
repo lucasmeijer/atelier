@@ -105,6 +105,17 @@ export interface AgentStatsView {
   models: AgentModelOption[];
 }
 
+export interface AgentToolDefinitionView {
+  name: string;
+  description: string;
+  parameters: unknown;
+}
+
+export interface AgentModelContextView {
+  systemPrompt: string;
+  tools: AgentToolDefinitionView[];
+}
+
 export interface AgentPaneState {
   transcriptHtml: string;
   busy: boolean;
@@ -251,18 +262,30 @@ ${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(ag
 // Transcript / sections
 // ---------------------------------------------------------------------------
 
-export function renderTranscript(ctx: AgentRenderContext, sections: SectionView[], systemPrompt?: string): string {
+export function renderTranscript(ctx: AgentRenderContext, sections: SectionView[], modelContext: AgentModelContextView): string {
   const userSections = sections.filter((section) => section.user && section.summaryNote === undefined);
   const latestUserSid = userSections[userSections.length - 1]?.sid;
-  return `${renderSystemPromptCard(ctx, systemPrompt)}<div class="agent-notices" id="${ids.notices(ctx)}"></div>${sections.map((section) => renderSection(ctx, section, { collapsed: Boolean(section.user) && section.sid !== latestUserSid })).join("")}`;
+  return `${renderModelContextCard(ctx, modelContext)}<div class="agent-notices" id="${ids.notices(ctx)}"></div>${sections.map((section) => renderSection(ctx, section, { collapsed: Boolean(section.user) && section.sid !== latestUserSid })).join("")}`;
 }
 
-function renderSystemPromptCard(ctx: AgentRenderContext, systemPrompt?: string): string {
-  const prompt = systemPrompt?.trim();
-  if (!prompt) return "";
-  return readingRow(`<details class="agent-tool done tool-system-prompt" id="${ids.systemPrompt(ctx)}">
-    <summary class="agent-tool-head"><code class="agent-tool-name">system prompt</code></summary>
-    <div class="agent-tool-detail flush"><pre class="agent-tool-code agent-system-prompt-body">${escapeHtml(prompt)}</pre></div>
+function renderModelContextCard(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
+  const prompt = modelContext.systemPrompt.trim();
+  const tools = modelContext.tools;
+  if (!prompt && tools.length === 0) return "";
+  const meta = [prompt ? "system prompt" : undefined, tools.length ? `${tools.length} tools` : undefined].filter(Boolean).join(" · ");
+  const toolRows = tools.map((tool) => `<article class="agent-context-tool">
+    <div class="agent-context-tool-head"><code>${escapeHtml(tool.name)}</code><span>${escapeHtml(tool.description)}</span></div>
+    ${codeBlockHtml(JSON.stringify(tool.parameters, null, 2) ?? "null", "schema.json", "agent-context-tool-schema")}
+  </article>`).join("");
+  return readingRow(`<details class="agent-model-context" id="${ids.systemPrompt(ctx)}">
+    <summary class="agent-model-context-head">
+      <span class="agent-model-context-title">model context</span>
+      <span class="agent-model-context-meta">${escapeHtml(meta)}</span>
+    </summary>
+    <div class="agent-model-context-body">
+      ${prompt ? `<section><h4>System prompt</h4><pre class="agent-system-prompt-body">${escapeHtml(prompt)}</pre></section>` : ""}
+      ${tools.length ? `<section><h4>Tool definitions sent alongside the prompt</h4><div class="agent-context-tools">${toolRows}</div></section>` : ""}
+    </div>
   </details>`);
 }
 
