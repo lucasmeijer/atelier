@@ -28,8 +28,25 @@ describe("browser proxy response patching", () => {
     const html = await patched.text();
     expect(html).toContain(`href="https://browser--work_1.localhost/page?x=1#top"`);
     expect(html).toContain("atelier:browser-location");
+    expect(html).toContain("data-atelier-browser-theme");
     expect(patched.headers.has("content-security-policy")).toBe(false);
     expect(patched.headers.has("x-frame-options")).toBe(false);
+  });
+
+  test("injects the current Atelier color scheme into preview html", async () => {
+    const response = new Response(`<html><head></head><body>Preview</body></html>`, {
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+
+    const patched = await patchBrowserWorkspaceAppResponse(
+      browserApp("theme_work"),
+      response,
+      new Request("https://browser--theme.localhost/start?atelierColorScheme=light"),
+    );
+
+    const html = await patched.text();
+    expect(html).toContain("data-atelier-browser-theme");
+    expect(html).toContain("color-scheme:light");
   });
 
   test("external browser targets use the target host header", async () => {
@@ -55,6 +72,18 @@ describe("browser proxy response patching", () => {
     expect(renderBrowserFrame("hash_work", tab)).not.toContain("data-controller=\"workspace-app-frame\"");
     setWorkspaceBrowserTarget("hash_work", tab.key, "http://localhost:3000/page?x=1#section");
     expect(renderBrowserFrame("hash_work", tab)).toContain(`data-workspace-app-frame-initial-path-value="/page?x=1#section"`);
+  });
+
+  test("does not forward Atelier theme params to the browser target", async () => {
+    const tab = createWorkspaceBrowserTab("strip_theme_work");
+    setWorkspaceBrowserTarget("strip_theme_work", tab.key, "https://example.com/root");
+
+    const target = await resolveBrowserWorkspaceAppTarget(
+      { appKey: tab.key, workspaceId: "strip_theme_work" },
+      new URL("/page?x=1&atelierColorScheme=dark#top", "https://browser.localhost"),
+    );
+
+    expect(target.toString()).toBe("https://example.com/page?x=1");
   });
 
   test("rejects browser app keys that do not belong to a workspace tab", async () => {

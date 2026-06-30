@@ -30,7 +30,7 @@ export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, re
   }
 
   const text = await response.text();
-  const rewritten = injectBrowserBridgeScript(rewriteContainerLocalUrlsInHtml(text, publicOrigin));
+  const rewritten = patchBrowserHtml(rewriteContainerLocalUrlsInHtml(text, publicOrigin), request);
   headers.delete("content-length");
   headers.delete("content-encoding");
   headers.delete("content-security-policy");
@@ -45,6 +45,7 @@ export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, re
   if (!browserTab.targetUrl) throw new Error(`browser tab has no target url: ${app.appKey}`);
   const targetBase = new URL(browserTab.targetUrl);
   const target = new URL(requestUrl.pathname + requestUrl.search, targetBase);
+  stripAtelierBrowserParams(target);
 
   if (!isLoopbackHost(target.hostname)) return target;
 
@@ -83,12 +84,29 @@ function rewriteContainerLocalUrl(raw: string, publicOrigin: string): string {
   return new URL(`${url.pathname}${url.search}${url.hash}`, publicOrigin).toString();
 }
 
+function stripAtelierBrowserParams(url: URL): void {
+  url.searchParams.delete("atelierColorScheme");
+}
+
+function patchBrowserHtml(html: string, request: Request): string {
+  return injectBrowserThemeStyle(injectBrowserBridgeScript(html), request);
+}
+
 function injectBrowserBridgeScript(html: string): string {
   if (html.includes("atelier:browser-location")) return html;
-  const script = `<script>${browserBridgeScript()}</script>`;
-  if (/<\/head\s*>/i.test(html)) return html.replace(/<\/head\s*>/i, `${script}</head>`);
-  if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, `${script}</body>`);
-  return `${html}${script}`;
+  return injectIntoHtml(html, `<script>${browserBridgeScript()}</script>`);
+}
+
+function injectBrowserThemeStyle(html: string, request: Request): string {
+  if (html.includes("data-atelier-browser-theme")) return html;
+  const scheme = new URL(request.url).searchParams.get("atelierColorScheme") === "light" ? "light" : "dark";
+  return injectIntoHtml(html, `<style data-atelier-browser-theme>html{color-scheme:${scheme};}</style>`);
+}
+
+function injectIntoHtml(html: string, addition: string): string {
+  if (/<\/head\s*>/i.test(html)) return html.replace(/<\/head\s*>/i, `${addition}</head>`);
+  if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, `${addition}</body>`);
+  return `${html}${addition}`;
 }
 
 function browserBridgeScript(): string {

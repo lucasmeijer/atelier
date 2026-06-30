@@ -135,6 +135,7 @@ function mapProxyUrlToBrowserUrl(proxyHref: string, targetOrigin: string | undef
   if (!targetOrigin) return undefined;
   try {
     const proxy = new URL(proxyHref);
+    stripAtelierBrowserParams(proxy);
     const target = new URL(targetOrigin);
     return new URL(`${proxy.pathname}${proxy.search}${proxy.hash}`, target.origin).toString();
   } catch {
@@ -142,16 +143,33 @@ function mapProxyUrlToBrowserUrl(proxyHref: string, targetOrigin: string | undef
   }
 }
 
+function stripAtelierBrowserParams(url: URL): void {
+  url.searchParams.delete("atelierColorScheme");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function addAtelierThemeParams(url: URL): void {
+  const theme = document.documentElement.dataset.theme || localStorage.getItem("atelier.theme") || "nord";
+  url.searchParams.set("atelierColorScheme", theme === "daylight" || theme === "solarized-light" ? "light" : "dark");
+}
+
+function isBrowserAppKey(appKey: string): boolean {
+  return /^browser-\d+$/.test(appKey);
 }
 
 const browserClientModule: WorkspaceClientModule = {
   id: "browser",
   install({ application, Controller, hooks }) {
     application.register("browser-address", createBrowserAddressController(Controller));
-    hooks.onWorkspaceAppFrameUrl(({ frame, url }) => {
+    hooks.onWorkspaceAppFrameUrl(({ appKey, frame, url }) => {
+      if (isBrowserAppKey(appKey)) addAtelierThemeParams(url);
       frame.closest(".browser-shell")?.querySelector<HTMLAnchorElement>(".browser-open-external")?.setAttribute("href", url.toString());
+    });
+    hooks.onWorkspaceAppFrameRefresh(({ appKey, frame, load }) => {
+      if (isBrowserAppKey(appKey) && frame.src) load();
     });
   },
 };
