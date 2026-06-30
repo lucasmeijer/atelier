@@ -14,7 +14,7 @@ Build only a local Atelier runtime image:
 bun run image:build -- --latest
 ```
 
-By default the script builds `atelier:<git-description>` from `apps/web/Dockerfile` and embeds the current git commit metadata in `ATELIER_COMMIT_ID` and `ATELIER_COMMIT_DESCRIPTION`.
+By default the script builds `atelier:<git-description>` from `apps/web/Dockerfile` and embeds the current git commit metadata in `ATELIER_COMMIT_ID` and `ATELIER_COMMIT_DESCRIPTION`. The default workspace image uses a deterministic content tag, so the build reuses it when that tag already exists locally (or in the registry during `image:publish`). Pass `--workspace` to force rebuilding that image.
 
 Useful options:
 
@@ -23,11 +23,14 @@ bun run docker:dev -- --bind 127.0.0.1 --port 3000
 bun run docker:dev -- --bind "$(tailscale ip -4)" --port 80
 bun run docker:dev -- --detach
 bun run image:build -- --image ghcr.io/example/atelier --tag v0.1.0 --latest
+bun run image:build -- --tag dev --workspace --progress plain
 bun run image:build -- --tag dev --no-cache --progress plain
-bun run image:publish -- --image ghcr.io/example/atelier --tag v0.1.0 --platform linux/amd64,linux/arm64
+bun run image:publish -- --image ghcr.io/example/atelier --tag v0.1.0
+bun run scripts/build-atelier-image.ts --push --image ghcr.io/example/atelier --tag v0.1.0 --platform linux/amd64,linux/arm64
+bun run scripts/build-atelier-image.ts --push --image ghcr.io/example/atelier --tag v0.1.0 --platform linux/amd64 --builder-host agent-test
 ```
 
-`image:publish` is the same build pipeline with `--push` enabled. Multi-platform builds require `--push`.
+`image:publish` is the same build pipeline with `--push` enabled and defaults to `--platform linux/amd64 --builder-host agent-test`. The build script creates a buildx docker-container builder for `ssh://agent-test` when needed. Multi-platform builds require `--push`.
 
 The resulting container expects access to Docker so it can create Atelier workspace containers. Its entrypoint starts as root, grants the fixed container user `1000:1000` access to the mounted Docker socket, prepares the Atelier data directory, and then runs Atelier as that fixed user. Docker-run workspace containers use the same numeric uid/gid and the `default` namespace. Workspace app ports are published on the Docker host loopback. The Atelier container must run with host networking on Linux so Atelier and host-run Atelier both reach workspace apps at `127.0.0.1:<published-port>`. See [workspace networking](./workspace-networking.md) for the reasoning and experiments behind this model.
 

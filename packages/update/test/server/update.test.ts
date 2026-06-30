@@ -90,10 +90,10 @@ describe("registry helpers", () => {
       }
       if (url.startsWith("https://ghcr.io/token")) return Response.json({ token: "token" });
       if (url.endsWith("/manifests/stable")) return Response.json({ config: { digest: "sha256:config" } }, { headers: { "docker-content-digest": "sha256:manifest" } });
-      if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { "org.opencontainers.image.revision": "new" } }, created: "today" });
+      if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { "org.opencontainers.image.revision": "new" } } });
       throw new Error(`unexpected fetch ${url}`);
     }) as typeof fetch;
-    await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({ digest: "sha256:manifest", platformDigest: undefined, revision: "new", created: "today" });
+    await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({ digest: "sha256:manifest", platformDigest: undefined, revision: "new" });
   });
 
   test("selects current linux platform manifest", () => {

@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+import { arch } from "node:os";
+
 export {};
 
 const usage = `Build the Atelier Docker image.
@@ -14,7 +16,9 @@ Options:
   --stable             Also tag the image as <image>:stable
   --push               Push the built images instead of only loading them locally
   --platform <value>   Docker platform(s), e.g. linux/amd64 or linux/amd64,linux/arm64
+  --builder-host <ssh> Docker SSH host to create/use as a buildx builder
   --no-cache           Build without Docker cache
+  --workspace          Force building the default workspace image even when the deterministic tag already exists
   --progress <value>   Docker progress mode (auto, plain, tty, quiet, rawjson)
   --build-arg K=V      Extra Atelier app Docker build argument. May be passed more than once
   --help               Show this help
@@ -32,7 +36,9 @@ interface Options {
   stable: boolean;
   push: boolean;
   platform?: string;
+  builderHost?: string;
   noCache: boolean;
+  forceWorkspace: boolean;
   progress?: string;
   buildArgs: string[];
 }
@@ -61,6 +67,7 @@ function parseArgs(args: string[]): Options {
     stable: false,
     push: false,
     noCache: false,
+    forceWorkspace: false,
     buildArgs: [],
   };
 
@@ -84,8 +91,13 @@ function parseArgs(args: string[]): Options {
     } else if (arg === "--platform") {
       options.platform = takeValue(args, i, arg);
       i++;
+    } else if (arg === "--builder-host") {
+      options.builderHost = takeValue(args, i, arg);
+      i++;
     } else if (arg === "--no-cache") {
       options.noCache = true;
+    } else if (arg === "--workspace") {
+      options.forceWorkspace = true;
     } else if (arg === "--progress") {
       options.progress = takeValue(args, i, arg);
       i++;
@@ -126,6 +138,37 @@ function maybeRun(command: string[]): string | undefined {
   }
 }
 
+function dockerArchitecture(): string {
+  const value = arch();
+  if (value === "x64") return "amd64";
+  if (value === "arm64") return "arm64";
+  if (value === "arm") return "arm";
+  return value;
+}
+
+function requestedPlatforms(options: Options): string[] {
+  return options.platform?.split(",").map((platform) => platform.trim()).filter(Boolean) ?? [`linux/${dockerArchitecture()}`];
+}
+
+function localImageHasPlatforms(ref: string, platforms: string[]): boolean {
+  const output = maybeRun(["docker", "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", ref]);
+  if (!output) return false;
+  const localPlatform = output.split(/\s+/)[0];
+  return platforms.every((platform) => platform === localPlatform);
+}
+
+function registryImageHasPlatforms(ref: string, platforms: string[]): boolean {
+  const text = maybeRun(["docker", "buildx", "imagetools", "inspect", ref]);
+  if (!text) return false;
+  const available = new Set([...text.matchAll(/^\s*Platform:\s*(\S+)/gm)].map((match) => match[1]!));
+  return platforms.every((platform) => available.has(platform));
+}
+
+function workspaceImageExists(ref: string, options: Options): boolean {
+  const platforms = requestedPlatforms(options);
+  return options.push ? registryImageHasPlatforms(ref, platforms) : localImageHasPlatforms(ref, platforms);
+}
+
 function sanitizeTag(tag: string): string {
   const sanitized = tag.trim().replaceAll(/[^A-Za-z0-9_.-]/g, "-").replaceAll(/^[.-]+/g, "").slice(0, 128);
   return sanitized || "local";
@@ -149,10 +192,6 @@ function gitCommitDescription(): string {
   return maybeRun(["git", "log", "-1", "--pretty=%s"]) || "local build";
 }
 
-function imageCreated(): string {
-  return new Date().toISOString();
-}
-
 function workspaceImageRepository(appImage: string): string {
   if (appImage === "ghcr.io/lucasmeijer/atelier") return "ghcr.io/lucasmeijer/atelier-workspace";
   return `${appImage}-workspace`;
@@ -164,15 +203,35 @@ function workspaceHashTag(metadataTag: string): string {
   return metadataTag.slice(marker.length);
 }
 
+function builderNameForHost(host: string): string {
+  return host.replaceAll(/[^A-Za-z0-9_.-]/g, "-").replaceAll(/^[.-]+/g, "") || "remote";
+}
+
+function builderName(options: Options): string | undefined {
+  return options.builderHost ? builderNameForHost(options.builderHost) : undefined;
+}
+
+function ensureBuilder(options: Options): void {
+  if (!options.builderHost) return;
+  const name = builderName(options)!;
+  if (!maybeRun(["docker", "buildx", "inspect", name])) {
+    run(["docker", "buildx", "create", "--name", name, "--driver", "docker-container", `ssh://${options.builderHost}`], { inherit: true });
+  }
+  run(["docker", "buildx", "inspect", "--bootstrap", name], { inherit: true });
+}
+
 function dockerBuildCommand(options: Options): string[] {
   const hasMultiplePlatforms = Boolean(options.platform?.includes(","));
   if (hasMultiplePlatforms && !options.push) fail("multi-platform builds require --push");
-  return options.platform || options.push
-    ? ["docker", "buildx", "build", options.push ? "--push" : "--load"]
-    : ["docker", "build"];
+  const name = builderName(options);
+  if (options.platform || options.push || name) {
+    return ["docker", "buildx", "build", ...(name ? ["--builder", name] : []), options.push ? "--push" : "--load"];
+  }
+  return ["docker", "build"];
 }
 
 const options = parseArgs(process.argv.slice(2));
+ensureBuilder(options);
 const tags = options.tags.length > 0 ? options.tags.map(sanitizeTag) : [defaultTag()];
 if (options.latest) tags.push("latest");
 if (options.stable) tags.push("stable");
@@ -192,16 +251,22 @@ if (options.noCache) workspaceBuildCommand.push("--no-cache");
 if (options.progress) workspaceBuildCommand.push("--progress", options.progress);
 workspaceBuildCommand.push("--file", `${workspaceContextDir}/Dockerfile`, workspaceContextDir);
 
-console.log(`${options.push ? "Publishing" : "Building"} default Atelier workspace image:`);
-console.log(`  ${defaultWorkspaceImageRef}`);
-console.log();
-run(workspaceBuildCommand, { inherit: true });
+const shouldBuildWorkspace = options.forceWorkspace || options.noCache || !workspaceImageExists(defaultWorkspaceImageRef, options);
+if (shouldBuildWorkspace) {
+  console.log(`${options.push ? "Publishing" : "Building"} default Atelier workspace image:`);
+  console.log(`  ${defaultWorkspaceImageRef}`);
+  console.log();
+  run(workspaceBuildCommand, { inherit: true });
+} else {
+  console.log(`Reusing existing default Atelier workspace image:`);
+  console.log(`  ${defaultWorkspaceImageRef}`);
+  console.log(`  pass --workspace to rebuild it`);
+}
 
 const defaultBuildArgs = [
   `ATELIER_COMMIT_ID=${gitCommitId()}`,
   `ATELIER_COMMIT_DESCRIPTION=${gitCommitDescription()}`,
   `ATELIER_DEFAULT_WORKSPACE_IMAGE=${defaultWorkspaceImageRef}`,
-  `ATELIER_IMAGE_CREATED=${imageCreated()}`,
 ];
 const allBuildArgs = [...defaultBuildArgs, ...options.buildArgs];
 
@@ -222,5 +287,5 @@ run(buildCommand, { inherit: true });
 
 console.log();
 console.log(options.push ? "Published:" : "Built:");
-console.log(`  ${defaultWorkspaceImageRef}`);
+console.log(`  ${defaultWorkspaceImageRef}${shouldBuildWorkspace ? "" : " (reused)"}`);
 for (const ref of imageRefs) console.log(`  ${ref}`);

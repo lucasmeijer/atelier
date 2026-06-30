@@ -15,7 +15,7 @@
   "scripts": {
     "generate:workspace-modules": "bun run --cwd apps/web scripts/generate-workspace-modules.ts",
     "image:build": "bun run scripts/build-atelier-image.ts",
-    "image:publish": "bun run scripts/build-atelier-image.ts --push",
+    "image:publish": "bun run scripts/build-atelier-image.ts --push --platform linux/amd64 --builder-host agent-test",
     "docker:dev": "bun run scripts/run-atelier-docker-dev.ts",
     "check": "bun run generate:workspace-modules && bunx tsc --noEmit -p tsconfig.json",
     "test": "bun run generate:workspace-modules && bun test",
