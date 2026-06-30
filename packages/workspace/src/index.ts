@@ -24,6 +24,8 @@ const workspaceCreatedByAtelierImageIdLabel = "com.atelier.created-by-image-id";
 const titlePath = "title";
 const parkedPath = "parked";
 const initPath = "init.json";
+const workspaceManifestPath = ".atelier/workspace.json";
+const workspaceStartupTimeoutMs = 120_000;
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
 export const workspaceDesktopPort = 6080;
@@ -96,7 +98,7 @@ async function inspectWorkspaceContainerImage(id: string): Promise<string> {
 }
 
 async function waitForWorkspaceStartup(id: string): Promise<void> {
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + workspaceStartupTimeoutMs;
   while (Date.now() < deadline) {
     const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", "test -f /.atelier/ready"]);
     if (result.exitCode === 0) return;
@@ -151,6 +153,47 @@ async function readWorkspaceInit(context: Awaited<ReturnType<typeof getAtelierRu
   const file = Bun.file(workspaceMetadataPath(context, id, initPath));
   if (!(await file.exists())) return undefined;
   return JSON.parse(await file.text()) as WorkspaceInitInstruction;
+}
+
+interface RepoWorkspaceManifest {
+  version: 1;
+  privileged?: boolean;
+  docker?: { privileged?: boolean };
+  initScripts?: string[];
+}
+
+function parseRepoWorkspaceManifest(text: string, path: string): RepoWorkspaceManifest {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw invalidArguments(`invalid ${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw invalidArguments(`invalid ${path}: expected object`);
+  const record = parsed as Record<string, unknown>;
+  if (record.version !== 1) throw invalidArguments(`invalid ${path}: unsupported version`);
+  if (record.privileged !== undefined && typeof record.privileged !== "boolean") throw invalidArguments(`invalid ${path}: privileged must be a boolean`);
+  const docker = record.docker;
+  if (docker !== undefined && (!docker || typeof docker !== "object" || Array.isArray(docker))) throw invalidArguments(`invalid ${path}: docker must be an object`);
+  const dockerRecord = docker as Record<string, unknown> | undefined;
+  if (dockerRecord?.privileged !== undefined && typeof dockerRecord.privileged !== "boolean") throw invalidArguments(`invalid ${path}: docker.privileged must be a boolean`);
+  const initScripts = record.initScripts;
+  if (initScripts !== undefined && (!Array.isArray(initScripts) || !initScripts.every((script) => typeof script === "string"))) throw invalidArguments(`invalid ${path}: initScripts must be an array of strings`);
+  return {
+    version: 1,
+    ...(record.privileged !== undefined ? { privileged: record.privileged } : {}),
+    ...(dockerRecord ? { docker: { ...(dockerRecord.privileged !== undefined ? { privileged: dockerRecord.privileged } : {}) } } : {}),
+    ...(initScripts ? { initScripts } : {}),
+  };
+}
+
+async function applyRepoWorkspaceManifest(sourcePath: string, plan: WorkspaceDockerPlan): Promise<void> {
+  const path = join(sourcePath, workspaceManifestPath);
+  const file = Bun.file(path);
+  if (!(await file.exists())) return;
+  const manifest = parseRepoWorkspaceManifest(await file.text(), workspaceManifestPath);
+  if (manifest.privileged || manifest.docker?.privileged) plan.extraArgs.push("--privileged");
+  plan.initScripts.push(...(manifest.initScripts ?? []));
 }
 
 export async function execWorkspaceCommand(id: string, command: string[], options: WorkspaceCommandOptions = {}): Promise<WorkspaceExecResult> {
@@ -230,6 +273,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     plan.mounts.push({ type: "bind", source: source.dockerHostWorktreePath, target: workspaceRoot });
     const activePlan = plan;
     await provisionStep(options.events, id, "workspace.plan", "Prepare workspace container plan", async () => {
+      await applyRepoWorkspaceManifest(source.worktreePath, activePlan);
       await options.events?.emit("workspace_plan_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot, plan: activePlan });
     });
     activePlan.image ??= forkImage ?? await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImage({ workspaceId: id, events: options.events, sourcePath: source.worktreePath }));
