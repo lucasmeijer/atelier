@@ -45,7 +45,7 @@ function context() {
     sidebar,
     ctx: {
       events: {},
-      registry: { activeWorkspaceId: () => undefined, setTabBusy: () => {}, setTabUnread: () => {} },
+      registry: { setTabBusy: () => {}, setTabUnread: () => {} },
       workspaceRowContributions: { set: () => {} },
       globalSidebarContributions: { set: (_id: string, html?: string) => sidebar.push(html ?? "") },
       layouts: {},

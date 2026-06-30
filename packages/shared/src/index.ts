@@ -84,7 +84,7 @@ export interface StaticFileContribution {
   contentType: string;
 }
 
-export type WorkspaceTabPlacement = "active-group" | "preview-group";
+export type WorkspaceTabPlacement = "visible-group" | "preview-group";
 
 export interface WorkspaceTabPlacementResult {
   groupId: string;
@@ -94,8 +94,8 @@ export interface WorkspaceTabPlacementResult {
 
 export interface WorkspaceLayoutPlacementController {
   /**
-   * Ensure a tab is visible and active in the preview layout group: the first
-   * group without an agent tab, creating a new group when every group has one.
+   * Ensure a tab is visible in the preview layout group: the first group without
+   * an agent tab, creating a new group when every group has one.
    */
   ensureTabInPreviewGroup(workspaceId: string, tabKeys: string[], tabKey: string): WorkspaceTabPlacementResult | undefined;
 }
@@ -192,7 +192,6 @@ export interface AgentWorkspaceCreateResult {
 export interface WorkspaceServerModuleContext {
   events: unknown;
   registry: {
-    activeWorkspaceId(): string | undefined;
     setTabBusy(workspaceId: string, tabKey: string, busy: boolean): void;
     setTabUnread(workspaceId: string, tabKey: string, unread: boolean): void;
   };
@@ -226,10 +225,11 @@ export interface WorkspaceClientApplication {
 
 export type WorkspaceClientControllerConstructor = new (...args: unknown[]) => { element: Element };
 
-export interface WorkspaceClientActivateTabContext {
+export interface WorkspaceClientTabVisibilityContext {
   workspaceId: string;
   tabKey: string;
   group: Element;
+  pane: HTMLElement;
   application: WorkspaceClientApplication;
 }
 
@@ -248,9 +248,10 @@ export interface WorkspaceClientWorkspaceAppFrameContext {
 }
 
 export interface WorkspaceClientHooks {
-  onActivateTab(handler: (context: WorkspaceClientActivateTabContext) => void): void;
+  onBecomeVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void;
+  onNoLongerVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void;
   onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void;
-  onRevealTab(handler: (context: WorkspaceClientActivateTabContext) => void): void;
+  onRevealTab(handler: (context: WorkspaceClientTabVisibilityContext) => void): void;
   onChooseUnreadTab(handler: (tabs: string[]) => string | undefined): void;
   onWorkspaceCommand(handler: (commandId: string) => boolean | void | Promise<boolean | void>): void;
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void;

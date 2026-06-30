@@ -122,11 +122,11 @@ export interface AgentPaneState {
   stats: AgentStatsView;
 }
 
-export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { active?: boolean } = {}): Promise<string> {
+export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
   const key = agentTabKey(agent.label);
   const draftId = randomUUID();
   const attachRowId = ids.attachRow(ctx);
-  return `<section id="${domId("agent_pane", ctx.workspaceId, agent.label)}" class="tab-pane agent-tab-pane ${options.active ? "active" : ""}" data-tab-pane="${escapeHtml(key)}">
+  return `<section id="${domId("agent_pane", ctx.workspaceId, agent.label)}" class="tab-pane agent-tab-pane ${options.visible ? "visible" : ""}" data-tab-pane="${escapeHtml(key)}">
     <div class="agent-pane" id="${ids.pane(ctx)}"
       data-controller="agent-pane agent-attachments"
       data-agent-pane-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
@@ -829,7 +829,7 @@ function renderRewindDialog(ctx: AgentRenderContext): string {
   return `<dialog class="agent-rewind-dialog" data-agent-pane-target="rewindDialog">
     <form method="post" action="${escapeHtml(agentPath(ctx, "/rewind"))}" data-action="turbo:submit-start->agent-pane#rewindSubmitted">
       <h2>⟲ Rewind conversation</h2>
-      <p class="agent-rewind-sub">Everything from <b data-agent-pane-target="rewindPreview"></b> onward is removed from the active branch. Files in the workspace are not changed.</p>
+      <p class="agent-rewind-sub">Everything from <b data-agent-pane-target="rewindPreview"></b> onward is removed from the visible branch. Files in the workspace are not changed.</p>
       <input type="hidden" name="entry" value="" data-agent-pane-target="rewindEntry">
       <label class="agent-rewind-opt"><input type="radio" name="rewindMode" value="discard" checked> <span><span class="t">Discard the tail</span><span class="d">Just go back. The branch stays in the session file.</span></span></label>
       <label class="agent-rewind-opt"><input type="radio" name="rewindMode" value="summary"> <span><span class="t">Replace with an AI summary</span><span class="d">A generated summary of the discarded turns is kept as context.</span></span></label>

@@ -30,7 +30,7 @@ async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAg
         { workspaceId, label: agent.label },
         agent,
         state,
-        { active: index === 0 },
+        { visible: index === 0 },
       ),
     };
   }));
@@ -92,7 +92,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
     registerPiConfigEvents(events);
     registerAgentEvents(events);
     events.on("workspace_agent_turn_finished", ({ workspaceId, agentLabel }) => {
-      if (context.registry.activeWorkspaceId() !== workspaceId) context.registry.setTabUnread(workspaceId, agentTabKey(agentLabel), true);
+      context.registry.setTabUnread(workspaceId, agentTabKey(agentLabel), true);
     });
     context.registerProvisioningHook({
       id: "workspace.agent",

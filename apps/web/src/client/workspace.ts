@@ -5,7 +5,7 @@ import {
   escapeHtml,
   looksLikeProjectSpec,
   providerBrandIconHtml,
-  type WorkspaceClientActivateTabContext,
+  type WorkspaceClientTabVisibilityContext,
   type WorkspaceClientFocusContext,
   type WorkspaceClientHooks,
   type WorkspaceClientWorkspaceAppFrameContext,
@@ -34,24 +34,30 @@ async function waitForStimulus(): Promise<typeof window.Stimulus> {
 const { Application, Controller } = await waitForStimulus();
 
 class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
-  private readonly activateTabHandlers: Array<(context: WorkspaceClientActivateTabContext) => void> = [];
+  private readonly becomeVisibleHandlers: Array<(context: WorkspaceClientTabVisibilityContext) => void> = [];
+  private readonly noLongerVisibleHandlers: Array<(context: WorkspaceClientTabVisibilityContext) => void> = [];
   private readonly focusGroupHandlers: Array<(context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>> = [];
-  private readonly revealTabHandlers: Array<(context: WorkspaceClientActivateTabContext) => void> = [];
+  private readonly revealTabHandlers: Array<(context: WorkspaceClientTabVisibilityContext) => void> = [];
   private readonly chooseUnreadTabHandlers: Array<(tabs: string[]) => string | undefined> = [];
   private readonly workspaceCommandHandlers: Array<(commandId: string) => boolean | void | Promise<boolean | void>> = [];
   private readonly workspaceAppFrameUrlHandlers: Array<(context: WorkspaceClientWorkspaceAppFrameContext) => void> = [];
   private readonly workspaceAppFrameRefreshHandlers: Array<(context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void> = [];
 
-  onActivateTab(handler: (context: WorkspaceClientActivateTabContext) => void): void { this.activateTabHandlers.push(handler); }
+  onBecomeVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void { this.becomeVisibleHandlers.push(handler); }
+  onNoLongerVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void { this.noLongerVisibleHandlers.push(handler); }
   onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void { this.focusGroupHandlers.push(handler); }
-  onRevealTab(handler: (context: WorkspaceClientActivateTabContext) => void): void { this.revealTabHandlers.push(handler); }
+  onRevealTab(handler: (context: WorkspaceClientTabVisibilityContext) => void): void { this.revealTabHandlers.push(handler); }
   onChooseUnreadTab(handler: (tabs: string[]) => string | undefined): void { this.chooseUnreadTabHandlers.push(handler); }
   onWorkspaceCommand(handler: (commandId: string) => boolean | void | Promise<boolean | void>): void { this.workspaceCommandHandlers.push(handler); }
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void { this.workspaceAppFrameUrlHandlers.push(handler); }
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void { this.workspaceAppFrameRefreshHandlers.push(handler); }
 
-  activateTab(context: WorkspaceClientActivateTabContext): void {
-    this.activateTabHandlers.forEach((handler) => handler(context));
+  becomeVisible(context: WorkspaceClientTabVisibilityContext): void {
+    this.becomeVisibleHandlers.forEach((handler) => handler(context));
+  }
+
+  noLongerVisible(context: WorkspaceClientTabVisibilityContext): void {
+    this.noLongerVisibleHandlers.forEach((handler) => handler(context));
   }
 
   async focusGroup(context: WorkspaceClientFocusContext): Promise<boolean> {
@@ -61,7 +67,7 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
     return false;
   }
 
-  revealTab(context: WorkspaceClientActivateTabContext): void {
+  revealTab(context: WorkspaceClientTabVisibilityContext): void {
     this.revealTabHandlers.forEach((handler) => handler(context));
   }
 
@@ -90,6 +96,47 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
 }
 
 const clientHooks = new WorkspaceClientHookRegistry();
+const visiblePaneState = new WeakSet<HTMLElement>();
+
+function tabVisibilityContext(pane: HTMLElement): WorkspaceClientTabVisibilityContext | undefined {
+  const tabKey = pane.dataset.tabPane;
+  const resident = pane.closest<HTMLElement>(".workspace-detail-resident[data-workspace-id]");
+  const workspaceId = resident?.dataset.workspaceId;
+  const group = pane.closest<HTMLElement>(".workspace-group");
+  if (!tabKey || !workspaceId || !group) return undefined;
+  return { workspaceId, tabKey, group, pane, application };
+}
+
+function visiblePanes(root: ParentNode): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(".workspace-detail-resident.visible .tab-pane.visible[data-tab-pane]")];
+}
+
+function emitBecomeVisible(pane: HTMLElement): void {
+  if (visiblePaneState.has(pane)) return;
+  const context = tabVisibilityContext(pane);
+  if (!context) return;
+  visiblePaneState.add(pane);
+  clientHooks.becomeVisible(context);
+}
+
+function emitNoLongerVisible(pane: HTMLElement): void {
+  if (!visiblePaneState.has(pane)) return;
+  const context = tabVisibilityContext(pane);
+  if (!context) return;
+  visiblePaneState.delete(pane);
+  clientHooks.noLongerVisible(context);
+}
+
+function emitPaneVisibilityChanges(before: HTMLElement[], after: HTMLElement[]): void {
+  const afterSet = new Set(after);
+  const beforeSet = new Set(before);
+  before.filter((pane) => !afterSet.has(pane)).forEach(emitNoLongerVisible);
+  after.filter((pane) => !beforeSet.has(pane)).forEach(emitBecomeVisible);
+}
+
+function isPaneEffectivelyVisible(pane: HTMLElement): boolean {
+  return Boolean(pane.closest(".workspace-detail-resident.visible") && pane.classList.contains("visible"));
+}
 
 class WorkspaceShellController extends Controller {
   static targets = ["sidebar", "toggle"];
@@ -157,63 +204,53 @@ class WorkspaceTabsController extends Controller {
   declare readonly hasInitialTabValue: boolean;
 
   connect(): void {
-    if (this.hasInitialTabValue && this.initialTabValue) {
-      this.activateTab(this.initialTabValue, { persist: false });
-      return;
-    }
-    const activeTab = this.element.querySelector<HTMLElement>(".group-tab.active[data-tab]")?.dataset.tab;
-    if (activeTab) this.activateTab(activeTab, { persist: false });
+    const visibleTab = this.hasInitialTabValue && this.initialTabValue
+      ? this.initialTabValue
+      : this.element.querySelector<HTMLElement>(".group-tab.visible[data-tab]")?.dataset.tab;
+    if (visibleTab) this.showTab(visibleTab, { persist: false, emitCurrent: true });
   }
 
   private get root(): ParentNode {
     return this.element.closest("[data-workspace-id]") ?? document;
   }
 
-  activate(event: Event & { params?: { tab?: string } }): void {
+  show(event: Event & { params?: { tab?: string } }): void {
     const tabName = event.params?.tab ?? (event.currentTarget instanceof HTMLElement ? event.currentTarget.dataset.tab : undefined);
     if (!tabName) return;
-    this.activateTab(tabName);
+    this.showTab(tabName);
   }
 
-  async close(event: Event & { params?: { tab?: string } }): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
-    const tabName = event.params?.tab ?? (event.currentTarget instanceof HTMLElement ? event.currentTarget.dataset.tab : undefined);
-    if (!tabName) return;
-    const html = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/tabs/${encodeURIComponent(tabName)}/close`, {
-      method: "POST",
-      headers: { "Accept": "text/vnd.turbo-stream.html" },
-    }).then((response) => response.text());
-    window.Turbo?.renderStreamMessage(html);
-  }
-
-  stopPropagation(event: Event): void {
-    event.stopPropagation();
-  }
-
-  activateTab(tabName: string, options: { persist?: boolean } = {}): void {
+  showTab(tabName: string, options: { persist?: boolean; emitLifecycle?: boolean; emitCurrent?: boolean } = {}): void {
+    const group = this.group;
+    const before = group.querySelector<HTMLElement>(".tab-pane.visible[data-tab-pane]");
+    const beforeWasVisible = before ? isPaneEffectivelyVisible(before) : false;
     this.element.querySelectorAll<HTMLElement>(".group-tab[data-tab]").forEach((tab) => {
-      tab.classList.toggle("active", tab.dataset.tab === tabName);
+      tab.classList.toggle("visible", tab.dataset.tab === tabName);
       tab.classList.toggle("muted", tab.dataset.tab !== tabName);
     });
-    this.group.querySelectorAll<HTMLElement>(".tab-pane[data-tab-pane]").forEach((pane) => {
-      pane.classList.toggle("active", pane.dataset.tabPane === tabName);
+    group.querySelectorAll<HTMLElement>(".tab-pane[data-tab-pane]").forEach((pane) => {
+      pane.classList.toggle("visible", pane.dataset.tabPane === tabName);
     });
 
-    clientHooks.activateTab({ workspaceId: this.workspaceIdValue, tabKey: tabName, group: this.group, application });
-    startWorkspaceAppFrames(this.group, tabName);
-    if (options.persist !== false) void this.persistActiveTab(tabName);
+    const after = group.querySelector<HTMLElement>(`.tab-pane.visible[data-tab-pane="${CSS.escape(tabName)}"]`);
+    if (options.emitLifecycle !== false) {
+      if (before && before !== after && beforeWasVisible) emitNoLongerVisible(before);
+      if (after && before !== after && isPaneEffectivelyVisible(after)) emitBecomeVisible(after);
+      if (after && before === after && options.emitCurrent && isPaneEffectivelyVisible(after)) emitBecomeVisible(after);
+    }
+    if (after) startWorkspaceAppFrames(group, tabName);
+    if (options.persist !== false) void this.persistVisibleTab(tabName);
   }
 
   private get group(): ParentNode & Element {
     return this.element.closest(".workspace-group") ?? this.root as ParentNode & Element;
   }
 
-  private async persistActiveTab(tabName: string): Promise<void> {
+  private async persistVisibleTab(tabName: string): Promise<void> {
     await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/view-state`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ activeTab: tabName, groupId: this.groupIdValue }),
+      body: JSON.stringify({ visibleTab: tabName, groupId: this.groupIdValue }),
     });
   }
 }
@@ -461,13 +498,13 @@ class AtelierShortcutsController extends Controller {
       ...this.commands.values(),
       ...this.workspaceCommands().map((command) => ({
         ...command,
-        run: () => this.executeActiveWorkspaceCommand(command.id),
+        run: () => this.executeVisibleWorkspaceCommand(command.id),
       })),
     ];
   }
 
   private workspaceCommands(): WorkspaceCommandRegistration[] {
-    const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.active");
+    const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
     const groups = resident?.querySelector<HTMLElement>(".workspace-groups[data-workspace-commands]");
     return groups ? JSON.parse(groups.dataset.workspaceCommands!) as WorkspaceCommandRegistration[] : [];
   }
@@ -564,9 +601,9 @@ class AtelierShortcutsController extends Controller {
     focusDialogPromptEnd(dialog);
   }
 
-  private activeWorkspaceId(): string | undefined {
-    return document.querySelector<HTMLElement>(".workspace-row.active[data-workspace-id]")?.dataset.workspaceId
-      ?? residencyController()?.activeWorkspaceId();
+  private visibleWorkspaceId(): string | undefined {
+    return document.querySelector<HTMLElement>(".workspace-row.visible[data-workspace-id]")?.dataset.workspaceId
+      ?? residencyController()?.visibleWorkspaceId();
   }
 
   private async openOldestUnreadWorkspace(): Promise<void> {
@@ -583,7 +620,7 @@ class AtelierShortcutsController extends Controller {
     if (!workspaceId) return;
     const row = document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`);
     const revealUnreadTab = row ? clientHooks.chooseUnreadTab(this.unreadTabs(row)) : undefined;
-    workspaceListController()?.markActiveWorkspace(workspaceId);
+    workspaceListController()?.markVisibleWorkspace(workspaceId);
     void residencyController()?.selectWorkspace(workspaceId, url.pathname, { revealUnreadTab });
   }
 
@@ -598,14 +635,14 @@ class AtelierShortcutsController extends Controller {
     const rows = [...document.querySelectorAll<HTMLElement>(".workspace-row[data-workspace-id]")]
       .filter((row) => !row.classList.contains("pending-delete") && row.dataset.phase !== "checking_delete" && row.dataset.phase !== "deleting");
     if (rows.length === 0) return;
-    const currentWorkspaceId = this.activeWorkspaceId();
+    const currentWorkspaceId = this.visibleWorkspaceId();
     const currentIndex = currentWorkspaceId ? rows.findIndex((row) => row.dataset.workspaceId === currentWorkspaceId) : -1;
     const row = this.adjacentUnparkedWorkspaceRow(rows, currentIndex, direction);
     const workspaceId = row?.dataset.workspaceId;
     const href = row?.querySelector<HTMLAnchorElement>("a.row-main")?.href;
     if (!row || !workspaceId || !href) return;
     const revealUnreadTab = clientHooks.chooseUnreadTab(this.unreadTabs(row));
-    workspaceListController()?.markActiveWorkspace(workspaceId);
+    workspaceListController()?.markVisibleWorkspace(workspaceId);
     await residencyController()?.selectWorkspace(workspaceId, href, { revealUnreadTab });
   }
 
@@ -619,8 +656,8 @@ class AtelierShortcutsController extends Controller {
     return undefined;
   }
 
-  private async executeActiveWorkspaceCommand(commandId: string): Promise<void> {
-    const workspaceId = this.activeWorkspaceId();
+  private async executeVisibleWorkspaceCommand(commandId: string): Promise<void> {
+    const workspaceId = this.visibleWorkspaceId();
     if (!workspaceId) return;
     if (await clientHooks.handleWorkspaceCommand(commandId)) return;
     try {
@@ -665,8 +702,8 @@ class ModalController extends Controller {
   declare readonly element: HTMLDialogElement;
   declare readonly autoShowValue: boolean;
   private readonly onClose = (): void => {
-    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    active?.blur();
+    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    activeElement?.blur();
   };
 
   connect(): void {
@@ -721,9 +758,9 @@ class WorkspaceResidencyController extends Controller {
 
   connect(): void {
     const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
-    const activeResident = this.residentTargets.find((resident) => resident.classList.contains("active"))
+    const visibleResident = this.residentTargets.find((resident) => resident.classList.contains("visible"))
       ?? (workspaceId ? this.residentTargets.find((resident) => resident.dataset.workspaceId === decodeURIComponent(workspaceId)) : undefined);
-    if (activeResident) this.activateResident(activeResident);
+    if (visibleResident) this.showResident(visibleResident);
   }
 
   async selectWorkspace(workspaceId: string, href: string, options: { revealUnreadTab?: string } = {}): Promise<void> {
@@ -733,7 +770,7 @@ class WorkspaceResidencyController extends Controller {
     history.pushState({}, "", href);
     const existing = this.residentTargets.find((resident) => resident.dataset.workspaceId === workspaceId);
     if (existing) {
-      this.activateResident(existing, options);
+      this.showResident(existing, options);
       return;
     }
 
@@ -750,46 +787,53 @@ class WorkspaceResidencyController extends Controller {
       return;
     }
     this.element.appendChild(resident);
-    // Only activate if no newer selection happened while we were fetching;
+    // Only show it if no newer selection happened while we were fetching;
     // the resident stays cached either way.
-    if (seq === this.selectionSeq) this.activateResident(resident, options);
+    if (seq === this.selectionSeq) this.showResident(resident, options);
     this.evictIfNeeded();
   }
 
   residentTargetConnected(resident: HTMLElement): void {
     // Broadcast residents (e.g. the boot placeholder being replaced by the real
-    // detail) arrive without an "active" class; activate them only if this
-    // client is currently looking at that workspace.
-    if (resident.classList.contains("active")) return;
+    // detail) arrive without a "visible" class; show them only if this client
+    // is currently looking at that workspace.
+    if (resident.classList.contains("visible")) return;
     const workspaceId = resident.dataset.workspaceId;
     if (!workspaceId) return;
-    if (location.pathname === `/workspaces/${encodeURIComponent(workspaceId)}`) this.activateResident(resident);
+    if (location.pathname === `/workspaces/${encodeURIComponent(workspaceId)}`) this.showResident(resident);
   }
 
   removeWorkspace(workspaceId: string): void {
     const resident = this.residentTargets.find((candidate) => candidate.dataset.workspaceId === workspaceId);
     if (!resident) return;
-    const wasActive = resident.classList.contains("active");
+    const wasVisible = resident.classList.contains("visible");
+    if (wasVisible) visiblePanes(resident).forEach(emitNoLongerVisible);
     resident.remove();
-    if (wasActive) this.showEmpty();
+    if (wasVisible) this.showEmpty();
   }
 
   hasWorkspace(workspaceId: string): boolean {
     return this.residentTargets.some((resident) => resident.dataset.workspaceId === workspaceId);
   }
 
-  activeWorkspaceId(): string | undefined {
-    return this.residentTargets.find((resident) => resident.classList.contains("active"))?.dataset.workspaceId;
+  visibleWorkspaceId(): string | undefined {
+    return this.residentTargets.find((resident) => resident.classList.contains("visible"))?.dataset.workspaceId;
+  }
+
+  private hideResidents(): void {
+    const before = visiblePanes(this.element);
+    this.residentTargets.forEach((resident) => resident.classList.remove("visible"));
+    emitPaneVisibilityChanges(before, visiblePanes(this.element));
   }
 
   private showEmpty(): void {
-    this.residentTargets.forEach((resident) => resident.classList.remove("active"));
+    this.hideResidents();
     this.loadingTargets.forEach((loading) => { loading.hidden = true; });
     this.emptyTargets.forEach((empty) => { empty.hidden = false; });
   }
 
   private showLoading(): void {
-    this.residentTargets.forEach((resident) => resident.classList.remove("active"));
+    this.hideResidents();
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
     this.loadingTargets.forEach((loading) => {
       loading.hidden = false;
@@ -800,7 +844,7 @@ class WorkspaceResidencyController extends Controller {
 
   private showLoadError(error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
-    this.residentTargets.forEach((resident) => resident.classList.remove("active"));
+    this.hideResidents();
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
     this.loadingTargets.forEach((loading) => {
       loading.hidden = false;
@@ -825,25 +869,32 @@ class WorkspaceResidencyController extends Controller {
     template.innerHTML = html.trim();
     const resident = template.content.firstElementChild;
     if (!(resident instanceof HTMLElement)) throw new Error("Workspace response did not include a resident view");
+    resident.classList.remove("visible");
     return resident;
   }
 
-  private activateResident(resident: HTMLElement, options: { revealUnreadTab?: string } = {}): void {
+  private showResident(resident: HTMLElement, options: { revealUnreadTab?: string } = {}): void {
+    const before = visiblePanes(this.element);
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
     this.loadingTargets.forEach((loading) => { loading.hidden = true; });
-    this.residentTargets.forEach((candidate) => candidate.classList.toggle("active", candidate === resident));
     resident.dataset.lastActivatedAt = String(Date.now());
     const revealTab = options.revealUnreadTab;
     const tabs = revealTab
       ? this.tabbarForTab(resident, revealTab) ?? resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]')
       : resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]');
     const controller = tabs ? application.getControllerForElementAndIdentifier(tabs, "workspace-tabs") as WorkspaceTabsController | null : null;
-    const activeTab = revealTab ?? tabs?.querySelector<HTMLElement>(".group-tab.active[data-tab]")?.dataset.tab;
-    if (activeTab) controller?.activateTab(activeTab, { persist: false });
+    const visibleTab = revealTab ?? tabs?.querySelector<HTMLElement>(".group-tab.visible[data-tab]")?.dataset.tab;
+    if (visibleTab) controller?.showTab(visibleTab, { persist: false, emitLifecycle: false });
+    this.residentTargets.forEach((candidate) => candidate.classList.toggle("visible", candidate === resident));
+    const after = visiblePanes(this.element);
+    emitPaneVisibilityChanges(before, after);
     const workspaceId = resident.dataset.workspaceId;
-    if (workspaceId) void this.activateWorkspace(workspaceId);
-    const group = tabs?.closest(".workspace-group") ?? resident;
-    if (revealTab && workspaceId) clientHooks.revealTab({ workspaceId, tabKey: revealTab, group, application });
+    if (workspaceId) void this.clearWorkspaceUnread(workspaceId);
+    if (revealTab && workspaceId) {
+      const pane = after.find((candidate) => candidate.dataset.tabPane === revealTab);
+      const context = pane ? tabVisibilityContext(pane) : undefined;
+      if (context) clientHooks.revealTab(context);
+    }
   }
 
   private tabbarForTab(resident: HTMLElement, tabName: string): HTMLElement | null {
@@ -851,8 +902,8 @@ class WorkspaceResidencyController extends Controller {
     return tab?.closest<HTMLElement>('[data-controller~="workspace-tabs"]') ?? null;
   }
 
-  private async activateWorkspace(workspaceId: string): Promise<void> {
-    const html = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/activate`, {
+  private async clearWorkspaceUnread(workspaceId: string): Promise<void> {
+    const html = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/unread/clear`, {
       method: "POST",
       headers: { "Accept": "text/vnd.turbo-stream.html" },
     }).then((response) => response.text());
@@ -864,7 +915,7 @@ class WorkspaceResidencyController extends Controller {
     const residents = [...this.residentTargets];
     if (residents.length <= max) return;
     residents
-      .filter((resident) => !resident.classList.contains("active"))
+      .filter((resident) => !resident.classList.contains("visible"))
       .sort((a, b) => Number(a.dataset.lastActivatedAt ?? 0) - Number(b.dataset.lastActivatedAt ?? 0))
       .slice(0, residents.length - max)
       .forEach((resident) => resident.remove());
@@ -882,7 +933,7 @@ function workspaceListController(): WorkspaceListController | null {
 }
 
 /**
- * Owns all per-client list state: which row is "active" and the optimistic
+ * Owns all per-client list state: which row is visible and the optimistic
  * pending-delete feedback. Broadcast HTML from the server never carries this.
  */
 class WorkspaceListController extends Controller {
@@ -923,7 +974,7 @@ class WorkspaceListController extends Controller {
     const workspaceId = row.dataset.workspaceId;
     const revealUnreadTab = clientHooks.chooseUnreadTab(this.unreadTabs(row));
     if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href, { revealUnreadTab });
-    this.markActive(workspaceId);
+    this.markVisible(workspaceId);
   }
 
   async createWorkspace(event: Event): Promise<void> {
@@ -945,7 +996,7 @@ class WorkspaceListController extends Controller {
       const url = new URL(location, window.location.href);
       const workspaceId = decodeURIComponent(url.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1] ?? "");
       if (!workspaceId) return;
-      this.markActive(workspaceId);
+      this.markVisible(workspaceId);
       void residencyController()?.selectWorkspace(workspaceId, url.pathname);
     } catch (error) {
       console.error("Could not create workspace", error);
@@ -965,11 +1016,11 @@ class WorkspaceListController extends Controller {
     const workspaceId = row.dataset.workspaceId;
     const revealUnreadTab = clientHooks.chooseUnreadTab(this.unreadTabs(row));
     if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href, { revealUnreadTab });
-    this.markActive(workspaceId);
+    this.markVisible(workspaceId);
   }
 
-  markActiveWorkspace(workspaceId: string): void {
-    this.markActive(workspaceId);
+  markVisibleWorkspace(workspaceId: string): void {
+    this.markVisible(workspaceId);
   }
 
   parkToggled(event: Event): void {
@@ -981,7 +1032,7 @@ class WorkspaceListController extends Controller {
     const workspaceId = row?.dataset.workspaceId;
     const href = row?.querySelector<HTMLAnchorElement>("a.row-main")?.href;
     if (!workspaceId || !href) return;
-    this.markActive(workspaceId);
+    this.markVisible(workspaceId);
     void residencyController()?.selectWorkspace(workspaceId, href);
   }
 
@@ -1006,19 +1057,19 @@ class WorkspaceListController extends Controller {
   private currentWorkspaceId(): string | undefined {
     const fromPath = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
     if (fromPath) return decodeURIComponent(fromPath);
-    return residencyController()?.activeWorkspaceId();
+    return residencyController()?.visibleWorkspaceId();
   }
 
-  private markActive(workspaceId: string | undefined): void {
-    this.element.querySelectorAll<HTMLElement>(".workspace-row.active").forEach((row) => row.classList.remove("active"));
+  private markVisible(workspaceId: string | undefined): void {
+    this.element.querySelectorAll<HTMLElement>(".workspace-row.visible").forEach((row) => row.classList.remove("visible"));
     if (!workspaceId) return;
-    this.element.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`)?.classList.add("active");
+    this.element.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`)?.classList.add("visible");
   }
 
   private sync(): void {
     const workspaceId = this.currentWorkspaceId();
     if (!workspaceId) {
-      this.markActive(undefined);
+      this.markVisible(undefined);
       return;
     }
     const row = this.element.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`);
@@ -1027,10 +1078,10 @@ class WorkspaceListController extends Controller {
       const residency = residencyController();
       residency?.removeWorkspace(workspaceId);
       if (location.pathname === `/workspaces/${encodeURIComponent(workspaceId)}`) history.replaceState({}, "", "/");
-      this.markActive(undefined);
+      this.markVisible(undefined);
       return;
     }
-    this.markActive(workspaceId);
+    this.markVisible(workspaceId);
   }
 }
 
@@ -1044,14 +1095,14 @@ class WorkspaceAppFrameController extends Controller {
 
   connect(): void {
     document.addEventListener("atelier:theme-change", this.themeChanged);
-    if (this.isActivePane()) this.load();
+    if (this.isVisiblePane()) this.load();
   }
 
   disconnect(): void {
     document.removeEventListener("atelier:theme-change", this.themeChanged);
   }
 
-  activate(): void {
+  becomeVisible(): void {
     this.load();
   }
 
@@ -1072,16 +1123,16 @@ class WorkspaceAppFrameController extends Controller {
     clientHooks.workspaceAppFrameRefresh({ appKey: this.appKeyValue, frame: this.element, load: () => this.load() });
   };
 
-  private isActivePane(): boolean {
-    return this.element.closest(".tab-pane")?.classList.contains("active") ?? true;
+  private isVisiblePane(): boolean {
+    return this.element.closest(".tab-pane")?.classList.contains("visible") ?? true;
   }
 }
 
 function startWorkspaceAppFrames(root: ParentNode, tabName: string): void {
-  const pane = root.querySelector<HTMLElement>(`.tab-pane.active[data-tab-pane="${CSS.escape(tabName)}"]`);
+  const pane = root.querySelector<HTMLElement>(`.tab-pane.visible[data-tab-pane="${CSS.escape(tabName)}"]`);
   pane?.querySelectorAll<HTMLIFrameElement>('[data-controller~="workspace-app-frame"]').forEach((frame) => {
-    const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame") as { activate?: () => void } | null;
-    controller?.activate?.();
+    const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame") as { becomeVisible?: () => void } | null;
+    controller?.becomeVisible?.();
   });
 }
 
@@ -1358,8 +1409,8 @@ class OnboardingController extends Controller {
 
   private show(index: number): void {
     this.index = Math.max(0, Math.min(index, this.paneTargets.length - 1));
-    this.paneTargets.forEach((pane, paneIndex) => pane.classList.toggle("active", paneIndex === this.index));
-    this.dotTargets.forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex === this.index));
+    this.paneTargets.forEach((pane, paneIndex) => pane.classList.toggle("visible", paneIndex === this.index));
+    this.dotTargets.forEach((dot, dotIndex) => dot.classList.toggle("visible", dotIndex === this.index));
     const current = this.paneTargets[this.index];
     const kind = current?.dataset.onboardingKind;
     const modelSetup = current?.querySelector<HTMLElement>(".model-setup");

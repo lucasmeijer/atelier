@@ -58,7 +58,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.stuck = el.scrollTop + el.clientHeight >= el.scrollHeight - 60;
     };
     private readonly onKeydown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape" && this.element.closest(".tab-pane")?.classList.contains("active")) {
+      if (event.key === "Escape" && this.element.closest(".tab-pane")?.classList.contains("visible")) {
         void fetch(this.path("/abort"), { method: "POST" });
       }
     };
@@ -76,7 +76,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       document.addEventListener("keydown", this.onKeydown);
       this.updateSendStopButton();
-      if (this.element.closest(".tab-pane")?.classList.contains("active")) this.start();
+      if (this.element.closest(".tab-pane")?.classList.contains("visible")) this.start();
     }
 
     disconnect(): void {
@@ -918,22 +918,12 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
 }
 
 // ---------------------------------------------------------------------------
-// Tab activation hook
+// Tab visibility hook
 // ---------------------------------------------------------------------------
 
-function activateAgentTab(application: StimulusApplication, group: Element, tabName: string, workspaceId?: string): void {
-  const targetPane = tabName.startsWith("agent:")
-    ? group.querySelector<HTMLElement>(`.tab-pane[data-tab-pane="${CSS.escape(tabName)}"] [data-controller~="agent-pane"]`)
-    : null;
-
-  for (const pane of document.querySelectorAll<HTMLElement>('[data-controller~="agent-pane"]')) {
-    if (workspaceId && pane.dataset.agentPaneWorkspaceIdValue === workspaceId && pane === targetPane) continue;
-    const controller = application.getControllerForElementAndIdentifier(pane, "agent-pane") as AgentPaneControllerInstance | null;
-    controller?.stop();
-  }
-
-  if (!targetPane) return;
-  const controller = application.getControllerForElementAndIdentifier(targetPane, "agent-pane") as AgentPaneControllerInstance | null;
+function agentTabBecameVisible(application: StimulusApplication, pane: HTMLElement): void {
+  const agentPane = pane.querySelector<HTMLElement>('[data-controller~="agent-pane"]');
+  const controller = agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
   controller?.start();
 }
 
@@ -952,7 +942,7 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-proxy", createAgentProxyController(Controller));
     application.register("agent-term", createAgentTermController(Controller));
 
-    hooks.onActivateTab(({ tabKey, workspaceId, group }) => activateAgentTab(application, group, tabKey, workspaceId));
+    hooks.onBecomeVisible(({ pane }) => agentTabBecameVisible(application, pane));
     hooks.onChooseUnreadTab((tabs) => tabs.find((tab) => tab.startsWith("agent:")));
     hooks.onFocusGroup(({ pane }) => {
       const agentInput = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
@@ -962,7 +952,7 @@ export const agentClientModule: WorkspaceClientModule = {
     });
     hooks.onRevealTab(({ tabKey, group }) => {
       window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-        const pane = group.querySelector<HTMLElement>(`.tab-pane.active[data-tab-pane="${CSS.escape(tabKey)}"]`);
+        const pane = group.querySelector<HTMLElement>(`.tab-pane.visible[data-tab-pane="${CSS.escape(tabKey)}"]`);
         const agentPane = pane?.querySelector<HTMLElement>('[data-controller~="agent-pane"]');
         const controller = agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
         controller?.revealLatestAssistant();
@@ -970,7 +960,7 @@ export const agentClientModule: WorkspaceClientModule = {
     });
     hooks.onWorkspaceCommand((commandId) => {
       if (commandId !== "agent.launch-project-workspace") return false;
-      const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.active");
+      const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
       const projectId = resident?.dataset.projectId;
       if (!projectId) return true;
       const modalIdPart = projectId.replace(/[^a-zA-Z0-9_-]/g, "_");

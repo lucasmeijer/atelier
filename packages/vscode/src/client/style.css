@@ -1,10 +1,10 @@
-.workspace-panes:has(.vscode-pane.active) {
+.workspace-panes:has(.vscode-pane.visible) {
   padding: 0;
   overflow: hidden;
 }
 
 .vscode-pane,
-.vscode-pane.active {
+.vscode-pane.visible {
   position: relative;
   width: 100%;
   height: 100%;

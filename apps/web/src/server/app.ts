@@ -190,7 +190,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   // ---------------------------------------------------------------------------
   // Workspace sidebar rendering. Broadcast HTML never contains per-client state
-  // (no "active" classes, no selection inputs); selection is applied client-side
+  // (no "visible" classes, no selection inputs); selection is applied client-side
   // by the workspace-list Stimulus controller.
   // ---------------------------------------------------------------------------
 
@@ -587,11 +587,11 @@ ${moduleStylesHtml()}
     return domId("workspace_groups", workspaceId);
   }
 
-  function renderTabPane(tab: WorkspaceTabContribution, active: boolean): string {
+  function renderTabPane(tab: WorkspaceTabContribution, visible: boolean): string {
     if (!tab.paneHtml) return "";
     return tab.paneHtml.replace(/class="tab-pane([^\"]*)"/, (_match, classes: string) => {
-      const classList = String(classes).replace(/\bactive\b/g, "").trim();
-      return `class="tab-pane${classList ? ` ${classList}` : ""}${active ? " active" : ""}"`;
+      const classList = String(classes).replace(/\b(active|visible)\b/g, "").trim();
+      return `class="tab-pane${classList ? ` ${classList}` : ""}${visible ? " visible" : ""}"`;
     });
   }
 
@@ -614,20 +614,20 @@ ${moduleStylesHtml()}
       ${layoutState.groups.length > 1 && index > 0 ? `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/close"><button type="submit">Close Group</button></form>` : ""}
     </div></details>`;
     const groups = layoutState.groups.map((group, index) => {
-      const activeTab = group.activeTab && group.tabs.includes(group.activeTab) ? group.activeTab : group.tabs[0];
+      const visibleTab = group.visibleTab && group.tabs.includes(group.visibleTab) ? group.visibleTab : group.tabs[0];
       const headers = group.tabs.map((key, tabIndex) => {
         const tab = tabByKey.get(key);
         if (!tab) return "";
         const label = tabLabel(tab);
-        return `<div class="group-tab ${key === activeTab ? "active" : "muted"}" draggable="true" data-tab="${escapeHtml(key)}" data-action="dragstart->workspace-groups#dragStart dragend->workspace-groups#dragEnd dragover->workspace-groups#dragOver drop->workspace-groups#drop" data-group-id="${escapeHtml(group.id)}" data-tab-index="${tabIndex}"><button class="group-tab-label" data-action="click->workspace-tabs#activate" data-workspace-tabs-tab-param="${escapeHtml(key)}" type="button"><span>${escapeHtml(label)}</span>${renderTabStatus(workspaceId, key)}</button><form class="group-tab-close-form" data-turbo="true" data-controller="workspace-tab-close" data-workspace-tab-close-label-value="${escapeHtml(label)}" data-action="submit->workspace-tab-close#confirm" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/tabs/${encodeURIComponent(key)}/close"><button class="group-tab-close" type="submit" title="Close ${escapeHtml(label)}" aria-label="Close ${escapeHtml(label)}">×</button></form></div>`;
+        return `<div class="group-tab ${key === visibleTab ? "visible" : "muted"}" draggable="true" data-tab="${escapeHtml(key)}" data-action="dragstart->workspace-groups#dragStart dragend->workspace-groups#dragEnd dragover->workspace-groups#dragOver drop->workspace-groups#drop" data-group-id="${escapeHtml(group.id)}" data-tab-index="${tabIndex}"><button class="group-tab-label" data-action="click->workspace-tabs#show" data-workspace-tabs-tab-param="${escapeHtml(key)}" type="button"><span>${escapeHtml(label)}</span>${renderTabStatus(workspaceId, key)}</button><form class="group-tab-close-form" data-turbo="true" data-controller="workspace-tab-close" data-workspace-tab-close-label-value="${escapeHtml(label)}" data-action="submit->workspace-tab-close#confirm" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/tabs/${encodeURIComponent(key)}/close"><button class="group-tab-close" type="submit" title="Close ${escapeHtml(label)}" aria-label="Close ${escapeHtml(label)}">×</button></form></div>`;
       }).join("");
       const panes = group.tabs.map((key) => {
         const tab = tabByKey.get(key);
-        return tab ? renderTabPane(tab, key === activeTab) : "";
+        return tab ? renderTabPane(tab, key === visibleTab) : "";
       }).join("");
       const empty = group.tabs.length === 0;
       return `<section class="workspace-group" data-group-id="${escapeHtml(group.id)}" data-workspace-groups-target="group" style="--group-size:${group.size}">
-      <div class="group-tabbar" data-controller="workspace-tabs" data-workspace-tabs-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-tabs-group-id-value="${escapeHtml(group.id)}" data-workspace-tabs-initial-tab-value="${escapeHtml(activeTab ?? "")}" data-action="dragover->workspace-groups#dragOver drop->workspace-groups#drop">
+      <div class="group-tabbar" data-controller="workspace-tabs" data-workspace-tabs-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-tabs-group-id-value="${escapeHtml(group.id)}" data-workspace-tabs-initial-tab-value="${escapeHtml(visibleTab ?? "")}" data-action="dragover->workspace-groups#dragOver drop->workspace-groups#drop">
         <div class="group-tabs">${headers}</div>${actionMenu(group, index)}
       </div>
       <div class="workspace-panes" id="${domId("workspace_panes", workspaceId, group.id)}">${empty ? `<div class="empty-group"><p>This group is empty.</p>${layoutState.groups.length > 1 ? `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/remove"><button class="btn sm" type="submit">Remove Empty Group</button></form>` : ""}</div>` : panes}</div>
@@ -652,16 +652,16 @@ ${moduleStylesHtml()}
 </div>`;
   }
 
-  async function workspaceDetailResidentHtml(id: string, options: { active?: boolean } = {}): Promise<string> {
+  async function workspaceDetailResidentHtml(id: string, options: { visible?: boolean } = {}): Promise<string> {
     const entry = requireWorkspace(id);
     const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
-    return `<div class="workspace-detail-resident ${options.active ? "active" : ""}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}"${projectAttr}>${await workspaceDetailContent(id)}</div>`;
+    return `<div class="workspace-detail-resident ${options.visible ? "visible" : ""}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}"${projectAttr}>${await workspaceDetailContent(id)}</div>`;
   }
 
-  function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { active?: boolean } = {}): string {
+  function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { visible?: boolean } = {}): string {
     const inner = provisioning.render(entry.id, { failed: entry.phase === "failed", error: entry.error });
     const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
-    return `<div class="workspace-detail-resident workspace-boot ${options.active ? "active" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><header class="header"><h1>${escapeHtml(workspaceTitle(entry))}</h1></header><div class="body"><div class="panel">${inner}</div></div></div></div>`;
+    return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><header class="header"><h1>${escapeHtml(workspaceTitle(entry))}</h1></header><div class="body"><div class="panel">${inner}</div></div></div></div>`;
   }
 
   function broadcastWorkspaceBoot(id: string): void {
@@ -672,14 +672,14 @@ ${moduleStylesHtml()}
 
   deps.events?.on("workspace_provision_step", (event) => provisioning.apply(event));
 
-  async function workspaceResidentFor(entry: WorkspaceEntry, options: { active?: boolean } = {}): Promise<string> {
+  async function workspaceResidentFor(entry: WorkspaceEntry, options: { visible?: boolean } = {}): Promise<string> {
     if (entry.phase === "starting" || entry.phase === "failed") return workspaceBootResidentHtml(entry, options);
     return await workspaceDetailResidentHtml(entry.id, options);
   }
 
   async function workspaceDetailHostHtml(selectedId?: string): Promise<string> {
     const entry = selectedId ? registry.get(selectedId) : undefined;
-    const resident = entry ? await workspaceResidentFor(entry, { active: true }) : "";
+    const resident = entry ? await workspaceResidentFor(entry, { visible: true }) : "";
     return `<div id="workspace_detail" class="workspace-detail-host" data-controller="workspace-residency" data-workspace-residency-max-resident-value="10">
       <div class="workspace-detail-empty" data-workspace-residency-target="empty"${resident ? " hidden" : ""}><div class="main"><header class="header"><h1>Select a workspace</h1></header><div class="body"><div class="panel"><div class="pad">Create or select a workspace to begin.</div></div></div></div></div>
       <div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden><div class="main"><div class="body"><div class="panel"><div class="pad workspace-boot-pad"><span class="status-spinner"></span> Loading workspace…</div></div></div></div></div>
@@ -732,7 +732,7 @@ ${moduleStylesHtml()}
   async function workspacePage(id: string, request: Request): Promise<Response> {
     const entry = requireWorkspace(id);
     const url = new URL(request.url);
-    if (url.searchParams.get("resident") === "1") return response(await workspaceResidentFor(entry, { active: true }));
+    if (url.searchParams.get("resident") === "1") return response(await workspaceResidentFor(entry, { visible: true }));
     return response(layout(workspaceTitle(entry), await renderWorkspaceShell(id)));
   }
 
@@ -754,7 +754,7 @@ ${moduleStylesHtml()}
         registry.setPhase(id, "failed", message);
         provisioning.apply({ workspaceId: id, id: "workspace.failed", label: "Workspace creation failed", status: "failed", error: message });
         const entry = registry.get(id);
-        // No "active" class in broadcasts: each client activates the resident
+        // No "visible" class in broadcasts: each client shows the resident
         // itself iff it is currently looking at this workspace.
         if (entry) hub.broadcast(turboReplaceStream(workspaceBootId(id), workspaceBootResidentHtml(entry)));
       }
@@ -889,7 +889,7 @@ ${moduleStylesHtml()}
 
   async function broadcastWorkspaceReady(id: string): Promise<void> {
     try {
-      // No "active" class in broadcasts: each client activates the resident
+      // No "visible" class in broadcasts: each client shows the resident
       // itself iff it is currently looking at this workspace.
       hub.broadcast(turboReplaceStream(workspaceBootId(id), await workspaceDetailResidentHtml(id)));
     } catch (error) {
@@ -1256,7 +1256,7 @@ ${moduleStylesHtml()}
 
     const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
     const tabKeys = tabs.map((tab) => tab.key);
-    const groupId = layouts.normalize(workspaceId, tabKeys).groups.find((group) => group.activeTab)?.id;
+    const groupId = layouts.normalize(workspaceId, tabKeys).groups.find((group) => group.visibleTab)?.id;
     placeCommandTab(workspaceId, tabKeys, result, groupId);
     return turboStreamResponse(`${workspaceGroupsTurboStream(workspaceId, tabs, attachments)}${result.streamHtml ?? ""}`);
   }
@@ -1292,10 +1292,10 @@ ${moduleStylesHtml()}
   }
 
   async function updateWorkspaceViewStateEndpoint(id: string, request: Request): Promise<Response> {
-    const body = await request.json().catch(() => undefined) as { activeTab?: unknown; groupId?: unknown } | undefined;
-    const activeTab = typeof body?.activeTab === "string" ? body.activeTab : undefined;
+    const body = await request.json().catch(() => undefined) as { visibleTab?: unknown; groupId?: unknown } | undefined;
+    const visibleTab = typeof body?.visibleTab === "string" ? body.visibleTab : undefined;
     const groupId = typeof body?.groupId === "string" ? body.groupId : undefined;
-    if (activeTab && groupId) layouts.setActiveTab(id, groupId, activeTab);
+    if (visibleTab && groupId) layouts.setVisibleTab(id, groupId, visibleTab);
     return jsonResponse({ ok: true });
   }
 
@@ -1305,12 +1305,6 @@ ${moduleStylesHtml()}
     return turboStreamResponse("");
   }
 
-  function activateWorkspaceEndpoint(id: string): Response {
-    requireWorkspace(id);
-    registry.setActiveWorkspace(id);
-    registry.clearWorkspaceUnread(id);
-    return turboStreamResponse("");
-  }
 
   function openOldestUnreadWorkspaceEndpoint(): Response {
     const entry = registry.oldestUnreadWorkspace();
@@ -1381,7 +1375,6 @@ ${moduleStylesHtml()}
       if (request.method === "POST") return await updateWorkspaceSidebarTitleFromForm(params[0], request);
     }
     if ((params = match(/^\/workspaces\/([^/]+)\/view-state$/)) && request.method === "POST") return await updateWorkspaceViewStateEndpoint(params[0], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/activate$/)) && request.method === "POST") return activateWorkspaceEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/unread\/clear$/)) && request.method === "POST") return clearWorkspaceUnreadEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceGroupCommandEndpoint(params[0], params[1], params[2]);

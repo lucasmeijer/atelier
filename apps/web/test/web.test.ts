@@ -425,7 +425,7 @@ describe("web app contracts", () => {
     expect(busyBroadcast).toContain('Workspace busy');
   });
 
-  test("broadcast HTML never contains per-client state (active rows, selection inputs)", async () => {
+  test("broadcast HTML never contains per-client state (visible rows, selection inputs)", async () => {
     const provision = deferred();
     const destroy = deferred();
     const { app, registry, broadcasts } = createTestApp({ provision: () => provision.promise, destroy: () => destroy.promise });
@@ -442,8 +442,8 @@ describe("web app contracts", () => {
 
     expect(broadcasts.length).toBeGreaterThan(0);
     for (const html of broadcasts) {
-      expect(html).not.toMatch(/class="[^"]*workspace-row[^"]*\bactive\b/);
-      expect(html).not.toMatch(/class="[^"]*workspace-detail-resident[^"]*\bactive\b/);
+      expect(html).not.toMatch(/class="[^"]*workspace-row[^"]*\bvisible\b/);
+      expect(html).not.toMatch(/class="[^"]*workspace-detail-resident[^"]*\bvisible\b/);
       expect(html).not.toContain('name="selected"');
     }
   });
@@ -528,7 +528,7 @@ describe("web app contracts", () => {
     expect(result?.createdGroup).toBe(true);
     expect(after.groups).toHaveLength(2);
     expect(after.groups[1]!.tabs).toEqual(["browser"]);
-    expect(after.groups[1]!.activeTab).toBe("browser");
+    expect(after.groups[1]!.visibleTab).toBe("browser");
   });
 
   test("preview group helper reopens a closed browser tab", () => {

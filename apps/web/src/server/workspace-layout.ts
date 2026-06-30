@@ -4,7 +4,7 @@
 export interface WorkspaceGroupState {
   id: string;
   tabs: string[];
-  activeTab?: string;
+  visibleTab?: string;
   size: number;
 }
 
@@ -29,10 +29,10 @@ export interface WorkspaceLayoutStore {
   moveTab(workspaceId: string, tabKeys: string[], request: MoveTabRequest): void;
   closeTab(workspaceId: string, tabKeys: string[], tab: string): void;
   resize(workspaceId: string, tabKeys: string[], sizes: number[]): void;
-  setActiveTab(workspaceId: string, groupId: string, tab: string): void;
-  /** Place a newly available tab into a group and activate it. */
+  setVisibleTab(workspaceId: string, groupId: string, tab: string): void;
+  /** Place a newly available tab into a group and make it visible. */
   placeNewTab(workspaceId: string, tabKeys: string[], groupId: string, tabKey: string): void;
-  /** Ensure a tab is visible and active in the preview group: the first group with no agent tabs, creating one if needed. */
+  /** Ensure a tab is visible in the preview group: the first group with no agent tabs, creating one if needed. */
   ensureTabInPreviewGroup(workspaceId: string, tabKeys: string[], tabKey: string): { groupId: string; moved: boolean; createdGroup: boolean } | undefined;
   delete(workspaceId: string): void;
 }
@@ -48,7 +48,7 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
   function normalize(workspaceId: string, tabKeys: string[]): WorkspaceLayoutState {
     let layout = layouts.get(workspaceId);
     if (!layout || layout.groups.length === 0) {
-      layout = { groups: [{ id: crypto.randomUUID(), tabs: [...tabKeys], activeTab: tabKeys[0], size: 1 }], closedTabs: [] };
+      layout = { groups: [{ id: crypto.randomUUID(), tabs: [...tabKeys], visibleTab: tabKeys[0], size: 1 }], closedTabs: [] };
       layouts.set(workspaceId, layout);
       return layout;
     }
@@ -61,7 +61,7 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
     layout.groups[0]?.tabs.push(...missing);
     for (const group of layout.groups) {
       group.tabs = group.tabs.filter((key) => keySet.has(key));
-      if (!group.activeTab || !group.tabs.includes(group.activeTab)) group.activeTab = group.tabs[0];
+      if (!group.visibleTab || !group.tabs.includes(group.visibleTab)) group.visibleTab = group.tabs[0];
     }
     normalizeGroupSizes(layout);
     return layout;
@@ -93,7 +93,7 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
         const left = layout.groups[index - 1];
         if (closed && left) {
           left.tabs.push(...closed.tabs.filter((tab) => !left.tabs.includes(tab)));
-          left.activeTab = closed.activeTab ?? left.activeTab;
+          left.visibleTab = closed.visibleTab ?? left.visibleTab;
         }
       }
       normalizeGroupSizes(layout);
@@ -109,17 +109,17 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
         layout.groups.push(target);
       }
       if (!tab || !target) return;
-      const wasActive = source?.activeTab === tab;
+      const wasVisible = source?.visibleTab === tab;
       if (source) {
         const oldIndex = source.tabs.indexOf(tab);
         source.tabs = source.tabs.filter((key) => key !== tab);
-        if (wasActive) source.activeTab = source.tabs[Math.max(0, oldIndex - 1)] ?? source.tabs[0];
+        if (wasVisible) source.visibleTab = source.tabs[Math.max(0, oldIndex - 1)] ?? source.tabs[0];
       }
       const toIndex = typeof request.toIndex === "number" && Number.isFinite(request.toIndex)
         ? Math.max(0, Math.min(request.toIndex, target.tabs.length))
         : target.tabs.length;
       target.tabs.splice(toIndex, 0, tab);
-      target.activeTab = tab;
+      target.visibleTab = tab;
       if (source && source !== target && source.tabs.length === 0 && layout.groups.length > 1) {
         const sourceIndex = layout.groups.indexOf(source);
         if (sourceIndex >= 0) layout.groups.splice(sourceIndex, 1);
@@ -137,7 +137,7 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
         const oldIndex = group.tabs.indexOf(tab);
         if (oldIndex < 0) continue;
         group.tabs = group.tabs.filter((key) => key !== tab);
-        if (group.activeTab === tab) group.activeTab = group.tabs[Math.max(0, oldIndex - 1)] ?? group.tabs[0];
+        if (group.visibleTab === tab) group.visibleTab = group.tabs[Math.max(0, oldIndex - 1)] ?? group.tabs[0];
       }
       normalizeGroupSizes(layout);
     },
@@ -148,9 +148,9 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
       normalizeGroupSizes(layout);
     },
 
-    setActiveTab(workspaceId, groupId, tab) {
+    setVisibleTab(workspaceId, groupId, tab) {
       const group = layouts.get(workspaceId)?.groups.find((candidate) => candidate.id === groupId);
-      if (group?.tabs.includes(tab)) group.activeTab = tab;
+      if (group?.tabs.includes(tab)) group.visibleTab = tab;
     },
 
     placeNewTab(workspaceId, tabKeys, groupId, tabKey) {
@@ -162,7 +162,7 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
         for (const candidate of layout.groups) candidate.tabs = candidate.tabs.filter((tab) => tab !== tabKey);
         group.tabs.push(tabKey);
       }
-      group.activeTab = tabKey;
+      group.visibleTab = tabKey;
     },
 
     ensureTabInPreviewGroup(workspaceId, tabKeys, tabKey) {
@@ -172,7 +172,7 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
       const hasAgent = (group: WorkspaceGroupState) => group.tabs.some((tab) => tab.startsWith("agent:"));
       const source = layout.groups.find((group) => group.tabs.includes(tabKey));
       if (source && !hasAgent(source)) {
-        source.activeTab = tabKey;
+        source.visibleTab = tabKey;
         return { groupId: source.id, moved: false, createdGroup: false };
       }
 
@@ -186,7 +186,7 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
 
       for (const group of layout.groups) group.tabs = group.tabs.filter((tab) => tab !== tabKey);
       target.tabs.push(tabKey);
-      target.activeTab = tabKey;
+      target.visibleTab = tabKey;
       if (source && source !== target && source.tabs.length === 0 && layout.groups.length > 1) {
         const sourceIndex = layout.groups.indexOf(source);
         if (sourceIndex >= 0) layout.groups.splice(sourceIndex, 1);
