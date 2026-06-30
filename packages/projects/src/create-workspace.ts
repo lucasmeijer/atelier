@@ -9,7 +9,8 @@ export async function createWorkspaceForProject(project: string | ProjectSummary
   const summary = typeof project === "string"
     ? (() => {
         const spec = parseProjectSpec(project);
-        return { id: crypto.randomUUID(), name: projectNameFromGitUrl(spec.gitUrl), gitUrl: spec.gitUrl, branch: spec.branch };
+        const name = projectNameFromGitUrl(spec.gitUrl);
+        return { id: crypto.randomUUID(), name, gitUrl: spec.gitUrl, branch: spec.branch, sessionShareKey: name };
       })()
     : project;
   return await createWorkspace({ ...options, init: projectWorkspaceInit(summary) });

@@ -33,6 +33,7 @@ export {
 
 export {
   prepareWorkspaceSource,
+  projectDataDirKey,
   registerProjectWorkspaceInitEvents,
   type PreparedWorkspaceSource,
 } from "./workspace-source.ts";

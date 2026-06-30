@@ -52,13 +52,13 @@ function workspaceSourceDir(workspaceId: string): string {
   return join(sourceRoot(), "workspaces", workspaceId);
 }
 
-function projectPersistentDirKey(projectId: string): string {
+export function projectDataDirKey(projectId: string): string {
   return createHash("sha256").update(projectId).digest("hex").slice(0, 16);
 }
 
 export async function projectPersistentMount(projectId: string): Promise<{ source: string; target: "/persistent" }> {
   const runtime = getAtelierRuntimeContext();
-  const key = projectPersistentDirKey(projectId);
+  const key = projectDataDirKey(projectId);
   await mkdir(atelierDataPath(runtime, "projects", key, "persistent"), { recursive: true });
   return { source: dockerHostAtelierDataPath(runtime, "projects", key, "persistent"), target: "/persistent" };
 }

@@ -10,6 +10,7 @@ export interface GitProjectInitInstruction {
   name: string;
   gitUrl: string;
   branch: string | null;
+  sessionShareKey: string;
 }
 
 declare module "@atelier/workspace" {
@@ -23,6 +24,7 @@ export interface ProjectSummary {
   name: string;
   gitUrl: string;
   branch: string | null;
+  sessionShareKey: string;
 }
 
 export interface ProjectListResult {
@@ -100,7 +102,8 @@ export async function addProject(spec: string, file = projectsFile()): Promise<A
   if (store.projects.some((project) => project.id === id || (project.gitUrl === gitUrl && project.branch === branch))) {
     throw new AtelierCoreError("project_exists", `project already exists: ${formatProjectSpec({ gitUrl, branch })}`);
   }
-  const project = { id, name: projectNameFromGitUrl(gitUrl), gitUrl, branch };
+  const name = projectNameFromGitUrl(gitUrl);
+  const project = { id, name, gitUrl, branch, sessionShareKey: name };
   store.projects.push(project);
   await writeStore(file, store);
   return { project };
@@ -116,7 +119,7 @@ export async function deleteProject(id: string, file = projectsFile()): Promise<
 }
 
 export function projectWorkspaceInit(project: ProjectSummary): WorkspaceInitInstruction {
-  return { type: "project.git", projectId: project.id, name: project.name, gitUrl: project.gitUrl, branch: project.branch };
+  return { type: "project.git", projectId: project.id, name: project.name, gitUrl: project.gitUrl, branch: project.branch, sessionShareKey: project.sessionShareKey };
 }
 
 export function isGitProjectInit(init: WorkspaceInitInstruction | undefined): init is GitProjectInitInstruction {

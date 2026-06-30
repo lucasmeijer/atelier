@@ -3,7 +3,9 @@ export {
   ensureDefaultWorkspaceAgent,
   listWorkspaceAgents,
   parseWorkspaceAgentFilename,
-  workspaceAgentSessionPath,
+  sessionShareDir,
+  sessionShareKeySlug,
+  sessionShareMountPath,
   type WorkspaceAgentInfo,
 } from "./session-store.ts";
 export {

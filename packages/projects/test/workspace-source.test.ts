@@ -111,7 +111,7 @@ describe("workspace source preparation", () => {
     const events = createAtelierEventBus();
     registerProjectWorkspaceInitEvents(events);
     const planFor = async (workspaceId: string, projectId: string): Promise<WorkspaceDockerPlan> => {
-      const init: GitProjectInitInstruction = { type: "project.git", projectId, name: projectId, gitUrl: `https://example.test/${projectId}.git`, branch: null };
+      const init: GitProjectInitInstruction = { type: "project.git", projectId, name: projectId, gitUrl: `https://example.test/${projectId}.git`, branch: null, sessionShareKey: projectId };
       const plan: WorkspaceDockerPlan = { labels: {}, env: {}, mounts: [], publishes: [], extraArgs: [], initScripts: [], cleanup: [] };
       await events.emit("workspace_plan_prepare", { workspaceId, init, workHostPath: join(dataDir, "workspaces", workspaceId, "work"), workContainerPath: "/work", plan });
       return plan;

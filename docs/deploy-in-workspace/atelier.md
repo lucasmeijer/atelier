@@ -115,6 +115,8 @@ Before deleting a workspace, Atelier checks for uncommitted changes and unpushed
 
 Repository workspaces also include `/persistent`, a directory shared by all workspaces for that saved repository. Use it for files you want to keep across workspaces but not commit to Git.
 
+Every workspace includes `/atelier/session-share`, a read-only directory containing JSONL transcript files for workspaces with the same session share key. Repository workspaces use the repository's `sessionShareKey`, which is initially populated from the saved project name; project-less workspaces use the shared `projectless` key. Session files are named with a topic slug plus workspace, agent, and short id components, for example `fix-auth-flow--a1b2c3d4--agent-1--9e8f12.jsonl`. Agents can search prior related work directly from the filesystem with tools such as `ls`, `rg`, `jq`, `head`, or `tail`, but cannot modify these archived session files from inside the workspace. Set multiple saved repositories to the same `sessionShareKey` in Atelier's project store when related repositories, such as frontend and backend projects, should share session history.
+
 ## 8. Customizing Workspaces
 
 A repository can customize its workspace image with `.atelier/Dockerfile`. The Dockerfile must start with:

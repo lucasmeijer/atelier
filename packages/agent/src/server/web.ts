@@ -4,11 +4,13 @@ import { closeAgentTermSocket, handleAgentTermSocketMessage, openAgentTermSocket
 import { getWorkspaceAgentRuntime, subscribeWorkspaceTabBusy } from "./runtime.ts";
 import { handleAgentRequest, registerAgentEvents, resolveWorkspacePortProxyTarget, workspaceFileEndpoint } from "./routes.ts";
 import { registerPiConfigEvents } from "./pi-config-seed.ts";
-import { createNextWorkspaceAgent, ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
+import { createNextWorkspaceAgent, ensureDefaultWorkspaceAgent, listWorkspaceAgents, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentInfo } from "./session-store.ts";
 import { agentTabKey, renderAgentPane, type AgentPaneState } from "./render.ts";
 import { modelRefValue, parseModelRef, preferredAgentModel, rememberPreferredAgentModel } from "./model-state.ts";
-import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
+import { dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
+import { mkdir } from "node:fs/promises";
+import type { WorkspaceDockerMount } from "@atelier/workspace";
 
 async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgentInfo[]> {
   try {
@@ -58,6 +60,30 @@ async function preferredNewAgentModel(): Promise<string | undefined> {
   return model ? modelRefValue(model) : undefined;
 }
 
+function agentTopicFromCreationContext(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const agent = (value as { agent?: unknown }).agent;
+  if (!agent || typeof agent !== "object") return undefined;
+  const prompt = (agent as { initialPrompt?: unknown }).initialPrompt;
+  return typeof prompt === "string" ? prompt : undefined;
+}
+
+type WorkspacePlanEvents = {
+  on(eventName: "workspace_plan_prepare", handler: (event: { init?: unknown; plan: { mounts: WorkspaceDockerMount[] } }) => void | Promise<void>): void;
+};
+
+function dockerHostSessionShareDir(shareKey: string): string {
+  return dockerHostAtelierDataPath(getAtelierRuntimeContext(), "session-shares", shareKey);
+}
+
+function registerSessionShareMountEvents(events: AtelierEventBus): void {
+  (events as WorkspacePlanEvents).on("workspace_plan_prepare", async ({ init, plan }) => {
+    const shareKey = sessionShareKeyForInit(init);
+    await mkdir(sessionShareDir(shareKey), { recursive: true });
+    plan.mounts.push({ type: "bind", source: dockerHostSessionShareDir(shareKey), target: sessionShareMountPath, readonly: true });
+  });
+}
+
 async function applyPreferredNewAgentModel(agent: WorkspaceAgentInfo, events?: unknown): Promise<void> {
   const model = parseModelRef(String(await preferredNewAgentModel() ?? ""));
   if (!model) return;
@@ -91,14 +117,15 @@ export const agentWorkspaceModule: WorkspaceModule = {
     const events = context.events as AtelierEventBus;
     registerPiConfigEvents(events);
     registerAgentEvents(events);
+    registerSessionShareMountEvents(events);
     events.on("workspace_agent_turn_finished", ({ workspaceId, agentLabel }) => {
       context.registry.setTabUnread(workspaceId, agentTabKey(agentLabel), true);
     });
     context.registerProvisioningHook({
       id: "workspace.agent",
       label: "Prepare default agent",
-      async run({ workspaceId }) {
-        await ensureDefaultWorkspaceAgent(workspaceId);
+      async run({ workspaceId, creationContext }) {
+        await ensureDefaultWorkspaceAgent(workspaceId, { topic: agentTopicFromCreationContext(creationContext) });
       },
     });
     context.registerSocketHandler({
