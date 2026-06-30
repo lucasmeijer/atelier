@@ -9,6 +9,7 @@ import {
   createWorkspaceIngressProxy,
   releaseWorkspacePublicProxyRoutes,
   type WorkspaceAppHost,
+  type WorkspaceAppRequestHeaderTransformer,
   type WorkspaceAppResponseTransformer,
   type WorkspaceAppTargetResolver,
 } from "@atelier/proxy-ingress/server";
@@ -301,6 +302,14 @@ const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, reques
   throw new Error(`unknown workspace app: ${app.appKey}`);
 };
 
+const patchWorkspaceAppRequestHeaders: WorkspaceAppRequestHeaderTransformer = async (app, headers, target, request) => {
+  let next = headers;
+  for (const handler of workspaceAppHandlers) {
+    if (handler.matches(app) && handler.transformRequestHeaders) next = await handler.transformRequestHeaders(app, next, target, request);
+  }
+  return next;
+};
+
 const patchWorkspaceAppResponse: WorkspaceAppResponseTransformer = async (app, response, request) => {
   let next = response;
   for (const handler of workspaceAppHandlers) {
@@ -315,6 +324,7 @@ const publicWorkspaceAppProxy = createWorkspaceIngressProxy({
   resolveWorkspace,
   listWorkspaceIds: async () => (await listWorkspaces()).workspaces.map((workspace) => workspace.id),
   resolveTarget: resolveWorkspaceAppTarget,
+  transformRequestHeaders: patchWorkspaceAppRequestHeaders,
   transformResponse: patchWorkspaceAppResponse,
 });
 

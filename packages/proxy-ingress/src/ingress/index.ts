@@ -17,6 +17,7 @@ export interface WorkspaceAppHost {
 }
 
 export type WorkspaceAppTargetResolver = (app: WorkspaceAppHost, requestUrl: URL) => Promise<URL> | URL;
+export type WorkspaceAppRequestHeaderTransformer = (app: WorkspaceAppHost, headers: Headers, target: URL, request: Request) => Promise<Headers> | Headers;
 export type WorkspaceAppResponseTransformer = (app: WorkspaceAppHost, response: Response, request: Request) => Promise<Response> | Response;
 export type WorkspaceIngressAuthHandler = (request: Request) => Promise<Response | undefined> | Response | undefined;
 
@@ -26,6 +27,7 @@ export interface WorkspaceIngressProxyOptions {
   resolveWorkspace(workspaceId: string): Promise<unknown> | unknown;
   listWorkspaceIds(): Promise<string[]> | string[];
   resolveTarget: WorkspaceAppTargetResolver;
+  transformRequestHeaders?: WorkspaceAppRequestHeaderTransformer;
   transformResponse?: WorkspaceAppResponseTransformer;
   publicPortRange?: PublicProxyPortRange;
 }
@@ -88,7 +90,7 @@ export function createWorkspaceIngressProxy(options: WorkspaceIngressProxyOption
             if (server.upgrade(request, { data: { kind: "workspace-app-proxy", target, host: request.headers.get("host") ?? url.host, protocols } })) return undefined;
             return textResponse("websocket upgrade failed", 400);
           }
-          return await proxyWorkspaceAppRequest(app, request, options.resolveTarget, options.transformResponse);
+          return await proxyWorkspaceAppRequest(app, request, options.resolveTarget, options.transformRequestHeaders, options.transformResponse);
         },
         websocket: {
           open: openWorkspaceAppProxySocket,
@@ -201,12 +203,13 @@ async function proxyWorkspaceAppRequest(
   app: WorkspaceAppHost,
   request: Request,
   resolveTarget: WorkspaceAppTargetResolver,
+  transformRequestHeaders?: WorkspaceAppRequestHeaderTransformer,
   transformResponse?: WorkspaceAppResponseTransformer,
 ): Promise<Response> {
   try {
     const source = new URL(request.url);
     const target = await resolveTarget(app, source);
-    const headers = stripHopByHopHeaders(request.headers, ["host"]);
+    let headers = stripHopByHopHeaders(request.headers, ["host"]);
     const sourceProto = publicWorkspaceAppProtocol(request, source);
     const sourceHost = publicWorkspaceAppHost(request, source);
     headers.set("host", sourceHost);
@@ -214,6 +217,7 @@ async function proxyWorkspaceAppRequest(
     headers.set("x-forwarded-proto", sourceProto);
     const sourcePort = publicWorkspaceAppPort(sourceHost, sourceProto);
     if (sourcePort) headers.set("x-forwarded-port", sourcePort);
+    if (transformRequestHeaders) headers = await transformRequestHeaders(app, headers, target, request);
     const response = await fetch(target, {
       method: request.method,
       headers,

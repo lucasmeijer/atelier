@@ -6,6 +6,15 @@ export function isBrowserWorkspaceApp(workspaceId: string, appKey: string): bool
   return Boolean(getWorkspaceBrowserTab(workspaceId, appKey));
 }
 
+export async function patchBrowserWorkspaceAppRequestHeaders(app: WorkspaceAppHost, headers: Headers, _target: URL, _request: Request): Promise<Headers> {
+  if (!isBrowserWorkspaceApp(app.workspaceId, app.appKey)) return headers;
+  const browserTab = getWorkspaceBrowserTab(app.workspaceId, app.appKey);
+  if (!browserTab) throw new Error(`unknown workspace app: ${app.appKey}`);
+  const targetBase = new URL(browserTab.targetUrl);
+  if (!isLoopbackHost(targetBase.hostname)) headers.set("host", targetBase.host);
+  return headers;
+}
+
 export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, response: Response, request: Request): Promise<Response> {
   if (!isBrowserWorkspaceApp(app.workspaceId, app.appKey)) return response;
 
@@ -26,6 +35,7 @@ export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, re
   headers.delete("content-encoding");
   headers.delete("content-security-policy");
   headers.delete("content-security-policy-report-only");
+  headers.delete("x-frame-options");
   return new Response(rewritten, { status: response.status, statusText: response.statusText, headers });
 }
 

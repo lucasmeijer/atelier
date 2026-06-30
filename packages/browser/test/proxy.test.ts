@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "../src/server/proxy.ts";
+import { patchBrowserWorkspaceAppRequestHeaders, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "../src/server/proxy.ts";
 import { renderBrowserFrame } from "../src/server/render.ts";
 import { createWorkspaceBrowserTab, listWorkspaceBrowserTabs, normalizeBrowserUrl, setWorkspaceBrowserTarget } from "../src/server/state.ts";
 
@@ -15,6 +15,7 @@ describe("browser proxy response patching", () => {
       headers: {
         "content-type": "text/html; charset=utf-8",
         "content-security-policy": "script-src 'self'",
+        "x-frame-options": "DENY",
       },
     });
 
@@ -28,6 +29,22 @@ describe("browser proxy response patching", () => {
     expect(html).toContain(`href="https://browser--work_1.localhost/page?x=1#top"`);
     expect(html).toContain("atelier:browser-location");
     expect(patched.headers.has("content-security-policy")).toBe(false);
+    expect(patched.headers.has("x-frame-options")).toBe(false);
+  });
+
+  test("external browser targets use the target host header", async () => {
+    const tab = createWorkspaceBrowserTab("external_host_work");
+    setWorkspaceBrowserTarget("external_host_work", tab.key, "https://example.com/path");
+    const headers = new Headers({ host: "127.0.0.1:43000" });
+
+    const patched = await patchBrowserWorkspaceAppRequestHeaders(
+      { appKey: tab.key, workspaceId: "external_host_work" },
+      headers,
+      new URL("https://example.com/path"),
+      new Request("https://browser--external.localhost/path"),
+    );
+
+    expect(patched.get("host")).toBe("example.com");
   });
 
   test("browser state and iframe source preserve hash fragments", () => {

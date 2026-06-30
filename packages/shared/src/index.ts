@@ -142,6 +142,7 @@ export interface WorkspaceServerAppHandler {
   matches(app: { appKey: string; workspaceId: string }): boolean;
   handleRequest?(app: { appKey: string; workspaceId: string }, request: Request, url: URL): Promise<Response | undefined> | Response | undefined;
   resolveTarget?(app: { appKey: string; workspaceId: string }, requestUrl: URL): Promise<URL | undefined> | URL | undefined;
+  transformRequestHeaders?(app: { appKey: string; workspaceId: string }, headers: Headers, target: URL, request: Request): Promise<Headers> | Headers;
   transformResponse?(app: { appKey: string; workspaceId: string }, response: Response, request: Request): Promise<Response> | Response;
 }
 
