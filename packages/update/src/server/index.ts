@@ -160,6 +160,7 @@ export class UpdateManager {
     const updaterUrl = new URL(returnUrl);
     updaterUrl.protocol = "http:";
     updaterUrl.port = String(updaterPort);
+    await removeStaleUpdateHelpers(this.deps.docker ?? dockerExec);
     const result = await (this.deps.docker ?? dockerExec)([
       "run", "-d", "--rm", "--name", name, "--network", "host",
       "-v", "/var/run/docker.sock:/var/run/docker.sock",
@@ -188,6 +189,15 @@ export class UpdateManager {
     });
     return new Response(stream, { headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", connection: "keep-alive" } });
   }
+}
+
+async function removeStaleUpdateHelpers(docker: DockerExec): Promise<void> {
+  const listed = await docker(["ps", "-aq", "--filter", "name=^/atelier-updater-"]);
+  if (listed.code !== 0) throw new Error(listed.stderr.trim() || "could not list update helpers");
+  const ids = listed.stdout.trim().split(/\s+/).filter(Boolean);
+  if (ids.length === 0) return;
+  const removed = await docker(["rm", "-f", ...ids]);
+  if (removed.code !== 0) throw new Error(removed.stderr.trim() || "could not remove stale update helpers");
 }
 
 async function waitForUpdater(url: string): Promise<void> {
