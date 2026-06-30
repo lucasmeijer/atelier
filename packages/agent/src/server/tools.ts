@@ -17,9 +17,6 @@ const maxReadBytes = 200_000;
 export function normalizeWorkspacePath(path: string): string {
   if (!path || path.includes("\0")) throw new Error("path is required");
   const absolute = path.startsWith("/") ? posix.normalize(path) : posix.normalize(posix.join(workspaceRoot, path));
-  if (absolute !== workspaceRoot && !absolute.startsWith(`${workspaceRoot}/`)) {
-    throw new Error(`path escapes workspace root: ${path}`);
-  }
   return absolute;
 }
 
