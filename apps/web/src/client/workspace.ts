@@ -1,10 +1,12 @@
 /// <reference lib="dom" />
 
-import type {
-  WorkspaceClientActivateTabContext,
-  WorkspaceClientFocusContext,
-  WorkspaceClientHooks,
-  WorkspaceClientWorkspaceAppFrameContext,
+import {
+  escapeHtml,
+  providerBrandIconHtml,
+  type WorkspaceClientActivateTabContext,
+  type WorkspaceClientFocusContext,
+  type WorkspaceClientHooks,
+  type WorkspaceClientWorkspaceAppFrameContext,
 } from "@atelier/shared";
 import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
@@ -1398,6 +1400,10 @@ class OnboardingController extends Controller {
   }
 }
 
+function agentModelLabelHtml(provider: string, label: string): string {
+  return `${providerBrandIconHtml(provider, label, "brand-icon agent-model-provider-icon")}<span>${escapeHtml(label)}</span>`;
+}
+
 class AgentModelMenuController extends Controller {
   declare readonly element: HTMLSelectElement;
   private button?: HTMLButtonElement;
@@ -1444,7 +1450,10 @@ class AgentModelMenuController extends Controller {
   private sync = (): void => {
     if (!this.button || !this.menu) return;
     const selected = this.element.selectedOptions[0];
-    this.button.textContent = this.hasAvailableModel() ? (selected?.textContent?.trim() || "Select model") : "Configure favorite models";
+    const selectedLabel = selected?.textContent?.trim() || "Select model";
+    this.button.innerHTML = this.hasAvailableModel()
+      ? agentModelLabelHtml(selected?.dataset.provider ?? "", selectedLabel)
+      : "Configure favorite models";
     this.menu.innerHTML = "";
     const configure = document.createElement("button");
     configure.type = "button";
@@ -1458,7 +1467,8 @@ class AgentModelMenuController extends Controller {
       item.className = `agent-sel-option${option.selected ? " selected" : ""}${option.disabled ? " disabled" : ""}`;
       item.disabled = option.disabled;
       const label = document.createElement("span");
-      label.textContent = option.textContent ?? option.value;
+      label.className = "agent-model-option-label";
+      label.innerHTML = agentModelLabelHtml(option.dataset.provider ?? "", option.textContent ?? option.value);
       item.appendChild(label);
       if (option.disabled) {
         const reason = document.createElement("small");

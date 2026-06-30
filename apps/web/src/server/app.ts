@@ -26,7 +26,27 @@ import {
 } from "@atelier/projects";
 import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
-import { atelierName, domId, escapeHtml, turboStream, turboStreamResponse, type AgentWorkspaceCreateRequest, type AgentWorkspaceCreateResult, type GlobalSidebarContributionRegistry, type WorkspaceAttachment, type WorkspaceCommandContribution, type WorkspaceModuleCommandHandler, type WorkspaceModuleCommandResult, type WorkspaceModuleRouteHandler, type WorkspaceModuleTabLifecycleHandler, type WorkspaceRowContributionRegistry, type WorkspaceServerProvisioningHook, type WorkspaceTabContribution } from "@atelier/shared";
+import {
+  atelierName,
+  domId,
+  escapeHtml,
+  providerBrandColor,
+  providerBrandIconHtml,
+  turboStream,
+  turboStreamResponse,
+  type AgentWorkspaceCreateRequest,
+  type AgentWorkspaceCreateResult,
+  type GlobalSidebarContributionRegistry,
+  type WorkspaceAttachment,
+  type WorkspaceCommandContribution,
+  type WorkspaceModuleCommandHandler,
+  type WorkspaceModuleCommandResult,
+  type WorkspaceModuleRouteHandler,
+  type WorkspaceModuleTabLifecycleHandler,
+  type WorkspaceRowContributionRegistry,
+  type WorkspaceServerProvisioningHook,
+  type WorkspaceTabContribution,
+} from "@atelier/shared";
 import type { StreamHub } from "./stream-hub.ts";
 import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
 import type { WebPreferenceStore } from "./preferences.ts";
@@ -479,7 +499,7 @@ ${moduleStylesHtml()}
       : `<p>Atelier has a GitHub token, but GitHub would not allow it to read <b>${escapeHtml(project.name)}</b>.</p><p>Reconnect GitHub with a token that has access to this project, then try again.</p>`;
     return `<dialog id="github-token-required-modal" class="modal" data-controller="modal" data-modal-auto-show-value="true">
   <form method="dialog">
-    <h2>${escapeHtml(title)}</h2>
+    <h2 class="modal-brand-title"><span class="settings-provider-icon settings-provider-icon-github" style="--provider-color:${providerBrandColor("github")}">${providerBrandIconHtml("github", "GitHub")}</span>${escapeHtml(title)}</h2>
     ${body}
     <div class="modal-actions">
       <button class="btn" value="cancel">Cancel</button>

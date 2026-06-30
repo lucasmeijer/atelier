@@ -1,3 +1,5 @@
+export { providerBrandColor, providerBrandIconHtml } from "./brand-icons.ts";
+
 export const atelierName = "Atelier" as const;
 
 export function escapeHtml(value: unknown): string {

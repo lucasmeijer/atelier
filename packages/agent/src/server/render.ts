@@ -215,7 +215,7 @@ export async function renderAgentModelOptions(selectedModel?: string): Promise<s
   const models = await configuredModelOptionViews(selected);
   return models.map((model, index) => {
     const value = modelRefValue(model);
-    return `<option value="${escapeHtml(value)}"${(selected ? value === modelRefValue(selected) : index === 0) ? " selected" : ""}${model.available ? "" : ` disabled data-unavailable-reason="${escapeHtml(model.unavailableReason ?? "Unavailable")}"`}>${escapeHtml(model.name)}</option>`;
+    return `<option value="${escapeHtml(value)}" data-provider="${escapeHtml(model.provider)}"${(selected ? value === modelRefValue(selected) : index === 0) ? " selected" : ""}${model.available ? "" : ` disabled data-unavailable-reason="${escapeHtml(model.unavailableReason ?? "Unavailable")}"`}>${escapeHtml(model.name)}</option>`;
   }).join("");
 }
 
@@ -244,7 +244,7 @@ export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): 
     : `<span class="agent-stat" title="Context window used"><span class="agent-ctx-meter"><i style="width:${Math.min(100, Math.max(0, percent)).toFixed(0)}%"></i></span><b>${percent.toFixed(0)}%</b></span>`;
   const modelOptions = stats.models.map((model) => {
     const available = model.available !== false;
-    return `<option value="${escapeHtml(`${model.provider}::${model.id}`)}"${model.selected ? " selected" : ""}${available ? "" : ` disabled data-unavailable-reason="${escapeHtml(model.unavailableReason ?? "Unavailable")}"`}>${escapeHtml(model.name)}</option>`;
+    return `<option value="${escapeHtml(`${model.provider}::${model.id}`)}" data-provider="${escapeHtml(model.provider)}"${model.selected ? " selected" : ""}${available ? "" : ` disabled data-unavailable-reason="${escapeHtml(model.unavailableReason ?? "Unavailable")}"`}>${escapeHtml(model.name)}</option>`;
   }).join("");
   const thinkingOptions = stats.thinkingLevels.map((level) =>
     `<option value="${escapeHtml(level)}"${level === stats.thinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("");

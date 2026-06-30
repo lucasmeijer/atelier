@@ -16,7 +16,7 @@ import {
   type ConfiguredAgentModel,
   type PiAuthPrompt,
 } from "@atelier/agent/server";
-import { domId, escapeHtml, turboStream, turboStreamResponse } from "@atelier/shared";
+import { domId, escapeHtml, providerBrandColor, providerBrandIconHtml, turboStream, turboStreamResponse } from "@atelier/shared";
 import { clearGitIdentity, getGitIdentity, getStoredGitIdentity, setGitIdentity } from "@atelier/projects";
 import { listSettingsContributions, registerSettingsContribution } from "./registry.ts";
 import { workspaceModules } from "../workspace-modules.ts";
@@ -74,30 +74,13 @@ function badge(connected: boolean, label = connected ? "Connected" : "Not connec
   return `<span class="settings-badge ${connected ? "on" : "off"}"><span></span>${escapeHtml(label)}</span>`;
 }
 
-function providerColor(provider: string): string {
-  const colors: Record<string, string> = {
-    anthropic: "#d4a27f",
-    openai: "#10a37f",
-    "openai-codex": "#10a37f",
-    google: "#4285F4",
-    gemini: "#4285F4",
-    openrouter: "#8a63d2",
-    copilot: "#24292f",
-    github: "#24292f",
-  };
-  return colors[provider] ?? `hsl(${[...provider].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 360} 52% 54%)`;
-}
-
-function providerInitial(label: string): string {
-  return (label.trim()[0] ?? "?").toUpperCase();
+function providerIcon(provider: string, label = provider, className = "settings-provider-icon", tag: "div" | "span" = "div"): string {
+  const githubClass = provider === "github" ? " settings-provider-icon-github" : "";
+  return `<${tag} class="${className}${githubClass}" style="--provider-color:${providerBrandColor(provider)}">${providerBrandIconHtml(provider, label)}</${tag}>`;
 }
 
 function settingsSection(id: string, title: string, body: string, subtitle = ""): string {
   return `<section class="settings-sec" id="settings-sec-${escapeHtml(id)}"><h2>${escapeHtml(title)}</h2>${subtitle ? `<p class="settings-sub">${escapeHtml(subtitle)}</p>` : ""}${body}</section>`;
-}
-
-function githubIcon(): string {
-  return `<svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.6 7.6 0 0 1 8 3.86c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>`;
 }
 
 function githubRow(surface: "settings" | "onboarding" = "settings"): string {
@@ -105,7 +88,7 @@ function githubRow(surface: "settings" | "onboarding" = "settings"): string {
   const flowAction = surface === "onboarding" ? "/settings/github/flow?surface=onboarding" : "/settings/github/flow";
   const disconnectAction = surface === "onboarding" ? "/settings/github/disconnect?surface=onboarding" : "/settings/github/disconnect";
   return `<div class="settings-provider settings-provider-github" id="${domId(surface, "provider", "github")}">
-    <div class="settings-provider-icon settings-provider-icon-github" style="--provider-color:${providerColor("github")}">${githubIcon()}</div>
+    ${providerIcon("github", "GitHub")}
     <div class="settings-provider-main"><div class="settings-provider-title">GitHub${connected ? ` ${badge(true)}` : ""}</div><div class="settings-provider-desc">Atelier injects your GitHub auth token outside of the workspace container your agent runs in, so it is not visible to your coding agent, but it can still push and pull from your private repos.</div></div>
     <div class="settings-provider-actions">${connected
       ? `<form method="post" action="${disconnectAction}" data-turbo="true"><button class="settings-btn danger" type="submit">Disconnect</button></form>`
@@ -166,7 +149,7 @@ function providerRow(provider: ProviderSummary, surface: "settings" | "onboardin
       ? `<span class="settings-provider-desc">Managed outside Atelier</span>`
       : methods.map((method) => `<form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/flow?method=${encodeURIComponent(method)}${surfaceParam}" data-turbo="true"><button class="settings-btn ${surface === "onboarding" ? "primary" : ""}" type="submit">${method === "oauth" ? "Sign in" : "Add API key"}</button></form>`).join("");
   return `<div class="settings-provider${hidden ? " provider-extra hidden" : ""}" id="${id}" data-provider-extra="${hidden ? "true" : "false"}">
-    <div class="settings-provider-icon" style="--provider-color:${providerColor(provider.provider)}">${escapeHtml(providerInitial(provider.label))}</div>
+    ${providerIcon(provider.provider, provider.label)}
     <div class="settings-provider-main"><div class="settings-provider-title">${escapeHtml(provider.label)} <span class="settings-provider-count">${escapeHtml(modelCount)}</span>${provider.connected ? ` ${badge(true, provider.authLabel)}` : ""}</div></div>
     <div class="settings-provider-actions">${actions}</div>
   </div>`;
@@ -262,7 +245,7 @@ export async function renderModelSetup(surface: "settings" | "onboarding" | "dia
 function modelFavoriteRow(model: FavoriteModelView): string {
   const value = `${model.provider}::${model.id}`;
   return `<div class="settings-model-row${model.available ? "" : " unavailable"}" id="${domId("settings_model", model.provider, model.id)}">
-    <span class="settings-model-dot" style="--provider-color:${providerColor(model.provider)}"></span>
+    ${providerIcon(model.provider, model.provider, "settings-model-dot settings-model-provider-icon")}
     <div class="settings-model-main"><code>${escapeHtml(model.label)}</code><small>${escapeHtml(model.provider)}${model.available ? "" : ` · ${escapeHtml(model.reason ?? "Unavailable")}`}</small></div>
     <div class="settings-provider-actions"><form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(value)}"><button class="settings-btn danger icon" type="submit" title="Remove favorite model" aria-label="Remove favorite model">🗑</button></form></div>
   </div>`;
@@ -280,7 +263,7 @@ async function renderAddModelDialog(): Promise<string> {
     <div class="settings-flow-body" data-controller="model-add-menu">
       <input class="settings-input settings-model-filter" type="search" placeholder="Filter models…" data-model-add-menu-target="filter" data-action="input->model-add-menu#filter" autocomplete="off" autofocus>
       <div class="settings-add-model-options grouped" data-model-add-menu-target="options">
-        ${groups.length ? groups.map(([provider, models]) => `<section class="settings-add-model-group"><h3>${escapeHtml(provider)}</h3>${models.map((model) => `<form method="post" action="/settings/models/add" data-turbo="true" data-model-add-menu-target="option" data-search-text="${escapeHtml(`${model.label} ${model.provider} ${model.id}`.toLowerCase())}"><input type="hidden" name="model" value="${escapeHtml(modelKey(model))}"><button class="settings-add-model-option" type="submit"><span>${escapeHtml(model.label)}</span><small>${escapeHtml(model.id)}</small></button></form>`).join("")}</section>`).join("") : `<div class="settings-empty">No more models available from connected providers.</div>`}
+        ${groups.length ? groups.map(([provider, models]) => `<section class="settings-add-model-group"><h3>${providerIcon(provider, provider, "settings-add-model-provider-icon", "span")}${escapeHtml(provider)}</h3>${models.map((model) => `<form method="post" action="/settings/models/add" data-turbo="true" data-model-add-menu-target="option" data-search-text="${escapeHtml(`${model.label} ${model.provider} ${model.id}`.toLowerCase())}"><input type="hidden" name="model" value="${escapeHtml(modelKey(model))}"><button class="settings-add-model-option" type="submit"><span>${escapeHtml(model.label)}</span><small>${escapeHtml(model.id)}</small></button></form>`).join("")}</section>`).join("") : `<div class="settings-empty">No more models available from connected providers.</div>`}
       </div>
     </div>
     <div class="settings-flow-actions"><button class="settings-btn" type="button" data-action="modal#close">Close</button></div>
@@ -323,7 +306,7 @@ export async function renderDevelopmentSettingsDialog(): Promise<string> {
 function forceDeleteAllWorkspacesModal(error = ""): string {
   return `<dialog id="settings_dev_force_delete_workspaces_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <form method="post" action="/settings/workspaces/force-delete" data-turbo="true">
-      <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerColor("github")}">!</div><div><b>Force delete all workspaces?</b><p>Development tool</p></div></div>
+      <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerBrandColor("github")}">!</div><div><b>Force delete all workspaces?</b><p>Development tool</p></div></div>
       <div class="settings-flow-body"><p>This force-removes every Atelier workspace container in this namespace and deletes its local workspace data. Uncommitted work will be lost.</p>${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}</div>
       <div class="settings-flow-actions"><button class="settings-btn" formmethod="dialog">Cancel</button><button class="settings-btn danger" type="submit">Force delete all workspaces</button></div>
     </form>
@@ -342,7 +325,7 @@ function githubTokenModal(error = "", surface: "settings" | "onboarding" = "sett
   const action = surface === "onboarding" ? "/settings/github/connect?surface=onboarding" : "/settings/github/connect";
   return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <form method="post" action="${action}" data-turbo="true">
-      <div class="settings-flow-head"><div class="settings-provider-icon settings-provider-icon-github" style="--provider-color:${providerColor("github")}">${githubIcon()}</div><div><b>GitHub</b><p>GitHub CLI token</p></div></div>
+      <div class="settings-flow-head">${providerIcon("github", "GitHub")}<div><b>GitHub</b><p>GitHub CLI token</p></div></div>
       <div class="settings-flow-body">
         <p>On your machine, sign in with GitHub CLI if needed, then print your token:</p>
         <pre class="settings-command">gh auth login
@@ -359,7 +342,7 @@ gh auth token</pre>
 function apiKeyModal(id: string, label: string, action: string, error = ""): string {
   return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <form method="post" action="${escapeHtml(action)}" data-turbo="true">
-      <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerColor(id)}">${escapeHtml(providerInitial(label))}</div><div><b>${escapeHtml(label)}</b><p>API key</p></div></div>
+      <div class="settings-flow-head">${providerIcon(id, label)}<div><b>${escapeHtml(label)}</b><p>API key</p></div></div>
       <div class="settings-flow-body"><div class="settings-oauth-card">
         ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
         <div class="settings-oauth-input-row"><input class="settings-input" type="password" name="secret" placeholder="${escapeHtml(getProviderApiKeyExample(id) ?? "API key")}" autocomplete="off" required autofocus><button class="settings-btn primary" type="submit">Connect</button></div>
@@ -505,7 +488,7 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
           ? oauthBrowserRedirectBody(flow, pollMs)
           : `<div class="settings-oauth-card"><div class="settings-oauth-progress">${oauthProgressItem("pending", "Starting OAuth flow", "Waiting for the provider to respond.", `every ${Math.round(pollMs / 1000)}s`)}</div></div>`;
   return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal oauth-flow" data-modal-auto-show-value="true" data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" ? "true" : "false"}" data-oauth-flow-poll-ms-value="${pollMs}">
-    <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerColor(flow.provider)}">${escapeHtml(providerInitial(flow.label))}</div><div><b>Sign in with ${escapeHtml(flow.label)}</b><p>${flow.verificationUri ? "Device code" : "Browser redirect"}</p></div></div>
+    <div class="settings-flow-head">${providerIcon(flow.provider, flow.label)}<div><b>Sign in with ${escapeHtml(flow.label)}</b><p>${flow.verificationUri ? "Device code" : "Browser redirect"}</p></div></div>
     <div class="settings-flow-body">${body}</div>
     <div class="settings-flow-actions settings-oauth-actions">
       ${flow.status === "complete" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="settings-btn primary" type="submit">Done</button></form>` : ""}
