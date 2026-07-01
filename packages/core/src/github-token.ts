@@ -8,8 +8,8 @@ function storedGitHubTokenPath(): string {
 
 export function discoverHostGitHubToken(): string | undefined {
   const path = storedGitHubTokenPath();
-  if (!existsSync(path)) return undefined;
-  return readFileSync(path, "utf8").trim() || undefined;
+  const stored = existsSync(path) ? readFileSync(path, "utf8").trim() : undefined;
+  return stored || process.env.GH_TOKEN?.trim() || undefined;
 }
 
 export function hasWorkspaceGitHubToken(): boolean {

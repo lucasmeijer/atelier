@@ -5,8 +5,8 @@ import { describe, expect, test } from "bun:test";
 import { createWebApp } from "../src/server/app.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
-import { clearWorkspaceGitHubToken, setWorkspaceGitHubToken } from "@atelier/proxy-egress";
-import { addProject, clearGitIdentity, getGitIdentity, isGitProjectInit, listProjects, projectWorkspaceInit, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
+import { setWorkspaceGitHubToken } from "@atelier/proxy-egress";
+import { addProject, getGitIdentity, isGitProjectInit, listProjects, projectWorkspaceInit, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -70,13 +70,17 @@ function postJson(path: string, body: unknown): Request {
 
 async function withTempDataDir<T>(fn: () => Promise<T>): Promise<T> {
   const previousDataDir = process.env.ATELIER_DATA_DIR;
+  const previousGitHubToken = process.env.GH_TOKEN;
   const dataDir = await mkdtemp(join(tmpdir(), "atelier-web-test-"));
   process.env.ATELIER_DATA_DIR = dataDir;
+  delete process.env.GH_TOKEN;
   try {
     return await fn();
   } finally {
     if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
     else process.env.ATELIER_DATA_DIR = previousDataDir;
+    if (previousGitHubToken === undefined) delete process.env.GH_TOKEN;
+    else process.env.GH_TOKEN = previousGitHubToken;
     await rm(dataDir, { recursive: true, force: true });
   }
 }
@@ -597,34 +601,28 @@ describe("web app contracts", () => {
   });
 
   test("GitHub connect validates and stores pasted GitHub CLI token", async () => {
-    const previousDataDir = process.env.ATELIER_DATA_DIR;
-    const dataDir = await mkdtemp(join(tmpdir(), "atelier-web-github-"));
-    const originalFetch = globalThis.fetch;
-    try {
-      process.env.ATELIER_DATA_DIR = dataDir;
-      globalThis.fetch = ((url: Parameters<typeof fetch>[0]) => {
-        if (url === "https://api.github.com/user") return Promise.resolve(Response.json({ login: "octocat", name: "Mona Lisa", email: "octocat@github.com" }));
-        if (url === "https://api.github.com/user/emails") return Promise.resolve(Response.json([]));
-        throw new Error(`unexpected fetch ${String(url)}`);
-      }) as unknown as typeof fetch;
-      const { app } = createTestApp();
+    await withTempDataDir(async () => {
+      const originalFetch = globalThis.fetch;
+      try {
+        globalThis.fetch = ((url: Parameters<typeof fetch>[0]) => {
+          if (url === "https://api.github.com/user") return Promise.resolve(Response.json({ login: "octocat", name: "Mona Lisa", email: "octocat@github.com" }));
+          if (url === "https://api.github.com/user/emails") return Promise.resolve(Response.json([]));
+          throw new Error(`unexpected fetch ${String(url)}`);
+        }) as unknown as typeof fetch;
+        const { app } = createTestApp();
 
-      const response = await app.fetch(postForm("/settings/github/connect", new URLSearchParams({ token: "cli-token" })));
-      const body = await response.text();
+        const response = await app.fetch(postForm("/settings/github/connect", new URLSearchParams({ token: "cli-token" })));
+        const body = await response.text();
 
-      expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
-      expect(body).toContain('target="settings_dialog"');
-      expect(body).toContain("Connected");
-      expect(body).toContain('target="settings_flow_dialog"');
-      expect(await getGitIdentity()).toEqual({ name: "Mona Lisa", email: "octocat@github.com" });
-    } finally {
-      clearWorkspaceGitHubToken();
-      await clearGitIdentity();
-      globalThis.fetch = originalFetch;
-      if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
-      else process.env.ATELIER_DATA_DIR = previousDataDir;
-      await rm(dataDir, { recursive: true, force: true });
-    }
+        expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
+        expect(body).toContain('target="settings_dialog"');
+        expect(body).toContain("Connected");
+        expect(body).toContain('target="settings_flow_dialog"');
+        expect(await getGitIdentity()).toEqual({ name: "Mona Lisa", email: "octocat@github.com" });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
   });
 
   test("page shell uses cable instead of a workspace EventSource", async () => {

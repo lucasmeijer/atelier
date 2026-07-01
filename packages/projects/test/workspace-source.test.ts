@@ -36,19 +36,24 @@ async function createRemote(): Promise<{ root: string; remote: string; seed: str
 describe("workspace source preparation", () => {
   let dataDir: string;
   let previousDataDir: string | undefined;
+  let previousGitHubToken: string | undefined;
   const tempRoots: string[] = [];
 
   beforeEach(async () => {
     previousDataDir = process.env.ATELIER_DATA_DIR;
+    previousGitHubToken = process.env.GH_TOKEN;
     dataDir = await mkdtemp(join(tmpdir(), "atelier-data-test-"));
     tempRoots.push(dataDir);
     process.env.ATELIER_DATA_DIR = dataDir;
+    delete process.env.GH_TOKEN;
   });
 
   afterEach(async () => {
     clearWorkspaceGitHubToken();
     if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
     else process.env.ATELIER_DATA_DIR = previousDataDir;
+    if (previousGitHubToken === undefined) delete process.env.GH_TOKEN;
+    else process.env.GH_TOKEN = previousGitHubToken;
     await Promise.all(tempRoots.splice(0).map((path) => rm(path, { recursive: true, force: true })));
   });
 
