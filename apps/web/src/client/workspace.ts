@@ -12,6 +12,9 @@ import {
   type WorkspaceClientFocusContext,
   type WorkspaceClientHooks,
   type WorkspaceClientWorkspaceAppFrameContext,
+  type WorkspacePaletteItem,
+  type WorkspacePaletteProvider,
+  type WorkspacePaletteSearchContext,
 } from "@atelier/shared";
 import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
@@ -45,6 +48,7 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   private readonly workspaceCommandHandlers: Array<(commandId: string) => boolean | void | Promise<boolean | void>> = [];
   private readonly workspaceAppFrameUrlHandlers: Array<(context: WorkspaceClientWorkspaceAppFrameContext) => void> = [];
   private readonly workspaceAppFrameRefreshHandlers: Array<(context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void> = [];
+  private readonly paletteProviders = new Map<string, WorkspacePaletteProvider>();
 
   onBecomeVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void { this.becomeVisibleHandlers.push(handler); }
   onNoLongerVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void { this.noLongerVisibleHandlers.push(handler); }
@@ -52,6 +56,7 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   onWorkspaceCommand(handler: (commandId: string) => boolean | void | Promise<boolean | void>): void { this.workspaceCommandHandlers.push(handler); }
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void { this.workspaceAppFrameUrlHandlers.push(handler); }
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void { this.workspaceAppFrameRefreshHandlers.push(handler); }
+  registerPaletteProvider(provider: WorkspacePaletteProvider): void { this.paletteProviders.set(provider.id, provider); }
 
   becomeVisible(context: WorkspaceClientTabVisibilityContext): void {
     this.becomeVisibleHandlers.forEach((handler) => handler(context));
@@ -82,10 +87,52 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   workspaceAppFrameRefresh(context: { appKey: string; frame: HTMLIFrameElement; load(): void }): void {
     this.workspaceAppFrameRefreshHandlers.forEach((handler) => handler(context));
   }
+
+  async searchPalette(query: string): Promise<PaletteResult[]> {
+    const context: WorkspacePaletteSearchContext = { query, fuzzyScore: (candidate) => fuzzyScore(query, candidate) };
+    const providerItems = await Promise.all([...this.paletteProviders.values()].map(async (provider) => {
+      const items = await provider.search(context);
+      return items.map((item) => ({ ...item, provider, score: item.score ?? this.paletteItemScore(query, item) }));
+    }));
+    return providerItems.flat()
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+      .slice(0, 30);
+  }
+
+  private paletteItemScore(query: string, item: WorkspacePaletteItem): number {
+    return fuzzyScore(query, [item.title, item.subtitle, item.detail, item.badge, ...(item.keywords ?? [])].filter(Boolean).join(" "));
+  }
 }
+
+type PaletteResult = WorkspacePaletteItem & { provider: WorkspacePaletteProvider; score: number };
 
 const clientHooks = new WorkspaceClientHookRegistry();
 const visiblePaneState = new WeakSet<HTMLElement>();
+
+function fuzzyScore(query: string, candidate: string): number {
+  const q = query.trim().toLowerCase();
+  const c = candidate.toLowerCase();
+  if (!q) return 1;
+  if (!c) return 0;
+  if (c === q) return 1000 + q.length;
+  if (c.startsWith(q)) return 900 + q.length;
+  const substringIndex = c.indexOf(q);
+  if (substringIndex >= 0) return 760 + q.length - substringIndex;
+  let score = 0;
+  let lastIndex = -1;
+  let streak = 0;
+  for (const char of q) {
+    const index = c.indexOf(char, lastIndex + 1);
+    if (index < 0) return 0;
+    streak = index === lastIndex + 1 ? streak + 1 : 1;
+    score += 12 + streak * 8;
+    if (index === 0 || /[\s/:._-]/.test(c[index - 1] ?? "")) score += 18;
+    score -= Math.max(0, index - lastIndex - 1) * 0.4;
+    lastIndex = index;
+  }
+  return Math.max(1, score - Math.max(0, c.length - q.length) * 0.05);
+}
 
 function tabVisibilityContext(pane: HTMLElement): WorkspaceClientTabVisibilityContext | undefined {
   const tabKey = pane.dataset.tabPane;
@@ -457,9 +504,30 @@ class AtelierShortcutsController extends Controller {
   private readonly commands = new Map<string, CommandRegistration>();
   private shortcutOverlayTimer: ReturnType<typeof setTimeout> | undefined;
   private shortcutOverlay: HTMLElement | undefined;
+  private paletteDialog: HTMLDialogElement | undefined;
+  private paletteInput: HTMLInputElement | undefined;
+  private paletteResults: HTMLElement | undefined;
+  private paletteItems: PaletteResult[] = [];
+  private paletteIndex = 0;
+  private paletteSearchTimer: ReturnType<typeof setTimeout> | undefined;
+  private paletteSearchSeq = 0;
 
   connect(): void {
     this.registerBuiltinCommands();
+    clientHooks.registerPaletteProvider({
+      id: "atelier.commands",
+      label: "Command",
+      search: () => this.currentCommands()
+        .filter((command) => command.id !== "atelier.open-palette")
+        .map((command) => ({
+          id: `command:${command.id}`,
+          title: command.label,
+          subtitle: command.description,
+          badge: command.binding ? this.formatBinding(command.binding) : undefined,
+          keywords: [command.id, command.scope, command.binding ?? ""],
+          run: command.run,
+        })),
+    });
     // Listen at window capture so we get first chance at shortcuts that focused
     // Atelier-owned widgets (not iframes) might otherwise consume.
     window.addEventListener("keydown", this.keydown, true);
@@ -472,6 +540,7 @@ class AtelierShortcutsController extends Controller {
     window.removeEventListener("keyup", this.keyup, true);
     window.removeEventListener("blur", this.hideShortcutOverlay);
     this.hideShortcutOverlay();
+    this.closePalette();
   }
 
   private readonly keydown = (event: KeyboardEvent): void => {
@@ -484,6 +553,12 @@ class AtelierShortcutsController extends Controller {
     }
 
     this.hideShortcutOverlay();
+    if (this.matchesBinding(event, "Meta+Alt+KeyK")) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void this.openPalette();
+      return;
+    }
     const command = this.currentCommands().find((candidate) => candidate.binding && this.matchesBinding(event, candidate.binding));
     if (!command) return;
     event.preventDefault();
@@ -527,6 +602,13 @@ class AtelierShortcutsController extends Controller {
       scope: "global",
       binding: "Meta+Alt+Semicolon",
       run: () => this.openDialogPrompt("agent_launch_empty_workspace_modal"),
+    });
+    this.registerCommand({
+      id: "atelier.open-palette",
+      label: "Open palette",
+      scope: "global",
+      binding: "Meta+Alt+KeyK",
+      run: () => this.openPalette(),
     });
   }
 
@@ -629,6 +711,123 @@ class AtelierShortcutsController extends Controller {
       case "Semicolon": return event.key === ";" || event.key === ":";
       default: return false;
     }
+  }
+
+  private async openPalette(): Promise<void> {
+    this.ensurePalette();
+    if (!this.paletteDialog!.open) this.paletteDialog!.showModal();
+    this.paletteInput!.value = "";
+    this.paletteInput!.focus();
+    await this.searchPaletteNow();
+  }
+
+  private closePalette(): void {
+    if (this.paletteSearchTimer) clearTimeout(this.paletteSearchTimer);
+    this.paletteSearchTimer = undefined;
+    this.paletteDialog?.remove();
+    this.paletteDialog = undefined;
+    this.paletteInput = undefined;
+    this.paletteResults = undefined;
+    this.paletteItems = [];
+  }
+
+  private ensurePalette(): void {
+    if (this.paletteDialog) return;
+    const dialog = document.createElement("dialog");
+    dialog.className = "palette-dialog";
+    dialog.innerHTML = `<div class="palette-panel"><input class="palette-input" type="text" spellcheck="false" autocomplete="off" placeholder="Search your Atelier" aria-label="Search palette"><div class="palette-results" role="listbox"></div></div>`;
+    dialog.addEventListener("close", () => this.paletteInput?.blur());
+    dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
+    const input = dialog.querySelector<HTMLInputElement>(".palette-input")!;
+    const results = dialog.querySelector<HTMLElement>(".palette-results")!;
+    input.addEventListener("input", () => this.schedulePaletteSearch());
+    input.addEventListener("keydown", (event) => this.paletteKeydown(event));
+    results.addEventListener("mousemove", (event) => this.palettePointerMove(event));
+    results.addEventListener("click", (event) => this.paletteClick(event));
+    document.body.append(dialog);
+    this.paletteDialog = dialog;
+    this.paletteInput = input;
+    this.paletteResults = results;
+  }
+
+  private schedulePaletteSearch(): void {
+    if (this.paletteSearchTimer) clearTimeout(this.paletteSearchTimer);
+    this.paletteSearchTimer = setTimeout(() => {
+      this.paletteSearchTimer = undefined;
+      void this.searchPaletteNow();
+    }, 60);
+  }
+
+  private async searchPaletteNow(): Promise<void> {
+    const seq = ++this.paletteSearchSeq;
+    const query = this.paletteInput?.value ?? "";
+    const items = await clientHooks.searchPalette(query);
+    if (seq !== this.paletteSearchSeq) return;
+    this.paletteItems = items;
+    this.paletteIndex = 0;
+    this.renderPaletteResults();
+  }
+
+  private paletteKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      this.paletteDialog?.close();
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (this.paletteItems.length === 0) return;
+      this.paletteIndex = (this.paletteIndex + (event.key === "ArrowDown" ? 1 : -1) + this.paletteItems.length) % this.paletteItems.length;
+      this.renderPaletteResults();
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void this.runPaletteItem(this.paletteItems[this.paletteIndex]);
+    }
+  }
+
+  private renderPaletteResults(): void {
+    const results = this.paletteResults;
+    if (!results) return;
+    if (this.paletteItems.length === 0) {
+      results.innerHTML = `<div class="palette-empty">No matches</div>`;
+      return;
+    }
+    results.innerHTML = this.paletteItems.map((item, index) => `<button type="button" class="palette-item${index === this.paletteIndex ? " active" : ""}" data-palette-index="${index}" role="option" aria-selected="${index === this.paletteIndex ? "true" : "false"}">
+        <span class="palette-kind">${escapeHtml(item.provider.label)}</span>
+        <span class="palette-thing">
+          <span class="palette-item-main"><span class="palette-title">${escapeHtml(item.title)}</span>${item.subtitle ? `<span class="palette-subtitle">${escapeHtml(item.subtitle)}</span>` : ""}${item.detail ? `<span class="palette-detail">${escapeHtml(item.detail)}</span>` : ""}</span>
+          ${item.badge ? `<span class="palette-badge">${escapeHtml(item.badge)}</span>` : ""}
+        </span>
+      </button>`).join("");
+    results.querySelector<HTMLElement>(".palette-item.active")?.scrollIntoView({ block: "nearest" });
+  }
+
+  private palettePointerMove(event: MouseEvent): void {
+    const index = this.paletteEventIndex(event);
+    if (index === undefined || index === this.paletteIndex) return;
+    this.paletteIndex = index;
+    this.renderPaletteResults();
+  }
+
+  private paletteClick(event: MouseEvent): void {
+    const index = this.paletteEventIndex(event);
+    if (index === undefined) return;
+    void this.runPaletteItem(this.paletteItems[index]);
+  }
+
+  private paletteEventIndex(event: Event): number | undefined {
+    const target = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(".palette-item[data-palette-index]") : null;
+    if (!target) return undefined;
+    const index = Number(target.dataset.paletteIndex);
+    return Number.isFinite(index) ? index : undefined;
+  }
+
+  private async runPaletteItem(item: PaletteResult | undefined): Promise<void> {
+    if (!item) return;
+    this.paletteDialog?.close();
+    await item.run();
   }
 
   private openDialogPrompt(id: string): void {

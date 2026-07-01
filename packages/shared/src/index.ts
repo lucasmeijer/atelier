@@ -282,6 +282,28 @@ export interface WorkspaceClientWorkspaceAppFrameContext {
   frame: HTMLIFrameElement;
 }
 
+export interface WorkspacePaletteItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  detail?: string;
+  badge?: string;
+  keywords?: string[];
+  score?: number;
+  run(): void | Promise<void>;
+}
+
+export interface WorkspacePaletteSearchContext {
+  query: string;
+  fuzzyScore(candidate: string): number;
+}
+
+export interface WorkspacePaletteProvider {
+  id: string;
+  label: string;
+  search(context: WorkspacePaletteSearchContext): WorkspacePaletteItem[] | Promise<WorkspacePaletteItem[]>;
+}
+
 export interface WorkspaceClientHooks {
   onBecomeVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void;
   onNoLongerVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void;
@@ -289,6 +311,7 @@ export interface WorkspaceClientHooks {
   onWorkspaceCommand(handler: (commandId: string) => boolean | void | Promise<boolean | void>): void;
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void;
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void;
+  registerPaletteProvider(provider: WorkspacePaletteProvider): void;
 }
 
 export interface WorkspaceClientModuleContext {

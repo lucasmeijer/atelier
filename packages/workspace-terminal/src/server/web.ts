@@ -22,7 +22,7 @@ export const terminalWorkspaceCommands: WorkspaceCommandContribution[] = [
     id: "terminal.create",
     label: "New Terminal",
     scope: "workspace",
-    surfaces: { ui: { placement: "group-menu" } },
+    surfaces: { ui: { placement: "group-menu" }, shortcut: { defaultBinding: "Meta+Alt+KeyT" } },
   },
 ];
 

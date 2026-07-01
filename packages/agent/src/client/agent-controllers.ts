@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import { CableTopics, copyTextToClipboard, type AtelierCableClient, type CableIdentifier, type WorkspaceClientModule } from "@atelier/shared";
+import { CableTopics, copyTextToClipboard, type AtelierCableClient, type CableIdentifier, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
@@ -1026,6 +1026,52 @@ function agentTabNoLongerVisible(application: StimulusApplication, pane: HTMLEle
   agentPaneController(application, pane)?.stop();
 }
 
+async function waitForAgentResident(workspaceId: string): Promise<HTMLElement> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const resident = document.querySelector<HTMLElement>(`.workspace-detail-resident.visible[data-workspace-id="${CSS.escape(workspaceId)}"]`);
+    if (resident) return resident;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
+  throw new Error(`Workspace ${workspaceId} did not become visible`);
+}
+
+async function openAgentSession(workspaceId: string, tabKey: string): Promise<void> {
+  const visible = document.querySelector<HTMLElement>(`.workspace-detail-resident.visible[data-workspace-id="${CSS.escape(workspaceId)}"]`);
+  if (!visible) {
+    const row = document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`);
+    row?.querySelector<HTMLAnchorElement>("a.row-main")?.click();
+  }
+  const resident = await waitForAgentResident(workspaceId);
+  resident.querySelector<HTMLButtonElement>(`.group-tab[data-tab="${CSS.escape(tabKey)}"] .group-tab-label`)?.click();
+  const pane = resident.querySelector<HTMLElement>(`.tab-pane[data-tab-pane="${CSS.escape(tabKey)}"]`);
+  const input = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
+  input?.focus();
+}
+
+function agentPaletteItems(fuzzyScore: (candidate: string) => number): WorkspacePaletteItem[] {
+  return [...document.querySelectorAll<HTMLElement>(".agent-pane")].map((pane) => {
+    const workspaceId = pane.dataset.agentPaneWorkspaceIdValue!;
+    const label = pane.dataset.agentPaneLabelValue!;
+    const resident = pane.closest<HTMLElement>(".workspace-detail-resident[data-workspace-id]");
+    const workspaceTitle = document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"] .r-title`)?.textContent?.trim() ?? workspaceId;
+    const tabKey = pane.closest<HTMLElement>(".tab-pane[data-tab-pane]")?.dataset.tabPane ?? `agent:${label}`;
+    const busy = pane.querySelector<HTMLElement>(".agent-sendstop[data-agent-busy='true']") ? "busy" : "idle";
+    const transcript = pane.querySelector<HTMLElement>(".agent-transcript")?.textContent?.trim().replace(/\s+/g, " ") ?? "";
+    const tail = transcript.slice(-600);
+    const score = fuzzyScore([label, workspaceTitle, busy, tail].join(" ")) + (resident?.classList.contains("visible") ? 20 : 0) + (busy === "busy" ? 12 : 0);
+    return {
+      id: `agent:${workspaceId}:${label}`,
+      title: label,
+      subtitle: workspaceTitle,
+      detail: tail.length > 140 ? `…${tail.slice(-140)}` : tail,
+      badge: busy,
+      keywords: [workspaceId, tabKey, busy],
+      score,
+      run: () => openAgentSession(workspaceId, tabKey),
+    };
+  });
+}
+
 export const agentClientModule: WorkspaceClientModule = {
   id: "agent",
   install({ application, Controller, hooks }) {
@@ -1042,6 +1088,11 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-proxy", createAgentProxyController(Controller));
     application.register("agent-term", createAgentTermController(Controller));
 
+    hooks.registerPaletteProvider({
+      id: "agent.sessions",
+      label: "Agent session",
+      search: ({ fuzzyScore }) => agentPaletteItems(fuzzyScore),
+    });
     hooks.onBecomeVisible(({ pane }) => agentTabBecameVisible(application, pane));
     hooks.onNoLongerVisible(({ pane }) => agentTabNoLongerVisible(application, pane));
     hooks.onFocusGroup(({ pane }) => {

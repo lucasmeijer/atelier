@@ -703,6 +703,23 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .shortcut-overlay-list dt { min-width: 0; font-size: 13px; font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shortcut-overlay-list dd { margin: 0; padding: 3px 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
 
+.palette-dialog { width: min(720px, calc(100vw - 32px)); max-width: none; margin: 12vh auto auto; padding: 0; border: 0; background: transparent; color: var(--text); }
+.palette-dialog::backdrop { background: rgba(15,23,42,.24); backdrop-filter: blur(3px); }
+.palette-panel { overflow: hidden; border: 1px solid var(--line2); border-radius: 16px; background: color-mix(in srgb, var(--panel) 96%, transparent); box-shadow: var(--shadow); backdrop-filter: blur(12px); }
+.palette-input { box-sizing: border-box; width: 100%; border: 0; border-bottom: 1px solid var(--line); outline: 0; padding: 16px 18px; background: transparent; color: var(--text); font: inherit; font-size: 16px; font-weight: 500; }
+.palette-input::placeholder { color: var(--muted2); }
+.palette-results { max-height: min(520px, calc(80vh - 74px)); overflow: auto; padding: 8px; }
+.palette-item { width: 100%; display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: stretch; gap: 12px; border: 0; border-radius: 10px; padding: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.palette-item.active, .palette-item:hover { background: var(--accent-soft); }
+.palette-kind { padding: 11px 0 11px 10px; color: var(--muted); font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-thing { min-width: 0; display: flex; align-items: center; gap: 14px; padding: 9px 10px 9px 0; }
+.palette-item-main { min-width: 0; display: grid; gap: 3px; flex: 1; }
+.palette-title { font-size: 12.5px; font-weight: 620; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-subtitle, .palette-detail { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-detail { color: var(--muted2); }
+.palette-badge { flex: 0 0 auto; padding: 3px 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+.palette-empty { padding: 28px 12px; color: var(--muted); text-align: center; font-size: 13px; }
+
 /* update preview */
 .update-sidebar-section { padding: 10px 8px 2px; }
 .update-sidebar-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 34px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--accent-soft) 48%, var(--panel)); }
