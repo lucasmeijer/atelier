@@ -91,4 +91,11 @@ describe("tool rendering", () => {
     expect(html).toContain("color:#00cd00");
     expect(html).toContain("Built target");
   });
+
+  test("tool output escapes html-unsafe control characters", () => {
+    const html = renderToolCard(ctx, tool({ name: "read", args: { path: "image.jpg" }, resultText: "abc\u0000\u0001def<script>" }));
+    expect(html).toContain("abc��def&lt;script&gt;");
+    expect(html).not.toContain("\u0000");
+    expect(html).not.toContain("\u0001");
+  });
 });
