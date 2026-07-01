@@ -18,6 +18,8 @@ interface PromptFrontmatter {
 
 const promptDirs = [".atelier/prompts", ".pi/prompts"] as const;
 
+const builtinLandPrompt = "Commit and push your work, rebasing when necessary";
+
 function parseFrontmatter(markdown: string): { frontmatter: PromptFrontmatter; body: string } {
   if (!markdown.startsWith("---\n")) return { frontmatter: {}, body: markdown };
   const end = markdown.indexOf("\n---", 4);
@@ -114,6 +116,9 @@ export async function loadPromptTemplatesFromRoot(root: string): Promise<PromptT
         prompt: body,
       });
     }
+  }
+  if (!byName.has("land")) {
+    byName.set("land", { name: "land", trigger: "/land", description: builtinLandPrompt, prompt: builtinLandPrompt });
   }
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 }

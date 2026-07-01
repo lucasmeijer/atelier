@@ -17,6 +17,14 @@ describe("prompt templates", () => {
     expect(templates.find((template) => template.name === "land")?.argumentHint).toBe("[branch]");
   });
 
+  test("includes builtin land template when repository does not provide one", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atelier-prompts-"));
+
+    const templates = await loadPromptTemplatesFromRoot(root);
+    expect(templates.map((template) => template.trigger)).toEqual(["/land"]);
+    expect(templates[0]?.prompt).toBe("Commit and push your work, rebasing when necessary");
+  });
+
   test("expands triggers with arguments", () => {
     const templates = [{ name: "land", trigger: "/land", description: "Land", argumentHint: "[branch]", prompt: 'push to ${1:-main}: $@' }];
     expect(expandPromptTemplateText("/land", templates)).toBe("push to main: ");
