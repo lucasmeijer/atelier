@@ -434,10 +434,10 @@ button { border: 0; background: none; cursor: pointer; }
 .workspace-version-warning:hover { opacity: 1; }
 .workspace-version-warning:hover::after { content: attr(data-tooltip); position: absolute; z-index: 50; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); width: 260px; padding: 7px 9px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); color: var(--text); box-shadow: 0 10px 24px rgba(19,26,38,.16); font-size: 11px; font-weight: 500; line-height: 1.35; letter-spacing: 0; white-space: normal; pointer-events: none; }
 .workspace-version-warning:hover::before { content: ""; position: absolute; z-index: 51; left: 50%; bottom: calc(100% + 3px); transform: translateX(-50%) rotate(45deg); width: 8px; height: 8px; background: var(--panel); border-right: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); pointer-events: none; }
-.project-line-stats { display: inline-flex; align-items: center; gap: 5px; font: 700 11px/1 var(--mono); color: var(--muted2); }
-.project-line-stats[data-line-stat-tone="positive"] { color: color-mix(in srgb, var(--muted2) var(--project-line-stat-muted), var(--red) var(--project-line-stat-accent)); }
-.project-line-stats[data-line-stat-tone="negative"] { color: color-mix(in srgb, var(--muted2) var(--project-line-stat-muted), var(--green) var(--project-line-stat-accent)); }
-.workspace-row-stat { color: inherit; }
+.project-slopometer { display: inline-flex; align-items: center; gap: 5px; font: 700 11px/1 var(--mono); }
+.project-slopometer-stat { color: var(--muted2); }
+.project-slopometer-stat[data-slopometer-tone="positive"] { color: color-mix(in srgb, var(--muted2) var(--project-slopometer-stat-muted), var(--red) var(--project-slopometer-stat-accent)); }
+.project-slopometer-stat[data-slopometer-tone="negative"] { color: color-mix(in srgb, var(--muted2) var(--project-slopometer-stat-muted), var(--green) var(--project-slopometer-stat-accent)); }
 .workspace-row-buttons .workspace-row-park, .workspace-row-buttons .workspace-row-delete { display: flex; justify-content: flex-end; }
 .workspace-row > .workspace-row-delete { display: none; justify-content: flex-end; }
 .workspace-row:hover:not(.visible) > .workspace-row-delete { display: flex; }

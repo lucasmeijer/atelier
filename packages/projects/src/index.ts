@@ -40,12 +40,12 @@ export {
 
 export {
   assertWorkspaceDeleteSafe,
-  getWorkspaceRepoLineStats,
+  getWorkspaceRepoSlopometer,
   inspectWorkspaceDeleteSafety,
   listWorkspaceRepos,
   registerProjectWorkspaceEvents,
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceDeleteSafetyIssue,
-  type WorkspaceRepoLineStats,
   type WorkspaceRepoListResult,
+  type WorkspaceRepoSlopometer,
 } from "./workspace-repos.ts";

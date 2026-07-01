@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { AtelierCoreError } from "@atelier/core";
 import { createWorkspace, deleteWorkspace, execWorkspaceCommand, type WorkspaceExecResult } from "@atelier/workspace";
-import { listWorkspaceRepos } from "@atelier/projects";
+import { getWorkspaceRepoSlopometer, listWorkspaceRepos } from "@atelier/projects";
 import { cleanupNamespace, createTestNamespace } from "../../workspace/test/helpers.ts";
 
 setDefaultTimeout(120_000);
@@ -73,6 +73,49 @@ describe("core workspace repos", () => {
     `);
 
     expect((await listWorkspaceRepos(workspaceId)).repos).toEqual([]);
+  });
+
+  test("getWorkspaceRepoSlopometer separates net implementation and test lines", async () => {
+    const workspaceId = getWorkspaceId();
+    await execScript(workspaceId, `
+      git -c init.defaultBranch=main init /work >/dev/null
+      cd /work
+      git config user.email test@example.com
+      git config user.name Test
+      printf 'one\ntwo\nthree\n' > app.ts
+      mkdir -p test
+      printf 'one\ntwo\n' > test/app.test.ts
+      git add .
+      git commit -m initial >/dev/null
+      printf 'one\ntwo changed\n' > app.ts
+      printf 'one\ntwo\nthree\nfour\n' > test/app.test.ts
+      mkdir -p src/__tests__
+      printf 'new\ncovered\n' > src/__tests__/feature.ts
+      printf 'helper\n' > helper.ts
+    `);
+
+    expect(await getWorkspaceRepoSlopometer(workspaceId, "work")).toEqual({ netImplementationLines: 0, netTestLines: 4 });
+  });
+
+  test("getWorkspaceRepoSlopometer applies additional test path patterns from workspace.json", async () => {
+    const workspaceId = getWorkspaceId();
+    await execScript(workspaceId, `
+      git -c init.defaultBranch=main init /work >/dev/null
+      cd /work
+      git config user.email test@example.com
+      git config user.name Test
+      mkdir -p .atelier src/e2e
+      cat > .atelier/workspace.json <<'JSON'
+{"version":1,"slopometer":{"testPathPatterns":["(^|/)e2e(/|$)"]}}
+JSON
+      printf 'app\n' > app.ts
+      git add .
+      git commit -m initial >/dev/null
+      printf 'app\nmore\n' > app.ts
+      printf 'flow\nstep\n' > src/e2e/login.ts
+    `);
+
+    expect(await getWorkspaceRepoSlopometer(workspaceId, "work")).toEqual({ netImplementationLines: 1, netTestLines: 2 });
   });
 
 

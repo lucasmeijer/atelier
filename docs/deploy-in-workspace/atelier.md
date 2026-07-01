@@ -117,6 +117,23 @@ Before deleting a workspace, Atelier checks for uncommitted changes and unpushed
 
 Repository workspaces also include `/persistent`, a directory shared by all workspaces for that saved repository. Use it for files you want to keep across workspaces but not commit to Git.
 
+### Slopometer
+
+Repository workspace rows include a slopometer when there are uncommitted line changes. It shows net implementation lines and inverse net test lines, for example `+23 t:-12`. A zero side is omitted. Positive values are colored as more slop; negative values are colored as less slop, so adding tests normally appears as a negative `t:` value. Hover over the slopometer to see the full implementation/test breakdown.
+
+Atelier has built-in basic test-file detection for paths such as `test/`, `tests/`, `spec/`, `__tests__/`, `*.test.*`, and `*.spec.*`. You can add repository-specific test path filters in `.atelier/workspace.json`:
+
+```json
+{
+  "version": 1,
+  "slopometer": {
+    "testPathPatterns": ["(^|/)e2e(/|$)", "\\.stories\\.tsx$"]
+  }
+}
+```
+
+`slopometer.testPathPatterns` entries are case-insensitive JavaScript regular expressions matched against normalized repository-relative paths. They are additional filters; the built-in test detection still applies.
+
 Every workspace includes `/atelier/session-share`, a read-only directory containing JSONL transcript files for workspaces with the same session share key. Repository workspaces use the repository's `sessionShareKey`, which is initially populated from the saved project name; project-less workspaces use the shared `projectless` key. Session files are named with a topic slug plus workspace, agent, and short id components, for example `fix-auth-flow--a1b2c3d4--agent-1--9e8f12.jsonl`. Agents can search prior related work directly from the filesystem with tools such as `ls`, `rg`, `jq`, `head`, or `tail`, but cannot modify these archived session files from inside the workspace. Set multiple saved repositories to the same `sessionShareKey` in Atelier's project store when related repositories, such as frontend and backend projects, should share session history.
 
 ## 8. Customizing Workspaces

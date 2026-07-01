@@ -1,10 +1,11 @@
+import { join } from "node:path";
 import { AtelierCoreError, invalidArguments, shellQuote, type AtelierEventBus } from "@atelier/core";
-import { execWorkspaceShell, resolveWorkspace, workspaceRoot } from "@atelier/workspace";
+import { execWorkspaceShell, resolveWorkspace, workspaceManifestPath, workspaceRoot, workspaceWorkHostPath } from "@atelier/workspace";
 import { registerGitIdentityWorkspaceEvents } from "./git-identity.ts";
 import { registerProjectWorkspaceInitEvents } from "./workspace-source.ts";
 
 export interface WorkspaceRepoListResult { repos: string[] }
-export interface WorkspaceRepoLineStats { added: number; removed: number }
+export interface WorkspaceRepoSlopometer { netImplementationLines: number; netTestLines: number }
 export interface WorkspaceDeleteSafetyIssue { repo: string; uncommittedPaths: string[]; outgoingCommits: Array<{ hash: string; subject: string }> }
 export interface WorkspaceDeleteBlockedDetails { workspaceId: string; issues: WorkspaceDeleteSafetyIssue[] }
 const singleWorkspaceRepoName = "work";
@@ -78,24 +79,59 @@ export function registerProjectWorkspaceEvents(events: AtelierEventBus): void {
   events.on("workspace_delete_inspect", async ({ workspaceId, issues }) => { issues.push(...(await inspectWorkspaceDeleteSafety(workspaceId)).issues); });
 }
 
-function parseNumstat(output: string): WorkspaceRepoLineStats {
-  let added = 0;
-  let removed = 0;
+const defaultTestDirectoryPattern = /(^|\/)(__tests__|tests?|specs?)(\/|$)/i;
+const defaultTestFilePattern = /(^|[._-])(test|spec)([._-]|$)/i;
+
+async function readWorkspaceSlopometerTestPathPatterns(id: string): Promise<RegExp[]> {
+  const path = join(workspaceWorkHostPath(id), workspaceManifestPath);
+  const file = Bun.file(path);
+  if (!(await file.exists())) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await file.text());
+  } catch (error) {
+    throw invalidArguments(`invalid ${workspaceManifestPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw invalidArguments(`invalid ${workspaceManifestPath}: expected object`);
+  const slopometer = (parsed as Record<string, unknown>).slopometer;
+  if (slopometer === undefined) return [];
+  if (!slopometer || typeof slopometer !== "object" || Array.isArray(slopometer)) throw invalidArguments(`invalid ${workspaceManifestPath}: slopometer must be an object`);
+  const testPathPatterns = (slopometer as Record<string, unknown>).testPathPatterns;
+  if (testPathPatterns === undefined) return [];
+  if (!Array.isArray(testPathPatterns) || !testPathPatterns.every((pattern) => typeof pattern === "string")) throw invalidArguments(`invalid ${workspaceManifestPath}: slopometer.testPathPatterns must be an array of strings`);
+  return testPathPatterns.map((pattern) => {
+    try {
+      return new RegExp(pattern, "i");
+    } catch (error) {
+      throw invalidArguments(`invalid ${workspaceManifestPath}: slopometer.testPathPatterns contains invalid regular expression ${JSON.stringify(pattern)}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
+}
+function isTestPath(path: string, userTestPathPatterns: RegExp[]): boolean {
+  const normalized = path.replaceAll("\\", "/");
+  const fileName = normalized.split("/").at(-1) ?? normalized;
+  return defaultTestDirectoryPattern.test(normalized) || defaultTestFilePattern.test(fileName) || userTestPathPatterns.some((pattern) => pattern.test(normalized));
+}
+function parseSlopometerNumstat(output: string, userTestPathPatterns: RegExp[]): WorkspaceRepoSlopometer {
+  let netImplementationLines = 0;
+  let netTestLines = 0;
   for (const line of output.split("\n")) {
-    const [addText, removeText] = line.trim().split(/\s+/, 3);
+    const [addText, removeText, path = ""] = line.split("\t", 3);
     const add = Number(addText);
     const remove = Number(removeText);
-    if (Number.isFinite(add)) added += add;
-    if (Number.isFinite(remove)) removed += remove;
+    const net = (Number.isFinite(add) ? add : 0) - (Number.isFinite(remove) ? remove : 0);
+    if (isTestPath(path, userTestPathPatterns)) netTestLines += net;
+    else netImplementationLines += net;
   }
-  return { added, removed };
+  return { netImplementationLines, netTestLines };
 }
-async function calculateLineStats(id: string, repo: string): Promise<WorkspaceRepoLineStats> {
+async function calculateSlopometer(id: string, repo: string): Promise<WorkspaceRepoSlopometer> {
   await ensureRepo(id, repo);
+  const userTestPathPatterns = await readWorkspaceSlopometerTestPathPatterns(id);
   const path = repoPath(repo); const quotedPath = shellQuote(path);
   const result = await execWorkspaceShell(id, `set -eu; cd ${quotedPath}; git diff --numstat HEAD -- .; git ls-files --others --exclude-standard -z | xargs -0 -r awk 'FNR==1{files[FILENAME]=1} {lines[FILENAME]++} END{for (file in files) printf "%d\\t0\\t%s\\n", lines[file]+0, file}'`);
-  if (result.exitCode !== 0) throw new AtelierCoreError("git_error", result.stderr.trim() || `could not calculate line stats for ${repo}`);
-  return parseNumstat(result.stdout);
+  if (result.exitCode !== 0) throw new AtelierCoreError("git_error", result.stderr.trim() || `could not calculate slopometer for ${repo}`);
+  return parseSlopometerNumstat(result.stdout, userTestPathPatterns);
 }
 export async function listWorkspaceRepos(id: string): Promise<WorkspaceRepoListResult> { await resolveWorkspace(id); return { repos: await listRepos(id) }; }
-export async function getWorkspaceRepoLineStats(id: string, repo: string): Promise<WorkspaceRepoLineStats> { await resolveWorkspace(id); return await calculateLineStats(id, repo); }
+export async function getWorkspaceRepoSlopometer(id: string, repo: string): Promise<WorkspaceRepoSlopometer> { await resolveWorkspace(id); return await calculateSlopometer(id, repo); }
