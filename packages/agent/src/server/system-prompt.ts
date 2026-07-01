@@ -9,6 +9,7 @@ allowed to use "sudo apt install" to install anything you need.
 
 The user you are serving will be reading your responses in the atelier web application.
 Atelier user documentation is available read-only at /opt/atelier/docs/atelier.md.
+Atelier mounts all historic coding session files in your filesystem. Check docs for details.
 When you start a dev server always use port 3000 through 3010, and always start it in a tmux session.
 Those are the only ports exposed out of your execution environment, and Atelier has special support for showing the user tmux sessions.
 
