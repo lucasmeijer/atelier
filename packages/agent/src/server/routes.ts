@@ -107,6 +107,9 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/prompt-templates$/)) && request.method === "GET") {
     return await promptTemplatesEndpoint(params[0], url);
   }
+  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/prompt-templates\/expand$/)) && request.method === "POST") {
+    return await expandPromptTemplateEndpoint(params[0], request);
+  }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/abort$/)) && request.method === "POST") {
     const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
     await runtime.abort();
@@ -196,6 +199,13 @@ async function promptTemplatesEndpoint(workspaceId: string, url: URL): Promise<R
   const templates = await listPromptTemplates(workspaceId);
   const q = url.searchParams.get("q") ?? "";
   return new Response(renderPromptTemplateMenu(templates, q), { headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
+async function expandPromptTemplateEndpoint(workspaceId: string, request: Request): Promise<Response> {
+  const form = await request.formData();
+  const text = String(form.get("text") ?? "");
+  const expanded = await expandPromptTemplate(workspaceId, text);
+  return new Response(expanded, { headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
 async function agentMessagesEndpoint(workspaceId: string, label: string, request: Request, options: AgentRouteOptions): Promise<Response> {

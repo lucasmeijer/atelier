@@ -9,10 +9,26 @@ type HtmlAutocompleteOptions = {
   optionSelector: string;
   query(input: HTMLInputElement | HTMLTextAreaElement): string | undefined;
   select(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): void;
+  keydown?(event: KeyboardEvent, input: HTMLInputElement | HTMLTextAreaElement, url: string, actions: HtmlAutocompleteActions): boolean;
   debounceMs?: number;
   loadingHtml?: string;
   triggerKeysWhenClosed?: string[];
 };
+
+type HtmlAutocompleteActions = {
+  setInputValue(value: string): void;
+  close(): void;
+};
+
+function notifyInputListeners(input: HTMLInputElement | HTMLTextAreaElement): void {
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function setTextInputValue(input: HTMLInputElement | HTMLTextAreaElement, value: string): void {
+  input.value = value;
+  input.setSelectionRange(value.length, value.length);
+  notifyInputListeners(input);
+}
 
 type StimulusApplication = {
   getControllerForElementAndIdentifier(element: Element, identifier: string): unknown;
@@ -135,8 +151,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     }
 
     private setInputValue(value: string): void {
-      this.inputTarget.value = value;
-      this.inputTarget.dispatchEvent(new Event("input", { bubbles: true }));
+      setTextInputValue(this.inputTarget, value);
     }
 
     autosize(): void {
@@ -708,6 +723,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     }
 
     keydown(event: KeyboardEvent): void {
+      if (autocomplete.keydown?.(event, this.inputTarget, this.urlValue, { setInputValue: (value) => setTextInputValue(this.inputTarget, value), close: () => this.close() })) return;
       if (this.menuTarget.hidden) {
         if (autocomplete.triggerKeysWhenClosed?.includes(event.key)) requestAnimationFrame(() => this.scheduleRefresh());
         return;
@@ -811,7 +827,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
 
     private insert(option: HTMLElement): void {
       autocomplete.select(option, this.inputTarget);
-      this.inputTarget.dispatchEvent(new Event("input", { bubbles: true }));
+      notifyInputListeners(this.inputTarget);
       this.close();
     }
   };
@@ -842,6 +858,20 @@ function createAgentPromptTemplatesController(Controller: StimulusControllerCons
       input.value = `${input.value.slice(0, start)}${trigger} ${after}`;
       const cursor = start + trigger.length + 1;
       input.setSelectionRange(cursor, cursor);
+    },
+    keydown(event, input, url, actions) {
+      if (event.key !== "Enter" || !event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false;
+      if (!input.value.trim().match(/^\/[^\s]+(?:\s+[\s\S]*)?$/)) return false;
+      event.preventDefault();
+      const body = new FormData();
+      body.set("text", input.value);
+      void fetch(`${url}/expand`, { method: "POST", body, headers: { Accept: "text/plain" } })
+        .then((response) => response.text())
+        .then((expanded) => {
+          actions.setInputValue(expanded);
+          actions.close();
+        });
+      return true;
     },
   });
 }
