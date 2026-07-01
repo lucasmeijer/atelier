@@ -583,7 +583,7 @@ ${moduleStylesHtml()}
     return `<turbo-frame id="workspace_sidebar" data-controller="workspace-list">
     <div class="sidebar-content">
       <div class="lh">Workspaces</div>
-      <div class="table workspace-sidebar-table list">
+      <div class="table workspace-sidebar-table">
         <div id="workspaces_table_rows">${renderWorkspaceRows()}</div>
         ${newWorkspaceRow}
       </div>
