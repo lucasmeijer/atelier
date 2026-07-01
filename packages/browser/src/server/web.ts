@@ -3,8 +3,8 @@ import { renderBrowserFrame, renderBrowserTab } from "./render.ts";
 import { createWorkspaceBrowserTab, deleteWorkspaceBrowserState, deleteWorkspaceBrowserTab, listWorkspaceBrowserTabs, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
 import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppRequestHeaders, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "./proxy.ts";
-import { createOrOpenPreviewBrowserTool } from "./agent-tool.ts";
-import { registerWorkspaceAgentTool } from "@atelier/agent/server";
+import { createBrowserPresenter } from "./agent-tool.ts";
+import { registerWorkspacePresenter, type WorkspacePresenterDeps } from "@atelier/agent/server";
 
 const browserCreateCommandId = "browser.create";
 
@@ -45,10 +45,10 @@ export const browserWorkspaceModule: WorkspaceModule = {
       transformResponse: (app, response, request) => patchBrowserWorkspaceAppResponse(app, response, request),
     });
     context.onWorkspaceRemoved((workspaceId) => deleteWorkspaceBrowserState(workspaceId));
-    registerWorkspaceAgentTool("create_or_open_preview_browser", (workspaceId, options) => createOrOpenPreviewBrowserTool(workspaceId, {
+    registerWorkspacePresenter("browser", (workspaceId, options) => createBrowserPresenter(workspaceId, {
       events: options.events,
       getTabKeys: () => context.getTabKeys(workspaceId),
-      layouts: context.layouts as Parameters<typeof createOrOpenPreviewBrowserTool>[1]["layouts"],
+      layouts: context.layouts as WorkspacePresenterDeps["layouts"],
     }));
   },
   tabs: [{

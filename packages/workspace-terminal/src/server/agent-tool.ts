@@ -1,27 +1,19 @@
-import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
-import type { WorkspaceLayoutPlacementController } from "@atelier/shared";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { AtelierCoreError } from "@atelier/core";
+import type { WorkspacePresenterDefinition, WorkspacePresenterDeps } from "@atelier/agent/server";
 import { Type } from "typebox";
 import { terminalTabKey } from "../shared.ts";
 import { listWorkspaceTerminals } from "./workspace-terminals.ts";
 
-export interface PresentTmuxSessionToolDeps {
-  getTabKeys(): Promise<string[]>;
-  layouts: WorkspaceLayoutPlacementController;
-  events?: AtelierEventBus;
-}
-
-export function createPresentTmuxSessionTool(workspaceId: string, deps: PresentTmuxSessionToolDeps): ToolDefinition<any, any> {
-  return defineTool({
-    name: "present_tmux_session",
-    label: "Present Tmux Session",
-    description: "Present a pre-existing tmux session to the user in Atelier. Use this to present your work when your work can best be evaluated or experimented with in a terminal session. Only one tmux session can be presented at the same time.",
-    parameters: Type.Object({
+export function createTmuxPresenter(workspaceId: string, deps: WorkspacePresenterDeps): WorkspacePresenterDefinition<{ kind: "tmux"; session: string }> {
+  return {
+    kind: "tmux",
+    description: "Present an existing tmux session in Atelier's preview area.",
+    parameters: {
       session: Type.String({
-        description: "Exact name of the pre-existing tmux session to present. Do not include the terminal: tab prefix. The tmux session must already exist.",
+        description: "Exact name of the pre-existing tmux session to present. Do not include any Atelier terminal tab prefix. The tmux session must already exist.",
       }),
-    }),
-    execute: async (_toolCallId: string, params: { session: string }) => {
+    },
+    execute: async (_toolCallId: string, params: { kind: "tmux"; session: string }) => {
       const { terminals } = await listWorkspaceTerminals(workspaceId);
       if (!terminals.some((terminal) => terminal.title === params.session)) {
         throw new AtelierCoreError("terminal_not_found", `tmux session not found: ${params.session}`);
@@ -42,5 +34,5 @@ export function createPresentTmuxSessionTool(workspaceId: string, deps: PresentT
         },
       };
     },
-  });
+  };
 }

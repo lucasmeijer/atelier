@@ -34,7 +34,10 @@ export {
   createWorkspaceAgentTools,
   normalizeWorkspacePath,
   registerWorkspaceAgentTool,
+  registerWorkspacePresenter,
   workspaceAgentToolNames,
+  type WorkspacePresenterDefinition,
+  type WorkspacePresenterDeps,
 } from "./tools.ts";
 export { agentStaticFiles } from "./static.ts";
 export {

@@ -1,6 +1,6 @@
 import { dirname, posix } from "node:path";
 import { shellQuote, type AtelierEventBus } from "@atelier/core";
-import type { AgentWorkspaceCreateRequest, AgentWorkspaceCreateResult, AgentWorkspaceForkRequest } from "@atelier/shared";
+import type { AgentWorkspaceCreateRequest, AgentWorkspaceCreateResult, AgentWorkspaceForkRequest, WorkspaceLayoutPlacementController } from "@atelier/shared";
 import { execWorkspaceCommand, execWorkspaceCommandBuffer, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import {
   createEditToolDefinition,
@@ -70,9 +70,25 @@ interface WorkspaceAgentToolOptions {
   events?: AtelierEventBus;
 }
 
+export interface WorkspacePresenterDeps {
+  events?: AtelierEventBus;
+  getTabKeys(): Promise<string[]>;
+  layouts: WorkspaceLayoutPlacementController;
+}
+
 type WorkspaceAgentToolFactory = (workspaceId: string, options: WorkspaceAgentToolOptions) => ToolDefinition<any, any>;
 
+export interface WorkspacePresenterDefinition<Params extends { kind: string } = { kind: string }> {
+  kind: Params["kind"];
+  description: string;
+  parameters: Record<string, unknown>;
+  execute(toolCallId: string, params: Params): Promise<{ content: Array<{ type: "text"; text: string }>; details: unknown }>;
+}
+
+type WorkspacePresenterFactory = (workspaceId: string, options: WorkspaceAgentToolOptions) => WorkspacePresenterDefinition<any>;
+
 const registeredWorkspaceAgentTools = new Map<string, WorkspaceAgentToolFactory>();
+const registeredWorkspacePresenters = new Map<string, WorkspacePresenterFactory>();
 
 export function registerWorkspaceAgentTool(name: string, factory: WorkspaceAgentToolFactory): () => void {
   registeredWorkspaceAgentTools.set(name, factory);
@@ -81,8 +97,15 @@ export function registerWorkspaceAgentTool(name: string, factory: WorkspaceAgent
   };
 }
 
+export function registerWorkspacePresenter(kind: string, factory: WorkspacePresenterFactory): () => void {
+  registeredWorkspacePresenters.set(kind, factory);
+  return () => {
+    if (registeredWorkspacePresenters.get(kind) === factory) registeredWorkspacePresenters.delete(kind);
+  };
+}
+
 export function workspaceAgentToolNames(): string[] {
-  return ["read", "write", "edit", "bash", ...registeredWorkspaceAgentTools.keys()];
+  return ["read", "write", "edit", "bash", ...(registeredWorkspacePresenters.size ? ["present"] : []), ...registeredWorkspaceAgentTools.keys()];
 }
 
 export interface DeleteCurrentWorkspaceResult {
@@ -151,6 +174,25 @@ export function createForkCurrentWorkspaceTool(forkCurrentWorkspace: (request: A
   });
 }
 
+function createPresentTool(workspaceId: string, options: WorkspaceAgentToolOptions): ToolDefinition<any, any> | undefined {
+  const presenters = [...registeredWorkspacePresenters.values()].map((factory) => factory(workspaceId, options));
+  if (!presenters.length) return undefined;
+  return defineTool({
+    name: "present",
+    label: "Present",
+    description: "Present one primary interactive surface to the user in Atelier. Use this when there is one main thing the user should look at or interact with while evaluating your work. Atelier will place the chosen surface in the preview area. Calling this again should update or replace the primary presentation rather than adding multiple competing presentations. Only use this tool for interactive surfaces that need explicit presentation, currently a tmux session or the inline preview browser. Do not use this tool for static or inline artifacts. Images, videos, SVGs, and HTML files are already automatically visible to the user when you reference them with Atelier embed syntax, for example: {{atelier:embed /work/app/screenshot.png}} or {{atelier:embed /work/app/demo.html}}. For ordinary screenshots, videos, generated HTML explanations, or file previews, prefer the embed syntax instead of this tool.",
+    parameters: Type.Union(presenters.map((presenter) => Type.Object({
+      kind: Type.Literal(presenter.kind, { description: `Present ${presenter.kind}.` }),
+      ...presenter.parameters,
+    }, { description: presenter.description }))) as any,
+    execute: async (toolCallId: string, params: { kind: string }) => {
+      const presenter = presenters.find((candidate) => candidate.kind === params.kind);
+      if (!presenter) throw new Error(`unknown presentation kind: ${params.kind}`);
+      return await presenter.execute(toolCallId, params);
+    },
+  });
+}
+
 export function createDeleteCurrentWorkspaceTool(workspaceId: string, deleteCurrentWorkspace: (force: boolean) => Promise<DeleteCurrentWorkspaceResult>): ToolDefinition<any, any> {
   return defineTool({
     name: "delete_current_workspace",
@@ -202,6 +244,7 @@ export function createWorkspaceAgentTools(workspaceId: string, options: Workspac
     },
   });
   const bash = createTmuxBashTool(workspaceId);
+  const present = createPresentTool(workspaceId, options);
   const external = [...registeredWorkspaceAgentTools.values()].map((factory) => factory(workspaceId, options));
-  return [read, write, edit, bash, ...external];
+  return [read, write, edit, bash, ...(present ? [present] : []), ...external];
 }

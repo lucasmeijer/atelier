@@ -1,8 +1,8 @@
-import { registerWorkspaceAgentTool } from "@atelier/agent/server";
+import { registerWorkspacePresenter, type WorkspacePresenterDeps } from "@atelier/agent/server";
 import type { AtelierEventBus } from "@atelier/core";
-import type { WorkspaceCommandContribution, WorkspaceLayoutPlacementController, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
+import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { terminalTabKey, terminalTitleFromTabKey } from "../shared.ts";
-import { createPresentTmuxSessionTool } from "./agent-tool.ts";
+import { createTmuxPresenter } from "./agent-tool.ts";
 import { registerTerminalEvents, rememberWorkspaceTerminalSignature } from "./events.ts";
 import { renderTerminalPane } from "./render.ts";
 import { createTerminalSocketHandler } from "./sockets.ts";
@@ -34,10 +34,10 @@ export const terminalWorkspaceModule: WorkspaceModule = {
     context.registerSocketHandler(createTerminalSocketHandler({
       setTabBusy: (workspaceId, tabKey, busy) => context.registry.setTabBusy(workspaceId, tabKey, busy),
     }));
-    registerWorkspaceAgentTool("present_tmux_session", (workspaceId, options) => createPresentTmuxSessionTool(workspaceId, {
+    registerWorkspacePresenter("tmux", (workspaceId, options) => createTmuxPresenter(workspaceId, {
       events: options.events,
       getTabKeys: () => context.getTabKeys(workspaceId),
-      layouts: context.layouts as WorkspaceLayoutPlacementController,
+      layouts: context.layouts as WorkspacePresenterDeps["layouts"],
     }));
   },
   commands: [{

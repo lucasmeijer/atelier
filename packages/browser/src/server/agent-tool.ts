@@ -1,26 +1,17 @@
-import type { AtelierEventBus } from "@atelier/core";
-import type { WorkspaceLayoutPlacementController } from "@atelier/shared";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { WorkspacePresenterDefinition, WorkspacePresenterDeps } from "@atelier/agent/server";
 import { Type } from "typebox";
 import { createWorkspaceBrowserTab, listWorkspaceBrowserTabs, setWorkspaceBrowserTarget } from "./state.ts";
 
-export interface CreateOrOpenPreviewBrowserToolDeps {
-  getTabKeys(): Promise<string[]>;
-  layouts: WorkspaceLayoutPlacementController;
-  events?: AtelierEventBus;
-}
-
-export function createOrOpenPreviewBrowserTool(workspaceId: string, deps: CreateOrOpenPreviewBrowserToolDeps): ToolDefinition<any, any> {
-  return defineTool({
-    name: "create_or_open_preview_browser",
-    label: "Open Preview Browser",
-    description: "Instruct Atelier to show the user a preview browser that loads the specified url. Write the url from the network perspective of the container itself. So you can use http://localhost:3000/.",
-    parameters: Type.Object({
+export function createBrowserPresenter(workspaceId: string, deps: WorkspacePresenterDeps): WorkspacePresenterDefinition<{ kind: "browser"; url: string }> {
+  return {
+    kind: "browser",
+    description: "Present a URL in Atelier's inline preview browser.",
+    parameters: {
       url: Type.String({
-        description: "URL to load in the preview browser, written from the network perspective of the container itself. For example: http://localhost:3000/",
+        description: "URL to load in the preview browser, written from the network perspective of the workspace container. For local dev servers, use localhost with one of Atelier's exposed preview ports, for example: http://localhost:3000/",
       }),
-    }),
-    execute: async (_toolCallId: string, params: { url: string }) => {
+    },
+    execute: async (_toolCallId: string, params: { kind: "browser"; url: string }) => {
       const browserTab = listWorkspaceBrowserTabs(workspaceId)[0] ?? createWorkspaceBrowserTab(workspaceId);
       const tab = setWorkspaceBrowserTarget(workspaceId, browserTab.key, params.url) ?? browserTab;
       const placement = deps.layouts.ensureTabInPreviewGroup(workspaceId, await deps.getTabKeys(), browserTab.key);
@@ -37,5 +28,5 @@ export function createOrOpenPreviewBrowserTool(workspaceId: string, deps: Create
         details,
       };
     },
-  });
+  };
 }
