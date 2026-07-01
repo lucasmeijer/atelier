@@ -14,7 +14,7 @@ import {
 import { ids, renderAttachmentChip } from "./render.ts";
 import { turboStream, turboStreamResponse } from "./html.ts";
 import { expandPromptTemplate, listPromptTemplates, renderPromptTemplateMenu } from "./prompt-templates.ts";
-import { getWorkspaceAgentRuntime, type RewindMode, type SubmitMode } from "./runtime.ts";
+import { getWorkspaceAgentRuntime, type SubmitMode } from "./runtime.ts";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
 import { maybeNameWorkspaceFromAgentPrompt } from "./workspace-title-suggestion.ts";
 
@@ -136,10 +136,11 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/rewind$/)) && request.method === "POST") {
     const form = await request.formData();
     const entry = String(form.get("entry") ?? "");
-    const mode = String(form.get("rewindMode") ?? "discard") as RewindMode;
-    const note = String(form.get("note") ?? "");
+    const requestedMode = String(form.get("rewindMode") ?? "discard");
+    const mode = requestedMode === "summary" ? "summary" : "discard";
+    const customInstructions = mode === "summary" ? String(form.get("customInstructions") ?? "") : undefined;
     const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
-    if (entry) await runtime.rewind(entry, ["discard", "summary", "custom"].includes(mode) ? mode : "discard", note);
+    if (entry) await runtime.rewind(entry, mode, customInstructions);
     return turboStreamResponse("");
   }
   return undefined;

@@ -831,8 +831,7 @@ function renderRewindDialog(ctx: AgentRenderContext): string {
       <p class="agent-rewind-sub">Everything from <b data-agent-pane-target="rewindPreview"></b> onward is removed from the visible branch. Files in the workspace are not changed.</p>
       <input type="hidden" name="entry" value="" data-agent-pane-target="rewindEntry">
       <label class="agent-rewind-opt"><input type="radio" name="rewindMode" value="discard" checked> <span><span class="t">Discard the tail</span><span class="d">Just go back. The branch stays in the session file.</span></span></label>
-      <label class="agent-rewind-opt"><input type="radio" name="rewindMode" value="summary"> <span><span class="t">Replace with an AI summary</span><span class="d">A generated summary of the discarded turns is kept as context.</span></span></label>
-      <label class="agent-rewind-opt"><input type="radio" name="rewindMode" value="custom"> <span><span class="t">Replace with custom text</span><span class="d">Write your own note about what happened.</span><textarea name="note" rows="2" placeholder="e.g. We tried X; abandoned because…" data-action="focus->agent-pane#rewindPickCustom"></textarea></span></label>
+      <label class="agent-rewind-opt"><input type="radio" name="rewindMode" value="summary"> <span><span class="t">Replace with an AI summary</span><span class="d">A generated summary of the discarded turns is kept as context.</span><textarea name="customInstructions" rows="2" placeholder="Optional custom summarization instructions go here..." data-action="focus->agent-pane#rewindPickOption"></textarea></span></label>
       <div class="agent-rewind-actions">
         <button class="agent-btn" type="button" data-action="agent-pane#closeRewind">Cancel</button>
         <button class="agent-btn primary" type="submit">Rewind</button>

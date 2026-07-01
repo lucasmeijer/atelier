@@ -222,9 +222,9 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.rewindDialogTarget.close();
     }
 
-    rewindPickCustom(event: Event): void {
-      const textarea = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-      const label = textarea?.closest(".agent-rewind-opt");
+    rewindPickOption(event: Event): void {
+      const control = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+      const label = control?.closest(".agent-rewind-opt");
       const radio = label?.querySelector<HTMLInputElement>("input[type=radio]");
       if (radio) radio.checked = true;
     }

@@ -63,7 +63,7 @@ interface SubmitOptions {
   attachmentNotes?: string[];
 }
 
-export type RewindMode = "discard" | "summary" | "custom";
+type RewindMode = "discard" | "summary";
 
 interface WorkspaceAgentRuntime {
   workspaceId: string;
@@ -82,7 +82,7 @@ interface WorkspaceAgentRuntime {
   availableThinkingLevels(): string[];
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: string): Promise<void>;
-  rewind(entryId: string, mode: RewindMode, note?: string): Promise<void>;
+  rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void>;
 }
 
 const runtimes = new Map<string, Promise<WorkspaceAgentRuntime>>();
@@ -484,7 +484,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   abstract availableThinkingLevels(): string[];
   abstract setModel(provider: string, modelId: string): Promise<void>;
   abstract setThinkingLevel(level: string): Promise<void>;
-  abstract rewind(entryId: string, mode: RewindMode, note?: string): Promise<void>;
+  abstract rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -798,7 +798,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
     await this.refreshStats();
   }
 
-  async rewind(entryId: string, mode: RewindMode, note?: string): Promise<void> {
+  async rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void> {
     if (this.session.isStreaming) throw new Error("Stop the agent before rewinding.");
     const entry = this.session.sessionManager.getEntry(entryId);
     if (!entry) throw new Error("Rewind target no longer exists.");
@@ -814,7 +814,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       if (this.live) truncated.push(this.live.view);
       this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, truncated, this.modelContext())));
       void this.session
-        .navigateTree(target, { summarize: true })
+        .navigateTree(target, { summarize: true, customInstructions: customInstructions?.trim() || undefined })
         .catch((error: unknown) => this.notice("error", error instanceof Error ? error.message : String(error)))
         .finally(async () => {
           this.summarizing = false;
@@ -823,12 +823,6 @@ class RealAgentRuntime extends BaseAgentRuntime {
       return;
     }
     await this.session.navigateTree(target, { summarize: false });
-    if (mode === "custom" && note?.trim()) {
-      await this.session.sendCustomMessage(
-        { customType: "atelier-branch-note", content: `Note about an abandoned attempt that was rewound: ${note.trim()}`, display: true, details: undefined },
-        { triggerTurn: false },
-      );
-    }
     await this.refreshTranscript();
     await this.refreshStats();
   }
