@@ -63,7 +63,7 @@ EOF
 
 usage() {
   cat <<'EOF'
-Usage: install-docker-linux.sh [options]
+Usage: install.sh [options]
 
 Options:
   --channel <stable|latest>  Atelier release channel to install (default: stable)

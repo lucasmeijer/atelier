@@ -1,0 +1,50 @@
+name: Publish installer
+
+on:
+  release:
+    types: [published]
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-installer
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure deploy key
+        run: |
+          set -eu
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.ATELIER_INSTALL_DEPLOY_KEY }}" > ~/.ssh/atelier-install
+          chmod 600 ~/.ssh/atelier-install
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Publish install.sh
+        env:
+          GIT_SSH_COMMAND: ssh -i ~/.ssh/atelier-install -o IdentitiesOnly=yes
+        run: |
+          set -eux
+          git clone git@github.com:lucasmeijer/atelier-install.git installer-repo
+          cp scripts/install.sh installer-repo/install.sh
+          cd installer-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add install.sh
+          if git diff --cached --quiet; then
+            echo "install.sh is already up to date"
+            exit 0
+          fi
+          git commit -m "Update Atelier installer"
+          git push origin main
