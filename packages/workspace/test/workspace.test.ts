@@ -26,6 +26,12 @@ import { cleanupNamespace, createTestNamespace, docker } from "./helpers.ts";
 setDefaultTimeout(300_000);
 
 const testNamespace = createTestNamespace("test-workspace");
+let reusableWorkspaceId: string | undefined;
+
+async function getReusableWorkspaceId(): Promise<string> {
+  reusableWorkspaceId ??= (await createWorkspace()).id;
+  return reusableWorkspaceId;
+}
 
 async function expectCoreError(action: () => Promise<unknown>): Promise<AtelierCoreError> {
   try {
@@ -48,6 +54,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (reusableWorkspaceId) await deleteWorkspace(reusableWorkspaceId, { force: true }).catch(() => null);
   await cleanupNamespace(testNamespace);
 });
 
@@ -64,10 +71,10 @@ describe("core workspaces", () => {
   });
 
   test("setWorkspaceTitle sets the workspace title and listWorkspaces reflects it", async () => {
-    const created = await createWorkspace();
+    const workspaceId = await getReusableWorkspaceId();
 
-    expect(await setWorkspaceTitle(created.id, "Add dark mode toggle")).toBeNull();
-    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: "Add dark mode toggle" });
+    expect(await setWorkspaceTitle(workspaceId, "Add dark mode toggle")).toBeNull();
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: workspaceId, title: "Add dark mode toggle" });
   });
 
   test("setWorkspaceParked sets parked state and listWorkspaces reflects it", async () => {
@@ -89,9 +96,9 @@ describe("core workspaces", () => {
   });
 
   test("execWorkspaceCommand captures stdout, stderr, exit code, and duration", async () => {
-    const created = await createWorkspace();
+    const workspaceId = await getReusableWorkspaceId();
 
-    const exec = await execWorkspaceCommand(created.id, ["sh", "-c", "printf hello && printf error >&2"]);
+    const exec = await execWorkspaceCommand(workspaceId, ["sh", "-c", "printf hello && printf error >&2"]);
 
     expect(exec.exitCode).toBe(0);
     expect(exec.stdout).toBe("hello");
@@ -111,9 +118,9 @@ describe("core workspaces", () => {
   });
 
   test("execWorkspaceCommand runs commands as the non-root atelier user", async () => {
-    const created = await createWorkspace();
+    const workspaceId = await getReusableWorkspaceId();
 
-    const exec = await execWorkspaceCommand(created.id, ["whoami"]);
+    const exec = await execWorkspaceCommand(workspaceId, ["whoami"]);
 
     expect(exec.exitCode).toBe(0);
     expect(exec.stdout.trim()).toBe("atelier");
@@ -121,10 +128,10 @@ describe("core workspaces", () => {
   });
 
   test("execWorkspaceShell passes stdin into docker exec commands", async () => {
-    const created = await createWorkspace();
+    const workspaceId = await getReusableWorkspaceId();
 
-    const write = await execWorkspaceShell(created.id, "cat > /work/stdin.txt", { stdin: "hello from stdin" });
-    const read = await execWorkspaceCommand(created.id, ["cat", "/work/stdin.txt"]);
+    const write = await execWorkspaceShell(workspaceId, "cat > /work/stdin.txt", { stdin: "hello from stdin" });
+    const read = await execWorkspaceCommand(workspaceId, ["cat", "/work/stdin.txt"]);
 
     expect(write.exitCode).toBe(0);
     expect(read.exitCode).toBe(0);
@@ -170,9 +177,9 @@ describe("core workspaces", () => {
   });
 
   test("execWorkspaceCommand returns child command failure as a successful exec result", async () => {
-    const created = await createWorkspace();
+    const workspaceId = await getReusableWorkspaceId();
 
-    const exec = await execWorkspaceCommand(created.id, ["sh", "-c", "exit 7"]);
+    const exec = await execWorkspaceCommand(workspaceId, ["sh", "-c", "exit 7"]);
 
     expect(exec.exitCode).toBe(7);
     expect(exec.stdout).toBe("");
@@ -243,9 +250,9 @@ describe("core workspaces", () => {
   });
 
   test("execWorkspaceCommand rejects an empty command", async () => {
-    const created = await createWorkspace();
+    const workspaceId = await getReusableWorkspaceId();
 
-    const error = await expectCoreError(() => execWorkspaceCommand(created.id, []));
+    const error = await expectCoreError(() => execWorkspaceCommand(workspaceId, []));
     expect(error.code).toBe("invalid_arguments");
   });
 

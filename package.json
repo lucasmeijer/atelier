@@ -18,7 +18,7 @@
     "image:publish": "bun run scripts/build-atelier-image.ts --push --platform linux/amd64 --builder-host root@agent-test",
     "docker:dev": "bun run scripts/run-atelier-docker-dev.ts",
     "check": "bun run generate:workspace-modules && bunx tsc --noEmit -p tsconfig.json",
-    "test": "bun run generate:workspace-modules && bun test",
+    "test": "bun run generate:workspace-modules && bun test --parallel=4 --parallel-delay=0",
     "ci": "bun ci && bun run check && bun run test",
     "web": "bun run --cwd apps/web dev",
     "kill": "bun run --cwd apps/web kill",
