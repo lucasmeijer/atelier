@@ -193,7 +193,7 @@ async function applyRepoWorkspaceManifest(sourcePath: string, plan: WorkspaceDoc
   const file = Bun.file(path);
   if (!(await file.exists())) return;
   const manifest = parseRepoWorkspaceManifest(await file.text(), workspaceManifestPath);
-  if (manifest.privileged || manifest.docker?.privileged) plan.extraArgs.push("--privileged");
+  if ((manifest.privileged || manifest.docker?.privileged) && !plan.extraArgs.includes("--privileged")) plan.extraArgs.push("--privileged");
   plan.initScripts.push(...(manifest.initScripts ?? []));
 }
 
@@ -242,7 +242,7 @@ function hostUserEnv(): Record<string, string> {
 }
 
 function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan {
-  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: [], initScripts: [workspaceGitCredentialInitScript()], cleanup: [] };
+  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: ["--privileged"], initScripts: [workspaceGitCredentialInitScript()], cleanup: [] };
 }
 
 function alignWorkspaceUserScript(): string {
