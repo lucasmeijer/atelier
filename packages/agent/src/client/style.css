@@ -215,6 +215,106 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 .hljs-attribute { color: #79c0ff; }
 .hljs-name,
 .hljs-tag { color: #7ee787; }
+
+/* Read/write tool code previews use theme-aware syntax variables. */
+.agent-tool-code {
+  --agent-syntax-keyword: #ff7b72;
+  --agent-syntax-string: #a5d6ff;
+  --agent-syntax-number: #79c0ff;
+  --agent-syntax-comment: #8b949e;
+  --agent-syntax-title: #d2a8ff;
+  --agent-syntax-variable: #ffa657;
+  --agent-syntax-type: #7ee787;
+  --agent-syntax-literal: #79c0ff;
+  --agent-syntax-attr: #79c0ff;
+  --agent-syntax-tag: #7ee787;
+}
+[data-theme="daylight"] .agent-tool-code {
+  --agent-syntax-keyword: #cf222e;
+  --agent-syntax-string: #0a3069;
+  --agent-syntax-number: #0550ae;
+  --agent-syntax-comment: #6e7781;
+  --agent-syntax-title: #8250df;
+  --agent-syntax-variable: #953800;
+  --agent-syntax-type: #116329;
+  --agent-syntax-literal: #0550ae;
+  --agent-syntax-attr: #0550ae;
+  --agent-syntax-tag: #116329;
+}
+[data-theme="solarized-light"] .agent-tool-code {
+  --agent-syntax-keyword: #d33682;
+  --agent-syntax-string: #2aa198;
+  --agent-syntax-number: #268bd2;
+  --agent-syntax-comment: #93a1a1;
+  --agent-syntax-title: #6c71c4;
+  --agent-syntax-variable: #cb4b16;
+  --agent-syntax-type: #859900;
+  --agent-syntax-literal: #268bd2;
+  --agent-syntax-attr: #268bd2;
+  --agent-syntax-tag: #859900;
+}
+[data-theme="cappuccino"] .agent-tool-code {
+  --agent-syntax-keyword: #f0a989;
+  --agent-syntax-string: #d8c06f;
+  --agent-syntax-number: #e0b07a;
+  --agent-syntax-comment: #8e745c;
+  --agent-syntax-title: #c9a0dc;
+  --agent-syntax-variable: #d8a373;
+  --agent-syntax-type: #b5c98f;
+  --agent-syntax-literal: #e0b07a;
+  --agent-syntax-attr: #d8a373;
+  --agent-syntax-tag: #b5c98f;
+}
+[data-theme="tokyo-night"] .agent-tool-code {
+  --agent-syntax-keyword: #bb9af7;
+  --agent-syntax-string: #9ece6a;
+  --agent-syntax-number: #ff9e64;
+  --agent-syntax-comment: #565f89;
+  --agent-syntax-title: #7aa2f7;
+  --agent-syntax-variable: #e0af68;
+  --agent-syntax-type: #2ac3de;
+  --agent-syntax-literal: #ff9e64;
+  --agent-syntax-attr: #7dcfff;
+  --agent-syntax-tag: #7aa2f7;
+}
+[data-theme="midnight"] .agent-tool-code {
+  --agent-syntax-keyword: #ff7b72;
+  --agent-syntax-string: #a5d6ff;
+  --agent-syntax-number: #79c0ff;
+  --agent-syntax-comment: #8b949e;
+  --agent-syntax-title: #d2a8ff;
+  --agent-syntax-variable: #ffa657;
+  --agent-syntax-type: #7ee787;
+  --agent-syntax-literal: #79c0ff;
+  --agent-syntax-attr: #79c0ff;
+  --agent-syntax-tag: #7ee787;
+}
+[data-theme="nord"] .agent-tool-code {
+  --agent-syntax-keyword: #81a1c1;
+  --agent-syntax-string: #a3be8c;
+  --agent-syntax-number: #b48ead;
+  --agent-syntax-comment: #7b889e;
+  --agent-syntax-title: #88c0d0;
+  --agent-syntax-variable: #d08770;
+  --agent-syntax-type: #8fbcbb;
+  --agent-syntax-literal: #b48ead;
+  --agent-syntax-attr: #88c0d0;
+  --agent-syntax-tag: #81a1c1;
+}
+.agent-tool-code .hljs-keyword { color: var(--agent-syntax-keyword); }
+.agent-tool-code .hljs-string { color: var(--agent-syntax-string); }
+.agent-tool-code .hljs-number { color: var(--agent-syntax-number); }
+.agent-tool-code .hljs-comment { color: var(--agent-syntax-comment); }
+.agent-tool-code .hljs-title,
+.agent-tool-code .hljs-function { color: var(--agent-syntax-title); }
+.agent-tool-code .hljs-variable { color: var(--agent-syntax-variable); }
+.agent-tool-code .hljs-type,
+.agent-tool-code .hljs-built_in { color: var(--agent-syntax-type); }
+.agent-tool-code .hljs-literal { color: var(--agent-syntax-literal); }
+.agent-tool-code .hljs-attr,
+.agent-tool-code .hljs-attribute { color: var(--agent-syntax-attr); }
+.agent-tool-code .hljs-name,
+.agent-tool-code .hljs-tag { color: var(--agent-syntax-tag); }
 .agent-diff {
   margin: 8px 0;
   border: 1px solid var(--line-2);
@@ -442,6 +542,12 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 0; }
 .agent-tool-detail { margin: 3px 0 9px 14px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--panel); padding: 8px 10px; }
 .agent-tool-detail.flush { padding: 0; }
 .agent-tool-params { background: var(--bg); color: var(--muted); }
+[data-theme="daylight"] .agent-tool-code,
+[data-theme="solarized-light"] .agent-tool-code {
+  background: var(--bg);
+  border: 1.5px solid var(--line2);
+  box-sizing: border-box;
+}
 .agent-diff { background: var(--panel); border-color: var(--line); color: var(--text); }
 .agent-diff-line.add { color: var(--add); background: var(--addbg); }
 .agent-diff-line.del { color: var(--del); background: var(--delbg); }
