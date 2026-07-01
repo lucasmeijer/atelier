@@ -418,8 +418,8 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
   border: 1px solid var(--line-2); background: var(--panel); color: var(--text);
 }
 .agent-btn:hover { border-color: var(--muted-2); }
-.agent-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.agent-btn.primary:hover { background: #1d4fd0; }
+.agent-btn.primary { background: var(--accent); border-color: var(--accent); color: #2b2018; }
+.agent-btn.primary:hover { background: var(--accent); color: #2b2018; filter: brightness(1.05); }
 .agent-btn.steer { background: var(--amber-soft); border-color: #eedfb4; color: var(--amber); }
 .agent-btn.steer:hover { border-color: var(--amber); }
 .agent-btn.stop {
@@ -468,24 +468,29 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
  * Rewind dialog
  * ------------------------------------------------------------------------ */
 
-.agent-rewind-dialog { border: none; border-radius: 13px; padding: 0; margin: auto; width: 430px; max-width: calc(100vw - 40px); box-shadow: 0 20px 60px rgba(19, 26, 38, .3); }
-.agent-rewind-dialog::backdrop { background: rgba(19, 26, 38, .35); }
-.agent-rewind-dialog form { padding: 18px; }
-.agent-rewind-dialog h2 { font-size: 14px; letter-spacing: -.2px; margin: 0 0 4px; }
-.agent-rewind-sub { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+.agent-rewind-dialog {
+  border: 1.5px solid var(--line2); border-radius: 18px; padding: 0; margin: auto; width: 460px; max-width: calc(100vw - 40px);
+  background: var(--panel); color: var(--text); box-shadow: var(--shadow); overflow: hidden;
+}
+.agent-rewind-dialog::backdrop { background: rgba(0,0,0,.5); backdrop-filter: blur(4px); }
+.agent-rewind-dialog form { padding: 22px; }
+.agent-rewind-dialog h2 { font-size: 17px; font-weight: 720; letter-spacing: -.3px; margin: 0 0 6px; }
+.agent-rewind-sub { color: var(--muted); font-size: 12.5px; line-height: 1.45; margin: 0 0 16px; }
 .agent-rewind-sub b { color: var(--text); }
-.agent-rewind-opt { display: flex; gap: 10px; border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; cursor: pointer; margin-bottom: 7px; align-items: flex-start; }
+.agent-rewind-opt { display: flex; gap: 12px; border: 1px solid var(--line); border-radius: 13px; padding: 12px 13px; cursor: pointer; margin-bottom: 8px; align-items: flex-start; background: var(--bg); }
 .agent-rewind-opt:hover { border-color: var(--accent); background: var(--accent-soft); }
+.agent-rewind-opt:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent-soft) 52%, var(--bg)); }
 .agent-rewind-opt input[type="radio"] { margin-top: 2px; accent-color: var(--accent); }
-.agent-rewind-opt .t { display: block; font-weight: 600; font-size: 12.5px; }
-.agent-rewind-opt .d { display: block; color: var(--muted); font-size: 11.5px; }
+.agent-rewind-opt .t { display: block; font-weight: 700; font-size: 13px; }
+.agent-rewind-opt .d { display: block; color: var(--muted); font-size: 12px; line-height: 1.4; margin-top: 2px; }
 .agent-rewind-opt > span { flex: 1; }
 .agent-rewind-opt textarea {
-  width: 100%; margin-top: 7px; border: 1px solid var(--line-2); border-radius: 7px; font-family: inherit;
-  font-size: 12px; padding: 6px 8px; resize: vertical; display: none;
+  width: 100%; margin-top: 10px; border: 1px solid var(--line2); border-radius: 9px; font-family: inherit;
+  font-size: 12.5px; padding: 8px 10px; resize: vertical; display: none; background: var(--panel); color: var(--text);
 }
+.agent-rewind-opt textarea::placeholder { color: var(--muted2); }
 .agent-rewind-opt:has(input:checked) textarea { display: block; }
-.agent-rewind-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.agent-rewind-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
 /* Quiet redesign pass for agent tab */
 .workspace-group .workspace-panes:has(> .agent-tab-pane.visible) { padding: 0; overflow: hidden; scrollbar-width: none; }
@@ -561,18 +566,18 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 0; }
 .agent-prompt-actions { position: absolute; left: 10px; right: 10px; bottom: 38px; display: flex; align-items: center; gap: 6px; padding: 0; pointer-events: none; }
 .agent-prompt-actions > * { pointer-events: auto; }
 .agent-prompt-actions .spacer { display: block; flex: 1; }
-.agent-btn { height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--muted2); font: inherit; font-size: 12px; font-weight: 550; }
+.agent-btn { height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--muted2); font: inherit; font-size: 12px; font-weight: 550; cursor: pointer; }
 .agent-btn:hover { color: var(--text); background: var(--bg); }
-.agent-btn.primary { position: absolute; right: 0; bottom: -28px; width: 38px; height: 38px; margin: 0; padding: 0; border-radius: 50%; background: var(--accent); color: transparent; font-size: 0; line-height: 0; display: block; overflow: hidden; }
-.agent-btn.primary:hover { background: var(--accent); filter: brightness(1.05); }
-.agent-btn.primary kbd { display: none; }
-.agent-btn.primary::before { content: "↑"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -53%); color: #2b2018; font-size: 17px; font-weight: 800; line-height: 1; font-family: var(--sans); }
-.agent-btn.primary.agent-sendstop { transition: background .15s, box-shadow .15s, transform .15s, filter .15s; }
-.agent-btn.primary.agent-sendstop:active { transform: translateY(1px); }
-.agent-btn.primary.agent-sendstop[data-mode="stop"] { background: transparent; overflow: visible; }
-.agent-btn.primary.agent-sendstop[data-mode="stop"]:hover { background: transparent; filter: none; }
-.agent-btn.primary.agent-sendstop[data-mode="stop"]::before { content: ""; width: 9px; height: 9px; border-radius: 2.5px; background: var(--accent); transform: translate(-50%, -50%); }
-.agent-btn.primary.agent-sendstop[data-mode="stop"]::after { content: ""; position: absolute; inset: 0; border: 1.5px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent); border-radius: inherit; pointer-events: none; animation: agent-sendstop-orbit 1.1s linear infinite; }
+.agent-prompt-actions .agent-btn.primary { position: absolute; right: 0; bottom: -28px; width: 38px; height: 38px; margin: 0; padding: 0; border-radius: 50%; background: var(--accent); color: transparent; font-size: 0; line-height: 0; display: block; overflow: hidden; }
+.agent-prompt-actions .agent-btn.primary:hover { background: var(--accent); filter: brightness(1.05); }
+.agent-prompt-actions .agent-btn.primary kbd { display: none; }
+.agent-prompt-actions .agent-btn.primary::before { content: "↑"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -53%); color: #2b2018; font-size: 17px; font-weight: 800; line-height: 1; font-family: var(--sans); }
+.agent-prompt-actions .agent-btn.primary.agent-sendstop { transition: background .15s, box-shadow .15s, transform .15s, filter .15s; }
+.agent-prompt-actions .agent-btn.primary.agent-sendstop:active { transform: translateY(1px); }
+.agent-prompt-actions .agent-btn.primary.agent-sendstop[data-mode="stop"] { background: transparent; overflow: visible; }
+.agent-prompt-actions .agent-btn.primary.agent-sendstop[data-mode="stop"]:hover { background: transparent; filter: none; }
+.agent-prompt-actions .agent-btn.primary.agent-sendstop[data-mode="stop"]::before { content: ""; width: 9px; height: 9px; border-radius: 2.5px; background: var(--accent); transform: translate(-50%, -50%); }
+.agent-prompt-actions .agent-btn.primary.agent-sendstop[data-mode="stop"]::after { content: ""; position: absolute; inset: 0; border: 1.5px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent); border-radius: inherit; pointer-events: none; animation: agent-sendstop-orbit 1.1s linear infinite; }
 @keyframes agent-sendstop-orbit { to { transform: rotate(360deg); } }
 .agent-btn.stop { color: var(--red); background: var(--red-soft); border: 1px solid var(--line); }
 
