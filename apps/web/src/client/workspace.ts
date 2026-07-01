@@ -1327,6 +1327,7 @@ class WorkspaceListController extends Controller {
       return;
     }
     event.preventDefault();
+    link.blur();
     const workspaceId = row.dataset.workspaceId;
     if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href);
     this.markVisible(workspaceId);
