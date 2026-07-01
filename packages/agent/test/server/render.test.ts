@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatReadRange, renderRunningToolCard, renderStreamingToolItem, renderToolCard, toolArgsSummary, type AgentRenderContext } from "../../src/server/render.ts";
+import { formatReadRange, renderRunningToolCard, renderStreamingToolItem, renderToolCard, renderTranscript, toolArgsSummary, type AgentRenderContext } from "../../src/server/render.ts";
 import type { ToolView } from "../../src/server/transcript.ts";
 
 const ctx: AgentRenderContext = { workspaceId: "ws", label: "agent" };
@@ -100,5 +100,24 @@ describe("tool rendering", () => {
     expect(html).toContain("abc��def&lt;script&gt;");
     expect(html).not.toContain("\u0000");
     expect(html).not.toContain("\u0001");
+  });
+
+  test("model context uses the standard tool card fullscreen primitive", () => {
+    const html = renderTranscript(ctx, [], {
+      systemPrompt: "You are helpful <script>",
+      tools: [{ name: "read", description: "Read a file", parameters: { type: "object" } }],
+    });
+    expect(html).toContain("agent-tool done tool-model-context");
+    expect(html).toContain('data-controller="atelier-fullscreen"');
+    expect(html).toContain('data-atelier-fullscreen-mode-value="template"');
+    expect(html).toContain('template data-atelier-fullscreen-target="content"');
+    expect(html).toContain("model_context");
+    expect(html).toContain("system-prompt.md");
+    expect(html).toContain("tools.json");
+    expect(html).toContain("You are helpful");
+    expect(html).toContain("&lt;");
+    expect(html).toContain('&quot;name&quot;');
+    expect(html).not.toContain("agent-model-context");
+    expect(html).not.toContain("agent-context-tool");
   });
 });

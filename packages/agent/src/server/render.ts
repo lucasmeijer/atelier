@@ -285,20 +285,16 @@ function renderModelContextCard(ctx: AgentRenderContext, modelContext: AgentMode
   const prompt = modelContext.systemPrompt.trim();
   const tools = modelContext.tools;
   if (!prompt && tools.length === 0) return "";
-  const meta = [prompt ? "system prompt" : undefined, tools.length ? `${tools.length} tools` : undefined].filter(Boolean).join(" · ");
-  const toolRows = tools.map((tool) => `<article class="agent-context-tool">
-    <div class="agent-context-tool-head"><code>${escapeHtml(tool.name)}</code></div>
-    ${codeBlockHtml(JSON.stringify({ name: tool.name, description: tool.description, parameters: tool.parameters }, null, 2), "schema.json", "agent-context-tool-schema")}
-  </article>`).join("");
-  return readingRow(`<details class="agent-model-context" id="${ids.systemPrompt(ctx)}">
-    <summary class="agent-model-context-head">
-      <span class="agent-model-context-title">model context</span>
-      <span class="agent-model-context-meta">${escapeHtml(meta)}</span>
-    </summary>
-    <div class="agent-model-context-body">
-      ${prompt ? `<section><h4>System prompt</h4><pre class="agent-system-prompt-body">${escapeHtml(prompt)}</pre></section>` : ""}
-      ${tools.length ? `<section><h4>Tool definitions sent alongside the prompt</h4><div class="agent-context-tools">${toolRows}</div></section>` : ""}
-    </div>
+  const meta = [prompt ? "system-prompt.md" : undefined, tools.length ? `tools.json (${tools.length} ${tools.length === 1 ? "definition" : "definitions"})` : undefined].filter(Boolean).join(" · ");
+  const blocks = [
+    prompt ? codeBlockHtml(prompt, "system-prompt.md") : "",
+    tools.length ? codeBlockHtml(JSON.stringify(tools.map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters })), null, 2), "tools.json") : "",
+  ].filter(Boolean).join("");
+  const title = ["model context", meta].filter(Boolean).join(" ");
+  return readingRow(`<details class="agent-tool done tool-model-context" id="${ids.systemPrompt(ctx)}"${fullscreenAttributes(title)}>
+    <summary class="agent-tool-head"><code class="agent-tool-name">model_context</code><span class="agent-tool-args">${escapeHtml(meta)}</span></summary>
+    <div class="agent-tool-detail">${blocks}</div>
+    <template data-atelier-fullscreen-target="content"><section class="agent-tool agent-tool-fullscreen tool-model-context"><div class="agent-tool-head"><code class="agent-tool-name">model_context</code><span class="agent-tool-args">${escapeHtml(meta)}</span></div><div class="agent-tool-detail">${blocks}</div></section></template>
   </details>`);
 }
 
