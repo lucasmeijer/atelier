@@ -70,7 +70,11 @@ export function inspectRevision(inspect: DockerInspect): string | undefined {
   return labelsFromInspect(inspect)["org.opencontainers.image.revision"];
 }
 
-export interface SelfUpdateRuntime { container: DockerInspect; containerId: string; imageId: string; releaseChannel: ReleaseChannel; currentRevision?: string; currentDigest?: string }
+export function inspectSelfUpdateCompatibility(inspect: DockerInspect): string | undefined {
+  return labelsFromInspect(inspect)["com.atelier.self-update-compatibility"];
+}
+
+export interface SelfUpdateRuntime { container: DockerInspect; containerId: string; imageId: string; releaseChannel: ReleaseChannel; currentRevision?: string; currentDigest?: string; selfUpdateCompatibility?: string }
 
 function atelierRepoDigest(inspect: DockerInspect): string | undefined {
   return inspect.RepoDigests?.find((digest) => digest.startsWith("ghcr.io/lucasmeijer/atelier@"))?.split("@")[1];
@@ -110,7 +114,15 @@ export async function detectSelfUpdateRuntime(exec: DockerExec = dockerExec): Pr
   const image = await dockerInspect(container.Image, exec).catch(() => undefined);
   const repoDigest = atelierRepoDigest(image ?? container) ?? atelierRepoDigest(container);
   if (!isAtelierImageRef(container.Config?.Image) && !repoDigest) return undefined;
-  return { container, containerId: container.Id, imageId: container.Image, releaseChannel: releaseChannelFromInspect(container), currentRevision: inspectRevision(image ?? container) ?? inspectRevision(container), currentDigest: repoDigest ?? container.Image };
+  return {
+    container,
+    containerId: container.Id,
+    imageId: container.Image,
+    releaseChannel: releaseChannelFromInspect(container),
+    currentRevision: inspectRevision(image ?? container) ?? inspectRevision(container),
+    currentDigest: repoDigest ?? container.Image,
+    selfUpdateCompatibility: inspectSelfUpdateCompatibility(image ?? container) ?? inspectSelfUpdateCompatibility(container),
+  };
 }
 
 export interface PullProgress { kind: "progress"; percent?: number; message?: string }

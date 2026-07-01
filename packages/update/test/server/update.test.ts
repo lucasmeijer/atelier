@@ -28,12 +28,13 @@ describe("self container parsing", () => {
   });
 });
 
-function runtime(currentRevision = "old"): SelfUpdateRuntime {
+function runtime(currentRevision = "old", selfUpdateCompatibility?: string): SelfUpdateRuntime {
   return {
     containerId: "container-id",
     imageId: "sha256:old-image",
     releaseChannel: "stable",
     currentRevision,
+    selfUpdateCompatibility,
     currentDigest: "sha256:old-digest",
     container: { Id: "container-id", Image: "sha256:old-image", Config: { Image: "ghcr.io/lucasmeijer/atelier:stable", Labels: { "com.atelier.type": "server" } } },
   };
@@ -91,10 +92,10 @@ describe("registry helpers", () => {
       }
       if (url.startsWith("https://ghcr.io/token")) return Response.json({ token: "token" });
       if (url.endsWith("/manifests/stable")) return Response.json({ config: { digest: "sha256:config" } }, { headers: { "docker-content-digest": "sha256:manifest" } });
-      if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { "org.opencontainers.image.revision": "new" } } });
+      if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { "org.opencontainers.image.revision": "new", "com.atelier.self-update-compatibility": "contract-v1" } } });
       throw new Error(`unexpected fetch ${url}`);
     }) as typeof fetch;
-    await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({ digest: "sha256:manifest", platformDigest: undefined, revision: "new" });
+    await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({ digest: "sha256:manifest", platformDigest: undefined, revision: "new", selfUpdateCompatibility: "contract-v1" });
   });
 
   test("selects current linux platform manifest", () => {
@@ -158,6 +159,22 @@ describe("update state machine", () => {
     expect(manager.snapshot().state).toBe("ready_to_restart");
     expect(manager.snapshot().percent).toBe(100);
     expect(sidebar.join("\n")).toContain("Restart to update");
+  });
+
+  test("compatibility mismatch requires rerunning the installer", async () => {
+    const { ctx, sidebar } = context();
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime("old", "contract-v1"),
+      fetchMetadata: async () => ({ digest: "sha256:new", revision: "new", selfUpdateCompatibility: "contract-v2" }),
+      pullImage: async () => { throw new Error("should not pull"); },
+      setInterval: noInterval(),
+    });
+    await manager.initialize(ctx);
+    expect(manager.snapshot()).toMatchObject({ state: "incompatible", compatibilityMismatch: true });
+    expect(sidebar.join("\n")).toContain("Installer required");
+    await expect(manager.startPull()).rejects.toThrow("installer");
+    const response = await createUpdateRouteHandler(manager)(new Request("http://atelier.test/update/start", { method: "POST" }), new URL("http://atelier.test/update/start"));
+    expect(await response!.text()).toContain("curl -fsSL https://lucasmeijer.com/get-atelier | sudo bash");
   });
 
   test("pull failure -> failed -> retry succeeds", async () => {

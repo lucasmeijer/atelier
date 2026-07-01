@@ -45,6 +45,22 @@ fail() {
   exit 1
 }
 
+fail_tailscale_serve_not_enabled() {
+  cat >&2 <<'EOF'
+error: Atelier needs Tailscale Serve over HTTPS, but this tailnet is not ready for it.
+
+Enable HTTPS certificates for your tailnet:
+
+  1. Open https://login.tailscale.com/admin/dns
+  2. Enable MagicDNS
+  3. Enable HTTPS Certificates
+  4. Rerun this installer
+
+Atelier uses Tailscale Serve, not Funnel. It stays private to your tailnet.
+EOF
+  exit 1
+}
+
 usage() {
   cat <<'EOF'
 Usage: install-docker-linux.sh [options]
@@ -295,15 +311,62 @@ start_docker() {
 }
 
 require_tailscale() {
+  local status_json
+
   command_exists tailscale || fail "Tailscale is required. Install it, run 'tailscale up', then rerun this installer."
   tailscale status >/dev/null || fail "Tailscale is not up. Run 'tailscale up', then rerun this installer."
 
   tailscale_ip="$(tailscale ip -4 | head -n 1)"
   [ -n "$tailscale_ip" ] || fail "could not determine this machine's Tailscale IPv4 address"
-  tailscale_dns="$(tailscale status --json | sed -n 's/.*"DNSName": "\([^"]*\)".*/\1/p' | head -n 1 | sed 's/\.$//')"
-  atelier_public_host="${tailscale_dns:-$tailscale_ip}"
 
+  status_json="$(mktemp)"
+  tailscale status --json >"$status_json"
+
+  tailscale_dns="$(sed -n 's/.*"DNSName": "\([^"]*\)".*/\1/p' "$status_json" | head -n 1 | sed 's/\.$//')"
+  [ -n "$tailscale_dns" ] || fail_tailscale_serve_not_enabled
+  atelier_public_host="$tailscale_dns"
+
+  grep -Fq '"https"' "$status_json" || fail_tailscale_serve_not_enabled
+  grep -Fq "\"$atelier_public_host\"" "$status_json" || fail_tailscale_serve_not_enabled
+
+  rm -f "$status_json"
   success "Tailscale is up: $atelier_public_host"
+}
+
+configure_tailscale_serve() {
+  local config_file output_file port
+
+  command_exists curl || fail "curl is required to configure Tailscale Serve"
+  [ -S /var/run/tailscale/tailscaled.sock ] || fail "tailscaled local API socket not found"
+
+  info "Configuring Tailscale Serve for Atelier..."
+  config_file="$(mktemp)"
+  output_file="$(mktemp)"
+
+  {
+    printf '{"TCP":{"443":{"HTTPS":true}'
+    for port in $(seq 41000 41999); do
+      printf ',"%s":{"HTTPS":true}' "$port"
+    done
+
+    printf '},"Web":{"%s:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:%s/"}}}' "$atelier_public_host" "$atelier_port"
+    for port in $(seq 41000 41999); do
+      printf ',"%s:%s":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:%s/"}}}' "$atelier_public_host" "$port" "$port"
+    done
+    printf '}}\n'
+  } >"$config_file"
+
+  if ! curl -fsS --unix-socket /var/run/tailscale/tailscaled.sock \
+    -X POST \
+    --data-binary "@$config_file" \
+    http://local-tailscaled.sock/localapi/v0/serve-config >"$output_file" 2>&1; then
+    cat "$output_file" >&2
+    rm -f "$config_file" "$output_file"
+    fail_tailscale_serve_not_enabled
+  fi
+
+  rm -f "$config_file" "$output_file"
+  success "Tailscale Serve is ready: https://$atelier_public_host/"
 }
 
 pull_required_workspace_images() {
@@ -330,6 +393,12 @@ install_atelier() {
 
   pull_required_workspace_images
 
+  if docker ps -aq --filter "name=^/atelier-updater-" | grep -q .; then
+    info "Removing stale Atelier update helpers..."
+    docker rm -f $(docker ps -aq --filter "name=^/atelier-updater-") >/dev/null
+    success "Stale Atelier update helpers removed"
+  fi
+
   if docker ps -aq --filter "name=^/${atelier_name}$" | grep -q .; then
     info "Replacing existing Atelier container..."
     docker rm -f "$atelier_name" >/dev/null
@@ -348,9 +417,9 @@ install_atelier() {
     --mount "type=bind,src=$atelier_data_dir,dst=/data/atelier" \
     --env ATELIER_DATA_DIR=/data/atelier \
     --env "ATELIER_DOCKER_HOST_DATA_DIR=$atelier_data_dir" \
-    --env "HOST=$tailscale_ip" \
+    --env "HOST=127.0.0.1" \
     --env "PORT=$atelier_port" \
-    --env "ATELIER_PUBLIC_URL=http://$atelier_public_host" \
+    --env "ATELIER_PUBLIC_URL=https://$atelier_public_host" \
     "$atelier_image" >/dev/null
   success "Atelier container started"
 }
@@ -368,6 +437,7 @@ main() {
   install_docker
   start_docker
   require_tailscale
+  configure_tailscale_serve
   install_atelier
 
   log ""

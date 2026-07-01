@@ -1,7 +1,7 @@
 import { type ReleaseChannel } from "./channels.ts";
 import { repository } from "./constants.ts";
 
-export interface ImageMetadata { digest: string; revision?: string; platformDigest?: string }
+export interface ImageMetadata { digest: string; revision?: string; platformDigest?: string; selfUpdateCompatibility?: string }
 
 interface RegistryAuth { realm: string; service?: string; scope?: string }
 
@@ -65,10 +65,11 @@ export async function fetchChannelImageMetadata(channel: ReleaseChannel, fetcher
   if (!manifest.config?.digest) throw new Error("registry manifest did not include config digest");
   const configResponse = await authFetch(`https://ghcr.io/v2/${repository}/blobs/${manifest.config.digest}`, { headers: { accept: "application/vnd.oci.image.config.v1+json, application/vnd.docker.container.image.v1+json" } }, fetcher);
   if (!configResponse.ok) throw new Error(`registry config request failed: ${configResponse.status}`);
-  const config = await configResponse.json() as { config?: { Labels?: Record<string, string> } };
+  const labels = (await configResponse.json() as { config?: { Labels?: Record<string, string> } }).config?.Labels ?? {};
   return {
     digest: platformDigest ?? rootDigest,
     platformDigest,
-    revision: config.config?.Labels?.["org.opencontainers.image.revision"],
+    revision: labels["org.opencontainers.image.revision"],
+    selfUpdateCompatibility: labels["com.atelier.self-update-compatibility"],
   };
 }
