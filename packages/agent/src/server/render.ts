@@ -122,17 +122,23 @@ export interface AgentPaneState {
   stats: AgentStatsView;
 }
 
+const agentAttachmentDropAction = "dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop";
+
+function agentAttachmentDropAttrs(uploadUrl: string): string {
+  return `data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}" data-action="${agentAttachmentDropAction}"`;
+}
+
 export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
   const key = agentTabKey(agent.label);
   const draftId = randomUUID();
   const attachRowId = ids.attachRow(ctx);
+  const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
   return `<section id="${domId("agent_pane", ctx.workspaceId, agent.label)}" class="tab-pane agent-tab-pane ${options.visible ? "visible" : ""}" data-tab-pane="${escapeHtml(key)}">
     <div class="agent-pane" id="${ids.pane(ctx)}"
       data-controller="agent-pane agent-attachments"
       data-agent-pane-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
       data-agent-pane-label-value="${escapeHtml(ctx.label)}"
-      data-agent-attachments-upload-url-value="${escapeHtml(`/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`)}"
-      data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
+      ${agentAttachmentDropAttrs(uploadUrl)}>
       <div class="agent-transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
       ${await renderAgentComposer({
         ctx,
@@ -143,6 +149,7 @@ export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceA
         includePaneActions: true,
         busy: state.busy,
         stats: state.stats,
+        dropTarget: false,
       })}
       ${renderRewindDialog(ctx)}
     </div>
@@ -166,6 +173,7 @@ interface AgentComposerRenderOptions {
   formActions?: string;
   formTurbo?: boolean;
   selectedModel?: string;
+  dropTarget?: boolean;
 }
 
 export async function renderAgentComposer(options: AgentComposerRenderOptions): Promise<string> {
@@ -190,7 +198,14 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
     ? `<div class="agent-statbar" id="${ids.stats(options.ctx)}">${renderStatsBar(options.ctx, options.stats)}</div>`
     : `<div class="agent-statbar">${await renderComposerSettings(formId, options.selectedModel)}</div>`;
   const turboAttr = options.formTurbo === undefined ? "" : ` data-turbo="${options.formTurbo ? "true" : "false"}"`;
-  return `<div class="agent-promptwrap" data-controller="agent-attachments${promptTemplateEnabled ? " agent-prompt-templates" : ""}" data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}"${options.ctx ? ` data-agent-prompt-templates-url-value="${escapeHtml(agentPath(options.ctx, "/prompt-templates"))}"` : ""} data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
+  const dropTarget = options.dropTarget ?? true;
+  const promptControllers = [dropTarget ? "agent-attachments" : "", promptTemplateEnabled ? "agent-prompt-templates" : ""].filter(Boolean).join(" ");
+  const promptAttrs = [
+    promptControllers ? `data-controller="${promptControllers}"` : "",
+    dropTarget ? agentAttachmentDropAttrs(uploadUrl) : "",
+    options.ctx ? `data-agent-prompt-templates-url-value="${escapeHtml(agentPath(options.ctx, "/prompt-templates"))}"` : "",
+  ].filter(Boolean).join(" ");
+  return `<div class="agent-promptwrap"${promptAttrs ? ` ${promptAttrs}` : ""}>
         ${promptTemplateEnabled ? `<div class="agent-template-menu-host" data-agent-prompt-templates-target="menu" hidden></div>` : ""}
         <div class="agent-promptbox">
           <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
@@ -198,7 +213,6 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
             <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row"></div>
             <textarea class="agent-input" name="text" rows="${options.rows ?? 2}" placeholder="${escapeHtml(options.placeholder)}"${inputTarget ? ` ${inputTarget}` : ""}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>
             <div class="agent-prompt-actions">
-              <span class="agent-drop-hint" data-agent-attachments-target="hint">Drop files to attach</span>
               <span class="spacer"></span>
               ${actions}
             </div>

@@ -4,10 +4,10 @@
 .agent-tab-pane.visible { height: 100%; min-height: 0; }
 
 .agent-pane { --agent-reading-column-width: 820px; height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--bg); position: relative; }
-.agent-pane.agent-dropping::after, .agent-promptwrap.agent-dropping::after {
+.agent-pane.agent-dropping .agent-promptbox::after, .agent-promptwrap.agent-dropping .agent-promptbox::after {
   content: "Drop files to attach";
-  position: absolute; inset: 8px; border: 2px dashed var(--accent); border-radius: 12px;
-  background: rgba(37, 99, 235, .06); color: var(--accent); font-weight: 600;
+  position: absolute; inset: 0; border: 2px dashed var(--accent); border-radius: inherit;
+  background: rgba(37, 99, 235, .08); color: var(--accent); font-weight: 600;
   display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 10;
 }
 
@@ -416,7 +416,6 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 
 .agent-prompt-actions { position: absolute; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 8px; padding: 0; z-index: 1; }
 .agent-prompt-actions .spacer { display: none; }
-.agent-drop-hint { display: none; }
 
 .agent-btn {
   font-family: inherit; font-size: 12px; font-weight: 600; padding: 5px 13px; border-radius: 7px; cursor: pointer;
