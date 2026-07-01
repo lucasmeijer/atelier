@@ -1,4 +1,4 @@
-import { replacementCreateArgs, dockerExec, dockerInspect } from "./docker.ts";
+import { replacementCreateArgs, dockerExec, dockerInspect, serverHealthUrlFromInspect } from "./docker.ts";
 import { updaterPort } from "./constants.ts";
 import { isReleaseChannel, type ReleaseChannel } from "./channels.ts";
 
@@ -66,9 +66,10 @@ async function run(): Promise<void> {
     setStep("start", "done");
 
     setStep("wait", "running");
+    const healthUrl = serverHealthUrlFromInspect(inspect, options.returnUrl);
     const deadline = Date.now() + 120_000;
     while (Date.now() < deadline) {
-      const up = await fetch(new URL("/up", options.returnUrl)).catch(() => undefined);
+      const up = await fetch(healthUrl).catch(() => undefined);
       if (up?.ok) { setStep("wait", "done"); setStep("redirect", "running"); return; }
       await Bun.sleep(1000);
     }

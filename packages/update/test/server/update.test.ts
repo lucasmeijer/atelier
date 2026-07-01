@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { parseContainerIdFromCgroup, parseContainerIdFromMountInfo, pullChannelImage, replacementCreateArgs, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
+import { parseContainerIdFromCgroup, parseContainerIdFromMountInfo, pullChannelImage, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
 import { createUpdateRouteHandler, UpdateManager } from "../../src/server/index.ts";
 import { parseWwwAuthenticate, selectManifestFromIndex, fetchChannelImageMetadata } from "../../src/server/registry.ts";
 import { fetchReleaseNotes, releaseNoteFilenames, renderMarkdown } from "../../src/server/release-notes.ts";
@@ -257,9 +257,10 @@ describe("update state machine", () => {
     const response = await manager.launchUpdater(new URL("http://atelier.test/update/restart?theme=dracula"));
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe("http://atelier.test:81/?theme=dracula");
-    expect(dockerCalls[0]).toContain("atelier-update-helper");
-    expect(dockerCalls[0]).toContain("--release-channel");
-    expect(dockerCalls[0]).toContain("stable");
+    const runCall = dockerCalls.find((call) => call.includes("atelier-update-helper"));
+    expect(runCall).toBeDefined();
+    expect(runCall!).toContain("--release-channel");
+    expect(runCall!).toContain("stable");
     await expect(manager.launchUpdater(new URL("http://atelier.test/update/restart"))).rejects.toThrow("Restart is already in progress");
   });
 });
@@ -360,6 +361,18 @@ describe("docker pull progress", () => {
     } as unknown as ReturnType<typeof Bun.spawn>));
     expect(events.some((event) => event.percent === 25)).toBe(true);
     expect(events.at(-1)?.percent).toBe(100);
+  });
+});
+
+describe("update helper health URL", () => {
+  test("checks the actual bound host when the server is not listening on localhost", () => {
+    const inspect: DockerInspect = { Id: "container", Image: "sha256:old", Config: { Env: ["HOST=100.81.122.77", "PORT=80"] } };
+    expect(serverHealthUrlFromInspect(inspect, "http://agent-test/").toString()).toBe("http://100.81.122.77/up");
+  });
+
+  test("falls back to the browser return URL for wildcard binds", () => {
+    const inspect: DockerInspect = { Id: "container", Image: "sha256:old", Config: { Env: ["HOST=0.0.0.0", "PORT=80"] } };
+    expect(serverHealthUrlFromInspect(inspect, "http://agent-test/").toString()).toBe("http://agent-test/up");
   });
 });
 

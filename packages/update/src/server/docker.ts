@@ -82,6 +82,20 @@ export function releaseChannelFromInspect(inspect: DockerInspect): ReleaseChanne
   return "stable";
 }
 
+function envValue(env: string[] | undefined, name: string): string | undefined {
+  const prefix = `${name}=`;
+  return env?.find((entry) => entry.startsWith(prefix))?.slice(prefix.length);
+}
+
+export function serverHealthUrlFromInspect(inspect: DockerInspect, fallbackUrl: string): URL {
+  const env = inspect.Config?.Env;
+  const host = envValue(env, "HOST");
+  if (!host || host === "0.0.0.0" || host === "::") return new URL("/up", fallbackUrl);
+  const port = Number(envValue(env, "PORT") ?? 3000);
+  const formattedHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return new URL(`http://${formattedHost}${port === 80 ? "" : `:${port}`}/up`);
+}
+
 export async function detectSelfUpdateRuntime(exec: DockerExec = dockerExec): Promise<SelfUpdateRuntime | undefined> {
   const ps = await exec(["version", "--format", "{{.Server.Version}}"]);
   if (ps.code !== 0) return undefined;
