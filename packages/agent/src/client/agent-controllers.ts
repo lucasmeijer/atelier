@@ -134,6 +134,11 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       input.setSelectionRange(input.value.length, input.value.length);
     }
 
+    private setInputValue(value: string): void {
+      this.inputTarget.value = value;
+      this.inputTarget.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
     autosize(): void {
       const input = this.inputTarget;
       const maxHeight = Number.parseFloat(getComputedStyle(input).getPropertyValue("--agent-input-max-height")) || 260;
@@ -173,8 +178,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     submitted(event: Event): void {
       const detail = (event as CustomEvent).detail as { success?: boolean } | undefined;
       if (detail?.success === false) return;
-      this.inputTarget.value = "";
-      this.autosize();
+      this.setInputValue("");
       // Attachments were delivered with the message; clear the chips.
       this.formTarget.querySelectorAll(".agent-chip").forEach((chip) => chip.remove());
       this.stuck = true;
@@ -210,8 +214,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       // (summaries behave like a busy agent with a stop button).
       this.rewindDialogTarget.close();
       if (this.rewindUserText && !this.inputTarget.value.trim()) {
-        this.inputTarget.value = this.rewindUserText;
-        this.autosize();
+        this.setInputValue(this.rewindUserText);
         this.inputTarget.focus();
       }
     }
