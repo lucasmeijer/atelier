@@ -241,6 +241,11 @@ app = createWebApp({
 atelierEvents.on("workspace_user_activity", ({ workspaceId }) => registry.touch(workspaceId));
 atelierEvents.on("workspace_title_changed", ({ workspaceId, title }) => registry.setTitle(workspaceId, title || null));
 atelierEvents.on("workspace_tab_unread", ({ workspaceId, tabKey, unread }) => registry.setTabUnread(workspaceId, tabKey, unread));
+
+// Docker is the persistent truth for which workspaces exist; seed the registry from it before modules initialize
+// so startup-time row contributions have rows to attach to.
+await registry.seed((await listWorkspaces()).workspaces);
+
 for (const module of workspaceModules) {
   await module.initialize?.({
     events: atelierEvents,
@@ -258,9 +263,6 @@ for (const module of workspaceModules) {
     onWorkspaceRemoved: (handler) => workspaceRemovedHandlers.push(handler),
   });
 }
-
-// Docker is the persistent truth for which workspaces exist; seed the registry from it.
-await registry.seed((await listWorkspaces()).workspaces);
 
 function contentTypeForStaticPath(pathname: string): string {
   if (pathname.endsWith(".css")) return "text/css; charset=utf-8";
