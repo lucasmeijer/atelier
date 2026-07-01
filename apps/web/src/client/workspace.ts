@@ -629,13 +629,38 @@ class AtelierShortcutsController extends Controller {
   }
 
   private currentCommands(): CommandRegistration[] {
+    const deleteCommand = this.visibleWorkspaceDeleteCommand();
     return [
       ...this.commands.values(),
+      ...(deleteCommand ? [deleteCommand] : []),
       ...this.workspaceCommands().map((command) => ({
         ...command,
         run: () => this.executeVisibleWorkspaceCommand(command.id),
       })),
     ];
+  }
+
+  private visibleWorkspaceDeleteCommand(): CommandRegistration | undefined {
+    if (!this.visibleWorkspaceDeleteForm()) return undefined;
+    return {
+      id: "workspace.delete",
+      label: "Delete workspace",
+      description: "Delete the current workspace",
+      scope: "workspace",
+      binding: "Meta+Alt+Backspace",
+      run: () => this.deleteVisibleWorkspace(),
+    };
+  }
+
+  private visibleWorkspaceDeleteForm(): HTMLFormElement | null {
+    const workspaceId = this.visibleWorkspaceId();
+    if (!workspaceId) return null;
+    return document.querySelector<HTMLFormElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"] form.workspace-row-delete[action$="/delete"]`);
+  }
+
+  private deleteVisibleWorkspace(): void {
+    const form = this.visibleWorkspaceDeleteForm();
+    if (form) submitFormWithFirstButton(form);
   }
 
   private workspaceCommands(): WorkspaceCommandRegistration[] {
@@ -701,6 +726,7 @@ class AtelierShortcutsController extends Controller {
         case "Slash": return "/";
         case "Quote": return "'";
         case "Semicolon": return ";";
+        case "Backspace": return "⌫";
         default: return part.replace(/^Key/, "");
       }
     }).join("");
@@ -989,6 +1015,11 @@ function focusDialogPromptEnd(dialog: ParentNode): void {
   });
 }
 
+function submitFormWithFirstButton(form: HTMLFormElement): void {
+  const submitter = form.querySelector<HTMLButtonElement>('button[type="submit"], button:not([type])');
+  form.requestSubmit(submitter ?? undefined);
+}
+
 class SubmitShortcutController extends Controller {
   declare readonly element: HTMLElement;
 
@@ -997,8 +1028,7 @@ class SubmitShortcutController extends Controller {
     const form = event.target instanceof HTMLElement ? event.target.closest<HTMLFormElement>("form") : null;
     if (!form || !this.element.contains(form)) return;
     event.preventDefault();
-    const submitter = form.querySelector<HTMLButtonElement>('button[type="submit"], button:not([type])');
-    form.requestSubmit(submitter ?? undefined);
+    submitFormWithFirstButton(form);
   }
 }
 
