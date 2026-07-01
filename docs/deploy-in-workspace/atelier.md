@@ -59,7 +59,7 @@ When both files exist, Atelier applies `AGENTS.md` first and `.atelier/AGENTS.md
 
 Prompt templates are reusable prompts stored in the workspace repository. Add Markdown files under `.atelier/prompts`; `.atelier` is the idiomatic Atelier configuration directory. Atelier also reads `.pi/prompts` for convenience and compatibility, but prefer `.atelier/prompts` for new templates. If both directories contain a template with the same filename, the `.atelier` template is used.
 
-Each `*.md` file becomes a slash command named after the file. For example, `.atelier/prompts/land.md` is available as `/land` in the agent prompt box. Atelier also includes a built-in `/land` template: "Commit and push your work, rebasing when necessary". A repository-provided `/land` template takes precedence over the built-in one. Type `/` to see matching templates, then submit the slash command with any arguments to expand it into the full prompt.
+Each `*.md` file becomes a slash command named after the file. For example, `.atelier/prompts/land.md` is available as `/land` in the agent prompt box. Atelier also includes a built-in `/land` template: "Commit and push your work, rebasing when necessary. when succesful, delete this workspace". A repository-provided `/land` template takes precedence over the built-in one. Type `/` to see matching templates, then submit the slash command with any arguments to expand it into the full prompt.
 
 To add a new prompt template:
 

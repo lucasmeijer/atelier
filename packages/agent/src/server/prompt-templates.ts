@@ -18,7 +18,7 @@ interface PromptFrontmatter {
 
 const promptDirs = [".atelier/prompts", ".pi/prompts"] as const;
 
-const builtinLandPrompt = "Commit and push your work, rebasing when necessary";
+const builtinLandPrompt = "Commit and push your work, rebasing when necessary. when succesful, delete this workspace";
 
 function parseFrontmatter(markdown: string): { frontmatter: PromptFrontmatter; body: string } {
   if (!markdown.startsWith("---\n")) return { frontmatter: {}, body: markdown };
