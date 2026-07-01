@@ -225,6 +225,32 @@ describe("web app contracts", () => {
     expect(registry.get(id)?.error).toContain("docker exploded");
   });
 
+  test("failed workspaces can be deleted", async () => {
+    const destroyed: string[] = [];
+    const inspected: string[] = [];
+    const { app, registry, broadcasts } = createTestApp({
+      inspect: async (id) => { inspected.push(id); return blockedDetails(id); },
+      destroy: async (id) => { destroyed.push(id); },
+    });
+    await registry.seed([]);
+    registry.add("abc", "A");
+    registry.setPhase("abc", "failed", "docker exploded");
+
+    const html = await (await app.fetch(new Request("http://test.local/"))).text();
+    expect(html).toContain('action="/workspaces/abc/delete"');
+    expect(html).toContain('aria-label="Delete workspace"');
+
+    broadcasts.length = 0;
+    const response = await app.fetch(post("/workspaces/abc/delete"));
+
+    expect(response.status).toBe(200);
+    await Bun.sleep(20);
+    expect(inspected).toEqual([]);
+    expect(destroyed).toEqual(["abc"]);
+    expect(registry.get("abc")).toBeUndefined();
+    expect(broadcasts.some((item) => item.includes('<turbo-stream action="remove" target="workspace_row_abc">'))).toBe(true);
+  });
+
   test("POST /api/workspaces creates an empty workspace asynchronously", async () => {
     const provision = deferred();
     const seen: Array<{ id: string; options: unknown }> = [];

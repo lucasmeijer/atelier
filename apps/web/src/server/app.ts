@@ -302,6 +302,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   </turbo-frame>`;
   }
 
+  function workspaceDeleteForm(id: string, buttonTitle = "Delete workspace"): string {
+    return `<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="${escapeHtml(buttonTitle)}" aria-label="Delete workspace">🗑</button></form>`;
+  }
+
   function workspaceRow(entry: WorkspaceEntry): string {
     const id = entry.id;
     const title = workspaceTitle(entry);
@@ -321,12 +325,14 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       case "checking_delete":
       case "deleting":
         return `${open("pending-delete")}<div class="row-main" title="Deleting…"><div class="r-title">${escapeHtml(title)}</div></div><span class="row-actions"><span class="status-spinner sm" aria-label="Deleting" title="Deleting…"></span></span></div>`;
-      case "failed":
-        return `${open("failed")}${workspaceLink(title, ` title="${escapeHtml(entry.error ?? "Workspace failed")}"`)}<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/dismiss"><button type="submit" title="${escapeHtml(entry.error ?? "Workspace failed")} — dismiss" aria-label="Dismiss">✕</button></form></div>`;
+      case "failed": {
+        const error = entry.error ?? "Workspace failed";
+        return `${open("failed")}${workspaceLink(title, ` title="${escapeHtml(error)}"`)}${workspaceDeleteForm(id, `${error} — delete`)}</div>`;
+      }
       case "ready": {
         const parkedAction = entry.parked ? "unpark" : "park";
         const parkedLabel = entry.parked ? "Unpark workspace" : "Park workspace";
-        return `${open("")}${workspaceSidebarTitleFrame(entry)}<div class="workspace-row-actions"><span class="workspace-row-notifiers">${renderWorkspaceRowContributions(entry)}${renderWorkspaceStatus(id)}</span><span class="workspace-row-buttons"><a class="workspace-row-edit" href="/workspaces/${encodeURIComponent(id)}/sidebar-title/edit" data-turbo-frame="${domId("workspace_sidebar_title", id)}" title="Rename workspace" aria-label="Rename workspace">✎</a><form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}" data-turbo="true" data-action="turbo:submit-end->workspace-list#parkToggled"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form><form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="Delete workspace" aria-label="Delete workspace">🗑</button></form></span></div></div>`;
+        return `${open("")}${workspaceSidebarTitleFrame(entry)}<div class="workspace-row-actions"><span class="workspace-row-notifiers">${renderWorkspaceRowContributions(entry)}${renderWorkspaceStatus(id)}</span><span class="workspace-row-buttons"><a class="workspace-row-edit" href="/workspaces/${encodeURIComponent(id)}/sidebar-title/edit" data-turbo-frame="${domId("workspace_sidebar_title", id)}" title="Rename workspace" aria-label="Rename workspace">✎</a><form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}" data-turbo="true" data-action="turbo:submit-end->workspace-list#parkToggled"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form>${workspaceDeleteForm(id)}</span></div></div>`;
       }
     }
   }
@@ -779,7 +785,7 @@ ${moduleStylesHtml()}
   }
 
   // ---------------------------------------------------------------------------
-  // Create / delete / dismiss
+  // Create / delete
   // ---------------------------------------------------------------------------
 
   function startWorkspaceProvisioning(id: string, options: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext; title?: string; fork?: { sourceWorkspaceId: string } } = {}): void {
@@ -1020,9 +1026,18 @@ ${moduleStylesHtml()}
     return { deleted, errors };
   }
 
-  async function deleteCurrentWorkspaceFromAgent(id: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }> {
+  function canDeleteWorkspace(entry: WorkspaceEntry): boolean {
+    return entry.phase === "ready" || entry.phase === "failed";
+  }
+
+  async function inspectAndScheduleWorkspaceDeletion(id: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }> {
     const entry = requireWorkspace(id);
-    if (entry.phase !== "ready") throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not ready for deletion`);
+    if (!canDeleteWorkspace(entry)) throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not ready for deletion`);
+    if (entry.phase === "failed") {
+      scheduleWorkspaceDeletion(id);
+      return { deleted: true, blocked: false };
+    }
+
     registry.setPhase(id, "checking_delete");
     if (!force) {
       let details: WorkspaceDeleteBlockedDetails;
@@ -1041,34 +1056,22 @@ ${moduleStylesHtml()}
     return { deleted: true, blocked: false };
   }
 
-  async function deleteWorkspaceEndpoint(id: string, force: boolean): Promise<Response> {
-    const entry = requireWorkspace(id);
-    if (entry.phase !== "ready") {
-      // Already starting/deleting/failed: nothing sensible to do.
-      return turboStreamResponse(turboRemoveStream("delete-workspace-modal"), { status: 409 });
-    }
-    registry.setPhase(id, "checking_delete");
-    if (!force) {
-      let details: WorkspaceDeleteBlockedDetails;
-      try {
-        details = await deps.inspectDeleteSafety(id);
-      } catch (error) {
-        registry.setPhase(id, "ready");
-        throw error;
-      }
-      if (details.issues.length > 0) {
-        registry.setPhase(id, "ready");
-        return turboStreamResponse(`${turboRemoveStream("delete-workspace-modal")}${turboStream("append", "body", deleteBlockedModal(id, details))}`);
-      }
-    }
-    scheduleWorkspaceDeletion(id);
-    return turboStreamResponse(turboRemoveStream("delete-workspace-modal"));
+  function deleteCurrentWorkspaceFromAgent(id: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }> {
+    return inspectAndScheduleWorkspaceDeletion(id, force);
   }
 
-  function dismissWorkspaceEndpoint(id: string): Response {
-    const entry = registry.get(id);
-    if (entry?.phase === "failed") registry.remove(id);
-    return turboStreamResponse("");
+  async function deleteWorkspaceEndpoint(id: string, force: boolean): Promise<Response> {
+    const entry = requireWorkspace(id);
+    if (!canDeleteWorkspace(entry)) {
+      // Already starting/deleting: nothing sensible to do.
+      return turboStreamResponse(turboRemoveStream("delete-workspace-modal"), { status: 409 });
+    }
+
+    const result = await inspectAndScheduleWorkspaceDeletion(id, force);
+    if (result.blocked) {
+      return turboStreamResponse(`${turboRemoveStream("delete-workspace-modal")}${turboStream("append", "body", deleteBlockedModal(id, result.details!))}`);
+    }
+    return turboStreamResponse(turboRemoveStream("delete-workspace-modal"));
   }
 
   function parkWorkspaceEndpoint(id: string, parked: boolean, request: Request): Response {
@@ -1387,7 +1390,6 @@ ${moduleStylesHtml()}
     if ((params = match(/^\/workspaces\/([^/]+)\/park$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], true, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/unpark$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], false, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteWorkspaceEndpoint(params[0], url.searchParams.get("force") === "1");
-    if ((params = match(/^\/workspaces\/([^/]+)\/dismiss$/)) && request.method === "POST") return dismissWorkspaceEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)$/)) && request.method === "GET") return await workspacePage(params[0], request);
 
     return response("not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });

@@ -46,7 +46,7 @@ const allowedTransitions: Record<WorkspacePhase, WorkspacePhase[]> = {
   ready: ["checking_delete", "deleting"],
   checking_delete: ["ready", "deleting"],
   deleting: ["failed"],
-  failed: [],
+  failed: ["deleting"],
 };
 
 function createFileTimestampStore(path: string): WorkspaceActivityStore {

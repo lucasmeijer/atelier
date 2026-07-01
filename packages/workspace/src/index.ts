@@ -115,8 +115,12 @@ export async function resolveWorkspace(id: string): Promise<string> {
   return id;
 }
 
-export function workspaceWorkHostPath(id: string): string {
+function assertValidWorkspaceId(id: string): void {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id)) throw invalidArguments(`invalid workspace id: ${id}`);
+}
+
+export function workspaceWorkHostPath(id: string): string {
+  assertValidWorkspaceId(id);
   return atelierDataPath(getAtelierRuntimeContext(), "workspaces", id, "work");
 }
 
@@ -379,13 +383,22 @@ export async function listWorkspaces(): Promise<WorkspaceListResult> {
 }
 
 export async function deleteWorkspace(id: string, options: DeleteWorkspaceOptions = {}): Promise<null> {
-  await resolveWorkspace(id);
-  if (!options.force) {
+  assertValidWorkspaceId(id);
+  let containerExists = true;
+  if (options.force) {
+    const labels = await inspectLabels(id).catch((error) => {
+      if (error instanceof AtelierCoreError && error.code === "workspace_not_found") return undefined;
+      throw error;
+    });
+    if (labels && (labels[workspaceTypeLabel] !== "workspace" || labels[namespaceLabel] !== namespace())) throw new AtelierCoreError("workspace_not_found", `workspace not found: ${id}`);
+    containerExists = labels !== undefined;
+  } else {
+    await resolveWorkspace(id);
     const issues: unknown[] = [];
     await options.events?.emit("workspace_delete_inspect", { workspaceId: id, issues });
     if (issues.length > 0) throw new AtelierCoreError("workspace_delete_blocked", formatDeleteBlockedMessage(id, issues), { workspaceId: id, issues });
   }
-  await requireDocker(["rm", "-f", workspaceContainerName(id)]);
+  if (containerExists) await requireDocker(["rm", "-f", workspaceContainerName(id)]);
   clearWorkspacePublishedEndpointCache(id);
   await options.events?.emit("workspace_deleted", { workspaceId: id });
   await deleteWorkspaceWorkDir(id);

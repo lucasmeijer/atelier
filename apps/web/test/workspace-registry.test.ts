@@ -119,6 +119,8 @@ describe("workspace registry", () => {
     registry.add("w");
     registry.setPhase("w", "failed", "boom");
     expect(registry.get("w")?.error).toBe("boom");
+    registry.setPhase("w", "deleting");
+    expect(registry.get("w")?.error).toBeUndefined();
   });
 
   test("touch reorders, persists activity, and emits a list change only when order changes", async () => {
