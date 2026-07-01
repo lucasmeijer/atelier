@@ -8,6 +8,7 @@ import { atelierName, escapeHtml, type WorkspaceServerAppHandler, type Workspace
 import {
   createWorkspaceIngressProxy,
   releaseWorkspacePublicProxyRoutes,
+  UnknownWorkspaceAppError,
   type WorkspaceAppHost,
   type WorkspaceAppRequestHeaderTransformer,
   type WorkspaceAppResponseTransformer,
@@ -310,7 +311,7 @@ const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, reques
     const target = await handler.resolveTarget(app, requestUrl);
     if (target) return target;
   }
-  throw new Error(`unknown workspace app: ${app.appKey}`);
+  throw new UnknownWorkspaceAppError(app);
 };
 
 const patchWorkspaceAppRequestHeaders: WorkspaceAppRequestHeaderTransformer = async (app, headers, target, request) => {

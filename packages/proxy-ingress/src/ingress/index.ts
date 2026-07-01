@@ -16,6 +16,13 @@ export interface WorkspaceAppHost {
   workspaceId: string;
 }
 
+export class UnknownWorkspaceAppError extends Error {
+  constructor(public readonly app: WorkspaceAppHost) {
+    super(`unknown workspace app: ${app.appKey}`);
+    this.name = "UnknownWorkspaceAppError";
+  }
+}
+
 export type WorkspaceAppTargetResolver = (app: WorkspaceAppHost, requestUrl: URL) => Promise<URL> | URL;
 export type WorkspaceAppRequestHeaderTransformer = (app: WorkspaceAppHost, headers: Headers, target: URL, request: Request) => Promise<Headers> | Headers;
 export type WorkspaceAppResponseTransformer = (app: WorkspaceAppHost, response: Response, request: Request) => Promise<Response> | Response;
@@ -65,6 +72,15 @@ export function createWorkspaceIngressProxy(options: WorkspaceIngressProxyOption
   const publicProxyServers = new Map<number, ReturnType<typeof Bun.serve<WorkspaceAppProxySocketData>>>();
   const publicProxyRoutes = new Map<number, WorkspaceAppHost>();
 
+  async function retireUnknownAppRoute(publicPort: number, app: WorkspaceAppHost): Promise<Response> {
+    await releaseWorkspacePublicProxyRoute(app.workspaceId, app.appKey);
+    publicProxyRoutes.delete(publicPort);
+    const staleServer = publicProxyServers.get(publicPort);
+    publicProxyServers.delete(publicPort);
+    setTimeout(() => staleServer?.stop(true), 0);
+    return textResponse(`Workspace app is gone: ${app.appKey}`, 410);
+  }
+
   async function ensurePublicProxyListener(route: WorkspaceAppHost & { publicPort: number }): Promise<void> {
     const existing = publicProxyRoutes.get(route.publicPort);
     if (existing) {
@@ -85,12 +101,17 @@ export function createWorkspaceIngressProxy(options: WorkspaceIngressProxyOption
           const app = publicProxyRoutes.get(route.publicPort);
           if (!app) return textResponse("not found", 404);
           if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
-            const protocols = websocketProtocols(request);
-            const target = await workspaceAppWebSocketTarget(app, url.pathname, url.search, options.resolveTarget);
-            if (server.upgrade(request, { data: { kind: "workspace-app-proxy", target, host: request.headers.get("host") ?? url.host, protocols } })) return undefined;
-            return textResponse("websocket upgrade failed", 400);
+            try {
+              const protocols = websocketProtocols(request);
+              const target = await workspaceAppWebSocketTarget(app, url.pathname, url.search, options.resolveTarget);
+              if (server.upgrade(request, { data: { kind: "workspace-app-proxy", target, host: request.headers.get("host") ?? url.host, protocols } })) return undefined;
+              return textResponse("websocket upgrade failed", 400);
+            } catch (error) {
+              if (error instanceof UnknownWorkspaceAppError) return await retireUnknownAppRoute(route.publicPort, app);
+              throw error;
+            }
           }
-          return await proxyWorkspaceAppRequest(app, request, options.resolveTarget, options.transformRequestHeaders, options.transformResponse);
+          return await proxyWorkspaceAppRequest(app, request, options.resolveTarget, options.transformRequestHeaders, options.transformResponse, () => retireUnknownAppRoute(route.publicPort, app));
         },
         websocket: {
           open: openWorkspaceAppProxySocket,
@@ -205,6 +226,7 @@ async function proxyWorkspaceAppRequest(
   resolveTarget: WorkspaceAppTargetResolver,
   transformRequestHeaders?: WorkspaceAppRequestHeaderTransformer,
   transformResponse?: WorkspaceAppResponseTransformer,
+  retireUnknownAppRoute?: () => Promise<Response>,
 ): Promise<Response> {
   try {
     const source = new URL(request.url);
@@ -226,6 +248,7 @@ async function proxyWorkspaceAppRequest(
     });
     return transformResponse ? await transformResponse(app, response, request) : response;
   } catch (error) {
+    if (error instanceof UnknownWorkspaceAppError && retireUnknownAppRoute) return await retireUnknownAppRoute();
     const message = error instanceof Error ? error.message : String(error);
     return textResponse(`Workspace app proxy error: ${message}`, 502);
   }

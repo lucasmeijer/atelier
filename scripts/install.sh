@@ -214,6 +214,7 @@ wait_with_spinner() {
   fi
 
   tput civis 2>/dev/null || true
+  info "$message..."
   while kill -0 "$pid" 2>/dev/null; do
     printf '\r%s%s%s %s...' "$blue" "${frames:i++%${#frames}:1}" "$reset" "$message"
     sleep 0.1
@@ -241,7 +242,7 @@ check_ssh_latency() {
   local client_ip latency_output latency_ms rating
 
   client_ip="$(ssh_client_ip)"
-  [ -n "$client_ip" ] || return
+  [ -n "$client_ip" ] || return 0
 
   latency_output="$(mktemp)"
   measure_latency "$client_ip" "$latency_output" &
@@ -251,7 +252,7 @@ check_ssh_latency() {
       latency_ms="$(awk -F'/' '/^(rtt|round-trip)/ { printf "%.0f", $2 }' "$latency_output")"
     fi
     rm -f "$latency_output"
-    [ -n "$latency_ms" ] || return
+    [ -n "$latency_ms" ] || return 0
     rating="$(latency_rating "$latency_ms")"
 
     case "$rating" in
@@ -262,7 +263,7 @@ check_ssh_latency() {
     esac
 
     case "$rating" in
-      poor|bad) confirm_continue_for_latency "$latency_ms" "$rating" ;;
+      bad) confirm_continue_for_latency "$latency_ms" "$rating" ;;
     esac
   else
     rm -f "$latency_output"
