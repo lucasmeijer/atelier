@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
+import { request } from "node:http";
 import { hostname } from "node:os";
 import { isReleaseChannel, targetImageForChannel, type ReleaseChannel } from "./channels.ts";
+import { repository } from "./constants.ts";
 
 export interface DockerExecResult { stdout: string; stderr: string; code: number }
 export interface DockerExec { (args: string[]): Promise<DockerExecResult> }
@@ -113,36 +115,67 @@ export async function detectSelfUpdateRuntime(exec: DockerExec = dockerExec): Pr
 
 export interface PullProgress { kind: "progress"; percent?: number; message?: string }
 
-export async function pullChannelImage(channel: ReleaseChannel, onProgress: (progress: PullProgress) => void, execCommand = (args: string[]) => Bun.spawn(["docker", ...args], { stdout: "pipe", stderr: "pipe" })): Promise<void> {
-  const proc = execCommand(["pull", targetImageForChannel(channel)]);
-  const reader = proc.stdout.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  const layers = new Map<string, { current: number; total: number }>();
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      if (!trimmed.startsWith("{")) {
-        onProgress({ kind: "progress", message: trimmed });
-        continue;
-      }
-      const event = JSON.parse(trimmed) as { id?: string; status?: string; progressDetail?: { current?: number; total?: number }; error?: string };
-      if (event.error) throw new Error(event.error);
-      if (event.id && event.progressDetail?.total) layers.set(event.id, { current: event.progressDetail.current ?? 0, total: event.progressDetail.total });
-      const totals = Array.from(layers.values());
-      const total = totals.reduce((sum, layer) => sum + layer.total, 0);
-      const current = totals.reduce((sum, layer) => sum + Math.min(layer.current, layer.total), 0);
-      onProgress({ kind: "progress", percent: total > 0 ? Math.max(1, Math.min(99, Math.round((current / total) * 100))) : undefined, message: event.status });
-    }
+type DockerPullEvent = { id?: string; status?: string; progressDetail?: { current?: number; total?: number }; error?: string };
+type PullLayer = { current: number; total: number };
+
+function dockerApiImageCreatePath(channel: ReleaseChannel): string {
+  return `/images/create?${new URLSearchParams({ fromImage: `ghcr.io/${repository}`, tag: channel }).toString()}`;
+}
+
+function pullPercent(layers: Map<string, PullLayer>): number | undefined {
+  let current = 0;
+  let total = 0;
+  for (const layer of layers.values()) {
+    current += Math.min(layer.current, layer.total);
+    total += layer.total;
   }
-  const code = await proc.exited;
-  if (code !== 0) throw new Error(await new Response(proc.stderr).text() || "docker pull failed");
+  return total > 0 ? Math.max(1, Math.min(99, Math.round((current / total) * 100))) : undefined;
+}
+
+function recordPullEvent(line: string, layers: Map<string, PullLayer>): PullProgress {
+  const event = JSON.parse(line) as DockerPullEvent;
+  if (event.error) throw new Error(event.error);
+  if (event.id && event.progressDetail?.total) layers.set(event.id, { current: event.progressDetail.current ?? 0, total: event.progressDetail.total });
+  if (event.id && (event.status === "Pull complete" || event.status === "Already exists") && layers.has(event.id)) {
+    const layer = layers.get(event.id)!;
+    layers.set(event.id, { current: layer.total, total: layer.total });
+  }
+  return { kind: "progress", percent: pullPercent(layers), message: event.status };
+}
+
+export async function pullChannelImage(channel: ReleaseChannel, onProgress: (progress: PullProgress) => void): Promise<void> {
+  const layers = new Map<string, PullLayer>();
+  await new Promise<void>((resolve, reject) => {
+    const req = request({ socketPath: "/var/run/docker.sock", path: dockerApiImageCreatePath(channel), method: "POST" }, (res) => {
+      let buffer = "";
+      let errorBody = "";
+      res.setEncoding("utf8");
+      const emitLine = (line: string) => {
+        const trimmed = line.trim();
+        if (trimmed) onProgress(recordPullEvent(trimmed, layers));
+      };
+      res.on("data", (chunk: string) => {
+        if ((res.statusCode ?? 500) >= 400) {
+          errorBody += chunk;
+          return;
+        }
+        buffer += chunk;
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) emitLine(line);
+      });
+      res.on("end", () => {
+        if ((res.statusCode ?? 500) >= 400) reject(new Error(errorBody.trim() || `Docker image create failed with HTTP ${res.statusCode}`));
+        else {
+          emitLine(buffer);
+          resolve();
+        }
+      });
+      res.on("error", reject);
+    });
+    req.on("error", reject);
+    req.end();
+  });
   onProgress({ kind: "progress", percent: 100 });
 }
 

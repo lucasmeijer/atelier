@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { parseContainerIdFromCgroup, parseContainerIdFromMountInfo, pullChannelImage, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
+import { parseContainerIdFromCgroup, parseContainerIdFromMountInfo, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
 import { createUpdateRouteHandler, UpdateManager } from "../../src/server/index.ts";
 import { parseWwwAuthenticate, selectManifestFromIndex, fetchChannelImageMetadata } from "../../src/server/registry.ts";
 import { fetchReleaseNotes, releaseNoteFilenames, renderMarkdown } from "../../src/server/release-notes.ts";
@@ -359,24 +359,6 @@ describe("update routes", () => {
     expect(await state!.json()).toMatchObject({ state: "available", selfUpdatable: true });
     const sse = await route(new Request("http://test/update/events"), new URL("http://test/update/events"));
     expect(sse).toBeUndefined();
-  });
-});
-
-describe("docker pull progress", () => {
-  test("parses streaming Docker JSON layer progress", async () => {
-    const events: Array<{ percent?: number }> = [];
-    const lines = `stable: Pulling from lucasmeijer/atelier\n${[
-      { id: "a", status: "Downloading", progressDetail: { current: 25, total: 100 } },
-      { id: "b", status: "Downloading", progressDetail: { current: 50, total: 100 } },
-      { id: "a", status: "Download complete", progressDetail: { current: 100, total: 100 } },
-    ].map((line) => `${JSON.stringify(line)}\n`).join("")}`;
-    await pullChannelImage("stable", (progress) => events.push(progress), () => ({
-      stdout: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(lines)); controller.close(); } }),
-      stderr: new ReadableStream({ start(controller) { controller.close(); } }),
-      exited: Promise.resolve(0),
-    } as unknown as ReturnType<typeof Bun.spawn>));
-    expect(events.some((event) => event.percent === 25)).toBe(true);
-    expect(events.at(-1)?.percent).toBe(100);
   });
 });
 

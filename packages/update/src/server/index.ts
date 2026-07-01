@@ -222,7 +222,8 @@ const manager = new UpdateManager();
 
 function progressBar(percent?: number): string {
   const style = typeof percent === "number" ? ` style="width:${percent}%"` : "";
-  return `<div class="update-sidebar-progress${percent === undefined ? " indeterminate" : ""}" aria-label="Pulling update" title="Pulling update…"><span${style}></span></div>`;
+  const label = typeof percent === "number" ? `${percent}%` : "Pulling…";
+  return `<div class="update-sidebar-progress${percent === undefined ? " indeterminate" : ""}" aria-label="Pulling update" title="${escapeHtml(label)}"><span${style}></span></div><span class="update-sidebar-percent">${escapeHtml(label)}</span>`;
 }
 
 function updateStatusText(snapshot: StateSnapshot): { label: string; detail: string } {
