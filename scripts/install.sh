@@ -344,12 +344,12 @@ configure_tailscale_serve() {
   output_file="$(mktemp)"
 
   {
-    printf '{"TCP":{"443":{"HTTPS":true}'
+    printf '{"TCP":{"443":{"HTTPS":true},"81":{"HTTPS":true}'
     for port in $(seq 41000 41999); do
       printf ',"%s":{"HTTPS":true}' "$port"
     done
 
-    printf '},"Web":{"%s:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:%s/"}}}' "$atelier_public_host" "$atelier_port"
+    printf '},"Web":{"%s:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:%s/"}}},"%s:81":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:81/"}}}' "$atelier_public_host" "$atelier_port" "$atelier_public_host"
     for port in $(seq 41000 41999); do
       printf ',"%s:%s":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:%s/"}}}' "$atelier_public_host" "$port" "$port"
     done

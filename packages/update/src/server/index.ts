@@ -167,7 +167,7 @@ export class UpdateManager {
     const name = `atelier-updater-${crypto.randomUUID().slice(0, 8)}`;
     const returnUrl = new URL("/", url);
     const updaterUrl = new URL(returnUrl);
-    updaterUrl.protocol = "http:";
+    updaterUrl.protocol = "https:";
     updaterUrl.port = String(updaterPort);
     const docker = this.deps.docker ?? dockerExec;
     try {

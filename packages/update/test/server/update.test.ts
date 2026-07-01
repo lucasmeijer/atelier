@@ -258,7 +258,7 @@ describe("update state machine", () => {
     }
   });
 
-  test("restart launches updater once and redirects to port 81 with theme", async () => {
+  test("restart launches updater once and redirects to https port 81 with theme", async () => {
     const { ctx } = context();
     const dockerCalls: string[][] = [];
     const manager = new UpdateManager({
@@ -267,14 +267,14 @@ describe("update state machine", () => {
       pullImage: async () => {},
       docker: async (args) => { dockerCalls.push(args); return { stdout: "updater", stderr: "", code: 0 }; },
       checkUpdaterPortAvailable: async () => {},
-      waitForUpdater: async (url) => { expect(url).toBe("http://atelier.test:81/up"); },
+      waitForUpdater: async (url) => { expect(url).toBe("https://atelier.test:81/up"); },
       setInterval: noInterval(),
     });
     await manager.initialize(ctx);
     await manager.startPull();
     const response = await manager.launchUpdater(new URL("http://atelier.test/update/restart?theme=dracula"));
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe("http://atelier.test:81/?theme=dracula");
+    expect(response.headers.get("location")).toBe("https://atelier.test:81/?theme=dracula");
     expect(dockerCalls[0]).toEqual(["ps", "-aq", "--filter", "name=^/atelier-updater-"]);
     const runCall = dockerCalls.find((call) => call.includes("atelier-update-helper"));
     expect(runCall).toBeDefined();
