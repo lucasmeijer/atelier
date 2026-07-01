@@ -163,14 +163,45 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
-ssh_client_ip() {
+ssh_connection_from_process_tree() {
+  local pid ppid value
+
+  pid="$$"
+  while [ -n "$pid" ] && [ "$pid" -gt 1 ] && [ -r "/proc/$pid/status" ]; do
+    value="$(tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | awk -F= '$1 == "SSH_CONNECTION" || $1 == "SSH_CLIENT" { print $2; exit }')"
+    if [ -n "$value" ]; then
+      printf '%s\n' "$value"
+      return 0
+    fi
+    ppid="$(awk '/^PPid:/ { print $2 }' "/proc/$pid/status")"
+    [ -n "$ppid" ] && [ "$ppid" != "$pid" ] || return 0
+    pid="$ppid"
+  done
+}
+
+ssh_connection_value() {
   if [ -n "${SSH_CONNECTION:-}" ]; then
-    printf '%s\n' "$SSH_CONNECTION" | awk '{ print $1 }'
-  elif [ -n "${SSH_CLIENT:-}" ]; then
-    printf '%s\n' "$SSH_CLIENT" | awk '{ print $1 }'
-  else
-    who -m 2>/dev/null | sed -n 's/.*(\([^)]*\)).*/\1/p' | head -n 1
+    printf '%s\n' "$SSH_CONNECTION"
+    return 0
   fi
+  if [ -n "${SSH_CLIENT:-}" ]; then
+    printf '%s\n' "$SSH_CLIENT"
+    return 0
+  fi
+  ssh_connection_from_process_tree || true
+}
+
+ssh_client_ip() {
+  local value
+
+  value="$(ssh_connection_value || true)"
+  if [ -n "$value" ]; then
+    printf '%s\n' "$value" | awk '{ print $1 }'
+    return 0
+  fi
+
+  who -m 2>/dev/null | sed -n 's/.*(\([^)]*\)).*/\1/p' | head -n 1
+  return 0
 }
 
 latency_rating() {
@@ -239,17 +270,18 @@ confirm_continue_for_latency() {
 }
 
 check_ssh_latency() {
-  local client_ip latency_output latency_ms rating
+  local client_ip latency_output latency_ms rating ssh_connection
 
+  ssh_connection="$(ssh_connection_value || true)"
   client_ip="$(ssh_client_ip)"
   [ -n "$client_ip" ] || return 0
 
   latency_output="$(mktemp)"
-  measure_latency "$client_ip" "$latency_output" &
+  SSH_CONNECTION="$ssh_connection" measure_latency "$client_ip" "$latency_output" &
   if wait_with_spinner "$!" "Measuring latency"; then
     latency_ms="$(sed -n 's/.*rtt:\([0-9.]*\)\/.*/\1/p' "$latency_output" | head -n 1 | awk '{ printf "%.0f", $1 }')"
     if [ -z "$latency_ms" ]; then
-      latency_ms="$(awk -F'/' '/^(rtt|round-trip)/ { printf "%.0f", $2 }' "$latency_output")"
+      latency_ms="$(awk -F'/' '/^(rtt|round-trip)/ { found = 1; printf "%.0f", $2 } END { if (!found) exit 1 }' "$latency_output" || true)"
     fi
     rm -f "$latency_output"
     [ -n "$latency_ms" ] || return 0
