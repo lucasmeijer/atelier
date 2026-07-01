@@ -451,7 +451,7 @@ ${moduleStylesHtml()}
     submitLabel: "Create workspace",
     submitShortcut: "⌘↩",
     rows: 8,
-    formActions: "keydown->submit-shortcut#keydown turbo:submit-end->modal#submitted",
+    formActions: "keydown->submit-shortcut#keydown submit->submit-shortcut#submit turbo:submit-end->submit-shortcut#submitted turbo:submit-end->modal#submitted",
     formTurbo: true,
     selectedModel: options.selectedModel,
   })}
