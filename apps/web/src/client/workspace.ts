@@ -528,6 +528,16 @@ class AtelierShortcutsController extends Controller {
           run: command.run,
         })),
     });
+    clientHooks.registerPaletteProvider({
+      id: "atelier.workspaces",
+      label: "Workspace",
+      search: ({ fuzzyScore }) => this.workspacePaletteItems(fuzzyScore),
+    });
+    clientHooks.registerPaletteProvider({
+      id: "atelier.tabs",
+      label: "Tab",
+      search: ({ fuzzyScore }) => this.workspaceTabPaletteItems(fuzzyScore),
+    });
     // Listen at window capture so we get first chance at shortcuts that focused
     // Atelier-owned widgets (not iframes) might otherwise consume.
     window.addEventListener("keydown", this.keydown, true);
@@ -609,6 +619,12 @@ class AtelierShortcutsController extends Controller {
       scope: "global",
       binding: "Meta+Alt+KeyK",
       run: () => this.openPalette(),
+    });
+    this.registerCommand({
+      id: "atelier.open-settings",
+      label: "Open settings",
+      scope: "global",
+      run: () => this.openSettingsDialog(),
     });
   }
 
@@ -830,6 +846,74 @@ class AtelierShortcutsController extends Controller {
     await item.run();
   }
 
+  private workspacePaletteItems(fuzzyScore: (candidate: string) => number): WorkspacePaletteItem[] {
+    return this.workspaceRows().map((row) => {
+      const workspaceId = row.dataset.workspaceId!;
+      const title = row.querySelector<HTMLElement>(".r-title")?.textContent?.trim() || workspaceId;
+      const phase = row.dataset.phase ?? "ready";
+      const parked = row.dataset.parked === "true" || row.classList.contains("parked");
+      const visible = row.classList.contains("visible") || residencyController()?.visibleWorkspaceId() === workspaceId;
+      return {
+        id: `workspace:${workspaceId}`,
+        title,
+        subtitle: parked ? "Parked workspace" : "Workspace",
+        badge: visible ? "open" : phase,
+        keywords: [workspaceId, phase, parked ? "parked" : ""],
+        score: fuzzyScore([title, workspaceId, phase, parked ? "parked" : ""].join(" ")) + (visible ? 15 : 0) - (parked ? 8 : 0),
+        run: () => this.openWorkspaceRow(row),
+      };
+    });
+  }
+
+  private workspaceTabPaletteItems(fuzzyScore: (candidate: string) => number): WorkspacePaletteItem[] {
+    const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible[data-workspace-id]");
+    if (!resident) return [];
+    const workspaceId = resident.dataset.workspaceId!;
+    const workspaceTitle = document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"] .r-title`)?.textContent?.trim() ?? workspaceId;
+    const groups = [...resident.querySelectorAll<HTMLElement>(".workspace-group[data-group-id]")];
+    return groups.flatMap((group) => [...group.querySelectorAll<HTMLElement>(".group-tab[data-tab]")].map((tab) => {
+      const groupId = group.dataset.groupId!;
+      const tabName = tab.dataset.tab!;
+      const label = tab.querySelector<HTMLElement>(".group-tab-label span")?.textContent?.trim() || tabName;
+      const visible = tab.classList.contains("visible");
+      return {
+        id: `tab:${workspaceId}:${groupId}:${tabName}`,
+        title: label,
+        subtitle: workspaceTitle,
+        detail: groups.length > 1 ? `Group ${groupId}` : undefined,
+        badge: visible ? "open" : undefined,
+        keywords: [tabName, groupId],
+        score: fuzzyScore([label, tabName].join(" ")) + (visible ? 20 : 0),
+        run: () => this.openCurrentWorkspaceTab(groupId, tabName),
+      };
+    }));
+  }
+
+  private workspaceRows(): HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>(".workspace-row[data-workspace-id]")]
+      .filter((row) => !row.classList.contains("pending-delete") && row.dataset.phase !== "checking_delete" && row.dataset.phase !== "deleting");
+  }
+
+  private async openWorkspaceRow(row: HTMLElement): Promise<void> {
+    const workspaceId = row.dataset.workspaceId;
+    const href = row.querySelector<HTMLAnchorElement>("a.row-main")?.href;
+    if (!workspaceId || !href) return;
+    workspaceListController()?.markVisibleWorkspace(workspaceId);
+    await residencyController()?.selectWorkspace(workspaceId, href);
+  }
+
+  private openCurrentWorkspaceTab(groupId: string, tabName: string): void {
+    const group = document.querySelector<HTMLElement>(`.workspace-detail-resident.visible .workspace-group[data-group-id="${CSS.escape(groupId)}"]`);
+    group?.querySelector<HTMLButtonElement>(`.group-tab[data-tab="${CSS.escape(tabName)}"] .group-tab-label`)?.click();
+  }
+
+  private async openSettingsDialog(): Promise<void> {
+    const response = await fetch("/settings", { headers: { "Accept": "text/vnd.turbo-stream.html" } });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const html = await response.text();
+    if (html) window.Turbo?.renderStreamMessage(html);
+  }
+
   private openDialogPrompt(id: string): void {
     const dialog = document.getElementById(id) as HTMLDialogElement | null;
     if (!dialog) return;
@@ -859,17 +943,12 @@ class AtelierShortcutsController extends Controller {
   }
 
   private async openAdjacentWorkspace(direction: -1 | 1): Promise<void> {
-    const rows = [...document.querySelectorAll<HTMLElement>(".workspace-row[data-workspace-id]")]
-      .filter((row) => !row.classList.contains("pending-delete") && row.dataset.phase !== "checking_delete" && row.dataset.phase !== "deleting");
+    const rows = this.workspaceRows();
     if (rows.length === 0) return;
     const currentWorkspaceId = this.visibleWorkspaceId();
     const currentIndex = currentWorkspaceId ? rows.findIndex((row) => row.dataset.workspaceId === currentWorkspaceId) : -1;
     const row = this.adjacentUnparkedWorkspaceRow(rows, currentIndex, direction);
-    const workspaceId = row?.dataset.workspaceId;
-    const href = row?.querySelector<HTMLAnchorElement>("a.row-main")?.href;
-    if (!row || !workspaceId || !href) return;
-    workspaceListController()?.markVisibleWorkspace(workspaceId);
-    await residencyController()?.selectWorkspace(workspaceId, href);
+    if (row) await this.openWorkspaceRow(row);
   }
 
   private adjacentUnparkedWorkspaceRow(rows: HTMLElement[], currentIndex: number, direction: -1 | 1): HTMLElement | undefined {
