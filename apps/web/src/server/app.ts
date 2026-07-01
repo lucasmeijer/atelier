@@ -27,6 +27,7 @@ import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTi
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
 import {
   atelierName,
+  CableTopics,
   domId,
   escapeHtml,
   providerBrandColor,
@@ -37,6 +38,7 @@ import {
   type AgentWorkspaceCreateResult,
   type AgentWorkspaceForkRequest,
   type AgentWorkspaceParameters,
+  type CableIdentifier,
   type GlobalSidebarContributionRegistry,
   type WorkspaceAttachment,
   type WorkspaceCommandContribution,
@@ -48,7 +50,6 @@ import {
   type WorkspaceServerProvisioningHook,
   type WorkspaceTabContribution,
 } from "@atelier/shared";
-import type { StreamHub } from "./stream-hub.ts";
 import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
 import type { WebPreferenceStore } from "./preferences.ts";
 import type { WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
@@ -59,7 +60,7 @@ import { GitHubRepositorySearchRateLimitError, renderGitHubRepositorySearchMenu,
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
-  hub: StreamHub;
+  cable?: { broadcast(identifier: CableIdentifier, html: string): void };
   layouts: WorkspaceLayoutStore;
   /** Event bus passed through to the agent module routes. */
   events?: AtelierEventBus;
@@ -80,6 +81,7 @@ export interface WebAppDeps {
 
 export interface WebApp {
   fetch(request: Request): Promise<Response>;
+  shellSnapshot(): string;
   tabKeysFor(workspaceId: string): Promise<string[]>;
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }>;
   createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult>;
@@ -181,10 +183,14 @@ function assetPath(logicalPath: string): string {
 }
 
 export function createWebApp(deps: WebAppDeps): WebApp {
-  const { registry, hub, layouts } = deps;
+  const { registry, layouts } = deps;
   const logError = deps.logError ?? ((message: string) => console.error(message));
   const currentAtelierImageId = currentAtelierContainerImageId();
   const versionTooltip = atelierVersionTooltip(currentAtelierImageId);
+
+  function broadcastShell(html: string): void {
+    deps.cable?.broadcast(CableTopics.shell(), html);
+  }
 
   const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId), seedSteps: deps.provisioningHooks });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
@@ -264,7 +270,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       if (!workspaceContributions) workspaceRowContributionStore.set(workspaceId, workspaceContributions = new Map());
       if (html) workspaceContributions.set(contributionId, html);
       else workspaceContributions.delete(contributionId);
-      hub.broadcast(turboReplaceStream(workspaceRowContributionsId(workspaceId), renderWorkspaceRowContributions(entry)));
+      broadcastShell(turboReplaceStream(workspaceRowContributionsId(workspaceId), renderWorkspaceRowContributions(entry)));
     },
   };
 
@@ -278,7 +284,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     set(contributionId: string, html?: string) {
       if (html) globalSidebarContributionStore.set(contributionId, html);
       else globalSidebarContributionStore.delete(contributionId);
-      hub.broadcast(turboUpdateStream("global_sidebar_contributions", renderGlobalSidebarContributions()));
+      const streamHtml = turboUpdateStream("global_sidebar_contributions", renderGlobalSidebarContributions());
+      broadcastShell(streamHtml);
+      deps.cable?.broadcast(CableTopics.update(), streamHtml);
     },
   };
 
@@ -345,20 +353,20 @@ export function createWebApp(deps: WebAppDeps): WebApp {
         if (unread) {
           void (async () => {
             const tabKeys = await tabKeysFor(entry.id);
-            if (layouts.revealTab(entry.id, tabKeys, tabKey)) hub.broadcast(await replaceWorkspaceGroupsTurboStream(entry.id));
+            if (layouts.revealTab(entry.id, tabKeys, tabKey)) broadcastShell(await replaceWorkspaceGroupsTurboStream(entry.id));
           })().catch((error) => logError(`could not reveal unread tab for workspace ${entry.id}: ${error instanceof Error ? error.message : String(error)}`));
         }
         // Status changes replace only the status spans so they cannot clobber an
         // in-progress title edit in the row.
-        hub.broadcast(`${turboReplaceStream(workspaceStatusId(entry.id), renderWorkspaceStatus(entry.id))}${turboReplaceStream(workspaceTabStatusId(entry.id, tabKey), renderTabStatus(entry.id, tabKey))}`);
+        broadcastShell(`${turboReplaceStream(workspaceStatusId(entry.id), renderWorkspaceStatus(entry.id))}${turboReplaceStream(workspaceTabStatusId(entry.id, tabKey), renderTabStatus(entry.id, tabKey))}`);
         return;
       }
-      hub.broadcast(turboReplaceStream(workspaceRowId(entry.id), workspaceRow(entry)));
+      broadcastShell(turboReplaceStream(workspaceRowId(entry.id), workspaceRow(entry)));
     },
     listChanged() {
       // "update" (not "replace"): the rows container must survive so later
       // list broadcasts still find their target.
-      hub.broadcast(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
+      broadcastShell(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
     },
     parkedChanged(entry) {
       void (deps.persistWorkspaceParked ?? setWorkspaceParked)(entry.id, entry.parked).catch((error) => logError(`could not persist parked state for workspace ${entry.id}: ${error instanceof Error ? error.message : String(error)}`));
@@ -367,7 +375,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       layouts.delete(id);
       workspaceRowContributionStore.delete(id);
       for (const handler of deps.workspaceRemovedHandlers ?? []) void handler(id);
-      hub.broadcast(turboRemoveStream(workspaceRowId(id)));
+      broadcastShell(turboRemoveStream(workspaceRowId(id)));
     },
   });
 
@@ -382,15 +390,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       .join("\n");
   }
 
-  function workspaceEventsStreamSrc(pageId: string, workspaceId?: string): string {
-    const params = new URLSearchParams({ kind: "shell", page_id: pageId });
-    if (workspaceId) params.set("workspace_id", workspaceId);
-    return `/workspace-events/stream?${params.toString()}`;
-  }
-
   function layout(title: string, body: string, workspaceId?: string): string {
     const pageId = randomUUID();
-    const streamSrc = workspaceEventsStreamSrc(pageId, workspaceId);
     return `<!DOCTYPE html>
 <html lang="en" data-theme="nord" data-atelier-page-id="${escapeHtml(pageId)}">
 <head>
@@ -412,8 +413,7 @@ ${moduleStylesHtml()}
 </script>
 <script type="module" src="${assetPath("/workspace.js")}"></script>
 </head>
-<body id="body">${body}
-<turbo-stream-source src="${escapeHtml(streamSrc)}"></turbo-stream-source>
+<body id="body" data-controller="cable-shell">${body}
 </body>
 </html>`;
   }
@@ -709,7 +709,7 @@ ${moduleStylesHtml()}
   function broadcastWorkspaceBoot(id: string): void {
     const entry = registry.get(id);
     if (!entry || (entry.phase !== "starting" && entry.phase !== "failed")) return;
-    hub.broadcast(turboReplaceStream(workspaceBootId(id), workspaceBootResidentHtml(entry)));
+    broadcastShell(turboReplaceStream(workspaceBootId(id), workspaceBootResidentHtml(entry)));
   }
 
   deps.events?.on("workspace_provision_step", (event) => provisioning.apply(event));
@@ -798,7 +798,7 @@ ${moduleStylesHtml()}
         const entry = registry.get(id);
         // No "visible" class in broadcasts: each client shows the resident
         // itself iff it is currently looking at this workspace.
-        if (entry) hub.broadcast(turboReplaceStream(workspaceBootId(id), workspaceBootResidentHtml(entry)));
+        if (entry) broadcastShell(turboReplaceStream(workspaceBootId(id), workspaceBootResidentHtml(entry)));
       }
     })();
   }
@@ -962,7 +962,7 @@ ${moduleStylesHtml()}
     try {
       // No "visible" class in broadcasts: each client shows the resident
       // itself iff it is currently looking at this workspace.
-      hub.broadcast(turboReplaceStream(workspaceBootId(id), await workspaceDetailResidentHtml(id)));
+      broadcastShell(turboReplaceStream(workspaceBootId(id), await workspaceDetailResidentHtml(id)));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logError(`could not render workspace detail for ${id}: ${message}`);
@@ -1313,7 +1313,7 @@ ${moduleStylesHtml()}
 
   deps.events?.on("workspace_tabs_changed", ({ workspaceId }) => {
     void replaceWorkspaceGroupsTurboStream(workspaceId)
-      .then((html) => hub.broadcast(html))
+      .then((html) => broadcastShell(html))
       .catch((error) => logError(`could not broadcast workspace tab changes for ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`));
   });
 
@@ -1337,7 +1337,6 @@ ${moduleStylesHtml()}
       const page = await homePage();
       return request.method === "HEAD" ? new Response(null, { status: page.status, statusText: page.statusText, headers: page.headers }) : page;
     }
-    if (url.pathname === "/workspace-events/stream" && request.method === "GET") return hub.sseResponse(initialStatusStreams);
     if (url.pathname === "/api/workspaces" && request.method === "POST") return await createWorkspaceApiEndpoint(request, url);
     if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
     if (url.pathname === "/workspaces" && request.method === "POST") return createWorkspaceEndpoint(url, request);
@@ -1395,6 +1394,7 @@ ${moduleStylesHtml()}
   }
 
   return {
+    shellSnapshot: initialStatusStreams,
     tabKeysFor,
     deleteCurrentWorkspaceFromAgent,
     createWorkspaceFromAgent,

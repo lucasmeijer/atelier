@@ -133,7 +133,6 @@ export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceA
       data-agent-pane-label-value="${escapeHtml(ctx.label)}"
       data-agent-attachments-upload-url-value="${escapeHtml(`/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`)}"
       data-action="dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop">
-      <div hidden data-agent-pane-target="stream"></div>
       <div class="agent-transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
       ${await renderAgentComposer({
         ctx,

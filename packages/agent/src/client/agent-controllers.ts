@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import { copyTextToClipboard, type WorkspaceClientModule } from "@atelier/shared";
+import { CableTopics, copyTextToClipboard, type AtelierCableClient, type CableIdentifier, type WorkspaceClientModule } from "@atelier/shared";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
@@ -37,6 +37,7 @@ type StimulusApplication = {
 declare global {
   interface Window {
     Turbo?: { renderStreamMessage(html: string): void };
+    AtelierCable?: AtelierCableClient;
   }
 }
 
@@ -46,17 +47,17 @@ interface AgentPaneControllerInstance {
 }
 
 // ---------------------------------------------------------------------------
-// agent-pane: SSE lifecycle, scroll anchoring, prompt behavior, rewind dialog
+// agent-pane: cable subscription lifecycle, scroll anchoring, prompt behavior, rewind dialog
 // ---------------------------------------------------------------------------
 
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
     static values = { workspaceId: String, label: String };
-    static targets = ["stream", "transcript", "input", "form", "rewindDialog", "rewindEntry", "rewindPreview"];
+    static targets = ["transcript", "input", "form", "rewindDialog", "rewindEntry", "rewindPreview"];
     declare readonly element: HTMLElement;
+    declare readonly application: StimulusApplication;
     declare readonly workspaceIdValue: string;
     declare readonly labelValue: string;
-    declare readonly streamTarget: HTMLElement;
     declare readonly transcriptTarget: HTMLElement;
     declare readonly inputTarget: HTMLTextAreaElement;
     declare readonly formTarget: HTMLFormElement;
@@ -65,6 +66,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     declare readonly rewindPreviewTarget: HTMLElement;
 
     private stuck = true;
+    private subscribed = false;
     private observer?: MutationObserver;
     private promptObserver?: MutationObserver;
     private rewindUserText = "";
@@ -104,29 +106,32 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     start(): void {
       requestAnimationFrame(() => this.autosize());
-      const src = this.eventStreamSrc();
-      if (this.streamTarget.querySelector("turbo-stream-source")?.getAttribute("src") === src) return;
-      const source = document.createElement("turbo-stream-source");
-      source.setAttribute("src", src);
-      this.streamTarget.replaceChildren(source);
+      if (this.subscribed) return;
+      window.AtelierCable?.subscribe(this.cableIdentifier());
+      this.subscribed = true;
     }
 
     stop(): void {
-      this.streamTarget.replaceChildren();
+      if (!this.subscribed) return;
+      window.AtelierCable?.unsubscribe(this.cableIdentifier());
+      this.subscribed = false;
+      this.disposeAgentTerminals();
     }
 
     private path(suffix: string): string {
       return `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agents/${encodeURIComponent(this.labelValue)}${suffix}`;
     }
 
-    private eventStreamSrc(): string {
-      const params = new URLSearchParams();
-      params.set("kind", "agent");
-      params.set("workspace_id", this.workspaceIdValue);
-      params.set("agent_label", this.labelValue);
-      const pageId = document.documentElement.dataset.atelierPageId;
-      if (pageId) params.set("page_id", pageId);
-      return `${this.path("/events")}?${params.toString()}`;
+    private cableIdentifier(): CableIdentifier {
+      return CableTopics.agent(this.workspaceIdValue, this.labelValue);
+    }
+
+    private disposeAgentTerminals(): void {
+      this.element.querySelectorAll<HTMLElement>('[data-controller~="agent-term"]').forEach((terminal) => {
+        const controller = (this.application as unknown as StimulusApplication).getControllerForElementAndIdentifier(terminal, "agent-term") as { disconnect?(): void } | null;
+        controller?.disconnect?.();
+        terminal.remove();
+      });
     }
 
     // ---- prompt box ----
@@ -225,7 +230,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     }
 
     rewindSubmitted(): void {
-      // Close immediately on submit; the rewind itself streams in via SSE
+      // Close immediately on submit; the rewind itself streams in via cable
       // (summaries behave like a busy agent with a stop button).
       this.rewindDialogTarget.close();
       if (this.rewindUserText && !this.inputTarget.value.trim()) {
@@ -1008,10 +1013,17 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
 // Tab visibility hook
 // ---------------------------------------------------------------------------
 
-function agentTabBecameVisible(application: StimulusApplication, pane: HTMLElement): void {
+function agentPaneController(application: StimulusApplication, pane: HTMLElement): AgentPaneControllerInstance | null {
   const agentPane = pane.querySelector<HTMLElement>('[data-controller~="agent-pane"]');
-  const controller = agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
-  controller?.start();
+  return agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
+}
+
+function agentTabBecameVisible(application: StimulusApplication, pane: HTMLElement): void {
+  agentPaneController(application, pane)?.start();
+}
+
+function agentTabNoLongerVisible(application: StimulusApplication, pane: HTMLElement): void {
+  agentPaneController(application, pane)?.stop();
 }
 
 export const agentClientModule: WorkspaceClientModule = {
@@ -1031,6 +1043,7 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-term", createAgentTermController(Controller));
 
     hooks.onBecomeVisible(({ pane }) => agentTabBecameVisible(application, pane));
+    hooks.onNoLongerVisible(({ pane }) => agentTabNoLongerVisible(application, pane));
     hooks.onFocusGroup(({ pane }) => {
       const agentInput = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
       if (!agentInput) return false;

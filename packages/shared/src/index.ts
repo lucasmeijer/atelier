@@ -301,3 +301,13 @@ export interface WorkspaceClientModule {
   id: string;
   install(context: WorkspaceClientModuleContext): void | Promise<void>;
 }
+
+export {
+  CableTopics,
+  parseCableIdentifier,
+  serializeCableIdentifier,
+  type AtelierCableClient,
+  type CableClientMessage,
+  type CableIdentifier,
+  type CableServerMessage,
+} from "./cable.ts";

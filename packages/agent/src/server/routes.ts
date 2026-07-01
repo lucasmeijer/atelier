@@ -12,7 +12,7 @@ import {
   validDraftId,
 } from "./attachment-drafts.ts";
 import { ids, renderAttachmentChip } from "./render.ts";
-import { sseFrame, turboStream, turboStreamResponse } from "./html.ts";
+import { turboStream, turboStreamResponse } from "./html.ts";
 import { expandPromptTemplate, listPromptTemplates, renderPromptTemplateMenu } from "./prompt-templates.ts";
 import { getWorkspaceAgentRuntime, type RewindMode, type SubmitMode } from "./runtime.ts";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
@@ -98,9 +98,6 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
     return await deleteAttachmentEndpoint(params[0], params[1]);
   }
 
-  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/events$/)) && request.method === "GET") {
-    return await agentEventsEndpoint(params[0], params[1], options);
-  }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/messages$/)) && request.method === "POST") {
     return await agentMessagesEndpoint(params[0], params[1], request, options);
   }
@@ -146,49 +143,6 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
     return turboStreamResponse("");
   }
   return undefined;
-}
-
-// ---------------------------------------------------------------------------
-// SSE
-// ---------------------------------------------------------------------------
-
-async function agentEventsEndpoint(workspaceId: string, label: string, options: AgentRouteOptions = {}): Promise<Response> {
-  const agent = await requireAgent(workspaceId, label);
-  const runtime = await getWorkspaceAgentRuntime(agent, options);
-  const encoder = new TextEncoder();
-  let unsubscribe: (() => void) | undefined;
-  let keepalive: ReturnType<typeof setInterval> | undefined;
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const send = (html: string) => {
-        try {
-          controller.enqueue(encoder.encode(sseFrame(html)));
-        } catch {
-          // Stream closed.
-        }
-      };
-      unsubscribe = runtime.subscribe(send);
-      send(await runtime.snapshotStream());
-      keepalive = setInterval(() => {
-        try {
-          controller.enqueue(encoder.encode(`: keepalive\n\n`));
-        } catch {
-          // Stream closed.
-        }
-      }, 5_000);
-    },
-    cancel() {
-      unsubscribe?.();
-      if (keepalive) clearInterval(keepalive);
-    },
-  });
-  return new Response(stream, {
-    headers: {
-      "content-type": "text/event-stream; charset=utf-8",
-      "cache-control": "no-cache",
-      "connection": "keep-alive",
-    },
-  });
 }
 
 // ---------------------------------------------------------------------------

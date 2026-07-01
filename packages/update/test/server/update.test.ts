@@ -346,7 +346,7 @@ describe("update routes", () => {
     expect(manager.snapshot().state).toBe("available");
   });
 
-  test("state endpoint and SSE expose shared update state", async () => {
+  test("state endpoint exposes shared update state and old update event route is removed", async () => {
     const { ctx } = context();
     const manager = new UpdateManager({
       detectRuntime: async () => runtime("old"),
@@ -358,11 +358,7 @@ describe("update routes", () => {
     const state = await route(new Request("http://test/update/state"), new URL("http://test/update/state"));
     expect(await state!.json()).toMatchObject({ state: "available", selfUpdatable: true });
     const sse = await route(new Request("http://test/update/events"), new URL("http://test/update/events"));
-    expect(sse!.headers.get("content-type")).toContain("text/event-stream");
-    const reader = sse!.body!.getReader();
-    const chunk = await reader.read();
-    await reader.cancel();
-    expect(new TextDecoder().decode(chunk.value)).toContain('"state":"available"');
+    expect(sse).toBeUndefined();
   });
 });
 

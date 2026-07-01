@@ -13,9 +13,9 @@ import {
   type WorkspaceAppResponseTransformer,
   type WorkspaceAppTargetResolver,
 } from "@atelier/proxy-ingress/server";
-import { createWebApp } from "./app.ts";
+import { createWebApp, type WebApp } from "./app.ts";
+import { createCableServer, type CableSocketData } from "./cable.ts";
 import { createFileWebPreferenceStore } from "./preferences.ts";
-import { createStreamHub } from "./stream-hub.ts";
 import { legacyStaticFiles } from "./static-files.ts";
 import { createWorkspaceLayoutStore } from "./workspace-layout.ts";
 import { createFileWorkspaceActivityStore, createFileWorkspaceUnreadStore, createWorkspaceRegistry } from "./workspace-registry.ts";
@@ -198,12 +198,13 @@ const registry = createWorkspaceRegistry({
   activityStore: createFileWorkspaceActivityStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-activity.json")),
   unreadStore: createFileWorkspaceUnreadStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-unread.json")),
 });
-const hub = createStreamHub();
 const layouts = createWorkspaceLayoutStore();
+let app: WebApp;
+const cableServer = createCableServer({ registry, shellSnapshot: () => app.shellSnapshot() });
 
-const app = createWebApp({
+app = createWebApp({
   registry,
-  hub,
+  cable: cableServer,
   layouts,
   events: atelierEvents,
   preferences: createFileWebPreferenceStore(join(runtimeContext.atelierDataDir, "view-state", "preferences.json")),
@@ -296,7 +297,7 @@ interface ProvisionTermSocketData {
   pty?: IPty;
 }
 
-type SocketData = ({ kind: string } & Record<string, unknown>) | ProvisionTermSocketData;
+type SocketData = ({ kind: string } & Record<string, unknown>) | ProvisionTermSocketData | CableSocketData;
 const socketHandlersByKind = new Map<string, WorkspaceServerSocketHandler>();
 
 const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, requestUrl) => {
@@ -373,6 +374,8 @@ async function handleCanonicalProxyRequest(url: URL, request: Request): Promise<
 }
 
 async function validateSocket(request: Request, url: URL): Promise<SocketData | undefined> {
+  const cableData = cableServer.validate(request, url);
+  if (cableData) return cableData;
   const provisionMatch = url.pathname.match(/^\/provision-term\/([^/]+)\/ws$/);
   if (provisionMatch) {
     const session = decodeURIComponent(provisionMatch[1]);
@@ -425,11 +428,8 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
     const server = Bun.serve<SocketData>({
       hostname,
       port,
-      // The app intentionally uses long-lived SSE endpoints (workspace status,
-      // agent transcript streams). Bun's default 10s idle
-      // timeout kills quiet EventSource requests and logs
-      // "request timed out after 10 seconds". Keep SSE alive with heartbeats,
-      // and give stalled samples enough headroom before Bun closes the request.
+      // Keep long-lived upgraded sockets and slow workspace app proxy requests
+      // alive well beyond Bun's short default idle timeout.
       idleTimeout: 255,
       async fetch(request, server) {
         const url = new URL(request.url);
@@ -443,6 +443,10 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
           return new Response("websocket upgrade failed", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });
         }
 
+        if (url.pathname === "/debug/connections" && request.method === "GET") {
+          return new Response(JSON.stringify({ cable: cableServer.stats() }, null, 2), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+        }
+
         const canonical = await handleCanonicalProxyRequest(url, request);
         if (canonical) return canonical;
 
@@ -453,14 +457,17 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       },
       websocket: {
         open(ws) {
-          if (ws.data.kind === "provision-term") openProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
+          if (ws.data.kind === "cable") cableServer.open(ws as ServerWebSocket<CableSocketData>);
+          else if (ws.data.kind === "provision-term") openProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
           else socketHandlersByKind.get(ws.data.kind)?.open?.(ws);
         },
         message(ws, message) {
-          socketHandlersByKind.get(ws.data.kind)?.message?.(ws, message);
+          if (ws.data.kind === "cable") cableServer.message(ws as ServerWebSocket<CableSocketData>, message);
+          else socketHandlersByKind.get(ws.data.kind)?.message?.(ws, message);
         },
         close(ws) {
-          if (ws.data.kind === "provision-term") closeProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
+          if (ws.data.kind === "cable") cableServer.close(ws as ServerWebSocket<CableSocketData>);
+          else if (ws.data.kind === "provision-term") closeProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
           else socketHandlersByKind.get(ws.data.kind)?.close?.(ws);
         },
       },

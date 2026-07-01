@@ -2,10 +2,12 @@
 
 import { createHtmlAutocompleteController } from "@atelier/agent/client";
 import {
+  CableTopics,
   copyTextToClipboard,
   escapeHtml,
   looksLikeProjectSpec,
   providerBrandIconHtml,
+  type AtelierCableClient,
   type WorkspaceClientTabVisibilityContext,
   type WorkspaceClientFocusContext,
   type WorkspaceClientHooks,
@@ -13,6 +15,7 @@ import {
 } from "@atelier/shared";
 import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
+import { createAtelierCableClient } from "./cable.ts";
 
 declare global {
   interface Window {
@@ -21,6 +24,7 @@ declare global {
       Controller: new (...args: unknown[]) => { element: Element };
     };
     Turbo?: { renderStreamMessage(html: string): void };
+    AtelierCable?: AtelierCableClient;
   }
 }
 
@@ -1755,8 +1759,17 @@ const ProjectGithubSearchController = createHtmlAutocompleteController(Controlle
   },
 });
 
+window.AtelierCable ??= createAtelierCableClient();
+
+class CableShellController extends Controller {
+  connect(): void {
+    window.AtelierCable?.subscribe(CableTopics.shell());
+  }
+}
+
 const application = Application.start();
 for (const module of workspaceClientModules) await module.install({ application, Controller, hooks: clientHooks });
+application.register("cable-shell", CableShellController);
 application.register("workspace-shell", WorkspaceShellController);
 application.register("workspace-tabs", WorkspaceTabsController);
 application.register("workspace-tab-close", WorkspaceTabCloseController);

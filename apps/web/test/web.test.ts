@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
 import { createWebApp } from "../src/server/app.ts";
-import { createStreamHub } from "../src/server/stream-hub.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { clearWorkspaceGitHubToken, setWorkspaceGitHubToken } from "@atelier/proxy-egress";
@@ -33,13 +32,12 @@ function createTestApp(options: TestAppOptions = {}) {
   const registry = createWorkspaceRegistry({
     activityStore: { load: async () => ({}), save: async () => {} },
   });
-  const hub = createStreamHub();
   const layouts = createWorkspaceLayoutStore();
   const broadcasts: string[] = [];
   const app = createWebApp({
     registry,
-    hub,
     layouts,
+    cable: { broadcast: (_identifier, html) => broadcasts.push(html) },
     provisionWorkspace: options.provision ?? (async () => {}),
     provisioningHooks: [],
     inspectDeleteSafety: options.inspect ?? (async (id) => ({ workspaceId: id, issues: [] })),
@@ -47,8 +45,7 @@ function createTestApp(options: TestAppOptions = {}) {
     persistWorkspaceParked: options.persistParked ?? (async () => {}),
     logError: () => {},
   });
-  hub.subscribe((html) => broadcasts.push(html));
-  return { app, registry, hub, broadcasts };
+  return { app, registry, broadcasts };
 }
 
 function post(path: string): Request {
@@ -471,18 +468,16 @@ describe("web app contracts", () => {
       activityStore: { load: async () => ({ a: 500, b: 400 }), save: async () => {} },
       now: () => ++clock,
     });
-    const hub = createStreamHub();
     const broadcasts: string[] = [];
     createWebApp({
       registry,
-      hub,
       layouts: createWorkspaceLayoutStore(),
+      cable: { broadcast: (_identifier, html) => broadcasts.push(html) },
       provisionWorkspace: async () => {},
       provisioningHooks: [],
       inspectDeleteSafety: async (id) => ({ workspaceId: id, issues: [] }),
       destroyWorkspace: async () => {},
     });
-    hub.subscribe((html) => broadcasts.push(html));
     await registry.seed([
       { id: "a", title: null },
       { id: "b", title: null },
@@ -606,25 +601,17 @@ describe("web app contracts", () => {
     }
   });
 
-  test("SSE stream emits raw turbo-stream HTML in plain data: lines (turbo-stream-source compatible)", async () => {
-    const { app, registry, hub } = createTestApp();
+  test("page shell uses cable instead of a workspace EventSource", async () => {
+    const { app, registry } = createTestApp();
     await registry.seed([{ id: "abc", title: "A" }]);
 
-    const response = await app.fetch(new Request("http://test.local/workspace-events/stream"));
-    expect(response.headers.get("content-type")).toContain("text/event-stream");
-    const reader = response.body!.getReader();
-    const decoder = new TextDecoder();
+    const page = await app.fetch(new Request("http://test.local/"));
+    const html = await page.text();
+    expect(html).toContain('data-controller="cable-shell"');
+    expect(html).not.toContain("turbo-stream-source");
+    expect(html).not.toContain("/workspace-events/stream");
 
-    // Initial status catch-up arrives as raw turbo-stream HTML, not JSON.
-    const first = decoder.decode((await reader.read()).value);
-    expect(first.startsWith("data: <turbo-stream")).toBe(true);
-    expect(first).not.toContain('data: "');
-
-    hub.broadcast(`<turbo-stream action="replace" target="x"><template>line1\nline2</template></turbo-stream>`);
-    const second = decoder.decode((await reader.read()).value);
-    expect(second.split("\n").filter(Boolean).every((line) => line.startsWith("data: "))).toBe(true);
-    expect(second).toContain("data: line2");
-
-    await reader.cancel();
+    const legacy = await app.fetch(new Request("http://test.local/workspace-events/stream"));
+    expect(legacy.status).toBe(404);
   });
 });

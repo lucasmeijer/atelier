@@ -1,4 +1,10 @@
-import type { WorkspaceClientModule } from "@atelier/shared";
+import { CableTopics, type AtelierCableClient, type CableIdentifier, type WorkspaceClientModule } from "@atelier/shared";
+
+declare global {
+  interface Window {
+    AtelierCable?: AtelierCableClient;
+  }
+}
 
 export const atelierClientModule: WorkspaceClientModule = {
   id: "atelier-update",
@@ -16,20 +22,17 @@ export const atelierClientModule: WorkspaceClientModule = {
     }
 
     class UpdateProgressController extends Controller {
-      private source: EventSource | undefined;
+      private subscribed = false;
+      private readonly identifier: CableIdentifier = CableTopics.update();
       connect(): void {
         if (this.element.getAttribute("data-update-state") !== "pulling") return;
-        this.source = new EventSource("/update/events");
-        this.source.addEventListener("message", (event) => this.updateProgress(event));
+        window.AtelierCable?.subscribe(this.identifier);
+        this.subscribed = true;
       }
       disconnect(): void {
-        this.source?.close();
-      }
-      private updateProgress(event: MessageEvent): void {
-        const json = JSON.parse(event.data) as { percent?: number; state?: string };
-        const bar = this.element.querySelector<HTMLElement>(".update-sidebar-progress span");
-        if (bar && typeof json.percent === "number") bar.style.width = `${json.percent}%`;
-        if (json.state && json.state !== "pulling") this.source?.close();
+        if (!this.subscribed) return;
+        window.AtelierCable?.unsubscribe(this.identifier);
+        this.subscribed = false;
       }
     }
 

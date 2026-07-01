@@ -186,18 +186,6 @@ export class UpdateManager {
     }
   }
 
-  sseResponse(): Response {
-    let unsubscribe = () => {};
-    const stream = new ReadableStream({
-      start: (controller) => {
-        const encoder = new TextEncoder();
-        const send = (snapshot: StateSnapshot) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(snapshot)}\n\n`));
-        unsubscribe = this.subscribe(send);
-      },
-      cancel: () => unsubscribe(),
-    });
-    return new Response(stream, { headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", connection: "keep-alive" } });
-  }
 }
 
 async function removeStaleUpdateHelpers(docker: DockerExec): Promise<void> {
@@ -344,7 +332,6 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
     if (url.pathname === "/update/restart-confirm" && request.method === "GET") return modalStream(await renderRestartModal(updateManager));
     if (url.pathname === "/update/restart" && request.method === "POST") return await updateManager.launchUpdater(url);
     if (url.pathname === "/update/state" && request.method === "GET") return new Response(JSON.stringify(updateManager.snapshot()), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
-    if (url.pathname === "/update/events" && request.method === "GET") return updateManager.sseResponse();
     return undefined;
   };
 }
