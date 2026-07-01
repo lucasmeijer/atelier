@@ -379,7 +379,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderToolItemBody(this.ctx, item.tool)));
   }
 
-  protected liveToolEnd(callId: string, resultText: string, isError: boolean, details?: unknown): void {
+  protected liveToolEnd(callId: string, resultText: string, isError: boolean, details?: unknown, resultImages: ImageRef[] = []): void {
     const live = this.live;
     if (!live) return;
     const timer = live.terminalTimers.get(callId);
@@ -393,6 +393,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (item?.type !== "tool") return;
     item.tool.status = isError || toolDetailsIndicateError(details) ? "error" : "ok";
     item.tool.resultText = resultText;
+    if (resultImages.length > 0) item.tool.resultImages = resultImages;
     item.tool.details = details;
     item.tool.tmuxSession = undefined;
     live.view.stats.tools += 1;
@@ -542,7 +543,7 @@ export function recordsFromSessionEntries(entries: any[]): TranscriptRecord[] {
           timestamp: entryTimestamp(entry, message),
         });
       } else if (message.role === "toolResult") {
-        records.push({ kind: "toolResult", callId: message.toolCallId, text: contentToText(message.content), isError: Boolean(message.isError), timestamp: entryTimestamp(entry, message), details: message.details });
+        records.push({ kind: "toolResult", callId: message.toolCallId, text: contentToText(message.content), images: contentImages(message.content), isError: Boolean(message.isError), timestamp: entryTimestamp(entry, message), details: message.details });
       } else if (message.role === "bashExecution") {
         records.push({ kind: "note", id: entry.id, text: `\`$ ${message.command}\`\n\n\`\`\`\n${message.output ?? ""}\n\`\`\``, tone: "system", timestamp: entryTimestamp(entry, message) });
       } else if (message.role === "custom" && message.display) {
@@ -699,7 +700,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       }
       case "tool_execution_end": {
         const text = contentToText(event.result?.content);
-        this.liveToolEnd(event.toolCallId, text, Boolean(event.isError), event.result?.details);
+        this.liveToolEnd(event.toolCallId, text, Boolean(event.isError), event.result?.details, contentImages(event.result?.content));
         break;
       }
       case "message_end": {

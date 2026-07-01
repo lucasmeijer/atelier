@@ -536,6 +536,16 @@ function resultPreHtml(text: string, className = "agent-tool-result"): string {
   return text ? `<pre class="${className}">${escapeHtml(text)}</pre>` : "";
 }
 
+function toolResultImagesHtml(tool: ToolView): string {
+  const images = tool.resultImages ?? [];
+  if (images.length === 0) return "";
+  const baseTitle = pathSummary(tool) || "image";
+  return `<div class="agent-tool-images">${images.map((image, index) => {
+    const title = images.length === 1 ? baseTitle : `${baseTitle} ${index + 1}`;
+    return `<img class="agent-media-img agent-tool-image" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="media" data-atelier-fullscreen-title-value="${escapeHtml(title)}" src="data:${escapeHtml(image.mimeType)};base64,${escapeHtml(image.data)}" alt="${escapeHtml(title)}" loading="lazy">`;
+  }).join("")}</div>`;
+}
+
 const ansi16 = [
   "#000000", "#cd0000", "#00cd00", "#cdcd00", "#0000ee", "#cd00cd", "#00cdcd", "#e5e5e5",
   "#7f7f7f", "#ff0000", "#00ff00", "#ffff00", "#5c5cff", "#ff00ff", "#00ffff", "#ffffff",
@@ -722,6 +732,8 @@ const bashRenderer: ToolRenderer = {
 
 function readResultHtml(tool: ToolView): string {
   const result = trimResult(tool);
+  const images = toolResultImagesHtml(tool);
+  if (images) return `${resultPreHtml(result, "agent-tool-result agent-tool-note")}${images}`;
   if (!result) return "";
   return codeBlockHtml(result, stringArg(toolArgs(tool), "path", "file_path"), "agent-tool-result agent-tool-code");
 }
@@ -810,10 +822,11 @@ function genericParamsHtml(tool: ToolView): string {
 
 function genericResultHtml(tool: ToolView): string {
   const result = trimResult(tool);
-  if (!result) return "";
+  const images = toolResultImagesHtml(tool);
+  if (!result) return images;
   const truncated = result.length > toolResultPreviewLimit;
   const shown = truncated ? `${result.slice(0, toolResultPreviewLimit)}\n… (${formatTokens(result.length)} chars total)` : result;
-  return resultPreHtml(shown);
+  return `${resultPreHtml(shown)}${images}`;
 }
 
 function parseStreamedArgs(argsStream: string): unknown | undefined {

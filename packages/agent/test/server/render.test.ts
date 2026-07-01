@@ -105,6 +105,15 @@ describe("tool rendering", () => {
     expect(html).not.toContain("\u0001");
   });
 
+  test("read image tool results render the image inline", () => {
+    const html = renderToolCard(ctx, tool({ name: "read", args: { path: "image.png" }, resultText: "Read image file [image/png]", resultImages: [{ mimeType: "image/png", data: "abc123" }] }));
+    expect(html).toContain("agent-tool-images");
+    expect(html).toContain("agent-media-img agent-tool-image");
+    expect(html).toContain("src=\"data:image/png;base64,abc123\"");
+    expect(html).toContain('data-controller="atelier-fullscreen"');
+    expect(html).not.toContain("agent-tool-code");
+  });
+
   test("model context uses the standard tool card fullscreen primitive", () => {
     const html = renderTranscript(ctx, [], {
       systemPrompt: "You are helpful <script>",

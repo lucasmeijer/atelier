@@ -19,7 +19,7 @@ type AssistantPart =
 export type TranscriptRecord =
   | { kind: "user"; id: string; text: string; images: ImageRef[]; timestamp: number; rewindable?: boolean }
   | { kind: "assistant"; id: string; parts: AssistantPart[]; stopReason: string; errorMessage?: string; outTokens: number; cost: number; timestamp: number }
-  | { kind: "toolResult"; callId: string; text: string; isError: boolean; timestamp: number; details?: unknown }
+  | { kind: "toolResult"; callId: string; text: string; images: ImageRef[]; isError: boolean; timestamp: number; details?: unknown }
   | { kind: "note"; id?: string; text: string; tone: NoteTone; timestamp?: number };
 
 type NoteTone = "system" | "summary" | "error";
@@ -30,6 +30,7 @@ export interface ToolView {
   args: unknown;
   status: "streaming" | "running" | "ok" | "error";
   resultText?: string;
+  resultImages?: ImageRef[];
   /** Raw argument JSON accumulated while the tool call streams in. */
   argsStream?: string;
   /** Set while a bash command runs inside a tmux session (live terminal attach). */
@@ -143,6 +144,7 @@ export function buildSections(records: TranscriptRecord[]): SectionView[] {
       const tool = toolItems.get(record.callId);
       if (tool) {
         tool.resultText = record.text;
+        if (record.images.length > 0) tool.resultImages = record.images;
         tool.details = record.details;
         tool.status = record.isError || toolDetailsIndicateError(record.details) ? "error" : "ok";
       }

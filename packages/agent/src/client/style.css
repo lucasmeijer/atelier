@@ -139,6 +139,10 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 }
 .agent-tool-params { color: var(--muted); background: var(--bg); border-radius: 6px; padding: 6px 8px; }
 .agent-tool-result { color: var(--text); }
+.agent-tool-note { padding: 6px 10px; color: var(--muted); background: rgba(255,255,255,.45); }
+.agent-tool-images { display: flex; flex-direction: column; gap: 8px; }
+.agent-tool-detail.flush > .agent-tool-images { padding: 8px 10px; }
+.agent-tool-image { margin: 0; }
 .agent-tool-ansi { color: #d3dae5; background: #000; border-radius: 6px; padding: 6px 8px; }
 .agent-tool-model { background: var(--panel); padding: 6px 8px; }
 .agent-bash-result { display: flex; flex-direction: column; }
