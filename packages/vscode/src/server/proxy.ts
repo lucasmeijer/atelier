@@ -76,7 +76,9 @@ function themeDefaultsForRequest(request: Request): VSCodeThemeDefaults | undefi
       "statusBar.foreground": text,
       "titleBar.activeBackground": panel,
       "titleBar.activeForeground": text,
-      ...(line ? { "panel.border": line, "sideBar.border": line } : {}),
+      "titleBar.inactiveBackground": panel,
+      "titleBar.inactiveForeground": text,
+      ...(line ? { "panel.border": line, "sideBar.border": line, "titleBar.border": line } : {}),
       ...(accent ? { "focusBorder": accent, "button.background": accent } : {}),
     },
   };
