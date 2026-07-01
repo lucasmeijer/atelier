@@ -10,14 +10,15 @@ const persistentSystemPromptLine = "The /persistent directory is shared by all w
 function formatSignedSlopometerValue(value: number): string {
   return value > 0 ? `+${value}` : `${value}`;
 }
+const maxSlopometerColorLines = 200;
+
 function renderSlopometerStat(text: string, value: number): string {
-  const intensity = Math.min(500, Math.abs(value)) / 500;
-  const accentPercent = Math.round(intensity * 100);
+  const accentPercent = Math.min(100, (Math.abs(value) / maxSlopometerColorLines) * 100);
   const mutedPercent = 100 - accentPercent;
   const tone = value > 0 ? "positive" : value < 0 ? "negative" : "neutral";
   return `<span class="project-slopometer-stat" data-slopometer-tone="${tone}" style="--project-slopometer-stat-muted: ${mutedPercent}%; --project-slopometer-stat-accent: ${accentPercent}%">${text}</span>`;
 }
-function renderSlopometer(netImplementationLines: number, netTestLines: number): string | undefined {
+export function renderSlopometer(netImplementationLines: number, netTestLines: number): string | undefined {
   if (netImplementationLines === 0 && netTestLines === 0) return undefined;
   const testSlopLines = -netTestLines;
   const implementation = netImplementationLines !== 0 ? renderSlopometerStat(formatSignedSlopometerValue(netImplementationLines), netImplementationLines) : "";
