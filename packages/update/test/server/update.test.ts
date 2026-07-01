@@ -402,15 +402,22 @@ describe("docker replacement config", () => {
       Id: "container",
       Name: "/atelier",
       Image: "sha256:old",
-      Config: { Env: ["A=B"], Labels: { "com.atelier.type": "server" }, Cmd: ["bun", "run", "apps/web/src/server/main.ts"] },
+      Config: {
+        Env: ["A=B", "ATELIER_COMMIT_ID=old", "ATELIER_COMMIT_DESCRIPTION=old build"],
+        Labels: { "com.atelier.type": "server", "org.opencontainers.image.revision": "old" },
+        Cmd: ["bun", "run", "apps/web/src/server/main.ts"],
+      },
       HostConfig: { NetworkMode: "host", RestartPolicy: { Name: "unless-stopped" }, Init: true },
       Mounts: [{ Type: "bind", Source: "/host", Destination: "/data", RW: true }],
     };
     const args = replacementCreateArgs(inspect);
     expect(args).toContain("--env");
     expect(args).toContain("A=B");
+    expect(args).not.toContain("ATELIER_COMMIT_ID=old");
+    expect(args).not.toContain("ATELIER_COMMIT_DESCRIPTION=old build");
     expect(args).toContain("--label");
     expect(args).toContain("com.atelier.type=server");
+    expect(args).not.toContain("org.opencontainers.image.revision=old");
     expect(args).toContain("--network");
     expect(args).toContain("host");
     expect(args).toContain("--init");

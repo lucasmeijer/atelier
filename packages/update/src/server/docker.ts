@@ -146,11 +146,21 @@ export async function pullChannelImage(channel: ReleaseChannel, onProgress: (pro
   onProgress({ kind: "progress", percent: 100 });
 }
 
+function shouldPreserveContainerEnv(env: string): boolean {
+  const name = env.split("=", 1)[0];
+  return name !== "ATELIER_COMMIT_ID" && name !== "ATELIER_COMMIT_DESCRIPTION";
+}
+
+function shouldPreserveContainerLabel(key: string): boolean {
+  return !key.startsWith("org.opencontainers.image.");
+}
+
 export function replacementCreateArgs(inspect: DockerInspect, targetImage = inspect.Config?.Image ?? targetImageForChannel(releaseChannelFromInspect(inspect)), releaseChannel = releaseChannelFromInspect(inspect)): string[] {
   const name = (inspect.Name ?? "atelier").replace(/^\//, "");
   const args = ["create", "--name", name];
-  for (const env of inspect.Config?.Env ?? []) args.push("--env", env);
-  for (const [key, value] of Object.entries({ ...(inspect.Config?.Labels ?? {}), "com.atelier.release-channel": releaseChannel })) args.push("--label", `${key}=${value}`);
+  for (const env of inspect.Config?.Env ?? []) if (shouldPreserveContainerEnv(env)) args.push("--env", env);
+  const labels = Object.fromEntries(Object.entries(inspect.Config?.Labels ?? {}).filter(([key]) => shouldPreserveContainerLabel(key)));
+  for (const [key, value] of Object.entries({ ...labels, "com.atelier.release-channel": releaseChannel })) args.push("--label", `${key}=${value}`);
   for (const mount of inspect.Mounts ?? []) {
     const m = mount as { Type?: string; Source?: string; Destination?: string; RW?: boolean };
     if (m.Type === "bind" && m.Source && m.Destination) args.push("--mount", `type=bind,src=${m.Source},dst=${m.Destination}${m.RW === false ? ",readonly" : ""}`);
