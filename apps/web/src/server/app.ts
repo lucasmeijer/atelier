@@ -510,7 +510,7 @@ ${moduleStylesHtml()}
     </div>
     <div class="modal-actions">
       <button class="btn" type="button" data-action="modal#close">Cancel</button>
-      <button class="btn primary" type="submit">Add project</button>
+      <button class="btn primary" type="submit" data-turbo-submits-with="Adding…">Add project</button>
     </div>
   </form>
 </dialog>`;
@@ -1120,10 +1120,24 @@ ${moduleStylesHtml()}
   // Projects
   // ---------------------------------------------------------------------------
 
+  async function renderProjectChromeStreams(options: { resetAddProjectModal?: boolean; clearCommandModal?: boolean } = {}): Promise<string> {
+    return [
+      turboReplaceStream("workspace_sidebar", await renderWorkspaceSidebar()),
+      options.resetAddProjectModal ? turboReplaceStream("add-project-modal", addProjectModal()) : "",
+      turboUpdateStream(projectLaunchModalsId, await renderProjectLaunchModals()),
+      options.clearCommandModal ? turboUpdateStream(workspaceCommandModalHostId, "") : "",
+    ].join("");
+  }
+
   async function createProjectFromForm(request: Request, url: URL): Promise<Response> {
     const formData = await request.formData();
     const gitUrl = String(formData.get("gitUrl") ?? "");
-    await addProject(gitUrl);
+    try {
+      await addProject(gitUrl);
+    } catch (error) {
+      if (!(error instanceof AtelierCoreError && error.code === "project_exists")) throw error;
+    }
+    if (wantsTurboStream(request)) return turboStreamResponse(await renderProjectChromeStreams({ resetAddProjectModal: true }));
     return Response.redirect(new URL("/", url).toString(), 303);
   }
 
@@ -1158,11 +1172,7 @@ ${moduleStylesHtml()}
       return turboStreamResponse(`${turboUpdateStream(projectLaunchModalsId, await renderProjectLaunchModals())}${turboUpdateStream(workspaceCommandModalHostId, deleteProjectBlockedModal(project, references))}`);
     }
     await deleteProject(projectId);
-    return turboStreamResponse([
-      turboReplaceStream("workspace_sidebar", await renderWorkspaceSidebar()),
-      turboUpdateStream(projectLaunchModalsId, await renderProjectLaunchModals()),
-      turboUpdateStream(workspaceCommandModalHostId, ""),
-    ].join(""));
+    return turboStreamResponse(await renderProjectChromeStreams({ clearCommandModal: true }));
   }
 
   async function githubRepositorySearchEndpoint(url: URL): Promise<Response> {

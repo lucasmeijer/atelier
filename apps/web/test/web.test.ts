@@ -318,6 +318,30 @@ describe("web app contracts", () => {
     });
   });
 
+  test("adding a project responds with streams and treats repeated submits as success", async () => {
+    await withTempDataDir(async () => {
+      const { app, registry } = createTestApp();
+      await registry.seed([]);
+      const form = new URLSearchParams({ gitUrl: "https://github.com/org/sample-project.git" });
+
+      const response = await app.fetch(postForm("/projects", form));
+      const repeated = await app.fetch(postForm("/projects", form));
+      const body = await response.text();
+      const repeatedBody = await repeated.text();
+
+      expect(response.status).toBe(200);
+      expect(repeated.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
+      expect((await listProjects()).projects).toHaveLength(1);
+      expect(body).toContain('target="workspace_sidebar"');
+      expect(body).toContain('target="add-project-modal"');
+      expect(body).toContain('target="project_launch_modals"');
+      expect(body).toContain("sample-project");
+      expect(repeatedBody).toContain('target="workspace_sidebar"');
+      expect(repeatedBody).not.toContain("project already exists");
+    });
+  });
+
   test("deleting an unreferenced project removes it from the sidebar", async () => {
     await withTempDataDir(async () => {
       const project = (await addProject("https://github.com/org/sample-project.git")).project;
