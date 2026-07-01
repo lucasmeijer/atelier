@@ -133,6 +133,8 @@ function loginPage(next: string, error = ""): Response {
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#172033">
 <style>
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; font: 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f6f8fc; color: #172033; }
   form { width: min(360px, calc(100vw - 32px)); display: grid; gap: 14px; padding: 24px; border: 1px solid #d8e0ec; border-radius: 16px; background: white; box-shadow: 0 18px 50px rgba(15, 23, 42, .08); }
@@ -289,7 +291,7 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
   const file = Bun.file(entry.url);
   if (!(await file.exists())) return new Response("not found", { status: 404, headers: { "content-type": "text/plain" } });
   const headers: Record<string, string> = { "content-type": entry.contentType };
-  if (pathname === "/workspace.js") headers["cache-control"] = "no-store";
+  if (pathname === "/workspace.js" || pathname === "/service-worker.js" || pathname === "/manifest.webmanifest") headers["cache-control"] = "no-store";
   return new Response(file, { headers });
 }
 

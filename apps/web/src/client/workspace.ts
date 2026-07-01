@@ -2116,3 +2116,7 @@ application.register("onboarding", OnboardingController);
 application.register("clipboard", ClipboardController);
 application.register("agent-select-menu", AgentSelectMenuController);
 application.register("agent-model-menu", AgentModelMenuController);
+
+if ("serviceWorker" in navigator) {
+  void navigator.serviceWorker.register("/service-worker.js");
+}
