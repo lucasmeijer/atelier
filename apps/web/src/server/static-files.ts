@@ -13,7 +13,10 @@ export const clientEntrypoints: Record<string, StaticFileEntry> = {
 };
 
 export const fingerprintedStaticFiles: Record<string, StaticFileEntry> = {
-  "/favicon.svg": { url: new URL("../../public/favicon.svg", import.meta.url), contentType: "image/svg+xml; charset=utf-8" },
+  "/favicon.ico": { url: new URL("../../public/favicon.ico", import.meta.url), contentType: "image/x-icon" },
+  "/favicon-32x32.png": { url: new URL("../../public/favicon-32x32.png", import.meta.url), contentType: "image/png" },
+  "/favicon-16x16.png": { url: new URL("../../public/favicon-16x16.png", import.meta.url), contentType: "image/png" },
+  "/apple-touch-icon.png": { url: new URL("../../public/apple-touch-icon.png", import.meta.url), contentType: "image/png" },
   "/style.css": { url: new URL("../../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   ...workspaceProvisioningStaticFiles,
   ...workspaceModuleStaticFiles(),
