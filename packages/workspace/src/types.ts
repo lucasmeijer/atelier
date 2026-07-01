@@ -20,6 +20,11 @@ export interface WorkspaceDockerMount {
   readonly?: boolean;
 }
 
+export interface WorkspaceDockerContainerFile {
+  source: string;
+  target: string;
+}
+
 export interface WorkspaceDockerPlan {
   image?: string;
   labels: Record<string, string>;
@@ -28,5 +33,6 @@ export interface WorkspaceDockerPlan {
   publishes: number[];
   extraArgs: string[];
   initScripts: string[];
+  containerFiles: WorkspaceDockerContainerFile[];
   cleanup: Array<() => Promise<void> | void>;
 }

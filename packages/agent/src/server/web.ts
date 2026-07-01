@@ -3,7 +3,6 @@ import { createDeleteCurrentWorkspaceTool, createForkCurrentWorkspaceTool, creat
 import { closeAgentTermSocket, handleAgentTermSocketMessage, openAgentTermSocket, validateAgentTermSocket } from "./bash-tmux.ts";
 import { getWorkspaceAgentRuntime, subscribeWorkspaceTabBusy } from "./runtime.ts";
 import { handleAgentRequest, registerAgentEvents, resolveWorkspacePortProxyTarget, workspaceFileEndpoint } from "./routes.ts";
-import { registerPiConfigEvents } from "./pi-config-seed.ts";
 import { createNextWorkspaceAgent, ensureDefaultWorkspaceAgent, listWorkspaceAgents, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentInfo } from "./session-store.ts";
 import { agentTabKey, renderAgentPane, type AgentPaneState } from "./render.ts";
 import { modelRefValue, parseModelRef, preferredAgentModel, rememberPreferredAgentModel } from "./model-state.ts";
@@ -115,7 +114,6 @@ export const agentWorkspaceModule: WorkspaceModule = {
   }],
   initialize(context) {
     const events = context.events as AtelierEventBus;
-    registerPiConfigEvents(events);
     registerAgentEvents(events);
     registerSessionShareMountEvents(events);
     events.on("workspace_agent_turn_finished", ({ workspaceId, agentLabel }) => {

@@ -165,6 +165,24 @@ interface RepoWorkspaceManifest {
   privileged?: boolean;
   docker?: { privileged?: boolean };
   initScripts?: string[];
+  seedPiConfig?: {
+    authJson?: string;
+    modelsJson?: string;
+  };
+}
+
+function optionalString(record: Record<string, unknown>, key: string, path: string, label = key): string | undefined {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !value.trim()) throw invalidArguments(`invalid ${path}: ${label} must be a non-empty string`);
+  return value;
+}
+
+function optionalRecord(record: Record<string, unknown>, key: string, path: string): Record<string, unknown> | undefined {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw invalidArguments(`invalid ${path}: ${key} must be an object`);
+  return value as Record<string, unknown>;
 }
 
 function parseRepoWorkspaceManifest(text: string, path: string): RepoWorkspaceManifest {
@@ -178,18 +196,38 @@ function parseRepoWorkspaceManifest(text: string, path: string): RepoWorkspaceMa
   const record = parsed as Record<string, unknown>;
   if (record.version !== 1) throw invalidArguments(`invalid ${path}: unsupported version`);
   if (record.privileged !== undefined && typeof record.privileged !== "boolean") throw invalidArguments(`invalid ${path}: privileged must be a boolean`);
-  const docker = record.docker;
-  if (docker !== undefined && (!docker || typeof docker !== "object" || Array.isArray(docker))) throw invalidArguments(`invalid ${path}: docker must be an object`);
-  const dockerRecord = docker as Record<string, unknown> | undefined;
+  const dockerRecord = optionalRecord(record, "docker", path);
   if (dockerRecord?.privileged !== undefined && typeof dockerRecord.privileged !== "boolean") throw invalidArguments(`invalid ${path}: docker.privileged must be a boolean`);
   const initScripts = record.initScripts;
   if (initScripts !== undefined && (!Array.isArray(initScripts) || !initScripts.every((script) => typeof script === "string"))) throw invalidArguments(`invalid ${path}: initScripts must be an array of strings`);
+  const seedPiConfigRecord = optionalRecord(record, "seedPiConfig", path);
+  const authJson = seedPiConfigRecord ? optionalString(seedPiConfigRecord, "authJson", path, "seedPiConfig.authJson") : undefined;
+  const modelsJson = seedPiConfigRecord ? optionalString(seedPiConfigRecord, "modelsJson", path, "seedPiConfig.modelsJson") : undefined;
   return {
     version: 1,
     ...(record.privileged !== undefined ? { privileged: record.privileged } : {}),
     ...(dockerRecord ? { docker: { ...(dockerRecord.privileged !== undefined ? { privileged: dockerRecord.privileged } : {}) } } : {}),
     ...(initScripts ? { initScripts } : {}),
+    ...(seedPiConfigRecord ? { seedPiConfig: { ...(authJson ? { authJson } : {}), ...(modelsJson ? { modelsJson } : {}) } } : {}),
   };
+}
+
+function seedPiConfigInstallScript(source: string, target: string): string {
+  return `seed_src=${shellQuote(source)}; seed_dst=${shellQuote(target)}; mkdir -p "$(dirname "$seed_dst")"; install -o atelier -g atelier -m 600 "$seed_src" "$seed_dst"; rm -f "$seed_src"`;
+}
+
+async function applySeedPiConfigManifest(manifest: RepoWorkspaceManifest, plan: WorkspaceDockerPlan): Promise<void> {
+  const seed = manifest.seedPiConfig;
+  if (!seed) return;
+  const runtime = await getAtelierRuntimeContext();
+  const entries = [
+    seed.authJson ? { source: atelierDataPath(runtime, "pi-config", "auth.json"), staging: "/tmp/atelier-seed-pi-auth.json", target: seed.authJson } : undefined,
+    seed.modelsJson ? { source: atelierDataPath(runtime, "pi-config", "models.json"), staging: "/tmp/atelier-seed-pi-models.json", target: seed.modelsJson } : undefined,
+  ].filter((entry): entry is { source: string; staging: string; target: string } => Boolean(entry));
+  for (const entry of entries) {
+    plan.containerFiles.push({ source: entry.source, target: entry.staging });
+    plan.initScripts.push(seedPiConfigInstallScript(entry.staging, entry.target));
+  }
 }
 
 async function applyRepoWorkspaceManifest(sourcePath: string, plan: WorkspaceDockerPlan): Promise<void> {
@@ -198,6 +236,7 @@ async function applyRepoWorkspaceManifest(sourcePath: string, plan: WorkspaceDoc
   if (!(await file.exists())) return;
   const manifest = parseRepoWorkspaceManifest(await file.text(), workspaceManifestPath);
   if ((manifest.privileged || manifest.docker?.privileged) && !plan.extraArgs.includes("--privileged")) plan.extraArgs.push("--privileged");
+  await applySeedPiConfigManifest(manifest, plan);
   plan.initScripts.push(...(manifest.initScripts ?? []));
 }
 
@@ -246,7 +285,7 @@ function hostUserEnv(): Record<string, string> {
 }
 
 function baseWorkspacePlan(labels: Record<string, string>): WorkspaceDockerPlan {
-  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: ["--privileged"], initScripts: [workspaceGitCredentialInitScript()], cleanup: [] };
+  return { labels, env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...hostUserEnv() }, mounts: [], publishes: [workspaceVSCodePort, workspaceDesktopPort, ...workspacePreviewPorts], extraArgs: ["--privileged"], initScripts: [workspaceGitCredentialInitScript()], containerFiles: [], cleanup: [] };
 }
 
 function alignWorkspaceUserScript(): string {
@@ -297,7 +336,10 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       const image = activePlan.image;
       if (!image) throw new AtelierCoreError("workspace_image_missing", "workspace image was not resolved");
       const publishHost = workspacePublishHost();
-      await requireDocker(["run", "-d", "--restart", "unless-stopped", "--name", workspaceContainerName(id), ...Object.entries(activePlan.labels).flatMap(([name, value]) => ["--label", `${name}=${value}`]), ...activePlan.publishes.flatMap((port) => ["--publish", `${publishHost}::${port}`]), ...planEnvDockerArgs(activePlan.env), ...activePlan.extraArgs, ...activePlan.mounts.flatMap((mount) => ["--mount", dockerMountArg(mount)]), "--user", "root", image, "sh", "-lc", workspaceInitScript(activePlan)]);
+      const container = workspaceContainerName(id);
+      await requireDocker(["create", "--restart", "unless-stopped", "--name", container, ...Object.entries(activePlan.labels).flatMap(([name, value]) => ["--label", `${name}=${value}`]), ...activePlan.publishes.flatMap((port) => ["--publish", `${publishHost}::${port}`]), ...planEnvDockerArgs(activePlan.env), ...activePlan.extraArgs, ...activePlan.mounts.flatMap((mount) => ["--mount", dockerMountArg(mount)]), "--user", "root", image, "sh", "-lc", workspaceInitScript(activePlan)]);
+      for (const file of activePlan.containerFiles) await requireDocker(["cp", file.source, `${container}:${file.target}`]);
+      await requireDocker(["start", container]);
     });
     await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id));
     await provisionStep(options.events, id, "workspace.verify", "Verify workspace", () => resolveWorkspace(id));

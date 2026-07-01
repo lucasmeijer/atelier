@@ -41,10 +41,6 @@ export {
 } from "./tools.ts";
 export { agentStaticFiles } from "./static.ts";
 export {
-  piConfigSeedDir,
-  registerPiConfigEvents,
-} from "./pi-config-seed.ts";
-export {
   connectModelProviderApiKey,
   createPiAuthStorage,
   createPiModelRegistry,
@@ -54,6 +50,7 @@ export {
   getPiOAuthProviders,
   hasAvailableConfiguredAgentModel,
   loginPiOAuthProvider,
+  piConfigDir,
   piModelsJsonPath,
   type PiAuthEvent,
   type PiAuthLoginCallbacks,

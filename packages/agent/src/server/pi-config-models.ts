@@ -1,10 +1,10 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import type { AuthEvent, AuthLoginCallbacks, AuthPrompt } from "@earendil-works/pi-ai";
 import { AuthStorage, ModelRegistry, type AuthCredential } from "@earendil-works/pi-coding-agent";
-import { piConfigSeedDir } from "./pi-config-seed.ts";
 
 /**
  * The configured list of models offered in the agent model picker.
@@ -31,12 +31,17 @@ interface AgentModelsSettings {
   modelPreferences?: Record<string, ModelPreference>;
 }
 
+export async function piConfigDir(): Promise<string> {
+  const runtimeContext = await getAtelierRuntimeContext();
+  return atelierDataPath(runtimeContext, "pi-config");
+}
+
 export async function piModelsJsonPath(): Promise<string> {
-  return join(await piConfigSeedDir(), "models.json");
+  return join(await piConfigDir(), "models.json");
 }
 
 async function piAuthJsonPath(): Promise<string> {
-  return join(await piConfigSeedDir(), "auth.json");
+  return join(await piConfigDir(), "auth.json");
 }
 
 async function getAgentModelsSettings(path?: string): Promise<AgentModelsSettings> {
