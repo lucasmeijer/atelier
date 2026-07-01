@@ -751,6 +751,10 @@ const writeRenderer: ToolRenderer = {
   fullscreenHtml: (tool) => `${writeContentHtml(tool)}${tool.status === "error" ? resultPreHtml(trimResult(tool)) : ""}`,
 };
 
+function editDiffHtml(tool: ToolView): string {
+  return renderDiffHtml(getEditOperations(toolArgs(tool))) || genericParamsHtml(tool);
+}
+
 const editRenderer: ToolRenderer = {
   known: true,
   hideEmptyResult: true,
@@ -764,8 +768,9 @@ const editRenderer: ToolRenderer = {
     const lines = stats.added > 0 || stats.deleted > 0 ? `+${stats.added} -${stats.deleted}` : "";
     return [path, blocks, lines].filter(Boolean).join(" · ");
   },
-  paramsHtml: (_ctx, tool) => renderDiffHtml(getEditOperations(toolArgs(tool))) || genericParamsHtml(tool),
+  paramsHtml: (_ctx, tool) => editDiffHtml(tool),
   resultHtml: (_ctx, tool) => tool.status === "error" ? resultPreHtml(trimResult(tool)) : "",
+  fullscreenHtml: (tool) => `${editDiffHtml(tool)}${tool.status === "error" ? resultPreHtml(trimResult(tool)) : ""}`,
 };
 
 function getEditOperations(args: Record<string, unknown> | undefined): DiffOperation[] {

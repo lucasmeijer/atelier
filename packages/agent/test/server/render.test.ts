@@ -38,6 +38,9 @@ describe("tool rendering", () => {
     expect(html).toContain("agent-diff-line del");
     expect(html).toContain("agent-diff-line add");
     expect(html).toContain("agent-tool-detail flush");
+    expect(html).toContain('data-controller="atelier-fullscreen"');
+    expect(html).toContain('data-atelier-fullscreen-mode-value="template"');
+    expect(html).toContain('template data-atelier-fullscreen-target="content"');
     expect(html).not.toContain("oldText");
     expect(html).not.toContain("Applied 1 block");
     expect(html).not.toContain("no output");
