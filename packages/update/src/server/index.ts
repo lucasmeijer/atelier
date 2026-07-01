@@ -24,6 +24,7 @@ export interface UpdateManagerDeps {
   pullImage?: (channel: ReleaseChannel, onProgress: (progress: PullProgress) => void) => Promise<void>;
   fetchNotes?: (currentSha: string | undefined, stableSha: string | undefined) => Promise<string>;
   docker?: DockerExec;
+  checkUpdaterPortAvailable?: () => Promise<void>;
   waitForUpdater?: (url: string) => Promise<void>;
   setInterval?: typeof setInterval;
 }
@@ -160,21 +161,29 @@ export class UpdateManager {
     const updaterUrl = new URL(returnUrl);
     updaterUrl.protocol = "http:";
     updaterUrl.port = String(updaterPort);
-    await removeStaleUpdateHelpers(this.deps.docker ?? dockerExec);
-    const result = await (this.deps.docker ?? dockerExec)([
-      "run", "-d", "--rm", "--name", name, "--network", "host",
-      "-v", "/var/run/docker.sock:/var/run/docker.sock",
-      this.runtime.imageId,
-      "atelier-update-helper", "--server-container", this.runtime.containerId, "--target-image", targetImageForChannel(this.releaseChannel), "--release-channel", this.releaseChannel, "--return-url", returnUrl.toString(),
-    ]);
-    if (result.code !== 0) throw new Error(result.stderr.trim() || "could not start update helper");
-    const theme = url.searchParams.get("theme") ?? "";
-    updaterUrl.pathname = "/up";
-    updaterUrl.search = "";
-    await (this.deps.waitForUpdater ?? waitForUpdater)(updaterUrl.toString());
-    updaterUrl.pathname = "/";
-    updaterUrl.searchParams.set("theme", theme);
-    return Response.redirect(updaterUrl.toString(), 303);
+    const docker = this.deps.docker ?? dockerExec;
+    try {
+      await removeStaleUpdateHelpers(docker);
+      await (this.deps.checkUpdaterPortAvailable ?? checkUpdaterPortAvailable)();
+      const result = await docker([
+        "run", "-d", "--rm", "--name", name, "--network", "host",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        this.runtime.imageId,
+        "atelier-update-helper", "--server-container", this.runtime.containerId, "--target-image", targetImageForChannel(this.releaseChannel), "--release-channel", this.releaseChannel, "--return-url", returnUrl.toString(),
+      ]);
+      if (result.code !== 0) throw new Error(result.stderr.trim() || "could not start update helper");
+      const theme = url.searchParams.get("theme") ?? "";
+      updaterUrl.pathname = "/up";
+      updaterUrl.search = "";
+      await (this.deps.waitForUpdater ?? waitForUpdater)(updaterUrl.toString());
+      updaterUrl.pathname = "/";
+      updaterUrl.searchParams.set("theme", theme);
+      return Response.redirect(updaterUrl.toString(), 303);
+    } catch (error) {
+      this.restarting = false;
+      this.fail(error);
+      throw error;
+    }
   }
 
   sseResponse(): Response {
@@ -198,6 +207,17 @@ async function removeStaleUpdateHelpers(docker: DockerExec): Promise<void> {
   if (ids.length === 0) return;
   const removed = await docker(["rm", "-f", ...ids]);
   if (removed.code !== 0) throw new Error(removed.stderr.trim() || "could not remove stale update helpers");
+}
+
+async function checkUpdaterPortAvailable(): Promise<void> {
+  try {
+    const server = Bun.serve({ port: updaterPort, fetch: () => new Response("ok") });
+    server.stop(true);
+  } catch (error) {
+    const code = error instanceof Error ? (error as Error & { code?: unknown }).code : undefined;
+    if (code === "EADDRINUSE") throw new Error(`Update helper port ${updaterPort} is already in use. Stop the process using port ${updaterPort} and retry the update.`);
+    throw error;
+  }
 }
 
 async function waitForUpdater(url: string): Promise<void> {

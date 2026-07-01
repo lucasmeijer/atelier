@@ -249,6 +249,7 @@ describe("update state machine", () => {
       fetchMetadata: async () => ({ digest: "sha256:new", revision: "new" }),
       pullImage: async () => {},
       docker: async (args) => { dockerCalls.push(args); return { stdout: "updater", stderr: "", code: 0 }; },
+      checkUpdaterPortAvailable: async () => {},
       waitForUpdater: async (url) => { expect(url).toBe("http://atelier.test:81/up"); },
       setInterval: noInterval(),
     });
@@ -257,11 +258,30 @@ describe("update state machine", () => {
     const response = await manager.launchUpdater(new URL("http://atelier.test/update/restart?theme=dracula"));
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe("http://atelier.test:81/?theme=dracula");
+    expect(dockerCalls[0]).toEqual(["ps", "-aq", "--filter", "name=^/atelier-updater-"]);
     const runCall = dockerCalls.find((call) => call.includes("atelier-update-helper"));
     expect(runCall).toBeDefined();
     expect(runCall!).toContain("--release-channel");
     expect(runCall!).toContain("stable");
     await expect(manager.launchUpdater(new URL("http://atelier.test/update/restart"))).rejects.toThrow("Restart is already in progress");
+  });
+
+  test("restart reports a blocked updater port before starting the helper", async () => {
+    const { ctx } = context();
+    const dockerCalls: string[][] = [];
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime("old"),
+      fetchMetadata: async () => ({ digest: "sha256:new", revision: "new" }),
+      pullImage: async () => {},
+      docker: async (args) => { dockerCalls.push(args); return { stdout: "", stderr: "", code: 0 }; },
+      checkUpdaterPortAvailable: async () => { throw new Error("Update helper port 81 is already in use. Stop the process using port 81 and retry the update."); },
+      setInterval: noInterval(),
+    });
+    await manager.initialize(ctx);
+    await manager.startPull();
+    await expect(manager.launchUpdater(new URL("http://atelier.test/update/restart"))).rejects.toThrow("Update helper port 81 is already in use");
+    expect(dockerCalls).toEqual([["ps", "-aq", "--filter", "name=^/atelier-updater-"]]);
+    expect(manager.snapshot()).toMatchObject({ state: "failed", error: "Update helper port 81 is already in use. Stop the process using port 81 and retry the update." });
   });
 });
 
