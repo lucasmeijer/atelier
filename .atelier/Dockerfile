@@ -11,6 +11,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       docker.io \
       docker-buildx \
+      fuse-overlayfs \
       openssh-client \
  && rm -rf /var/lib/apt/lists/*
 
