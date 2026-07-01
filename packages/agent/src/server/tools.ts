@@ -1,7 +1,7 @@
 import { dirname, posix } from "node:path";
 import { shellQuote, type AtelierEventBus } from "@atelier/core";
 import type { AgentWorkspaceCreateRequest, AgentWorkspaceCreateResult, AgentWorkspaceForkRequest } from "@atelier/shared";
-import { execWorkspaceCommand, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
+import { execWorkspaceCommand, execWorkspaceCommandBuffer, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import {
   createEditToolDefinition,
   createReadToolDefinition,
@@ -11,8 +11,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { createTmuxBashTool } from "./bash-tmux.ts";
-
-const maxReadBytes = 200_000;
 
 export function normalizeWorkspacePath(path: string): string {
   if (!path || path.includes("\0")) throw new Error("path is required");
@@ -42,10 +40,19 @@ export function applyExactEdits(content: string, edits: Array<{ oldText: string;
   return result + content.slice(cursor);
 }
 
+const supportedImageMimeTypes = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp"]);
+
+async function detectWorkspaceImageMimeType(workspaceId: string, absolutePath: string): Promise<string | null> {
+  const result = await execWorkspaceCommand(workspaceId, ["file", "--brief", "--mime-type", absolutePath]);
+  if (result.exitCode !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || `could not inspect ${absolutePath}`);
+  const mimeType = result.stdout.trim().toLowerCase();
+  return supportedImageMimeTypes.has(mimeType) ? mimeType : null;
+}
+
 async function readFileBuffer(workspaceId: string, absolutePath: string): Promise<Buffer> {
-  const result = await execWorkspaceCommand(workspaceId, ["head", "-c", String(maxReadBytes + 1), absolutePath]);
-  if (result.exitCode !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || `could not read ${absolutePath}`);
-  return Buffer.from(result.stdout);
+  const result = await execWorkspaceCommandBuffer(workspaceId, ["cat", absolutePath]);
+  if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `could not read ${absolutePath}`);
+  return result.stdout;
 }
 
 async function writeFile(workspaceId: string, absolutePath: string, content: string): Promise<void> {
@@ -175,6 +182,7 @@ export function createWorkspaceAgentTools(workspaceId: string, options: Workspac
     operations: {
       readFile: (path) => readFileBuffer(workspaceId, normalizeWorkspacePath(path)),
       access: (path) => accessFile(workspaceId, normalizeWorkspacePath(path)),
+      detectImageMimeType: (path) => detectWorkspaceImageMimeType(workspaceId, normalizeWorkspacePath(path)),
     },
   });
   const write = createWriteToolDefinition(workspaceRoot, {

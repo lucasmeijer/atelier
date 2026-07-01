@@ -4,6 +4,7 @@ import {
   createWorkspace,
   deleteWorkspace,
   execWorkspaceCommand,
+  execWorkspaceCommandBuffer,
   execWorkspaceShell,
   generateWorkspaceId,
   listWorkspaces,
@@ -95,6 +96,17 @@ describe("core workspaces", () => {
     expect(exec.exitCode).toBe(0);
     expect(exec.stdout).toBe("hello");
     expect(exec.stderr).toBe("error");
+    expect(exec.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  test("execWorkspaceCommandBuffer captures stdout bytes", async () => {
+    const created = await createWorkspace();
+
+    const exec = await execWorkspaceCommandBuffer(created.id, ["sh", "-c", "printf '\\000\\377'"]);
+
+    expect(exec.exitCode).toBe(0);
+    expect([...exec.stdout]).toEqual([0, 255]);
+    expect(exec.stderr).toBe("");
     expect(exec.durationMs).toBeGreaterThanOrEqual(0);
   });
 

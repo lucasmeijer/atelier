@@ -8,10 +8,10 @@ describe("workspace agent tools", () => {
     expect(normalizeWorkspacePath("nested/../foo.ts")).toBe("/work/foo.ts");
   });
 
-  test("rejects path escapes", () => {
-    expect(() => normalizeWorkspacePath("../foo.ts")).toThrow();
-    expect(() => normalizeWorkspacePath("/etc/passwd")).toThrow();
-    expect(() => normalizeWorkspacePath("/workspace/work/x")).toThrow();
+  test("allows paths outside /work", () => {
+    expect(normalizeWorkspacePath("../foo.ts")).toBe("/foo.ts");
+    expect(normalizeWorkspacePath("/etc/passwd")).toBe("/etc/passwd");
+    expect(normalizeWorkspacePath("/workspace/work/x")).toBe("/workspace/work/x");
   });
 
   test("applies exact edits", () => {

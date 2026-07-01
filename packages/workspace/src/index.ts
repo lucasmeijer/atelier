@@ -1,6 +1,6 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AtelierCoreError, atelierDataPath, currentAtelierContainerImageId, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, atelierDataPath, currentAtelierContainerImageId, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { resolveWorkspaceImage } from "@atelier/workspace-image";
 import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction } from "./types.ts";
 export type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction, WorkspaceInitInstructionMap } from "./types.ts";
@@ -34,6 +34,7 @@ export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 
 export interface WorkspaceNewResult { id: string }
 export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; createdByAtelierImageId?: string }> }
 export interface WorkspaceExecResult { exitCode: number; stdout: string; stderr: string; durationMs: number }
+export type WorkspaceExecBufferResult = Omit<WorkspaceExecResult, "stdout"> & { stdout: Buffer }
 export interface WorkspaceCommandOptions { workdir?: string; user?: "atelier" | "root"; stdin?: string }
 export interface DeleteWorkspaceOptions { force?: boolean; events?: AtelierEventBus }
 export interface CreateWorkspaceForkOptions { sourceWorkspaceId: string }
@@ -196,11 +197,22 @@ async function applyRepoWorkspaceManifest(sourcePath: string, plan: WorkspaceDoc
   plan.initScripts.push(...(manifest.initScripts ?? []));
 }
 
+function workspaceExecDockerArgs(resolved: string, command: string[], options: WorkspaceCommandOptions): string[] {
+  return ["exec", ...(options.stdin !== undefined ? ["-i"] : []), "--user", options.user ?? "atelier", "--env", "LANG=C.UTF-8", "--env", "LC_ALL=C.UTF-8", "--workdir", options.workdir ?? workspaceRoot, workspaceContainerName(resolved), ...command];
+}
+
 export async function execWorkspaceCommand(id: string, command: string[], options: WorkspaceCommandOptions = {}): Promise<WorkspaceExecResult> {
   if (command.length === 0) throw invalidArguments("command is required");
   const resolved = await resolveWorkspace(id);
   const startedAt = Date.now();
-  const result = await runDocker(["exec", ...(options.stdin !== undefined ? ["-i"] : []), "--user", options.user ?? "atelier", "--env", "LANG=C.UTF-8", "--env", "LC_ALL=C.UTF-8", "--workdir", options.workdir ?? workspaceRoot, workspaceContainerName(resolved), ...command], { stdin: options.stdin });
+  const result = await runDocker(workspaceExecDockerArgs(resolved, command, options), { stdin: options.stdin });
+  return { ...result, durationMs: Date.now() - startedAt };
+}
+export async function execWorkspaceCommandBuffer(id: string, command: string[], options: WorkspaceCommandOptions = {}): Promise<WorkspaceExecBufferResult> {
+  if (command.length === 0) throw invalidArguments("command is required");
+  const resolved = await resolveWorkspace(id);
+  const startedAt = Date.now();
+  const result = await runDockerBuffer(workspaceExecDockerArgs(resolved, command, options), { stdin: options.stdin });
   return { ...result, durationMs: Date.now() - startedAt };
 }
 export async function execWorkspaceShell(id: string, script: string, options: WorkspaceCommandOptions = {}): Promise<WorkspaceExecResult> { return await execWorkspaceCommand(id, ["sh", "-lc", script], options); }
