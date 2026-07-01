@@ -286,39 +286,6 @@ a { color: inherit; text-decoration: none; }
 .code-tabs em { margin-left: auto; color: #93c5fd; font-size: 12px; font-style: normal; padding-right: 12px; }
 #monaco-editor { flex: 1; min-height: 0; }
 
-.git-status-widget { width: fit-content; max-width: 100%; margin: 12px auto 0; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.84); box-shadow: 0 4px 12px rgba(19,26,38,.05); }
-.git-status-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
-.git-status-head strong { color: var(--text); font-size: 13px; }
-.git-status-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 11px 12px; border-bottom: 1px solid var(--line); }
-.git-status-row:last-child { border-bottom: 0; }
-.repo-identity { display: grid; grid-template-columns: 10px auto minmax(0, 1fr); align-items: baseline; gap: 9px; min-width: 0; }
-.repo-identity b { font-size: 13px; font-weight: 650; }
-.repo-identity small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.repo-dot { width: 9px; height: 9px; border-radius: 50%; align-self: center; }
-.git-status-badges { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
-.git-status-badge { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 700; line-height: 1.5; background: var(--bg); color: var(--muted); }
-.git-status-badge.ahead, .git-status-badge.added { background: var(--green-soft); border-color: var(--green-soft); color: var(--green); }
-.git-status-badge.behind, .git-status-badge.modified { background: var(--amber-soft); border-color: var(--amber-soft); color: var(--amber); }
-.git-status-badge.removed, .git-status-badge.conflict { background: var(--red-soft); border-color: var(--red-soft); color: var(--red); }
-.git-status-badge.untracked { background: var(--bg); border-color: var(--line); color: var(--muted); }
-.git-status-row.clean { background: linear-gradient(180deg, #fff, rgba(226,244,234,.45)); }
-.git-status-row.clean .repo-dot { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
-.git-status-row.rebase { background: linear-gradient(180deg, #fff, rgba(247,239,216,.68)); }
-.git-status-row.rebase .repo-dot { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
-.git-status-row.rebase .btn { border-color: #ead9ad; color: var(--amber); background: #fffaf0; }
-.git-status-row.fetch-failed { background: linear-gradient(180deg, #fff, rgba(251,232,232,.65)); }
-.git-status-row.fetch-failed .repo-dot { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
-.git-status-row.fetch-failed .btn { border-color: #f2c6c6; color: var(--red); background: #fff7f7; }
-.git-status-row.fetching { background: linear-gradient(180deg, #fff, rgba(245,247,250,.9)); }
-.git-status-row.fetching .repo-dot { background: var(--muted-2); box-shadow: 0 0 0 3px var(--bg); animation: pulse-dot 1.2s ease-in-out infinite; }
-.status-spinner { display: inline-block; flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line-2); border-top-color: var(--muted); animation: spin .8s linear infinite; }
-.status-spinner.sm { width: 12px; height: 12px; border-width: 2px; }
-.workspace-status, .tab-status { display: inline-flex; align-items: center; justify-content: center; min-width: 12px; min-height: 12px; }
-.git-status-row.idle { background: #fff; }
-.git-status-row.idle .repo-dot { background: var(--muted-2); box-shadow: 0 0 0 3px var(--bg); }
-button.git-status-row { width: 100%; border-left: 0; border-right: 0; border-top: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-button.git-status-row:hover { background: var(--accent-soft); color: var(--accent); }
-@keyframes pulse-dot { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 .btn:disabled { cursor: not-allowed; opacity: .48; }
 .modal { width: min(560px, calc(100vw - 40px)); border: 1px solid var(--line-2); border-radius: 14px; padding: 0; box-shadow: 0 24px 80px rgba(19,26,38,.24); margin: auto; position: fixed; inset: 0; }

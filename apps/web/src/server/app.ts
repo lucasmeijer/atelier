@@ -17,14 +17,11 @@ import {
   addProject,
   deleteProject,
   formatProjectSpec,
-  getWorkspaceRepoMergeability,
   isGitProjectInit,
   listProjects,
   projectWorkspaceInit,
-  pushWorkspaceRepo,
   type ProjectSummary,
   type WorkspaceDeleteBlockedDetails,
-  type WorkspaceRepoMergeabilityResult,
 } from "@atelier/projects";
 import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
@@ -98,6 +95,10 @@ function response(body: string, init: HtmlResponseInit = {}): Response {
   if (!headers.has("content-type")) headers.set("content-type", "text/html; charset=utf-8");
   if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
   return new Response(body, { ...init, headers });
+}
+
+function wantsTurboStream(request: Request): boolean {
+  return request.headers.get("accept")?.includes("text/vnd.turbo-stream.html") ?? false;
 }
 
 function jsonResponse(body: unknown, init: HtmlResponseInit = {}): Response {
@@ -1104,7 +1105,7 @@ ${moduleStylesHtml()}
   }
 
   // ---------------------------------------------------------------------------
-  // Projects / mergeability / push
+  // Projects
   // ---------------------------------------------------------------------------
 
   async function createProjectFromForm(request: Request, url: URL): Promise<Response> {
@@ -1160,83 +1161,6 @@ ${moduleStylesHtml()}
     } catch (error) {
       if (error instanceof GitHubRepositorySearchRateLimitError) return new Response(renderGitHubRepositorySearchRateLimitMenu(error), { status: 429, headers: { "content-type": "text/html; charset=utf-8" } });
       throw error;
-    }
-  }
-
-  function statusBadge(className: string, label: string, title: string): string {
-    return `<span class="git-status-badge ${className}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
-  }
-
-  function commitBadges(result: WorkspaceRepoMergeabilityResult): string[] {
-    const badges: string[] = [];
-    if ("ahead" in result && result.ahead > 0) badges.push(statusBadge("ahead", `↑${result.ahead}`, `${result.ahead} commits ahead`));
-    if ("behind" in result && result.behind > 0) badges.push(statusBadge("behind", `↓${result.behind}`, `${result.behind} commits behind`));
-    return badges;
-  }
-
-  function workingTreeBadges(result: WorkspaceRepoMergeabilityResult): string[] {
-    return [
-      result.workingTree.addedFiles.length > 0 ? statusBadge("added", `+${result.workingTree.addedFiles.length}`, `${result.workingTree.addedFiles.length} added files`) : "",
-      result.workingTree.removedFiles.length > 0 ? statusBadge("removed", `-${result.workingTree.removedFiles.length}`, `${result.workingTree.removedFiles.length} removed files`) : "",
-      result.workingTree.modifiedFiles.length > 0 ? statusBadge("modified", `~${result.workingTree.modifiedFiles.length}`, `${result.workingTree.modifiedFiles.length} modified files`) : "",
-      result.workingTree.untrackedFiles.length > 0 ? statusBadge("untracked", `?${result.workingTree.untrackedFiles.length}`, `${result.workingTree.untrackedFiles.length} untracked files`) : "",
-    ].filter(Boolean);
-  }
-
-  function repoStatusBadges(result: WorkspaceRepoMergeabilityResult): string {
-    const badges = result.state === "has_conflicts"
-      ? [...commitBadges(result), statusBadge("conflict", `⚠${result.conflictCount}`, `${result.conflictCount} conflicts`)]
-      : result.state === "fetch_failed"
-        ? [statusBadge("conflict", "fetch failed", "Could not fetch upstream"), ...workingTreeBadges(result)]
-        : [...commitBadges(result), ...workingTreeBadges(result)];
-    return badges.length > 0 ? `<span class="git-status-badges">${badges.join("")}</span>` : `<small>clean</small>`;
-  }
-
-  function mergeabilityRow(id: string, repo: string, result: WorkspaceRepoMergeabilityResult): string {
-    const name = escapeHtml(repo);
-    switch (result.state) {
-      case "can_push":
-        return `<div class="git-status-row clean"><div class="repo-identity"><span class="repo-dot"></span><b>${name}</b>${repoStatusBadges(result)}</div><form method="post" action="/workspaces/${encodeURIComponent(id)}/repos/${encodeURIComponent(repo)}/push"><button class="btn primary sm" type="submit">Push to atelier</button></form></div>`;
-      case "has_conflicts":
-        return `<div class="git-status-row rebase"><div class="repo-identity"><span class="repo-dot"></span><b>${name}</b>${repoStatusBadges(result)}</div><button class="btn sm fix-rebase" type="button" disabled>Ask agent to rebase</button></div>`;
-      case "fetch_failed":
-        return `<div class="git-status-row fetch-failed"><div class="repo-identity"><span class="repo-dot"></span><b>${name}</b>${repoStatusBadges(result)}</div><button class="btn sm" type="button" disabled>Retry fetch</button></div>`;
-      case "nothing_to_push":
-        return `<div class="git-status-row idle"><div class="repo-identity"><span class="repo-dot"></span><b>${name}</b>${repoStatusBadges(result)}</div></div>`;
-    }
-    const exhaustive: never = result;
-    return exhaustive;
-  }
-
-  async function mergeabilityFrame(id: string, repo: string): Promise<Response> {
-    const frameId = domId("repo_mergeability", id, repo);
-    try {
-      const result = await getWorkspaceRepoMergeability(id, repo);
-      return response(`<turbo-frame id="${frameId}">${mergeabilityRow(id, repo, result)}</turbo-frame>`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return response(`<turbo-frame id="${frameId}"><div class="git-status-row fetch-failed"><div class="repo-identity"><span class="repo-dot"></span><b>${escapeHtml(repo)}</b><small title="${escapeHtml(message)}">Could not check mergeability.</small></div><button class="btn sm" type="button" disabled>Retry fetch</button></div></turbo-frame>`);
-    }
-  }
-
-  function wantsTurboStream(request: Request): boolean {
-    return request.headers.get("accept")?.includes("text/vnd.turbo-stream.html") ?? false;
-  }
-
-  async function pushRepoEndpoint(id: string, repo: string, request: Request): Promise<Response> {
-    const frameId = domId("repo_mergeability", id, repo);
-    try {
-      const pushed = await pushWorkspaceRepo(id, repo);
-      if (pushed.state === "failed") {
-        return response(`<turbo-frame id="${frameId}"><div class="git-status-row fetch-failed"><div class="repo-identity"><span class="repo-dot"></span><b>${escapeHtml(repo)}</b><small title="${escapeHtml(pushed.message)}">Push failed.</small></div><button class="btn sm" type="button" disabled>Retry fetch</button></div></turbo-frame>`, { status: 500 });
-      }
-      const result = await getWorkspaceRepoMergeability(id, repo);
-      const body = `<turbo-frame id="${frameId}">${mergeabilityRow(id, repo, result)}</turbo-frame>`;
-      if (wantsTurboStream(request)) return turboStreamResponse(turboStream("replace", frameId, body));
-      return response(body);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return response(`<turbo-frame id="${frameId}"><div class="git-status-row fetch-failed"><div class="repo-identity"><span class="repo-dot"></span><b>${escapeHtml(repo)}</b><small title="${escapeHtml(message)}">Push failed.</small></div><button class="btn sm" type="button" disabled>Retry fetch</button></div></turbo-frame>`, { status: 500 });
     }
   }
 
@@ -1458,8 +1382,6 @@ ${moduleStylesHtml()}
     if ((params = match(/^\/workspaces\/([^/]+)\/layout\/move-tab$/)) && request.method === "POST") return await moveWorkspaceTabEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/tabs\/(.+)\/close$/)) && request.method === "POST") return await closeWorkspaceTabEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/layout\/resize$/)) && request.method === "POST") return await resizeWorkspaceGroupsEndpoint(params[0], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/push$/)) && request.method === "POST") return await pushRepoEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/repos\/([^/]+)\/mergeability$/)) && request.method === "GET") return await mergeabilityFrame(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/park$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], true, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/unpark$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], false, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteWorkspaceEndpoint(params[0], url.searchParams.get("force") === "1");
