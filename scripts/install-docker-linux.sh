@@ -11,11 +11,15 @@ atelier_port="80"
 if [ -t 1 ] && command -v tput >/dev/null 2>&1 && [ -n "${TERM:-}" ]; then
   green="$(tput setaf 2)"
   blue="$(tput setaf 4)"
+  yellow="$(tput setaf 3)"
+  red="$(tput setaf 1)"
   bold="$(tput bold)"
   reset="$(tput sgr0)"
 else
   green=""
   blue=""
+  yellow=""
+  red=""
   bold=""
   reset=""
 fi
@@ -30,6 +34,10 @@ info() {
 
 success() {
   printf '%s✓%s %s\n' "$green" "$reset" "$*"
+}
+
+warning() {
+  printf '%s!%s %s\n' "$yellow" "$reset" "$*"
 }
 
 fail() {
@@ -137,6 +145,112 @@ require_root() {
 
 command_exists() {
   command -v "$1" >/dev/null 2>&1
+}
+
+ssh_client_ip() {
+  if [ -n "${SSH_CONNECTION:-}" ]; then
+    printf '%s\n' "$SSH_CONNECTION" | awk '{ print $1 }'
+  elif [ -n "${SSH_CLIENT:-}" ]; then
+    printf '%s\n' "$SSH_CLIENT" | awk '{ print $1 }'
+  else
+    who -m 2>/dev/null | sed -n 's/.*(\([^)]*\)).*/\1/p' | head -n 1
+  fi
+}
+
+latency_rating() {
+  local latency_ms="$1"
+
+  if [ "$latency_ms" -le 20 ]; then
+    printf 'great\n'
+  elif [ "$latency_ms" -le 35 ]; then
+    printf 'good\n'
+  elif [ "$latency_ms" -le 80 ]; then
+    printf 'poor\n'
+  else
+    printf 'bad\n'
+  fi
+}
+
+measure_latency() {
+  local client_ip="$1"
+  local latency_output="$2"
+
+  if [ -n "${SSH_CONNECTION:-}" ] && command_exists ss; then
+    set -- $SSH_CONNECTION
+    ss -tin "src $3:$4 dst $1:$2" >"$latency_output" 2>&1
+    grep -q 'rtt:' "$latency_output" && return
+  fi
+
+  command_exists ping || return 1
+  ping -c 4 -W 2 "$client_ip" >"$latency_output" 2>&1
+}
+
+wait_with_spinner() {
+  local pid="$1"
+  local message="$2"
+  local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+  local i=0
+
+  if [ ! -t 1 ]; then
+    info "$message..."
+    wait "$pid"
+    return
+  fi
+
+  tput civis 2>/dev/null || true
+  while kill -0 "$pid" 2>/dev/null; do
+    printf '\r%s%s%s %s...' "$blue" "${frames:i++%${#frames}:1}" "$reset" "$message"
+    sleep 0.1
+  done
+  printf '\r\033[K'
+  tput cnorm 2>/dev/null || true
+  wait "$pid"
+}
+
+confirm_continue_for_latency() {
+  local latency_ms="$1"
+  local rating="$2"
+  local answer
+
+  printf '%s\n' "We're measuring ${latency_ms}ms latency between you and the computer you're installing Atelier on. This is ${rating}. For best experience install Atelier on a computer that is closer to your location."
+  printf 'Continue anyway y/n: '
+  IFS= read -r answer </dev/tty || fail "could not read confirmation from terminal"
+  case "$answer" in
+    y|Y|yes|YES|Yes) ;;
+    *) fail "installation cancelled" ;;
+  esac
+}
+
+check_ssh_latency() {
+  local client_ip latency_output latency_ms rating
+
+  client_ip="$(ssh_client_ip)"
+  [ -n "$client_ip" ] || return
+
+  latency_output="$(mktemp)"
+  measure_latency "$client_ip" "$latency_output" &
+  if wait_with_spinner "$!" "Measuring latency"; then
+    latency_ms="$(sed -n 's/.*rtt:\([0-9.]*\)\/.*/\1/p' "$latency_output" | head -n 1 | awk '{ printf "%.0f", $1 }')"
+    if [ -z "$latency_ms" ]; then
+      latency_ms="$(awk -F'/' '/^(rtt|round-trip)/ { printf "%.0f", $2 }' "$latency_output")"
+    fi
+    rm -f "$latency_output"
+    [ -n "$latency_ms" ] || return
+    rating="$(latency_rating "$latency_ms")"
+
+    case "$rating" in
+      great) success "Latency to your SSH client: ${latency_ms}ms (${green}${rating}${reset})" ;;
+      good) success "Latency to your SSH client: ${latency_ms}ms (${rating})" ;;
+      poor) warning "Latency to your SSH client: ${latency_ms}ms (${rating})" ;;
+      bad) warning "Latency to your SSH client: ${latency_ms}ms (${red}${rating}${reset})" ;;
+    esac
+
+    case "$rating" in
+      poor|bad) confirm_continue_for_latency "$latency_ms" "$rating" ;;
+    esac
+  else
+    rm -f "$latency_output"
+  fi
 }
 
 install_docker() {
@@ -250,6 +364,7 @@ main() {
 
   require_linux
   require_root
+  check_ssh_latency
   install_docker
   start_docker
   require_tailscale
