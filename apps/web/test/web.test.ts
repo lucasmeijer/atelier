@@ -387,6 +387,8 @@ describe("web app contracts", () => {
       expect(isGitProjectInit(entry.init) && entry.init.projectId).toBe(project.id);
       expect(isGitProjectInit(entry.init) && entry.init.name).toBe("sample-project");
       expect(body).toContain("sample-project");
+      expect(body).toContain(`action="replace" target="agent_launch_project_modal_${project.id}"`);
+      expect(body).not.toContain("do it");
       expect(body).not.toContain("sample-project.git");
       expect(body).not.toContain(`Workspace ${entry.id}`);
     });

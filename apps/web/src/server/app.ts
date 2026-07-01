@@ -870,7 +870,11 @@ ${moduleStylesHtml()}
         attachmentDraft: String(form.get("attachmentDraft") ?? ""),
       },
     });
-    return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
+
+    const modalStream = options.project
+      ? turboReplaceStream(domId("agent_launch_project_modal", options.project.id), await launchProjectAgentModal(options.project, model))
+      : turboReplaceStream("agent_launch_empty_workspace_modal", await launchEmptyAgentModal(model));
+    return turboStreamResponse(`${turboUpdateStream("workspaces_table_rows", renderWorkspaceRows())}${modalStream}`);
   }
 
   async function createEmptyAgentWorkspaceEndpoint(request: Request): Promise<Response> {
