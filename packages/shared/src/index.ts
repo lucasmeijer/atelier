@@ -16,6 +16,18 @@ export function domId(...parts: string[]): string {
   return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
+function encodeWorkspaceFilePath(path: string): string {
+  return path.split("/").map((part, index) => index === 0 ? part : encodeURIComponent(part)).join("/");
+}
+
+export function workspaceProxyUrl(workspaceId: string, appKey: string, path: string): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  if (appKey === "file") return `/workspaces/${encodeURIComponent(workspaceId)}/files${encodeWorkspaceFilePath(normalizedPath)}`;
+  const portMatch = appKey.match(/^port-(\d+)$/)!;
+  if (portMatch) return `/workspaces/${encodeURIComponent(workspaceId)}/ports/${portMatch[1]}${normalizedPath}`;
+  return `/workspaces/${encodeURIComponent(workspaceId)}/apps/${encodeURIComponent(appKey)}${normalizedPath}`;
+}
+
 export async function copyTextToClipboard(text: string): Promise<void> {
   if (navigator.clipboard && window.isSecureContext) {
     await navigator.clipboard.writeText(text);

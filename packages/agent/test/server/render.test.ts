@@ -27,8 +27,9 @@ describe("tool rendering", () => {
     expect(html).not.toContain("Successfully wrote");
     expect(html).not.toContain("no output");
     expect(html).toContain("agent-tool-detail flush");
-    expect(html).toContain('data-controller="agent-fullscreen"');
-    expect(html).toContain('template data-agent-fullscreen-target="content"');
+    expect(html).toContain('data-controller="atelier-fullscreen"');
+    expect(html).toContain('data-atelier-fullscreen-mode-value="template"');
+    expect(html).toContain('template data-atelier-fullscreen-target="content"');
   });
 
   test("edit renders diff instead of raw JSON", () => {
@@ -69,6 +70,8 @@ describe("tool rendering", () => {
       details: { displayAnsi: "\x1b[31mred\x1b[0m <tag>" },
     }));
     expect(html).toContain("agent-bash-result");
+    expect(html).toContain('data-controller="atelier-fullscreen"');
+    expect(html).toContain('template data-atelier-fullscreen-target="content"');
     expect(html).toContain("Terminal");
     expect(html).toContain("Model");
     expect(html).toContain("checked");

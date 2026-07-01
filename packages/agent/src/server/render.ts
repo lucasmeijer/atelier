@@ -405,8 +405,8 @@ export function renderRunningToolCard(ctx: AgentRenderContext, tool: ToolView): 
   const elapsed = tool.startedAt
     ? `<span class="agent-tool-elapsed" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}"${tool.timeoutSeconds ? ` data-agent-elapsed-max-value="${tool.timeoutSeconds}"` : ""}><span data-agent-elapsed-target="time">0s</span></span>`
     : "";
-  const fullscreenTemplate = renderFullscreenTemplate(tool, renderer, argsSummary);
-  const fullscreen = fullscreenTemplate ? ` data-controller="agent-fullscreen" data-agent-fullscreen-title-value="${escapeHtml(fullscreenTitle(tool, argsSummary))}"` : "";
+  const fullscreenTemplate = renderFullscreenTemplate(tool, renderer);
+  const fullscreen = fullscreenTemplate ? fullscreenAttributes(fullscreenTitle(tool, argsSummary)) : "";
   return `<div class="agent-tool running ${toolClass(tool.name)}"${fullscreen}>
     <div class="agent-tool-head"><span class="agent-tool-glyph pending">…</span><code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span>${elapsed}</div>
     ${terminal}${fullscreenTemplate}
@@ -428,8 +428,8 @@ export function renderToolCard(ctx: AgentRenderContext, tool: ToolView, options:
   const copyButton = tool.name === "bash" && resultHtml
     ? `<button type="button" class="agent-tool-copy" data-controller="agent-copy" data-action="click->agent-copy#copy" title="Copy output to clipboard" aria-label="Copy bash output to clipboard"><span class="agent-tool-copy-icon" aria-hidden="true">⧉</span></button>`
     : "";
-  const fullscreenTemplate = renderFullscreenTemplate(tool, renderer, argsSummary);
-  const fullscreen = fullscreenTemplate ? ` data-controller="agent-fullscreen" data-agent-fullscreen-title-value="${escapeHtml(fullscreenTitle(tool, argsSummary))}"` : "";
+  const fullscreenTemplate = renderFullscreenTemplate(tool, renderer);
+  const fullscreen = fullscreenTemplate ? fullscreenAttributes(fullscreenTitle(tool, argsSummary)) : "";
   return `<details class="agent-tool done ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}"${options.open ? " open" : ""}${fullscreen}>
     <summary class="agent-tool-head">${glyph}<code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span>${copyButton}</summary>
     <div class="agent-tool-detail${flushSingleBlock ? " flush" : ""}">${bodyHtml}</div>
@@ -468,10 +468,14 @@ function fullscreenTitle(tool: ToolView, argsSummary: string): string {
   return [tool.name, argsSummary].filter(Boolean).join(" ");
 }
 
-function renderFullscreenTemplate(tool: ToolView, renderer: ToolRenderer, argsSummary: string): string {
+function fullscreenAttributes(title: string): string {
+  return ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(title)}"`;
+}
+
+function renderFullscreenTemplate(tool: ToolView, renderer: ToolRenderer): string {
   const html = renderer.fullscreenHtml?.(tool);
   if (!html) return "";
-  return `<template data-agent-fullscreen-target="content"><section class="agent-tool agent-tool-fullscreen ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}"><div class="agent-tool-head"><code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span></div><div class="agent-tool-detail flush">${html}</div></section></template>`;
+  return `<template data-atelier-fullscreen-target="content">${html}</template>`;
 }
 
 function toolArgs(tool: ToolView): Record<string, unknown> | undefined {
@@ -687,7 +691,7 @@ function bashOutputHtml(text: string): string {
   return colorizePlainBuildOutput(text);
 }
 
-function bashResultHtml(tool: ToolView): string {
+function bashResultHtml(tool: ToolView, variant = "inline"): string {
   const displayAnsi = bashDetails(tool)?.displayAnsi;
   const terminalHtml = typeof displayAnsi === "string" && displayAnsi.trim()
     ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(displayAnsi)}</pre>`
@@ -697,7 +701,7 @@ function bashResultHtml(tool: ToolView): string {
   if (!terminalHtml) return modelHtml;
   if (!modelHtml) return terminalHtml;
 
-  const id = `bash-${domIdFragment(tool.callId)}`;
+  const id = `bash-${domIdFragment(tool.callId)}-${variant}`;
   const terminalId = `${id}-terminal`;
   const modelId = `${id}-model`;
   return `<div class="agent-bash-result">
@@ -717,6 +721,7 @@ const bashRenderer: ToolRenderer = {
   flushSingleBlock: true,
   summary: commandSummary,
   resultHtml: (_ctx, tool) => bashResultHtml(tool),
+  fullscreenHtml: (tool) => bashResultHtml(tool, "fullscreen"),
 };
 
 function readResultHtml(tool: ToolView): string {

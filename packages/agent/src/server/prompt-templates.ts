@@ -146,9 +146,9 @@ export function renderPromptTemplateMenu(templates: readonly PromptTemplate[], q
   if (filtered.length === 0) return `<div class="agent-template-menu empty">No prompt templates</div>`;
   return `<div class="agent-template-menu" role="listbox" aria-label="Prompt templates">${filtered.map((template, index) => {
     const preview = `<pre class="agent-template-preview">${escapeHtml(template.prompt)}</pre>`;
-    return `<button type="button" class="agent-template-option${index === 0 ? " active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-template-trigger="${escapeHtml(template.trigger)}" data-controller="agent-fullscreen" data-agent-fullscreen-title-value="${escapeHtml(template.trigger)}">
+    return `<button type="button" class="agent-template-option${index === 0 ? " active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-template-trigger="${escapeHtml(template.trigger)}" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(template.trigger)}">
       <span class="agent-template-name">${escapeHtml(template.trigger)}</span>${template.argumentHint ? `<span class="agent-template-args">${escapeHtml(template.argumentHint)}</span>` : ""}<span class="agent-template-desc">${escapeHtml(template.description)}</span>
-      <template data-agent-fullscreen-target="content">${preview}</template>
+      <template data-atelier-fullscreen-target="content">${preview}</template>
     </button>`;
   }).join("")}</div>`;
 }

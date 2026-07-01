@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import { CableTopics, copyTextToClipboard, type AtelierCableClient, type CableIdentifier, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
+import { CableTopics, copyTextToClipboard, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
@@ -409,18 +409,6 @@ function createAgentNoticeController(Controller: StimulusControllerConstructor) 
 // agent-proxy: fill canonical proxy URLs for server-rendered embeds
 // ---------------------------------------------------------------------------
 
-function encodeFilePath(path: string): string {
-  return path.split("/").map((part, index) => index === 0 ? part : encodeURIComponent(part)).join("/");
-}
-
-function workspaceProxyUrl(workspaceId: string, appKey: string, path: string): string {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  if (appKey === "file") return `/workspaces/${encodeURIComponent(workspaceId)}/files${encodeFilePath(normalizedPath)}`;
-  const portMatch = appKey.match(/^port-(\d+)$/);
-  if (portMatch) return `/workspaces/${encodeURIComponent(workspaceId)}/ports/${portMatch[1]}${normalizedPath}`;
-  return `/workspaces/${encodeURIComponent(workspaceId)}/apps/${encodeURIComponent(appKey)}${normalizedPath}`;
-}
-
 function createAgentProxyController(Controller: StimulusControllerConstructor) {
   return class AgentProxyController extends Controller {
     static values = { workspaceId: String, appKey: String, path: String };
@@ -433,214 +421,6 @@ function createAgentProxyController(Controller: StimulusControllerConstructor) {
       const url = workspaceProxyUrl(this.workspaceIdValue, this.appKeyValue, this.pathValue || "/");
       if (this.element instanceof HTMLAnchorElement) this.element.href = url;
       else if (this.element instanceof HTMLImageElement || this.element instanceof HTMLVideoElement || this.element instanceof HTMLIFrameElement) this.element.src = url;
-    }
-  };
-}
-
-// ---------------------------------------------------------------------------
-// agent-fullscreen: show media and explicit fullscreen templates in a modal
-// ---------------------------------------------------------------------------
-
-type FullscreenMediaElement = HTMLIFrameElement | HTMLImageElement | HTMLVideoElement;
-type FullscreenViewer = { element: HTMLElement; connect?: () => void; disconnect?: () => void };
-
-function createAgentFullscreenController(Controller: StimulusControllerConstructor) {
-  let hovered: { open(): void } | undefined;
-  let connected = 0;
-
-  const consumePlainF = (event: KeyboardEvent): boolean => {
-    if (event.key.toLowerCase() !== "f" || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.repeat) return false;
-    const target = event.target instanceof HTMLElement ? event.target : null;
-    if (target?.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']")) return false;
-    event.preventDefault();
-    return true;
-  };
-
-  const documentKeydown = (event: KeyboardEvent): void => {
-    if (!hovered || !consumePlainF(event)) return;
-    hovered.open();
-  };
-
-  return class AgentFullscreenController extends Controller {
-    declare readonly element: HTMLElement;
-    private dialog?: HTMLDialogElement;
-    private media?: FullscreenMediaElement;
-    private readonly loaded = (): void => this.attachFrameShortcut();
-    private readonly pointerenter = (): void => { hovered = this; };
-    private readonly pointerleave = (): void => { if (hovered === this) hovered = undefined; };
-    private readonly frameKeydown = (event: KeyboardEvent): void => {
-      if (!consumePlainF(event)) return;
-      if (this.dialog?.open) this.dialog.close();
-      else this.open();
-    };
-    private readonly dialogKeydown = (event: KeyboardEvent): void => {
-      if (!consumePlainF(event)) return;
-      this.dialog?.close();
-    };
-
-    connect(): void {
-      this.media = this.findMedia();
-      if (this.media instanceof HTMLIFrameElement) {
-        this.media.addEventListener("load", this.loaded);
-        this.attachFrameShortcut();
-      }
-      this.element.addEventListener("pointerenter", this.pointerenter);
-      this.element.addEventListener("pointerleave", this.pointerleave);
-      if (connected++ === 0) document.addEventListener("keydown", documentKeydown, true);
-    }
-
-    disconnect(): void {
-      if (hovered === this) hovered = undefined;
-      if (this.media instanceof HTMLIFrameElement) {
-        this.media.removeEventListener("load", this.loaded);
-        this.detachFrameShortcut();
-      }
-      this.element.removeEventListener("pointerenter", this.pointerenter);
-      this.element.removeEventListener("pointerleave", this.pointerleave);
-      if (--connected === 0) document.removeEventListener("keydown", documentKeydown, true);
-      this.dialog?.close();
-      this.dialog?.remove();
-      this.dialog = undefined;
-    }
-
-    open(): void {
-      if (this.dialog?.open) {
-        this.dialog.close();
-        return;
-      }
-      const viewer = this.createViewer();
-      if (!viewer) return;
-
-      const dialog = document.createElement("dialog");
-      dialog.className = "agent-fullscreen-dialog";
-
-      const header = document.createElement("div");
-      header.className = "agent-fullscreen-bar";
-      const title = document.createElement("span");
-      title.textContent = this.title();
-      const close = document.createElement("button");
-      close.type = "button";
-      close.className = "agent-fullscreen-close";
-      close.textContent = "Close";
-      close.addEventListener("click", () => dialog.close());
-      header.append(title, close);
-
-      dialog.append(header, viewer.element);
-      dialog.addEventListener("keydown", this.dialogKeydown);
-      dialog.addEventListener("close", () => {
-        viewer.disconnect?.();
-        dialog.removeEventListener("keydown", this.dialogKeydown);
-        dialog.remove();
-        if (this.dialog === dialog) this.dialog = undefined;
-      }, { once: true });
-      document.body.append(dialog);
-      this.dialog = dialog;
-      dialog.showModal();
-      viewer.connect?.();
-    }
-
-    private findMedia(): FullscreenMediaElement | undefined {
-      if (this.element instanceof HTMLIFrameElement || this.element instanceof HTMLImageElement || this.element instanceof HTMLVideoElement) return this.element;
-      return this.element.querySelector<HTMLIFrameElement | HTMLImageElement | HTMLVideoElement>("iframe, img, video") ?? undefined;
-    }
-
-    private createViewer(): FullscreenViewer | undefined {
-      const template = this.element.querySelector<HTMLTemplateElement>("template[data-agent-fullscreen-target='content']");
-      if (template) {
-        const container = document.createElement("div");
-        container.className = "agent-fullscreen-html";
-        container.append(template.content.cloneNode(true));
-        return { element: container };
-      }
-
-      const media = this.media ?? this.findMedia();
-      const src = media ? this.mediaSrc(media) : "";
-      return media && src ? this.createMediaViewer(media, src) : undefined;
-    }
-
-    private createMediaViewer(source: FullscreenMediaElement, src: string): FullscreenViewer {
-      if (source instanceof HTMLIFrameElement) {
-        const frame = document.createElement("iframe");
-        frame.className = "agent-fullscreen-iframe";
-        frame.src = src;
-        for (const attr of ["sandbox", "allow", "referrerpolicy"] as const) {
-          const value = source.getAttribute(attr);
-          if (value !== null) frame.setAttribute(attr, value);
-        }
-        const attachModalShortcut = (): void => {
-          const doc = frame.contentDocument;
-          if (!doc) return;
-          doc.removeEventListener("keydown", this.dialogKeydown);
-          doc.addEventListener("keydown", this.dialogKeydown);
-        };
-        frame.addEventListener("load", attachModalShortcut);
-        return {
-          element: frame,
-          connect: attachModalShortcut,
-          disconnect: () => {
-            frame.removeEventListener("load", attachModalShortcut);
-            frame.contentDocument?.removeEventListener("keydown", this.dialogKeydown);
-          },
-        };
-      }
-
-      if (source instanceof HTMLVideoElement) {
-        const video = document.createElement("video");
-        video.className = "agent-fullscreen-video";
-        video.src = src;
-        video.controls = true;
-        video.autoplay = !source.paused;
-        video.currentTime = source.currentTime;
-        video.muted = source.muted;
-        video.playbackRate = source.playbackRate;
-        return {
-          element: video,
-          disconnect: () => {
-            source.currentTime = video.currentTime;
-            if (!video.paused && source.paused) void source.play();
-          },
-        };
-      }
-
-      const image = document.createElement("img");
-      image.className = "agent-fullscreen-img";
-      image.src = src;
-      image.alt = source.alt;
-      return { element: image };
-    }
-
-    private attachFrameShortcut(): void {
-      const doc = this.media instanceof HTMLIFrameElement ? this.media.contentDocument : undefined;
-      if (!doc) return;
-      doc.removeEventListener("keydown", this.frameKeydown);
-      doc.addEventListener("keydown", this.frameKeydown);
-    }
-
-    private detachFrameShortcut(): void {
-      const doc = this.media instanceof HTMLIFrameElement ? this.media.contentDocument : undefined;
-      doc?.removeEventListener("keydown", this.frameKeydown);
-    }
-
-    private mediaSrc(media: FullscreenMediaElement): string {
-      if (media instanceof HTMLImageElement) return media.currentSrc || media.src || this.proxyUrl(media);
-      if (media instanceof HTMLVideoElement) return media.currentSrc || media.src || this.proxyUrl(media);
-      return media.src || this.proxyUrl(media);
-    }
-
-    private proxyUrl(element: HTMLElement): string {
-      const workspaceId = element.dataset.agentProxyWorkspaceIdValue;
-      const appKey = element.dataset.agentProxyAppKeyValue;
-      const path = element.dataset.agentProxyPathValue;
-      if (!workspaceId || !appKey) return "";
-      return workspaceProxyUrl(workspaceId, appKey, path || "/");
-    }
-
-    private title(): string {
-      const explicitTitle = this.element.dataset.agentFullscreenTitleValue;
-      if (explicitTitle) return explicitTitle;
-      const media = this.media ?? this.findMedia();
-      if (media instanceof HTMLImageElement) return media.alt || "Image";
-      return this.element.querySelector(".agent-media-frame-bar span")?.textContent || media?.getAttribute("title") || "Preview";
     }
   };
 }
@@ -1097,7 +877,6 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-code-copy", createAgentCodeCopyController(Controller));
     application.register("agent-copy", createAgentCopyController(Controller));
     application.register("agent-elapsed", createAgentElapsedController(Controller));
-    application.register("agent-fullscreen", createAgentFullscreenController(Controller));
     application.register("agent-html-preview", createAgentHtmlPreviewController(Controller));
     application.register("agent-notice", createAgentNoticeController(Controller));
     application.register("agent-prompt-templates", createAgentPromptTemplatesController(Controller));

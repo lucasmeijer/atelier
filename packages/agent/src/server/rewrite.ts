@@ -43,7 +43,7 @@ function isLoopbackHost(hostname: string): boolean {
 }
 
 function renderFullscreenFrame(title: string, iframeHtml: string, newTabLinkHtml: string): string {
-  return `<div class="agent-media-frame" data-controller="agent-fullscreen"><div class="agent-media-frame-bar"><span>${escapeHtml(title)}</span><div class="agent-media-frame-actions"><button class="agent-media-frame-action" type="button" data-action="agent-fullscreen#open"><span class="agent-shortcut">f</span>ullscreen</button><span class="agent-media-frame-sep" aria-hidden="true">–</span>${newTabLinkHtml}</div></div>${iframeHtml}</div>`;
+  return `<div class="agent-media-frame" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="media" data-atelier-fullscreen-title-value="${escapeHtml(title)}"><div class="agent-media-frame-bar"><span>${escapeHtml(title)}</span><div class="agent-media-frame-actions"><button class="agent-media-frame-action" type="button" data-action="atelier-fullscreen#open"><span class="agent-shortcut">f</span>ullscreen</button><span class="agent-media-frame-sep" aria-hidden="true">–</span>${newTabLinkHtml}</div></div>${iframeHtml}</div>`;
 }
 
 function renderFileEmbed(workspaceId: string, path: string): string {
@@ -54,10 +54,10 @@ function renderFileEmbed(workspaceId: string, path: string): string {
   const proxy = workspaceProxyController(workspaceId, "file", path);
 
   if (imageExtensions.has(ext)) {
-    return `<a class="agent-media-link" ${proxy} target="_blank" rel="noopener"><img class="agent-media-img" data-controller="agent-proxy agent-fullscreen" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="file" data-agent-proxy-path-value="${escapeHtml(path)}" alt="${escapeHtml(name)}" loading="lazy"></a>`;
+    return `<a class="agent-media-link" ${proxy} target="_blank" rel="noopener"><img class="agent-media-img" data-controller="agent-proxy atelier-fullscreen" data-atelier-fullscreen-mode-value="media" data-atelier-fullscreen-title-value="${escapeHtml(name)}" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="file" data-agent-proxy-path-value="${escapeHtml(path)}" alt="${escapeHtml(name)}" loading="lazy"></a>`;
   }
   if (videoExtensions.has(ext)) {
-    return `<video class="agent-media-video" data-controller="agent-proxy agent-fullscreen" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="file" data-agent-proxy-path-value="${escapeHtml(path)}" controls preload="metadata"></video>`;
+    return `<video class="agent-media-video" data-controller="agent-proxy atelier-fullscreen" data-atelier-fullscreen-mode-value="media" data-atelier-fullscreen-title-value="${escapeHtml(name)}" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="file" data-agent-proxy-path-value="${escapeHtml(path)}" controls preload="metadata"></video>`;
   }
   if (ext === "html" || ext === "htm") {
     const iframe = `<iframe data-controller="agent-proxy agent-html-preview" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="file" data-agent-proxy-path-value="${escapeHtml(path)}" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>`;

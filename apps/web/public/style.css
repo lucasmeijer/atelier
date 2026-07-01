@@ -145,6 +145,7 @@ a { color: inherit; text-decoration: none; }
 .group-tab:active { cursor: grabbing; }
 .group-tab-label { appearance: none; border: 0; background: transparent; color: inherit; font: inherit; font-size: inherit; font-weight: inherit; padding: 9px 5px 9px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 .group-tab-label span { overflow: hidden; text-overflow: ellipsis; }
+.group-tab-label:focus, .group-overflow-tab-label:focus { outline: none; }
 .group-tab-close-form { display: flex; align-items: center; margin: 0; padding: 0 6px 0 0; }
 .group-tab-close { appearance: none; border: 0; background: transparent; color: var(--muted-2); width: 18px; height: 18px; border-radius: 4px; display: inline-grid; place-items: center; padding: 0; font: inherit; font-size: 16px; line-height: 1; cursor: pointer; }
 .group-tab-close:hover { color: var(--text); }
@@ -179,6 +180,20 @@ a { color: inherit; text-decoration: none; }
 .group-resizer { flex: 0 0 7px; cursor: col-resize; background: linear-gradient(90deg, transparent, var(--line), transparent); position: relative; }
 .group-resizer:hover { background: var(--accent-soft); }
 .workspace-group .workspace-panes { flex: 1; min-height: 0; overflow: auto; padding: 14px; }
+.atelier-fullscreen-open { overflow: hidden; }
+.atelier-fullscreen-bar { position: relative; z-index: 10001; height: 37px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--muted); font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 11px; box-sizing: border-box; }
+.atelier-fullscreen-bar span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.atelier-fullscreen-bar small { flex: none; color: var(--muted-2); font: inherit; }
+.atelier-fullscreen-close { flex: none; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--text); font: inherit; padding: 4px 9px; cursor: pointer; }
+.atelier-fullscreen-close:hover { border-color: var(--accent); color: var(--accent); }
+.atelier-fullscreen-live { position: fixed !important; z-index: 10000; inset: 37px 0 0 0; display: block !important; width: auto !important; height: auto !important; min-height: 0 !important; overflow: auto; background: var(--bg); }
+.atelier-fullscreen-live-bar { position: fixed; top: 0; left: 0; right: 0; }
+.atelier-fullscreen-dialog { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; margin: 0; padding: 0; border: 0; background: #000; color: var(--text); }
+.atelier-fullscreen-dialog::backdrop { background: rgba(0,0,0,.65); }
+.atelier-fullscreen-dialog .atelier-fullscreen-bar { position: static; }
+.atelier-fullscreen-frame { display: block; width: 100%; height: calc(100vh - 37px); border: 0; background: #fff; }
+.atelier-fullscreen-image, .atelier-fullscreen-video { display: block; width: 100%; height: calc(100vh - 37px); object-fit: contain; background: #000; }
+.atelier-fullscreen-html { height: calc(100vh - 37px); overflow: auto; padding: 14px; background: var(--bg); box-sizing: border-box; }
 .empty-group { height: 100%; min-height: 260px; display: grid; place-content: center; gap: 12px; text-align: center; color: var(--muted); background: repeating-linear-gradient(135deg,#fff,#fff 12px,#f9fbff 12px,#f9fbff 24px); }
 .workspace-wide { max-width: 940px; margin: 0 auto; }
 .workspace-grid { display: grid; grid-template-columns: 1fr 380px; gap: 22px; align-items: start; }
