@@ -451,6 +451,30 @@ install_atelier() {
   success "Atelier container started"
 }
 
+follow_atelier_logs() {
+  log ""
+  log "${bold}Atelier is starting. Following logs now.${reset}"
+  log "Press Ctrl-C to stop watching logs; Atelier will keep running."
+  log ""
+
+  docker logs -f "$atelier_name" &
+  local logs_pid="$!"
+
+  trap '
+    trap - INT TERM
+    log ""
+    log "Stopped watching logs. Atelier is still running."
+    kill "$logs_pid" >/dev/null 2>&1 || true
+    wait "$logs_pid" >/dev/null 2>&1 || true
+    exit 0
+  ' INT TERM
+
+  local logs_status=0
+  wait "$logs_pid" || logs_status="$?"
+  trap - INT TERM
+  return "$logs_status"
+}
+
 main() {
   parse_args "$@"
 
@@ -466,12 +490,7 @@ main() {
   require_tailscale
   configure_tailscale_serve
   install_atelier
-
-  log ""
-  log "${bold}Atelier is starting. Following logs now.${reset}"
-  log "Press Ctrl-C to stop watching logs; Atelier will keep running."
-  log ""
-  docker logs -f "$atelier_name"
+  follow_atelier_logs
 }
 
 main "$@"
