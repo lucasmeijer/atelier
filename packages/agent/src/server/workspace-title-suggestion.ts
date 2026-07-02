@@ -72,9 +72,18 @@ export function maybeNameWorkspaceFromAgentPrompt(workspaceId: string, userMessa
         logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, "model is not available");
         return;
       }
+      if (!registry.hasConfiguredAuth(model)) {
+        logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, "model authentication is not configured");
+        return;
+      }
       const requestAuth = await registry.getApiKeyAndHeaders(model);
+      const authErrors = registry.authStorage.drainErrors();
       if (!requestAuth.ok) {
         logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, requestAuth.error);
+        return;
+      }
+      if (authErrors.length > 0 && !requestAuth.apiKey) {
+        logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, authErrors[0]?.message ?? "model authentication failed", { authErrors });
         return;
       }
       const response = await completeSimple(model, {
