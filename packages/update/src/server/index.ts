@@ -207,11 +207,11 @@ async function removeStaleUpdateHelpers(docker: DockerExec): Promise<void> {
 
 async function checkUpdaterPortAvailable(): Promise<void> {
   try {
-    const server = Bun.serve({ port: updaterPort, fetch: () => new Response("ok") });
+    const server = Bun.serve({ hostname: "127.0.0.1", port: updaterPort, fetch: () => new Response("ok") });
     server.stop(true);
   } catch (error) {
     const code = error instanceof Error ? (error as Error & { code?: unknown }).code : undefined;
-    if (code === "EADDRINUSE") throw new Error(`Update helper port ${updaterPort} is already in use. Stop the process using port ${updaterPort} and retry the update.`);
+    if (code === "EADDRINUSE") throw new Error(`Update helper port ${updaterPort} is already in use on 127.0.0.1. Stop the process using 127.0.0.1:${updaterPort} and retry the update.`);
     throw error;
   }
 }
@@ -326,6 +326,17 @@ async function renderRestartModal(updateManager: UpdateManager): Promise<string>
 </dialog>`;
 }
 
+function renderRestartErrorModal(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `<dialog id="restart-update-error-modal" class="modal update-restart-modal" data-controller="modal" data-modal-auto-show-value="true">
+  <form method="dialog">
+    <h2>Could not restart Atelier</h2>
+    <p>${escapeHtml(message)}</p>
+    <div class="modal-actions"><button class="btn primary" value="close">OK</button></div>
+  </form>
+</dialog>`;
+}
+
 function installerCommand(channel: ReleaseChannel): string {
   return `curl -fsSL https://lucasmeijer.com/get-atelier | sudo bash${channel === "latest" ? " -s -- --channel latest" : ""}`;
 }
@@ -349,6 +360,10 @@ function modalStream(html: string): Response {
   return turboStreamResponse(turboStream("update", "update_modal_host", html));
 }
 
+function wantsTurboStream(request: Request): boolean {
+  return request.headers.get("accept")?.includes("text/vnd.turbo-stream.html") ?? false;
+}
+
 export function createUpdateRouteHandler(updateManager: UpdateManager): (request: Request, url: URL) => Promise<Response | undefined> {
   return async (request, url) => {
     if (url.pathname === "/update" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 303);
@@ -365,7 +380,16 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
     if (url.pathname === "/update/whats-new/notes" && request.method === "GET") return new Response(await renderWhatsNewNotes(updateManager), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
     if (url.pathname === "/update/installer-required" && request.method === "GET") return modalStream(renderInstallerRequiredModal(updateManager));
     if (url.pathname === "/update/restart-confirm" && request.method === "GET") return modalStream(await renderRestartModal(updateManager));
-    if (url.pathname === "/update/restart" && request.method === "POST") return await updateManager.launchUpdater(url);
+    if (url.pathname === "/update/restart" && request.method === "POST") {
+      if (!wantsTurboStream(request)) return await updateManager.launchUpdater(url);
+      try {
+        const response = await updateManager.launchUpdater(url);
+        const location = response.headers.get("location");
+        return location ? turboStreamResponse("", { headers: { location } }) : turboStreamResponse("");
+      } catch (error) {
+        return modalStream(renderRestartErrorModal(error));
+      }
+    }
     if (url.pathname === "/update/state" && request.method === "GET") return new Response(JSON.stringify(updateManager.snapshot()), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
     return undefined;
   };

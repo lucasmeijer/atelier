@@ -82,6 +82,7 @@ async function run(): Promise<void> {
 }
 
 Bun.serve({
+  hostname: "127.0.0.1",
   port: updaterPort,
   fetch(request) {
     const url = new URL(request.url);

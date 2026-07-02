@@ -328,6 +328,47 @@ describe("update routes", () => {
     expect(text).not.toContain("<section>notes</section>");
   });
 
+  test("restart route returns a turbo redirect target after launching the helper", async () => {
+    const { ctx } = context();
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime("old"),
+      fetchMetadata: async () => ({ digest: "sha256:new", revision: "new" }),
+      pullImage: async () => {},
+      docker: async () => ({ stdout: "updater", stderr: "", code: 0 }),
+      checkUpdaterPortAvailable: async () => {},
+      waitForUpdater: async () => {},
+      setInterval: noInterval(),
+    });
+    await manager.initialize(ctx);
+    await manager.startPull();
+    const route = createUpdateRouteHandler(manager);
+    const response = await route(new Request("http://atelier.test/update/restart?theme=nord", { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } }), new URL("http://atelier.test/update/restart?theme=nord"));
+    expect(response!.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
+    expect(response!.headers.get("location")).toBe("https://atelier.test:81/?theme=nord");
+  });
+
+  test("restart route returns a modest error modal for turbo requests", async () => {
+    const { ctx } = context();
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime("old"),
+      fetchMetadata: async () => ({ digest: "sha256:new", revision: "new" }),
+      pullImage: async () => {},
+      docker: async () => ({ stdout: "", stderr: "", code: 0 }),
+      checkUpdaterPortAvailable: async () => { throw new Error("Update helper port 81 is already in use on 127.0.0.1. Stop the process using 127.0.0.1:81 and retry the update."); },
+      setInterval: noInterval(),
+    });
+    await manager.initialize(ctx);
+    await manager.startPull();
+    const route = createUpdateRouteHandler(manager);
+    const response = await route(new Request("http://test/update/restart", { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" } }), new URL("http://test/update/restart"));
+    const text = await response!.text();
+    expect(response!.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
+    expect(text).toContain("restart-update-error-modal");
+    expect(text).toContain("Could not restart Atelier");
+    expect(text).toContain("127.0.0.1:81");
+    expect(text).toContain(">OK</button>");
+  });
+
   test("start route kicks off pulling against the shared manager", async () => {
     const { ctx } = context();
     let pulled = false;

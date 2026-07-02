@@ -3,6 +3,7 @@ import { CableTopics, type AtelierCableClient, type CableIdentifier, type Worksp
 declare global {
   interface Window {
     AtelierCable?: AtelierCableClient;
+    Turbo?: { renderStreamMessage(html: string): void };
   }
 }
 
@@ -11,13 +12,22 @@ export const atelierClientModule: WorkspaceClientModule = {
   install({ application, Controller }) {
     class UpdateRestartController extends Controller {
       declare readonly element: HTMLFormElement;
-      submit(event: SubmitEvent): void {
+      async submit(event: SubmitEvent): Promise<void> {
+        event.preventDefault();
         const theme = document.documentElement.dataset.theme ?? localStorage.getItem("atelier.theme") ?? "";
         const action = new URL(this.element.action, window.location.href);
         if (theme) action.searchParams.set("theme", theme);
-        this.element.action = action.toString();
         const button = event.submitter instanceof HTMLButtonElement ? event.submitter : this.element.querySelector("button[type=submit]");
         button?.setAttribute("disabled", "true");
+        const response = await fetch(action, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" }, credentials: "same-origin" });
+        const location = response.headers.get("location");
+        if (location) {
+          window.location.href = new URL(location, window.location.href).toString();
+          return;
+        }
+        const html = await response.text();
+        if (html) window.Turbo?.renderStreamMessage(html);
+        button?.removeAttribute("disabled");
       }
     }
 
