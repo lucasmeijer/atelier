@@ -15,7 +15,7 @@ packages/vscode/workspace-image.json
 
 ## Default image
 
-The default workspace image is built from Atelier's package `workspace-image.json` files. In local development, `bun run web` writes a temporary Docker build context under `/tmp`, ensures the deterministic local image tag exists before starting the dev server, and only builds when that image tag is missing from Docker.
+The default workspace image is built from Atelier's package `workspace-image.json` files. It includes Docker CLI/daemon packages and Buildx, but Atelier does not start `dockerd` automatically inside workspaces; start it manually when a workspace needs nested Docker. In local development, `bun run web` writes a temporary Docker build context under `/tmp`, ensures the deterministic local image tag exists before starting the dev server, and only builds when that image tag is missing from Docker.
 
 When publishing Atelier with `bun run image:publish`, the publish script also builds and pushes the corresponding default workspace image to:
 
