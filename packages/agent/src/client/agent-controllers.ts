@@ -523,6 +523,11 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
         this.move(event.key === "ArrowDown" ? 1 : -1);
         return;
       }
+      if (event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        this.moveTo(event.key === "Home" ? 0 : this.options().length - 1);
+        return;
+      }
       if (event.key.toLowerCase() === "f" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
         const active = this.activeOption();
         if (!active) return;
@@ -557,7 +562,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
 
     private readonly pointerover = (event: Event): void => {
       const option = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(autocomplete.optionSelector) : null;
-      if (option) this.activate(option);
+      if (option) this.activate(option, { scroll: false });
     };
 
     private async refresh(): Promise<void> {
@@ -577,12 +582,15 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       if (id !== this.requestId) return;
       this.menuTarget.innerHTML = html;
       this.menuTarget.hidden = false;
+      const active = this.activeOption();
+      if (active) this.activate(active, { scroll: false });
     }
 
     private close(): void {
       this.requestId++;
       window.clearTimeout(this.debounceTimer);
       this.menuTarget.hidden = true;
+      this.inputTarget.removeAttribute("aria-activedescendant");
       this.menuTarget.replaceChildren();
     }
 
@@ -594,12 +602,15 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       return this.menuTarget.querySelector<HTMLElement>(`${autocomplete.optionSelector}.active`) ?? this.options()[0];
     }
 
-    private activate(option: HTMLElement): void {
+    private activate(option: HTMLElement, options: { scroll?: boolean } = {}): void {
       for (const candidate of this.options()) {
         const active = candidate === option;
         candidate.classList.toggle("active", active);
         candidate.setAttribute("aria-selected", active ? "true" : "false");
       }
+      option.id ||= `${this.element.id || "html-autocomplete"}-option-${Math.random().toString(36).slice(2)}`;
+      this.inputTarget.setAttribute("aria-activedescendant", option.id);
+      if (options.scroll !== false) option.scrollIntoView({ block: "nearest" });
     }
 
     private move(delta: number): void {
@@ -608,6 +619,12 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       const current = this.activeOption();
       const index = current ? options.indexOf(current) : 0;
       this.activate(options[(index + delta + options.length) % options.length]);
+    }
+
+    private moveTo(index: number): void {
+      const options = this.options();
+      const option = options[index];
+      if (option) this.activate(option);
     }
 
     private insert(option: HTMLElement): void {

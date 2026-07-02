@@ -565,7 +565,7 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 0; }
 .agent-template-spinner { display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -2px; border-radius: 50%; border: 2px solid var(--line2); border-top-color: var(--accent); animation: agent-template-spin .75s linear infinite; }
 @keyframes agent-template-spin { to { transform: rotate(360deg); } }
 .agent-template-option { width: 100%; display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 8px; align-items: baseline; padding: 7px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
-.agent-template-option:hover, .agent-template-option.visible { background: var(--bg); }
+.agent-template-option:hover, .agent-template-option.active, .agent-template-option.visible { background: var(--bg); }
 .agent-template-name { font-family: var(--mono); font-size: 12px; font-weight: 750; color: var(--accent); }
 .agent-template-args { font-family: var(--mono); font-size: 11px; color: var(--muted2); white-space: nowrap; }
 .agent-template-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }

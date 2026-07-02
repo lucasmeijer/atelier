@@ -166,7 +166,7 @@ async function ensureWorkspaceImage(): Promise<void> {
       const inputHash = await workspaceImageInputSignature();
       if (workspaceImageInputHash === inputHash) continue;
       console.log("[workspace-image] ensuring default workspace image…");
-      console.log(`[workspace-image] ready: ${await ensureDefaultWorkspaceImage()}`);
+      console.log(`[workspace-image] ready: ${await ensureDefaultWorkspaceImage({ buildOutput: "inherit" })}`);
       workspaceImageInputHash = inputHash;
     } while (workspaceImageDirty);
   } finally {

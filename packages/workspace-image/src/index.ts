@@ -20,6 +20,7 @@ export interface ResolveWorkspaceImageOptions {
   workspaceId?: string;
   events?: AtelierEventBus;
   sourcePath?: string;
+  buildOutput?: "observable" | "inherit";
 }
 
 const maxBuildOutputBytes = 64 * 1024;
@@ -92,6 +93,18 @@ function startBuildTask(tag: string, modules: string[], dockerfile: string, cont
   const task: WorkspaceImageBuildTask = { tag, modules, output: "", promise: Promise.resolve() };
   task.promise = (async () => {
     const args = ["build", ...(process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1" ? ["--no-cache"] : []), "-t", tag, "-f", dockerfile, contextDir];
+    if (options.buildOutput === "inherit") {
+      const proc = Bun.spawn(["docker", "build", "--progress=plain", ...(process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1" ? ["--no-cache"] : []), "-t", tag, "-f", dockerfile, contextDir], {
+        cwd: contextDir,
+        env: { ...process.env, DOCKER_BUILDKIT: "1" },
+        stdout: "inherit",
+        stderr: "inherit",
+        stdin: "inherit",
+      });
+      const exitCode = await proc.exited;
+      if (exitCode !== 0) throw new Error(`docker build failed with exit code ${exitCode}`);
+      return;
+    }
     const result = await runHostObservableCommand({
       session: `atelier-provision-image-${crypto.randomUUID().slice(0, 8)}`,
       cwd: contextDir,
@@ -147,7 +160,7 @@ async function ensureBuiltImage(contextDir: string, dockerfile: string, metadata
   return metadata.tag;
 }
 
-export async function ensureDefaultWorkspaceImage(): Promise<string> {
+export async function ensureDefaultWorkspaceImage(options: ResolveWorkspaceImageOptions = {}): Promise<string> {
   const baked = await bakedDefaultWorkspaceImageRef();
   if (baked) {
     await pullImage(baked);
@@ -157,7 +170,7 @@ export async function ensureDefaultWorkspaceImage(): Promise<string> {
   const contextDir = defaultContextDir();
   await generateContext(contextDir);
   const metadata = await contextMetadata(contextDir);
-  return await ensureBuiltImage(contextDir, join(contextDir, "Dockerfile"), metadata);
+  return await ensureBuiltImage(contextDir, join(contextDir, "Dockerfile"), metadata, options);
 }
 
 async function assertWorkspaceDockerfileBase(dockerfile: string): Promise<void> {
