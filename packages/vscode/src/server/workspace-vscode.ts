@@ -41,15 +41,48 @@ export function deleteWorkspaceVSCodeTab(workspaceId: string, title: string): vo
 export async function ensureWorkspaceVSCodeServer(workspaceId: string): Promise<void> {
   const result = await execWorkspaceShell(workspaceId, `
     set -eu
-    if pgrep -u atelier -f 'code serve-web|code-server' >/dev/null 2>&1; then
+    server_pattern='[c]ode serve-web|[c]ode-server'
+    ready_url='http://127.0.0.1:8000/'
+
+    is_ready() {
+      curl -fsS --max-time 2 "$ready_url" >/dev/null 2>&1
+    }
+
+    server_is_running() {
+      pgrep -u atelier -f "$server_pattern" >/dev/null 2>&1
+    }
+
+    start_server() {
+      mkdir -p /.atelier/vscode
+      if command -v atelier-start-vscode >/dev/null 2>&1; then
+        nohup atelier-start-vscode > /.atelier/vscode/server.log 2>&1 &
+      else
+        code_bin=code
+        nohup "$code_bin" serve-web --accept-server-license-terms --host 0.0.0.0 --port 8000 --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode/server.log 2>&1 &
+      fi
+    }
+
+    if is_ready; then
       exit 0
     fi
-    mkdir -p /.atelier/vscode
-    if command -v atelier-start-vscode >/dev/null 2>&1; then
-      nohup atelier-start-vscode > /.atelier/vscode/server.log 2>&1 &
-    else
-      nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port 8000 --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode/server.log 2>&1 &
+
+    if ! server_is_running; then
+      start_server
     fi
+
+    for _ in $(seq 1 120); do
+      if is_ready; then
+        exit 0
+      fi
+      if ! server_is_running; then
+        start_server
+      fi
+      sleep 0.5
+    done
+
+    echo "VS Code server did not become ready at $ready_url" >&2
+    tail -n 80 /.atelier/vscode/server.log /.atelier/vscode-server.log 2>/dev/null || true
+    exit 1
   `, { user: "atelier" });
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || `could not start VS Code server for ${workspaceId}`);
 }

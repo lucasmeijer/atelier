@@ -52,11 +52,12 @@ function envString(name: string): string | undefined {
 function workspacePublishHost(): string { return "127.0.0.1"; }
 function workspaceConnectHost(): string { return "127.0.0.1"; }
 function formatDeleteBlockedMessage(id: string, issues: unknown[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
-async function provisionStep<T>(events: AtelierEventBus | undefined, workspaceId: string, id: string, label: string, fn: () => Promise<T>, options: { parentId?: string } = {}): Promise<T> {
+async function provisionStep<T>(events: AtelierEventBus | undefined, workspaceId: string, id: string, label: string, fn: () => Promise<T>, options: { parentId?: string; output?: (result: T) => string | Promise<string> } = {}): Promise<T> {
   await events?.emit("workspace_provision_step", { workspaceId, id, label, status: "running", parentId: options.parentId });
   try {
     const result = await fn();
-    await events?.emit("workspace_provision_step", { workspaceId, id, label, status: "done", parentId: options.parentId });
+    const output = options.output ? await options.output(result) : undefined;
+    await events?.emit("workspace_provision_step", { workspaceId, id, label, status: "done", parentId: options.parentId, output });
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -98,14 +99,18 @@ async function inspectWorkspaceContainerImage(id: string): Promise<string> {
   return inspected.stdout.trim();
 }
 
+async function workspaceStartupLog(id: string): Promise<string> {
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", "tail -n 120 /.atelier/startup.log 2>/dev/null || true"]);
+  return result.stdout.trim();
+}
+
 async function waitForWorkspaceStartup(id: string): Promise<void> {
-  const deadline = Date.now() + workspaceStartupTimeoutMs;
-  while (Date.now() < deadline) {
-    const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", "test -f /.atelier/ready"]);
-    if (result.exitCode === 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new AtelierCoreError("workspace_startup_timeout", `workspace did not finish startup: ${id}`);
+  const timeoutSeconds = Math.ceil(workspaceStartupTimeoutMs / 1000);
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do test -f /.atelier/ready && exit 0; sleep 0.05; done; exit 1`]);
+  if (result.exitCode === 0) return;
+  const log = await workspaceStartupLog(id);
+  const output = [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n");
+  throw new AtelierCoreError("workspace_startup_timeout", `workspace did not finish startup: ${id}${output ? `\n${output}` : ""}${log ? `\n\nStartup log:\n${log}` : ""}`);
 }
 
 export async function resolveWorkspace(id: string): Promise<string> {
@@ -294,12 +299,58 @@ work_gid="\${ATELIER_HOST_GID:?}"
 if [ "$work_uid" = 0 ] || [ "$work_gid" = 0 ]; then echo "Atelier must run as a non-root host user" >&2; exit 1; fi
 conflict_user="$(getent passwd "$work_uid" | cut -d: -f1 || true)"
 if [ -n "$conflict_user" ] && [ "$conflict_user" != atelier ]; then userdel "$conflict_user"; fi
-if [ "$(id -g atelier)" != "$work_gid" ]; then groupmod -o -g "$work_gid" atelier; fi
-if [ "$(id -u atelier)" != "$work_uid" ] || [ "$(id -g atelier)" != "$work_gid" ]; then usermod -u "$work_uid" -g "$work_gid" atelier; fi`;
+user_changed=0
+if [ "$(id -u atelier)" != "$work_uid" ] || [ "$(id -g atelier)" != "$work_gid" ]; then
+  # Do not replace this with usermod/groupmod without profiling workspace startup.
+  # usermod recursively rewrote ownership in /home/atelier, including the large
+  # prewarmed VS Code tree, and made container startup ~2.5s slower.
+  sed -i -E "s/^(atelier:[^:]*:)[0-9]+:[0-9]+:/\\1\${work_uid}:\${work_gid}:/" /etc/passwd
+  sed -i -E "s/^(atelier:[^:]*:)[0-9]+:/\\1\${work_gid}:/" /etc/group
+  user_changed=1
+fi
+chown atelier:atelier /home/atelier /.atelier /var/lib/atelier
+if [ "$user_changed" = 1 ]; then
+  find /home/atelier -mindepth 1 -maxdepth 1 ! -name .vscode -exec chown -R atelier:atelier {} +
+  if [ -d /home/atelier/.vscode ]; then chown atelier:atelier /home/atelier/.vscode; fi
+fi`;
+}
+
+function workspaceStartupPreambleScript(): string {
+  return `set -eu
+mkdir -p /.atelier
+startup_started_at_ms="$(($(date +%s%N) / 1000000))"
+startup_log_path=/.atelier/startup.log
+: > "$startup_log_path"
+startup_now_ms() { now_ns="$(date +%s%N)"; echo "$((now_ns / 1000000))"; }
+startup_log_step() { now_ms="$(startup_now_ms)"; printf '%s +%sms %s\\n' "$now_ms" "$((now_ms - startup_started_at_ms))" "$1" >> "$startup_log_path"; }
+startup_log_failure() { status=$?; if [ "$status" -ne 0 ]; then startup_log_step "failed status=$status"; fi; }
+trap startup_log_failure EXIT
+startup_log_step start`;
+}
+
+function workspaceInitStepScript(id: string, script: string): string {
+  return `startup_log_step ${shellQuote(`${id}.start`)}
+{ ${script}
+}
+startup_log_step ${shellQuote(`${id}.done`)}`;
+}
+
+function workspaceStartVSCodeScript(): string {
+  return `if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'ATELIER_VSCODE_DEFAULT_FOLDER=${workspaceRoot} nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode-server.log 2>&1 &' || true; fi`;
 }
 
 function workspaceInitScript(plan: WorkspaceDockerPlan): string {
-  return [alignWorkspaceUserScript(), `install -d -o atelier -g atelier /.atelier`, ...plan.initScripts, `if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'ATELIER_VSCODE_DEFAULT_FOLDER=${workspaceRoot} nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode-server.log 2>&1 &' || true; fi`, "touch /.atelier/ready", "sleep infinity"].join("; ");
+  return [
+    workspaceStartupPreambleScript(),
+    workspaceInitStepScript("align-user", alignWorkspaceUserScript()),
+    workspaceInitStepScript("atelier-dir", `install -d -o atelier -g atelier /.atelier`),
+    ...plan.initScripts.map((script, index) => workspaceInitStepScript(`init-${index + 1}`, script)),
+    workspaceInitStepScript("vscode-start", workspaceStartVSCodeScript()),
+    "touch /.atelier/ready",
+    "startup_log_step ready",
+    "trap - EXIT",
+    "sleep infinity",
+  ].join("\n");
 }
 
 export async function createWorkspace(options: CreateWorkspaceOptions = {}): Promise<WorkspaceNewResult> {
@@ -341,7 +392,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       for (const file of activePlan.containerFiles) await requireDocker(["cp", file.source, `${container}:${file.target}`]);
       await requireDocker(["start", container]);
     });
-    await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id));
+    await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id), { output: () => workspaceStartupLog(id) });
     await provisionStep(options.events, id, "workspace.verify", "Verify workspace", () => resolveWorkspace(id));
   } catch (error) {
     await runDocker(["rm", "-f", workspaceContainerName(id)]).catch(() => undefined);
