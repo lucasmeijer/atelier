@@ -7,6 +7,7 @@ atelier_image=""
 atelier_name="atelier"
 atelier_data_dir="/var/lib/atelier"
 atelier_port="80"
+pull_only=0
 
 if [ -t 1 ] && command -v tput >/dev/null 2>&1 && [ -n "${TERM:-}" ]; then
   green="$(tput setaf 2)"
@@ -68,6 +69,7 @@ Usage: install.sh [options]
 Options:
   --channel <stable|latest>  Atelier release channel to install (default: stable)
   --image <image>            Exact Atelier image reference to install
+  --pull-only                Install/start Docker and pull required images, then exit
   -h, --help                 Show this help
 
 Examples:
@@ -103,6 +105,10 @@ parse_args() {
       --image=*)
         atelier_image="${1#--image=}"
         image_specified=1
+        shift
+        ;;
+      --pull-only)
+        pull_only=1
         shift
         ;;
       -h|--help)
@@ -367,7 +373,7 @@ require_tailscale() {
 }
 
 configure_tailscale_serve() {
-  local config_file output_file port
+  local config_file output_file
 
   command_exists curl || fail "curl is required to configure Tailscale Serve"
   [ -S /var/run/tailscale/tailscaled.sock ] || fail "tailscaled local API socket not found"
@@ -391,7 +397,27 @@ configure_tailscale_serve() {
   fi
 
   rm -f "$config_file" "$output_file"
-  success "Tailscale Serve is ready: https://$atelier_public_host/"
+  success "Tailscale Serve config is ready: https://$atelier_public_host/"
+}
+
+prepare_tailscale_https() {
+  local cert_file key_file output_file
+
+  command_exists timeout || fail "timeout is required to prepare Tailscale HTTPS"
+
+  cert_file="$(mktemp)"
+  key_file="$(mktemp)"
+  output_file="$(mktemp)"
+
+  info "Preparing Tailscale HTTPS certificate..."
+  if ! timeout 180 tailscale cert --cert-file "$cert_file" --key-file "$key_file" "$atelier_public_host" >"$output_file" 2>&1; then
+    cat "$output_file" >&2
+    rm -f "$cert_file" "$key_file" "$output_file"
+    fail_tailscale_serve_not_enabled
+  fi
+
+  rm -f "$cert_file" "$key_file" "$output_file"
+  success "Tailscale HTTPS certificate is ready"
 }
 
 pull_required_workspace_images() {
@@ -406,17 +432,21 @@ pull_required_workspace_images() {
   success "Workspace image is ready"
 }
 
+pull_atelier_images() {
+  info "Pulling $atelier_image..."
+  docker pull "$atelier_image"
+  success "Atelier image is ready"
+
+  pull_required_workspace_images
+}
+
 install_atelier() {
   mkdir -p "$atelier_data_dir"
   chown 1000:1000 "$atelier_data_dir"
   chmod 0755 "$atelier_data_dir"
   success "Data directory ready: $atelier_data_dir"
 
-  info "Pulling $atelier_image..."
-  docker pull "$atelier_image"
-  success "Atelier image is ready"
-
-  pull_required_workspace_images
+  pull_atelier_images
 
   if docker ps -aq --filter "name=^/atelier-updater-" | grep -q .; then
     info "Removing stale Atelier update helpers..."
@@ -485,10 +515,20 @@ main() {
   require_linux
   require_root
   check_ssh_latency
-  install_docker
-  start_docker
+
+  if [ "$pull_only" -eq 1 ]; then
+    install_docker
+    start_docker
+    pull_atelier_images
+    success "Docker images are ready"
+    return
+  fi
+
   require_tailscale
   configure_tailscale_serve
+  prepare_tailscale_https
+  install_docker
+  start_docker
   install_atelier
   follow_atelier_logs
 }
