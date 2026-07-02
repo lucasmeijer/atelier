@@ -1,9 +1,11 @@
+import { spawn } from "node:child_process";
 import { request as httpRequest } from "node:http";
 import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
 import { createProcessFileLock } from "./file-lock.ts";
 import { defaultPublicProxyPortRange, type PublicProxyPortRange } from "./route-state.ts";
 
 export const defaultTailscaleLocalApiSocketPath = "/var/run/tailscale/tailscaled.sock";
+export const defaultTailscaleServeHelperPath = "/usr/local/bin/atelier-tailscale-serve-helper";
 
 export interface PublicProxyPortExposer {
   ensurePort(port: number): Promise<void>;
@@ -37,6 +39,8 @@ export function createTailscaleServePortExposer(options: TailscaleServePortExpos
   const portRange = options.portRange ?? defaultPublicProxyPortRange;
   const targetHost = options.targetHost ?? "127.0.0.1";
 
+  if (shouldUseSudoTailscaleServeHelper(socketPath, portRange, targetHost)) return createSudoTailscaleServePortExposer({ host });
+
   return {
     async ensurePort(port) {
       validateManagedPort(port, portRange);
@@ -47,14 +51,66 @@ export function createTailscaleServePortExposer(options: TailscaleServePortExpos
       await mutateTailscaleServeConfig(socketPath, (config) => pruneTailscaleServePortConfig(config, { host, port, targetHost }));
     },
     async syncPorts(ports) {
-      const activePorts = new Set<number>();
-      for (const port of ports) {
-        validateManagedPort(port, portRange);
-        activePorts.add(port);
-      }
-      await mutateTailscaleServeConfig(socketPath, (config) => syncTailscaleServePortConfig(config, { host, activePorts, portRange, targetHost }));
+      await mutateTailscaleServeConfig(socketPath, (config) => syncTailscaleServePortConfig(config, { host, activePorts: managedPortSet(ports, portRange), portRange, targetHost }));
     },
   };
+}
+
+function shouldUseSudoTailscaleServeHelper(socketPath: string, portRange: PublicProxyPortRange, targetHost: string): boolean {
+  return process.getuid?.() !== 0
+    && socketPath === defaultTailscaleLocalApiSocketPath
+    && targetHost === "127.0.0.1"
+    && samePortRange(portRange, defaultPublicProxyPortRange);
+}
+
+function createSudoTailscaleServePortExposer(options: { host: string }): PublicProxyPortExposer {
+  return {
+    async ensurePort(port) {
+      validateManagedPort(port, defaultPublicProxyPortRange);
+      await runSudoTailscaleServeHelper(["ensure", options.host, String(port)]);
+    },
+    async releasePort(port) {
+      validateManagedPort(port, defaultPublicProxyPortRange);
+      await runSudoTailscaleServeHelper(["release", options.host, String(port)]);
+    },
+    async syncPorts(ports) {
+      await runSudoTailscaleServeHelper(["sync", options.host, ...[...managedPortSet(ports, defaultPublicProxyPortRange)].map((port) => String(port))]);
+    },
+  };
+}
+
+function managedPortSet(ports: Iterable<number>, range: PublicProxyPortRange): Set<number> {
+  const result = new Set<number>();
+  for (const port of ports) {
+    validateManagedPort(port, range);
+    result.add(port);
+  }
+  return result;
+}
+
+function samePortRange(a: PublicProxyPortRange, b: PublicProxyPortRange): boolean {
+  return a.start === b.start && a.end === b.end;
+}
+
+async function runSudoTailscaleServeHelper(args: string[]): Promise<void> {
+  const result = await spawnBuffered("sudo", ["-n", defaultTailscaleServeHelperPath, ...args]);
+  if (result.exitCode !== 0) throw new Error(`Tailscale Serve helper failed: ${result.stderr || result.stdout}`.trim());
+}
+
+function spawnBuffered(command: string, args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout.on("data", (chunk) => stdout.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    child.stderr.on("data", (chunk) => stderr.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    child.on("error", reject);
+    child.on("close", (exitCode) => resolve({
+      exitCode: exitCode ?? 1,
+      stdout: Buffer.concat(stdout).toString("utf8").trim(),
+      stderr: Buffer.concat(stderr).toString("utf8").trim(),
+    }));
+  });
 }
 
 export function ensureTailscaleServePortConfig(config: TailscaleServeConfig, options: { host: string; port: number; targetHost?: string }): boolean {
@@ -92,7 +148,7 @@ export function syncTailscaleServePortConfig(config: TailscaleServeConfig, optio
   return changed;
 }
 
-async function mutateTailscaleServeConfig(socketPath: string, mutator: ServeConfigMutator): Promise<void> {
+export async function mutateTailscaleServeConfig(socketPath: string, mutator: ServeConfigMutator): Promise<void> {
   await withTailscaleServeLock(async () => {
     const config = await readTailscaleServeConfig(socketPath);
     if (!mutator(config)) return;
@@ -111,7 +167,7 @@ async function writeTailscaleServeConfig(socketPath: string, config: TailscaleSe
   await tailscaleLocalApiRequest(socketPath, "POST", "/localapi/v0/serve-config", `${JSON.stringify(config)}\n`);
 }
 
-async function tailscaleLocalApiRequest(socketPath: string, method: "GET" | "POST", path: string, body?: string): Promise<string> {
+export async function tailscaleLocalApiRequest(socketPath: string, method: "GET" | "POST", path: string, body?: string): Promise<string> {
   return await new Promise((resolve, reject) => {
     const headers = body === undefined
       ? { host: "local-tailscaled.sock" }
@@ -217,11 +273,11 @@ function ensureRecord(config: TailscaleServeConfig, key: "TCP" | "Web"): Record<
   return value;
 }
 
-function validateManagedPort(port: number, range: PublicProxyPortRange): void {
+export function validateManagedPort(port: number, range: PublicProxyPortRange): void {
   if (!Number.isInteger(port) || port < range.start || port > range.end) throw new Error(`Tailscale Serve port ${port} is outside the managed proxy range ${range.start}-${range.end}`);
 }
 
-function normalizeServeHost(host: string): string {
+export function normalizeServeHost(host: string): string {
   const trimmed = host.trim().replace(/\.$/, "");
   if (!trimmed) throw new Error("Tailscale Serve host is empty");
   if (trimmed.includes(":")) return new URL(`https://${trimmed}`).hostname;

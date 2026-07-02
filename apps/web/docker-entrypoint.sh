@@ -24,5 +24,8 @@ fi
 atelier_data_dir="${ATELIER_DATA_DIR:-/data/atelier}"
 mkdir -p "$atelier_data_dir"
 
+printf '%s ALL=(root) NOPASSWD: /usr/local/bin/atelier-tailscale-serve-helper\n' "$atelier_user" >/etc/sudoers.d/atelier-tailscale-serve
+chmod 440 /etc/sudoers.d/atelier-tailscale-serve
+
 export HOME="$(getent passwd "$atelier_uid" | cut -d: -f6)"
 exec gosu "$atelier_user" "$@"

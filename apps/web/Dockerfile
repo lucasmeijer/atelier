@@ -53,6 +53,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       gosu \
       libcap2-bin \
       openssh-client \
+      sudo \
       tmux
 
 COPY --from=bun-dist /usr/local/bin/bun /usr/local/bin/bun
@@ -68,7 +69,8 @@ ENV ATELIER_NAMESPACE=default
 
 COPY --from=build /app /app
 RUN printf '%s\n' '#!/usr/bin/env sh' 'exec bun /app/packages/update/src/server/update-helper.ts "$@"' > /usr/local/bin/atelier-update-helper \
- && chmod 755 /usr/local/bin/atelier-update-helper /app/apps/web/docker-entrypoint.sh
+ && printf '%s\n' '#!/usr/bin/env sh' 'exec /usr/local/bin/bun /app/packages/proxy-ingress/src/ingress/tailscale-serve-helper.ts "$@"' > /usr/local/bin/atelier-tailscale-serve-helper \
+ && chmod 755 /usr/local/bin/atelier-update-helper /usr/local/bin/atelier-tailscale-serve-helper /app/apps/web/docker-entrypoint.sh
 
 ARG ATELIER_COMMIT_ID
 ARG ATELIER_COMMIT_DESCRIPTION
