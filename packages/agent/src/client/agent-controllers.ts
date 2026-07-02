@@ -490,6 +490,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     declare readonly inputTarget: HTMLInputElement | HTMLTextAreaElement;
     declare readonly menuTarget: HTMLElement;
     private requestId = 0;
+    private optionId = 0;
     private debounceTimer: number | undefined;
 
     connect(): void {
@@ -562,7 +563,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
 
     private readonly pointerover = (event: Event): void => {
       const option = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(autocomplete.optionSelector) : null;
-      if (option) this.activate(option, { scroll: false });
+      if (option) this.activate(option, false);
     };
 
     private async refresh(): Promise<void> {
@@ -583,7 +584,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       this.menuTarget.innerHTML = html;
       this.menuTarget.hidden = false;
       const active = this.activeOption();
-      if (active) this.activate(active, { scroll: false });
+      if (active) this.activate(active, false);
     }
 
     private close(): void {
@@ -602,15 +603,15 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       return this.menuTarget.querySelector<HTMLElement>(`${autocomplete.optionSelector}.active`) ?? this.options()[0];
     }
 
-    private activate(option: HTMLElement, options: { scroll?: boolean } = {}): void {
+    private activate(option: HTMLElement, scroll = true): void {
       for (const candidate of this.options()) {
         const active = candidate === option;
         candidate.classList.toggle("active", active);
         candidate.setAttribute("aria-selected", active ? "true" : "false");
       }
-      option.id ||= `${this.element.id || "html-autocomplete"}-option-${Math.random().toString(36).slice(2)}`;
+      option.id ||= `${this.element.id || "html-autocomplete"}-option-${++this.optionId}`;
       this.inputTarget.setAttribute("aria-activedescendant", option.id);
-      if (options.scroll !== false) option.scrollIntoView({ block: "nearest" });
+      if (scroll) option.scrollIntoView({ block: "nearest" });
     }
 
     private move(delta: number): void {

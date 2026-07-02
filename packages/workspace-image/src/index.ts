@@ -20,7 +20,7 @@ export interface ResolveWorkspaceImageOptions {
   workspaceId?: string;
   events?: AtelierEventBus;
   sourcePath?: string;
-  buildOutput?: "observable" | "inherit";
+  buildOutput?: "inherit";
 }
 
 const maxBuildOutputBytes = 64 * 1024;
@@ -86,21 +86,26 @@ async function emitImageStep(events: AtelierEventBus | undefined, workspaceId: s
   });
 }
 
+function dockerBuildArgs(tag: string, dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): string[] {
+  return [
+    "build",
+    ...(options.buildOutput === "inherit" ? ["--progress=plain"] : []),
+    ...(process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1" ? ["--no-cache"] : []),
+    "-t", tag,
+    "-f", dockerfile,
+    contextDir,
+  ];
+}
+
 function startBuildTask(tag: string, modules: string[], dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): WorkspaceImageBuildTask {
   const existing = buildTasks.get(tag);
   if (existing) return existing;
 
   const task: WorkspaceImageBuildTask = { tag, modules, output: "", promise: Promise.resolve() };
   task.promise = (async () => {
-    const args = ["build", ...(process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1" ? ["--no-cache"] : []), "-t", tag, "-f", dockerfile, contextDir];
+    const args = dockerBuildArgs(tag, dockerfile, contextDir, options);
     if (options.buildOutput === "inherit") {
-      const proc = Bun.spawn(["docker", "build", "--progress=plain", ...(process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1" ? ["--no-cache"] : []), "-t", tag, "-f", dockerfile, contextDir], {
-        cwd: contextDir,
-        env: { ...process.env, DOCKER_BUILDKIT: "1" },
-        stdout: "inherit",
-        stderr: "inherit",
-        stdin: "inherit",
-      });
+      const proc = Bun.spawn(["docker", ...args], { cwd: contextDir, env: { ...process.env, DOCKER_BUILDKIT: "1" }, stdout: "inherit", stderr: "inherit", stdin: "inherit" });
       const exitCode = await proc.exited;
       if (exitCode !== 0) throw new Error(`docker build failed with exit code ${exitCode}`);
       return;
