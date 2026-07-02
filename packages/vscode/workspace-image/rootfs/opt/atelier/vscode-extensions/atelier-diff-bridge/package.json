@@ -10,6 +10,7 @@
   "categories": ["Other"],
   "extensionKind": ["workspace"],
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:atelier.openDiffSnippet"
   ],
   "main": "./extension.js",

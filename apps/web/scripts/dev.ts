@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
 import { watch } from "node:fs";
-import { relative, resolve, sep } from "node:path";
+import { lstat, readdir, readFile } from "node:fs/promises";
+import { join, relative, resolve, sep } from "node:path";
 import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
 
 const cwd = resolve(new URL("..", import.meta.url).pathname);
 const repoRoot = resolve(cwd, "../..");
+const packagesDir = resolve(repoRoot, "packages");
 
 let building = false;
 let dirty = false;
@@ -13,6 +16,7 @@ let serverRestartTimer: Timer | undefined;
 let workspaceImageTimer: Timer | undefined;
 let workspaceImageEnsuring = false;
 let workspaceImageDirty = false;
+let workspaceImageInputHash: string | undefined;
 let server: ReturnType<typeof Bun.spawn> | undefined;
 let stoppingServer = false;
 const pendingRestartReasons = new Set<string>();
@@ -95,7 +99,7 @@ function describeRestartReasons(): string {
 }
 
 function packageRelativePath(path: string): string | undefined {
-  const rel = relative(resolve(repoRoot, "packages"), path);
+  const rel = relative(packagesDir, path);
   if (!rel || rel === ".." || rel.startsWith(`..${sep}`)) return undefined;
   return rel;
 }
@@ -115,6 +119,41 @@ function isWorkspaceImageInputChange(path: string): boolean {
     || rel.includes(`${sep}workspace-image${sep}`);
 }
 
+async function collectFiles(path: string, files: string[]): Promise<void> {
+  const info = await lstat(path);
+  if (info.isDirectory()) {
+    for (const entry of await readdir(path)) await collectFiles(join(path, entry), files);
+    return;
+  }
+  if (info.isFile()) files.push(path);
+}
+
+async function workspaceImageInputFiles(): Promise<string[]> {
+  const files: string[] = [];
+  for (const entry of await readdir(packagesDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const dir = join(packagesDir, entry.name);
+    const manifest = join(dir, "workspace-image.json");
+    if (await Bun.file(manifest).exists()) files.push(manifest);
+    const imageFiles = join(dir, "workspace-image");
+    if (await Bun.file(imageFiles).exists()) await collectFiles(imageFiles, files);
+  }
+  const scripts = join(packagesDir, "workspace-image", "scripts");
+  if (await Bun.file(scripts).exists()) await collectFiles(scripts, files);
+  return files.sort();
+}
+
+async function workspaceImageInputSignature(): Promise<string> {
+  const hash = createHash("sha256");
+  for (const file of await workspaceImageInputFiles()) {
+    hash.update(relative(repoRoot, file));
+    hash.update("\0");
+    hash.update(await readFile(file));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
 async function ensureWorkspaceImage(): Promise<void> {
   if (workspaceImageEnsuring) {
     workspaceImageDirty = true;
@@ -124,8 +163,11 @@ async function ensureWorkspaceImage(): Promise<void> {
   try {
     do {
       workspaceImageDirty = false;
+      const inputHash = await workspaceImageInputSignature();
+      if (workspaceImageInputHash === inputHash) continue;
       console.log("[workspace-image] ensuring default workspace image…");
       console.log(`[workspace-image] ready: ${await ensureDefaultWorkspaceImage()}`);
+      workspaceImageInputHash = inputHash;
     } while (workspaceImageDirty);
   } finally {
     workspaceImageEnsuring = false;
@@ -184,6 +226,9 @@ function scheduleBuildThenServerRestart(reason: string, changed: string): void {
   })(), 100);
 }
 
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
 await runBuild();
 await ensureWorkspaceImage();
 
@@ -205,8 +250,5 @@ function shutdown(): void {
   server?.kill();
   process.exit(0);
 }
-
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
 
 await new Promise(() => {});

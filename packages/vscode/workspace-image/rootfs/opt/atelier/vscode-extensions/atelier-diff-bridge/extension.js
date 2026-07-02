@@ -12,6 +12,10 @@ function lineNumber(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
+function openSourceControlView() {
+  return vscode.commands.executeCommand("workbench.view.scm");
+}
+
 async function openDiffSnippet(payload) {
   const file = String(payload.file);
   const startLine = lineNumber(payload.startLine, 1);
@@ -21,7 +25,7 @@ async function openDiffSnippet(payload) {
   const title = payload.title ? String(payload.title) : `${file.split("/").pop()} (Working Tree)`;
   const selection = new vscode.Range(startLine - 1, 0, Math.max(startLine - 1, endLine - 1), 0);
 
-  await vscode.commands.executeCommand("workbench.view.scm");
+  await openSourceControlView();
   await vscode.commands.executeCommand("vscode.diff", original, uri, title, { preview: false, preserveFocus: false, selection });
   const editor = vscode.window.activeTextEditor;
   if (editor) {
@@ -32,6 +36,7 @@ async function openDiffSnippet(payload) {
 
 function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand("atelier.openDiffSnippet", openDiffSnippet));
+  return openSourceControlView();
 }
 
 function deactivate() {}
