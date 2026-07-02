@@ -4,11 +4,14 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetAtelierRuntimeContextForTests } from "@atelier/core";
 import {
+  ensureTailscaleServePortConfig,
   ensureWorkspacePublicProxyRoute,
   listWorkspacePublicProxyRoutes,
   publicProxyPortRangeFromEnv,
   releaseWorkspacePublicProxyRoute,
   releaseWorkspacePublicProxyRoutes,
+  syncTailscaleServePortConfig,
+  type TailscaleServeConfig,
 } from "@atelier/proxy-ingress/server";
 
 let dataDir = "";
@@ -71,5 +74,58 @@ describe("workspace public proxy route state", () => {
     expect(await ensureWorkspacePublicProxyRoute("ws1", "vscode", { range })).toEqual({ appKey: "vscode", publicPort: 43100 });
     expect(await releaseWorkspacePublicProxyRoutes("ws1")).toEqual([43100]);
     expect(await listWorkspacePublicProxyRoutes(["ws1"])).toEqual([]);
+  });
+});
+
+describe("Tailscale Serve config", () => {
+  test("adds one HTTPS proxy port without disturbing existing stable routes", () => {
+    const config: TailscaleServeConfig = {
+      TCP: { "443": { HTTPS: true } },
+      Web: { "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } } },
+    };
+
+    expect(ensureTailscaleServePortConfig(config, { host: "atelier.tailnet.ts.net", port: 41000 })).toBe(true);
+    expect(config).toEqual({
+      TCP: { "443": { HTTPS: true }, "41000": { HTTPS: true } },
+      Web: {
+        "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } },
+        "atelier.tailnet.ts.net:41000": { Handlers: { "/": { Proxy: "http://127.0.0.1:41000/" } } },
+      },
+    });
+    expect(ensureTailscaleServePortConfig(config, { host: "atelier.tailnet.ts.net", port: 41000 })).toBe(false);
+  });
+
+  test("sync is a no-op when the managed range has no entries", () => {
+    const config: TailscaleServeConfig = {
+      TCP: { "443": { HTTPS: true } },
+      Web: { "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } } },
+    };
+
+    expect(syncTailscaleServePortConfig(config, { host: "atelier.tailnet.ts.net", activePorts: new Set(), portRange: { start: 41000, end: 41002 } })).toBe(false);
+    expect(config).toEqual({
+      TCP: { "443": { HTTPS: true } },
+      Web: { "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } } },
+    });
+  });
+
+  test("sync keeps active Atelier ports and prunes inactive owned range entries", () => {
+    const config: TailscaleServeConfig = {
+      TCP: { "443": { HTTPS: true }, "41000": { HTTPS: true }, "41001": { HTTPS: true }, "41002": { TCPForward: "127.0.0.1:41002" } },
+      Web: {
+        "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } },
+        "atelier.tailnet.ts.net:41001": { Handlers: { "/": { Proxy: "http://127.0.0.1:41001/" } } },
+        "atelier.tailnet.ts.net:41002": { Handlers: { "/": { Proxy: "http://127.0.0.1:9999/" } } },
+      },
+    };
+
+    expect(syncTailscaleServePortConfig(config, { host: "atelier.tailnet.ts.net", activePorts: new Set([41000]), portRange: { start: 41000, end: 41002 } })).toBe(true);
+    expect(config).toEqual({
+      TCP: { "443": { HTTPS: true }, "41000": { HTTPS: true }, "41002": { TCPForward: "127.0.0.1:41002" } },
+      Web: {
+        "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } },
+        "atelier.tailnet.ts.net:41000": { Handlers: { "/": { Proxy: "http://127.0.0.1:41000/" } } },
+        "atelier.tailnet.ts.net:41002": { Handlers: { "/": { Proxy: "http://127.0.0.1:9999/" } } },
+      },
+    });
   });
 });

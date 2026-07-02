@@ -1,6 +1,7 @@
-import { mkdir, readdir, readFile, rename, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
+import { createProcessFileLock } from "./file-lock.ts";
 
 export interface WorkspacePublicProxyRoute {
   appKey: string;
@@ -19,7 +20,10 @@ export interface PublicProxyPortRange {
 
 export const defaultPublicProxyPortRange: PublicProxyPortRange = { start: 41000, end: 41999 };
 
-let publicRoutesProcessLock: Promise<void> = Promise.resolve();
+const withPublicRoutesLock = createProcessFileLock({
+  label: "public proxy route",
+  lockDir: () => atelierDataPath(getAtelierRuntimeContext(), "proxy", "public-routes.lock"),
+});
 
 export function publicProxyPortRangeFromEnv(value = process.env.ATELIER_PROXY_PORT_RANGE): PublicProxyPortRange {
   if (!value?.trim()) return defaultPublicProxyPortRange;
@@ -35,17 +39,16 @@ function emptyState(): WorkspacePublicProxyState {
   return { version: 1, routes: {} };
 }
 
-async function workspaceProxyStatePath(workspaceId: string): Promise<string> {
-  const runtime = await getAtelierRuntimeContext();
-  return atelierDataPath(runtime, "workspaces", workspaceId, "proxy-routes.json");
+function workspaceProxyStatePath(workspaceId: string): string {
+  return atelierDataPath(getAtelierRuntimeContext(), "workspaces", workspaceId, "proxy-routes.json");
 }
 
 async function readWorkspacePublicProxyState(workspaceId: string): Promise<WorkspacePublicProxyState> {
-  return await readStatePath(await workspaceProxyStatePath(workspaceId));
+  return await readStatePath(workspaceProxyStatePath(workspaceId));
 }
 
 async function writeWorkspacePublicProxyState(workspaceId: string, state: WorkspacePublicProxyState): Promise<void> {
-  const path = await workspaceProxyStatePath(workspaceId);
+  const path = workspaceProxyStatePath(workspaceId);
   await mkdir(dirname(path), { recursive: true });
   const temp = `${path}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`;
   await writeFile(temp, `${JSON.stringify(state, null, 2)}\n`);
@@ -79,9 +82,8 @@ export async function listWorkspacePublicProxyRoutes(workspaceIds?: string[]): P
 }
 
 async function listWorkspaceDirs(): Promise<string[]> {
-  const runtime = await getAtelierRuntimeContext();
   try {
-    const entries = await readdir(atelierDataPath(runtime, "workspaces"), { withFileTypes: true });
+    const entries = await readdir(atelierDataPath(getAtelierRuntimeContext(), "workspaces"), { withFileTypes: true });
     return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
@@ -127,40 +129,6 @@ export async function releaseWorkspacePublicProxyRoutes(workspaceId: string): Pr
     if (ports.length) await writeWorkspacePublicProxyState(workspaceId, emptyState());
     return ports;
   });
-}
-
-async function withPublicRoutesLock<T>(fn: () => Promise<T>): Promise<T> {
-  const previous = publicRoutesProcessLock;
-  let releaseProcessLock!: () => void;
-  publicRoutesProcessLock = new Promise<void>((resolve) => { releaseProcessLock = resolve; });
-  await previous;
-
-  let releaseFileLock: (() => Promise<void>) | undefined;
-  try {
-    releaseFileLock = await acquirePublicRoutesFileLock();
-    return await fn();
-  } finally {
-    await releaseFileLock?.();
-    releaseProcessLock();
-  }
-}
-
-async function acquirePublicRoutesFileLock(): Promise<() => Promise<void>> {
-  const runtime = await getAtelierRuntimeContext();
-  const lockDir = atelierDataPath(runtime, "proxy", "public-routes.lock");
-  await mkdir(dirname(lockDir), { recursive: true, mode: 0o700 });
-  const deadline = Date.now() + 10_000;
-  for (;;) {
-    try {
-      await mkdir(lockDir, { mode: 0o700 });
-      return async () => { await rmdir(lockDir).catch(() => {}); };
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "EEXIST") throw error;
-      if (Date.now() > deadline) throw new Error(`timed out waiting for public proxy route lock: ${lockDir}`);
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-  }
 }
 
 function isReserved(port: number, reservedPorts: Iterable<number> | undefined): boolean {

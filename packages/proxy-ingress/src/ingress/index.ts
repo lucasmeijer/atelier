@@ -10,6 +10,7 @@ import {
   type PublicProxyPortRange,
   type WorkspacePublicProxyRoute,
 } from "./route-state.ts";
+import type { PublicProxyPortExposer } from "./tailscale-serve.ts";
 
 export interface WorkspaceAppHost {
   appKey: string;
@@ -37,14 +38,15 @@ export interface WorkspaceIngressProxyOptions {
   transformRequestHeaders?: WorkspaceAppRequestHeaderTransformer;
   transformResponse?: WorkspaceAppResponseTransformer;
   publicPortRange?: PublicProxyPortRange;
+  publicPortExposer?: PublicProxyPortExposer;
 }
 
 export interface WorkspaceIngressProxyService {
   startPersistedRoutes(): Promise<void>;
   redirectToRoute(workspaceId: string, appKey: string, path: string, request: Request): Promise<Response>;
   ensureRoute(workspaceId: string, appKey: string): Promise<WorkspaceAppHost & WorkspacePublicProxyRoute>;
-  stopWorkspace(workspaceId: string): void;
-  stopAll(): void;
+  stopWorkspace(workspaceId: string): Promise<number[]>;
+  stopAll(): Promise<number[]>;
 }
 
 interface WorkspaceAppProxySocketData {
@@ -66,6 +68,7 @@ export {
   type PublicProxyPortRange,
   type WorkspacePublicProxyRoute,
 };
+export * from "./tailscale-serve.ts";
 
 export function createWorkspaceIngressProxy(options: WorkspaceIngressProxyOptions): WorkspaceIngressProxyService {
   const publicPortRange = options.publicPortRange ?? publicProxyPortRangeFromEnv();
@@ -74,6 +77,7 @@ export function createWorkspaceIngressProxy(options: WorkspaceIngressProxyOption
 
   async function retireUnknownAppRoute(publicPort: number, app: WorkspaceAppHost): Promise<Response> {
     await releaseWorkspacePublicProxyRoute(app.workspaceId, app.appKey);
+    await options.publicPortExposer?.releasePort(publicPort);
     publicProxyRoutes.delete(publicPort);
     const staleServer = publicProxyServers.get(publicPort);
     publicProxyServers.delete(publicPort);
@@ -126,27 +130,50 @@ export function createWorkspaceIngressProxy(options: WorkspaceIngressProxyOption
     }
   }
 
+  async function releasePublicPorts(ports: Iterable<number>): Promise<void> {
+    await Promise.all([...ports].map((port) => options.publicPortExposer?.releasePort(port)));
+  }
+
+  function stopPublicProxyListeners(predicate: (route: WorkspaceAppHost) => boolean): number[] {
+    const ports: number[] = [];
+    for (const [port, route] of [...publicProxyRoutes]) {
+      if (!predicate(route)) continue;
+      publicProxyServers.get(port)?.stop(true);
+      publicProxyServers.delete(port);
+      publicProxyRoutes.delete(port);
+      ports.push(port);
+    }
+    return ports;
+  }
+
   async function ensureRoute(workspaceId: string, appKey: string): Promise<WorkspaceAppHost & WorkspacePublicProxyRoute> {
     const unavailable = new Set<number>();
     for (;;) {
       const route = await ensureWorkspacePublicProxyRoute(workspaceId, appKey, { range: publicPortRange, reservedPorts: unavailable });
       try {
         await ensurePublicProxyListener({ workspaceId, appKey, publicPort: route.publicPort });
-        return { workspaceId, appKey, publicPort: route.publicPort };
       } catch {
         unavailable.add(route.publicPort);
         await releaseWorkspacePublicProxyRoute(workspaceId, appKey);
         if (unavailable.size > publicPortRange.end - publicPortRange.start + 1) throw new Error(`no public proxy ports available in range ${publicPortRange.start}-${publicPortRange.end}`);
+        continue;
       }
+      await options.publicPortExposer?.ensurePort(route.publicPort);
+      return { workspaceId, appKey, publicPort: route.publicPort };
     }
   }
 
   return {
     async startPersistedRoutes() {
       const ids = await options.listWorkspaceIds();
+      const startedPorts: number[] = [];
       for (const route of await listWorkspacePublicProxyRoutes(ids)) {
-        try { await ensurePublicProxyListener(route); } catch { /* stale/unavailable route will be reallocated on next canonical request */ }
+        try {
+          await ensurePublicProxyListener(route);
+          startedPorts.push(route.publicPort);
+        } catch { /* stale/unavailable route will be reallocated on next canonical request */ }
       }
+      await options.publicPortExposer?.syncPorts(startedPorts);
     },
     async redirectToRoute(workspaceId, appKey, path, request) {
       await options.resolveWorkspace(workspaceId);
@@ -155,18 +182,15 @@ export function createWorkspaceIngressProxy(options: WorkspaceIngressProxyOption
       return Response.redirect(`${publicProxyOrigin(request, route.publicPort)}${normalizedPath}`, 302);
     },
     ensureRoute,
-    stopWorkspace(workspaceId) {
-      for (const [port, route] of publicProxyRoutes) {
-        if (route.workspaceId !== workspaceId) continue;
-        publicProxyServers.get(port)?.stop(true);
-        publicProxyServers.delete(port);
-        publicProxyRoutes.delete(port);
-      }
+    async stopWorkspace(workspaceId) {
+      const ports = stopPublicProxyListeners((route) => route.workspaceId === workspaceId);
+      await releasePublicPorts(ports);
+      return ports;
     },
-    stopAll() {
-      for (const server of publicProxyServers.values()) server.stop(true);
-      publicProxyServers.clear();
-      publicProxyRoutes.clear();
+    async stopAll() {
+      const ports = stopPublicProxyListeners(() => true);
+      await releasePublicPorts(ports);
+      return ports;
     },
   };
 }

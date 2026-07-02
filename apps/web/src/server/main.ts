@@ -6,9 +6,12 @@ import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace } fr
 import type { WorkspaceDeleteSafetyIssue } from "@atelier/projects";
 import { atelierName, escapeHtml, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler } from "@atelier/shared";
 import {
+  createTailscaleServePortExposer,
   createWorkspaceIngressProxy,
+  publicProxyPortRangeFromEnv,
   releaseWorkspacePublicProxyRoutes,
   UnknownWorkspaceAppError,
+  type PublicProxyPortExposer,
   type WorkspaceAppHost,
   type WorkspaceAppRequestHeaderTransformer,
   type WorkspaceAppResponseTransformer,
@@ -197,6 +200,19 @@ const workspaceRemovedHandlers: Array<(workspaceId: string) => void | Promise<vo
 
 const runtimeContext = getAtelierRuntimeContext();
 
+const publicProxyPortRange = publicProxyPortRangeFromEnv();
+
+function createPublicPortExposer(): PublicProxyPortExposer | undefined {
+  if (process.env.ATELIER_TAILSCALE_SERVE !== "1") return undefined;
+  const publicUrl = process.env.ATELIER_PUBLIC_URL;
+  if (!publicUrl) throw new Error("ATELIER_TAILSCALE_SERVE=1 requires ATELIER_PUBLIC_URL");
+  const url = new URL(publicUrl);
+  if (url.protocol !== "https:") throw new Error("ATELIER_TAILSCALE_SERVE=1 requires an https ATELIER_PUBLIC_URL");
+  return createTailscaleServePortExposer({ host: url.hostname, portRange: publicProxyPortRange });
+}
+
+const publicPortExposer = createPublicPortExposer();
+
 const registry = createWorkspaceRegistry({
   activityStore: createFileWorkspaceActivityStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-activity.json")),
   unreadStore: createFileWorkspaceUnreadStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-unread.json")),
@@ -235,8 +251,9 @@ app = createWebApp({
     return { workspaceId: id, issues };
   },
   destroyWorkspace: async (id) => {
-    publicWorkspaceAppProxy.stopWorkspace(id);
-    await releaseWorkspacePublicProxyRoutes(id);
+    const stoppedPorts = new Set(await publicWorkspaceAppProxy.stopWorkspace(id));
+    const publicPorts = (await releaseWorkspacePublicProxyRoutes(id)).filter((port) => !stoppedPorts.has(port));
+    await Promise.all(publicPorts.map((port) => publicPortExposer?.releasePort(port)));
     await deleteWorkspace(id, { force: true, events: atelierEvents });
   },
 });
@@ -338,6 +355,8 @@ const publicWorkspaceAppProxy = createWorkspaceIngressProxy({
   resolveTarget: resolveWorkspaceAppTarget,
   transformRequestHeaders: patchWorkspaceAppRequestHeaders,
   transformResponse: patchWorkspaceAppResponse,
+  publicPortRange: publicProxyPortRange,
+  publicPortExposer,
 });
 
 async function handleWorkspaceAppRequest(app: WorkspaceAppHost, request: Request, url: URL): Promise<Response | undefined> {

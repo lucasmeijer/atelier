@@ -377,16 +377,8 @@ configure_tailscale_serve() {
   output_file="$(mktemp)"
 
   {
-    printf '{"TCP":{"443":{"HTTPS":true},"81":{"HTTPS":true}'
-    for port in $(seq 41000 41999); do
-      printf ',"%s":{"HTTPS":true}' "$port"
-    done
-
-    printf '},"Web":{"%s:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:%s/"}}},"%s:81":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:81/"}}}' "$atelier_public_host" "$atelier_port" "$atelier_public_host"
-    for port in $(seq 41000 41999); do
-      printf ',"%s:%s":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:%s/"}}}' "$atelier_public_host" "$port" "$port"
-    done
-    printf '}}\n'
+    printf '{"TCP":{"443":{"HTTPS":true},"81":{"HTTPS":true}}'
+    printf ',"Web":{"%s:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:%s/"}}},"%s:81":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:81/"}}}}}\n' "$atelier_public_host" "$atelier_port" "$atelier_public_host"
   } >"$config_file"
 
   if ! curl -fsS --unix-socket /var/run/tailscale/tailscaled.sock \
@@ -447,12 +439,14 @@ install_atelier() {
     --init \
     --network host \
     -v /var/run/docker.sock:/var/run/docker.sock \
+    --mount "type=bind,src=/var/run/tailscale,dst=/var/run/tailscale" \
     --mount "type=bind,src=$atelier_data_dir,dst=/data/atelier" \
     --env ATELIER_DATA_DIR=/data/atelier \
     --env "ATELIER_DOCKER_HOST_DATA_DIR=$atelier_data_dir" \
     --env "HOST=127.0.0.1" \
     --env "PORT=$atelier_port" \
     --env "ATELIER_PUBLIC_URL=https://$atelier_public_host" \
+    --env ATELIER_TAILSCALE_SERVE=1 \
     "$atelier_image" >/dev/null
   success "Atelier container started"
 }
