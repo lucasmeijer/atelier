@@ -15,6 +15,10 @@
 /* conversation hugs the prompt box when shorter than the viewport */
 .agent-transcript::before { content: ""; flex: 1 0 0; }
 .agent-transcript > * { max-width: 860px; width: 100%; margin-left: auto; margin-right: auto; flex: none; }
+.agent-starting { display: flex; align-items: center; gap: 12px; color: var(--muted); border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 14px 16px; box-shadow: 0 4px 16px rgba(19,26,38,.04); }
+.agent-starting b { display: block; color: var(--text); font-size: 13px; margin-bottom: 2px; }
+.agent-starting span { font-size: 12px; }
+.agent-starting-spinner { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line-2); border-top-color: var(--accent); animation: agent-template-spin .75s linear infinite; }
 
 /* ---------------------------------------------------------------------------
  * Sections

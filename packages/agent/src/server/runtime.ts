@@ -86,6 +86,7 @@ interface WorkspaceAgentRuntime {
 }
 
 const runtimes = new Map<string, Promise<WorkspaceAgentRuntime>>();
+const readyRuntimeKeys = new Set<string>();
 
 function runtimeKey(workspaceId: string, label: string): string {
   return `${workspaceId}\u0000${label}`;
@@ -95,11 +96,22 @@ interface WorkspaceAgentRuntimeOptions {
   events?: AtelierEventBus;
 }
 
+export function isWorkspaceAgentRuntimeReady(agent: WorkspaceAgentInfo): boolean {
+  return readyRuntimeKeys.has(runtimeKey(agent.workspaceId, agent.label));
+}
+
 export function getWorkspaceAgentRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
   const key = runtimeKey(agent.workspaceId, agent.label);
   let runtime = runtimes.get(key);
   if (!runtime) {
-    runtime = createRealRuntime(agent, options);
+    runtime = createRealRuntime(agent, options).then((created) => {
+      readyRuntimeKeys.add(key);
+      return created;
+    }, (error) => {
+      runtimes.delete(key);
+      readyRuntimeKeys.delete(key);
+      throw error;
+    });
     runtimes.set(key, runtime);
   }
   return runtime;

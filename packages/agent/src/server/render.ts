@@ -129,6 +129,30 @@ function agentAttachmentDropAttrs(uploadUrl: string): string {
 }
 
 export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
+  return await renderAgentPaneFrame(ctx, agent, state, options);
+}
+
+const pendingAgentStats: AgentStatsView = {
+  contextPercent: null,
+  inputTokens: 0,
+  outputTokens: 0,
+  cost: 0,
+  modelName: undefined,
+  provider: undefined,
+  thinkingLevel: "",
+  thinkingLevels: [],
+  models: [],
+};
+
+export async function renderPendingAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, options: { visible?: boolean } = {}): Promise<string> {
+  return await renderAgentPaneFrame(ctx, agent, {
+    transcriptHtml: `<div class="agent-starting"><span class="agent-starting-spinner" aria-hidden="true"></span><div><b>Starting ${escapeHtml(ctx.label)}…</b><span>Loading model settings and workspace instructions.</span></div></div>`,
+    busy: false,
+    stats: pendingAgentStats,
+  }, options);
+}
+
+async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
   const key = agentTabKey(agent.label);
   const draftId = randomUUID();
   const attachRowId = ids.attachRow(ctx);

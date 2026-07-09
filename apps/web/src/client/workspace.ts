@@ -1286,6 +1286,28 @@ class SubmitShortcutController extends Controller {
   }
 }
 
+class WorkspaceCommandFormController extends Controller {
+  declare readonly element: HTMLFormElement;
+  private originalHtml?: string;
+
+  start(): void {
+    const button = this.element.querySelector<HTMLButtonElement>('button[type="submit"], button:not([type])');
+    if (!button) return;
+    this.originalHtml = button.innerHTML;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    button.innerHTML = `<span class="status-spinner sm" aria-hidden="true"></span><span>Adding…</span>`;
+  }
+
+  end(): void {
+    const button = this.element.querySelector<HTMLButtonElement>('button[type="submit"], button:not([type])');
+    if (!button) return;
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    if (this.originalHtml !== undefined) button.innerHTML = this.originalHtml;
+  }
+}
+
 class ModalController extends Controller {
   static values = { autoShow: Boolean };
   declare readonly element: HTMLDialogElement;
@@ -2337,6 +2359,7 @@ application.register("workspace-shell", WorkspaceShellController);
 application.register("workspace-tabs", WorkspaceTabsController);
 application.register("workspace-tab-close", WorkspaceTabCloseController);
 application.register("workspace-groups", WorkspaceGroupsController);
+application.register("workspace-command-form", WorkspaceCommandFormController);
 application.register("workspace-residency", WorkspaceResidencyController);
 application.register("atelier-shortcuts", AtelierShortcutsController);
 application.register("atelier-fullscreen", AtelierFullscreenController);

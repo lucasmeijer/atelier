@@ -1,10 +1,10 @@
 import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { createDeleteCurrentWorkspaceTool, createForkCurrentWorkspaceTool, createWorkspaceTool, registerWorkspaceAgentTool, type DeleteCurrentWorkspaceResult } from "./tools.ts";
 import { closeAgentTermSocket, handleAgentTermSocketMessage, openAgentTermSocket, validateAgentTermSocket } from "./bash-tmux.ts";
-import { getWorkspaceAgentRuntime, subscribeWorkspaceTabBusy } from "./runtime.ts";
+import { getWorkspaceAgentRuntime, isWorkspaceAgentRuntimeReady, subscribeWorkspaceTabBusy } from "./runtime.ts";
 import { handleAgentRequest, registerAgentEvents, resolveWorkspacePortProxyTarget, workspaceFileEndpoint } from "./routes.ts";
 import { createNextWorkspaceAgent, ensureDefaultWorkspaceAgent, listWorkspaceAgents, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentInfo } from "./session-store.ts";
-import { agentTabKey, renderAgentPane, type AgentPaneState } from "./render.ts";
+import { agentTabKey, renderAgentPane, renderPendingAgentPane } from "./render.ts";
 import { modelRefValue, parseModelRef, preferredAgentModel, rememberPreferredAgentModel } from "./model-state.ts";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
@@ -23,16 +23,14 @@ async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<Workspa
 
 async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[], events?: AtelierEventBus): Promise<WorkspaceTabContribution[]> {
   return await Promise.all(agents.map(async (agent, index) => {
-    const state: AgentPaneState = await (await getWorkspaceAgentRuntime(agent, { events })).paneState();
+    const ctx = { workspaceId, label: agent.label };
+    const paneHtml = isWorkspaceAgentRuntimeReady(agent)
+      ? await renderAgentPane(ctx, agent, await (await getWorkspaceAgentRuntime(agent, { events })).paneState(), { visible: index === 0 })
+      : await renderPendingAgentPane(ctx, agent, { visible: index === 0 });
     return {
       key: agentTabKey(agent.label),
       label: agent.label,
-      paneHtml: await renderAgentPane(
-        { workspaceId, label: agent.label },
-        agent,
-        state,
-        { visible: index === 0 },
-      ),
+      paneHtml,
     };
   }));
 }
@@ -100,7 +98,10 @@ export const agentWorkspaceModule: WorkspaceModule = {
     id: "agent.create",
     async execute({ workspaceId, events }) {
       const agent = await createNextWorkspaceAgent(workspaceId);
-      await applyPreferredNewAgentModel(agent, events);
+      const applyPreferredModelTimer = setTimeout(() => {
+        void applyPreferredNewAgentModel(agent, events).catch((error) => console.error("Could not apply preferred model to new agent", error));
+      }, 0);
+      applyPreferredModelTimer.unref?.();
       return { createdTabKey: agentTabKey(agent.label) };
     },
   }],

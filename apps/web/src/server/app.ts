@@ -41,7 +41,6 @@ import {
   type CableIdentifier,
   type GlobalSidebarContributionRegistry,
   type WorkspaceAttachment,
-  type WorkspaceCommandContribution,
   type WorkspaceModuleCommandHandler,
   type WorkspaceModuleCommandResult,
   type WorkspaceModuleRouteHandler,
@@ -651,7 +650,7 @@ ${moduleStylesHtml()}
       binding: command.surfaces?.shortcut?.defaultBinding,
     }));
     const actionMenu = (group: { id: string }, index: number) => `<details class="group-add-menu"><summary class="group-icon-btn" title="Add tab or group">+</summary><div class="group-menu-panel">
-      ${commands.map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/commands/${encodeURIComponent(command.id)}"><button type="submit">${escapeHtml(command.surfaces?.ui?.label ?? command.label)}</button></form>`).join("")}
+      ${commands.map((command) => `<form data-turbo="true" data-controller="workspace-command-form" data-action="turbo:submit-start->workspace-command-form#start turbo:submit-end->workspace-command-form#end" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/commands/${encodeURIComponent(command.id)}"><button type="submit">${escapeHtml(command.surfaces?.ui?.label ?? command.label)}</button></form>`).join("")}
       <form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/split"><button type="submit">New Group</button></form>
       ${layoutState.groups.length > 1 && index > 0 ? `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/groups/${encodeURIComponent(group.id)}/close"><button type="submit">Close Group</button></form>` : ""}
     </div></details>`;
@@ -1217,13 +1216,6 @@ ${moduleStylesHtml()}
     return replaceWorkspaceGroupsStream(workspaceId);
   }
 
-  async function assertWorkspaceCommandExists(workspaceId: string, commandId: string): Promise<void> {
-    const commands = (await workspaceTabsAndAttachments(workspaceId)).attachments.flatMap((attachment) => attachment.commands ?? []);
-    if (!commands.some((command: WorkspaceCommandContribution) => command.id === commandId)) {
-      throw new AtelierCoreError("command_not_found", `workspace command not found: ${commandId}`);
-    }
-  }
-
   function workspaceModuleCommands(): WorkspaceModuleCommandHandler[] {
     return workspaceModules.flatMap((module) => module.commands ?? []);
   }
@@ -1237,9 +1229,8 @@ ${moduleStylesHtml()}
   }
 
   async function executeWorkspaceCommand(workspaceId: string, commandId: string): Promise<WorkspaceModuleCommandResult> {
-    await assertWorkspaceCommandExists(workspaceId, commandId);
     const command = workspaceModuleCommands().find((candidate) => candidate.id === commandId);
-    if (!command) throw new AtelierCoreError("command_not_implemented", `workspace command not implemented: ${commandId}`);
+    if (!command) throw new AtelierCoreError("command_not_found", `workspace command not found: ${commandId}`);
     return await command.execute({ workspaceId, events: deps.events, tabKeys: () => tabKeysFor(workspaceId), layouts });
   }
 
