@@ -1,3 +1,4 @@
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { createPiModelRegistry, getConfiguredAgentModels, getModelThinkingLevel, setActiveAgentModel, setModelThinkingLevel, type ConfiguredAgentModel } from "./pi-config-models.ts";
 
 export interface ModelRef {
@@ -64,4 +65,11 @@ function modelOptionView(model: ConfiguredAgentModel, available: Set<string>, cu
 
 export async function composerThinkingLevel(model: ModelRef | undefined): Promise<string | undefined> {
   return model ? await getModelThinkingLevel(model.provider, model.id) : undefined;
+}
+
+export async function composerThinkingLevels(model: ModelRef | undefined): Promise<string[]> {
+  if (!model) return [];
+  const registry = await createPiModelRegistry();
+  const piModel = registry.find(model.provider, model.id);
+  return piModel ? getSupportedThinkingLevels(piModel) : [];
 }

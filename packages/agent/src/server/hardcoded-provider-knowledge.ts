@@ -14,12 +14,12 @@ export interface HardcodedProviderKnowledge {
 export const hardcodedProviderKnowledge: Readonly<Record<string, HardcodedProviderKnowledge>> = {
   openai: {
     apiKeyExample: "sk-proj-abc123def456...",
-    models: [{ id: "gpt-5.5" }],
+    models: [{ id: "gpt-5.6" }],
     fastModel: { id: "gpt-5.4-mini" },
   },
   "openai-codex": {
     apiKeyExample: "sk-proj-abc123def456...",
-    models: [{ id: "gpt-5.5" }],
+    models: [{ id: "gpt-5.6-sol" }],
     fastModel: { id: "gpt-5.4-mini" },
   },
   anthropic: {

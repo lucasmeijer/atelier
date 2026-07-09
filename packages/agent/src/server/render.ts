@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { composerThinkingLevel, configuredModelOptionViews, modelRefValue, selectedComposerModel } from "./model-state.ts";
+import { composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel } from "./model-state.ts";
 import { diffStats, renderDiffHtml, type DiffOperation } from "./diff.ts";
 import { highlightCodeHtmlForPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
@@ -235,10 +235,13 @@ export async function renderAgentModelOptions(selectedModel?: string): Promise<s
 async function renderComposerSettings(formId: string, selectedModel?: string): Promise<string> {
   const selected = await selectedComposerModel(selectedModel);
   const selectedThinkingLevel = await composerThinkingLevel(selected);
-  const thinkingLevels = ["off", "low", "medium", "high"];
+  const thinkingLevels = await composerThinkingLevels(selected);
+  const thinkingSelect = thinkingLevels.length > 0
+    ? `<select class="agent-sel" data-controller="agent-select-menu" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select>`
+    : "";
   return `<span class="agent-stat-right">
 <select class="agent-sel" data-controller="agent-model-menu" data-agent-model-picker-select="true" name="model" form="${escapeHtml(formId)}" title="Model">${await renderAgentModelOptions(selected ? modelRefValue(selected) : undefined)}</select>
-<select class="agent-sel" data-controller="agent-select-menu" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select>
+${thinkingSelect}
 </span>`;
 }
 
