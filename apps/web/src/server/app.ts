@@ -15,11 +15,17 @@ import {
 import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
   addProject,
+  createProjectSecret,
   deleteProject,
+  deleteProjectSecret,
   formatProjectSpec,
   isGitProjectInit,
+  listProjectSecrets,
   listProjects,
   projectWorkspaceInit,
+  updateProject,
+  updateProjectSecret,
+  type ProjectSecretSummary,
   type ProjectSummary,
   type WorkspaceDeleteBlockedDetails,
 } from "@atelier/projects";
@@ -498,6 +504,59 @@ ${moduleStylesHtml()}
 </dialog>`;
   }
 
+  function projectSecretRow(project: ProjectSummary, secret: ProjectSecretSummary): string {
+    return `<form class="project-secret-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}" data-turbo="true">
+    <input name="envName" value="${escapeHtml(secret.envName)}" aria-label="Env" autocomplete="off">
+    <input name="hostPattern" value="${escapeHtml(secret.hostPattern)}" aria-label="Host" autocomplete="off">
+    <input name="secretValue" type="password" placeholder="Unchanged" aria-label="Secret" autocomplete="new-password">
+    <span class="project-secret-actions"><button type="submit" title="Save secret" aria-label="Save secret">✓</button><button type="submit" formaction="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}/delete" title="Remove secret" aria-label="Remove secret">×</button></span>
+  </form>`;
+  }
+
+  function projectSecretEditor(project: ProjectSummary, secrets: ProjectSecretSummary[]): string {
+    return `<section class="project-secrets" id="${domId("project_secrets", project.id)}">
+      <div class="project-secrets-head"><h3>Secrets</h3><p>Atelier injects a dummy value for ENV into workspaces. The egress proxy can replace that dummy value with SECRET for matching HTTPS hosts; the sandbox never receives the real secret.</p></div>
+      <div class="project-secret-grid" role="table" aria-label="Secrets">
+        <div class="project-secret-row head" role="row"><span>Env</span><span>Host</span><span>Secret</span><span></span></div>
+        <div class="project-secret-row readonly" role="row" aria-label="GitHub token injected automatically">
+          <input value="GH_TOKEN" aria-label="Env" disabled>
+          <input value="api.github.com" aria-label="Host" disabled>
+          <input value="Injected automatically" aria-label="Secret" disabled>
+          <span></span>
+        </div>
+        ${secrets.map((secret) => projectSecretRow(project, secret)).join("")}
+        <form class="project-secret-row new" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets" data-turbo="true">
+          <input name="envName" placeholder="ENV_VAR" aria-label="Env" autocomplete="off">
+          <input name="hostPattern" placeholder="api.example.com or *.example.com" aria-label="Host" autocomplete="off">
+          <input name="secretValue" type="password" placeholder="Secret" aria-label="Secret" autocomplete="new-password">
+          <button type="submit" aria-label="Add">+</button>
+        </form>
+      </div>
+    </section>`;
+  }
+
+  async function projectEditModal(project: ProjectSummary): Promise<string> {
+    const deleteModalId = domId("delete_project_modal", project.id);
+    const secrets = await listProjectSecrets(project.id);
+    return `<dialog id="${domId("project_edit_modal", project.id)}" class="modal project-edit-modal" data-controller="modal">
+  <div class="modal-content">
+    <div class="project-edit-head">
+      <div class="project-edit-title-wrap">
+        <h2 class="project-edit-title">${repoSwatch(project.id)} ${escapeHtml(project.name)}</h2>
+      </div>
+      <button class="project-edit-close" type="button" aria-label="Close" data-action="modal#close">×</button>
+    </div>
+    <form class="project-edit-form" method="post" action="/projects/${encodeURIComponent(project.id)}" data-action="turbo:submit-end->modal#submitted">
+      <label class="project-edit-field"><span>Name</span><input class="modal-input" name="name" value="${escapeHtml(project.name)}" required></label>
+      <label class="project-edit-field"><span>Git URL</span><input class="modal-input" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label>
+      <div class="modal-actions"><button class="btn primary" type="submit">Save project</button></div>
+    </form>
+    ${projectSecretEditor(project, secrets)}
+    <div class="project-edit-danger"><button class="btn danger" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="${deleteModalId}">Delete project</button></div>
+  </div>
+</dialog>`;
+  }
+
   function addProjectModal(): string {
     return `<dialog id="add-project-modal" class="modal" data-controller="modal">
   <form method="post" action="/projects" data-action="turbo:submit-end->modal#submitted">
@@ -565,12 +624,12 @@ ${moduleStylesHtml()}
   </button></form>`;
 
     const projectRows = projects.map((project) => {
-      const modalId = domId("agent_launch_project_modal", project.id);
-      const deleteModalId = domId("delete_project_modal", project.id);
+      const launchModalId = domId("agent_launch_project_modal", project.id);
+      const editModalId = domId("project_edit_modal", project.id);
       const spec = formatProjectSpec(project);
-      return `<div class="row project-row repo-tinted-row" role="button" tabindex="0" style="${repoColorStyle(project.id)}" title="${escapeHtml(spec)}" aria-label="Start agent workspace from ${escapeHtml(project.name)}" data-controller="modal-opener" data-action="click->modal-opener#open keydown.enter->modal-opener#open" data-modal-opener-target-id-value="${modalId}">
+      return `<div class="row project-row repo-tinted-row" role="button" tabindex="0" style="${repoColorStyle(project.id)}" title="${escapeHtml(spec)}" aria-label="Edit ${escapeHtml(project.name)}" data-controller="modal-opener" data-action="click->modal-opener#open keydown.enter->modal-opener#open" data-modal-opener-target-id-value="${editModalId}">
     ${repoSwatch(project.id)}<span class="row-main"><span class="r-title">${escapeHtml(project.name)}</span></span>
-    <span class="row-actions"><button class="project-row-delete" type="button" title="Delete project" aria-label="Delete project" data-controller="modal-opener" data-action="click->modal-opener#open" data-modal-opener-target-id-value="${deleteModalId}">🗑</button></span>
+    <span class="row-actions"><button class="project-row-create" type="button" title="Create workspace" aria-label="Create workspace from ${escapeHtml(project.name)}" data-controller="modal-opener" data-action="click->modal-opener#open" data-modal-opener-target-id-value="${launchModalId}">+</button></span>
   </div>`;
     }).join("");
 
@@ -749,6 +808,7 @@ ${moduleStylesHtml()}
     return [
       await launchEmptyAgentModal(selectedModel),
       ...(await Promise.all(projects.map((project) => launchProjectAgentModal(project, selectedModel)))),
+      ...(await Promise.all(projects.map((project) => projectEditModal(project)))),
       ...projects.map((project) => deleteProjectModal(project)),
     ].join("");
   }
@@ -1140,6 +1200,45 @@ ${moduleStylesHtml()}
     return Response.redirect(new URL("/", url).toString(), 303);
   }
 
+  async function updateProjectFromForm(projectId: string, request: Request): Promise<Response> {
+    const formData = await request.formData();
+    await updateProject(projectId, { name: String(formData.get("name") ?? ""), spec: String(formData.get("gitUrl") ?? "") });
+    return turboStreamResponse(await renderProjectChromeStreams());
+  }
+
+  async function renderProjectSecretStreams(projectId: string): Promise<string> {
+    const project = await projectById(projectId);
+    return turboReplaceStream(domId("project_secrets", projectId), projectSecretEditor(project, await listProjectSecrets(projectId)));
+  }
+
+  async function createProjectSecretFromForm(projectId: string, request: Request): Promise<Response> {
+    await projectById(projectId);
+    const formData = await request.formData();
+    await createProjectSecret(projectId, {
+      envName: String(formData.get("envName") ?? ""),
+      hostPattern: String(formData.get("hostPattern") ?? ""),
+      secretValue: String(formData.get("secretValue") ?? ""),
+    });
+    return turboStreamResponse(await renderProjectSecretStreams(projectId));
+  }
+
+  async function updateProjectSecretFromForm(projectId: string, secretId: string, request: Request): Promise<Response> {
+    await projectById(projectId);
+    const formData = await request.formData();
+    await updateProjectSecret(projectId, secretId, {
+      envName: String(formData.get("envName") ?? ""),
+      hostPattern: String(formData.get("hostPattern") ?? ""),
+      secretValue: String(formData.get("secretValue") ?? "") || undefined,
+    });
+    return turboStreamResponse(await renderProjectSecretStreams(projectId));
+  }
+
+  async function deleteProjectSecretFromForm(projectId: string, secretId: string): Promise<Response> {
+    await projectById(projectId);
+    await deleteProjectSecret(projectId, secretId);
+    return turboStreamResponse(await renderProjectSecretStreams(projectId));
+  }
+
   function projectReferencingWorkspaces(projectId: string): WorkspaceEntry[] {
     return registry.list().filter((entry) => isGitProjectInit(entry.init) && entry.init.projectId === projectId);
   }
@@ -1373,6 +1472,10 @@ ${moduleStylesHtml()}
 
     let params: string[] | undefined;
 
+    if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "POST") return await updateProjectFromForm(params[0], request);
+    if ((params = match(/^\/projects\/([^/]+)\/secrets$/)) && request.method === "POST") return await createProjectSecretFromForm(params[0], request);
+    if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)$/)) && request.method === "POST") return await updateProjectSecretFromForm(params[0], params[1], request);
+    if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectSecretFromForm(params[0], params[1]);
     if ((params = match(/^\/projects\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectEndpoint(params[0]);
 
     if (url.pathname === "/agent-workspaces" && request.method === "POST") return await createEmptyAgentWorkspaceEndpoint(request);

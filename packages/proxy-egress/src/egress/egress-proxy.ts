@@ -56,9 +56,9 @@ async function workspaceProxyEnv(workspaceId: string, token: string): Promise<Re
 }
 
 export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
-  events.on("workspace_plan_prepare", async ({ workspaceId, plan }) => {
+  events.on("workspace_plan_prepare", async ({ workspaceId, init, plan }) => {
     const runtimeContext = await getAtelierRuntimeContext();
-    const secretContext = await createWorkspaceSecretContext(workspaceId);
+    const secretContext = await createWorkspaceSecretContext(workspaceId, init);
     Object.assign(plan.env, secretContext.env);
 
     const proxyAuthToken = await ensureWorkspaceProxyAuthToken(workspaceId);

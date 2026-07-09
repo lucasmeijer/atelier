@@ -300,7 +300,7 @@ describe("web app contracts", () => {
     });
   });
 
-  test("project rows launch from the whole row and expose delete confirmation without a plus icon", async () => {
+  test("project rows open project editing and expose project launch on hover", async () => {
     await withTempDataDir(async () => {
       const project = (await addProject("https://github.com/org/sample-project.git")).project;
       const { app, registry } = createTestApp();
@@ -309,9 +309,16 @@ describe("web app contracts", () => {
       const html = await (await app.fetch(new Request("http://test.local/"))).text();
 
       expect(html).toContain('class="row project-row repo-tinted-row" role="button"');
+      expect(html).toContain(`data-modal-opener-target-id-value="project_edit_modal_${project.id}"`);
+      expect(html).toContain(`class="project-row-create" type="button" title="Create workspace"`);
       expect(html).toContain(`data-modal-opener-target-id-value="agent_launch_project_modal_${project.id}"`);
       expect(html).not.toContain("repo-launch-icon");
-      expect(html).toContain('class="project-row-delete"');
+      expect(html).toContain(`id="project_edit_modal_${project.id}"`);
+      expect(html).toContain("project-secrets");
+      expect(html).toContain("GH_TOKEN");
+      expect(html).toContain("api.github.com");
+      expect(html).toContain("Injected automatically");
+      expect(html).toContain(`action="/projects/${project.id}/secrets"`);
       expect(html).toContain(`id="delete_project_modal_${project.id}"`);
       expect(html).toContain(`action="/projects/${project.id}/delete"`);
       expect(html).not.toContain("This is only allowed when no workspaces reference this project.");

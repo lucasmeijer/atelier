@@ -8,6 +8,8 @@
   },
   "dependencies": {
     "@atelier/core": "workspace:*",
-    "@atelier/shared": "workspace:*"
+    "@atelier/projects": "workspace:*",
+    "@atelier/shared": "workspace:*",
+    "@atelier/workspace": "workspace:*"
   }
 }

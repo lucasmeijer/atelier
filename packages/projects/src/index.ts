@@ -13,12 +13,24 @@ export {
   projectsFile,
   projectNameFromGitUrl,
   projectWorkspaceInit,
+  updateProject,
   type AddProjectResult,
   type DeleteProjectResult,
   type GitProjectInitInstruction,
   type ProjectListResult,
+  type ProjectSecretSummary,
   type ProjectSummary,
+  type UpdateProjectResult,
 } from "./project.ts";
+
+export {
+  createProjectSecret,
+  deleteProjectSecret,
+  listProjectSecrets,
+  revealProjectSecrets,
+  updateProjectSecret,
+  type ProjectSecretPlaintext,
+} from "./secrets.ts";
 
 export {
   clearGitIdentity,

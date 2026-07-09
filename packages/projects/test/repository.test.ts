@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { addProject, deleteProject, getGitIdentity, getStoredGitIdentity, gitIdentitySettingsFile, hasGitIdentity, listProjects, parseProjectSpec, setGitIdentity } from "@atelier/projects";
+import { addProject, createProjectSecret, deleteProject, getGitIdentity, getStoredGitIdentity, gitIdentitySettingsFile, hasGitIdentity, listProjects, parseProjectSpec, revealProjectSecrets, setGitIdentity, updateProject, updateProjectSecret } from "@atelier/projects";
 
 describe("projects", () => {
   test("parseProjectSpec supports an optional #branch suffix", () => {
@@ -19,6 +19,30 @@ describe("projects", () => {
     expect(result.project.branch).toBe("feature");
 
     expect(await listProjects(file)).toEqual({ projects: [result.project] });
+  });
+
+  test("updateProject edits project fields without changing id", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "atelier-projects-")), "projects.json");
+    const project = (await addProject("https://github.com/org/repo.git", file)).project;
+
+    const result = await updateProject(project.id, { name: "Renamed", spec: "https://github.com/org/renamed.git#main" }, file);
+
+    expect(result.project).toMatchObject({ id: project.id, name: "Renamed", gitUrl: "https://github.com/org/renamed.git", branch: "main", sessionShareKey: "Renamed" });
+  });
+
+  test("project secrets are encrypted at rest and decryptable by the host", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "atelier-project-secrets-"));
+    const file = join(dir, "projects.json");
+    const keyFile = join(dir, "project-secrets.key");
+    const project = (await addProject("https://github.com/org/secret-project.git", file)).project;
+
+    const created = await createProjectSecret(project.id, { envName: "API_TOKEN", hostPattern: "api.example.com", secretValue: "real-secret" }, file, keyFile);
+    await updateProjectSecret(project.id, created.id, { envName: "API_TOKEN", hostPattern: "*.example.com" }, file, keyFile);
+
+    const rawStore = await readFile(file, "utf8");
+    expect(rawStore).toContain("API_TOKEN");
+    expect(rawStore).not.toContain("real-secret");
+    expect(await revealProjectSecrets(project.id, file, keyFile)).toMatchObject([{ id: created.id, envName: "API_TOKEN", hostPattern: "*.example.com", secretValue: "real-secret" }]);
   });
 
   test("deleteProject removes a project by id", async () => {
