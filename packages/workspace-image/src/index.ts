@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
+import { atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand } from "@atelier/observable-terminal/server";
 
 interface WorkspaceImageMetadata { tag: string; modules: string[] }
@@ -21,6 +21,25 @@ export interface ResolveWorkspaceImageOptions {
   events?: AtelierEventBus;
   sourcePath?: string;
   buildOutput?: "inherit";
+}
+
+export interface WorkspaceImageResolution {
+  image: string;
+  defaultImage: string;
+  repoImage?: string;
+}
+
+export interface AtelierWorkspaceImagePreloadMount {
+  type: "bind";
+  source: string;
+  target: string;
+  readonly: true;
+}
+
+export interface AtelierWorkspaceImagePreload {
+  refs: string[];
+  mount: AtelierWorkspaceImagePreloadMount;
+  initScript: string;
 }
 
 const maxBuildOutputBytes = 64 * 1024;
@@ -242,15 +261,134 @@ async function tagAtelierWorkspaceBase(baseImage: string): Promise<void> {
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `docker tag ${baseImage} atelier-workspace failed`);
 }
 
-export async function resolveWorkspaceImage(options: ResolveWorkspaceImageOptions = {}): Promise<string> {
+const workspaceImagePreloadMountPath = "/.atelier/preload-workspace-images";
+const workspaceImagePreloadTasks = new Map<string, Promise<void>>();
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+async function dockerImageId(ref: string): Promise<string> {
+  const inspected = await requireDocker(["image", "inspect", "--format", "{{.Id}}", ref]);
+  return inspected.stdout.trim();
+}
+
+async function workspaceImagePreloadKey(refs: string[]): Promise<string> {
+  const hash = createHash("sha256");
+  for (const ref of refs) {
+    hash.update(ref); hash.update("\0");
+    hash.update(await dockerImageId(ref)); hash.update("\0");
+  }
+  return hash.digest("hex").slice(0, 24);
+}
+
+function dockerRefTag(ref: string): string | undefined {
+  const slash = ref.lastIndexOf("/");
+  const colon = ref.lastIndexOf(":");
+  if (colon <= slash) return undefined;
+  return ref.slice(colon + 1);
+}
+
+function defaultWorkspaceImageLocalAlias(defaultImage: string): string | undefined {
+  const tag = dockerRefTag(defaultImage);
+  if (!tag || !/^[a-f0-9]{16}$/.test(tag)) return undefined;
+  return `atelier-workspace:${tag}`;
+}
+
+async function repoWorkspaceImageLocalAlias(sourcePath: string, baseImage: string): Promise<string | undefined> {
+  const dockerfile = join(sourcePath, ".atelier", "Dockerfile");
+  if (!(await Bun.file(dockerfile).exists())) return undefined;
+  return (await repoWorkspaceImageMetadata(dockerfile, baseImage)).tag;
+}
+
+async function tagWorkspaceImagePreloadAliases(sourceRef: string, aliases: string[]): Promise<string[]> {
+  const tagged: string[] = [];
+  for (const alias of aliases) {
+    if (alias === sourceRef) continue;
+    await requireDocker(["tag", sourceRef, alias]);
+    tagged.push(alias);
+  }
+  return tagged;
+}
+
+async function ensureWorkspaceImagePreloadTar(dir: string, refs: string[]): Promise<void> {
+  const tarPath = join(dir, "workspace-images.tar");
+  const completePath = join(dir, "complete");
+  if (await Bun.file(completePath).exists()) return;
+  const existing = workspaceImagePreloadTasks.get(tarPath);
+  if (existing) return await existing;
+
+  const task = (async () => {
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir, { recursive: true });
+    await requireDocker(["save", "--output", tarPath, ...refs]);
+    await writeFile(join(dir, "refs.txt"), `${refs.join("\n")}\n`);
+    await writeFile(completePath, "");
+  })().finally(() => {
+    workspaceImagePreloadTasks.delete(tarPath);
+  });
+  workspaceImagePreloadTasks.set(tarPath, task);
+  await task;
+}
+
+function workspaceImagePreloadInitScript(refs: string[]): string {
+  const quotedRefs = refs.map(shellQuote).join(" ");
+  return `preload_dir=${shellQuote(workspaceImagePreloadMountPath)}
+preload_tar="$preload_dir/workspace-images.tar"
+missing=0
+for ref in ${quotedRefs}; do
+  docker image inspect "$ref" >/dev/null 2>&1 || missing=1
+done
+if [ "$missing" = 1 ]; then
+  docker info >/dev/null 2>&1 || { echo "workspace image preload requires a running Docker daemon" >&2; exit 1; }
+  docker load --input "$preload_tar"
+fi
+for ref in ${quotedRefs}; do
+  docker image inspect "$ref" >/dev/null
+done`;
+}
+
+export async function resolveWorkspaceImageResolution(options: ResolveWorkspaceImageOptions = {}): Promise<WorkspaceImageResolution> {
   const baseImage = await ensureDefaultWorkspaceImage();
-  if (!options.sourcePath) return baseImage;
+  if (!options.sourcePath) return { image: baseImage, defaultImage: baseImage };
 
   const dockerfile = join(options.sourcePath, ".atelier", "Dockerfile");
-  if (!(await Bun.file(dockerfile).exists())) return baseImage;
+  if (!(await Bun.file(dockerfile).exists())) return { image: baseImage, defaultImage: baseImage };
 
   await tagAtelierWorkspaceBase(baseImage);
   const metadata = await repoWorkspaceImageMetadata(dockerfile, baseImage);
   const buildDockerfile = await optimizedRepoDockerfile(options.sourcePath, dockerfile);
-  return await ensureBuiltImage(options.sourcePath, buildDockerfile, metadata, options);
+  const repoImage = await ensureBuiltImage(options.sourcePath, buildDockerfile, metadata, options);
+  return { image: repoImage, defaultImage: baseImage, repoImage };
+}
+
+export async function resolveWorkspaceImage(options: ResolveWorkspaceImageOptions = {}): Promise<string> {
+  return (await resolveWorkspaceImageResolution(options)).image;
+}
+
+export async function prepareAtelierWorkspaceImagePreload(options: { sourcePath?: string; resolution: WorkspaceImageResolution }): Promise<AtelierWorkspaceImagePreload> {
+  const defaultImage = options.resolution.defaultImage;
+
+  // Released Atelier images bake a registry default image ref, but source-checkout
+  // Atelier (the common nested-dev case) computes and checks for the local
+  // deterministic `atelier-workspace:<hash>` tag. The repo workspace image tag
+  // also includes the default image ref string in its hash. Save these local
+  // aliases too so the inner daemon satisfies both default and repo image checks
+  // without rebuilding while still running as an isolated Docker-in-Docker daemon.
+  const defaultAlias = defaultWorkspaceImageLocalAlias(defaultImage);
+  const defaultAliases = defaultAlias ? await tagWorkspaceImagePreloadAliases(defaultImage, [defaultAlias]) : [];
+  const repoAlias = options.sourcePath && defaultAlias ? await repoWorkspaceImageLocalAlias(options.sourcePath, defaultAlias) : undefined;
+  const repoAliases = repoAlias && options.resolution.repoImage ? await tagWorkspaceImagePreloadAliases(options.resolution.repoImage, [repoAlias]) : [];
+
+  const refs = uniqueStrings([defaultImage, ...defaultAliases, options.resolution.image, ...repoAliases]);
+  const runtime = await getAtelierRuntimeContext();
+  const key = await workspaceImagePreloadKey(refs);
+  const dir = atelierDataPath(runtime, "image-preloads", key);
+  await ensureWorkspaceImagePreloadTar(dir, refs);
+
+  return {
+    refs,
+    mount: { type: "bind", source: dockerHostAtelierDataPath(runtime, "image-preloads", key), target: workspaceImagePreloadMountPath, readonly: true },
+    initScript: workspaceImagePreloadInitScript(refs),
+  };
 }

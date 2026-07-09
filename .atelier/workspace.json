@@ -1,6 +1,7 @@
 {
   "version": 1,
   "privileged": true,
+  "isAtelier": true,
   "seedPiConfig": {
     "authJson": "/home/atelier/.local/share/atelier-host/pi-config/auth.json",
     "modelsJson": "/home/atelier/.local/share/atelier-host/pi-config/models.json"
