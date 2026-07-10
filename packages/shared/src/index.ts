@@ -1,7 +1,8 @@
+import { escapeHtml } from "./html.ts";
+
 export { providerBrandColor, providerBrandIconHtml } from "./brand-icons.ts";
 export { escapeHtml } from "./html.ts";
 export { hopByHopHeaderNames, isHopByHopHeader, stripHopByHopHeaders } from "./proxy-headers.ts";
-import { escapeHtml } from "./html.ts";
 
 export const atelierName = "Atelier" as const;
 
