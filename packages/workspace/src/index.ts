@@ -270,8 +270,30 @@ export async function execWorkspaceCommandBuffer(id: string, command: string[], 
 }
 export async function execWorkspaceShell(id: string, script: string, options: WorkspaceCommandOptions = {}): Promise<WorkspaceExecResult> { return await execWorkspaceCommand(id, ["sh", "-lc", script], options); }
 
-function dockerMountArg(mount: WorkspaceDockerMount): string { return [`type=${mount.type}`, `src=${mount.source}`, `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : [])].join(","); }
-function planEnvDockerArgs(env: Record<string, string>): string[] { return Object.entries(env).flatMap(([name, value]) => ["--env", `${name}=${value}`]); }
+function dockerMountArg(mount: WorkspaceDockerMount): string {
+  return [`type=${mount.type}`, `src=${mount.source}`, `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : [])].join(",");
+}
+
+function planEnvDockerArgs(env: Record<string, string>): string[] {
+  return Object.entries(env).flatMap(([name, value]) => ["--env", `${name}=${value}`]);
+}
+
+function workspaceCreateDockerArgs(container: string, image: string, publishHost: string, plan: WorkspaceDockerPlan): string[] {
+  return [
+    "create",
+    "--restart", "unless-stopped",
+    "--name", container,
+    ...Object.entries(plan.labels).flatMap(([name, value]) => ["--label", `${name}=${value}`]),
+    ...plan.publishes.flatMap((port) => ["--publish", `${publishHost}::${port}`]),
+    ...planEnvDockerArgs(plan.env),
+    ...plan.extraArgs,
+    ...plan.mounts.flatMap((mount) => ["--mount", dockerMountArg(mount)]),
+    "--user", "root",
+    image,
+    "sh", "-lc", workspaceInitScript(plan),
+  ];
+}
+
 function workspaceGitCredentialInitScript(): string {
   return `cat > /usr/local/bin/atelier-git-credential <<'EOF'
 #!/bin/sh
@@ -407,7 +429,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       if (!image) throw new AtelierCoreError("workspace_image_missing", "workspace image was not resolved");
       const publishHost = workspacePublishHost();
       const container = workspaceContainerName(id);
-      await requireDocker(["create", "--restart", "unless-stopped", "--name", container, ...Object.entries(activePlan.labels).flatMap(([name, value]) => ["--label", `${name}=${value}`]), ...activePlan.publishes.flatMap((port) => ["--publish", `${publishHost}::${port}`]), ...planEnvDockerArgs(activePlan.env), ...activePlan.extraArgs, ...activePlan.mounts.flatMap((mount) => ["--mount", dockerMountArg(mount)]), "--user", "root", image, "sh", "-lc", workspaceInitScript(activePlan)]);
+      await requireDocker(workspaceCreateDockerArgs(container, image, publishHost, activePlan));
       for (const file of activePlan.containerFiles) await requireDocker(["cp", file.source, `${container}:${file.target}`]);
       await requireDocker(["start", container]);
     });
