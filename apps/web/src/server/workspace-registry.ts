@@ -152,8 +152,10 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
     },
 
     async seed(workspaces) {
-      activity = store ? await store.load() : {};
+      const loadedActivity = store ? await store.load() : {};
       const workspaceIds = new Set(workspaces.map((workspace) => workspace.id));
+      activity = Object.fromEntries(Object.entries(loadedActivity).filter(([id]) => workspaceIds.has(id)));
+      if (Object.keys(activity).length !== Object.keys(loadedActivity).length) persistActivity();
       workspaceUnread = Object.fromEntries(Object.entries(unreadStore ? await unreadStore.load() : {}).filter(([id]) => workspaceIds.has(id)));
       entries.clear();
       for (const workspace of workspaces) {

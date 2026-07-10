@@ -37,7 +37,7 @@ function setup(options: { activity?: Record<string, number>; unread?: Record<str
 
 describe("workspace registry", () => {
   test("seed creates ready entries ordered by persisted activity, unknown workspaces last", async () => {
-    const { registry, captured } = setup({ activity: { b: 200, a: 100 } });
+    const { registry, captured, store } = setup({ activity: { deleted: 300, b: 200, a: 100 } });
     await registry.seed([
       { id: "a", title: "A" },
       { id: "b", title: null },
@@ -47,6 +47,7 @@ describe("workspace registry", () => {
     expect(registry.list().map((entry) => entry.id)).toEqual(["b", "a", "c"]);
     expect(registry.list().every((entry) => entry.phase === "ready")).toBe(true);
     expect(captured.lists).toHaveLength(1);
+    expect(store.saved.at(-1)).toEqual({ b: 200, a: 100 });
   });
 
   test("parked workspaces sort below unparked workspaces", async () => {
