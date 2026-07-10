@@ -62,7 +62,7 @@ async function updateProxyAuthFile<T>(update: (file: ProxyAuthFile) => T): Promi
 
   let releaseFileLock: (() => Promise<void>) | undefined;
   try {
-    const filePath = await proxyAuthFilePath();
+    const filePath = proxyAuthFilePath();
     releaseFileLock = await acquireProxyAuthFileLock(filePath);
     const file = readProxyAuthFileAt(filePath);
     const result = update(file);
@@ -75,7 +75,7 @@ async function updateProxyAuthFile<T>(update: (file: ProxyAuthFile) => T): Promi
 }
 
 async function readProxyAuthFile(): Promise<ProxyAuthFile> {
-  return readProxyAuthFileAt(await proxyAuthFilePath());
+  return readProxyAuthFileAt(proxyAuthFilePath());
 }
 
 function readProxyAuthFileAt(path: string): ProxyAuthFile {
@@ -111,7 +111,6 @@ async function acquireProxyAuthFileLock(path: string): Promise<() => Promise<voi
   }
 }
 
-async function proxyAuthFilePath(): Promise<string> {
-  const context = await getAtelierRuntimeContext();
-  return atelierDataPath(context, "proxy", "workspace-auth.json");
+function proxyAuthFilePath(): string {
+  return atelierDataPath(getAtelierRuntimeContext(), "proxy", "workspace-auth.json");
 }
