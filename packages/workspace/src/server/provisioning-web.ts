@@ -1,6 +1,7 @@
 export type WorkspaceProvisionStepStatus = "pending" | "running" | "done" | "failed";
 
 import { observableTerminalStaticFiles } from "@atelier/observable-terminal/server";
+import { escapeHtml } from "@atelier/shared";
 
 export interface WorkspaceProvisionTerminal {
   kind: "host-tmux";
@@ -65,15 +66,6 @@ const workspaceCreationSeedSteps: WorkspaceProvisionSeedStep[] = [
 ];
 
 const workspaceIntegrationSeedStep: WorkspaceProvisionSeedStep = { id: "workspace.integrations", label: "Run workspace startup integrations" };
-
-function escapeHtml(value: unknown): string {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
 
 function statusIcon(status: WorkspaceProvisionStepStatus): string {
   if (status === "done") return "✓";
