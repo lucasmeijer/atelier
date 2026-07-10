@@ -75,7 +75,7 @@ function readProxyAuthFileAt(path: string): ProxyAuthFile {
   if (!existsSync(path)) return { version: proxyAuthVersion, workspaces: {} };
   const parsed = JSON.parse(readFileSync(path, "utf8")) as ProxyAuthFile;
   if (parsed.version !== proxyAuthVersion) throw new Error(`unsupported proxy auth file version: ${parsed.version}`);
-  if (!parsed.workspaces || typeof parsed.workspaces !== "object") throw new Error("invalid proxy auth file: workspaces must be an object");
+  if (!parsed.workspaces || typeof parsed.workspaces !== "object" || Array.isArray(parsed.workspaces)) throw new Error("invalid proxy auth file: workspaces must be an object");
   return parsed;
 }
 
