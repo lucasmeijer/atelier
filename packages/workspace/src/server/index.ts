@@ -1,4 +1,4 @@
-import { chmod, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
   atelierDataPath,
@@ -21,7 +21,6 @@ async function installReadOnlyFile(sourceUrl: URL, destinationPath: string): Pro
   const content = await Bun.file(sourceUrl).text();
   const tmpPath = `${destinationPath}.tmp-${process.pid}-${Date.now()}`;
   await writeFile(tmpPath, content, { mode: 0o444 });
-  await chmod(tmpPath, 0o444).catch(() => undefined);
   await rename(tmpPath, destinationPath);
 }
 
