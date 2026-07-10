@@ -25,8 +25,8 @@ export async function ensureMitmCa(context?: AtelierRuntimeContext): Promise<Mit
       "-addext", "keyUsage=critical,keyCertSign,cRLSign",
       "-keyout", keyPath, "-out", certPath,
     ]);
-    await chmod(keyPath, 0o600).catch(() => {});
-    await chmod(certPath, 0o644).catch(() => {});
+    await chmod(keyPath, 0o600);
+    await chmod(certPath, 0o644);
   }
   return { dir, certPath, keyPath, leafDir };
 }
@@ -58,7 +58,7 @@ async function ensureLeafCertificateUncached(ca: MitmCa, hostname: string, safeN
     await writeFile(ext, `basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=${subjectAltName}\n`);
     await runOpenSsl(["req", "-newkey", "rsa:2048", "-nodes", "-subj", `/CN=${hostname}`, "-keyout", keyPath, "-out", csr]);
     await runOpenSsl(["x509", "-req", "-in", csr, "-CA", ca.certPath, "-CAkey", ca.keyPath, "-CAcreateserial", "-days", "30", "-sha256", "-extfile", ext, "-out", certPath]);
-    await chmod(keyPath, 0o600).catch(() => {});
+    await chmod(keyPath, 0o600);
     return { certPath, keyPath };
   } finally {
     if (tmp) await rm(tmp, { recursive: true, force: true });
