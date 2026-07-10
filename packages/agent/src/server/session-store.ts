@@ -30,14 +30,18 @@ async function workspaceProjectInit(workspaceId: string, dataDir = getAtelierRun
   return isGitProjectInit(init) ? init : undefined;
 }
 
-export function sessionShareKeySlug(value: string): string {
+function sessionSlug(value: string, maxLength: number, fallback: string): string {
   const slug = value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 80)
+    .slice(0, maxLength)
     .replace(/-+$/g, "");
-  return slug || projectlessSessionShareKey;
+  return slug || fallback;
+}
+
+export function sessionShareKeySlug(value: string): string {
+  return sessionSlug(value, 80, projectlessSessionShareKey);
 }
 
 export function sessionShareKeyForInit(init: unknown): string {
@@ -58,13 +62,7 @@ export function sessionShareDir(shareKey: string, dataDir = getAtelierRuntimeCon
 }
 
 export function sessionTopicSlug(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48)
-    .replace(/-+$/g, "");
-  return slug || "agent-session";
+  return sessionSlug(value, 48, "agent-session");
 }
 
 function sharedAgentSessionPath(shareKey: string, workspaceId: string, label: string, topic: string, dataDir = getAtelierRuntimeContext().atelierDataDir): string {
