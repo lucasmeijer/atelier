@@ -11,7 +11,8 @@ export const hopByHopHeaderNames = [
 
 export function stripHopByHopHeaders(headers: Headers, extra: string[] = []): Headers {
   const next = new Headers(headers);
-  for (const name of [...hopByHopHeaderNames, ...extra]) next.delete(name);
+  for (const name of hopByHopHeaderNames) next.delete(name);
+  for (const name of extra) next.delete(name);
   return next;
 }
 

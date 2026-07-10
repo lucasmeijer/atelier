@@ -10,7 +10,7 @@ import { HttpRequestBlockedError } from "../secrets/errors.ts";
 import { matchHostname } from "../secrets/patterns.ts";
 import { createWorkspaceSecretContext, forgetWorkspaceSecretContext, getWorkspaceSecretContext } from "../secrets/workspace-secrets.ts";
 import type { AtelierEventBus } from "@atelier/core";
-import { isHopByHopHeader, stripHopByHopHeaders } from "../proxy-headers.ts";
+import { isHopByHopHeader, stripHopByHopHeaders } from "@atelier/shared";
 import { authenticateProxyRequest, ensureWorkspaceProxyAuthToken, forgetWorkspaceProxyAuthToken } from "./auth-store.ts";
 import { defaultNoProxyEntries, uniqueNoProxyEntries } from "./no-proxy.ts";
 import { ensureLeafCertificate, ensureMitmCa, type MitmCa } from "./mitm-ca.ts";

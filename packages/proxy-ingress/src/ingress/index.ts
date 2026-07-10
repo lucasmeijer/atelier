@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from "bun";
-import { stripHopByHopHeaders } from "../proxy-headers.ts";
+import { stripHopByHopHeaders } from "@atelier/shared";
 import {
   defaultPublicProxyPortRange,
   ensureWorkspacePublicProxyRoute,
