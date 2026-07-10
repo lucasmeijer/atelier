@@ -22,6 +22,5 @@ export function matchHostname(hostname: string, pattern: string): boolean {
 
 /** test a hostname against multiple allowlist patterns */
 export function matchesAnyHost(hostname: string, patterns: string[]): boolean {
-  const normalized = normalizeHostnamePattern(hostname);
-  return patterns.some((pattern) => matchHostname(normalized, pattern));
+  return patterns.some((pattern) => matchHostname(hostname, pattern));
 }
