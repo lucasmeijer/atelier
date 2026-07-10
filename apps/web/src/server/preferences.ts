@@ -14,9 +14,11 @@ export function createFileWebPreferenceStore(path: string): WebPreferenceStore {
   async function load(): Promise<WebPreferences> {
     try {
       const parsed = JSON.parse(await readFile(path, "utf8"));
-      return parsed && typeof parsed === "object" ? parsed as WebPreferences : {};
-    } catch {
-      return {};
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`${path} must contain a JSON object`);
+      return parsed as WebPreferences;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+      throw error;
     }
   }
 
