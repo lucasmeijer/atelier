@@ -1,9 +1,8 @@
-import type { IPty } from "@atelier/observable-terminal/server";
+import { attachObservableTerminal, type IPty } from "@atelier/observable-terminal/server";
 import type { WorkspaceServerSocketHandler } from "@atelier/shared";
 import type { ServerWebSocket } from "bun";
 import { AtelierCoreError } from "@atelier/core";
 import { workspaceContainerName, workspaceRoot } from "@atelier/workspace";
-import { attachObservableTerminal } from "@atelier/observable-terminal/server";
 import { parseObservableTerminalMessage } from "@atelier/observable-terminal/shared";
 import { terminalTabKey, terminalTitleFromTabKey } from "../shared.ts";
 import { listWorkspaceTerminals } from "./workspace-terminals.ts";
