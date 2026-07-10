@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { createHash } from "node:crypto";
 import { AtelierCoreError, getAtelierRuntimeContext } from "@atelier/core";
 import type { WorkspaceInitInstruction } from "@atelier/workspace";
 
@@ -107,7 +107,9 @@ export async function readProjectStore(file: string): Promise<ProjectStore> {
 
 export async function writeProjectStore(file: string, store: ProjectStore): Promise<void> {
   await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, `${JSON.stringify(store, null, 2)}\n`, "utf8");
+  const tempFile = `${file}.${randomUUID()}.tmp`;
+  await writeFile(tempFile, `${JSON.stringify(store, null, 2)}\n`, "utf8");
+  await rename(tempFile, file);
 }
 
 function projectSummary(project: ProjectRecord): ProjectSummary {
