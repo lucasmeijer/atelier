@@ -70,11 +70,16 @@ async function searchGitHubRepositoryPage(query: string, visibility: "public" | 
 }
 
 export async function searchGitHubRepositories(query: string): Promise<GitHubRepositorySearchResult[]> {
+  const now = Date.now();
+  for (const [key, entry] of searchCache) {
+    if (entry.expiresAt <= now) searchCache.delete(key);
+  }
+
   const token = discoverHostGitHubToken();
   const normalized = query.trim().toLowerCase();
   const cacheKey = `${token ? "authenticated" : "public"}:${normalized}`;
   const cached = searchCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.results;
+  if (cached) return cached.results;
 
   let results: GitHubRepositorySearchResult[];
   if (token) {
