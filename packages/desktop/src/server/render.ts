@@ -1,14 +1,5 @@
-import type { WorkspaceTabContribution } from "@atelier/shared";
+import { escapeHtml, type WorkspaceTabContribution } from "@atelier/shared";
 import { desktopAppKey, desktopTabKey } from "./runtime.ts";
-
-function escapeHtml(value: unknown): string {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
 
 export function renderDesktopTab(workspaceId: string): WorkspaceTabContribution {
   return {
