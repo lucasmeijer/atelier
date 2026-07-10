@@ -110,12 +110,9 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
         if (ws.readyState === WebSocket.OPEN) ws.send(encodeObservableTerminalMessage({ type: "progress", ...event }));
       });
     }
-    term.onResize((size) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(encodeObservableTerminalMessage({ type: "resize", cols: size.cols, rows: size.rows }));
+    term.onResize(({ cols, rows }) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(encodeObservableTerminalMessage({ type: "resize", cols, rows }));
     });
-  }
-
-  if (options.mode === "interactive") {
     term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(data);
     });
