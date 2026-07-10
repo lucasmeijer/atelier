@@ -58,11 +58,13 @@ function diffOperationLines(operations: DiffOperation[]): DiffLine[] {
 }
 
 export function diffStats(operations: DiffOperation[]): { added: number; deleted: number } {
-  const lines = diffOperationLines(operations);
-  return {
-    added: lines.filter((line) => line.kind === "add").length,
-    deleted: lines.filter((line) => line.kind === "del").length,
-  };
+  let added = 0;
+  let deleted = 0;
+  for (const line of diffOperationLines(operations)) {
+    if (line.kind === "add") added += 1;
+    if (line.kind === "del") deleted += 1;
+  }
+  return { added, deleted };
 }
 
 export function renderDiffHtml(operations: DiffOperation[]): string {
