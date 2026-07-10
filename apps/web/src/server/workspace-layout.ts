@@ -106,11 +106,11 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
       const { tab } = request;
       const source = layout.groups.find((group) => group.tabs.includes(tab));
       let target = layout.groups.find((group) => group.id === request.toGroup);
-      if (tab && request.newGroup === true && source) {
+      if (request.newGroup && source) {
         target = { id: crypto.randomUUID(), tabs: [], size: 1 };
         layout.groups.push(target);
       }
-      if (!tab || !target) return;
+      if (!target) return;
       const wasVisible = source?.visibleTab === tab;
       if (source) {
         const oldIndex = source.tabs.indexOf(tab);
