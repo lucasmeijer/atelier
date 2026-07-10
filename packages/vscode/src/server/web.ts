@@ -1,8 +1,8 @@
 import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { renderVSCodePane, vscodeTabKey } from "./render.ts";
-import { createWorkspaceVSCodeTab, deleteWorkspaceVSCodeTab, listWorkspaceVSCodeTabs, type WorkspaceVSCodeTab } from "./workspace-vscode.ts";
+import { createWorkspaceVSCodeTab, deleteWorkspaceVSCodeState, deleteWorkspaceVSCodeTab, listWorkspaceVSCodeTabs, type WorkspaceVSCodeTab } from "./workspace-vscode.ts";
 import { vscodeStaticFiles } from "./static.ts";
-import { patchVSCodeWorkspaceAppResponse, resolveVSCodeWorkspaceAppTarget, vscodeAppKey } from "./proxy.ts";
+import { deleteWorkspaceVSCodeProxyState, patchVSCodeWorkspaceAppResponse, resolveVSCodeWorkspaceAppTarget, vscodeAppKey } from "./proxy.ts";
 
 export function renderWorkspaceVSCodeTabs(workspaceId: string, tabs: WorkspaceVSCodeTab[]): WorkspaceTabContribution[] {
   return tabs.map((tab) => ({
@@ -32,6 +32,10 @@ export const vscodeWorkspaceModule: WorkspaceModule = {
       matches: (app) => app.appKey === vscodeAppKey,
       resolveTarget: (app, requestUrl) => resolveVSCodeWorkspaceAppTarget(app, requestUrl),
       transformResponse: (app, response, request) => patchVSCodeWorkspaceAppResponse(app, response, request),
+    });
+    context.onWorkspaceRemoved((workspaceId) => {
+      deleteWorkspaceVSCodeState(workspaceId);
+      deleteWorkspaceVSCodeProxyState(workspaceId);
     });
   },
   commands: [{

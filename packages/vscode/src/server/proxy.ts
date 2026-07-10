@@ -16,6 +16,10 @@ function unescapeHtmlAttribute(value: string): string {
 const serverCheckTtlMs = 30_000;
 const serverChecks = new Map<string, { promise: Promise<void>; checkedAt: number }>();
 
+export function deleteWorkspaceVSCodeProxyState(workspaceId: string): void {
+  serverChecks.delete(workspaceId);
+}
+
 type VSCodeThemeDefaults = {
   colorTheme: string;
   colorCustomizations: Record<string, string>;

@@ -38,6 +38,10 @@ export function deleteWorkspaceVSCodeTab(workspaceId: string, title: string): vo
   if (existing) tabs.set(workspaceId, existing.filter((tab) => tab.title !== title));
 }
 
+export function deleteWorkspaceVSCodeState(workspaceId: string): void {
+  tabs.delete(workspaceId);
+}
+
 export async function ensureWorkspaceVSCodeServer(workspaceId: string): Promise<void> {
   const result = await execWorkspaceShell(workspaceId, `
     set -eu
