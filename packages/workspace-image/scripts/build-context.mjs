@@ -100,4 +100,4 @@ for (const module of modules) {
 if (Object.keys(env).length) dockerfile += `ENV ${Object.entries(env).map(([key, value]) => `${key}=${quote(value)}`).join(" \\\n    ")}\n\n`;
 dockerfile += `WORKDIR /work\n`;
 await writeFile(join(outDir, "Dockerfile"), dockerfile);
-await writeFile(join(outDir, "metadata.json"), JSON.stringify({ tag: `atelier-workspace:${hash.digest("hex").slice(0, 16)}`, modules: moduleNames }, null, 2));
+await writeFile(join(outDir, "metadata.json"), `${JSON.stringify({ tag: `atelier-workspace:${hash.digest("hex").slice(0, 16)}`, modules: moduleNames }, null, 2)}\n`);
