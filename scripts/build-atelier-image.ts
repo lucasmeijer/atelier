@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 
-import { arch } from "node:os";
+import { mkdtempSync, rmSync } from "node:fs";
+import { arch, tmpdir } from "node:os";
+import { join } from "node:path";
 
 export {};
 
@@ -45,7 +47,9 @@ interface Options {
 
 interface WorkspaceImageMetadata { tag: string }
 
-const workspaceContextDir = await Bun.$`mktemp -d`.text().then((path) => `${path.trim()}/atelier-workspace`);
+const workspaceTempDir = mkdtempSync(join(tmpdir(), "atelier-image-"));
+const workspaceContextDir = join(workspaceTempDir, "atelier-workspace");
+process.on("exit", () => rmSync(workspaceTempDir, { recursive: true, force: true }));
 
 function fail(message: string): never {
   console.error(`error: ${message}`);
