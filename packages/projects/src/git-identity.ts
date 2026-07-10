@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getAtelierRuntimeContext, invalidArguments, shellQuote, type AtelierEventBus } from "@atelier/core";
 
@@ -33,7 +34,9 @@ async function readStore(file: string): Promise<GitIdentityStore> {
 
 async function writeStore(file: string, store: GitIdentityStore): Promise<void> {
   await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, `${JSON.stringify(store, null, 2)}\n`, "utf8");
+  const tempFile = `${file}.${randomUUID()}.tmp`;
+  await writeFile(tempFile, `${JSON.stringify(store, null, 2)}\n`, "utf8");
+  await rename(tempFile, file);
 }
 
 function validateGitIdentity(identity: GitIdentitySettings): GitIdentitySettings {
