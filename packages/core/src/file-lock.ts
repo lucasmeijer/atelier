@@ -27,7 +27,7 @@ async function acquireFileLock(lockDir: string, label: string): Promise<() => Pr
   for (;;) {
     try {
       await mkdir(lockDir, { mode: 0o700 });
-      return async () => { await rmdir(lockDir).catch(() => {}); };
+      return async () => { await rmdir(lockDir); };
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "EEXIST") throw error;
