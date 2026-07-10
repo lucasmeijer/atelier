@@ -1,7 +1,6 @@
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
-import { createProcessFileLock } from "./file-lock.ts";
+import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext } from "@atelier/core";
 
 export interface WorkspacePublicProxyRoute {
   appKey: string;

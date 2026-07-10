@@ -1,13 +1,16 @@
 import { timingSafeEqual as nodeTimingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, rename, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import type { IncomingMessage } from "node:http";
 import { dirname } from "node:path";
-import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
+import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext } from "@atelier/core";
 import { HttpRequestBlockedError } from "../secrets/errors.ts";
 
 const proxyAuthVersion = 1;
-let proxyAuthFileLock: Promise<void> = Promise.resolve();
+const withProxyAuthFileLock = createProcessFileLock({
+  label: "proxy auth",
+  lockDir: () => `${proxyAuthFilePath()}.lock`,
+});
 
 type ProxyAuthFile = { version: number; workspaces: Record<string, { token: string }> };
 
@@ -55,23 +58,13 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 async function updateProxyAuthFile<T>(update: (file: ProxyAuthFile) => T): Promise<T> {
-  const previous = proxyAuthFileLock;
-  let releaseProcessLock!: () => void;
-  proxyAuthFileLock = new Promise<void>((resolve) => { releaseProcessLock = resolve; });
-  await previous;
-
-  let releaseFileLock: (() => Promise<void>) | undefined;
-  try {
+  return await withProxyAuthFileLock(async () => {
     const filePath = proxyAuthFilePath();
-    releaseFileLock = await acquireProxyAuthFileLock(filePath);
     const file = readProxyAuthFileAt(filePath);
     const result = update(file);
     await writeProxyAuthFileAt(filePath, file);
     return result;
-  } finally {
-    await releaseFileLock?.();
-    releaseProcessLock();
-  }
+  });
 }
 
 async function readProxyAuthFile(): Promise<ProxyAuthFile> {
@@ -91,23 +84,6 @@ async function writeProxyAuthFileAt(path: string, file: ProxyAuthFile): Promise<
   const tempPath = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
   await writeFile(tempPath, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
   await rename(tempPath, path);
-}
-
-async function acquireProxyAuthFileLock(path: string): Promise<() => Promise<void>> {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const lockDir = `${path}.lock`;
-  const deadline = Date.now() + 10_000;
-  for (;;) {
-    try {
-      await mkdir(lockDir, { mode: 0o700 });
-      return async () => { await rmdir(lockDir).catch(() => {}); };
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "EEXIST") throw error;
-      if (Date.now() > deadline) throw new Error(`timed out waiting for proxy auth lock: ${lockDir}`);
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-  }
 }
 
 function proxyAuthFilePath(): string {

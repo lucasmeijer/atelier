@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { request as httpRequest } from "node:http";
-import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
-import { createProcessFileLock } from "./file-lock.ts";
+import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext } from "@atelier/core";
 import { defaultPublicProxyPortRange, type PublicProxyPortRange } from "./route-state.ts";
 
 export const defaultTailscaleLocalApiSocketPath = "/var/run/tailscale/tailscaled.sock";

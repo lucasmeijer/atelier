@@ -29,6 +29,10 @@ export {
 } from "./data-dir.ts";
 
 export {
+  createProcessFileLock,
+} from "./file-lock.ts";
+
+export {
   shellQuote,
 } from "./shell.ts";
 
