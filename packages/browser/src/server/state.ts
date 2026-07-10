@@ -21,7 +21,7 @@ export function listWorkspaceBrowserTabs(workspaceId: string): WorkspaceBrowserT
 }
 
 export function getWorkspaceBrowserTab(workspaceId: string, appKey: string): WorkspaceBrowserTab | undefined {
-  return listWorkspaceBrowserTabs(workspaceId).find((tab) => tab.key === appKey);
+  return browserTabsByWorkspace.get(workspaceId)?.find((tab) => tab.key === appKey);
 }
 
 export function createWorkspaceBrowserTab(workspaceId: string): WorkspaceBrowserTab {
@@ -39,7 +39,8 @@ export function createWorkspaceBrowserTab(workspaceId: string): WorkspaceBrowser
 }
 
 export function deleteWorkspaceBrowserTab(workspaceId: string, appKey: string): void {
-  browserTabsByWorkspace.set(workspaceId, listWorkspaceBrowserTabs(workspaceId).filter((tab) => tab.key !== appKey));
+  const tabs = browserTabsByWorkspace.get(workspaceId);
+  if (tabs) browserTabsByWorkspace.set(workspaceId, tabs.filter((tab) => tab.key !== appKey));
 }
 
 export function setWorkspaceBrowserTarget(workspaceId: string, appKey: string, input: string): WorkspaceBrowserTab | undefined {
