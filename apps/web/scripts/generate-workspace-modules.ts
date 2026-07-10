@@ -31,8 +31,9 @@ async function readJson<T>(url: URL): Promise<T> {
 async function fileText(url: URL): Promise<string | undefined> {
   try {
     return await readFile(url, "utf8");
-  } catch {
-    return undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
   }
 }
 
