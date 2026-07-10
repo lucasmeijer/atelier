@@ -64,9 +64,11 @@ function createFileTimestampStore(path: string): WorkspaceActivityStore {
     async load() {
       try {
         const parsed = JSON.parse(await readFile(path, "utf8"));
-        return parsed && typeof parsed === "object" ? parsed as Record<string, number> : {};
-      } catch {
-        return {};
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`${path} must contain a JSON object`);
+        return parsed as Record<string, number>;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+        throw error;
       }
     },
     save(timestamps) {
