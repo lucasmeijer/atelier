@@ -22,10 +22,10 @@ export function dockerHostAtelierDataPath(context: AtelierRuntimeContext, ...seg
 }
 
 export function getAtelierRuntimeContext(): AtelierRuntimeContext {
-  const context = readRuntimeContextFromEnv();
-  const key = runtimeContextKey(context);
+  const paths = runtimePathsFromEnv();
+  const key = `${paths.atelierDataDir}\0${paths.dockerHostAtelierDataDir}`;
   if (!cachedRuntimeContext || cachedRuntimeContextKey !== key) {
-    cachedRuntimeContext = context;
+    cachedRuntimeContext = { ...paths, dockerBridgeHost: inspectDockerBridgeHost() };
     cachedRuntimeContextKey = key;
   }
   return cachedRuntimeContext;
@@ -41,20 +41,15 @@ export function discoverAtelierRuntimeContext(): AtelierRuntimeContext {
 }
 
 function readRuntimeContextFromEnv(): AtelierRuntimeContext {
+  return { ...runtimePathsFromEnv(), dockerBridgeHost: inspectDockerBridgeHost() };
+}
+
+function runtimePathsFromEnv(): Pick<AtelierRuntimeContext, "atelierDataDir" | "dockerHostAtelierDataDir"> {
   const atelierDataDir = envString("ATELIER_DATA_DIR") ?? defaultDataDir();
   return {
     atelierDataDir,
     dockerHostAtelierDataDir: envString("ATELIER_DOCKER_HOST_DATA_DIR") ?? atelierDataDir,
-    dockerBridgeHost: inspectDockerBridgeHost(),
   };
-}
-
-function runtimeContextKey(context: AtelierRuntimeContext): string {
-  return [
-    context.atelierDataDir,
-    context.dockerHostAtelierDataDir,
-    context.dockerBridgeHost,
-  ].join("\0");
 }
 
 function envString(name: string): string | undefined {
