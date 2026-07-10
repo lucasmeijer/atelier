@@ -1,16 +1,8 @@
 export { providerBrandColor, providerBrandIconHtml } from "./brand-icons.ts";
+export { escapeHtml } from "./html.ts";
+import { escapeHtml } from "./html.ts";
 
 export const atelierName = "Atelier" as const;
-
-export function escapeHtml(value: unknown): string {
-  return String(value)
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "�")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
 
 export function domId(...parts: string[]): string {
   return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");

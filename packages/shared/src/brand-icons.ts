@@ -2,6 +2,8 @@
 // Source: https://github.com/simple-icons/simple-icons
 // Most icons: develop branch fetched 2026-06-30. OpenAI: simple-icons 14.0.0.
 
+import { escapeHtml } from "./html.ts";
+
 interface BrandIconOptions {
   label?: string;
   className?: string;
@@ -129,15 +131,6 @@ const providerBrandColors: Record<string, string> = {
   ollama: "#111827",
   github: "#24292f",
 };
-
-function escapeHtml(value: unknown): string {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
 
 function providerInitial(label: string): string {
   return (label.trim()[0] ?? "?").toUpperCase();
