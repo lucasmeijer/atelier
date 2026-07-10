@@ -107,8 +107,20 @@ function cloneRequestWith(request: Request, options: { url: string; headers: Hea
   const canHaveBody = method !== "GET" && method !== "HEAD";
   return new Request(options.url, { method: request.method, headers: options.headers, body: canHaveBody ? request.body : undefined, ...(canHaveBody && request.body ? ({ duplex: "half" } as const) : {}) });
 }
-function syncHeaders(target: Headers, source: Headers): void { const keys = new Set<string>(); source.forEach((_v, k) => keys.add(k.toLowerCase())); const del: string[] = []; target.forEach((_v, k) => { if (!keys.has(k.toLowerCase())) del.push(k); }); del.forEach((k) => target.delete(k)); source.forEach((v, k) => target.set(k, v)); }
-function getHostname(url: string): string { return new URL(url).hostname.toLowerCase(); }
+function syncHeaders(target: Headers, source: Headers): void {
+  const sourceNames = new Set<string>();
+  source.forEach((_value, name) => sourceNames.add(name.toLowerCase()));
+  const removedNames: string[] = [];
+  target.forEach((_value, name) => {
+    if (!sourceNames.has(name.toLowerCase())) removedNames.push(name);
+  });
+  for (const name of removedNames) target.delete(name);
+  source.forEach((value, name) => target.set(name, value));
+}
+
+function getHostname(url: string): string {
+  return new URL(url).hostname.toLowerCase();
+}
 
 function assertSecretValuesAllowedForHost(request: Request, hostname: string, entries: SecretEntry[], checkQuery: boolean) {
   for (const entry of entries) {
@@ -124,9 +136,29 @@ function requestContainsSecretValuesInHeaders(headers: Headers, values: string[]
   }
   return false;
 }
-function requestContainsSecretValuesInQuery(url: string, values: string[]): boolean { const parsed = new URL(url); return [...parsed.searchParams].some(([n, v]) => values.filter(Boolean).some((s) => n.includes(s) || v.includes(s))); }
-function decodeBasicAuth(value: string): string | null { const match = value.match(/^(Basic)(\s+)(\S+)(\s*)$/i); if (!match) return null; try { return Buffer.from(match[3]!, "base64").toString("utf8"); } catch { return null; } }
-function collectStringMatchRanges(container: string, search: string): Array<{ start: number; end: number }> { const out: Array<{ start: number; end: number }> = []; if (!search) return out; for (let start = container.indexOf(search); start !== -1; start = container.indexOf(search, start + 1)) out.push({ start, end: start + search.length }); return out; }
+function requestContainsSecretValuesInQuery(url: string, values: string[]): boolean {
+  const secrets = values.filter(Boolean);
+  return [...new URL(url).searchParams].some(([name, value]) => secrets.some((secret) => name.includes(secret) || value.includes(secret)));
+}
+
+function decodeBasicAuth(value: string): string | null {
+  const match = value.match(/^(Basic)(\s+)(\S+)(\s*)$/i);
+  if (!match) return null;
+  try {
+    return Buffer.from(match[3]!, "base64").toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+function collectStringMatchRanges(container: string, search: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  if (!search) return ranges;
+  for (let start = container.indexOf(search); start !== -1; start = container.indexOf(search, start + 1)) {
+    ranges.push({ start, end: start + search.length });
+  }
+  return ranges;
+}
 
 function replaceSecretPlaceholdersInHeaders(incomingHeaders: Headers, hostname: string, entries: SecretEntry[]): Headers {
   let headers: Headers | null = null;
@@ -139,14 +171,25 @@ function replaceSecretPlaceholdersInHeaders(incomingHeaders: Headers, hostname: 
 }
 function replaceSecretPlaceholdersInUrlParameters(url: string, hostname: string, entries: SecretEntry[], enabled: boolean): string {
   if (!enabled) return url;
-  const parsed = new URL(url); let changed = false; const params = new URLSearchParams();
-  for (const [n, v] of parsed.searchParams) { const nn = replaceSecretPlaceholdersInString(n, hostname, entries); const vv = replaceSecretPlaceholdersInString(v, hostname, entries); changed ||= nn !== n || vv !== v; params.append(nn, vv); }
-  if (!changed) return url; parsed.search = params.toString(); return parsed.toString();
+  const parsed = new URL(url);
+  let changed = false;
+  const params = new URLSearchParams();
+  for (const [name, value] of parsed.searchParams) {
+    const nextName = replaceSecretPlaceholdersInString(name, hostname, entries);
+    const nextValue = replaceSecretPlaceholdersInString(value, hostname, entries);
+    changed ||= nextName !== name || nextValue !== value;
+    params.append(nextName, nextValue);
+  }
+  if (!changed) return url;
+  parsed.search = params.toString();
+  return parsed.toString();
 }
 function replaceBasicAuthSecretPlaceholders(headerName: string, headerValue: string, hostname: string, entries: SecretEntry[]): string {
   if (!/^(authorization|proxy-authorization)$/i.test(headerName)) return headerValue;
-  const match = headerValue.match(/^(Basic)(\s+)(\S+)(\s*)$/i); if (!match) return headerValue;
-  const decoded = decodeBasicAuth(headerValue); if (!decoded) return headerValue;
+  const match = headerValue.match(/^(Basic)(\s+)(\S+)(\s*)$/i);
+  if (!match) return headerValue;
+  const decoded = decodeBasicAuth(headerValue);
+  if (!decoded) return headerValue;
   const updated = replaceSecretPlaceholdersInString(decoded, hostname, entries);
   return updated === decoded ? headerValue : `${match[1]}${match[2]}${Buffer.from(updated, "utf8").toString("base64")}${match[4] ?? ""}`;
 }
@@ -155,7 +198,8 @@ function replaceSecretPlaceholdersInString(value: string, hostname: string, entr
   const replacements = entries.flatMap((entry) => collectStringMatchRanges(value, entry.placeholder).filter((range) => !secretValueRanges.some((s) => s.start <= range.start && s.end >= range.end)).map((range) => ({ ...range, entry })));
   if (!replacements.length) return value;
   replacements.sort((a, b) => a.start - b.start || b.end - a.end);
-  let updated = ""; let offset = 0;
+  let updated = "";
+  let offset = 0;
   for (const replacement of replacements) {
     if (replacement.start < offset) continue;
     updated += value.slice(offset, replacement.start);
@@ -165,4 +209,6 @@ function replaceSecretPlaceholdersInString(value: string, hostname: string, entr
   }
   return updated + value.slice(offset);
 }
-function uniqueHosts(hosts: string[]): string[] { return [...new Set(hosts.map(normalizeHostnamePattern).filter(Boolean))]; }
+function uniqueHosts(hosts: string[]): string[] {
+  return [...new Set(hosts.map(normalizeHostnamePattern).filter(Boolean))];
+}
