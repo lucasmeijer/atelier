@@ -42,6 +42,7 @@ export interface WorkspaceProvisioningStore {
   apply(event: WorkspaceProvisionStepEvent): void;
   seed(workspaceId: string): void;
   render(workspaceId: string, options?: { failed?: boolean; error?: string }): string;
+  delete(workspaceId: string): void;
 }
 
 export interface WorkspaceProvisionSeedStep {
@@ -131,6 +132,10 @@ export function createWorkspaceProvisioningStore(options: { onChange: (workspace
       const heading = renderOptions.failed ? "Workspace creation failed" : "Preparing workspace";
       const detail = failed?.label ? `Failed while: ${failed.label}` : renderOptions.failed ? (renderOptions.error ?? "unknown error") : "Workspace setup is running.";
       return `<div class="workspace-provision"><div class="provision-heading"><div><b>${escapeHtml(heading)}</b><div class="r-sub">${escapeHtml(detail)}</div></div></div><ol class="provision-list">${body}</ol></div>`;
+    },
+
+    delete(workspaceId) {
+      stepsByWorkspace.delete(workspaceId);
     },
   };
 }

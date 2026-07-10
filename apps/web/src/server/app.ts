@@ -384,6 +384,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     },
     removed(id) {
       layouts.delete(id);
+      provisioning.delete(id);
       workspaceRowContributionStore.delete(id);
       for (const handler of deps.workspaceRemovedHandlers ?? []) void handler(id);
       broadcastShell(turboRemoveStream(workspaceRowId(id)));
