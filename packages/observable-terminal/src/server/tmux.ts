@@ -42,8 +42,10 @@ export function buildObservableSessionCommand(options: ObservableTerminalSession
     commands.push(`set-option -t ${target} window-size manual`);
     commands.push(`resize-window -t ${target} -x ${cols} -y ${rows}`);
   }
-  if (options.remainOnExit) commands.push(`set-window-option -t ${target} remain-on-exit on`);
-  if (options.remainOnExit) commands.push(`set-window-option -t ${target} remain-on-exit-format ''`);
+  if (options.remainOnExit) {
+    commands.push(`set-window-option -t ${target} remain-on-exit on`);
+    commands.push(`set-window-option -t ${target} remain-on-exit-format ''`);
+  }
   commands.push(`set-option -t ${target} status ${options.status === true ? "on" : "off"}`);
   if (options.historyLimit) commands.push(`set-option -t ${target} history-limit ${options.historyLimit}`);
   return `${observableTerminalEnvPrefix()} tmux ${commands.join(" \\; ")}`;
