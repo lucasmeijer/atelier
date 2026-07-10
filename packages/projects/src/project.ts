@@ -32,6 +32,7 @@ export interface ProjectSecretSummary {
   projectId: string;
   envName: string;
   hostPattern: string;
+  placeholder?: string;
   createdAt: string;
   updatedAt: string;
 }

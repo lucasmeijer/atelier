@@ -512,6 +512,7 @@ ${moduleStylesHtml()}
     return `<form class="project-secret-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}" data-turbo="true">
     <input name="envName" value="${escapeHtml(secret.envName)}" aria-label="Env" autocomplete="off">
     <input name="hostPattern" value="${escapeHtml(secret.hostPattern)}" aria-label="Host" autocomplete="off">
+    <input name="placeholder" value="${escapeHtml(secret.placeholder ?? "")}" placeholder="Automatic" aria-label="Placeholder" autocomplete="off">
     <input name="secretValue" type="password" placeholder="Unchanged" aria-label="Secret" autocomplete="new-password">
     <span class="project-secret-actions"><button type="submit" title="Save secret" aria-label="Save secret">✓</button><button type="submit" formaction="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}/delete" title="Remove secret" aria-label="Remove secret">×</button></span>
   </form>`;
@@ -519,12 +520,13 @@ ${moduleStylesHtml()}
 
   function projectSecretEditor(project: ProjectSummary, secrets: ProjectSecretSummary[]): string {
     return `<section class="project-secrets" id="${domId("project_secrets", project.id)}">
-      <div class="project-secrets-head"><h3>Secrets</h3><p>Atelier injects a dummy value for ENV into workspaces. The egress proxy can replace that dummy value with SECRET for matching HTTPS hosts; the sandbox never receives the real secret.</p></div>
+      <div class="project-secrets-head"><h3>Secrets</h3><p>Atelier injects a placeholder for ENV into workspaces, then replaces it with SECRET for matching HTTPS hosts. Set a custom placeholder when an API requires token-like values; leave it blank to generate one automatically.</p></div>
       <div class="project-secret-grid" role="table" aria-label="Secrets">
-        <div class="project-secret-row head" role="row"><span>Env</span><span>Host</span><span>Secret</span><span></span></div>
+        <div class="project-secret-row head" role="row"><span>Env</span><span>Host</span><span>Placeholder</span><span>Secret</span><span></span></div>
         <div class="project-secret-row readonly" role="row" aria-label="GitHub token injected automatically">
           <input value="GH_TOKEN" aria-label="Env" disabled>
           <input value="api.github.com" aria-label="Host" disabled>
+          <input value="Automatic" aria-label="Placeholder" disabled>
           <input value="Injected automatically" aria-label="Secret" disabled>
           <span></span>
         </div>
@@ -532,6 +534,7 @@ ${moduleStylesHtml()}
         <form class="project-secret-row new" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets" data-turbo="true">
           <input name="envName" placeholder="ENV_VAR" aria-label="Env" autocomplete="off">
           <input name="hostPattern" placeholder="api.example.com or *.example.com" aria-label="Host" autocomplete="off">
+          <input name="placeholder" placeholder="Optional token-like value" aria-label="Placeholder" autocomplete="off">
           <input name="secretValue" type="password" placeholder="Secret" aria-label="Secret" autocomplete="new-password">
           <button type="submit" aria-label="Add">+</button>
         </form>
@@ -1221,6 +1224,7 @@ ${moduleStylesHtml()}
     await createProjectSecret(projectId, {
       envName: String(formData.get("envName") ?? ""),
       hostPattern: String(formData.get("hostPattern") ?? ""),
+      placeholder: String(formData.get("placeholder") ?? ""),
       secretValue: String(formData.get("secretValue") ?? ""),
     });
     return turboStreamResponse(await renderProjectSecretStreams(projectId));
@@ -1232,6 +1236,7 @@ ${moduleStylesHtml()}
     await updateProjectSecret(projectId, secretId, {
       envName: String(formData.get("envName") ?? ""),
       hostPattern: String(formData.get("hostPattern") ?? ""),
+      placeholder: String(formData.get("placeholder") ?? ""),
       secretValue: String(formData.get("secretValue") ?? "") || undefined,
     });
     return turboStreamResponse(await renderProjectSecretStreams(projectId));

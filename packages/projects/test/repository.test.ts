@@ -36,13 +36,17 @@ describe("projects", () => {
     const keyFile = join(dir, "project-secrets.key");
     const project = (await addProject("https://github.com/org/secret-project.git", file)).project;
 
-    const created = await createProjectSecret(project.id, { envName: "API_TOKEN", hostPattern: "api.example.com", secretValue: "real-secret" }, file, keyFile);
+    const created = await createProjectSecret(project.id, { envName: "API_TOKEN", hostPattern: "api.example.com", placeholder: "sk-test-placeholder", secretValue: "real-secret" }, file, keyFile);
     await updateProjectSecret(project.id, created.id, { envName: "API_TOKEN", hostPattern: "*.example.com" }, file, keyFile);
 
     const rawStore = await readFile(file, "utf8");
     expect(rawStore).toContain("API_TOKEN");
+    expect(rawStore).toContain("sk-test-placeholder");
     expect(rawStore).not.toContain("real-secret");
-    expect(await revealProjectSecrets(project.id, file, keyFile)).toMatchObject([{ id: created.id, envName: "API_TOKEN", hostPattern: "*.example.com", secretValue: "real-secret" }]);
+    expect(await revealProjectSecrets(project.id, file, keyFile)).toMatchObject([{ id: created.id, envName: "API_TOKEN", hostPattern: "*.example.com", placeholder: "sk-test-placeholder", secretValue: "real-secret" }]);
+
+    await updateProjectSecret(project.id, created.id, { envName: "API_TOKEN", hostPattern: "*.example.com", placeholder: "" }, file, keyFile);
+    expect((await revealProjectSecrets(project.id, file, keyFile))[0]).not.toHaveProperty("placeholder");
   });
 
   test("deleteProject removes a project by id", async () => {

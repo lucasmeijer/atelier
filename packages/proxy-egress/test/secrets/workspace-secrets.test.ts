@@ -40,17 +40,20 @@ describe("workspace secrets", () => {
     });
   });
 
-  test("includes encrypted project secrets for project workspaces", async () => {
+  test("includes encrypted project secrets with default and custom placeholders", async () => {
     const project = (await addProject("https://github.com/org/repo.git")).project;
     await createProjectSecret(project.id, { envName: "API_TOKEN", hostPattern: "api.example.com, *.example.org", secretValue: "real-secret" });
+    await createProjectSecret(project.id, { envName: "STRICT_TOKEN", hostPattern: "api.example.com", placeholder: "sk-test-placeholder", secretValue: "strict-secret" });
 
     const context = await createWorkspaceSecretContext("test-workspace", { type: "project.git", projectId: project.id, name: "Project", gitUrl: "https://github.com/org/repo.git", branch: null, sessionShareKey: "Project" });
-    const result = await context.hooks.onRequest!(new Request("https://api.example.com/v1/ATELIER_INJECT_API_TOKEN", { headers: { authorization: "Bearer ATELIER_INJECT_API_TOKEN" } }));
+    const result = await context.hooks.onRequest!(new Request("https://api.example.com/v1/sk-test-placeholder", { headers: { authorization: "Bearer sk-test-placeholder" } }));
 
     expect(context.env.API_TOKEN).toBe("ATELIER_INJECT_API_TOKEN");
+    expect(context.env.STRICT_TOKEN).toBe("sk-test-placeholder");
     expect(context.secrets).toContainEqual({ name: "API_TOKEN", placeholder: "ATELIER_INJECT_API_TOKEN", hosts: ["api.example.com", "*.example.org"] });
-    expect((result as Request).headers.get("authorization")).toBe("Bearer real-secret");
-    expect((result as Request).url).toBe("https://api.example.com/v1/real-secret");
+    expect(context.secrets).toContainEqual({ name: "STRICT_TOKEN", placeholder: "sk-test-placeholder", hosts: ["api.example.com"] });
+    expect((result as Request).headers.get("authorization")).toBe("Bearer strict-secret");
+    expect((result as Request).url).toBe("https://api.example.com/v1/strict-secret");
   });
 
   test("rebuilds context on demand after in-memory state is forgotten", async () => {

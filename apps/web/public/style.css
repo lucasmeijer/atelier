@@ -347,7 +347,7 @@ a { color: inherit; text-decoration: none; }
 .project-secrets-head h3 { margin: 0; padding: 0; border: 0; font-size: 12px; }
 .project-secrets-head p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .project-secret-grid { display: grid; gap: 1px; overflow-x: auto; overflow-y: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--line); }
-.project-secret-row { display: grid; grid-template-columns: minmax(110px, .7fr) minmax(160px, 1fr) minmax(120px, .8fr) 56px; gap: 8px; align-items: center; min-width: 520px; padding: 8px; background: var(--panel); }
+.project-secret-row { display: grid; grid-template-columns: minmax(110px, .7fr) minmax(160px, 1fr) minmax(150px, .9fr) minmax(120px, .8fr) 56px; gap: 8px; align-items: center; min-width: 700px; padding: 8px; background: var(--panel); }
 .project-secret-row.head { color: var(--muted2); font-size: 10px; font-weight: 750; letter-spacing: .5px; text-transform: uppercase; padding-top: 7px; padding-bottom: 7px; }
 .project-secret-row input { min-width: 0; width: 100%; height: 30px; border: 1px solid var(--line2); border-radius: 8px; background: var(--bg); color: var(--text); padding: 5px 8px; font: 12px/1.2 var(--mono); }
 .project-secret-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }

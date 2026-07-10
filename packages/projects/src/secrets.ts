@@ -80,6 +80,10 @@ function normalizeHostPattern(value: string): string {
   return hostPattern;
 }
 
+function normalizePlaceholder(value: string | undefined): string | undefined {
+  return value?.trim() || undefined;
+}
+
 function summary(secret: StoredProjectSecret): ProjectSecretSummary {
   const { encryptedSecret: _encryptedSecret, ...publicSecret } = secret;
   return publicSecret;
@@ -109,9 +113,10 @@ export async function listProjectSecrets(projectId: string, file = projectsFile(
     .map(summary);
 }
 
-export async function createProjectSecret(projectId: string, values: { envName: string; hostPattern: string; secretValue: string }, file = projectsFile(), keyFile = projectSecretsKeyFile()): Promise<ProjectSecretSummary> {
+export async function createProjectSecret(projectId: string, values: { envName: string; hostPattern: string; placeholder?: string; secretValue: string }, file = projectsFile(), keyFile = projectSecretsKeyFile()): Promise<ProjectSecretSummary> {
   const envName = normalizeEnvName(values.envName);
   const hostPattern = normalizeHostPattern(values.hostPattern);
+  const placeholder = normalizePlaceholder(values.placeholder);
   const secretValue = values.secretValue;
   if (!secretValue) throw new AtelierCoreError("invalid_arguments", "SECRET is required");
   const store = await readProjectStore(file);
@@ -119,13 +124,13 @@ export async function createProjectSecret(projectId: string, values: { envName: 
   assertEnvNameAvailable(project, envName);
   const now = new Date().toISOString();
   const id = randomUUID();
-  const stored: StoredProjectSecret = { id, projectId, envName, hostPattern, encryptedSecret: await encryptSecret(projectId, id, secretValue, keyFile), createdAt: now, updatedAt: now };
+  const stored: StoredProjectSecret = { id, projectId, envName, hostPattern, placeholder, encryptedSecret: await encryptSecret(projectId, id, secretValue, keyFile), createdAt: now, updatedAt: now };
   project.secrets!.push(stored);
   await writeProjectStore(file, store);
   return summary(stored);
 }
 
-export async function updateProjectSecret(projectId: string, secretId: string, values: { envName: string; hostPattern: string; secretValue?: string }, file = projectsFile(), keyFile = projectSecretsKeyFile()): Promise<ProjectSecretSummary> {
+export async function updateProjectSecret(projectId: string, secretId: string, values: { envName: string; hostPattern: string; placeholder?: string; secretValue?: string }, file = projectsFile(), keyFile = projectSecretsKeyFile()): Promise<ProjectSecretSummary> {
   const envName = normalizeEnvName(values.envName);
   const hostPattern = normalizeHostPattern(values.hostPattern);
   const store = await readProjectStore(file);
@@ -134,6 +139,11 @@ export async function updateProjectSecret(projectId: string, secretId: string, v
   assertEnvNameAvailable(project, envName, secretId);
   secret.envName = envName;
   secret.hostPattern = hostPattern;
+  if (values.placeholder !== undefined) {
+    const placeholder = normalizePlaceholder(values.placeholder);
+    if (placeholder) secret.placeholder = placeholder;
+    else delete secret.placeholder;
+  }
   if (values.secretValue) secret.encryptedSecret = await encryptSecret(projectId, secretId, values.secretValue, keyFile);
   secret.updatedAt = new Date().toISOString();
   await writeProjectStore(file, store);

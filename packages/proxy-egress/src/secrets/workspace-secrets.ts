@@ -41,7 +41,7 @@ export async function createWorkspaceSecretContext(workspaceId: string, init?: W
     : {};
   if (isGitProjectInit(init)) {
     for (const secret of await revealProjectSecrets(init.projectId)) {
-      secrets[secret.envName] = { value: secret.secretValue, hosts: parseHostPatterns(secret.hostPattern), placeholder: secretPlaceholder(secret.envName) };
+      secrets[secret.envName] = { value: secret.secretValue, hosts: parseHostPatterns(secret.hostPattern), placeholder: secret.placeholder ?? secretPlaceholder(secret.envName) };
     }
   }
   const created = buildContext(workspaceId, secrets);

@@ -318,6 +318,8 @@ describe("web app contracts", () => {
       expect(html).toContain("GH_TOKEN");
       expect(html).toContain("api.github.com");
       expect(html).toContain("Injected automatically");
+      expect(html).toContain("Optional token-like value");
+      expect(html).toContain('name="placeholder"');
       expect(html).toContain(`action="/projects/${project.id}/secrets"`);
       expect(html).toContain(`id="delete_project_modal_${project.id}"`);
       expect(html).toContain(`action="/projects/${project.id}/delete"`);
