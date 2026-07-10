@@ -30,7 +30,9 @@ async function authFetch(url: string, init: RequestInit = {}, fetcher: typeof fe
   const tokenJson = await tokenResponse.json() as { token?: string; access_token?: string };
   const token = tokenJson.token ?? tokenJson.access_token;
   if (!token) throw new Error("registry token response did not include a token");
-  return await fetcher(url, { ...init, headers: { ...(init.headers as Record<string, string> | undefined), authorization: `Bearer ${token}` } });
+  const headers = new Headers(init.headers);
+  headers.set("authorization", `Bearer ${token}`);
+  return await fetcher(url, { ...init, headers });
 }
 
 function currentArch(): string {
