@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -26,7 +27,7 @@ export function createFileWebPreferenceStore(path: string): WebPreferenceStore {
     load,
     async save(preferences) {
       await mkdir(dirname(path), { recursive: true });
-      const tempPath = `${path}.tmp`;
+      const tempPath = `${path}.${randomUUID()}.tmp`;
       await writeFile(tempPath, `${JSON.stringify(preferences, null, 2)}\n`);
       await rename(tempPath, path);
     },
