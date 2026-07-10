@@ -3,7 +3,7 @@ import type { AtelierEventBus } from "@atelier/core";
 import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
 import { terminalTabKey, terminalTitleFromTabKey } from "../shared.ts";
 import { createTmuxPresenter } from "./agent-tool.ts";
-import { registerTerminalEvents, rememberWorkspaceTerminalSignature } from "./events.ts";
+import { forgetWorkspaceTerminalSignature, registerTerminalEvents, rememberWorkspaceTerminalSignature } from "./events.ts";
 import { renderTerminalPane } from "./render.ts";
 import { createTerminalSocketHandler } from "./sockets.ts";
 import { terminalStaticFiles } from "./static.ts";
@@ -31,6 +31,7 @@ export const terminalWorkspaceModule: WorkspaceModule = {
   staticFiles: terminalStaticFiles,
   initialize(context) {
     registerTerminalEvents(context.events as AtelierEventBus);
+    context.onWorkspaceRemoved(forgetWorkspaceTerminalSignature);
     context.registerSocketHandler(createTerminalSocketHandler({
       setTabBusy: (workspaceId, tabKey, busy) => context.registry.setTabBusy(workspaceId, tabKey, busy),
     }));

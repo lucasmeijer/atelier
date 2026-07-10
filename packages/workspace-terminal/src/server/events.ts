@@ -11,6 +11,10 @@ export function rememberWorkspaceTerminalSignature(workspaceId: string, terminal
   signatures.set(workspaceId, terminalSignature(terminals));
 }
 
+export function forgetWorkspaceTerminalSignature(workspaceId: string): void {
+  signatures.delete(workspaceId);
+}
+
 async function rememberSignature(workspaceId: string): Promise<void> {
   rememberWorkspaceTerminalSignature(workspaceId, (await listWorkspaceTerminals(workspaceId)).terminals);
 }
