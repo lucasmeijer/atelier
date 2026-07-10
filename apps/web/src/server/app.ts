@@ -395,10 +395,13 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   // ---------------------------------------------------------------------------
 
   function moduleStylesHtml(): string {
-    return workspaceModules.flatMap((module) => Object.entries(module.staticFiles ?? {}))
-      .filter(([path, entry]) => path.endsWith(".css") && entry.contentType.toLowerCase().startsWith("text/css"))
-      .map(([path]) => `<link rel="stylesheet" href="${assetPath(path)}">`)
-      .join("\n");
+    const styles = new Set<string>();
+    for (const module of workspaceModules) {
+      for (const [path, entry] of Object.entries(module.staticFiles ?? {})) {
+        if (path.endsWith(".css") && entry.contentType.toLowerCase().startsWith("text/css")) styles.add(path);
+      }
+    }
+    return [...styles].map((path) => `<link rel="stylesheet" href="${assetPath(path)}">`).join("\n");
   }
 
   function layout(title: string, body: string, workspaceId?: string): string {
