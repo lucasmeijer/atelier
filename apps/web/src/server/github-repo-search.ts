@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { discoverHostGitHubToken } from "@atelier/proxy-egress";
 import { escapeHtml, looksLikeProjectSpec } from "@atelier/shared";
 
@@ -77,7 +78,8 @@ export async function searchGitHubRepositories(query: string): Promise<GitHubRep
 
   const token = discoverHostGitHubToken();
   const normalized = query.trim().toLowerCase();
-  const cacheKey = `${token ? "authenticated" : "public"}:${normalized}`;
+  const credentialKey = token ? createHash("sha256").update(token).digest("hex").slice(0, 16) : "public";
+  const cacheKey = `${credentialKey}:${normalized}`;
   const cached = searchCache.get(cacheKey);
   if (cached) return cached.results;
 
