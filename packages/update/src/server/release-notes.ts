@@ -26,13 +26,17 @@ function inlineMarkdown(text: string, markdownFilename: string, sha: string): st
   let out = escapeHtml(text);
   out = out.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt: string, href: string) => {
     const src = resolveRelativeMedia(markdownFilename, sha, href.trim());
+    if (!/^https?:\/\//i.test(src)) return alt;
     const safeSrc = escapeHtml(src);
     const safeAlt = escapeHtml(alt);
     return /\.(mp4|webm|mov)(\?|#|$)/i.test(src)
       ? `<video controls playsinline src="${safeSrc}" title="${safeAlt}"></video>`
       : `<img src="${safeSrc}" alt="${safeAlt}">`;
   });
-  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, href: string) => `<a href="${escapeHtml(href.trim())}" target="_blank" rel="noreferrer">${label}</a>`);
+  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, href: string) => {
+    const target = resolveRelativeMedia(markdownFilename, sha, href.trim());
+    return /^https?:\/\//i.test(target) ? `<a href="${escapeHtml(target)}" target="_blank" rel="noreferrer">${label}</a>` : label;
+  });
   out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
   out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   return out;

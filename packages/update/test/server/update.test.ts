@@ -136,11 +136,12 @@ describe("release notes", () => {
   });
 
   test("renders safe markdown and rewrites relative video media", () => {
-    const html = renderMarkdown(`# Hello\n\n<script>x</script>\n\n- one\n- ![Demo](./assets/demo.mp4)\n\n[site](https://example.com)`, "release_notes/001.md", "abc123");
+    const html = renderMarkdown(`# Hello\n\n<script>x</script>\n\n- one\n- ![Demo](./assets/demo.mp4)\n\n[site](https://example.com) [unsafe](javascript:alert)`, "release_notes/001.md", "abc123");
     expect(html).toContain("<h1>Hello</h1>");
     expect(html).toContain("&lt;script&gt;x&lt;/script&gt;");
     expect(html).toContain("<ul><li>one</li><li><video controls playsinline src=\"https://raw.githubusercontent.com/lucasmeijer/atelier/abc123/release_notes/assets/demo.mp4\"");
     expect(html).toContain('<a href="https://example.com"');
+    expect(html).not.toContain("javascript:");
   });
 });
 
