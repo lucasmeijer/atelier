@@ -1,3 +1,5 @@
+import { domId } from "@atelier/shared";
+
 export interface WorkspaceBrowserTab {
   key: string;
   label: string;
@@ -7,7 +9,7 @@ export interface WorkspaceBrowserTab {
 const browserTabsByWorkspace = new Map<string, WorkspaceBrowserTab[]>();
 
 export function browserFrameId(workspaceId: string, appKey: string): string {
-  return ["browser_frame", workspaceId, appKey].join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
+  return domId("browser_frame", workspaceId, appKey);
 }
 
 export function listWorkspaceBrowserTabs(workspaceId: string): WorkspaceBrowserTab[] {
