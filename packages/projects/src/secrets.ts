@@ -2,7 +2,7 @@ import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { AtelierCoreError, getAtelierRuntimeContext } from "@atelier/core";
-import { projectsFile, readProjectStore, writeProjectStore, type ProjectRecord, type ProjectSecretSummary, type ProjectStore, type StoredProjectSecret } from "./project.ts";
+import { findProjectRecord, projectsFile, readProjectStore, writeProjectStore, type ProjectRecord, type ProjectSecretSummary, type StoredProjectSecret } from "./project.ts";
 
 export interface ProjectSecretPlaintext extends ProjectSecretSummary {
   secretValue: string;
@@ -89,13 +89,6 @@ function summary(secret: StoredProjectSecret): ProjectSecretSummary {
   return publicSecret;
 }
 
-function findProject(store: ProjectStore, projectId: string): ProjectRecord {
-  const project = store.projects.find((candidate) => candidate.id === projectId);
-  if (!project) throw new AtelierCoreError("project_not_found", `project not found: ${projectId}`);
-  project.secrets ??= [];
-  return project;
-}
-
 function findProjectSecret(project: ProjectRecord, secretId: string): StoredProjectSecret {
   const secret = project.secrets?.find((candidate) => candidate.id === secretId);
   if (!secret) throw new AtelierCoreError("project_secret_not_found", `project secret not found: ${secretId}`);
@@ -107,7 +100,7 @@ function assertEnvNameAvailable(project: ProjectRecord, envName: string, exceptS
 }
 
 export async function listProjectSecrets(projectId: string, file = projectsFile()): Promise<ProjectSecretSummary[]> {
-  const project = findProject(await readProjectStore(file), projectId);
+  const project = findProjectRecord(await readProjectStore(file), projectId);
   return [...(project.secrets ?? [])]
     .sort((a, b) => a.envName.localeCompare(b.envName) || a.hostPattern.localeCompare(b.hostPattern))
     .map(summary);
@@ -120,7 +113,8 @@ export async function createProjectSecret(projectId: string, values: { envName: 
   const secretValue = values.secretValue;
   if (!secretValue) throw new AtelierCoreError("invalid_arguments", "SECRET is required");
   const store = await readProjectStore(file);
-  const project = findProject(store, projectId);
+  const project = findProjectRecord(store, projectId);
+  project.secrets ??= [];
   assertEnvNameAvailable(project, envName);
   const now = new Date().toISOString();
   const id = randomUUID();
@@ -134,7 +128,7 @@ export async function updateProjectSecret(projectId: string, secretId: string, v
   const envName = normalizeEnvName(values.envName);
   const hostPattern = normalizeHostPattern(values.hostPattern);
   const store = await readProjectStore(file);
-  const project = findProject(store, projectId);
+  const project = findProjectRecord(store, projectId);
   const secret = findProjectSecret(project, secretId);
   assertEnvNameAvailable(project, envName, secretId);
   secret.envName = envName;
@@ -152,7 +146,7 @@ export async function updateProjectSecret(projectId: string, secretId: string, v
 
 export async function deleteProjectSecret(projectId: string, secretId: string, file = projectsFile()): Promise<ProjectSecretSummary> {
   const store = await readProjectStore(file);
-  const project = findProject(store, projectId);
+  const project = findProjectRecord(store, projectId);
   const secret = findProjectSecret(project, secretId);
   project.secrets = project.secrets!.filter((candidate) => candidate !== secret);
   await writeProjectStore(file, store);
@@ -160,6 +154,6 @@ export async function deleteProjectSecret(projectId: string, secretId: string, f
 }
 
 export async function revealProjectSecrets(projectId: string, file = projectsFile(), keyFile = projectSecretsKeyFile()): Promise<ProjectSecretPlaintext[]> {
-  const project = findProject(await readProjectStore(file), projectId);
+  const project = findProjectRecord(await readProjectStore(file), projectId);
   return await Promise.all((project.secrets ?? []).map(async (secret) => ({ ...summary(secret), secretValue: await decryptSecret(secret, keyFile) })));
 }

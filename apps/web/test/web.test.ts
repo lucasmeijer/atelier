@@ -6,7 +6,7 @@ import { createWebApp } from "../src/server/app.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { setWorkspaceGitHubToken } from "@atelier/proxy-egress";
-import { addProject, getGitIdentity, isGitProjectInit, listProjects, projectWorkspaceInit, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
+import { addProject, getGitIdentity, isGitProjectInit, listProjectEnvironmentVariables, listProjects, projectWorkspaceInit, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -314,6 +314,8 @@ describe("web app contracts", () => {
       expect(html).toContain(`data-modal-opener-target-id-value="agent_launch_project_modal_${project.id}"`);
       expect(html).not.toContain("repo-launch-icon");
       expect(html).toContain(`id="project_edit_modal_${project.id}"`);
+      expect(html).toContain("project-environment");
+      expect(html).toContain(`action="/projects/${project.id}/environment"`);
       expect(html).toContain("project-secrets");
       expect(html).toContain("GH_TOKEN");
       expect(html).toContain("api.github.com");
@@ -324,6 +326,20 @@ describe("web app contracts", () => {
       expect(html).toContain(`id="delete_project_modal_${project.id}"`);
       expect(html).toContain(`action="/projects/${project.id}/delete"`);
       expect(html).not.toContain("This is only allowed when no workspaces reference this project.");
+    });
+  });
+
+  test("project environment variables can be added from the project editor", async () => {
+    await withTempDataDir(async () => {
+      const project = (await addProject("https://github.com/org/sample-project.git")).project;
+      const { app, registry } = createTestApp();
+      await registry.seed([]);
+
+      const response = await app.fetch(postForm(`/projects/${project.id}/environment`, new URLSearchParams({ name: "API_URL", value: "https://api.example.com" })));
+
+      expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
+      expect(await listProjectEnvironmentVariables(project.id)).toMatchObject([{ name: "API_URL", value: "https://api.example.com" }]);
+      expect(await response.text()).toContain(`target="project_environment_${project.id}"`);
     });
   });
 

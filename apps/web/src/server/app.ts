@@ -15,16 +15,21 @@ import {
 import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
   addProject,
+  createProjectEnvironmentVariable,
   createProjectSecret,
   deleteProject,
+  deleteProjectEnvironmentVariable,
   deleteProjectSecret,
   formatProjectSpec,
   isGitProjectInit,
+  listProjectEnvironmentVariables,
   listProjectSecrets,
   listProjects,
   projectWorkspaceInit,
   updateProject,
+  updateProjectEnvironmentVariable,
   updateProjectSecret,
+  type ProjectEnvironmentVariable,
   type ProjectSecretSummary,
   type ProjectSummary,
   type WorkspaceDeleteBlockedDetails,
@@ -508,22 +513,45 @@ ${moduleStylesHtml()}
 </dialog>`;
   }
 
+  function projectEnvironmentRow(project: ProjectSummary, variable: ProjectEnvironmentVariable): string {
+    return `<form class="project-configuration-row project-environment-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}" data-turbo="true">
+    <input name="name" value="${escapeHtml(variable.name)}" aria-label="Name" autocomplete="off">
+    <input name="value" value="${escapeHtml(variable.value)}" aria-label="Value" autocomplete="off">
+    <span class="project-configuration-actions"><button type="submit" title="Save environment variable" aria-label="Save environment variable">✓</button><button type="submit" formaction="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete" title="Remove environment variable" aria-label="Remove environment variable">×</button></span>
+  </form>`;
+  }
+
+  function projectEnvironmentEditor(project: ProjectSummary, environment: ProjectEnvironmentVariable[]): string {
+    return `<section class="project-configuration-list project-environment" id="${domId("project_environment", project.id)}">
+      <div class="project-configuration-head"><h3>Environment</h3><p>These variables are added to every new workspace container created for this project.</p></div>
+      <div class="project-configuration-grid" role="table" aria-label="Environment variables">
+        <div class="project-configuration-row project-environment-row head" role="row"><span>Name</span><span>Value</span><span></span></div>
+        ${environment.map((variable) => projectEnvironmentRow(project, variable)).join("")}
+        <form class="project-configuration-row project-environment-row new" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment" data-turbo="true">
+          <input name="name" placeholder="ENV_VAR" aria-label="Name" autocomplete="off">
+          <input name="value" placeholder="Value" aria-label="Value" autocomplete="off">
+          <button type="submit" aria-label="Add">+</button>
+        </form>
+      </div>
+    </section>`;
+  }
+
   function projectSecretRow(project: ProjectSummary, secret: ProjectSecretSummary): string {
-    return `<form class="project-secret-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}" data-turbo="true">
+    return `<form class="project-configuration-row project-secret-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}" data-turbo="true">
     <input name="envName" value="${escapeHtml(secret.envName)}" aria-label="Env" autocomplete="off">
     <input name="hostPattern" value="${escapeHtml(secret.hostPattern)}" aria-label="Host" autocomplete="off">
     <input name="placeholder" value="${escapeHtml(secret.placeholder ?? "")}" placeholder="Automatic" aria-label="Placeholder" autocomplete="off">
     <input name="secretValue" type="password" placeholder="Unchanged" aria-label="Secret" autocomplete="new-password">
-    <span class="project-secret-actions"><button type="submit" title="Save secret" aria-label="Save secret">✓</button><button type="submit" formaction="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}/delete" title="Remove secret" aria-label="Remove secret">×</button></span>
+    <span class="project-configuration-actions"><button type="submit" title="Save secret" aria-label="Save secret">✓</button><button type="submit" formaction="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}/delete" title="Remove secret" aria-label="Remove secret">×</button></span>
   </form>`;
   }
 
   function projectSecretEditor(project: ProjectSummary, secrets: ProjectSecretSummary[]): string {
-    return `<section class="project-secrets" id="${domId("project_secrets", project.id)}">
-      <div class="project-secrets-head"><h3>Secrets</h3><p>Atelier injects a placeholder for ENV into workspaces, then replaces it with SECRET for matching HTTPS hosts. Set a custom placeholder when an API requires token-like values; leave it blank to generate one automatically.</p></div>
-      <div class="project-secret-grid" role="table" aria-label="Secrets">
-        <div class="project-secret-row head" role="row"><span>Env</span><span>Host</span><span>Placeholder</span><span>Secret</span><span></span></div>
-        <div class="project-secret-row readonly" role="row" aria-label="GitHub token injected automatically">
+    return `<section class="project-configuration-list project-secrets" id="${domId("project_secrets", project.id)}">
+      <div class="project-configuration-head"><h3>Secrets</h3><p>Atelier injects a placeholder for ENV into workspaces, then replaces it with SECRET for matching HTTPS hosts. Set a custom placeholder when an API requires token-like values; leave it blank to generate one automatically.</p></div>
+      <div class="project-configuration-grid" role="table" aria-label="Secrets">
+        <div class="project-configuration-row project-secret-row head" role="row"><span>Env</span><span>Host</span><span>Placeholder</span><span>Secret</span><span></span></div>
+        <div class="project-configuration-row project-secret-row readonly" role="row" aria-label="GitHub token injected automatically">
           <input value="GH_TOKEN" aria-label="Env" disabled>
           <input value="api.github.com" aria-label="Host" disabled>
           <input value="Automatic" aria-label="Placeholder" disabled>
@@ -531,7 +559,7 @@ ${moduleStylesHtml()}
           <span></span>
         </div>
         ${secrets.map((secret) => projectSecretRow(project, secret)).join("")}
-        <form class="project-secret-row new" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets" data-turbo="true">
+        <form class="project-configuration-row project-secret-row new" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets" data-turbo="true">
           <input name="envName" placeholder="ENV_VAR" aria-label="Env" autocomplete="off">
           <input name="hostPattern" placeholder="api.example.com or *.example.com" aria-label="Host" autocomplete="off">
           <input name="placeholder" placeholder="Optional token-like value" aria-label="Placeholder" autocomplete="off">
@@ -544,7 +572,7 @@ ${moduleStylesHtml()}
 
   async function projectEditModal(project: ProjectSummary): Promise<string> {
     const deleteModalId = domId("delete_project_modal", project.id);
-    const secrets = await listProjectSecrets(project.id);
+    const [environment, secrets] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id)]);
     return `<dialog id="${domId("project_edit_modal", project.id)}" class="modal project-edit-modal" data-controller="modal">
   <div class="modal-content">
     <div class="project-edit-head">
@@ -558,6 +586,7 @@ ${moduleStylesHtml()}
       <label class="project-edit-field"><span>Git URL</span><input class="modal-input" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label>
       <div class="modal-actions"><button class="btn primary" type="submit">Save project</button></div>
     </form>
+    ${projectEnvironmentEditor(project, environment)}
     ${projectSecretEditor(project, secrets)}
     <div class="project-edit-danger"><button class="btn danger" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="${deleteModalId}">Delete project</button></div>
   </div>
@@ -1213,6 +1242,31 @@ ${moduleStylesHtml()}
     return turboStreamResponse(await renderProjectChromeStreams());
   }
 
+  async function renderProjectEnvironmentStreams(projectId: string): Promise<string> {
+    const project = await projectById(projectId);
+    return turboReplaceStream(domId("project_environment", projectId), projectEnvironmentEditor(project, await listProjectEnvironmentVariables(projectId)));
+  }
+
+  async function createProjectEnvironmentVariableFromForm(projectId: string, request: Request): Promise<Response> {
+    await projectById(projectId);
+    const formData = await request.formData();
+    await createProjectEnvironmentVariable(projectId, { name: String(formData.get("name") ?? ""), value: String(formData.get("value") ?? "") });
+    return turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
+  }
+
+  async function updateProjectEnvironmentVariableFromForm(projectId: string, variableId: string, request: Request): Promise<Response> {
+    await projectById(projectId);
+    const formData = await request.formData();
+    await updateProjectEnvironmentVariable(projectId, variableId, { name: String(formData.get("name") ?? ""), value: String(formData.get("value") ?? "") });
+    return turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
+  }
+
+  async function deleteProjectEnvironmentVariableFromForm(projectId: string, variableId: string): Promise<Response> {
+    await projectById(projectId);
+    await deleteProjectEnvironmentVariable(projectId, variableId);
+    return turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
+  }
+
   async function renderProjectSecretStreams(projectId: string): Promise<string> {
     const project = await projectById(projectId);
     return turboReplaceStream(domId("project_secrets", projectId), projectSecretEditor(project, await listProjectSecrets(projectId)));
@@ -1482,6 +1536,9 @@ ${moduleStylesHtml()}
     let params: string[] | undefined;
 
     if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "POST") return await updateProjectFromForm(params[0], request);
+    if ((params = match(/^\/projects\/([^/]+)\/environment$/)) && request.method === "POST") return await createProjectEnvironmentVariableFromForm(params[0], request);
+    if ((params = match(/^\/projects\/([^/]+)\/environment\/([^/]+)$/)) && request.method === "POST") return await updateProjectEnvironmentVariableFromForm(params[0], params[1], request);
+    if ((params = match(/^\/projects\/([^/]+)\/environment\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectEnvironmentVariableFromForm(params[0], params[1]);
     if ((params = match(/^\/projects\/([^/]+)\/secrets$/)) && request.method === "POST") return await createProjectSecretFromForm(params[0], request);
     if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)$/)) && request.method === "POST") return await updateProjectSecretFromForm(params[0], params[1], request);
     if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectSecretFromForm(params[0], params[1]);

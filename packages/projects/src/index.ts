@@ -17,11 +17,19 @@ export {
   type AddProjectResult,
   type DeleteProjectResult,
   type GitProjectInitInstruction,
+  type ProjectEnvironmentVariable,
   type ProjectListResult,
   type ProjectSecretSummary,
   type ProjectSummary,
   type UpdateProjectResult,
 } from "./project.ts";
+
+export {
+  createProjectEnvironmentVariable,
+  deleteProjectEnvironmentVariable,
+  listProjectEnvironmentVariables,
+  updateProjectEnvironmentVariable,
+} from "./environment.ts";
 
 export {
   createProjectSecret,

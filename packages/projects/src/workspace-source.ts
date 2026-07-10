@@ -16,6 +16,7 @@ import {
   type CommandResult,
 } from "@atelier/core";
 import { runHostObservableCommand } from "@atelier/observable-terminal/server";
+import { projectEnvironment } from "./environment.ts";
 import { isGitProjectInit } from "./project.ts";
 
 export interface PreparedWorkspaceSource {
@@ -382,7 +383,10 @@ export function registerProjectWorkspaceInitEvents(events: AtelierEventBus): voi
   });
 
   events.on("workspace_plan_prepare", async ({ workspaceId, init, plan }) => {
-    if (isGitProjectInit(init)) plan.mounts.push({ type: "bind", ...(await projectPersistentMount(init.projectId)) });
+    if (isGitProjectInit(init)) {
+      plan.mounts.push({ type: "bind", ...(await projectPersistentMount(init.projectId)) });
+      Object.assign(plan.env, await projectEnvironment(init.projectId));
+    }
 
     const metadataPath = join(workspaceSourceDir(workspaceId), "metadata.json");
     if (!existsSync(metadataPath)) return;

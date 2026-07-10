@@ -342,20 +342,22 @@ a { color: inherit; text-decoration: none; }
 .project-edit-form { display: grid; gap: 12px; }
 .project-edit-field { display: grid; gap: 5px; }
 .project-edit-field span { color: var(--muted2); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
-.project-secrets { display: grid; gap: 9px; }
-.project-secrets-head { display: grid; gap: 4px; }
-.project-secrets-head h3 { margin: 0; padding: 0; border: 0; font-size: 12px; }
-.project-secrets-head p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
-.project-secret-grid { display: grid; gap: 1px; overflow-x: auto; overflow-y: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--line); }
-.project-secret-row { display: grid; grid-template-columns: minmax(110px, .7fr) minmax(160px, 1fr) minmax(150px, .9fr) minmax(120px, .8fr) 56px; gap: 8px; align-items: center; min-width: 700px; padding: 8px; background: var(--panel); }
-.project-secret-row.head { color: var(--muted2); font-size: 10px; font-weight: 750; letter-spacing: .5px; text-transform: uppercase; padding-top: 7px; padding-bottom: 7px; }
-.project-secret-row input { min-width: 0; width: 100%; height: 30px; border: 1px solid var(--line2); border-radius: 8px; background: var(--bg); color: var(--text); padding: 5px 8px; font: 12px/1.2 var(--mono); }
-.project-secret-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.project-secret-row.readonly input { color: var(--muted); background: var(--bg2); cursor: not-allowed; }
-.project-secret-actions { display: inline-flex; align-items: center; gap: 4px; justify-content: flex-end; }
-.project-secret-row button { width: 24px; height: 24px; border-radius: 7px; color: var(--muted2); font-weight: 800; }
-.project-secret-row button:hover { background: var(--accent-soft); color: var(--accent); }
-.project-secret-row:not(.new) .project-secret-actions button:last-child:hover { background: var(--red-soft); color: var(--red); }
+.project-configuration-list { display: grid; gap: 9px; margin-top: 14px; }
+.project-configuration-head { display: grid; gap: 4px; }
+.project-configuration-head h3 { margin: 0; padding: 0; border: 0; font-size: 12px; }
+.project-configuration-head p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.project-configuration-grid { display: grid; gap: 1px; overflow-x: auto; overflow-y: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--line); }
+.project-configuration-row { display: grid; gap: 8px; align-items: center; padding: 8px; background: var(--panel); }
+.project-environment-row { grid-template-columns: minmax(150px, .7fr) minmax(240px, 1.3fr) 56px; min-width: 480px; }
+.project-secret-row { grid-template-columns: minmax(110px, .7fr) minmax(160px, 1fr) minmax(150px, .9fr) minmax(120px, .8fr) 56px; min-width: 700px; }
+.project-configuration-row.head { color: var(--muted2); font-size: 10px; font-weight: 750; letter-spacing: .5px; text-transform: uppercase; padding-top: 7px; padding-bottom: 7px; }
+.project-configuration-row input { min-width: 0; width: 100%; height: 30px; border: 1px solid var(--line2); border-radius: 8px; background: var(--bg); color: var(--text); padding: 5px 8px; font: 12px/1.2 var(--mono); }
+.project-configuration-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.project-configuration-row.readonly input { color: var(--muted); background: var(--bg2); cursor: not-allowed; }
+.project-configuration-actions { display: inline-flex; align-items: center; gap: 4px; justify-content: flex-end; }
+.project-configuration-row button { width: 24px; height: 24px; border-radius: 7px; color: var(--muted2); font-weight: 800; }
+.project-configuration-row button:hover { background: var(--accent-soft); color: var(--accent); }
+.project-configuration-row:not(.new) .project-configuration-actions button:last-child:hover { background: var(--red-soft); color: var(--red); }
 .project-edit-danger { display: flex; justify-content: flex-start; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 
 turbo-frame { display: contents; }

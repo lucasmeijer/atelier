@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { addProject, createProjectSecret, deleteProject, getGitIdentity, getStoredGitIdentity, gitIdentitySettingsFile, hasGitIdentity, listProjects, parseProjectSpec, revealProjectSecrets, setGitIdentity, updateProject, updateProjectSecret } from "@atelier/projects";
+import { addProject, createProjectEnvironmentVariable, createProjectSecret, deleteProject, deleteProjectEnvironmentVariable, getGitIdentity, getStoredGitIdentity, gitIdentitySettingsFile, hasGitIdentity, listProjectEnvironmentVariables, listProjects, parseProjectSpec, revealProjectSecrets, setGitIdentity, updateProject, updateProjectEnvironmentVariable, updateProjectSecret } from "@atelier/projects";
 
 describe("projects", () => {
   test("parseProjectSpec supports an optional #branch suffix", () => {
@@ -47,6 +47,24 @@ describe("projects", () => {
 
     await updateProjectSecret(project.id, created.id, { envName: "API_TOKEN", hostPattern: "*.example.com", placeholder: "" }, file, keyFile);
     expect((await revealProjectSecrets(project.id, file, keyFile))[0]).not.toHaveProperty("placeholder");
+  });
+
+  test("project environment variables support empty values", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "atelier-project-environment-")), "projects.json");
+    const project = (await addProject("https://github.com/org/environment-project.git", file)).project;
+
+    const created = await createProjectEnvironmentVariable(project.id, { name: "API_URL", value: "https://api.example.com" }, file);
+    await createProjectEnvironmentVariable(project.id, { name: "EMPTY", value: "" }, file);
+    await updateProjectEnvironmentVariable(project.id, created.id, { name: "SERVICE_URL", value: "https://service.example.com" }, file);
+
+    expect(await listProjectEnvironmentVariables(project.id, file)).toMatchObject([
+      { name: "EMPTY", value: "" },
+      { name: "SERVICE_URL", value: "https://service.example.com" },
+    ]);
+    expect((await listProjects(file)).projects[0]).toEqual(project);
+
+    await deleteProjectEnvironmentVariable(project.id, created.id, file);
+    expect(await listProjectEnvironmentVariables(project.id, file)).toHaveLength(1);
   });
 
   test("deleteProject removes a project by id", async () => {

@@ -41,8 +41,18 @@ export interface StoredProjectSecret extends ProjectSecretSummary {
   encryptedSecret: string;
 }
 
+export interface ProjectEnvironmentVariable {
+  id: string;
+  projectId: string;
+  name: string;
+  value: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ProjectRecord extends ProjectSummary {
   secrets?: StoredProjectSecret[];
+  environment?: ProjectEnvironmentVariable[];
 }
 
 export interface ProjectListResult {
@@ -113,8 +123,14 @@ export async function writeProjectStore(file: string, store: ProjectStore): Prom
   await rename(tempFile, file);
 }
 
+export function findProjectRecord(store: ProjectStore, projectId: string): ProjectRecord {
+  const project = store.projects.find((candidate) => candidate.id === projectId);
+  if (!project) throw new AtelierCoreError("project_not_found", `project not found: ${projectId}`);
+  return project;
+}
+
 function projectSummary(project: ProjectRecord): ProjectSummary {
-  const { secrets: _secrets, ...summary } = project;
+  const { secrets: _secrets, environment: _environment, ...summary } = project;
   return summary;
 }
 
