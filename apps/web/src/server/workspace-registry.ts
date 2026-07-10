@@ -156,7 +156,9 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       const workspaceIds = new Set(workspaces.map((workspace) => workspace.id));
       activity = Object.fromEntries(Object.entries(loadedActivity).filter(([id]) => workspaceIds.has(id)));
       if (Object.keys(activity).length !== Object.keys(loadedActivity).length) persistActivity();
-      workspaceUnread = Object.fromEntries(Object.entries(unreadStore ? await unreadStore.load() : {}).filter(([id]) => workspaceIds.has(id)));
+      const loadedUnread = unreadStore ? await unreadStore.load() : {};
+      workspaceUnread = Object.fromEntries(Object.entries(loadedUnread).filter(([id]) => workspaceIds.has(id)));
+      if (Object.keys(workspaceUnread).length !== Object.keys(loadedUnread).length) persistUnread();
       entries.clear();
       for (const workspace of workspaces) {
         entries.set(workspace.id, {

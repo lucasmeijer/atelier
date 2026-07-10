@@ -187,11 +187,12 @@ describe("workspace registry", () => {
     expect(unreadStore.saved.at(-1)).toEqual({});
   });
 
-  test("persisted workspace unread state is loaded on seed", async () => {
-    const { registry } = setup({ unread: { a: 123 } });
+  test("persisted workspace unread state is loaded and pruned on seed", async () => {
+    const { registry, unreadStore } = setup({ unread: { a: 123, deleted: 456 } });
     await registry.seed([{ id: "a", title: null }]);
     expect(registry.isWorkspaceUnread("a")).toBe(true);
     expect(registry.workspaceUnreadAt("a")).toBe(123);
+    expect(unreadStore.saved.at(-1)).toEqual({ a: 123 });
   });
 
   test("oldestUnreadWorkspace returns the ready workspace with earliest unread timestamp", async () => {
