@@ -1,3 +1,5 @@
+import { createContributionRegistry } from "../contribution-registry.ts";
+
 export interface OnboardingContribution {
   id: string;
   label: string;
@@ -6,14 +8,12 @@ export interface OnboardingContribution {
   render(): Promise<string>;
 }
 
-const contributions: OnboardingContribution[] = [];
+const registry = createContributionRegistry<OnboardingContribution>();
 
 export function registerOnboardingContribution(contribution: OnboardingContribution): void {
-  const index = contributions.findIndex((candidate) => candidate.id === contribution.id);
-  if (index >= 0) contributions[index] = contribution;
-  else contributions.push(contribution);
+  registry.register(contribution);
 }
 
 export function listOnboardingContributions(): OnboardingContribution[] {
-  return [...contributions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.label.localeCompare(b.label));
+  return registry.list();
 }

@@ -1,13 +1,12 @@
 import type { SettingsContribution } from "@atelier/shared";
+import { createContributionRegistry } from "../contribution-registry.ts";
 
-const contributions: SettingsContribution[] = [];
+const registry = createContributionRegistry<SettingsContribution>();
 
 export function registerSettingsContribution(contribution: SettingsContribution): void {
-  const index = contributions.findIndex((candidate) => candidate.id === contribution.id);
-  if (index >= 0) contributions[index] = contribution;
-  else contributions.push(contribution);
+  registry.register(contribution);
 }
 
 export function listSettingsContributions(): SettingsContribution[] {
-  return [...contributions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.label.localeCompare(b.label));
+  return registry.list();
 }
