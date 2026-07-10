@@ -237,6 +237,10 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       if (!entries.delete(id)) return;
       if (activeWorkspaceId === id) activeWorkspaceId = undefined;
       tabBusy.delete(id);
+      if (activity[id] !== undefined) {
+        delete activity[id];
+        persistActivity();
+      }
       if (workspaceUnread[id] !== undefined) {
         delete workspaceUnread[id];
         persistUnread();

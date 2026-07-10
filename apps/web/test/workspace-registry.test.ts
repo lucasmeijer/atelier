@@ -214,8 +214,8 @@ describe("workspace registry", () => {
   });
 
 
-  test("remove deletes the entry, emits removed + list change; unknown ids are a no-op", async () => {
-    const { registry, captured } = setup();
+  test("remove deletes the entry, persisted activity, and emits removed + list change; unknown ids are a no-op", async () => {
+    const { registry, captured, store } = setup({ activity: { a: 100 } });
     await registry.seed([{ id: "a", title: null }]);
     captured.lists.length = 0;
 
@@ -223,6 +223,7 @@ describe("workspace registry", () => {
     expect(captured.removed).toEqual(["a"]);
     expect(captured.lists).toHaveLength(1);
     expect(registry.get("a")).toBeUndefined();
+    expect(store.saved.at(-1)).toEqual({});
 
     registry.remove("a");
     expect(captured.removed).toEqual(["a"]);
