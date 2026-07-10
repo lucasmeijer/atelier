@@ -29,6 +29,7 @@ export {
 } from "./data-dir.ts";
 
 export {
+  acquireFileLock,
   createProcessFileLock,
 } from "./file-lock.ts";
 

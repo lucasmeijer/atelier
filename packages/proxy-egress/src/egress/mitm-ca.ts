@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import net from "node:net";
-import { chmod, mkdir, mkdtemp, rm, rmdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { atelierDataPath, getAtelierRuntimeContext, type AtelierRuntimeContext } from "@atelier/core";
+import { acquireFileLock, atelierDataPath, getAtelierRuntimeContext, type AtelierRuntimeContext } from "@atelier/core";
 
 export type MitmCa = { dir: string; certPath: string; keyPath: string; leafDir: string };
 
@@ -47,7 +47,7 @@ async function ensureLeafCertificateUncached(ca: MitmCa, hostname: string, safeN
   const keyPath = join(ca.leafDir, `${safeName}-key.pem`);
   if (existsSync(certPath) && existsSync(keyPath)) return { certPath, keyPath };
 
-  const release = await acquireDirLock(join(ca.leafDir, `${safeName}.lock`));
+  const release = await acquireFileLock(join(ca.leafDir, `${safeName}.lock`), "certificate");
   let tmp = "";
   try {
     if (existsSync(certPath) && existsSync(keyPath)) return { certPath, keyPath };
@@ -63,21 +63,6 @@ async function ensureLeafCertificateUncached(ca: MitmCa, hostname: string, safeN
   } finally {
     if (tmp) await rm(tmp, { recursive: true, force: true });
     await release();
-  }
-}
-
-async function acquireDirLock(lockDir: string): Promise<() => Promise<void>> {
-  const deadline = Date.now() + 10_000;
-  for (;;) {
-    try {
-      await mkdir(lockDir, { recursive: false, mode: 0o700 });
-      return async () => { await rmdir(lockDir).catch(() => {}); };
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "EEXIST") throw error;
-      if (Date.now() > deadline) throw new Error(`timed out waiting for certificate lock: ${lockDir}`);
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
   }
 }
 

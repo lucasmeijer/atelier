@@ -21,7 +21,7 @@ export function createProcessFileLock(options: { lockDir(): string; label: strin
   };
 }
 
-async function acquireFileLock(lockDir: string, label: string): Promise<() => Promise<void>> {
+export async function acquireFileLock(lockDir: string, label: string): Promise<() => Promise<void>> {
   await mkdir(dirname(lockDir), { recursive: true, mode: 0o700 });
   const deadline = Date.now() + 10_000;
   for (;;) {
