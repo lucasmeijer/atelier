@@ -74,6 +74,7 @@ for (const { path, dir, name, manifest, hashPath } of manifests) {
     await mkdir(dirname(dest), { recursive: true });
     await cp(from, dest, { recursive: true });
     const proc = Bun.spawnSync(["sh", "-c", `find ${quote(from)} -type f -print0 | sort -z | xargs -0 sha256sum`]);
+    if (proc.exitCode !== 0) throw new Error(`could not hash workspace image files from ${from}: ${proc.stderr.toString().trim()}`);
     hash.update(proc.stdout);
     moduleCopyInstructions.push({ rel: `files/${rel}`, to: file.to, mode: file.mode });
   }
