@@ -5,5 +5,6 @@ export function terminalTabKey(title: string): string {
 }
 
 export function terminalTitleFromTabKey(tabKey: string): string | undefined {
-  return tabKey.startsWith(terminalTabPrefix) ? tabKey.slice(terminalTabPrefix.length) : undefined;
+  if (!tabKey.startsWith(terminalTabPrefix)) return undefined;
+  return tabKey.slice(terminalTabPrefix.length) || undefined;
 }
