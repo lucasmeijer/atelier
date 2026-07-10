@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { defaultDataDir } from "@atelier/core";
 import { isReleaseChannel, type ReleaseChannel } from "./channels.ts";
@@ -24,5 +25,7 @@ export async function readStoredReleaseChannel(): Promise<ReleaseChannel | undef
 export async function writeStoredReleaseChannel(channel: ReleaseChannel): Promise<void> {
   const path = settingsPath();
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify({ releaseChannel: channel }, null, 2)}\n`);
+  const tempPath = `${path}.${randomUUID()}.tmp`;
+  await writeFile(tempPath, `${JSON.stringify({ releaseChannel: channel }, null, 2)}\n`);
+  await rename(tempPath, path);
 }
