@@ -381,7 +381,7 @@ export async function prepareAtelierWorkspaceImagePreload(options: { sourcePath?
   const repoAliases = repoAlias && options.resolution.repoImage ? await tagWorkspaceImagePreloadAliases(options.resolution.repoImage, [repoAlias]) : [];
 
   const refs = uniqueStrings([defaultImage, ...defaultAliases, options.resolution.image, ...repoAliases]);
-  const runtime = await getAtelierRuntimeContext();
+  const runtime = getAtelierRuntimeContext();
   const key = await workspaceImagePreloadKey(refs);
   const dir = atelierDataPath(runtime, "image-preloads", key);
   await ensureWorkspaceImagePreloadTar(dir, refs);

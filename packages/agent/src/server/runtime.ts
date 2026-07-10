@@ -868,7 +868,7 @@ async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAg
   await ensureSessionFile(agent.path);
   await discardBootstrapOnlySession(agent.path);
   const authStorage = await createPiAuthStorage();
-  const modelRegistry = ModelRegistry.create(authStorage, await piModelsJsonPath());
+  const modelRegistry = ModelRegistry.create(authStorage, piModelsJsonPath());
   const agentsFiles = await loadWorkspaceAgentsFiles(agent.workspaceId);
   const appendSystemPrompt: string[] = [];
   await options.events?.emit("agent_system_prompt_prepare", { workspaceId: agent.workspaceId, lines: appendSystemPrompt });

@@ -67,7 +67,7 @@ async function provisionStep<T>(events: AtelierEventBus | undefined, workspaceId
 }
 
 async function createWorkspaceWorkDir(id: string): Promise<{ worktreePath: string; dockerHostWorktreePath: string }> {
-  const runtime = await getAtelierRuntimeContext();
+  const runtime = getAtelierRuntimeContext();
   const worktreePath = atelierDataPath(runtime, "workspaces", id, "work");
   const dockerHostWorktreePath = dockerHostAtelierDataPath(runtime, "workspaces", id, "work");
   if (await Bun.file(worktreePath).exists()) throw new AtelierCoreError("workspace_source_exists", `workspace source already exists: ${worktreePath}`);
@@ -76,7 +76,7 @@ async function createWorkspaceWorkDir(id: string): Promise<{ worktreePath: strin
 }
 
 async function deleteWorkspaceWorkDir(id: string): Promise<void> {
-  const runtime = await getAtelierRuntimeContext();
+  const runtime = getAtelierRuntimeContext();
   await rm(atelierDataPath(runtime, "workspaces", id), { recursive: true, force: true });
 }
 
@@ -155,7 +155,7 @@ async function writeWorkspaceInit(context: Awaited<ReturnType<typeof getAtelierR
 
 export async function getWorkspaceInit(id: string): Promise<WorkspaceInitInstruction | undefined> {
   await resolveWorkspace(id);
-  const context = await getAtelierRuntimeContext();
+  const context = getAtelierRuntimeContext();
   return JSON.parse(await readFile(workspaceMetadataPath(context, id, initPath), "utf8")) as WorkspaceInitInstruction;
 }
 
@@ -229,7 +229,7 @@ function seedPiConfigInstallScript(source: string, target: string): string {
 async function applySeedPiConfigManifest(manifest: RepoWorkspaceManifest, plan: WorkspaceDockerPlan): Promise<void> {
   const seed = manifest.seedPiConfig;
   if (!seed) return;
-  const runtime = await getAtelierRuntimeContext();
+  const runtime = getAtelierRuntimeContext();
   const entries = [
     seed.authJson ? { source: atelierDataPath(runtime, "pi-config", "auth.json"), staging: "/tmp/atelier-seed-pi-auth.json", target: seed.authJson } : undefined,
     seed.modelsJson ? { source: atelierDataPath(runtime, "pi-config", "models.json"), staging: "/tmp/atelier-seed-pi-models.json", target: seed.modelsJson } : undefined,
@@ -373,7 +373,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       await cp(workspaceWorkHostPath(fork.sourceWorkspaceId), source.worktreePath, { recursive: true, preserveTimestamps: true });
       return image;
     }) : undefined;
-    await writeWorkspaceInit(await getAtelierRuntimeContext(), id, init);
+    await writeWorkspaceInit(getAtelierRuntimeContext(), id, init);
     if (!fork) {
       await provisionStep(options.events, id, "workspace.source", "Prepare workspace source", async () => {
         await options.events?.emit("workspace_source_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot });
@@ -481,7 +481,7 @@ export async function workspacePreviewPortUrl(id: string, containerPort: number,
 }
 
 export async function listWorkspaces(): Promise<WorkspaceListResult> {
-  const context = await getAtelierRuntimeContext();
+  const context = getAtelierRuntimeContext();
   const listed = await requireDocker(["ps", "-a", "--filter", `label=${workspaceTypeLabel}=workspace`, "--filter", `label=${namespaceLabel}=${namespace()}`, "--format", `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}\t{{.Label "${workspaceCreatedByAtelierImageIdLabel}"}}`]);
   const workspaces: WorkspaceListResult["workspaces"] = [];
   for (const line of listed.stdout.trim().split(/\n+/).filter(Boolean)) {
@@ -520,7 +520,7 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
 
 export async function setWorkspaceTitle(id: string, title: string): Promise<null> {
   await resolveWorkspace(id);
-  const context = await getAtelierRuntimeContext();
+  const context = getAtelierRuntimeContext();
   await mkdir(workspaceMetadataDir(context, id), { recursive: true });
   await writeFile(workspaceMetadataPath(context, id, titlePath), title);
   return null;
@@ -528,7 +528,7 @@ export async function setWorkspaceTitle(id: string, title: string): Promise<null
 
 export async function setWorkspaceParked(id: string, parked: boolean): Promise<null> {
   await resolveWorkspace(id);
-  const context = await getAtelierRuntimeContext();
+  const context = getAtelierRuntimeContext();
   await mkdir(workspaceMetadataDir(context, id), { recursive: true });
   const path = workspaceMetadataPath(context, id, parkedPath);
   if (parked) await writeFile(path, "");

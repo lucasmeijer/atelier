@@ -26,16 +26,16 @@ const mitmTargetServers = new Map<string, Promise<MitmTargetServer>>();
 type MitmConnectionContext = { workspaceId: string; hostname: string };
 type MitmTargetServer = { server: ReturnType<typeof createHttpsServer>; port: number; connections: Map<number, MitmConnectionContext> };
 
-async function workspaceProxyHost(): Promise<string> {
-  return (await getAtelierRuntimeContext()).dockerBridgeHost;
+function workspaceProxyHost(): string {
+  return getAtelierRuntimeContext().dockerBridgeHost;
 }
 
-async function workspaceProxyUrl(workspaceId: string, token: string): Promise<string> {
-  return `http://${encodeURIComponent(workspaceId)}:${encodeURIComponent(token)}@${await workspaceProxyHost()}:${atelierWorkspaceProxyPort}`;
+function workspaceProxyUrl(workspaceId: string, token: string): string {
+  return `http://${encodeURIComponent(workspaceId)}:${encodeURIComponent(token)}@${workspaceProxyHost()}:${atelierWorkspaceProxyPort}`;
 }
 
 async function workspaceProxyEnv(workspaceId: string, token: string): Promise<Record<string, string>> {
-  const proxy = await workspaceProxyUrl(workspaceId, token);
+  const proxy = workspaceProxyUrl(workspaceId, token);
   const noProxy = uniqueNoProxyEntries(defaultNoProxyEntries()).join(",");
   return {
     HTTP_PROXY: proxy,
@@ -57,7 +57,7 @@ async function workspaceProxyEnv(workspaceId: string, token: string): Promise<Re
 
 export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
   events.on("workspace_plan_prepare", async ({ workspaceId, init, plan }) => {
-    const runtimeContext = await getAtelierRuntimeContext();
+    const runtimeContext = getAtelierRuntimeContext();
     const secretContext = await createWorkspaceSecretContext(workspaceId, init);
     Object.assign(plan.env, secretContext.env);
 

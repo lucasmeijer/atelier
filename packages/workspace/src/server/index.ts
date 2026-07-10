@@ -26,7 +26,7 @@ async function installReadOnlyFile(sourceUrl: URL, destinationPath: string): Pro
 }
 
 async function syncAtelierDocs(runtime?: AtelierRuntimeContext): Promise<{ hostDocsDir: string }> {
-  runtime ??= await getAtelierRuntimeContext();
+  runtime ??= getAtelierRuntimeContext();
   const docsDir = atelierDataPath(runtime, "docs");
   await rm(docsDir, { recursive: true, force: true });
   for (const entry of await readdir(docsSourceUrl, { withFileTypes: true })) {

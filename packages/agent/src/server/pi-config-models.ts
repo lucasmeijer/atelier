@@ -31,21 +31,20 @@ interface AgentModelsSettings {
   modelPreferences?: Record<string, ModelPreference>;
 }
 
-export async function piConfigDir(): Promise<string> {
-  const runtimeContext = await getAtelierRuntimeContext();
-  return atelierDataPath(runtimeContext, "pi-config");
+export function piConfigDir(): string {
+  return atelierDataPath(getAtelierRuntimeContext(), "pi-config");
 }
 
-export async function piModelsJsonPath(): Promise<string> {
-  return join(await piConfigDir(), "models.json");
+export function piModelsJsonPath(): string {
+  return join(piConfigDir(), "models.json");
 }
 
-async function piAuthJsonPath(): Promise<string> {
-  return join(await piConfigDir(), "auth.json");
+function piAuthJsonPath(): string {
+  return join(piConfigDir(), "auth.json");
 }
 
 async function getAgentModelsSettings(path?: string): Promise<AgentModelsSettings> {
-  path ??= await piModelsJsonPath();
+  path ??= piModelsJsonPath();
   try {
     const parsed = JSON.parse(await readFile(path, "utf8"));
     if (!parsed || typeof parsed !== "object") throw new Error(`${path} must contain a JSON object`);
@@ -57,7 +56,7 @@ async function getAgentModelsSettings(path?: string): Promise<AgentModelsSetting
 }
 
 async function setAgentModelsSettings(config: AgentModelsSettings): Promise<void> {
-  const path = await piModelsJsonPath();
+  const path = piModelsJsonPath();
   const normalized = { providers: config.providers ?? {}, ...config };
   await mkdir(dirname(path), { recursive: true });
   const tmp = `${path}.tmp`;
@@ -130,12 +129,12 @@ export async function setModelThinkingLevel(provider: string, id: string, thinki
 }
 
 export async function createPiAuthStorage(): Promise<AuthStorage> {
-  return AuthStorage.create(await piAuthJsonPath());
+  return AuthStorage.create(piAuthJsonPath());
 }
 
 export async function createPiModelRegistry(): Promise<ModelRegistry> {
   const authStorage = await createPiAuthStorage();
-  return ModelRegistry.create(authStorage, await piModelsJsonPath());
+  return ModelRegistry.create(authStorage, piModelsJsonPath());
 }
 
 export type PiAuthPrompt = AuthPrompt;
@@ -167,7 +166,7 @@ async function validateModelProviderApiKey(provider: string, key: string): Promi
   if (!trimmed) throw new Error("API key is required");
 
   const auth = AuthStorage.inMemory({ [provider]: { type: "api_key", key: trimmed } });
-  const registry = ModelRegistry.create(auth, await piModelsJsonPath());
+  const registry = ModelRegistry.create(auth, piModelsJsonPath());
   const models = registry.getAll().filter((model) => model.provider === provider);
   const model = models[Math.floor(Math.random() * models.length)];
   if (!model) throw new Error(`No models found for provider "${provider}"`);

@@ -11,7 +11,7 @@ export type MitmCa = { dir: string; certPath: string; keyPath: string; leafDir: 
 const leafCertificateEnsures = new Map<string, Promise<{ certPath: string; keyPath: string }>>();
 
 export async function ensureMitmCa(context?: AtelierRuntimeContext): Promise<MitmCa> {
-  const runtime = context ?? await getAtelierRuntimeContext();
+  const runtime = context ?? getAtelierRuntimeContext();
   const dir = process.env.ATELIER_MITM_CA_DIR || atelierDataPath(runtime, "proxy-ca");
   const certPath = join(dir, "atelier-mitm-ca.pem");
   const keyPath = join(dir, "atelier-mitm-ca-key.pem");
