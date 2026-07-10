@@ -4,8 +4,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { arch, tmpdir } from "node:os";
 import { join } from "node:path";
 
-export {};
-
 const usage = `Build the Atelier Docker image.
 
 Usage:

@@ -1,7 +1,5 @@
 #!/usr/bin/env bun
 
-export {};
-
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 
