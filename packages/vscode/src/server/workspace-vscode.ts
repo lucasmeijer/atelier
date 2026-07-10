@@ -34,8 +34,8 @@ export function createWorkspaceVSCodeTab(workspaceId: string): WorkspaceVSCodeTa
 }
 
 export function deleteWorkspaceVSCodeTab(workspaceId: string, title: string): void {
-  const existing = listWorkspaceVSCodeTabs(workspaceId).filter((tab) => tab.title !== title);
-  tabs.set(workspaceId, existing);
+  const existing = tabs.get(workspaceId);
+  if (existing) tabs.set(workspaceId, existing.filter((tab) => tab.title !== title));
 }
 
 export async function ensureWorkspaceVSCodeServer(workspaceId: string): Promise<void> {
