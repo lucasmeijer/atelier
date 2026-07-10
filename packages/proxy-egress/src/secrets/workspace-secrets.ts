@@ -61,6 +61,7 @@ function buildContext(workspaceId: string, secrets: Record<string, SecretDefinit
   const hooks = createHttpHooks({
     allowedHosts: ["*"],
     blockInternalRanges: false,
+    replaceSecretsInPath: true,
     replaceSecretsInQuery: false,
     secrets,
   });

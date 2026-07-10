@@ -36,16 +36,42 @@ describe("secret placeholder hooks", () => {
     expect(await (result as Request).text()).toBe("ATELIER_SECRET_fake");
   });
 
+  test("does not replace URL path by default", async () => {
+    const hooks = createHttpHooks({ secrets: { API_TOKEN: { value: "123:secret", hosts: ["api.example.com"], placeholder: "ATELIER_SECRET_fake" } } });
+    const result = await hooks.httpHooks.onRequest!(new Request("https://api.example.com/botATELIER_SECRET_fake/getMe"));
+    expect((result as Request).url).toBe("https://api.example.com/botATELIER_SECRET_fake/getMe");
+  });
+
+  test("optionally replaces a URL path placeholder for an allowed host", async () => {
+    const hooks = createHttpHooks({ replaceSecretsInPath: true, secrets: { API_TOKEN: { value: "123:secret", hosts: ["api.example.com"], placeholder: "ATELIER_SECRET_fake" } } });
+    const result = await hooks.httpHooks.onRequest!(new Request("https://api.example.com/botATELIER_SECRET_fake/getMe"));
+    expect((result as Request).url).toBe("https://api.example.com/bot123:secret/getMe");
+  });
+
+  test("leaves a URL path placeholder unchanged for a nonmatching host", async () => {
+    const hooks = createHttpHooks({ replaceSecretsInPath: true, secrets: { API_TOKEN: { value: "123:secret", hosts: ["api.example.com"], placeholder: "ATELIER_SECRET_fake" } } });
+    const result = await hooks.httpHooks.onRequest!(new Request("https://example.com/botATELIER_SECRET_fake/getMe"));
+    expect((result as Request).url).toBe("https://example.com/botATELIER_SECRET_fake/getMe");
+  });
+
+  test("URL-encodes reserved characters injected into a path", async () => {
+    const hooks = createHttpHooks({ replaceSecretsInPath: true, secrets: { API_TOKEN: { value: "secret value?#", hosts: ["api.example.com"], placeholder: "ATELIER_SECRET_fake" } } });
+    const result = await hooks.httpHooks.onRequest!(new Request("https://api.example.com/token/ATELIER_SECRET_fake"));
+    expect((result as Request).url).toBe("https://api.example.com/token/secret%20value%3F%23");
+  });
+
   test("does not replace query string by default", async () => {
     const hooks = createHttpHooks({ secrets: { GH_TOKEN: { value: "real-secret", hosts: ["github.com"], placeholder: "ATELIER_SECRET_fake" } } });
     const result = await hooks.httpHooks.onRequest!(new Request("https://github.com/?token=ATELIER_SECRET_fake"));
     expect((result as Request).url).toContain("ATELIER_SECRET_fake");
   });
 
-  test("optionally replaces query string", async () => {
+  test("optionally replaces query string only for a matching host", async () => {
     const hooks = createHttpHooks({ replaceSecretsInQuery: true, secrets: { GH_TOKEN: { value: "real-secret", hosts: ["github.com"], placeholder: "ATELIER_SECRET_fake" } } });
-    const result = await hooks.httpHooks.onRequest!(new Request("https://github.com/?token=ATELIER_SECRET_fake"));
-    expect((result as Request).url).toContain("token=real-secret");
+    const matching = await hooks.httpHooks.onRequest!(new Request("https://github.com/?token=ATELIER_SECRET_fake"));
+    const nonmatching = await hooks.httpHooks.onRequest!(new Request("https://example.com/?token=ATELIER_SECRET_fake"));
+    expect((matching as Request).url).toContain("token=real-secret");
+    expect((nonmatching as Request).url).toContain("token=ATELIER_SECRET_fake");
   });
 
   test("rejects duplicate and overlapping placeholders", () => {

@@ -12,6 +12,7 @@ export type CreateHttpHooksOptions = {
   allowedHosts?: string[];
   allowedInternalHosts?: string[];
   secrets?: Record<string, SecretDefinition>;
+  replaceSecretsInPath?: boolean;
   replaceSecretsInQuery?: boolean;
   blockInternalRanges?: boolean;
   isRequestAllowed?: HttpHooks["isRequestAllowed"];
@@ -47,7 +48,7 @@ export function createHttpHooks(options: CreateHttpHooksOptions = {}): CreateHtt
     const entries = getEntries();
     assertSecretValuesAllowedForHost(request, hostname, entries, options.replaceSecretsInQuery ?? false);
     const headers = replaceSecretPlaceholdersInHeaders(request.headers, hostname, entries);
-    const url = replaceSecretPlaceholdersInUrlParameters(request.url, hostname, entries, options.replaceSecretsInQuery ?? false);
+    const url = replaceSecretPlaceholdersInUrl(request.url, hostname, entries, options.replaceSecretsInPath ?? false, options.replaceSecretsInQuery ?? false);
     if (url === request.url) {
       if (headers !== request.headers) syncHeaders(request.headers, headers);
       return request;
@@ -169,20 +170,27 @@ function replaceSecretPlaceholdersInHeaders(incomingHeaders: Headers, hostname: 
   }
   return headers ?? incomingHeaders;
 }
-function replaceSecretPlaceholdersInUrlParameters(url: string, hostname: string, entries: SecretEntry[], enabled: boolean): string {
-  if (!enabled) return url;
+function replaceSecretPlaceholdersInUrl(url: string, hostname: string, entries: SecretEntry[], replacePath: boolean, replaceQuery: boolean): string {
+  if (!replacePath && !replaceQuery) return url;
   const parsed = new URL(url);
+  const matchingEntries = entries.filter((entry) => matchesAnyHost(hostname, entry.hosts));
   let changed = false;
-  const params = new URLSearchParams();
-  for (const [name, value] of parsed.searchParams) {
-    const nextName = replaceSecretPlaceholdersInString(name, hostname, entries);
-    const nextValue = replaceSecretPlaceholdersInString(value, hostname, entries);
-    changed ||= nextName !== name || nextValue !== value;
-    params.append(nextName, nextValue);
+  if (replacePath) {
+    const pathname = replaceSecretPlaceholdersInString(parsed.pathname, hostname, matchingEntries);
+    if (pathname !== parsed.pathname) { parsed.pathname = pathname; changed = true; }
   }
-  if (!changed) return url;
-  parsed.search = params.toString();
-  return parsed.toString();
+  if (replaceQuery) {
+    let queryChanged = false;
+    const params = new URLSearchParams();
+    for (const [name, value] of parsed.searchParams) {
+      const nextName = replaceSecretPlaceholdersInString(name, hostname, matchingEntries);
+      const nextValue = replaceSecretPlaceholdersInString(value, hostname, matchingEntries);
+      queryChanged ||= nextName !== name || nextValue !== value;
+      params.append(nextName, nextValue);
+    }
+    if (queryChanged) { parsed.search = params.toString(); changed = true; }
+  }
+  return changed ? parsed.toString() : url;
 }
 function replaceBasicAuthSecretPlaceholders(headerName: string, headerValue: string, hostname: string, entries: SecretEntry[]): string {
   if (!/^(authorization|proxy-authorization)$/i.test(headerName)) return headerValue;
