@@ -22,7 +22,7 @@ describe("prompt templates", () => {
 
     const templates = await loadPromptTemplatesFromRoot(root);
     expect(templates.map((template) => template.trigger)).toEqual(["/land"]);
-    expect(templates[0]?.prompt).toBe("Commit and push your work, rebasing when necessary. when succesful, delete this workspace");
+    expect(templates[0]?.prompt).toBe("Commit and push your work, rebasing when necessary. When successful, delete this workspace.");
   });
 
   test("expands triggers with arguments", () => {
