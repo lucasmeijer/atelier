@@ -2,6 +2,11 @@
   "name": "@atelier/workspace-image",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@atelier/core": "workspace:*", "@atelier/observable-terminal": "workspace:*" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@atelier/core": "workspace:*",
+    "@atelier/observable-terminal": "workspace:*"
+  }
 }
