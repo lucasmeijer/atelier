@@ -155,8 +155,7 @@ async function writeWorkspaceInit(context: Awaited<ReturnType<typeof getAtelierR
 
 export async function getWorkspaceInit(id: string): Promise<WorkspaceInitInstruction | undefined> {
   await resolveWorkspace(id);
-  const context = getAtelierRuntimeContext();
-  return JSON.parse(await readFile(workspaceMetadataPath(context, id, initPath), "utf8")) as WorkspaceInitInstruction;
+  return await readWorkspaceInit(getAtelierRuntimeContext(), id);
 }
 
 async function readWorkspaceInit(context: Awaited<ReturnType<typeof getAtelierRuntimeContext>>, id: string): Promise<WorkspaceInitInstruction | undefined> {
