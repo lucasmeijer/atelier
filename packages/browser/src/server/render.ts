@@ -1,14 +1,5 @@
-import type { WorkspaceTabContribution } from "@atelier/shared";
+import { escapeHtml, type WorkspaceTabContribution } from "@atelier/shared";
 import { browserFrameId, type WorkspaceBrowserTab } from "./state.ts";
-
-export function escapeHtml(value: unknown): string {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
 
 export function renderBrowserTab(workspaceId: string, tab: WorkspaceBrowserTab): WorkspaceTabContribution {
   const key = tab.key;
