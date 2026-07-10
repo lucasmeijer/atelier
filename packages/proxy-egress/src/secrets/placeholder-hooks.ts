@@ -34,7 +34,7 @@ export function createHttpHooks(options: CreateHttpHooksOptions = {}): CreateHtt
 
   for (const [name, secret] of Object.entries(options.secrets ?? {})) {
     const placeholder = resolveSecretPlaceholder(name, secret);
-    assertSecretPlaceholderIsSafe(name, placeholder, secret.value, secretEntries.values());
+    assertSecretPlaceholderIsSafe(name, placeholder, secretEntries.values());
     env[name] = placeholder;
     secretEntries.set(name, { name, placeholder, value: secret.value, hosts: uniqueHosts(secret.hosts) });
   }
@@ -93,10 +93,7 @@ export function makeDefaultSecretPlaceholder(): string {
   return `ATELIER_SECRET_${crypto.randomBytes(24).toString("hex")}`;
 }
 
-function assertSecretPlaceholderIsSafe(name: string, placeholder: string, value: string, existingEntries: Iterable<SecretEntry>): void {
-  // In nested Atelier, an inherited outer placeholder can be the inner layer's
-  // effective secret value. Allow value === placeholder so the inner proxy can
-  // pass that placeholder onward for the outer proxy to inject.
+function assertSecretPlaceholderIsSafe(name: string, placeholder: string, existingEntries: Iterable<SecretEntry>): void {
   for (const entry of existingEntries) {
     if (placeholder === entry.placeholder) throw new Error(`duplicate secret placeholder: ${placeholder}`);
     if (placeholder.includes(entry.placeholder) || entry.placeholder.includes(placeholder)) {
