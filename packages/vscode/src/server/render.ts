@@ -1,4 +1,4 @@
-import { domId, escapeHtml } from "./util.ts";
+import { domId, escapeHtml } from "@atelier/shared";
 
 export function vscodeTabKey(title: string): string {
   return `vscode:${title}`;
