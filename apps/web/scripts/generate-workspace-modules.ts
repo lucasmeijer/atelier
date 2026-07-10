@@ -52,12 +52,7 @@ async function discoverModules(subpath: "client" | "server", exportName: Discove
   for (const entry of packages) {
     if (!entry.isDirectory()) continue;
     const packageJsonUrl = new URL(`${entry.name}/package.json`, packagesDir);
-    let manifest: PackageJson;
-    try {
-      manifest = await readJson<PackageJson>(packageJsonUrl);
-    } catch {
-      continue;
-    }
+    const manifest = await readJson<PackageJson>(packageJsonUrl);
     if (!manifest.name || disabled.has(manifest.name) || !hasExport(manifest, `./${subpath}`)) continue;
 
     const index = await fileText(new URL(`${entry.name}/src/${subpath}/index.ts`, packagesDir));
