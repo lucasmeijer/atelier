@@ -66,7 +66,6 @@ export function createAtelierCableClient(): AtelierCableClient {
   function connect(): void {
     if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
     socket = new WebSocket(cableUrl());
-    socket.onopen = () => resubscribeAll();
     socket.onmessage = handleMessage;
     socket.onclose = () => scheduleReconnect();
     socket.onerror = () => socket?.close();
