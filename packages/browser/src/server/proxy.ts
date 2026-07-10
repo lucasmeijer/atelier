@@ -7,9 +7,8 @@ export function isBrowserWorkspaceApp(workspaceId: string, appKey: string): bool
 }
 
 export async function patchBrowserWorkspaceAppRequestHeaders(app: WorkspaceAppHost, headers: Headers, _target: URL, _request: Request): Promise<Headers> {
-  if (!isBrowserWorkspaceApp(app.workspaceId, app.appKey)) return headers;
   const browserTab = getWorkspaceBrowserTab(app.workspaceId, app.appKey);
-  if (!browserTab) throw new Error(`unknown workspace app: ${app.appKey}`);
+  if (!browserTab) return headers;
   const targetBase = new URL(browserTab.targetUrl);
   if (!isLoopbackHost(targetBase.hostname)) headers.set("host", targetBase.host);
   return headers;
