@@ -80,11 +80,10 @@ async function readProxyAuthFile(): Promise<ProxyAuthFile> {
 
 function readProxyAuthFileAt(path: string): ProxyAuthFile {
   if (!existsSync(path)) return { version: proxyAuthVersion, workspaces: {} };
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as ProxyAuthFile;
-    if (parsed.version === proxyAuthVersion && parsed.workspaces && typeof parsed.workspaces === "object") return parsed;
-  } catch {}
-  return { version: proxyAuthVersion, workspaces: {} };
+  const parsed = JSON.parse(readFileSync(path, "utf8")) as ProxyAuthFile;
+  if (parsed.version !== proxyAuthVersion) throw new Error(`unsupported proxy auth file version: ${parsed.version}`);
+  if (!parsed.workspaces || typeof parsed.workspaces !== "object") throw new Error("invalid proxy auth file: workspaces must be an object");
+  return parsed;
 }
 
 async function writeProxyAuthFileAt(path: string, file: ProxyAuthFile): Promise<void> {
