@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import type { WorkspaceClientModule } from "@atelier/shared";
+import { escapeHtml, type WorkspaceClientModule } from "@atelier/shared";
 
 type StimulusControllerBase = new (...args: unknown[]) => { element: Element };
 
@@ -106,7 +106,7 @@ function createKeypressProbeController(Controller: StimulusControllerBase): unkn
       const item = document.createElement("li");
       const detail = event.detail;
       item.className = detail.defaultPrevented ? "prevented" : "";
-      item.innerHTML = `<b>${this.escape(detail.combo)}</b> <span>${this.escape(detail.type)}</span><small>key=${this.escape(detail.key)} code=${this.escape(detail.code)}${detail.repeat ? " repeat" : ""}${detail.isComposing ? " composing" : ""}${detail.defaultPrevented ? " prevented" : ""} · ${this.escape(detail.target)}</small>`;
+      item.innerHTML = `<b>${escapeHtml(detail.combo)}</b> <span>${escapeHtml(detail.type)}</span><small>key=${escapeHtml(detail.key)} code=${escapeHtml(detail.code)}${detail.repeat ? " repeat" : ""}${detail.isComposing ? " composing" : ""}${detail.defaultPrevented ? " prevented" : ""} · ${escapeHtml(detail.target)}</small>`;
       this.listTarget.prepend(item);
       while (this.listTarget.children.length > 8) this.listTarget.lastElementChild?.remove();
     };
@@ -116,9 +116,6 @@ function createKeypressProbeController(Controller: StimulusControllerBase): unkn
       if (this.hasListTarget) this.listTarget.innerHTML = `<li class="empty">Press keys… browser/iframe-reserved combos will not appear.</li>`;
     }
 
-    private escape(value: string): string {
-      return value.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char] ?? char);
-    }
   };
 }
 
