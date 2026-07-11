@@ -37,7 +37,6 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 FROM deps AS build
 COPY . .
 RUN bun run --cwd apps/web build:client
-RUN bun install --frozen-lockfile --production
 
 FROM ubuntu:26.04 AS runtime
 ARG DEBIAN_FRONTEND=noninteractive
