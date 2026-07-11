@@ -172,9 +172,17 @@ function localImageHasPlatforms(ref: string, platforms: string[]): boolean {
 }
 
 function registryImageHasPlatforms(ref: string, platforms: string[]): boolean {
-  const text = maybeRun(["docker", "buildx", "imagetools", "inspect", ref]);
+  const text = maybeRun(["docker", "buildx", "imagetools", "inspect", ref, "--format", "{{json .}}"]);
   if (!text) return false;
-  const available = new Set([...text.matchAll(/^\s*Platform:\s*(\S+)/gm)].map((match) => match[1]!));
+  const inspected = JSON.parse(text) as {
+    image: { os: string; architecture: string };
+    manifest: { manifests?: Array<{ platform: { os: string; architecture: string } }> };
+  };
+  const available = new Set(
+    inspected.manifest.manifests
+      ? inspected.manifest.manifests.map(({ platform }) => `${platform.os}/${platform.architecture}`)
+      : [`${inspected.image.os}/${inspected.image.architecture}`],
+  );
   return platforms.every((platform) => available.has(platform));
 }
 
