@@ -15,13 +15,9 @@ export function forgetWorkspaceTerminalSignature(workspaceId: string): void {
   signatures.delete(workspaceId);
 }
 
-async function rememberSignature(workspaceId: string): Promise<void> {
-  rememberWorkspaceTerminalSignature(workspaceId, (await listWorkspaceTerminals(workspaceId)).terminals);
-}
-
 export function registerTerminalEvents(events: AtelierEventBus): void {
-  events.on("workspace_created", async ({ workspaceId }) => {
-    await rememberSignature(workspaceId);
+  events.on("workspace_created", ({ workspaceId }) => {
+    rememberWorkspaceTerminalSignature(workspaceId, []);
   });
 
   events.on("workspace_agent_turn_finished", async ({ workspaceId }) => {
