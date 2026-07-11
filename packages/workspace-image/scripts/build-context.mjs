@@ -77,7 +77,7 @@ for (const { path, dir, name, manifest, hashPath } of manifests) {
     const proc = Bun.spawnSync(["sh", "-c", `find ${quote(hashFrom)} -type f -print0 | sort -z | xargs -0 sha256sum`], { cwd: dir });
     if (proc.exitCode !== 0) throw new Error(`could not hash workspace image files from ${from}: ${proc.stderr.toString().trim()}`);
     hash.update(proc.stdout);
-    moduleCopyInstructions.push({ rel: `files/${rel}`, to: file.to, mode: file.mode });
+    moduleCopyInstructions.push({ rel: `files/${rel}`, to: file.to, mode: file.mode, afterRun: file.afterRun });
   }
   modules.push({ name, copyInstructions: moduleCopyInstructions, runInstructions: manifest.run ?? [] });
 }
@@ -89,14 +89,19 @@ if (uniqueApt.length) {
   dockerfile += `RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \\\n    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\\n    apt-get update \\\n && apt-get install -y --no-install-recommends \\\n${aptPackages}\n\n`;
 }
 dockerfile += `COPY --from=bun-dist /usr/local/bin/bun /usr/local/bin/bun\nCOPY --from=bun-dist /usr/local/bin/bunx /usr/local/bin/bunx\nRUN bun --version\n\n`;
-for (const module of modules) {
-  dockerfile += `# Module: ${module.name}\n`;
-  for (const copy of module.copyInstructions) {
+function appendCopies(copies) {
+  for (const copy of copies) {
     dockerfile += `COPY ${quote(copy.rel)} ${quote(copy.to)}\n`;
     if (copy.mode) dockerfile += `RUN chmod ${quote(copy.mode)} ${quote(copy.to)}\n`;
   }
-  if (module.copyInstructions.length) dockerfile += "\n";
+  if (copies.length) dockerfile += "\n";
+}
+
+for (const module of modules) {
+  dockerfile += `# Module: ${module.name}\n`;
+  appendCopies(module.copyInstructions.filter((copy) => !copy.afterRun));
   for (const script of module.runInstructions) dockerfile += `RUN ${dockerEscapeRun(script)}\n\n`;
+  appendCopies(module.copyInstructions.filter((copy) => copy.afterRun));
 }
 if (Object.keys(env).length) dockerfile += `ENV ${Object.entries(env).map(([key, value]) => `${key}=${quote(value)}`).join(" \\\n    ")}\n\n`;
 dockerfile += `WORKDIR /work\n`;

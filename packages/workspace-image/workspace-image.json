@@ -60,7 +60,7 @@
     "zip"
   ],
   "files": [
-    { "from": "rootfs/usr/local/bin/chromium", "to": "/usr/local/bin/chromium", "mode": "0755" }
+    { "from": "rootfs/usr/local/bin/chromium", "to": "/usr/local/bin/chromium", "mode": "0755", "afterRun": true }
   ],
   "run": [
     "ln -sf /usr/bin/fdfind /usr/local/bin/fd",
