@@ -1,6 +1,6 @@
 {
   "files": [
-    { "from": "workspace-image/rootfs/opt/atelier/vscode-defaults", "to": "/opt/atelier/vscode-defaults" },
+    { "from": "workspace-image/rootfs/opt/atelier/vscode-defaults", "to": "/opt/atelier/vscode-defaults", "afterRun": true },
     { "from": "workspace-image/rootfs/opt/atelier/vscode-extensions/atelier-diff-bridge", "to": "/opt/atelier/vscode-extensions/atelier.atelier-diff-bridge-0.0.1" },
     { "from": "workspace-image/rootfs/usr/local/bin/atelier-start-vscode", "to": "/usr/local/bin/atelier-start-vscode", "mode": "0755" }
   ],
