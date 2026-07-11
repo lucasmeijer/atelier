@@ -66,7 +66,7 @@ export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
     await ensureMitmCa(runtimeContext);
     Object.assign(plan.env, await workspaceProxyEnv(workspaceId, proxyAuthToken));
     plan.mounts.push({ type: "bind", source: dockerHostAtelierDataPath(runtimeContext, "proxy-ca", "atelier-mitm-ca.pem"), target: workspaceMitmCaPath, readonly: true });
-    plan.initScripts.push(`if [ -r ${workspaceMitmCaPath} ]; then mkdir -p /usr/local/share/ca-certificates; cp ${workspaceMitmCaPath} /usr/local/share/ca-certificates/atelier-mitm-ca.crt; update-ca-certificates || true; fi`);
+    plan.initScripts.push(`if [ -r ${workspaceMitmCaPath} ]; then mkdir -p /usr/local/share/ca-certificates; cp ${workspaceMitmCaPath} /usr/local/share/ca-certificates/atelier-mitm-ca.crt; cat ${workspaceMitmCaPath} >> /etc/ssl/certs/ca-certificates.crt; fi`);
     plan.initScripts.push(`su atelier -c ${shellQuote('git config --global http.proxy "$HTTPS_PROXY"; git config --global http.proxyAuthMethod basic')}`);
     plan.cleanup.push(async () => cleanupWorkspaceProxy(workspaceId));
   });
