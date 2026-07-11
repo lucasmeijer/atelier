@@ -8,7 +8,7 @@ import {
   type ObservableTerminalTheme,
   type ObservableTerminalViewer,
 } from "@atelier/observable-terminal/client";
-import type { WorkspaceClientModule } from "@atelier/shared";
+import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
 import { terminalTabKey, terminalTitleFromTabKey } from "../shared.ts";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
@@ -82,12 +82,6 @@ function findTerminalPane(workspaceId: string, title: string): HTMLElement | und
   );
 }
 
-function isTerminalPaneVisible(pane: HTMLElement): boolean {
-  const resident = pane.closest<HTMLElement>(".workspace-detail-resident");
-  if (resident && !resident.classList.contains("visible")) return false;
-  return pane.closest<HTMLElement>(".tab-pane[data-tab-pane]")?.classList.contains("visible") ?? true;
-}
-
 export async function startTerminal(workspaceId: string, title: string, options: { focus?: boolean } = {}): Promise<void> {
   const focus = options.focus !== false;
   const key = terminalKey(workspaceId, title);
@@ -153,14 +147,13 @@ export function startTerminalTab(workspaceId: string, tabName: string): void {
 
 export function createTerminalPaneController(Controller: StimulusControllerConstructor) {
   return class TerminalPaneController extends Controller {
-    static values = { workspaceId: String, title: String, autostart: Boolean };
+    static values = { workspaceId: String, title: String };
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
     declare readonly titleValue: string;
-    declare readonly autostartValue: boolean;
 
     connect(): void {
-      if (this.autostartValue || isTerminalPaneVisible(this.element)) {
+      if (isWorkspacePaneVisible(this.element)) {
         void startTerminal(this.workspaceIdValue, this.titleValue, { focus: true });
       }
     }

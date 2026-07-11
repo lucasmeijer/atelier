@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import { CableTopics, copyTextToClipboard, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
+import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
@@ -93,7 +93,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       document.addEventListener("keydown", this.onKeydown);
       this.updateSendStopButton();
-      if (this.element.closest(".tab-pane")?.classList.contains("visible")) this.start();
+      if (isWorkspacePaneVisible(this.element)) this.start();
     }
 
     disconnect(): void {
@@ -107,6 +107,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     start(): void {
       requestAnimationFrame(() => this.autosize());
       if (this.subscribed) return;
+      this.startAgentTerminals();
       window.AtelierCable?.subscribe(this.cableIdentifier());
       this.subscribed = true;
     }
@@ -116,6 +117,13 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       window.AtelierCable?.unsubscribe(this.cableIdentifier());
       this.subscribed = false;
       this.disposeAgentTerminals();
+    }
+
+    private startAgentTerminals(): void {
+      this.element.querySelectorAll<HTMLElement>('[data-controller~="agent-term"]').forEach((terminal) => {
+        const controller = this.application.getControllerForElementAndIdentifier(terminal, "agent-term") as { start?(): void } | null;
+        controller?.start?.();
+      });
     }
 
     private path(suffix: string): string {
@@ -796,9 +804,17 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
     declare readonly sessionValue: string;
     private viewer?: ObservableTerminalViewer;
     private disposed = false;
+    private starting = false;
 
     connect(): void {
       this.disposed = false;
+      if (isWorkspacePaneVisible(this.element)) this.start();
+    }
+
+    start(): void {
+      if (this.viewer || this.starting) return;
+      this.disposed = false;
+      this.starting = true;
       void createObservableTerminalViewer({
         host: this.element,
         mode: "fixed-readonly",
@@ -812,6 +828,8 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
         else this.viewer = viewer;
       }).catch((error: unknown) => {
         this.element.textContent = `[terminal attach failed: ${error instanceof Error ? error.message : String(error)}]`;
+      }).finally(() => {
+        this.starting = false;
       });
     }
 

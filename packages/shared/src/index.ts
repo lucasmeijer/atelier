@@ -282,6 +282,12 @@ export interface WorkspaceClientFocusContext {
   application: WorkspaceClientApplication;
 }
 
+export function isWorkspacePaneVisible(element: Element): boolean {
+  const pane = element.closest(".tab-pane");
+  const resident = element.closest(".workspace-detail-resident");
+  return (!pane || pane.classList.contains("visible")) && (!resident || resident.classList.contains("visible"));
+}
+
 export interface WorkspaceClientWorkspaceAppFrameContext {
   appKey: string;
   url: URL;

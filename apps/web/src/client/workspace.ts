@@ -6,6 +6,7 @@ import {
   copyTextToClipboard,
   escapeHtml,
   looksLikeProjectSpec,
+  isWorkspacePaneVisible,
   providerBrandIconHtml,
   workspaceProxyUrl,
   type AtelierCableClient,
@@ -153,6 +154,10 @@ function emitBecomeVisible(pane: HTMLElement): void {
   const context = tabVisibilityContext(pane);
   if (!context) return;
   visiblePaneState.add(pane);
+  pane.querySelectorAll<HTMLIFrameElement>('[data-controller~="workspace-app-frame"]').forEach((frame) => {
+    const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame") as { becomeVisible?(): void } | null;
+    controller?.becomeVisible?.();
+  });
   clientHooks.becomeVisible(context);
 }
 
@@ -169,10 +174,6 @@ function emitPaneVisibilityChanges(before: HTMLElement[], after: HTMLElement[]):
   const beforeSet = new Set(before);
   before.filter((pane) => !afterSet.has(pane)).forEach(emitNoLongerVisible);
   after.filter((pane) => !beforeSet.has(pane)).forEach(emitBecomeVisible);
-}
-
-function isPaneEffectivelyVisible(pane: HTMLElement): boolean {
-  return Boolean(pane.closest(".workspace-detail-resident.visible") && pane.classList.contains("visible"));
 }
 
 type FullscreenMode = "tab" | "template" | "media";
@@ -514,7 +515,7 @@ class WorkspaceTabsController extends Controller {
   showTab(tabName: string, options: { persist?: boolean; emitLifecycle?: boolean; emitCurrent?: boolean } = {}): void {
     const group = this.group;
     const before = group.querySelector<HTMLElement>(".tab-pane.visible[data-tab-pane]");
-    const beforeWasVisible = before ? isPaneEffectivelyVisible(before) : false;
+    const beforeWasVisible = before ? isWorkspacePaneVisible(before) : false;
     this.element.querySelectorAll<HTMLElement>(".group-tab[data-tab]").forEach((tab) => {
       tab.classList.toggle("visible", tab.dataset.tab === tabName);
       tab.classList.toggle("muted", tab.dataset.tab !== tabName);
@@ -526,10 +527,9 @@ class WorkspaceTabsController extends Controller {
     const after = group.querySelector<HTMLElement>(`.tab-pane.visible[data-tab-pane="${CSS.escape(tabName)}"]`);
     if (options.emitLifecycle !== false) {
       if (before && before !== after && beforeWasVisible) emitNoLongerVisible(before);
-      if (after && before !== after && isPaneEffectivelyVisible(after)) emitBecomeVisible(after);
-      if (after && before === after && options.emitCurrent && isPaneEffectivelyVisible(after)) emitBecomeVisible(after);
+      if (after && before !== after && isWorkspacePaneVisible(after)) emitBecomeVisible(after);
+      if (after && before === after && options.emitCurrent && isWorkspacePaneVisible(after)) emitBecomeVisible(after);
     }
-    if (after) startWorkspaceAppFrames(group, tabName);
     this.scheduleOverflowLayout();
     if (options.persist !== false) void this.persistVisibleTab(tabName);
   }
@@ -1366,6 +1366,7 @@ class WorkspaceResidencyController extends Controller {
   declare readonly loadingTargets: HTMLElement[];
   declare readonly maxResidentValue: number;
   private selectionSeq = 0;
+  private readonly residentLoads = new Map<string, Promise<HTMLElement>>();
 
   connect(): void {
     document.addEventListener("visibilitychange", this.visibilityChanged);
@@ -1374,6 +1375,7 @@ class WorkspaceResidencyController extends Controller {
     const visibleResident = this.residentTargets.find((resident) => resident.classList.contains("visible"))
       ?? (workspaceId ? this.residentTargets.find((resident) => resident.dataset.workspaceId === decodeURIComponent(workspaceId)) : undefined);
     if (visibleResident) this.showResident(visibleResident);
+    this.reconcileResidents();
   }
 
   disconnect(): void {
@@ -1398,17 +1400,20 @@ class WorkspaceResidencyController extends Controller {
 
     let resident: HTMLElement;
     try {
-      resident = await this.fetchResident(href);
+      resident = await this.ensureResident(workspaceId);
     } catch (error) {
       if (seq !== this.selectionSeq) return;
       this.showLoadError(error);
       return;
     }
-    this.element.appendChild(resident);
     // Only show it if no newer selection happened while we were fetching;
     // the resident stays cached either way.
     if (seq === this.selectionSeq) this.showResident(resident);
     this.evictIfNeeded();
+  }
+
+  reconcileResidents(): void {
+    void this.preloadUnreadResidents().catch((error) => console.error("Could not preload unread workspaces", error));
   }
 
   residentTargetConnected(resident: HTMLElement): void {
@@ -1428,10 +1433,6 @@ class WorkspaceResidencyController extends Controller {
     if (wasVisible) visiblePanes(resident).forEach(emitNoLongerVisible);
     resident.remove();
     if (wasVisible) this.showEmpty();
-  }
-
-  hasWorkspace(workspaceId: string): boolean {
-    return this.residentTargets.some((resident) => resident.dataset.workspaceId === workspaceId);
   }
 
   visibleWorkspaceId(): string | undefined {
@@ -1472,8 +1473,23 @@ class WorkspaceResidencyController extends Controller {
     });
   }
 
-  private async fetchResident(href: string): Promise<HTMLElement> {
-    const url = new URL(href, location.href);
+  private async ensureResident(workspaceId: string): Promise<HTMLElement> {
+    const existing = this.residentTargets.find((resident) => resident.dataset.workspaceId === workspaceId);
+    if (existing) return existing;
+    const loading = this.residentLoads.get(workspaceId);
+    if (loading) return await loading;
+    const promise = this.fetchResident(workspaceId).then((resident) => {
+      const connected = this.residentTargets.find((candidate) => candidate.dataset.workspaceId === workspaceId);
+      if (connected) return connected;
+      this.element.appendChild(resident);
+      return resident;
+    }).finally(() => this.residentLoads.delete(workspaceId));
+    this.residentLoads.set(workspaceId, promise);
+    return await promise;
+  }
+
+  private async fetchResident(workspaceId: string): Promise<HTMLElement> {
+    const url = new URL(`/workspaces/${encodeURIComponent(workspaceId)}`, location.href);
     url.searchParams.set("resident", "1");
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 30_000);
@@ -1492,16 +1508,35 @@ class WorkspaceResidencyController extends Controller {
     return resident;
   }
 
+  private async preloadUnreadResidents(): Promise<void> {
+    const visibleWorkspaceId = this.visibleWorkspaceId();
+    const available = this.maxResidentValue - (visibleWorkspaceId ? 1 : 0);
+    const candidates = this.unreadWorkspaces()
+      .filter(({ workspaceId }) => workspaceId !== visibleWorkspaceId)
+      .slice(0, available);
+    await Promise.all(candidates.map(({ workspaceId }) => this.ensureResident(workspaceId)));
+    this.evictIfNeeded();
+  }
+
+  private unreadWorkspaces(): Array<{ workspaceId: string; unreadAt: number }> {
+    return [...document.querySelectorAll<HTMLElement>(".workspace-status[data-workspace-unread-at]")]
+      .map((status) => ({
+        workspaceId: status.closest<HTMLElement>(".workspace-row[data-workspace-id]")!.dataset.workspaceId!,
+        unreadAt: Number(status.dataset.workspaceUnreadAt),
+      }))
+      .sort((a, b) => a.unreadAt - b.unreadAt || a.workspaceId.localeCompare(b.workspaceId));
+  }
+
   private showResident(resident: HTMLElement): void {
     const before = visiblePanes(this.element);
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
     this.loadingTargets.forEach((loading) => { loading.hidden = true; });
     resident.dataset.lastActivatedAt = String(Date.now());
+    this.residentTargets.forEach((candidate) => candidate.classList.toggle("visible", candidate === resident));
     const tabs = resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]');
     const controller = tabs ? application.getControllerForElementAndIdentifier(tabs, "workspace-tabs") as WorkspaceTabsController | null : null;
     const visibleTab = tabs?.querySelector<HTMLElement>(".group-tab.visible[data-tab]")?.dataset.tab;
     if (visibleTab) controller?.showTab(visibleTab, { persist: false, emitLifecycle: false });
-    this.residentTargets.forEach((candidate) => candidate.classList.toggle("visible", candidate === resident));
     emitPaneVisibilityChanges(before, visiblePanes(this.element));
     const workspaceId = resident.dataset.workspaceId;
     if (workspaceId) void this.markActiveWorkspace(workspaceId);
@@ -1532,13 +1567,21 @@ class WorkspaceResidencyController extends Controller {
   private readonly pageHidden = (): void => this.clearActiveWorkspace();
 
   private evictIfNeeded(): void {
-    const max = this.maxResidentValue || 10;
+    const unreadAt = new Map(this.unreadWorkspaces().map((workspace) => [workspace.workspaceId, workspace.unreadAt]));
     const residents = [...this.residentTargets];
-    if (residents.length <= max) return;
+    if (residents.length <= this.maxResidentValue) return;
     residents
-      .filter((resident) => !resident.classList.contains("visible"))
-      .sort((a, b) => Number(a.dataset.lastActivatedAt ?? 0) - Number(b.dataset.lastActivatedAt ?? 0))
-      .slice(0, residents.length - max)
+      .sort((a, b) => {
+        const visible = Number(b.classList.contains("visible")) - Number(a.classList.contains("visible"));
+        if (visible !== 0) return visible;
+        const aUnreadAt = unreadAt.get(a.dataset.workspaceId ?? "");
+        const bUnreadAt = unreadAt.get(b.dataset.workspaceId ?? "");
+        if (aUnreadAt !== undefined && bUnreadAt !== undefined) return aUnreadAt - bUnreadAt;
+        if (aUnreadAt !== undefined) return -1;
+        if (bUnreadAt !== undefined) return 1;
+        return Number(b.dataset.lastActivatedAt ?? 0) - Number(a.dataset.lastActivatedAt ?? 0);
+      })
+      .slice(this.maxResidentValue)
       .forEach((resident) => resident.remove());
   }
 }
@@ -1558,6 +1601,7 @@ function workspaceListController(): WorkspaceListController | null {
  * pending-delete feedback. Broadcast HTML from the server never carries this.
  */
 class WorkspaceListController extends Controller {
+  static targets = ["status"];
   declare readonly element: HTMLElement;
   private readonly onStreamRender = (event: Event): void => {
     // Turbo applies stream renders after the next repaint, so wrap the render
@@ -1643,6 +1687,10 @@ class WorkspaceListController extends Controller {
     this.markVisible(workspaceId);
   }
 
+  statusTargetConnected(): void {
+    residencyController()?.reconcileResidents();
+  }
+
   parkToggled(event: Event): void {
     const detail = (event as CustomEvent<{ success?: boolean }>).detail;
     if (detail && detail.success === false) return;
@@ -1680,6 +1728,7 @@ class WorkspaceListController extends Controller {
   }
 
   private sync(): void {
+    const residency = residencyController();
     const workspaceId = this.currentWorkspaceId();
     if (!workspaceId) {
       this.markVisible(undefined);
@@ -1688,7 +1737,6 @@ class WorkspaceListController extends Controller {
     const row = this.element.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`);
     if (!row) {
       // The workspace we were looking at disappeared (deleted here or elsewhere).
-      const residency = residencyController();
       residency?.removeWorkspace(workspaceId);
       if (location.pathname === `/workspaces/${encodeURIComponent(workspaceId)}`) history.replaceState({}, "", "/");
       this.markVisible(undefined);
@@ -1708,7 +1756,7 @@ class WorkspaceAppFrameController extends Controller {
 
   connect(): void {
     document.addEventListener("atelier:theme-change", this.themeChanged);
-    if (this.isVisiblePane()) this.load();
+    if (isWorkspacePaneVisible(this.element)) this.load();
   }
 
   disconnect(): void {
@@ -1735,18 +1783,6 @@ class WorkspaceAppFrameController extends Controller {
   private themeChanged = (): void => {
     clientHooks.workspaceAppFrameRefresh({ appKey: this.appKeyValue, frame: this.element, load: () => this.load() });
   };
-
-  private isVisiblePane(): boolean {
-    return this.element.closest(".tab-pane")?.classList.contains("visible") ?? true;
-  }
-}
-
-function startWorkspaceAppFrames(root: ParentNode, tabName: string): void {
-  const pane = root.querySelector<HTMLElement>(`.tab-pane.visible[data-tab-pane="${CSS.escape(tabName)}"]`);
-  pane?.querySelectorAll<HTMLIFrameElement>('[data-controller~="workspace-app-frame"]').forEach((frame) => {
-    const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame") as { becomeVisible?: () => void } | null;
-    controller?.becomeVisible?.();
-  });
 }
 
 class WorkspaceTitleEditController extends Controller {

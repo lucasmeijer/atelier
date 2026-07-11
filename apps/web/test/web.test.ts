@@ -505,19 +505,27 @@ describe("web app contracts", () => {
     expect(registry.get("a")?.parked).toBe(true);
   });
 
-  test("ready workspace rows include a busy status slot before the park and delete buttons", async () => {
+  test("ready workspace rows include status and unread preload metadata", async () => {
     const { app, registry, broadcasts } = createTestApp();
-    await registry.seed([{ id: "abc", title: "A" }]);
-
     const html = await (await app.fetch(new Request("http://test.local/"))).text();
-    expect(html).toContain('id="workspace_status_abc"');
-    expect(html.indexOf('id="workspace_status_abc"')).toBeLessThan(html.indexOf('class="workspace-row-delete"'));
+    expect(html).toContain('data-workspace-residency-max-resident-value="5"');
+
+    await registry.seed([{ id: "abc", title: "A" }]);
+    const readyBroadcast = broadcasts.find((item) => item.includes('id="workspace_status_abc"')) ?? "";
+    expect(readyBroadcast.indexOf('id="workspace_status_abc"')).toBeLessThan(readyBroadcast.indexOf('class="workspace-row-delete"'));
 
     broadcasts.length = 0;
     registry.setTabBusy("abc", "agent:Agent 1", true);
     const busyBroadcast = broadcasts.find((item) => item.includes('target="workspace_status_abc"')) ?? "";
     expect(busyBroadcast).toContain('class="status-spinner sm"');
     expect(busyBroadcast).toContain('Workspace busy');
+
+    broadcasts.length = 0;
+    registry.setTabBusy("abc", "agent:Agent 1", false);
+    registry.setTabUnread("abc", "agent:Agent 1", true);
+    const unreadBroadcast = broadcasts.findLast((item) => item.includes('target="workspace_status_abc"')) ?? "";
+    expect(unreadBroadcast).toContain('data-workspace-state="unread"');
+    expect(unreadBroadcast).toMatch(/data-workspace-unread-at="\d+"/);
   });
 
   test("broadcast HTML never contains per-client state (visible rows, selection inputs)", async () => {

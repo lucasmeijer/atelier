@@ -241,7 +241,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       : state === "unread"
         ? `<span class="status-dot" aria-label="Workspace unread" title="Workspace unread"></span>`
         : "";
-    return `<span id="${workspaceStatusId(workspaceId)}" class="workspace-status" data-workspace-state="${state}">${inner}</span>`;
+    const unreadAt = registry.workspaceUnreadAt(workspaceId);
+    return `<span id="${workspaceStatusId(workspaceId)}" class="workspace-status" data-workspace-list-target="status" data-workspace-state="${state}"${unreadAt === undefined ? "" : ` data-workspace-unread-at="${unreadAt}"`}>${inner}</span>`;
   }
 
   function renderTabStatus(workspaceId: string, tabKey: string): string {
@@ -824,7 +825,7 @@ ${moduleStylesHtml()}
   async function workspaceDetailHostHtml(selectedId?: string): Promise<string> {
     const entry = selectedId ? registry.get(selectedId) : undefined;
     const resident = entry ? await workspaceResidentFor(entry, { visible: true }) : "";
-    return `<div id="workspace_detail" class="workspace-detail-host" data-controller="workspace-residency" data-workspace-residency-max-resident-value="10">
+    return `<div id="workspace_detail" class="workspace-detail-host" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5">
       <div class="workspace-detail-empty" data-workspace-residency-target="empty"${resident ? " hidden" : ""}><div class="main"><header class="header"><h1>Select a workspace</h1></header><div class="body"><div class="panel"><div class="pad">Create or select a workspace to begin.</div></div></div></div></div>
       <div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden><div class="main"><div class="body"><div class="panel"><div class="pad workspace-boot-pad"><span class="status-spinner"></span> Loading workspace…</div></div></div></div></div>
       ${resident}
