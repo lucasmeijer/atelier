@@ -413,15 +413,15 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     const carrierPlatform = activePlan.preloadDockerImages?.length ? await nativeLinuxDockerPlatform() : undefined;
     let imageResolution: WorkspaceImageResolution | undefined;
     if (!activePlan.image && !forkImage) {
-      imageResolution = await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImageResolution({ workspaceId: id, events: options.events, sourcePath: source.worktreePath, ...(carrierPlatform ? { preloadSpecs: activePlan.preloadDockerImages, carrierPlatform } : {}) }));
+      imageResolution = await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImageResolution({ workspaceId: id, events: options.events, sourcePath: source.worktreePath }));
       activePlan.image = imageResolution.image;
     } else {
       activePlan.image ??= forkImage;
       if (forkImage && carrierPlatform) imageResolution = { image: forkImage, defaultImage: await ensureDefaultWorkspaceImage() };
     }
     if (activePlan.preloadDockerImages?.length && imageResolution && carrierPlatform) {
-      const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve nested Docker images", () => imageResolution.carrier ? Promise.resolve(imageResolution.carrier.preload) : resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: imageResolution }), { output: (result) => result.images.map((image) => `${image.sourceRef} ${image.imageId}${image.aliases.length ? `\n  aliases: ${image.aliases.join(", ")}` : ""}`).join("\n") });
-      const carrier = await provisionStep(options.events, id, "workspace.image-carrier", "Prepare preloaded workspace image", () => imageResolution.carrier ? Promise.resolve(imageResolution.carrier) : prepareWorkspaceImageCarrier({ resolution: imageResolution, preload }), { output: (result) => [`Path: ${result.path}`, `Carrier key: ${result.key}`].join("\n") });
+      const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve nested Docker images", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: imageResolution }), { output: (result) => result.images.map((image) => `${image.sourceRef} ${image.imageId}${image.aliases.length ? `\n  aliases: ${image.aliases.join(", ")}` : ""}`).join("\n") });
+      const carrier = await provisionStep(options.events, id, "workspace.image-carrier", "Prepare preloaded workspace image", () => prepareWorkspaceImageCarrier({ resolution: imageResolution, preload }), { output: (result) => [`Path: ${result.path}`, `Carrier key: ${result.key}`].join("\n") });
       activePlan.image = carrier.image;
       activePlan.initScripts.push(...carrier.initScripts);
     }

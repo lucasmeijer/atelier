@@ -19,8 +19,8 @@ describe("workspace manifest Docker image preload", () => {
   });
 
   test("accepts literal, magic, mixed, and duplicate specs", () => {
-    expect(parse({ version: 1, docker: { privileged: true, preloadImages: ["atelier-default-workspace", "ubuntu:24.04", "ubuntu:24.04"] } }).docker?.preloadImages)
-      .toEqual(["atelier-default-workspace", "ubuntu:24.04", "ubuntu:24.04"]);
+    expect(parse({ version: 1, docker: { privileged: true, preloadImages: ["default-atelier-workspace-image", "ubuntu:24.04", "ubuntu:24.04"] } }).docker?.preloadImages)
+      .toEqual(["default-atelier-workspace-image", "ubuntu:24.04", "ubuntu:24.04"]);
   });
 
   test("rejects malformed preload values", () => {

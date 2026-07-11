@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { atelierDataPath, getAtelierRuntimeContext, requireDocker, runDocker, shellQuote } from "@atelier/core";
 
 export const workspaceCarrierFormatVersion = 1;
@@ -23,36 +22,12 @@ export interface ResolvedDockerImagePreload {
 export interface WorkspaceImageCarrierResult {
   image: string;
   key: string;
-  kind: "published hit" | "local hit" | "locally built";
-}
-
-export interface PublishedWorkspaceCarrier {
-  platform: string;
-  storageDriver: "fuse-overlayfs";
-  sourceWorkspaceDockerfileHash: string;
-  defaultWorkspaceImage: string;
-  preloadSpecs: string[];
-  image: string;
-  key: string;
-}
-
-export interface PublishedWorkspaceCarriers {
-  version: 1;
-  carriers: PublishedWorkspaceCarrier[];
+  kind: "local hit" | "locally built";
 }
 
 const carrierTasks = new Map<string, Promise<WorkspaceImageCarrierResult>>();
-const carrierMetadataPath = join(dirname(fileURLToPath(import.meta.url)), "../../..", ".atelier-workspace-carriers.json");
 
 function sortedUnique(values: string[]): string[] { return [...new Set(values)].sort(); }
-
-export function repositoryWorkspaceDockerfileHash(contents: string): string {
-  return createHash("sha256").update("atelier-repository-workspace-dockerfile-v1\n").update(contents).digest("hex");
-}
-
-export function logicalWorkspaceBaseIdentity(defaultImage: string, dockerfileContents: string): string {
-  return `${defaultImage}@dockerfile-sha256:${repositoryWorkspaceDockerfileHash(dockerfileContents)}`;
-}
 
 export function workspaceCarrierKey(baseIdentity: string, platform: string, preload: Pick<ResolvedDockerImagePreload, "images">, version = workspaceCarrierFormatVersion): string {
   const hash = createHash("sha256");
@@ -66,38 +41,6 @@ export function workspaceCarrierKey(baseIdentity: string, platform: string, prel
     for (const alias of sortedUnique(image.aliases)) { hash.update(alias); hash.update("\0"); }
   }
   return hash.digest("hex").slice(0, 32);
-}
-
-export function parsePublishedWorkspaceCarriers(value: unknown): PublishedWorkspaceCarriers {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid workspace carrier metadata: expected object");
-  const record = value as Record<string, unknown>;
-  if (record.version !== 1 || !Array.isArray(record.carriers)) throw new Error("invalid workspace carrier metadata: unsupported version or carriers");
-  const carriers = record.carriers.map((entry, index): PublishedWorkspaceCarrier => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error(`invalid workspace carrier metadata: carriers[${index}] must be an object`);
-    const item = entry as Record<string, unknown>;
-    const strings = ["platform", "storageDriver", "sourceWorkspaceDockerfileHash", "defaultWorkspaceImage", "image", "key"] as const;
-    for (const key of strings) if (typeof item[key] !== "string" || !(item[key] as string).trim()) throw new Error(`invalid workspace carrier metadata: carriers[${index}].${key}`);
-    if (item.storageDriver !== workspaceCarrierStorageDriver) throw new Error(`invalid workspace carrier metadata: carriers[${index}].storageDriver`);
-    if (!Array.isArray(item.preloadSpecs) || !item.preloadSpecs.every((spec) => typeof spec === "string" && spec.trim())) throw new Error(`invalid workspace carrier metadata: carriers[${index}].preloadSpecs`);
-    return { platform: item.platform as string, storageDriver: workspaceCarrierStorageDriver, sourceWorkspaceDockerfileHash: item.sourceWorkspaceDockerfileHash as string, defaultWorkspaceImage: item.defaultWorkspaceImage as string, preloadSpecs: item.preloadSpecs as string[], image: item.image as string, key: item.key as string };
-  });
-  return { version: 1, carriers };
-}
-
-export async function readPublishedWorkspaceCarriers(): Promise<PublishedWorkspaceCarriers | undefined> {
-  const file = Bun.file(carrierMetadataPath);
-  if (!(await file.exists())) return undefined;
-  return parsePublishedWorkspaceCarriers(JSON.parse(await file.text()));
-}
-
-export function selectPublishedWorkspaceCarrier(metadata: PublishedWorkspaceCarriers, input: { platform: string; defaultWorkspaceImage: string; dockerfileContents: string; preloadSpecs: string[] }): PublishedWorkspaceCarrier | undefined {
-  const hash = repositoryWorkspaceDockerfileHash(input.dockerfileContents);
-  const specs = sortedUnique(input.preloadSpecs);
-  return metadata.carriers.find((carrier) => carrier.platform === input.platform
-    && carrier.storageDriver === workspaceCarrierStorageDriver
-    && carrier.defaultWorkspaceImage === input.defaultWorkspaceImage
-    && carrier.sourceWorkspaceDockerfileHash === hash
-    && JSON.stringify(sortedUnique(carrier.preloadSpecs)) === JSON.stringify(specs));
 }
 
 async function dockerPlatform(ref: string): Promise<string> {
@@ -132,25 +75,6 @@ async function validCarrier(ref: string, labels: Record<string, string>): Promis
   return Object.entries(labels).every(([key, value]) => actual[key] === value);
 }
 
-function publishedCarrierAbsent(result: { stdout: string; stderr: string }): boolean {
-  return /manifest unknown|not found|no matching manifest/i.test(`${result.stderr}\n${result.stdout}`);
-}
-
-export async function resolvePublishedWorkspaceImageCarrier(options: { published: PublishedWorkspaceCarrier; baseIdentity: string; platform: string; preload: ResolvedDockerImagePreload }): Promise<WorkspaceImageCarrierResult | undefined> {
-  const key = workspaceCarrierKey(options.baseIdentity, options.platform, options.preload);
-  if (options.published.key !== key) return undefined;
-  const labels = carrierLabels(key, options.baseIdentity, options.platform, options.preload);
-  if (!await validCarrier(options.published.image, labels)) {
-    const pull = await runDocker(["pull", options.published.image]);
-    if (pull.exitCode !== 0) {
-      if (publishedCarrierAbsent(pull)) return undefined;
-      throw new Error(pull.stderr.trim() || `docker pull ${options.published.image} failed`);
-    }
-    if (!await validCarrier(options.published.image, labels)) throw new Error(`published workspace carrier ${options.published.image} has incompatible labels`);
-  }
-  return { image: options.published.image, key, kind: "published hit" };
-}
-
 export function nestedDockerDaemonInitScript(options: { logPath?: string; pidPath?: string } = {}): string {
   const logPath = options.logPath ?? "/.atelier/dockerd.log";
   const recordPid = options.pidPath ? `\necho $! > ${shellQuote(options.pidPath)}` : "";
@@ -175,7 +99,7 @@ async function exec(container: string, script: string): Promise<void> {
 async function verifySeededImages(container: string, preload: ResolvedDockerImagePreload, executeMagic: boolean): Promise<void> {
   for (const ref of preload.refs) await exec(container, `docker image inspect ${shellQuote(ref)} >/dev/null`);
   if (executeMagic) {
-    for (const image of preload.images.filter((entry) => entry.spec === "atelier-default-workspace")) {
+    for (const image of preload.images.filter((entry) => entry.spec === "default-atelier-workspace-image")) {
       await exec(container, `docker run --rm --entrypoint /bin/true ${shellQuote(image.sourceRef)}`);
     }
   }

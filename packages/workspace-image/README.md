@@ -62,15 +62,13 @@ Repositories can request images for their private Docker daemon:
   "version": 1,
   "docker": {
     "privileged": true,
-    "preloadImages": ["atelier-default-workspace", "ubuntu:24.04", "postgres:18"]
+    "preloadImages": ["default-atelier-workspace-image", "ubuntu:24.04", "postgres:18"]
   }
 }
 ```
 
-Values are exact Docker references. `atelier-default-workspace` is reserved and resolves to the exact default image selected by the outer Atelier process; Atelier also installs its deterministic `atelier-workspace:<hash>` alias. Invalid or unpullable references fail provisioning. Duplicate declarations are deduplicated internally.
+Values are exact Docker references. `default-atelier-workspace-image` is reserved and resolves to the exact default image selected by the outer Atelier process; Atelier also installs its deterministic `atelier-workspace:<hash>` alias. Invalid or unpullable references fail provisioning. Duplicate declarations are deduplicated internally.
 
-On a native Linux Docker Engine, Atelier builds or reuses a deterministic **carrier image**: the normal outer workspace image plus a cleanly stopped, `fuse-overlayfs`-backed `/var/lib/docker`. Every carrier is execution-tested after commit. Each workspace receives an independent writable container layer; Atelier never shares a mutable daemon store between workspaces. Carrier identity includes the outer base, platform, format version, refs, aliases, and resolved image IDs, so mutable tags and incompatible workspace versions produce cache misses rather than incorrect reuse.
-
-Release images may contain `/app/.atelier-workspace-carriers.json`, which lets the installer pull a matching carrier before first use. The metadata is versioned and matched against the exact default image, repository Dockerfile hash, preload set, platform, and carrier labels.
+On a native Linux Docker Engine, Atelier builds or reuses a deterministic **carrier image on demand** the first time a matching workspace is created: the normal workspace image plus a cleanly stopped, `fuse-overlayfs`-backed `/var/lib/docker`. Every carrier is execution-tested after commit. Each workspace receives an independent writable container layer; Atelier never shares a mutable daemon store between workspaces. Carrier identity includes the outer base, platform, format version, refs, aliases, and resolved image IDs, so mutable tags and incompatible workspace versions produce cache misses rather than incorrect reuse.
 
 Docker Desktop and non-Linux Docker Engines are explicitly excluded even when Atelier itself runs in a Linux container. On those platforms `docker.preloadImages` does nothing: Atelier does not resolve or pull the requested nested images, start a nested daemon, mount an archive, or run `docker load`. Carrier-backed preloading is a native-Linux-only feature.

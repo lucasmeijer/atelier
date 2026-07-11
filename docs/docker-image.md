@@ -29,9 +29,9 @@ bun run image:publish -- --image ghcr.io/example/atelier --tag v0.1.0
 bun run scripts/build-atelier-image.ts --push --image ghcr.io/example/atelier --tag v0.1.0 --platform linux/amd64 --builder-host root@agent-test
 ```
 
-`image:publish` is the same build pipeline with `--push` enabled and defaults to `--platform linux/amd64 --builder-host root@atelier`. The build script creates a buildx docker-container builder for the SSH host when needed. It also builds the Atelier repository workspace carrier on that native Linux daemon, pushes the immutable carrier, and embeds matching metadata in the app image. Carrier releases currently require one native platform per invocation; build and test each architecture separately before combining platform manifests.
+`image:publish` is the same build pipeline with `--push` enabled and defaults to `--platform linux/amd64 --builder-host root@atelier`. The build script creates a buildx docker-container builder for the SSH host when needed.
 
-The installer pulls the required default workspace image and any matching carrier listed in `/app/.atelier-workspace-carriers.json`. Carrier pulls are optional acceleration: Atelier can build a missing carrier on first use. Carriers embed a `fuse-overlayfs` nested Docker store and are selected only on native Linux, never Docker Desktop.
+The installer pulls the required default workspace image. Repositories that request nested-Docker image preloads get deterministic carrier images built on demand when their first matching workspace is created. Carriers embed a `fuse-overlayfs` nested Docker store and are selected only on native Linux, never Docker Desktop.
 
 The resulting container expects access to Docker so it can create Atelier workspace containers. Its entrypoint starts as root, grants the fixed container user `1000:1000` access to the mounted Docker socket, prepares the Atelier data directory, and then runs Atelier as that fixed user. Docker-run workspace containers use the same numeric uid/gid and the `default` namespace. Workspace app ports are published on the Docker host loopback. The Atelier container must run with host networking on Linux so Atelier and host-run Atelier both reach workspace apps at `127.0.0.1:<published-port>`. See [workspace networking](./workspace-networking.md) for the reasoning and experiments behind this model.
 

@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand } from "@atelier/observable-terminal/server";
-import { buildWorkspaceImageCarrier, logicalWorkspaceBaseIdentity, nestedDockerDaemonInitScript, readPublishedWorkspaceCarriers, resolvePublishedWorkspaceImageCarrier, selectPublishedWorkspaceCarrier, type ResolvedDockerImagePreload } from "./carrier.ts";
+import { buildWorkspaceImageCarrier, nestedDockerDaemonInitScript, type ResolvedDockerImagePreload } from "./carrier.ts";
 
 export * from "./carrier.ts";
 
@@ -24,25 +24,22 @@ export interface ResolveWorkspaceImageOptions {
   events?: AtelierEventBus;
   sourcePath?: string;
   buildOutput?: "inherit";
-  preloadSpecs?: string[];
-  carrierPlatform?: string;
 }
 
 export interface WorkspaceImageResolution {
   image: string;
   defaultImage: string;
-  carrier?: WorkspaceImageCarrierResolution;
 }
 
 export interface WorkspaceImageCarrierResolution {
   image: string;
   key: string;
-  path: "published hit" | "local hit" | "locally built";
+  path: "local hit" | "locally built";
   preload: ResolvedDockerImagePreload;
   initScripts: string[];
 }
 
-export const atelierDefaultWorkspaceImageSpecifier = "atelier-default-workspace";
+export const atelierDefaultWorkspaceImageSpecifier = "default-atelier-workspace-image";
 
 const maxBuildOutputBytes = 64 * 1024;
 const buildTasks = new Map<string, WorkspaceImageBuildTask>();
@@ -344,22 +341,6 @@ export async function resolveWorkspaceImageResolution(options: ResolveWorkspaceI
 
   const dockerfile = join(options.sourcePath, ".atelier", "Dockerfile");
   if (!(await Bun.file(dockerfile).exists())) return { image: baseImage, defaultImage: baseImage };
-
-  if (options.preloadSpecs?.length && options.carrierPlatform) {
-    const platform = options.carrierPlatform;
-    const metadata = await readPublishedWorkspaceCarriers();
-    const dockerfileContents = metadata ? await readFile(dockerfile, "utf8") : undefined;
-    const published = metadata && dockerfileContents ? selectPublishedWorkspaceCarrier(metadata, { platform, defaultWorkspaceImage: baseImage, dockerfileContents, preloadSpecs: options.preloadSpecs }) : undefined;
-    if (published && dockerfileContents) {
-      const provisional = { image: baseImage, defaultImage: baseImage };
-      const preload = await resolveDockerImagePreload({ specs: options.preloadSpecs, workspaceResolution: provisional });
-      const hit = await resolvePublishedWorkspaceImageCarrier({ published, baseIdentity: logicalWorkspaceBaseIdentity(baseImage, dockerfileContents), platform, preload });
-      if (hit) {
-        const carrier: WorkspaceImageCarrierResolution = { image: hit.image, key: hit.key, path: hit.kind, preload, initScripts: carrierInitScripts(preload) };
-        return { image: hit.image, defaultImage: baseImage, carrier };
-      }
-    }
-  }
 
   await tagAtelierWorkspaceBase(baseImage);
   const metadata = await repoWorkspaceImageMetadata(dockerfile, baseImage);

@@ -421,7 +421,7 @@ prepare_tailscale_https() {
 }
 
 pull_required_workspace_images() {
-  local default_workspace_image carrier_images carrier_image
+  local default_workspace_image
 
   info "Reading default workspace image from $atelier_image..."
   default_workspace_image="$(docker run --rm --entrypoint cat "$atelier_image" /app/.atelier-default-workspace-image | tr -d '\r' | head -n 1)"
@@ -430,25 +430,6 @@ pull_required_workspace_images() {
   info "Pulling required workspace image $default_workspace_image..."
   docker pull "$default_workspace_image"
   success "Workspace image is ready"
-
-  if docker run --rm --entrypoint sh "$atelier_image" -c 'test -s /app/.atelier-workspace-carriers.json' >/dev/null 2>&1; then
-    carrier_images="$(docker run --rm --entrypoint bun "$atelier_image" -e '
-      const metadata = JSON.parse(await Bun.file("/app/.atelier-workspace-carriers.json").text());
-      if (metadata.version !== 1 || !Array.isArray(metadata.carriers)) process.exit(1);
-      const architecture = process.arch === "x64" ? "amd64" : process.arch;
-      for (const carrier of metadata.carriers) {
-        if (carrier.platform === `linux/${architecture}` && carrier.storageDriver === "fuse-overlayfs" && typeof carrier.image === "string") console.log(carrier.image);
-      }
-    ')" || fail "could not parse Atelier workspace carrier metadata"
-    for carrier_image in $carrier_images; do
-      info "Pulling optional nested-Docker acceleration image $carrier_image..."
-      if docker pull "$carrier_image"; then
-        success "Workspace carrier acceleration image is ready"
-      else
-        warning "Could not pull optional workspace carrier; Atelier will build it on first use"
-      fi
-    done
-  fi
 }
 
 pull_atelier_images() {
