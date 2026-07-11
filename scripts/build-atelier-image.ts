@@ -133,6 +133,17 @@ function run(command: string[], options: { quiet?: boolean; inherit?: boolean } 
   return stdout;
 }
 
+async function runInherited(command: string[]): Promise<void> {
+  const child = Bun.spawn(command, {
+    env: { ...process.env },
+    stdout: "inherit",
+    stderr: "inherit",
+    stdin: "inherit",
+  });
+  const exitCode = await child.exited;
+  if (exitCode !== 0) throw new Error(`${command.join(" ")} failed with exit code ${exitCode}`);
+}
+
 function maybeRun(command: string[]): string | undefined {
   try {
     return run(command, { quiet: true });
@@ -258,7 +269,6 @@ if (shouldBuildWorkspace) {
   console.log(`${options.push ? "Publishing" : "Building"} default Atelier workspace image:`);
   console.log(`  ${defaultWorkspaceImageRef}`);
   console.log();
-  run(workspaceBuildCommand, { inherit: true });
 } else {
   console.log(`Reusing existing default Atelier workspace image:`);
   console.log(`  ${defaultWorkspaceImageRef}`);
@@ -291,7 +301,11 @@ console.log(`${options.push ? "Publishing" : "Building"} Atelier image:`);
 for (const ref of imageRefs) console.log(`  ${ref}`);
 console.log(`  default workspace image: ${defaultWorkspaceImageRef}`);
 console.log();
-run(buildCommand, { inherit: true });
+if (shouldBuildWorkspace) {
+  await Promise.all([runInherited(workspaceBuildCommand), runInherited(buildCommand)]);
+} else {
+  run(buildCommand, { inherit: true });
+}
 
 console.log();
 console.log(options.push ? "Published:" : "Built:");
