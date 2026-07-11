@@ -101,8 +101,10 @@ for (const module of modules) {
   dockerfile += `# Module: ${module.name}\n`;
   appendCopies(module.copyInstructions.filter((copy) => !copy.afterRun));
   for (const script of module.runInstructions) dockerfile += `RUN ${dockerEscapeRun(script)}\n\n`;
-  appendCopies(module.copyInstructions.filter((copy) => copy.afterRun));
 }
+const finalCopies = modules.flatMap((module) => module.copyInstructions.filter((copy) => copy.afterRun));
+if (finalCopies.length) dockerfile += "# Files independent of module setup\n";
+appendCopies(finalCopies);
 if (Object.keys(env).length) dockerfile += `ENV ${Object.entries(env).map(([key, value]) => `${key}=${quote(value)}`).join(" \\\n    ")}\n\n`;
 dockerfile += `WORKDIR /work\n`;
 await writeFile(join(outDir, "Dockerfile"), dockerfile);
