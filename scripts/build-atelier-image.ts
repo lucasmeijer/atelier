@@ -172,18 +172,11 @@ function localImageHasPlatforms(ref: string, platforms: string[]): boolean {
 }
 
 function registryImageHasPlatforms(ref: string, platforms: string[]): boolean {
-  const text = maybeRun(["docker", "buildx", "imagetools", "inspect", ref, "--format", "{{json .}}"]);
+  const text = maybeRun(["docker", "buildx", "imagetools", "inspect", ref]);
   if (!text) return false;
-  const inspected = JSON.parse(text) as {
-    image: { os: string; architecture: string };
-    manifest: { manifests?: Array<{ platform: { os: string; architecture: string } }> };
-  };
-  const available = new Set(
-    inspected.manifest.manifests
-      ? inspected.manifest.manifests.map(({ platform }) => `${platform.os}/${platform.architecture}`)
-      : [`${inspected.image.os}/${inspected.image.architecture}`],
-  );
-  return platforms.every((platform) => available.has(platform));
+  const available = new Set([...text.matchAll(/^\s*Platform:\s*(\S+)/gm)].map((match) => match[1]!));
+  if (available.size > 0) return platforms.every((platform) => available.has(platform));
+  return platforms.length === 1 && /^MediaType:\s+application\/vnd\..*\.manifest\.v\d\+json$/m.test(text);
 }
 
 function workspaceImageExists(ref: string, options: Options): boolean {
