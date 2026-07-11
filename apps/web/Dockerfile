@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 FROM docker:29-cli AS docker-cli
 FROM oven/bun:1.3.14 AS bun-dist
 
