@@ -223,7 +223,7 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
 }
 
 function seedPiConfigInstallScript(source: string, target: string): string {
-  return `seed_src=${shellQuote(source)}; seed_dst=${shellQuote(target)}; mkdir -p "$(dirname "$seed_dst")"; install -o atelier -g atelier -m 600 "$seed_src" "$seed_dst"; rm -f "$seed_src"`;
+  return `seed_src=${shellQuote(source)}; seed_dst=${shellQuote(target)}; seed_dir="$(dirname "$seed_dst")"; su atelier -s /bin/sh -c 'mkdir -p "$1"' sh "$seed_dir"; install -o atelier -g atelier -m 600 "$seed_src" "$seed_dst"; rm -f "$seed_src"`;
 }
 
 async function applySeedPiConfigManifest(manifest: RepoWorkspaceManifest, plan: WorkspaceDockerPlan): Promise<void> {
