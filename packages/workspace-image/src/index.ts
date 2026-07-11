@@ -183,17 +183,29 @@ async function ensureBuiltImage(contextDir: string, dockerfile: string, metadata
   return metadata.tag;
 }
 
-export async function ensureDefaultWorkspaceImage(options: ResolveWorkspaceImageOptions = {}): Promise<string> {
-  const baked = await bakedDefaultWorkspaceImageRef();
-  if (baked) {
-    await pullImage(baked);
-    return baked;
-  }
+let defaultWorkspaceImagePromise: Promise<string> | undefined;
 
-  const contextDir = defaultContextDir();
-  await generateContext(contextDir);
-  const metadata = await contextMetadata(contextDir);
-  return await ensureBuiltImage(contextDir, join(contextDir, "Dockerfile"), metadata, options);
+export async function ensureDefaultWorkspaceImage(options: ResolveWorkspaceImageOptions = {}): Promise<string> {
+  if (defaultWorkspaceImagePromise) return await defaultWorkspaceImagePromise;
+  const promise = (async () => {
+    const baked = await bakedDefaultWorkspaceImageRef();
+    if (baked) {
+      await pullImage(baked);
+      return baked;
+    }
+
+    const contextDir = defaultContextDir();
+    await generateContext(contextDir);
+    const metadata = await contextMetadata(contextDir);
+    return await ensureBuiltImage(contextDir, join(contextDir, "Dockerfile"), metadata, options);
+  })();
+  defaultWorkspaceImagePromise = promise;
+  try {
+    return await promise;
+  } catch (error) {
+    if (defaultWorkspaceImagePromise === promise) defaultWorkspaceImagePromise = undefined;
+    throw error;
+  }
 }
 
 async function assertWorkspaceDockerfileBase(dockerfile: string): Promise<void> {
