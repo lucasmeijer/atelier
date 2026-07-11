@@ -1,3 +1,4 @@
+import { platform } from "node:os";
 import { join } from "node:path";
 import { defaultDataDir } from "./data-dir.ts";
 
@@ -68,6 +69,9 @@ function envString(name: string): string | undefined {
 }
 
 function inspectDockerBridgeHost(): string {
+  // Docker Desktop's bridge gateway lives inside its Linux VM and cannot route
+  // back to a server listening on the macOS host.
+  if (platform() === "darwin") return "host.docker.internal";
   const result = Bun.spawnSync(["docker", "network", "inspect", "bridge", "--format", "{{(index .IPAM.Config 0).Gateway}}"], { stdout: "pipe", stderr: "pipe" });
   if (result.exitCode !== 0) throw new Error(`could not inspect Docker bridge gateway: ${new TextDecoder().decode(result.stderr).trim()}`);
   const host = new TextDecoder().decode(result.stdout).trim();
