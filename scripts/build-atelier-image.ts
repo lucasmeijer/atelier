@@ -238,7 +238,11 @@ function dockerBuildCommand(options: Options): string[] {
   if (hasMultiplePlatforms && !options.push) fail("multi-platform builds require --push");
   const name = builderName(options);
   if (options.platform || options.push || name) {
-    return ["docker", "buildx", "build", ...(name ? ["--builder", name] : []), options.push ? "--push" : "--load"];
+    return [
+      "docker", "buildx", "build",
+      ...(name ? ["--builder", name] : []),
+      ...(options.push ? ["--push", "--provenance=false"] : ["--load"]),
+    ];
   }
   return ["docker", "build"];
 }
