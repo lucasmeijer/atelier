@@ -217,9 +217,8 @@ function builderName(options: Options): string | undefined {
 function ensureBuilder(options: Options): void {
   if (!options.builderHost) return;
   const name = builderName(options)!;
-  if (!maybeRun(["docker", "buildx", "inspect", name])) {
-    run(["docker", "buildx", "create", "--name", name, "--driver", "docker-container", `ssh://${options.builderHost}`], { inherit: true });
-  }
+  if (maybeRun(["docker", "buildx", "inspect", "--bootstrap", name])) return;
+  run(["docker", "buildx", "create", "--name", name, "--driver", "docker-container", `ssh://${options.builderHost}`], { inherit: true });
   run(["docker", "buildx", "inspect", "--bootstrap", name], { inherit: true });
 }
 
