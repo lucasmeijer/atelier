@@ -44,7 +44,7 @@ await rm(outDir, { recursive: true, force: true });
 await mkdir(join(outDir, "files"), { recursive: true });
 
 const hash = createHash("sha256");
-hash.update("atelier-workspace-image-v9\n");
+hash.update("atelier-workspace-image-v10\n");
 const apt = [];
 const env = {};
 const moduleNames = [];
@@ -73,7 +73,8 @@ for (const { path, dir, name, manifest, hashPath } of manifests) {
     const dest = join(outDir, "files", rel);
     await mkdir(dirname(dest), { recursive: true });
     await cp(from, dest, { recursive: true });
-    const proc = Bun.spawnSync(["sh", "-c", `find ${quote(from)} -type f -print0 | sort -z | xargs -0 sha256sum`]);
+    const hashFrom = relative(dir, from);
+    const proc = Bun.spawnSync(["sh", "-c", `find ${quote(hashFrom)} -type f -print0 | sort -z | xargs -0 sha256sum`], { cwd: dir });
     if (proc.exitCode !== 0) throw new Error(`could not hash workspace image files from ${from}: ${proc.stderr.toString().trim()}`);
     hash.update(proc.stdout);
     moduleCopyInstructions.push({ rel: `files/${rel}`, to: file.to, mode: file.mode });

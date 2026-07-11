@@ -1,7 +1,7 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AtelierCoreError, atelierDataPath, currentAtelierContainerImageId, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus } from "@atelier/core";
-import { prepareAtelierWorkspaceImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
+import { ensureDefaultWorkspaceImage, nativeLinuxDockerPlatform, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
 import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction } from "./types.ts";
 export type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction, WorkspaceInitInstructionMap } from "./types.ts";
 
@@ -164,11 +164,9 @@ async function readWorkspaceInit(context: Awaited<ReturnType<typeof getAtelierRu
   return JSON.parse(await file.text()) as WorkspaceInitInstruction;
 }
 
-interface RepoWorkspaceManifest {
+export interface RepoWorkspaceManifest {
   version: 1;
-  privileged?: boolean;
-  isAtelier?: boolean;
-  docker?: { privileged?: boolean };
+  docker?: { privileged?: boolean; preloadImages?: string[] };
   initScripts?: string[];
   seedPiConfig?: {
     authJson?: string;
@@ -190,7 +188,7 @@ function optionalRecord(record: Record<string, unknown>, key: string, path: stri
   return value as Record<string, unknown>;
 }
 
-function parseRepoWorkspaceManifest(text: string, path: string): RepoWorkspaceManifest {
+export function parseRepoWorkspaceManifest(text: string, path = workspaceManifestPath): RepoWorkspaceManifest {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -200,12 +198,17 @@ function parseRepoWorkspaceManifest(text: string, path: string): RepoWorkspaceMa
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw invalidArguments(`invalid ${path}: expected object`);
   const record = parsed as Record<string, unknown>;
   if (record.version !== 1) throw invalidArguments(`invalid ${path}: unsupported version`);
-  if (record.privileged !== undefined && typeof record.privileged !== "boolean") throw invalidArguments(`invalid ${path}: privileged must be a boolean`);
-  if (record.isAtelier !== undefined && typeof record.isAtelier !== "boolean") throw invalidArguments(`invalid ${path}: isAtelier must be a boolean`);
+  if (record.privileged !== undefined) throw invalidArguments(`invalid ${path}: privileged is no longer supported; use docker.privileged`);
+  if (record.isAtelier !== undefined) throw invalidArguments(`invalid ${path}: isAtelier is no longer supported; use docker.preloadImages`);
   const dockerRecord = optionalRecord(record, "docker", path);
   if (dockerRecord?.privileged !== undefined && typeof dockerRecord.privileged !== "boolean") throw invalidArguments(`invalid ${path}: docker.privileged must be a boolean`);
+  const preloadImagesValue = dockerRecord?.preloadImages;
+  if (preloadImagesValue !== undefined && !Array.isArray(preloadImagesValue)) throw invalidArguments(`invalid ${path}: docker.preloadImages must be an array of non-empty strings`);
+  if (Array.isArray(preloadImagesValue) && !preloadImagesValue.every((spec) => typeof spec === "string" && spec.trim())) throw invalidArguments(`invalid ${path}: docker.preloadImages must be an array of non-empty strings`);
+  if (Array.isArray(preloadImagesValue) && preloadImagesValue.length > 0 && dockerRecord?.privileged !== true) throw invalidArguments(`invalid ${path}: docker.preloadImages requires docker.privileged to be true`);
   const docker: RepoWorkspaceManifest["docker"] | undefined = dockerRecord ? {} : undefined;
   if (docker && dockerRecord?.privileged !== undefined) docker.privileged = dockerRecord.privileged;
+  if (docker && Array.isArray(preloadImagesValue)) docker.preloadImages = preloadImagesValue.map((spec) => spec.trim());
   const initScripts = record.initScripts;
   if (initScripts !== undefined && (!Array.isArray(initScripts) || !initScripts.every((script) => typeof script === "string"))) throw invalidArguments(`invalid ${path}: initScripts must be an array of strings`);
   const seedPiConfigRecord = optionalRecord(record, "seedPiConfig", path);
@@ -213,8 +216,6 @@ function parseRepoWorkspaceManifest(text: string, path: string): RepoWorkspaceMa
   const modelsJson = seedPiConfigRecord ? optionalString(seedPiConfigRecord, "modelsJson", path, "seedPiConfig.modelsJson") : undefined;
   return {
     version: 1,
-    ...(record.privileged !== undefined ? { privileged: record.privileged } : {}),
-    ...(record.isAtelier !== undefined ? { isAtelier: record.isAtelier } : {}),
     ...(docker ? { docker } : {}),
     ...(initScripts ? { initScripts } : {}),
     ...(seedPiConfigRecord ? { seedPiConfig: { ...(authJson ? { authJson } : {}), ...(modelsJson ? { modelsJson } : {}) } } : {}),
@@ -244,8 +245,8 @@ async function applyRepoWorkspaceManifest(sourcePath: string, plan: WorkspaceDoc
   const file = Bun.file(path);
   if (!(await file.exists())) return;
   const manifest = parseRepoWorkspaceManifest(await file.text(), workspaceManifestPath);
-  if ((manifest.privileged || manifest.docker?.privileged) && !plan.extraArgs.includes("--privileged")) plan.extraArgs.push("--privileged");
-  if (manifest.isAtelier) plan.preloadAtelierWorkspaceImages = true;
+  if (manifest.docker?.privileged && !plan.extraArgs.includes("--privileged")) plan.extraArgs.push("--privileged");
+  if (manifest.docker?.preloadImages?.length) plan.preloadDockerImages = [...new Set(manifest.docker.preloadImages)];
   await applySeedPiConfigManifest(manifest, plan);
   plan.initScripts.push(...(manifest.initScripts ?? []));
 }
@@ -409,20 +410,20 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       await applyRepoWorkspaceManifest(source.worktreePath, activePlan);
       await options.events?.emit("workspace_plan_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot, plan: activePlan });
     });
+    const carrierPlatform = activePlan.preloadDockerImages?.length ? await nativeLinuxDockerPlatform() : undefined;
     let imageResolution: WorkspaceImageResolution | undefined;
     if (!activePlan.image && !forkImage) {
-      imageResolution = await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImageResolution({ workspaceId: id, events: options.events, sourcePath: source.worktreePath }));
+      imageResolution = await provisionStep(options.events, id, "workspace.image", "Resolve workspace image", () => resolveWorkspaceImageResolution({ workspaceId: id, events: options.events, sourcePath: source.worktreePath, ...(carrierPlatform ? { preloadSpecs: activePlan.preloadDockerImages, carrierPlatform } : {}) }));
       activePlan.image = imageResolution.image;
     } else {
       activePlan.image ??= forkImage;
+      if (forkImage && carrierPlatform) imageResolution = { image: forkImage, defaultImage: await ensureDefaultWorkspaceImage() };
     }
-    // Preloading is only prepared for images resolved for this source tree. Forks
-    // reuse the source workspace container image, so they skip this repo-image
-    // optimization instead of guessing tags for an arbitrary image id.
-    if (activePlan.preloadAtelierWorkspaceImages && imageResolution) {
-      const preload = await provisionStep(options.events, id, "workspace.image-preload", "Prepare Atelier image preload", () => prepareAtelierWorkspaceImagePreload({ sourcePath: source.worktreePath, resolution: imageResolution }), { output: (preload) => preload.refs.join("\n") });
-      activePlan.mounts.push(preload.mount);
-      activePlan.initScripts.push(preload.initScript);
+    if (activePlan.preloadDockerImages?.length && imageResolution && carrierPlatform) {
+      const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve nested Docker images", () => imageResolution.carrier ? Promise.resolve(imageResolution.carrier.preload) : resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: imageResolution }), { output: (result) => result.images.map((image) => `${image.sourceRef} ${image.imageId}${image.aliases.length ? `\n  aliases: ${image.aliases.join(", ")}` : ""}`).join("\n") });
+      const carrier = await provisionStep(options.events, id, "workspace.image-carrier", "Prepare preloaded workspace image", () => imageResolution.carrier ? Promise.resolve(imageResolution.carrier) : prepareWorkspaceImageCarrier({ resolution: imageResolution, preload }), { output: (result) => [`Path: ${result.path}`, `Carrier key: ${result.key}`].join("\n") });
+      activePlan.image = carrier.image;
+      activePlan.initScripts.push(...carrier.initScripts);
     }
     await provisionStep(options.events, id, "workspace.container", "Start workspace container", async () => {
       const image = activePlan.image;

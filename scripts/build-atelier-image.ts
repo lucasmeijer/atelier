@@ -3,6 +3,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { arch, tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildWorkspaceImageCarrier, logicalWorkspaceBaseIdentity, nativeLinuxDockerPlatform, repositoryWorkspaceDockerfileHash, repositoryWorkspaceImageTag, resolveDockerImagePreload, type PublishedWorkspaceCarriers } from "@atelier/workspace-image";
 
 const usage = `Build the Atelier Docker image.
 
@@ -265,16 +266,48 @@ if (shouldBuildWorkspace) {
   console.log(`  pass --workspace to rebuild it`);
 }
 
+async function buildPublishedCarrierMetadata(): Promise<PublishedWorkspaceCarriers> {
+  if (!options.push) return { version: 1, carriers: [] };
+  const platforms = requestedPlatforms(options);
+  if (platforms.length !== 1) throw new Error("published workspace carriers must be built and tested separately for each platform");
+  const previousDockerHost = process.env.DOCKER_HOST;
+  if (options.builderHost) process.env.DOCKER_HOST = `ssh://${options.builderHost}`;
+  try {
+    const nativePlatform = await nativeLinuxDockerPlatform();
+    if (nativePlatform !== platforms[0]) throw new Error(`carrier builder must be native ${platforms[0]} Linux (found ${nativePlatform ?? "Docker Desktop/non-Linux"})`);
+    run(["docker", "pull", defaultWorkspaceImageRef], { inherit: true });
+    run(["docker", "tag", defaultWorkspaceImageRef, "atelier-workspace"]);
+    const dockerfileContents = await Bun.file(".atelier/Dockerfile").text();
+    const repoImage = repositoryWorkspaceImageTag(defaultWorkspaceImageRef, dockerfileContents);
+    run(["docker", "build", "--tag", repoImage, "--file", ".atelier/Dockerfile", "."], { inherit: true });
+    const resolution = { image: repoImage, defaultImage: defaultWorkspaceImageRef };
+    const preloadSpecs = ["atelier-default-workspace"];
+    const preload = await resolveDockerImagePreload({ specs: preloadSpecs, workspaceResolution: resolution });
+    const carrier = await buildWorkspaceImageCarrier({ baseImage: repoImage, baseIdentity: logicalWorkspaceBaseIdentity(defaultWorkspaceImageRef, dockerfileContents), preload });
+    const carrierRepository = options.image === "ghcr.io/lucasmeijer/atelier" ? "ghcr.io/lucasmeijer/atelier-workspace-carrier" : `${options.image}-workspace-carrier`;
+    const publishedRef = `${carrierRepository}:${carrier.key}`;
+    run(["docker", "tag", carrier.image, publishedRef]);
+    run(["docker", "push", publishedRef], { inherit: true });
+    console.log(`Published workspace carrier: ${publishedRef}`);
+    return { version: 1, carriers: [{ platform: nativePlatform, storageDriver: "fuse-overlayfs", sourceWorkspaceDockerfileHash: repositoryWorkspaceDockerfileHash(dockerfileContents), defaultWorkspaceImage: defaultWorkspaceImageRef, preloadSpecs, image: publishedRef, key: carrier.key }] };
+  } finally {
+    if (previousDockerHost === undefined) delete process.env.DOCKER_HOST;
+    else process.env.DOCKER_HOST = previousDockerHost;
+  }
+}
+
+const carrierMetadata = await buildPublishedCarrierMetadata();
 const defaultBuildArgs = [
   `ATELIER_COMMIT_ID=${gitCommitId()}`,
   `ATELIER_COMMIT_DESCRIPTION=${gitCommitDescription()}`,
   `ATELIER_DEFAULT_WORKSPACE_IMAGE=${defaultWorkspaceImageRef}`,
+  `ATELIER_WORKSPACE_CARRIERS_JSON=${JSON.stringify(carrierMetadata)}`,
   // Self-update compatibility is the installer/runtime contract required for
   // Atelier's smooth in-app Docker replacement flow. Change this value when a
   // release needs users to rerun the installer instead of applying the update
   // from inside Atelier. Use a human-readable value and bump the suffix, e.g.
   // "tailscale-serve-localhost-v3", when the contract changes again.
-  "ATELIER_SELF_UPDATE_COMPATIBILITY=tailscale-serve-localhost-v2",
+  "ATELIER_SELF_UPDATE_COMPATIBILITY=workspace-carriers-v3",
 ];
 const allBuildArgs = [...defaultBuildArgs, ...options.buildArgs];
 

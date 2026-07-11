@@ -75,13 +75,15 @@ RUN printf '%s\n' '#!/usr/bin/env sh' 'exec bun /app/packages/update/src/server/
 ARG ATELIER_COMMIT_ID
 ARG ATELIER_COMMIT_DESCRIPTION
 ARG ATELIER_DEFAULT_WORKSPACE_IMAGE
+ARG ATELIER_WORKSPACE_CARRIERS_JSON={"version":1,"carriers":[]}
 ARG ATELIER_SELF_UPDATE_COMPATIBILITY
 ENV ATELIER_COMMIT_ID=${ATELIER_COMMIT_ID}
 ENV ATELIER_COMMIT_DESCRIPTION=${ATELIER_COMMIT_DESCRIPTION}
 LABEL org.opencontainers.image.source="https://github.com/lucasmeijer/atelier" \
       org.opencontainers.image.revision="${ATELIER_COMMIT_ID}" \
       com.atelier.self-update-compatibility="${ATELIER_SELF_UPDATE_COMPATIBILITY}"
-RUN printf '%s\n' "$ATELIER_DEFAULT_WORKSPACE_IMAGE" > /app/.atelier-default-workspace-image
+RUN printf '%s\n' "$ATELIER_DEFAULT_WORKSPACE_IMAGE" > /app/.atelier-default-workspace-image \
+ && printf '%s\n' "$ATELIER_WORKSPACE_CARRIERS_JSON" > /app/.atelier-workspace-carriers.json
 
 EXPOSE 3000
 

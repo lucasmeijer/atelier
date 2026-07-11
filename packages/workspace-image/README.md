@@ -15,7 +15,7 @@ packages/vscode/workspace-image.json
 
 ## Default image
 
-The default workspace image is built from Atelier's package `workspace-image.json` files. It includes Docker CLI/daemon packages and Buildx, but Atelier does not start `dockerd` automatically inside workspaces; start it manually when a workspace needs nested Docker. In local development, `bun run web` writes a temporary Docker build context under `/tmp`, ensures the deterministic local image tag exists before starting the dev server, and only builds when that image tag is missing from Docker.
+The default workspace image is built from Atelier's package `workspace-image.json` files. It includes Docker CLI/daemon packages and Buildx. Atelier starts a private nested daemon automatically when a repository declares `docker.preloadImages`. In local development, `bun run web` writes a temporary Docker build context under `/tmp`, ensures the deterministic local image tag exists before starting the dev server, and only builds when that image tag is missing from Docker.
 
 When publishing Atelier with `bun run image:publish`, the publish script also builds and pushes the corresponding default workspace image to:
 
@@ -52,3 +52,25 @@ Atelier automatically adds BuildKit apt cache mounts to simple repository Docker
 Repository image reuse is based on the default workspace image plus `.atelier/Dockerfile` contents only, not the full repository contents. Normal source changes therefore do not rebuild the workspace image. If the Dockerfile depends on another repository file through `COPY` or `ADD`, bump a version comment in `.atelier/Dockerfile` when that file changes.
 
 If the repo has no `.atelier/Dockerfile`, workspace creation pulls/uses the baked default workspace image directly and does not build a repository image.
+
+## Preloaded nested-Docker images
+
+Repositories can request images for their private Docker daemon:
+
+```json
+{
+  "version": 1,
+  "docker": {
+    "privileged": true,
+    "preloadImages": ["atelier-default-workspace", "ubuntu:24.04", "postgres:18"]
+  }
+}
+```
+
+Values are exact Docker references. `atelier-default-workspace` is reserved and resolves to the exact default image selected by the outer Atelier process; Atelier also installs its deterministic `atelier-workspace:<hash>` alias. Invalid or unpullable references fail provisioning. Duplicate declarations are deduplicated internally.
+
+On a native Linux Docker Engine, Atelier builds or reuses a deterministic **carrier image**: the normal outer workspace image plus a cleanly stopped, `fuse-overlayfs`-backed `/var/lib/docker`. Every carrier is execution-tested after commit. Each workspace receives an independent writable container layer; Atelier never shares a mutable daemon store between workspaces. Carrier identity includes the outer base, platform, format version, refs, aliases, and resolved image IDs, so mutable tags and incompatible workspace versions produce cache misses rather than incorrect reuse.
+
+Release images may contain `/app/.atelier-workspace-carriers.json`, which lets the installer pull a matching carrier before first use. The metadata is versioned and matched against the exact default image, repository Dockerfile hash, preload set, platform, and carrier labels.
+
+Docker Desktop and non-Linux Docker Engines are explicitly excluded even when Atelier itself runs in a Linux container. On those platforms `docker.preloadImages` does nothing: Atelier does not resolve or pull the requested nested images, start a nested daemon, mount an archive, or run `docker load`. Carrier-backed preloading is a native-Linux-only feature.
