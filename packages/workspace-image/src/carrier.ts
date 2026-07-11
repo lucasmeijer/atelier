@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { atelierDataPath, getAtelierRuntimeContext, requireDocker, runDocker, shellQuote } from "@atelier/core";
+import { requireDocker, runDocker, shellQuote } from "@atelier/core";
 
 export const workspaceCarrierFormatVersion = 1;
 export const workspaceCarrierStorageDriver = "fuse-overlayfs";
@@ -135,7 +136,7 @@ export async function buildWorkspaceImageCarrier(options: { baseImage: string; b
     const suffix = crypto.randomUUID().slice(0, 8);
     const seed = `atelier-carrier-seed-${key.slice(0, 10)}-${suffix}`;
     const verify = `atelier-carrier-verify-${key.slice(0, 10)}-${suffix}`;
-    const dir = atelierDataPath(getAtelierRuntimeContext(), "carrier-builds", key);
+    const dir = join(tmpdir(), "atelier-carrier-builds", key);
     const tar = join(dir, "images.tar");
     const baseEntrypoint = (await requireDocker(["image", "inspect", "--format", "{{json .Config.Entrypoint}}", options.baseImage])).stdout.trim();
     try {
