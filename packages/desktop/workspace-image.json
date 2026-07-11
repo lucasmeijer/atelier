@@ -10,7 +10,7 @@
     "xvfb"
   ],
   "files": [
-    { "from": "rootfs/usr/local/bin/atelier-start-desktop", "to": "/usr/local/bin/atelier-start-desktop", "mode": "0755" },
+    { "from": "rootfs/usr/local/bin/atelier-start-desktop", "to": "/usr/local/bin/atelier-start-desktop", "mode": "0755", "afterRun": true },
     { "from": "rootfs/usr/local/bin/atelier-wrap-playwright-chromium", "to": "/usr/local/bin/atelier-wrap-playwright-chromium", "mode": "0755" }
   ],
   "run": [
