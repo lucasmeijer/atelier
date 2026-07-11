@@ -285,8 +285,7 @@ async function buildPublishedCarrierMetadata(): Promise<PublishedWorkspaceCarrie
     const preloadSpecs = ["atelier-default-workspace"];
     const preload = await resolveDockerImagePreload({ specs: preloadSpecs, workspaceResolution: resolution });
     const carrier = await buildWorkspaceImageCarrier({ baseImage: repoImage, baseIdentity: logicalWorkspaceBaseIdentity(defaultWorkspaceImageRef, dockerfileContents), preload });
-    const carrierRepository = options.image === "ghcr.io/lucasmeijer/atelier" ? "ghcr.io/lucasmeijer/atelier-workspace-carrier" : `${options.image}-workspace-carrier`;
-    const publishedRef = `${carrierRepository}:${carrier.key}`;
+    const publishedRef = `${workspaceImageRepository(options.image)}:carrier-${carrier.key}`;
     run(["docker", "tag", carrier.image, publishedRef]);
     run(["docker", "push", publishedRef], { inherit: true });
     console.log(`Published workspace carrier: ${publishedRef}`);
