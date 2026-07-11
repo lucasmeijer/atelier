@@ -66,7 +66,8 @@ ENV HOST=0.0.0.0
 ENV PORT=3000
 ENV ATELIER_NAMESPACE=default
 
-COPY --from=build /app /app
+COPY --from=deps /app/node_modules /app/node_modules
+COPY --from=build --exclude=node_modules /app /app
 RUN printf '%s\n' '#!/usr/bin/env sh' 'exec bun /app/packages/update/src/server/update-helper.ts "$@"' > /usr/local/bin/atelier-update-helper \
  && printf '%s\n' '#!/usr/bin/env sh' 'exec /usr/local/bin/bun /app/packages/proxy-ingress/src/ingress/tailscale-serve-helper.ts "$@"' > /usr/local/bin/atelier-tailscale-serve-helper \
  && chmod 755 /usr/local/bin/atelier-update-helper /usr/local/bin/atelier-tailscale-serve-helper /app/apps/web/docker-entrypoint.sh
