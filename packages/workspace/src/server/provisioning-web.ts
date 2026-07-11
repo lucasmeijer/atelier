@@ -63,7 +63,6 @@ const workspaceCreationSeedSteps: WorkspaceProvisionSeedStep[] = [
   { id: "workspace.image", label: "Resolve workspace image" },
   { id: "workspace.container", label: "Start workspace container" },
   { id: "workspace.startup", label: "Wait for workspace startup" },
-  { id: "workspace.verify", label: "Verify workspace" },
 ];
 
 const workspaceIntegrationSeedStep: WorkspaceProvisionSeedStep = { id: "workspace.integrations", label: "Run workspace startup integrations" };

@@ -435,7 +435,6 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       await requireDocker(["start", container]);
     });
     await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id), { output: () => workspaceStartupLog(id) });
-    await provisionStep(options.events, id, "workspace.verify", "Verify workspace", () => resolveWorkspace(id));
   } catch (error) {
     await runDocker(["rm", "-f", workspaceContainerName(id)]).catch(() => undefined);
     await Promise.all((plan?.cleanup ?? []).map((cleanup) => Promise.resolve(cleanup()).catch(() => undefined)));
