@@ -99,17 +99,12 @@ async function inspectWorkspaceContainerImage(id: string): Promise<string> {
   return inspected.stdout.trim();
 }
 
-async function workspaceStartupLog(id: string): Promise<string> {
-  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", "tail -n 120 /.atelier/startup.log 2>/dev/null || true"]);
-  return result.stdout.trim();
-}
-
 async function waitForWorkspaceStartup(id: string): Promise<string> {
   const timeoutSeconds = Math.ceil(workspaceStartupTimeoutMs / 1000);
-  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do if test -f /.atelier/ready; then cat /.atelier/startup.log; exit 0; fi; sleep 0.05; done; exit 1`]);
-  if (result.exitCode === 0) return result.stdout.trim();
-  const log = await workspaceStartupLog(id);
-  const output = [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n");
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do if test -f /.atelier/ready; then cat /.atelier/startup.log; exit 0; fi; sleep 0.05; done; tail -n 120 /.atelier/startup.log; exit 1`]);
+  const log = result.stdout.trim();
+  if (result.exitCode === 0) return log;
+  const output = result.stderr.trim();
   throw new AtelierCoreError("workspace_startup_timeout", `workspace did not finish startup: ${id}${output ? `\n${output}` : ""}${log ? `\n\nStartup log:\n${log}` : ""}`);
 }
 
@@ -421,7 +416,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     }
     if (activePlan.preloadDockerImages?.length && imageResolution && carrierPlatform) {
       const preload = await provisionStep(options.events, id, "workspace.docker-images", "Resolve nested Docker images", () => resolveDockerImagePreload({ specs: activePlan.preloadDockerImages!, workspaceResolution: imageResolution }), { output: (result) => result.images.map((image) => `${image.sourceRef} ${image.imageId}${image.aliases.length ? `\n  aliases: ${image.aliases.join(", ")}` : ""}`).join("\n") });
-      const carrier = await provisionStep(options.events, id, "workspace.image-carrier", "Prepare preloaded workspace image", () => prepareWorkspaceImageCarrier({ resolution: imageResolution, preload }), { output: (result) => [`Path: ${result.path}`, `Carrier key: ${result.key}`].join("\n") });
+      const carrier = await provisionStep(options.events, id, "workspace.image-carrier", "Prepare preloaded workspace image", () => prepareWorkspaceImageCarrier({ resolution: imageResolution, platform: carrierPlatform, preload }), { output: (result) => [`Path: ${result.path}`, `Carrier key: ${result.key}`].join("\n") });
       activePlan.image = carrier.image;
       activePlan.initScripts.push(...carrier.initScripts);
     }

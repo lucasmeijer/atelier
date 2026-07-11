@@ -6,6 +6,7 @@ import { requireDocker, runDocker, shellQuote } from "@atelier/core";
 
 export const workspaceCarrierFormatVersion = 1;
 export const workspaceCarrierStorageDriver = "fuse-overlayfs";
+export const defaultAtelierWorkspaceImageSpecifier = "default-atelier-workspace-image";
 
 export interface ResolvedDockerImagePreloadImage {
   spec: string;
@@ -15,7 +16,6 @@ export interface ResolvedDockerImagePreloadImage {
 }
 
 export interface ResolvedDockerImagePreload {
-  requestedSpecs: string[];
   refs: string[];
   images: ResolvedDockerImagePreloadImage[];
 }
@@ -30,16 +30,22 @@ const carrierTasks = new Map<string, Promise<WorkspaceImageCarrierResult>>();
 
 function sortedUnique(values: string[]): string[] { return [...new Set(values)].sort(); }
 
+function canonicalPreloadImages(preload: Pick<ResolvedDockerImagePreload, "images">): Array<{ ref: string; id: string; aliases: string[] }> {
+  return preload.images
+    .map((image) => ({ ref: image.sourceRef, id: image.imageId, aliases: sortedUnique(image.aliases) }))
+    .sort((a, b) => a.ref.localeCompare(b.ref) || a.id.localeCompare(b.id));
+}
+
 export function workspaceCarrierKey(baseIdentity: string, platform: string, preload: Pick<ResolvedDockerImagePreload, "images">, version = workspaceCarrierFormatVersion): string {
   const hash = createHash("sha256");
   hash.update(`atelier-workspace-carrier-v${version}\0`);
   hash.update(platform); hash.update("\0");
   hash.update(workspaceCarrierStorageDriver); hash.update("\0");
   hash.update(baseIdentity); hash.update("\0");
-  for (const image of [...preload.images].sort((a, b) => a.sourceRef.localeCompare(b.sourceRef) || a.imageId.localeCompare(b.imageId))) {
-    hash.update(image.sourceRef); hash.update("\0");
-    hash.update(image.imageId); hash.update("\0");
-    for (const alias of sortedUnique(image.aliases)) { hash.update(alias); hash.update("\0"); }
+  for (const image of canonicalPreloadImages(preload)) {
+    hash.update(image.ref); hash.update("\0");
+    hash.update(image.id); hash.update("\0");
+    for (const alias of image.aliases) { hash.update(alias); hash.update("\0"); }
   }
   return hash.digest("hex").slice(0, 32);
 }
@@ -50,10 +56,9 @@ async function dockerPlatform(ref: string): Promise<string> {
 }
 
 export async function nativeLinuxDockerPlatform(): Promise<string | undefined> {
-  const info = await requireDocker(["info", "--format", "{{.OperatingSystem}}"]);
-  if (/docker desktop/i.test(info.stdout)) return undefined;
-  const os = await requireDocker(["info", "--format", "{{.OSType}}/{{.Architecture}}"]);
-  const [type, architectureValue] = os.stdout.trim().split("/");
+  const info = await requireDocker(["info", "--format", "{{.OperatingSystem}}|{{.OSType}}|{{.Architecture}}"]);
+  const [operatingSystem, type, architectureValue] = info.stdout.trim().split("|");
+  if (/docker desktop/i.test(operatingSystem ?? "")) return undefined;
   const architecture = architectureValue === "x86_64" ? "amd64" : architectureValue === "aarch64" ? "arm64" : architectureValue;
   return type === "linux" && architecture ? `linux/${architecture}` : undefined;
 }
@@ -65,7 +70,7 @@ function carrierLabels(key: string, baseIdentity: string, platform: string, prel
     "com.atelier.workspace-carrier.base-image": baseIdentity,
     "com.atelier.workspace-carrier.storage-driver": workspaceCarrierStorageDriver,
     "com.atelier.workspace-carrier.platform": platform,
-    "com.atelier.workspace-carrier.preload": JSON.stringify(preload.images.map((image) => ({ ref: image.sourceRef, id: image.imageId, aliases: sortedUnique(image.aliases) }))),
+    "com.atelier.workspace-carrier.preload": JSON.stringify(canonicalPreloadImages(preload)),
   };
 }
 
@@ -97,12 +102,10 @@ async function exec(container: string, script: string): Promise<void> {
   await requireDocker(["exec", "--user", "root", container, "sh", "-lc", script]);
 }
 
-async function verifySeededImages(container: string, preload: ResolvedDockerImagePreload, executeMagic: boolean): Promise<void> {
+async function verifySeededImages(container: string, preload: ResolvedDockerImagePreload): Promise<void> {
   for (const ref of preload.refs) await exec(container, `docker image inspect ${shellQuote(ref)} >/dev/null`);
-  if (executeMagic) {
-    for (const image of preload.images.filter((entry) => entry.spec === "default-atelier-workspace-image")) {
-      await exec(container, `docker run --rm --entrypoint /bin/true ${shellQuote(image.sourceRef)}`);
-    }
+  for (const image of preload.images.filter((entry) => entry.spec === defaultAtelierWorkspaceImageSpecifier)) {
+    await exec(container, `docker run --rm --entrypoint /bin/true ${shellQuote(image.sourceRef)}`);
   }
 }
 
@@ -120,9 +123,8 @@ async function assertCarrierBase(baseImage: string, preload: ResolvedDockerImage
   for (const image of preload.images) if (await dockerPlatform(image.sourceRef) !== platform) throw new Error(`${image.sourceRef} platform does not match ${platform}`);
 }
 
-export async function buildWorkspaceImageCarrier(options: { baseImage: string; baseIdentity: string; preload: ResolvedDockerImagePreload }): Promise<WorkspaceImageCarrierResult> {
-  const platform = await nativeLinuxDockerPlatform();
-  if (!platform) throw new Error("workspace image carriers require a native Linux Docker Engine");
+export async function buildWorkspaceImageCarrier(options: { baseImage: string; baseIdentity: string; platform: string; preload: ResolvedDockerImagePreload }): Promise<WorkspaceImageCarrierResult> {
+  const { platform } = options;
   const key = workspaceCarrierKey(options.baseIdentity, platform, options.preload);
   const labels = carrierLabels(key, options.baseIdentity, platform, options.preload);
 
@@ -148,7 +150,7 @@ export async function buildWorkspaceImageCarrier(options: { baseImage: string; b
       await exec(seed, carrierDaemonStartScript);
       await requireDocker(["cp", tar, `${seed}:/.atelier/carrier-images.tar`]);
       await exec(seed, "docker load --input /.atelier/carrier-images.tar >/dev/null; rm -f /.atelier/carrier-images.tar");
-      await verifySeededImages(seed, options.preload, true);
+      await verifySeededImages(seed, options.preload);
       await stopNestedDaemon(seed);
       await requireDocker(["stop", "--time", "30", seed]);
       const changes = Object.entries(labels).flatMap(([name, value]) => ["--change", `LABEL ${name}=${JSON.stringify(value)}`]);
@@ -159,7 +161,7 @@ export async function buildWorkspaceImageCarrier(options: { baseImage: string; b
       await requireDocker(["create", "--name", verify, "--privileged", tag, "sh", "-lc", "sleep infinity"]);
       await requireDocker(["start", verify]);
       await exec(verify, carrierDaemonStartScript);
-      await verifySeededImages(verify, options.preload, true);
+      await verifySeededImages(verify, options.preload);
       await stopNestedDaemon(verify);
       return { image: tag, key, kind: "locally built" };
     } finally {

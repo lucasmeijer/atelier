@@ -22,9 +22,9 @@ carrierIntegrationTest("native Linux carriers are reusable and give workspaces i
     await requireDocker(["build", "--tag", base, directory]);
     const resolution = { image: base, defaultImage: base };
     const preload = await resolveDockerImagePreload({ specs: ["ubuntu:24.04"], workspaceResolution: resolution });
-    const first = await buildWorkspaceImageCarrier({ baseImage: base, baseIdentity: base, preload });
+    const first = await buildWorkspaceImageCarrier({ baseImage: base, baseIdentity: base, platform, preload });
     carrierImage = first.image;
-    const second = await buildWorkspaceImageCarrier({ baseImage: base, baseIdentity: base, preload });
+    const second = await buildWorkspaceImageCarrier({ baseImage: base, baseIdentity: base, platform, preload });
     expect(second.image).toBe(first.image);
     expect(second.kind).toBe("local hit");
 

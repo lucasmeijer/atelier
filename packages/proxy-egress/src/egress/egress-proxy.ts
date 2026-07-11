@@ -47,7 +47,7 @@ async function workspaceProxyEnv(workspaceId: string, token: string): Promise<Re
     SSL_CERT_FILE: "/etc/ssl/certs/ca-certificates.crt",
     REQUESTS_CA_BUNDLE: "/etc/ssl/certs/ca-certificates.crt",
     CURL_CA_BUNDLE: "/etc/ssl/certs/ca-certificates.crt",
-    NODE_EXTRA_CA_CERTS: "/usr/local/share/ca-certificates/atelier-mitm-ca.crt",
+    NODE_EXTRA_CA_CERTS: workspaceMitmCaPath,
     GIT_SSL_CAINFO: "/etc/ssl/certs/ca-certificates.crt",
     NPM_CONFIG_CAFILE: "/etc/ssl/certs/ca-certificates.crt",
     YARN_CA_FILE: "/etc/ssl/certs/ca-certificates.crt",
@@ -66,7 +66,7 @@ export function registerWorkspaceProxyEvents(events: AtelierEventBus): void {
     await ensureMitmCa(runtimeContext);
     Object.assign(plan.env, await workspaceProxyEnv(workspaceId, proxyAuthToken));
     plan.mounts.push({ type: "bind", source: dockerHostAtelierDataPath(runtimeContext, "proxy-ca", "atelier-mitm-ca.pem"), target: workspaceMitmCaPath, readonly: true });
-    plan.initScripts.push(`if [ -r ${workspaceMitmCaPath} ]; then mkdir -p /usr/local/share/ca-certificates; cp ${workspaceMitmCaPath} /usr/local/share/ca-certificates/atelier-mitm-ca.crt; cat ${workspaceMitmCaPath} >> /etc/ssl/certs/ca-certificates.crt; fi`);
+    plan.initScripts.push(`cat ${workspaceMitmCaPath} >> /etc/ssl/certs/ca-certificates.crt`);
     plan.initScripts.push(`su atelier -c ${shellQuote('git config --global http.proxy "$HTTPS_PROXY"; git config --global http.proxyAuthMethod basic')}`);
     plan.cleanup.push(async () => cleanupWorkspaceProxy(workspaceId));
   });

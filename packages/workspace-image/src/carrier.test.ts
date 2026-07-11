@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { workspaceCarrierKey, type ResolvedDockerImagePreload } from "./carrier.ts";
 
 const preload: ResolvedDockerImagePreload = {
-  requestedSpecs: ["ubuntu:24.04", "default-atelier-workspace-image"],
   refs: ["ubuntu:24.04", "ghcr.io/example/workspace:0123456789abcdef", "atelier-workspace:0123456789abcdef"],
   images: [
     { spec: "ubuntu:24.04", sourceRef: "ubuntu:24.04", imageId: "sha256:ubuntu", aliases: [] },
