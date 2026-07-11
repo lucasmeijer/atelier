@@ -12,6 +12,7 @@ function spawnDocker(args: string[], options: { stdin?: string }): Bun.Subproces
   let proc: Bun.Subprocess<"pipe", "pipe", "pipe">;
   try {
     proc = Bun.spawn(["docker", ...args], {
+      env: { ...process.env },
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",

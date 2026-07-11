@@ -117,6 +117,7 @@ function parseArgs(args: string[]): Options {
 
 function run(command: string[], options: { quiet?: boolean; inherit?: boolean } = {}): string {
   const result = Bun.spawnSync(command, {
+    env: { ...process.env },
     stdout: options.inherit ? "inherit" : "pipe",
     stderr: options.inherit ? "inherit" : "pipe",
     stdin: "inherit",
