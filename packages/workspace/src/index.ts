@@ -104,10 +104,10 @@ async function workspaceStartupLog(id: string): Promise<string> {
   return result.stdout.trim();
 }
 
-async function waitForWorkspaceStartup(id: string): Promise<void> {
+async function waitForWorkspaceStartup(id: string): Promise<string> {
   const timeoutSeconds = Math.ceil(workspaceStartupTimeoutMs / 1000);
-  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do test -f /.atelier/ready && exit 0; sleep 0.05; done; exit 1`]);
-  if (result.exitCode === 0) return;
+  const result = await runDocker(["exec", "--user", "root", workspaceContainerName(id), "sh", "-lc", `deadline=$(( $(date +%s) + ${timeoutSeconds} )); while [ "$(date +%s)" -le "$deadline" ]; do if test -f /.atelier/ready; then cat /.atelier/startup.log; exit 0; fi; sleep 0.05; done; exit 1`]);
+  if (result.exitCode === 0) return result.stdout.trim();
   const log = await workspaceStartupLog(id);
   const output = [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n");
   throw new AtelierCoreError("workspace_startup_timeout", `workspace did not finish startup: ${id}${output ? `\n${output}` : ""}${log ? `\n\nStartup log:\n${log}` : ""}`);
@@ -434,7 +434,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
       for (const file of activePlan.containerFiles) await requireDocker(["cp", file.source, `${container}:${file.target}`]);
       await requireDocker(["start", container]);
     });
-    await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id), { output: () => workspaceStartupLog(id) });
+    await provisionStep(options.events, id, "workspace.startup", "Wait for workspace startup", () => waitForWorkspaceStartup(id), { output: (log) => log });
   } catch (error) {
     await runDocker(["rm", "-f", workspaceContainerName(id)]).catch(() => undefined);
     await Promise.all((plan?.cleanup ?? []).map((cleanup) => Promise.resolve(cleanup()).catch(() => undefined)));
