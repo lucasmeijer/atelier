@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetAtelierRuntimeContextForTests } from "@atelier/core";
 import {
@@ -12,6 +13,7 @@ import {
   releaseWorkspacePublicProxyRoutes,
   syncTailscaleServePortConfig,
   type TailscaleServeConfig,
+  normalizeDecodedFetchResponse,
 } from "@atelier/proxy-ingress/server";
 
 let dataDir = "";
@@ -34,6 +36,61 @@ afterEach(async () => {
   else process.env.ATELIER_PROXY_PORT_RANGE = previousRange;
   resetAtelierRuntimeContextForTests();
   await rm(dataDir, { recursive: true, force: true });
+});
+
+describe("decoded upstream response normalization", () => {
+  test("removes compression metadata from a transparently decoded response", async () => {
+    const compressed = gzipSync("decoded JavaScript");
+    const upstream = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(compressed, {
+          headers: {
+            "content-encoding": "gzip",
+            "content-length": String(compressed.byteLength),
+            "content-md5": "encoded-md5",
+            "content-digest": "sha-256=:encoded:",
+            "repr-digest": "sha-256=:encoded:",
+            etag: "\"encoded-representation\"",
+            vary: "Accept-Encoding",
+          },
+        });
+      },
+    });
+    const response = await fetch(`http://localhost:${upstream.port}`);
+    upstream.stop();
+
+    // Bun fetch has decoded the gzip bytes while preserving these headers.
+    expect(await response.clone().text()).toBe("decoded JavaScript");
+    expect(response.headers.get("content-encoding")).toBe("gzip");
+    const normalized = normalizeDecodedFetchResponse(response);
+    expect(await normalized.text()).toBe("decoded JavaScript");
+    expect(normalized.headers.get("content-encoding")).toBeNull();
+    expect(normalized.headers.get("content-length")).toBeNull();
+    expect(normalized.headers.get("content-md5")).toBeNull();
+    expect(normalized.headers.get("content-digest")).toBeNull();
+    expect(normalized.headers.get("repr-digest")).toBeNull();
+    expect(normalized.headers.get("etag")).toBeNull();
+    expect(normalized.headers.get("vary")).toBe("Accept-Encoding");
+  });
+
+  test("passes through an unencoded response without changing its byte validator", async () => {
+    const response = new Response("plain JavaScript", {
+      headers: { "content-length": "16", etag: "\"plain-representation\"" },
+    });
+
+    expect(normalizeDecodedFetchResponse(response)).toBe(response);
+    expect(await response.text()).toBe("plain JavaScript");
+    expect(response.headers.get("etag")).toBe("\"plain-representation\"");
+  });
+
+  test("keeps weak validators, which remain valid across content codings", () => {
+    const response = new Response("decoded", {
+      headers: { "content-encoding": "br", etag: "W/\"semantic-version\"" },
+    });
+
+    expect(normalizeDecodedFetchResponse(response).headers.get("etag")).toBe("W/\"semantic-version\"");
+  });
 });
 
 describe("workspace public proxy route state", () => {

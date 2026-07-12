@@ -264,12 +264,12 @@ async function proxyWorkspaceAppRequest(
     const sourcePort = publicWorkspaceAppPort(sourceHost, sourceProto);
     if (sourcePort) headers.set("x-forwarded-port", sourcePort);
     if (transformRequestHeaders) headers = await transformRequestHeaders(app, headers, target, request);
-    const response = await fetch(target, {
+    const response = normalizeDecodedFetchResponse(await fetch(target, {
       method: request.method,
       headers,
       body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
       redirect: "manual",
-    });
+    }));
     return transformResponse ? await transformResponse(app, response, request) : response;
   } catch (error) {
     if (error instanceof UnknownWorkspaceAppError && retireUnknownAppRoute) return await retireUnknownAppRoute();
@@ -282,6 +282,37 @@ async function workspaceAppWebSocketTarget(app: WorkspaceAppHost, pathname: stri
   const target = await resolveTarget(app, new URL(`${pathname}${search}`, "http://workspace-app.localhost"));
   target.protocol = target.protocol === "https:" ? "wss:" : "ws:";
   return target.toString();
+}
+
+/**
+ * Bun's fetch transparently decodes content codings, but retains the upstream
+ * Content-Encoding header. Returning that response directly makes clients try
+ * to decode the already-decoded stream a second time.
+ *
+ * Keep the metadata aligned with the body that fetch gives us. A weak ETag is
+ * still valid because it identifies semantic equivalence; a strong ETag is a
+ * byte-for-byte representation validator and must not describe the decoded
+ * representation.
+ */
+export function normalizeDecodedFetchResponse(response: Response): Response {
+  const contentEncoding = response.headers.get("content-encoding");
+  if (!contentEncoding || contentEncoding.toLowerCase() === "identity") return response;
+
+  const headers = new Headers(response.headers);
+  headers.delete("content-encoding");
+  headers.delete("content-length");
+  headers.delete("content-md5");
+  headers.delete("content-digest");
+  headers.delete("repr-digest");
+
+  const etag = headers.get("etag");
+  if (etag && !etag.trimStart().startsWith("W/")) headers.delete("etag");
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function websocketProtocols(request: Request): string[] {
