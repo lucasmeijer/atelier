@@ -14,7 +14,7 @@ Options:
   --tag <tag>           Tag to apply. May be passed more than once (default: git describe/short sha)
   --latest             Tag the image as <image>:latest (default)
   --stable             Also tag the image as <image>:stable
-  --push               Push the built images instead of only loading them locally
+  --push               Push the built images instead of only loading them locally. Uses GH_PACKAGE_TOKEN for ghcr.io.
   --platform <value>   Docker platform(s), e.g. linux/amd64 or linux/amd64,linux/arm64
   --builder-host <ssh> Docker SSH host to create/use as a buildx builder
   --no-cache           Build without Docker cache
@@ -138,6 +138,19 @@ function maybeRun(command: string[]): string | undefined {
   }
 }
 
+function authenticateGhcr(options: Options): void {
+  if (!options.push || !options.image.startsWith("ghcr.io/")) return;
+
+  const token = process.env.GH_PACKAGE_TOKEN?.trim();
+  if (!token) throw new Error("GH_PACKAGE_TOKEN is required to publish images to ghcr.io");
+
+  const result = Bun.spawnSync(
+    ["docker", "login", "ghcr.io", "--username", "lucasmeijer", "--password-stdin"],
+    { stdin: new TextEncoder().encode(token), stdout: "inherit", stderr: "inherit" },
+  );
+  if (result.exitCode !== 0) throw new Error(`docker login ghcr.io failed with exit code ${result.exitCode}`);
+}
+
 function dockerArchitecture(): string {
   const value = arch();
   if (value === "x64") return "amd64";
@@ -236,6 +249,7 @@ function dockerBuildCommand(options: Options, args: string[]): string[] {
 }
 
 const options = parseArgs(process.argv.slice(2));
+authenticateGhcr(options);
 await ensureBuilder(options);
 const workspaceTempDir = mkdtempSync(join(tmpdir(), "atelier-image-"));
 const workspaceContextDir = join(workspaceTempDir, "atelier-workspace");
