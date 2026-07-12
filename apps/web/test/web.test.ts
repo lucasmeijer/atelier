@@ -300,32 +300,31 @@ describe("web app contracts", () => {
     });
   });
 
-  test("project rows open project editing and expose project launch on hover", async () => {
+  test("the project picker launches workspaces and links to project settings", async () => {
     await withTempDataDir(async () => {
       const project = (await addProject("https://github.com/org/sample-project.git")).project;
       const { app, registry } = createTestApp();
       await registry.seed([]);
 
-      const html = await (await app.fetch(new Request("http://test.local/"))).text();
+      const home = await (await app.fetch(new Request("http://test.local/"))).text();
+      const editor = await (await app.fetch(new Request(`http://test.local/projects/${project.id}/picker`))).text();
 
-      expect(html).toContain('class="row project-row repo-tinted-row" role="button"');
-      expect(html).toContain(`data-modal-opener-target-id-value="project_edit_modal_${project.id}"`);
-      expect(html).toContain(`class="project-row-create" type="button" title="Create workspace"`);
-      expect(html).toContain(`data-modal-opener-target-id-value="agent_launch_project_modal_${project.id}"`);
-      expect(html).not.toContain("repo-launch-icon");
-      expect(html).toContain(`id="project_edit_modal_${project.id}"`);
-      expect(html).toContain("project-environment");
-      expect(html).toContain(`action="/projects/${project.id}/environment"`);
-      expect(html).toContain("project-secrets");
-      expect(html).toContain("GH_TOKEN");
-      expect(html).toContain("api.github.com");
-      expect(html).toContain("Injected automatically");
-      expect(html).toContain("Optional token-like value");
-      expect(html).toContain('name="placeholder"');
-      expect(html).toContain(`action="/projects/${project.id}/secrets"`);
-      expect(html).toContain(`id="delete_project_modal_${project.id}"`);
-      expect(html).toContain(`action="/projects/${project.id}/delete"`);
-      expect(html).not.toContain("This is only allowed when no workspaces reference this project.");
+      expect(home).toContain('id="project-picker-modal"');
+      expect(home).toContain(`href="/projects/${project.id}/picker"`);
+      expect(home).toContain(`data-modal-opener-target-id-value="agent_launch_project_modal_${project.id}"`);
+      expect(home).not.toContain('class="sidebar-host-repos"');
+      expect(editor).toContain("project-environment");
+      expect(editor).toContain(`action="/projects/${project.id}/environment"`);
+      expect(editor).toContain("project-secrets");
+      expect(editor).toContain("GH_TOKEN");
+      expect(editor).toContain("api.github.com");
+      expect(editor).toContain("Injected automatically");
+      expect(editor).toContain("Optional token-like value");
+      expect(editor).toContain('name="placeholder"');
+      expect(editor).toContain('name="secretValue"');
+      expect(editor).toContain(`action="/projects/${project.id}/secrets"`);
+      expect(home).toContain(`id="delete_project_modal_${project.id}"`);
+      expect(home).toContain(`action="/projects/${project.id}/delete"`);
     });
   });
 
@@ -358,16 +357,15 @@ describe("web app contracts", () => {
       expect(repeated.status).toBe(200);
       expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
       expect((await listProjects()).projects).toHaveLength(1);
-      expect(body).toContain('target="workspace_sidebar"');
-      expect(body).toContain('target="add-project-modal"');
+      expect(body).toContain('target="project_picker_frame"');
       expect(body).toContain('target="project_launch_modals"');
       expect(body).toContain("sample-project");
-      expect(repeatedBody).toContain('target="workspace_sidebar"');
+      expect(repeatedBody).toContain('target="project_picker_frame"');
       expect(repeatedBody).not.toContain("project already exists");
     });
   });
 
-  test("deleting an unreferenced project removes it from the sidebar", async () => {
+  test("deleting an unreferenced project removes it from the project picker", async () => {
     await withTempDataDir(async () => {
       const project = (await addProject("https://github.com/org/sample-project.git")).project;
       const { app, registry } = createTestApp();
@@ -378,7 +376,7 @@ describe("web app contracts", () => {
 
       expect(response.status).toBe(200);
       expect((await listProjects()).projects).toEqual([]);
-      expect(body).toContain('target="workspace_sidebar"');
+      expect(body).toContain('target="project_picker_frame"');
       expect(body).toContain('target="project_launch_modals"');
       expect(body).not.toContain("sample-project");
     });

@@ -571,52 +571,46 @@ ${moduleStylesHtml()}
     </section>`;
   }
 
-  async function projectEditModal(project: ProjectSummary): Promise<string> {
-    const deleteModalId = domId("delete_project_modal", project.id);
-    const [environment, secrets] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id)]);
-    return `<dialog id="${domId("project_edit_modal", project.id)}" class="modal project-edit-modal" data-controller="modal">
-  <div class="project-edit-shell">
-    <header class="project-edit-head">
-      <div class="project-edit-identity">
-        <span class="project-edit-mark">${repoSwatch(project.id)}</span>
-        <div><span class="project-edit-eyebrow">Project settings</span><h2 class="project-edit-title">${escapeHtml(project.name)}</h2></div>
+  async function projectPickerListFrame(): Promise<string> {
+    const { projects } = await listProjects();
+    const rows = projects.map((project) => `<div class="project-picker-option" style="${repoColorStyle(project.id)}">
+      <button class="project-picker-select" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="${domId("agent_launch_project_modal", project.id)}">
+        <span class="project-picker-swatch">${repoSwatch(project.id)}</span><span class="project-picker-copy"><b>${escapeHtml(project.name)}</b><small>${escapeHtml(formatProjectSpec(project))}</small></span>
+      </button>
+      <a class="project-picker-edit" href="/projects/${encodeURIComponent(project.id)}/picker" data-turbo-frame="project_picker_frame" aria-label="Edit ${escapeHtml(project.name)}" title="Edit project">✎</a>
+    </div>`).join("");
+    return `<turbo-frame id="project_picker_frame" class="project-picker-frame">
+      <div class="project-picker-page project-picker-list-page">
+        <header class="project-picker-head"><div><h2>Which project to start from?</h2><p>Choose a project to clone, or begin with a blank workspace.</p></div><button class="project-picker-close" type="button" aria-label="Close" data-action="modal#close">×</button></header>
+        <div class="project-picker-projects">
+          <div class="project-picker-option no-project"><button class="project-picker-select" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="agent_launch_empty_workspace_modal"><span class="project-picker-empty">∅</span><span class="project-picker-copy"><b>No project</b><small>Start with an empty workspace</small></span></button></div>
+          ${rows}
+        </div>
+        <footer class="project-picker-foot"><a href="/projects/new/picker" data-turbo-frame="project_picker_frame">＋ Add a new project</a><span>Select a project to continue</span></footer>
       </div>
-      <button class="project-edit-close" type="button" aria-label="Close" data-action="modal#close"><span aria-hidden="true">×</span></button>
-    </header>
-    <div class="project-edit-body">
-      <section class="project-edit-section">
-        <div class="project-edit-section-copy"><h3>Repository</h3><p>Change how this project is named and where new workspaces are cloned from.</p></div>
-        <form class="project-edit-form" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save">
-          <label class="project-edit-field"><span>Display name</span><input class="modal-input" name="name" value="${escapeHtml(project.name)}" required></label>
-          <label class="project-edit-field"><span>Repository source</span><input class="modal-input" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required><small>Remote URL or local path. Append <code>#branch</code> to set a default branch.</small></label>
-        </form>
-      </section>
-      <div class="project-edit-config">
-        <div class="project-edit-section-copy"><h3>Workspace configuration</h3><p>Applied automatically whenever a workspace is created from this project.</p></div>
-        ${projectEnvironmentEditor(project, environment)}
-        ${projectSecretEditor(project, secrets)}
-      </div>
-      <section class="project-edit-danger"><div><h3>Delete project</h3><p>Remove this project from Atelier. Existing workspaces must be deleted first.</p></div><button class="btn danger" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="${deleteModalId}">Delete project</button></section>
-    </div>
-  </div>
-</dialog>`;
+    </turbo-frame>`;
   }
 
-  function addProjectModal(): string {
-    return `<dialog id="add-project-modal" class="modal" data-controller="modal">
-  <form method="post" action="/projects" data-action="turbo:submit-end->modal#submitted">
-    <h2>Add project</h2>
-    <p>Save a remote URL, or type a repository name to search GitHub. Add <code>#branch</code> to clone a specific branch.</p>
-    <div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search">
-      <input class="modal-input" name="gitUrl" type="text" placeholder="github repo, https://github.com/org/repo.git#main, or /path/to/repo#feature" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input">
-      <div class="agent-template-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn" type="button" data-action="modal#close">Cancel</button>
-      <button class="btn primary" type="submit" data-turbo-submits-with="Adding…">Add project</button>
-    </div>
-  </form>
-</dialog>`;
+  async function projectPickerEditFrame(project: ProjectSummary): Promise<string> {
+    const [environment, secrets] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id)]);
+    return `<turbo-frame id="project_picker_frame" class="project-picker-frame">
+      <div class="project-picker-page project-picker-detail-page">
+        <header class="project-picker-detail-head"><a href="/projects/picker" data-turbo-frame="project_picker_frame" aria-label="Back">‹</a><div><small>Project settings</small><h2>${escapeHtml(project.name)}</h2></div><button type="button" aria-label="Close" data-action="modal#close">×</button></header>
+        <div class="project-picker-detail-body">
+          <section class="project-edit-section"><div class="project-edit-section-copy"><h3>Repository</h3><p>How this project appears and where new workspaces are cloned from.</p></div><form class="project-edit-form" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="modal-input" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository source</span><input class="modal-input" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
+          <div class="project-edit-config"><div class="project-edit-section-copy"><h3>Workspace configuration</h3><p>Applied whenever a workspace is created from this project.</p></div>${projectEnvironmentEditor(project, environment)}${projectSecretEditor(project, secrets)}</div>
+          <section class="project-edit-danger"><div><h3>Delete project</h3><p>Existing workspaces must be deleted first.</p></div><button class="btn danger" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="${domId("delete_project_modal", project.id)}">Delete project</button></section>
+        </div>
+      </div>
+    </turbo-frame>`;
+  }
+
+  function projectPickerNewFrame(): string {
+    return `<turbo-frame id="project_picker_frame" class="project-picker-frame"><div class="project-picker-page project-picker-detail-page"><header class="project-picker-detail-head"><a href="/projects/picker" data-turbo-frame="project_picker_frame" aria-label="Back">‹</a><div><small>Add project</small><h2>New project</h2></div><button type="button" aria-label="Close" data-action="modal#close">×</button></header><form class="project-picker-new-form" method="post" action="/projects" data-turbo="true"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="modal-input" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-template-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer><a class="btn" href="/projects/picker" data-turbo-frame="project_picker_frame">Cancel</a><button class="btn primary" type="submit" data-turbo-submits-with="Adding…">Add project</button></footer></form></div></turbo-frame>`;
+  }
+
+  async function projectPickerModal(): Promise<string> {
+    return `<dialog id="project-picker-modal" class="project-picker-modal" data-controller="modal">${await projectPickerListFrame()}</dialog>`;
   }
 
   function isGitHubRemoteUrl(gitUrl: string): boolean {
@@ -659,27 +653,9 @@ ${moduleStylesHtml()}
   }
 
   async function renderWorkspaceSidebar(): Promise<string> {
-    const { projects } = await listProjects();
-
-    // JavaScript submits this as a Turbo Stream and then switches the resident
-    // client-side. Without JavaScript, the endpoint still falls back to a 303.
-    const newWorkspaceRow = `<form class="contents" method="post" action="/workspaces" data-turbo="false" data-action="submit->workspace-list#createWorkspace"><button class="row ghost-row addbtn" type="submit">
+    // Project selection and management now live in the new-workspace dialog.
+    const newWorkspaceRow = `<button class="row ghost-row addbtn" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="project-picker-modal">
     <span class="ic" aria-hidden="true">+</span><div><div class="r-title">New workspace</div></div>
-    <span></span>
-  </button></form>`;
-
-    const projectRows = projects.map((project) => {
-      const launchModalId = domId("agent_launch_project_modal", project.id);
-      const editModalId = domId("project_edit_modal", project.id);
-      const spec = formatProjectSpec(project);
-      return `<div class="row project-row repo-tinted-row" role="button" tabindex="0" style="${repoColorStyle(project.id)}" title="${escapeHtml(spec)}" aria-label="Edit ${escapeHtml(project.name)}" data-controller="modal-opener" data-action="click->modal-opener#open keydown.enter->modal-opener#open" data-modal-opener-target-id-value="${editModalId}">
-    ${repoSwatch(project.id)}<span class="row-main"><span class="r-title">${escapeHtml(project.name)}</span></span>
-    <span class="row-actions"><button class="project-row-create" type="button" title="Create workspace" aria-label="Create workspace from ${escapeHtml(project.name)}" data-controller="modal-opener" data-action="click->modal-opener#open" data-modal-opener-target-id-value="${launchModalId}">+</button></span>
-  </div>`;
-    }).join("");
-
-    const addProjectRow = `<button class="row ghost-row addbtn" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="add-project-modal">
-    <span class="ic" aria-hidden="true">+</span><div><div class="r-title">Add project</div></div>
     <span></span>
   </button>`;
 
@@ -690,14 +666,6 @@ ${moduleStylesHtml()}
         <div id="workspaces_table_rows">${renderWorkspaceRows()}</div>
         ${newWorkspaceRow}
       </div>
-
-      <section class="host-repos sidebar-host-repos repos">
-        <div class="lh">Projects</div>
-        <div class="table projects-table">
-          ${projectRows || `<div class="row"><span class="repo-swatch" aria-hidden="true"></span><div><div class="r-title">No projects</div><div class="r-sub">Add one below.</div></div><span></span></div>`}
-          ${addProjectRow}
-        </div>
-      </section>
 
       <section id="global_sidebar_contributions">${renderGlobalSidebarContributions()}</section>
     </div>
@@ -853,7 +821,6 @@ ${moduleStylesHtml()}
     return [
       await launchEmptyAgentModal(selectedModel),
       ...(await Promise.all(projects.map((project) => launchProjectAgentModal(project, selectedModel)))),
-      ...(await Promise.all(projects.map((project) => projectEditModal(project)))),
       ...projects.map((project) => deleteProjectModal(project)),
     ].join("");
   }
@@ -864,7 +831,7 @@ ${moduleStylesHtml()}
     <div class="workspace-shell-resizer" data-action="pointerdown->workspace-shell#startResize"></div>
     <main class="workspace-shell-main">${options.mainHtml ?? await workspaceDetailHostHtml(selectedId)}</main>
   </div>
-  ${addProjectModal()}
+  ${await projectPickerModal()}
   <div id="update_modal_host"></div>
   <div id="settings_modal_host"></div>
   <div id="onboarding_modal_host">${await renderOnboardingDialogIfNeeded()}</div>
@@ -1224,13 +1191,8 @@ ${moduleStylesHtml()}
   // Projects
   // ---------------------------------------------------------------------------
 
-  async function renderProjectChromeStreams(options: { resetAddProjectModal?: boolean; clearCommandModal?: boolean } = {}): Promise<string> {
-    return [
-      turboReplaceStream("workspace_sidebar", await renderWorkspaceSidebar()),
-      options.resetAddProjectModal ? turboReplaceStream("add-project-modal", addProjectModal()) : "",
-      turboUpdateStream(projectLaunchModalsId, await renderProjectLaunchModals()),
-      options.clearCommandModal ? turboUpdateStream(workspaceCommandModalHostId, "") : "",
-    ].join("");
+  async function renderProjectModalStreams(options: { clearCommandModal?: boolean } = {}): Promise<string> {
+    return `${turboUpdateStream(projectLaunchModalsId, await renderProjectLaunchModals())}${options.clearCommandModal ? turboUpdateStream(workspaceCommandModalHostId, "") : ""}`;
   }
 
   async function createProjectFromForm(request: Request, url: URL): Promise<Response> {
@@ -1241,14 +1203,14 @@ ${moduleStylesHtml()}
     } catch (error) {
       if (!(error instanceof AtelierCoreError && error.code === "project_exists")) throw error;
     }
-    if (wantsTurboStream(request)) return turboStreamResponse(await renderProjectChromeStreams({ resetAddProjectModal: true }));
+    if (wantsTurboStream(request)) return turboStreamResponse(`${await renderProjectModalStreams()}${turboReplaceStream("project_picker_frame", await projectPickerListFrame())}`);
     return Response.redirect(new URL("/", url).toString(), 303);
   }
 
   async function updateProjectFromForm(projectId: string, request: Request): Promise<Response> {
     const formData = await request.formData();
     await updateProject(projectId, { name: String(formData.get("name") ?? ""), spec: String(formData.get("gitUrl") ?? "") });
-    return turboStreamResponse(await renderProjectChromeStreams());
+    return turboStreamResponse(await renderProjectModalStreams());
   }
 
   async function renderProjectEnvironmentStreams(projectId: string): Promise<string> {
@@ -1342,7 +1304,7 @@ ${moduleStylesHtml()}
       return turboStreamResponse(`${turboUpdateStream(projectLaunchModalsId, await renderProjectLaunchModals())}${turboUpdateStream(workspaceCommandModalHostId, deleteProjectBlockedModal(project, references))}`);
     }
     await deleteProject(projectId);
-    return turboStreamResponse(await renderProjectChromeStreams({ clearCommandModal: true }));
+    return turboStreamResponse(`${await renderProjectModalStreams({ clearCommandModal: true })}${turboReplaceStream("project_picker_frame", await projectPickerListFrame())}`);
   }
 
   async function githubRepositorySearchEndpoint(url: URL): Promise<Response> {
@@ -1524,6 +1486,8 @@ ${moduleStylesHtml()}
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestUnreadWorkspaceEndpoint();
     if (url.pathname === "/workspaces/active/clear" && request.method === "POST") return clearActiveWorkspaceEndpoint();
     if (url.pathname === "/projects" && request.method === "POST") return await createProjectFromForm(request, url);
+    if (url.pathname === "/projects/picker" && request.method === "GET") return response(await projectPickerListFrame());
+    if (url.pathname === "/projects/new/picker" && request.method === "GET") return response(projectPickerNewFrame());
     if (url.pathname === "/projects/github-search" && request.method === "GET") return await githubRepositorySearchEndpoint(url);
 
     const match = (pattern: RegExp): string[] | undefined => {
@@ -1544,6 +1508,7 @@ ${moduleStylesHtml()}
 
     let params: string[] | undefined;
 
+    if ((params = match(/^\/projects\/([^/]+)\/picker$/)) && request.method === "GET") return response(await projectPickerEditFrame(await projectById(params[0])));
     if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "POST") return await updateProjectFromForm(params[0], request);
     if ((params = match(/^\/projects\/([^/]+)\/environment$/)) && request.method === "POST") return await createProjectEnvironmentVariableFromForm(params[0], request);
     if ((params = match(/^\/projects\/([^/]+)\/environment\/([^/]+)$/)) && request.method === "POST") return await updateProjectEnvironmentVariableFromForm(params[0], params[1], request);
