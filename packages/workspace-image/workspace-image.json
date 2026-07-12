@@ -17,6 +17,7 @@
     "file",
     "fuse-overlayfs",
     "gcc",
+    "gh",
     "git",
     "git-lfs",
     "imagemagick",
