@@ -332,33 +332,63 @@ a { color: inherit; text-decoration: none; }
 .project-delete-workspace-title { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: auto; }
 .project-delete-workspace-id { color: var(--muted2); font: 11px/1 var(--mono); flex: 0 0 auto; }
 .project-delete-help { margin: 12px 0 0; }
-.project-edit-modal { width: min(760px, calc(100vw - 40px)); }
-.project-edit-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
-.project-edit-title-wrap { min-width: 0; flex: 1; }
-.project-edit-title { display: flex; align-items: center; gap: 8px; margin: 0; }
-.project-edit-title .repo-swatch { width: 14px; height: 14px; }
-.project-edit-close { width: 28px; height: 28px; border-radius: 8px; color: var(--muted2); font-size: 18px; line-height: 1; }
+.project-edit-modal { width: min(860px, calc(100vw - 32px)); max-height: min(880px, calc(100vh - 32px)); overflow: hidden; border: 0; border-radius: 10px; background: var(--panel); box-shadow: 0 24px 80px rgba(0,0,0,.38), inset 0 0 0 1px var(--line2); }
+.project-edit-modal::backdrop { background: rgba(8,13,23,.62); backdrop-filter: blur(3px); }
+.project-edit-shell { display: flex; flex-direction: column; max-height: min(880px, calc(100vh - 32px)); overflow: hidden; border-radius: inherit; }
+.project-edit-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 26px; border-bottom: 1px solid var(--line); border-radius: 10px 10px 0 0; background: var(--panel); flex: 0 0 auto; }
+.project-edit-identity { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.project-edit-mark { width: 32px; height: 32px; display: grid; place-items: center; }
+.project-edit-mark .repo-swatch { width: 16px; height: 16px; }
+.project-edit-eyebrow { display: block; color: var(--muted); font-size: 10px; line-height: 1.2; font-weight: 750; text-transform: uppercase; letter-spacing: .8px; }
+.project-edit-title { margin: 2px 0 0; font-size: 18px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-edit-close { width: 34px; height: 34px; flex: 0 0 auto; border-radius: 9px; color: var(--muted); font-size: 22px; line-height: 1; }
 .project-edit-close:hover { background: var(--bg); color: var(--text); }
-.project-edit-form { display: grid; gap: 12px; }
-.project-edit-field { display: grid; gap: 5px; }
-.project-edit-field span { color: var(--muted2); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
-.project-configuration-list { display: grid; gap: 9px; margin-top: 14px; }
+.project-edit-close:focus { outline: none; }
+.project-edit-close:focus-visible { background: var(--bg); color: var(--text); box-shadow: 0 0 0 2px var(--accent); }
+.project-edit-body { min-height: 0; overflow-y: auto; padding: 0 26px 24px; border-radius: 0 0 10px 10px; background: var(--panel); }
+.project-edit-section, .project-edit-config { padding: 24px 0; border-bottom: 1px solid var(--line); }
+.project-edit-section-copy h3, .project-edit-danger h3 { margin: 0; font-size: 14px; }
+.project-edit-section-copy p, .project-edit-danger p { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.project-edit-modal .project-edit-form { display: grid; grid-template-columns: minmax(160px, .65fr) minmax(280px, 1.35fr); gap: 14px; margin-top: 18px; padding: 0; }
+.project-edit-field { display: grid; align-content: start; gap: 6px; }
+.project-edit-field span { color: var(--text); font-size: 11px; font-weight: 700; }
+.project-edit-field small { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.project-edit-field small code { color: var(--text); font: 10px var(--mono); }
+.project-configuration-list { display: grid; gap: 9px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
 .project-configuration-head { display: grid; gap: 4px; }
 .project-configuration-head h3 { margin: 0; padding: 0; border: 0; font-size: 12px; }
 .project-configuration-head p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
-.project-configuration-grid { display: grid; gap: 1px; overflow-x: auto; overflow-y: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--line); }
-.project-configuration-row { display: grid; gap: 8px; align-items: center; padding: 8px; background: var(--panel); }
+.project-configuration-grid { display: grid; overflow-x: auto; overflow-y: hidden; }
+.project-configuration-row { display: grid; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.project-configuration-row.new { border-bottom: 0; }
 .project-environment-row { grid-template-columns: minmax(150px, .7fr) minmax(240px, 1.3fr) 56px; min-width: 480px; }
 .project-secret-row { grid-template-columns: minmax(110px, .7fr) minmax(160px, 1fr) minmax(150px, .9fr) minmax(120px, .8fr) 56px; min-width: 700px; }
 .project-configuration-row.head { color: var(--muted2); font-size: 10px; font-weight: 750; letter-spacing: .5px; text-transform: uppercase; padding-top: 7px; padding-bottom: 7px; }
 .project-configuration-row input { min-width: 0; width: 100%; height: 30px; border: 1px solid var(--line2); border-radius: 8px; background: var(--bg); color: var(--text); padding: 5px 8px; font: 12px/1.2 var(--mono); }
 .project-configuration-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.project-configuration-row.readonly input { color: var(--muted); background: var(--bg2); cursor: not-allowed; }
+.project-configuration-row.readonly { color: var(--muted); }
+.project-configuration-row.readonly code { color: var(--text); font: 11px/1.3 var(--mono); }
+.project-builtin-token { display: flex; align-items: center; gap: 7px; }
+.project-builtin-token small { padding: 2px 6px; border-radius: 999px; background: var(--panel); color: var(--accent); font-size: 9px; font-weight: 750; text-transform: uppercase; letter-spacing: .4px; }
+.project-automatic-value { font-size: 11px; }
+.project-configuration-row.new input { border-color: transparent; background: var(--bg); }
+.project-configuration-row.new input:focus { border-color: var(--accent); }
+.project-configuration-row.new button { color: var(--accent); background: var(--accent-soft); }
 .project-configuration-actions { display: inline-flex; align-items: center; gap: 4px; justify-content: flex-end; }
 .project-configuration-row button { width: 24px; height: 24px; border-radius: 7px; color: var(--muted2); font-weight: 800; }
 .project-configuration-row button:hover { background: var(--accent-soft); color: var(--accent); }
 .project-configuration-row:not(.new) .project-configuration-actions button:last-child:hover { background: var(--red-soft); color: var(--red); }
-.project-edit-danger { display: flex; justify-content: flex-start; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.project-edit-danger { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 0; padding: 24px 0 0; border: 0; background: transparent; }
+.project-edit-danger .btn { flex: 0 0 auto; }
+@media (max-width: 680px) {
+  .project-edit-modal { width: calc(100vw - 20px); max-height: calc(100vh - 20px); }
+  .project-edit-shell { max-height: calc(100vh - 20px); }
+  .project-edit-head { padding: 17px 18px; }
+  .project-edit-body { padding: 0 16px 20px; }
+  .project-edit-section, .project-edit-config { padding: 20px 0; }
+  .project-edit-modal .project-edit-form { grid-template-columns: 1fr; }
+  .project-edit-danger { align-items: flex-start; flex-direction: column; }
+}
 
 turbo-frame { display: contents; }
 a.btn { text-decoration: none; }

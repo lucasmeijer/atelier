@@ -515,10 +515,10 @@ ${moduleStylesHtml()}
   }
 
   function projectEnvironmentRow(project: ProjectSummary, variable: ProjectEnvironmentVariable): string {
-    return `<form class="project-configuration-row project-environment-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}" data-turbo="true">
+    return `<form class="project-configuration-row project-environment-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}" data-turbo="true" data-controller="settings-autosave" data-action="change->settings-autosave#save">
     <input name="name" value="${escapeHtml(variable.name)}" aria-label="Name" autocomplete="off">
     <input name="value" value="${escapeHtml(variable.value)}" aria-label="Value" autocomplete="off">
-    <span class="project-configuration-actions"><button type="submit" title="Save environment variable" aria-label="Save environment variable">✓</button><button type="submit" formaction="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete" title="Remove environment variable" aria-label="Remove environment variable">×</button></span>
+    <span class="project-configuration-actions"><button type="submit" formaction="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete" title="Remove environment variable" aria-label="Remove environment variable">×</button></span>
   </form>`;
   }
 
@@ -538,12 +538,12 @@ ${moduleStylesHtml()}
   }
 
   function projectSecretRow(project: ProjectSummary, secret: ProjectSecretSummary): string {
-    return `<form class="project-configuration-row project-secret-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}" data-turbo="true">
+    return `<form class="project-configuration-row project-secret-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}" data-turbo="true" data-controller="settings-autosave" data-action="change->settings-autosave#save">
     <input name="envName" value="${escapeHtml(secret.envName)}" aria-label="Env" autocomplete="off">
     <input name="hostPattern" value="${escapeHtml(secret.hostPattern)}" aria-label="Host" autocomplete="off">
     <input name="placeholder" value="${escapeHtml(secret.placeholder ?? "")}" placeholder="Automatic" aria-label="Placeholder" autocomplete="off">
     <input name="secretValue" type="password" placeholder="Unchanged" aria-label="Secret" autocomplete="new-password">
-    <span class="project-configuration-actions"><button type="submit" title="Save secret" aria-label="Save secret">✓</button><button type="submit" formaction="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}/delete" title="Remove secret" aria-label="Remove secret">×</button></span>
+    <span class="project-configuration-actions"><button type="submit" formaction="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}/delete" title="Remove secret" aria-label="Remove secret">×</button></span>
   </form>`;
   }
 
@@ -553,10 +553,10 @@ ${moduleStylesHtml()}
       <div class="project-configuration-grid" role="table" aria-label="Secrets">
         <div class="project-configuration-row project-secret-row head" role="row"><span>Env</span><span>Host</span><span>Placeholder</span><span>Secret</span><span></span></div>
         <div class="project-configuration-row project-secret-row readonly" role="row" aria-label="GitHub token injected automatically">
-          <input value="GH_TOKEN" aria-label="Env" disabled>
-          <input value="api.github.com" aria-label="Host" disabled>
-          <input value="Automatic" aria-label="Placeholder" disabled>
-          <input value="Injected automatically" aria-label="Secret" disabled>
+          <span class="project-builtin-token"><code>GH_TOKEN</code><small>Built in</small></span>
+          <code>api.github.com</code>
+          <span class="project-automatic-value">Automatic</span>
+          <span class="project-automatic-value">Injected automatically</span>
           <span></span>
         </div>
         ${secrets.map((secret) => projectSecretRow(project, secret)).join("")}
@@ -575,21 +575,29 @@ ${moduleStylesHtml()}
     const deleteModalId = domId("delete_project_modal", project.id);
     const [environment, secrets] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id)]);
     return `<dialog id="${domId("project_edit_modal", project.id)}" class="modal project-edit-modal" data-controller="modal">
-  <div class="modal-content">
-    <div class="project-edit-head">
-      <div class="project-edit-title-wrap">
-        <h2 class="project-edit-title">${repoSwatch(project.id)} ${escapeHtml(project.name)}</h2>
+  <div class="project-edit-shell">
+    <header class="project-edit-head">
+      <div class="project-edit-identity">
+        <span class="project-edit-mark">${repoSwatch(project.id)}</span>
+        <div><span class="project-edit-eyebrow">Project settings</span><h2 class="project-edit-title">${escapeHtml(project.name)}</h2></div>
       </div>
-      <button class="project-edit-close" type="button" aria-label="Close" data-action="modal#close">×</button>
+      <button class="project-edit-close" type="button" aria-label="Close" data-action="modal#close"><span aria-hidden="true">×</span></button>
+    </header>
+    <div class="project-edit-body">
+      <section class="project-edit-section">
+        <div class="project-edit-section-copy"><h3>Repository</h3><p>Change how this project is named and where new workspaces are cloned from.</p></div>
+        <form class="project-edit-form" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save">
+          <label class="project-edit-field"><span>Display name</span><input class="modal-input" name="name" value="${escapeHtml(project.name)}" required></label>
+          <label class="project-edit-field"><span>Repository source</span><input class="modal-input" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required><small>Remote URL or local path. Append <code>#branch</code> to set a default branch.</small></label>
+        </form>
+      </section>
+      <div class="project-edit-config">
+        <div class="project-edit-section-copy"><h3>Workspace configuration</h3><p>Applied automatically whenever a workspace is created from this project.</p></div>
+        ${projectEnvironmentEditor(project, environment)}
+        ${projectSecretEditor(project, secrets)}
+      </div>
+      <section class="project-edit-danger"><div><h3>Delete project</h3><p>Remove this project from Atelier. Existing workspaces must be deleted first.</p></div><button class="btn danger" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="${deleteModalId}">Delete project</button></section>
     </div>
-    <form class="project-edit-form" method="post" action="/projects/${encodeURIComponent(project.id)}" data-action="turbo:submit-end->modal#submitted">
-      <label class="project-edit-field"><span>Name</span><input class="modal-input" name="name" value="${escapeHtml(project.name)}" required></label>
-      <label class="project-edit-field"><span>Git URL</span><input class="modal-input" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label>
-      <div class="modal-actions"><button class="btn primary" type="submit">Save project</button></div>
-    </form>
-    ${projectEnvironmentEditor(project, environment)}
-    ${projectSecretEditor(project, secrets)}
-    <div class="project-edit-danger"><button class="btn danger" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="${deleteModalId}">Delete project</button></div>
   </div>
 </dialog>`;
   }
