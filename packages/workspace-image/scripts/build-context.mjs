@@ -49,6 +49,7 @@ const apt = [];
 const env = {};
 const moduleNames = [];
 const modules = [];
+const finalCopies = [];
 
 // Keep slow, broadly-shared layers early so small later module changes do not
 // force VS Code server/extension installation to run again.
@@ -77,7 +78,8 @@ for (const { path, dir, name, manifest, hashPath } of manifests) {
     const proc = Bun.spawnSync(["sh", "-c", `find ${quote(hashFrom)} -type f -print0 | sort -z | xargs -0 sha256sum`], { cwd: dir });
     if (proc.exitCode !== 0) throw new Error(`could not hash workspace image files from ${from}: ${proc.stderr.toString().trim()}`);
     hash.update(proc.stdout);
-    moduleCopyInstructions.push({ rel: `files/${rel}`, to: file.to, mode: file.mode, afterRun: file.afterRun });
+    const copyInstruction = { rel: `files/${rel}`, to: file.to, mode: file.mode };
+    (file.afterRun ? finalCopies : moduleCopyInstructions).push(copyInstruction);
   }
   modules.push({ name, copyInstructions: moduleCopyInstructions, runInstructions: manifest.run ?? [] });
 }
@@ -99,10 +101,9 @@ function appendCopies(copies) {
 
 for (const module of modules) {
   dockerfile += `# Module: ${module.name}\n`;
-  appendCopies(module.copyInstructions.filter((copy) => !copy.afterRun));
+  appendCopies(module.copyInstructions);
   for (const script of module.runInstructions) dockerfile += `RUN ${dockerEscapeRun(script)}\n\n`;
 }
-const finalCopies = modules.flatMap((module) => module.copyInstructions.filter((copy) => copy.afterRun));
 if (finalCopies.length) dockerfile += "# Files independent of module setup\n";
 appendCopies(finalCopies);
 if (Object.keys(env).length) dockerfile += `ENV ${Object.entries(env).map(([key, value]) => `${key}=${quote(value)}`).join(" \\\n    ")}\n\n`;

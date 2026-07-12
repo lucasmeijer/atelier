@@ -45,10 +45,6 @@ interface Options {
 
 interface WorkspaceImageMetadata { tag: string }
 
-const workspaceTempDir = mkdtempSync(join(tmpdir(), "atelier-image-"));
-const workspaceContextDir = join(workspaceTempDir, "atelier-workspace");
-process.on("exit", () => rmSync(workspaceTempDir, { recursive: true, force: true }));
-
 function fail(message: string): never {
   console.error(`error: ${message}`);
   console.error("\n" + usage);
@@ -114,17 +110,12 @@ function parseArgs(args: string[]): Options {
   return options;
 }
 
-function run(command: string[], options: { quiet?: boolean; inherit?: boolean } = {}): string {
-  const result = Bun.spawnSync(command, {
-    env: { ...process.env },
-    stdout: options.inherit ? "inherit" : "pipe",
-    stderr: options.inherit ? "inherit" : "pipe",
-    stdin: "inherit",
-  });
-  const stdout = options.inherit ? "" : result.stdout.toString().trim();
-  const stderr = options.inherit ? "" : result.stderr.toString().trim();
+function run(command: string[], options: { quiet?: boolean } = {}): string {
+  const result = Bun.spawnSync(command, { stdout: "pipe", stderr: "pipe", stdin: "inherit" });
+  const stdout = result.stdout.toString().trim();
+  const stderr = result.stderr.toString().trim();
   if (result.exitCode !== 0) {
-    if (!options.quiet && !options.inherit) {
+    if (!options.quiet) {
       if (stdout) console.error(stdout);
       if (stderr) console.error(stderr);
     }
@@ -134,12 +125,7 @@ function run(command: string[], options: { quiet?: boolean; inherit?: boolean } 
 }
 
 async function runInherited(command: string[]): Promise<void> {
-  const child = Bun.spawn(command, {
-    env: { ...process.env },
-    stdout: "inherit",
-    stderr: "inherit",
-    stdin: "inherit",
-  });
+  const child = Bun.spawn(command, { stdout: "inherit", stderr: "inherit", stdin: "inherit" });
   const exitCode = await child.exited;
   if (exitCode !== 0) throw new Error(`${command.join(" ")} failed with exit code ${exitCode}`);
 }
@@ -226,30 +212,35 @@ function builderName(options: Options): string | undefined {
   return options.builderHost ? builderNameForHost(options.builderHost) : undefined;
 }
 
-function ensureBuilder(options: Options): void {
+async function ensureBuilder(options: Options): Promise<void> {
   if (!options.builderHost) return;
   const name = builderName(options)!;
   if (maybeRun(["docker", "buildx", "inspect", "--bootstrap", name])) return;
-  run(["docker", "buildx", "create", "--name", name, "--driver", "docker-container", `ssh://${options.builderHost}`], { inherit: true });
-  run(["docker", "buildx", "inspect", "--bootstrap", name], { inherit: true });
+  await runInherited(["docker", "buildx", "create", "--name", name, "--driver", "docker-container", `ssh://${options.builderHost}`]);
+  await runInherited(["docker", "buildx", "inspect", "--bootstrap", name]);
 }
 
-function dockerBuildCommand(options: Options): string[] {
-  const hasMultiplePlatforms = Boolean(options.platform?.includes(","));
-  if (hasMultiplePlatforms && !options.push) fail("multi-platform builds require --push");
+function dockerBuildCommand(options: Options, args: string[]): string[] {
+  if (options.platform?.includes(",") && !options.push) fail("multi-platform builds require --push");
   const name = builderName(options);
-  if (options.platform || options.push || name) {
-    return [
-      "docker", "buildx", "build",
-      ...(name ? ["--builder", name] : []),
-      ...(options.push ? ["--push", "--provenance=false"] : ["--load"]),
-    ];
-  }
-  return ["docker", "build"];
+  const command = options.platform || options.push || name
+    ? ["docker", "buildx", "build", ...(name ? ["--builder", name] : []), ...(options.push ? ["--push", "--provenance=false"] : ["--load"])]
+    : ["docker", "build"];
+  return [
+    ...command,
+    ...(options.platform ? ["--platform", options.platform] : []),
+    ...(options.noCache ? ["--no-cache"] : []),
+    ...(options.progress ? ["--progress", options.progress] : []),
+    ...args,
+  ];
 }
 
 const options = parseArgs(process.argv.slice(2));
-ensureBuilder(options);
+await ensureBuilder(options);
+const workspaceTempDir = mkdtempSync(join(tmpdir(), "atelier-image-"));
+const workspaceContextDir = join(workspaceTempDir, "atelier-workspace");
+process.on("exit", () => rmSync(workspaceTempDir, { recursive: true, force: true }));
+
 const tags = options.tags.length > 0 ? options.tags.map(sanitizeTag) : [defaultTag()];
 if (options.latest) tags.push("latest");
 if (options.stable) tags.push("stable");
@@ -262,12 +253,11 @@ const workspaceTag = workspaceHashTag(workspaceMetadata.tag);
 const workspaceRepo = workspaceImageRepository(options.image);
 const defaultWorkspaceImageRef = `${workspaceRepo}:${workspaceTag}`;
 
-const workspaceBuildCommand = dockerBuildCommand(options);
-workspaceBuildCommand.push("--tag", defaultWorkspaceImageRef);
-if (options.platform) workspaceBuildCommand.push("--platform", options.platform);
-if (options.noCache) workspaceBuildCommand.push("--no-cache");
-if (options.progress) workspaceBuildCommand.push("--progress", options.progress);
-workspaceBuildCommand.push("--file", `${workspaceContextDir}/Dockerfile`, workspaceContextDir);
+const workspaceBuildCommand = dockerBuildCommand(options, [
+  "--tag", defaultWorkspaceImageRef,
+  "--file", `${workspaceContextDir}/Dockerfile`,
+  workspaceContextDir,
+]);
 
 const shouldBuildWorkspace = options.forceWorkspace || options.noCache || !workspaceImageExists(defaultWorkspaceImageRef, options);
 if (shouldBuildWorkspace) {
@@ -293,24 +283,19 @@ const defaultBuildArgs = [
 ];
 const allBuildArgs = [...defaultBuildArgs, ...options.buildArgs];
 
-const buildCommand = dockerBuildCommand(options);
-for (const ref of imageRefs) buildCommand.push("--tag", ref);
-for (const buildArg of allBuildArgs) buildCommand.push("--build-arg", buildArg);
-if (options.platform) buildCommand.push("--platform", options.platform);
-if (options.noCache) buildCommand.push("--no-cache");
-if (options.progress) buildCommand.push("--progress", options.progress);
-buildCommand.push("--file", "apps/web/Dockerfile", ".");
+const appBuildCommand = dockerBuildCommand(options, [
+  ...imageRefs.flatMap((ref) => ["--tag", ref]),
+  ...allBuildArgs.flatMap((buildArg) => ["--build-arg", buildArg]),
+  "--file", "apps/web/Dockerfile", ".",
+]);
 
 console.log();
 console.log(`${options.push ? "Publishing" : "Building"} Atelier image:`);
 for (const ref of imageRefs) console.log(`  ${ref}`);
 console.log(`  default workspace image: ${defaultWorkspaceImageRef}`);
 console.log();
-if (shouldBuildWorkspace) {
-  await Promise.all([runInherited(workspaceBuildCommand), runInherited(buildCommand)]);
-} else {
-  run(buildCommand, { inherit: true });
-}
+const buildCommands = shouldBuildWorkspace ? [workspaceBuildCommand, appBuildCommand] : [appBuildCommand];
+await Promise.all(buildCommands.map(runInherited));
 
 console.log();
 console.log(options.push ? "Published:" : "Built:");
