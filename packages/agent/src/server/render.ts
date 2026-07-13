@@ -206,11 +206,14 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
   const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
   const actionAttrs = ["turbo:submit-end->agent-pane#submitted", "click->agent-pane#focusInput"];
   const targetAttrs = options.formTarget ? ` data-agent-pane-target="form"` : "";
-  const promptTemplateEnabled = Boolean(options.ctx);
-  const inputTarget = [options.formTarget ? `data-agent-pane-target="input"` : "", promptTemplateEnabled ? `data-agent-prompt-templates-target="input"` : ""].filter(Boolean).join(" ");
+  const completionsEnabled = Boolean(options.ctx);
+  const inputTarget = [
+    options.formTarget ? `data-agent-pane-target="input"` : "",
+    completionsEnabled ? `data-agent-completions-target="input"` : "",
+  ].filter(Boolean).join(" ");
   const inputActionsList = [
     ...(options.formTarget ? ["keydown->agent-pane#inputKeydown", "input->agent-pane#autosize"] : []),
-    ...(promptTemplateEnabled ? ["keydown->agent-prompt-templates#keydown", "input->agent-prompt-templates#input"] : []),
+    ...(completionsEnabled ? ["keydown->agent-completions#keydown", "input->agent-completions#input"] : []),
   ];
   const inputActions = inputActionsList.length ? ` data-action="${inputActionsList.join(" ")}"` : "";
   const shortcut = options.submitShortcut ? ` <kbd>${escapeHtml(options.submitShortcut)}</kbd>` : "";
@@ -223,14 +226,14 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
     : `<div class="agent-statbar">${await renderComposerSettings(formId, options.selectedModel)}</div>`;
   const turboAttr = options.formTurbo === undefined ? "" : ` data-turbo="${options.formTurbo ? "true" : "false"}"`;
   const dropTarget = options.dropTarget ?? true;
-  const promptControllers = [dropTarget ? "agent-attachments" : "", promptTemplateEnabled ? "agent-prompt-templates" : ""].filter(Boolean).join(" ");
+  const completionControllers = [dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : ""].filter(Boolean).join(" ");
   const promptAttrs = [
-    promptControllers ? `data-controller="${promptControllers}"` : "",
+    completionControllers ? `data-controller="${completionControllers}"` : "",
     dropTarget ? agentAttachmentDropAttrs(uploadUrl) : "",
-    options.ctx ? `data-agent-prompt-templates-url-value="${escapeHtml(agentPath(options.ctx, "/prompt-templates"))}"` : "",
+    options.ctx ? `data-agent-completions-url-value="${escapeHtml(agentPath(options.ctx, "/completions"))}"` : "",
   ].filter(Boolean).join(" ");
   return `<div class="agent-promptwrap"${promptAttrs ? ` ${promptAttrs}` : ""}>
-        ${promptTemplateEnabled ? `<div class="agent-template-menu-host" data-agent-prompt-templates-target="menu" hidden></div>` : ""}
+        ${completionsEnabled ? `<div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div>` : ""}
         <div class="agent-promptbox">
           <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">

@@ -7,17 +7,21 @@ type StimulusControllerConstructor = new (...args: unknown[]) => { element: Elem
 
 type HtmlAutocompleteOptions = {
   optionSelector: string;
-  query(input: HTMLInputElement | HTMLTextAreaElement): string | undefined;
+  request(input: HTMLInputElement | HTMLTextAreaElement, force?: boolean): { query: string; params?: Record<string, string> } | undefined;
   select(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): void;
   keydown?(event: KeyboardEvent, input: HTMLInputElement | HTMLTextAreaElement, url: string, actions: HtmlAutocompleteActions): boolean;
   debounceMs?: number;
   loadingHtml?: string;
   triggerKeysWhenClosed?: string[];
+  fullscreenShortcut?: boolean | ((option: HTMLElement) => boolean);
 };
 
 type HtmlAutocompleteActions = {
+  readonly open: boolean;
+  readonly hasOptions: boolean;
   setInputValue(value: string): void;
   close(): void;
+  refresh(force?: boolean): void;
 };
 
 function notifyInputListeners(input: HTMLInputElement | HTMLTextAreaElement): void {
@@ -500,15 +504,23 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     private requestId = 0;
     private optionId = 0;
     private debounceTimer: number | undefined;
+    private form: HTMLFormElement | null = null;
 
     connect(): void {
+      this.form = this.inputTarget.closest("form");
       this.menuTarget.addEventListener("click", this.click);
       this.menuTarget.addEventListener("pointerover", this.pointerover);
+      this.inputTarget.addEventListener("blur", this.blur);
+      this.form?.addEventListener("submit", this.submitted);
+      document.addEventListener("selectionchange", this.selectionchange);
     }
 
     disconnect(): void {
       this.menuTarget.removeEventListener("click", this.click);
       this.menuTarget.removeEventListener("pointerover", this.pointerover);
+      this.inputTarget.removeEventListener("blur", this.blur);
+      this.form?.removeEventListener("submit", this.submitted);
+      document.removeEventListener("selectionchange", this.selectionchange);
       window.clearTimeout(this.debounceTimer);
     }
 
@@ -517,30 +529,42 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     }
 
     keydown(event: KeyboardEvent): void {
-      if (autocomplete.keydown?.(event, this.inputTarget, this.urlValue, { setInputValue: (value) => setTextInputValue(this.inputTarget, value), close: () => this.close() })) return;
+      if (event.defaultPrevented) return;
+      if (autocomplete.keydown?.(event, this.inputTarget, this.urlValue, {
+        open: !this.menuTarget.hidden,
+        hasOptions: this.options().length > 0,
+        setInputValue: (value) => setTextInputValue(this.inputTarget, value),
+        close: () => this.close(),
+        refresh: (force = false) => this.scheduleRefresh(force),
+      })) return;
       if (this.menuTarget.hidden) {
         if (autocomplete.triggerKeysWhenClosed?.includes(event.key)) requestAnimationFrame(() => this.scheduleRefresh());
         return;
       }
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         this.close();
         return;
       }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         this.move(event.key === "ArrowDown" ? 1 : -1);
         return;
       }
       if (event.key === "Home" || event.key === "End") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         this.moveTo(event.key === "Home" ? 0 : this.options().length - 1);
         return;
       }
       if (event.key.toLowerCase() === "f" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
         const active = this.activeOption();
-        if (!active) return;
+        const fullscreen = active && (typeof autocomplete.fullscreenShortcut === "function" ? autocomplete.fullscreenShortcut(active) : autocomplete.fullscreenShortcut);
+        if (!fullscreen) return;
         event.preventDefault();
+        event.stopImmediatePropagation();
         active.dispatchEvent(new KeyboardEvent("keydown", { key: "f", bubbles: true, cancelable: true }));
         return;
       }
@@ -548,18 +572,19 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
         const active = this.activeOption();
         if (!active) return;
         event.preventDefault();
+        event.stopImmediatePropagation();
         this.insert(active);
       }
     }
 
-    private scheduleRefresh(): void {
+    private scheduleRefresh(force = false): void {
       window.clearTimeout(this.debounceTimer);
-      const debounceMs = autocomplete.debounceMs ?? 0;
+      const debounceMs = force ? 0 : autocomplete.debounceMs ?? 0;
       if (debounceMs === 0) {
-        void this.refresh();
+        void this.refresh(force);
         return;
       }
-      this.debounceTimer = window.setTimeout(() => void this.refresh(), debounceMs);
+      this.debounceTimer = window.setTimeout(() => void this.refresh(force), debounceMs);
     }
 
     private readonly click = (event: Event): void => {
@@ -574,9 +599,22 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       if (option) this.activate(option, false);
     };
 
-    private async refresh(): Promise<void> {
-      const query = autocomplete.query(this.inputTarget);
-      if (query === undefined) {
+    private readonly blur = (event: Event): void => {
+      const relatedTarget = (event as FocusEvent).relatedTarget;
+      if (relatedTarget instanceof Node && this.menuTarget.contains(relatedTarget)) return;
+      this.close();
+    };
+
+    private readonly submitted = (): void => this.close();
+
+    private readonly selectionchange = (): void => {
+      if (this.menuTarget.hidden || document.activeElement !== this.inputTarget) return;
+      this.scheduleRefresh();
+    };
+
+    private async refresh(force = false): Promise<void> {
+      const request = autocomplete.request(this.inputTarget, force);
+      if (!request) {
         this.close();
         return;
       }
@@ -586,7 +624,8 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
         this.menuTarget.hidden = false;
       }
       const url = new URL(this.urlValue, window.location.href);
-      url.searchParams.set("q", query);
+      url.searchParams.set("q", request.query);
+      for (const [name, value] of Object.entries(request.params ?? {})) url.searchParams.set(name, value);
       const html = await fetch(url, { headers: { Accept: "text/html" } }).then((response) => response.text());
       if (id !== this.requestId) return;
       this.menuTarget.innerHTML = html;
@@ -645,43 +684,130 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
 }
 
 // ---------------------------------------------------------------------------
-// agent-prompt-templates: slash-command autocomplete for repository templates
+// agent-completions: slash resources, @ references, and explicit path completion
 // ---------------------------------------------------------------------------
 
-function createAgentPromptTemplatesController(Controller: StimulusControllerConstructor) {
+const filePathDelimiters = new Set([" ", "\t", "\n", "\r", '"', "'", "="]);
+
+function unclosedDoubleQuoteStart(text: string): number | undefined {
+  let start: number | undefined;
+  for (let index = 0; index < text.length; index++) {
+    if (text[index] !== '"') continue;
+    start = start === undefined ? index : undefined;
+  }
+  return start;
+}
+
+export function fileCompletionPrefix(input: HTMLInputElement | HTMLTextAreaElement): string {
+  const cursor = input.selectionStart ?? 0;
+  const lineStart = input.value.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
+  const before = input.value.slice(lineStart, cursor);
+  const quoteStart = unclosedDoubleQuoteStart(before);
+  let prefix: string;
+  if (quoteStart !== undefined && (quoteStart === 0 || filePathDelimiters.has(before[quoteStart - 1]) || before[quoteStart - 1] === "@")) {
+    const start = quoteStart > 0 && before[quoteStart - 1] === "@" ? quoteStart - 1 : quoteStart;
+    prefix = before.slice(start);
+  } else {
+    let start = before.length;
+    while (start > 0 && !filePathDelimiters.has(before[start - 1])) start--;
+    prefix = before.slice(start);
+  }
+
+  return prefix;
+}
+
+function rawFileCompletionQuery(prefix: string): string {
+  if (prefix.startsWith('@"')) return prefix.slice(2);
+  if (prefix.startsWith("@") || prefix.startsWith('"')) return prefix.slice(1);
+  return prefix;
+}
+
+export interface AgentCompletionRequest {
+  kind: "prompt-template" | "file";
+  query: string;
+  mode?: "direct" | "fuzzy";
+}
+
+export function agentCompletionRequest(input: HTMLInputElement | HTMLTextAreaElement, force = false): AgentCompletionRequest | undefined {
+  if (force) {
+    const prefix = fileCompletionPrefix(input);
+    return { kind: "file", query: rawFileCompletionQuery(prefix), mode: prefix.startsWith("@") ? "fuzzy" : "direct" };
+  }
+
+  const before = input.value.slice(0, input.selectionStart ?? 0);
+  const after = input.value.slice(input.selectionEnd ?? 0);
+  if (!after || /^\s/.test(after)) {
+    const slash = before.match(/^\/([^/\s]*)$/);
+    if (slash) return { kind: "prompt-template", query: slash[1] };
+  }
+
+  const prefix = fileCompletionPrefix(input);
+  return prefix.startsWith("@") ? { kind: "file", query: rawFileCompletionQuery(prefix), mode: "fuzzy" } : undefined;
+}
+
+function insertPromptTemplate(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): void {
+  const trigger = option.dataset.templateTrigger;
+  if (!trigger) return;
+  const end = input.selectionEnd ?? 0;
+  const after = input.value.slice(end);
+  input.value = `${trigger} ${after}`;
+  input.setSelectionRange(trigger.length + 1, trigger.length + 1);
+}
+
+function insertFileCompletion(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): void {
+  const path = option.dataset.filePath;
+  const prefix = fileCompletionPrefix(input);
+  if (!path) return;
+  const cursor = input.selectionStart ?? 0;
+  const start = cursor - prefix.length;
+  let after = input.value.slice(input.selectionEnd ?? cursor);
+  const atPrefix = prefix.startsWith("@");
+  const quotedPrefix = prefix.startsWith('"') || prefix.startsWith('@"');
+  const needsQuotes = quotedPrefix || path.includes(" ");
+  const value = `${atPrefix ? "@" : ""}${needsQuotes ? `"${path}"` : path}`;
+  if (needsQuotes && after.startsWith('"')) after = after.slice(1);
+  const directory = option.dataset.fileDirectory === "true";
+  const suffix = atPrefix && !directory ? " " : "";
+  input.value = `${input.value.slice(0, start)}${value}${suffix}${after}`;
+  let nextCursor = start + value.length + suffix.length;
+  if (directory && needsQuotes) nextCursor--;
+  input.setSelectionRange(nextCursor, nextCursor);
+}
+
+function createAgentCompletionsController(Controller: StimulusControllerConstructor) {
   return createHtmlAutocompleteController(Controller, {
-    optionSelector: ".agent-template-option",
-    triggerKeysWhenClosed: ["/"],
-    query(input) {
-      const before = input.value.slice(0, input.selectionStart ?? 0);
-      const after = input.value.slice(input.selectionEnd ?? 0);
-      if (after && !/^\s/.test(after)) return undefined;
-      const match = before.match(/^\/([^\s]*)$/);
-      return match ? match[1] : undefined;
+    optionSelector: ".agent-completion-option",
+    debounceMs: 70,
+    triggerKeysWhenClosed: ["/", "@"],
+    fullscreenShortcut: (option) => option.dataset.completionKind === "prompt-template",
+    request(input, force) {
+      const completion = agentCompletionRequest(input, force);
+      return completion && {
+        query: completion.query,
+        params: { kind: completion.kind, ...(completion.mode ? { mode: completion.mode } : {}) },
+      };
     },
     select(option, input) {
-      const trigger = option.dataset.templateTrigger;
-      if (!trigger) return;
-      const end = input.selectionEnd ?? 0;
-      const before = input.value.slice(0, input.selectionStart ?? 0);
-      const after = input.value.slice(end);
-      const start = before.match(/^\/[^\s]*$/)?.index ?? 0;
-      input.value = `${input.value.slice(0, start)}${trigger} ${after}`;
-      const cursor = start + trigger.length + 1;
-      input.setSelectionRange(cursor, cursor);
+      if (option.dataset.completionKind === "prompt-template") insertPromptTemplate(option, input);
+      else if (option.dataset.completionKind === "file") insertFileCompletion(option, input);
     },
     keydown(event, input, url, actions) {
-      if (event.key !== "Enter" || !event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false;
-      if (!input.value.trim().match(/^\/[^\s]+(?:\s+[\s\S]*)?$/)) return false;
+      if (event.key === "Enter" && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey && input.value.trim().match(/^\/[^/\s]+(?:\s+[\s\S]*)?$/)) {
+        event.preventDefault();
+        const body = new FormData();
+        body.set("text", input.value);
+        void fetch(`${url}/prompt-template-expand`, { method: "POST", body, headers: { Accept: "text/plain" } })
+          .then((response) => response.text())
+          .then((expanded) => {
+            actions.setInputValue(expanded);
+            actions.close();
+          });
+        return true;
+      }
+      if (event.key !== "Tab" || event.metaKey || event.ctrlKey || event.altKey || (actions.open && actions.hasOptions)) return false;
       event.preventDefault();
-      const body = new FormData();
-      body.set("text", input.value);
-      void fetch(`${url}/expand`, { method: "POST", body, headers: { Accept: "text/plain" } })
-        .then((response) => response.text())
-        .then((expanded) => {
-          actions.setInputValue(expanded);
-          actions.close();
-        });
+      event.stopImmediatePropagation();
+      actions.refresh(true);
       return true;
     },
   });
@@ -915,7 +1041,7 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-elapsed", createAgentElapsedController(Controller));
     application.register("agent-html-preview", createAgentHtmlPreviewController(Controller));
     application.register("agent-notice", createAgentNoticeController(Controller));
-    application.register("agent-prompt-templates", createAgentPromptTemplatesController(Controller));
+    application.register("agent-completions", createAgentCompletionsController(Controller));
     application.register("agent-proxy", createAgentProxyController(Controller));
     application.register("agent-term", createAgentTermController(Controller));
 

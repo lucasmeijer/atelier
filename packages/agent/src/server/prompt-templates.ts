@@ -143,10 +143,10 @@ export async function expandPromptTemplate(workspaceId: string, text: string): P
 export function renderPromptTemplateMenu(templates: readonly PromptTemplate[], query: string): string {
   const normalized = query.toLowerCase();
   const filtered = templates.filter((template) => !normalized || template.name.toLowerCase().includes(normalized)).slice(0, 12);
-  if (filtered.length === 0) return `<div class="agent-template-menu empty">No prompt templates</div>`;
-  return `<div class="agent-template-menu" role="listbox" aria-label="Prompt templates">${filtered.map((template, index) => {
+  if (filtered.length === 0) return `<div class="agent-completion-menu empty">No prompt templates</div>`;
+  return `<div class="agent-completion-menu" role="listbox" aria-label="Prompt templates">${filtered.map((template, index) => {
     const preview = `<pre class="agent-template-preview">${escapeHtml(template.prompt)}</pre>`;
-    return `<button type="button" class="agent-template-option${index === 0 ? " active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-template-trigger="${escapeHtml(template.trigger)}" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(template.trigger)}">
+    return `<button type="button" class="agent-completion-option agent-template-option${index === 0 ? " active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="prompt-template" data-template-trigger="${escapeHtml(template.trigger)}" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(template.trigger)}">
       <span class="agent-template-name">${escapeHtml(template.trigger)}</span>${template.argumentHint ? `<span class="agent-template-args">${escapeHtml(template.argumentHint)}</span>` : ""}<span class="agent-template-desc">${escapeHtml(template.description)}</span>
       <template data-atelier-fullscreen-target="content">${preview}</template>
     </button>`;

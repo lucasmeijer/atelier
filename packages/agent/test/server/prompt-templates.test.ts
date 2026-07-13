@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
-import { expandPromptTemplateText, loadPromptTemplatesFromRoot } from "../../src/server/prompt-templates.ts";
+import { expandPromptTemplateText, loadPromptTemplatesFromRoot, renderPromptTemplateMenu } from "../../src/server/prompt-templates.ts";
 
 describe("prompt templates", () => {
   test("loads .atelier and .pi prompt templates", async () => {
@@ -29,6 +29,13 @@ describe("prompt templates", () => {
     const templates = [{ name: "land", trigger: "/land", description: "Land", argumentHint: "[branch]", prompt: 'push to ${1:-main}: $@' }];
     expect(expandPromptTemplateText("/land", templates)).toBe("push to main: ");
     expect(expandPromptTemplateText("/land release candidate", templates)).toBe("push to release: release candidate");
+  });
+
+  test("renders typed options for the unified completion menu", () => {
+    const html = renderPromptTemplateMenu([{ name: "review", trigger: "/review", description: "Review changes", prompt: "Review" }], "rev");
+    expect(html).toContain('class="agent-completion-menu"');
+    expect(html).toContain("agent-completion-option agent-template-option active");
+    expect(html).toContain('data-completion-kind="prompt-template"');
   });
 
   test("leaves normal prompts unchanged", () => {

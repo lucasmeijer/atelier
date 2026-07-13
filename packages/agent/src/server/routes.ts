@@ -14,6 +14,7 @@ import {
 import { ids, renderAttachmentChip } from "./render.ts";
 import { turboStream, turboStreamResponse } from "./html.ts";
 import { expandPromptTemplate, listPromptTemplates, renderPromptTemplateMenu } from "./prompt-templates.ts";
+import { listFileCompletions, renderFileCompletionMenu } from "./file-completions.ts";
 import { getWorkspaceAgentRuntime, type SubmitMode } from "./runtime.ts";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
 import { maybeNameWorkspaceFromAgentPrompt } from "./workspace-title-suggestion.ts";
@@ -101,10 +102,10 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/messages$/)) && request.method === "POST") {
     return await agentMessagesEndpoint(params[0], params[1], request, options);
   }
-  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/prompt-templates$/)) && request.method === "GET") {
-    return await promptTemplatesEndpoint(params[0], url);
+  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/completions$/)) && request.method === "GET") {
+    return await completionsEndpoint(params[0], url);
   }
-  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/prompt-templates\/expand$/)) && request.method === "POST") {
+  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/completions\/prompt-template-expand$/)) && request.method === "POST") {
     return await expandPromptTemplateEndpoint(params[0], request);
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/abort$/)) && request.method === "POST") {
@@ -147,13 +148,15 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
 }
 
 // ---------------------------------------------------------------------------
-// Prompt templates + messages
+// Completions + messages
 // ---------------------------------------------------------------------------
 
-async function promptTemplatesEndpoint(workspaceId: string, url: URL): Promise<Response> {
-  const templates = await listPromptTemplates(workspaceId);
-  const q = url.searchParams.get("q") ?? "";
-  return new Response(renderPromptTemplateMenu(templates, q), { headers: { "content-type": "text/html; charset=utf-8" } });
+async function completionsEndpoint(workspaceId: string, url: URL): Promise<Response> {
+  const query = url.searchParams.get("q") ?? "";
+  const html = url.searchParams.get("kind") === "prompt-template"
+    ? renderPromptTemplateMenu(await listPromptTemplates(workspaceId), query)
+    : renderFileCompletionMenu(await listFileCompletions(workspaceId, query, url.searchParams.get("mode") === "fuzzy" ? "fuzzy" : "direct"));
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
 
 async function expandPromptTemplateEndpoint(workspaceId: string, request: Request): Promise<Response> {

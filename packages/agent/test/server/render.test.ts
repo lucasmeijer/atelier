@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatReadRange, renderRunningToolCard, renderStreamingToolItem, renderToolCard, renderTranscript, toolArgsSummary, type AgentRenderContext } from "../../src/server/render.ts";
+import { formatReadRange, renderAgentComposer, renderRunningToolCard, renderStreamingToolItem, renderToolCard, renderTranscript, toolArgsSummary, type AgentRenderContext } from "../../src/server/render.ts";
 import type { ToolView } from "../../src/server/transcript.ts";
 
 const ctx: AgentRenderContext = { workspaceId: "ws", label: "agent" };
@@ -9,6 +9,23 @@ function tool(overrides: Partial<ToolView>): ToolView {
 }
 
 describe("tool rendering", () => {
+  test("agent composer wires the unified completion system into its textarea", async () => {
+    const html = await renderAgentComposer({
+      action: "/messages",
+      placeholder: "Ask",
+      draftId: "draft",
+      ctx,
+      stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] },
+    });
+    expect(html).toContain('data-controller="agent-attachments agent-completions"');
+    expect(html).toContain('data-agent-completions-url-value="/workspaces/ws/agents/agent/completions"');
+    expect(html).toContain('data-agent-completions-target="menu"');
+    expect(html).toContain("keydown->agent-completions#keydown");
+    expect(html).toContain('data-agent-completions-target="input"');
+    expect(html).not.toContain("agent-file-completions");
+    expect(html).not.toContain("agent-prompt-templates");
+  });
+
   test("read summary includes requested line range", () => {
     expect(formatReadRange({ path: "a.ts" })).toBe("");
     expect(toolArgsSummary(tool({ name: "read", args: { path: "a.ts" } }))).toBe("a.ts");

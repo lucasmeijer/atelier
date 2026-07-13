@@ -43,6 +43,7 @@ Use an Agent tab to ask for code changes, explanations, reviews, or debugging he
 
 - Choose the model and thinking level from the controls below the prompt.
 - Drop files onto the prompt to attach them.
+- Type `@` followed by part of a filename to fuzzy-search files and directories from the agent's working directory. Press **Tab** to request path completion for any other word at the cursor. Relative, absolute, and `~/` paths are supported.
 - While an agent is running, use **Stop**, **Steer**, or **Follow-up**.
 - Use **New Agent** from the tab group menu to add another agent.
 - Use **Rewind** on an earlier user message to continue from that point in the conversation.
