@@ -682,13 +682,15 @@ describe("web app contracts", () => {
     });
   });
 
-  test("page shell uses cable instead of a workspace EventSource", async () => {
+  test("page shell serves client dependencies locally and uses cable instead of a workspace EventSource", async () => {
     const { app, registry } = createTestApp();
     await registry.seed([{ id: "abc", title: "A" }]);
 
     const page = await app.fetch(new Request("http://test.local/"));
     const html = await page.text();
     expect(html).toContain('data-controller="cable-shell"');
+    expect(html).toMatch(/<script type="module" src="\/(?:assets\/)?workspace-[^"]+\.js"><\/script>|<script type="module" src="\/workspace\.js"><\/script>/);
+    expect(html).not.toContain("cdn.jsdelivr.net");
     expect(html).not.toContain("turbo-stream-source");
     expect(html).not.toContain("/workspace-events/stream");
 

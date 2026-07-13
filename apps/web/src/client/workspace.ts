@@ -1,5 +1,9 @@
 /// <reference lib="dom" />
 
+import { Application as StimulusApplication, Controller as StimulusController } from "@hotwired/stimulus";
+// Turbo does not publish TypeScript declarations, but Bun resolves and bundles its browser module.
+// @ts-expect-error No declaration file is included in @hotwired/turbo.
+import * as Turbo from "@hotwired/turbo";
 import { createHtmlAutocompleteController } from "@atelier/agent/client";
 import {
   CableTopics,
@@ -33,15 +37,13 @@ declare global {
   }
 }
 
-async function waitForStimulus(): Promise<typeof window.Stimulus> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    if (window.Stimulus?.Application && window.Stimulus.Controller) return window.Stimulus;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error("Stimulus did not initialize before workspace.js");
-}
+window.Stimulus = {
+  Application: StimulusApplication as unknown as typeof window.Stimulus.Application,
+  Controller: StimulusController as unknown as typeof window.Stimulus.Controller,
+};
+window.Turbo = Turbo;
 
-const { Application, Controller } = await waitForStimulus();
+const { Application, Controller } = window.Stimulus;
 
 class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   private readonly becomeVisibleHandlers: Array<(context: WorkspaceClientTabVisibilityContext) => void> = [];

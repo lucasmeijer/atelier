@@ -429,11 +429,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 <link rel="stylesheet" href="${assetPath("/style.css")}">
 <link rel="stylesheet" href="${assetPath("/provisioning.css")}">
 ${moduleStylesHtml()}
-<script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.13/dist/turbo.es2017-esm.js"></script>
-<script type="module">
-  import { Application, Controller } from "https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/+esm";
-  window.Stimulus = { Application, Controller };
-</script>
 <script type="module" src="${assetPath("/workspace.js")}"></script>
 </head>
 <body id="body" data-controller="cable-shell">${body}
