@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { stripTerminalControls } from "@atelier/observable-terminal/server";
 import { composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel } from "./model-state.ts";
 import { diffStats, renderDiffHtml, type DiffOperation } from "./diff.ts";
 import { highlightCodeHtmlForPath } from "./highlight.ts";
@@ -729,13 +730,14 @@ function bashOutputHtml(text: string): string {
 
 function bashResultHtml(tool: ToolView, variant = "inline"): string {
   const displayAnsi = bashDetails(tool)?.displayAnsi;
-  const terminalHtml = typeof displayAnsi === "string" && displayAnsi.trim()
-    ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(displayAnsi)}</pre>`
+  const displayText = typeof displayAnsi === "string" ? displayAnsi : "";
+  const terminalHtml = displayText.trim()
+    ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(displayText)}</pre>`
     : "";
   const modelText = trimResult(tool);
   const modelHtml = resultPreHtml(modelText, "agent-tool-result agent-tool-model");
   if (!terminalHtml) return modelHtml;
-  if (!modelHtml) return terminalHtml;
+  if (!modelHtml || stripTerminalControls(displayText).trimEnd() === modelText) return terminalHtml;
 
   const id = `bash-${domIdFragment(tool.callId)}-${variant}`;
   const terminalId = `${id}-terminal`;

@@ -103,6 +103,20 @@ describe("tool rendering", () => {
     expect(html).toContain("plain model text");
   });
 
+  test("bash renders one output without toggles when terminal and model text match", () => {
+    const html = renderToolCard(ctx, tool({
+      name: "bash",
+      args: { command: "printf color" },
+      resultText: "red text",
+      details: { displayAnsi: "\x1b[31mred\x1b[0m text" },
+    }));
+    expect(html).toContain("agent-tool-ansi");
+    expect(html).toContain("color:#cd0000");
+    expect(html).not.toContain("agent-bash-result");
+    expect(html).not.toContain("agent-bash-mode-tabs");
+    expect(html).not.toContain("agent-tool-model");
+  });
+
   test("bash colorizes plain CMake build output when tools emit no ANSI", () => {
     const html = renderToolCard(ctx, tool({
       name: "bash",
@@ -113,6 +127,7 @@ describe("tool rendering", () => {
     expect(html).toContain("color:#00cdcd");
     expect(html).toContain("color:#00cd00");
     expect(html).toContain("Built target");
+    expect(html).not.toContain("agent-bash-mode-tabs");
   });
 
   test("tool output escapes html-unsafe control characters", () => {
