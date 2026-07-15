@@ -12,6 +12,7 @@ import {
   formatTokens,
   type SectionItem,
   type SectionView,
+  type SessionImageRef,
   type ToolView,
 } from "./transcript.ts";
 
@@ -357,9 +358,13 @@ function renderRewindZone(ctx: AgentRenderContext, section: SectionView): string
     data-user-text="${escapeHtml(section.user?.text ?? "")}">⟲ Rewind to here</button></div>`;
 }
 
-function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images: { mimeType: string; data: string }[] }): string {
+function sessionImageUrl(ctx: AgentRenderContext, image: SessionImageRef): string {
+  return `/workspaces/${encodeURIComponent(ctx.workspaceId)}/agents/${encodeURIComponent(ctx.label)}/session-images/${encodeURIComponent(image.entryId)}/${image.contentIndex}`;
+}
+
+function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images: SessionImageRef[] }): string {
   const images = user.images.length > 0
-    ? `<div class="agent-user-attachments">${user.images.map((image) => `<img src="data:${escapeHtml(image.mimeType)};base64,${escapeHtml(image.data)}" alt="attachment">`).join("")}</div>`
+    ? `<div class="agent-user-attachments">${user.images.map((image) => `<img${fullscreenAttributes("attachment", "media")} src="${escapeHtml(sessionImageUrl(ctx, image))}" alt="attachment" loading="lazy">`).join("")}</div>`
     : "";
   return readingRow(`<div class="agent-user"><div class="agent-user-bubble">${markdown(ctx, user.text)}${images}</div></div>`);
 }
@@ -432,7 +437,7 @@ export function renderRunningToolCard(ctx: AgentRenderContext, tool: ToolView): 
   const elapsed = tool.startedAt
     ? `<span class="agent-tool-elapsed" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}"${tool.timeoutSeconds ? ` data-agent-elapsed-max-value="${tool.timeoutSeconds}"` : ""}><span data-agent-elapsed-target="time">0s</span></span>`
     : "";
-  const fullscreenTemplate = renderFullscreenTemplate(tool, renderer);
+  const fullscreenTemplate = renderFullscreenTemplate(ctx, tool, renderer);
   const fullscreen = fullscreenTemplate ? fullscreenAttributes(fullscreenTitle(tool, argsSummary)) : "";
   return `<div class="agent-tool running ${toolClass(tool.name)}"${fullscreen}>
     <div class="agent-tool-head"><span class="agent-tool-glyph pending">…</span><code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span>${elapsed}</div>
@@ -448,14 +453,14 @@ export function renderToolCard(ctx: AgentRenderContext, tool: ToolView, options:
   const renderer = toolRenderer(tool.name);
   const argsSummary = renderer.summary?.(tool) ?? genericToolSummary(tool);
   const paramsHtml = renderer.known ? (renderer.paramsHtml?.(ctx, tool) ?? "") : genericParamsHtml(tool);
-  const resultHtml = renderer.resultHtml?.(ctx, tool) ?? genericResultHtml(tool);
+  const resultHtml = renderer.resultHtml?.(ctx, tool) ?? genericResultHtml(ctx, tool);
   const emptyResultHtml = renderer.hideEmptyResult ? "" : `<div class="agent-tool-empty">no output</div>`;
   const bodyHtml = `${paramsHtml}${resultHtml || emptyResultHtml}`;
   const flushSingleBlock = Boolean(renderer.flushSingleBlock && ((paramsHtml && !resultHtml) || (!paramsHtml && resultHtml)));
   const copyButton = tool.name === "bash" && resultHtml
     ? `<button type="button" class="agent-tool-copy" data-controller="agent-copy" data-action="click->agent-copy#copy" title="Copy output to clipboard" aria-label="Copy bash output to clipboard"><span class="agent-tool-copy-icon" aria-hidden="true">⧉</span></button>`
     : "";
-  const fullscreenTemplate = renderFullscreenTemplate(tool, renderer);
+  const fullscreenTemplate = renderFullscreenTemplate(ctx, tool, renderer);
   const fullscreen = fullscreenTemplate ? fullscreenAttributes(fullscreenTitle(tool, argsSummary)) : "";
   return `<details class="agent-tool done ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}"${options.open ? " open" : ""}${fullscreen}>
     <summary class="agent-tool-head">${glyph}<code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span>${copyButton}</summary>
@@ -480,7 +485,7 @@ interface ToolRenderer {
   resultHtml?: (ctx: AgentRenderContext, tool: ToolView) => string;
   hideEmptyResult?: boolean;
   flushSingleBlock?: boolean;
-  fullscreenHtml?: (tool: ToolView) => string;
+  fullscreenHtml?: (ctx: AgentRenderContext, tool: ToolView) => string;
 }
 
 function toolRenderer(name: string): ToolRenderer {
@@ -495,12 +500,12 @@ function fullscreenTitle(tool: ToolView, argsSummary: string): string {
   return [tool.name, argsSummary].filter(Boolean).join(" ");
 }
 
-function fullscreenAttributes(title: string): string {
-  return ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(title)}"`;
+function fullscreenAttributes(title: string, mode: "template" | "media" = "template"): string {
+  return ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="${mode}" data-atelier-fullscreen-title-value="${escapeHtml(title)}"`;
 }
 
-function renderFullscreenTemplate(tool: ToolView, renderer: ToolRenderer): string {
-  const html = renderer.fullscreenHtml?.(tool);
+function renderFullscreenTemplate(ctx: AgentRenderContext, tool: ToolView, renderer: ToolRenderer): string {
+  const html = renderer.fullscreenHtml?.(ctx, tool);
   if (!html) return "";
   return `<template data-atelier-fullscreen-target="content">${html}</template>`;
 }
@@ -567,13 +572,13 @@ function resultPreHtml(text: string, className = "agent-tool-result"): string {
   return text ? `<pre class="${className}">${escapeHtml(text)}</pre>` : "";
 }
 
-function toolResultImagesHtml(tool: ToolView): string {
+function toolResultImagesHtml(ctx: AgentRenderContext, tool: ToolView): string {
   const images = tool.resultImages ?? [];
   if (images.length === 0) return "";
   const baseTitle = pathSummary(tool) || "image";
   return `<div class="agent-tool-images">${images.map((image, index) => {
     const title = images.length === 1 ? baseTitle : `${baseTitle} ${index + 1}`;
-    return `<img class="agent-media-img agent-tool-image" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="media" data-atelier-fullscreen-title-value="${escapeHtml(title)}" src="data:${escapeHtml(image.mimeType)};base64,${escapeHtml(image.data)}" alt="${escapeHtml(title)}" loading="lazy">`;
+    return `<img class="agent-media-img agent-tool-image"${fullscreenAttributes(title, "media")} src="${escapeHtml(sessionImageUrl(ctx, image))}" alt="${escapeHtml(title)}" loading="lazy">`;
   }).join("")}</div>`;
 }
 
@@ -759,12 +764,12 @@ const bashRenderer: ToolRenderer = {
   flushSingleBlock: true,
   summary: commandSummary,
   resultHtml: (_ctx, tool) => bashResultHtml(tool),
-  fullscreenHtml: (tool) => bashResultHtml(tool, "fullscreen"),
+  fullscreenHtml: (_ctx, tool) => bashResultHtml(tool, "fullscreen"),
 };
 
-function readResultHtml(tool: ToolView): string {
+function readResultHtml(ctx: AgentRenderContext, tool: ToolView): string {
   const result = trimResult(tool);
-  const images = toolResultImagesHtml(tool);
+  const images = toolResultImagesHtml(ctx, tool);
   if (images) return `${resultPreHtml(result, "agent-tool-result agent-tool-note")}${images}`;
   if (!result) return "";
   return codeBlockHtml(result, stringArg(toolArgs(tool), "path", "file_path"), "agent-tool-result agent-tool-code");
@@ -781,7 +786,7 @@ const readRenderer: ToolRenderer = {
   known: true,
   flushSingleBlock: true,
   summary: (tool) => pathSummary(tool, formatReadRange(toolArgs(tool))),
-  resultHtml: (_ctx, tool) => readResultHtml(tool),
+  resultHtml: (ctx, tool) => readResultHtml(ctx, tool),
   fullscreenHtml: readResultHtml,
 };
 
@@ -792,7 +797,7 @@ const writeRenderer: ToolRenderer = {
   summary: (tool) => pathSummary(tool),
   paramsHtml: (_ctx, tool) => writeContentHtml(tool, { lines: tool.status === "running" ? 80 : 120, chars: tool.status === "running" ? 8000 : 12000 }),
   resultHtml: (_ctx, tool) => tool.status === "error" ? resultPreHtml(trimResult(tool)) : "",
-  fullscreenHtml: (tool) => `${writeContentHtml(tool)}${tool.status === "error" ? resultPreHtml(trimResult(tool)) : ""}`,
+  fullscreenHtml: (_ctx, tool) => `${writeContentHtml(tool)}${tool.status === "error" ? resultPreHtml(trimResult(tool)) : ""}`,
 };
 
 function editDiffHtml(tool: ToolView): string {
@@ -814,7 +819,7 @@ const editRenderer: ToolRenderer = {
   },
   paramsHtml: (_ctx, tool) => editDiffHtml(tool),
   resultHtml: (_ctx, tool) => tool.status === "error" ? resultPreHtml(trimResult(tool)) : "",
-  fullscreenHtml: (tool) => `${editDiffHtml(tool)}${tool.status === "error" ? resultPreHtml(trimResult(tool)) : ""}`,
+  fullscreenHtml: (_ctx, tool) => `${editDiffHtml(tool)}${tool.status === "error" ? resultPreHtml(trimResult(tool)) : ""}`,
 };
 
 function getEditOperations(args: Record<string, unknown> | undefined): DiffOperation[] {
@@ -852,9 +857,9 @@ function genericParamsHtml(tool: ToolView): string {
   return `<pre class="agent-tool-params">${escapeHtml(JSON.stringify(args, null, 2))}</pre>`;
 }
 
-function genericResultHtml(tool: ToolView): string {
+function genericResultHtml(ctx: AgentRenderContext, tool: ToolView): string {
   const result = trimResult(tool);
-  const images = toolResultImagesHtml(tool);
+  const images = toolResultImagesHtml(ctx, tool);
   if (!result) return images;
   const truncated = result.length > toolResultPreviewLimit;
   const shown = truncated ? `${result.slice(0, toolResultPreviewLimit)}\n… (${formatTokens(result.length)} chars total)` : result;

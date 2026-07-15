@@ -137,11 +137,26 @@ describe("tool rendering", () => {
     expect(html).not.toContain("\u0001");
   });
 
+  test("user attachments render as pi session URLs", () => {
+    const html = renderTranscript(ctx, [{
+      sid: "user-entry",
+      user: { text: "look", images: [{ entryId: "user-entry", contentIndex: 1 }] },
+      items: [],
+      stats: { tools: 0, durationMs: 0, outTokens: 0, cost: 0 },
+      streaming: false,
+    }], { systemPrompt: "", tools: [] });
+    expect(html).toContain('src="/workspaces/ws/agents/agent/session-images/user-entry/1"');
+    expect(html).toContain('data-controller="atelier-fullscreen"');
+    expect(html).toContain('data-atelier-fullscreen-mode-value="media"');
+    expect(html).not.toContain("base64");
+  });
+
   test("read image tool results render the image inline", () => {
-    const html = renderToolCard(ctx, tool({ name: "read", args: { path: "image.png" }, resultText: "Read image file [image/png]", resultImages: [{ mimeType: "image/png", data: "abc123" }] }));
+    const html = renderToolCard(ctx, tool({ name: "read", args: { path: "image.png" }, resultText: "Read image file [image/png]", resultImages: [{ entryId: "entry-1", contentIndex: 2 }] }));
     expect(html).toContain("agent-tool-images");
     expect(html).toContain("agent-media-img agent-tool-image");
-    expect(html).toContain("src=\"data:image/png;base64,abc123\"");
+    expect(html).toContain('src="/workspaces/ws/agents/agent/session-images/entry-1/2"');
+    expect(html).not.toContain("base64");
     expect(html).toContain('data-controller="atelier-fullscreen"');
     expect(html).not.toContain("agent-tool-code");
   });

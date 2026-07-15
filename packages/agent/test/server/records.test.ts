@@ -27,7 +27,7 @@ describe("recordsFromSessionEntries", () => {
     expect(records[0]).toMatchObject({ kind: "user", text: "hello", rewindable: false });
     expect(records[1]).toMatchObject({ kind: "assistant", stopReason: "toolUse", outTokens: 12 });
     expect((records[1] as { parts: unknown[] }).parts.length).toBe(2);
-    expect(records[2]).toMatchObject({ kind: "toolResult", callId: "c1", text: "out", images: [{ mimeType: "image/png", data: "abc" }], details: { displayAnsi: "\x1b[31mout\x1b[0m" } });
+    expect(records[2]).toMatchObject({ kind: "toolResult", callId: "c1", text: "out", images: [{ entryId: "e3", contentIndex: 1 }], details: { displayAnsi: "\x1b[31mout\x1b[0m" } });
     expect(records[3]).toMatchObject({ kind: "note", tone: "summary" });
     expect(records[4]).toMatchObject({ kind: "note", tone: "system", text: "model → anthropic/claude" });
   });

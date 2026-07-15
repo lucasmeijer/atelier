@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { getModelThinkingLevel, setModelThinkingLevel } from "./pi-config-models.ts";
 import { parseModelRef, rememberPreferredAgentModel } from "./model-state.ts";
@@ -101,6 +102,10 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
 
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/messages$/)) && request.method === "POST") {
     return await agentMessagesEndpoint(params[0], params[1], request, options);
+  }
+  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/session-images\/([^/]+)\/(\d+)$/)) && request.method === "GET") {
+    const agent = await requireAgent(params[0], params[1]);
+    return await sessionImageEndpoint(agent.path, params[2], Number(params[3]));
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/completions$/)) && request.method === "GET") {
     return await completionsEndpoint(params[0], url);
@@ -226,6 +231,34 @@ async function deleteAttachmentEndpoint(draftId: string, attachmentId: string): 
   if (!await findStagedAttachment(draftId, attachmentId)) return turboStreamResponse("", { status: 404 });
   await removeStagedAttachment(draftId, attachmentId);
   return turboStreamResponse(turboStream("remove", ids.draftChip(draftId, attachmentId)));
+}
+
+// ---------------------------------------------------------------------------
+// Pi session image serving
+// ---------------------------------------------------------------------------
+
+const sessionImageMimeTypes = new Set(Object.values(imageMimeByExtension));
+
+export async function sessionImageEndpoint(sessionFile: string, entryId: string, contentIndex: number): Promise<Response> {
+  const lines = (await readFile(sessionFile, "utf8")).split("\n").filter(Boolean);
+  const entry = lines
+    .map((line) => JSON.parse(line) as { id?: string; message?: { content?: unknown } })
+    .find((candidate) => candidate.id === entryId);
+  if (!entry || !Array.isArray(entry.message?.content)) return new Response("not found", { status: 404 });
+
+  const part = entry.message.content[contentIndex] as { type?: unknown; mimeType?: unknown; data?: unknown } | undefined;
+  if (part?.type !== "image" || typeof part.mimeType !== "string" || !sessionImageMimeTypes.has(part.mimeType) || typeof part.data !== "string") {
+    return new Response("not found", { status: 404 });
+  }
+
+  const data = Buffer.from(part.data, "base64");
+  return new Response(data, { headers: {
+    "cache-control": "private, max-age=31536000, immutable",
+    "content-length": String(data.byteLength),
+    "content-security-policy": "default-src 'none'; sandbox",
+    "content-type": part.mimeType,
+    "x-content-type-options": "nosniff",
+  } });
 }
 
 // ---------------------------------------------------------------------------

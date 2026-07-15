@@ -8,7 +8,13 @@
 
 export interface ImageRef {
   mimeType: string;
-  data: string; // base64
+  data: string; // base64, as required by the pi session format
+}
+
+/** An image part stored in the pi session that backs this transcript. */
+export interface SessionImageRef {
+  entryId: string;
+  contentIndex: number;
 }
 
 type AssistantPart =
@@ -17,9 +23,9 @@ type AssistantPart =
   | { type: "toolCall"; callId: string; name: string; args: unknown };
 
 export type TranscriptRecord =
-  | { kind: "user"; id: string; text: string; images: ImageRef[]; timestamp: number; rewindable?: boolean }
+  | { kind: "user"; id: string; text: string; images: SessionImageRef[]; timestamp: number; rewindable?: boolean }
   | { kind: "assistant"; id: string; parts: AssistantPart[]; stopReason: string; errorMessage?: string; outTokens: number; cost: number; timestamp: number }
-  | { kind: "toolResult"; callId: string; text: string; images: ImageRef[]; isError: boolean; timestamp: number; details?: unknown }
+  | { kind: "toolResult"; callId: string; text: string; images: SessionImageRef[]; isError: boolean; timestamp: number; details?: unknown }
   | { kind: "note"; id?: string; text: string; tone: NoteTone; timestamp?: number };
 
 type NoteTone = "system" | "summary" | "error";
@@ -30,7 +36,7 @@ export interface ToolView {
   args: unknown;
   status: "streaming" | "running" | "ok" | "error";
   resultText?: string;
-  resultImages?: ImageRef[];
+  resultImages?: SessionImageRef[];
   /** Raw argument JSON accumulated while the tool call streams in. */
   argsStream?: string;
   /** Set while a bash command runs inside a tmux session (live terminal attach). */
@@ -64,7 +70,7 @@ export interface SectionView {
   startedAt?: number;
   /** Entry id of the user message: anchor for rewind. */
   userEntryId?: string;
-  user?: { text: string; images: ImageRef[] };
+  user?: { text: string; images: SessionImageRef[] };
   items: SectionItem[];
   finalText?: string;
   errorMessage?: string;

@@ -35,6 +35,7 @@ import {
   buildSections,
   toolDetailsIndicateError,
   type ImageRef,
+  type SessionImageRef,
   type SectionView,
   type ToolView,
   type TranscriptRecord,
@@ -243,7 +244,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   // ---- live section streaming -------------------------------------------
 
-  protected liveBegin(user?: { text: string; images: ImageRef[] }): void {
+  protected liveBegin(user?: { text: string; images: SessionImageRef[] }): void {
     if (this.live) return;
     const view: SectionView = {
       sid: `live_${Date.now().toString(36)}`,
@@ -391,7 +392,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderToolItemBody(this.ctx, item.tool)));
   }
 
-  protected liveToolEnd(callId: string, resultText: string, isError: boolean, details?: unknown, resultImages: ImageRef[] = []): void {
+  protected liveToolEnd(callId: string, resultText: string, isError: boolean, details?: unknown): void {
     const live = this.live;
     if (!live) return;
     const timer = live.terminalTimers.get(callId);
@@ -405,7 +406,6 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (item?.type !== "tool") return;
     item.tool.status = isError || toolDetailsIndicateError(details) ? "error" : "ok";
     item.tool.resultText = resultText;
-    if (resultImages.length > 0) item.tool.resultImages = resultImages;
     item.tool.details = details;
     item.tool.tmuxSession = undefined;
     live.view.stats.tools += 1;
@@ -513,11 +513,15 @@ function contentToText(content: unknown): string {
     .join("\n");
 }
 
-function contentImages(content: unknown): ImageRef[] {
-  if (!Array.isArray(content)) return [];
-  return content
-    .filter((part): part is { type: "image"; data: string; mimeType: string } => Boolean(part) && (part as { type?: string }).type === "image")
-    .map((part) => ({ mimeType: part.mimeType, data: part.data }));
+function sessionContentImages(entry: { id: string; message?: { content?: unknown } }): SessionImageRef[] {
+  if (!Array.isArray(entry.message?.content)) return [];
+  const images: SessionImageRef[] = [];
+  entry.message.content.forEach((part, contentIndex) => {
+    if (part && typeof part === "object" && (part as { type?: string }).type === "image") {
+      images.push({ entryId: entry.id, contentIndex });
+    }
+  });
+  return images;
 }
 
 function entryTimestamp(entry: { timestamp?: string }, message?: { timestamp?: number }): number {
@@ -536,7 +540,7 @@ export function recordsFromSessionEntries(entries: any[]): TranscriptRecord[] {
       const message = entry.message;
       if (!message) continue;
       if (message.role === "user") {
-        records.push({ kind: "user", id: entry.id, text: contentToText(message.content), images: contentImages(message.content), timestamp: entryTimestamp(entry, message), rewindable: entry.parentId !== null && entry.parentId !== undefined });
+        records.push({ kind: "user", id: entry.id, text: contentToText(message.content), images: sessionContentImages(entry), timestamp: entryTimestamp(entry, message), rewindable: entry.parentId !== null && entry.parentId !== undefined });
       } else if (message.role === "assistant") {
         const parts: any[] = [];
         for (const part of message.content ?? []) {
@@ -555,7 +559,7 @@ export function recordsFromSessionEntries(entries: any[]): TranscriptRecord[] {
           timestamp: entryTimestamp(entry, message),
         });
       } else if (message.role === "toolResult") {
-        records.push({ kind: "toolResult", callId: message.toolCallId, text: contentToText(message.content), images: contentImages(message.content), isError: Boolean(message.isError), timestamp: entryTimestamp(entry, message), details: message.details });
+        records.push({ kind: "toolResult", callId: message.toolCallId, text: contentToText(message.content), images: sessionContentImages(entry), isError: Boolean(message.isError), timestamp: entryTimestamp(entry, message), details: message.details });
       } else if (message.role === "bashExecution") {
         records.push({ kind: "note", id: entry.id, text: `\`$ ${message.command}\`\n\n\`\`\`\n${message.output ?? ""}\n\`\`\``, tone: "system", timestamp: entryTimestamp(entry, message) });
       } else if (message.role === "custom" && message.display) {
@@ -667,24 +671,36 @@ class RealAgentRuntime extends BaseAgentRuntime {
     };
   }
 
+  private latestSessionMessage(predicate: (message: any) => boolean): any | undefined {
+    return this.session.sessionManager.getBranch().findLast((entry: any) => entry?.type === "message" && predicate(entry.message));
+  }
+
   private syncLiveUserEntry(): void {
     const live = this.live;
     if (!live?.view.user || live.view.userEntryId) return;
-    const entries = this.session.sessionManager.getBranch();
-    for (let index = entries.length - 1; index >= 0; index -= 1) {
-      const entry = entries[index];
-      if (entry?.type === "message" && entry.message?.role === "user") {
-        live.view.userEntryId = entry.id;
-        return;
-      }
-    }
+    const entry = this.latestSessionMessage((message) => message?.role === "user");
+    if (!entry) return;
+    live.view.userEntryId = entry.id;
+    live.view.user.images = sessionContentImages(entry);
+    this.stream(turboStream("replace", ids.section(this.ctx, live.view.sid), renderSection(this.ctx, live.view)));
+  }
+
+  private syncLiveToolResult(callId: string): void {
+    const live = this.live;
+    const itemIndex = live?.toolIndexByCallId.get(callId);
+    if (!live || itemIndex === undefined) return;
+    const item = live.view.items[itemIndex];
+    if (item?.type !== "tool") return;
+    const entry = this.latestSessionMessage((message) => message?.role === "toolResult" && message.toolCallId === callId);
+    if (!entry) return;
+    item.tool.resultImages = sessionContentImages(entry);
+    this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, itemIndex), renderToolItemBody(this.ctx, item.tool, { open: true })));
   }
 
   private async handleEvent(event: any): Promise<void> {
     switch (event.type) {
       case "agent_start":
         this.liveEnsure();
-        this.syncLiveUserEntry();
         this.setBusy(true);
         break;
       case "message_update": {
@@ -712,11 +728,16 @@ class RealAgentRuntime extends BaseAgentRuntime {
       }
       case "tool_execution_end": {
         const text = contentToText(event.result?.content);
-        this.liveToolEnd(event.toolCallId, text, Boolean(event.isError), event.result?.details, contentImages(event.result?.content));
+        this.liveToolEnd(event.toolCallId, text, Boolean(event.isError), event.result?.details);
         break;
       }
       case "message_end": {
         const message = event.message;
+        // Pi notifies subscribers just before it appends a completed message to
+        // the session. Resolve display URLs on the next task, once that session
+        // entry is available as the image's single source of truth.
+        if (message?.role === "user") setTimeout(() => this.syncLiveUserEntry(), 0);
+        if (message?.role === "toolResult") setTimeout(() => this.syncLiveToolResult(message.toolCallId), 0);
         if (message?.role === "assistant") {
           this.liveUsage(message.usage?.output ?? 0, message.usage?.cost?.total ?? 0);
           const text = contentToText(message.content);
@@ -773,7 +794,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
     }
 
     this.refreshModelRegistryForCurrentModel();
-    this.liveBegin({ text: trimmed, images: options.images ?? [] });
+    this.liveBegin({ text: trimmed, images: [] });
     this.setBusy(true);
     void this.session
       .prompt(fullText, images.length > 0 ? { images } : undefined)
