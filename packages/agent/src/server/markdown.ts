@@ -4,7 +4,7 @@ import { highlightCodeHtml } from "./highlight.ts";
 /**
  * Minimal server-side markdown renderer for assistant messages.
  * Supports: headings, fenced code blocks, inline code, bold, italics, links,
- * unordered/ordered lists, blockquotes, paragraphs.
+ * unordered/ordered lists, blockquotes, tables, paragraphs.
  *
  * An optional `rewriteSegment` hook lets callers turn explicit embed directives
  * into HTML; it receives raw (unescaped) text segments outside of code
@@ -13,6 +13,44 @@ import { highlightCodeHtml } from "./highlight.ts";
 interface MarkdownOptions {
   rewriteSegment?: (rawText: string) => string | undefined;
   highlightCode?: boolean;
+}
+
+function splitTableRow(line: string): string[] {
+  let value = line.trim();
+  if (value.startsWith("|")) value = value.slice(1);
+  if (value.endsWith("|") && !value.endsWith("\\|")) value = value.slice(0, -1);
+
+  const cells: string[] = [];
+  let cell = "";
+  let escaped = false;
+  let inCode = false;
+  for (const character of value) {
+    if (escaped) {
+      cell += character === "|" ? "|" : `\\${character}`;
+      escaped = false;
+    } else if (character === "\\") {
+      escaped = true;
+    } else if (character === "`") {
+      inCode = !inCode;
+      cell += character;
+    } else if (character === "|" && !inCode) {
+      cells.push(cell.trim());
+      cell = "";
+    } else {
+      cell += character;
+    }
+  }
+  if (escaped) cell += "\\";
+  cells.push(cell.trim());
+  return cells;
+}
+
+function parseTableHeader(header: string, delimiter: string): string[] | undefined {
+  if (!header.includes("|")) return undefined;
+  const cells = splitTableRow(header);
+  const delimiters = splitTableRow(delimiter);
+  if (cells.length !== delimiters.length || !delimiters.every((cell) => /^:?-{3,}:?$/.test(cell))) return undefined;
+  return cells;
 }
 
 function inline(raw: string, options: MarkdownOptions): string {
@@ -32,6 +70,10 @@ function inline(raw: string, options: MarkdownOptions): string {
       return html;
     })
     .join("");
+}
+
+function tableRow(cells: string[], tag: "th" | "td", options: MarkdownOptions): string {
+  return `<tr>${cells.map((cell) => `<${tag}>${inline(cell, options)}</${tag}>`).join("")}</tr>`;
 }
 
 export function renderMarkdown(text: string, options: MarkdownOptions = {}): string {
@@ -76,6 +118,22 @@ export function renderMarkdown(text: string, options: MarkdownOptions = {}): str
       ].filter(Boolean).join(" ");
       const label = rawLang ? `Copy ${escapeHtml(rawLang)} code to clipboard` : "Copy code to clipboard";
       out.push(`<div class="agent-code-block" data-controller="agent-code-copy"><button type="button" class="agent-code-copy" data-action="agent-code-copy#copy" aria-label="${label}" title="Copy code"><span class="agent-code-copy-icon" aria-hidden="true">⧉</span></button><pre${attrs ? ` ${attrs}` : ""}><code data-agent-code-copy-target="code">${highlighted.html}</code></pre></div>`);
+      continue;
+    }
+
+    const header = index + 1 < lines.length ? parseTableHeader(line, lines[index + 1]) : undefined;
+    if (header) {
+      flushParagraph();
+      flushList();
+      const rows: string[][] = [];
+      index += 2;
+      while (index < lines.length && lines[index].includes("|")) {
+        const cells = splitTableRow(lines[index]);
+        if (cells.length !== header.length) break;
+        rows.push(cells);
+        index += 1;
+      }
+      out.push(`<div class="agent-table-scroll"><table><thead>${tableRow(header, "th", options)}</thead><tbody>${rows.map((row) => tableRow(row, "td", options)).join("")}</tbody></table></div>`);
       continue;
     }
 

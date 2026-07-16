@@ -32,6 +32,26 @@ describe("renderMarkdown", () => {
     expect(renderMarkdown("1. one\n2. two")).toBe("<ol><li>one</li><li>two</li></ol>");
   });
 
+  test("GitHub-style tables", () => {
+    const html = renderMarkdown([
+      "| Provider | Model ID |",
+      "|---|---|",
+      "| Kimi For Coding | `k3` |",
+      "| OpenRouter | `moonshotai/kimi-k3` |",
+    ].join("\n"));
+    expect(html).toBe('<div class="agent-table-scroll"><table><thead><tr><th>Provider</th><th>Model ID</th></tr></thead><tbody><tr><td>Kimi For Coding</td><td><code>k3</code></td></tr><tr><td>OpenRouter</td><td><code>moonshotai/kimi-k3</code></td></tr></tbody></table></div>');
+  });
+
+  test("table cells support pipes in inline code and escaped pipes", () => {
+    const html = renderMarkdown("Name | Value\n--- | ---\nCode | `a|b`\nText | a\\|b");
+    expect(html).toContain("<td><code>a|b</code></td>");
+    expect(html).toContain("<td>a|b</td>");
+  });
+
+  test("does not mistake ordinary pipe-delimited text for a table", () => {
+    expect(renderMarkdown("one | two\nthree | four")).toBe("<p>one | two\nthree | four</p>");
+  });
+
   test("headings are kept small", () => {
     expect(renderMarkdown("# Title")).toBe("<h3>Title</h3>");
   });

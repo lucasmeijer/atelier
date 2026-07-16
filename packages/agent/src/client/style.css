@@ -184,6 +184,11 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 1px solid va
 .agent-md p { margin: 0 0 8px; }
 .agent-md p:last-child { margin-bottom: 0; }
 .agent-md ul, .agent-md ol { margin: 0 0 8px 20px; }
+.agent-md .agent-table-scroll { max-width: 100%; overflow-x: auto; margin: 0 0 10px; }
+.agent-md table { width: 100%; border-collapse: collapse; font-size: .95em; }
+.agent-md th, .agent-md td { padding: 7px 10px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+.agent-md th { background: var(--panel); font-weight: 600; }
+.agent-md tbody tr:nth-child(even) { background: color-mix(in srgb, var(--panel) 45%, transparent); }
 .agent-md li { margin-bottom: 2px; }
 .agent-md h3, .agent-md h4, .agent-md h5, .agent-md h6 { margin: 10px 0 6px; font-size: 13.5px; letter-spacing: -.1px; }
 .agent-md code { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 12px; background: rgba(19, 26, 38, .055); border-radius: 4px; padding: 0 4px; }
