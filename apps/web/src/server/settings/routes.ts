@@ -2,10 +2,8 @@ import { clearWorkspaceGitHubToken, hasWorkspaceGitHubToken, setWorkspaceGitHubT
 import {
   getConfiguredAgentModels,
   connectModelProviderApiKey,
-  createPiAuthStorage,
-  createPiModelRegistry,
+  createPiModelRuntime,
   disconnectModelProvider,
-  getPiOAuthProviders,
   getProviderApiKeyExample,
   hasAvailableConfiguredAgentModel,
   loginPiOAuthProvider,
@@ -108,28 +106,19 @@ function providerAuthLabel(source?: string): string {
 }
 
 async function providerSummaries(): Promise<ProviderSummary[]> {
-  const registry = await createPiModelRegistry();
-  const providers = new Map<string, ProviderSummary>();
-  for (const model of registry.getAll() as Array<{ provider: string }>) {
-    const provider = model.provider;
-    const status = registry.getProviderAuthStatus(provider);
-    const entry = providers.get(provider) ?? { provider, label: registry.getProviderDisplayName(provider), connected: false, stored: false, authLabel: "Connected", methods: ["api_key"], modelCount: 0 };
-    entry.modelCount += 1;
-    entry.connected = status.configured;
-    entry.stored = status.source === "stored";
-    entry.authLabel = providerAuthLabel(status.source);
-    providers.set(provider, entry);
-  }
-  for (const oauth of getPiOAuthProviders()) {
-    const status = registry.getProviderAuthStatus(oauth.id);
-    const entry = providers.get(oauth.id) ?? { provider: oauth.id, label: oauth.name ?? registry.getProviderDisplayName(oauth.id), connected: false, stored: false, authLabel: "Connected", methods: [], modelCount: 0 };
-    entry.methods = Array.from(new Set(["oauth", ...entry.methods]));
-    entry.connected = status.configured;
-    entry.stored = status.source === "stored";
-    entry.authLabel = providerAuthLabel(status.source);
-    providers.set(oauth.id, entry);
-  }
-  return [...providers.values()].sort((a, b) => Number(b.connected) - Number(a.connected) || a.label.localeCompare(b.label));
+  const runtime = await createPiModelRuntime();
+  return runtime.getProviders().map((provider): ProviderSummary => {
+    const status = runtime.getProviderAuthStatus(provider.id);
+    return {
+      provider: provider.id,
+      label: provider.name ?? provider.id,
+      connected: status.configured,
+      stored: status.source === "stored",
+      authLabel: providerAuthLabel(status.source),
+      methods: [provider.auth.oauth && "oauth", provider.auth.apiKey?.login && "api_key"].filter((method): method is string => Boolean(method)),
+      modelCount: runtime.getModels(provider.id).length,
+    };
+  }).sort((a, b) => Number(b.connected) - Number(a.connected) || a.label.localeCompare(b.label));
 }
 
 function isHighlightedProvider(provider: string): boolean {
@@ -138,7 +127,7 @@ function isHighlightedProvider(provider: string): boolean {
 
 function providerRow(provider: ProviderSummary, surface: "settings" | "onboarding" = "settings"): string {
   const id = domId(surface, "provider", provider.provider);
-  const methods = provider.methods.length ? provider.methods : ["api_key"];
+  const methods = provider.methods;
   const hidden = !provider.connected && !isHighlightedProvider(provider.provider);
   const modelCount = `${provider.modelCount} model${provider.modelCount === 1 ? "" : "s"}`;
   const surfaceParam = surface === "onboarding" ? "&surface=onboarding" : "";
@@ -203,8 +192,8 @@ function modelKey(model: { provider: string; id: string }): string {
 }
 
 async function availableModelOptions(): Promise<ConfiguredAgentModel[]> {
-  const registry = await createPiModelRegistry();
-  const available = registry.getAvailable() as Array<{ provider: string; id: string; name?: string }>;
+  const runtime = await createPiModelRuntime();
+  const available = await runtime.getAvailable();
   return available.map((model) => ({ provider: model.provider, id: model.id, label: model.name ?? model.id }));
 }
 
@@ -374,7 +363,7 @@ type PendingOAuthFlow = {
 const pendingOAuthFlows = new Map<string, PendingOAuthFlow>();
 
 async function startOAuthFlow(provider: string, label: string): Promise<PendingOAuthFlow> {
-  if (!getPiOAuthProviders().some((candidate) => candidate.id === provider)) throw new Error(`${label} does not support OAuth in this pi installation.`);
+  if (!(await createPiModelRuntime()).getProvider(provider)?.auth.oauth) throw new Error(`${label} does not support OAuth in this pi installation.`);
   const flow: PendingOAuthFlow = { id: crypto.randomUUID(), provider, label, status: "pending", startedAt: Date.now(), abort: new AbortController() };
   pendingOAuthFlows.set(flow.id, flow);
   void loginPiOAuthProvider(provider, {
@@ -515,8 +504,8 @@ async function deleteAllStoredSettings(): Promise<void> {
   clearWorkspaceGitHubToken();
   await clearGitIdentity();
   await setPickerAgentModels([]);
-  const auth = await createPiAuthStorage();
-  for (const provider of auth.list()) auth.remove(provider);
+  const runtime = await createPiModelRuntime();
+  for (const credential of await runtime.listCredentials()) await runtime.logout(credential.providerId);
 }
 
 export async function handleSettingsRequest(request: Request, url: URL, options: { forceDeleteAllWorkspaces?: () => Promise<{ deleted: number; errors: string[] }> } = {}): Promise<Response | undefined> {
@@ -583,8 +572,8 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
     const provider = decodeURIComponent(match[1]!);
     const method = url.searchParams.get("method") ?? "api_key";
     const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
-    const registry = await createPiModelRegistry();
-    const label = registry.getProviderDisplayName(provider);
+    const runtime = await createPiModelRuntime();
+    const label = runtime.getProvider(provider)?.name ?? provider;
     if (method === "oauth") {
       try {
         const flow = await startOAuthFlow(provider, label);
@@ -599,8 +588,8 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
   if (match && request.method === "POST") {
     const provider = decodeURIComponent(match[1]!);
     const surface = url.searchParams.get("surface") === "onboarding" ? "onboarding" : "settings";
-    const registry = await createPiModelRegistry();
-    const label = registry.getProviderDisplayName(provider);
+    const runtime = await createPiModelRuntime();
+    const label = runtime.getProvider(provider)?.name ?? provider;
     const form = await request.formData();
     const secret = String(form.get("secret") ?? "");
     try {

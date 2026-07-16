@@ -1,18 +1,11 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
-import { completeSimple } from "@earendil-works/pi-ai/compat";
-import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
-import type { AuthEvent, AuthLoginCallbacks, AuthPrompt } from "@earendil-works/pi-ai";
-import { AuthStorage, ModelRegistry, type AuthCredential } from "@earendil-works/pi-coding-agent";
+import type { AuthInteraction, AuthPrompt } from "@earendil-works/pi-ai";
+import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
-/**
- * The configured list of models offered in the agent model picker.
- *
- * Stored in the Atelier data dir under pi-config/models.json alongside pi's own model
- * configuration. Atelier owns this file; custom model/provider definitions stay
- * under `providers`, while the prompt picker state is top-level settings.
- */
+/** The configured list of models offered in the agent model picker. */
 export interface ConfiguredAgentModel {
   provider: string;
   id: string;
@@ -20,10 +13,7 @@ export interface ConfiguredAgentModel {
   active?: boolean;
 }
 
-interface ModelPreference {
-  thinkingLevel?: string;
-}
-
+interface ModelPreference { thinkingLevel?: string }
 interface AgentModelsSettings {
   providers?: Record<string, unknown>;
   picker?: Array<{ provider?: unknown; id?: unknown; label?: unknown }>;
@@ -31,20 +21,11 @@ interface AgentModelsSettings {
   modelPreferences?: Record<string, ModelPreference>;
 }
 
-export function piConfigDir(): string {
-  return atelierDataPath(getAtelierRuntimeContext(), "pi-config");
-}
+function piConfigDir(): string { return atelierDataPath(getAtelierRuntimeContext(), "pi-config"); }
+function piModelsJsonPath(): string { return join(piConfigDir(), "models.json"); }
+function piAuthJsonPath(): string { return join(piConfigDir(), "auth.json"); }
 
-export function piModelsJsonPath(): string {
-  return join(piConfigDir(), "models.json");
-}
-
-function piAuthJsonPath(): string {
-  return join(piConfigDir(), "auth.json");
-}
-
-async function getAgentModelsSettings(path?: string): Promise<AgentModelsSettings> {
-  path ??= piModelsJsonPath();
+async function getAgentModelsSettings(path = piModelsJsonPath()): Promise<AgentModelsSettings> {
   try {
     const parsed = JSON.parse(await readFile(path, "utf8"));
     if (!parsed || typeof parsed !== "object") throw new Error(`${path} must contain a JSON object`);
@@ -64,124 +45,75 @@ async function setAgentModelsSettings(config: AgentModelsSettings): Promise<void
   await rename(tmp, path);
 }
 
-function modelSettingsKey(provider: string, id: string): string {
-  return `${provider}::${id}`;
-}
-
+function modelSettingsKey(provider: string, id: string): string { return `${provider}::${id}`; }
 function configuredFromJson(config: AgentModelsSettings | undefined): ConfiguredAgentModel[] {
-  const picker = config?.picker;
-  const active = config?.activeModel;
-  const models = Array.isArray(picker)
-    ? picker.flatMap((entry) => {
-      const provider = typeof entry.provider === "string" ? entry.provider : "";
-      const id = typeof entry.id === "string" ? entry.id : "";
-      if (!provider || !id) return [];
-      return [{ provider, id, label: typeof entry.label === "string" && entry.label.trim() ? entry.label : id }];
-    })
-    : [];
-  const activeProvider = typeof active?.provider === "string" ? active.provider : models[0]?.provider;
-  const activeId = typeof active?.id === "string" ? active.id : models[0]?.id;
+  const models = Array.isArray(config?.picker) ? config.picker.flatMap((entry) => {
+    const provider = typeof entry.provider === "string" ? entry.provider : "";
+    const id = typeof entry.id === "string" ? entry.id : "";
+    return provider && id ? [{ provider, id, label: typeof entry.label === "string" && entry.label.trim() ? entry.label : id }] : [];
+  }) : [];
+  const activeProvider = typeof config?.activeModel?.provider === "string" ? config.activeModel.provider : models[0]?.provider;
+  const activeId = typeof config?.activeModel?.id === "string" ? config.activeModel.id : models[0]?.id;
   return models.map((model, index) => ({ ...model, active: activeProvider && activeId ? model.provider === activeProvider && model.id === activeId : index === 0 }));
 }
 
-export async function getConfiguredAgentModels(): Promise<ConfiguredAgentModel[]> {
-  return configuredFromJson(await getAgentModelsSettings());
-}
-
+export async function getConfiguredAgentModels(): Promise<ConfiguredAgentModel[]> { return configuredFromJson(await getAgentModelsSettings()); }
 export async function hasAvailableConfiguredAgentModel(): Promise<boolean> {
-  const registry = await createPiModelRegistry();
-  const available = new Set((registry.getAvailable() as Array<{ provider: string; id: string }>).map((model) => modelSettingsKey(model.provider, model.id)));
+  const runtime = await createPiModelRuntime();
+  const available = new Set((await runtime.getAvailable()).map((model) => modelSettingsKey(model.provider, model.id)));
   return (await getConfiguredAgentModels()).some((model) => available.has(modelSettingsKey(model.provider, model.id)));
 }
 
 export async function setActiveAgentModel(provider: string, id: string): Promise<void> {
   const config = await getAgentModelsSettings();
   const current = configuredFromJson(config);
-  const existing = current.find((model) => model.provider === provider && model.id === id);
   config.picker = current.map((model) => ({ provider: model.provider, id: model.id, label: model.label }));
   config.activeModel = { provider, id };
-  if (!existing) config.picker.unshift({ provider, id, label: id });
+  if (!current.some((model) => model.provider === provider && model.id === id)) config.picker.unshift({ provider, id, label: id });
   await setAgentModelsSettings(config);
 }
 
 export async function setPickerAgentModels(models: ConfiguredAgentModel[], active?: { provider: string; id: string }): Promise<void> {
   const config = await getAgentModelsSettings();
+  config.picker = models.map(({ provider, id, label }) => ({ provider, id, label }));
   const first = models[0];
-  config.picker = models.map((model) => ({ provider: model.provider, id: model.id, label: model.label }));
   config.activeModel = active ?? models.find((model) => model.active) ?? (first ? { provider: first.provider, id: first.id } : undefined);
   await setAgentModelsSettings(config);
 }
 
 export async function getModelThinkingLevel(provider: string, id: string): Promise<string | undefined> {
-  const config = await getAgentModelsSettings();
-  const level = config.modelPreferences?.[modelSettingsKey(provider, id)]?.thinkingLevel;
+  const level = (await getAgentModelsSettings()).modelPreferences?.[modelSettingsKey(provider, id)]?.thinkingLevel;
   return typeof level === "string" && level ? level : undefined;
 }
-
 export async function setModelThinkingLevel(provider: string, id: string, thinkingLevel: string): Promise<void> {
   const config = await getAgentModelsSettings();
   config.modelPreferences = { ...(config.modelPreferences ?? {}) };
-  config.modelPreferences[modelSettingsKey(provider, id)] = {
-    ...(config.modelPreferences[modelSettingsKey(provider, id)] ?? {}),
-    thinkingLevel,
-  };
+  config.modelPreferences[modelSettingsKey(provider, id)] = { ...(config.modelPreferences[modelSettingsKey(provider, id)] ?? {}), thinkingLevel };
   await setAgentModelsSettings(config);
 }
 
-export async function createPiAuthStorage(): Promise<AuthStorage> {
-  return AuthStorage.create(piAuthJsonPath());
-}
-
-export async function createPiModelRegistry(): Promise<ModelRegistry> {
-  const authStorage = await createPiAuthStorage();
-  return ModelRegistry.create(authStorage, piModelsJsonPath());
+let modelRuntime: Promise<ModelRuntime> | undefined;
+export function createPiModelRuntime(): Promise<ModelRuntime> {
+  return modelRuntime ??= ModelRuntime.create({ authPath: piAuthJsonPath(), modelsPath: piModelsJsonPath() });
 }
 
 export type PiAuthPrompt = AuthPrompt;
-export type PiAuthEvent = AuthEvent;
-export type PiAuthLoginCallbacks = AuthLoginCallbacks;
-export interface PiOAuthProviderSummary { id: string; name: string }
+type PiAuthInteraction = AuthInteraction;
 
-function piOAuthProviders(): PiOAuthProviderSummary[] {
-  return builtinProviders()
-    .filter((provider) => Boolean(provider.auth.oauth))
-    .map((provider) => ({ id: provider.id, name: provider.auth.oauth?.name ?? provider.name ?? provider.id }));
-}
-
-export function getPiOAuthProviders(): PiOAuthProviderSummary[] {
-  return piOAuthProviders();
-}
-
-export async function loginPiOAuthProvider(providerId: string, callbacks: PiAuthLoginCallbacks): Promise<void> {
-  const provider = builtinProviders().find((candidate) => candidate.id === providerId);
-  const oauth = provider?.auth.oauth;
-  if (!oauth) throw new Error(`Unknown OAuth provider: ${providerId}`);
-  const credential = await oauth.login(callbacks);
-  const auth = await createPiAuthStorage();
-  auth.set(providerId, credential as AuthCredential);
+export async function loginPiOAuthProvider(providerId: string, interaction: PiAuthInteraction): Promise<void> {
+  await (await createPiModelRuntime()).login(providerId, "oauth", interaction);
 }
 
 async function validateModelProviderApiKey(provider: string, key: string): Promise<void> {
   const trimmed = key.trim();
   if (!trimmed) throw new Error("API key is required");
-
-  const auth = AuthStorage.inMemory({ [provider]: { type: "api_key", key: trimmed } });
-  const registry = ModelRegistry.create(auth, piModelsJsonPath());
-  const models = registry.getAll().filter((model) => model.provider === provider);
+  const credentials = new InMemoryCredentialStore();
+  await credentials.modify(provider, async () => ({ type: "api_key", key: trimmed }));
+  const runtime = await ModelRuntime.create({ credentials, modelsPath: piModelsJsonPath(), allowModelNetwork: false });
+  const models = runtime.getModels(provider);
   const model = models[Math.floor(Math.random() * models.length)];
   if (!model) throw new Error(`No models found for provider "${provider}"`);
-
-  const requestAuth = await registry.getApiKeyAndHeaders(model);
-  if (!requestAuth.ok) throw new Error(requestAuth.error);
-
-  const response = await completeSimple(model, {
-    messages: [{ role: "user", content: "Reply with exactly: ok", timestamp: Date.now() }],
-  }, {
-    apiKey: requestAuth.apiKey,
-    headers: requestAuth.headers,
-    env: requestAuth.env,
-    maxTokens: 1,
-  });
+  const response = await runtime.completeSimple(model, { messages: [{ role: "user", content: "Reply with exactly: ok", timestamp: Date.now() }] }, { maxTokens: 1 });
   if (response.stopReason === "error") throw new Error(response.errorMessage ?? "Provider rejected the API key");
 }
 
@@ -189,11 +121,11 @@ export async function connectModelProviderApiKey(provider: string, key: string, 
   const trimmed = key.trim();
   if (!trimmed) throw new Error("API key is required");
   if (options.validate !== false) await validateModelProviderApiKey(provider, trimmed);
-  const auth = await createPiAuthStorage();
-  auth.set(provider, { type: "api_key", key: trimmed });
+  await (await createPiModelRuntime()).login(provider, "api_key", {
+    prompt: async (prompt) => prompt.type === "select" ? prompt.options[0]?.id ?? "" : trimmed,
+    notify: () => {},
+  });
 }
-
 export async function disconnectModelProvider(provider: string): Promise<void> {
-  const auth = await createPiAuthStorage();
-  auth.remove(provider);
+  await (await createPiModelRuntime()).logout(provider);
 }

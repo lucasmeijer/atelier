@@ -1,9 +1,8 @@
-import { completeSimple } from "@earendil-works/pi-ai/compat";
 import type { AtelierEventBus } from "@atelier/core";
 import { listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
 import { getProviderFastModel } from "./hardcoded-provider-knowledge.ts";
 import type { ModelRef } from "./model-state.ts";
-import { createPiModelRegistry } from "./pi-config-models.ts";
+import { createPiModelRuntime } from "./pi-config-models.ts";
 
 const pending = new Set<string>();
 
@@ -17,7 +16,7 @@ ${userPrompt}
 respond with the name, or with "error" if for some reason there is not enough to go on to make a name.`;
 }
 
-function textFromResponse(response: Awaited<ReturnType<typeof completeSimple>>): string {
+function textFromResponse(response: { content: Array<{ type: string; text?: string }> }): string {
   return response.content
     .filter((block): block is { type: "text"; text: string } => block.type === "text")
     .map((block) => block.text)
@@ -66,35 +65,19 @@ export function maybeNameWorkspaceFromAgentPrompt(workspaceId: string, userMessa
         logWorkspaceTitleSuggestionError(workspaceId, undefined, "agent model is not selected");
         return;
       }
-      const registry = await createPiModelRegistry();
-      const model = registry.find?.(titleModelRef.provider, titleModelRef.id);
+      const runtime = await createPiModelRuntime();
+      const model = runtime.getModel(titleModelRef.provider, titleModelRef.id);
       if (!model) {
         logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, "model is not available");
         return;
       }
-      if (!registry.hasConfiguredAuth(model)) {
+      if (!(await runtime.checkAuth(model.provider))) {
         logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, "model authentication is not configured");
         return;
       }
-      const requestAuth = await registry.getApiKeyAndHeaders(model);
-      const authErrors = registry.authStorage.drainErrors();
-      if (!requestAuth.ok) {
-        logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, requestAuth.error);
-        return;
-      }
-      if (authErrors.length > 0 && !requestAuth.apiKey) {
-        logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, authErrors[0]?.message ?? "model authentication failed", { authErrors });
-        return;
-      }
-      const response = await completeSimple(model, {
+      const response = await runtime.completeSimple(model, {
         messages: [{ role: "user", content: promptFor(promptText), timestamp: Date.now() }],
-      }, {
-        apiKey: requestAuth.apiKey,
-        headers: requestAuth.headers,
-        env: requestAuth.env,
-        reasoning: "minimal",
-        maxTokens: 32,
-      });
+      }, { reasoning: "minimal", maxTokens: 32 });
       if (response.stopReason === "error") {
         logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, response.errorMessage ?? "model returned an error", {
           stopReason: response.stopReason,

@@ -2,10 +2,9 @@ import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { shellQuote, type AtelierEventBus } from "@atelier/core";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
-import { createPiAuthStorage, getConfiguredAgentModels, getModelThinkingLevel, piModelsJsonPath } from "./pi-config-models.ts";
+import { createPiModelRuntime, getConfiguredAgentModels, getModelThinkingLevel } from "./pi-config-models.ts";
 import {
   createAgentSession,
-  ModelRegistry,
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
@@ -604,14 +603,14 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   private async configuredModelOptions(): Promise<{ provider: string; id: string; name: string; model: any; available: boolean }[]> {
-    // Configured model picker list, resolved against the registry at render time.
+    // Resolve the configured picker list against Pi's live runtime snapshot.
     const configuredModels = await getConfiguredAgentModels();
-    const available = new Set((this.session.modelRegistry.getAvailable?.() as Array<{ provider: string; id: string }> | undefined ?? []).map((model) => `${model.provider}::${model.id}`));
+    const available = new Set((await this.session.modelRuntime.getAvailable()).map((model: { provider: string; id: string }) => `${model.provider}::${model.id}`));
     return configuredModels.map((configured) => ({
       provider: configured.provider,
       id: configured.id,
       name: configured.label,
-      model: this.session.modelRegistry.find?.(configured.provider, configured.id),
+      model: this.session.modelRuntime.getModel(configured.provider, configured.id),
       available: available.has(`${configured.provider}::${configured.id}`),
     }));
   }
@@ -771,15 +770,6 @@ class RealAgentRuntime extends BaseAgentRuntime {
     }
   }
 
-  private refreshModelRegistryForCurrentModel(): void {
-    const current = this.session.model;
-    this.session.modelRegistry.authStorage?.reload?.();
-    this.session.modelRegistry.refresh?.();
-    if (!current?.provider || !current?.id) return;
-    const refreshed = this.session.modelRegistry.find?.(current.provider, current.id);
-    if (refreshed) this.session.agent.state.model = refreshed;
-  }
-
   async submit(text: string, options: SubmitOptions): Promise<void> {
     const trimmed = text.trim();
     if (!trimmed && (options.images?.length ?? 0) === 0) return;
@@ -793,7 +783,6 @@ class RealAgentRuntime extends BaseAgentRuntime {
       return;
     }
 
-    this.refreshModelRegistryForCurrentModel();
     this.liveBegin({ text: trimmed, images: [] });
     this.setBusy(true);
     void this.session
@@ -817,9 +806,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   async setModel(provider: string, modelId: string): Promise<void> {
-    this.session.modelRegistry.authStorage?.reload?.();
-    this.session.modelRegistry.refresh?.();
-    const model = this.session.modelRegistry.find?.(provider, modelId);
+    const model = this.session.modelRuntime.getModel(provider, modelId);
     if (!model) throw new Error(`Model not available: ${provider}/${modelId}`);
     await this.session.setModel(model);
     const remembered = await getModelThinkingLevel(provider, modelId);
@@ -888,8 +875,7 @@ export async function discardBootstrapOnlySession(path: string): Promise<void> {
 async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
   await ensureSessionFile(agent.path);
   await discardBootstrapOnlySession(agent.path);
-  const authStorage = await createPiAuthStorage();
-  const modelRegistry = ModelRegistry.create(authStorage, piModelsJsonPath());
+  const modelRuntime = await createPiModelRuntime();
   const agentsFiles = await loadWorkspaceAgentsFiles(agent.workspaceId);
   const appendSystemPrompt: string[] = [];
   await options.events?.emit("agent_system_prompt_prepare", { workspaceId: agent.workspaceId, lines: appendSystemPrompt });
@@ -898,8 +884,7 @@ async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAg
   const { session } = await createAgentSession({
     cwd: workspaceRoot,
     agentDir: dirname(agent.path),
-    authStorage,
-    modelRegistry,
+    modelRuntime,
     resourceLoader: createAtelierResourceLoader(agentsFiles, appendSystemPrompt),
     customTools,
     tools: workspaceAgentToolNames(),

@@ -1,5 +1,5 @@
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
-import { createPiModelRegistry, getConfiguredAgentModels, getModelThinkingLevel, setActiveAgentModel, setModelThinkingLevel, type ConfiguredAgentModel } from "./pi-config-models.ts";
+import { createPiModelRuntime, getConfiguredAgentModels, getModelThinkingLevel, setActiveAgentModel, setModelThinkingLevel, type ConfiguredAgentModel } from "./pi-config-models.ts";
 
 export interface ModelRef {
   provider: string;
@@ -46,8 +46,8 @@ export async function selectedComposerModel(selectedModel?: string): Promise<Mod
 }
 
 export async function configuredModelOptionViews(current?: ModelRef): Promise<AgentModelOptionView[]> {
-  const registry = await createPiModelRegistry();
-  const available = new Set((registry.getAvailable() as Array<{ provider: string; id: string }>).map((model) => `${model.provider}::${model.id}`));
+  const runtime = await createPiModelRuntime();
+  const available = new Set((await runtime.getAvailable()).map((model) => `${model.provider}::${model.id}`));
   return (await getConfiguredAgentModels()).map((model) => modelOptionView(model, available, current));
 }
 
@@ -70,7 +70,7 @@ export async function composerThinkingLevel(model: ModelRef | undefined): Promis
 
 export async function composerThinkingLevels(model: ModelRef | undefined): Promise<string[]> {
   if (!model) return [];
-  const registry = await createPiModelRegistry();
-  const piModel = registry.find(model.provider, model.id);
+  const runtime = await createPiModelRuntime();
+  const piModel = runtime.getModel(model.provider, model.id);
   return piModel ? getSupportedThinkingLevels(piModel) : [];
 }

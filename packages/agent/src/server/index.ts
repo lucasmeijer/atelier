@@ -42,20 +42,13 @@ export {
 export { agentStaticFiles } from "./static.ts";
 export {
   connectModelProviderApiKey,
-  createPiAuthStorage,
-  createPiModelRegistry,
+  createPiModelRuntime,
   disconnectModelProvider,
   getConfiguredAgentModels,
   getModelThinkingLevel,
-  getPiOAuthProviders,
   hasAvailableConfiguredAgentModel,
   loginPiOAuthProvider,
-  piConfigDir,
-  piModelsJsonPath,
-  type PiAuthEvent,
-  type PiAuthLoginCallbacks,
   type PiAuthPrompt,
-  type PiOAuthProviderSummary,
   setActiveAgentModel,
   setModelThinkingLevel,
   setPickerAgentModels,
@@ -64,7 +57,4 @@ export {
 export {
   addHardcodedProviderModels,
   getProviderApiKeyExample,
-  hardcodedProviderKnowledge,
-  type HardcodedProviderKnowledge,
-  type HardcodedProviderModel,
 } from "./hardcoded-provider-knowledge.ts";
