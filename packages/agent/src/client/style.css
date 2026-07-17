@@ -592,13 +592,17 @@ details.agent-tool[open] > summary.agent-tool-head { border-bottom: 0; }
 .agent-stat[title="Session cost"]::before { content: "cost"; color: var(--muted2); font-weight: 650; }
 .agent-ctx-meter { width: 46px; }
 .agent-ctx-meter i { background: var(--muted2); }
-.agent-stat-right { margin-left: auto; display: inline-flex; gap: 4px; height: 24px; align-items: center; padding-right: 44px; }
+.agent-stat-right { min-width: 0; margin-left: auto; display: inline-flex; flex: 1 1 0; justify-content: flex-end; gap: 4px; height: 24px; align-items: center; }
 .agent-stat-right form { position: relative; display: flex; height: 24px; align-items: center; }
+.agent-stat-right form:has(.agent-model-button) { min-width: 0; }
+.agent-stat-right .agent-model-button { min-width: 0; max-width: 100%; }
 
 /* Keep composer settings available before secondary session statistics. */
 @container (max-width: 500px) {
-  .agent-stat[title="Context window used"],
   .agent-stat[title="Session cost"] { display: none; }
+}
+@container (max-width: 300px) {
+  .agent-stat[title="Context window used"] { display: none; }
 }
 
 .agent-sel-native { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
