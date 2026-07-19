@@ -15,6 +15,7 @@ describe("tool rendering", () => {
       placeholder: "Ask",
       draftId: "draft",
       ctx,
+      formTarget: true,
       stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] },
     });
     expect(html).toContain('data-controller="agent-attachments agent-completions"');
@@ -22,6 +23,7 @@ describe("tool rendering", () => {
     expect(html).toContain('data-agent-completions-target="menu"');
     expect(html).toContain("keydown->agent-completions#keydown");
     expect(html).toContain('data-agent-completions-target="input"');
+    expect(html).toContain("input->agent-pane#promptChanged");
     expect(html).not.toContain("agent-file-completions");
     expect(html).not.toContain("agent-prompt-templates");
   });

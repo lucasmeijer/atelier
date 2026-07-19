@@ -96,6 +96,8 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.promptObserver.observe(this.formTarget, { childList: true, subtree: true });
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       document.addEventListener("keydown", this.onKeydown);
+      const promptDraft = sessionStorage.getItem(this.promptDraftStorageKey);
+      if (promptDraft !== null) this.inputTarget.value = promptDraft;
       this.updateSendStopButton();
       if (isWorkspacePaneVisible(this.element)) this.start();
     }
@@ -169,6 +171,17 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     private setInputValue(value: string): void {
       setTextInputValue(this.inputTarget, value);
+    }
+
+    promptChanged(): void {
+      const value = this.inputTarget.value;
+      if (value) sessionStorage.setItem(this.promptDraftStorageKey, value);
+      else sessionStorage.removeItem(this.promptDraftStorageKey);
+      this.autosize();
+    }
+
+    private get promptDraftStorageKey(): string {
+      return `atelier.agentPromptDraft:${JSON.stringify([this.workspaceIdValue, this.labelValue])}`;
     }
 
     autosize(): void {
