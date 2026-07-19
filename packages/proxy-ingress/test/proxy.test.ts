@@ -5,6 +5,7 @@ import { gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetAtelierRuntimeContextForTests } from "@atelier/core";
 import {
+  createWorkspaceIngressProxy,
   ensureTailscaleServePortConfig,
   ensureWorkspacePublicProxyRoute,
   listWorkspacePublicProxyRoutes,
@@ -94,6 +95,48 @@ describe("decoded upstream response normalization", () => {
 });
 
 describe("workspace public proxy route state", () => {
+  test("exposes nested routes through the outer Atelier workspace", async () => {
+    const exposedPorts = new Set<number>();
+    const proxy = createWorkspaceIngressProxy({
+      hostname: "127.0.0.1",
+      publicPortRange: { start: 43100, end: 43102 },
+      publicPortExposer: {
+        ensurePort: (port) => { exposedPorts.add(port); return Promise.resolve(); },
+        releasePort: (port) => { exposedPorts.delete(port); return Promise.resolve(); },
+        syncPorts: () => Promise.resolve(),
+      },
+      resolveWorkspace: () => undefined,
+      listWorkspaceIds: () => [],
+      resolveTarget: () => new URL("http://127.0.0.1:3000"),
+    });
+    const standardResponse = await proxy.redirectToRoute(
+      "inner",
+      "browser-1",
+      "/demo?x=1",
+      new Request("http://127.0.0.1:3000/workspaces/inner/apps/browser-1/"),
+    );
+    expect(standardResponse.headers.get("location")).toBe("http://127.0.0.1:43100/demo?x=1");
+    expect(exposedPorts).toEqual(new Set([43100]));
+
+    const nestedRequest = new Request("http://127.0.0.1:3000/workspaces/inner/apps/browser-1/", {
+      headers: {
+        "x-atelier-parent-origin": "https://outer.example",
+        "x-atelier-parent-workspace": "outer-workspace",
+      },
+    });
+    const response = await proxy.redirectToRoute("inner", "browser-1", "/demo?x=1", nestedRequest);
+
+    expect(response.status).toBe(302);
+    const routes = await listWorkspacePublicProxyRoutes(["inner"]);
+    expect(routes).toHaveLength(1);
+    expect(routes[0]).toMatchObject({ workspaceId: "inner", appKey: "browser-1" });
+    expect(routes[0]!.publicPort).toBeGreaterThanOrEqual(3001);
+    expect(routes[0]!.publicPort).toBeLessThanOrEqual(3010);
+    expect(response.headers.get("location")).toBe(`https://outer.example/workspaces/outer-workspace/ports/${routes[0]!.publicPort}/demo?x=1`);
+    expect(exposedPorts).toEqual(new Set());
+    await proxy.stopAll();
+  });
+
   test("parses configured port ranges", () => {
     expect(publicProxyPortRangeFromEnv("43100-43110")).toEqual({ start: 43100, end: 43110 });
     expect(() => publicProxyPortRangeFromEnv("bad")).toThrow();

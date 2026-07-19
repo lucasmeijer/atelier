@@ -39,6 +39,12 @@ Atelier container -> 127.0.0.1:<published-port> -> workspace container
 
 Do not run the Atelier container on Docker's default bridge network for this model. In that case `127.0.0.1` would be the Atelier container itself, not the Docker host.
 
+### Atelier in an Atelier workspace
+
+An Atelier development server in a workspace uses that workspace's nested Docker daemon. Its inner workspace ports are still published on the surrounding workspace's loopback interface, so the inner server can reach them normally.
+
+The browser-facing origin needs one additional rule. A workspace app normally redirects from its canonical route to a dedicated public proxy port in the `41000-41999` range. That inner port is not independently exposed through the outer Atelier. The outer app proxy therefore identifies its public origin and workspace to the inner Atelier. The inner Atelier listens for its app on an available outer preview port (`3001-3010`) and redirects through the outer workspace's canonical port route. The outer Atelier then supplies the browser-reachable isolated origin, preserving root-relative URLs and WebSockets.
+
 ## Why not container IPs?
 
 Container IPs are not a portable control-plane address.
