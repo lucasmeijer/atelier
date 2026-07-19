@@ -104,6 +104,12 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/messages$/)) && request.method === "POST") {
     return await agentMessagesEndpoint(params[0], params[1], request, options);
   }
+  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/transcript-items\/([^/]+)$/)) && request.method === "GET") {
+    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
+    const count = Math.max(100, Math.min(100_000, Number(url.searchParams.get("count") ?? 100) || 100));
+    const html = await runtime.detailHtml(params[2], count);
+    return new Response(html || "not found", { status: html ? 200 : 404, headers: { "content-type": "text/html; charset=utf-8" } });
+  }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/session-images\/([^/]+)\/(\d+)$/)) && request.method === "GET") {
     const agent = await requireAgent(params[0], params[1]);
     return await sessionImageEndpoint(agent.path, params[2], Number(params[3]));

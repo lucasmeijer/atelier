@@ -39,6 +39,8 @@ export interface ObservableTerminalViewerOptions {
   disconnectedMessage?: string;
   errorMessage?: string;
   onProgress?: (progress: { state: number; value?: number }) => void;
+  onOutput?: (data: string | Uint8Array) => void;
+  onClose?: () => void;
 }
 
 export function applyObservableTerminalChromeTheme(theme: ObservableTerminalTheme = DEFAULT_OBSERVABLE_TERMINAL_THEME): void {
@@ -122,10 +124,17 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
     if (options.mode === "interactive") ws.send(encodeObservableTerminalMessage({ type: "resize", cols: term.cols, rows: term.rows }));
   };
   ws.onmessage = (event) => {
-    if (typeof event.data === "string") term.write(event.data);
-    else event.data.arrayBuffer().then((buffer: ArrayBuffer) => term.write(new Uint8Array(buffer)));
+    if (typeof event.data === "string") {
+      options.onOutput?.(event.data);
+      term.write(event.data);
+    } else event.data.arrayBuffer().then((buffer: ArrayBuffer) => {
+      const data = new Uint8Array(buffer);
+      options.onOutput?.(data);
+      term.write(data);
+    });
   };
   ws.onclose = () => {
+    options.onClose?.();
     const message = options.disconnectedMessage;
     if (message) term.write(message);
   };

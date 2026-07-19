@@ -1,78 +1,85 @@
-import { escapeHtml } from "./html.ts";
-
 export interface DiffOperation {
   oldText: string;
   newText: string;
 }
 
-type DiffLine = { kind: "ctx" | "del" | "add"; text: string };
-
 function splitLines(text: string): string[] {
-  if (text.length === 0) return [];
-  return text.replaceAll("\r\n", "\n").split("\n");
+  return text.length === 0 ? [] : text.replaceAll("\r\n", "\n").split("\n");
 }
 
-function diffLines(oldText: string, newText: string): DiffLine[] {
-  const oldLines = splitLines(oldText);
-  const newLines = splitLines(newText);
-  const rows = oldLines.length;
-  const cols = newLines.length;
-  if (rows * cols > 40_000) {
-    return [
-      ...oldLines.map((text) => ({ kind: "del" as const, text })),
-      ...newLines.map((text) => ({ kind: "add" as const, text })),
-    ];
-  }
-  const lcs = Array.from({ length: rows + 1 }, () => Array<number>(cols + 1).fill(0));
-  for (let i = rows - 1; i >= 0; i -= 1) {
-    for (let j = cols - 1; j >= 0; j -= 1) {
-      lcs[i][j] = oldLines[i] === newLines[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
-    }
-  }
-
-  const out: DiffLine[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < rows || j < cols) {
-    if (i < rows && j < cols && oldLines[i] === newLines[j]) {
-      out.push({ kind: "ctx", text: oldLines[i] });
-      i += 1;
-      j += 1;
-    } else if (j < cols && (i >= rows || lcs[i][j + 1] >= lcs[i + 1][j])) {
-      out.push({ kind: "add", text: newLines[j] });
-      j += 1;
-    } else if (i < rows) {
-      out.push({ kind: "del", text: oldLines[i] });
-      i += 1;
-    }
-  }
-  return out;
+export interface DiffDisplayLine {
+  kind: "context" | "removed" | "added";
+  text: string;
 }
 
-function diffOperationLines(operations: DiffOperation[]): DiffLine[] {
-  return operations.flatMap((operation, index) => {
-    const diff = diffLines(operation.oldText, operation.newText);
-    if (operations.length <= 1 || index === 0) return diff;
-    return [{ kind: "ctx" as const, text: "" }, ...diff];
-  });
+export function parseUnifiedPatchHunks(patch: string): DiffDisplayLine[][] {
+  const hunks: DiffDisplayLine[][] = [];
+  let hunk: DiffDisplayLine[] | undefined;
+  for (const line of patch.replaceAll("\r\n", "\n").split("\n")) {
+    if (line.startsWith("@@")) {
+      if (hunk) hunks.push(hunk);
+      hunk = [];
+    } else if (!hunk || line.startsWith("\\ No newline")) {
+      continue;
+    } else if (line.startsWith(" ")) {
+      hunk.push({ kind: "context", text: line.slice(1) });
+    } else if (line.startsWith("-")) {
+      hunk.push({ kind: "removed", text: line.slice(1) });
+    } else if (line.startsWith("+")) {
+      hunk.push({ kind: "added", text: line.slice(1) });
+    }
+  }
+  if (hunk) hunks.push(hunk);
+  return hunks;
+}
+
+export function contextualDiffLines(operation: DiffOperation, contextLines = 3): DiffDisplayLine[] {
+  const oldLines = splitLines(operation.oldText);
+  const newLines = splitLines(operation.newText);
+  let prefix = 0;
+  while (prefix < oldLines.length && prefix < newLines.length && oldLines[prefix] === newLines[prefix]) prefix++;
+
+  let suffix = 0;
+  while (
+    suffix < oldLines.length - prefix &&
+    suffix < newLines.length - prefix &&
+    oldLines[oldLines.length - suffix - 1] === newLines[newLines.length - suffix - 1]
+  ) suffix++;
+
+  const before = oldLines.slice(Math.max(0, prefix - contextLines), prefix);
+  const removed = oldLines.slice(prefix, oldLines.length - suffix);
+  const added = newLines.slice(prefix, newLines.length - suffix);
+  const after = oldLines.slice(oldLines.length - suffix, Math.min(oldLines.length, oldLines.length - suffix + contextLines));
+  return [
+    ...before.map((text) => ({ kind: "context" as const, text })),
+    ...removed.map((text) => ({ kind: "removed" as const, text })),
+    ...added.map((text) => ({ kind: "added" as const, text })),
+    ...after.map((text) => ({ kind: "context" as const, text })),
+  ];
+}
+
+function operationStats(operation: DiffOperation): { added: number; deleted: number } {
+  const oldLines = splitLines(operation.oldText);
+  const newLines = splitLines(operation.newText);
+  if (oldLines.length * newLines.length > 40_000) return { added: newLines.length, deleted: oldLines.length };
+
+  const lcs = Array.from({ length: oldLines.length + 1 }, () => Array<number>(newLines.length + 1).fill(0));
+  for (let oldIndex = oldLines.length - 1; oldIndex >= 0; oldIndex--) {
+    for (let newIndex = newLines.length - 1; newIndex >= 0; newIndex--) {
+      lcs[oldIndex][newIndex] = oldLines[oldIndex] === newLines[newIndex]
+        ? lcs[oldIndex + 1][newIndex + 1] + 1
+        : Math.max(lcs[oldIndex + 1][newIndex], lcs[oldIndex][newIndex + 1]);
+    }
+  }
+  const unchanged = lcs[0][0];
+  return { added: newLines.length - unchanged, deleted: oldLines.length - unchanged };
 }
 
 export function diffStats(operations: DiffOperation[]): { added: number; deleted: number } {
-  let added = 0;
-  let deleted = 0;
-  for (const line of diffOperationLines(operations)) {
-    if (line.kind === "add") added += 1;
-    if (line.kind === "del") deleted += 1;
-  }
-  return { added, deleted };
-}
-
-export function renderDiffHtml(operations: DiffOperation[]): string {
-  if (operations.length === 0) return "";
-  const lines = diffOperationLines(operations);
-  if (lines.length === 0) return "";
-  return `<div class="agent-diff">${lines.map((line) => {
-    const mark = line.kind === "add" ? "+" : line.kind === "del" ? "-" : " ";
-    return `<div class="agent-diff-line ${line.kind}"><span class="agent-diff-mark">${mark}</span><code>${escapeHtml(line.text)}</code></div>`;
-  }).join("")}</div>`;
+  return operations.reduce((total, operation) => {
+    const stats = operationStats(operation);
+    total.added += stats.added;
+    total.deleted += stats.deleted;
+    return total;
+  }, { added: 0, deleted: 0 });
 }

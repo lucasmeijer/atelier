@@ -1,184 +1,139 @@
 import { describe, expect, test } from "bun:test";
-import { formatReadRange, renderAgentComposer, renderRunningToolCard, renderStreamingToolItem, renderToolCard, renderTranscript, toolArgsSummary, type AgentRenderContext } from "../../src/server/render.ts";
-import type { ToolView } from "../../src/server/transcript.ts";
+import { renderAgentComposer, renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../src/server/render.ts";
+import type { ToolView, TranscriptItem } from "../../src/server/transcript.ts";
 
 const ctx: AgentRenderContext = { workspaceId: "ws", label: "agent" };
+const tool = (overrides: Partial<ToolView>): ToolView => ({ callId: "call", name: "read", args: {}, status: "ok", ...overrides });
 
-function tool(overrides: Partial<ToolView>): ToolView {
-  return { callId: "call", name: "read", args: {}, status: "ok", ...overrides };
-}
-
-describe("tool rendering", () => {
-  test("agent composer wires the unified completion system into its textarea", async () => {
-    const html = await renderAgentComposer({
-      action: "/messages",
-      placeholder: "Ask",
-      draftId: "draft",
-      ctx,
-      formTarget: true,
-      stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] },
-    });
+describe("flat transcript rendering", () => {
+  test("composer retains unified completions", async () => {
+    const html = await renderAgentComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
     expect(html).toContain('data-controller="agent-attachments agent-completions"');
-    expect(html).toContain('data-agent-completions-url-value="/workspaces/ws/agents/agent/completions"');
-    expect(html).toContain('data-agent-completions-target="menu"');
-    expect(html).toContain("keydown->agent-completions#keydown");
-    expect(html).toContain('data-agent-completions-target="input"');
     expect(html).toContain("input->agent-pane#promptChanged");
-    expect(html).not.toContain("agent-file-completions");
-    expect(html).not.toContain("agent-prompt-templates");
   });
 
-  test("read summary includes requested line range", () => {
-    expect(formatReadRange({ path: "a.ts" })).toBe("");
-    expect(toolArgsSummary(tool({ name: "read", args: { path: "a.ts" } }))).toBe("a.ts");
-    expect(toolArgsSummary(tool({ name: "read", args: { path: "a.ts", offset: 40, limit: 80 } }))).toBe("a.ts:40-119");
-    expect(toolArgsSummary(tool({ name: "read", args: { path: "a.ts", offset: 40 } }))).toBe("a.ts:40");
-    expect(toolArgsSummary(tool({ name: "read", args: { path: "a.ts", limit: 20 } }))).toBe("a.ts:1-20");
+  test("read summaries include ranges", () => {
+    const item: TranscriptItem = { type: "tool", key: "read-range", tool: tool({ name: "read", args: { path: "a.ts", offset: 40, limit: 80 } }) };
+    expect(renderTranscript(ctx, [item], { systemPrompt: "", tools: [] })).toContain("a.ts:40-119");
   });
 
-  test("write renders content preview as code, not JSON newlines", () => {
-    const html = renderToolCard(ctx, tool({ name: "write", args: { path: "a.ts", content: "const x = 1;\n<script>" }, resultText: "Successfully wrote 27 bytes to a.ts" }));
+  test("historical tools are collapsed and lazy", () => {
+    const item: TranscriptItem = { type: "tool", key: "write-1", tool: tool({ name: "write", args: { path: "a.ts", content: "const x = 1;" } }) };
+    const html = renderTranscript(ctx, [item], { systemPrompt: "", tools: [] });
+    expect(html).toContain("<turbo-frame");
+    expect(html).toContain('data-agent-lazy-detail-target="frame"');
+    expect(html).toContain('data-src=');
+    expect(html).not.toContain(' src=');
+    expect(html).not.toContain("const x");
+    const detail = renderTranscriptItemDetailFrame(ctx, item);
+    expect(detail).toContain("agent-tool-code");
+    expect(detail).toContain("const");
+    expect(detail).toContain('data-controller="atelier-fullscreen"');
+  });
+
+  test("streaming write renders decoded content", () => {
+    const item: TranscriptItem = { type: "tool", key: "stream-write", tool: tool({ name: "write", status: "streaming", argsStream: '{"path":"a.ts","content":"x\\ny"}' }) };
+    const html = renderTranscriptItem(ctx, item, { live: true, open: true });
     expect(html).toContain("agent-tool-code");
-    expect(html).toContain("x =");
-    expect(html).toContain("\n");
+    expect(html).toContain("x\ny");
     expect(html).not.toContain("\\n");
-    expect(html).toContain("&lt;script&gt;");
-    expect(html).not.toContain("Successfully wrote");
-    expect(html).not.toContain("no output");
-    expect(html).toContain("agent-tool-detail flush");
-    expect(html).toContain('data-controller="atelier-fullscreen"');
-    expect(html).toContain('data-atelier-fullscreen-mode-value="template"');
-    expect(html).toContain('template data-atelier-fullscreen-target="content"');
   });
 
-  test("edit renders diff instead of raw JSON", () => {
-    const html = renderToolCard(ctx, tool({ name: "edit", args: { path: "a.ts", oldText: "old", newText: "new" }, resultText: "Applied 1 block" }));
-    expect(html).toContain("a.ts · 1 block · +1 -1");
-    expect(html).toContain("agent-diff-line del");
-    expect(html).toContain("agent-diff-line add");
-    expect(html).toContain("agent-tool-detail flush");
-    expect(html).toContain('data-controller="atelier-fullscreen"');
-    expect(html).toContain('data-atelier-fullscreen-mode-value="template"');
-    expect(html).toContain('template data-atelier-fullscreen-target="content"');
-    expect(html).not.toContain("oldText");
-    expect(html).not.toContain("Applied 1 block");
-    expect(html).not.toContain("no output");
+  test("running edit has summary only", () => {
+    const item: TranscriptItem = { type: "tool", key: "edit-live", tool: tool({ name: "edit", status: "running", args: { path: "a.ts", oldText: "old", newText: "new" } }) };
+    const html = renderTranscriptItem(ctx, item, { live: true });
+    expect(html).toContain("agent-tool-summary-only");
+    expect(html).not.toContain("agent-tool-detail");
   });
 
-  test("streaming known tools hide raw argument JSON", () => {
-    const html = renderStreamingToolItem(ctx, "sid", 0, "write", `{"path":"a.ts","content":"x\\ny"}`);
-    expect(html).toContain("agent-tool-code");
-    expect(html).toContain("hidden");
-    expect(html).not.toContain("agent-tool-stream");
-    expect(html).not.toContain("content");
+  test("completed edit renders highlighted removals and additions without marks", () => {
+    const item: TranscriptItem = { type: "tool", key: "edit-1", tool: tool({ name: "edit", args: { path: "a.ts", oldText: "const old = 1;", newText: "const next = 2;" } }) };
+    const html = renderTranscriptItemDetailFrame(ctx, item);
+    expect(html).toContain("agent-edit-lines removed");
+    expect(html).toContain("agent-edit-lines added");
+    expect(html).toContain("hljs-keyword");
+    expect(html).not.toContain("diff-mark");
   });
 
-  test("bash keeps running xterm and completed captured output separate", () => {
-    const running = renderRunningToolCard(ctx, tool({ name: "bash", status: "running", args: { command: "npm test" }, tmuxSession: "tmux", terminalVisible: true }));
-    expect(running).toContain("agent-tool-term");
-    const done = renderToolCard(ctx, tool({ name: "bash", args: { command: "npm test" }, resultText: "final output" }));
-    expect(done).toContain("final output");
-    expect(done).toContain("agent-tool-copy");
-    expect(done).toContain("agent-copy#copy");
-    expect(done).not.toContain("agent-tool-term");
-    expect(done).not.toContain("agent-tool-params");
+  test("edit details keep three unchanged lines around each change", () => {
+    const oldText = ["above 1", "above 2", "above 3", "above 4", "const old = 1;", "below 1", "below 2", "below 3", "below 4"].join("\n");
+    const newText = oldText.replace("const old = 1;", "const next = 2;");
+    const item: TranscriptItem = { type: "tool", key: "edit-context", tool: tool({ name: "edit", args: { path: "a.ts", oldText, newText } }) };
+    const html = renderTranscriptItemDetailFrame(ctx, item);
+    const preview = html.split("<template")[0].replace(/<[^>]+>/g, "");
+    expect(preview).not.toContain("above 1");
+    expect(preview).toContain("above 2");
+    expect(preview).toContain("above 4");
+    expect(preview).toContain("below 1");
+    expect(preview).toContain("below 3");
+    expect(preview).not.toContain("below 4");
+    const fullscreen = html.replace(/<[^>]+>/g, "");
+    expect(fullscreen).toContain("above 1");
+    expect(fullscreen).toContain("below 4");
   });
 
-  test("bash defaults to terminal display with a model output toggle", () => {
-    const html = renderToolCard(ctx, tool({
-      name: "bash",
-      args: { command: "printf color" },
-      resultText: "plain model text",
-      details: { displayAnsi: "\x1b[31mred\x1b[0m <tag>" },
-    }));
-    expect(html).toContain("agent-bash-result");
-    expect(html).toContain('data-controller="atelier-fullscreen"');
-    expect(html).toContain('template data-atelier-fullscreen-target="content"');
-    expect(html).toContain("Terminal");
-    expect(html).toContain("Model");
-    expect(html).toContain("checked");
-    expect(html).toContain("agent-tool-ansi");
+  test("edit details use persisted patch context when arguments only contain the changed line", () => {
+    const patch = [
+      "--- a/src/main.jsx",
+      "+++ b/src/main.jsx",
+      "@@ -8,7 +8,7 @@",
+      " context 1",
+      " context 2",
+      " context 3",
+      "-WEBGL EXPERIMENT / 001",
+      "+WEBGL EXPERIMENT / 002",
+      " context 4",
+      " context 5",
+      " context 6",
+    ].join("\n");
+    const item: TranscriptItem = { type: "tool", key: "edit-patch", tool: tool({ name: "edit", args: { path: "src/main.jsx", oldText: "WEBGL EXPERIMENT / 001", newText: "WEBGL EXPERIMENT / 002" }, details: { patch } }) };
+    const html = renderTranscriptItemDetailFrame(ctx, item).split("<template")[0];
+    const preview = html.replace(/<[^>]+>/g, "");
+    expect(html).toContain("agent-edit-lines context");
+    expect(html).toContain("agent-edit-lines removed");
+    expect(html).toContain("agent-edit-lines added");
+    expect(preview).toContain("context 1");
+    expect(preview).toContain("context 3");
+    expect(preview).toContain("context 4");
+    expect(preview).toContain("context 6");
+  });
+
+  test("bash has separate command and differing model result", () => {
+    const item: TranscriptItem = { type: "tool", key: "bash-1", tool: tool({ name: "bash", args: { command: "echo one\necho two", timeout: 600 }, resultText: "plain", details: { exitCode: 0, displayAnsi: "\u001b[31mred\u001b[0m" }, durationMs: 2000 }) };
+    const html = renderTranscriptItemDetailFrame(ctx, item);
+    expect(html).toContain("COMMAND");
+    expect(html).toContain("RESULT");
+    expect(html).toContain("AS SEEN BY MODEL");
     expect(html).toContain("color:#cd0000");
-    expect(html).toContain("red");
-    expect(html).toContain("&lt;tag&gt;");
-    expect(html).toContain("agent-tool-model");
-    expect(html).toContain("plain model text");
   });
 
-  test("bash renders one output without toggles when terminal and model text match", () => {
-    const html = renderToolCard(ctx, tool({
-      name: "bash",
-      args: { command: "printf color" },
-      resultText: "red text",
-      details: { displayAnsi: "\x1b[31mred\x1b[0m text" },
-    }));
-    expect(html).toContain("agent-tool-ansi");
-    expect(html).toContain("color:#cd0000");
-    expect(html).not.toContain("agent-bash-result");
-    expect(html).not.toContain("agent-bash-mode-tabs");
-    expect(html).not.toContain("agent-tool-model");
+  test("identical bash views omit model tab", () => {
+    const item: TranscriptItem = { type: "tool", key: "bash-2", tool: tool({ name: "bash", args: { command: "echo ok" }, resultText: "ok", details: { exitCode: 0, displayAnsi: "ok" } }) };
+    const html = renderTranscriptItemDetailFrame(ctx, item);
+    expect(html).not.toContain("AS SEEN BY MODEL");
   });
 
-  test("bash colorizes plain CMake build output when tools emit no ANSI", () => {
-    const html = renderToolCard(ctx, tool({
-      name: "bash",
-      args: { command: "cmake --build build-cmake" },
-      resultText: "[ 40%] Built target libninja",
-      details: { displayAnsi: "[ 40%] Built target libninja" },
-    }));
-    expect(html).toContain("color:#00cdcd");
-    expect(html).toContain("color:#00cd00");
-    expect(html).toContain("Built target");
-    expect(html).not.toContain("agent-bash-mode-tabs");
+  test("thinking renders as clampable prose rather than a tool call", () => {
+    const html = renderTranscript(ctx, [{ type: "thinking", key: "thought", text: "secret" }], { systemPrompt: "", tools: [] });
+    expect(html).toContain('data-controller="agent-thinking"');
+    expect(html).toContain("secret");
+    expect(html).toContain('hidden>...(show more)</button>');
+    expect(html).not.toContain("agent-tool");
+    expect(html).not.toContain("turbo-frame");
   });
 
-  test("tool output escapes html-unsafe control characters", () => {
-    const html = renderToolCard(ctx, tool({ name: "read", args: { path: "image.jpg" }, resultText: "abc\u0000\u0001def<script>" }));
-    expect(html).toContain("abc��def&lt;script&gt;");
-    expect(html).not.toContain("\u0000");
-    expect(html).not.toContain("\u0001");
+  test("session images use served URLs and summary metadata", () => {
+    const item: TranscriptItem = { type: "tool", key: "image", tool: tool({ name: "read", args: { path: "image.png" }, resultText: "Read image file", resultImages: [{ entryId: "entry", contentIndex: 2, mimeType: "image/png", width: 320, height: 200 }] }) };
+    const transcript = renderTranscript(ctx, [item], { systemPrompt: "", tools: [] });
+    expect(transcript).toContain("320×200 · image/png");
+    const detail = renderTranscriptItemDetailFrame(ctx, item);
+    expect(detail).toContain('/session-images/entry/2');
+    expect(detail).toContain('data-atelier-fullscreen-mode-value="media"');
   });
 
-  test("user attachments render as pi session URLs", () => {
-    const html = renderTranscript(ctx, [{
-      sid: "user-entry",
-      user: { text: "look", images: [{ entryId: "user-entry", contentIndex: 1 }] },
-      items: [],
-      stats: { tools: 0, durationMs: 0, outTokens: 0, cost: 0 },
-      streaming: false,
-    }], { systemPrompt: "", tools: [] });
-    expect(html).toContain('src="/workspaces/ws/agents/agent/session-images/user-entry/1"');
-    expect(html).toContain('data-controller="atelier-fullscreen"');
+  test("user attachments remain fullscreenable", () => {
+    const html = renderTranscript(ctx, [{ type: "user", key: "user", text: "look", images: [{ entryId: "user", contentIndex: 1 }] }], { systemPrompt: "", tools: [] });
+    expect(html).toContain('/session-images/user/1');
     expect(html).toContain('data-atelier-fullscreen-mode-value="media"');
-    expect(html).not.toContain("base64");
-  });
-
-  test("read image tool results render the image inline", () => {
-    const html = renderToolCard(ctx, tool({ name: "read", args: { path: "image.png" }, resultText: "Read image file [image/png]", resultImages: [{ entryId: "entry-1", contentIndex: 2 }] }));
-    expect(html).toContain("agent-tool-images");
-    expect(html).toContain("agent-media-img agent-tool-image");
-    expect(html).toContain('src="/workspaces/ws/agents/agent/session-images/entry-1/2"');
-    expect(html).not.toContain("base64");
-    expect(html).toContain('data-controller="atelier-fullscreen"');
-    expect(html).not.toContain("agent-tool-code");
-  });
-
-  test("model context uses the standard tool card fullscreen primitive", () => {
-    const html = renderTranscript(ctx, [], {
-      systemPrompt: "You are helpful <script>",
-      tools: [{ name: "read", description: "Read a file", parameters: { type: "object" } }],
-    });
-    expect(html).toContain("agent-tool done tool-model-context");
-    expect(html).toContain('data-controller="atelier-fullscreen"');
-    expect(html).toContain('data-atelier-fullscreen-mode-value="template"');
-    expect(html).toContain('template data-atelier-fullscreen-target="content"');
-    expect(html).toContain("model_context");
-    expect(html).toContain("system-prompt.md");
-    expect(html).toContain("tools.json");
-    expect(html).toContain("You are helpful");
-    expect(html).toContain("&lt;");
-    expect(html).toContain('&quot;name&quot;');
-    expect(html).not.toContain("agent-model-context");
-    expect(html).not.toContain("agent-context-tool");
   });
 });

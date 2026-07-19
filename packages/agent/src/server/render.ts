@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { stripTerminalControls } from "@atelier/observable-terminal/server";
 import { composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel } from "./model-state.ts";
-import { diffStats, renderDiffHtml, type DiffOperation } from "./diff.ts";
+import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
 import { highlightCodeHtmlForPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
 import { renderMarkdown } from "./markdown.ts";
@@ -9,9 +8,9 @@ import { renderAtelierEmbed, rewriteSegment, splitAtelierEmbeds } from "./rewrit
 import type { WorkspaceAgentInfo } from "./session-store.ts";
 import {
   formatCost,
+  formatDuration,
   formatTokens,
-  type SectionItem,
-  type SectionView,
+  type TranscriptItem,
   type SessionImageRef,
   type ToolView,
 } from "./transcript.ts";
@@ -37,12 +36,12 @@ export const ids = {
   pane: (ctx: AgentRenderContext) => `${prefix(ctx)}_pane`,
   transcript: (ctx: AgentRenderContext) => `${prefix(ctx)}_transcript`,
   systemPrompt: (ctx: AgentRenderContext) => `${prefix(ctx)}_system_prompt`,
-  section: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_s`, sid),
-  activity: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_act`, sid),
-  activityBody: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_actbody`, sid),
-  final: (ctx: AgentRenderContext, sid: string) => domId(`${prefix(ctx)}_final`, sid),
-  item: (ctx: AgentRenderContext, sid: string, n: number) => domId(`${prefix(ctx)}_item`, sid, String(n)),
-  itemText: (ctx: AgentRenderContext, sid: string, n: number) => domId(`${prefix(ctx)}_itemtext`, sid, String(n)),
+  item: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_item`, key),
+  itemText: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext`, key),
+  itemSummary: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary`, key),
+  itemCompletion: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_completion`, key),
+  itemCompletionTabs: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_completion_tabs`, key),
+  detailFrame: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_detail`, key),
   stats: (ctx: AgentRenderContext) => `${prefix(ctx)}_stats`,
   actions: (ctx: AgentRenderContext) => `${prefix(ctx)}_actions`,
   abortForm: (ctx: AgentRenderContext) => `${prefix(ctx)}_abort_form`,
@@ -304,58 +303,29 @@ ${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(ag
 }
 
 // ---------------------------------------------------------------------------
-// Transcript / sections
+// Flat transcript
 // ---------------------------------------------------------------------------
 
-export function renderTranscript(ctx: AgentRenderContext, sections: SectionView[], modelContext: AgentModelContextView): string {
-  const userSections = sections.filter((section) => section.user && section.summaryNote === undefined);
-  const latestUserSid = userSections[userSections.length - 1]?.sid;
-  return `${renderModelContextCard(ctx, modelContext)}<div class="agent-notices" id="${ids.notices(ctx)}"></div>${sections.map((section) => renderSection(ctx, section, { collapsed: Boolean(section.user) && section.sid !== latestUserSid })).join("")}`;
+function transcriptItemPath(ctx: AgentRenderContext, key: string, query = ""): string {
+  return `${agentPath(ctx, `/transcript-items/${encodeURIComponent(key)}`)}${query}`;
+}
+
+export function renderTranscript(ctx: AgentRenderContext, items: TranscriptItem[], modelContext: AgentModelContextView): string {
+  return `${renderModelContextCard(ctx, modelContext)}<div class="agent-notices" id="${ids.notices(ctx)}"></div>${items.map((item) => renderTranscriptItem(ctx, item)).join("")}`;
 }
 
 function renderModelContextCard(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
   const prompt = modelContext.systemPrompt.trim();
   const tools = modelContext.tools;
   if (!prompt && tools.length === 0) return "";
-  const meta = [prompt ? "system-prompt.md" : undefined, tools.length ? `tools.json (${tools.length} ${tools.length === 1 ? "definition" : "definitions"})` : undefined].filter(Boolean).join(" · ");
-  const blocks = [
-    prompt ? codeBlockHtml(prompt, "system-prompt.md") : "",
-    tools.length ? codeBlockHtml(JSON.stringify(tools.map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters })), null, 2), "tools.json") : "",
-  ].filter(Boolean).join("");
-  const title = ["model context", meta].filter(Boolean).join(" ");
-  return readingRow(`<details class="agent-tool done tool-model-context" id="${ids.systemPrompt(ctx)}"${fullscreenAttributes(title)}>
-    <summary class="agent-tool-head"><code class="agent-tool-name">model_context</code><span class="agent-tool-args">${escapeHtml(meta)}</span></summary>
-    <div class="agent-tool-detail">${blocks}</div>
-    <template data-atelier-fullscreen-target="content"><section class="agent-tool agent-tool-fullscreen tool-model-context"><div class="agent-tool-head"><code class="agent-tool-name">model_context</code><span class="agent-tool-args">${escapeHtml(meta)}</span></div><div class="agent-tool-detail">${blocks}</div></section></template>
-  </details>`);
+  const meta = [prompt ? "system-prompt.md" : undefined, tools.length ? `tools.json (${tools.length})` : undefined].filter(Boolean).join(" · ");
+  return readingRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load"><summary class="agent-tool-head"><span class="agent-tool-status ok"></span><code class="agent-tool-name">model_context</code><span class="agent-tool-args">${escapeHtml(meta)}</span></summary><turbo-frame id="${ids.detailFrame(ctx, "model-context")}" data-agent-lazy-detail-target="frame" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded" data-src="${escapeHtml(transcriptItemPath(ctx, "model-context"))}"></turbo-frame></details>`);
 }
 
-export function renderSection(ctx: AgentRenderContext, section: SectionView, options: { collapsed?: boolean } = {}): string {
-  if (section.summaryNote !== undefined) {
-    return `<div class="agent-section agent-summary-section" id="${ids.section(ctx, section.sid)}" data-sid="${escapeHtml(section.sid)}">
-      ${renderMarkdownRows(ctx, section.summaryNote, { className: "agent-note summary" })}
-    </div>`;
-  }
-  const hasActivity = section.items.length > 0 || section.streaming;
-  const collapsed = Boolean(options.collapsed) && !section.streaming;
-  return `<div class="agent-section${section.streaming ? " streaming" : ""}${collapsed ? " collapsed" : ""}" id="${ids.section(ctx, section.sid)}" data-sid="${escapeHtml(section.sid)}">
-    ${section.userEntryId ? renderRewindZone(ctx, section) : ""}
-    ${section.user ? renderUserMessage(ctx, section.user) : ""}
-    <div class="agent-activity" id="${ids.activity(ctx, section.sid)}"${hasActivity ? "" : " hidden"}>
-      <div class="agent-actbody" id="${ids.activityBody(ctx, section.sid)}">${section.items.map((item, index) => renderItem(ctx, section.sid, index, item, { live: section.streaming && index === section.items.length - 1, collapsed })).join("")}</div>
-    </div>
-    <div class="agent-final" id="${ids.final(ctx, section.sid)}">${section.finalText ? renderFinalText(ctx, section.finalText) : ""}</div>
-    ${section.errorMessage ? readingRow(`<div class="agent-error">${escapeHtml(section.errorMessage)}</div>`) : ""}
-  </div>`;
-}
-
-
-function renderRewindZone(ctx: AgentRenderContext, section: SectionView): string {
-  if (!section.userEntryId) return "";
-  return `<div class="agent-rewind-zone"><button class="agent-rewind-btn" type="button"
-    data-action="agent-pane#openRewind"
-    data-entry-id="${escapeHtml(section.userEntryId)}"
-    data-user-text="${escapeHtml(section.user?.text ?? "")}">⟲ Rewind to here</button></div>`;
+export function renderModelContextDetailFrame(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
+  const prompt = modelContext.systemPrompt.trim();
+  const blocks = [prompt ? codeBlockHtml(prompt, "system-prompt.md") : "", modelContext.tools.length ? codeBlockHtml(JSON.stringify(modelContext.tools, null, 2), "tools.json") : ""].filter(Boolean).join("");
+  return `<turbo-frame id="${ids.detailFrame(ctx, "model-context")}"><div class="agent-tool-detail">${detailFullscreen("MODEL CONTEXT", blocks)}</div></turbo-frame>`;
 }
 
 function sessionImageUrl(ctx: AgentRenderContext, image: SessionImageRef): string {
@@ -363,110 +333,245 @@ function sessionImageUrl(ctx: AgentRenderContext, image: SessionImageRef): strin
 }
 
 function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images: SessionImageRef[] }): string {
-  const images = user.images.length > 0
-    ? `<div class="agent-user-attachments">${user.images.map((image) => `<img${fullscreenAttributes("attachment", "media")} src="${escapeHtml(sessionImageUrl(ctx, image))}" alt="attachment" loading="lazy">`).join("")}</div>`
-    : "";
+  const images = user.images.length ? `<div class="agent-user-attachments">${user.images.map((image) => `<img${fullscreenAttributes("attachment", "media")} src="${escapeHtml(sessionImageUrl(ctx, image))}" alt="attachment" loading="lazy">`).join("")}</div>` : "";
   return readingRow(`<div class="agent-user"><div class="agent-user-bubble">${markdown(ctx, user.text)}${images}</div></div>`);
 }
 
-export function renderFinalText(ctx: AgentRenderContext, text: string, options: { highlightCode?: boolean } = {}): string {
-  return renderMarkdownRows(ctx, text, { highlightCode: options.highlightCode, className: "agent-md" });
+function rewindHtml(ctx: AgentRenderContext, item: TranscriptItem): string {
+  if (!item.rewindEntryId) return "";
+  const preview = item.type === "user" || item.type === "text" || item.type === "thinking" || item.type === "note" ? item.text : item.type === "tool" ? item.tool.name : "this point";
+  return `<div class="agent-rewind-zone"><button class="agent-rewind-btn" type="button" data-action="agent-pane#openRewind" data-entry-id="${escapeHtml(item.rewindEntryId)}" data-user-text="${escapeHtml(preview)}" title="Rewind to here">⟲ Rewind to here</button></div>`;
 }
 
-// ---------------------------------------------------------------------------
-// Items
-// ---------------------------------------------------------------------------
-
-export function renderToolItemBody(ctx: AgentRenderContext, tool: ToolView, options: { open?: boolean } = {}): string {
-  return readingRow(renderToolCard(ctx, tool, options));
+export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptItem, options: { live?: boolean; open?: boolean } = {}): string {
+  const id = ids.item(ctx, item.key);
+  let body = "";
+  if (item.type === "user") body = renderUserMessage(ctx, item);
+  else if (item.type === "thinking") body = renderThinkingItem(ctx, item, options);
+  else if (item.type === "text") body = item.live
+    ? readingRow(`<div class="agent-stream-text" id="${ids.itemText(ctx, item.key)}">${escapeHtml(item.text)}</div>`)
+    : renderMarkdownRows(ctx, item.text, { className: item.final ? "agent-md agent-final" : "agent-md agent-itext-md" });
+  else if (item.type === "tool") body = wideRow(renderToolCard(ctx, item.key, item.tool, options));
+  else if (item.type === "note") body = renderMarkdownRows(ctx, item.text, { className: `agent-note ${escapeHtml(item.tone)}` });
+  else body = readingRow(`<div class="agent-error">${escapeHtml(item.text)}</div>`);
+  return `<div class="agent-item" id="${id}">${rewindHtml(ctx, item)}${body}</div>`;
 }
 
-export function renderItem(ctx: AgentRenderContext, sid: string, index: number, item: SectionItem, options: { live?: boolean; collapsed?: boolean } = {}): string {
-  const id = ids.item(ctx, sid, index);
-  if (item.type === "thinking") {
-    return `<div class="agent-item" id="${id}">${readingRow(`<div class="agent-thinking"><div class="agent-thinking-text" id="${ids.itemText(ctx, sid, index)}">${escapeHtml(item.text)}</div></div>`)}</div>`;
+function renderThinkingItem(ctx: AgentRenderContext, item: Extract<TranscriptItem, { type: "thinking" }>, _options: { live?: boolean; open?: boolean }): string {
+  return readingRow(`<div class="agent-thinking-text" data-controller="agent-thinking" data-action="click->agent-thinking#expand keydown->agent-thinking#keydown"><span id="${ids.itemText(ctx, item.key)}" data-agent-thinking-target="content">${escapeHtml(item.text.trimEnd())}</span><span data-agent-thinking-target="preview" hidden></span><button class="agent-thinking-more" type="button" data-agent-thinking-target="more" tabindex="-1" hidden>...(show more)</button></div>`);
+}
+
+export function renderTranscriptItemDetailFrame(ctx: AgentRenderContext, item: TranscriptItem, options: { count?: number } = {}): string {
+  const frameId = ids.detailFrame(ctx, item.key);
+  let html = "";
+  if (item.type === "tool") {
+    html = renderToolDetail(ctx, item.key, item.tool, options.count ?? 100);
   }
-  if (item.type === "text") {
-    if (options.live) {
-      return `<div class="agent-item" id="${id}">${readingRow(`<div class="agent-itext"><div class="agent-stream-text" id="${ids.itemText(ctx, sid, index)}">${escapeHtml(item.text)}</div></div>`)}</div>`;
+  return `<turbo-frame id="${frameId}">${html}</turbo-frame>`;
+}
+
+function statusHtml(status: ToolView["status"]): string {
+  const state = status === "streaming" || status === "running" ? "running" : status === "error" ? "error" : "ok";
+  return `<span class="agent-tool-status ${state}"></span>`;
+}
+
+function tokenSummary(tool: ToolView, direction: "up" | "down"): string {
+  return tool.tokenCount === undefined ? "" : `${formatTokens(tool.tokenCount)} tok <span class="agent-token-arrow">${direction === "up" ? "↑" : "↓"}</span>`;
+}
+
+function summaryHtml(parts: Array<string | undefined>): string {
+  return parts.filter(Boolean).map((part) => escapeHtml(part!)).join(" · ");
+}
+
+function bashSummary(tool: ToolView): string {
+  const details = bashDetails(tool);
+  const timeout = tool.timeoutSeconds ?? numberArg(toolArgs(tool), "timeout") ?? 600;
+  if (tool.status === "running") return "";
+  const duration = tool.durationMs === undefined ? "" : `${formatDuration(tool.durationMs)} / ${formatDuration(timeout * 1000)}`;
+  const outcome = details?.timedOut === true ? "timed out" : details?.aborted === true ? "aborted" : typeof details?.exitCode === "number" ? `exitcode ${details.exitCode}` : "";
+  return [summaryHtml([duration, outcome]), tokenSummary(tool, "up")].filter(Boolean).join(" · ");
+}
+
+function toolSummaryHtml(tool: ToolView): string {
+  if (tool.name === "bash") return bashSummary(tool);
+  if (tool.name === "read") {
+    const image = tool.resultImages?.[0];
+    const imageMeta = image ? [image.width && image.height ? `${image.width}×${image.height}` : "", image.mimeType ?? ""].filter(Boolean).join(" · ") : "";
+    return [summaryHtml([pathSummary(tool, formatReadRange(toolArgs(tool))), imageMeta]), image ? "" : tokenSummary(tool, "up")].filter(Boolean).join(" · ");
+  }
+  if (tool.name === "write") return [summaryHtml([pathSummary(tool)]), tokenSummary(tool, "down")].filter(Boolean).join(" · ");
+  if (tool.name === "edit") {
+    const operations = getEditOperations(toolArgs(tool));
+    const stats = diffStats(operations);
+    const editCount = operations.length ? `${operations.length} ${operations.length === 1 ? "edit" : "edits"}` : "";
+    const changes = operations.length ? `+${stats.added} −${stats.deleted}` : "";
+    return [summaryHtml([pathSummary(tool), editCount, changes]), tokenSummary(tool, "down")].filter(Boolean).join(" · ");
+  }
+  return escapeHtml(genericToolSummary(tool));
+}
+
+function runningElapsedHtml(tool: ToolView): string {
+  if (!tool.startedAt) return "";
+  return `<span class="agent-tool-elapsed agent-duration-slot" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}"${tool.timeoutSeconds ? ` data-agent-elapsed-max-value="${tool.timeoutSeconds}"` : ""}><span data-agent-elapsed-target="time">0s</span></span>`;
+}
+
+export function renderToolSummary(ctx: AgentRenderContext, key: string, tool: ToolView): string {
+  const summary = toolSummaryHtml(tool);
+  return `<span id="${ids.itemSummary(ctx, key)}" class="agent-tool-head">${statusHtml(tool.status)}<code class="agent-tool-name">${escapeHtml(tool.name || "tool")}</code>${summary ? `<span class="agent-tool-sep">·</span><span class="agent-tool-args${tool.status === "error" ? " error" : ""}">${summary}</span>` : ""}${tool.status === "running" && tool.name === "bash" ? `<span class="agent-tool-sep">·</span>${runningElapsedHtml(tool)}` : ""}</span>`;
+}
+
+function renderToolCard(ctx: AgentRenderContext, key: string, original: ToolView, options: { open?: boolean; live?: boolean } = {}): string {
+  const tool = original.status === "streaming" && original.argsStream
+    ? { ...original, args: parseKnownStreamedArgs(original.name, original.argsStream) }
+    : original;
+  const active = tool.status === "streaming" || tool.status === "running";
+  if (active && tool.name === "edit") return `<div class="agent-tool agent-tool-summary-only ${toolClass(tool.name)}">${renderToolSummary(ctx, key, tool)}</div>`;
+  const open = Boolean(options.open || active);
+  if (!options.live && !active) {
+    return `<details class="agent-tool ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load"><summary>${renderToolSummary(ctx, key, tool)}</summary><turbo-frame id="${ids.detailFrame(ctx, key)}" data-agent-lazy-detail-target="frame" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame></details>`;
+  }
+  return `<details class="agent-tool ${toolClass(tool.name)}${active ? " active" : ""}${tool.status === "error" ? " error" : ""}"${open ? " open" : ""}><summary>${renderToolSummary(ctx, key, tool)}</summary>${renderToolDetail(ctx, key, tool, 100)}</details>`;
+}
+
+function detailFullscreen(title: string, html: string): string {
+  return `<div class="agent-detail-fullscreen"${fullscreenAttributes(title)}>${html}<template data-atelier-fullscreen-target="content">${html}</template></div>`;
+}
+
+function sourceRegion(title: string, code: string, path: string | undefined, className = "agent-source-region"): string {
+  return detailFullscreen(title, `<section class="${className}"><div class="agent-region-title">${escapeHtml(title)}</div>${codeBlockHtml(code, path, "agent-tool-code")}</section>`);
+}
+
+function textWindow(text: string, mode: "first" | "last", count: number): { text: string; hidden: number } {
+  const lines = text.replaceAll("\r\n", "\n").split("\n");
+  if (lines.length <= count) return { text, hidden: 0 };
+  return mode === "first" ? { text: lines.slice(0, count).join("\n"), hidden: lines.length - count } : { text: lines.slice(-count).join("\n"), hidden: lines.length - count };
+}
+
+function moreLink(ctx: AgentRenderContext, key: string, count: number, hidden: number, direction: "first" | "last"): string {
+  if (!hidden) return "";
+  const next = Math.min(count + 500, count + hidden);
+  return `<div class="agent-more-lines"><a href="${escapeHtml(transcriptItemPath(ctx, key, `?count=${next}`))}" data-turbo-frame="${ids.detailFrame(ctx, key)}" data-action="click->agent-tail-frame#prepare" data-direction="${direction}">show 500 more lines</a></div>`;
+}
+
+function bashViews(tool: ToolView, count: number): { display: string; model: string; same: boolean; resultWindow: { text: string; hidden: number }; modelWindow: { text: string; hidden: number } } {
+  const details = bashDetails(tool);
+  const display = typeof details?.displayAnsi === "string" ? details.displayAnsi.trimEnd() : "";
+  const model = trimResult(tool);
+  return { display, model, same: !display || display === model, resultWindow: textWindow(display || model || "(no output)", "last", count), modelWindow: textWindow(model || "(no output)", "last", count) };
+}
+
+function bashCopyButton(): string {
+  return `<button type="button" class="agent-tool-copy" data-controller="agent-copy" data-action="click->agent-copy#copy" title="Copy selected Bash output" aria-label="Copy selected Bash output"><span class="agent-tool-copy-icon" aria-hidden="true">⧉</span></button>`;
+}
+
+export function renderObservedBashTabs(key: string, tool: ToolView): string {
+  const group = `bash-observed-${domIdFragment(key)}`;
+  const hasModel = !bashViews(tool, 100).same;
+  return `<div class="agent-observed-tabs"><input type="radio" name="${group}" id="${group}-live" checked><label for="${group}-live">LIVE TERMINAL</label><input type="radio" name="${group}" id="${group}-result"><label for="${group}-result">RESULT</label>${hasModel ? `<input type="radio" name="${group}" id="${group}-model"><label for="${group}-model">AS SEEN BY MODEL</label>` : ""}${bashCopyButton()}</div>`;
+}
+
+export function renderObservedBashCompletion(ctx: AgentRenderContext, key: string, tool: ToolView, count = 100): string {
+  const views = bashViews(tool, count);
+  const result = views.display ? `<pre class="agent-tool-result agent-tool-ansi agent-tail-output">${bashOutputHtml(views.resultWindow.text)}</pre>` : `<pre class="agent-tool-result agent-tail-output">${escapeHtml(views.resultWindow.text)}</pre>`;
+  const fullResult = views.display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(views.display)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(views.model || "(no output)")}</pre>`;
+  return `<div class="agent-observed-result">${fullscreenSourceRegion("RESULT", `${moreLink(ctx, key, count, views.resultWindow.hidden, "last")}${result}`, fullResult)}</div>${views.same ? "" : `<div class="agent-observed-model">${fullscreenSourceRegion("AS SEEN BY MODEL", `${moreLink(ctx, key, count, views.modelWindow.hidden, "last")}<pre class="agent-tool-result">${escapeHtml(views.modelWindow.text)}</pre>`, `<pre class="agent-tool-result">${escapeHtml(views.model || "(no output)")}</pre>`)}</div>`}`;
+}
+
+function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
+  const { display, model, same, resultWindow, modelWindow } = bashViews(tool, count);
+  const result = display ? `<pre class="agent-tool-result agent-tool-ansi agent-tail-output">${bashOutputHtml(resultWindow.text)}</pre>` : `<pre class="agent-tool-result agent-tail-output">${escapeHtml(resultWindow.text)}</pre>`;
+  const resultHtml = `${moreLink(ctx, key, count, resultWindow.hidden, "last")}${result}`;
+  const fullResult = display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(display)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(model || "(no output)")}</pre>`;
+  if (same) return fullscreenSourceRegion("RESULT", `<section class="agent-bash-output"><div class="agent-region-title">RESULT${bashCopyButton()}</div>${resultHtml}</section>`, fullResult);
+  const group = `bash-view-${domIdFragment(key)}`;
+  return `<section class="agent-bash-output"><div class="agent-region-tabs"><input type="radio" name="${group}" id="${group}-result" checked><label for="${group}-result">RESULT</label><input type="radio" name="${group}" id="${group}-model"><label for="${group}-model">AS SEEN BY MODEL</label>${bashCopyButton()}</div><div class="agent-result-pane result-pane">${fullscreenSourceRegion("RESULT", resultHtml, fullResult)}</div><div class="agent-result-pane model-pane">${fullscreenSourceRegion("AS SEEN BY MODEL", `${moreLink(ctx, key, count, modelWindow.hidden, "last")}<pre class="agent-tool-result agent-tail-output">${escapeHtml(modelWindow.text)}</pre>`, `<pre class="agent-tool-result">${escapeHtml(model || "(no output)")}</pre>`)}</div></section>`;
+}
+
+function renderBashDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
+  const command = stringArg(toolArgs(tool), "command") ?? "";
+  const commandHtml = sourceRegion("COMMAND", command, "command.sh", "agent-bash-command");
+  if (tool.status === "streaming") return `<div class="agent-tool-detail">${commandHtml}</div>`;
+  if (tool.status === "running") {
+    const terminal = tool.tmuxSession && tool.terminalVisible ? `<section class="agent-bash-output agent-observed-bash"><div id="${ids.itemCompletionTabs(ctx, key)}" class="agent-region-title">LIVE TERMINAL</div><div class="agent-terminal-viewport agent-observed-live"><div class="agent-tool-term agent-terminal-awaiting-output observable-terminal-host" data-controller="agent-term" data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}" data-agent-term-label-value="${escapeHtml(ctx.label)}" data-agent-term-session-value="${escapeHtml(tool.tmuxSession)}"></div></div><div id="${ids.itemCompletion(ctx, key)}"></div></section>` : "";
+    return `<div class="agent-tool-detail agent-bash-detail">${commandHtml}${terminal}</div>`;
+  }
+  return `<div class="agent-tool-detail agent-bash-detail">${commandHtml}${renderBashResultViews(ctx, key, tool, count)}</div>`;
+}
+
+function numberedCodeBlockHtml(code: string, filePath: string | undefined, start: number): string {
+  const highlighted = highlightCodeHtmlForPath(code, filePath);
+  const lines = highlighted.html.split("\n").map((line, index) => `<span class="agent-numbered-line"><span class="agent-line-number">${start + index}</span><span>${line || " "}</span></span>`).join("\n");
+  return `<pre class="agent-tool-code"><code>${lines}</code></pre>`;
+}
+
+function fullscreenSourceRegion(title: string, inlineHtml: string, fullHtml: string): string {
+  return `<div class="agent-detail-fullscreen"${fullscreenAttributes(title)}>${inlineHtml}<template data-atelier-fullscreen-target="content">${fullHtml}</template></div>`;
+}
+
+function renderReadDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
+  const images = toolResultImagesHtml(ctx, tool);
+  const result = trimResult(tool);
+  if (images) return `<div class="agent-tool-detail">${detailFullscreen("READ RESULT", `${images}${result ? `<pre class="agent-tool-note">${escapeHtml(result)}</pre>` : ""}`)}</div>`;
+  const window = textWindow(result, "first", count);
+  const path = stringArg(toolArgs(tool), "path", "file_path");
+  const start = numberArg(toolArgs(tool), "offset") ?? 1;
+  return `<div class="agent-tool-detail">${fullscreenSourceRegion("READ RESULT", numberedCodeBlockHtml(window.text, path, start), numberedCodeBlockHtml(result, path, start))}${moreLink(ctx, key, count, window.hidden, "first")}</div>`;
+}
+
+function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
+  const args = toolArgs(tool);
+  const content = stringArg(args, "content") ?? "";
+  const path = stringArg(args, "path", "file_path");
+  const shown = tool.status === "streaming" || tool.status === "running" ? { text: content, hidden: 0 } : textWindow(content, "first", count);
+  const error = tool.status === "error" && tool.resultText ? `<pre class="agent-tool-error-output">${escapeHtml(trimResult(tool))}</pre>` : "";
+  return `<div class="agent-tool-detail">${fullscreenSourceRegion(path || "WRITE", codeBlockHtml(shown.text, path, "agent-tool-code"), codeBlockHtml(content, path, "agent-tool-code"))}${moreLink(ctx, key, count, shown.hidden, "first")}${error}</div>`;
+}
+
+function editHunksForDisplay(tool: ToolView, contextual: boolean): DiffDisplayLine[][] {
+  const details = tool.details && typeof tool.details === "object" ? tool.details as Record<string, unknown> : undefined;
+  const patch = typeof details?.patch === "string" ? parseUnifiedPatchHunks(details.patch) : [];
+  if (patch.length) return patch;
+  const contextLines = contextual ? 3 : Number.POSITIVE_INFINITY;
+  return getEditOperations(toolArgs(tool)).map((operation) => contextualDiffLines(operation, contextLines));
+}
+
+function highlightedEditHtml(tool: ToolView, contextual: boolean): string {
+  const path = stringArg(toolArgs(tool), "path", "file_path");
+  return editHunksForDisplay(tool, contextual).map((hunk) => {
+    const groups: DiffDisplayLine[][] = [];
+    for (const line of hunk) {
+      const group = groups.at(-1);
+      if (group?.[0]?.kind === line.kind) group.push(line);
+      else groups.push([line]);
     }
-    return `<div class="agent-item" id="${id}">${renderMarkdownRows(ctx, item.text, { className: "agent-md agent-itext-md" })}</div>`;
-  }
-  if (item.type === "note") {
-    return `<div class="agent-item" id="${id}">${renderMarkdownRows(ctx, item.text, { className: `agent-note ${escapeHtml(item.tone)}` })}</div>`;
-  }
-  if (item.tool.status === "streaming") {
-    return renderStreamingToolItem(ctx, sid, index, item.tool.name, item.tool.argsStream ?? "");
-  }
-  return `<div class="agent-item" id="${id}">${renderToolItemBody(ctx, item.tool, { open: !options.collapsed })}</div>`;
+    const html = groups.map((group) => {
+      const code = group.map((line) => line.text).join("\n");
+      return `<pre class="agent-edit-lines ${group[0]!.kind}"><code>${highlightCodeHtmlForPath(code, path).html}</code></pre>`;
+    }).join("");
+    return `<div class="agent-edit-operation">${html}</div>`;
+  }).join("");
 }
 
-/** Streaming placeholders used by the live pipeline (content streamed into the text target). */
-export function renderStreamingThinkingItem(ctx: AgentRenderContext, sid: string, index: number): string {
-  return `<div class="agent-item" id="${ids.item(ctx, sid, index)}">${readingRow(`<div class="agent-thinking"><div class="agent-thinking-text" id="${ids.itemText(ctx, sid, index)}"></div></div>`)}</div>`;
+function renderEditDetail(tool: ToolView): string {
+  const preview = highlightedEditHtml(tool, true) || genericParamsHtml(tool);
+  const full = highlightedEditHtml(tool, false) || genericParamsHtml(tool);
+  const edits = fullscreenSourceRegion("EDIT", `<div class="agent-edit-details">${preview}</div>`, `<div class="agent-edit-details">${full}</div>`);
+  const error = tool.status === "error" && tool.resultText ? `<pre class="agent-tool-error-output">${escapeHtml(trimResult(tool))}</pre>` : "";
+  return `<div class="agent-tool-detail">${edits}${error}</div>`;
 }
 
-export function renderStreamingToolItem(ctx: AgentRenderContext, sid: string, index: number, name: string, argsStream = ""): string {
-  const parsed = parseStreamedArgs(argsStream);
-  const tool: ToolView = { callId: "streaming", name, args: parsed, status: "streaming", argsStream };
-  const renderer = toolRenderer(tool.name);
-  const summary = renderer.summary?.(tool) ?? genericToolSummary(tool);
-  const knownBody = parsed ? renderer.paramsHtml?.(ctx, tool) : "";
-  const streamTarget = ids.itemText(ctx, sid, index);
-  const stream = renderer.known
-    ? `${knownBody ? `<div class="agent-tool-detail">${knownBody}</div>` : `<div class="agent-tool-empty agent-tool-stream">composing arguments…</div>`}<span id="${streamTarget}" hidden></span>`
-    : `<pre class="agent-tool-stream" id="${streamTarget}">${escapeHtml(argsStream)}</pre>`;
-  return `<div class="agent-item" id="${ids.item(ctx, sid, index)}">${readingRow(`<div class="agent-tool streaming ${toolClass(name)}">
-    <div class="agent-tool-head"><span class="agent-tool-glyph pending">…</span><code class="agent-tool-name">${escapeHtml(name || "tool")}</code><span class="agent-tool-args">${escapeHtml(summary || "composing…")}</span></div>
-    ${stream}
-  </div>`)}</div>`;
+function renderGenericDetail(ctx: AgentRenderContext, tool: ToolView): string {
+  const html = `${genericParamsHtml(tool)}${genericResultHtml(ctx, tool)}`;
+  return `<div class="agent-tool-detail">${detailFullscreen(tool.name, html)}</div>`;
 }
 
-export function renderRunningToolCard(ctx: AgentRenderContext, tool: ToolView): string {
-  const renderer = toolRenderer(tool.name);
-  const argsSummary = renderer.summary?.(tool) ?? genericToolSummary(tool);
-  const showTerminal = tool.name === "bash" && Boolean(tool.tmuxSession && tool.terminalVisible);
-  const terminal = showTerminal
-    ? `<div class="agent-tool-term observable-terminal-host" data-controller="agent-term"
-        data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
-        data-agent-term-label-value="${escapeHtml(ctx.label)}"
-        data-agent-term-session-value="${escapeHtml(tool.tmuxSession!)}"></div>`
-    : tool.resultText
-      ? `<pre class="agent-tool-stream agent-tool-livestream">${escapeHtml(tool.resultText)}</pre>`
-      : renderer.paramsHtml?.(ctx, tool) ?? "";
-  const elapsed = tool.startedAt
-    ? `<span class="agent-tool-elapsed" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}"${tool.timeoutSeconds ? ` data-agent-elapsed-max-value="${tool.timeoutSeconds}"` : ""}><span data-agent-elapsed-target="time">0s</span></span>`
-    : "";
-  const fullscreenTemplate = renderFullscreenTemplate(ctx, tool, renderer);
-  const fullscreen = fullscreenTemplate ? fullscreenAttributes(fullscreenTitle(tool, argsSummary)) : "";
-  return `<div class="agent-tool running ${toolClass(tool.name)}"${fullscreen}>
-    <div class="agent-tool-head"><span class="agent-tool-glyph pending">…</span><code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span>${elapsed}</div>
-    ${terminal}${fullscreenTemplate}
-  </div>`;
-}
-
-const toolResultPreviewLimit = 4000;
-
-export function renderToolCard(ctx: AgentRenderContext, tool: ToolView, options: { open?: boolean } = {}): string {
-  if (tool.status === "running") return renderRunningToolCard(ctx, tool);
-  const glyph = tool.status === "error" ? `<span class="agent-tool-glyph err">✕</span>` : `<span class="agent-tool-glyph ok">✓</span>`;
-  const renderer = toolRenderer(tool.name);
-  const argsSummary = renderer.summary?.(tool) ?? genericToolSummary(tool);
-  const paramsHtml = renderer.known ? (renderer.paramsHtml?.(ctx, tool) ?? "") : genericParamsHtml(tool);
-  const resultHtml = renderer.resultHtml?.(ctx, tool) ?? genericResultHtml(ctx, tool);
-  const emptyResultHtml = renderer.hideEmptyResult ? "" : `<div class="agent-tool-empty">no output</div>`;
-  const bodyHtml = `${paramsHtml}${resultHtml || emptyResultHtml}`;
-  const flushSingleBlock = Boolean(renderer.flushSingleBlock && ((paramsHtml && !resultHtml) || (!paramsHtml && resultHtml)));
-  const copyButton = tool.name === "bash" && resultHtml
-    ? `<button type="button" class="agent-tool-copy" data-controller="agent-copy" data-action="click->agent-copy#copy" title="Copy output to clipboard" aria-label="Copy bash output to clipboard"><span class="agent-tool-copy-icon" aria-hidden="true">⧉</span></button>`
-    : "";
-  const fullscreenTemplate = renderFullscreenTemplate(ctx, tool, renderer);
-  const fullscreen = fullscreenTemplate ? fullscreenAttributes(fullscreenTitle(tool, argsSummary)) : "";
-  return `<details class="agent-tool done ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}"${options.open ? " open" : ""}${fullscreen}>
-    <summary class="agent-tool-head">${glyph}<code class="agent-tool-name">${escapeHtml(tool.name)}</code><span class="agent-tool-args">${escapeHtml(argsSummary)}</span>${copyButton}</summary>
-    <div class="agent-tool-detail${flushSingleBlock ? " flush" : ""}">${bodyHtml}</div>
-    ${fullscreenTemplate}
-  </details>`;
+function renderToolDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
+  if (tool.name === "bash") return renderBashDetail(ctx, key, tool, count);
+  if (tool.name === "read") return renderReadDetail(ctx, key, tool, count);
+  if (tool.name === "write") return renderWriteDetail(ctx, key, tool, count);
+  if (tool.name === "edit") return renderEditDetail(tool);
+  if (tool.status === "streaming" && tool.argsStream !== undefined) return `<div class="agent-tool-detail">${codeBlockHtml(tool.argsStream, "arguments.json", "agent-tool-code")}</div>`;
+  return renderGenericDetail(ctx, tool);
 }
 
 function toolClass(name: string): string {
@@ -478,36 +583,8 @@ function domIdFragment(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "item";
 }
 
-interface ToolRenderer {
-  known?: boolean;
-  summary?: (tool: ToolView) => string;
-  paramsHtml?: (ctx: AgentRenderContext, tool: ToolView) => string;
-  resultHtml?: (ctx: AgentRenderContext, tool: ToolView) => string;
-  hideEmptyResult?: boolean;
-  flushSingleBlock?: boolean;
-  fullscreenHtml?: (ctx: AgentRenderContext, tool: ToolView) => string;
-}
-
-function toolRenderer(name: string): ToolRenderer {
-  if (name === "bash") return bashRenderer;
-  if (name === "read") return readRenderer;
-  if (name === "write") return writeRenderer;
-  if (name === "edit") return editRenderer;
-  return {};
-}
-
-function fullscreenTitle(tool: ToolView, argsSummary: string): string {
-  return [tool.name, argsSummary].filter(Boolean).join(" ");
-}
-
 function fullscreenAttributes(title: string, mode: "template" | "media" = "template"): string {
   return ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="${mode}" data-atelier-fullscreen-title-value="${escapeHtml(title)}"`;
-}
-
-function renderFullscreenTemplate(ctx: AgentRenderContext, tool: ToolView, renderer: ToolRenderer): string {
-  const html = renderer.fullscreenHtml?.(ctx, tool);
-  if (!html) return "";
-  return `<template data-atelier-fullscreen-target="content">${html}</template>`;
 }
 
 function toolArgs(tool: ToolView): Record<string, unknown> | undefined {
@@ -524,7 +601,7 @@ function numberArg(args: Record<string, unknown> | undefined, key: string): numb
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-export function formatReadRange(args: Record<string, unknown> | undefined): string {
+function formatReadRange(args: Record<string, unknown> | undefined): string {
   const offset = numberArg(args, "offset");
   const limit = numberArg(args, "limit");
   if (offset === undefined && limit === undefined) return "";
@@ -539,11 +616,6 @@ function pathSummary(tool: ToolView, range = ""): string {
   return path ? `${path}${range}` : "";
 }
 
-function commandSummary(tool: ToolView): string {
-  const command = stringArg(toolArgs(tool), "command");
-  return command ? truncateOneLine(command, 120) : "";
-}
-
 function truncateOneLine(text: string, limit: number): string {
   const oneLine = text.replaceAll("\n", " ");
   return oneLine.length > limit ? `${oneLine.slice(0, limit)}…` : oneLine;
@@ -553,17 +625,8 @@ function trimResult(tool: ToolView): string {
   return (tool.resultText ?? "").trimEnd();
 }
 
-function limitedText(text: string, options: { lines: number; chars: number }): { text: string; truncated: boolean } {
-  const lines = text.replaceAll("\r\n", "\n").split("\n");
-  const byLines = lines.length > options.lines ? lines.slice(0, options.lines).join("\n") : text;
-  const byChars = byLines.length > options.chars ? byLines.slice(0, options.chars) : byLines;
-  return { text: byChars, truncated: byChars.length < text.length || lines.length > options.lines };
-}
-
-function codeBlockHtml(code: string, filePath: string | undefined, className = "agent-tool-code", limit?: { lines: number; chars: number }): string {
-  const preview = limit ? limitedText(code, limit) : { text: code, truncated: false };
-  const suffix = preview.truncated ? "\n…" : "";
-  const highlighted = highlightCodeHtmlForPath(`${preview.text}${suffix}`, filePath);
+function codeBlockHtml(code: string, filePath: string | undefined, className = "agent-tool-code"): string {
+  const highlighted = highlightCodeHtmlForPath(code, filePath);
   const languageClass = highlighted.language ? ` language-${escapeHtml(highlighted.language)}` : "";
   return `<pre class="${className}${languageClass}"><code>${highlighted.html}</code></pre>`;
 }
@@ -733,95 +796,6 @@ function bashOutputHtml(text: string): string {
   return colorizePlainBuildOutput(text);
 }
 
-function bashResultHtml(tool: ToolView, variant = "inline"): string {
-  const displayAnsi = bashDetails(tool)?.displayAnsi;
-  const displayText = typeof displayAnsi === "string" ? displayAnsi : "";
-  const terminalHtml = displayText.trim()
-    ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(displayText)}</pre>`
-    : "";
-  const modelText = trimResult(tool);
-  const modelHtml = resultPreHtml(modelText, "agent-tool-result agent-tool-model");
-  if (!terminalHtml) return modelHtml;
-  if (!modelHtml || stripTerminalControls(displayText).trimEnd() === modelText) return terminalHtml;
-
-  const id = `bash-${domIdFragment(tool.callId)}-${variant}`;
-  const terminalId = `${id}-terminal`;
-  const modelId = `${id}-model`;
-  return `<div class="agent-bash-result">
-    <input class="agent-bash-mode-input agent-bash-mode-terminal" type="radio" name="${escapeHtml(id)}" id="${escapeHtml(terminalId)}" checked>
-    <input class="agent-bash-mode-input agent-bash-mode-model" type="radio" name="${escapeHtml(id)}" id="${escapeHtml(modelId)}">
-    <div class="agent-bash-mode-tabs" aria-label="Bash output view">
-      <label class="agent-bash-mode-tab agent-bash-mode-tab-terminal" for="${escapeHtml(terminalId)}">Terminal</label>
-      <label class="agent-bash-mode-tab agent-bash-mode-tab-model" for="${escapeHtml(modelId)}">Model</label>
-    </div>
-    <div class="agent-bash-pane agent-bash-pane-terminal">${terminalHtml}</div>
-    <div class="agent-bash-pane agent-bash-pane-model">${modelHtml}</div>
-  </div>`;
-}
-
-const bashRenderer: ToolRenderer = {
-  known: true,
-  flushSingleBlock: true,
-  summary: commandSummary,
-  resultHtml: (_ctx, tool) => bashResultHtml(tool),
-  fullscreenHtml: (_ctx, tool) => bashResultHtml(tool, "fullscreen"),
-};
-
-function readResultHtml(ctx: AgentRenderContext, tool: ToolView): string {
-  const result = trimResult(tool);
-  const images = toolResultImagesHtml(ctx, tool);
-  if (images) return `${resultPreHtml(result, "agent-tool-result agent-tool-note")}${images}`;
-  if (!result) return "";
-  return codeBlockHtml(result, stringArg(toolArgs(tool), "path", "file_path"), "agent-tool-result agent-tool-code");
-}
-
-function writeContentHtml(tool: ToolView, limit?: { lines: number; chars: number }): string {
-  const args = toolArgs(tool);
-  const content = stringArg(args, "content");
-  if (content === undefined) return genericParamsHtml(tool);
-  return codeBlockHtml(content, stringArg(args, "path", "file_path"), "agent-tool-code", limit);
-}
-
-const readRenderer: ToolRenderer = {
-  known: true,
-  flushSingleBlock: true,
-  summary: (tool) => pathSummary(tool, formatReadRange(toolArgs(tool))),
-  resultHtml: (ctx, tool) => readResultHtml(ctx, tool),
-  fullscreenHtml: readResultHtml,
-};
-
-const writeRenderer: ToolRenderer = {
-  known: true,
-  hideEmptyResult: true,
-  flushSingleBlock: true,
-  summary: (tool) => pathSummary(tool),
-  paramsHtml: (_ctx, tool) => writeContentHtml(tool, { lines: tool.status === "running" ? 80 : 120, chars: tool.status === "running" ? 8000 : 12000 }),
-  resultHtml: (_ctx, tool) => tool.status === "error" ? resultPreHtml(trimResult(tool)) : "",
-  fullscreenHtml: (_ctx, tool) => `${writeContentHtml(tool)}${tool.status === "error" ? resultPreHtml(trimResult(tool)) : ""}`,
-};
-
-function editDiffHtml(tool: ToolView): string {
-  return renderDiffHtml(getEditOperations(toolArgs(tool))) || genericParamsHtml(tool);
-}
-
-const editRenderer: ToolRenderer = {
-  known: true,
-  hideEmptyResult: true,
-  flushSingleBlock: true,
-  summary: (tool) => {
-    const path = pathSummary(tool);
-    const operations = getEditOperations(toolArgs(tool));
-    const blockCount = operations.length;
-    const blocks = blockCount > 0 ? `${blockCount} ${blockCount === 1 ? "block" : "blocks"}` : "";
-    const stats = diffStats(operations);
-    const lines = stats.added > 0 || stats.deleted > 0 ? `+${stats.added} -${stats.deleted}` : "";
-    return [path, blocks, lines].filter(Boolean).join(" · ");
-  },
-  paramsHtml: (_ctx, tool) => editDiffHtml(tool),
-  resultHtml: (_ctx, tool) => tool.status === "error" ? resultPreHtml(trimResult(tool)) : "",
-  fullscreenHtml: (_ctx, tool) => `${editDiffHtml(tool)}${tool.status === "error" ? resultPreHtml(trimResult(tool)) : ""}`,
-};
-
 function getEditOperations(args: Record<string, unknown> | undefined): DiffOperation[] {
   if (!args) return [];
   if (Array.isArray(args.edits)) {
@@ -843,27 +817,45 @@ function genericToolSummary(tool: ToolView): string {
   return json && json !== "{}" ? truncateOneLine(json, 120) : "";
 }
 
-export function toolArgsSummary(tool: ToolView): string {
-  const renderer = toolRenderer(tool.name);
-  return renderer.summary?.(tool) ?? genericToolSummary(tool);
-}
-
 function genericParamsHtml(tool: ToolView): string {
   const args = toolArgs(tool);
   if (!args) return "";
   const keys = Object.keys(args);
   if (keys.length === 0) return "";
   if (keys.length === 1 && typeof args[keys[0]] === "string" && genericToolSummary(tool) === args[keys[0]]) return "";
-  return `<pre class="agent-tool-params">${escapeHtml(JSON.stringify(args, null, 2))}</pre>`;
+  return codeBlockHtml(JSON.stringify(args, null, 2), "arguments.json", "agent-tool-code");
 }
 
 function genericResultHtml(ctx: AgentRenderContext, tool: ToolView): string {
   const result = trimResult(tool);
   const images = toolResultImagesHtml(ctx, tool);
-  if (!result) return images;
-  const truncated = result.length > toolResultPreviewLimit;
-  const shown = truncated ? `${result.slice(0, toolResultPreviewLimit)}\n… (${formatTokens(result.length)} chars total)` : result;
-  return `${resultPreHtml(shown)}${images}`;
+  return `${resultPreHtml(result)}${images}`;
+}
+
+function partialStringField(stream: string, key: string): string | undefined {
+  const marker = new RegExp(`"${key}"\\s*:\\s*"`).exec(stream);
+  if (!marker) return undefined;
+  const start = marker.index + marker[0].length;
+  let escaped = false;
+  let raw = "";
+  for (let index = start; index < stream.length; index++) {
+    const char = stream[index]!;
+    if (!escaped && char === '"') break;
+    raw += char;
+    if (escaped) escaped = false;
+    else if (char === "\\\\") escaped = true;
+  }
+  if (raw.endsWith("\\\\")) raw = raw.slice(0, -1);
+  try { return JSON.parse(`"${raw}"`) as string; } catch { return raw.replaceAll("\\n", "\n").replaceAll('\\"', '"'); }
+}
+
+function parseKnownStreamedArgs(name: string, stream: string): unknown | undefined {
+  const parsed = parseStreamedArgs(stream);
+  if (parsed) return parsed;
+  if (name === "bash") return { command: partialStringField(stream, "command") ?? "" };
+  if (name === "write") return { path: partialStringField(stream, "path"), content: partialStringField(stream, "content") ?? "" };
+  if (name === "read" || name === "edit") return { path: partialStringField(stream, "path") };
+  return undefined;
 }
 
 function parseStreamedArgs(argsStream: string): unknown | undefined {

@@ -11,16 +11,16 @@ import {
 import { escapeHtml, turboStream } from "./html.ts";
 import {
   ids,
-  renderFinalText,
-  renderItem,
   renderNotice,
+  renderModelContextDetailFrame,
+  renderObservedBashCompletion,
+  renderObservedBashTabs,
   renderPromptActions,
-  renderSection,
   renderStatsBar,
-  renderStreamingThinkingItem,
-  renderStreamingToolItem,
-  renderToolItemBody,
+  renderToolSummary,
   renderTranscript,
+  renderTranscriptItem,
+  renderTranscriptItemDetailFrame,
   type AgentPaneState,
   type AgentModelContextView,
   type AgentRenderContext,
@@ -31,11 +31,11 @@ import { replaceWorkspaceAgentSession, type WorkspaceAgentInfo } from "./session
 import { atelierSystemPrompt, createAtelierResourceLoader } from "./system-prompt.ts";
 import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
 import {
-  buildSections,
+  buildTranscript,
   toolDetailsIndicateError,
   type ImageRef,
   type SessionImageRef,
-  type SectionView,
+  type TranscriptItem,
   type ToolView,
   type TranscriptRecord,
 } from "./transcript.ts";
@@ -85,6 +85,7 @@ interface WorkspaceAgentRuntime {
   setThinkingLevel(level: string): Promise<void>;
   rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void>;
   newSession(): Promise<void>;
+  detailHtml(key: string, count?: number): Promise<string>;
 }
 
 const runtimes = new Map<string, Promise<WorkspaceAgentRuntime>>();
@@ -120,26 +121,16 @@ export function getWorkspaceAgentRuntime(agent: WorkspaceAgentInfo, options: Wor
 }
 
 // ---------------------------------------------------------------------------
-// Base runtime: subscriber fanout, delta batching, live-section streaming.
+// Base runtime: subscriber fanout and flat live-transcript streaming.
 // ---------------------------------------------------------------------------
 
-const deltaFlushMs = 25;
-const streamingSyntaxHighlightMs = 250;
-
 interface LiveState {
-  view: SectionView;
-  /** Currently open streaming item, deltas append to it. */
+  id: string;
+  items: TranscriptItem[];
+  userEntryId?: string;
   open?: { index: number; kind: "text" | "thinking" | "toolargs" };
   toolIndexByCallId: Map<string, number>;
-  /** Timers that reveal a tool's live terminal after a delay. */
   terminalTimers: Map<string, ReturnType<typeof setTimeout>>;
-}
-
-interface StreamingMarkdownState {
-  renderTimer?: ReturnType<typeof setTimeout>;
-  highlightTimer?: ReturnType<typeof setTimeout>;
-  lastHighlightAt: number;
-  getText: () => string;
 }
 
 /** Only attach the inline terminal when a tool call has been running this long. */
@@ -153,7 +144,6 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected live?: LiveState;
   private announcedBusy = false;
   private subscribers = new Set<AgentSubscriber>();
-  private streamingMarkdown = new Map<string, StreamingMarkdownState>();
 
   constructor(agent: WorkspaceAgentInfo, protected readonly options: WorkspaceAgentRuntimeOptions = {}) {
     this.workspaceId = agent.workspaceId;
@@ -183,55 +173,6 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.broadcastRaw(html);
   }
 
-  private scheduleStreamingMarkdown(target: string, getText: () => string): void {
-    let state = this.streamingMarkdown.get(target);
-    if (!state) {
-      state = { lastHighlightAt: Date.now(), getText };
-      this.streamingMarkdown.set(target, state);
-    }
-    state.getText = getText;
-    if (!state.renderTimer) {
-      state.renderTimer = setTimeout(() => this.renderStreamingMarkdown(target, false), deltaFlushMs);
-    }
-  }
-
-  private renderStreamingMarkdown(target: string, forceHighlight: boolean): void {
-    const state = this.streamingMarkdown.get(target);
-    if (!state) return;
-    if (state.renderTimer) {
-      clearTimeout(state.renderTimer);
-      state.renderTimer = undefined;
-    }
-    const now = Date.now();
-    const shouldHighlight = forceHighlight || now - state.lastHighlightAt >= streamingSyntaxHighlightMs;
-    if (shouldHighlight) state.lastHighlightAt = now;
-    this.broadcastRaw(turboStream("update", target, renderFinalText(this.ctx, state.getText(), { highlightCode: shouldHighlight })));
-    if (!shouldHighlight && !state.highlightTimer) {
-      const delay = Math.max(0, streamingSyntaxHighlightMs - (now - state.lastHighlightAt));
-      state.highlightTimer = setTimeout(() => {
-        const current = this.streamingMarkdown.get(target);
-        if (current) current.highlightTimer = undefined;
-        this.renderStreamingMarkdown(target, true);
-      }, delay);
-    }
-  }
-
-  private flushStreamingMarkdown(target?: string, options: { highlightCode?: boolean; remove?: boolean } = {}): void {
-    const targets = target ? [target] : [...this.streamingMarkdown.keys()];
-    for (const key of targets) {
-      const state = this.streamingMarkdown.get(key);
-      if (!state) continue;
-      if (state.renderTimer) clearTimeout(state.renderTimer);
-      if (state.highlightTimer) clearTimeout(state.highlightTimer);
-      state.renderTimer = undefined;
-      state.highlightTimer = undefined;
-      if (!options.remove) {
-        this.broadcastRaw(turboStream("update", key, renderFinalText(this.ctx, state.getText(), { highlightCode: options.highlightCode ?? true })));
-      }
-      this.streamingMarkdown.delete(key);
-    }
-  }
-
   protected setBusy(busy: boolean): void {
     if (this.announcedBusy === busy) return;
     this.announcedBusy = busy;
@@ -243,20 +184,21 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.stream(turboStream("append", ids.notices(this.ctx), renderNotice(level, message)));
   }
 
-  // ---- live section streaming -------------------------------------------
+  // ---- flat live transcript streaming -----------------------------------
+
+  private liveKey(live: LiveState, index: number, kind: string): string {
+    return `${live.id}:${index}:${kind}`;
+  }
 
   protected liveBegin(user?: { text: string; images: SessionImageRef[] }): void {
     if (this.live) return;
-    const view: SectionView = {
-      sid: `live_${Date.now().toString(36)}`,
-      startedAt: Date.now(),
-      user,
-      items: [],
-      stats: { tools: 0, durationMs: 0, outTokens: 0, cost: 0 },
-      streaming: true,
-    };
-    this.live = { view, toolIndexByCallId: new Map(), terminalTimers: new Map() };
-    this.stream(turboStream("append", ids.transcript(this.ctx), renderSection(this.ctx, view)));
+    const live: LiveState = { id: `live_${Date.now().toString(36)}`, items: [], toolIndexByCallId: new Map(), terminalTimers: new Map() };
+    this.live = live;
+    if (user) {
+      const item: TranscriptItem = { type: "user", key: `${live.id}:user`, text: user.text, images: user.images };
+      live.items.push(item);
+      this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, item, { live: true })));
+    }
   }
 
   protected liveEnsure(): LiveState {
@@ -264,90 +206,107 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     return this.live!;
   }
 
-  private appendItemHtml(html: string): void {
-    this.stream(turboStream("append", ids.activityBody(this.ctx, this.live!.view.sid), html));
+  private appendLiveItem(item: TranscriptItem, options: { live?: boolean; open?: boolean } = {}): void {
+    this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, item, options)));
   }
 
-  private liveFinalTarget(live: LiveState): string {
-    return ids.final(this.ctx, live.view.sid);
-  }
-
-  private promoteOpenTextToActivity(): void {
+  private finishOpenText(final = false): void {
     const live = this.live;
     if (!live?.open || live.open.kind !== "text") return;
-    const index = live.open.index;
-    this.flushStreamingMarkdown(this.liveFinalTarget(live), { remove: true });
-    const item = live.view.items[index];
-    if (item?.type === "text") this.appendItemHtml(renderItem(this.ctx, live.view.sid, index, item));
-    this.stream(turboStream("update", this.liveFinalTarget(live), ""));
+    const item = live.items[live.open.index];
+    if (item?.type === "text") {
+      item.live = false;
+      item.final = final;
+      this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item)));
+    }
+    live.open = undefined;
+  }
+
+  private finishOpenThinking(): void {
+    const live = this.live;
+    if (!live?.open || live.open.kind !== "thinking") return;
+    const item = live.items[live.open.index];
+    if (item?.type === "thinking") {
+      item.live = false;
+      this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { open: true })));
+    }
     live.open = undefined;
   }
 
   protected closeOpenItem(): void {
-    this.promoteOpenTextToActivity();
-    const live = this.live;
-    if (live) live.open = undefined;
+    this.finishOpenText(false);
+    this.finishOpenThinking();
+    if (this.live) this.live.open = undefined;
   }
 
   protected liveTextDelta(text: string): void {
     const live = this.liveEnsure();
+    if (live.open?.kind === "thinking") this.finishOpenThinking();
     if (!live.open || live.open.kind !== "text") {
-      const index = live.view.items.length;
-      live.view.items.push({ type: "text", text: "", stopReason: "toolUse" });
+      const index = live.items.length;
+      const item: TranscriptItem = { type: "text", key: this.liveKey(live, index, "text"), text: "", final: false, live: true };
+      live.items.push(item);
       live.open = { index, kind: "text" };
+      this.appendLiveItem(item, { live: true });
     }
-    const item = live.view.items[live.open.index];
-    if (item.type === "text") item.text += text;
-    const target = this.liveFinalTarget(live);
-    this.scheduleStreamingMarkdown(target, () => item.type === "text" ? item.text : "");
+    const item = live.items[live.open.index];
+    if (item?.type !== "text") return;
+    item.text += text;
+    this.stream(turboStream("update", ids.itemText(this.ctx, item.key), escapeHtml(item.text)));
   }
 
   protected liveThinkingDelta(text: string): void {
     const live = this.liveEnsure();
-    if (live.open?.kind === "text") this.promoteOpenTextToActivity();
+    if (live.open?.kind === "text") this.finishOpenText(false);
     if (!live.open || live.open.kind !== "thinking") {
-      const index = live.view.items.length;
-      live.view.items.push({ type: "thinking", text: "" });
+      const index = live.items.length;
+      const item: TranscriptItem = { type: "thinking", key: this.liveKey(live, index, "thinking"), text: "", live: true };
+      live.items.push(item);
       live.open = { index, kind: "thinking" };
-      this.appendItemHtml(renderStreamingThinkingItem(this.ctx, live.view.sid, index));
+      this.appendLiveItem(item, { live: true, open: true });
     }
-    const item = live.view.items[live.open.index];
-    if (item.type === "thinking") item.text += text;
-    this.stream(turboStream("update", ids.itemText(this.ctx, live.view.sid, live.open.index), escapeHtml(item.type === "thinking" ? item.text : "")));
+    const item = live.items[live.open.index];
+    if (item?.type !== "thinking") return;
+    item.text += text;
+    this.stream(turboStream("update", ids.itemText(this.ctx, item.key), escapeHtml(item.text)));
   }
 
   protected liveToolStreamStart(name: string): number {
     const live = this.liveEnsure();
-    if (live.open?.kind === "text") this.promoteOpenTextToActivity();
-    const index = live.view.items.length;
-    const tool: ToolView = { callId: `pending_${index}`, name, args: undefined, status: "streaming", argsStream: "" };
-    live.view.items.push({ type: "tool", tool });
+    if (live.open?.kind === "text") this.finishOpenText(false);
+    if (live.open?.kind === "thinking") this.finishOpenThinking();
+    live.open = undefined;
+    const index = live.items.length;
+    const key = this.liveKey(live, index, "tool");
+    const tool: ToolView = { callId: key, name, args: undefined, status: "streaming", argsStream: "" };
+    const item: TranscriptItem = { type: "tool", key, tool };
+    live.items.push(item);
     live.open = { index, kind: "toolargs" };
-    this.appendItemHtml(renderStreamingToolItem(this.ctx, live.view.sid, index, name));
+    this.appendLiveItem(item, { live: true, open: true });
     return index;
   }
 
   protected liveToolArgsDelta(text: string): void {
     const live = this.live;
     if (!live || live.open?.kind !== "toolargs") return;
-    const item = live.view.items[live.open.index];
-    if (item.type === "tool") item.tool.argsStream = (item.tool.argsStream ?? "") + text;
-    this.stream(turboStream("update", ids.itemText(this.ctx, live.view.sid, live.open.index), escapeHtml(item.type === "tool" ? item.tool.argsStream ?? "" : "")));
+    const item = live.items[live.open.index];
+    if (item?.type !== "tool") return;
+    item.tool.argsStream = (item.tool.argsStream ?? "") + text;
+    try { item.tool.args = JSON.parse(item.tool.argsStream); } catch { /* partial external JSON */ }
+    this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
   }
 
-  /** Tool call arguments fully parsed (execution may not have started yet). */
   protected liveToolCallComplete(callId: string, name: string, args: unknown): void {
     const live = this.liveEnsure();
     let index: number;
-    if (live.open?.kind === "toolargs") {
-      index = live.open.index;
-      live.open = undefined;
-    } else {
-      index = live.view.items.length;
-      live.view.items.push({ type: "tool", tool: { callId, name, args, status: "running" } });
-      this.appendItemHtml(`<div class="agent-item" id="${ids.item(this.ctx, live.view.sid, index)}"></div>`);
+    if (live.open?.kind === "toolargs") index = live.open.index;
+    else {
+      index = live.items.length;
+      const key = this.liveKey(live, index, "tool");
+      live.items.push({ type: "tool", key, tool: { callId, name, args, status: "running" } });
     }
-    const item = live.view.items[index];
+    live.open = undefined;
+    const item = live.items[index];
     if (item?.type !== "tool") return;
     item.tool.callId = callId;
     item.tool.name = name;
@@ -360,7 +319,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       item.tool.timeoutSeconds = typeof timeout === "number" && timeout > 0 ? timeout : 600;
     }
     live.toolIndexByCallId.set(callId, index);
-    this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderToolItemBody(this.ctx, item.tool)));
+    this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
   }
 
   protected liveToolExecStart(callId: string, name: string, args: unknown): void {
@@ -370,101 +329,90 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   protected liveToolUpdate(callId: string, update: { tmuxSession?: string; outputText?: string; details?: unknown }): void {
     const live = this.live;
-    if (!live) return;
-    const index = live.toolIndexByCallId.get(callId);
-    if (index === undefined) return;
-    const item = live.view.items[index];
+    const index = live?.toolIndexByCallId.get(callId);
+    if (!live || index === undefined) return;
+    const item = live.items[index];
     if (item?.type !== "tool") return;
     if (update.tmuxSession && !item.tool.tmuxSession) {
       item.tool.tmuxSession = update.tmuxSession;
-      // Reveal the inline terminal only if the command is still running after a delay.
       const timer = setTimeout(() => {
         const current = this.live;
-        if (!current || current !== live) return;
-        const revisit = current.view.items[index];
-        if (revisit?.type !== "tool" || revisit.tool.status !== "running") return;
+        const revisit = current?.items[index];
+        if (!current || revisit?.type !== "tool" || revisit.tool.status !== "running") return;
         revisit.tool.terminalVisible = true;
-        this.stream(turboStream("update", ids.item(this.ctx, current.view.sid, index), renderToolItemBody(this.ctx, revisit.tool)));
+        this.stream(turboStream("replace", ids.item(this.ctx, revisit.key), renderTranscriptItem(this.ctx, revisit, { live: true, open: true })));
       }, terminalRevealMs);
       live.terminalTimers.set(callId, timer);
     }
     if (update.outputText !== undefined) item.tool.resultText = update.outputText;
     if (update.details !== undefined) item.tool.details = update.details;
-    this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderToolItemBody(this.ctx, item.tool)));
   }
 
   protected liveToolEnd(callId: string, resultText: string, isError: boolean, details?: unknown): void {
     const live = this.live;
-    if (!live) return;
+    const index = live?.toolIndexByCallId.get(callId);
+    if (!live || index === undefined) return;
     const timer = live.terminalTimers.get(callId);
-    if (timer) {
-      clearTimeout(timer);
-      live.terminalTimers.delete(callId);
-    }
-    const index = live.toolIndexByCallId.get(callId);
-    if (index === undefined) return;
-    const item = live.view.items[index];
+    if (timer) clearTimeout(timer);
+    live.terminalTimers.delete(callId);
+    const item = live.items[index];
     if (item?.type !== "tool") return;
+    item.tool.durationMs = item.tool.startedAt ? Date.now() - item.tool.startedAt : undefined;
     item.tool.status = isError || toolDetailsIndicateError(details) ? "error" : "ok";
     item.tool.resultText = resultText;
     item.tool.details = details;
-    item.tool.tmuxSession = undefined;
-    live.view.stats.tools += 1;
-    this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, index), renderToolItemBody(this.ctx, item.tool, { open: true })));
+    if (item.tool.name === "bash" && item.tool.terminalVisible) {
+      this.stream(turboStream("replace", ids.itemSummary(this.ctx, item.key), renderToolSummary(this.ctx, item.key, item.tool)));
+      this.stream(turboStream("update", ids.itemCompletionTabs(this.ctx, item.key), renderObservedBashTabs(item.key, item.tool)));
+      this.stream(turboStream("update", ids.itemCompletion(this.ctx, item.key), renderObservedBashCompletion(this.ctx, item.key, item.tool)));
+    } else {
+      item.tool.tmuxSession = undefined;
+      this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
+    }
   }
 
   protected liveNote(text: string, tone: "system" | "summary" | "error"): void {
     const live = this.liveEnsure();
     this.closeOpenItem();
-    const index = live.view.items.length;
-    live.view.items.push({ type: "note", text, tone });
-    this.appendItemHtml(renderItem(this.ctx, live.view.sid, index, live.view.items[index]));
+    const item: TranscriptItem = { type: "note", key: this.liveKey(live, live.items.length, "note"), text, tone };
+    live.items.push(item);
+    this.appendLiveItem(item, { live: true });
   }
 
-  protected liveUsage(outTokens: number, cost: number): void {
-    const live = this.live;
-    if (!live) return;
-    live.view.stats.outTokens += outTokens;
-    live.view.stats.cost += cost;
-  }
-
-  /** The final assistant message arrived: move trailing text item into the final slot. */
   protected liveFinal(text: string): void {
     const live = this.live;
     if (!live) return;
     if (live.open?.kind === "text") {
-      const index = live.open.index;
-      this.flushStreamingMarkdown(this.liveFinalTarget(live), { remove: true });
-      live.view.items.splice(index, 1);
-      live.open = undefined;
+      const item = live.items[live.open.index];
+      if (item?.type === "text") item.text = text;
+      this.finishOpenText(true);
+      return;
     }
-    live.view.finalText = text;
-    this.stream(turboStream("update", ids.final(this.ctx, live.view.sid), renderFinalText(this.ctx, text)));
+    const item: TranscriptItem = { type: "text", key: this.liveKey(live, live.items.length, "final"), text, final: true };
+    live.items.push(item);
+    this.appendLiveItem(item, { live: true });
   }
 
-  /** Run ended: replace everything with the canonical transcript. */
+  /** End the live model without re-rendering visible clients: observed calls stay open. */
   protected async liveEnd(): Promise<void> {
-    this.flushStreamingMarkdown(undefined, { remove: true });
     if (this.live) for (const timer of this.live.terminalTimers.values()) clearTimeout(timer);
     this.live = undefined;
-    await this.refreshTranscript();
     await this.refreshStats();
   }
 
-  /** Canonical sections plus the live section. */
-  private async sectionsForDisplay(): Promise<SectionView[]> {
-    const sections = await this.canonicalSections();
+  private async itemsForDisplay(): Promise<TranscriptItem[]> {
+    let items = await this.canonicalItems();
     const live = this.live;
-    if (live) {
-      const last = sections[sections.length - 1];
-      if (last && live.view.userEntryId && last.userEntryId === live.view.userEntryId) sections.pop();
-      sections.push(live.view);
+    if (!live) return items;
+    if (live.userEntryId) {
+      const index = items.findIndex((item) => item.rewindEntryId === live.userEntryId || item.key === live.userEntryId);
+      if (index >= 0) items = items.slice(0, index);
     }
-    return sections;
+    return [...items, ...live.items];
   }
 
   protected async refreshTranscript(): Promise<void> {
-    this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, await this.sectionsForDisplay(), this.modelContext())));
+    this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, await this.itemsForDisplay(), this.modelContext())));
   }
 
   protected async refreshStats(): Promise<void> {
@@ -473,24 +421,22 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   async snapshotStream(): Promise<string> {
     const state = await this.paneState();
-    return (
-      turboStream("update", ids.transcript(this.ctx), state.transcriptHtml) +
-      turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, state.busy)) +
-      turboStream("update", ids.stats(this.ctx), renderStatsBar(this.ctx, state.stats))
-    );
+    return turboStream("update", ids.transcript(this.ctx), state.transcriptHtml) + turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, state.busy)) + turboStream("update", ids.stats(this.ctx), renderStatsBar(this.ctx, state.stats));
   }
 
   async paneState(): Promise<AgentPaneState> {
-    return {
-      transcriptHtml: renderTranscript(this.ctx, await this.sectionsForDisplay(), this.modelContext()),
-      busy: this.isStreaming,
-      stats: await this.statsView(),
-    };
+    return { transcriptHtml: renderTranscript(this.ctx, await this.itemsForDisplay(), this.modelContext()), busy: this.isStreaming, stats: await this.statsView() };
+  }
+
+  async detailHtml(key: string, count = 100): Promise<string> {
+    if (key === "model-context") return renderModelContextDetailFrame(this.ctx, this.modelContext());
+    const item = (await this.canonicalItems()).find((candidate) => candidate.key === key);
+    return item ? renderTranscriptItemDetailFrame(this.ctx, item, { count }) : "";
   }
 
   protected abstract modelContext(): AgentModelContextView;
   abstract userMessages(): string[];
-  protected abstract canonicalSections(): Promise<SectionView[]>;
+  protected abstract canonicalItems(leafId?: string): Promise<TranscriptItem[]>;
   protected abstract statsView(): Promise<AgentStatsView>;
   abstract submit(text: string, options: SubmitOptions): Promise<void>;
   abstract abort(): Promise<void>;
@@ -515,13 +461,39 @@ function contentToText(content: unknown): string {
     .join("\n");
 }
 
+function imageDimensions(data: Uint8Array, mimeType: string): { width?: number; height?: number } {
+  if (mimeType === "image/png" && data.length >= 24) return { width: new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(16), height: new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(20) };
+  if (mimeType === "image/gif" && data.length >= 10) return { width: data[6]! | data[7]! << 8, height: data[8]! | data[9]! << 8 };
+  if (mimeType === "image/bmp" && data.length >= 26) {
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    return { width: Math.abs(view.getInt32(18, true)), height: Math.abs(view.getInt32(22, true)) };
+  }
+  if (mimeType === "image/webp" && data.length >= 30 && String.fromCharCode(...data.slice(12, 16)) === "VP8X") {
+    const width = 1 + data[24]! + (data[25]! << 8) + (data[26]! << 16);
+    const height = 1 + data[27]! + (data[28]! << 8) + (data[29]! << 16);
+    return { width, height };
+  }
+  if (mimeType === "image/jpeg") {
+    for (let offset = 2; offset + 8 < data.length;) {
+      if (data[offset] !== 0xff) break;
+      const marker = data[offset + 1]!;
+      const length = data[offset + 2]! << 8 | data[offset + 3]!;
+      if (marker >= 0xc0 && marker <= 0xc3) return { height: data[offset + 5]! << 8 | data[offset + 6]!, width: data[offset + 7]! << 8 | data[offset + 8]! };
+      offset += 2 + length;
+    }
+  }
+  return {};
+}
+
 function sessionContentImages(entry: { id: string; message?: { content?: unknown } }): SessionImageRef[] {
   if (!Array.isArray(entry.message?.content)) return [];
   const images: SessionImageRef[] = [];
   entry.message.content.forEach((part, contentIndex) => {
-    if (part && typeof part === "object" && (part as { type?: string }).type === "image") {
-      images.push({ entryId: entry.id, contentIndex });
-    }
+    if (!part || typeof part !== "object") return;
+    const image = part as { type?: string; mimeType?: string; data?: string };
+    if (image.type !== "image") return;
+    const dimensions = typeof image.data === "string" && typeof image.mimeType === "string" ? imageDimensions(Buffer.from(image.data.slice(0, 87_384), "base64"), image.mimeType) : {};
+    images.push({ entryId: entry.id, contentIndex, mimeType: image.mimeType, ...dimensions });
   });
   return images;
 }
@@ -556,8 +528,6 @@ export function recordsFromSessionEntries(entries: any[]): TranscriptRecord[] {
           parts,
           stopReason: message.stopReason ?? "stop",
           errorMessage: message.errorMessage,
-          outTokens: message.usage?.output ?? 0,
-          cost: message.usage?.cost?.total ?? 0,
           timestamp: entryTimestamp(entry, message),
         });
       } else if (message.role === "toolResult") {
@@ -642,9 +612,9 @@ class RealAgentRuntime extends BaseAgentRuntime {
       .map((record) => (record as { text: string }).text);
   }
 
-  protected async canonicalSections(leafId?: string): Promise<SectionView[]> {
+  protected async canonicalItems(leafId?: string): Promise<TranscriptItem[]> {
     const entries = this.session.sessionManager.getBranch(leafId);
-    return buildSections(recordsFromSessionEntries(entries));
+    return buildTranscript(recordsFromSessionEntries(entries));
   }
 
   protected async statsView(): Promise<AgentStatsView> {
@@ -684,24 +654,26 @@ class RealAgentRuntime extends BaseAgentRuntime {
 
   private syncLiveUserEntry(): void {
     const live = this.live;
-    if (!live?.view.user || live.view.userEntryId) return;
+    if (!live || live.userEntryId) return;
     const entry = this.latestSessionMessage((message) => message?.role === "user");
-    if (!entry) return;
-    live.view.userEntryId = entry.id;
-    live.view.user.images = sessionContentImages(entry);
-    this.stream(turboStream("replace", ids.section(this.ctx, live.view.sid), renderSection(this.ctx, live.view)));
+    const user = live.items.find((item): item is Extract<TranscriptItem, { type: "user" }> => item.type === "user");
+    if (!entry || !user) return;
+    live.userEntryId = entry.id;
+    user.rewindEntryId = entry.id;
+    user.images = sessionContentImages(entry);
+    this.stream(turboStream("replace", ids.item(this.ctx, user.key), renderTranscriptItem(this.ctx, user, { live: true })));
   }
 
   private syncLiveToolResult(callId: string): void {
     const live = this.live;
     const itemIndex = live?.toolIndexByCallId.get(callId);
     if (!live || itemIndex === undefined) return;
-    const item = live.view.items[itemIndex];
+    const item = live.items[itemIndex];
     if (item?.type !== "tool") return;
     const entry = this.latestSessionMessage((message) => message?.role === "toolResult" && message.toolCallId === callId);
     if (!entry) return;
     item.tool.resultImages = sessionContentImages(entry);
-    this.stream(turboStream("update", ids.item(this.ctx, live.view.sid, itemIndex), renderToolItemBody(this.ctx, item.tool, { open: true })));
+    if (!(item.tool.name === "bash" && item.tool.terminalVisible)) this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
   }
 
   private async handleEvent(event: any): Promise<void> {
@@ -746,7 +718,6 @@ class RealAgentRuntime extends BaseAgentRuntime {
         if (message?.role === "user") setTimeout(() => this.syncLiveUserEntry(), 0);
         if (message?.role === "toolResult") setTimeout(() => this.syncLiveToolResult(message.toolCallId), 0);
         if (message?.role === "assistant") {
-          this.liveUsage(message.usage?.output ?? 0, message.usage?.cost?.total ?? 0);
           const text = contentToText(message.content);
           const hasToolCalls = Array.isArray(message.content) && message.content.some((part: any) => part?.type === "toolCall");
           if (text && !hasToolCalls && message.stopReason !== "aborted" && message.stopReason !== "error") {
@@ -849,12 +820,12 @@ class RealAgentRuntime extends BaseAgentRuntime {
     if (!target) throw new Error("Cannot rewind past the first message.");
     if (mode === "summary") {
       // Show the truncated transcript immediately and treat the summarizer like
-      // any other busy agent: a streaming pseudo-section with a stop button.
+      // any other busy agent: a live transcript item with a stop button.
       this.summarizing = true;
       this.liveBegin();
       this.liveNote("Summarizing the abandoned branch…", "system");
-      const truncated = await this.canonicalSections(target);
-      if (this.live) truncated.push(this.live.view);
+      const truncated = await this.canonicalItems(target);
+      if (this.live) truncated.push(...this.live.items);
       this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, truncated, this.modelContext())));
       void this.session
         .navigateTree(target, { summarize: true, customInstructions: customInstructions?.trim() || undefined })

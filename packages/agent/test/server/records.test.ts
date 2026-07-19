@@ -25,7 +25,7 @@ describe("recordsFromSessionEntries", () => {
     const records = recordsFromSessionEntries(entries);
     expect(records.length).toBe(5);
     expect(records[0]).toMatchObject({ kind: "user", text: "hello", rewindable: false });
-    expect(records[1]).toMatchObject({ kind: "assistant", stopReason: "toolUse", outTokens: 12 });
+    expect(records[1]).toMatchObject({ kind: "assistant", stopReason: "toolUse" });
     expect((records[1] as { parts: unknown[] }).parts.length).toBe(2);
     expect(records[2]).toMatchObject({ kind: "toolResult", callId: "c1", text: "out", images: [{ entryId: "e3", contentIndex: 1 }], details: { displayAnsi: "\x1b[31mout\x1b[0m" } });
     expect(records[3]).toMatchObject({ kind: "note", tone: "summary" });

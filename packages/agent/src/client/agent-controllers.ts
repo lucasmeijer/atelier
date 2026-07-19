@@ -74,9 +74,20 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private observer?: MutationObserver;
     private promptObserver?: MutationObserver;
     private rewindUserText = "";
+    private historicalOpenItemIds = new Set<string>();
+    private restoreHistoricalOpenItems(): void {
+      for (const id of this.historicalOpenItemIds) this.transcriptTarget.querySelector<HTMLElement>(`#${CSS.escape(id)} details[data-agent-historical-detail]`)?.setAttribute("open", "");
+    }
+    private rememberHistoricalOpenItems(): void {
+      this.historicalOpenItemIds = new Set([...this.transcriptTarget.querySelectorAll<HTMLDetailsElement>("details[data-agent-historical-detail][open]")].map((details) => details.closest<HTMLElement>(".agent-item")?.id).filter((id): id is string => Boolean(id)));
+    }
     private readonly onScroll = (): void => {
       const el = this.transcriptTarget;
       this.stuck = el.scrollTop + el.clientHeight >= el.scrollHeight - 60;
+    };
+    private readonly onVisibilityChange = (): void => {
+      if (document.visibilityState === "visible" && isWorkspacePaneVisible(this.element)) this.start();
+      else this.stop();
     };
     private readonly onKeydown = (event: KeyboardEvent): void => {
       if (event.key === "Escape" && this.element.closest(".tab-pane")?.classList.contains("visible")) {
@@ -85,6 +96,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     };
     connect(): void {
       this.observer = new MutationObserver(() => {
+        this.restoreHistoricalOpenItems();
         if (this.stuck) {
           requestAnimationFrame(() => {
             this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
@@ -96,6 +108,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.promptObserver.observe(this.formTarget, { childList: true, subtree: true });
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       document.addEventListener("keydown", this.onKeydown);
+      document.addEventListener("visibilitychange", this.onVisibilityChange);
       const promptDraft = sessionStorage.getItem(this.promptDraftStorageKey);
       if (promptDraft !== null) this.inputTarget.value = promptDraft;
       this.updateSendStopButton();
@@ -107,18 +120,20 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.promptObserver?.disconnect();
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
       document.removeEventListener("keydown", this.onKeydown);
+      document.removeEventListener("visibilitychange", this.onVisibilityChange);
       this.stop();
     }
 
     start(): void {
       requestAnimationFrame(() => this.autosize());
-      if (this.subscribed) return;
+      if (document.visibilityState !== "visible" || !isWorkspacePaneVisible(this.element) || this.subscribed) return;
       this.startAgentTerminals();
       window.AtelierCable?.subscribe(this.cableIdentifier());
       this.subscribed = true;
     }
 
     stop(): void {
+      this.rememberHistoricalOpenItems();
       if (!this.subscribed) return;
       window.AtelierCable?.unsubscribe(this.cableIdentifier());
       this.subscribed = false;
@@ -303,7 +318,7 @@ function createAgentElapsedController(Controller: StimulusControllerConstructor)
       };
       const update = () => {
         const seconds = Math.max(0, Math.round((Date.now() - this.sinceValue) / 1000));
-        const max = this.hasMaxValue && this.maxValue > 0 ? ` max ${format(this.maxValue)}` : "";
+        const max = this.hasMaxValue && this.maxValue > 0 ? ` / ${format(this.maxValue)}` : "";
         for (const target of this.timeTargets) target.textContent = `${format(seconds)}${max}`;
       };
       update();
@@ -358,11 +373,13 @@ function createAgentCopyController(Controller: StimulusControllerConstructor) {
       event.preventDefault();
       event.stopPropagation();
       const tool = this.element.closest(".agent-tool");
-      const checked = tool?.querySelector<HTMLInputElement>(".agent-bash-mode-input:checked");
-      const pane = checked?.classList.contains("agent-bash-mode-model")
-        ? tool?.querySelector<HTMLElement>(".agent-bash-pane-model")
-        : tool?.querySelector<HTMLElement>(".agent-bash-pane-terminal");
-      const result = pane?.querySelector<HTMLElement>(".agent-tool-result") ?? tool?.querySelector<HTMLElement>(".agent-tool-result");
+      const checked = tool?.querySelector<HTMLInputElement>('.agent-region-tabs input:checked, .agent-observed-tabs input:checked');
+      const pane = checked?.id.endsWith("-model")
+        ? tool?.querySelector<HTMLElement>(".model-pane, .agent-observed-model")
+        : checked?.id.endsWith("-live")
+          ? tool?.querySelector<HTMLElement>(".agent-observed-live")
+          : tool?.querySelector<HTMLElement>(".result-pane, .agent-observed-result");
+      const result = pane?.querySelector<HTMLElement>(".agent-tool-result, .xterm-rows") ?? tool?.querySelector<HTMLElement>(".agent-tool-result, .xterm-rows");
       const text = result?.textContent ?? "";
       if (!text) return;
       await copyTextToClipboard(text);
@@ -932,6 +949,143 @@ function createAgentAttachmentsController(Controller: StimulusControllerConstruc
 }
 
 // ---------------------------------------------------------------------------
+// agent-thinking: clamp long thinking text until the reader opens it
+// ---------------------------------------------------------------------------
+
+function createAgentThinkingController(Controller: StimulusControllerConstructor) {
+  return class AgentThinkingController extends Controller {
+    static targets = ["content", "preview", "more"];
+    declare readonly element: HTMLElement;
+    declare readonly contentTarget: HTMLElement;
+    declare readonly previewTarget: HTMLElement;
+    declare readonly moreTarget: HTMLElement;
+    private observer?: MutationObserver;
+    private resizeObserver?: ResizeObserver;
+    private measureFrame?: number;
+    private expanded = false;
+    private fullText = "";
+
+    connect(): void {
+      this.observer = new MutationObserver(() => this.measure());
+      this.observer.observe(this.contentTarget, { childList: true, characterData: true, subtree: true });
+      this.resizeObserver = new ResizeObserver(() => this.measure());
+      this.resizeObserver.observe(this.element);
+      this.measure();
+    }
+
+    disconnect(): void {
+      this.observer?.disconnect();
+      this.resizeObserver?.disconnect();
+      if (this.measureFrame) cancelAnimationFrame(this.measureFrame);
+    }
+
+    expand(): void {
+      if (!this.element.classList.contains("truncated")) return;
+      this.expanded = true;
+      this.element.classList.remove("truncated");
+      this.element.classList.add("expanded");
+      this.contentTarget.hidden = true;
+      this.previewTarget.textContent = this.fullText;
+      this.previewTarget.hidden = false;
+      this.moreTarget.hidden = true;
+      this.element.removeAttribute("role");
+      this.element.removeAttribute("tabindex");
+    }
+
+    keydown(event: KeyboardEvent): void {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      this.expand();
+    }
+
+    private measure(): void {
+      if (this.expanded) return;
+      if (this.measureFrame) cancelAnimationFrame(this.measureFrame);
+      this.measureFrame = requestAnimationFrame(() => {
+        this.measureFrame = undefined;
+        this.fullText = (this.contentTarget.textContent ?? "").trimEnd();
+        this.contentTarget.hidden = true;
+        this.previewTarget.textContent = this.fullText;
+        this.previewTarget.hidden = false;
+        this.moreTarget.hidden = true;
+        this.element.classList.remove("truncated");
+
+        const lineHeight = Number.parseFloat(getComputedStyle(this.element).lineHeight);
+        const maxHeight = lineHeight * 2;
+        if (this.element.scrollHeight <= maxHeight + 1) {
+          this.element.removeAttribute("role");
+          this.element.removeAttribute("tabindex");
+          return;
+        }
+
+        this.moreTarget.hidden = false;
+        this.element.classList.add("truncated");
+
+        let low = 0;
+        let high = this.fullText.length;
+        while (low < high) {
+          const middle = Math.ceil((low + high) / 2);
+          this.previewTarget.textContent = this.fullText.slice(0, middle).trimEnd();
+          if (this.element.scrollHeight <= maxHeight + 1) low = middle;
+          else high = middle - 1;
+        }
+        let preview = this.fullText.slice(0, low).trimEnd();
+        // Leave breathing room so the affordance reads as part of the prose,
+        // rather than landing against the reading column's right edge.
+        for (let words = 0; words < 4; words++) {
+          const wordBoundary = preview.search(/\s+\S+$/);
+          if (wordBoundary < 0) break;
+          preview = preview.slice(0, wordBoundary).trimEnd();
+        }
+        this.previewTarget.textContent = preview;
+        this.element.setAttribute("role", "button");
+        this.element.setAttribute("tabindex", "0");
+      });
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Lazy transcript details and paginated tail preservation
+// ---------------------------------------------------------------------------
+
+function createAgentTailFrameController(Controller: StimulusControllerConstructor) {
+  return class AgentTailFrameController extends Controller {
+    declare readonly element: HTMLElement;
+    private previous?: { height: number; top: number; direction: string };
+    prepare(event: Event): void {
+      const target = event.currentTarget as HTMLElement;
+      const scroller = this.element.querySelector<HTMLElement>(".agent-tool-result, .agent-tool-code");
+      if (scroller) this.previous = { height: scroller.scrollHeight, top: scroller.scrollTop, direction: target.dataset.direction ?? "first" };
+    }
+    loaded(): void {
+      requestAnimationFrame(() => {
+        const scroller = this.element.querySelector<HTMLElement>(".agent-tool-result, .agent-tool-code");
+        if (!scroller) return;
+        if (this.previous) {
+          scroller.scrollTop = this.previous.direction === "last" ? this.previous.top + scroller.scrollHeight - this.previous.height : this.previous.top;
+          this.previous = undefined;
+        } else if (scroller.classList.contains("agent-tail-output")) scroller.scrollTop = scroller.scrollHeight;
+      });
+    }
+  };
+}
+
+function createAgentLazyDetailController(Controller: StimulusControllerConstructor) {
+  return class AgentLazyDetailController extends Controller {
+    static targets = ["frame"];
+    declare readonly element: HTMLDetailsElement;
+    declare readonly frameTarget: HTMLElement & { src: string };
+
+    connect(): void { if (this.element.open) this.load(); }
+    load(): void {
+      if (!this.element.open || this.frameTarget.getAttribute("src")) return;
+      this.frameTarget.setAttribute("src", this.frameTarget.dataset.src!);
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
 // agent-term: inline read-only xterm attached to an agent tmux session
 // ---------------------------------------------------------------------------
 
@@ -954,6 +1108,9 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
       if (this.viewer || this.starting) return;
       this.disposed = false;
       this.starting = true;
+      const decoder = new TextDecoder();
+      const terminalStyle = getComputedStyle(this.element);
+      let hasVisibleOutput = false;
       void createObservableTerminalViewer({
         host: this.element,
         mode: "fixed-readonly",
@@ -961,7 +1118,24 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
         rows: 30,
         websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agent-term/${encodeURIComponent(this.sessionValue)}/ws?cols=120&rows=30`),
         fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
-        theme: { background: "#161a22", foreground: "#d3dae5" },
+        theme: { background: terminalStyle.backgroundColor, foreground: terminalStyle.color },
+        onOutput: (data) => {
+          if (hasVisibleOutput) return;
+          const text = typeof data === "string" ? data : decoder.decode(data, { stream: true });
+          const printable = text.replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g, "").replace(/[\x00-\x1f\x7f]/g, "").trim();
+          if (!printable) return;
+          hasVisibleOutput = true;
+          this.element.classList.remove("agent-terminal-awaiting-output");
+        },
+        onClose: () => {
+          if (hasVisibleOutput) return;
+          const selectResult = () => {
+            const result = this.element.closest(".agent-observed-bash")?.querySelector<HTMLInputElement>('.agent-observed-tabs input[id$="-result"]');
+            if (result) result.checked = true;
+            else if (this.element.isConnected) setTimeout(selectResult, 25);
+          };
+          selectResult();
+        },
       }).then((viewer) => {
         if (this.disposed) viewer.dispose();
         else this.viewer = viewer;
@@ -1053,6 +1227,9 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-copy", createAgentCopyController(Controller));
     application.register("agent-elapsed", createAgentElapsedController(Controller));
     application.register("agent-html-preview", createAgentHtmlPreviewController(Controller));
+    application.register("agent-thinking", createAgentThinkingController(Controller));
+    application.register("agent-tail-frame", createAgentTailFrameController(Controller));
+    application.register("agent-lazy-detail", createAgentLazyDetailController(Controller));
     application.register("agent-notice", createAgentNoticeController(Controller));
     application.register("agent-completions", createAgentCompletionsController(Controller));
     application.register("agent-proxy", createAgentProxyController(Controller));
