@@ -1,4 +1,4 @@
-import { mkdir, open, readdir } from "node:fs/promises";
+import { mkdir, open, readdir, rename } from "node:fs/promises";
 import { createHash, randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { getAtelierRuntimeContext } from "@atelier/core";
@@ -92,16 +92,17 @@ async function sessionDirForWorkspace(workspaceId: string, dataDir = getAtelierR
   return { shareKey, dir: sessionShareDir(shareKey, dataDir) };
 }
 
-export async function ensureDefaultWorkspaceAgent(workspaceId: string, options: WorkspaceAgentCreateOptions = {}): Promise<WorkspaceAgentInfo> {
+async function createWorkspaceAgentSession(workspaceId: string, label: string, topic = "agent-session"): Promise<WorkspaceAgentInfo> {
   const store = await sessionDirForWorkspace(workspaceId);
   await mkdir(store.dir, { recursive: true });
-  const existing = await listWorkspaceAgents(workspaceId);
-  const current = existing.find((agent) => agent.label === "Agent 1");
-  if (current) return current;
-  const label = "Agent 1";
-  const path = sharedAgentSessionPath(store.shareKey, workspaceId, label, options.topic ?? "agent-session");
+  const path = sharedAgentSessionPath(store.shareKey, workspaceId, label, topic);
   await touch(path);
   return { workspaceId, label, path };
+}
+
+export async function ensureDefaultWorkspaceAgent(workspaceId: string, options: WorkspaceAgentCreateOptions = {}): Promise<WorkspaceAgentInfo> {
+  const current = (await listWorkspaceAgents(workspaceId)).find((agent) => agent.label === "Agent 1");
+  return current ?? await createWorkspaceAgentSession(workspaceId, "Agent 1", options.topic);
 }
 
 export async function listWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgentInfo[]> {
@@ -122,14 +123,14 @@ export async function listWorkspaceAgents(workspaceId: string): Promise<Workspac
 }
 
 export async function createNextWorkspaceAgent(workspaceId: string, options: WorkspaceAgentCreateOptions = {}): Promise<WorkspaceAgentInfo> {
-  const store = await sessionDirForWorkspace(workspaceId);
-  await mkdir(store.dir, { recursive: true });
-  const existing = await listWorkspaceAgents(workspaceId);
-  const used = new Set(existing.map((agent) => Number(agent.label.slice("Agent ".length))));
+  const used = new Set((await listWorkspaceAgents(workspaceId)).map((agent) => Number(agent.label.slice("Agent ".length))));
   let next = 1;
   while (used.has(next)) next += 1;
-  const label = `Agent ${next}`;
-  const path = sharedAgentSessionPath(store.shareKey, workspaceId, label, options.topic ?? "agent-session");
-  await touch(path);
-  return { workspaceId, label, path };
+  return await createWorkspaceAgentSession(workspaceId, `Agent ${next}`, options.topic);
+}
+
+/** Archive an agent's current session and create a fresh session for the same tab label. */
+export async function replaceWorkspaceAgentSession(agent: WorkspaceAgentInfo): Promise<WorkspaceAgentInfo> {
+  await rename(agent.path, agent.path.replace(/\.jsonl$/, ".archived.jsonl"));
+  return await createWorkspaceAgentSession(agent.workspaceId, agent.label);
 }

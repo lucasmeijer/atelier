@@ -19,6 +19,12 @@ interface PromptFrontmatter {
 const promptDirs = [".atelier/prompts", ".pi/prompts"] as const;
 
 const builtinLandPrompt = "Commit and push your work, rebasing when necessary. When successful, delete this workspace.";
+const builtinNewSessionPrompt: PromptTemplate = {
+  name: "new",
+  trigger: "/new",
+  description: "Start a new agent session in this tab.",
+  prompt: "/new",
+};
 
 function parseFrontmatter(markdown: string): { frontmatter: PromptFrontmatter; body: string } {
   if (!markdown.startsWith("---\n")) return { frontmatter: {}, body: markdown };
@@ -120,6 +126,8 @@ export async function loadPromptTemplatesFromRoot(root: string): Promise<PromptT
   if (!byName.has("land")) {
     byName.set("land", { name: "land", trigger: "/land", description: builtinLandPrompt, prompt: builtinLandPrompt });
   }
+  // /new is an application command, not an overridable prompt template.
+  byName.set("new", builtinNewSessionPrompt);
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 

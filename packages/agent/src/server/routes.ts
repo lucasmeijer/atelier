@@ -8,6 +8,7 @@ import {
   extensionOf,
   findStagedAttachment,
   imageMimeByExtension,
+  removeAttachmentDraft,
   removeStagedAttachment,
   stageAttachment,
   validDraftId,
@@ -176,10 +177,15 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
   const runtime = await getWorkspaceAgentRuntime(agent, options);
   const form = await request.formData();
   const text = String(form.get("text") ?? "");
-  const modeRaw = String(form.get("mode") ?? "send");
-  const mode: SubmitMode = modeRaw === "steer" ? "steer" : "send";
-  const attachmentIds = form.getAll("attachment").map(String);
   const attachmentDraft = String(form.get("attachmentDraft") ?? "");
+  if (text.trim() === "/new") {
+    await runtime.newSession();
+    if (validDraftId(attachmentDraft)) await removeAttachmentDraft(attachmentDraft);
+    return turboStreamResponse("");
+  }
+
+  const mode: SubmitMode = form.get("mode") === "steer" ? "steer" : "send";
+  const attachmentIds = form.getAll("attachment").map(String);
   const { images, attachmentNotes } = attachmentIds.length > 0
     ? await deliverAttachmentDraft(workspaceId, attachmentDraft, attachmentIds)
     : { images: [], attachmentNotes: [] };

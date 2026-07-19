@@ -27,7 +27,7 @@ import {
   type AgentStatsView,
   type AgentToolDefinitionView,
 } from "./render.ts";
-import type { WorkspaceAgentInfo } from "./session-store.ts";
+import { replaceWorkspaceAgentSession, type WorkspaceAgentInfo } from "./session-store.ts";
 import { atelierSystemPrompt, createAtelierResourceLoader } from "./system-prompt.ts";
 import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
 import {
@@ -46,6 +46,7 @@ import {
 
 type AgentSubscriber = (streamHtml: string) => void;
 type WorkspaceTabBusyListener = (event: { workspaceId: string; tabKey: string; busy: boolean }) => void;
+type InitialSessionSettings = Pick<NonNullable<Parameters<typeof createAgentSession>[0]>, "model" | "thinkingLevel">;
 
 const workspaceTabBusyListeners = new Set<WorkspaceTabBusyListener>();
 
@@ -83,6 +84,7 @@ interface WorkspaceAgentRuntime {
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: string): Promise<void>;
   rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void>;
+  newSession(): Promise<void>;
 }
 
 const runtimes = new Map<string, Promise<WorkspaceAgentRuntime>>();
@@ -497,6 +499,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   abstract setModel(provider: string, modelId: string): Promise<void>;
   abstract setThinkingLevel(level: string): Promise<void>;
   abstract rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void>;
+  abstract newSession(): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -590,10 +593,15 @@ export function recordsFromSessionEntries(entries: any[]): TranscriptRecord[] {
 
 class RealAgentRuntime extends BaseAgentRuntime {
   private summarizing = false;
+  private unsubscribeSession?: () => void;
 
-  constructor(agent: WorkspaceAgentInfo, private session: any, private readonly toolsForModel: AgentToolDefinitionView[], options: WorkspaceAgentRuntimeOptions = {}) {
+  constructor(agent: WorkspaceAgentInfo, private session: any, private toolsForModel: AgentToolDefinitionView[], options: WorkspaceAgentRuntimeOptions = {}) {
     super(agent, options);
-    session.subscribe((event: any) => {
+    this.subscribeToSession();
+  }
+
+  private subscribeToSession(): void {
+    this.unsubscribeSession = this.session.subscribe((event: any) => {
       void this.handleEvent(event);
     });
   }
@@ -819,6 +827,20 @@ class RealAgentRuntime extends BaseAgentRuntime {
     await this.refreshStats();
   }
 
+  async newSession(): Promise<void> {
+    if (this.isStreaming) throw new Error("Stop the agent before starting a new session.");
+    const model = this.session.model;
+    const thinkingLevel = this.session.thinkingLevel;
+    const agent = await replaceWorkspaceAgentSession({ workspaceId: this.workspaceId, label: this.label, path: this.sessionFile });
+    const created = await createPiSession(agent, this.options, { model, thinkingLevel });
+    this.unsubscribeSession?.();
+    this.session = created.session;
+    this.toolsForModel = created.toolViews;
+    this.sessionFile = agent.path;
+    this.subscribeToSession();
+    this.stream(await this.snapshotStream());
+  }
+
   async rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void> {
     if (this.session.isStreaming) throw new Error("Stop the agent before rewinding.");
     const entry = this.session.sessionManager.getEntry(entryId);
@@ -872,7 +894,7 @@ export async function discardBootstrapOnlySession(path: string): Promise<void> {
   if (entries.every((entry) => bootstrapOnlySessionEntryTypes.has(entry.type))) await writeFile(path, "");
 }
 
-async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
+async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions, initial: InitialSessionSettings = {}): Promise<{ session: any; toolViews: AgentToolDefinitionView[] }> {
   await ensureSessionFile(agent.path);
   await discardBootstrapOnlySession(agent.path);
   const modelRuntime = await createPiModelRuntime();
@@ -885,14 +907,23 @@ async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAg
     cwd: workspaceRoot,
     agentDir: dirname(agent.path),
     modelRuntime,
+    model: initial.model,
+    thinkingLevel: initial.thinkingLevel,
     resourceLoader: createAtelierResourceLoader(agentsFiles, appendSystemPrompt),
     customTools,
     tools: workspaceAgentToolNames(),
     sessionManager,
     settingsManager: SettingsManager.inMemory({ compaction: { enabled: true } } as any),
   });
-  const toolViews = customTools.map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters }));
-  return new RealAgentRuntime(agent, session, toolViews, options);
+  return {
+    session,
+    toolViews: customTools.map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters })),
+  };
+}
+
+async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
+  const created = await createPiSession(agent, options);
+  return new RealAgentRuntime(agent, created.session, created.toolViews, options);
 }
 
 async function ensureSessionFile(path: string): Promise<void> {

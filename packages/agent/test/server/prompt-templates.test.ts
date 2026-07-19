@@ -13,7 +13,7 @@ describe("prompt templates", () => {
     await writeFile(join(root, ".pi/prompts/review.md"), "Review $ARGUMENTS");
 
     const templates = await loadPromptTemplatesFromRoot(root);
-    expect(templates.map((template) => template.trigger)).toEqual(["/land", "/review"]);
+    expect(templates.map((template) => template.trigger)).toEqual(["/land", "/new", "/review"]);
     expect(templates.find((template) => template.name === "land")?.argumentHint).toBe("[branch]");
   });
 
@@ -21,8 +21,9 @@ describe("prompt templates", () => {
     const root = await mkdtemp(join(tmpdir(), "atelier-prompts-"));
 
     const templates = await loadPromptTemplatesFromRoot(root);
-    expect(templates.map((template) => template.trigger)).toEqual(["/land"]);
+    expect(templates.map((template) => template.trigger)).toEqual(["/land", "/new"]);
     expect(templates[0]?.prompt).toBe("Commit and push your work, rebasing when necessary. When successful, delete this workspace.");
+    expect(templates[1]).toMatchObject({ trigger: "/new", description: "Start a new agent session in this tab.", prompt: "/new" });
   });
 
   test("expands triggers with arguments", () => {

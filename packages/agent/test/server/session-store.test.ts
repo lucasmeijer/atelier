@@ -7,6 +7,7 @@ import {
   ensureDefaultWorkspaceAgent,
   listWorkspaceAgents,
   parseWorkspaceAgentFilename,
+  replaceWorkspaceAgentSession,
   sessionShareDir,
   sessionShareKeySlug,
   sessionTopicSlug,
@@ -77,6 +78,20 @@ describe("workspace agent session store", () => {
     expect(next.label).toBe("Agent 2");
     const agents = await listWorkspaceAgents("ws1");
     expect(agents.map((agent) => agent.label)).toEqual(["Agent 1", "Agent 2", "Agent 10"]);
+  });
+
+  test("replaces the session behind an existing agent tab and archives the old session", async () => {
+    await dataDir();
+    const original = await ensureDefaultWorkspaceAgent("ws1");
+    await writeFile(original.path, '{"type":"message"}\n');
+
+    const replacement = await replaceWorkspaceAgentSession(original);
+
+    expect(replacement.label).toBe(original.label);
+    expect(replacement.path).not.toBe(original.path);
+    expect(await Bun.file(replacement.path).text()).toBe("");
+    expect(await Bun.file(original.path.replace(/\.jsonl$/, ".archived.jsonl")).text()).toBe('{"type":"message"}\n');
+    expect(await listWorkspaceAgents("ws1")).toEqual([replacement]);
   });
 
   test("slugs are filesystem friendly", () => {
