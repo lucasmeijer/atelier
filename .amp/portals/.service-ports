@@ -1,0 +1,6 @@
+{
+  "servicePorts": {
+    "atelier": 32670,
+    "docker": 31956
+  }
+}
