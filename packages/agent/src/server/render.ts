@@ -176,6 +176,7 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
         stats: state.stats,
         dropTarget: false,
       })}
+      ${renderMessageNavigatorDialog()}
       ${renderRewindDialog(ctx)}
     </div>
   </section>`;
@@ -234,6 +235,7 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
     options.ctx ? `data-agent-completions-url-value="${escapeHtml(agentPath(options.ctx, "/completions"))}"` : "",
   ].filter(Boolean).join(" ");
   return `<div class="agent-promptwrap"${promptAttrs ? ` ${promptAttrs}` : ""}>
+        ${options.includePaneActions && options.ctx ? renderTranscriptNavigation() : ""}
         ${completionsEnabled ? `<div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div>` : ""}
         <div class="agent-promptbox">
           <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
@@ -271,6 +273,23 @@ async function renderComposerSettings(formId: string, selectedModel?: string): P
 <select class="agent-sel" data-controller="agent-model-menu" data-agent-model-picker-select="true" name="model" form="${escapeHtml(formId)}" title="Model">${await renderAgentModelOptions(selected ? modelRefValue(selected) : undefined)}</select>
 ${thinkingSelect}
 </span>`;
+}
+
+function renderTranscriptNavigation(): string {
+  return `<div class="agent-transcript-navs">
+    <button class="agent-transcript-nav" type="button" data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToBottom" title="Jump to latest message" aria-label="Jump to latest message" aria-hidden="true" disabled>
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v12m-5-5 5 5 5-5"/></svg>
+    </button>
+    <button class="agent-transcript-nav" type="button" data-action="agent-pane#openMessageDialog" title="Browse your messages" aria-label="Browse your messages">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h12M4 8.5h8M4 12.5h10"/><path d="M5.5 15.5h8l2.5-2.5v-8.5H4v9.5a1.5 1.5 0 0 0 1.5 1.5Z"/></svg>
+    </button>
+  </div>`;
+}
+
+function renderMessageNavigatorDialog(): string {
+  return `<dialog class="agent-message-dialog" data-agent-pane-target="messageDialog" data-action="click->agent-pane#messageDialogClicked keydown->agent-pane#messageDialogKeydown" aria-label="Your messages">
+    <div class="agent-message-list" data-agent-pane-target="messageList"></div>
+  </dialog>`;
 }
 
 export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): string {
