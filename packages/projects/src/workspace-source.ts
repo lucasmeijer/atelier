@@ -185,7 +185,7 @@ if [ ! -d "$repo_path/.git" ]; then
 fi
 
 git_cmd -C "$repo_path" remote set-url origin "$git_url"
-git_cmd -C "$repo_path" fetch --prune --tags origin
+git_cmd -C "$repo_path" fetch --prune --force --tags origin
 
 if [ -n "$branch" ]; then
   effective_branch="$branch"
