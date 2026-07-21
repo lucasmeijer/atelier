@@ -64,6 +64,16 @@ describe("flat transcript rendering", () => {
     expect(html).not.toContain("\\n");
   });
 
+  test("streaming tools isolate changing content from their status spinner", () => {
+    const item: TranscriptItem = { type: "tool", key: "stream-write", tool: tool({ name: "write", status: "streaming", argsStream: '{"path":"a.ts","content":"x"' }) };
+    const html = renderTranscriptItem(ctx, item, { live: true, open: true });
+    const status = html.indexOf("agent-tool-status running");
+    const summaryContent = html.indexOf("agent-tool-summary-content");
+    expect(status).toBeGreaterThan(-1);
+    expect(summaryContent).toBeGreaterThan(status);
+    expect(html).toContain("agent-tool-detail-host");
+  });
+
   test("running edit has summary only", () => {
     const item: TranscriptItem = { type: "tool", key: "edit-live", tool: tool({ name: "edit", status: "running", args: { path: "a.ts", oldText: "old", newText: "new" } }) };
     const html = renderTranscriptItem(ctx, item, { live: true });

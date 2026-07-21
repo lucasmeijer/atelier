@@ -481,6 +481,7 @@ summary > .agent-tool-head { width: 100%; }
 .agent-tool-status.error::before { background: var(--red); }
 .agent-tool-status.running { border: 1.5px solid var(--muted2); border-top-color: transparent; border-radius: 50%; animation: agent-spin .8s linear infinite; }
 .agent-tool-status.running::before { display: none; }
+.agent-tool-summary-content, .agent-tool-detail-host { display: contents; }
 .agent-tool-name { width: 5.5ch; flex: none; color: var(--muted); font: 650 11px var(--mono); }
 .agent-tool-sep { color: var(--muted2); }
 .agent-tool-args { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted2); font: 11px var(--mono); }

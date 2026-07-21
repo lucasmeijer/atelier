@@ -13,6 +13,7 @@ import {
   ids,
   renderNotice,
   renderModelContextDetailFrame,
+  renderActiveToolContent,
   renderObservedBashCompletion,
   renderObservedBashTabs,
   renderPromptActions,
@@ -214,6 +215,13 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, item, options)));
   }
 
+  private streamActiveToolContent(item: Extract<TranscriptItem, { type: "tool" }>): void {
+    const content = renderActiveToolContent(this.ctx, item.key, item.tool);
+    const summary = turboStream("update", ids.itemSummaryContent(this.ctx, item.key), content.summary);
+    const detail = content.detail === undefined ? "" : turboStream("update", ids.itemDetail(this.ctx, item.key), content.detail);
+    this.stream(summary + detail);
+  }
+
   private finishOpenText(final = false): void {
     const live = this.live;
     if (!live?.open || live.open.kind !== "text") return;
@@ -297,13 +305,14 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (item?.type !== "tool") return;
     item.tool.argsStream = (item.tool.argsStream ?? "") + text;
     try { item.tool.args = JSON.parse(item.tool.argsStream); } catch { /* partial external JSON */ }
-    this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
+    this.streamActiveToolContent(item);
   }
 
   protected liveToolCallComplete(callId: string, name: string, args: unknown): void {
     const live = this.liveEnsure();
+    const streamedIndex = live.open?.kind === "toolargs" ? live.open.index : undefined;
     let index: number;
-    if (live.open?.kind === "toolargs") index = live.open.index;
+    if (streamedIndex !== undefined) index = streamedIndex;
     else {
       index = live.items.length;
       const key = this.liveKey(live, index, "tool");
@@ -323,7 +332,11 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       item.tool.timeoutSeconds = typeof timeout === "number" && timeout > 0 ? timeout : 600;
     }
     live.toolIndexByCallId.set(callId, index);
-    this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
+    if (streamedIndex !== undefined) {
+      this.streamActiveToolContent(item);
+    } else {
+      this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
+    }
   }
 
   protected liveToolExecStart(callId: string, name: string, args: unknown): void {

@@ -40,6 +40,8 @@ export const ids = {
   item: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_item`, key),
   itemText: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext`, key),
   itemSummary: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary`, key),
+  itemSummaryContent: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary_content`, key),
+  itemDetail: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_item_detail`, key),
   itemCompletion: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_completion`, key),
   itemCompletionTabs: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_completion_tabs`, key),
   detailFrame: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_detail`, key),
@@ -430,22 +432,43 @@ function runningElapsedHtml(tool: ToolView): string {
   return `<span class="agent-tool-elapsed agent-duration-slot" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}"${tool.timeoutSeconds ? ` data-agent-elapsed-max-value="${tool.timeoutSeconds}"` : ""}><span data-agent-elapsed-target="time">0s</span></span>`;
 }
 
-export function renderToolSummary(ctx: AgentRenderContext, key: string, tool: ToolView): string {
+function toolForRender(original: ToolView): ToolView {
+  return original.status === "streaming" && original.argsStream
+    ? { ...original, args: parseKnownStreamedArgs(original.name, original.argsStream) }
+    : original;
+}
+
+function toolSummaryContentHtml(ctx: AgentRenderContext, key: string, tool: ToolView): string {
   const summary = toolSummaryHtml(tool);
-  return `<span id="${ids.itemSummary(ctx, key)}" class="agent-tool-head">${statusHtml(tool.status)}<code class="agent-tool-name">${escapeHtml(tool.name || "tool")}</code>${summary ? `<span class="agent-tool-sep">·</span><span class="agent-tool-args${tool.status === "error" ? " error" : ""}">${summary}</span>` : ""}${tool.status === "running" && tool.name === "bash" ? `<span class="agent-tool-sep">·</span>${runningElapsedHtml(tool)}` : ""}</span>`;
+  return `<code class="agent-tool-name">${escapeHtml(tool.name || "tool")}</code>${summary ? `<span class="agent-tool-sep">·</span><span class="agent-tool-args${tool.status === "error" ? " error" : ""}">${summary}</span>` : ""}${tool.status === "running" && tool.name === "bash" ? `<span class="agent-tool-sep">·</span>${runningElapsedHtml(tool)}` : ""}`;
+}
+
+export function renderActiveToolContent(ctx: AgentRenderContext, key: string, original: ToolView): { summary: string; detail?: string } {
+  const tool = toolForRender(original);
+  return {
+    summary: toolSummaryContentHtml(ctx, key, tool),
+    detail: tool.name === "edit" ? undefined : renderToolDetail(ctx, key, tool, 100),
+  };
+}
+
+function toolSummaryCardHtml(ctx: AgentRenderContext, key: string, tool: ToolView): string {
+  return `<span id="${ids.itemSummary(ctx, key)}" class="agent-tool-head">${statusHtml(tool.status)}<span id="${ids.itemSummaryContent(ctx, key)}" class="agent-tool-summary-content">${toolSummaryContentHtml(ctx, key, tool)}</span></span>`;
+}
+
+export function renderToolSummary(ctx: AgentRenderContext, key: string, tool: ToolView): string {
+  return toolSummaryCardHtml(ctx, key, toolForRender(tool));
 }
 
 function renderToolCard(ctx: AgentRenderContext, key: string, original: ToolView, options: { open?: boolean; live?: boolean } = {}): string {
-  const tool = original.status === "streaming" && original.argsStream
-    ? { ...original, args: parseKnownStreamedArgs(original.name, original.argsStream) }
-    : original;
+  const tool = toolForRender(original);
+  const summary = toolSummaryCardHtml(ctx, key, tool);
   const active = tool.status === "streaming" || tool.status === "running";
-  if (active && tool.name === "edit") return `<div class="agent-tool agent-tool-summary-only ${toolClass(tool.name)}">${renderToolSummary(ctx, key, tool)}</div>`;
+  if (active && tool.name === "edit") return `<div class="agent-tool agent-tool-summary-only ${toolClass(tool.name)}">${summary}</div>`;
   const open = Boolean(options.open || active);
   if (!options.live && !active) {
-    return `<details class="agent-tool ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load"><summary>${renderToolSummary(ctx, key, tool)}</summary><turbo-frame id="${ids.detailFrame(ctx, key)}" data-agent-lazy-detail-target="frame" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame></details>`;
+    return `<details class="agent-tool ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load"><summary>${summary}</summary><turbo-frame id="${ids.detailFrame(ctx, key)}" data-agent-lazy-detail-target="frame" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame></details>`;
   }
-  return `<details class="agent-tool ${toolClass(tool.name)}${active ? " active" : ""}${tool.status === "error" ? " error" : ""}"${open ? " open" : ""}><summary>${renderToolSummary(ctx, key, tool)}</summary>${renderToolDetail(ctx, key, tool, 100)}</details>`;
+  return `<details class="agent-tool ${toolClass(tool.name)}${active ? " active" : ""}${tool.status === "error" ? " error" : ""}"${open ? " open" : ""}><summary>${summary}</summary><div id="${ids.itemDetail(ctx, key)}" class="agent-tool-detail-host">${renderToolDetail(ctx, key, tool, 100)}</div></details>`;
 }
 
 function detailFullscreen(title: string, html: string): string {
