@@ -456,7 +456,8 @@
 }
 .agent-message-dialog::backdrop { background: rgba(0, 0, 0, .38); backdrop-filter: blur(2px); }
 .agent-message-list { max-height: min(480px, calc(100vh - 48px)); overflow-y: auto; padding: 5px; }
-.agent-message-link { width: 100%; padding: 7px 8px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; border: 0; border-radius: 7px; background: transparent; color: var(--text); font: 11.5px/1.4 var(--sans); text-align: left; cursor: pointer; }
+.agent-message-link { width: 100%; padding: 7px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--text); font: 11.5px/1.4 var(--sans); text-align: left; cursor: pointer; }
+.agent-message-link-text { overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .agent-message-link:hover, .agent-message-link:focus-visible { background: var(--bg); outline: none; }
 .agent-message-highlight .agent-user-bubble { animation: agent-message-highlight 1.4s ease-out; }
 @keyframes agent-message-highlight { 0%, 35% { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); } 100% { border-color: var(--line); box-shadow: none; } }

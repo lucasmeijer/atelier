@@ -191,7 +191,10 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
         button.type = "button";
         button.className = "agent-message-link";
         button.value = message.id;
-        button.textContent = message.querySelector<HTMLElement>(".agent-user")?.textContent?.trim() || "Message with attachment";
+        const preview = document.createElement("span");
+        preview.className = "agent-message-link-text";
+        preview.textContent = message.querySelector<HTMLElement>(".agent-user")?.textContent?.trim() || "Message with attachment";
+        button.append(preview);
         return button;
       }));
       this.messageDialogTarget.showModal();
@@ -220,8 +223,9 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
         this.closeMessageDialog();
         return;
       }
-      if (!(event.target instanceof HTMLButtonElement) || !event.target.classList.contains("agent-message-link")) return;
-      const message = this.transcriptTarget.querySelector<HTMLElement>(`#${CSS.escape(event.target.value)}`)!;
+      const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>(".agent-message-link") : null;
+      if (!button) return;
+      const message = this.transcriptTarget.querySelector<HTMLElement>(`#${CSS.escape(button.value)}`)!;
       this.closeMessageDialog();
       message.scrollIntoView({ behavior: "smooth", block: "center" });
       message.classList.add("agent-message-highlight");
