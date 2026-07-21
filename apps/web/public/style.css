@@ -416,14 +416,17 @@ body { background: var(--bg); color: var(--text); font-family: var(--sans); font
 button, input, select, textarea { font: inherit; color: inherit; }
 button { border: 0; background: none; cursor: pointer; }
 
-.app.workspace-shell { display: grid; grid-template-columns: var(--workspace-sidebar-width, 250px) 5px minmax(0, 1fr); height: 100vh; overflow: hidden; background: var(--bg); transition: grid-template-columns .2s; }
-.app.workspace-shell.workspace-shell-collapsed { grid-template-columns: 62px 0 minmax(0, 1fr); }
+.app.workspace-shell { position: relative; display: grid; grid-template-columns: 250px 0 minmax(0, 1fr); height: 100vh; overflow: hidden; background: var(--bg); transition: grid-template-columns .28s cubic-bezier(.22, 1, .36, 1); }
+.app.workspace-shell.workspace-shell-collapsed { grid-template-columns: 34px 0 minmax(0, 1fr); }
 .workspace-shell-sidebar, .workspace-shell-main { height: 100vh; min-width: 0; overflow: hidden; }
-.workspace-shell-sidebar { background: var(--panel); border-right: 1px solid var(--line); }
-.workspace-shell-resizer { height: 100vh; cursor: col-resize; background: transparent; margin-left: -3px; z-index: 10; }
-.workspace-shell-resizer:hover { background: var(--accent-soft); }
-.workspace-shell-collapsed .workspace-shell-resizer { pointer-events: none; margin-left: 0; }
-.workspace-shell-main { background: var(--bg); }
+.workspace-shell-sidebar { grid-column: 1; grid-row: 1; background: var(--panel); border-right: 1px solid var(--line); }
+.workspace-shell-main { grid-column: 3; grid-row: 1; background: var(--bg); }
+.workspace-shell-reveal-zone { display: none; }
+.workspace-shell-autohide.workspace-shell-collapsed { grid-template-columns: 34px 0 minmax(0, 1fr) !important; }
+.workspace-shell-autohide.workspace-shell-revealed { grid-template-columns: 250px 0 minmax(0, 1fr) !important; }
+@media (prefers-reduced-motion: reduce) {
+  .app.workspace-shell { transition-duration: .01ms; }
+}
 .workspace-shell-main > turbo-frame, #workspace_detail { display: block; min-height: 100%; }
 #workspace_detail, .workspace-detail-host, .workspace-detail-resident, .workspace-detail-main, .workspace-body, .workspace-groups { height: 100%; min-height: 0; }
 .workspace-detail-empty[hidden], .workspace-detail-loading[hidden] { display: none; }
@@ -506,8 +509,11 @@ button { border: 0; background: none; cursor: pointer; }
 
 .workspace-shell-collapsed .sidebar-content { align-items: center; }
 .workspace-shell-collapsed .workspace-sidebar-table { width: 100%; }
-.workspace-shell-collapsed .workspace-sidebar-table .row { display: grid; grid-template-columns: 1fr; place-items: center; width: 46px; min-width: 46px; max-width: 46px; height: 36px; min-height: 36px; padding: 0; margin: 1px auto; gap: 0; }
+.workspace-shell-collapsed .workspace-sidebar-table .row { display: grid; grid-template-columns: 1fr; place-items: center; width: 30px; min-width: 30px; max-width: 30px; height: 36px; min-height: 36px; padding: 0; margin: 1px auto; gap: 0; }
 .workspace-shell-collapsed .workspace-row::before, .workspace-shell-collapsed .repo-swatch, .workspace-shell-collapsed .addbtn .ic { grid-area: 1 / 1; justify-self: center; align-self: center; }
+.workspace-shell-collapsed .workspace-row.visible { background: transparent; }
+.workspace-shell-collapsed .workspace-row.visible::after { content: ""; grid-area: 1 / 1; justify-self: center; align-self: center; width: 14px; height: 30px; border-radius: 7px; background: var(--accent-soft); position: relative; z-index: 0; }
+.workspace-shell-collapsed .workspace-row.visible::before, .workspace-shell-collapsed .workspace-row.visible .workspace-row-actions { position: relative; z-index: 1; }
 .workspace-shell-collapsed .workspace-row-title-frame, .workspace-shell-collapsed .row-main, .workspace-shell-collapsed .row-actions, .workspace-shell-collapsed .tab-status, .workspace-shell-collapsed .r-title, .workspace-shell-collapsed .r-sub, .workspace-shell-collapsed .lh, .workspace-shell-collapsed .sidefoot .ftext, .workspace-shell-collapsed .miniS, .workspace-shell-collapsed .attn { display: none; }
 .workspace-shell-collapsed .workspace-row-actions { grid-area: 1 / 1; justify-self: center; align-self: center; display: inline-flex; margin: 0; }
 .workspace-shell-collapsed .workspace-row-notifiers, .workspace-shell-collapsed .workspace-row:hover .workspace-row-notifiers { display: inline-flex; }
@@ -515,7 +521,7 @@ button { border: 0; background: none; cursor: pointer; }
 .workspace-shell-collapsed .workspace-row:has(.workspace-status:not([data-workspace-state="idle"]))::before { display: none; }
 .workspace-shell-collapsed .workspace-sidebar-table { padding: 2px 0; }
 .workspace-shell-collapsed .sidefoot { width: 100%; flex-direction: column; align-items: center; padding: 7px 0; }
-.workspace-shell-collapsed .footbtn { display: grid; place-items: center; width: 46px; height: 34px; padding: 0; margin: 0 auto; flex: none; }
+.workspace-shell-collapsed .footbtn { display: grid; place-items: center; width: 30px; height: 34px; padding: 0; margin: 0 auto; flex: none; }
 .workspace-shell-collapsed .footbtn .gi { width: auto; margin: 0; }
 
 .body.wide.workspace-body { padding: 0; max-width: none; margin: 0; }
@@ -806,7 +812,7 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .update-restart-modal .update-note { padding: 13px; }
 .update-restart-modal .update-note h2 { font-size: 15px; }
 .update-restart-modal .update-media-placeholder { min-height: 110px; }
-.workspace-shell-collapsed .update-sidebar-row { width: 38px; height: 34px; justify-content: center; padding: 0; }
+.workspace-shell-collapsed .update-sidebar-row { width: 30px; height: 34px; justify-content: center; padding: 0; }
 .workspace-shell-collapsed .update-sidebar-row::before { content: "↑"; color: var(--accent); font-weight: 800; }
 .workspace-shell-collapsed .update-sidebar-row > * { display: none; }
 
@@ -832,7 +838,7 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .update-whats-new-dialog .update-release-notes { gap: 16px; }
 .update-whats-new-dialog .update-note { background: var(--bg); }
 .update-preview-note { color: var(--muted); }
-.workspace-shell-collapsed .update-sidebar-row { width: 38px; height: 34px; display: grid; border-radius: 8px; }
+.workspace-shell-collapsed .update-sidebar-row { width: 30px; height: 34px; display: grid; border-radius: 8px; }
 
 /* revised what's new modal */
 .update-whats-new-dialog .settings-main { padding: 0; }

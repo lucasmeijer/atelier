@@ -421,60 +421,74 @@ class AtelierFullscreenController extends Controller {
 }
 
 class WorkspaceShellController extends Controller {
-  static targets = ["sidebar", "toggle"];
+  static values = { selected: Boolean };
   declare readonly element: HTMLElement;
-  declare readonly sidebarTarget: HTMLElement;
-  declare readonly hasSidebarTarget: boolean;
-  declare readonly toggleTargets: HTMLButtonElement[];
-  private readonly storageKey = "atelier.workspaceSidebar";
-  private resizeStart: { x: number; width: number } | undefined;
+  declare readonly selectedValue: boolean;
+  private shortcutHeld = false;
+  private hasSelection = false;
+  private hideTimer: number | undefined;
 
   connect(): void {
-    const state = this.savedState();
-    this.element.style.setProperty("--workspace-sidebar-width", `${state.width ?? 250}px`);
-    this.setCollapsed(Boolean(state.collapsed));
+    this.element.classList.add("workspace-shell-autohide");
+    this.hasSelection = this.selectedValue;
+    this.element.classList.toggle("workspace-shell-collapsed", this.hasSelection);
+    document.addEventListener("atelier:workspace-shortcut-start", this.shortcutStarted);
+    document.addEventListener("atelier:workspace-shortcut-end", this.shortcutEnded);
   }
 
-  toggle(): void {
-    this.setCollapsed(!this.element.classList.contains("workspace-shell-collapsed"), { persist: true });
+  disconnect(): void {
+    document.removeEventListener("atelier:workspace-shortcut-start", this.shortcutStarted);
+    document.removeEventListener("atelier:workspace-shortcut-end", this.shortcutEnded);
+    window.clearTimeout(this.hideTimer);
   }
 
-  startResize(event: PointerEvent): void {
-    this.setCollapsed(false, { persist: true });
-    this.resizeStart = { x: event.clientX, width: this.sidebarTarget.getBoundingClientRect().width };
-    window.addEventListener("pointermove", this.resizeMove);
-    window.addEventListener("pointerup", this.resizeEnd, { once: true });
+  reveal(): void {
+    if (!this.hasSelection) return;
+    window.clearTimeout(this.hideTimer);
+    this.element.classList.remove("workspace-shell-collapsed");
+    this.element.classList.add("workspace-shell-revealed");
   }
 
-  private readonly resizeMove = (event: PointerEvent): void => {
-    const width = Math.round(Math.min(520, Math.max(180, this.resizeStart!.width + event.clientX - this.resizeStart!.x)));
-    this.element.style.setProperty("--workspace-sidebar-width", `${width}px`);
+  hide(): void {
+    if (!this.hasSelection || this.shortcutHeld) return;
+    this.hideTimer = window.setTimeout(() => {
+      this.element.classList.remove("workspace-shell-revealed");
+      this.element.classList.add("workspace-shell-collapsed");
+    }, 180);
+  }
+
+  workspaceSelected(): void {
+    this.hasSelection = true;
+    if (this.shortcutHeld) {
+      this.reveal();
+      return;
+    }
+    this.hideTimer = window.setTimeout(() => {
+      this.element.classList.remove("workspace-shell-revealed");
+      this.element.classList.add("workspace-shell-collapsed");
+    }, 110);
+  }
+
+  workspaceSelectionCleared(): void {
+    this.hasSelection = false;
+    window.clearTimeout(this.hideTimer);
+    this.element.classList.remove("workspace-shell-collapsed", "workspace-shell-revealed");
+  }
+
+  private readonly shortcutStarted = (): void => {
+    this.shortcutHeld = true;
+    this.reveal();
   };
 
-  private readonly resizeEnd = (): void => {
-    window.removeEventListener("pointermove", this.resizeMove);
-    const width = Math.round(this.sidebarTarget.getBoundingClientRect().width);
-    this.saveState({ ...this.savedState(), width });
-    this.resizeStart = undefined;
+  private readonly shortcutEnded = (): void => {
+    this.shortcutHeld = false;
+    this.hide();
   };
+}
 
-  private setCollapsed(collapsed: boolean, options: { persist?: boolean } = {}): void {
-    this.element.classList.toggle("workspace-shell-collapsed", collapsed);
-    this.toggleTargets.forEach((button) => {
-      button.textContent = collapsed ? "›" : "‹";
-      button.setAttribute("aria-label", collapsed ? "Expand workspace list" : "Collapse workspace list");
-      button.title = collapsed ? "Expand workspace list" : "Collapse workspace list";
-    });
-    if (options.persist) this.saveState({ ...this.savedState(), collapsed });
-  }
-
-  private savedState(): { collapsed?: boolean; width?: number } {
-    return JSON.parse(localStorage.getItem(this.storageKey) || "{}") as { collapsed?: boolean; width?: number };
-  }
-
-  private saveState(state: { collapsed?: boolean; width?: number }): void {
-    localStorage.setItem(this.storageKey, JSON.stringify(state));
-  }
+function workspaceShellController(): WorkspaceShellController | null {
+  const shell = document.querySelector<HTMLElement>('[data-controller~="workspace-shell"]');
+  return shell ? application.getControllerForElementAndIdentifier(shell, "workspace-shell") as WorkspaceShellController | null : null;
 }
 
 class WorkspaceTabsController extends Controller {
@@ -787,13 +801,14 @@ class AtelierShortcutsController extends Controller {
     // Atelier-owned widgets (not iframes) might otherwise consume.
     window.addEventListener("keydown", this.keydown, true);
     window.addEventListener("keyup", this.keyup, true);
-    window.addEventListener("blur", this.hideShortcutOverlay);
+    window.addEventListener("blur", this.shortcutBlur);
   }
 
   disconnect(): void {
     window.removeEventListener("keydown", this.keydown, true);
     window.removeEventListener("keyup", this.keyup, true);
-    window.removeEventListener("blur", this.hideShortcutOverlay);
+    window.removeEventListener("blur", this.shortcutBlur);
+    this.endWorkspaceShortcut();
     this.hideShortcutOverlay();
     this.closePalette();
   }
@@ -818,12 +833,27 @@ class AtelierShortcutsController extends Controller {
     if (!command) return;
     event.preventDefault();
     event.stopImmediatePropagation();
+    if (command.id === "workspace.open-previous" || command.id === "workspace.open-next") {
+      document.dispatchEvent(new CustomEvent("atelier:workspace-shortcut-start"));
+    }
     void command.run();
   };
 
   private readonly keyup = (event: KeyboardEvent): void => {
-    if (!event.metaKey || !event.altKey) this.hideShortcutOverlay();
+    if (!event.metaKey || !event.altKey) {
+      this.hideShortcutOverlay();
+      this.endWorkspaceShortcut();
+    }
   };
+
+  private readonly shortcutBlur = (): void => {
+    this.hideShortcutOverlay();
+    this.endWorkspaceShortcut();
+  };
+
+  private endWorkspaceShortcut(): void {
+    document.dispatchEvent(new CustomEvent("atelier:workspace-shortcut-end"));
+  }
 
   private registerCommand(command: CommandRegistration): void {
     this.commands.set(command.id, command);
@@ -1724,9 +1754,14 @@ class WorkspaceListController extends Controller {
   }
 
   private markVisible(workspaceId: string | undefined): void {
+    const previousWorkspaceId = this.element.querySelector<HTMLElement>(".workspace-row.visible")?.dataset.workspaceId;
     this.element.querySelectorAll<HTMLElement>(".workspace-row.visible").forEach((row) => row.classList.remove("visible"));
-    if (!workspaceId) return;
+    if (!workspaceId) {
+      if (previousWorkspaceId) workspaceShellController()?.workspaceSelectionCleared();
+      return;
+    }
     this.element.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`)?.classList.add("visible");
+    if (workspaceId !== previousWorkspaceId) workspaceShellController()?.workspaceSelected();
   }
 
   private sync(): void {

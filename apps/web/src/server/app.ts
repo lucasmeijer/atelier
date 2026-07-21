@@ -666,7 +666,6 @@ ${moduleStylesHtml()}
     </div>
     <div class="sidefoot">
       <a class="footbtn" href="/settings" data-turbo-frame="_top" data-turbo-stream="true"><span class="gi">⚙</span><span class="ftext">Settings</span></a>
-      <button class="footbtn collapse" type="button" aria-label="Collapse workspace list" title="Collapse workspace list" data-workspace-shell-target="toggle" data-action="click->workspace-shell#toggle"><span class="gi">‹</span><span class="ftext">Collapse</span></button>
     </div>
   </turbo-frame>`;
   }
@@ -821,9 +820,9 @@ ${moduleStylesHtml()}
   }
 
   async function renderWorkspaceShell(selectedId?: string, options: { mainHtml?: string; showWhatsNew?: boolean } = {}): Promise<string> {
-    return `<div class="app workspace-shell" data-controller="workspace-shell atelier-shortcuts">
-    <aside class="workspace-shell-sidebar" data-workspace-shell-target="sidebar">${await renderWorkspaceSidebar()}</aside>
-    <div class="workspace-shell-resizer" data-action="pointerdown->workspace-shell#startResize"></div>
+    return `<div class="app workspace-shell" data-controller="workspace-shell atelier-shortcuts" data-workspace-shell-selected-value="${selectedId ? "true" : "false"}">
+    <div class="workspace-shell-reveal-zone" data-action="pointerenter->workspace-shell#reveal" aria-hidden="true"><span></span></div>
+    <aside class="workspace-shell-sidebar" data-action="pointerenter->workspace-shell#reveal pointerleave->workspace-shell#hide">${await renderWorkspaceSidebar()}</aside>
     <main class="workspace-shell-main">${options.mainHtml ?? await workspaceDetailHostHtml(selectedId)}</main>
   </div>
   ${await projectPickerModal()}
