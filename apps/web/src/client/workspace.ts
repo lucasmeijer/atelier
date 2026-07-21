@@ -1537,8 +1537,22 @@ class WorkspaceResidencyController extends Controller {
     const candidates = this.unreadWorkspaces()
       .filter(({ workspaceId }) => workspaceId !== visibleWorkspaceId)
       .slice(0, available);
-    await Promise.all(candidates.map(({ workspaceId }) => this.ensureResident(workspaceId)));
+    await Promise.all(candidates.map(({ workspaceId }) => this.preloadResident(workspaceId)));
     this.evictIfNeeded();
+  }
+
+  private async preloadResident(workspaceId: string): Promise<void> {
+    if (this.residentTargets.some((resident) => resident.dataset.workspaceId === workspaceId)) return;
+    workspaceListController()?.setWorkspacePreloading(workspaceId, true);
+    try {
+      await this.ensureResident(workspaceId);
+    } finally {
+      workspaceListController()?.setWorkspacePreloading(workspaceId, false);
+    }
+  }
+
+  isWorkspacePreloading(workspaceId: string): boolean {
+    return this.residentLoads.has(workspaceId);
   }
 
   private unreadWorkspaces(): Array<{ workspaceId: string; unreadAt: number }> {
@@ -1710,8 +1724,23 @@ class WorkspaceListController extends Controller {
     this.markVisible(workspaceId);
   }
 
-  statusTargetConnected(): void {
+  statusTargetConnected(status: HTMLElement): void {
+    const row = status.closest<HTMLElement>(".workspace-row[data-workspace-id]");
+    const workspaceId = row?.dataset.workspaceId;
+    if (workspaceId) this.setStatusPreloading(status, residencyController()?.isWorkspacePreloading(workspaceId) ?? false);
     residencyController()?.reconcileResidents();
+  }
+
+  setWorkspacePreloading(workspaceId: string, preloading: boolean): void {
+    const status = this.element.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"] .workspace-status`);
+    if (status) this.setStatusPreloading(status, preloading);
+  }
+
+  private setStatusPreloading(status: HTMLElement, preloading: boolean): void {
+    status.toggleAttribute("data-workspace-preloading", preloading);
+    const spinner = status.querySelector(":scope > .workspace-preload-spinner");
+    if (preloading && !spinner) status.insertAdjacentHTML("beforeend", `<span class="status-spinner sm workspace-preload-spinner" aria-label="Preloading workspace" title="Preloading workspace"></span>`);
+    if (!preloading) spinner?.remove();
   }
 
   parkToggled(event: Event): void {

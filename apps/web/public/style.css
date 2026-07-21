@@ -483,6 +483,7 @@ button { border: 0; background: none; cursor: pointer; }
 .status-spinner { display: inline-block; flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line2); border-top-color: var(--spin); animation: spin .7s linear infinite; }
 .status-spinner.sm { width: 10px; height: 10px; }
 .workspace-status, .tab-status { display: inline-flex; align-items: center; justify-content: center; min-width: 10px; min-height: 10px; }
+.workspace-status[data-workspace-preloading] > :not(.workspace-preload-spinner) { display: none; }
 .status-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); flex: 0 0 auto; }
 .workspace-boot-pad { display: flex; align-items: center; gap: 10px; }
 
