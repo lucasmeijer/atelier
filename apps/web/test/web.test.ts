@@ -241,7 +241,7 @@ describe("web app contracts", () => {
     registry.setPhase("abc", "failed", "docker exploded");
 
     const html = await (await app.fetch(new Request("http://test.local/"))).text();
-    expect(html).toContain('action="/workspaces/abc/delete"');
+    expect(html).toContain('action="/workspaces/abc/delete" data-action="click->workspace-list#deleteClicked submit->workspace-list#deleteStarted"');
     expect(html).toContain('aria-label="Delete workspace"');
 
     broadcasts.length = 0;

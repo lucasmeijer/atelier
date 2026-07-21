@@ -1727,6 +1727,12 @@ class WorkspaceListController extends Controller {
     void residencyController()?.selectWorkspace(workspaceId, href);
   }
 
+  deleteClicked(event: Event): void {
+    // The row itself is clickable; keep a delete-button click from also
+    // selecting the workspace while allowing the form submission to proceed.
+    event.stopPropagation();
+  }
+
   deleteStarted(event: Event): void {
     const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
     const row = form?.closest<HTMLElement>(".workspace-row");

@@ -314,7 +314,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   function workspaceDeleteForm(id: string, buttonTitle = "Delete workspace"): string {
-    return `<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="submit->workspace-list#deleteStarted"><button type="submit" title="${escapeHtml(buttonTitle)}" aria-label="Delete workspace">🗑</button></form>`;
+    return `<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="click->workspace-list#deleteClicked submit->workspace-list#deleteStarted"><button type="submit" title="${escapeHtml(buttonTitle)}" aria-label="Delete workspace">🗑</button></form>`;
   }
 
   function workspaceRow(entry: WorkspaceEntry): string {
