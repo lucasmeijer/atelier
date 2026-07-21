@@ -8,6 +8,9 @@
     "./client": "./src/client/index.ts",
     "./shared": "./src/shared/index.ts"
   },
+  "devDependencies": {
+    "@types/prettier": "2.7.3"
+  },
   "dependencies": {
     "@atelier/core": "workspace:*",
     "@atelier/observable-terminal": "workspace:*",
@@ -16,6 +19,7 @@
     "@earendil-works/pi-ai": "catalog:",
     "@earendil-works/pi-coding-agent": "catalog:",
     "highlight.js": "^11.11.1",
+    "prettier": "2.8.8",
     "typebox": "^1.0.57",
     "@atelier/workspace": "workspace:*"
   }

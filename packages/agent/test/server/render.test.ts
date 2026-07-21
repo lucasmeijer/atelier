@@ -4,6 +4,7 @@ import type { ToolView, TranscriptItem } from "../../src/server/transcript.ts";
 
 const ctx: AgentRenderContext = { workspaceId: "ws", label: "agent" };
 const tool = (overrides: Partial<ToolView>): ToolView => ({ callId: "call", name: "read", args: {}, status: "ok", ...overrides });
+const renderBash = (command: string, overrides: Partial<ToolView> = {}): string => renderTranscriptItemDetailFrame(ctx, { type: "tool", key: "bash", tool: tool({ name: "bash", args: { command }, ...overrides }) });
 
 describe("flat transcript rendering", () => {
   test("server-rendered panes expose their snapshot cursor", async () => {
@@ -123,8 +124,7 @@ describe("flat transcript rendering", () => {
   });
 
   test("bash has separate command and differing model result", () => {
-    const item: TranscriptItem = { type: "tool", key: "bash-1", tool: tool({ name: "bash", args: { command: "echo one\necho two", timeout: 600 }, resultText: "plain", details: { exitCode: 0, displayAnsi: "\u001b[31mred\u001b[0m" }, durationMs: 2000 }) };
-    const html = renderTranscriptItemDetailFrame(ctx, item);
+    const html = renderBash("echo one\necho two", { resultText: "plain", details: { exitCode: 0, displayAnsi: "\u001b[31mred\u001b[0m" }, durationMs: 2000 });
     expect(html).toContain("COMMAND");
     expect(html).toContain("RESULT");
     expect(html).toContain("AS SEEN BY MODEL");
@@ -132,9 +132,75 @@ describe("flat transcript rendering", () => {
   });
 
   test("identical bash views omit model tab", () => {
-    const item: TranscriptItem = { type: "tool", key: "bash-2", tool: tool({ name: "bash", args: { command: "echo ok" }, resultText: "ok", details: { exitCode: 0, displayAnsi: "ok" } }) };
-    const html = renderTranscriptItemDetailFrame(ctx, item);
+    const html = renderBash("echo ok", { resultText: "ok", details: { exitCode: 0, displayAnsi: "ok" } });
     expect(html).not.toContain("AS SEEN BY MODEL");
+  });
+
+  test("bash heredoc writes preserve the shell while reformatting the nested file for display", () => {
+    const compact = "import { chromium } from '@playwright/test';const browser=await chromium.launch();if(browser){console.log('ready');}";
+    const command = `cat >/work/tmp-inspect.mjs <<'EOF'\n${compact}\nEOF\nnode /work/tmp-inspect.mjs; rm /work/tmp-inspect.mjs`;
+    const html = renderBash(command, { resultText: "done", details: { exitCode: 0, displayAnsi: "done" } });
+    expect(html).toContain("/work/tmp-inspect.mjs");
+    expect(html).toContain("language-javascript");
+    expect(html).toContain("hljs-keyword");
+    expect(html).toContain("chromium");
+    expect(html).toContain("Display reformatted by Atelier; emitted content unchanged.");
+    expect(html).toContain('\n  <span class="hljs-variable language_">console</span>');
+    expect(html).not.toContain(compact);
+    expect(html).toContain("&gt;/work/tmp-inspect.mjs");
+    expect(html).toContain("EOF");
+    expect(html).toContain("node /work/tmp-inspect.mjs");
+  });
+
+  test("recognizes heredoc file writes sampled from historical agent sessions", () => {
+    const samples = [
+      { name: "no spaces around redirect", path: "/work/tmp-shot.mjs", command: "cat >/work/tmp-shot.mjs <<'EOF'\nconst x={a:1};\nEOF" },
+      { name: "command prefix and relative path", path: "inspect.mjs", command: "cd /work && cat > inspect.mjs <<'EOF'\nconst x={a:1};\nEOF\nnode inspect.mjs" },
+      { name: "commands before cat on the same line", path: "/work/tmp-check.mjs", command: "sleep 2; cat >/work/tmp-check.mjs <<'EOF'\nconst x={a:1};\nEOF" },
+      { name: "custom quoted delimiter", path: "test.ts", language: "typescript", command: "cd /tmp/diffstest && cat > test.ts <<'TS'\nconst x={a:1};\nTS" },
+      { name: "double-quoted path and delimiter", path: "/tmp/test.js", command: "cat > \"/tmp/test.js\" <<\"JS\"\nconst x={a:1};\nJS" },
+      { name: "unquoted delimiter", path: "/tmp/test.js", command: "cat > /tmp/test.js <<JS\nconst x={a:1};\nJS" },
+      { name: "append redirect", path: "/tmp/test.js", command: "cat >> /tmp/test.js <<'EOF'\nconst x={a:1};\nEOF" },
+      { name: "tab-stripping heredoc", path: "/tmp/test.js", command: "cat > /tmp/test.js <<-'EOF'\n\tconst x={a:1};\n\tEOF" },
+    ];
+    for (const sample of samples) {
+      const html = renderBash(sample.command);
+      expect(html, sample.name).toContain(sample.path);
+      expect(html, sample.name).toContain("Display reformatted by Atelier; emitted content unchanged.");
+      expect(html, sample.name).toContain(`language-${"language" in sample ? sample.language : "javascript"}`);
+    }
+  });
+
+  test("recognizes and highlights a Python heredoc even when no formatter is available", () => {
+    const command = "cat > /tmp/analyze.py <<'PY'\nprint('hello')\nPY";
+    const html = renderBash(command);
+    expect(html).toContain('class="language-python"');
+    expect(html).toContain("hljs-built_in");
+    expect(html).not.toContain("Display reformatted by Atelier");
+  });
+
+  test("does not recognize cat heredoc text inside a quoted shell argument", () => {
+    const command = `printf '%s\\n' "cat > /tmp/not-written.js <<'EOF'" "const x={a:1};" "EOF"`;
+    const html = renderBash(command);
+    expect(html).not.toContain('class="language-javascript"');
+    expect(html).not.toContain("Display reformatted by Atelier");
+  });
+
+  test("formats multiple heredoc writes in one bash call", () => {
+    const command = "mkdir -p /tmp/demo; cat > /tmp/one.js <<'JS'\nconst one={n:1};\nJS\ncat > /tmp/two.ts <<'TS'\nconst two={n:2};\nTS\nnode /tmp/one.js";
+    const html = renderBash(command);
+    expect(html.split("<template")[0].match(/Display reformatted by Atelier/g)).toHaveLength(2);
+    expect(html).toContain("language-javascript");
+    expect(html).toContain("language-typescript");
+    expect(html).toContain("node /tmp/one.js");
+  });
+
+  test("ordinary bash heredocs remain shell commands", () => {
+    const command = "node <<'EOF'\nconsole.log('hello');\nEOF";
+    const html = renderBash(command);
+    expect(html).toContain("COMMAND");
+    expect(html).toContain("language-bash");
+    expect(html).not.toContain("Display reformatted by Atelier");
   });
 
   test("thinking renders as clampable prose rather than a tool call", () => {

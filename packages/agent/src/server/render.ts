@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
+import prettier from "prettier";
 import { composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel } from "./model-state.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
-import { highlightCodeHtmlForPath } from "./highlight.ts";
+import { highlightCodeHtmlForPath, languageFromPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { renderAtelierEmbed, rewriteSegment, splitAtelierEmbeds } from "./rewrite.ts";
@@ -451,8 +452,12 @@ function detailFullscreen(title: string, html: string): string {
   return `<div class="agent-detail-fullscreen"${fullscreenAttributes(title)}>${html}<template data-atelier-fullscreen-target="content">${html}</template></div>`;
 }
 
-function sourceRegion(title: string, code: string, path: string | undefined, className = "agent-source-region"): string {
-  return detailFullscreen(title, `<section class="${className}"><div class="agent-region-title">${escapeHtml(title)}</div>${codeBlockHtml(code, path, "agent-tool-code")}</section>`);
+function sourceRegionHtml(title: string, body: string, className = "agent-source-region"): string {
+  return detailFullscreen(title, `<section class="${className}"><div class="agent-region-title">${escapeHtml(title)}</div>${body}</section>`);
+}
+
+function sourceRegion(title: string, code: string, path: string | undefined, className?: string): string {
+  return sourceRegionHtml(title, codeBlockHtml(code, path, "agent-tool-code"), className);
 }
 
 function textWindow(text: string, mode: "first" | "last", count: number): { text: string; hidden: number } {
@@ -501,9 +506,93 @@ function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolV
   return `<section class="agent-bash-output"><div class="agent-region-tabs"><input type="radio" name="${group}" id="${group}-result" checked><label for="${group}-result">RESULT</label><input type="radio" name="${group}" id="${group}-model"><label for="${group}-model">AS SEEN BY MODEL</label>${bashCopyButton()}</div><div class="agent-result-pane result-pane">${fullscreenSourceRegion("RESULT", resultHtml, fullResult)}</div><div class="agent-result-pane model-pane">${fullscreenSourceRegion("AS SEEN BY MODEL", `${moreLink(ctx, key, count, modelWindow.hidden, "last")}<pre class="agent-tool-result agent-tail-output">${escapeHtml(modelWindow.text)}</pre>`, `<pre class="agent-tool-result">${escapeHtml(model || "(no output)")}</pre>`)}</div></section>`;
 }
 
+interface BashHeredocWrite {
+  path: string;
+  contentStart: number;
+  contentEnd: number;
+}
+
+const bashHeredocWriteOpening = /(?:^|[;&|]\s*|\(\s*)cat\s+>{1,2}\s*("[^"\n]+"|'[^'\n]+'|[^\s;|&]+)\s*<<(-?)\s*('[^'\n]+'|"[^"\n]+"|[A-Za-z_][\w-]*)/gm;
+
+function unquoteShellWord(word: string): string {
+  const quote = word[0];
+  return quote && (quote === "'" || quote === '"') && word.at(-1) === quote ? word.slice(1, -1) : word;
+}
+
+function bashHeredocWrites(command: string): BashHeredocWrite[] {
+  const writes: BashHeredocWrite[] = [];
+  bashHeredocWriteOpening.lastIndex = 0;
+  for (;;) {
+    const opening = bashHeredocWriteOpening.exec(command);
+    if (!opening) break;
+    const openingLineEnd = command.indexOf("\n", opening.index + opening[0].length);
+    if (openingLineEnd < 0) break;
+    const path = unquoteShellWord(opening[1]!);
+    const stripsTabs = opening[2] === "-";
+    const delimiter = unquoteShellWord(opening[3]!);
+    let closingStart = openingLineEnd + 1;
+    let closingEnd = closingStart;
+    for (;;) {
+      closingEnd = command.indexOf("\n", closingStart);
+      if (closingEnd < 0) closingEnd = command.length;
+      const line = command.slice(closingStart, closingEnd).replace(/\r$/, "");
+      if ((stripsTabs ? line.replace(/^\t+/, "") : line) === delimiter) break;
+      if (closingEnd === command.length) {
+        closingStart = -1;
+        break;
+      }
+      closingStart = closingEnd + 1;
+    }
+    if (closingStart < 0) continue;
+    const contentStart = openingLineEnd + 1;
+    writes.push({ path, contentStart, contentEnd: Math.max(contentStart, closingStart - 1) });
+    bashHeredocWriteOpening.lastIndex = closingEnd;
+  }
+  return writes;
+}
+
+const prettierParserByLanguage: Record<string, string> = {
+  javascript: "babel",
+  typescript: "typescript",
+  json: "json",
+  css: "css",
+  html: "html",
+  markdown: "markdown",
+};
+
+function displayFormattedFile(content: string, path: string): string | undefined {
+  const parser = prettierParserByLanguage[languageFromPath(path) ?? ""];
+  if (!parser) return undefined;
+  try {
+    const formatted = prettier.format(content, { parser }).trimEnd();
+    if (formatted === content.trimEnd()) return undefined;
+    return `// Display reformatted by Atelier; emitted content unchanged.\n${formatted}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function bashCommandHtml(command: string): string {
+  const heredocs = bashHeredocWrites(command);
+  if (!heredocs.length) return codeBlockHtml(command, "command.sh", "agent-tool-code");
+  let html = "";
+  let cursor = 0;
+  for (const heredoc of heredocs) {
+    html += highlightCodeHtmlForPath(command.slice(cursor, heredoc.contentStart), "command.sh").html;
+    const originalContent = command.slice(heredoc.contentStart, heredoc.contentEnd);
+    const displayedContent = displayFormattedFile(originalContent, heredoc.path) ?? originalContent;
+    const nested = highlightCodeHtmlForPath(displayedContent, heredoc.path);
+    const languageClass = nested.language ? ` class="language-${escapeHtml(nested.language)}"` : "";
+    html += `<span${languageClass}>${nested.html}</span>`;
+    cursor = heredoc.contentEnd;
+  }
+  html += highlightCodeHtmlForPath(command.slice(cursor), "command.sh").html;
+  return `<pre class="agent-tool-code language-bash"><code>${html}</code></pre>`;
+}
+
 function renderBashDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
   const command = stringArg(toolArgs(tool), "command") ?? "";
-  const commandHtml = sourceRegion("COMMAND", command, "command.sh", "agent-bash-command");
+  const commandHtml = sourceRegionHtml("COMMAND", bashCommandHtml(command), "agent-bash-command");
   if (tool.status === "streaming") return `<div class="agent-tool-detail">${commandHtml}</div>`;
   if (tool.status === "running") {
     const terminal = tool.tmuxSession && tool.terminalVisible ? `<section class="agent-bash-output agent-observed-bash"><div id="${ids.itemCompletionTabs(ctx, key)}" class="agent-region-title">LIVE TERMINAL</div><div class="agent-terminal-viewport agent-observed-live"><div class="agent-tool-term agent-terminal-awaiting-output observable-terminal-host" data-controller="agent-term" data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}" data-agent-term-label-value="${escapeHtml(ctx.label)}" data-agent-term-session-value="${escapeHtml(tool.tmuxSession)}"></div></div><div id="${ids.itemCompletion(ctx, key)}"></div></section>` : "";

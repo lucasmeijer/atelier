@@ -80,7 +80,7 @@ const languageAliases: Record<string, string> = {
   rs: "rust",
 };
 
-function languageFromPath(filePath: string | undefined): string | undefined {
+export function languageFromPath(filePath: string | undefined): string | undefined {
   if (!filePath) return undefined;
   const extension = path.extname(filePath).replace(/^\./, "").toLowerCase();
   return extensionLanguages[extension];
