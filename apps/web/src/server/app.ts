@@ -581,7 +581,7 @@ ${moduleStylesHtml()}
           <div class="project-picker-option no-project"><button class="project-picker-select" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="agent_launch_empty_workspace_modal"><span class="project-picker-empty">∅</span><span class="project-picker-copy"><b>No project</b><small>Start with an empty workspace</small></span></button></div>
           ${rows}
         </div>
-        <footer class="project-picker-foot"><a href="/projects/new/picker" data-turbo-frame="project_picker_frame">＋ Add a new project</a><span>Select a project to continue</span></footer>
+        <footer class="project-picker-foot"><a href="/projects/new/picker" data-turbo-frame="project_picker_frame">＋ Add a new project</a></footer>
       </div>
     </turbo-frame>`;
   }

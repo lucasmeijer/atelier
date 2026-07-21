@@ -873,11 +873,11 @@ class AtelierShortcutsController extends Controller {
       run: () => this.openOldestUnreadWorkspace(),
     });
     this.registerCommand({
-      id: "agent.launch-empty-workspace",
-      label: "New Empty Agent Workspace",
+      id: "workspace.new",
+      label: "New workspace",
       scope: "global",
       binding: "Meta+Alt+Semicolon",
-      run: () => this.openDialogPrompt("agent_launch_empty_workspace_modal"),
+      run: () => this.openDialogPrompt("project-picker-modal"),
     });
     this.registerCommand({
       id: "atelier.open-palette",
