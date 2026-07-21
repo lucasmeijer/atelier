@@ -12,7 +12,7 @@
 }
 
 .agent-transcript {
-  flex: 1; min-height: 0; overflow-y: auto; scroll-behavior: auto; padding: 30px 40px 10px; display: block; scrollbar-width: none;
+  flex: 1; min-height: 0; overflow-y: auto; scroll-behavior: auto; padding: 30px 40px calc(var(--agent-transcript-fade) + 10px); display: block; scrollbar-width: none;
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--agent-transcript-fade)), transparent 100%);
   mask-image: linear-gradient(to bottom, #000 calc(100% - var(--agent-transcript-fade)), transparent 100%);
 }
