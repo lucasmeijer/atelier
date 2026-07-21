@@ -55,7 +55,7 @@
 .agent-user-attachments img { max-height: 90px; max-width: 160px; border-radius: 7px; border: 1px solid var(--line); }
 
 /* assistant final message: plain typeset text, no bubble */
-.agent-final { color: var(--text); font-size: 14px; line-height: 1.7; }
+.agent-final { color: var(--text); font-size: var(--assistant-copy-font-size, 14px); font-weight: var(--assistant-copy-font-weight, 400); line-height: var(--assistant-copy-line-height, 1.7); }
 .agent-final:empty { display: none; }
 
 .agent-error { color: var(--red); background: var(--red-soft); border: 1px solid #f1c7c7; border-radius: 8px; padding: 6px 10px; font-size: 12px; }

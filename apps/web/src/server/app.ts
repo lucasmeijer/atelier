@@ -649,9 +649,8 @@ ${moduleStylesHtml()}
 
   async function renderWorkspaceSidebar(): Promise<string> {
     // Project selection and management now live in the new-workspace dialog.
-    const newWorkspaceRow = `<button class="row ghost-row addbtn" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="project-picker-modal">
-    <span class="ic" aria-hidden="true">+</span><div><div class="r-title">New workspace</div></div>
-    <span></span>
+    const newWorkspaceRow = `<button class="row workspace-row workspace-placeholder-row" type="button" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="project-picker-modal">
+    <span class="workspace-row-title-frame"><span class="row-main"><span class="r-title">New workspace</span></span></span>
   </button>`;
 
     return `<turbo-frame id="workspace_sidebar" data-controller="workspace-list">
@@ -821,7 +820,6 @@ ${moduleStylesHtml()}
 
   async function renderWorkspaceShell(selectedId?: string, options: { mainHtml?: string; showWhatsNew?: boolean } = {}): Promise<string> {
     return `<div class="app workspace-shell" data-controller="workspace-shell atelier-shortcuts" data-workspace-shell-selected-value="${selectedId ? "true" : "false"}">
-    <div class="workspace-shell-reveal-zone" data-action="pointerenter->workspace-shell#reveal" aria-hidden="true"><span></span></div>
     <aside class="workspace-shell-sidebar" data-action="pointerenter->workspace-shell#reveal pointerleave->workspace-shell#hide">${await renderWorkspaceSidebar()}</aside>
     <main class="workspace-shell-main">${options.mainHtml ?? await workspaceDetailHostHtml(selectedId)}</main>
   </div>

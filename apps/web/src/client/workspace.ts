@@ -426,64 +426,55 @@ class WorkspaceShellController extends Controller {
   declare readonly selectedValue: boolean;
   private shortcutHeld = false;
   private hasSelection = false;
-  private hideTimer: number | undefined;
+  private collapseTimer: number | undefined;
 
   connect(): void {
-    this.element.classList.add("workspace-shell-autohide");
     this.hasSelection = this.selectedValue;
     this.element.classList.toggle("workspace-shell-collapsed", this.hasSelection);
-    document.addEventListener("atelier:workspace-shortcut-start", this.shortcutStarted);
-    document.addEventListener("atelier:workspace-shortcut-end", this.shortcutEnded);
   }
 
   disconnect(): void {
-    document.removeEventListener("atelier:workspace-shortcut-start", this.shortcutStarted);
-    document.removeEventListener("atelier:workspace-shortcut-end", this.shortcutEnded);
-    window.clearTimeout(this.hideTimer);
+    window.clearTimeout(this.collapseTimer);
   }
 
   reveal(): void {
     if (!this.hasSelection) return;
-    window.clearTimeout(this.hideTimer);
+    window.clearTimeout(this.collapseTimer);
     this.element.classList.remove("workspace-shell-collapsed");
-    this.element.classList.add("workspace-shell-revealed");
   }
 
   hide(): void {
     if (!this.hasSelection || this.shortcutHeld) return;
-    this.hideTimer = window.setTimeout(() => {
-      this.element.classList.remove("workspace-shell-revealed");
-      this.element.classList.add("workspace-shell-collapsed");
-    }, 180);
+    this.collapseAfter(180);
   }
 
   workspaceSelected(): void {
     this.hasSelection = true;
-    if (this.shortcutHeld) {
-      this.reveal();
-      return;
-    }
-    this.hideTimer = window.setTimeout(() => {
-      this.element.classList.remove("workspace-shell-revealed");
-      this.element.classList.add("workspace-shell-collapsed");
-    }, 110);
+    if (this.shortcutHeld) this.reveal();
+    else this.collapseAfter(110);
   }
 
   workspaceSelectionCleared(): void {
     this.hasSelection = false;
-    window.clearTimeout(this.hideTimer);
-    this.element.classList.remove("workspace-shell-collapsed", "workspace-shell-revealed");
+    window.clearTimeout(this.collapseTimer);
+    this.element.classList.remove("workspace-shell-collapsed");
   }
 
-  private readonly shortcutStarted = (): void => {
+  beginWorkspaceShortcut(): void {
     this.shortcutHeld = true;
     this.reveal();
-  };
+  }
 
-  private readonly shortcutEnded = (): void => {
+  endWorkspaceShortcut(): void {
+    if (!this.shortcutHeld) return;
     this.shortcutHeld = false;
     this.hide();
-  };
+  }
+
+  private collapseAfter(delay: number): void {
+    window.clearTimeout(this.collapseTimer);
+    this.collapseTimer = window.setTimeout(() => this.element.classList.add("workspace-shell-collapsed"), delay);
+  }
 }
 
 function workspaceShellController(): WorkspaceShellController | null {
@@ -834,7 +825,7 @@ class AtelierShortcutsController extends Controller {
     event.preventDefault();
     event.stopImmediatePropagation();
     if (command.id === "workspace.open-previous" || command.id === "workspace.open-next") {
-      document.dispatchEvent(new CustomEvent("atelier:workspace-shortcut-start"));
+      workspaceShellController()?.beginWorkspaceShortcut();
     }
     void command.run();
   };
@@ -852,7 +843,7 @@ class AtelierShortcutsController extends Controller {
   };
 
   private endWorkspaceShortcut(): void {
-    document.dispatchEvent(new CustomEvent("atelier:workspace-shortcut-end"));
+    workspaceShellController()?.endWorkspaceShortcut();
   }
 
   private registerCommand(command: CommandRegistration): void {
@@ -1757,7 +1748,7 @@ class WorkspaceListController extends Controller {
     const previousWorkspaceId = this.element.querySelector<HTMLElement>(".workspace-row.visible")?.dataset.workspaceId;
     this.element.querySelectorAll<HTMLElement>(".workspace-row.visible").forEach((row) => row.classList.remove("visible"));
     if (!workspaceId) {
-      if (previousWorkspaceId) workspaceShellController()?.workspaceSelectionCleared();
+      workspaceShellController()?.workspaceSelectionCleared();
       return;
     }
     this.element.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`)?.classList.add("visible");
