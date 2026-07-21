@@ -353,7 +353,7 @@ function sessionImageUrl(ctx: AgentRenderContext, image: SessionImageRef): strin
 
 function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images: SessionImageRef[] }): string {
   const images = user.images.length ? `<div class="agent-user-attachments">${user.images.map((image) => `<img${fullscreenAttributes("attachment", "media")} src="${escapeHtml(sessionImageUrl(ctx, image))}" alt="attachment" loading="lazy">`).join("")}</div>` : "";
-  return transcriptRow(`<div class="agent-user"><div class="agent-user-bubble">${markdown(ctx, user.text)}${images}</div></div>`);
+  return transcriptRow(`<div class="agent-user" data-agent-user-text="${escapeHtml(user.text)}"><div class="agent-user-bubble">${markdown(ctx, user.text)}${images}</div></div>`);
 }
 
 function rewindHtml(ctx: AgentRenderContext, item: TranscriptItem): string {

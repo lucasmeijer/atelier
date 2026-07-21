@@ -19,6 +19,11 @@ describe("flat transcript rendering", () => {
     expect(html).toContain("input->agent-pane#promptChanged");
   });
 
+  test("user messages retain their original text for prompt history", () => {
+    const html = renderTranscriptItem(ctx, { type: "user", key: "user-history", text: "**bold** & quoted \"text\"", images: [] });
+    expect(html).toContain('data-agent-user-text="**bold** &amp; quoted &quot;text&quot;"');
+  });
+
   test("all transcript content uses the same full-width row", () => {
     const items: TranscriptItem[] = [
       { type: "user", key: "user", text: "question", images: [] },

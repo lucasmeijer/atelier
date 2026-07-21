@@ -82,6 +82,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private observer?: MutationObserver;
     private promptObserver?: MutationObserver;
     private rewindUserText = "";
+    private messageDialogPopulatesPrompt = false;
     private historicalOpenItemIds = new Set<string>();
     private restoreHistoricalOpenItems(): void {
       for (const id of this.historicalOpenItemIds) this.transcriptTarget.querySelector<HTMLElement>(`#${CSS.escape(id)} details[data-agent-historical-detail]`)?.setAttribute("open", "");
@@ -187,13 +188,17 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptTarget.scrollTo({ top: this.transcriptTarget.scrollHeight, behavior: "smooth" });
     }
 
+    private userMessages(): HTMLElement[] {
+      return [...this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-item:has(.agent-user)")];
+    }
+
     private messageLinks(): HTMLButtonElement[] {
       return [...this.messageListTarget.querySelectorAll<HTMLButtonElement>(".agent-message-link")];
     }
 
-    openMessageDialog(): void {
-      const messages = [...this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-item:has(.agent-user)")];
-      this.messageListTarget.replaceChildren(...messages.map((message) => {
+    private showMessageDialog(populatesPrompt: boolean): void {
+      this.messageDialogPopulatesPrompt = populatesPrompt;
+      this.messageListTarget.replaceChildren(...this.userMessages().map((message) => {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "agent-message-link";
@@ -205,7 +210,14 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
         return button;
       }));
       this.messageDialogTarget.showModal();
-      requestAnimationFrame(() => this.messageLinks()[0]?.focus());
+      requestAnimationFrame(() => {
+        const messages = this.messageLinks();
+        messages[populatesPrompt ? messages.length - 1 : 0]?.focus();
+      });
+    }
+
+    openMessageDialog(): void {
+      this.showMessageDialog(false);
     }
 
     messageDialogKeydown(event: KeyboardEvent): void {
@@ -223,6 +235,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     closeMessageDialog(): void {
       this.messageDialogTarget.close();
+      this.messageDialogPopulatesPrompt = false;
     }
 
     messageDialogClicked(event: MouseEvent): void {
@@ -233,15 +246,32 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>(".agent-message-link") : null;
       if (!button) return;
       const message = this.transcriptTarget.querySelector<HTMLElement>(`#${CSS.escape(button.value)}`)!;
+      const userText = this.messageDialogPopulatesPrompt
+        ? message.querySelector<HTMLElement>(".agent-user")!.dataset.agentUserText!
+        : undefined;
       this.closeMessageDialog();
       message.scrollIntoView({ behavior: "smooth", block: "center" });
       message.classList.add("agent-message-highlight");
       window.setTimeout(() => message.classList.remove("agent-message-highlight"), 1400);
+      if (userText !== undefined) {
+        this.setInputValue(userText);
+        this.inputTarget.focus();
+      }
     }
 
     // ---- prompt box ----
 
     inputKeydown(event: KeyboardEvent): void {
+      const completionMenuOpen = Boolean(this.element.querySelector(".agent-completion-menu-host:not([hidden])"));
+      const noModifiers = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+      const onFirstLogicalLine = !this.inputTarget.value.slice(0, this.inputTarget.selectionStart).includes("\n");
+      if (event.key === "ArrowUp" && noModifiers && !completionMenuOpen && onFirstLogicalLine && this.userMessages().length > 0) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.showMessageDialog(true);
+        return;
+      }
+
       // Enter inserts a newline; ⌘/Ctrl+Enter sends (or follow-ups when busy).
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
