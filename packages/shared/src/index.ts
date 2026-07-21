@@ -345,4 +345,5 @@ export {
   type CableClientMessage,
   type CableIdentifier,
   type CableServerMessage,
+  type CableSubscriptionOptions,
 } from "./cable.ts";

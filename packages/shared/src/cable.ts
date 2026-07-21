@@ -4,8 +4,13 @@ export type CableIdentifier =
   | { channel: "workspace"; workspaceId: string }
   | { channel: "agent"; workspaceId: string; label: string };
 
+export interface CableSubscriptionOptions {
+  /** The latest server snapshot already represented in this client's DOM. */
+  upTo?: string;
+}
+
 export type CableClientMessage =
-  | { command: "subscribe"; identifier: CableIdentifier }
+  | ({ command: "subscribe"; identifier: CableIdentifier } & CableSubscriptionOptions)
   | { command: "unsubscribe"; identifier: CableIdentifier }
   | { command: "message"; identifier: CableIdentifier; data: unknown }
   | { command: "pong"; time?: number };
@@ -14,12 +19,12 @@ export type CableServerMessage =
   | { type: "welcome"; connectionId: string }
   | { type: "confirm_subscription"; identifier: CableIdentifier }
   | { type: "reject_subscription"; identifier: CableIdentifier; reason: string }
-  | { type: "turbo_stream"; identifier: CableIdentifier; html: string }
+  | { type: "turbo_stream"; identifier: CableIdentifier; html: string; cursor?: string }
   | { type: "ping"; time: number }
   | { type: "error"; message: string };
 
 export interface AtelierCableClient {
-  subscribe(identifier: CableIdentifier): void;
+  subscribe(identifier: CableIdentifier, options?: CableSubscriptionOptions): void;
   unsubscribe(identifier: CableIdentifier): void;
   send(identifier: CableIdentifier, data: unknown): void;
   connected(): boolean;

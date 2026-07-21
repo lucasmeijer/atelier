@@ -10,7 +10,8 @@ declare global {
 }
 
 export function createAtelierCableClient(): AtelierCableClient {
-  const desired = new Map<string, CableIdentifier>();
+  const desired = new Map<string, { identifier: CableIdentifier; upTo?: string }>();
+  const knownCursors = new Map<string, string>();
   const delays = [100, 250, 500, 1000, 2000, 5000];
   let socket: WebSocket | undefined;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -27,7 +28,15 @@ export function createAtelierCableClient(): AtelierCableClient {
   }
 
   function resubscribeAll(): void {
-    for (const identifier of desired.values()) sendRaw({ command: "subscribe", identifier });
+    for (const subscription of desired.values()) sendRaw({ command: "subscribe", identifier: subscription.identifier, upTo: subscription.upTo });
+  }
+
+  function rememberCursor(identifier: CableIdentifier, cursor: string | undefined): void {
+    if (!cursor) return;
+    const key = serializeCableIdentifier(identifier);
+    knownCursors.set(key, cursor);
+    const subscription = desired.get(key);
+    if (subscription) subscription.upTo = cursor;
   }
 
   function scheduleReconnect(): void {
@@ -53,6 +62,7 @@ export function createAtelierCableClient(): AtelierCableClient {
         break;
       case "turbo_stream":
         window.Turbo?.renderStreamMessage(message.html);
+        rememberCursor(message.identifier, message.cursor);
         break;
       case "ping":
         sendRaw({ command: "pong", time: message.time });
@@ -77,12 +87,14 @@ export function createAtelierCableClient(): AtelierCableClient {
   });
 
   const client: AtelierCableClient = {
-    subscribe(identifier) {
+    subscribe(identifier, options) {
       const parsed = parseCableIdentifier(identifier);
-      desired.set(serializeCableIdentifier(parsed), parsed);
+      const key = serializeCableIdentifier(parsed);
+      const upTo = options?.upTo ?? knownCursors.get(key);
+      desired.set(key, { identifier: parsed, upTo });
       closingForPageHide = false;
       connect();
-      sendRaw({ command: "subscribe", identifier: parsed });
+      sendRaw({ command: "subscribe", identifier: parsed, upTo });
     },
     unsubscribe(identifier) {
       const parsed = parseCableIdentifier(identifier);

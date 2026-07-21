@@ -44,7 +44,7 @@ import {
 // Public surface
 // ---------------------------------------------------------------------------
 
-type AgentSubscriber = (streamHtml: string) => void;
+type AgentSubscriber = (streamHtml: string, cursor: string) => void;
 type WorkspaceTabBusyListener = (event: { workspaceId: string; tabKey: string; busy: boolean }) => void;
 type InitialSessionSettings = Pick<NonNullable<Parameters<typeof createAgentSession>[0]>, "model" | "thinkingLevel">;
 
@@ -72,8 +72,8 @@ interface WorkspaceAgentRuntime {
   sessionFile: string;
   readonly isStreaming: boolean;
   subscribe(listener: AgentSubscriber): () => void;
-  /** Turbo-stream HTML bringing a fresh client fully up to date. */
-  snapshotStream(): Promise<string>;
+  /** Turbo-stream HTML bringing a fresh client fully up to date, unless it already has this snapshot. */
+  snapshotStream(upTo?: string): Promise<{ html: string; cursor: string }>;
   /** Server-rendered state for initial pane HTML. */
   paneState(): Promise<AgentPaneState>;
   userMessages(): string[];
@@ -144,6 +144,8 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected live?: LiveState;
   private announcedBusy = false;
   private subscribers = new Set<AgentSubscriber>();
+  private readonly snapshotGeneration = crypto.randomUUID();
+  private snapshotRevision = 0;
 
   constructor(agent: WorkspaceAgentInfo, protected readonly options: WorkspaceAgentRuntimeOptions = {}) {
     this.workspaceId = agent.workspaceId;
@@ -165,12 +167,14 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     return () => this.subscribers.delete(listener);
   }
 
-  protected broadcastRaw(streamHtml: string): void {
-    for (const subscriber of this.subscribers) subscriber(streamHtml);
+  private snapshotCursor(): string {
+    return `${this.snapshotGeneration}:${this.snapshotRevision}`;
   }
 
   protected stream(html: string): void {
-    this.broadcastRaw(html);
+    this.snapshotRevision += 1;
+    const cursor = this.snapshotCursor();
+    for (const subscriber of this.subscribers) subscriber(html, cursor);
   }
 
   protected setBusy(busy: boolean): void {
@@ -419,13 +423,17 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.stream(turboStream("update", ids.stats(this.ctx), renderStatsBar(this.ctx, await this.statsView())));
   }
 
-  async snapshotStream(): Promise<string> {
+  async snapshotStream(upTo?: string): Promise<{ html: string; cursor: string }> {
+    const cursor = this.snapshotCursor();
+    if (upTo === cursor) return { html: "", cursor };
     const state = await this.paneState();
-    return turboStream("update", ids.transcript(this.ctx), state.transcriptHtml) + turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, state.busy)) + turboStream("update", ids.stats(this.ctx), renderStatsBar(this.ctx, state.stats));
+    const html = turboStream("update", ids.transcript(this.ctx), state.transcriptHtml) + turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, state.busy)) + turboStream("update", ids.stats(this.ctx), renderStatsBar(this.ctx, state.stats));
+    return { html, cursor: state.snapshotCursor! };
   }
 
   async paneState(): Promise<AgentPaneState> {
-    return { transcriptHtml: renderTranscript(this.ctx, await this.itemsForDisplay(), this.modelContext()), busy: this.isStreaming, stats: await this.statsView() };
+    const snapshotCursor = this.snapshotCursor();
+    return { transcriptHtml: renderTranscript(this.ctx, await this.itemsForDisplay(), this.modelContext()), busy: this.isStreaming, stats: await this.statsView(), snapshotCursor };
   }
 
   async detailHtml(key: string, count = 100): Promise<string> {
@@ -809,7 +817,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
     this.toolsForModel = created.toolViews;
     this.sessionFile = agent.path;
     this.subscribeToSession();
-    this.stream(await this.snapshotStream());
+    this.stream((await this.snapshotStream()).html);
   }
 
   async rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void> {

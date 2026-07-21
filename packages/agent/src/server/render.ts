@@ -113,6 +113,8 @@ export interface AgentPaneState {
   transcriptHtml: string;
   busy: boolean;
   stats: AgentStatsView;
+  /** Identifies the last runtime mutation represented by this pane state. */
+  snapshotCursor?: string;
 }
 
 const agentAttachmentDropAction = "dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop";
@@ -155,6 +157,7 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
       data-controller="agent-pane agent-attachments"
       data-agent-pane-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
       data-agent-pane-label-value="${escapeHtml(ctx.label)}"
+      ${state.snapshotCursor ? `data-agent-pane-snapshot-cursor-value="${escapeHtml(state.snapshotCursor)}"` : ""}
       ${agentAttachmentDropAttrs(uploadUrl)}>
       <div class="agent-transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
       ${await renderAgentComposer({

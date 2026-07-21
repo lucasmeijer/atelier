@@ -78,10 +78,10 @@ export function createCableServer(options: CableServerOptions): CableServer {
     await requireAgent(identifier.workspaceId, identifier.label);
   }
 
-  async function snapshot(identifier: CableIdentifier): Promise<string> {
-    if (identifier.channel === "shell") return await options.shellSnapshot?.() ?? "";
-    if (identifier.channel === "agent") return await (await getWorkspaceAgentRuntime(await requireAgent(identifier.workspaceId, identifier.label))).snapshotStream();
-    return "";
+  async function snapshot(identifier: CableIdentifier, upTo?: string): Promise<{ html: string; cursor?: string }> {
+    if (identifier.channel === "shell") return { html: await options.shellSnapshot?.() ?? "" };
+    if (identifier.channel === "agent") return await (await getWorkspaceAgentRuntime(await requireAgent(identifier.workspaceId, identifier.label))).snapshotStream(upTo);
+    return { html: "" };
   }
 
   async function ensureUpstream(identifier: CableIdentifier): Promise<void> {
@@ -93,7 +93,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
       return;
     }
     const runtime = await getWorkspaceAgentRuntime(await requireAgent(identifier.workspaceId, identifier.label));
-    const unsubscribe = runtime.subscribe((html) => broadcast(identifier, html));
+    const unsubscribe = runtime.subscribe((html, cursor) => broadcast(identifier, html, cursor));
     upstreamByIdentifier.set(key, { refCount: 1, unsubscribe });
   }
 
@@ -106,7 +106,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
     upstreamByIdentifier.delete(key);
   }
 
-  async function subscribe(ws: CableSocket, rawIdentifier: unknown): Promise<void> {
+  async function subscribe(ws: CableSocket, rawIdentifier: unknown, upTo?: string): Promise<void> {
     const identifier = parseCableIdentifier(rawIdentifier);
     const key = serializeCableIdentifier(identifier);
     await authorize(identifier);
@@ -121,9 +121,9 @@ export function createCableServer(options: CableServerOptions): CableServer {
       await ensureUpstream(identifier);
     }
 
+    const current = await snapshot(identifier, upTo);
     send(ws, { type: "confirm_subscription", identifier });
-    const html = await snapshot(identifier);
-    if (html) send(ws, { type: "turbo_stream", identifier, html });
+    if (current.html) send(ws, { type: "turbo_stream", identifier, html: current.html, ...(current.cursor ? { cursor: current.cursor } : {}) });
   }
 
   function unsubscribe(ws: CableSocket, rawIdentifier: unknown): void {
@@ -137,11 +137,11 @@ export function createCableServer(options: CableServerOptions): CableServer {
     if (identifierSockets?.size === 0) socketsByIdentifier.delete(key);
   }
 
-  function broadcast(identifier: CableIdentifier, html: string): void {
+  function broadcast(identifier: CableIdentifier, html: string, cursor?: string): void {
     if (!html) return;
     const parsed = parseCableIdentifier(identifier);
     const key = serializeCableIdentifier(parsed);
-    for (const ws of socketsByIdentifier.get(key) ?? []) send(ws, { type: "turbo_stream", identifier: parsed, html });
+    for (const ws of socketsByIdentifier.get(key) ?? []) send(ws, { type: "turbo_stream", identifier: parsed, html, ...(cursor ? { cursor } : {}) });
   }
 
   function close(ws: CableSocket): void {
@@ -169,7 +169,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
         let message: CableClientMessage | undefined;
         try {
           message = JSON.parse(textMessage(raw)) as CableClientMessage;
-          if (message.command === "subscribe") await subscribe(ws, message.identifier);
+          if (message.command === "subscribe") await subscribe(ws, message.identifier, typeof message.upTo === "string" ? message.upTo : undefined);
           else if (message.command === "unsubscribe") unsubscribe(ws, message.identifier);
           else if (message.command === "pong") return;
           else if (message.command === "message") send(ws, { type: "error", message: "channel messages are not supported yet" });

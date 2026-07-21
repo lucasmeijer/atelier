@@ -58,12 +58,14 @@ interface AgentPaneControllerInstance {
 
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
-    static values = { workspaceId: String, label: String };
+    static values = { workspaceId: String, label: String, snapshotCursor: String };
     static targets = ["transcript", "transcriptNav", "messageDialog", "messageList", "input", "form", "rewindDialog", "rewindEntry", "rewindPreview"];
     declare readonly element: HTMLElement;
     declare readonly application: StimulusApplication;
     declare readonly workspaceIdValue: string;
     declare readonly labelValue: string;
+    declare readonly snapshotCursorValue: string;
+    declare readonly hasSnapshotCursorValue: boolean;
     declare readonly transcriptTarget: HTMLElement;
     declare readonly transcriptNavTarget: HTMLButtonElement;
     declare readonly messageDialogTarget: HTMLDialogElement;
@@ -76,6 +78,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     private stuck = true;
     private subscribed = false;
+    private hasSubscribed = false;
     private observer?: MutationObserver;
     private promptObserver?: MutationObserver;
     private rewindUserText = "";
@@ -139,8 +142,10 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       requestAnimationFrame(() => this.autosize());
       if (document.visibilityState !== "visible" || !isWorkspacePaneVisible(this.element) || this.subscribed) return;
       this.startAgentTerminals();
-      window.AtelierCable?.subscribe(this.cableIdentifier());
+      const options = !this.hasSubscribed && this.hasSnapshotCursorValue ? { upTo: this.snapshotCursorValue } : undefined;
+      window.AtelierCable?.subscribe(this.cableIdentifier(), options);
       this.subscribed = true;
+      this.hasSubscribed = true;
     }
 
     stop(): void {

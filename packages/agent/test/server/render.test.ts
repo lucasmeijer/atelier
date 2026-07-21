@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { renderAgentComposer, renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../src/server/render.ts";
+import { renderAgentComposer, renderAgentPane, renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../src/server/render.ts";
 import type { ToolView, TranscriptItem } from "../../src/server/transcript.ts";
 
 const ctx: AgentRenderContext = { workspaceId: "ws", label: "agent" };
 const tool = (overrides: Partial<ToolView>): ToolView => ({ callId: "call", name: "read", args: {}, status: "ok", ...overrides });
 
 describe("flat transcript rendering", () => {
+  test("server-rendered panes expose their snapshot cursor", async () => {
+    const stats = { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] };
+    const html = await renderAgentPane(ctx, { label: "agent" } as never, { transcriptHtml: "ready", busy: false, stats, snapshotCursor: "generation:4" });
+    expect(html).toContain('data-agent-pane-snapshot-cursor-value="generation:4"');
+  });
+
   test("composer retains unified completions", async () => {
     const html = await renderAgentComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
     expect(html).toContain('data-controller="agent-attachments agent-completions"');
