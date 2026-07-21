@@ -1267,8 +1267,16 @@ function agentPaneController(application: StimulusApplication, pane: HTMLElement
   return agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
 }
 
+export function focusAgentPrompt(pane?: HTMLElement | null): boolean {
+  const input = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
+  if (!input) return false;
+  input.focus({ preventScroll: true });
+  return true;
+}
+
 function agentTabBecameVisible(application: StimulusApplication, pane: HTMLElement): void {
   agentPaneController(application, pane)?.start();
+  focusAgentPrompt(pane);
 }
 
 function agentTabNoLongerVisible(application: StimulusApplication, pane: HTMLElement): void {
@@ -1346,12 +1354,7 @@ export const agentClientModule: WorkspaceClientModule = {
     });
     hooks.onBecomeVisible(({ pane }) => agentTabBecameVisible(application, pane));
     hooks.onNoLongerVisible(({ pane }) => agentTabNoLongerVisible(application, pane));
-    hooks.onFocusGroup(({ pane }) => {
-      const agentInput = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
-      if (!agentInput) return false;
-      agentInput.focus();
-      return true;
-    });
+    hooks.onFocusGroup(({ pane }) => focusAgentPrompt(pane));
     hooks.onWorkspaceCommand((commandId) => {
       if (commandId !== "agent.launch-project-workspace") return false;
       const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");

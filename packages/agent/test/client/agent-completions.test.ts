@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { agentCompletionRequest, fileCompletionPrefix, insertPromptTemplate } from "../../src/client/agent-controllers.ts";
+import { describe, expect, mock, test } from "bun:test";
+import { agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, insertPromptTemplate } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): HTMLTextAreaElement {
   return {
@@ -12,6 +12,16 @@ function input(value: string, cursor = value.length): HTMLTextAreaElement {
     },
   } as HTMLTextAreaElement;
 }
+
+describe("agent prompt focus", () => {
+  test("focuses without scrolling the tab", () => {
+    const focus = mock(() => {});
+    const pane = { querySelector: () => ({ focus }) } as unknown as HTMLElement;
+
+    expect(focusAgentPrompt(pane)).toBe(true);
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+});
 
 describe("agent prompt completion activation", () => {
   test("slash resources and @ references are the only automatic completions", () => {
