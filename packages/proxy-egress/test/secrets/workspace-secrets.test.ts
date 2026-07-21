@@ -2,8 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addProject, createProjectSecret } from "@atelier/projects";
+import { addProject, createProjectSecret, type GitProjectInitInstruction } from "@atelier/projects";
 import { createWorkspaceSecretContext, clearWorkspaceGitHubToken, forgetWorkspaceSecretContext, getWorkspaceSecretContext, setWorkspaceGitHubToken } from "../../src/secrets/workspace-secrets.ts";
+
+function projectInit(projectId: string): GitProjectInitInstruction {
+  return { type: "project.git", projectId, name: "Project", gitUrl: "https://github.com/org/repo.git", branch: null, sessionShareKey: "Project" };
+}
 
 describe("workspace secrets", () => {
   let previousDataDir: string | undefined;
@@ -45,7 +49,7 @@ describe("workspace secrets", () => {
     await createProjectSecret(project.id, { envName: "API_TOKEN", hostPattern: "api.example.com, *.example.org", secretValue: "real-secret" });
     await createProjectSecret(project.id, { envName: "STRICT_TOKEN", hostPattern: "api.example.com", placeholder: "sk-test-placeholder", secretValue: "strict-secret" });
 
-    const context = await createWorkspaceSecretContext("test-workspace", { type: "project.git", projectId: project.id, name: "Project", gitUrl: "https://github.com/org/repo.git", branch: null, sessionShareKey: "Project" });
+    const context = await createWorkspaceSecretContext("test-workspace", projectInit(project.id));
     const result = await context.hooks.onRequest!(new Request("https://api.example.com/v1/sk-test-placeholder", { headers: { authorization: "Bearer sk-test-placeholder" } }));
 
     expect(context.env.API_TOKEN).toBe("ATELIER_INJECT_API_TOKEN");
@@ -56,13 +60,22 @@ describe("workspace secrets", () => {
     expect((result as Request).url).toBe("https://api.example.com/v1/strict-secret");
   });
 
-  test("rebuilds context on demand after in-memory state is forgotten", async () => {
-    setWorkspaceGitHubToken("real-secret");
+  test("reloads persisted project secrets when rebuilding context after restart", async () => {
+    const project = (await addProject("https://github.com/org/repo.git")).project;
+    await createProjectSecret(project.id, { envName: "PACKAGE_TOKEN", hostPattern: "registry.example.com", placeholder: "PACKAGE_TOKEN", secretValue: "real-package-secret" });
+    const init = projectInit(project.id);
+    await createWorkspaceSecretContext("test-workspace", init);
     forgetWorkspaceSecretContext("test-workspace");
 
-    const context = await getWorkspaceSecretContext("test-workspace");
+    const context = await getWorkspaceSecretContext("test-workspace", async (workspaceId) => {
+      expect(workspaceId).toBe("test-workspace");
+      return init;
+    });
+    const result = await context.hooks.onRequest!(new Request("https://registry.example.com/v2/", { headers: { authorization: "Bearer PACKAGE_TOKEN" } }));
 
-    expect(context?.env.GH_TOKEN).toBe("ATELIER_INJECT_GH_TOKEN");
+    expect(context.env.PACKAGE_TOKEN).toBe("PACKAGE_TOKEN");
+    expect(context.secrets).toContainEqual({ name: "PACKAGE_TOKEN", placeholder: "PACKAGE_TOKEN", hosts: ["registry.example.com"] });
+    expect((result as Request).headers.get("authorization")).toBe("Bearer real-package-secret");
   });
 
   test("passes an inherited placeholder onward for nested Atelier", async () => {

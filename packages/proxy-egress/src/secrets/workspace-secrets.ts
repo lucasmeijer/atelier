@@ -1,6 +1,6 @@
 import { clearWorkspaceGitHubToken as clearStoredWorkspaceGitHubToken, discoverHostGitHubToken, hasWorkspaceGitHubToken as hasStoredWorkspaceGitHubToken, setWorkspaceGitHubToken as setStoredWorkspaceGitHubToken } from "@atelier/core";
 import { isGitProjectInit, revealProjectSecrets } from "@atelier/projects";
-import type { WorkspaceInitInstruction } from "@atelier/workspace";
+import { getWorkspaceInit, type WorkspaceInitInstruction } from "@atelier/workspace";
 import { createHttpHooks, type SecretDefinition } from "./placeholder-hooks.ts";
 import type { HttpHooks } from "./types.ts";
 
@@ -49,8 +49,13 @@ export async function createWorkspaceSecretContext(workspaceId: string, init?: W
   return created;
 }
 
-export async function getWorkspaceSecretContext(workspaceId: string): Promise<WorkspaceSecretContext> {
-  return contexts.get(workspaceId) ?? await createWorkspaceSecretContext(workspaceId);
+export async function getWorkspaceSecretContext(
+  workspaceId: string,
+  loadWorkspaceInit: (workspaceId: string) => Promise<WorkspaceInitInstruction | undefined> = getWorkspaceInit,
+): Promise<WorkspaceSecretContext> {
+  const existing = contexts.get(workspaceId);
+  if (existing) return existing;
+  return await createWorkspaceSecretContext(workspaceId, await loadWorkspaceInit(workspaceId));
 }
 
 export function forgetWorkspaceSecretContext(workspaceId: string): void {
