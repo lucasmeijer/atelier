@@ -33,6 +33,14 @@ describe("flat transcript rendering", () => {
     expect(renderTranscript(ctx, [item], { systemPrompt: "", tools: [] })).toContain("a.ts:40-119");
   });
 
+  test("read results render source without adding line-number markup", () => {
+    const item: TranscriptItem = { type: "tool", key: "read-result", tool: tool({ name: "read", args: { path: "a.ts", offset: 40, limit: 2 }, resultText: "const first = 1;\nconst second = 2;" }) };
+    const html = renderTranscriptItemDetailFrame(ctx, item);
+    expect(html).toContain("hljs-keyword");
+    expect(html).not.toContain("agent-numbered-line");
+    expect(html).not.toContain("agent-line-number");
+  });
+
   test("historical tools are collapsed and lazy", () => {
     const item: TranscriptItem = { type: "tool", key: "write-1", tool: tool({ name: "write", args: { path: "a.ts", content: "const x = 1;" } }) };
     const html = renderTranscript(ctx, [item], { systemPrompt: "", tools: [] });

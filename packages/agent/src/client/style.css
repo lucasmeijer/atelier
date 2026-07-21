@@ -557,8 +557,6 @@ summary > .agent-tool-head { width: 100%; }
 .agent-observed-bash:has(.agent-observed-tabs input:nth-of-type(2):checked) .agent-observed-result { display: block; }
 .agent-observed-bash:has(.agent-observed-tabs input:nth-of-type(3):checked) .agent-observed-live { display: none; }
 .agent-observed-bash:has(.agent-observed-tabs input:nth-of-type(3):checked) .agent-observed-model { display: block; }
-.agent-numbered-line { display: grid; grid-template-columns: 5ch minmax(0, 1fr); }
-.agent-line-number { padding-right: 1.5ch; color: var(--muted2); text-align: right; user-select: none; }
 .agent-tool.tool-write.active .agent-tool-code { max-height: none; overflow: visible; white-space: pre-wrap; }
 .agent-tool-copy { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: auto; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted2); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
 .agent-tool-copy:hover { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); }

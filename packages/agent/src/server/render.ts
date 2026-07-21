@@ -512,12 +512,6 @@ function renderBashDetail(ctx: AgentRenderContext, key: string, tool: ToolView, 
   return `<div class="agent-tool-detail agent-bash-detail">${commandHtml}${renderBashResultViews(ctx, key, tool, count)}</div>`;
 }
 
-function numberedCodeBlockHtml(code: string, filePath: string | undefined, start: number): string {
-  const highlighted = highlightCodeHtmlForPath(code, filePath);
-  const lines = highlighted.html.split("\n").map((line, index) => `<span class="agent-numbered-line"><span class="agent-line-number">${start + index}</span><span>${line || " "}</span></span>`).join("\n");
-  return `<pre class="agent-tool-code"><code>${lines}</code></pre>`;
-}
-
 function fullscreenSourceRegion(title: string, inlineHtml: string, fullHtml: string): string {
   return `<div class="agent-detail-fullscreen"${fullscreenAttributes(title)}>${inlineHtml}<template data-atelier-fullscreen-target="content">${fullHtml}</template></div>`;
 }
@@ -528,8 +522,7 @@ function renderReadDetail(ctx: AgentRenderContext, key: string, tool: ToolView, 
   if (images) return `<div class="agent-tool-detail">${detailFullscreen("READ RESULT", `${images}${result ? `<pre class="agent-tool-note">${escapeHtml(result)}</pre>` : ""}`)}</div>`;
   const window = textWindow(result, "first", count);
   const path = stringArg(toolArgs(tool), "path", "file_path");
-  const start = numberArg(toolArgs(tool), "offset") ?? 1;
-  return `<div class="agent-tool-detail">${fullscreenSourceRegion("READ RESULT", numberedCodeBlockHtml(window.text, path, start), numberedCodeBlockHtml(result, path, start))}${moreLink(ctx, key, count, window.hidden, "first")}</div>`;
+  return `<div class="agent-tool-detail">${fullscreenSourceRegion("READ RESULT", codeBlockHtml(window.text, path), codeBlockHtml(result, path))}${moreLink(ctx, key, count, window.hidden, "first")}</div>`;
 }
 
 function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
@@ -538,7 +531,7 @@ function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView,
   const path = stringArg(args, "path", "file_path");
   const shown = tool.status === "streaming" || tool.status === "running" ? { text: content, hidden: 0 } : textWindow(content, "first", count);
   const error = tool.status === "error" && tool.resultText ? `<pre class="agent-tool-error-output">${escapeHtml(trimResult(tool))}</pre>` : "";
-  return `<div class="agent-tool-detail">${fullscreenSourceRegion(path || "WRITE", codeBlockHtml(shown.text, path, "agent-tool-code"), codeBlockHtml(content, path, "agent-tool-code"))}${moreLink(ctx, key, count, shown.hidden, "first")}${error}</div>`;
+  return `<div class="agent-tool-detail">${fullscreenSourceRegion(path || "WRITE", codeBlockHtml(shown.text, path), codeBlockHtml(content, path))}${moreLink(ctx, key, count, shown.hidden, "first")}${error}</div>`;
 }
 
 function editHunksForDisplay(tool: ToolView, contextual: boolean): DiffDisplayLine[][] {
