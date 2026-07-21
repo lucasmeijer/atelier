@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Atelier — Project Overview</title>
+  <style>
+    :root {
+      --ink: #18201f;
+      --muted: #66716e;
+      --paper: #f4f0e7;
+      --paper-deep: #e9e2d5;
+      --card: rgba(255, 253, 248, .78);
+      --line: #cfc6b5;
+      --green: #1e5c4d;
+      --green-dark: #123b33;
+      --green-soft: #dce8df;
+      --orange: #d76233;
+      --orange-soft: #f3d7c7;
+      --blue: #335f78;
+      --yellow: #edc763;
+      --shadow: 0 18px 50px rgba(40, 47, 43, .10);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 3%, rgba(215, 98, 51, .10), transparent 25rem),
+        linear-gradient(rgba(30, 92, 77, .025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(30, 92, 77, .025) 1px, transparent 1px),
+        var(--paper);
+      background-size: auto, 28px 28px, 28px 28px, auto;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    a { color: inherit; }
+    code, pre, .eyebrow, .chip, .metric strong, .package-name, .path {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    .page { width: min(1240px, calc(100% - 40px)); margin: 0 auto; }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 70px;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 780; letter-spacing: -.02em; }
+    .brand-mark {
+      width: 28px; height: 28px; display: grid; place-items: center;
+      color: #fff; background: var(--green); border-radius: 8px; transform: rotate(-3deg);
+      box-shadow: 3px 3px 0 var(--orange);
+    }
+    .snapshot { color: var(--muted); font-size: 12px; }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(320px, .6fr);
+      gap: 52px;
+      align-items: center;
+      padding: 92px 0 84px;
+      min-height: 650px;
+    }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      color: var(--green); font-weight: 700; font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    }
+    .eyebrow::before { content: ""; width: 26px; height: 2px; background: var(--orange); }
+    h1, h2, h3 { margin: 0; line-height: 1.08; letter-spacing: -.045em; }
+    h1 { margin-top: 22px; max-width: 850px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(58px, 8vw, 108px); font-weight: 500; }
+    h1 em { color: var(--green); font-weight: 500; }
+    .lede { max-width: 760px; margin: 30px 0 0; font-size: clamp(18px, 2vw, 23px); color: #46504e; line-height: 1.45; }
+    .hero-tags { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 32px; }
+    .chip { padding: 7px 10px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.45); font-size: 11px; }
+
+    .hero-card {
+      position: relative; padding: 28px; color: #fff; background: var(--green-dark); border-radius: 22px;
+      box-shadow: 12px 12px 0 var(--orange-soft), var(--shadow); overflow: hidden;
+    }
+    .hero-card::after {
+      content: ""; position: absolute; width: 180px; height: 180px; right: -70px; top: -70px;
+      border: 28px solid rgba(237, 199, 99, .15); border-radius: 50%;
+    }
+    .hero-card h2 { position: relative; z-index: 1; font-size: 18px; letter-spacing: -.02em; }
+    .metrics { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-top: 24px; background: rgba(255,255,255,.15); }
+    .metric { min-height: 108px; padding: 20px 12px; background: var(--green-dark); }
+    .metric strong { display: block; color: var(--yellow); font-size: 30px; line-height: 1; }
+    .metric span { display: block; margin-top: 9px; color: rgba(255,255,255,.68); font-size: 12px; }
+    .commit { position: relative; z-index: 1; margin-top: 20px; padding-top: 17px; border-top: 1px solid rgba(255,255,255,.18); font-size: 11px; color: rgba(255,255,255,.7); }
+    .commit code { color: #fff; }
+
+    .jumpbar {
+      position: sticky; top: 0; z-index: 10; display: flex; gap: 8px; padding: 12px 0;
+      overflow-x: auto; border-block: 1px solid var(--line); background: rgba(244, 240, 231, .92); backdrop-filter: blur(12px);
+    }
+    .jumpbar a { flex: none; padding: 7px 12px; color: var(--muted); text-decoration: none; font-size: 12px; border-radius: 999px; }
+    .jumpbar a:hover { color: #fff; background: var(--green); }
+
+    section { padding: 94px 0; border-bottom: 1px solid var(--line); scroll-margin-top: 65px; }
+    .section-head { display: grid; grid-template-columns: 1fr 1.3fr; gap: 60px; align-items: end; margin-bottom: 48px; }
+    .section-head h2 { margin-top: 12px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(38px, 5vw, 62px); font-weight: 500; }
+    .section-head p { margin: 0; max-width: 670px; color: var(--muted); font-size: 17px; }
+
+    .thesis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .principle { padding: 26px; border-top: 4px solid var(--green); background: var(--card); box-shadow: var(--shadow); }
+    .principle:nth-child(2) { border-color: var(--orange); }
+    .principle:nth-child(3) { border-color: var(--blue); }
+    .principle .num { color: var(--muted); font: 12px "SFMono-Regular", Consolas, monospace; }
+    .principle h3 { margin-top: 36px; font-size: 22px; letter-spacing: -.03em; }
+    .principle p { margin: 12px 0 0; color: var(--muted); font-size: 14px; }
+
+    .architecture-shell { padding: 28px; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(255,255,255,.34); }
+    .layer { display: grid; grid-template-columns: 170px 1fr; gap: 18px; align-items: stretch; }
+    .layer + .layer { margin-top: 10px; }
+    .layer-title { display: flex; align-items: center; padding: 16px; color: var(--green); font-size: 12px; font-weight: 750; text-transform: uppercase; letter-spacing: .09em; }
+    .layer-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .arch-card { padding: 17px; min-height: 92px; border: 1px solid var(--line); border-radius: 12px; background: #fffcf6; }
+    .arch-card.primary { color: #fff; border-color: var(--green); background: var(--green); }
+    .arch-card.accent { border-color: #e2b99f; background: var(--orange-soft); }
+    .arch-card strong { display: block; font-size: 13px; }
+    .arch-card span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+    .arch-card.primary span { color: rgba(255,255,255,.68); }
+    .flow-arrow { margin: 10px 0 10px 188px; color: var(--orange); font-size: 18px; }
+
+    .workflow { display: grid; grid-template-columns: 250px 1fr; gap: 48px; }
+    .workflow-note { color: var(--muted); font-size: 14px; }
+    .workflow-note strong { color: var(--ink); }
+    .steps { position: relative; }
+    .steps::before { content: ""; position: absolute; top: 24px; bottom: 24px; left: 22px; width: 2px; background: var(--line); }
+    .step { position: relative; display: grid; grid-template-columns: 46px 1fr; gap: 18px; padding-bottom: 28px; }
+    .step:last-child { padding-bottom: 0; }
+    .step-num { z-index: 1; display: grid; place-items: center; width: 46px; height: 46px; color: #fff; background: var(--green); border-radius: 50%; font: 700 12px "SFMono-Regular", Consolas, monospace; box-shadow: 0 0 0 6px var(--paper); }
+    .step:nth-child(3n+2) .step-num { background: var(--orange); }
+    .step-copy { padding: 5px 0 18px; border-bottom: 1px solid var(--line); }
+    .step-copy h3 { font-size: 19px; letter-spacing: -.025em; }
+    .step-copy p { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+
+    .package-groups { display: grid; gap: 28px; }
+    .package-group { display: grid; grid-template-columns: 170px 1fr; gap: 18px; }
+    .package-group > h3 { padding-top: 17px; color: var(--green); font-size: 13px; letter-spacing: -.01em; }
+    .package-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .package { padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+    .package-name { font-size: 12px; font-weight: 700; color: var(--orange); }
+    .package p { margin: 9px 0 0; color: var(--muted); font-size: 13px; }
+    .package .path { display: block; margin-top: 14px; color: #8c918e; font-size: 9px; }
+
+    .network-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .network-card { padding: 28px; color: #fff; background: var(--green-dark); border-radius: var(--radius); }
+    .network-card.light { color: var(--ink); background: var(--orange-soft); }
+    .network-card h3 { font-size: 23px; }
+    .network-card p { color: rgba(255,255,255,.67); font-size: 14px; }
+    .network-card.light p { color: #6e5547; }
+    .network-diagram { margin-top: 26px; display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+    .node { padding: 10px 12px; border: 1px solid rgba(255,255,255,.26); border-radius: 9px; font: 11px "SFMono-Regular", Consolas, monospace; }
+    .light .node { border-color: rgba(70,45,30,.24); background: rgba(255,255,255,.32); }
+    .arrow { opacity: .55; }
+    .invariant { margin-top: 20px; padding: 13px; color: var(--yellow); background: rgba(0,0,0,.18); border-radius: 8px; font: 11px/1.6 "SFMono-Regular", Consolas, monospace; }
+
+    .dev-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 18px; }
+    .terminal { overflow: hidden; color: #e7efe9; background: #182523; border-radius: var(--radius); box-shadow: var(--shadow); }
+    .terminal-bar { display: flex; align-items: center; gap: 7px; padding: 13px 16px; background: #101a19; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #df6b4a; }
+    .dot:nth-child(2) { background: #e6bd56; }
+    .dot:nth-child(3) { background: #5eaa78; }
+    pre { margin: 0; padding: 26px; overflow-x: auto; font-size: 13px; line-height: 1.9; }
+    pre .comment { color: #79908b; }
+    pre .cmd { color: #f0cc70; }
+    .stack { display: grid; gap: 12px; }
+    .fact { padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+    .fact strong { display: block; font-size: 14px; }
+    .fact span { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
+
+    .source-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    details { border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.4); }
+    summary { padding: 15px 16px; cursor: pointer; font-size: 13px; font-weight: 700; }
+    details p { margin: 0; padding: 0 16px 16px; color: var(--muted); font-size: 12px; }
+    details code { color: var(--green); }
+
+    footer { display: flex; justify-content: space-between; gap: 30px; padding: 38px 0 55px; color: var(--muted); font-size: 11px; }
+    footer strong { color: var(--green); }
+
+    @media (max-width: 900px) {
+      .hero, .section-head, .workflow, .dev-grid { grid-template-columns: 1fr; }
+      .hero { padding: 70px 0; min-height: 0; }
+      .thesis, .package-grid { grid-template-columns: 1fr 1fr; }
+      .layer, .package-group { grid-template-columns: 1fr; }
+      .layer-cards { grid-template-columns: repeat(2, 1fr); }
+      .layer-title { padding: 8px 0; }
+      .flow-arrow { margin-left: 0; text-align: center; }
+      .network-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      .page { width: min(100% - 24px, 1240px); }
+      .snapshot { display: none; }
+      .hero { gap: 36px; }
+      h1 { font-size: 54px; }
+      section { padding: 70px 0; }
+      .thesis, .package-grid, .layer-cards, .source-list { grid-template-columns: 1fr; }
+      .architecture-shell { padding: 14px; }
+      .package-group { gap: 6px; }
+      footer { flex-direction: column; }
+    }
+    @media print {
+      .jumpbar { display: none; }
+      body { background: #fff; }
+      section { break-inside: avoid; }
+      .hero { min-height: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header class="page topbar">
+    <div class="brand"><span class="brand-mark">A</span> Atelier / codebase brief</div>
+    <div class="snapshot">Repository snapshot · 18 Jul 2026</div>
+  </header>
+
+  <main class="page">
+    <div class="hero">
+      <div>
+        <div class="eyebrow">Project overview</div>
+        <h1>A workshop for <em>agentic software work.</em></h1>
+        <p class="lede">Atelier is a self-hosted web control plane that turns repositories into isolated Docker workspaces where people, coding agents, terminals, browsers, and IDEs work side by side.</p>
+        <div class="hero-tags">
+          <span class="chip">Bun + TypeScript</span>
+          <span class="chip">Docker workspaces</span>
+          <span class="chip">Turbo + Stimulus</span>
+          <span class="chip">Pi coding agent</span>
+          <span class="chip">Server-rendered UI</span>
+        </div>
+      </div>
+      <aside class="hero-card" aria-label="Repository metrics">
+        <h2>Repository at a glance</h2>
+        <div class="metrics">
+          <div class="metric"><strong>16</strong><span>Bun workspaces<br>1 app + 15 packages</span></div>
+          <div class="metric"><strong>192</strong><span>TypeScript files<br>across product code</span></div>
+          <div class="metric"><strong>37</strong><span>Test files<br>in apps + packages</span></div>
+          <div class="metric"><strong>1</strong><span>Web control plane<br>composing all modules</span></div>
+        </div>
+        <div class="commit">Snapshot: <code>d4c2154</code> · main · “Improve prompt status bar responsiveness”</div>
+      </aside>
+    </div>
+
+    <nav class="jumpbar" aria-label="Overview sections">
+      <a href="#identity">Identity</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#workflow">Core flow</a>
+      <a href="#packages">Package map</a>
+      <a href="#networking">Networking</a>
+      <a href="#development">Development</a>
+      <a href="#sources">Source trail</a>
+    </nav>
+
+    <section id="identity">
+      <div class="section-head">
+        <div><div class="eyebrow">01 / Identity</div><h2>What the project is</h2></div>
+        <p>Atelier owns the full workspace lifecycle: it prepares source, resolves an image, starts a container, attaches tools, proxies apps, runs coding-agent sessions, and protects work during deletion.</p>
+      </div>
+      <div class="thesis">
+        <article class="principle">
+          <div class="num">01</div>
+          <h3>Workspaces are the unit of work</h3>
+          <p>Every task gets an isolated source tree and Docker runtime. Workspaces may start empty, from a saved project, or as a fork of another workspace.</p>
+        </article>
+        <article class="principle">
+          <div class="num">02</div>
+          <h3>The server owns the interface</h3>
+          <p>HTML and Turbo Stream responses are rendered on the server. Stimulus is reserved for browser-only behavior such as tabs, dialogs, and WebSocket terminals.</p>
+        </article>
+        <article class="principle">
+          <div class="num">03</div>
+          <h3>Capabilities arrive as modules</h3>
+          <p>Packages contribute tabs, commands, routes, sockets, provisioning hooks, apps, static files, and settings through a generated workspace-module registry.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <div class="section-head">
+        <div><div class="eyebrow">02 / Architecture</div><h2>One control plane, layered capabilities</h2></div>
+        <p>The web app composes product modules over shared contracts. Below that, the workspace runtime coordinates host files, Docker, processes, ports, and event streams.</p>
+      </div>
+      <div class="architecture-shell" role="img" aria-label="Atelier layered architecture">
+        <div class="layer">
+          <div class="layer-title">Browser surface</div>
+          <div class="layer-cards">
+            <div class="arch-card primary"><strong>Server HTML</strong><span>Pages, frames, dialogs, forms</span></div>
+            <div class="arch-card"><strong>Turbo Streams</strong><span>Incremental live updates</span></div>
+            <div class="arch-card"><strong>Stimulus</strong><span>Focused browser behaviors</span></div>
+            <div class="arch-card"><strong>WebSockets</strong><span>Terminals + live channels</span></div>
+          </div>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="layer">
+          <div class="layer-title">Product modules</div>
+          <div class="layer-cards">
+            <div class="arch-card accent"><strong>Agent</strong><span>Pi sessions, prompts, tools</span></div>
+            <div class="arch-card accent"><strong>Terminal</strong><span>PTY + tmux workspace tabs</span></div>
+            <div class="arch-card accent"><strong>Browser / VS Code</strong><span>Proxied workspace apps</span></div>
+            <div class="arch-card accent"><strong>Desktop</strong><span>Xvfb + websockify surface</span></div>
+          </div>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="layer">
+          <div class="layer-title">Control plane</div>
+          <div class="layer-cards">
+            <div class="arch-card"><strong>@atelier/web</strong><span>HTTP server + composition root</span></div>
+            <div class="arch-card"><strong>Projects</strong><span>Source, Git, secrets, identity</span></div>
+            <div class="arch-card"><strong>Workspace</strong><span>Lifecycle + process execution</span></div>
+            <div class="arch-card"><strong>Ingress / egress</strong><span>Apps, ports, secret boundary</span></div>
+          </div>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="layer">
+          <div class="layer-title">Host substrate</div>
+          <div class="layer-cards">
+            <div class="arch-card primary"><strong>Docker Engine</strong><span>Isolated workspace containers</span></div>
+            <div class="arch-card"><strong>Host worktrees</strong><span>Durable source + project data</span></div>
+            <div class="arch-card"><strong>Loopback ports</strong><span>Portable workspace ingress</span></div>
+            <div class="arch-card"><strong>Event bus</strong><span>Provisioning + activity signals</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="workflow">
+      <div class="section-head">
+        <div><div class="eyebrow">03 / Core flow</div><h2>From repository to live agent</h2></div>
+        <p>The main path is asynchronous and observable: creation returns immediately, while provisioning status and terminal output stream into the workspace view.</p>
+      </div>
+      <div class="workflow">
+        <aside class="workflow-note">
+          <strong>Entry points</strong><br><br>
+          The web UI and <code>POST /api/workspaces</code> both create workspaces. An optional initial prompt, model, and thinking level can be supplied up front.
+        </aside>
+        <div class="steps">
+          <article class="step"><div class="step-num">01</div><div class="step-copy"><h3>Choose or register a project</h3><p>A saved Git project provides repository identity, reusable source templates, GitHub credentials, shared persistent data, and repository-specific workspace configuration.</p></div></article>
+          <article class="step"><div class="step-num">02</div><div class="step-copy"><h3>Create the host workspace</h3><p>Atelier prepares an empty source tree, a project-backed worktree, or a fork of an existing workspace and records its runtime metadata.</p></div></article>
+          <article class="step"><div class="step-num">03</div><div class="step-copy"><h3>Plan and resolve the image</h3><p>The workspace manifest and Dockerfile determine the image. Deterministic image tags allow builds and nested-Docker preload carriers to be reused.</p></div></article>
+          <article class="step"><div class="step-num">04</div><div class="step-copy"><h3>Start and provision the container</h3><p>Docker mounts the source and persistent data, publishes supported ports on host loopback, then runs setup hooks while detailed progress streams to the UI.</p></div></article>
+          <article class="step"><div class="step-num">05</div><div class="step-copy"><h3>Attach the working surfaces</h3><p>Workspace modules contribute agent, terminal, browser, VS Code, and desktop tabs. The layout system places them into visible and preview groups.</p></div></article>
+          <article class="step"><div class="step-num">06</div><div class="step-copy"><h3>Run, inspect, and iterate</h3><p>The Pi agent streams work into server-rendered views while users open live tmux terminals, preview app ports, browse, or enter the embedded IDE.</p></div></article>
+          <article class="step"><div class="step-num">07</div><div class="step-copy"><h3>Protect work at teardown</h3><p>Deletion checks for uncommitted and unpushed changes first. Unsafe deletion is surfaced for explicit confirmation instead of silently dropping work.</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="packages">
+      <div class="section-head">
+        <div><div class="eyebrow">04 / Package map</div><h2>Sixteen focused workspaces</h2></div>
+        <p>The monorepo separates orchestration, domain logic, user surfaces, and network boundaries. Package discovery keeps the web app extensible without hard-coding each module’s contributions.</p>
+      </div>
+      <div class="package-groups">
+        <div class="package-group">
+          <h3>Composition</h3>
+          <div class="package-grid">
+            <article class="package"><div class="package-name">@atelier/web</div><p>Bun HTTP application, page composition, onboarding, settings, workspace registry, Turbo/Cable updates, and module loading.</p><span class="path">apps/web</span></article>
+            <article class="package"><div class="package-name">@atelier/shared</div><p>HTML/Turbo helpers, proxy utilities, and contracts for workspace tabs, commands, routes, apps, sockets, and hooks.</p><span class="path">packages/shared</span></article>
+            <article class="package"><div class="package-name">@atelier/core</div><p>Dependency-light runtime primitives: event bus, Docker commands, data paths, locks, errors, shell quoting, and GitHub token lookup.</p><span class="path">packages/core</span></article>
+          </div>
+        </div>
+        <div class="package-group">
+          <h3>Workspace domain</h3>
+          <div class="package-grid">
+            <article class="package"><div class="package-name">@atelier/workspace</div><p>Container lifecycle, execution, ports, manifests, provisioning views, and workspace state.</p><span class="path">packages/workspace</span></article>
+            <article class="package"><div class="package-name">@atelier/workspace-image</div><p>Workspace image resolution and builds, including deterministic tagging and provisioning progress.</p><span class="path">packages/workspace-image</span></article>
+            <article class="package"><div class="package-name">@atelier/projects</div><p>Project setup, source preparation, Git identity, environment/secrets, persistence, and safe deletion.</p><span class="path">packages/projects</span></article>
+          </div>
+        </div>
+        <div class="package-group">
+          <h3>Working surfaces</h3>
+          <div class="package-grid">
+            <article class="package"><div class="package-name">@atelier/agent</div><p>Pi coding-agent sessions, streaming interaction, model controls, attachments, rewind, tools, and presenters.</p><span class="path">packages/agent</span></article>
+            <article class="package"><div class="package-name">@atelier/observable-terminal</div><p>Server-side Bun PTY/tmux attachment and browser-side xterm.js rendering over WebSockets.</p><span class="path">packages/observable-terminal</span></article>
+            <article class="package"><div class="package-name">@atelier/workspace-terminal</div><p>Terminal tabs, sockets, commands, and a tmux presenter registered for agent use.</p><span class="path">packages/workspace-terminal</span></article>
+            <article class="package"><div class="package-name">@atelier/browser</div><p>Embedded browser tabs, workspace preview routing, and an agent browser presenter.</p><span class="path">packages/browser</span></article>
+            <article class="package"><div class="package-name">@atelier/vscode</div><p>VS Code provisioning, workspace tab rendering, and reverse proxy integration.</p><span class="path">packages/vscode</span></article>
+            <article class="package"><div class="package-name">@atelier/desktop</div><p>Optional graphical desktop via Xvfb and websockify, exposed as a workspace tab.</p><span class="path">packages/desktop</span></article>
+          </div>
+        </div>
+        <div class="package-group">
+          <h3>Boundaries &amp; ops</h3>
+          <div class="package-grid">
+            <article class="package"><div class="package-name">@atelier/proxy-ingress</div><p>HTTP/WebSocket reverse proxy for workspace apps, public route persistence, and Tailscale Serve exposure.</p><span class="path">packages/proxy-ingress</span></article>
+            <article class="package"><div class="package-name">@atelier/proxy-egress</div><p>Authenticated outbound proxy, CA setup, secret contexts, and controlled credential injection.</p><span class="path">packages/proxy-egress</span></article>
+            <article class="package"><div class="package-name">@atelier/update</div><p>Release-channel settings, registry polling, image pulls, restart orchestration, and progress UI.</p><span class="path">packages/update</span></article>
+            <article class="package"><div class="package-name">@atelier/keypress-probe</div><p>Optional local keyboard-event diagnostics surfaced as a visible settings module.</p><span class="path">packages/keypress-probe</span></article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="networking">
+      <div class="section-head">
+        <div><div class="eyebrow">05 / Networking</div><h2>Loopback is the portable boundary</h2></div>
+        <p>Atelier deliberately avoids container IPs and Docker DNS for workspace app ingress. Supported app ports are published to host loopback and the control plane connects there.</p>
+      </div>
+      <div class="network-grid">
+        <article class="network-card">
+          <h3>Workspace app ingress</h3>
+          <p>Browser, VS Code, desktop, and arbitrary preview ports flow through the Atelier ingress proxy to an allocated loopback port.</p>
+          <div class="network-diagram">
+            <span class="node">browser</span><span class="arrow">→</span><span class="node">Atelier ingress</span><span class="arrow">→</span><span class="node">127.0.0.1:port</span><span class="arrow">→</span><span class="node">workspace</span>
+          </div>
+          <div class="invariant">publish host: 127.0.0.1<br>connect host: 127.0.0.1</div>
+        </article>
+        <article class="network-card light">
+          <h3>Deployment implication</h3>
+          <p>A host app works on macOS through Docker Desktop port forwarding. A containerized Atelier deployment is a Linux shape and must use host networking.</p>
+          <div class="network-diagram">
+            <span class="node">Atelier container</span><span class="arrow">→</span><span class="node">host namespace</span><span class="arrow">→</span><span class="node">published port</span>
+          </div>
+          <div class="invariant">docker run --network host … atelier:latest</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="development">
+      <div class="section-head">
+        <div><div class="eyebrow">06 / Development</div><h2>A Bun-first toolchain</h2></div>
+        <p>Root scripts generate module registries before type checks and tests. The same repository builds the web runtime image and its default workspace image.</p>
+      </div>
+      <div class="dev-grid">
+        <div class="terminal" aria-label="Development commands">
+          <div class="terminal-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <pre><span class="comment"># Start the development web app</span>
+<span class="cmd">bun run web</span>
+
+<span class="comment"># Generate module imports + type-check</span>
+<span class="cmd">bun run check</span>
+
+<span class="comment"># Generate module imports + run tests</span>
+<span class="cmd">bun run test</span>
+
+<span class="comment"># Frozen install, checks, and tests</span>
+<span class="cmd">bun run ci</span>
+
+<span class="comment"># Build or run the Dockerized product</span>
+<span class="cmd">bun run image:build</span>
+<span class="cmd">bun run docker:dev</span></pre>
+        </div>
+        <div class="stack">
+          <div class="fact"><strong>Type system</strong><span>Strict TypeScript 6, ESM, no emit, workspace aliases.</span></div>
+          <div class="fact"><strong>Client build</strong><span>Bun asset script bundles Turbo, Stimulus, module clients, and static assets.</span></div>
+          <div class="fact"><strong>UI convention</strong><span>Prefer server-rendered HTML and Turbo Streams; keep Stimulus controllers small.</span></div>
+          <div class="fact"><strong>Container build</strong><span><code>apps/web/Dockerfile</code> performs a frozen install, asset build, runtime assembly, and exposes port 3000.</span></div>
+          <div class="fact"><strong>Module generation</strong><span><code>generate:workspace-modules</code> discovers package <code>./client</code> and <code>./server</code> exports and writes sorted registries.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="sources">
+      <div class="section-head">
+        <div><div class="eyebrow">07 / Source trail</div><h2>Where to read next</h2></div>
+        <p>This overview was derived from the repository itself. These are the highest-signal entry points for understanding or changing the system.</p>
+      </div>
+      <div class="source-list">
+        <details open><summary>Composition root</summary><p><code>apps/web/src/server/main.ts</code> wires the event bus, workspace runtime, module registry, proxies, terminals, preferences, layouts, and HTTP/WebSocket server.</p></details>
+        <details open><summary>Web application</summary><p><code>apps/web/src/server/app.ts</code> owns the primary pages, workspace routes, create/delete flows, API, and server-rendered interaction model.</p></details>
+        <details><summary>Workspace lifecycle</summary><p><code>packages/workspace/src/index.ts</code> contains container creation, image selection, provisioning, readiness, cleanup, execution, and port behavior.</p></details>
+        <details><summary>Project source model</summary><p><code>packages/projects/src/workspace-source.ts</code> explains template clones, worktrees, credentials, and shared project persistence.</p></details>
+        <details><summary>Module contract</summary><p><code>packages/shared/src/index.ts</code> defines the contribution interfaces consumed by the web composition layer.</p></details>
+        <details><summary>Module discovery</summary><p><code>apps/web/scripts/generate-workspace-modules.ts</code> scans packages and generates client/server module imports before checks and tests.</p></details>
+        <details><summary>Networking rationale</summary><p><code>docs/workspace-networking.md</code> records the supported deployment shapes, experiments, and loopback invariant.</p></details>
+        <details><summary>Build and deployment</summary><p><code>docs/docker-image.md</code>, <code>apps/web/Dockerfile</code>, and <code>scripts/build-atelier-image.ts</code> describe image production and runtime requirements.</p></details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="page">
+    <span><strong>Atelier project overview</strong> · generated from repository source, not marketing copy.</span>
+    <span>Snapshot date: 18 Jul 2026 · branch: main · commit: d4c2154</span>
+  </footer>
+</body>
+</html>
