@@ -103,11 +103,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       if (document.visibilityState === "visible" && isWorkspacePaneVisible(this.element)) this.start();
       else this.stop();
     };
-    private readonly onKeydown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape" && this.element.closest(".tab-pane")?.classList.contains("visible")) {
-        void fetch(this.path("/abort"), { method: "POST" });
-      }
-    };
     connect(): void {
       this.observer = new MutationObserver(() => {
         this.restoreHistoricalOpenItems();
@@ -122,7 +117,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.promptObserver.observe(this.formTarget, { childList: true, subtree: true });
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       this.onScroll();
-      document.addEventListener("keydown", this.onKeydown);
       document.addEventListener("visibilitychange", this.onVisibilityChange);
       const promptDraft = sessionStorage.getItem(this.promptDraftStorageKey);
       if (promptDraft !== null) this.inputTarget.value = promptDraft;
@@ -134,7 +128,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.observer?.disconnect();
       this.promptObserver?.disconnect();
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
-      document.removeEventListener("keydown", this.onKeydown);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
       this.stop();
     }
