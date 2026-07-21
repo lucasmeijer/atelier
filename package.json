@@ -8,8 +8,8 @@
       "packages/*"
     ],
     "catalog": {
-      "@earendil-works/pi-ai": "^0.80.8",
-      "@earendil-works/pi-coding-agent": "^0.80.8"
+      "@earendil-works/pi-ai": "^0.81.1",
+      "@earendil-works/pi-coding-agent": "^0.81.1"
     }
   },
   "scripts": {
