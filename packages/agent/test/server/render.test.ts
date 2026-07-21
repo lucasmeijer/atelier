@@ -159,7 +159,7 @@ describe("flat transcript rendering", () => {
     expect(html).toContain("language-javascript");
     expect(html).toContain("hljs-keyword");
     expect(html).toContain("chromium");
-    expect(html).toContain("Display reformatted by Atelier; emitted content unchanged.");
+    expect(html).toContain("data-atelier-display-formatted");
     expect(html).toContain('\n  <span class="hljs-variable language_">console</span>');
     expect(html).not.toContain(compact);
     expect(html).toContain("&gt;/work/tmp-inspect.mjs");
@@ -181,30 +181,40 @@ describe("flat transcript rendering", () => {
     for (const sample of samples) {
       const html = renderBash(sample.command);
       expect(html, sample.name).toContain(sample.path);
-      expect(html, sample.name).toContain("Display reformatted by Atelier; emitted content unchanged.");
+      expect(html, sample.name).toContain("data-atelier-display-formatted");
       expect(html, sample.name).toContain(`language-${"language" in sample ? sample.language : "javascript"}`);
     }
   });
 
-  test("recognizes and highlights a Python heredoc even when no formatter is available", () => {
-    const command = "cat > /tmp/analyze.py <<'PY'\nprint('hello')\nPY";
+  test("formats and highlights a Python heredoc", () => {
+    const compact = "def greet(name):\n  if name: print('hello',name)";
+    const command = `cat > /tmp/analyze.py <<'PY'\n${compact}\nPY`;
     const html = renderBash(command);
-    expect(html).toContain('class="language-python"');
-    expect(html).toContain("hljs-built_in");
-    expect(html).not.toContain("Display reformatted by Atelier");
+    expect(html).toContain('class="language-python" data-atelier-display-formatted');
+    expect(html).toContain("hljs-keyword");
+    expect(html).toContain("\n    <span class=\"hljs-keyword\">if</span>");
+    expect(html).not.toContain(compact);
+  });
+
+  test("formats and highlights a JSON heredoc without another formatter dependency", () => {
+    const compact = '{"name":"Atelier","languages":["js","ts","py"]}';
+    const html = renderBash(`cat > /tmp/demo.json <<'JSON'\n${compact}\nJSON`);
+    expect(html).toContain('class="language-json" data-atelier-display-formatted');
+    expect(html).toContain('&quot;languages&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span>');
+    expect(html).not.toContain(compact);
   });
 
   test("does not recognize cat heredoc text inside a quoted shell argument", () => {
     const command = `printf '%s\\n' "cat > /tmp/not-written.js <<'EOF'" "const x={a:1};" "EOF"`;
     const html = renderBash(command);
     expect(html).not.toContain('class="language-javascript"');
-    expect(html).not.toContain("Display reformatted by Atelier");
+    expect(html).not.toContain("data-atelier-display-formatted");
   });
 
   test("formats multiple heredoc writes in one bash call", () => {
     const command = "mkdir -p /tmp/demo; cat > /tmp/one.js <<'JS'\nconst one={n:1};\nJS\ncat > /tmp/two.ts <<'TS'\nconst two={n:2};\nTS\nnode /tmp/one.js";
     const html = renderBash(command);
-    expect(html.split("<template")[0].match(/Display reformatted by Atelier/g)).toHaveLength(2);
+    expect(html.split("<template")[0].match(/data-atelier-display-formatted/g)).toHaveLength(2);
     expect(html).toContain("language-javascript");
     expect(html).toContain("language-typescript");
     expect(html).toContain("node /tmp/one.js");
@@ -215,7 +225,7 @@ describe("flat transcript rendering", () => {
     const html = renderBash(command);
     expect(html).toContain("COMMAND");
     expect(html).toContain("language-bash");
-    expect(html).not.toContain("Display reformatted by Atelier");
+    expect(html).not.toContain("data-atelier-display-formatted");
   });
 
   test("thinking uses the truncated renderer by default", () => {

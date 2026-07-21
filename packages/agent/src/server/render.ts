@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import prettier from "prettier";
+import { format as formatJavaScript } from "@wasm-fmt/biome_fmt";
+import { format as formatPython } from "@wasm-fmt/ruff_fmt";
 import { composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel, type ModelRef } from "./model-state.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
 import { highlightCodeHtmlForPath, languageFromPath } from "./highlight.ts";
@@ -577,22 +578,27 @@ function bashHeredocWrites(command: string): BashHeredocWrite[] {
   return writes;
 }
 
-const prettierParserByLanguage: Record<string, string> = {
-  javascript: "babel",
-  typescript: "typescript",
-  json: "json",
-  css: "css",
-  html: "html",
-  markdown: "markdown",
-};
-
 function displayFormattedFile(content: string, path: string): string | undefined {
-  const parser = prettierParserByLanguage[languageFromPath(path) ?? ""];
-  if (!parser) return undefined;
+  const language = languageFromPath(path);
   try {
-    const formatted = prettier.format(content, { parser }).trimEnd();
-    if (formatted === content.trimEnd()) return undefined;
-    return `// Display reformatted by Atelier; emitted content unchanged.\n${formatted}`;
+    let formatted: string;
+    switch (language) {
+      case "javascript":
+      case "typescript":
+        formatted = formatJavaScript(content, path, { indentStyle: "space", indentWidth: 2 });
+        break;
+      case "python":
+        formatted = formatPython(content, path, { indent_style: "space", indent_width: 4 });
+        break;
+      case "json":
+        formatted = JSON.stringify(JSON.parse(content), null, 2);
+        break;
+      default:
+        return undefined;
+    }
+    const trimmed = formatted.trimEnd();
+    if (trimmed === content.trimEnd()) return undefined;
+    return trimmed;
   } catch {
     return undefined;
   }
@@ -606,10 +612,12 @@ function bashCommandHtml(command: string): string {
   for (const heredoc of heredocs) {
     html += highlightCodeHtmlForPath(command.slice(cursor, heredoc.contentStart), "command.sh").html;
     const originalContent = command.slice(heredoc.contentStart, heredoc.contentEnd);
-    const displayedContent = displayFormattedFile(originalContent, heredoc.path) ?? originalContent;
+    const formattedContent = displayFormattedFile(originalContent, heredoc.path);
+    const displayedContent = formattedContent ?? originalContent;
     const nested = highlightCodeHtmlForPath(displayedContent, heredoc.path);
     const languageClass = nested.language ? ` class="language-${escapeHtml(nested.language)}"` : "";
-    html += `<span${languageClass}>${nested.html}</span>`;
+    const formattedAttribute = formattedContent === undefined ? "" : " data-atelier-display-formatted";
+    html += `<span${languageClass}${formattedAttribute}>${nested.html}</span>`;
     cursor = heredoc.contentEnd;
   }
   html += highlightCodeHtmlForPath(command.slice(cursor), "command.sh").html;

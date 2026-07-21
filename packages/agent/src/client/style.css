@@ -209,6 +209,11 @@
 .agent-tool-code .hljs-attribute { color: var(--agent-syntax-attr); }
 .agent-tool-code .hljs-name,
 .agent-tool-code .hljs-tag { color: var(--agent-syntax-tag); }
+.agent-tool-code [data-atelier-display-formatted]::before {
+  content: "Atelier introduced formatting and highlighting exclusively in the visualization";
+  display: block;
+  color: var(--muted2);
+}
 .agent-md blockquote { border-left: 3px solid var(--line-2); padding-left: 10px; color: var(--muted); margin: 0 0 8px; }
 .agent-md a { color: var(--accent); text-decoration: none; }
 .agent-md a:hover { text-decoration: underline; }
