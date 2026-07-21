@@ -56,28 +56,20 @@ function agentPath(ctx: AgentRenderContext, suffix: string): string {
   return `/workspaces/${encodeURIComponent(ctx.workspaceId)}/agents/${encodeURIComponent(ctx.label)}${suffix}`;
 }
 
-function markdown(ctx: AgentRenderContext, text: string, options: { highlightCode?: boolean } = {}): string {
-  return renderMarkdown(text, { rewriteSegment: (segment) => rewriteSegment(ctx.workspaceId, segment), highlightCode: options.highlightCode });
+function markdown(ctx: AgentRenderContext, text: string): string {
+  return renderMarkdown(text, { rewriteSegment: (segment) => rewriteSegment(ctx.workspaceId, segment) });
 }
 
-function markdownWithoutEmbeds(_ctx: AgentRenderContext, text: string, options: { highlightCode?: boolean } = {}): string {
-  return renderMarkdown(text, { highlightCode: options.highlightCode });
-}
-
-function readingRow(html: string): string {
-  return `<div class="agent-row agent-row-reading"><div class="agent-reading-column">${html}</div></div>`;
-}
-
-function wideRow(html: string): string {
-  return `<div class="agent-row agent-row-wide"><div class="agent-wide-column">${html}</div></div>`;
+function transcriptRow(html: string): string {
+  return `<div class="agent-row">${html}</div>`;
 }
 
 function renderMarkdownRows(ctx: AgentRenderContext, text: string, options: { highlightCode?: boolean; className?: string } = {}): string {
   const className = options.className ?? "agent-md";
   return splitAtelierEmbeds(text).map((segment) => {
-    if (segment.type === "embed") return wideRow(renderAtelierEmbed(ctx.workspaceId, segment.target));
-    const body = markdownWithoutEmbeds(ctx, segment.text, { highlightCode: options.highlightCode }).trim();
-    return body ? readingRow(`<div class="${className}">${body}</div>`) : "";
+    if (segment.type === "embed") return transcriptRow(renderAtelierEmbed(ctx.workspaceId, segment.target));
+    const body = renderMarkdown(segment.text, { highlightCode: options.highlightCode }).trim();
+    return body ? transcriptRow(`<div class="${className}">${body}</div>`) : "";
   }).join("");
 }
 
@@ -338,7 +330,7 @@ function renderModelContextCard(ctx: AgentRenderContext, modelContext: AgentMode
   const tools = modelContext.tools;
   if (!prompt && tools.length === 0) return "";
   const meta = [prompt ? "system-prompt.md" : undefined, tools.length ? `tools.json (${tools.length})` : undefined].filter(Boolean).join(" · ");
-  return readingRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load"><summary class="agent-tool-head"><span class="agent-tool-status ok"></span><code class="agent-tool-name">model_context</code><span class="agent-tool-args">${escapeHtml(meta)}</span></summary><turbo-frame id="${ids.detailFrame(ctx, "model-context")}" data-agent-lazy-detail-target="frame" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded" data-src="${escapeHtml(transcriptItemPath(ctx, "model-context"))}"></turbo-frame></details>`);
+  return transcriptRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load"><summary class="agent-tool-head"><span class="agent-tool-status ok"></span><code class="agent-tool-name">model_context</code><span class="agent-tool-args">${escapeHtml(meta)}</span></summary><turbo-frame id="${ids.detailFrame(ctx, "model-context")}" data-agent-lazy-detail-target="frame" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded" data-src="${escapeHtml(transcriptItemPath(ctx, "model-context"))}"></turbo-frame></details>`);
 }
 
 export function renderModelContextDetailFrame(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
@@ -353,7 +345,7 @@ function sessionImageUrl(ctx: AgentRenderContext, image: SessionImageRef): strin
 
 function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images: SessionImageRef[] }): string {
   const images = user.images.length ? `<div class="agent-user-attachments">${user.images.map((image) => `<img${fullscreenAttributes("attachment", "media")} src="${escapeHtml(sessionImageUrl(ctx, image))}" alt="attachment" loading="lazy">`).join("")}</div>` : "";
-  return readingRow(`<div class="agent-user"><div class="agent-user-bubble">${markdown(ctx, user.text)}${images}</div></div>`);
+  return transcriptRow(`<div class="agent-user"><div class="agent-user-bubble">${markdown(ctx, user.text)}${images}</div></div>`);
 }
 
 function rewindHtml(ctx: AgentRenderContext, item: TranscriptItem): string {
@@ -366,18 +358,18 @@ export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptIt
   const id = ids.item(ctx, item.key);
   let body = "";
   if (item.type === "user") body = renderUserMessage(ctx, item);
-  else if (item.type === "thinking") body = renderThinkingItem(ctx, item, options);
+  else if (item.type === "thinking") body = renderThinkingItem(ctx, item);
   else if (item.type === "text") body = item.live
-    ? readingRow(`<div class="agent-stream-text" id="${ids.itemText(ctx, item.key)}">${escapeHtml(item.text)}</div>`)
+    ? transcriptRow(`<div class="agent-stream-text" id="${ids.itemText(ctx, item.key)}">${escapeHtml(item.text)}</div>`)
     : renderMarkdownRows(ctx, item.text, { className: item.final ? "agent-md agent-final" : "agent-md agent-itext-md" });
-  else if (item.type === "tool") body = wideRow(renderToolCard(ctx, item.key, item.tool, options));
+  else if (item.type === "tool") body = transcriptRow(renderToolCard(ctx, item.key, item.tool, options));
   else if (item.type === "note") body = renderMarkdownRows(ctx, item.text, { className: `agent-note ${escapeHtml(item.tone)}` });
-  else body = readingRow(`<div class="agent-error">${escapeHtml(item.text)}</div>`);
+  else body = transcriptRow(`<div class="agent-error">${escapeHtml(item.text)}</div>`);
   return `<div class="agent-item" id="${id}">${rewindHtml(ctx, item)}${body}</div>`;
 }
 
-function renderThinkingItem(ctx: AgentRenderContext, item: Extract<TranscriptItem, { type: "thinking" }>, _options: { live?: boolean; open?: boolean }): string {
-  return readingRow(`<div class="agent-thinking-text" data-controller="agent-thinking" data-action="click->agent-thinking#expand keydown->agent-thinking#keydown"><span id="${ids.itemText(ctx, item.key)}" data-agent-thinking-target="content">${escapeHtml(item.text.trimEnd())}</span><span data-agent-thinking-target="preview" hidden></span><button class="agent-thinking-more" type="button" data-agent-thinking-target="more" tabindex="-1" hidden>...(show more)</button></div>`);
+function renderThinkingItem(ctx: AgentRenderContext, item: Extract<TranscriptItem, { type: "thinking" }>): string {
+  return transcriptRow(`<div class="agent-thinking-text" data-controller="agent-thinking" data-action="click->agent-thinking#expand keydown->agent-thinking#keydown"><span id="${ids.itemText(ctx, item.key)}" data-agent-thinking-target="content">${escapeHtml(item.text.trimEnd())}</span><span data-agent-thinking-target="preview" hidden></span><button class="agent-thinking-more" type="button" data-agent-thinking-target="more" tabindex="-1" hidden>...(show more)</button></div>`);
 }
 
 export function renderTranscriptItemDetailFrame(ctx: AgentRenderContext, item: TranscriptItem, options: { count?: number } = {}): string {

@@ -1096,7 +1096,7 @@ function createAgentThinkingController(Controller: StimulusControllerConstructor
         }
         let preview = this.fullText.slice(0, low).trimEnd();
         // Leave breathing room so the affordance reads as part of the prose,
-        // rather than landing against the reading column's right edge.
+        // rather than landing against the text's right edge.
         for (let words = 0; words < 4; words++) {
           const wordBoundary = preview.search(/\s+\S+$/);
           if (wordBoundary < 0) break;
