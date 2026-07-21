@@ -19,6 +19,8 @@ type HtmlAutocompleteOptions = {
 type HtmlAutocompleteActions = {
   readonly open: boolean;
   readonly hasOptions: boolean;
+  activeOption(): HTMLElement | undefined;
+  select(option: HTMLElement): void;
   setInputValue(value: string): void;
   close(): void;
   refresh(force?: boolean): void;
@@ -632,6 +634,8 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       if (autocomplete.keydown?.(event, this.inputTarget, this.urlValue, {
         open: !this.menuTarget.hidden,
         hasOptions: this.options().length > 0,
+        activeOption: () => this.activeOption(),
+        select: (option) => this.insert(option),
         setInputValue: (value) => setTextInputValue(this.inputTarget, value),
         close: () => this.close(),
         refresh: (force = false) => this.scheduleRefresh(force),
@@ -844,7 +848,7 @@ export function agentCompletionRequest(input: HTMLInputElement | HTMLTextAreaEle
   return prefix.startsWith("@") ? { kind: "file", query: rawFileCompletionQuery(prefix), mode: "fuzzy" } : undefined;
 }
 
-function insertPromptTemplate(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): void {
+export function insertPromptTemplate(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): void {
   const trigger = option.dataset.templateTrigger;
   if (!trigger) return;
   const end = input.selectionEnd ?? 0;
@@ -891,7 +895,10 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       else if (option.dataset.completionKind === "file") insertFileCompletion(option, input);
     },
     keydown(event, input, url, actions) {
-      if (event.key === "Enter" && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey && input.value.trim().match(/^\/[^/\s]+(?:\s+[\s\S]*)?$/)) {
+      if (event.key === "Enter" && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        const active = actions.open ? actions.activeOption() : undefined;
+        if (active?.dataset.completionKind === "prompt-template") actions.select(active);
+        if (!/^\/[^/\s]+(?:\s+[\s\S]*)?$/.test(input.value.trim())) return false;
         event.preventDefault();
         const body = new FormData();
         body.set("text", input.value);

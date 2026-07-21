@@ -1,8 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { agentCompletionRequest, fileCompletionPrefix } from "../../src/client/agent-controllers.ts";
+import { agentCompletionRequest, fileCompletionPrefix, insertPromptTemplate } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): HTMLTextAreaElement {
-  return { value, selectionStart: cursor, selectionEnd: cursor } as HTMLTextAreaElement;
+  return {
+    value,
+    selectionStart: cursor,
+    selectionEnd: cursor,
+    setSelectionRange(start, end) {
+      this.selectionStart = start ?? 0;
+      this.selectionEnd = end ?? 0;
+    },
+  } as HTMLTextAreaElement;
 }
 
 describe("agent prompt completion activation", () => {
@@ -24,6 +32,15 @@ describe("agent prompt completion activation", () => {
     expect(agentCompletionRequest(input("/tmp"), true)).toEqual({ kind: "file", query: "/tmp", mode: "direct" });
     expect(agentCompletionRequest(input("/tmp/bla"))).toBeUndefined();
     expect(agentCompletionRequest(input("/tmp/bla"), true)).toEqual({ kind: "file", query: "/tmp/bla", mode: "direct" });
+  });
+
+  test("a selected prompt template replaces a partial trigger before inline expansion", () => {
+    const textarea = input("/rev");
+    const option = { dataset: { templateTrigger: "/review" } } as unknown as HTMLElement;
+
+    insertPromptTemplate(option, textarea);
+    expect(textarea.value).toBe("/review ");
+    expect(textarea.selectionStart).toBe(8);
   });
 
   test("file token extraction supports quoted and in-sentence paths", () => {
