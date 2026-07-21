@@ -588,6 +588,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
 
   constructor(agent: WorkspaceAgentInfo, private session: any, private toolsForModel: AgentToolDefinitionView[], options: WorkspaceAgentRuntimeOptions = {}) {
     super(agent, options);
+    this.ctx.model = this.currentModel();
     this.subscribeToSession();
   }
 
@@ -809,6 +810,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
     const model = this.session.modelRuntime.getModel(provider, modelId);
     if (!model) throw new Error(`Model not available: ${provider}/${modelId}`);
     await this.session.setModel(model);
+    this.ctx.model = this.currentModel();
     const remembered = await getModelThinkingLevel(provider, modelId);
     if (remembered && this.availableThinkingLevels().includes(remembered)) this.session.setThinkingLevel(remembered);
     await this.refreshStats();

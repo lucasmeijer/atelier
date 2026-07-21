@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import prettier from "prettier";
-import { composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel } from "./model-state.ts";
+import { composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel, type ModelRef } from "./model-state.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
 import { highlightCodeHtmlForPath, languageFromPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { renderAtelierEmbed, rewriteSegment, splitAtelierEmbeds } from "./rewrite.ts";
 import type { WorkspaceAgentInfo } from "./session-store.ts";
+import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
 import {
   formatCost,
   formatDuration,
@@ -19,6 +20,7 @@ import {
 export interface AgentRenderContext {
   workspaceId: string;
   label: string;
+  model?: ModelRef;
 }
 
 export function agentTabKey(label: string): string {
@@ -375,7 +377,8 @@ export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptIt
 }
 
 function renderThinkingItem(ctx: AgentRenderContext, item: Extract<TranscriptItem, { type: "thinking" }>): string {
-  return transcriptRow(`<div class="agent-thinking-text" data-controller="agent-thinking" data-action="click->agent-thinking#expand keydown->agent-thinking#keydown"><span id="${ids.itemText(ctx, item.key)}" data-agent-thinking-target="content">${escapeHtml(item.text.trimEnd())}</span><span data-agent-thinking-target="preview" hidden></span><button class="agent-thinking-more" type="button" data-agent-thinking-target="more" tabindex="-1" hidden>...(show more)</button></div>`);
+  const renderer = thinkingBlockRendererFor(ctx.model);
+  return transcriptRow(renderer({ contentId: ids.itemText(ctx, item.key), text: item.text }));
 }
 
 export function renderTranscriptItemDetailFrame(ctx: AgentRenderContext, item: TranscriptItem, options: { count?: number } = {}): string {

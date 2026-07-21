@@ -213,13 +213,32 @@ describe("flat transcript rendering", () => {
     expect(html).not.toContain("Display reformatted by Atelier");
   });
 
-  test("thinking renders as clampable prose rather than a tool call", () => {
+  test("thinking uses the truncated renderer by default", () => {
     const html = renderTranscript(ctx, [{ type: "thinking", key: "thought", text: "secret" }], { systemPrompt: "", tools: [] });
     expect(html).toContain('data-controller="agent-thinking"');
     expect(html).toContain("secret");
     expect(html).toContain('hidden>...(show more)</button>');
     expect(html).not.toContain("agent-tool");
     expect(html).not.toContain("turbo-frame");
+  });
+
+  test("openai-codex 5.5 and 5.6 model families render full thinking immediately", () => {
+    for (const id of ["gpt-5.5", "gpt-5.6-sol"]) {
+      const modelCtx: AgentRenderContext = { ...ctx, model: { provider: "openai-codex", id } };
+      const html = renderTranscript(modelCtx, [{ type: "thinking", key: "thought", text: "full <thought>" }], { systemPrompt: "", tools: [] });
+      expect(html, id).toContain('class="agent-thinking-text expanded"');
+      expect(html, id).toContain("full &lt;thought&gt;");
+      expect(html, id).not.toContain('data-controller="agent-thinking"');
+      expect(html, id).not.toContain("show more");
+    }
+  });
+
+  test("other providers and model families retain the default thinking renderer", () => {
+    for (const model of [{ provider: "openai-codex", id: "gpt-5.4-mini" }, { provider: "openai", id: "gpt-5.6-sol" }]) {
+      const modelCtx: AgentRenderContext = { ...ctx, model };
+      const html = renderTranscript(modelCtx, [{ type: "thinking", key: "thought", text: "secret" }], { systemPrompt: "", tools: [] });
+      expect(html).toContain('data-controller="agent-thinking"');
+    }
   });
 
   test("session images use served URLs and summary metadata", () => {
