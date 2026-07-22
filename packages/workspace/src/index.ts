@@ -167,6 +167,9 @@ export interface RepoWorkspaceManifest {
     authJson?: string;
     modelsJson?: string;
   };
+  seedAtelierConfig?: {
+    projectsJson?: string;
+  };
 }
 
 function optionalString(record: Record<string, unknown>, key: string, path: string, label = key): string | undefined {
@@ -209,29 +212,31 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
   const seedPiConfigRecord = optionalRecord(record, "seedPiConfig", path);
   const authJson = seedPiConfigRecord ? optionalString(seedPiConfigRecord, "authJson", path, "seedPiConfig.authJson") : undefined;
   const modelsJson = seedPiConfigRecord ? optionalString(seedPiConfigRecord, "modelsJson", path, "seedPiConfig.modelsJson") : undefined;
+  const seedAtelierConfigRecord = optionalRecord(record, "seedAtelierConfig", path);
+  const projectsJson = seedAtelierConfigRecord ? optionalString(seedAtelierConfigRecord, "projectsJson", path, "seedAtelierConfig.projectsJson") : undefined;
   return {
     version: 1,
     ...(docker ? { docker } : {}),
     ...(initScripts ? { initScripts } : {}),
     ...(seedPiConfigRecord ? { seedPiConfig: { ...(authJson ? { authJson } : {}), ...(modelsJson ? { modelsJson } : {}) } } : {}),
+    ...(seedAtelierConfigRecord ? { seedAtelierConfig: { ...(projectsJson ? { projectsJson } : {}) } } : {}),
   };
 }
 
-function seedPiConfigInstallScript(source: string, target: string): string {
+function seedConfigInstallScript(source: string, target: string): string {
   return `seed_src=${shellQuote(source)}; seed_dst=${shellQuote(target)}; seed_dir="$(dirname "$seed_dst")"; su atelier -s /bin/sh -c 'mkdir -p "$1"' sh "$seed_dir"; install -o atelier -g atelier -m 600 "$seed_src" "$seed_dst"; rm -f "$seed_src"`;
 }
 
-async function applySeedPiConfigManifest(manifest: RepoWorkspaceManifest, plan: WorkspaceDockerPlan): Promise<void> {
-  const seed = manifest.seedPiConfig;
-  if (!seed) return;
+function applySeedConfigManifest(manifest: RepoWorkspaceManifest, plan: WorkspaceDockerPlan): void {
   const runtime = getAtelierRuntimeContext();
   const entries = [
-    seed.authJson ? { source: atelierDataPath(runtime, "pi-config", "auth.json"), staging: "/tmp/atelier-seed-pi-auth.json", target: seed.authJson } : undefined,
-    seed.modelsJson ? { source: atelierDataPath(runtime, "pi-config", "models.json"), staging: "/tmp/atelier-seed-pi-models.json", target: seed.modelsJson } : undefined,
+    manifest.seedPiConfig?.authJson ? { source: atelierDataPath(runtime, "pi-config", "auth.json"), staging: "/tmp/atelier-seed-pi-auth.json", target: manifest.seedPiConfig.authJson } : undefined,
+    manifest.seedPiConfig?.modelsJson ? { source: atelierDataPath(runtime, "pi-config", "models.json"), staging: "/tmp/atelier-seed-pi-models.json", target: manifest.seedPiConfig.modelsJson } : undefined,
+    manifest.seedAtelierConfig?.projectsJson ? { source: atelierDataPath(runtime, "projects.json"), staging: "/tmp/atelier-seed-projects.json", target: manifest.seedAtelierConfig.projectsJson } : undefined,
   ].filter((entry): entry is { source: string; staging: string; target: string } => Boolean(entry));
   for (const entry of entries) {
     plan.containerFiles.push({ source: entry.source, target: entry.staging });
-    plan.initScripts.push(seedPiConfigInstallScript(entry.staging, entry.target));
+    plan.initScripts.push(seedConfigInstallScript(entry.staging, entry.target));
   }
 }
 
@@ -242,7 +247,7 @@ async function applyRepoWorkspaceManifest(sourcePath: string, plan: WorkspaceDoc
   const manifest = parseRepoWorkspaceManifest(await file.text(), workspaceManifestPath);
   if (manifest.docker?.privileged && !plan.extraArgs.includes("--privileged")) plan.extraArgs.push("--privileged");
   if (manifest.docker?.preloadImages?.length) plan.preloadDockerImages = [...new Set(manifest.docker.preloadImages)];
-  await applySeedPiConfigManifest(manifest, plan);
+  applySeedConfigManifest(manifest, plan);
   plan.initScripts.push(...(manifest.initScripts ?? []));
 }
 

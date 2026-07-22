@@ -12,6 +12,25 @@ function expectInvalid(value: unknown, text: string): void {
   throw new Error("expected invalid manifest");
 }
 
+describe("workspace manifest config seeding", () => {
+  test("accepts Pi and Atelier config destinations", () => {
+    expect(parse({
+      version: 1,
+      seedPiConfig: { authJson: "/nested/auth.json", modelsJson: "/nested/models.json" },
+      seedAtelierConfig: { projectsJson: "/nested/projects.json" },
+    })).toEqual({
+      version: 1,
+      seedPiConfig: { authJson: "/nested/auth.json", modelsJson: "/nested/models.json" },
+      seedAtelierConfig: { projectsJson: "/nested/projects.json" },
+    });
+  });
+
+  test("rejects malformed Atelier config destinations", () => {
+    expectInvalid({ version: 1, seedAtelierConfig: true }, "seedAtelierConfig must be an object");
+    expectInvalid({ version: 1, seedAtelierConfig: { projectsJson: "" } }, "seedAtelierConfig.projectsJson must be a non-empty string");
+  });
+});
+
 describe("workspace manifest Docker image preload", () => {
   test("is optional and accepts an empty array", () => {
     expect(parse({ version: 1 })).toEqual({ version: 1 });
