@@ -426,37 +426,28 @@ class WorkspaceShellController extends Controller {
   declare readonly selectedValue: boolean;
   private shortcutHeld = false;
   private hasSelection = false;
-  private collapseTimer: number | undefined;
 
   connect(): void {
     this.hasSelection = this.selectedValue;
-    this.element.classList.toggle("workspace-shell-collapsed", this.hasSelection);
-  }
-
-  disconnect(): void {
-    window.clearTimeout(this.collapseTimer);
   }
 
   reveal(): void {
     if (!this.hasSelection) return;
-    window.clearTimeout(this.collapseTimer);
     this.element.classList.remove("workspace-shell-collapsed");
   }
 
-  hide(): void {
+  focusTab(): void {
     if (!this.hasSelection || this.shortcutHeld) return;
-    this.collapseAfter(180);
+    this.element.classList.add("workspace-shell-collapsed");
   }
 
   workspaceSelected(): void {
     this.hasSelection = true;
-    if (this.shortcutHeld) this.reveal();
-    else this.collapseAfter(110);
+    this.reveal();
   }
 
   workspaceSelectionCleared(): void {
     this.hasSelection = false;
-    window.clearTimeout(this.collapseTimer);
     this.element.classList.remove("workspace-shell-collapsed");
   }
 
@@ -466,14 +457,7 @@ class WorkspaceShellController extends Controller {
   }
 
   endWorkspaceShortcut(): void {
-    if (!this.shortcutHeld) return;
     this.shortcutHeld = false;
-    this.hide();
-  }
-
-  private collapseAfter(delay: number): void {
-    window.clearTimeout(this.collapseTimer);
-    this.collapseTimer = window.setTimeout(() => this.element.classList.add("workspace-shell-collapsed"), delay);
   }
 }
 

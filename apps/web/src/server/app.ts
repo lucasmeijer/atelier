@@ -811,8 +811,8 @@ ${moduleStylesHtml()}
 
   async function renderWorkspaceShell(selectedId?: string, options: { mainHtml?: string; showWhatsNew?: boolean } = {}): Promise<string> {
     return `<div class="app workspace-shell" data-controller="workspace-shell atelier-shortcuts" data-workspace-shell-selected-value="${selectedId ? "true" : "false"}">
-    <aside class="workspace-shell-sidebar" data-action="pointerenter->workspace-shell#reveal pointerleave->workspace-shell#hide">${await renderWorkspaceSidebar()}</aside>
-    <main class="workspace-shell-main">${options.mainHtml ?? await workspaceDetailHostHtml(selectedId)}</main>
+    <aside class="workspace-shell-sidebar" data-action="pointerenter->workspace-shell#reveal">${await renderWorkspaceSidebar()}</aside>
+    <main class="workspace-shell-main" data-action="focusin->workspace-shell#focusTab pointerdown->workspace-shell#focusTab">${options.mainHtml ?? await workspaceDetailHostHtml(selectedId)}</main>
   </div>
   ${await projectPickerModal()}
   <div id="update_modal_host"></div>
