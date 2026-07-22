@@ -29,5 +29,13 @@ describe("files rendering", () => {
     expect(html).toContain("files-row concealed");
     expect(html).toContain("data-files-destination");
     expect(html).toContain("showHidden=1");
+    expect(html.match(/class="files-actions-toggle"/g)).toHaveLength(2);
+    expect(html).toContain(">Copy URL</button>");
+    expect(html).toContain(">Download</a>");
+    expect(html).toContain("Delete folder</button>");
+    expect(html).toContain("Delete file</button>");
+    expect(html).toContain("/file-browser/archive?");
+    expect(html).toContain("/workspaces/work%201/files/work/src/.secret");
+    expect(html).toContain('data-turbo-frame="workspace_work_1_files"');
   });
 });

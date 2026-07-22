@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import type { WorkspaceClientModule } from "@atelier/shared";
+import { copyTextToClipboard, type WorkspaceClientModule } from "@atelier/shared";
 
 type ControllerConstructor = new (...args: unknown[]) => { element: Element };
 type UploadResult = { kind: "ok" | "conflict" | "error" | "cancelled"; message?: string };
@@ -86,6 +86,31 @@ function createFilesController(Controller: ControllerConstructor): unknown {
       this.navigateFrame(this.listingUrl((event.currentTarget as HTMLInputElement).checked));
     }
 
+    toggleMenu(event: Event): void {
+      const button = event.currentTarget as HTMLButtonElement;
+      const menu = document.getElementById(button.getAttribute("aria-controls")!) as HTMLElement & { hidePopover(): void; showPopover(): void };
+      if (menu.matches(":popover-open")) {
+        menu.hidePopover();
+        return;
+      }
+      menu.showPopover();
+      const buttonRect = button.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      const left = Math.max(8, Math.min(buttonRect.right - menuRect.width, window.innerWidth - menuRect.width - 8));
+      const top = buttonRect.bottom + menuRect.height + 8 <= window.innerHeight
+        ? buttonRect.bottom + 4
+        : Math.max(8, buttonRect.top - menuRect.height - 4);
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+    }
+
+    async copyUrl(event: Event): Promise<void> {
+      const button = event.currentTarget as HTMLButtonElement;
+      await copyTextToClipboard(new URL(button.dataset.filesCopyUrl!, location.href).href);
+      button.textContent = "Copied!";
+      window.setTimeout(() => { button.textContent = "Copy URL"; }, 1200);
+    }
+
     keydown(event: KeyboardEvent): void {
       const rows = [...this.element.querySelectorAll<HTMLElement>(".files-row")];
       if (rows.length === 0) return;
@@ -95,7 +120,7 @@ function createFilesController(Controller: ControllerConstructor): unknown {
       else if (event.key === "ArrowUp") next = Math.max(0, current < 0 ? 0 : current - 1);
       else if (event.key === "Home") next = 0;
       else if (event.key === "End") next = rows.length - 1;
-      else if (event.key === "Enter" && current >= 0) rows[current]!.querySelector<HTMLAnchorElement>("a")?.click();
+      else if (event.key === "Enter" && current >= 0) rows[current]!.querySelector<HTMLAnchorElement>(".files-row-name > a")?.click();
       else return;
       event.preventDefault();
       if (next !== undefined) rows[next]!.focus();

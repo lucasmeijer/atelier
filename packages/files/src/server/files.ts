@@ -21,7 +21,7 @@ export function normalizeFilesPath(input: string | null): string {
   return path;
 }
 
-async function workspaceDirectory(workspaceId: string, input: string | null): Promise<string> {
+export async function resolveFilesDirectory(workspaceId: string, input: string | null): Promise<string> {
   const requested = normalizeFilesPath(input);
   const result = await execWorkspaceCommandBuffer(workspaceId, ["sh", "-c", "test -d \"$1\" && realpath -ez -- \"$1\"", "sh", requested]);
   if (result.exitCode !== 0) throw new FilesPathError("Folder not found", 404);
@@ -52,7 +52,7 @@ async function ignoredPaths(workspaceId: string, paths: string[]): Promise<Set<s
 }
 
 export async function listFiles(workspaceId: string, inputPath: string | null, showConcealed: boolean): Promise<{ path: string; entries: FileEntry[] }> {
-  const path = await workspaceDirectory(workspaceId, inputPath);
+  const path = await resolveFilesDirectory(workspaceId, inputPath);
   const listing = await execWorkspaceCommandBuffer(workspaceId, ["find", path, "-mindepth", "1", "-maxdepth", "1", "-printf", "%y\\0%s\\0%f\\0"]);
   if (listing.exitCode !== 0) throw new FilesPathError(listing.stderr.trim() || "Unable to read folder", 403);
   const rawEntries = parseFindOutput(listing.stdout, path);
@@ -64,8 +64,22 @@ export async function listFiles(workspaceId: string, inputPath: string | null, s
   return { path, entries };
 }
 
+export async function deleteFile(workspaceId: string, inputPath: string | null): Promise<string> {
+  const requested = normalizeFilesPath(inputPath);
+  if (requested === workspaceRoot) throw new FilesPathError("The workspace root cannot be deleted", 422);
+
+  const directory = await resolveFilesDirectory(workspaceId, posix.dirname(requested));
+  const target = posix.join(directory, posix.basename(requested));
+  const script = `if ! test -e "$1" && ! test -L "$1"; then exit 44; fi
+rm -rf -- "$1"`;
+  const result = await execWorkspaceCommand(workspaceId, ["sh", "-c", script, "sh", target]);
+  if (result.exitCode === 44) throw new FilesPathError("File or folder not found", 404);
+  if (result.exitCode !== 0) throw new Error(result.stderr.trim() || "Delete failed");
+  return directory;
+}
+
 export async function uploadFile(workspaceId: string, inputDirectory: string | null, name: string | null, overwrite: boolean, content: Uint8Array): Promise<void> {
-  const directory = await workspaceDirectory(workspaceId, inputDirectory);
+  const directory = await resolveFilesDirectory(workspaceId, inputDirectory);
   if (!name || name === "." || name === ".." || name.includes("/") || name.includes("\\") || name.includes("\0")) throw new FilesPathError("Invalid file name", 422);
 
   const target = posix.join(directory, name);

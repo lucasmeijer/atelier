@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { domId, escapeHtml, type WorkspaceTabContribution } from "@atelier/shared";
+import { domId, escapeHtml, workspaceProxyUrl, type WorkspaceTabContribution } from "@atelier/shared";
 import { workspaceRoot } from "@atelier/workspace";
 import type { FileEntry } from "./files.ts";
 
@@ -35,17 +35,36 @@ function breadcrumbs(workspaceId: string, path: string, showConcealed: boolean):
   }).join("");
 }
 
-function fileRow(workspaceId: string, entry: FileEntry, showConcealed: boolean): string {
+function entryContentUrl(workspaceId: string, entry: FileEntry): string {
+  if (entry.kind !== "directory") return workspaceProxyUrl(workspaceId, "file", entry.path);
+  return `/workspaces/${encodeURIComponent(workspaceId)}/file-browser/archive?${new URLSearchParams({ path: entry.path })}`;
+}
+
+function fileRow(workspaceId: string, entry: FileEntry, showConcealed: boolean, index: number): string {
   const concealed = entry.concealed ? " concealed" : "";
   const icon = entry.kind === "directory" ? "▸" : entry.kind === "symlink" ? "↗" : "";
   const label = entry.kind === "directory"
     ? `<a href="${escapeHtml(directoryUrl(workspaceId, entry.path, showConcealed))}" data-turbo-frame="${filesFrameId(workspaceId)}">${escapeHtml(entry.name)}</a>`
     : `<span>${escapeHtml(entry.name)}</span>`;
   const drop = entry.kind === "directory" ? ` data-files-destination="${escapeHtml(entry.path)}" data-action="dragenter->files#folderDragEnter dragover->files#folderDragOver dragleave->files#folderDragLeave drop->files#folderDrop"` : "";
+  const contentUrl = entryContentUrl(workspaceId, entry);
+  const menuId = domId("files_actions", workspaceId, String(index));
+  const downloadName = entry.kind === "directory" ? `${entry.name}.tar.gz` : entry.name;
+  const kindLabel = entry.kind === "directory" ? "folder" : "file";
   return `<div class="files-row${concealed}" role="treeitem" tabindex="-1" data-kind="${entry.kind}"${drop}>
     <span class="files-row-icon" aria-hidden="true">${icon}</span>
     <span class="files-row-name">${label}</span>
     <span class="files-row-size">${entry.kind === "directory" ? "—" : formatSize(entry.size)}</span>
+    <button class="files-actions-toggle" type="button" aria-label="Actions for ${escapeHtml(entry.name)}" aria-haspopup="menu" aria-controls="${menuId}" data-action="files#toggleMenu">•••</button>
+    <div class="files-actions-menu" id="${menuId}" role="menu" popover="auto">
+      <button type="button" role="menuitem" data-files-copy-url="${escapeHtml(contentUrl)}" data-action="files#copyUrl">Copy URL</button>
+      <a href="${escapeHtml(contentUrl)}" download="${escapeHtml(downloadName)}" role="menuitem" data-turbo="false">Download</a>
+      <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/delete" data-turbo-frame="${filesFrameId(workspaceId)}" data-turbo-confirm="Delete ${escapeHtml(entry.name)}? This cannot be undone.">
+        <input type="hidden" name="path" value="${escapeHtml(entry.path)}">
+        ${showConcealed ? '<input type="hidden" name="showHidden" value="1">' : ""}
+        <button class="danger" type="submit" role="menuitem">Delete ${kindLabel}</button>
+      </form>
+    </div>
   </div>`;
 }
 
@@ -56,9 +75,9 @@ export function renderFilesFrame(workspaceId: string, path: string, entries: Fil
         <nav class="files-breadcrumbs" aria-label="Current folder">${breadcrumbs(workspaceId, path, showConcealed)}</nav>
         <label class="files-hidden-toggle"><input type="checkbox"${showConcealed ? " checked" : ""} data-action="change->files#toggleHidden"> Show hidden &amp; ignored</label>
       </header>
-      <div class="files-columns" aria-hidden="true"><span>Name</span><span>Size</span></div>
+      <div class="files-columns" aria-hidden="true"><span>Name</span><span>Size</span><span></span></div>
       <div class="files-tree" role="tree" aria-label="Files in ${escapeHtml(path)}" tabindex="0">
-        ${entries.map((entry) => fileRow(workspaceId, entry, showConcealed)).join("") || '<p class="files-empty">This folder is empty</p>'}
+        ${entries.map((entry, index) => fileRow(workspaceId, entry, showConcealed, index)).join("") || '<p class="files-empty">This folder is empty</p>'}
       </div>
       <div class="files-drop-overlay" aria-hidden="true"><strong>Drop files to upload</strong><span>${escapeHtml(path)}</span></div>
       <footer class="files-upload-status" hidden>
