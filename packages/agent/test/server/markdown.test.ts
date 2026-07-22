@@ -30,6 +30,7 @@ describe("renderMarkdown", () => {
   test("lists", () => {
     expect(renderMarkdown("- one\n- two")).toBe("<ul><li>one</li><li>two</li></ul>");
     expect(renderMarkdown("1. one\n2. two")).toBe("<ol><li>one</li><li>two</li></ol>");
+    expect(renderMarkdown("1. one\n1. two\n1. three")).toBe("<ol><li>one</li><li>two</li><li>three</li></ol>");
   });
 
   test("GitHub-style tables", () => {
