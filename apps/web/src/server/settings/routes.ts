@@ -644,6 +644,10 @@ async function handleModelPickerAction(request: Request, pathname: string): Prom
   const split = String(form.get("model") ?? "").split("::");
   const provider = split[0] ?? "";
   const id = split[1] ?? "";
+  if (pathname === "/settings/models/active") {
+    if (provider && id) await setActiveAgentModel(provider, id);
+    return stream(await refreshAgentModelPickerSelects());
+  }
   const current = await getConfiguredAgentModels();
   const index = current.findIndex((model) => model.provider === provider && model.id === id);
   if (pathname === "/settings/models/add" && provider && id && index < 0) {
@@ -651,8 +655,7 @@ async function handleModelPickerAction(request: Request, pathname: string): Prom
     current.push(option ?? { provider, id, label: id });
   }
   if (pathname === "/settings/models/remove" && index >= 0) current.splice(index, 1);
-  if (pathname === "/settings/models/active" && provider && id) await setActiveAgentModel(provider, id);
-  else await setPickerAgentModels(current, current.find((model) => model.active));
+  await setPickerAgentModels(current, current.find((model) => model.active));
   return stream(`${await refreshModelSetupSurfaces()}${pathname === "/settings/models/add" ? remove("settings_add_model_dialog") : ""}`);
 }
 

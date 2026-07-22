@@ -682,6 +682,20 @@ describe("web app contracts", () => {
     });
   });
 
+  test("selecting an active model refreshes pickers without reopening the model setup dialog", async () => {
+    await withTempDataDir(async () => {
+      const { app } = createTestApp();
+
+      const response = await app.fetch(postForm("/settings/models/active", new URLSearchParams({ model: "anthropic::claude-test" })));
+      const body = await response.text();
+
+      expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
+      expect(body).toContain("data-agent-model-picker-select");
+      expect(body).not.toContain("model_setup_dialog");
+      expect(body).not.toContain("model-setup-surface");
+    });
+  });
+
   test("page shell serves client dependencies locally and uses cable instead of a workspace EventSource", async () => {
     const { app, registry } = createTestApp();
     await registry.seed([{ id: "abc", title: "A" }]);
