@@ -60,6 +60,11 @@ interface AgentPaneControllerInstance {
 // agent-pane: cable subscription lifecycle, scroll anchoring, prompt behavior, rewind dialog
 // ---------------------------------------------------------------------------
 
+export function scrollAgentMessageToTop(transcript: HTMLElement, message: HTMLElement): void {
+  const top = transcript.scrollTop + message.getBoundingClientRect().top - transcript.getBoundingClientRect().top;
+  transcript.scrollTo({ top, behavior: "smooth" });
+}
+
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
     static values = { workspaceId: String, label: String, snapshotCursor: String };
@@ -120,7 +125,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.promptObserver = new MutationObserver(() => this.updateSendStopButton());
       this.promptObserver.observe(this.formTarget, { childList: true, subtree: true });
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
-      this.onScroll();
+      this.updateTranscriptNavigation();
       document.addEventListener("visibilitychange", this.onVisibilityChange);
       const promptDraft = sessionStorage.getItem(this.promptDraftStorageKey);
       if (promptDraft !== null) this.inputTarget.value = promptDraft;
@@ -137,7 +142,12 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     }
 
     start(): void {
-      requestAnimationFrame(() => this.autosize());
+      requestAnimationFrame(() => {
+        this.autosize();
+        if (!isWorkspacePaneVisible(this.element)) return;
+        if (this.stuck) this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
+        this.onScroll();
+      });
       if (document.visibilityState !== "visible" || !isWorkspacePaneVisible(this.element) || this.subscribed) return;
       this.startAgentTerminals();
       const options = !this.hasSubscribed && this.hasSnapshotCursorValue ? { upTo: this.snapshotCursorValue } : undefined;
@@ -179,10 +189,10 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     // ---- transcript navigation ----
 
-    jumpToBottom(): void {
-      this.stuck = true;
-      this.updateTranscriptNavigation();
-      this.transcriptTarget.scrollTo({ top: this.transcriptTarget.scrollHeight, behavior: "smooth" });
+    jumpToLatestMessage(): void {
+      const messages = this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-item");
+      const latest = messages.item(messages.length - 1);
+      if (latest) scrollAgentMessageToTop(this.transcriptTarget, latest);
     }
 
     private userMessages(): HTMLElement[] {
@@ -247,7 +257,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
         ? message.querySelector<HTMLElement>(".agent-user")!.dataset.agentUserText!
         : undefined;
       this.closeMessageDialog();
-      message.scrollIntoView({ behavior: "smooth", block: "center" });
+      scrollAgentMessageToTop(this.transcriptTarget, message);
       message.classList.add("agent-message-highlight");
       window.setTimeout(() => message.classList.remove("agent-message-highlight"), 1400);
       if (userText !== undefined) {
