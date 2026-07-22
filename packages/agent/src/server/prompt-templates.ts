@@ -9,6 +9,7 @@ export interface PromptTemplate {
   description: string;
   argumentHint?: string;
   prompt: string;
+  preserveArguments?: boolean;
 }
 
 interface PromptFrontmatter {
@@ -19,12 +20,19 @@ interface PromptFrontmatter {
 const promptDirs = [".atelier/prompts", ".pi/prompts"] as const;
 
 const builtinLandPrompt = "Commit and push your work, rebasing when necessary. When successful, delete this workspace.";
-const builtinNewSessionPrompt: PromptTemplate = {
+const builtinApplicationCommands: PromptTemplate[] = [{
+  name: "name",
+  trigger: "/name",
+  description: "Rename this workspace, using AI when no name is provided.",
+  argumentHint: "[workspace-name]",
+  prompt: "/name",
+  preserveArguments: true,
+}, {
   name: "new",
   trigger: "/new",
   description: "Start a new agent session in this tab.",
   prompt: "/new",
-};
+}];
 
 function parseFrontmatter(markdown: string): { frontmatter: PromptFrontmatter; body: string } {
   if (!markdown.startsWith("---\n")) return { frontmatter: {}, body: markdown };
@@ -126,8 +134,8 @@ export async function loadPromptTemplatesFromRoot(root: string): Promise<PromptT
   if (!byName.has("land")) {
     byName.set("land", { name: "land", trigger: "/land", description: builtinLandPrompt, prompt: builtinLandPrompt });
   }
-  // /new is an application command, not an overridable prompt template.
-  byName.set("new", builtinNewSessionPrompt);
+  // Application commands are not overridable prompt templates.
+  for (const command of builtinApplicationCommands) byName.set(command.name, command);
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -141,11 +149,19 @@ export function expandPromptTemplateText(text: string, templates: readonly Promp
   if (!match) return text;
   const template = templates.find((candidate) => candidate.trigger === match[1]);
   if (!template) return text;
+  if (template.preserveArguments) return trimmed;
   return expandBody(template.prompt, splitArgs(match[2] ?? ""));
 }
 
 export async function expandPromptTemplate(workspaceId: string, text: string): Promise<string> {
   return expandPromptTemplateText(text, await listPromptTemplates(workspaceId));
+}
+
+export function parseWorkspaceNameCommand(text: string): { title?: string } | undefined {
+  const match = text.trim().match(/^\/name(?:\s+([\s\S]+))?$/);
+  if (!match) return undefined;
+  const title = match[1]?.trim();
+  return title ? { title } : {};
 }
 
 export function renderPromptTemplateMenu(templates: readonly PromptTemplate[], query: string): string {

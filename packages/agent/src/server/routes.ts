@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { getModelThinkingLevel, setModelThinkingLevel } from "./pi-config-models.ts";
 import { parseModelRef, rememberPreferredAgentModel } from "./model-state.ts";
-import { workspaceContainerName, workspacePreviewPortUrl } from "@atelier/workspace";
+import { setWorkspaceTitle, workspaceContainerName, workspacePreviewPortUrl } from "@atelier/workspace";
 import {
   deliverAttachmentDraft,
   extensionOf,
@@ -15,11 +15,11 @@ import {
 } from "./attachment-drafts.ts";
 import { ids, renderAttachmentChip } from "./render.ts";
 import { turboStream, turboStreamResponse } from "./html.ts";
-import { expandPromptTemplate, listPromptTemplates, renderPromptTemplateMenu } from "./prompt-templates.ts";
+import { expandPromptTemplate, listPromptTemplates, parseWorkspaceNameCommand, renderPromptTemplateMenu } from "./prompt-templates.ts";
 import { listFileCompletions, renderFileCompletionMenu } from "./file-completions.ts";
 import { getWorkspaceAgentRuntime, type SubmitMode } from "./runtime.ts";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
-import { maybeNameWorkspaceFromAgentPrompt } from "./workspace-title-suggestion.ts";
+import { maybeNameWorkspaceFromAgentPrompt, renameWorkspaceFromAgentContext } from "./workspace-title-suggestion.ts";
 
 interface AgentRouteOptions {
   events?: AtelierEventBus;
@@ -186,6 +186,17 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
   const attachmentDraft = String(form.get("attachmentDraft") ?? "");
   if (text.trim() === "/new") {
     await runtime.newSession();
+    if (validDraftId(attachmentDraft)) await removeAttachmentDraft(attachmentDraft);
+    return turboStreamResponse("");
+  }
+  const nameCommand = parseWorkspaceNameCommand(text);
+  if (nameCommand) {
+    if (nameCommand.title) {
+      await setWorkspaceTitle(workspaceId, nameCommand.title);
+      await options.events?.emit("workspace_title_changed", { workspaceId, title: nameCommand.title });
+    } else {
+      renameWorkspaceFromAgentContext(workspaceId, runtime.userMessages(), { events: options.events, agentModel: runtime.currentModel() });
+    }
     if (validDraftId(attachmentDraft)) await removeAttachmentDraft(attachmentDraft);
     return turboStreamResponse("");
   }

@@ -51,7 +51,7 @@ function logWorkspaceTitleSuggestionError(workspaceId: string, model: ModelRef |
   console.error("could not suggest workspace title", { workspaceId, model: model ? `${model.provider}/${model.id}` : undefined, message, ...details });
 }
 
-export function maybeNameWorkspaceFromAgentPrompt(workspaceId: string, userMessages: string[], options: { events?: AtelierEventBus; agentModel?: ModelRef } = {}): void {
+function suggestWorkspaceTitle(workspaceId: string, userMessages: string[], options: { events?: AtelierEventBus; agentModel?: ModelRef; onlyIfUnnamed: boolean }): void {
   if (pending.has(workspaceId)) return;
   const promptText = userMessages.map((message) => message.trim()).filter(Boolean).join("\n\n");
   if (!promptText) return;
@@ -60,7 +60,7 @@ export function maybeNameWorkspaceFromAgentPrompt(workspaceId: string, userMessa
   void (async () => {
     const titleModelRef = options.agentModel ? workspaceTitleModelFor(options.agentModel) : undefined;
     try {
-      if (!(await workspaceIsUnnamed(workspaceId))) return;
+      if (options.onlyIfUnnamed && !(await workspaceIsUnnamed(workspaceId))) return;
       if (!titleModelRef) {
         logWorkspaceTitleSuggestionError(workspaceId, undefined, "agent model is not selected");
         return;
@@ -93,7 +93,7 @@ export function maybeNameWorkspaceFromAgentPrompt(workspaceId: string, userMessa
         }
         return;
       }
-      if (!(await workspaceIsUnnamed(workspaceId))) return;
+      if (options.onlyIfUnnamed && !(await workspaceIsUnnamed(workspaceId))) return;
       await setWorkspaceTitle(workspaceId, title);
       await options.events?.emit("workspace_title_changed", { workspaceId, title });
     } catch (error) {
@@ -102,4 +102,12 @@ export function maybeNameWorkspaceFromAgentPrompt(workspaceId: string, userMessa
       pending.delete(workspaceId);
     }
   })();
+}
+
+export function maybeNameWorkspaceFromAgentPrompt(workspaceId: string, userMessages: string[], options: { events?: AtelierEventBus; agentModel?: ModelRef } = {}): void {
+  suggestWorkspaceTitle(workspaceId, userMessages, { ...options, onlyIfUnnamed: true });
+}
+
+export function renameWorkspaceFromAgentContext(workspaceId: string, userMessages: string[], options: { events?: AtelierEventBus; agentModel?: ModelRef } = {}): void {
+  suggestWorkspaceTitle(workspaceId, userMessages, { ...options, onlyIfUnnamed: false });
 }

@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
-import { expandPromptTemplateText, loadPromptTemplatesFromRoot, renderPromptTemplateMenu } from "../../src/server/prompt-templates.ts";
+import { expandPromptTemplateText, loadPromptTemplatesFromRoot, parseWorkspaceNameCommand, renderPromptTemplateMenu } from "../../src/server/prompt-templates.ts";
 
 describe("prompt templates", () => {
   test("loads .atelier and .pi prompt templates", async () => {
@@ -13,23 +13,37 @@ describe("prompt templates", () => {
     await writeFile(join(root, ".pi/prompts/review.md"), "Review $ARGUMENTS");
 
     const templates = await loadPromptTemplatesFromRoot(root);
-    expect(templates.map((template) => template.trigger)).toEqual(["/land", "/new", "/review"]);
+    expect(templates.map((template) => template.trigger)).toEqual(["/land", "/name", "/new", "/review"]);
     expect(templates.find((template) => template.name === "land")?.argumentHint).toBe("[branch]");
+    const nameCommand = templates.find((template) => template.name === "name");
+    expect(nameCommand).toMatchObject({
+      trigger: "/name",
+      argumentHint: "[workspace-name]",
+      prompt: "/name",
+    });
+    expect(expandPromptTemplateText("/name my-custom-name", templates)).toBe("/name my-custom-name");
   });
 
   test("includes builtin land template when repository does not provide one", async () => {
     const root = await mkdtemp(join(tmpdir(), "atelier-prompts-"));
 
     const templates = await loadPromptTemplatesFromRoot(root);
-    expect(templates.map((template) => template.trigger)).toEqual(["/land", "/new"]);
+    expect(templates.map((template) => template.trigger)).toEqual(["/land", "/name", "/new"]);
     expect(templates[0]?.prompt).toBe("Commit and push your work, rebasing when necessary. When successful, delete this workspace.");
-    expect(templates[1]).toMatchObject({ trigger: "/new", description: "Start a new agent session in this tab.", prompt: "/new" });
+    expect(templates[1]).toMatchObject({ trigger: "/name", description: "Rename this workspace, using AI when no name is provided.", prompt: "/name" });
+    expect(templates[2]).toMatchObject({ trigger: "/new", description: "Start a new agent session in this tab.", prompt: "/new" });
   });
 
   test("expands triggers with arguments", () => {
     const templates = [{ name: "land", trigger: "/land", description: "Land", argumentHint: "[branch]", prompt: 'push to ${1:-main}: $@' }];
     expect(expandPromptTemplateText("/land", templates)).toBe("push to main: ");
     expect(expandPromptTemplateText("/land release candidate", templates)).toBe("push to release: release candidate");
+  });
+
+  test("parses AI and manual workspace name commands", () => {
+    expect(parseWorkspaceNameCommand("/name")).toEqual({});
+    expect(parseWorkspaceNameCommand(" /name   my-custom-name ")).toEqual({ title: "my-custom-name" });
+    expect(parseWorkspaceNameCommand("/names")).toBeUndefined();
   });
 
   test("renders typed options for the unified completion menu", () => {
