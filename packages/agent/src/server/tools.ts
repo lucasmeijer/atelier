@@ -181,12 +181,12 @@ function createPresentTool(workspaceId: string, options: WorkspaceAgentToolOptio
     name: "present",
     label: "Present",
     description: "Present one primary interactive surface to the user in Atelier. Use this when there is one main thing the user should look at or interact with while evaluating your work. Atelier will place the chosen surface in the preview area. Calling this again should update or replace the primary presentation rather than adding multiple competing presentations. Only use this tool for interactive surfaces that need explicit presentation, currently a tmux session or the inline preview browser. Do not use this tool for static or inline artifacts. Images, videos, SVGs, and HTML files are already automatically visible to the user when you reference them with Atelier embed syntax, for example: {{atelier:embed /work/app/screenshot.png}} or {{atelier:embed /work/app/demo.html}}. For ordinary screenshots, videos, generated HTML explanations, or file previews, prefer the embed syntax instead of this tool.",
-    // Every branch is an object, but TypeBox otherwise emits only `anyOf` at
-    // the root. Kimi requires function parameters to explicitly declare it.
+    // Moonshot's schema flavor rejects a `type` alongside `anyOf`; each union
+    // branch declares its object type instead.
     parameters: Type.Union(presenters.map((presenter) => Type.Object({
       kind: Type.Literal(presenter.kind, { description: `Present ${presenter.kind}.` }),
       ...presenter.parameters,
-    }, { description: presenter.description })), { type: "object" }) as any,
+    }, { description: presenter.description }))) as any,
     execute: async (toolCallId: string, params: { kind: string }) => {
       const presenter = presenters.find((candidate) => candidate.kind === params.kind);
       if (!presenter) throw new Error(`unknown presentation kind: ${params.kind}`);

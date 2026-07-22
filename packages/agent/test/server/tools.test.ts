@@ -32,7 +32,7 @@ describe("workspace agent tools", () => {
     expect(() => applyExactEdits("abcdef", [{ oldText: "abc", newText: "x" }, { oldText: "bcd", newText: "y" }])).toThrow();
   });
 
-  test("present tool declares an object parameter schema", () => {
+  test("present tool declares object types inside its union branches", () => {
     const unregisterBrowser = registerWorkspacePresenter("test-browser", () => ({
       kind: "test-browser",
       description: "Present a test browser.",
@@ -48,8 +48,9 @@ describe("workspace agent tools", () => {
 
     try {
       const present = createWorkspaceAgentTools("abc").find((tool) => tool.name === "present");
-      expect(present?.parameters.type).toBe("object");
+      expect(present?.parameters.type).toBeUndefined();
       expect(present?.parameters.anyOf).toHaveLength(2);
+      expect(present?.parameters.anyOf.every((branch: Record<string, unknown>) => branch.type === "object")).toBe(true);
     } finally {
       unregisterBrowser();
       unregisterTerminal();
