@@ -59,13 +59,7 @@ export {
 } from "./workspace-source.ts";
 
 export {
-  assertWorkspaceDeleteSafe,
-  getWorkspaceRepoSlopometer,
-  inspectWorkspaceDeleteSafety,
-  listWorkspaceRepos,
   registerProjectWorkspaceEvents,
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceDeleteSafetyIssue,
-  type WorkspaceRepoListResult,
-  type WorkspaceRepoSlopometer,
 } from "./workspace-repos.ts";
