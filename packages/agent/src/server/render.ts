@@ -214,8 +214,8 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
     completionsEnabled ? `data-agent-completions-target="input"` : "",
   ].filter(Boolean).join(" ");
   const inputActionsList = [
-    ...(options.formTarget ? ["keydown->agent-pane#inputKeydown", "input->agent-pane#promptChanged"] : []),
     ...(completionsEnabled ? ["keydown->agent-completions#keydown", "input->agent-completions#input"] : []),
+    ...(options.formTarget ? ["keydown->agent-pane#inputKeydown", "input->agent-pane#promptChanged"] : []),
   ];
   const inputActions = inputActionsList.length ? ` data-action="${inputActionsList.join(" ")}"` : "";
   const shortcut = options.submitShortcut ? ` <kbd>${escapeHtml(options.submitShortcut)}</kbd>` : "";

@@ -13,10 +13,10 @@ describe("flat transcript rendering", () => {
     expect(html).toContain('data-agent-pane-snapshot-cursor-value="generation:4"');
   });
 
-  test("composer retains unified completions", async () => {
+  test("composer runs completion shortcuts before prompt submission", async () => {
     const html = await renderAgentComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
     expect(html).toContain('data-controller="agent-attachments agent-completions"');
-    expect(html).toContain("input->agent-pane#promptChanged");
+    expect(html).toContain('data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged"');
   });
 
   test("user messages retain their original text for prompt history", () => {

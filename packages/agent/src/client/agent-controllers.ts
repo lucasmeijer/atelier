@@ -36,6 +36,10 @@ function setTextInputValue(input: HTMLInputElement | HTMLTextAreaElement, value:
   notifyInputListeners(input);
 }
 
+function isSubmitShortcut(event: KeyboardEvent): boolean {
+  return event.key === "Enter" && (event.metaKey || event.ctrlKey);
+}
+
 type StimulusApplication = {
   getControllerForElementAndIdentifier(element: Element, identifier: string): unknown;
 };
@@ -266,7 +270,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       }
 
       // Enter inserts a newline; ⌘/Ctrl+Enter sends (or follow-ups when busy).
-      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      if (isSubmitShortcut(event)) {
         event.preventDefault();
         if (this.inputTarget.value.trim() || this.formTarget.querySelector(".agent-chip")) {
           const submitter = this.formTarget.querySelector<HTMLButtonElement>('button[value="send"], button[value="steer"]');
@@ -923,10 +927,12 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       else if (option.dataset.completionKind === "file") insertFileCompletion(option, input);
     },
     keydown(event, input, url, actions) {
-      if (event.key === "Enter" && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      const send = isSubmitShortcut(event);
+      const expand = event.key === "Enter" && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
+      if (send || expand) {
         const active = actions.open ? actions.activeOption() : undefined;
         if (active?.dataset.completionKind === "prompt-template") actions.select(active);
-        if (!/^\/[^/\s]+(?:\s+[\s\S]*)?$/.test(input.value.trim())) return false;
+        if (send || !/^\/[^/\s]+(?:\s+[\s\S]*)?$/.test(input.value.trim())) return false;
         event.preventDefault();
         const body = new FormData();
         body.set("text", input.value);
