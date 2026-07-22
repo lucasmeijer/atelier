@@ -17,6 +17,7 @@
         "@atelier/browser": "workspace:*",
         "@atelier/core": "workspace:*",
         "@atelier/desktop": "workspace:*",
+        "@atelier/files": "workspace:*",
         "@atelier/keypress-probe": "workspace:*",
         "@atelier/projects": "workspace:*",
         "@atelier/proxy-egress": "workspace:*",
@@ -65,6 +66,13 @@
       "name": "@atelier/desktop",
       "dependencies": {
         "@atelier/proxy-ingress": "workspace:*",
+        "@atelier/shared": "workspace:*",
+        "@atelier/workspace": "workspace:*",
+      },
+    },
+    "packages/files": {
+      "name": "@atelier/files",
+      "dependencies": {
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
       },
@@ -175,6 +183,8 @@
     "@atelier/core": ["@atelier/core@workspace:packages/core"],
 
     "@atelier/desktop": ["@atelier/desktop@workspace:packages/desktop"],
+
+    "@atelier/files": ["@atelier/files@workspace:packages/files"],
 
     "@atelier/keypress-probe": ["@atelier/keypress-probe@workspace:packages/keypress-probe"],
 

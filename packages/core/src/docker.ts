@@ -8,7 +8,10 @@ export interface CommandResult {
 
 export type CommandBufferResult = Omit<CommandResult, "stdout"> & { stdout: Buffer };
 
-function spawnDocker(args: string[], options: { stdin?: string }): Bun.Subprocess<"pipe", "pipe", "pipe"> {
+export type CommandInput = string | Uint8Array;
+type CommandOptions = { stdin?: CommandInput };
+
+function spawnDocker(args: string[], options: CommandOptions): Bun.Subprocess<"pipe", "pipe", "pipe"> {
   let proc: Bun.Subprocess<"pipe", "pipe", "pipe">;
   try {
     proc = Bun.spawn(["docker", ...args], {
@@ -32,7 +35,7 @@ function throwIfDockerUnavailable(exitCode: number, stderr: string): void {
   if (exitCode === 127 && /docker/i.test(stderr)) throw dockerUnavailable(stderr);
 }
 
-export async function runDocker(args: string[], options: { stdin?: string } = {}): Promise<CommandResult> {
+export async function runDocker(args: string[], options: CommandOptions = {}): Promise<CommandResult> {
   const proc = spawnDocker(args, options);
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
@@ -43,7 +46,7 @@ export async function runDocker(args: string[], options: { stdin?: string } = {}
   return { exitCode, stdout, stderr };
 }
 
-export async function runDockerBuffer(args: string[], options: { stdin?: string } = {}): Promise<CommandBufferResult> {
+export async function runDockerBuffer(args: string[], options: CommandOptions = {}): Promise<CommandBufferResult> {
   const proc = spawnDocker(args, options);
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).arrayBuffer(),
@@ -54,7 +57,7 @@ export async function runDockerBuffer(args: string[], options: { stdin?: string 
   return { exitCode, stdout: Buffer.from(stdout), stderr };
 }
 
-export async function requireDocker(args: string[], options: { stdin?: string } = {}): Promise<CommandResult> {
+export async function requireDocker(args: string[], options: CommandOptions = {}): Promise<CommandResult> {
   const result = await runDocker(args, options);
   if (result.exitCode !== 0) {
     throw new AtelierCoreError("docker_unavailable", result.stderr.trim() || `docker ${args[0] ?? ""} failed`);

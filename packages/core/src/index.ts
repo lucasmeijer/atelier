@@ -11,6 +11,7 @@ export {
   runDocker,
   runDockerBuffer,
   type CommandBufferResult,
+  type CommandInput,
   type CommandResult,
 } from "./docker.ts";
 
