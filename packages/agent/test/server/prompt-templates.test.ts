@@ -53,6 +53,15 @@ describe("prompt templates", () => {
     expect(html).toContain('data-completion-kind="prompt-template"');
   });
 
+  test("ranks prefix matches ahead of substring matches", () => {
+    const html = renderPromptTemplateMenu([
+      { name: "release-notes", trigger: "/release-notes", description: "Release notes", prompt: "Notes" },
+      { name: "simplify", trigger: "/simplify", description: "Simplify", prompt: "Simplify" },
+    ], "s");
+
+    expect(html.indexOf("/simplify")).toBeLessThan(html.indexOf("/release-notes"));
+  });
+
   test("leaves normal prompts unchanged", () => {
     expect(expandPromptTemplateText("please run tests", [])).toBe("please run tests");
   });

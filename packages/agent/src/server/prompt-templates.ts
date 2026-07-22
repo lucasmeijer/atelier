@@ -166,7 +166,15 @@ export function parseWorkspaceNameCommand(text: string): { title?: string } | un
 
 export function renderPromptTemplateMenu(templates: readonly PromptTemplate[], query: string): string {
   const normalized = query.toLowerCase();
-  const filtered = templates.filter((template) => !normalized || template.name.toLowerCase().includes(normalized)).slice(0, 12);
+  const filtered = templates
+    .filter((template) => !normalized || template.name.toLowerCase().includes(normalized))
+    .sort((a, b) => {
+      const aStartsWithQuery = a.name.toLowerCase().startsWith(normalized);
+      const bStartsWithQuery = b.name.toLowerCase().startsWith(normalized);
+      if (aStartsWithQuery !== bStartsWithQuery) return aStartsWithQuery ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    })
+    .slice(0, 12);
   if (filtered.length === 0) return `<div class="agent-completion-menu empty">No prompt templates</div>`;
   return `<div class="agent-completion-menu" role="listbox" aria-label="Prompt templates">${filtered.map((template, index) => {
     const preview = `<pre class="agent-template-preview">${escapeHtml(template.prompt)}</pre>`;
