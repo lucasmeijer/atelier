@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { applyExactEdits, createDeleteCurrentWorkspaceTool, normalizeWorkspacePath } from "../../src/server/tools.ts";
+import { Type } from "typebox";
+import {
+  applyExactEdits,
+  createDeleteCurrentWorkspaceTool,
+  createWorkspaceAgentTools,
+  normalizeWorkspacePath,
+  registerWorkspacePresenter,
+} from "../../src/server/tools.ts";
 
 describe("workspace agent tools", () => {
   test("normalizes paths under /work", () => {
@@ -23,6 +30,30 @@ describe("workspace agent tools", () => {
     expect(() => applyExactEdits("abc", [{ oldText: "x", newText: "y" }])).toThrow();
     expect(() => applyExactEdits("abc abc", [{ oldText: "abc", newText: "x" }])).toThrow();
     expect(() => applyExactEdits("abcdef", [{ oldText: "abc", newText: "x" }, { oldText: "bcd", newText: "y" }])).toThrow();
+  });
+
+  test("present tool declares an object parameter schema", () => {
+    const unregisterBrowser = registerWorkspacePresenter("test-browser", () => ({
+      kind: "test-browser",
+      description: "Present a test browser.",
+      parameters: { url: Type.String() },
+      execute: async () => ({ content: [{ type: "text" as const, text: "presented" }], details: {} }),
+    }));
+    const unregisterTerminal = registerWorkspacePresenter("test-terminal", () => ({
+      kind: "test-terminal",
+      description: "Present a test terminal.",
+      parameters: { session: Type.String() },
+      execute: async () => ({ content: [{ type: "text" as const, text: "presented" }], details: {} }),
+    }));
+
+    try {
+      const present = createWorkspaceAgentTools("abc").find((tool) => tool.name === "present");
+      expect(present?.parameters.type).toBe("object");
+      expect(present?.parameters.anyOf).toHaveLength(2);
+    } finally {
+      unregisterBrowser();
+      unregisterTerminal();
+    }
   });
 
   test("delete current workspace tool reports blocked safety checks", async () => {
