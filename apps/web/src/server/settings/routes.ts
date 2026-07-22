@@ -7,9 +7,7 @@ import {
   getProviderApiKeyExample,
   hasAvailableConfiguredAgentModel,
   loginPiOAuthProvider,
-  renderAgentModelOptions,
   addHardcodedProviderModels,
-  setActiveAgentModel,
   setPickerAgentModels,
   type ConfiguredAgentModel,
   type PiAuthPrompt,
@@ -487,13 +485,8 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
   </dialog>`;
 }
 
-async function refreshAgentModelPickerSelects(): Promise<string> {
-  const options = await renderAgentModelOptions();
-  return `${updateTargets('select[data-agent-model-picker-select="true"]:not([data-agent-session-model-select="true"])', options)}${updateTargets('select[data-agent-model-picker-select="true"][data-agent-session-model-select="true"]', options)}`;
-}
-
 async function refreshModelSetupSurfaces(): Promise<string> {
-  return `${replaceTargets(".model-setup-surface-settings", await renderModelSetup("settings"))}${replaceTargets(".model-setup-surface-onboarding", await renderModelSetup("onboarding"))}${replace("model_setup_dialog", await renderModelSetupDialog())}${await refreshAgentModelPickerSelects()}`;
+  return `${replaceTargets(".model-setup-surface-settings", await renderModelSetup("settings"))}${replaceTargets(".model-setup-surface-onboarding", await renderModelSetup("onboarding"))}${replace("model_setup_dialog", await renderModelSetupDialog())}`;
 }
 
 async function refreshAfterConnection(): Promise<string> {
@@ -644,10 +637,6 @@ async function handleModelPickerAction(request: Request, pathname: string): Prom
   const split = String(form.get("model") ?? "").split("::");
   const provider = split[0] ?? "";
   const id = split[1] ?? "";
-  if (pathname === "/settings/models/active") {
-    if (provider && id) await setActiveAgentModel(provider, id);
-    return stream(await refreshAgentModelPickerSelects());
-  }
   const current = await getConfiguredAgentModels();
   const index = current.findIndex((model) => model.provider === provider && model.id === id);
   if (pathname === "/settings/models/add" && provider && id && index < 0) {

@@ -25,8 +25,9 @@ export {
   closeAgentTermSocket,
   agentTmuxPrefix,
 } from "./bash-tmux.ts";
-export { agentTabKey, renderAgentComposer, renderAgentModelOptions, renderAgentPane } from "./render.ts";
-export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule, rememberPreferredNewAgentModel } from "./web.ts";
+export { agentTabKey, renderAgentComposer, renderAgentLaunchSettings, renderAgentPane } from "./render.ts";
+export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule } from "./web.ts";
+export { rememberNewWorkspaceAgentSettings } from "./model-state.ts";
 export {
   applyExactEdits,
   createDeleteCurrentWorkspaceTool,

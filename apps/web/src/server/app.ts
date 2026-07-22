@@ -2,9 +2,9 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import {
-  getConfiguredAgentModels,
   renderAgentComposer,
-  rememberPreferredNewAgentModel as rememberAgentPreferredNewAgentModel,
+  renderAgentLaunchSettings,
+  rememberNewWorkspaceAgentSettings,
 } from "@atelier/agent/server";
 import {
   AtelierCoreError,
@@ -61,7 +61,6 @@ import {
   type WorkspaceTabContribution,
 } from "@atelier/shared";
 import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
-import type { WebPreferenceStore } from "./preferences.ts";
 import type { WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
 import { workspaceModules } from "./workspace-modules.ts";
 import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.ts";
@@ -74,8 +73,6 @@ export interface WebAppDeps {
   layouts: WorkspaceLayoutStore;
   /** Event bus passed through to the agent module routes. */
   events?: AtelierEventBus;
-  /** File-backed UI preferences for future/new agent creation flows. */
-  preferences?: WebPreferenceStore;
   /** Create the container + default agent etc. for an already-registered workspace id. */
   provisionWorkspace(id: string, options?: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext; fork?: { sourceWorkspaceId: string } }): Promise<void>;
   inspectDeleteSafety(id: string): Promise<WorkspaceDeleteBlockedDetails>;
@@ -204,13 +201,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId), seedSteps: deps.provisioningHooks });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
-  const projectLaunchModalsId = "project_launch_modals";
-
-  async function preferredNewAgentModel(): Promise<string | undefined> {
-    const configuredModels = await getConfiguredAgentModels();
-    const active = configuredModels.find((model) => model.active) ?? configuredModels[0];
-    return active ? `${active.provider}::${active.id}` : undefined;
-  }
+  const agentLaunchModalFrameId = "agent_launch_modal";
+  const agentLaunchSettingsFrameId = "agent_launch_settings";
+  const agentLaunchFormId = "agent_launch_form";
 
   // ---------------------------------------------------------------------------
   // Workspace sidebar rendering. Broadcast HTML never contains per-client state
@@ -457,43 +450,46 @@ ${moduleStylesHtml()}
     return `<span class="repo-swatch" style="${repoColorStyle(projectId)}" aria-hidden="true"></span>`;
   }
 
-  async function launchAgentWorkspaceModal(options: { titleHtml: string; action: string; modalId: string; formId: string; selectedModel?: string; autoShow?: boolean }): Promise<string> {
-    return `<dialog id="${options.modalId}" class="agent-launch-modal" data-controller="modal submit-shortcut"${options.autoShow ? ` data-modal-auto-show-value="true"` : ""}>
+  async function agentLaunchSettingsFrame(selectedModel?: string): Promise<string> {
+    return await renderAgentLaunchSettings({
+      frameId: agentLaunchSettingsFrameId,
+      formId: agentLaunchFormId,
+      url: "/agent-launch/settings",
+      selectedModel,
+    });
+  }
+
+  async function launchAgentWorkspaceFrame(options: { titleHtml: string; action: string }): Promise<string> {
+    const draftId = crypto.randomUUID();
+    return `<turbo-frame id="${agentLaunchModalFrameId}"><dialog class="agent-launch-modal" data-controller="agent-launch-dialog submit-shortcut" data-agent-launch-dialog-discard-url-value="/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard">
   <div class="agent-launch-title">${options.titleHtml}</div>
   ${await renderAgentComposer({
     action: options.action,
-    draftId: crypto.randomUUID(),
-    formId: options.formId,
+    draftId,
+    formId: agentLaunchFormId,
     placeholder: "Describe what you want the agent to do… (optional)",
     initialText: "",
     submitLabel: "Create workspace",
     submitShortcut: "⌘↩",
     rows: 8,
-    formActions: "keydown->submit-shortcut#keydown submit->submit-shortcut#submit turbo:submit-end->submit-shortcut#submitted turbo:submit-end->modal#submitted",
+    formActions: "keydown->submit-shortcut#keydown submit->submit-shortcut#submit turbo:submit-end->submit-shortcut#submitted",
     formTurbo: true,
-    selectedModel: options.selectedModel,
+    launchSettings: { frameId: agentLaunchSettingsFrameId, url: "/agent-launch/settings" },
   })}
-</dialog>`;
+</dialog></turbo-frame>`;
   }
 
-  async function launchProjectAgentModal(project: ProjectSummary, selectedModel?: string, options: { autoShow?: boolean; modalId?: string; formId?: string } = {}): Promise<string> {
-    return await launchAgentWorkspaceModal({
-      titleHtml: `Create workspace from <b>${escapeHtml(project.name)}</b>, and then…`,
-      action: `/project-agent-workspaces/${encodeURIComponent(project.id)}`,
-      modalId: options.modalId ?? domId("agent_launch_project_modal", project.id),
-      formId: options.formId ?? domId("agent_launch_project_form", project.id),
-      selectedModel,
-      autoShow: options.autoShow,
+  async function launchEmptyAgentFrame(): Promise<string> {
+    return await launchAgentWorkspaceFrame({
+      titleHtml: "Create empty workspace, and then…",
+      action: "/agent-workspaces",
     });
   }
 
-  async function launchEmptyAgentModal(selectedModel?: string): Promise<string> {
-    return await launchAgentWorkspaceModal({
-      titleHtml: "Create empty workspace, and then…",
-      action: "/agent-workspaces",
-      modalId: "agent_launch_empty_workspace_modal",
-      formId: "agent_launch_empty_workspace_form",
-      selectedModel,
+  async function launchProjectAgentFrame(project: ProjectSummary): Promise<string> {
+    return await launchAgentWorkspaceFrame({
+      titleHtml: `Create workspace from <b>${escapeHtml(project.name)}</b>, and then…`,
+      action: `/project-agent-workspaces/${encodeURIComponent(project.id)}`,
     });
   }
 
@@ -569,16 +565,16 @@ ${moduleStylesHtml()}
   async function projectPickerListFrame(): Promise<string> {
     const { projects } = await listProjects();
     const rows = projects.map((project) => `<div class="project-picker-option" style="${repoColorStyle(project.id)}">
-      <button class="project-picker-select" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="${domId("agent_launch_project_modal", project.id)}">
+      <a class="project-picker-select" href="/projects/${encodeURIComponent(project.id)}/agent-launch" data-turbo-frame="${agentLaunchModalFrameId}" data-action="modal#close">
         <span class="project-picker-swatch">${repoSwatch(project.id)}</span><span class="project-picker-copy"><b>${escapeHtml(project.name)}</b><small>${escapeHtml(formatProjectSpec(project))}</small></span>
-      </button>
+      </a>
       <a class="project-picker-edit" href="/projects/${encodeURIComponent(project.id)}/picker" data-turbo-frame="project_picker_frame" aria-label="Edit ${escapeHtml(project.name)}" title="Edit project">✎</a>
     </div>`).join("");
     return `<turbo-frame id="project_picker_frame" class="project-picker-frame">
       <div class="project-picker-page project-picker-list-page">
         <header class="project-picker-head"><div><h2>Which project to start from?</h2><p>Choose a project to clone, or begin with a blank workspace.</p></div><button class="project-picker-close" type="button" aria-label="Close" data-action="modal#close">×</button></header>
         <div class="project-picker-projects">
-          <div class="project-picker-option no-project"><button class="project-picker-select" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="agent_launch_empty_workspace_modal"><span class="project-picker-empty">∅</span><span class="project-picker-copy"><b>No project</b><small>Start with an empty workspace</small></span></button></div>
+          <div class="project-picker-option no-project"><a class="project-picker-select" href="/agent-launch" data-turbo-frame="${agentLaunchModalFrameId}" data-action="modal#close"><span class="project-picker-empty">∅</span><span class="project-picker-copy"><b>No project</b><small>Start with an empty workspace</small></span></a></div>
           ${rows}
         </div>
         <footer class="project-picker-foot"><a href="/projects/new/picker" data-turbo-frame="project_picker_frame">＋ Add a new project</a></footer>
@@ -808,14 +804,9 @@ ${moduleStylesHtml()}
     return project;
   }
 
-  async function renderProjectLaunchModals(): Promise<string> {
+  async function renderProjectModals(): Promise<string> {
     const { projects } = await listProjects();
-    const selectedModel = await preferredNewAgentModel();
-    return [
-      await launchEmptyAgentModal(selectedModel),
-      ...(await Promise.all(projects.map((project) => launchProjectAgentModal(project, selectedModel)))),
-      ...projects.map((project) => deleteProjectModal(project)),
-    ].join("");
+    return projects.map((project) => deleteProjectModal(project)).join("");
   }
 
   async function renderWorkspaceShell(selectedId?: string, options: { mainHtml?: string; showWhatsNew?: boolean } = {}): Promise<string> {
@@ -828,7 +819,8 @@ ${moduleStylesHtml()}
   <div id="settings_modal_host"></div>
   <div id="onboarding_modal_host">${await renderOnboardingDialogIfNeeded()}</div>
   <div id="${workspaceCommandModalHostId}"></div>
-  <div id="${projectLaunchModalsId}">${await renderProjectLaunchModals()}</div>`;
+  <turbo-frame id="${agentLaunchModalFrameId}"></turbo-frame>
+  <div id="project_modals">${await renderProjectModals()}</div>`;
   }
 
   async function homePage(): Promise<Response> {
@@ -888,8 +880,11 @@ ${moduleStylesHtml()}
 
   function agentContext(agent: AgentWorkspaceParameters | undefined): AgentWorkspaceParameters | undefined {
     const initialPrompt = agent?.initialPrompt?.trim() ?? "";
-    if (!initialPrompt) return undefined;
-    return { initialPrompt, model: agent?.model ?? "", thinkingLevel: agent?.thinkingLevel ?? "", attachmentDraft: agent?.attachmentDraft ?? "" };
+    const model = agent?.model ?? "";
+    const thinkingLevel = agent?.thinkingLevel ?? "";
+    const attachmentDraft = agent?.attachmentDraft ?? "";
+    if (!initialPrompt && !model && !thinkingLevel && !attachmentDraft) return undefined;
+    return { initialPrompt, model, thinkingLevel, attachmentDraft };
   }
 
   function creationContext(source: WorkspaceCreateSource, agent: AgentWorkspaceParameters | undefined): WorkspaceCreationContext | undefined {
@@ -923,7 +918,7 @@ ${moduleStylesHtml()}
     const form = await request.formData();
     const model = String(form.get("model") ?? "");
     const thinkingLevel = String(form.get("level") ?? "");
-    await rememberAgentPreferredNewAgentModel(model, thinkingLevel);
+    await rememberNewWorkspaceAgentSettings(model, thinkingLevel);
     createWorkspaceFromCommand({
       source: options.project ? { type: "project", project: options.project } : { type: "empty" },
       agent: {
@@ -934,10 +929,7 @@ ${moduleStylesHtml()}
       },
     });
 
-    const modalStream = options.project
-      ? turboReplaceStream(domId("agent_launch_project_modal", options.project.id), await launchProjectAgentModal(options.project, model))
-      : turboReplaceStream("agent_launch_empty_workspace_modal", await launchEmptyAgentModal(model));
-    return turboStreamResponse(`${turboUpdateStream("workspaces_table_rows", renderWorkspaceRows())}${modalStream}`);
+    return turboStreamResponse(`${turboUpdateStream("workspaces_table_rows", renderWorkspaceRows())}${turboUpdateStream(agentLaunchModalFrameId, "")}`);
   }
 
   async function createEmptyAgentWorkspaceEndpoint(request: Request): Promise<Response> {
@@ -1184,7 +1176,7 @@ ${moduleStylesHtml()}
   // ---------------------------------------------------------------------------
 
   async function renderProjectModalStreams(options: { clearCommandModal?: boolean } = {}): Promise<string> {
-    return `${turboUpdateStream(projectLaunchModalsId, await renderProjectLaunchModals())}${options.clearCommandModal ? turboUpdateStream(workspaceCommandModalHostId, "") : ""}`;
+    return `${turboUpdateStream("project_modals", await renderProjectModals())}${options.clearCommandModal ? turboUpdateStream(workspaceCommandModalHostId, "") : ""}`;
   }
 
   async function createProjectFromForm(request: Request, url: URL): Promise<Response> {
@@ -1293,7 +1285,7 @@ ${moduleStylesHtml()}
     const project = await projectById(projectId);
     const references = projectReferencingWorkspaces(projectId);
     if (references.length > 0) {
-      return turboStreamResponse(`${turboUpdateStream(projectLaunchModalsId, await renderProjectLaunchModals())}${turboUpdateStream(workspaceCommandModalHostId, deleteProjectBlockedModal(project, references))}`);
+      return turboStreamResponse(`${turboUpdateStream("project_modals", await renderProjectModals())}${turboUpdateStream(workspaceCommandModalHostId, deleteProjectBlockedModal(project, references))}`);
     }
     await deleteProject(projectId);
     return turboStreamResponse(`${await renderProjectModalStreams({ clearCommandModal: true })}${turboReplaceStream("project_picker_frame", await projectPickerListFrame())}`);
@@ -1353,10 +1345,10 @@ ${moduleStylesHtml()}
     return workspaceModules.flatMap((module) => module.tabs ?? []);
   }
 
-  async function executeWorkspaceCommand(workspaceId: string, commandId: string): Promise<WorkspaceModuleCommandResult> {
+  async function executeWorkspaceCommand(workspaceId: string, commandId: string, activeTabKey?: string): Promise<WorkspaceModuleCommandResult> {
     const command = workspaceModuleCommands().find((candidate) => candidate.id === commandId);
     if (!command) throw new AtelierCoreError("command_not_found", `workspace command not found: ${commandId}`);
-    return await command.execute({ workspaceId, events: deps.events, tabKeys: () => tabKeysFor(workspaceId), layouts });
+    return await command.execute({ workspaceId, events: deps.events, activeTabKey, tabKeys: () => tabKeysFor(workspaceId), layouts });
   }
 
   function workspaceGroupsTurboStream(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {
@@ -1373,14 +1365,18 @@ ${moduleStylesHtml()}
   }
 
   async function workspaceGroupCommandEndpoint(workspaceId: string, groupId: string, commandId: string): Promise<Response> {
-    const result = await executeWorkspaceCommand(workspaceId, commandId);
+    const beforeTabKeys = await tabKeysFor(workspaceId);
+    const activeTabKey = layouts.normalize(workspaceId, beforeTabKeys).groups.find((group) => group.id === groupId)?.visibleTab;
+    const result = await executeWorkspaceCommand(workspaceId, commandId, activeTabKey);
     const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
     placeCommandTab(workspaceId, tabs.map((tab) => tab.key), result, groupId);
     return turboStreamResponse(`${workspaceGroupsTurboStream(workspaceId, tabs, attachments)}${result.streamHtml ?? ""}`);
   }
 
   async function workspaceCommandEndpoint(workspaceId: string, commandId: string): Promise<Response> {
-    const result = await executeWorkspaceCommand(workspaceId, commandId);
+    const beforeTabKeys = await tabKeysFor(workspaceId);
+    const activeTabKey = layouts.normalize(workspaceId, beforeTabKeys).groups.find((group) => group.visibleTab)?.visibleTab;
+    const result = await executeWorkspaceCommand(workspaceId, commandId, activeTabKey);
     if (!result.createdTabKey) return turboStreamResponse(result.streamHtml ?? "");
 
     const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
@@ -1473,6 +1469,8 @@ ${moduleStylesHtml()}
       return request.method === "HEAD" ? new Response(null, { status: page.status, statusText: page.statusText, headers: page.headers }) : page;
     }
     if (url.pathname === "/api/workspaces" && request.method === "POST") return await createWorkspaceApiEndpoint(request, url);
+    if (url.pathname === "/agent-launch" && request.method === "GET") return response(await launchEmptyAgentFrame());
+    if (url.pathname === "/agent-launch/settings" && request.method === "GET") return response(await agentLaunchSettingsFrame(url.searchParams.get("model") ?? undefined));
     if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
     if (url.pathname === "/workspaces" && request.method === "POST") return createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestUnreadWorkspaceEndpoint();
@@ -1501,6 +1499,7 @@ ${moduleStylesHtml()}
     let params: string[] | undefined;
 
     if ((params = match(/^\/projects\/([^/]+)\/picker$/)) && request.method === "GET") return response(await projectPickerEditFrame(await projectById(params[0])));
+    if ((params = match(/^\/projects\/([^/]+)\/agent-launch$/)) && request.method === "GET") return response(await launchProjectAgentFrame(await projectById(params[0])));
     if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "POST") return await updateProjectFromForm(params[0], request);
     if ((params = match(/^\/projects\/([^/]+)\/environment$/)) && request.method === "POST") return await createProjectEnvironmentVariableFromForm(params[0], request);
     if ((params = match(/^\/projects\/([^/]+)\/environment\/([^/]+)$/)) && request.method === "POST") return await updateProjectEnvironmentVariableFromForm(params[0], params[1], request);

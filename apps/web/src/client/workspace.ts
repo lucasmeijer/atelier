@@ -1363,6 +1363,29 @@ class ModalController extends Controller {
   }
 }
 
+class AgentLaunchDialogController extends Controller {
+  static values = { discardUrl: String };
+  declare readonly element: HTMLDialogElement;
+  declare readonly discardUrlValue: string;
+
+  connect(): void {
+    this.element.addEventListener("close", this.closed);
+    this.element.showModal();
+    focusDialogPromptEnd(this.element);
+  }
+
+  disconnect(): void {
+    this.element.removeEventListener("close", this.closed);
+  }
+
+  private readonly closed = (): void => {
+    void fetch(this.discardUrlValue, { method: "POST" }).catch((error) => console.error("Could not discard attachment draft", error));
+    const frame = this.element.closest("turbo-frame")!;
+    frame.removeAttribute("src");
+    frame.replaceChildren();
+  };
+}
+
 class ModalOpenerController extends Controller {
   static values = { targetId: String };
   declare readonly element: HTMLElement;
@@ -2187,7 +2210,7 @@ class AgentModelMenuController extends Controller {
     this.menu = document.createElement("div");
     this.menu.className = "agent-sel-menu agent-model-menu hidden";
     this.element.after(this.button, this.menu);
-    this.element.addEventListener("change", this.changed);
+    this.element.addEventListener("change", this.sync);
     this.form = this.element.form;
     this.form?.addEventListener("submit", this.submit, true);
     document.addEventListener("click", this.closeFromOutside);
@@ -2198,7 +2221,7 @@ class AgentModelMenuController extends Controller {
 
   disconnect(): void {
     this.button?.removeEventListener("click", this.toggle);
-    this.element.removeEventListener("change", this.changed);
+    this.element.removeEventListener("change", this.sync);
     this.form?.removeEventListener("submit", this.submit, true);
     document.removeEventListener("click", this.closeFromOutside);
     this.observer?.disconnect();
@@ -2252,18 +2275,6 @@ class AgentModelMenuController extends Controller {
       });
       this.menu?.appendChild(item);
     });
-  };
-
-  private changed = (): void => {
-    this.sync();
-    if (this.element.dataset.agentSessionModelSelect === "true") return;
-    const value = this.element.value;
-    if (!value) return;
-    void fetch("/settings/models/active", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "text/vnd.turbo-stream.html" },
-      body: new URLSearchParams({ model: value }),
-    }).then((response) => response.text()).then((html) => { if (html) window.Turbo?.renderStreamMessage(html); }).catch(() => undefined);
   };
 
   private submit = (event: Event): void => {
@@ -2465,6 +2476,7 @@ application.register("atelier-fullscreen", AtelierFullscreenController);
 application.register("submit-shortcut", SubmitShortcutController);
 application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);
+application.register("agent-launch-dialog", AgentLaunchDialogController);
 application.register("project-github-search", ProjectGithubSearchController);
 application.register("workspace-list", WorkspaceListController);
 application.register("workspace-title-edit", WorkspaceTitleEditController);

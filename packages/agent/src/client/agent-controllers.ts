@@ -1366,15 +1366,10 @@ export const agentClientModule: WorkspaceClientModule = {
       const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
       const projectId = resident?.dataset.projectId;
       if (!projectId) return true;
-      const modalIdPart = projectId.replace(/[^a-zA-Z0-9_-]/g, "_");
-      const dialog = document.getElementById(`agent_launch_project_modal_${modalIdPart}`) as HTMLDialogElement | null;
-      if (!dialog) return true;
-      if (!dialog.open) dialog.showModal();
-      const input = dialog.querySelector<HTMLTextAreaElement>("textarea");
-      if (input) requestAnimationFrame(() => {
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
-      });
+      const frame = document.getElementById("agent_launch_modal")!;
+      frame.replaceChildren();
+      frame.removeAttribute("src");
+      frame.setAttribute("src", `/projects/${encodeURIComponent(projectId)}/agent-launch`);
       return true;
     });
   },

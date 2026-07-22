@@ -198,7 +198,7 @@ interface AgentComposerRenderOptions {
   rows?: number;
   formActions?: string;
   formTurbo?: boolean;
-  selectedModel?: string;
+  launchSettings?: { frameId: string; url: string };
   dropTarget?: boolean;
 }
 
@@ -225,7 +225,7 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
   const formId = options.formId ?? `agent_composer_${draftId}`;
   const statbar = options.stats && options.ctx
     ? `<div class="agent-statbar" id="${ids.stats(options.ctx)}">${renderStatsBar(options.ctx, options.stats)}</div>`
-    : `<div class="agent-statbar">${await renderComposerSettings(formId, options.selectedModel)}</div>`;
+    : `<div class="agent-statbar">${await renderAgentLaunchSettings({ ...options.launchSettings!, formId })}</div>`;
   const turboAttr = options.formTurbo === undefined ? "" : ` data-turbo="${options.formTurbo ? "true" : "false"}"`;
   const dropTarget = options.dropTarget ?? true;
   const completionControllers = [dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : ""].filter(Boolean).join(" ");
@@ -253,7 +253,7 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
       </div>`;
 }
 
-export async function renderAgentModelOptions(selectedModel?: string): Promise<string> {
+async function renderAgentModelOptions(selectedModel?: string): Promise<string> {
   const selected = await selectedComposerModel(selectedModel);
   const models = await configuredModelOptionViews(selected);
   return models.map((model, index) => {
@@ -262,17 +262,31 @@ export async function renderAgentModelOptions(selectedModel?: string): Promise<s
   }).join("");
 }
 
-async function renderComposerSettings(formId: string, selectedModel?: string): Promise<string> {
+async function composerSettingsState(selectedModel?: string): Promise<{ selected: ModelRef | undefined; selectedThinkingLevel: string | undefined; thinkingLevels: string[] }> {
   const selected = await selectedComposerModel(selectedModel);
-  const selectedThinkingLevel = await composerThinkingLevel(selected);
-  const thinkingLevels = await composerThinkingLevels(selected);
-  const thinkingSelect = thinkingLevels.length > 0
+  return {
+    selected,
+    selectedThinkingLevel: await composerThinkingLevel(selected),
+    thinkingLevels: await composerThinkingLevels(selected),
+  };
+}
+
+function thinkingSelectHtml(formId: string, thinkingLevels: string[], selectedThinkingLevel: string | undefined): string {
+  return thinkingLevels.length > 0
     ? `<select class="agent-sel" data-controller="agent-select-menu" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select>`
     : "";
-  return `<span class="agent-stat-right">
-<select class="agent-sel" data-controller="agent-model-menu" data-agent-model-picker-select="true" name="model" form="${escapeHtml(formId)}" title="Model">${await renderAgentModelOptions(selected ? modelRefValue(selected) : undefined)}</select>
-${thinkingSelect}
-</span>`;
+}
+
+export async function renderAgentLaunchSettings(options: { frameId: string; formId: string; url: string; selectedModel?: string }): Promise<string> {
+  const { selected, selectedThinkingLevel, thinkingLevels } = await composerSettingsState(options.selectedModel);
+  const selectedValue = selected ? modelRefValue(selected) : "";
+  return `<turbo-frame id="${escapeHtml(options.frameId)}"><span class="agent-stat-right">
+<form method="get" action="${escapeHtml(options.url)}" data-controller="agent-autosubmit" data-turbo-frame="${escapeHtml(options.frameId)}">
+<select class="agent-sel" data-controller="agent-model-menu" name="model" data-action="change->agent-autosubmit#submit" title="Model">${await renderAgentModelOptions(selectedValue || undefined)}</select>
+</form>
+<input type="hidden" name="model" value="${escapeHtml(selectedValue)}" form="${escapeHtml(options.formId)}">
+${thinkingSelectHtml(options.formId, thinkingLevels, selectedThinkingLevel)}
+</span></turbo-frame>`;
 }
 
 function renderTranscriptNavigation(): string {
@@ -316,7 +330,7 @@ export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): 
 <span class="agent-stat" title="Tokens down (output)">↓ <b>${formatTokens(stats.outputTokens)}</b></span>
 <span class="agent-stat" title="Session cost"><b>${formatCost(stats.cost)}</b></span>
 <span class="agent-stat-right">
-<form method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-model-menu" data-agent-model-picker-select="true" data-agent-session-model-select="true" name="model" data-action="change->agent-autosubmit#submit" title="Model">${modelOptions || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`}</select></form>
+<form method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-model-menu" name="model" data-action="change->agent-autosubmit#submit" title="Model">${modelOptions || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`}</select></form>
 ${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-select-menu" name="level" data-action="change->agent-autosubmit#submit" title="Thinking level">${thinkingOptions}</select></form>` : ""}
 </span>`;
 }

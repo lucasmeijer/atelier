@@ -5,7 +5,7 @@ import { getWorkspaceAgentRuntime, isWorkspaceAgentRuntimeReady, subscribeWorksp
 import { handleAgentRequest, registerAgentEvents, resolveWorkspacePortProxyTarget, workspaceFileEndpoint } from "./routes.ts";
 import { createNextWorkspaceAgent, ensureDefaultWorkspaceAgent, listWorkspaceAgents, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentInfo } from "./session-store.ts";
 import { agentTabKey, renderAgentPane, renderPendingAgentPane } from "./render.ts";
-import { modelRefValue, parseModelRef, preferredAgentModel, rememberPreferredAgentModel } from "./model-state.ts";
+import { preferredNewWorkspaceAgentModel } from "./model-state.ts";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
 import { mkdir } from "node:fs/promises";
@@ -52,11 +52,6 @@ const projectAgentWorkspaceCommand: WorkspaceCommandContribution = {
   surfaces: { shortcut: { defaultBinding: "Meta+Alt+Quote" } },
 };
 
-async function preferredNewAgentModel(): Promise<string | undefined> {
-  const model = await preferredAgentModel();
-  return model ? modelRefValue(model) : undefined;
-}
-
 function agentTopicFromCreationContext(value: unknown): string | undefined {
   if (!value || typeof value !== "object") return undefined;
   const agent = (value as { agent?: unknown }).agent;
@@ -81,14 +76,13 @@ function registerSessionShareMountEvents(events: AtelierEventBus): void {
   });
 }
 
-async function applyPreferredNewAgentModel(agent: WorkspaceAgentInfo, events?: unknown): Promise<void> {
-  const model = parseModelRef(String(await preferredNewAgentModel() ?? ""));
-  if (!model) return;
-  await (await getWorkspaceAgentRuntime(agent, { events: events as AtelierEventBus | undefined })).setModel(model.provider, model.id);
-}
-
-export async function rememberPreferredNewAgentModel(model: string, thinkingLevel?: string): Promise<void> {
-  await rememberPreferredAgentModel(model, thinkingLevel);
+async function applyNewAgentSettings(agent: WorkspaceAgentInfo, source: WorkspaceAgentInfo | undefined, events?: unknown): Promise<void> {
+  const runtimeOptions = { events: events as AtelierEventBus | undefined };
+  const sourceRuntime = source ? await getWorkspaceAgentRuntime(source, runtimeOptions) : undefined;
+  const model = sourceRuntime?.currentModel() ?? await preferredNewWorkspaceAgentModel();
+  const targetRuntime = await getWorkspaceAgentRuntime(agent, runtimeOptions);
+  if (model) await targetRuntime.setModel(model.provider, model.id);
+  if (sourceRuntime) await targetRuntime.setThinkingLevel(sourceRuntime.currentThinkingLevel());
 }
 
 export const agentWorkspaceModule: WorkspaceModule = {
@@ -96,12 +90,14 @@ export const agentWorkspaceModule: WorkspaceModule = {
   staticFiles: agentStaticFiles,
   commands: [{
     id: "agent.create",
-    async execute({ workspaceId, events }) {
+    async execute({ workspaceId, events, activeTabKey }) {
+      const sourceLabel = activeTabKey?.startsWith("agent:") ? activeTabKey.slice("agent:".length) : undefined;
+      const sourceAgent = sourceLabel ? (await listWorkspaceAgents(workspaceId)).find((candidate) => candidate.label === sourceLabel) : undefined;
       const agent = await createNextWorkspaceAgent(workspaceId);
-      const applyPreferredModelTimer = setTimeout(() => {
-        void applyPreferredNewAgentModel(agent, events).catch((error) => console.error("Could not apply preferred model to new agent", error));
+      const applySettingsTimer = setTimeout(() => {
+        void applyNewAgentSettings(agent, sourceAgent, events).catch((error) => console.error("Could not apply settings to new agent", error));
       }, 0);
-      applyPreferredModelTimer.unref?.();
+      applySettingsTimer.unref?.();
       return { createdTabKey: agentTabKey(agent.label) };
     },
   }],

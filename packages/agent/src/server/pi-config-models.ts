@@ -64,12 +64,16 @@ export async function hasAvailableConfiguredAgentModel(): Promise<boolean> {
   return (await getConfiguredAgentModels()).some((model) => available.has(modelSettingsKey(model.provider, model.id)));
 }
 
-export async function setActiveAgentModel(provider: string, id: string): Promise<void> {
+export async function setActiveAgentModel(provider: string, id: string, thinkingLevel?: string): Promise<void> {
   const config = await getAgentModelsSettings();
   const current = configuredFromJson(config);
   config.picker = current.map((model) => ({ provider: model.provider, id: model.id, label: model.label }));
   config.activeModel = { provider, id };
   if (!current.some((model) => model.provider === provider && model.id === id)) config.picker.unshift({ provider, id, label: id });
+  if (thinkingLevel) {
+    config.modelPreferences = { ...(config.modelPreferences ?? {}) };
+    config.modelPreferences[modelSettingsKey(provider, id)] = { ...(config.modelPreferences[modelSettingsKey(provider, id)] ?? {}), thinkingLevel };
+  }
   await setAgentModelsSettings(config);
 }
 

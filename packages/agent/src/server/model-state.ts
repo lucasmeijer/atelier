@@ -1,5 +1,5 @@
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
-import { createPiModelRuntime, getConfiguredAgentModels, getModelThinkingLevel, setActiveAgentModel, setModelThinkingLevel, type ConfiguredAgentModel } from "./pi-config-models.ts";
+import { createPiModelRuntime, getConfiguredAgentModels, getModelThinkingLevel, setActiveAgentModel, type ConfiguredAgentModel } from "./pi-config-models.ts";
 
 export interface ModelRef {
   provider: string;
@@ -25,14 +25,13 @@ export function modelRefValue(ref: ModelRef): string {
   return `${ref.provider}::${ref.id}`;
 }
 
-export async function rememberPreferredAgentModel(value: string, thinkingLevel?: string): Promise<void> {
+export async function rememberNewWorkspaceAgentSettings(value: string, thinkingLevel?: string): Promise<void> {
   const ref = parseModelRef(value);
   if (!ref) return;
-  await setActiveAgentModel(ref.provider, ref.id);
-  if (thinkingLevel) await setModelThinkingLevel(ref.provider, ref.id, thinkingLevel);
+  await setActiveAgentModel(ref.provider, ref.id, thinkingLevel);
 }
 
-export async function preferredAgentModel(): Promise<ModelRef | undefined> {
+export async function preferredNewWorkspaceAgentModel(): Promise<ModelRef | undefined> {
   const configuredModels = await getConfiguredAgentModels();
   const active = configuredModels.find((model) => model.active) ?? configuredModels[0];
   return active ? { provider: active.provider, id: active.id } : undefined;
@@ -42,7 +41,7 @@ export async function selectedComposerModel(selectedModel?: string): Promise<Mod
   const configuredModels = await getConfiguredAgentModels();
   const selected = selectedModel ? parseModelRef(selectedModel) : undefined;
   if (selected && configuredModels.some((model) => model.provider === selected.provider && model.id === selected.id)) return selected;
-  return await preferredAgentModel();
+  return await preferredNewWorkspaceAgentModel();
 }
 
 export async function configuredModelOptionViews(current?: ModelRef): Promise<AgentModelOptionView[]> {

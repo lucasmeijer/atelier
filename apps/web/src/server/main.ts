@@ -19,7 +19,6 @@ import {
 } from "@atelier/proxy-ingress/server";
 import { createWebApp, type WebApp } from "./app.ts";
 import { createCableServer, type CableSocketData } from "./cable.ts";
-import { createFileWebPreferenceStore } from "./preferences.ts";
 import { legacyStaticFiles } from "./static-files.ts";
 import { createWorkspaceLayoutStore } from "./workspace-layout.ts";
 import { createFileWorkspaceActivityStore, createFileWorkspaceUnreadStore, createWorkspaceRegistry } from "./workspace-registry.ts";
@@ -226,7 +225,6 @@ app = createWebApp({
   cable: cableServer,
   layouts,
   events: atelierEvents,
-  preferences: createFileWebPreferenceStore(join(runtimeContext.atelierDataDir, "view-state", "preferences.json")),
   provisioningHooks,
   workspaceRemovedHandlers,
   async provisionWorkspace(id, options) {

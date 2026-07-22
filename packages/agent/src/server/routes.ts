@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { getModelThinkingLevel, setModelThinkingLevel } from "./pi-config-models.ts";
-import { parseModelRef, rememberPreferredAgentModel } from "./model-state.ts";
+import { parseModelRef } from "./model-state.ts";
 import { setWorkspaceTitle, workspaceContainerName, workspacePreviewPortUrl } from "@atelier/workspace";
 import {
   deliverAttachmentDraft,
@@ -36,11 +36,13 @@ function parseAgentWorkspaceCreationContext(value: unknown): AgentWorkspaceCreat
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   const initialPrompt = typeof record.initialPrompt === "string" ? record.initialPrompt : undefined;
-  if (!initialPrompt?.trim()) return undefined;
+  const model = typeof record.model === "string" ? record.model : undefined;
+  const thinkingLevel = typeof record.thinkingLevel === "string" ? record.thinkingLevel : undefined;
+  if (!initialPrompt?.trim() && !model && !thinkingLevel) return undefined;
   return {
     initialPrompt,
-    model: typeof record.model === "string" ? record.model : undefined,
-    thinkingLevel: typeof record.thinkingLevel === "string" ? record.thinkingLevel : undefined,
+    model,
+    thinkingLevel,
     attachmentDraft: typeof record.attachmentDraft === "string" ? record.attachmentDraft : undefined,
   };
 }
@@ -49,9 +51,10 @@ export function registerAgentEvents(events: AtelierEventBus): void {
   events.on("workspace_created", async ({ workspaceId, context }) => {
     const agentContext = parseAgentWorkspaceCreationContext(context?.agent);
     if (!agentContext) return;
-    await events.emit("workspace_provision_step", { workspaceId, id: "agent.initial_prompt", label: "Start initial agent task", parentId: "workspace.integrations", status: "running" });
-    await submitInitialAgentPrompt(workspaceId, agentContext, { events });
-    await events.emit("workspace_provision_step", { workspaceId, id: "agent.initial_prompt", label: "Start initial agent task", parentId: "workspace.integrations", status: "done" });
+    const hasPrompt = Boolean(agentContext.initialPrompt?.trim());
+    if (hasPrompt) await events.emit("workspace_provision_step", { workspaceId, id: "agent.initial_prompt", label: "Start initial agent task", parentId: "workspace.integrations", status: "running" });
+    await initializeWorkspaceAgent(workspaceId, agentContext, { events });
+    if (hasPrompt) await events.emit("workspace_provision_step", { workspaceId, id: "agent.initial_prompt", label: "Start initial agent task", parentId: "workspace.integrations", status: "done" });
   });
 }
 
@@ -100,6 +103,11 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   if ((params = match(/^\/agent-attachment-drafts\/([^/]+)\/attachments\/([^/]+)\/delete$/)) && request.method === "POST") {
     return await deleteAttachmentEndpoint(params[0], params[1]);
   }
+  if ((params = match(/^\/agent-attachment-drafts\/([^/]+)\/discard$/)) && request.method === "POST") {
+    if (!validDraftId(params[0])) return new Response("invalid attachment draft", { status: 400 });
+    await removeAttachmentDraft(params[0]);
+    return new Response(null, { status: 204 });
+  }
 
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/messages$/)) && request.method === "POST") {
     return await agentMessagesEndpoint(params[0], params[1], request, options);
@@ -131,7 +139,6 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
     const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
     if (modelRef) {
       await runtime.setModel(modelRef.provider, modelRef.id);
-      await rememberPreferredAgentModel(`${modelRef.provider}::${modelRef.id}`);
     }
     return turboStreamResponse("");
   }
@@ -217,7 +224,7 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
   return turboStreamResponse("");
 }
 
-async function submitInitialAgentPrompt(workspaceId: string, context: AgentWorkspaceCreationContext, options: AgentRouteOptions): Promise<void> {
+async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorkspaceCreationContext, options: AgentRouteOptions): Promise<void> {
   const agent = await ensureDefaultWorkspaceAgent(workspaceId);
   const runtime = await getWorkspaceAgentRuntime(agent, options);
   const modelRef = context.model ? parseModelRef(context.model) : undefined;
@@ -225,12 +232,13 @@ async function submitInitialAgentPrompt(workspaceId: string, context: AgentWorks
   const thinkingLevel = context.thinkingLevel || (modelRef ? await getModelThinkingLevel(modelRef.provider, modelRef.id) : undefined);
   if (thinkingLevel) await runtime.setThinkingLevel(thinkingLevel);
 
+  const prompt = await expandPromptTemplate(workspaceId, context.initialPrompt ?? "");
   const draftId = context.attachmentDraft ?? "";
   const { images, attachmentNotes } = validDraftId(draftId)
     ? await deliverAttachmentDraft(workspaceId, draftId)
     : { images: [], attachmentNotes: [] };
+  if (!prompt.trim() && images.length === 0 && attachmentNotes.length === 0) return;
 
-  const prompt = await expandPromptTemplate(workspaceId, context.initialPrompt ?? "");
   await options.events?.emit("workspace_user_activity", { workspaceId });
   maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), prompt.trim()], { events: options.events, agentModel: runtime.currentModel() });
   await runtime.submit(prompt, { mode: "send", images, attachmentNotes });

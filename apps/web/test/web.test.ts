@@ -311,7 +311,9 @@ describe("web app contracts", () => {
 
       expect(home).toContain('id="project-picker-modal"');
       expect(home).toContain(`href="/projects/${project.id}/picker"`);
-      expect(home).toContain(`data-modal-opener-target-id-value="agent_launch_project_modal_${project.id}"`);
+      expect(home).toContain(`href="/projects/${project.id}/agent-launch" data-turbo-frame="agent_launch_modal"`);
+      expect(home).toContain('<turbo-frame id="agent_launch_modal"></turbo-frame>');
+      expect(home).not.toContain("Describe what you want the agent to do");
       expect(home).not.toContain('class="sidebar-host-repos"');
       expect(editor).toContain("project-environment");
       expect(editor).toContain(`action="/projects/${project.id}/environment"`);
@@ -325,6 +327,27 @@ describe("web app contracts", () => {
       expect(editor).toContain(`action="/projects/${project.id}/secrets"`);
       expect(home).toContain(`id="delete_project_modal_${project.id}"`);
       expect(home).toContain(`action="/projects/${project.id}/delete"`);
+    });
+  });
+
+  test("agent launch dialogs are loaded fresh into one Turbo Frame", async () => {
+    await withTempDataDir(async () => {
+      const project = (await addProject("https://github.com/org/sample-project.git")).project;
+      const { app, registry } = createTestApp();
+      await registry.seed([]);
+
+      const first = await (await app.fetch(new Request(`http://test.local/projects/${project.id}/agent-launch`))).text();
+      const second = await (await app.fetch(new Request(`http://test.local/projects/${project.id}/agent-launch`))).text();
+      const firstDraft = first.match(/name="attachmentDraft" value="([^"]+)"/)?.[1];
+      const secondDraft = second.match(/name="attachmentDraft" value="([^"]+)"/)?.[1];
+
+      expect(first).toContain('<turbo-frame id="agent_launch_modal">');
+      expect(first).toContain('data-controller="agent-launch-dialog submit-shortcut"');
+      expect(first).toContain('<turbo-frame id="agent_launch_settings">');
+      expect(first).toContain(`action="/project-agent-workspaces/${project.id}"`);
+      expect(firstDraft).toBeTruthy();
+      expect(secondDraft).toBeTruthy();
+      expect(firstDraft).not.toBe(secondDraft);
     });
   });
 
@@ -358,7 +381,7 @@ describe("web app contracts", () => {
       expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
       expect((await listProjects()).projects).toHaveLength(1);
       expect(body).toContain('target="project_picker_frame"');
-      expect(body).toContain('target="project_launch_modals"');
+      expect(body).toContain('target="project_modals"');
       expect(body).toContain("sample-project");
       expect(repeatedBody).toContain('target="project_picker_frame"');
       expect(repeatedBody).not.toContain("project already exists");
@@ -377,7 +400,7 @@ describe("web app contracts", () => {
       expect(response.status).toBe(200);
       expect((await listProjects()).projects).toEqual([]);
       expect(body).toContain('target="project_picker_frame"');
-      expect(body).toContain('target="project_launch_modals"');
+      expect(body).toContain('target="project_modals"');
       expect(body).not.toContain("sample-project");
     });
   });
@@ -394,7 +417,7 @@ describe("web app contracts", () => {
       expect(response.status).toBe(200);
       expect(body).toContain("Project is in use");
       expect(body).toContain("A");
-      expect(body).toContain('target="project_launch_modals"');
+      expect(body).toContain('target="project_modals"');
       expect(body).toContain(`id="delete_project_modal_${project.id}"`);
       expect(body).not.toContain(`action="remove" target="delete_project_modal_${project.id}"`);
       expect((await listProjects()).projects).toEqual([project]);
@@ -434,11 +457,28 @@ describe("web app contracts", () => {
       expect(isGitProjectInit(entry.init) && entry.init.projectId).toBe(project.id);
       expect(isGitProjectInit(entry.init) && entry.init.name).toBe("sample-project");
       expect(body).toContain("sample-project");
-      expect(body).toContain(`action="replace" target="agent_launch_project_modal_${project.id}"`);
+      expect(body).toContain('action="update" target="agent_launch_modal"');
       expect(body).not.toContain("do it");
       expect(body).not.toContain("sample-project.git");
       expect(body).not.toContain(`Workspace ${entry.id}`);
     });
+  });
+
+  test("workspace creation keeps selected agent settings without an initial prompt", async () => {
+    let captured: ProvisionWorkspaceOptions | undefined;
+    const { app, registry } = createTestApp({ provision: async (_id, options) => { captured = options; } });
+    await registry.seed([]);
+
+    const response = await app.fetch(postForm("/agent-workspaces", new URLSearchParams({
+      text: "",
+      model: "openai::gpt-test",
+      level: "medium",
+      attachmentDraft: "",
+    })));
+
+    expect(response.status).toBe(200);
+    expect(captured?.context).toEqual({ agent: { initialPrompt: "", model: "openai::gpt-test", thinkingLevel: "medium", attachmentDraft: "" } });
+    expect(await response.text()).toContain('action="update" target="agent_launch_modal"');
   });
 
   test("blocked delete returns the confirmation modal to the requester and restores the row", async () => {
@@ -679,20 +719,6 @@ describe("web app contracts", () => {
       } finally {
         globalThis.fetch = originalFetch;
       }
-    });
-  });
-
-  test("selecting an active model refreshes pickers without reopening the model setup dialog", async () => {
-    await withTempDataDir(async () => {
-      const { app } = createTestApp();
-
-      const response = await app.fetch(postForm("/settings/models/active", new URLSearchParams({ model: "anthropic::claude-test" })));
-      const body = await response.text();
-
-      expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
-      expect(body).toContain("data-agent-model-picker-select");
-      expect(body).not.toContain("model_setup_dialog");
-      expect(body).not.toContain("model-setup-surface");
     });
   });
 

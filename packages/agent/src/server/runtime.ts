@@ -81,6 +81,7 @@ interface WorkspaceAgentRuntime {
   submit(text: string, options: SubmitOptions): Promise<void>;
   abort(): Promise<void>;
   currentModel(): { provider: string; id: string } | undefined;
+  currentThinkingLevel(): string;
   availableThinkingLevels(): string[];
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: string): Promise<void>;
@@ -462,6 +463,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   abstract submit(text: string, options: SubmitOptions): Promise<void>;
   abstract abort(): Promise<void>;
   abstract currentModel(): { provider: string; id: string } | undefined;
+  abstract currentThinkingLevel(): string;
   abstract availableThinkingLevels(): string[];
   abstract setModel(provider: string, modelId: string): Promise<void>;
   abstract setThinkingLevel(level: string): Promise<void>;
@@ -624,6 +626,10 @@ class RealAgentRuntime extends BaseAgentRuntime {
     return model?.provider && model?.id ? { provider: model.provider, id: model.id } : undefined;
   }
 
+  currentThinkingLevel(): string {
+    return this.session.thinkingLevel ?? "off";
+  }
+
   availableThinkingLevels(): string[] {
     return this.session.supportsThinking?.() ? this.session.getAvailableThinkingLevels() : [];
   }
@@ -664,7 +670,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       cost: stats?.cost ?? 0,
       modelName: model?.name ?? model?.id,
       provider: model?.provider,
-      thinkingLevel: this.session.thinkingLevel ?? "off",
+      thinkingLevel: this.currentThinkingLevel(),
       thinkingLevels: this.availableThinkingLevels(),
       models,
     };

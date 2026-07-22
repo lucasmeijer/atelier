@@ -139,6 +139,7 @@ export interface WorkspaceModuleCommandResult {
 export interface WorkspaceModuleCommandContext {
   workspaceId: string;
   events?: unknown;
+  activeTabKey?: string;
   tabKeys(): Promise<string[]>;
   layouts: WorkspaceLayoutPlacementController;
 }
