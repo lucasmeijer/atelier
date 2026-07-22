@@ -32,7 +32,7 @@ describe("workspace agent tools", () => {
     expect(() => applyExactEdits("abcdef", [{ oldText: "abc", newText: "x" }, { oldText: "bcd", newText: "y" }])).toThrow();
   });
 
-  test("present tool declares object types inside its union branches", () => {
+  test("present tool uses a top-level object schema accepted by Moonshot", () => {
     const unregisterBrowser = registerWorkspacePresenter("test-browser", () => ({
       kind: "test-browser",
       description: "Present a test browser.",
@@ -48,9 +48,12 @@ describe("workspace agent tools", () => {
 
     try {
       const present = createWorkspaceAgentTools("abc").find((tool) => tool.name === "present");
-      expect(present?.parameters.type).toBeUndefined();
-      expect(present?.parameters.anyOf).toHaveLength(2);
-      expect(present?.parameters.anyOf.every((branch: Record<string, unknown>) => branch.type === "object")).toBe(true);
+      expect(present?.parameters.type).toBe("object");
+      expect(present?.parameters.anyOf).toBeUndefined();
+      expect(present?.parameters.required).toEqual(["kind"]);
+      expect(present?.parameters.properties.kind.enum).toEqual(["test-browser", "test-terminal"]);
+      expect(present?.parameters.properties.url.type).toBe("string");
+      expect(present?.parameters.properties.session.type).toBe("string");
     } finally {
       unregisterBrowser();
       unregisterTerminal();

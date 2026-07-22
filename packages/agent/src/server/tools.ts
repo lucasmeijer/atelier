@@ -9,7 +9,7 @@ import {
   defineTool,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { Type, type TSchema } from "typebox";
 import { createTmuxBashTool } from "./bash-tmux.ts";
 
 export function normalizeWorkspacePath(path: string): string {
@@ -81,7 +81,7 @@ type WorkspaceAgentToolFactory = (workspaceId: string, options: WorkspaceAgentTo
 export interface WorkspacePresenterDefinition<Params extends { kind: string } = { kind: string }> {
   kind: Params["kind"];
   description: string;
-  parameters: Record<string, unknown>;
+  parameters: Record<string, TSchema>;
   execute(toolCallId: string, params: Params): Promise<{ content: Array<{ type: "text"; text: string }>; details: unknown }>;
 }
 
@@ -177,16 +177,19 @@ export function createForkCurrentWorkspaceTool(forkCurrentWorkspace: (request: A
 function createPresentTool(workspaceId: string, options: WorkspaceAgentToolOptions): ToolDefinition<any, any> | undefined {
   const presenters = [...registeredWorkspacePresenters.values()].map((factory) => factory(workspaceId, options));
   if (!presenters.length) return undefined;
+  const kinds = presenters.map((presenter) => presenter.kind);
+  const presenterParameters = Object.fromEntries(presenters.flatMap((presenter) =>
+    Object.entries(presenter.parameters).map(([name, schema]) => [name, Type.Optional(schema)]),
+  ));
   return defineTool({
     name: "present",
     label: "Present",
     description: "Present one primary interactive surface to the user in Atelier. Use this when there is one main thing the user should look at or interact with while evaluating your work. Atelier will place the chosen surface in the preview area. Calling this again should update or replace the primary presentation rather than adding multiple competing presentations. Only use this tool for interactive surfaces that need explicit presentation, currently a tmux session or the inline preview browser. Do not use this tool for static or inline artifacts. Images, videos, SVGs, and HTML files are already automatically visible to the user when you reference them with Atelier embed syntax, for example: {{atelier:embed /work/app/screenshot.png}} or {{atelier:embed /work/app/demo.html}}. For ordinary screenshots, videos, generated HTML explanations, or file previews, prefer the embed syntax instead of this tool.",
-    // Moonshot's schema flavor rejects a `type` alongside `anyOf`; each union
-    // branch declares its object type instead.
-    parameters: Type.Union(presenters.map((presenter) => Type.Object({
-      kind: Type.Literal(presenter.kind, { description: `Present ${presenter.kind}.` }),
-      ...presenter.parameters,
-    }, { description: presenter.description }))) as any,
+    // Moonshot requires function parameters to be one top-level object, not a union.
+    parameters: Type.Object({
+      kind: Type.String({ enum: kinds, description: `Surface to present. One of: ${kinds.join(", ")}.` }),
+      ...presenterParameters,
+    }),
     execute: async (toolCallId: string, params: { kind: string }) => {
       const presenter = presenters.find((candidate) => candidate.kind === params.kind);
       if (!presenter) throw new Error(`unknown presentation kind: ${params.kind}`);
