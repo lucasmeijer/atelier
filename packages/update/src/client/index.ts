@@ -17,17 +17,30 @@ export const atelierClientModule: WorkspaceClientModule = {
         const theme = document.documentElement.dataset.theme ?? localStorage.getItem("atelier.theme") ?? "";
         const action = new URL(this.element.action, window.location.href);
         if (theme) action.searchParams.set("theme", theme);
-        const button = event.submitter instanceof HTMLButtonElement ? event.submitter : this.element.querySelector("button[type=submit]");
-        button?.setAttribute("disabled", "true");
-        const response = await fetch(action, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" }, credentials: "same-origin" });
-        const location = response.headers.get("location");
-        if (location) {
-          window.location.href = new URL(location, window.location.href).toString();
-          return;
+        const submit = this.element.querySelector<HTMLButtonElement>("[data-update-restart-submit]")!;
+        const cancel = this.element.querySelector<HTMLButtonElement>("[data-update-restart-cancel]")!;
+        const status = this.element.querySelector<HTMLElement>("[data-update-restart-status]")!;
+        submit.disabled = true;
+        cancel.disabled = true;
+        submit.setAttribute("aria-busy", "true");
+        submit.innerHTML = `<span class="status-spinner sm" aria-hidden="true"></span><span>Preparing restart…</span>`;
+        status.textContent = "Starting the update helper. This can take a few seconds…";
+
+        try {
+          const response = await fetch(action, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" }, credentials: "same-origin" });
+          const location = response.headers.get("location");
+          if (location) {
+            window.location.href = new URL(location, window.location.href).toString();
+            return;
+          }
+          window.Turbo!.renderStreamMessage(await response.text());
+        } catch {
+          submit.disabled = false;
+          cancel.disabled = false;
+          submit.removeAttribute("aria-busy");
+          submit.innerHTML = "Retry restart";
+          status.textContent = "The connection was interrupted. Atelier may still be restarting; wait a few seconds, then refresh this page.";
         }
-        const html = await response.text();
-        if (html) window.Turbo?.renderStreamMessage(html);
-        button?.removeAttribute("disabled");
       }
     }
 

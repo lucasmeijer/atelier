@@ -326,6 +326,8 @@ describe("update routes", () => {
     const text = await restart!.text();
     expect(text).toContain("Restart Atelier to finish updating?");
     expect(text).toContain("Active agent sessions and terminal connections will be interrupted");
+    expect(text).toContain("data-update-restart-status");
+    expect(text).toContain("data-update-restart-submit");
     expect(text).not.toContain("<section>notes</section>");
   });
 

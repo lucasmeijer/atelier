@@ -315,13 +315,13 @@ async function renderWhatsNewNotes(updateManager: UpdateManager): Promise<string
   return `<turbo-frame id="update_whats_new_notes">${await updateManager.releaseNotes()}</turbo-frame>`;
 }
 
-async function renderRestartModal(updateManager: UpdateManager): Promise<string> {
+function renderRestartModal(): string {
   return `<dialog id="restart-update-modal" class="modal update-restart-modal" data-controller="modal" data-modal-auto-show-value="true">
   <form method="post" action="/update/restart" data-turbo="false" data-controller="update-restart" data-action="submit->update-restart#submit">
     <h2>Restart Atelier to finish updating?</h2>
     <p>Active agent sessions and terminal connections will be interrupted. Your projects, workspaces, and containers will remain in place.</p>
-    <p>Atelier should be back in a few seconds.</p>
-    <div class="modal-actions"><button class="btn" type="button" data-action="modal#close">Cancel</button><button class="btn primary" type="submit">Restart Atelier</button></div>
+    <p data-update-restart-status role="status" aria-live="polite">Atelier should be back in a few seconds.</p>
+    <div class="modal-actions"><button class="btn" type="button" data-update-restart-cancel data-action="modal#close">Cancel</button><button class="btn primary" type="submit" data-update-restart-submit>Restart Atelier</button></div>
   </form>
 </dialog>`;
 }
@@ -379,7 +379,7 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
     if (url.pathname === "/update/whats-new" && request.method === "GET") return modalStream(renderWhatsNewModal());
     if (url.pathname === "/update/whats-new/notes" && request.method === "GET") return new Response(await renderWhatsNewNotes(updateManager), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
     if (url.pathname === "/update/installer-required" && request.method === "GET") return modalStream(renderInstallerRequiredModal(updateManager));
-    if (url.pathname === "/update/restart-confirm" && request.method === "GET") return modalStream(await renderRestartModal(updateManager));
+    if (url.pathname === "/update/restart-confirm" && request.method === "GET") return modalStream(renderRestartModal());
     if (url.pathname === "/update/restart" && request.method === "POST") {
       if (!wantsTurboStream(request)) return await updateManager.launchUpdater(url);
       try {
