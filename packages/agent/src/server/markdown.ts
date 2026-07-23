@@ -179,6 +179,17 @@ export function renderMarkdown(text: string, options: MarkdownOptions = {}): str
 
     if (line.trim() === "") {
       flushParagraph();
+      if (list) {
+        let nextIndex = index + 1;
+        while (nextIndex < lines.length && lines[nextIndex].trim() === "") nextIndex += 1;
+        const nextLine = lines[nextIndex] ?? "";
+        const nextIsUnordered = /^\s*[-*]\s+/.test(nextLine);
+        const nextIsOrdered = /^\s*\d+[.)]\s+/.test(nextLine);
+        if ((list.ordered && nextIsOrdered) || (!list.ordered && nextIsUnordered)) {
+          index += 1;
+          continue;
+        }
+      }
       flushList();
       index += 1;
       continue;
