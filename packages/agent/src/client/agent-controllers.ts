@@ -679,6 +679,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     connect(): void {
       this.form = this.inputTarget.closest("form");
       this.menuTarget.addEventListener("click", this.click);
+      this.menuTarget.addEventListener("pointerdown", this.pointerdown);
       this.menuTarget.addEventListener("pointerover", this.pointerover);
       this.inputTarget.addEventListener("blur", this.blur);
       this.form?.addEventListener("submit", this.submitted);
@@ -687,6 +688,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
 
     disconnect(): void {
       this.menuTarget.removeEventListener("click", this.click);
+      this.menuTarget.removeEventListener("pointerdown", this.pointerdown);
       this.menuTarget.removeEventListener("pointerover", this.pointerover);
       this.inputTarget.removeEventListener("blur", this.blur);
       this.form?.removeEventListener("submit", this.submitted);
@@ -760,16 +762,25 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     }
 
     private readonly click = (event: Event): void => {
-      const option = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(autocomplete.optionSelector) : null;
+      const option = this.optionFromEvent(event);
       if (!option) return;
       event.preventDefault();
       this.insert(option);
     };
 
+    private readonly pointerdown = (event: PointerEvent): void => {
+      // Keep iOS from blurring the input and removing the menu before click fires.
+      if (event.button === 0 && this.optionFromEvent(event)) event.preventDefault();
+    };
+
     private readonly pointerover = (event: Event): void => {
-      const option = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(autocomplete.optionSelector) : null;
+      const option = this.optionFromEvent(event);
       if (option) this.activate(option, false);
     };
+
+    private optionFromEvent(event: Event): HTMLElement | null {
+      return event.target instanceof Element ? event.target.closest<HTMLElement>(autocomplete.optionSelector) : null;
+    }
 
     private readonly blur = (event: Event): void => {
       const relatedTarget = (event as FocusEvent).relatedTarget;
