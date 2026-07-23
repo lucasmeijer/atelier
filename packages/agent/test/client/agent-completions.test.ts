@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, insertPromptTemplate, scrollAgentMessageToTop } from "../../src/client/agent-controllers.ts";
+import { agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, hasScrolledToMessage, insertPromptTemplate, scrollMessageToTop } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): HTMLTextAreaElement {
   return {
@@ -33,9 +33,23 @@ describe("agent transcript navigation", () => {
     } as unknown as HTMLElement;
     const message = { getBoundingClientRect: () => ({ top: 240 }) } as unknown as HTMLElement;
 
-    scrollAgentMessageToTop(transcript, message);
+    scrollMessageToTop(transcript, message);
 
     expect(scrollTo).toHaveBeenCalledWith({ top: 220, behavior: "smooth" });
+  });
+
+  test("detects whether the transcript has reached a message", () => {
+    const transcript = {
+      scrollTop: 100,
+      scrollHeight: 1_000,
+      clientHeight: 300,
+      getBoundingClientRect: () => ({ top: 100 }),
+    } as unknown as HTMLElement;
+    const message = { getBoundingClientRect: () => ({ top: 340 - transcript.scrollTop }) } as unknown as HTMLElement;
+
+    expect(hasScrolledToMessage(transcript, message)).toBe(false);
+    transcript.scrollTop = 240;
+    expect(hasScrolledToMessage(transcript, message)).toBe(true);
   });
 });
 

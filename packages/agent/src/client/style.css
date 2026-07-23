@@ -377,7 +377,7 @@
 }
 .agent-transcript-navs { align-self: flex-end; display: flex; gap: 4px; pointer-events: auto; }
 .agent-transcript-nav {
-  width: 34px; height: 34px; padding: 0; display: grid; place-items: center; cursor: pointer; color: var(--muted);
+  width: 44px; height: 44px; padding: 0; display: grid; place-items: center; cursor: pointer; touch-action: manipulation; color: var(--muted);
   background: color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid var(--line); border-radius: 10px;
   opacity: 1; visibility: visible; transform: scale(1); box-shadow: 0 5px 18px rgba(19, 26, 38, .1);
   transition: opacity .14s ease-out, transform .14s ease-out, visibility 0s, color .12s, border-color .12s, background .12s;

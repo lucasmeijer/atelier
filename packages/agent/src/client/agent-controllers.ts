@@ -60,9 +60,17 @@ interface AgentPaneControllerInstance {
 // agent-pane: cable subscription lifecycle, scroll anchoring, prompt behavior, rewind dialog
 // ---------------------------------------------------------------------------
 
-export function scrollAgentMessageToTop(transcript: HTMLElement, message: HTMLElement): void {
-  const top = transcript.scrollTop + message.getBoundingClientRect().top - transcript.getBoundingClientRect().top;
-  transcript.scrollTo({ top, behavior: "smooth" });
+function messageScrollTop(transcript: HTMLElement, message: HTMLElement): number {
+  return transcript.scrollTop + message.getBoundingClientRect().top - transcript.getBoundingClientRect().top;
+}
+
+export function scrollMessageToTop(transcript: HTMLElement, message: HTMLElement): void {
+  transcript.scrollTo({ top: messageScrollTop(transcript, message), behavior: "smooth" });
+}
+
+export function hasScrolledToMessage(transcript: HTMLElement, message: HTMLElement): boolean {
+  const targetTop = Math.min(messageScrollTop(transcript, message), transcript.scrollHeight - transcript.clientHeight);
+  return transcript.scrollTop >= targetTop - 1;
 }
 
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
@@ -107,10 +115,16 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.stuck = el.scrollTop + el.clientHeight >= el.scrollHeight - 60;
       this.updateTranscriptNavigation();
     };
+    private latestMessage(): HTMLElement | null {
+      const messages = this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-item");
+      return messages.item(messages.length - 1);
+    }
     private updateTranscriptNavigation(): void {
+      const latest = this.latestMessage();
+      const hideNavigation = !latest || hasScrolledToMessage(this.transcriptTarget, latest);
       this.element.classList.toggle("agent-transcript-at-end", this.stuck);
-      this.transcriptNavTarget.disabled = this.stuck;
-      this.transcriptNavTarget.setAttribute("aria-hidden", String(this.stuck));
+      this.transcriptNavTarget.disabled = hideNavigation;
+      this.transcriptNavTarget.setAttribute("aria-hidden", String(hideNavigation));
     }
     private updateTranscriptPosition(): void {
       if (!isWorkspacePaneVisible(this.element)) return;
@@ -215,9 +229,8 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     // ---- transcript navigation ----
 
     jumpToLatestMessage(): void {
-      const messages = this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-item");
-      const latest = messages.item(messages.length - 1);
-      if (latest) scrollAgentMessageToTop(this.transcriptTarget, latest);
+      const latest = this.latestMessage();
+      if (latest) scrollMessageToTop(this.transcriptTarget, latest);
     }
 
     private userMessages(): HTMLElement[] {
@@ -282,7 +295,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
         ? message.querySelector<HTMLElement>(".agent-user")!.dataset.agentUserText!
         : undefined;
       this.closeMessageDialog();
-      scrollAgentMessageToTop(this.transcriptTarget, message);
+      scrollMessageToTop(this.transcriptTarget, message);
       message.classList.add("agent-message-highlight");
       window.setTimeout(() => message.classList.remove("agent-message-highlight"), 1400);
       if (userText !== undefined) {
