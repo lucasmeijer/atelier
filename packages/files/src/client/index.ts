@@ -86,6 +86,19 @@ function createFilesController(Controller: ControllerConstructor): unknown {
       this.navigateFrame(this.listingUrl((event.currentTarget as HTMLInputElement).checked));
     }
 
+    selectOrOpen(event: MouseEvent): void {
+      const row = event.currentTarget as HTMLElement;
+      if ((event.target as Element).closest(".files-actions-toggle, .files-actions-menu")) return;
+      const openLink = row.querySelector<HTMLAnchorElement>(".files-row-name > a");
+      if (document.activeElement !== row) {
+        event.preventDefault();
+        row.focus();
+      } else if (openLink && event.target !== openLink) {
+        event.preventDefault();
+        openLink.click();
+      }
+    }
+
     toggleMenu(event: Event): void {
       const button = event.currentTarget as HTMLButtonElement;
       const menu = document.getElementById(button.getAttribute("aria-controls")!) as HTMLElement & { hidePopover(): void; showPopover(): void };

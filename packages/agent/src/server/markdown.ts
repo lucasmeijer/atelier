@@ -12,6 +12,7 @@ import { highlightCodeHtml } from "./highlight.ts";
  */
 interface MarkdownOptions {
   rewriteSegment?: (rawText: string) => string | undefined;
+  rewriteLink?: (label: string, href: string) => string | undefined;
   highlightCode?: boolean;
 }
 
@@ -53,6 +54,13 @@ function parseTableHeader(header: string, delimiter: string): string[] | undefin
   return cells;
 }
 
+function inlineText(raw: string): string {
+  let html = escapeHtml(raw);
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, `<a href="$2" target="_blank" rel="noopener">$1</a>`);
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  return html.replace(/(^|\W)\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+}
+
 function inline(raw: string, options: MarkdownOptions): string {
   // Split out inline code first; never rewrite inside code.
   const parts = raw.split(/(`[^`]*`)/);
@@ -63,11 +71,14 @@ function inline(raw: string, options: MarkdownOptions): string {
       }
       const rewritten = options.rewriteSegment?.(part);
       if (rewritten !== undefined) return rewritten;
-      let html = escapeHtml(part);
-      html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, `<a href="$2" target="_blank" rel="noopener">$1</a>`);
-      html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-      html = html.replace(/(^|\W)\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
-      return html;
+      let html = "";
+      let cursor = 0;
+      for (const match of part.matchAll(/\[([^\]]+)\]\((atelier:\/\/[^\s)]+)\)/g)) {
+        html += inlineText(part.slice(cursor, match.index));
+        html += options.rewriteLink?.(match[1]!, match[2]!) ?? inlineText(match[0]);
+        cursor = match.index + match[0].length;
+      }
+      return html + inlineText(part.slice(cursor));
     })
     .join("");
 }

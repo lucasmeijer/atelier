@@ -5,7 +5,7 @@ import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded
 import { highlightCodeHtmlForPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { renderAtelierEmbed, rewriteSegment, splitAtelierEmbeds } from "./rewrite.ts";
+import { renderAtelierEmbed, renderAtelierFileLink, rewriteSegment, splitAtelierEmbeds } from "./rewrite.ts";
 import type { WorkspaceAgentInfo } from "./session-store.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
 import {
@@ -62,7 +62,10 @@ function agentPath(ctx: AgentRenderContext, suffix: string): string {
 }
 
 function markdown(ctx: AgentRenderContext, text: string): string {
-  return renderMarkdown(text, { rewriteSegment: (segment) => rewriteSegment(ctx.workspaceId, segment) });
+  return renderMarkdown(text, {
+    rewriteSegment: (segment) => rewriteSegment(ctx.workspaceId, segment),
+    rewriteLink: (label, href) => renderAtelierFileLink(ctx.workspaceId, label, href),
+  });
 }
 
 function transcriptRow(html: string): string {
@@ -73,7 +76,10 @@ function renderMarkdownRows(ctx: AgentRenderContext, text: string, options: { hi
   const className = options.className ?? "agent-md";
   return splitAtelierEmbeds(text).map((segment) => {
     if (segment.type === "embed") return transcriptRow(renderAtelierEmbed(ctx.workspaceId, segment.target));
-    const body = renderMarkdown(segment.text, { highlightCode: options.highlightCode }).trim();
+    const body = renderMarkdown(segment.text, {
+      highlightCode: options.highlightCode,
+      rewriteLink: (label, href) => renderAtelierFileLink(ctx.workspaceId, label, href),
+    }).trim();
     return body ? transcriptRow(`<div class="${className}">${body}</div>`) : "";
   }).join("");
 }

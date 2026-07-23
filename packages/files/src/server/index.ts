@@ -1,5 +1,5 @@
-import type { WorkspaceModule } from "@atelier/shared";
 import { posix } from "node:path";
+import type { WorkspaceModule } from "@atelier/shared";
 import { workspaceContainerName, workspaceRoot } from "@atelier/workspace";
 import { deleteFile, FilesPathError, listFiles, resolveFilesDirectory, uploadFile } from "./files.ts";
 import { renderFilesFrame, renderFilesTab } from "./render.ts";

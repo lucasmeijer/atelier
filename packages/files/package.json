@@ -8,6 +8,7 @@
     "./client": "./src/client/index.ts"
   },
   "dependencies": {
+    "@atelier/editor": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*"
   }

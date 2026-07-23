@@ -1,4 +1,5 @@
 import { posix } from "node:path";
+import { maxEditableFileBytes } from "@atelier/editor/server";
 import { execWorkspaceCommand, execWorkspaceCommandBuffer, workspaceRoot } from "@atelier/workspace";
 
 export interface FileEntry {
@@ -7,6 +8,7 @@ export interface FileEntry {
   kind: "directory" | "file" | "symlink" | "other";
   size: number;
   concealed: boolean;
+  openable: boolean;
 }
 
 export class FilesPathError extends Error {
@@ -30,9 +32,9 @@ export async function resolveFilesDirectory(workspaceId: string, input: string |
   return path;
 }
 
-function parseFindOutput(stdout: Buffer, directory: string): Omit<FileEntry, "concealed">[] {
+function parseFindOutput(stdout: Buffer, directory: string): Omit<FileEntry, "concealed" | "openable">[] {
   const fields = stdout.toString("utf8").split("\0");
-  const entries: Omit<FileEntry, "concealed">[] = [];
+  const entries: Omit<FileEntry, "concealed" | "openable">[] = [];
   for (let index = 0; index + 2 < fields.length; index += 3) {
     const [type, sizeText, name] = fields.slice(index, index + 3) as [string, string, string];
     if (!name) continue;
@@ -40,6 +42,18 @@ function parseFindOutput(stdout: Buffer, directory: string): Omit<FileEntry, "co
     entries.push({ name, path: posix.join(directory, name), kind, size: Number(sizeText) });
   }
   return entries;
+}
+
+async function openablePaths(workspaceId: string, entries: Array<{ path: string; kind: FileEntry["kind"]; size: number }>): Promise<Set<string>> {
+  const paths = entries.filter((entry) => entry.kind === "file" && entry.size <= maxEditableFileBytes).map((entry) => entry.path);
+  if (paths.length === 0) return new Set();
+  const script = `for path do
+  encoding=$(file -b --mime-encoding -- "$path")
+  if ! test -s "$path" || test "$encoding" = us-ascii || test "$encoding" = utf-8; then printf '%s\\0' "$path"; fi
+done`;
+  const result = await execWorkspaceCommandBuffer(workspaceId, ["sh", "-c", script, "sh", ...paths]);
+  if (result.exitCode !== 0) throw new Error(result.stderr.trim() || "Unable to inspect files");
+  return new Set(result.stdout.toString("utf8").split("\0").filter(Boolean));
 }
 
 async function ignoredPaths(workspaceId: string, paths: string[]): Promise<Set<string>> {
@@ -56,9 +70,12 @@ export async function listFiles(workspaceId: string, inputPath: string | null, s
   const listing = await execWorkspaceCommandBuffer(workspaceId, ["find", path, "-mindepth", "1", "-maxdepth", "1", "-printf", "%y\\0%s\\0%f\\0"]);
   if (listing.exitCode !== 0) throw new FilesPathError(listing.stderr.trim() || "Unable to read folder", 403);
   const rawEntries = parseFindOutput(listing.stdout, path);
-  const ignored = await ignoredPaths(workspaceId, rawEntries.map((entry) => entry.path));
+  const [ignored, openable] = await Promise.all([
+    ignoredPaths(workspaceId, rawEntries.map((entry) => entry.path)),
+    openablePaths(workspaceId, rawEntries),
+  ]);
   const entries = rawEntries
-    .map((entry) => ({ ...entry, concealed: entry.name.startsWith(".") || ignored.has(entry.path) }))
+    .map((entry) => ({ ...entry, concealed: entry.name.startsWith(".") || ignored.has(entry.path), openable: openable.has(entry.path) }))
     .filter((entry) => showConcealed || !entry.concealed)
     .sort((left, right) => Number(right.kind === "directory") - Number(left.kind === "directory") || left.name.localeCompare(right.name));
   return { path, entries };

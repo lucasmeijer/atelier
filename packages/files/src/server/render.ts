@@ -1,6 +1,7 @@
 import { posix } from "node:path";
 import { domId, escapeHtml, workspaceProxyUrl, type WorkspaceTabContribution } from "@atelier/shared";
 import { workspaceRoot } from "@atelier/workspace";
+import { workspaceFileEditorOpenUrl } from "@atelier/editor/server";
 import type { FileEntry } from "./files.ts";
 
 export function filesFrameId(workspaceId: string): string {
@@ -45,13 +46,18 @@ function fileRow(workspaceId: string, entry: FileEntry, showConcealed: boolean, 
   const icon = entry.kind === "directory" ? "▸" : entry.kind === "symlink" ? "↗" : "";
   const label = entry.kind === "directory"
     ? `<a href="${escapeHtml(directoryUrl(workspaceId, entry.path, showConcealed))}" data-turbo-frame="${filesFrameId(workspaceId)}">${escapeHtml(entry.name)}</a>`
-    : `<span>${escapeHtml(entry.name)}</span>`;
-  const drop = entry.kind === "directory" ? ` data-files-destination="${escapeHtml(entry.path)}" data-action="dragenter->files#folderDragEnter dragover->files#folderDragOver dragleave->files#folderDragLeave drop->files#folderDrop"` : "";
+    : entry.openable
+      ? `<a href="${escapeHtml(workspaceFileEditorOpenUrl(workspaceId, entry.path))}" data-turbo-stream="true">${escapeHtml(entry.name)}</a>`
+      : `<span>${escapeHtml(entry.name)}</span>`;
+  const drop = entry.kind === "directory" ? ` data-files-destination="${escapeHtml(entry.path)}"` : "";
+  const actions = entry.kind === "directory"
+    ? "dragenter->files#folderDragEnter dragover->files#folderDragOver dragleave->files#folderDragLeave drop->files#folderDrop"
+    : "click->files#selectOrOpen";
   const contentUrl = entryContentUrl(workspaceId, entry);
   const menuId = domId("files_actions", workspaceId, String(index));
   const downloadName = entry.kind === "directory" ? `${entry.name}.tar.gz` : entry.name;
   const kindLabel = entry.kind === "directory" ? "folder" : "file";
-  return `<div class="files-row${concealed}" role="treeitem" tabindex="-1" data-kind="${entry.kind}"${drop}>
+  return `<div class="files-row${concealed}" role="treeitem" tabindex="-1" data-kind="${entry.kind}" data-action="${actions}"${drop}>
     <span class="files-row-icon" aria-hidden="true">${icon}</span>
     <span class="files-row-name">${label}</span>
     <span class="files-row-size">${entry.kind === "directory" ? "—" : formatSize(entry.size)}</span>

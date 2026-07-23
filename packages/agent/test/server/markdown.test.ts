@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderMarkdown } from "../../src/server/markdown.ts";
-import { splitAtelierEmbeds, rewriteSegment } from "../../src/server/rewrite.ts";
+import { renderAtelierFileLink, splitAtelierEmbeds, rewriteSegment } from "../../src/server/rewrite.ts";
 
 describe("renderMarkdown", () => {
   test("paragraphs, bold, inline code", () => {
@@ -62,9 +62,15 @@ describe("renderMarkdown", () => {
     expect(renderMarkdown("# Title")).toBe("<h3>Title</h3>");
   });
 
-  test("links only for http(s)", () => {
+  test("links only for http(s) unless an Atelier link rewriter accepts them", () => {
     expect(renderMarkdown("[x](https://example.com)")).toContain(`href="https://example.com"`);
     expect(renderMarkdown("[x](javascript:alert(1))")).not.toContain("href");
+    const html = renderMarkdown("ATELIERLINKTOKEN0END [example.ts:42](atelier://file/work/src/example.ts?line=42&column=3)", {
+      rewriteLink: (label, href) => renderAtelierFileLink("work 1", label, href),
+    });
+    expect(html).toContain("ATELIERLINKTOKEN0END");
+    expect(html).toContain(`/workspaces/work%201/file-editor/open?path=%2Fwork%2Fsrc%2Fexample.ts&amp;line=42&amp;column=3`);
+    expect(html).toContain(`data-turbo-stream="true"`);
   });
 });
 

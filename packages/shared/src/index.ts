@@ -151,6 +151,7 @@ export interface WorkspaceModuleCommandHandler {
 
 export interface WorkspaceModuleRouteContext {
   events?: unknown;
+  openTab(workspaceId: string, tabKey: string, placement?: WorkspaceTabPlacement): Promise<Response>;
 }
 
 export interface WorkspaceModuleRouteHandler {
@@ -240,6 +241,7 @@ export interface WorkspaceServerModuleContext {
   globalSidebarContributions: GlobalSidebarContributionRegistry;
   layouts: unknown;
   getTabKeys(workspaceId: string): Promise<string[]>;
+  broadcastWorkspace(workspaceId: string, html: string): void;
   deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<unknown>;
   createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult>;
   forkCurrentWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceForkRequest): Promise<AgentWorkspaceCreateResult>;

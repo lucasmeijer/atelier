@@ -21,8 +21,8 @@ describe("files paths", () => {
 describe("files rendering", () => {
   test("renders folders, sizes, breadcrumbs, and concealed entries", () => {
     const html = renderFilesFrame("work 1", `${workspaceRoot}/src`, [
-      { name: "folder", path: `${workspaceRoot}/src/folder`, kind: "directory", size: 0, concealed: false },
-      { name: ".secret", path: `${workspaceRoot}/src/.secret`, kind: "file", size: 1200, concealed: true },
+      { name: "folder", path: `${workspaceRoot}/src/folder`, kind: "directory", size: 0, concealed: false, openable: false },
+      { name: ".secret", path: `${workspaceRoot}/src/.secret`, kind: "file", size: 1200, concealed: true, openable: true },
     ], true);
     expect(html).toContain(workspaceRoot);
     expect(html).toContain("1.2 KB");
@@ -30,6 +30,8 @@ describe("files rendering", () => {
     expect(html).toContain("data-files-destination");
     expect(html).toContain("showHidden=1");
     expect(html.match(/class="files-actions-toggle"/g)).toHaveLength(2);
+    expect(html).toContain('data-turbo-stream="true">.secret</a>');
+    expect(html).not.toContain('class="files-open"');
     expect(html).toContain(">Copy URL</button>");
     expect(html).toContain(">Download</a>");
     expect(html).toContain("Delete folder</button>");

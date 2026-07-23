@@ -51,6 +51,7 @@ function context() {
       globalSidebarContributions: { set: (_id: string, html?: string) => sidebar.push(html ?? "") },
       layouts: {},
       getTabKeys: async () => [],
+      broadcastWorkspace: () => {},
       deleteCurrentWorkspace: async () => ({ deleted: false, blocked: false }),
       createWorkspaceFromAgent: async () => ({ id: "workspace-id", url: "/workspaces/workspace-id", phase: "starting" as const }),
       forkCurrentWorkspaceFromAgent: async () => ({ id: "workspace-id", url: "/workspaces/workspace-id", phase: "starting" as const }),

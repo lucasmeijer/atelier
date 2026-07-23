@@ -1,3 +1,4 @@
+import { workspaceFileEditorOpenUrl } from "@atelier/editor/server";
 import { escapeHtml } from "./html.ts";
 
 /**
@@ -86,6 +87,30 @@ function renderUrlEmbed(workspaceId: string, rawTarget: string): string {
 
   const src = parsed.toString();
   return renderFullscreenFrame(rawTarget, `<iframe src="${escapeHtml(src)}" loading="lazy"></iframe>`, `<a href="${escapeHtml(src)}" target="_blank" rel="noopener">in new tab ↗</a>`);
+}
+
+export function renderAtelierFileLink(workspaceId: string, label: string, rawHref: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(rawHref);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== "atelier:" || url.hostname !== "file") return undefined;
+  let path: string;
+  try {
+    path = decodeURIComponent(url.pathname);
+  } catch {
+    return undefined;
+  }
+  if (path !== "/work" && !path.startsWith("/work/")) return undefined;
+  const position: { line?: number; column?: number } = {};
+  for (const name of ["line", "column"] as const) {
+    const value = url.searchParams.get(name);
+    if (value && /^\d+$/.test(value)) position[name] = Number(value);
+  }
+  const href = workspaceFileEditorOpenUrl(workspaceId, path, position);
+  return `<a href="${escapeHtml(href)}" data-turbo-stream="true">${escapeHtml(label)}</a>`;
 }
 
 export function renderAtelierEmbed(workspaceId: string, rawTarget: string): string {

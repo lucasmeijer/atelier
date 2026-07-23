@@ -4,7 +4,7 @@ import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
 import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace } from "@atelier/workspace";
 import type { WorkspaceDeleteSafetyIssue } from "@atelier/projects";
-import { atelierName, escapeHtml, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler } from "@atelier/shared";
+import { atelierName, CableTopics, escapeHtml, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler } from "@atelier/shared";
 import {
   createTailscaleServePortExposer,
   createWorkspaceIngressProxy,
@@ -274,6 +274,7 @@ for (const module of workspaceModules) {
     globalSidebarContributions: app.globalSidebarContributions,
     layouts,
     getTabKeys: (workspaceId) => app.tabKeysFor(workspaceId),
+    broadcastWorkspace: (workspaceId, html) => cableServer.broadcast(CableTopics.workspace(workspaceId), html),
     deleteCurrentWorkspace: (workspaceId, force) => app.deleteCurrentWorkspaceFromAgent(workspaceId, force),
     createWorkspaceFromAgent: (workspaceId, request) => app.createWorkspaceFromAgent(workspaceId, request),
     forkCurrentWorkspaceFromAgent: (workspaceId, request) => app.forkCurrentWorkspaceFromAgent(workspaceId, request),

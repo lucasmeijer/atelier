@@ -1359,6 +1359,18 @@ ${moduleStylesHtml()}
     if (fallbackGroupId) layouts.placeNewTab(workspaceId, tabKeys, fallbackGroupId, result.createdTabKey);
   }
 
+  async function openWorkspaceModuleTab(workspaceId: string, tabKey: string, placement: "visible-group" | "preview-group" = "visible-group"): Promise<Response> {
+    const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
+    const tabKeys = tabs.map((tab) => tab.key);
+    if (!tabKeys.includes(tabKey)) throw new AtelierCoreError("tab_not_found", `workspace tab not found: ${tabKey}`);
+    if (placement === "preview-group") layouts.ensureTabInPreviewGroup(workspaceId, tabKeys, tabKey);
+    else {
+      const groupId = layouts.normalize(workspaceId, tabKeys).groups.find((group) => group.visibleTab)?.id;
+      if (groupId) layouts.placeNewTab(workspaceId, tabKeys, groupId, tabKey);
+    }
+    return turboStreamResponse(workspaceGroupsTurboStream(workspaceId, tabs, attachments));
+  }
+
   async function workspaceGroupCommandEndpoint(workspaceId: string, groupId: string, commandId: string): Promise<Response> {
     const beforeTabKeys = await tabKeysFor(workspaceId);
     const activeTabKey = layouts.normalize(workspaceId, beforeTabKeys).groups.find((group) => group.id === groupId)?.visibleTab;
@@ -1487,7 +1499,7 @@ ${moduleStylesHtml()}
     if (onboardingResponse) return onboardingResponse;
 
     for (const moduleRoute of workspaceModuleRoutes()) {
-      const moduleResponse = await moduleRoute.handle(request, url, { events: deps.events });
+      const moduleResponse = await moduleRoute.handle(request, url, { events: deps.events, openTab: openWorkspaceModuleTab });
       if (moduleResponse) return moduleResponse;
     }
 

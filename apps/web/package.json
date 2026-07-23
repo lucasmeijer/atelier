@@ -17,6 +17,7 @@
     "@atelier/browser": "workspace:*",
     "@atelier/core": "workspace:*",
     "@atelier/desktop": "workspace:*",
+    "@atelier/editor": "workspace:*",
     "@atelier/files": "workspace:*",
     "@atelier/keypress-probe": "workspace:*",
     "@atelier/proxy-egress": "workspace:*",
