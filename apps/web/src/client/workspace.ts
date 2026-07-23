@@ -2446,9 +2446,49 @@ class CableShellController extends Controller {
   }
 }
 
+class DevReloadController extends Controller {
+  static values = { url: String };
+
+  declare readonly urlValue: string;
+
+  private revision: number | undefined;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private connected = false;
+
+  connect(): void {
+    this.connected = true;
+    void this.poll();
+  }
+
+  disconnect(): void {
+    this.connected = false;
+    if (this.timer) clearTimeout(this.timer);
+  }
+
+  private async poll(): Promise<void> {
+    try {
+      const response = await fetch(this.urlValue, { cache: "no-store" });
+      if (response.ok) {
+        const value = await response.json() as { revision?: unknown };
+        if (typeof value.revision === "number") {
+          if (this.revision !== undefined && value.revision !== this.revision) {
+            window.location.reload();
+            return;
+          }
+          this.revision = value.revision;
+        }
+      }
+    } catch {
+      // Server restarts temporarily make the development endpoint unavailable.
+    }
+    if (this.connected) this.timer = setTimeout(() => void this.poll(), 1_000);
+  }
+}
+
 const application = Application.start();
 for (const module of workspaceClientModules) await module.install({ application, Controller, hooks: clientHooks });
 application.register("cable-shell", CableShellController);
+application.register("dev-reload", DevReloadController);
 application.register("workspace-shell", WorkspaceShellController);
 application.register("workspace-tabs", WorkspaceTabsController);
 application.register("workspace-tab-close", WorkspaceTabCloseController);

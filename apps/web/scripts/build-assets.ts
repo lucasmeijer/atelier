@@ -1,18 +1,19 @@
 import { createHash } from "node:crypto";
-import { mkdir, rm } from "node:fs/promises";
-import { basename, extname } from "node:path";
+import { mkdir, readdir, rename, rm } from "node:fs/promises";
+import { basename, extname, join } from "node:path";
 import type { StaticFileEntry } from "../src/server/static-files.ts";
 
 await import("./generate-workspace-modules.ts");
 const { clientEntrypoints, fingerprintedStaticFiles } = await import("../src/server/static-files.ts");
 
-const publicDir = new URL("../public/", import.meta.url);
 const assetsDir = new URL("../public/assets/", import.meta.url);
+const stagingDir = new URL(`../.asset-build-${process.pid}/`, import.meta.url);
 const manifestUrl = new URL("../public/assets-manifest.json", import.meta.url);
+const manifestTempUrl = new URL(`../.assets-manifest-${process.pid}.json`, import.meta.url);
 const maxCssManifestPasses = 10;
+const clientOnly = process.argv.includes("--client-only") && await Bun.file(manifestUrl).exists();
 
 type Manifest = Record<string, string>;
-
 type StaticFileRecord = [logicalPath: string, entry: StaticFileEntry];
 
 const manifest: Manifest = {};
@@ -48,7 +49,7 @@ async function buildClientEntrypoints(): Promise<void> {
   for (const [logicalPath, entry] of Object.entries(clientEntrypoints)) {
     const build = await Bun.build({
       entrypoints: [entry.url.pathname],
-      outdir: assetsDir.pathname,
+      outdir: stagingDir.pathname,
       format: "esm",
       target: "browser",
       naming: {
@@ -60,7 +61,7 @@ async function buildClientEntrypoints(): Promise<void> {
 
     if (!build.success) {
       for (const log of build.logs) console.error(log);
-      process.exit(1);
+      throw new Error(`Could not build client entrypoint ${logicalPath}`);
     }
 
     const entryExtension = extname(logicalPath);
@@ -75,7 +76,7 @@ async function buildClientEntrypoints(): Promise<void> {
 async function copyBinaryAsset(logicalPath: string, source: URL): Promise<void> {
   const content = new Uint8Array(await Bun.file(source).arrayBuffer());
   const publicPath = fingerprintedPath(logicalPath, content);
-  await Bun.write(new URL(`.${publicPath}`, publicDir), content);
+  await Bun.write(new URL(`.${publicPath.replace("/assets/", "/")}`, stagingDir), content);
   manifest[logicalPath] = publicPath;
 }
 
@@ -105,26 +106,42 @@ async function fingerprintCssAssets(cssFiles: StaticFileRecord[]): Promise<Map<s
   throw new Error(`CSS asset manifest did not stabilize after ${maxCssManifestPasses} passes`);
 }
 
-await rm(assetsDir, { recursive: true, force: true });
-await mkdir(assetsDir, { recursive: true });
-
-await buildClientEntrypoints();
-
-const staticFiles = Object.entries(fingerprintedStaticFiles).sort(([a], [b]) => a.localeCompare(b)) as StaticFileRecord[];
-const cssFiles = staticFiles.filter(([, entry]) => isCss(entry));
-const nonCssFiles = staticFiles.filter(([, entry]) => !isCss(entry));
-
-for (const [logicalPath, entry] of nonCssFiles) {
-  await copyBinaryAsset(logicalPath, entry.url);
+async function publishStagedAssets(): Promise<void> {
+  await mkdir(assetsDir, { recursive: true });
+  for (const entry of await readdir(stagingDir, { withFileTypes: true })) {
+    if (!entry.isFile()) throw new Error(`Unexpected staged asset directory: ${entry.name}`);
+    await rename(join(stagingDir.pathname, entry.name), join(assetsDir.pathname, entry.name));
+  }
+  await Bun.write(manifestTempUrl, `${JSON.stringify(manifest, null, 2)}\n`);
+  await rename(manifestTempUrl, manifestUrl);
 }
 
-const cssAssets = await fingerprintCssAssets(cssFiles);
-for (const [logicalPath, content] of cssAssets) {
-  await Bun.write(new URL(`.${manifest[logicalPath]}`, publicDir), content);
-}
+await rm(stagingDir, { recursive: true, force: true });
+await mkdir(stagingDir, { recursive: true });
 
-await Bun.write(manifestUrl, `${JSON.stringify(manifest, null, 2)}\n`);
+try {
+  if (clientOnly) Object.assign(manifest, await Bun.file(manifestUrl).json() as Manifest);
+  await buildClientEntrypoints();
 
-for (const [logicalPath, publicPath] of Object.entries(manifest).sort()) {
-  console.log(`${logicalPath} -> ${publicPath}`);
+  if (!clientOnly) {
+    const staticFiles = Object.entries(fingerprintedStaticFiles).sort(([a], [b]) => a.localeCompare(b)) as StaticFileRecord[];
+    const cssFiles = staticFiles.filter(([, entry]) => isCss(entry));
+    const nonCssFiles = staticFiles.filter(([, entry]) => !isCss(entry));
+
+    for (const [logicalPath, entry] of nonCssFiles) await copyBinaryAsset(logicalPath, entry.url);
+
+    const cssAssets = await fingerprintCssAssets(cssFiles);
+    for (const [logicalPath, content] of cssAssets) {
+      await Bun.write(new URL(manifest[logicalPath]!.replace("/assets/", ""), stagingDir), content);
+    }
+  }
+
+  await publishStagedAssets();
+
+  for (const [logicalPath, publicPath] of Object.entries(manifest).sort()) {
+    console.log(`${logicalPath} -> ${publicPath}`);
+  }
+} finally {
+  await rm(stagingDir, { recursive: true, force: true });
+  await rm(manifestTempUrl, { force: true });
 }

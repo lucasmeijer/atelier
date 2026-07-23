@@ -73,6 +73,7 @@ export interface WebAppDeps {
   layouts: WorkspaceLayoutStore;
   /** Event bus passed through to the agent module routes. */
   events?: AtelierEventBus;
+  devReload?: boolean;
   /** Create the container + default agent etc. for an already-registered workspace id. */
   provisionWorkspace(id: string, options?: { init?: import("@atelier/workspace").WorkspaceInitInstruction; context?: WorkspaceCreationContext; fork?: { sourceWorkspaceId: string } }): Promise<void>;
   inspectDeleteSafety(id: string): Promise<WorkspaceDeleteBlockedDetails>;
@@ -405,6 +406,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   function layout(title: string, body: string, workspaceId?: string): string {
+    if (deps.devReload) cachedAssetManifest = loadAssetManifest();
     const pageId = randomUUID();
     return `<!DOCTYPE html>
 <html lang="en" data-theme="nord" data-atelier-page-id="${escapeHtml(pageId)}">
@@ -424,7 +426,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 ${moduleStylesHtml()}
 <script type="module" src="${assetPath("/workspace.js")}"></script>
 </head>
-<body id="body" data-controller="cable-shell">${body}
+<body id="body" data-controller="cable-shell${deps.devReload ? " dev-reload" : ""}"${deps.devReload ? ` data-dev-reload-url-value="/__atelier_dev_reload"` : ""}>${body}
 </body>
 </html>`;
   }

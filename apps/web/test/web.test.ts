@@ -26,6 +26,7 @@ interface TestAppOptions {
   inspect?: (id: string) => Promise<WorkspaceDeleteBlockedDetails>;
   destroy?: (id: string) => Promise<void>;
   persistParked?: (id: string, parked: boolean) => Promise<void>;
+  devReload?: boolean;
 }
 
 function createTestApp(options: TestAppOptions = {}) {
@@ -38,6 +39,7 @@ function createTestApp(options: TestAppOptions = {}) {
     registry,
     layouts,
     cable: { broadcast: (_identifier, html) => broadcasts.push(html) },
+    devReload: options.devReload,
     provisionWorkspace: options.provision ?? (async () => {}),
     provisioningHooks: [],
     inspectDeleteSafety: options.inspect ?? (async (id) => ({ workspaceId: id, issues: [] })),
@@ -736,5 +738,14 @@ describe("web app contracts", () => {
 
     const legacy = await app.fetch(new Request("http://test.local/workspace-events/stream"));
     expect(legacy.status).toBe(404);
+  });
+
+  test("development page shell enables the reload controller only in dev mode", async () => {
+    const productionHtml = await (await createTestApp().app.fetch(new Request("http://test.local/"))).text();
+    const developmentHtml = await (await createTestApp({ devReload: true }).app.fetch(new Request("http://test.local/"))).text();
+
+    expect(productionHtml).not.toContain("dev-reload");
+    expect(developmentHtml).toContain('data-controller="cable-shell dev-reload"');
+    expect(developmentHtml).toContain('data-dev-reload-url-value="/__atelier_dev_reload"');
   });
 });

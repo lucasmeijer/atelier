@@ -27,6 +27,7 @@ import { workspaceModules } from "./workspace-modules.ts";
 const requestedPort = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "0.0.0.0";
 const allowPortFallback = process.env.ATELIER_PORT_FALLBACK === "1";
+const devReloadFile = process.argv.find((argument) => argument.startsWith("--atelier-dev-reload-file="))?.slice("--atelier-dev-reload-file=".length);
 
 const authPassword = process.env.ATELIER_PASSWORD ?? "";
 
@@ -225,6 +226,7 @@ app = createWebApp({
   cable: cableServer,
   layouts,
   events: atelierEvents,
+  devReload: devReloadFile !== undefined,
   provisioningHooks,
   workspaceRemovedHandlers,
   async provisionWorkspace(id, options) {
@@ -467,6 +469,10 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
 
         if (url.pathname === "/debug/connections" && request.method === "GET") {
           return new Response(JSON.stringify({ cable: cableServer.stats() }, null, 2), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+        }
+
+        if (devReloadFile && url.pathname === "/__atelier_dev_reload" && request.method === "GET") {
+          return new Response(Bun.file(devReloadFile), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
         }
 
         const canonical = await handleCanonicalProxyRequest(url, request);

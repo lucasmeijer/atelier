@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { watch } from "node:fs";
-import { lstat, readdir, readFile } from "node:fs/promises";
+import { lstat, readdir, readFile, rename, rm } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { ensureDefaultWorkspaceImage } from "@atelier/workspace-image";
 
@@ -10,16 +10,30 @@ const packagesDir = resolve(repoRoot, "packages");
 
 let building = false;
 let dirty = false;
+let fullBuildRequested = true;
 let buildPromise: Promise<void> | undefined;
 let timer: Timer | undefined;
 let serverRestartTimer: Timer | undefined;
 let workspaceImageTimer: Timer | undefined;
+let browserReloadTimer: Timer | undefined;
+let browserReloadRevision = 0;
 let workspaceImageEnsuring = false;
 let workspaceImageDirty = false;
 let workspaceImageInputHash: string | undefined;
 let server: ReturnType<typeof Bun.spawn> | undefined;
 let stoppingServer = false;
 const pendingRestartReasons = new Set<string>();
+const devReloadFile = join("/tmp", `atelier-dev-reload-${process.pid}.json`);
+const devReloadTempFile = `${devReloadFile}.tmp`;
+
+function scheduleBrowserReload(): void {
+  if (browserReloadTimer) clearTimeout(browserReloadTimer);
+  browserReloadTimer = setTimeout(() => void (async () => {
+    browserReloadRevision += 1;
+    await Bun.write(devReloadTempFile, `${JSON.stringify({ revision: browserReloadRevision })}\n`);
+    await rename(devReloadTempFile, devReloadFile);
+  })(), 150);
+}
 
 function prefixed(prefix: string, stream: ReadableStream<Uint8Array> | null): void {
   if (!stream) return;
@@ -40,7 +54,8 @@ function prefixed(prefix: string, stream: ReadableStream<Uint8Array> | null): vo
   })();
 }
 
-async function runBuild(): Promise<void> {
+async function runBuild(full = false): Promise<void> {
+  if (full) fullBuildRequested = true;
   if (building) {
     dirty = true;
     await buildPromise;
@@ -51,12 +66,15 @@ async function runBuild(): Promise<void> {
     do {
       building = true;
       dirty = false;
-      console.log("[assets] rebuilding…");
-      const proc = Bun.spawn(["bun", "run", "build:assets"], { cwd, stdout: "pipe", stderr: "pipe" });
+      const fullBuild = fullBuildRequested;
+      fullBuildRequested = false;
+      console.log(`[assets] rebuilding${fullBuild ? "" : " client"}…`);
+      const proc = Bun.spawn(["bun", "run", "build:assets", ...(fullBuild ? [] : ["--client-only"])], { cwd, stdout: "pipe", stderr: "pipe" });
       prefixed("[assets]", proc.stdout);
       prefixed("[assets]", proc.stderr);
       const code = await proc.exited;
       console.log(code === 0 ? "[assets] ready" : `[assets] failed (${code})`);
+      if (code === 0) scheduleBrowserReload();
     } while (dirty);
     building = false;
     buildPromise = undefined;
@@ -65,7 +83,8 @@ async function runBuild(): Promise<void> {
   await buildPromise;
 }
 
-function scheduleBuild(): void {
+function scheduleBuild(full: boolean): void {
+  if (full) fullBuildRequested = true;
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => void runBuild(), 100);
 }
@@ -76,6 +95,7 @@ function ignored(path: string): boolean {
     || normalized.includes(`${sep}.git${sep}`)
     || normalized.includes(`${sep}apps${sep}web${sep}public${sep}assets${sep}`)
     || normalized.endsWith(`${sep}apps${sep}web${sep}public${sep}assets-manifest.json`)
+    || normalized.includes(`${sep}apps${sep}web${sep}public${sep}.assets-manifest-`)
     || normalized.endsWith(`${sep}apps${sep}web${sep}src${sep}client${sep}workspace-client-modules.generated.ts`)
     || normalized.endsWith(`${sep}apps${sep}web${sep}src${sep}server${sep}workspace-modules.generated.ts`);
 }
@@ -188,11 +208,13 @@ function watchRecursive(path: string, onChange: (changed: string) => void): void
 
 function startServer(): void {
   stoppingServer = false;
-  server = Bun.spawn(["bun", "run", "src/server/main.ts"], { cwd, stdout: "inherit", stderr: "inherit", stdin: "inherit" });
+  const child = Bun.spawn(["bun", "run", "src/server/main.ts", `--atelier-dev-reload-file=${devReloadFile}`], { cwd, stdout: "inherit", stderr: "inherit", stdin: "inherit" });
+  server = child;
   void (async () => {
-    const code = await server!.exited;
+    const code = await child.exited;
+    if (server === child) server = undefined;
     if (stoppingServer) return;
-    process.exit(code ?? 1);
+    console.error(`[server] exited (${code ?? 1}); waiting for a server source change`);
   })();
 }
 
@@ -201,6 +223,7 @@ async function restartServer(): Promise<void> {
   if (!server) {
     console.log(`[server] starting (${why})`);
     startServer();
+    scheduleBrowserReload();
     return;
   }
   console.log(`[server] restarting (${why})`);
@@ -208,6 +231,7 @@ async function restartServer(): Promise<void> {
   server.kill();
   await server.exited.catch(() => {});
   startServer();
+  scheduleBrowserReload();
 }
 
 function scheduleServerRestart(reason: string, changed: string): void {
@@ -221,7 +245,7 @@ function scheduleBuildThenServerRestart(reason: string, changed: string): void {
   if (serverRestartTimer) clearTimeout(serverRestartTimer);
   if (timer) clearTimeout(timer);
   serverRestartTimer = setTimeout(() => void (async () => {
-    await runBuild();
+    await runBuild(true);
     await restartServer();
   })(), 100);
 }
@@ -229,11 +253,12 @@ function scheduleBuildThenServerRestart(reason: string, changed: string): void {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-await runBuild();
+await Bun.write(devReloadFile, `${JSON.stringify({ revision: browserReloadRevision })}\n`);
+await runBuild(true);
 await ensureWorkspaceImage();
 
-watchRecursive(resolve(cwd, "src/client"), () => scheduleBuild());
-watchRecursive(resolve(cwd, "public"), () => scheduleBuild());
+watchRecursive(resolve(cwd, "src/client"), () => scheduleBuild(false));
+watchRecursive(resolve(cwd, "public"), () => scheduleBuild(true));
 watchRecursive(resolve(cwd, "src/server"), (changed) => {
   if (changed.endsWith(`${sep}static-files.ts`)) scheduleBuildThenServerRestart("server static file list changed", changed);
   else scheduleServerRestart("server source changed", changed);
@@ -248,6 +273,8 @@ startServer();
 function shutdown(): void {
   stoppingServer = true;
   server?.kill();
+  void rm(devReloadFile, { force: true });
+  void rm(devReloadTempFile, { force: true });
   process.exit(0);
 }
 
