@@ -12,12 +12,18 @@
 .files-columns span:nth-child(2) { text-align: right; }
 .files-tree { min-height: 0; overflow: auto; padding: 4px 7px 14px; outline: none; }
 .files-tree:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 65%, transparent); }
+.files-directory-frame { display: block; min-width: 0; }
+.files-row-icon > .files-directory-spinner { display: none; }
+.files-directory-frame[busy] > .files-row > .files-row-icon > .files-directory-triangle { display: none; }
+.files-directory-frame[busy] > .files-row > .files-row-icon > .files-directory-spinner { display: inline-block; }
+.files-directory-children { min-width: 0; padding-left: 20px; }
 .files-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) 82px 34px; align-items: center; min-height: 29px; padding: 0 1px 0 5px; border: 1px solid transparent; border-radius: 4px; font: 12px var(--mono); }
 .files-row:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
 .files-row:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 65%, transparent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
 .files-row.is-drop-target { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .files-row.concealed { opacity: .5; }
 .files-row-icon { width: 16px; color: var(--muted2); text-align: center; }
+.files-row[data-kind="directory"] { cursor: pointer; }
 .files-row[data-kind="directory"] .files-row-icon { color: var(--accent); }
 .files-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .files-row-name a { display: block; color: inherit; text-decoration: none; }
@@ -30,6 +36,7 @@
 .files-actions-menu .danger { color: var(--red); }
 .files-actions-menu .danger:hover, .files-actions-menu .danger:focus-visible { background: var(--red-soft); }
 .files-empty { margin: 32px; color: var(--muted2); text-align: center; font-size: 12px; }
+.files-directory-children > .files-empty { margin: 7px 8px 7px 20px; text-align: left; font-style: italic; }
 .files-drop-overlay { position: absolute; z-index: 5; inset: 8px; display: none; place-content: center; gap: 7px; border: 2px dashed var(--accent); border-radius: 8px; color: var(--text); background: color-mix(in srgb, var(--bg) 88%, var(--accent) 12%); text-align: center; pointer-events: none; }
 .files-drop-overlay strong { font-size: 16px; }
 .files-drop-overlay span { color: var(--muted2); font: 11px var(--mono); }

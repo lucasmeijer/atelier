@@ -2,21 +2,38 @@ import { posix } from "node:path";
 import type { WorkspaceModule } from "@atelier/shared";
 import { workspaceContainerName, workspaceRoot } from "@atelier/workspace";
 import { deleteFile, FilesPathError, listFiles, resolveFilesDirectory, uploadFile } from "./files.ts";
-import { renderFilesFrame, renderFilesTab } from "./render.ts";
+import { renderFilesDirectoryFrame, renderFilesFrame, renderFilesTab } from "./render.ts";
 
 function textResponse(message: string, status: number): Response {
   return new Response(message, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
 }
 
+function htmlResponse(html: string): Response {
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
 async function filesResponse(workspaceId: string, path: string | null, showConcealed: boolean): Promise<Response> {
   const listing = await listFiles(workspaceId, path, showConcealed);
-  return new Response(renderFilesFrame(workspaceId, listing.path, listing.entries, showConcealed), {
-    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
-  });
+  return htmlResponse(renderFilesFrame(workspaceId, listing.path, listing.entries, showConcealed));
 }
 
 async function filesEndpoint(workspaceId: string, url: URL): Promise<Response> {
-  return await filesResponse(workspaceId, url.searchParams.get("path"), url.searchParams.get("showHidden") === "1");
+  const showConcealed = url.searchParams.get("showHidden") === "1";
+  const view = url.searchParams.get("view");
+  if (view === "inline" || view === "collapsed") {
+    const listing = view === "inline" ? await listFiles(workspaceId, url.searchParams.get("path"), showConcealed) : undefined;
+    const path = listing?.path ?? await resolveFilesDirectory(workspaceId, url.searchParams.get("path"));
+    const entry = {
+      name: posix.basename(path),
+      path,
+      kind: "directory" as const,
+      size: 0,
+      concealed: url.searchParams.get("concealed") === "1",
+      openable: false,
+    };
+    return htmlResponse(renderFilesDirectoryFrame(workspaceId, entry, showConcealed, listing?.entries));
+  }
+  return await filesResponse(workspaceId, url.searchParams.get("path"), showConcealed);
 }
 
 async function uploadEndpoint(workspaceId: string, request: Request, url: URL): Promise<Response> {

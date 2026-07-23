@@ -86,6 +86,12 @@ function createFilesController(Controller: ControllerConstructor): unknown {
       this.navigateFrame(this.listingUrl((event.currentTarget as HTMLInputElement).checked));
     }
 
+    openDirectory(event: MouseEvent): void {
+      if ((event.target as Element).closest("a, .files-actions-toggle, .files-actions-menu")) return;
+      event.preventDefault();
+      (event.currentTarget as HTMLElement).querySelector<HTMLAnchorElement>(".files-row-name > a")!.click();
+    }
+
     selectOrOpen(event: MouseEvent): void {
       const row = event.currentTarget as HTMLElement;
       if ((event.target as Element).closest(".files-actions-toggle, .files-actions-menu")) return;
