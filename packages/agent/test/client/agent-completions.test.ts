@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, hasScrolledToMessage, insertPromptTemplate, scrollMessageToTop } from "../../src/client/agent-controllers.ts";
+import { agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, forwardAgentTerminalWheel, hasScrolledToMessage, insertPromptTemplate, scrollMessageToTop } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): HTMLTextAreaElement {
   return {
@@ -50,6 +50,19 @@ describe("agent transcript navigation", () => {
     expect(hasScrolledToMessage(transcript, message)).toBe(false);
     transcript.scrollTop = 240;
     expect(hasScrolledToMessage(transcript, message)).toBe(true);
+  });
+
+  test("forwards live terminal wheel input to the agent transcript", () => {
+    const transcript = { scrollTop: 120, clientHeight: 500 } as HTMLElement;
+    const terminal = { closest: () => transcript } as unknown as HTMLElement;
+    const preventDefault = mock(() => {});
+    const stopPropagation = mock(() => {});
+    const event = { deltaY: 3, deltaMode: 1, DOM_DELTA_LINE: 1, DOM_DELTA_PAGE: 2, ctrlKey: false, preventDefault, stopPropagation } as unknown as WheelEvent;
+
+    expect(forwardAgentTerminalWheel(terminal, event)).toBe(true);
+    expect(transcript.scrollTop).toBe(168);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(stopPropagation).toHaveBeenCalledTimes(1);
   });
 });
 

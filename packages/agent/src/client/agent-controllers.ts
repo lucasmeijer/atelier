@@ -1260,6 +1260,20 @@ function createAgentLazyDetailController(Controller: StimulusControllerConstruct
 // agent-term: inline read-only xterm attached to an agent tmux session
 // ---------------------------------------------------------------------------
 
+export function forwardAgentTerminalWheel(terminal: HTMLElement, event: WheelEvent): boolean {
+  const transcript = terminal.closest<HTMLElement>(".agent-transcript");
+  if (!transcript || event.ctrlKey || event.deltaY === 0) return false;
+  const delta = event.deltaMode === event.DOM_DELTA_LINE
+    ? event.deltaY * 16
+    : event.deltaMode === event.DOM_DELTA_PAGE
+      ? event.deltaY * transcript.clientHeight
+      : event.deltaY;
+  transcript.scrollTop += delta;
+  event.preventDefault();
+  event.stopPropagation();
+  return true;
+}
+
 function createAgentTermController(Controller: StimulusControllerConstructor) {
   return class AgentTermController extends Controller {
     static values = { workspaceId: String, label: String, session: String };
@@ -1283,9 +1297,14 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
       this.viewer?.setTheme(this.theme());
     };
 
+    private wheel = (event: WheelEvent): void => {
+      forwardAgentTerminalWheel(this.element, event);
+    };
+
     connect(): void {
       this.disposed = false;
       document.addEventListener("atelier:theme-change", this.themeChanged);
+      this.element.addEventListener("wheel", this.wheel, { capture: true, passive: false });
       if (isWorkspacePaneVisible(this.element)) this.start();
     }
 
@@ -1333,6 +1352,7 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
     disconnect(): void {
       this.disposed = true;
       document.removeEventListener("atelier:theme-change", this.themeChanged);
+      this.element.removeEventListener("wheel", this.wheel, { capture: true });
       this.viewer?.dispose();
       this.viewer = undefined;
     }
