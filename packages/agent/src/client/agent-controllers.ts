@@ -91,6 +91,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private transcriptMutationObserver?: MutationObserver;
     private promptObserver?: MutationObserver;
     private transcriptResizeObserver?: ResizeObserver;
+    private composerResizeObserver?: ResizeObserver;
     private transcriptResizeFrame = 0;
     private rewindUserText = "";
     private messageDialogPopulatesPrompt = false;
@@ -107,6 +108,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.updateTranscriptNavigation();
     };
     private updateTranscriptNavigation(): void {
+      this.element.classList.toggle("agent-transcript-at-end", this.stuck);
       this.transcriptNavTarget.disabled = this.stuck;
       this.transcriptNavTarget.setAttribute("aria-hidden", String(this.stuck));
     }
@@ -114,6 +116,14 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       if (!isWorkspacePaneVisible(this.element)) return;
       if (this.stuck) this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
       this.onScroll();
+    }
+    private keepTranscriptAtEndAfterLayout(wasStuck = this.stuck): void {
+      if (!wasStuck) return;
+      requestAnimationFrame(() => {
+        this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
+        this.stuck = true;
+        this.updateTranscriptNavigation();
+      });
     }
     private observeTranscriptItems(): void {
       for (const item of this.transcriptTarget.children) this.transcriptResizeObserver!.observe(item);
@@ -136,6 +146,8 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptMutationObserver.observe(this.transcriptTarget, { childList: true, subtree: true });
       this.promptObserver = new MutationObserver(() => this.updateSendStopButton());
       this.promptObserver.observe(this.formTarget, { childList: true, subtree: true });
+      this.composerResizeObserver = new ResizeObserver(() => this.keepTranscriptAtEndAfterLayout());
+      this.composerResizeObserver.observe(this.element.querySelector<HTMLElement>(".agent-promptwrap")!);
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       this.updateTranscriptNavigation();
       document.addEventListener("visibilitychange", this.onVisibilityChange);
@@ -149,6 +161,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptMutationObserver?.disconnect();
       this.promptObserver?.disconnect();
       this.transcriptResizeObserver?.disconnect();
+      this.composerResizeObserver?.disconnect();
       cancelAnimationFrame(this.transcriptResizeFrame);
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
@@ -326,6 +339,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     autosize(): void {
       const input = this.inputTarget;
+      const wasStuck = this.stuck;
       const maxHeight = Number.parseFloat(getComputedStyle(input).getPropertyValue("--agent-input-max-height")) || 260;
       input.style.height = "auto";
       // Add a small buffer for fractional line-height/browser rounding so a
@@ -333,6 +347,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       const nextHeight = Math.ceil(input.scrollHeight) + 2;
       input.style.height = `${Math.min(nextHeight, maxHeight)}px`;
       input.style.overflowY = nextHeight > maxHeight ? "auto" : "hidden";
+      this.keepTranscriptAtEndAfterLayout(wasStuck);
       this.updateSendStopButton();
     }
 

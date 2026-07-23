@@ -3,7 +3,14 @@
 .workspace-group .workspace-panes:has(> .agent-tab-pane.visible) { padding: 0; overflow: hidden; }
 .agent-tab-pane.visible { height: 100%; min-height: 0; }
 
-.agent-pane { --agent-prompt-overlap: 60px; --agent-transcript-fade: 56px; height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--bg); position: relative; }
+.agent-pane {
+  --agent-inline-gutter: 2.5rem;
+  --agent-inline-gutter: clamp(.75rem, 4cqi, 2.5rem);
+  --agent-transcript-fade: 3rem;
+  --agent-transcript-fade-gap: .625rem;
+  height: 100%; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto;
+  background: var(--bg); position: relative; container-type: inline-size;
+}
 .agent-pane.agent-dropping .agent-promptbox::after, .agent-promptwrap.agent-dropping .agent-promptbox::after {
   content: "Drop files to attach";
   position: absolute; inset: 0; border: 2px dashed var(--accent); border-radius: inherit;
@@ -12,9 +19,10 @@
 }
 
 .agent-transcript {
-  flex: 1; min-height: 0; overflow-y: auto; scroll-behavior: auto; padding: 30px 40px calc(var(--agent-transcript-fade) + 10px); display: block; scrollbar-width: none;
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--agent-transcript-fade)), transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--agent-transcript-fade)), transparent 100%);
+  min-height: 0; overflow-y: auto; scroll-behavior: auto;
+  padding-block: 1.875rem var(--agent-transcript-fade-gap);
+  padding-inline: var(--agent-inline-gutter);
+  display: block; scrollbar-width: none;
 }
 .agent-transcript::-webkit-scrollbar { display: none; }
 .agent-starting { display: flex; align-items: center; gap: 12px; color: var(--muted); border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 14px 16px; box-shadow: 0 4px 16px rgba(19,26,38,.04); }
@@ -352,8 +360,21 @@
 .agent-md pre, .agent-code-block pre { border: 1px solid var(--line); border-radius: 9px; }
 .agent-md pre code, .agent-code-block pre code { display: block; background: transparent; border: 0; border-radius: 0; padding: 0; }
 
-.agent-promptwrap { position: relative; z-index: 2; flex: none; margin-top: calc(-1 * var(--agent-prompt-overlap)); padding: 40px 40px 22px; pointer-events: none; }
-.agent-transcript-navs { position: absolute; top: 2px; right: 40px; display: flex; gap: 4px; pointer-events: auto; }
+.agent-promptwrap {
+  position: relative; z-index: 2;
+  padding: 0 var(--agent-inline-gutter) calc(1.375rem + env(safe-area-inset-bottom, 0));
+  pointer-events: none;
+}
+.agent-promptwrap::before {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: var(--agent-transcript-fade);
+  background: linear-gradient(to bottom, transparent, var(--bg)); opacity: 1; transition: opacity .12s; pointer-events: none;
+}
+.agent-pane.agent-transcript-at-end .agent-promptwrap::before { opacity: 0; }
+.agent-composer-overlays {
+  position: absolute; z-index: 20; left: var(--agent-inline-gutter); right: var(--agent-inline-gutter); bottom: calc(100% + 4px);
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px; pointer-events: none;
+}
+.agent-transcript-navs { align-self: flex-end; display: flex; gap: 4px; pointer-events: auto; }
 .agent-transcript-nav {
   width: 34px; height: 34px; padding: 0; display: grid; place-items: center; cursor: pointer; color: var(--muted);
   background: color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid var(--line); border-radius: 10px;
@@ -384,7 +405,8 @@
 @keyframes agent-sendstop-orbit { to { transform: rotate(360deg); } }
 .agent-btn.stop { color: var(--red); background: var(--red-soft); border: 1px solid var(--line); }
 
-.agent-completion-menu-host { position: absolute; left: 40px; right: 40px; bottom: calc(100% - 5px); z-index: 20; }
+.agent-completion-menu-host { position: absolute; z-index: 20; }
+.agent-composer-overlays .agent-completion-menu-host { position: static; width: 100%; pointer-events: auto; }
 .agent-completion-menu-host[hidden] { display: none; }
 .agent-completion-menu { max-height: 260px; overflow: auto; padding: 5px; background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; box-shadow: var(--shadow); }
 .agent-completion-menu.empty { padding: 9px 10px; color: var(--muted2); font-size: 12px; }
@@ -449,7 +471,8 @@
 .agent-launch-modal:focus-within { border-color: var(--accent); }
 .agent-launch-modal .agent-launch-title { width: 100%; margin: 0; padding: 14px 16px 9px; background: var(--panel); border: 0; border-radius: 0; font-size: 12.5px; color: var(--muted); font-weight: 600; }
 .agent-launch-modal .agent-launch-title b { color: var(--text); font-weight: 700; }
-.agent-launch-modal .agent-promptwrap { --agent-prompt-overlap: 0px; padding: 0; }
+.agent-launch-modal .agent-promptwrap { padding: 0; }
+.agent-launch-modal .agent-promptwrap::before { display: none; }
 .agent-launch-modal .agent-promptbox { width: 100%; max-width: none; margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; }
 .agent-launch-modal .agent-promptbox:focus-within { border-color: var(--line); }
 .agent-launch-modal .agent-promptbox form { min-height: 260px; }
@@ -471,7 +494,7 @@
 .agent-item { position: relative; width: 100%; }
 .agent-item + .agent-item { margin-top: 2px; }
 .agent-item:has(.agent-user) { margin-top: 14px; margin-bottom: 8px; }
-.agent-item:has(.agent-final) { margin-top: 8px; margin-bottom: 12px; }
+.agent-item:has(.agent-final) { margin-top: .5rem; margin-bottom: .75rem; }
 .agent-itext-md { color: var(--muted); font-size: 14px; line-height: 1.7; }
 .agent-stream-text { color: var(--muted); font-size: 14px; line-height: 1.7; white-space: pre-wrap; }
 

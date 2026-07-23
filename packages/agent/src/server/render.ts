@@ -234,9 +234,12 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
     dropTarget ? agentAttachmentDropAttrs(uploadUrl) : "",
     options.ctx ? `data-agent-completions-url-value="${escapeHtml(agentPath(options.ctx, "/completions"))}"` : "",
   ].filter(Boolean).join(" ");
+  const composerOverlays = [
+    completionsEnabled ? `<div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div>` : "",
+    options.includePaneActions && options.ctx ? renderTranscriptNavigation() : "",
+  ].filter(Boolean).join("");
   return `<div class="agent-promptwrap"${promptAttrs ? ` ${promptAttrs}` : ""}>
-        ${options.includePaneActions && options.ctx ? renderTranscriptNavigation() : ""}
-        ${completionsEnabled ? `<div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div>` : ""}
+        ${composerOverlays ? `<div class="agent-composer-overlays">${composerOverlays}</div>` : ""}
         <div class="agent-promptbox">
           <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
