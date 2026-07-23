@@ -428,7 +428,6 @@
 .agent-stat { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; height: 24px; line-height: 24px; }
 .agent-stat b { color: var(--muted); font-weight: 700; font-family: var(--mono); font-size: 10.5px; }
 .agent-stat[title="Tokens up (input)"], .agent-stat[title="Tokens down (output)"] { display: none; }
-.agent-stat[title="Context window used"]::before { content: "context"; color: var(--muted2); font-weight: 650; }
 .agent-stat[title="Session cost"]::before { content: "cost"; color: var(--muted2); font-weight: 650; }
 .agent-ctx-meter { width: 46px; }
 .agent-ctx-meter i { background: var(--muted2); }
