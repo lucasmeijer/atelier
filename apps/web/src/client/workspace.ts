@@ -442,8 +442,8 @@ class WorkspaceShellController extends Controller {
   }
 
   workspaceSelected(): void {
+    // Selection itself should not reveal the sidebar; hover and cycling shortcuts do.
     this.hasSelection = true;
-    this.reveal();
   }
 
   workspaceSelectionCleared(): void {
