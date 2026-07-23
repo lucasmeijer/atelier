@@ -405,7 +405,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 <html lang="en" data-theme="nord" data-atelier-page-id="${escapeHtml(pageId)}">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="turbo-cache-control" content="no-cache">
 <title>${escapeHtml(atelierName)}</title>
 <link rel="icon" href="/favicon.ico" sizes="any">
