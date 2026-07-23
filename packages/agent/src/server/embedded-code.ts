@@ -1,5 +1,6 @@
 import { format as formatJavaScript } from "@wasm-fmt/biome_fmt";
 import { format as formatPython } from "@wasm-fmt/ruff_fmt";
+import { format as formatShell } from "@wasm-fmt/shfmt";
 import { highlightCodeHtmlForPath, languageFromPath } from "./highlight.ts";
 import { escapeHtml } from "./html.ts";
 
@@ -80,7 +81,7 @@ function displayFormattedFile(content: string, path: string): string | undefined
   }
 }
 
-export function formatBashCommandForDisplay(command: string): string {
+function splitBashPipelines(command: string): string {
   let formatted = "";
   let quote: "'" | '"' | "`" | undefined;
   let inComment = false;
@@ -134,18 +135,50 @@ export function formatBashCommandForDisplay(command: string): string {
   return formatted;
 }
 
+function splitBashPipelinesOutsideHeredocs(command: string): string {
+  const heredocs = bashHeredocs(command);
+  if (!heredocs.length) return splitBashPipelines(command);
+  let formatted = "";
+  let cursor = 0;
+  for (const heredoc of heredocs) {
+    formatted += splitBashPipelines(command.slice(cursor, heredoc.contentStart));
+    formatted += command.slice(heredoc.contentStart, heredoc.contentEnd);
+    cursor = heredoc.contentEnd;
+  }
+  return formatted + splitBashPipelines(command.slice(cursor));
+}
+
+export function formatBashCommandForDisplay(command: string): string {
+  const withSplitPipelines = splitBashPipelinesOutsideHeredocs(command);
+  try {
+    return formatShell(withSplitPipelines, "command.sh", {
+      indent: 2,
+      binaryNextLine: false,
+      switchCaseIndent: true,
+      spaceRedirects: false,
+      funcNextLine: false,
+      minify: false,
+      singleLine: false,
+      simplify: false,
+    }).trimEnd();
+  } catch {
+    return withSplitPipelines;
+  }
+}
+
 function highlightedBashShell(command: string): string {
-  return highlightCodeHtmlForPath(formatBashCommandForDisplay(command), "command.sh").html;
+  return highlightCodeHtmlForPath(command, "command.sh").html;
 }
 
 export function embeddedBashCommandHtml(command: string): string | undefined {
-  const heredocs = bashHeredocs(command);
-  if (!heredocs.length) return undefined;
+  if (!bashHeredocs(command).length) return undefined;
+  const formattedCommand = formatBashCommandForDisplay(command);
+  const heredocs = bashHeredocs(formattedCommand);
   let html = "";
   let cursor = 0;
   for (const heredoc of heredocs) {
-    html += highlightedBashShell(command.slice(cursor, heredoc.contentStart));
-    const originalContent = command.slice(heredoc.contentStart, heredoc.contentEnd);
+    html += highlightedBashShell(formattedCommand.slice(cursor, heredoc.contentStart));
+    const originalContent = formattedCommand.slice(heredoc.contentStart, heredoc.contentEnd);
     const formattedContent = displayFormattedFile(originalContent, heredoc.path);
     const nested = highlightCodeHtmlForPath(formattedContent ?? originalContent, heredoc.path);
     const languageClass = nested.language ? ` class="language-${escapeHtml(nested.language)}"` : "";
@@ -153,6 +186,6 @@ export function embeddedBashCommandHtml(command: string): string | undefined {
     html += `<span${languageClass}${formattedAttribute}>${nested.html}</span>`;
     cursor = heredoc.contentEnd;
   }
-  html += highlightedBashShell(command.slice(cursor));
+  html += highlightedBashShell(formattedCommand.slice(cursor));
   return `<pre class="agent-tool-code language-bash"><code>${html}</code></pre>`;
 }

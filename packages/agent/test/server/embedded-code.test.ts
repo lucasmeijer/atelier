@@ -71,13 +71,37 @@ describe("embedded code literals", () => {
   test("does not add line breaks to pipes in shell strings", () => {
     const command = "grep -n '^const editorHighlightStyle\\|\n^const filesClientModule' index.ts; nl -ba style.css | sed -n '35,120p'";
     expect(formatBashCommandForDisplay(command)).toBe(
-      "grep -n '^const editorHighlightStyle\\|\n^const filesClientModule' index.ts; nl -ba style.css |\nsed -n '35,120p'",
+      "grep -n '^const editorHighlightStyle\\|\n^const filesClientModule' index.ts\nnl -ba style.css |\n  sed -n '35,120p'",
     );
   });
 
   test("does not add line breaks to escaped pipes, comments, or boolean OR", () => {
     const command = String.raw`printf foo\|bar; echo "left | right"; true || false # not a | pipeline`;
-    expect(formatBashCommandForDisplay(command)).toBe(command);
+    expect(formatBashCommandForDisplay(command)).toBe(String.raw`printf foo\|bar
+echo "left | right"
+true || false # not a | pipeline`);
+  });
+
+  test("formats packed shell control flow without simplifying expressions", () => {
+    const command = "for i in $(seq 1 60); do status=$(curl -sS example.test); if grep -q ready /tmp/status; then echo ready-$i-$status; break; fi; echo waiting; sleep 2; done; rg ready /tmp/status | tail -20";
+    expect(formatBashCommandForDisplay(command)).toBe(`for i in $(seq 1 60); do
+  status=$(curl -sS example.test)
+  if grep -q ready /tmp/status; then
+    echo ready-$i-$status
+    break
+  fi
+  echo waiting
+  sleep 2
+done
+rg ready /tmp/status |
+  tail -20`);
+    expect(formatBashCommandForDisplay("(( $foo + ${bar} ))")).toBe("(($foo + ${bar}))");
+  });
+
+  test("falls back to pipeline-only formatting for incomplete streamed commands", () => {
+    expect(formatBashCommandForDisplay("for i in 1 2; do echo $i; printf x | cat")).toBe("for i in 1 2; do echo $i; printf x |\ncat");
+    const heredoc = "cat > /tmp/incomplete.js <<'JS'\nconst either = left | right;\nJS\nif true; then";
+    expect(formatBashCommandForDisplay(heredoc)).toContain("left | right");
   });
 
   test("handles pipe patterns sampled from historical agent sessions", () => {
@@ -85,22 +109,22 @@ describe("embedded code literals", () => {
       {
         name: "jq expressions alongside shell pipelines",
         command: `curl https://example.test/models | jq -r 'to_entries[] | select(.key | contains("kimi")) | [.key] | @tsv' | head`,
-        expected: `curl https://example.test/models |\njq -r 'to_entries[] | select(.key | contains("kimi")) | [.key] | @tsv' |\nhead`,
+        expected: `curl https://example.test/models |\n  jq -r 'to_entries[] | select(.key | contains("kimi")) | [.key] | @tsv' |\n  head`,
       },
       {
         name: "pipeline in command substitution",
         command: `docker image inspect $(docker images -q 'atelier:*' | head -1) | jq .`,
-        expected: `docker image inspect $(docker images -q 'atelier:*' |\nhead -1) |\njq .`,
+        expected: `docker image inspect $(docker images -q 'atelier:*' |\n  head -1) |\n  jq .`,
       },
       {
         name: "pipeline in process substitution",
         command: `mapfile -t tests < <(find packages -name '*.test.ts' | sort | grep -v integration); bun test "\${tests[@]}"`,
-        expected: `mapfile -t tests < <(find packages -name '*.test.ts' |\nsort |\ngrep -v integration); bun test "\${tests[@]}"`,
+        expected: `mapfile -t tests < <(find packages -name '*.test.ts' |\n  sort |\n  grep -v integration)\nbun test "\${tests[@]}"`,
       },
       {
         name: "quoted nested shell command",
         command: `docker exec app sh -lc 'cat startup.log | tail -20 || true' | tee inspection.log`,
-        expected: `docker exec app sh -lc 'cat startup.log | tail -20 || true' |\ntee inspection.log`,
+        expected: `docker exec app sh -lc 'cat startup.log | tail -20 || true' |\n  tee inspection.log`,
       },
     ];
     for (const sample of samples) {

@@ -45,6 +45,7 @@
         "@earendil-works/pi-coding-agent": "catalog:",
         "@wasm-fmt/biome_fmt": "0.2.9",
         "@wasm-fmt/ruff_fmt": "0.15.20",
+        "@wasm-fmt/shfmt": "0.2.7",
         "highlight.js": "^11.11.1",
         "typebox": "^1.0.57",
       },
@@ -447,6 +448,8 @@
     "@wasm-fmt/biome_fmt": ["@wasm-fmt/biome_fmt@0.2.9", "", {}, "sha512-8V3RGOekqTtOINbgtBTZEPJuj/bGXM+jPqqDRj2/mtks1UXBpcfjs3MhMlrkBjMO/0/Kv3VGQmeP6IyPm7gLHQ=="],
 
     "@wasm-fmt/ruff_fmt": ["@wasm-fmt/ruff_fmt@0.15.20", "", {}, "sha512-PYij4wTiDSTx6MyBGHSY0nWDjSiTbOB3moPJiZTBL8F0JZLEfHAi4lYAn9SC9Hzm8tVeTnL7Qyf1iPW0TKHVEg=="],
+
+    "@wasm-fmt/shfmt": ["@wasm-fmt/shfmt@0.2.7", "", {}, "sha512-bxmf5pXBHe3ujjc2iEoXqRXKgrQmR44jHLZ9G5BsKsb5moDWsuqsISs+88Ov9/SAI88caXYIsP02U4c4YDQpIQ=="],
 
     "@xterm/addon-fit": ["@xterm/addon-fit@0.11.0", "", {}, "sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g=="],
 
