@@ -88,8 +88,10 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private stuck = true;
     private subscribed = false;
     private hasSubscribed = false;
-    private observer?: MutationObserver;
+    private transcriptMutationObserver?: MutationObserver;
     private promptObserver?: MutationObserver;
+    private transcriptResizeObserver?: ResizeObserver;
+    private transcriptResizeFrame = 0;
     private rewindUserText = "";
     private messageDialogPopulatesPrompt = false;
     private historicalOpenItemIds = new Set<string>();
@@ -108,20 +110,30 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptNavTarget.disabled = this.stuck;
       this.transcriptNavTarget.setAttribute("aria-hidden", String(this.stuck));
     }
+    private updateTranscriptPosition(): void {
+      if (!isWorkspacePaneVisible(this.element)) return;
+      if (this.stuck) this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
+      this.onScroll();
+    }
+    private observeTranscriptItems(): void {
+      for (const item of this.transcriptTarget.children) this.transcriptResizeObserver!.observe(item);
+    }
+    private readonly transcriptResized = (): void => {
+      cancelAnimationFrame(this.transcriptResizeFrame);
+      this.transcriptResizeFrame = requestAnimationFrame(() => this.updateTranscriptPosition());
+    };
     private readonly onVisibilityChange = (): void => {
       if (document.visibilityState === "visible" && isWorkspacePaneVisible(this.element)) this.start();
       else this.stop();
     };
     connect(): void {
-      this.observer = new MutationObserver(() => {
+      this.transcriptResizeObserver = new ResizeObserver(this.transcriptResized);
+      this.observeTranscriptItems();
+      this.transcriptMutationObserver = new MutationObserver(() => {
         this.restoreHistoricalOpenItems();
-        if (this.stuck) {
-          requestAnimationFrame(() => {
-            this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
-          });
-        }
+        this.observeTranscriptItems();
       });
-      this.observer.observe(this.transcriptTarget, { childList: true, subtree: true, characterData: true });
+      this.transcriptMutationObserver.observe(this.transcriptTarget, { childList: true, subtree: true });
       this.promptObserver = new MutationObserver(() => this.updateSendStopButton());
       this.promptObserver.observe(this.formTarget, { childList: true, subtree: true });
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
@@ -134,8 +146,10 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     }
 
     disconnect(): void {
-      this.observer?.disconnect();
+      this.transcriptMutationObserver?.disconnect();
       this.promptObserver?.disconnect();
+      this.transcriptResizeObserver?.disconnect();
+      cancelAnimationFrame(this.transcriptResizeFrame);
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
       this.stop();
@@ -144,9 +158,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     start(): void {
       requestAnimationFrame(() => {
         this.autosize();
-        if (!isWorkspacePaneVisible(this.element)) return;
-        if (this.stuck) this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
-        this.onScroll();
+        this.updateTranscriptPosition();
       });
       if (document.visibilityState !== "visible" || !isWorkspacePaneVisible(this.element) || this.subscribed) return;
       this.startAgentTerminals();
