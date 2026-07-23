@@ -2,6 +2,7 @@
 
 import {
   applyObservableTerminalChromeTheme,
+  atelierObservableTerminalTheme,
   createObservableTerminalViewer,
   DEFAULT_OBSERVABLE_TERMINAL_THEME,
   observableWebSocketUrl,
@@ -23,47 +24,8 @@ function terminalKey(workspaceId: string, title: string): string {
   return `${workspaceId}\u0000${title}`;
 }
 
-function cssVariable(name: string): string | undefined {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || undefined;
-}
-
-function themeColor(name: string, fallbackKey: keyof typeof DEFAULT_OBSERVABLE_TERMINAL_THEME): string {
-  return cssVariable(name) ?? DEFAULT_OBSERVABLE_TERMINAL_THEME[fallbackKey];
-}
-
-function atelierTerminalTheme(): ObservableTerminalTheme {
-  const background = themeColor("--bg", "background");
-  const foreground = themeColor("--text", "foreground");
-  const accent = themeColor("--accent", "brightBlue");
-  const red = cssVariable("--red") ?? foreground;
-  const green = cssVariable("--green") ?? foreground;
-  const amber = cssVariable("--amber") ?? foreground;
-  const violet = cssVariable("--violet") ?? accent;
-  return {
-    background,
-    foreground,
-    cursor: accent,
-    black: themeColor("--panel", "black"),
-    red,
-    green,
-    yellow: amber,
-    blue: accent,
-    magenta: violet,
-    cyan: accent,
-    white: foreground,
-    brightBlack: themeColor("--line-2", "brightBlack"),
-    brightRed: red,
-    brightGreen: green,
-    brightYellow: amber,
-    brightBlue: accent,
-    brightMagenta: violet,
-    brightCyan: accent,
-    brightWhite: foreground,
-  };
-}
-
 function applyTerminalTheme(): void {
-  currentTerminalTheme = atelierTerminalTheme();
+  currentTerminalTheme = atelierObservableTerminalTheme();
   applyObservableTerminalChromeTheme(currentTerminalTheme);
   for (const terminal of terminals.values()) terminal.setTheme(currentTerminalTheme);
 }

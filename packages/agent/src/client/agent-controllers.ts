@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
+import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalTheme, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
 import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
@@ -1231,8 +1231,22 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
     private disposed = false;
     private starting = false;
 
+    private theme(): ObservableTerminalTheme {
+      const terminalStyle = getComputedStyle(this.element);
+      return {
+        ...atelierObservableTerminalTheme(),
+        background: terminalStyle.backgroundColor,
+        foreground: terminalStyle.color,
+      };
+    }
+
+    private themeChanged = (): void => {
+      this.viewer?.setTheme(this.theme());
+    };
+
     connect(): void {
       this.disposed = false;
+      document.addEventListener("atelier:theme-change", this.themeChanged);
       if (isWorkspacePaneVisible(this.element)) this.start();
     }
 
@@ -1241,7 +1255,6 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
       this.disposed = false;
       this.starting = true;
       const decoder = new TextDecoder();
-      const terminalStyle = getComputedStyle(this.element);
       let hasVisibleOutput = false;
       void createObservableTerminalViewer({
         host: this.element,
@@ -1250,7 +1263,7 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
         rows: 30,
         websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agent-term/${encodeURIComponent(this.sessionValue)}/ws?cols=120&rows=30`),
         fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
-        theme: { background: terminalStyle.backgroundColor, foreground: terminalStyle.color },
+        theme: this.theme(),
         onOutput: (data) => {
           if (hasVisibleOutput) return;
           const text = typeof data === "string" ? data : decoder.decode(data, { stream: true });
@@ -1280,6 +1293,7 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
 
     disconnect(): void {
       this.disposed = true;
+      document.removeEventListener("atelier:theme-change", this.themeChanged);
       this.viewer?.dispose();
       this.viewer = undefined;
     }

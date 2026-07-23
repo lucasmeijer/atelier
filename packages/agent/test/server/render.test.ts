@@ -143,7 +143,7 @@ describe("flat transcript rendering", () => {
     expect(html).toContain("COMMAND");
     expect(html).toContain("RESULT");
     expect(html).toContain("AS SEEN BY MODEL");
-    expect(html).toContain("color:#cd0000");
+    expect(html).toContain("color:var(--red)");
   });
 
   test("identical bash views omit model tab", () => {

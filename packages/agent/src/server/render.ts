@@ -698,9 +698,10 @@ function toolResultImagesHtml(ctx: AgentRenderContext, tool: ToolView): string {
   }).join("")}</div>`;
 }
 
+// Keep completed Bash output aligned with the same theme palette as its live xterm.
 const ansi16 = [
-  "#000000", "#cd0000", "#00cd00", "#cdcd00", "#0000ee", "#cd00cd", "#00cdcd", "#e5e5e5",
-  "#7f7f7f", "#ff0000", "#00ff00", "#ffff00", "#5c5cff", "#ff00ff", "#00ffff", "#ffffff",
+  "var(--panel)", "var(--red)", "var(--green)", "var(--amber)", "var(--accent)", "var(--violet)", "var(--accent)", "var(--text)",
+  "var(--line-2)", "var(--red)", "var(--green)", "var(--amber)", "var(--accent)", "var(--violet)", "var(--accent)", "var(--text)",
 ];
 
 function ansi256(index: number): string | undefined {
@@ -833,11 +834,11 @@ function colorizePlainBuildOutput(text: string): string {
   return lines.map((line) => {
     const cmake = line.match(/^(\[\s*\d+%\])(\s*)((?:Built|Building|Linking|Generating|Scanning|Consolidate)\b[^:]*)(.*)$/);
     if (cmake) {
-      return `<span style="color:#00cdcd">${escapeHtml(cmake[1])}</span>${escapeHtml(cmake[2])}<span style="color:#00cd00">${escapeHtml(cmake[3])}</span>${escapeHtml(cmake[4])}`;
+      return `<span style="color:var(--accent)">${escapeHtml(cmake[1])}</span>${escapeHtml(cmake[2])}<span style="color:var(--green)">${escapeHtml(cmake[3])}</span>${escapeHtml(cmake[4])}`;
     }
     const diagnostic = line.match(/^(.*?)(warning|error|fatal error|failed|FAILED)(:?.*)$/i);
     if (diagnostic) {
-      const color = /warn/i.test(diagnostic[2]) ? "#cdcd00" : "#ff0000";
+      const color = /warn/i.test(diagnostic[2]) ? "var(--amber)" : "var(--red)";
       return `${escapeHtml(diagnostic[1])}<span style="color:${color};font-weight:700">${escapeHtml(diagnostic[2])}</span>${escapeHtml(diagnostic[3])}`;
     }
     return escapeHtml(line);

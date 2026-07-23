@@ -17,6 +17,46 @@ export const DEFAULT_OBSERVABLE_TERMINAL_THEME = {
   brightBlue: "#81a1c1",
 } as const satisfies ObservableTerminalTheme;
 
+function cssVariable(name: string): string | undefined {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || undefined;
+}
+
+function themeColor(name: string, fallbackKey: keyof typeof DEFAULT_OBSERVABLE_TERMINAL_THEME): string {
+  return cssVariable(name) ?? DEFAULT_OBSERVABLE_TERMINAL_THEME[fallbackKey];
+}
+
+/** Map Atelier's active UI theme onto xterm's complete 16-color ANSI palette. */
+export function atelierObservableTerminalTheme(): ObservableTerminalTheme {
+  const background = themeColor("--bg", "background");
+  const foreground = themeColor("--text", "foreground");
+  const accent = themeColor("--accent", "brightBlue");
+  const red = cssVariable("--red") ?? foreground;
+  const green = cssVariable("--green") ?? foreground;
+  const amber = cssVariable("--amber") ?? foreground;
+  const violet = cssVariable("--violet") ?? accent;
+  return {
+    background,
+    foreground,
+    cursor: accent,
+    black: themeColor("--panel", "black"),
+    red,
+    green,
+    yellow: amber,
+    blue: accent,
+    magenta: violet,
+    cyan: accent,
+    white: foreground,
+    brightBlack: themeColor("--line-2", "brightBlack"),
+    brightRed: red,
+    brightGreen: green,
+    brightYellow: amber,
+    brightBlue: accent,
+    brightMagenta: violet,
+    brightCyan: accent,
+    brightWhite: foreground,
+  };
+}
+
 export interface ObservableTerminalViewer {
   dispose(): void;
   focus(): void;
