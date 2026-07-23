@@ -81,7 +81,57 @@ function displayFormattedFile(content: string, path: string): string | undefined
 }
 
 export function formatBashCommandForDisplay(command: string): string {
-  return command.replace(/\|(?:[ \t]*\r?\n)?/g, "|\n");
+  let formatted = "";
+  let quote: "'" | '"' | "`" | undefined;
+  let inComment = false;
+
+  for (let index = 0; index < command.length; index++) {
+    const character = command[index]!;
+
+    if (inComment) {
+      formatted += character;
+      if (character === "\n") inComment = false;
+      continue;
+    }
+
+    if (quote) {
+      formatted += character;
+      if (character === "\\" && quote !== "'" && index + 1 < command.length) {
+        formatted += command[++index];
+      } else if (character === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+
+    if (character === "\\" && index + 1 < command.length) {
+      formatted += character + command[++index];
+      continue;
+    }
+    if (character === "'" || character === '"' || character === "`") {
+      quote = character;
+      formatted += character;
+      continue;
+    }
+    if (character === "#" && (index === 0 || /[\s;&|()]/.test(command[index - 1]!))) {
+      inComment = true;
+      formatted += character;
+      continue;
+    }
+    if (character !== "|" || command[index - 1] === "|" || command[index + 1] === "|") {
+      formatted += character;
+      continue;
+    }
+
+    formatted += character;
+    if (command[index + 1] === "&") formatted += command[++index];
+    while (command[index + 1] === " " || command[index + 1] === "\t") index++;
+    if (command[index + 1] === "\r" && command[index + 2] === "\n") index += 2;
+    else if (command[index + 1] === "\n") index++;
+    formatted += "\n";
+  }
+
+  return formatted;
 }
 
 function highlightedBashShell(command: string): string {

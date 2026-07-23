@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { embeddedBashCommandHtml } from "../../src/server/embedded-code.ts";
+import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "../../src/server/embedded-code.ts";
 
 const renderEmbedded = (command: string): string => embeddedBashCommandHtml(command)!;
 
@@ -66,6 +66,46 @@ describe("embedded code literals", () => {
     const html = renderEmbedded(command);
     expect(html.match(/\|\n/g)).toHaveLength(2);
     expect(html).toContain("left | right");
+  });
+
+  test("does not add line breaks to pipes in shell strings", () => {
+    const command = "grep -n '^const editorHighlightStyle\\|\n^const filesClientModule' index.ts; nl -ba style.css | sed -n '35,120p'";
+    expect(formatBashCommandForDisplay(command)).toBe(
+      "grep -n '^const editorHighlightStyle\\|\n^const filesClientModule' index.ts; nl -ba style.css |\nsed -n '35,120p'",
+    );
+  });
+
+  test("does not add line breaks to escaped pipes, comments, or boolean OR", () => {
+    const command = String.raw`printf foo\|bar; echo "left | right"; true || false # not a | pipeline`;
+    expect(formatBashCommandForDisplay(command)).toBe(command);
+  });
+
+  test("handles pipe patterns sampled from historical agent sessions", () => {
+    const samples = [
+      {
+        name: "jq expressions alongside shell pipelines",
+        command: `curl https://example.test/models | jq -r 'to_entries[] | select(.key | contains("kimi")) | [.key] | @tsv' | head`,
+        expected: `curl https://example.test/models |\njq -r 'to_entries[] | select(.key | contains("kimi")) | [.key] | @tsv' |\nhead`,
+      },
+      {
+        name: "pipeline in command substitution",
+        command: `docker image inspect $(docker images -q 'atelier:*' | head -1) | jq .`,
+        expected: `docker image inspect $(docker images -q 'atelier:*' |\nhead -1) |\njq .`,
+      },
+      {
+        name: "pipeline in process substitution",
+        command: `mapfile -t tests < <(find packages -name '*.test.ts' | sort | grep -v integration); bun test "\${tests[@]}"`,
+        expected: `mapfile -t tests < <(find packages -name '*.test.ts' |\nsort |\ngrep -v integration); bun test "\${tests[@]}"`,
+      },
+      {
+        name: "quoted nested shell command",
+        command: `docker exec app sh -lc 'cat startup.log | tail -20 || true' | tee inspection.log`,
+        expected: `docker exec app sh -lc 'cat startup.log | tail -20 || true' |\ntee inspection.log`,
+      },
+    ];
+    for (const sample of samples) {
+      expect(formatBashCommandForDisplay(sample.command), sample.name).toBe(sample.expected);
+    }
   });
 
   test("formats multiple heredoc writes in one bash call", () => {
