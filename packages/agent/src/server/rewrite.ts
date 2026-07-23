@@ -89,6 +89,15 @@ function renderUrlEmbed(workspaceId: string, rawTarget: string): string {
   return renderFullscreenFrame(rawTarget, `<iframe src="${escapeHtml(src)}" loading="lazy"></iframe>`, `<a href="${escapeHtml(src)}" target="_blank" rel="noopener">in new tab ↗</a>`);
 }
 
+function renderAtelierLinkLabel(label: string): string {
+  return label
+    .split(/(`[^`]*`)/)
+    .map((part) => part.startsWith("`") && part.endsWith("`")
+      ? `<code>${escapeHtml(part.slice(1, -1))}</code>`
+      : escapeHtml(part))
+    .join("");
+}
+
 export function renderAtelierFileLink(workspaceId: string, label: string, rawHref: string): string | undefined {
   let url: URL;
   try {
@@ -110,7 +119,7 @@ export function renderAtelierFileLink(workspaceId: string, label: string, rawHre
     if (value && /^\d+$/.test(value)) position[name] = Number(value);
   }
   const href = workspaceFileEditorOpenUrl(workspaceId, path, position);
-  return `<a href="${escapeHtml(href)}" data-turbo-stream="true">${escapeHtml(label)}</a>`;
+  return `<a href="${escapeHtml(href)}" data-turbo-stream="true">${renderAtelierLinkLabel(label)}</a>`;
 }
 
 export function renderAtelierEmbed(workspaceId: string, rawTarget: string): string {

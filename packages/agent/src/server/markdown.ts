@@ -62,25 +62,20 @@ function inlineText(raw: string): string {
 }
 
 function inline(raw: string, options: MarkdownOptions): string {
-  // Split out inline code first; never rewrite inside code.
-  const parts = raw.split(/(`[^`]*`)/);
-  return parts
-    .map((part) => {
-      if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
-        return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
-      }
-      const rewritten = options.rewriteSegment?.(part);
-      if (rewritten !== undefined) return rewritten;
-      let html = "";
-      let cursor = 0;
-      for (const match of part.matchAll(/\[([^\]]+)\]\((atelier:\/\/[^\s)]+)\)/g)) {
-        html += inlineText(part.slice(cursor, match.index));
-        html += options.rewriteLink?.(match[1]!, match[2]!) ?? inlineText(match[0]);
-        cursor = match.index + match[0].length;
-      }
-      return html + inlineText(part.slice(cursor));
-    })
-    .join("");
+  let html = "";
+  let cursor = 0;
+  const tokens = /`([^`]*)`|\[([^\]]+)\]\((atelier:\/\/[^\s)]+)\)/g;
+  const renderText = (text: string) => text ? options.rewriteSegment?.(text) ?? inlineText(text) : "";
+
+  for (const match of raw.matchAll(tokens)) {
+    html += renderText(raw.slice(cursor, match.index));
+    html += match[1] !== undefined
+      ? `<code>${escapeHtml(match[1])}</code>`
+      : options.rewriteLink?.(match[2]!, match[3]!) ?? inlineText(match[0]);
+    cursor = match.index + match[0].length;
+  }
+
+  return html + renderText(raw.slice(cursor));
 }
 
 function tableRow(cells: string[], tag: "th" | "td", options: MarkdownOptions): string {

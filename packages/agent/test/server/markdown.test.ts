@@ -2,6 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { renderMarkdown } from "../../src/server/markdown.ts";
 import { renderAtelierFileLink, splitAtelierEmbeds, rewriteSegment } from "../../src/server/rewrite.ts";
 
+const atelierLinks = {
+  rewriteLink: (label: string, href: string) => renderAtelierFileLink("work 1", label, href),
+};
+
 describe("renderMarkdown", () => {
   test("paragraphs, bold, inline code", () => {
     const html = renderMarkdown("Hello **world**, see `code`.");
@@ -62,15 +66,35 @@ describe("renderMarkdown", () => {
     expect(renderMarkdown("# Title")).toBe("<h3>Title</h3>");
   });
 
-  test("links only for http(s) unless an Atelier link rewriter accepts them", () => {
-    expect(renderMarkdown("[x](https://example.com)")).toContain(`href="https://example.com"`);
-    expect(renderMarkdown("[x](javascript:alert(1))")).not.toContain("href");
-    const html = renderMarkdown("ATELIERLINKTOKEN0END [example.ts:42](atelier://file/work/src/example.ts?line=42&column=3)", {
-      rewriteLink: (label, href) => renderAtelierFileLink("work 1", label, href),
-    });
-    expect(html).toContain("ATELIERLINKTOKEN0END");
+  test("renders a plain Atelier file-link label", () => {
+    const html = renderMarkdown("[example.ts:42](atelier://file/work/src/example.ts?line=42&column=3)", atelierLinks);
+    expect(html).toContain(`>example.ts:42</a>`);
     expect(html).toContain(`/workspaces/work%201/file-editor/open?path=%2Fwork%2Fsrc%2Fexample.ts&amp;line=42&amp;column=3`);
     expect(html).toContain(`data-turbo-stream="true"`);
+  });
+
+  test("renders inline code in an Atelier file-link label", () => {
+    const html = renderMarkdown("[`render.ts:55`](atelier://file/work/packages/files/src/server/render.ts?line=55&column=1)", atelierLinks);
+    expect(html).toContain("><code>render.ts:55</code></a>");
+    expect(html).toContain("line=55&amp;column=1");
+  });
+
+  test("does not rewrite Atelier links inside inline code", () => {
+    const html = renderMarkdown("`[render.ts:55](atelier://file/work/render.ts?line=55&column=1)`", atelierLinks);
+    expect(html).toBe("<p><code>[render.ts:55](atelier://file/work/render.ts?line=55&amp;column=1)</code></p>");
+    expect(html).not.toContain("data-turbo-stream");
+  });
+
+  test("escapes special characters in code-formatted Atelier link labels", () => {
+    const html = renderMarkdown("[`<tag>&\"`](atelier://file/work/render.ts)", atelierLinks);
+    expect(html).toContain("<code>&lt;tag&gt;&amp;&quot;</code>");
+  });
+
+  test("keeps HTTP-link behavior unchanged", () => {
+    expect(renderMarkdown("[x](https://example.com)")).toBe(
+      '<p><a href="https://example.com" target="_blank" rel="noopener">x</a></p>',
+    );
+    expect(renderMarkdown("[x](javascript:alert(1))")).not.toContain("href");
   });
 });
 
