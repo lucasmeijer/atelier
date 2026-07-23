@@ -61,6 +61,13 @@ describe("embedded code literals", () => {
     expect(embeddedBashCommandHtml(command)).toBeUndefined();
   });
 
+  test("adds line breaks to shell pipes without changing embedded source", () => {
+    const command = "printf ready | cat; cat > /tmp/demo.js <<'JS'\nconst either = left | right;\nJS\nnode /tmp/demo.js | cat";
+    const html = renderEmbedded(command);
+    expect(html.match(/\|\n/g)).toHaveLength(2);
+    expect(html).toContain("left | right");
+  });
+
   test("formats multiple heredoc writes in one bash call", () => {
     const command = "mkdir -p /tmp/demo; cat > /tmp/one.js <<'JS'\nconst one={n:1};\nJS\ncat > /tmp/two.ts <<'TS'\nconst two={n:2};\nTS\nnode /tmp/one.js";
     const html = renderEmbedded(command);

@@ -146,6 +146,12 @@ describe("flat transcript rendering", () => {
     expect(html).toContain("color:var(--red)");
   });
 
+  test("bash command visualization starts a new line after every pipe", () => {
+    const html = renderBash("printf alpha | grep a | sort | uniq -c", { resultText: "1 alpha" });
+    expect(html.match(/\|\n/g)).toHaveLength(6);
+    expect(html).not.toContain("| grep");
+  });
+
   test("identical bash views omit model tab", () => {
     const html = renderBash("echo ok", { resultText: "ok", details: { exitCode: 0, displayAnsi: "ok" } });
     expect(html).not.toContain("AS SEEN BY MODEL");

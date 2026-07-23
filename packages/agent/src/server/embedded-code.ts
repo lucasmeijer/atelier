@@ -80,13 +80,21 @@ function displayFormattedFile(content: string, path: string): string | undefined
   }
 }
 
+export function formatBashCommandForDisplay(command: string): string {
+  return command.replace(/\|(?:[ \t]*\r?\n)?/g, "|\n");
+}
+
+function highlightedBashShell(command: string): string {
+  return highlightCodeHtmlForPath(formatBashCommandForDisplay(command), "command.sh").html;
+}
+
 export function embeddedBashCommandHtml(command: string): string | undefined {
   const heredocs = bashHeredocs(command);
   if (!heredocs.length) return undefined;
   let html = "";
   let cursor = 0;
   for (const heredoc of heredocs) {
-    html += highlightCodeHtmlForPath(command.slice(cursor, heredoc.contentStart), "command.sh").html;
+    html += highlightedBashShell(command.slice(cursor, heredoc.contentStart));
     const originalContent = command.slice(heredoc.contentStart, heredoc.contentEnd);
     const formattedContent = displayFormattedFile(originalContent, heredoc.path);
     const nested = highlightCodeHtmlForPath(formattedContent ?? originalContent, heredoc.path);
@@ -95,6 +103,6 @@ export function embeddedBashCommandHtml(command: string): string | undefined {
     html += `<span${languageClass}${formattedAttribute}>${nested.html}</span>`;
     cursor = heredoc.contentEnd;
   }
-  html += highlightCodeHtmlForPath(command.slice(cursor), "command.sh").html;
+  html += highlightedBashShell(command.slice(cursor));
   return `<pre class="agent-tool-code language-bash"><code>${html}</code></pre>`;
 }

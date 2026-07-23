@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel, type ModelRef } from "./model-state.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
-import { embeddedBashCommandHtml } from "./embedded-code.ts";
+import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded-code.ts";
 import { highlightCodeHtmlForPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
 import { renderMarkdown } from "./markdown.ts";
@@ -548,7 +548,7 @@ function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolV
 
 function renderBashDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
   const command = stringArg(toolArgs(tool), "command") ?? "";
-  const commandBody = embeddedBashCommandHtml(command) ?? codeBlockHtml(command, "command.sh", "agent-tool-code");
+  const commandBody = embeddedBashCommandHtml(command) ?? codeBlockHtml(formatBashCommandForDisplay(command), "command.sh", "agent-tool-code");
   const commandHtml = sourceRegionHtml("COMMAND", commandBody, "agent-bash-command");
   if (tool.status === "streaming") return `<div class="agent-tool-detail">${commandHtml}</div>`;
   if (tool.status === "running") {
