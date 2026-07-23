@@ -71,6 +71,7 @@
 /* notes (steer / rewind summaries / system) */
 .agent-note { font-size: 12px; color: var(--muted); background: var(--amber-soft); border: 1px solid var(--line); border-radius: 9px; padding: 6px 10px; }
 .agent-note.summary { background: var(--panel); border: 1px dashed var(--line-2); border-radius: 9px; padding: 8px 11px; }
+.agent-note.warning { color: var(--text); border-color: color-mix(in srgb, #d89b24 45%, var(--line)); }
 .agent-note.error { color: var(--red); background: var(--red-soft); border-color: #f1c7c7; }
 .agent-note p { margin: 0 0 4px; }
 .agent-note p:last-child { margin-bottom: 0; }

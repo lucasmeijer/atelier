@@ -30,6 +30,7 @@ import {
 } from "./render.ts";
 import { replaceWorkspaceAgentSession, type WorkspaceAgentInfo } from "./session-store.ts";
 import { atelierSystemPrompt, createAtelierResourceLoader } from "./system-prompt.ts";
+import { collectCacheMisses, detectCacheMiss, significantCacheMissNotice, type CacheMiss } from "./cache-miss.ts";
 import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
 import {
   buildTranscript,
@@ -411,6 +412,15 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.appendLiveItem(item, { live: true });
   }
 
+  protected liveCacheMiss(miss: CacheMiss): void {
+    const text = significantCacheMissNotice(miss);
+    if (!text) return;
+    const live = this.liveEnsure();
+    const item: TranscriptItem = { type: "note", key: this.liveKey(live, live.items.length, "cache-miss"), text, tone: "warning" };
+    live.items.push(item);
+    this.appendLiveItem(item, { live: true });
+  }
+
   /** End the live model without re-rendering visible clients: observed calls stay open. */
   protected async liveEnd(): Promise<void> {
     if (this.live) for (const timer of this.live.terminalTimers.values()) clearTimeout(timer);
@@ -530,7 +540,7 @@ function entryTimestamp(entry: { timestamp?: string }, message?: { timestamp?: n
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export function recordsFromSessionEntries(entries: any[]): TranscriptRecord[] {
+export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<any, CacheMiss>()): TranscriptRecord[] {
   const records: TranscriptRecord[] = [];
   for (const entry of entries) {
     if (entry.type === "message") {
@@ -553,6 +563,10 @@ export function recordsFromSessionEntries(entries: any[]): TranscriptRecord[] {
           errorMessage: message.errorMessage,
           timestamp: entryTimestamp(entry, message),
         });
+        const notice = significantCacheMissNotice(cacheMisses.get(message));
+        if (notice && message.stopReason !== "aborted" && message.stopReason !== "error") {
+          records.push({ kind: "note", text: notice, tone: "warning", timestamp: entryTimestamp(entry, message) });
+        }
       } else if (message.role === "toolResult") {
         records.push({ kind: "toolResult", callId: message.toolCallId, text: contentToText(message.content), images: sessionContentImages(entry), isError: Boolean(message.isError), timestamp: entryTimestamp(entry, message), details: message.details });
       } else if (message.role === "bashExecution") {
@@ -642,7 +656,8 @@ class RealAgentRuntime extends BaseAgentRuntime {
 
   protected async canonicalItems(leafId?: string): Promise<TranscriptItem[]> {
     const entries = this.session.sessionManager.getBranch(leafId);
-    return buildTranscript(recordsFromSessionEntries(entries));
+    const cacheMisses = collectCacheMisses(entries, this.session.modelRuntime);
+    return buildTranscript(recordsFromSessionEntries(entries, cacheMisses));
   }
 
   protected async statsView(): Promise<AgentStatsView> {
@@ -752,6 +767,10 @@ class RealAgentRuntime extends BaseAgentRuntime {
             this.liveFinal(text);
           } else {
             this.closeOpenItem();
+          }
+          if (message.stopReason !== "aborted" && message.stopReason !== "error") {
+            const miss = detectCacheMiss(this.session.sessionManager.getBranch(), message, this.session.modelRuntime);
+            if (miss) this.liveCacheMiss(miss);
           }
           void this.refreshStats();
         }

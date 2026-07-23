@@ -24,7 +24,7 @@ export type TranscriptRecord =
   | { kind: "toolResult"; callId: string; text: string; images: SessionImageRef[]; isError: boolean; timestamp: number; details?: unknown }
   | { kind: "note"; id?: string; text: string; tone: NoteTone; timestamp?: number };
 
-export type NoteTone = "system" | "summary" | "error";
+export type NoteTone = "system" | "summary" | "warning" | "error";
 
 export interface ToolView {
   callId: string;
