@@ -11,7 +11,7 @@ export interface WorkspaceEntry {
   lastActivityAt: number;
   init: WorkspaceInitInstruction | undefined;
   parked: boolean;
-  createdByAtelierImageId?: string;
+  imageOutdated: boolean;
   error?: string;
 }
 
@@ -90,10 +90,10 @@ export function createFileWorkspaceUnreadStore(path: string): WorkspaceUnreadSto
 export interface WorkspaceRegistry {
   setCallbacks(callbacks: WorkspaceRegistryCallbacks): void;
   /** Seed from the containers Docker knows about. Replaces all current entries with phase "ready". */
-  seed(workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; createdByAtelierImageId?: string }>): Promise<void>;
+  seed(workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; imageOutdated?: boolean }>): Promise<void>;
   list(): WorkspaceEntry[];
   get(id: string): WorkspaceEntry | undefined;
-  add(id: string, title?: string | null, init?: WorkspaceInitInstruction, createdByAtelierImageId?: string): WorkspaceEntry;
+  add(id: string, title?: string | null, init?: WorkspaceInitInstruction): WorkspaceEntry;
   setPhase(id: string, phase: WorkspacePhase, error?: string): void;
   setTitle(id: string, title: string | null): void;
   setParked(id: string, parked: boolean): void;
@@ -168,7 +168,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
           lastActivityAt: activity[workspace.id] ?? 0,
           init: workspace.init,
           parked: workspace.parked ?? false,
-          ...(workspace.createdByAtelierImageId ? { createdByAtelierImageId: workspace.createdByAtelierImageId } : {}),
+          imageOutdated: workspace.imageOutdated ?? false,
         });
       }
       callbacks.listChanged?.(sorted());
@@ -182,9 +182,9 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       return entries.get(id);
     },
 
-    add(id, title = null, init, createdByAtelierImageId) {
+    add(id, title = null, init) {
       if (entries.has(id)) throw new Error(`workspace already in registry: ${id}`);
-      const entry: WorkspaceEntry = { id, title, phase: "starting", lastActivityAt: now(), init, parked: false, ...(createdByAtelierImageId ? { createdByAtelierImageId } : {}) };
+      const entry: WorkspaceEntry = { id, title, phase: "starting", lastActivityAt: now(), init, parked: false, imageOutdated: false };
       entries.set(id, entry);
       activity[id] = entry.lastActivityAt;
       persistActivity();

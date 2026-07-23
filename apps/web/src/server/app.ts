@@ -8,7 +8,6 @@ import {
 } from "@atelier/agent/server";
 import {
   AtelierCoreError,
-  currentAtelierContainerImageId,
   invalidArguments,
   type AtelierEventBus,
 } from "@atelier/core";
@@ -156,8 +155,7 @@ function gitOutput(args: string[]): string | undefined {
   }
 }
 
-function atelierVersionTooltip(imageId = currentAtelierContainerImageId()): string {
-  if (imageId) return `Container image ${imageId}`;
+function atelierVersionTooltip(): string {
   const commitId = envString("ATELIER_COMMIT_ID", "ATELIER_COMMIT_SHA", "GIT_COMMIT", "SOURCE_VERSION") ?? gitOutput(["rev-parse", "HEAD"]);
   const description = envString("ATELIER_COMMIT_DESCRIPTION", "ATELIER_COMMIT_SUBJECT", "GIT_COMMIT_MESSAGE") ?? gitOutput(["log", "-1", "--pretty=%s"]);
   if (commitId && description) return `${commitId} ${description}`;
@@ -193,8 +191,7 @@ function assetPath(logicalPath: string): string {
 export function createWebApp(deps: WebAppDeps): WebApp {
   const { registry, layouts } = deps;
   const logError = deps.logError ?? ((message: string) => console.error(message));
-  const currentAtelierImageId = currentAtelierContainerImageId();
-  const versionTooltip = atelierVersionTooltip(currentAtelierImageId);
+  const versionTooltip = atelierVersionTooltip();
 
   function broadcastShell(html: string): void {
     deps.cable?.broadcast(CableTopics.shell(), html);
@@ -252,12 +249,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return domId("workspace_row_contributions", workspaceId);
   }
 
-  function workspaceHasVersionWarning(entry: WorkspaceEntry): boolean {
-    return Boolean(currentAtelierImageId && entry.createdByAtelierImageId !== currentAtelierImageId);
-  }
-
   function renderWorkspaceVersionContribution(entry: WorkspaceEntry): string {
-    if (!workspaceHasVersionWarning(entry)) return "";
+    if (!entry.imageOutdated) return "";
     return `<span class="workspace-version-warning" aria-label="Workspace created with an older version of Atelier" data-tooltip="This workspace was created with an older version of Atelier. This is usually fine, but some newer features might only work in a new workspace">⚠︎</span>`;
   }
 
@@ -319,7 +312,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     const projectStyle = isGitProjectInit(entry.init) ? ` style="${repoColorStyle(entry.init.projectId)}"` : "";
     const stateClass = registry.workspaceState(id) === "unread" ? "attn-state" : "";
     const parkedClass = entry.parked ? "parked" : "";
-    const versionWarningClass = workspaceHasVersionWarning(entry) ? "has-version-warning" : "";
+    const versionWarningClass = entry.imageOutdated ? "has-version-warning" : "";
     const open = (extraClass: string) => `<div class="row workspace-row ${projectClass} ${stateClass} ${parkedClass} ${versionWarningClass} ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}" data-parked="${entry.parked ? "true" : "false"}"${projectStyle}${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
     const workspaceLink = (label: string, attrs = "") => `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"${attrs}><div class="r-title">${escapeHtml(label)}</div></a>`;
     switch (entry.phase) {
@@ -902,7 +895,7 @@ ${moduleStylesHtml()}
     const title = command.title?.trim() ?? "";
     const context = creationContext(command.source, command.agent);
     const fork = forkForSource(command.source);
-    registry.add(id, title || null, init, currentAtelierImageId);
+    registry.add(id, title || null, init);
     startWorkspaceProvisioning(id, { ...(init !== undefined ? { init } : {}), ...(context ? { context } : {}), ...(title ? { title } : {}), ...(fork ? { fork } : {}) });
     return { id };
   }

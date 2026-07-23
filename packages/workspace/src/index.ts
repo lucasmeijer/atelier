@@ -1,7 +1,7 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AtelierCoreError, atelierDataPath, currentAtelierContainerImageId, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput } from "@atelier/core";
-import { ensureDefaultWorkspaceImage, nativeLinuxDockerPlatform, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
+import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput } from "@atelier/core";
+import { dockerImageId, ensureDefaultWorkspaceImage, nativeLinuxDockerPlatform, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
 import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction } from "./types.ts";
 export type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction, WorkspaceInitInstructionMap } from "./types.ts";
 
@@ -20,7 +20,6 @@ export type {
 const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
 const workspaceIdLabel = "com.atelier.workspace-id";
-const workspaceCreatedByAtelierImageIdLabel = "com.atelier.created-by-image-id";
 const titlePath = "title";
 const parkedPath = "parked";
 const initPath = "init.json";
@@ -32,7 +31,7 @@ export const workspaceDesktopPort = 6080;
 export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
 
 export interface WorkspaceNewResult { id: string }
-export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; createdByAtelierImageId?: string }> }
+export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; imageOutdated?: boolean }> }
 export interface WorkspaceExecResult { exitCode: number; stdout: string; stderr: string; durationMs: number }
 export type WorkspaceExecBufferResult = Omit<WorkspaceExecResult, "stdout"> & { stdout: Buffer }
 export interface WorkspaceCommandOptions { workdir?: string; user?: "atelier" | "root"; stdin?: CommandInput }
@@ -240,11 +239,15 @@ function applySeedConfigManifest(manifest: RepoWorkspaceManifest, plan: Workspac
   }
 }
 
+async function readRepoWorkspaceManifest(sourcePath: string): Promise<RepoWorkspaceManifest | undefined> {
+  const file = Bun.file(join(sourcePath, workspaceManifestPath));
+  if (!(await file.exists())) return undefined;
+  return parseRepoWorkspaceManifest(await file.text(), workspaceManifestPath);
+}
+
 async function applyRepoWorkspaceManifest(sourcePath: string, plan: WorkspaceDockerPlan): Promise<void> {
-  const path = join(sourcePath, workspaceManifestPath);
-  const file = Bun.file(path);
-  if (!(await file.exists())) return;
-  const manifest = parseRepoWorkspaceManifest(await file.text(), workspaceManifestPath);
+  const manifest = await readRepoWorkspaceManifest(sourcePath);
+  if (!manifest) return;
   if (manifest.docker?.privileged && !plan.extraArgs.includes("--privileged")) plan.extraArgs.push("--privileged");
   if (manifest.docker?.preloadImages?.length) plan.preloadDockerImages = [...new Set(manifest.docker.preloadImages)];
   applySeedConfigManifest(manifest, plan);
@@ -401,8 +404,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
         await options.events?.emit("workspace_source_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot });
       });
     }
-    const currentImageId = currentAtelierContainerImageId();
-    const labels: Record<string, string> = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id, ...(currentImageId ? { [workspaceCreatedByAtelierImageIdLabel]: currentImageId } : {}) };
+    const labels: Record<string, string> = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id };
     plan = baseWorkspacePlan(labels);
     plan.mounts.push({ type: "bind", source: source.dockerHostWorktreePath, target: workspaceRoot });
     const activePlan = plan;
@@ -501,18 +503,33 @@ export async function workspacePreviewPortUrl(id: string, containerPort: number,
   return await workspacePortUrl(id, containerPort, pathAndSearch, protocol);
 }
 
+async function currentWorkspaceImage(sourcePath: string): Promise<string> {
+  const resolution = await resolveWorkspaceImageResolution({ sourcePath });
+  const preloadSpecs = (await readRepoWorkspaceManifest(sourcePath))?.docker?.preloadImages;
+  if (!preloadSpecs?.length) return resolution.image;
+
+  const platform = await nativeLinuxDockerPlatform();
+  if (!platform) return resolution.image;
+  const preload = await resolveDockerImagePreload({ specs: preloadSpecs, workspaceResolution: resolution });
+  return (await prepareWorkspaceImageCarrier({ resolution, platform, preload })).image;
+}
+
 export async function listWorkspaces(): Promise<WorkspaceListResult> {
   const context = getAtelierRuntimeContext();
-  const listed = await requireDocker(["ps", "-a", "--filter", `label=${workspaceTypeLabel}=workspace`, "--filter", `label=${namespaceLabel}=${namespace()}`, "--format", `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}\t{{.Label "${workspaceCreatedByAtelierImageIdLabel}"}}`]);
-  const workspaces: WorkspaceListResult["workspaces"] = [];
-  for (const line of listed.stdout.trim().split(/\n+/).filter(Boolean)) {
-    const [containerId, labelledId, createdByAtelierImageId] = line.split("\t");
-    if (!containerId) continue;
-    const id = labelledId?.trim() || containerId.slice(0, 8);
-    const parked = await readParked(context, id);
-    const init = await readWorkspaceInit(context, id);
-    workspaces.push({ id, title: await readTitle(context, id), ...(parked ? { parked } : {}), ...(init !== undefined ? { init } : {}), ...(createdByAtelierImageId?.trim() ? { createdByAtelierImageId: createdByAtelierImageId.trim() } : {}) });
-  }
+  const listed = await requireDocker(["ps", "-a", "--filter", `label=${workspaceTypeLabel}=workspace`, "--filter", `label=${namespaceLabel}=${namespace()}`, "--format", `{{.ID}}\t{{.Label "${workspaceIdLabel}"}}`]);
+  const workspaces = await Promise.all(listed.stdout.trim().split(/\n+/).filter(Boolean).map(async (line) => {
+    const [containerId, labelledId] = line.split("\t");
+    const id = labelledId?.trim() || containerId!.slice(0, 8);
+    const [parked, init, title, expectedImageId, actualImage] = await Promise.all([
+      readParked(context, id),
+      readWorkspaceInit(context, id),
+      readTitle(context, id),
+      currentWorkspaceImage(workspaceWorkHostPath(id)).then(dockerImageId),
+      requireDocker(["inspect", "--format", "{{.Image}}", containerId!]),
+    ]);
+    const imageOutdated = actualImage.stdout.trim() !== expectedImageId;
+    return { id, title, ...(parked ? { parked } : {}), ...(init !== undefined ? { init } : {}), ...(imageOutdated ? { imageOutdated } : {}) };
+  }));
   return { workspaces };
 }
 

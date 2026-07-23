@@ -545,6 +545,16 @@ describe("web app contracts", () => {
     expect(registry.get("a")?.parked).toBe(true);
   });
 
+  test("workspace rows warn when the workspace image is outdated", async () => {
+    const { registry, broadcasts } = createTestApp();
+
+    await registry.seed([{ id: "abc", title: "A", imageOutdated: true }]);
+
+    const row = broadcasts.find((item) => item.includes('id="workspace_row_abc"')) ?? "";
+    expect(row).toContain("has-version-warning");
+    expect(row).toContain("workspace-version-warning");
+  });
+
   test("ready workspace rows include status and unread preload metadata", async () => {
     const { app, registry, broadcasts } = createTestApp();
     const html = await (await app.fetch(new Request("http://test.local/"))).text();

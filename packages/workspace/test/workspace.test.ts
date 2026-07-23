@@ -70,6 +70,17 @@ describe("core workspaces", () => {
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
   });
 
+  test("listWorkspaces marks a workspace when its project now resolves to a different image", async () => {
+    const created = await createWorkspace();
+    await execWorkspaceShell(created.id, "mkdir -p .atelier && printf '%s\\n' 'FROM atelier-workspace' 'ENV ATELIER_IMAGE_TEST=changed' > .atelier/Dockerfile");
+
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, imageOutdated: true });
+
+    await execWorkspaceShell(created.id, "rm .atelier/Dockerfile");
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
+    await deleteWorkspace(created.id, { force: true });
+  });
+
   test("setWorkspaceTitle sets the workspace title and listWorkspaces reflects it", async () => {
     const workspaceId = await getReusableWorkspaceId();
 
