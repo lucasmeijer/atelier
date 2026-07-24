@@ -36,9 +36,40 @@ describe("renderMarkdown", () => {
     expect(renderMarkdown("1. one\n2. two")).toBe("<ol><li>one</li><li>two</li></ol>");
   });
 
+  test("an ordered list can use 1 for every adjacent Markdown marker", () => {
+    expect(renderMarkdown("1. one\n1. two\n1. three\n1. four")).toBe(
+      "<ol><li>one</li><li>two</li><li>three</li><li>four</li></ol>",
+    );
+  });
+
   test("an ordered list can use 1 for every Markdown marker with blank lines between items", () => {
     expect(renderMarkdown("1. one\n\n1. two\n\n1. three\n\n1. four")).toBe(
       "<ol><li>one</li><li>two</li><li>three</li><li>four</li></ol>",
+    );
+  });
+
+  test("repeated parenthesized markers form one ordered list", () => {
+    expect(renderMarkdown("1) one\n1) two\n1) three")).toBe(
+      "<ol><li>one</li><li>two</li><li>three</li></ol>",
+    );
+  });
+
+  test("nested bullets do not split an outer repeated-marker ordered list", () => {
+    const markdown = [
+      "1. **Wait for workspace readiness**",
+      "   - Provisioning continues asynchronously.",
+      "   - There is no readiness API.",
+      "",
+      "1. **Create an artificial agent conversation**",
+      "   - No API exists for this.",
+      "   - Write valid JSONL directly.",
+      "",
+      "1. **Populate a terminal**",
+      "   - The UI creates an empty terminal.",
+    ].join("\n");
+
+    expect(renderMarkdown(markdown)).toBe(
+      "<ol><li><strong>Wait for workspace readiness</strong><ul><li>Provisioning continues asynchronously.</li><li>There is no readiness API.</li></ul></li><li><strong>Create an artificial agent conversation</strong><ul><li>No API exists for this.</li><li>Write valid JSONL directly.</li></ul></li><li><strong>Populate a terminal</strong><ul><li>The UI creates an empty terminal.</li></ul></li></ol>",
     );
   });
 

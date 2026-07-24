@@ -86,9 +86,23 @@ export function renderMarkdown(text: string, options: MarkdownOptions = {}): str
   const lines = text.replaceAll("\r\n", "\n").split("\n");
   const out: string[] = [];
   let index = 0;
-  let paragraph: string[] = [];
-  let list: { ordered: boolean; items: string[] } | undefined;
+  interface ListBlock {
+    ordered: boolean;
+    items: ListItem[];
+  }
+  interface ListItem {
+    text: string;
+    children: ListBlock[];
+  }
 
+  let paragraph: string[] = [];
+  let list: ListBlock | undefined;
+  let nestedItem: ListItem | undefined;
+
+  const renderList = (block: ListBlock): string => {
+    const tag = block.ordered ? "ol" : "ul";
+    return `<${tag}>${block.items.map((item) => `<li>${inline(item.text, options)}${item.children.map(renderList).join("")}</li>`).join("")}</${tag}>`;
+  };
   const flushParagraph = () => {
     if (paragraph.length === 0) return;
     out.push(`<p>${inline(paragraph.join("\n"), options)}</p>`);
@@ -96,9 +110,9 @@ export function renderMarkdown(text: string, options: MarkdownOptions = {}): str
   };
   const flushList = () => {
     if (!list) return;
-    const tag = list.ordered ? "ol" : "ul";
-    out.push(`<${tag}>${list.items.map((item) => `<li>${inline(item, options)}</li>`).join("")}</${tag}>`);
+    out.push(renderList(list));
     list = undefined;
+    nestedItem = undefined;
   };
 
   while (index < lines.length) {
@@ -153,16 +167,27 @@ export function renderMarkdown(text: string, options: MarkdownOptions = {}): str
       continue;
     }
 
-    const unordered = line.match(/^\s*[-*]\s+(.*)$/);
-    const ordered = line.match(/^\s*\d+[.)]\s+(.*)$/);
-    if (unordered || ordered) {
+    const marker = line.match(/^(\s*)([-*]|\d+[.)])\s+(.*)$/);
+    if (marker) {
       flushParagraph();
-      const isOrdered = Boolean(ordered);
-      if (!list || list.ordered !== isOrdered) {
-        flushList();
-        list = { ordered: isOrdered, items: [] };
+      const isOrdered = /^\d/.test(marker[2]);
+      if (marker[1].length > 0 && list && list.items.length > 0) {
+        const parent = list.items[list.items.length - 1];
+        let child = parent.children[parent.children.length - 1];
+        if (!child || child.ordered !== isOrdered) {
+          child = { ordered: isOrdered, items: [] };
+          parent.children.push(child);
+        }
+        nestedItem = { text: marker[3], children: [] };
+        child.items.push(nestedItem);
+      } else {
+        if (!list || list.ordered !== isOrdered) {
+          flushList();
+          list = { ordered: isOrdered, items: [] };
+        }
+        list.items.push({ text: marker[3], children: [] });
+        nestedItem = undefined;
       }
-      list.items.push((unordered ?? ordered)![1]);
       index += 1;
       continue;
     }
@@ -189,9 +214,10 @@ export function renderMarkdown(text: string, options: MarkdownOptions = {}): str
         let nextIndex = index + 1;
         while (nextIndex < lines.length && lines[nextIndex].trim() === "") nextIndex += 1;
         const nextLine = lines[nextIndex] ?? "";
-        const nextIsUnordered = /^\s*[-*]\s+/.test(nextLine);
-        const nextIsOrdered = /^\s*\d+[.)]\s+/.test(nextLine);
-        if ((list.ordered && nextIsOrdered) || (!list.ordered && nextIsUnordered)) {
+        const nextMarker = nextLine.match(/^(\s*)([-*]|\d+[.)])\s+/);
+        const nextIsNested = Boolean(nextMarker?.[1]);
+        const nextIsOrdered = /^\d/.test(nextMarker?.[2] ?? "");
+        if (nextMarker && (nextIsNested || list.ordered === nextIsOrdered)) {
           index += 1;
           continue;
         }
@@ -203,7 +229,8 @@ export function renderMarkdown(text: string, options: MarkdownOptions = {}): str
 
     if (list) {
       // Continuation line of the previous list item.
-      list.items[list.items.length - 1] += `\n${line.trim()}`;
+      const item = /^\s/.test(line) && nestedItem ? nestedItem : list.items[list.items.length - 1];
+      item.text += `\n${line.trim()}`;
       index += 1;
       continue;
     }
