@@ -63,8 +63,8 @@ export function buildSetRemainOnExitCommand(): string {
   return "tmux set-window-option remain-on-exit on; tmux set-window-option remain-on-exit-format ''";
 }
 
-export function buildListSessionsCommand(): string {
-  return "tmux list-sessions -F '#S'";
+export function buildListSessionsCommand(format = "#S"): string {
+  return `tmux list-sessions -F ${shellQuote(format)}`;
 }
 
 export function buildKillSessionCommand(session: string): string {

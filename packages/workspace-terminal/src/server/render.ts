@@ -1,15 +1,11 @@
 import { domId, escapeHtml } from "@atelier/shared";
-import { terminalTabKey as workspaceTerminalTabKey } from "../shared.ts";
+import { terminalTabKey } from "../shared.ts";
+import type { WorkspaceTerminal } from "./workspace-terminals.ts";
 
-export function terminalTabKey(title: string): string {
-  return workspaceTerminalTabKey(title);
-}
-
-export function renderTerminalPane(id: string, title: string): string {
-  return `<section id="${domId("terminal_pane", id, title)}" class="tab-pane terminal-tab-pane" data-tab-pane="${escapeHtml(terminalTabKey(title))}">
-    <div class="terminal-pane" data-controller="terminal-pane" data-terminal-pane-workspace-id-value="${escapeHtml(id)}" data-terminal-pane-title-value="${escapeHtml(title)}" data-terminal-title="${escapeHtml(title)}">
+export function renderTerminalPane(workspaceId: string, terminal: WorkspaceTerminal): string {
+  return `<section id="${domId("terminal_pane", workspaceId, terminal.id)}" class="tab-pane terminal-tab-pane" data-tab-pane="${escapeHtml(terminalTabKey(terminal.id))}">
+    <div class="terminal-pane" data-controller="terminal-pane" data-terminal-pane-workspace-id-value="${escapeHtml(workspaceId)}" data-terminal-pane-id-value="${escapeHtml(terminal.id)}" data-terminal-id="${escapeHtml(terminal.id)}">
       <div class="observable-terminal-host" tabindex="0"></div>
     </div>
   </section>`;
 }
-

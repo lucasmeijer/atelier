@@ -10,7 +10,6 @@ export function desktopWorkspaceCommand(enabled: boolean): WorkspaceCommandContr
     id: "desktop.start",
     label: enabled ? "Open Desktop" : "Turn on Desktop",
     scope: "workspace",
-    surfaces: { ui: { placement: "group-menu" } },
   };
 }
 

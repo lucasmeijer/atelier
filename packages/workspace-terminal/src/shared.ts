@@ -1,10 +1,10 @@
-export const terminalTabPrefix = "terminal:";
+const terminalTabPrefix = "terminal:";
 
-export function terminalTabKey(title: string): string {
-  return `${terminalTabPrefix}${title}`;
+export function terminalTabKey(id: string): string {
+  return `${terminalTabPrefix}${id}`;
 }
 
-export function terminalTitleFromTabKey(tabKey: string): string | undefined {
+export function terminalIdFromTabKey(tabKey: string): string | undefined {
   if (!tabKey.startsWith(terminalTabPrefix)) return undefined;
   return tabKey.slice(terminalTabPrefix.length) || undefined;
 }

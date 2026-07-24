@@ -10,7 +10,7 @@ import {
   type ObservableTerminalViewer,
 } from "@atelier/observable-terminal/client";
 import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
-import { terminalTabKey, terminalTitleFromTabKey } from "../shared.ts";
+import { terminalTabKey, terminalIdFromTabKey } from "../shared.ts";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
@@ -20,8 +20,8 @@ const pendingTerminalFocus = new Set<string>();
 let terminalThemeInitialized = false;
 let currentTerminalTheme: ObservableTerminalTheme = DEFAULT_OBSERVABLE_TERMINAL_THEME;
 
-function terminalKey(workspaceId: string, title: string): string {
-  return `${workspaceId}\u0000${title}`;
+function terminalKey(workspaceId: string, terminalId: string): string {
+  return `${workspaceId}\u0000${terminalId}`;
 }
 
 function applyTerminalTheme(): void {
@@ -30,7 +30,7 @@ function applyTerminalTheme(): void {
   for (const terminal of terminals.values()) terminal.setTheme(currentTerminalTheme);
 }
 
-export function initializeTerminalTheme(): void {
+function initializeTerminalTheme(): void {
   applyTerminalTheme();
   if (terminalThemeInitialized) return;
   terminalThemeInitialized = true;
@@ -38,16 +38,16 @@ export function initializeTerminalTheme(): void {
   new MutationObserver(applyTerminalTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 }
 
-function findTerminalPane(workspaceId: string, title: string): HTMLElement | undefined {
-  return Array.from(document.querySelectorAll<HTMLElement>(".terminal-pane[data-terminal-title]")).find((candidate) =>
-    candidate.dataset.terminalTitle === title && candidate.dataset.terminalPaneWorkspaceIdValue === workspaceId
+function findTerminalPane(workspaceId: string, terminalId: string): HTMLElement | undefined {
+  return Array.from(document.querySelectorAll<HTMLElement>(".terminal-pane[data-terminal-id]")).find((candidate) =>
+    candidate.dataset.terminalId === terminalId && candidate.dataset.terminalPaneWorkspaceIdValue === workspaceId
   );
 }
 
-export async function startTerminal(workspaceId: string, title: string, options: { focus?: boolean } = {}): Promise<void> {
+async function startTerminal(workspaceId: string, terminalId: string, options: { focus?: boolean } = {}): Promise<void> {
   const focus = options.focus !== false;
-  const key = terminalKey(workspaceId, title);
-  const pane = findTerminalPane(workspaceId, title);
+  const key = terminalKey(workspaceId, terminalId);
+  const pane = findTerminalPane(workspaceId, terminalId);
   const host = pane?.querySelector<HTMLElement>(".observable-terminal-host");
   if (!host) return;
 
@@ -65,7 +65,7 @@ export async function startTerminal(workspaceId: string, title: string, options:
   startingTerminals.add(key);
 
   try {
-    const tabId = terminalTabKey(title);
+    const tabId = terminalTabKey(terminalId);
     const viewer = await createObservableTerminalViewer({
       host,
       mode: "interactive",
@@ -92,8 +92,8 @@ export async function startTerminal(workspaceId: string, title: string, options:
   }
 }
 
-export function stopTerminal(workspaceId: string, title: string): void {
-  const key = terminalKey(workspaceId, title);
+function stopTerminal(workspaceId: string, terminalId: string): void {
+  const key = terminalKey(workspaceId, terminalId);
   const state = terminals.get(key);
   if (!state) return;
   state.dispose();
@@ -102,26 +102,21 @@ export function stopTerminal(workspaceId: string, title: string): void {
   pendingTerminalFocus.delete(key);
 }
 
-export function startTerminalTab(workspaceId: string, tabName: string): void {
-  const title = terminalTitleFromTabKey(tabName);
-  if (title) void startTerminal(workspaceId, title);
-}
-
-export function createTerminalPaneController(Controller: StimulusControllerConstructor) {
+function createTerminalPaneController(Controller: StimulusControllerConstructor) {
   return class TerminalPaneController extends Controller {
-    static values = { workspaceId: String, title: String };
+    static values = { workspaceId: String, id: String };
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
-    declare readonly titleValue: string;
+    declare readonly idValue: string;
 
     connect(): void {
       if (isWorkspacePaneVisible(this.element)) {
-        void startTerminal(this.workspaceIdValue, this.titleValue, { focus: true });
+        void startTerminal(this.workspaceIdValue, this.idValue, { focus: true });
       }
     }
 
     disconnect(): void {
-      stopTerminal(this.workspaceIdValue, this.titleValue);
+      stopTerminal(this.workspaceIdValue, this.idValue);
     }
   };
 }
@@ -132,16 +127,17 @@ export const workspaceTerminalClientModule: WorkspaceClientModule = {
     initializeTerminalTheme();
     application.register("terminal-pane", createTerminalPaneController(Controller));
     hooks.onBecomeVisible(({ workspaceId, tabKey }) => {
-      startTerminalTab(workspaceId, tabKey);
+      const terminalId = terminalIdFromTabKey(tabKey);
+      if (terminalId) void startTerminal(workspaceId, terminalId);
     });
     hooks.onNoLongerVisible(({ workspaceId, tabKey }) => {
-      const title = terminalTitleFromTabKey(tabKey);
-      if (title) stopTerminal(workspaceId, title);
+      const terminalId = terminalIdFromTabKey(tabKey);
+      if (terminalId) stopTerminal(workspaceId, terminalId);
     });
     hooks.onFocusGroup(({ workspaceId, tabKey }) => {
-      const title = tabKey ? terminalTitleFromTabKey(tabKey) : undefined;
-      if (!workspaceId || !title) return false;
-      void startTerminal(workspaceId, title, { focus: true });
+      const terminalId = tabKey ? terminalIdFromTabKey(tabKey) : undefined;
+      if (!workspaceId || !terminalId) return false;
+      void startTerminal(workspaceId, terminalId, { focus: true });
       return true;
     });
   },

@@ -1,27 +1,20 @@
-import { attachObservableTerminal, type IPty } from "@atelier/observable-terminal/server";
-import type { WorkspaceServerSocketHandler } from "@atelier/shared";
-import type { ServerWebSocket } from "bun";
 import { AtelierCoreError } from "@atelier/core";
-import { workspaceContainerName, workspaceRoot } from "@atelier/workspace";
+import { attachObservableTerminal, type IPty } from "@atelier/observable-terminal/server";
 import { parseObservableTerminalMessage } from "@atelier/observable-terminal/shared";
-import { terminalTabKey, terminalTitleFromTabKey } from "../shared.ts";
+import type { WorkspaceServerSocketHandler } from "@atelier/shared";
+import { workspaceContainerName, workspaceRoot } from "@atelier/workspace";
+import type { ServerWebSocket } from "bun";
+import { terminalIdFromTabKey, terminalTabKey } from "../shared.ts";
 import { listWorkspaceTerminals } from "./workspace-terminals.ts";
 
-export interface TerminalSocketData {
+interface TerminalSocketData {
   kind: "terminal";
   workspaceId: string;
-  title: string;
+  terminalId: string;
+  tmuxSession: string;
   cols: number;
   rows: number;
   pty?: IPty;
-}
-
-export interface TerminalSocketHandlerOptions {
-  setTabBusy(workspaceId: string, tabKey: string, busy: boolean): void;
-}
-
-function terminalBusyKey(workspaceId: string, title: string): string {
-  return `${workspaceId}\u0000${title}`;
 }
 
 function parsePositiveInteger(value: string | null, fallback: number): number {
@@ -29,41 +22,41 @@ function parsePositiveInteger(value: string | null, fallback: number): number {
   return Number.isInteger(parsed) && parsed > 0 && parsed <= 1000 ? parsed : fallback;
 }
 
-export function createTerminalSocketHandler(options: TerminalSocketHandlerOptions): WorkspaceServerSocketHandler {
-  const terminalTabBusy = new Map<string, boolean>();
+export function createTerminalSocketHandler(options: { setTabBusy(workspaceId: string, tabKey: string, busy: boolean): void }): WorkspaceServerSocketHandler {
+  const busyTerminals = new Set<string>();
 
-  function setTerminalTabBusy(workspaceId: string, title: string, busy: boolean): void {
-    const key = terminalBusyKey(workspaceId, title);
-    if ((terminalTabBusy.get(key) ?? false) === busy) return;
-    if (busy) terminalTabBusy.set(key, true);
-    else terminalTabBusy.delete(key);
-    options.setTabBusy(workspaceId, terminalTabKey(title), busy);
+  function setBusy(workspaceId: string, terminalId: string, busy: boolean): void {
+    const key = `${workspaceId}\0${terminalId}`;
+    if (busyTerminals.has(key) === busy) return;
+    if (busy) busyTerminals.add(key);
+    else busyTerminals.delete(key);
+    options.setTabBusy(workspaceId, terminalTabKey(terminalId), busy);
   }
 
-  async function validateTerminalSocket(url: URL): Promise<TerminalSocketData | undefined> {
+  async function validate(url: URL): Promise<TerminalSocketData | undefined> {
     const match = url.pathname.match(/^\/workspaces\/([^/]+)\/tabs\/([^/]+)\/ws$/);
     if (!match) return undefined;
-    const workspaceId = decodeURIComponent(match[1]);
-    const tabId = decodeURIComponent(match[2]);
-    const title = terminalTitleFromTabKey(tabId);
-    if (!title) return undefined;
-    const { terminals } = await listWorkspaceTerminals(workspaceId);
-    if (!terminals.some((terminal) => terminal.title === title)) throw new AtelierCoreError("terminal_not_found", `terminal not found: ${title}`);
+    const workspaceId = decodeURIComponent(match[1]!);
+    const terminalId = terminalIdFromTabKey(decodeURIComponent(match[2]!));
+    if (!terminalId) return undefined;
+    const terminal = (await listWorkspaceTerminals(workspaceId)).find((item) => item.id === terminalId);
+    if (!terminal) throw new AtelierCoreError("terminal_not_found", `terminal not found: ${terminalId}`);
     return {
       kind: "terminal",
       workspaceId,
-      title,
+      terminalId,
+      tmuxSession: terminal.tmuxSession,
       cols: parsePositiveInteger(url.searchParams.get("cols"), 80),
       rows: parsePositiveInteger(url.searchParams.get("rows"), 24),
     };
   }
 
-  function openTerminalSocket(ws: ServerWebSocket<TerminalSocketData>): void {
+  function open(ws: ServerWebSocket<TerminalSocketData>): void {
     const data = ws.data;
     try {
       const pty = attachObservableTerminal({
         containerName: workspaceContainerName(data.workspaceId),
-        session: data.title,
+        session: data.tmuxSession,
         cols: data.cols,
         rows: data.rows,
         user: "atelier",
@@ -88,29 +81,29 @@ export function createTerminalSocketHandler(options: TerminalSocketHandlerOption
     }
   }
 
-  function handleTerminalSocketMessage(ws: ServerWebSocket<TerminalSocketData>, message: string | Buffer): void {
-    const text = typeof message === "string" ? message : message.toString();
+  function message(ws: ServerWebSocket<TerminalSocketData>, input: string | Buffer): void {
+    const text = typeof input === "string" ? input : input.toString();
     const control = parseObservableTerminalMessage(text);
     if (control?.type === "resize") {
       ws.data.pty?.resize(control.cols, control.rows);
       return;
     }
     if (control?.type === "progress") {
-      setTerminalTabBusy(ws.data.workspaceId, ws.data.title, control.state !== 0);
+      setBusy(ws.data.workspaceId, ws.data.terminalId, control.state !== 0);
       return;
     }
     ws.data.pty?.write(text);
   }
 
-  function closeTerminalSocket(ws: ServerWebSocket<TerminalSocketData>): void {
-    setTerminalTabBusy(ws.data.workspaceId, ws.data.title, false);
+  function close(ws: ServerWebSocket<TerminalSocketData>): void {
+    setBusy(ws.data.workspaceId, ws.data.terminalId, false);
     ws.data.pty?.kill();
   }
 
   return {
-    validate: (_request, url) => validateTerminalSocket(url),
-    open: (socket) => openTerminalSocket(socket as ServerWebSocket<TerminalSocketData>),
-    message: (socket, message) => handleTerminalSocketMessage(socket as ServerWebSocket<TerminalSocketData>, message as string | Buffer),
-    close: (socket) => closeTerminalSocket(socket as ServerWebSocket<TerminalSocketData>),
+    validate: (_request, url) => validate(url),
+    open: (socket) => open(socket as ServerWebSocket<TerminalSocketData>),
+    message: (socket, input) => message(socket as ServerWebSocket<TerminalSocketData>, input as string | Buffer),
+    close: (socket) => close(socket as ServerWebSocket<TerminalSocketData>),
   };
 }

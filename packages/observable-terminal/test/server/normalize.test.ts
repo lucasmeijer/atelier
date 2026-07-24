@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildAttachArgs,
+  buildListSessionsCommand,
   buildObservableSessionCommand,
   normalizeCarriageReturns,
   observableTerminalCols,
@@ -28,6 +29,10 @@ describe("observable terminal normalization", () => {
     expect(stripTerminalControls("a\u001b[2Kb\u001b[39;49mc")).toBe("abc");
     expect(stripTerminalControls("a\u001b]8;;file:///tmp/x\u001b\\b\u001b]8;;\u001b\\c")).toBe("abc");
     expect(stripTerminalControls("a\u001bPignored\u001b\\b")).toBe("ab");
+  });
+
+  test("quotes custom tmux session list formats", () => {
+    expect(buildListSessionsCommand("#{session_name} | #{pane_current_path}")).toBe("tmux list-sessions -F '#{session_name} | #{pane_current_path}'");
   });
 
   test("builds fixed-size observable sessions", () => {

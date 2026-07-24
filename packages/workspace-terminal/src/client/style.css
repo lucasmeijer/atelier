@@ -3,4 +3,23 @@
 .workspace-group .workspace-panes:has(> .terminal-tab-pane.visible) { padding: 0; overflow: hidden; background: var(--terminal-bg, #2e3440); }
 .terminal-tab-pane.visible { height: 100%; min-height: 0; }
 .terminal-pane { height: 100%; min-height: 0; display: flex; flex-direction: column; padding: 4px; background: var(--terminal-bg, #2e3440); color: var(--terminal-fg, #d8dee9); overflow: hidden; }
-.terminal-loading { min-height: 520px; height: 60vh; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--terminal-bar-fg, #81a1c1); }
+.terminal-attach-dialog { width: min(760px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); }
+.terminal-attach-dialog::backdrop { background: rgba(0, 0, 0, .42); backdrop-filter: blur(2px); }
+.terminal-attach-dialog form { padding: 20px; }
+.terminal-attach-dialog header h2 { margin: 0 0 5px; font-size: 18px; }
+.terminal-attach-dialog header p { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+.terminal-session-list { display: grid; max-height: min(480px, 60vh); overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.terminal-session-option { display: grid; grid-template-columns: auto minmax(180px, 1fr) minmax(190px, auto); align-items: center; gap: 12px; padding: 12px; cursor: pointer; border-bottom: 1px solid var(--line); }
+.terminal-session-option:last-child { border-bottom: 0; }
+.terminal-session-option:hover { background: var(--hover); }
+.terminal-session-option:has(input:checked) { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
+.terminal-session-main { display: grid; min-width: 0; gap: 4px; }
+.terminal-session-main b { font-size: 14px; }
+.terminal-session-main small { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.terminal-session-main code { color: var(--text); }
+.terminal-session-meta { display: flex; max-width: 270px; flex-wrap: wrap; justify-content: flex-end; gap: 4px 10px; color: var(--muted); font-size: 11px; }
+.terminal-session-meta strong { color: var(--accent); font-weight: 650; }
+.terminal-session-meta .terminal-session-dead { color: var(--danger); }
+.terminal-session-empty { padding: 28px; color: var(--muted); text-align: center; }
+.terminal-attach-dialog .modal-actions { margin-top: 16px; }
+@media (max-width: 620px) { .terminal-session-option { grid-template-columns: auto 1fr; } .terminal-session-meta { grid-column: 2; justify-content: flex-start; } }
