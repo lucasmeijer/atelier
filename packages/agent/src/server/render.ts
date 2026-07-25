@@ -43,7 +43,6 @@ export const ids = {
   itemText: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext`, key),
   itemSummary: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary`, key),
   itemSummaryContent: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary_content`, key),
-  itemDetail: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_item_detail`, key),
   itemCompletion: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_completion`, key),
   itemCompletionTabs: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_completion_tabs`, key),
   detailFrame: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_detail`, key),
@@ -464,7 +463,7 @@ function toolForRender(original: ToolView): ToolView {
     : original;
 }
 
-function toolSummaryContentHtml(ctx: AgentRenderContext, key: string, tool: ToolView): string {
+function toolSummaryContentHtml(tool: ToolView): string {
   const summary = toolSummaryHtml(tool);
   return `<code class="agent-tool-name">${escapeHtml(tool.name || "tool")}</code>${summary ? `<span class="agent-tool-sep">·</span><span class="agent-tool-args${tool.status === "error" ? " error" : ""}">${summary}</span>` : ""}${tool.status === "running" && tool.name === "bash" ? `<span class="agent-tool-sep">·</span>${runningElapsedHtml(tool)}` : ""}`;
 }
@@ -472,17 +471,21 @@ function toolSummaryContentHtml(ctx: AgentRenderContext, key: string, tool: Tool
 export function renderActiveToolContent(ctx: AgentRenderContext, key: string, original: ToolView): { summary: string; detail?: string } {
   const tool = toolForRender(original);
   return {
-    summary: toolSummaryContentHtml(ctx, key, tool),
+    summary: toolSummaryContentHtml(tool),
     detail: tool.name === "edit" ? undefined : renderToolDetail(ctx, key, tool, 100),
   };
 }
 
 function toolSummaryCardHtml(ctx: AgentRenderContext, key: string, tool: ToolView): string {
-  return `<span id="${ids.itemSummary(ctx, key)}" class="agent-tool-head">${statusHtml(tool.status)}<span id="${ids.itemSummaryContent(ctx, key)}" class="agent-tool-summary-content">${toolSummaryContentHtml(ctx, key, tool)}</span></span>`;
+  return `<span id="${ids.itemSummary(ctx, key)}" class="agent-tool-head">${statusHtml(tool.status)}<span id="${ids.itemSummaryContent(ctx, key)}" class="agent-tool-summary-content">${toolSummaryContentHtml(tool)}</span></span>`;
 }
 
 export function renderToolSummary(ctx: AgentRenderContext, key: string, tool: ToolView): string {
   return toolSummaryCardHtml(ctx, key, toolForRender(tool));
+}
+
+function tailFrameAttributes(ctx: AgentRenderContext, key: string): string {
+  return `id="${ids.detailFrame(ctx, key)}" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded"`;
 }
 
 function renderToolCard(ctx: AgentRenderContext, key: string, original: ToolView, options: { open?: boolean; live?: boolean } = {}): string {
@@ -492,9 +495,9 @@ function renderToolCard(ctx: AgentRenderContext, key: string, original: ToolView
   if (active && tool.name === "edit") return `<div class="agent-tool agent-tool-summary-only ${toolClass(tool.name)}">${summary}</div>`;
   const open = Boolean(options.open || active);
   if (!options.live && !active) {
-    return `<details class="agent-tool ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load"><summary>${summary}</summary><turbo-frame id="${ids.detailFrame(ctx, key)}" data-agent-lazy-detail-target="frame" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame></details>`;
+    return `<details class="agent-tool ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load"><summary>${summary}</summary><turbo-frame ${tailFrameAttributes(ctx, key)} data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame></details>`;
   }
-  return `<details class="agent-tool ${toolClass(tool.name)}${active ? " active" : ""}${tool.status === "error" ? " error" : ""}"${open ? " open" : ""}><summary>${summary}</summary><div id="${ids.itemDetail(ctx, key)}" class="agent-tool-detail-host">${renderToolDetail(ctx, key, tool, 100)}</div></details>`;
+  return `<details class="agent-tool ${toolClass(tool.name)}${active ? " active" : ""}${tool.status === "error" ? " error" : ""}"${open ? " open" : ""}><summary>${summary}</summary><turbo-frame ${tailFrameAttributes(ctx, key)} class="agent-tool-detail-host">${renderToolDetail(ctx, key, tool, 100)}</turbo-frame></details>`;
 }
 
 function detailFullscreen(title: string, html: string): string {

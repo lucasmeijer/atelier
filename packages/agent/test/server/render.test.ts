@@ -79,6 +79,15 @@ describe("flat transcript rendering", () => {
     expect(html).toContain("agent-tool-detail-host");
   });
 
+  test("live write pagination targets its detail frame", () => {
+    const content = Array.from({ length: 700 }, (_, index) => `line ${index + 1}`).join("\n");
+    const item: TranscriptItem = { type: "tool", key: "live-write", tool: tool({ name: "write", args: { path: "a.ts", content } }) };
+    const html = renderTranscriptItem(ctx, item, { live: true, open: true });
+    expect(html).toContain('<turbo-frame id="ag_ws_agent_detail_live-write"');
+    expect(html).toContain('data-turbo-frame="ag_ws_agent_detail_live-write"');
+    expect(html).toContain("?count=600");
+  });
+
   test("running edit has summary only", () => {
     const item: TranscriptItem = { type: "tool", key: "edit-live", tool: tool({ name: "edit", status: "running", args: { path: "a.ts", oldText: "old", newText: "new" } }) };
     const html = renderTranscriptItem(ctx, item, { live: true });
