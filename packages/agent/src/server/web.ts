@@ -40,6 +40,7 @@ export const agentWorkspaceCommands: WorkspaceCommandContribution[] = [
     id: "agent.create",
     label: "New Agent",
     scope: "workspace",
+    surfaces: { ui: { placement: "group-menu" } },
   },
 ];
 

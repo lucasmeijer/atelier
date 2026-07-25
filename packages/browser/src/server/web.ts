@@ -17,6 +17,7 @@ const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
     id: browserCreateCommandId,
     label: "New Browser",
     scope: "workspace",
+    surfaces: { ui: { placement: "group-menu" } },
   },
 ];
 

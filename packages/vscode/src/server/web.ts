@@ -17,7 +17,10 @@ export const vscodeWorkspaceCommands: WorkspaceCommandContribution[] = [
     id: "vscode.open",
     label: "Open VS Code",
     scope: "workspace",
-    surfaces: { shortcut: { defaultBinding: "Meta+Alt+KeyV" } },
+    surfaces: {
+      ui: { placement: "group-menu", label: "New VS Code" },
+      shortcut: { defaultBinding: "Meta+Alt+KeyV" },
+    },
   },
 ];
 
