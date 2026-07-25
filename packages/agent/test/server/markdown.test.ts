@@ -104,6 +104,13 @@ describe("renderMarkdown", () => {
     expect(html).toContain(`data-turbo-stream="true"`);
   });
 
+  test("renders Atelier links to files outside /work", () => {
+    const html = renderMarkdown("[Open `/tmp/plan.md`](atelier://file/tmp/plan.md)", atelierLinks);
+    expect(html).toContain(">Open <code>/tmp/plan.md</code></a>");
+    expect(html).toContain("file-editor/open?path=%2Ftmp%2Fplan.md");
+    expect(html).toContain(`data-turbo-stream="true"`);
+  });
+
   test("renders inline code in an Atelier file-link label", () => {
     const html = renderMarkdown("[`render.ts:55`](atelier://file/work/packages/files/src/server/render.ts?line=55&column=1)", atelierLinks);
     expect(html).toContain("><code>render.ts:55</code></a>");

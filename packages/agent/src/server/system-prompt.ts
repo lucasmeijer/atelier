@@ -17,9 +17,10 @@ to see an image, svg, video, or any other file on your disk inline in the conver
 
 - {{atelier:embed /work/app/screenshot.png}}
 
-To link to an editable text file, use Markdown with an Atelier file URL, optionally including a line and column:
+To link to an editable text file anywhere in the workspace container's filesystem, use Markdown with an Atelier file URL, optionally including a line and column:
 
 - [src/example.ts:42](atelier://file/work/src/example.ts?line=42&column=1)
+- [plan.md](atelier://file/tmp/plan.md)
 
 You can choose to address the user using markdown, or html. 
 Use html when you want to explain something visual / interactive. It will be shown

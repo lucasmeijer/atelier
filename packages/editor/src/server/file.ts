@@ -18,9 +18,7 @@ export class EditorFileError extends Error {
 }
 
 function normalizedPath(input: string | null): string {
-  const path = posix.resolve(workspaceRoot, input || workspaceRoot);
-  if (path !== workspaceRoot && !path.startsWith(`${workspaceRoot}/`)) throw new EditorFileError("Path is outside the workspace", 403);
-  return path;
+  return posix.resolve(workspaceRoot, input || workspaceRoot);
 }
 
 function revision(content: Uint8Array): string {
@@ -34,7 +32,6 @@ async function editableTarget(workspaceId: string, inputPath: string | null): Pr
   const result = await execWorkspaceCommandBuffer(workspaceId, ["sh", "-c", "test -d \"$1\" && realpath -ez -- \"$1\"", "sh", parent]);
   if (result.exitCode !== 0) throw new EditorFileError("Folder not found", 404);
   const directory = result.stdout.subarray(0, -1).toString("utf8");
-  if (directory !== workspaceRoot && !directory.startsWith(`${workspaceRoot}/`)) throw new EditorFileError("Path is outside the workspace", 403);
   return posix.join(directory, posix.basename(requested));
 }
 

@@ -112,7 +112,6 @@ export function renderAtelierFileLink(workspaceId: string, label: string, rawHre
   } catch {
     return undefined;
   }
-  if (path !== "/work" && !path.startsWith("/work/")) return undefined;
   const position: { line?: number; column?: number } = {};
   for (const name of ["line", "column"] as const) {
     const value = url.searchParams.get(name);
