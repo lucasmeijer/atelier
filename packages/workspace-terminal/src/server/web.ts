@@ -7,6 +7,7 @@ import { renderTerminalPane } from "./render.ts";
 import { createTerminalSocketHandler } from "./sockets.ts";
 import { terminalStaticFiles } from "./static.ts";
 import { attachWorkspaceTerminal, createWorkspaceTerminal, deleteWorkspaceTerminal, listTmuxSessions, listWorkspaceTerminals, type WorkspaceTerminal } from "./workspace-terminals.ts";
+import { Type } from "typebox";
 
 function renderWorkspaceTerminalTabs(workspaceId: string, terminals: WorkspaceTerminal[]): WorkspaceTabContribution[] {
   return terminals.map((terminal) => ({
@@ -83,8 +84,14 @@ export const terminalWorkspaceModule: WorkspaceModule = {
   commands: [
     {
       id: "terminal.create",
-      async execute({ workspaceId, events }) {
-        const terminal = await createWorkspaceTerminal(workspaceId);
+      inputSchema: Type.Object({
+        title: Type.Optional(Type.String()),
+        command: Type.Optional(Type.String()),
+        cwd: Type.Optional(Type.String()),
+      }),
+      async execute({ workspaceId, input, events }) {
+        const options = input as { title?: string; command?: string; cwd?: string };
+        const terminal = await createWorkspaceTerminal(workspaceId, options);
         await (events as AtelierEventBus | undefined)?.emit("workspace_tabs_changed", { workspaceId });
         return { createdTabKey: terminalTabKey(terminal.id) };
       },

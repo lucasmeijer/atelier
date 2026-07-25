@@ -22,6 +22,11 @@ export {
 } from "./errors.ts";
 
 export {
+  readJsonObject,
+  requestAcceptsJson,
+} from "./json-request.ts";
+
+export {
   defaultDataDir,
 } from "./data-dir.ts";
 

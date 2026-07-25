@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, readJsonObject, requestAcceptsJson, type AtelierEventBus } from "@atelier/core";
 import { getModelThinkingLevel, setModelThinkingLevel } from "./pi-config-models.ts";
 import { parseModelRef } from "./model-state.ts";
 import { setWorkspaceTitle, workspaceContainerName, workspacePreviewPortUrl } from "@atelier/workspace";
@@ -131,27 +131,33 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/abort$/)) && request.method === "POST") {
     const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
     await runtime.abort();
-    return turboStreamResponse("");
+    return requestAcceptsJson(request) ? Response.json({ agent: { label: params[1], state: "idle", aborted: true } }) : turboStreamResponse("");
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/model$/)) && request.method === "POST") {
-    const form = await request.formData();
-    const modelRef = parseModelRef(String(form.get("model") ?? ""));
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
-    if (modelRef) {
-      await runtime.setModel(modelRef.provider, modelRef.id);
+    const json = requestAcceptsJson(request);
+    const value = json ? (await readJsonObject(request)).model : (await request.formData()).get("model");
+    const model = parseModelRef(String(value ?? ""));
+    if (!model) {
+      if (json) throw new AtelierCoreError("invalid_arguments", "valid model is required");
+      return turboStreamResponse("");
     }
-    return turboStreamResponse("");
+    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
+    await runtime.setModel(model.provider, model.id);
+    return json ? Response.json({ agent: { label: params[1], model: `${model.provider}::${model.id}` } }) : turboStreamResponse("");
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/thinking$/)) && request.method === "POST") {
-    const form = await request.formData();
-    const level = String(form.get("level") ?? "");
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
-    if (level) {
-      await runtime.setThinkingLevel(level);
-      const model = runtime.currentModel();
-      if (model) await setModelThinkingLevel(model.provider, model.id, level);
+    const json = requestAcceptsJson(request);
+    const value = json ? (await readJsonObject(request)).level : (await request.formData()).get("level");
+    const level = String(value ?? "");
+    if (!level) {
+      if (json) throw new AtelierCoreError("invalid_arguments", "level is required");
+      return turboStreamResponse("");
     }
-    return turboStreamResponse("");
+    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
+    await runtime.setThinkingLevel(level);
+    const model = runtime.currentModel();
+    if (model) await setModelThinkingLevel(model.provider, model.id, level);
+    return json ? Response.json({ agent: { label: params[1], thinkingLevel: level } }) : turboStreamResponse("");
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/rewind$/)) && request.method === "POST") {
     const form = await request.formData();
@@ -188,13 +194,14 @@ async function expandPromptTemplateEndpoint(workspaceId: string, request: Reques
 async function agentMessagesEndpoint(workspaceId: string, label: string, request: Request, options: AgentRouteOptions): Promise<Response> {
   const agent = await requireAgent(workspaceId, label);
   const runtime = await getWorkspaceAgentRuntime(agent, options);
-  const form = await request.formData();
-  const text = String(form.get("text") ?? "");
-  const attachmentDraft = String(form.get("attachmentDraft") ?? "");
+  const json = requestAcceptsJson(request) ? await readJsonObject(request) : undefined;
+  const form = json ? undefined : await request.formData();
+  const text = String(json?.text ?? form?.get("text") ?? "");
+  const attachmentDraft = String(json?.attachmentDraft ?? form?.get("attachmentDraft") ?? "");
   if (text.trim() === "/new") {
     await runtime.newSession();
     if (validDraftId(attachmentDraft)) await removeAttachmentDraft(attachmentDraft);
-    return turboStreamResponse("");
+    return json ? Response.json({ agent: { label, state: "idle" } }) : turboStreamResponse("");
   }
   const nameCommand = parseWorkspaceNameCommand(text);
   if (nameCommand) {
@@ -205,11 +212,11 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
       renameWorkspaceFromAgentContext(workspaceId, runtime.userMessages(), { events: options.events, agentModel: runtime.currentModel() });
     }
     if (validDraftId(attachmentDraft)) await removeAttachmentDraft(attachmentDraft);
-    return turboStreamResponse("");
+    return json ? Response.json({ agent: { label, state: "idle" } }) : turboStreamResponse("");
   }
 
-  const mode: SubmitMode = form.get("mode") === "steer" ? "steer" : "send";
-  const attachmentIds = form.getAll("attachment").map(String);
+  const mode: SubmitMode = (json?.mode ?? form?.get("mode")) === "steer" ? "steer" : "send";
+  const attachmentIds = form?.getAll("attachment").map(String) ?? [];
   const { images, attachmentNotes } = attachmentIds.length > 0
     ? await deliverAttachmentDraft(workspaceId, attachmentDraft, attachmentIds)
     : { images: [], attachmentNotes: [] };
@@ -221,7 +228,7 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
     maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), trimmed], { events: options.events, agentModel: runtime.currentModel() });
   }
   await runtime.submit(expandedText, { mode, images, attachmentNotes });
-  return turboStreamResponse("");
+  return json ? Response.json({ agent: { label, state: "running" } }, { status: 202 }) : turboStreamResponse("");
 }
 
 async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorkspaceCreationContext, options: AgentRouteOptions): Promise<void> {

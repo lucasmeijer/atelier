@@ -257,37 +257,38 @@ describe("web app contracts", () => {
     expect(broadcasts.some((item) => item.includes('<turbo-stream action="remove" target="workspace_row_abc">'))).toBe(true);
   });
 
-  test("POST /api/workspaces creates an empty workspace asynchronously", async () => {
+  test("POST /workspaces negotiates asynchronous JSON creation and GET reports readiness", async () => {
     const provision = deferred();
     const seen: Array<{ id: string; options: unknown }> = [];
     const { app, registry } = createTestApp({ provision: (id, options) => { seen.push({ id, options }); return provision.promise; } });
     await registry.seed([]);
 
-    const response = await app.fetch(postJson("/api/workspaces", {}));
+    const response = await app.fetch(postJson("/workspaces", { title: "Evaluation" }));
     const body = await response.json() as { workspace: { id: string; url: string; phase: string } };
+    const status = await app.fetch(new Request(`http://test.local/workspaces/${body.workspace.id}`, { headers: { accept: "application/json" } }));
+    const statusBody = await status.json() as { workspace: { title: string; phase: string } };
 
     expect(response.status).toBe(202);
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(response.headers.get("location")).toBe(body.workspace.url);
     expect(body.workspace.phase).toBe("starting");
-    expect(registry.get(body.workspace.id)?.phase).toBe("starting");
+    expect(statusBody.workspace).toMatchObject({ title: "Evaluation", phase: "starting" });
     expect(registry.get(body.workspace.id)?.init).toBeUndefined();
     expect(seen[0]?.id).toBe(body.workspace.id);
 
     provision.resolve();
   });
 
-  test("POST /api/workspaces creates a project workspace with an initial prompt", async () => {
+  test("POST /workspaces JSON creates a project workspace with agent context", async () => {
     await withTempDataDir(async () => {
       const project = (await addProject("https://github.com/org/sample-project.git#main")).project;
       const seen: Array<{ id: string; options: ProvisionWorkspaceOptions }> = [];
       const { app, registry } = createTestApp({ provision: async (id, options) => { seen.push({ id, options }); } });
       await registry.seed([]);
 
-      const response = await app.fetch(postJson("/api/workspaces", {
+      const response = await app.fetch(postJson("/workspaces", {
         source: { type: "project", project: "sample-project" },
-        prompt: "Add tests",
-        agent: { model: "openai::gpt", thinkingLevel: "medium" },
+        agent: { initialPrompt: "Add tests", model: "openai::gpt", thinkingLevel: "medium" },
       }));
       const body = await response.json() as { workspace: { id: string } };
       const entry = registry.get(body.workspace.id)!;
@@ -300,6 +301,21 @@ describe("web app contracts", () => {
       expect(isGitProjectInit(entry.init) && entry.init.branch).toBe("main");
       expect(seen[0]?.options?.context).toEqual({ agent: { initialPrompt: "Add tests", model: "openai::gpt", thinkingLevel: "medium", attachmentDraft: "" } });
     });
+  });
+
+  test("the removed REST workspace endpoint is not found and OpenAPI advertises UI JSON operations", async () => {
+    const { app, registry } = createTestApp();
+    await registry.seed([]);
+
+    const removed = await app.fetch(postJson("/api/workspaces", {}));
+    const openapi = await app.fetch(new Request("http://test.local/openapi.json"));
+    const specification = await openapi.json() as { paths: Record<string, unknown> };
+
+    expect(removed.status).toBe(404);
+    expect(openapi.headers.get("content-type")).toContain("application/json");
+    expect(specification.paths["/workspaces"]).toBeDefined();
+    expect(specification.paths["/workspaces/{id}/commands/{commandId}"]).toBeDefined();
+    expect(specification.paths["/api/workspaces"]).toBeUndefined();
   });
 
   test("the project picker launches workspaces and links to project settings", async () => {

@@ -9,6 +9,8 @@ import {
 import {
   AtelierCoreError,
   invalidArguments,
+  readJsonObject,
+  requestAcceptsJson,
   type AtelierEventBus,
 } from "@atelier/core";
 import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
@@ -38,6 +40,7 @@ import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/prov
 import {
   atelierName,
   CableTopics,
+  emptyWorkspaceCommandInputSchema,
   domId,
   escapeHtml,
   providerBrandColor,
@@ -65,6 +68,8 @@ import { workspaceModules } from "./workspace-modules.ts";
 import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.ts";
 import { handleOnboardingRequest, renderOnboardingDialogIfNeeded } from "./onboarding/routes.ts";
 import { GitHubRepositorySearchRateLimitError, renderGitHubRepositorySearchMenu, renderGitHubRepositorySearchRateLimitMenu, searchGitHubRepositories, shouldSearchGitHubRepositories } from "./github-repo-search.ts";
+import { atelierOpenApi } from "./openapi.ts";
+import { Value } from "typebox/value";
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
@@ -119,11 +124,12 @@ function jsonResponse(body: unknown, init: HtmlResponseInit = {}): Response {
 
 function problemJsonResponse(error: unknown): Response {
   const status = error instanceof AtelierCoreError && error.code === "invalid_arguments" ? 400
-    : error instanceof AtelierCoreError && ["project_not_found", "workspace_not_found"].includes(error.code) ? 404
+    : error instanceof AtelierCoreError && ["project_not_found", "workspace_not_found", "command_not_found", "agent_not_found", "tab_not_found", "terminal_not_found"].includes(error.code) ? 404
       : 500;
   const message = error instanceof Error ? error.message : String(error);
   const code = error instanceof AtelierCoreError ? error.code : "internal_error";
-  return jsonResponse({ error: { code, message } }, { status });
+  const details = error instanceof AtelierCoreError ? error.details : undefined;
+  return jsonResponse({ error: { code, message, ...(details && typeof details === "object" ? details : details === undefined ? {} : { details }) } }, { status });
 }
 
 function turboReplaceStream(target: string, html: string): string {
@@ -829,7 +835,34 @@ ${moduleStylesHtml()}
     return entry;
   }
 
+  async function workspaceJson(id: string): Promise<Response> {
+    const entry = requireWorkspace(id);
+    const workspace: Record<string, unknown> = {
+      id: entry.id,
+      title: workspaceTitle(entry),
+      phase: entry.phase,
+      parked: entry.parked,
+      url: `/workspaces/${encodeURIComponent(entry.id)}`,
+      ...(entry.error ? { error: entry.error } : {}),
+    };
+    if (entry.phase === "ready" || entry.phase === "checking_delete") {
+      const { attachments, tabs } = await workspaceTabsAndAttachments(id);
+      const handlers = new Map(workspaceModuleCommands().map((handler) => [handler.id, handler]));
+      workspace.tabs = tabs.map((tab) => ({ key: tab.key, label: tabLabel(tab) }));
+      workspace.commands = attachments.flatMap((attachment) => attachment.commands ?? []).filter((command) => handlers.has(command.id)).map((command) => ({
+        id: command.id,
+        label: command.label,
+        description: command.description,
+        scope: command.scope,
+        inputSchema: handlers.get(command.id)?.inputSchema ?? command.inputSchema ?? emptyWorkspaceCommandInputSchema,
+      }));
+      workspace.layout = layouts.normalize(id, tabs.map((tab) => tab.key));
+    }
+    return jsonResponse({ workspace });
+  }
+
   async function workspacePage(id: string, request: Request): Promise<Response> {
+    if (requestAcceptsJson(request)) return await workspaceJson(id);
     const entry = requireWorkspace(id);
     const url = new URL(request.url);
     if (url.searchParams.get("resident") === "1") return response(await workspaceResidentFor(entry, { visible: true }));
@@ -900,12 +933,35 @@ ${moduleStylesHtml()}
     return { id };
   }
 
-  function createWorkspaceEndpoint(url: URL, request: Request): Response {
+  async function createWorkspaceEndpoint(url: URL, request: Request): Promise<Response> {
+    if (requestAcceptsJson(request)) {
+      const body = await readWorkspaceCreateJson(request);
+      const sourceType = stringField(body.source?.type, "source.type") ?? "empty";
+      if (sourceType !== "empty" && sourceType !== "project") throw invalidArguments("source.type must be empty or project");
+      const projectReference = stringField(body.source?.project, "source.project");
+      let source: WorkspaceCreateSource = { type: "empty" };
+      if (sourceType === "project") {
+        if (!projectReference) throw invalidArguments("source.project is required for project workspaces");
+        source = { type: "project", project: await projectByReference(projectReference) };
+      }
+      const agent = body.agent;
+      const { id } = createWorkspaceFromCommand({
+        source,
+        title: stringField(body.title, "title"),
+        agent: {
+          initialPrompt: stringField(agent?.initialPrompt, "agent.initialPrompt") ?? "",
+          model: stringField(agent?.model, "agent.model") ?? "",
+          thinkingLevel: stringField(agent?.thinkingLevel, "agent.thinkingLevel") ?? "",
+          attachmentDraft: stringField(agent?.attachmentDraft, "agent.attachmentDraft") ?? "",
+        },
+      });
+      const location = new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString();
+      return jsonResponse({ workspace: { id, phase: "starting", url: location } }, { status: 202, headers: { location } });
+    }
+
     const { id } = createWorkspaceFromCommand({ source: { type: "empty" } });
     const location = new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString();
-    if (wantsTurboStream(request)) {
-      return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()), { headers: { location } });
-    }
+    if (wantsTurboStream(request)) return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()), { headers: { location } });
     return Response.redirect(location, 303);
   }
 
@@ -931,24 +987,17 @@ ${moduleStylesHtml()}
     return await createAgentWorkspaceFromForm(request);
   }
 
-  type ApiCreateWorkspaceBody = {
+  type WorkspaceCreateJsonBody = {
     source?: { type?: unknown; project?: unknown };
-    prompt?: unknown;
-    agent?: { prompt?: unknown; initialPrompt?: unknown; model?: unknown; thinkingLevel?: unknown; attachmentDraft?: unknown };
+    title?: unknown;
+    agent?: { initialPrompt?: unknown; model?: unknown; thinkingLevel?: unknown; attachmentDraft?: unknown };
   };
 
-  async function readApiJson(request: Request): Promise<ApiCreateWorkspaceBody> {
-    try {
-      const body = await request.json();
-      if (!body || typeof body !== "object" || Array.isArray(body)) throw invalidArguments("JSON object body is required");
-      const record = body as Record<string, unknown>;
-      if (record.source !== undefined && (!record.source || typeof record.source !== "object" || Array.isArray(record.source))) throw invalidArguments("source must be an object");
-      if (record.agent !== undefined && (!record.agent || typeof record.agent !== "object" || Array.isArray(record.agent))) throw invalidArguments("agent must be an object");
-      return body as ApiCreateWorkspaceBody;
-    } catch (error) {
-      if (error instanceof AtelierCoreError) throw error;
-      throw invalidArguments("valid JSON object body is required");
-    }
+  async function readWorkspaceCreateJson(request: Request): Promise<WorkspaceCreateJsonBody> {
+    const record = await readJsonObject(request);
+    if (record.source !== undefined && (!record.source || typeof record.source !== "object" || Array.isArray(record.source))) throw invalidArguments("source must be an object");
+    if (record.agent !== undefined && (!record.agent || typeof record.agent !== "object" || Array.isArray(record.agent))) throw invalidArguments("agent must be an object");
+    return record as WorkspaceCreateJsonBody;
   }
 
   function stringField(value: unknown, name: string): string | undefined {
@@ -965,31 +1014,6 @@ ${moduleStylesHtml()}
     if (byName.length === 1) return byName[0]!;
     if (byName.length > 1) throw invalidArguments(`project name is ambiguous: ${reference}`);
     throw new AtelierCoreError("project_not_found", `project not found: ${reference}`);
-  }
-
-  async function createWorkspaceApiEndpoint(request: Request, url: URL): Promise<Response> {
-    try {
-      const body = await readApiJson(request);
-      const sourceType = stringField(body.source?.type, "source.type") ?? "empty";
-      if (sourceType !== "empty" && sourceType !== "project") throw invalidArguments("source.type must be empty or project");
-      const projectReference = stringField(body.source?.project, "source.project");
-      let source: WorkspaceCreateSource = { type: "empty" };
-      if (sourceType === "project") {
-        if (!projectReference) throw invalidArguments("source.project is required for project workspaces");
-        source = { type: "project", project: await projectByReference(projectReference) };
-      }
-
-      const prompt = stringField(body.agent?.initialPrompt ?? body.agent?.prompt ?? body.prompt, "prompt") ?? "";
-      const model = stringField(body.agent?.model, "agent.model") ?? "";
-      const thinkingLevel = stringField(body.agent?.thinkingLevel, "agent.thinkingLevel") ?? "";
-      const attachmentDraft = stringField(body.agent?.attachmentDraft, "agent.attachmentDraft") ?? "";
-      const { id } = createWorkspaceFromCommand({ source, agent: { initialPrompt: prompt, model, thinkingLevel, attachmentDraft } });
-
-      const workspaceUrl = new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString();
-      return jsonResponse({ workspace: { id, url: workspaceUrl, phase: "starting" } }, { status: 202, headers: { location: workspaceUrl } });
-    } catch (error) {
-      return problemJsonResponse(error);
-    }
   }
 
   async function createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult> {
@@ -1116,24 +1140,28 @@ ${moduleStylesHtml()}
     return inspectAndScheduleWorkspaceDeletion(id, force);
   }
 
-  async function deleteWorkspaceEndpoint(id: string, force: boolean): Promise<Response> {
+  async function deleteWorkspaceEndpoint(id: string, request: Request): Promise<Response> {
     const entry = requireWorkspace(id);
     if (!canDeleteWorkspace(entry)) {
-      // Already starting/deleting: nothing sensible to do.
+      if (requestAcceptsJson(request)) return jsonResponse({ error: { code: "workspace_not_ready", message: `workspace ${id} is not ready for deletion` } }, { status: 409 });
       return turboStreamResponse(turboRemoveStream("delete-workspace-modal"), { status: 409 });
     }
-
+    const force = requestAcceptsJson(request)
+      ? (await readJsonObject(request)).force === true
+      : new URL(request.url).searchParams.get("force") === "1";
     const result = await inspectAndScheduleWorkspaceDeletion(id, force);
-    if (result.blocked) {
-      return turboStreamResponse(`${turboRemoveStream("delete-workspace-modal")}${turboStream("append", "body", deleteBlockedModal(id, result.details!))}`);
-    }
+    if (requestAcceptsJson(request)) return jsonResponse(result);
+    if (result.blocked) return turboStreamResponse(`${turboRemoveStream("delete-workspace-modal")}${turboStream("append", "body", deleteBlockedModal(id, result.details!))}`);
     return turboStreamResponse(turboRemoveStream("delete-workspace-modal"));
   }
 
   function parkWorkspaceEndpoint(id: string, parked: boolean, request: Request): Response {
     const entry = requireWorkspace(id);
-    if (entry.phase !== "ready") return wantsTurboStream(request) ? turboStreamResponse("", { status: 409 }) : response("Workspace is not ready", { status: 409 });
+    if (entry.phase !== "ready") return requestAcceptsJson(request)
+      ? jsonResponse({ error: { code: "workspace_not_ready", message: `workspace ${id} is not ready` } }, { status: 409 })
+      : wantsTurboStream(request) ? turboStreamResponse("", { status: 409 }) : response("Workspace is not ready", { status: 409 });
     registry.setParked(id, parked);
+    if (requestAcceptsJson(request)) return jsonResponse({ workspace: { id, parked } });
     if (wantsTurboStream(request)) return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
     return Response.redirect(request.headers.get("referer") ?? "/", 303);
   }
@@ -1157,13 +1185,14 @@ ${moduleStylesHtml()}
     return response(workspaceSidebarTitleFrame(entry));
   }
 
-  async function updateWorkspaceSidebarTitleFromForm(id: string, request: Request): Promise<Response> {
+  async function updateWorkspaceSidebarTitle(id: string, request: Request): Promise<Response> {
     const entry = requireWorkspace(id);
-    const formData = await request.formData();
-    const title = String(formData.get("title") ?? "").trim();
+    const title = requestAcceptsJson(request)
+      ? stringField((await readJsonObject(request)).title, "title") ?? ""
+      : String((await request.formData()).get("title") ?? "").trim();
     await setWorkspaceTitle(id, title);
     registry.setTitle(id, title || null);
-    return response(workspaceSidebarTitleFrame(entry));
+    return requestAcceptsJson(request) ? await workspaceJson(id) : response(workspaceSidebarTitleFrame(entry));
   }
 
   // ---------------------------------------------------------------------------
@@ -1313,19 +1342,29 @@ ${moduleStylesHtml()}
     return (await workspaceTabsAndAttachments(workspaceId)).tabs.map((tab) => tab.key);
   }
 
-  async function splitWorkspaceGroupEndpoint(workspaceId: string, groupId: string): Promise<Response> {
-    layouts.splitGroup(workspaceId, await tabKeysFor(workspaceId), groupId);
-    return replaceWorkspaceGroupsStream(workspaceId);
+  async function layoutResponse(workspaceId: string, request: Request, tabKeys: string[], extra: Record<string, unknown> = {}): Promise<Response> {
+    if (requestAcceptsJson(request)) return jsonResponse({ ...extra, layout: layouts.normalize(workspaceId, tabKeys) });
+    return await replaceWorkspaceGroupsStream(workspaceId);
   }
 
-  async function removeWorkspaceGroupEndpoint(workspaceId: string, groupId: string): Promise<Response> {
-    layouts.removeEmptyGroup(workspaceId, await tabKeysFor(workspaceId), groupId);
-    return replaceWorkspaceGroupsStream(workspaceId);
+  async function splitWorkspaceGroupEndpoint(workspaceId: string, groupId: string, request: Request): Promise<Response> {
+    const tabKeys = await tabKeysFor(workspaceId);
+    const beforeGroupIds = new Set(layouts.normalize(workspaceId, tabKeys).groups.map((group) => group.id));
+    layouts.splitGroup(workspaceId, tabKeys, groupId);
+    const createdGroupId = layouts.normalize(workspaceId, tabKeys).groups.find((group) => !beforeGroupIds.has(group.id))?.id;
+    return layoutResponse(workspaceId, request, tabKeys, createdGroupId ? { createdGroupId } : {});
   }
 
-  async function closeWorkspaceGroupEndpoint(workspaceId: string, groupId: string): Promise<Response> {
-    layouts.closeGroup(workspaceId, await tabKeysFor(workspaceId), groupId);
-    return replaceWorkspaceGroupsStream(workspaceId);
+  async function removeWorkspaceGroupEndpoint(workspaceId: string, groupId: string, request: Request): Promise<Response> {
+    const tabKeys = await tabKeysFor(workspaceId);
+    layouts.removeEmptyGroup(workspaceId, tabKeys, groupId);
+    return layoutResponse(workspaceId, request, tabKeys);
+  }
+
+  async function closeWorkspaceGroupEndpoint(workspaceId: string, groupId: string, request: Request): Promise<Response> {
+    const tabKeys = await tabKeysFor(workspaceId);
+    layouts.closeGroup(workspaceId, tabKeys, groupId);
+    return layoutResponse(workspaceId, request, tabKeys);
   }
 
   function workspaceModuleCommands(): WorkspaceModuleCommandHandler[] {
@@ -1340,10 +1379,27 @@ ${moduleStylesHtml()}
     return workspaceModules.flatMap((module) => module.tabs ?? []);
   }
 
-  async function executeWorkspaceCommand(workspaceId: string, commandId: string, activeTabKey?: string): Promise<WorkspaceModuleCommandResult> {
-    const command = workspaceModuleCommands().find((candidate) => candidate.id === commandId);
-    if (!command) throw new AtelierCoreError("command_not_found", `workspace command not found: ${commandId}`);
-    return await command.execute({ workspaceId, events: deps.events, activeTabKey, tabKeys: () => tabKeysFor(workspaceId), layouts });
+  async function commandInput(request: Request, command: WorkspaceModuleCommandHandler): Promise<unknown> {
+    if (!requestAcceptsJson(request)) return {};
+    const text = await request.text();
+    let input: unknown = {};
+    if (text.trim()) {
+      try { input = JSON.parse(text); } catch { throw invalidArguments("valid JSON command input is required"); }
+    }
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw invalidArguments("JSON command input must be an object");
+    const schema = command.inputSchema ?? emptyWorkspaceCommandInputSchema;
+    if (!Value.Check(schema as never, input)) {
+      const issue = [...Value.Errors(schema as never, input)][0];
+      throw invalidArguments(`invalid ${command.id} input: ${issue?.message ?? "schema check failed"}`);
+    }
+    return input;
+  }
+
+  async function executeWorkspaceCommand(workspaceId: string, commandId: string, request: Request, activeTabKey?: string): Promise<WorkspaceModuleCommandResult> {
+    const commands = workspaceModuleCommands();
+    const command = commands.find((candidate) => candidate.id === commandId);
+    if (!command) throw new AtelierCoreError("command_not_found", `workspace command not found: ${commandId}`, { availableCommands: commands.map((candidate) => candidate.id) });
+    return await command.execute({ workspaceId, events: deps.events, activeTabKey, input: await commandInput(request, command), tabKeys: () => tabKeysFor(workspaceId), layouts });
   }
 
   function workspaceGroupsTurboStream(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {
@@ -1371,64 +1427,64 @@ ${moduleStylesHtml()}
     return turboStreamResponse(workspaceGroupsTurboStream(workspaceId, tabs, attachments));
   }
 
-  async function workspaceGroupCommandEndpoint(workspaceId: string, groupId: string, commandId: string): Promise<Response> {
-    const beforeTabKeys = await tabKeysFor(workspaceId);
-    const activeTabKey = layouts.normalize(workspaceId, beforeTabKeys).groups.find((group) => group.id === groupId)?.visibleTab;
-    const result = await executeWorkspaceCommand(workspaceId, commandId, activeTabKey);
-    const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
-    placeCommandTab(workspaceId, tabs.map((tab) => tab.key), result, groupId);
-    return turboStreamResponse(`${workspaceGroupsTurboStream(workspaceId, tabs, attachments)}${result.streamHtml ?? ""}`);
+  function commandJsonResponse(workspaceId: string, commandId: string, result: WorkspaceModuleCommandResult, tabKeys: string[]): Response {
+    return jsonResponse({
+      command: { id: commandId, ...(result.createdTabKey ? { createdTabKey: result.createdTabKey } : {}) },
+      layout: layouts.normalize(workspaceId, tabKeys),
+    });
   }
 
-  async function workspaceCommandEndpoint(workspaceId: string, commandId: string): Promise<Response> {
+  async function workspaceCommandEndpoint(workspaceId: string, commandId: string, request: Request, targetGroupId?: string): Promise<Response> {
     const beforeTabKeys = await tabKeysFor(workspaceId);
-    const activeTabKey = layouts.normalize(workspaceId, beforeTabKeys).groups.find((group) => group.visibleTab)?.visibleTab;
-    const result = await executeWorkspaceCommand(workspaceId, commandId, activeTabKey);
-    if (!result.createdTabKey) return turboStreamResponse(result.streamHtml ?? "");
+    const groups = layouts.normalize(workspaceId, beforeTabKeys).groups;
+    const activeGroup = targetGroupId ? groups.find((group) => group.id === targetGroupId) : groups.find((group) => group.visibleTab);
+    const result = await executeWorkspaceCommand(workspaceId, commandId, request, activeGroup?.visibleTab);
+    if (!targetGroupId && !result.createdTabKey && !requestAcceptsJson(request)) return turboStreamResponse(result.streamHtml ?? "");
 
     const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
     const tabKeys = tabs.map((tab) => tab.key);
-    const groupId = layouts.normalize(workspaceId, tabKeys).groups.find((group) => group.visibleTab)?.id;
-    placeCommandTab(workspaceId, tabKeys, result, groupId);
-    return turboStreamResponse(`${workspaceGroupsTurboStream(workspaceId, tabs, attachments)}${result.streamHtml ?? ""}`);
+    placeCommandTab(workspaceId, tabKeys, result, targetGroupId ?? activeGroup?.id);
+    return requestAcceptsJson(request)
+      ? commandJsonResponse(workspaceId, commandId, result, tabKeys)
+      : turboStreamResponse(`${workspaceGroupsTurboStream(workspaceId, tabs, attachments)}${result.streamHtml ?? ""}`);
   }
 
-  async function closeWorkspaceTabEndpoint(workspaceId: string, tab: string): Promise<Response> {
+  async function closeWorkspaceTabEndpoint(workspaceId: string, tab: string, request: Request): Promise<Response> {
     await Promise.all(workspaceModuleTabLifecycles()
       .filter((lifecycle) => lifecycle.owns(tab))
       .map((lifecycle) => lifecycle.close?.({ workspaceId, tabKey: tab })));
-    layouts.closeTab(workspaceId, await tabKeysFor(workspaceId), tab);
-    return replaceWorkspaceGroupsStream(workspaceId);
+    const tabKeys = await tabKeysFor(workspaceId);
+    layouts.closeTab(workspaceId, tabKeys, tab);
+    return layoutResponse(workspaceId, request, tabKeys, { closedTabKey: tab });
   }
 
   async function moveWorkspaceTabEndpoint(workspaceId: string, request: Request): Promise<Response> {
-    const body = await request.json().catch(() => undefined) as { tab?: unknown; toGroup?: unknown; toIndex?: unknown; newGroup?: unknown } | undefined;
-    const tab = typeof body?.tab === "string" ? body.tab : "";
-    if (tab) {
-      layouts.moveTab(workspaceId, await tabKeysFor(workspaceId), {
-        tab,
-        toGroup: typeof body?.toGroup === "string" ? body.toGroup : undefined,
-        toIndex: typeof body?.toIndex === "number" && Number.isFinite(body.toIndex) ? body.toIndex : undefined,
-        newGroup: body?.newGroup === true,
-      });
-    }
-    return replaceWorkspaceGroupsStream(workspaceId);
+    const body = await readJsonObject(request) as { tab?: unknown; toGroup?: unknown; toIndex?: unknown; newGroup?: unknown };
+    if (typeof body.tab !== "string" || !body.tab) throw invalidArguments("tab is required");
+    const tabKeys = await tabKeysFor(workspaceId);
+    layouts.moveTab(workspaceId, tabKeys, {
+      tab: body.tab,
+      toGroup: typeof body.toGroup === "string" ? body.toGroup : undefined,
+      toIndex: typeof body.toIndex === "number" && Number.isFinite(body.toIndex) ? body.toIndex : undefined,
+      newGroup: body.newGroup === true,
+    });
+    return layoutResponse(workspaceId, request, tabKeys);
   }
 
-
   async function resizeWorkspaceGroupsEndpoint(workspaceId: string, request: Request): Promise<Response> {
-    const body = await request.json().catch(() => undefined) as { sizes?: unknown } | undefined;
-    const sizes = Array.isArray(body?.sizes) ? body.sizes.map(Number).filter((size) => Number.isFinite(size) && size > 0) : [];
-    layouts.resize(workspaceId, await tabKeysFor(workspaceId), sizes);
-    return jsonResponse({ ok: true });
+    const body = await readJsonObject(request) as { sizes?: unknown };
+    const sizes = Array.isArray(body.sizes) ? body.sizes.map(Number).filter((size) => Number.isFinite(size) && size > 0) : [];
+    if (!sizes.length) throw invalidArguments("sizes must contain positive numbers");
+    const tabKeys = await tabKeysFor(workspaceId);
+    layouts.resize(workspaceId, tabKeys, sizes);
+    return jsonResponse({ layout: layouts.normalize(workspaceId, tabKeys) });
   }
 
   async function updateWorkspaceViewStateEndpoint(id: string, request: Request): Promise<Response> {
-    const body = await request.json().catch(() => undefined) as { visibleTab?: unknown; groupId?: unknown } | undefined;
-    const visibleTab = typeof body?.visibleTab === "string" ? body.visibleTab : undefined;
-    const groupId = typeof body?.groupId === "string" ? body.groupId : undefined;
-    if (visibleTab && groupId) layouts.setVisibleTab(id, groupId, visibleTab);
-    return jsonResponse({ ok: true });
+    const body = await readJsonObject(request) as { visibleTab?: unknown; groupId?: unknown };
+    if (typeof body.visibleTab !== "string" || typeof body.groupId !== "string") throw invalidArguments("groupId and visibleTab are required");
+    layouts.setVisibleTab(id, body.groupId, body.visibleTab);
+    return jsonResponse({ layout: layouts.normalize(id, await tabKeysFor(id)) });
   }
 
   function activeWorkspaceEndpoint(id: string): Response {
@@ -1475,11 +1531,11 @@ ${moduleStylesHtml()}
       const page = await homePage();
       return request.method === "HEAD" ? new Response(null, { status: page.status, statusText: page.statusText, headers: page.headers }) : page;
     }
-    if (url.pathname === "/api/workspaces" && request.method === "POST") return await createWorkspaceApiEndpoint(request, url);
+    if (url.pathname === "/openapi.json" && request.method === "GET") return jsonResponse(atelierOpenApi(workspaceModuleCommands()));
     if (url.pathname === "/agent-launch" && request.method === "GET") return response(await launchEmptyAgentFrame());
     if (url.pathname === "/agent-launch/settings" && request.method === "GET") return response(await agentLaunchSettingsFrame(url.searchParams.get("model") ?? undefined));
     if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
-    if (url.pathname === "/workspaces" && request.method === "POST") return createWorkspaceEndpoint(url, request);
+    if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestUnreadWorkspaceEndpoint();
     if (url.pathname === "/workspaces/active/clear" && request.method === "POST") return clearActiveWorkspaceEndpoint();
     if (url.pathname === "/projects" && request.method === "POST") return await createProjectFromForm(request, url);
@@ -1522,22 +1578,22 @@ ${moduleStylesHtml()}
     if ((params = match(/^\/workspaces\/([^/]+)\/sidebar-title\/edit$/)) && request.method === "GET") return workspaceSidebarTitleEditFrame(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/sidebar-title$/))) {
       if (request.method === "GET") return workspaceSidebarTitleShowFrame(params[0]);
-      if (request.method === "POST") return await updateWorkspaceSidebarTitleFromForm(params[0], request);
+      if (request.method === "POST") return await updateWorkspaceSidebarTitle(params[0], request);
     }
     if ((params = match(/^\/workspaces\/([^/]+)\/view-state$/)) && request.method === "POST") return await updateWorkspaceViewStateEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/active$/)) && request.method === "POST") return activeWorkspaceEndpoint(params[0]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[1]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceGroupCommandEndpoint(params[0], params[1], params[2]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/split$/)) && request.method === "POST") return await splitWorkspaceGroupEndpoint(params[0], params[1]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/remove$/)) && request.method === "POST") return await removeWorkspaceGroupEndpoint(params[0], params[1]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/close$/)) && request.method === "POST") return await closeWorkspaceGroupEndpoint(params[0], params[1]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/tabs\/([^/]+)\/close$/)) && request.method === "POST") return await closeWorkspaceTabEndpoint(params[0], params[1]);
+    if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[1], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[2], request, params[1]);
+    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/split$/)) && request.method === "POST") return await splitWorkspaceGroupEndpoint(params[0], params[1], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/remove$/)) && request.method === "POST") return await removeWorkspaceGroupEndpoint(params[0], params[1], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/close$/)) && request.method === "POST") return await closeWorkspaceGroupEndpoint(params[0], params[1], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/tabs\/([^/]+)\/close$/)) && request.method === "POST") return await closeWorkspaceTabEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/layout\/move-tab$/)) && request.method === "POST") return await moveWorkspaceTabEndpoint(params[0], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/tabs\/(.+)\/close$/)) && request.method === "POST") return await closeWorkspaceTabEndpoint(params[0], params[1]);
+    if ((params = match(/^\/workspaces\/([^/]+)\/tabs\/(.+)\/close$/)) && request.method === "POST") return await closeWorkspaceTabEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/layout\/resize$/)) && request.method === "POST") return await resizeWorkspaceGroupsEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/park$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], true, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/unpark$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], false, request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteWorkspaceEndpoint(params[0], url.searchParams.get("force") === "1");
+    if ((params = match(/^\/workspaces\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteWorkspaceEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)$/)) && request.method === "GET") return await workspacePage(params[0], request);
 
     return response("not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
@@ -1555,7 +1611,7 @@ ${moduleStylesHtml()}
       try {
         return await route(request);
       } catch (error) {
-        return errorPage(error);
+        return requestAcceptsJson(request) ? problemJsonResponse(error) : errorPage(error);
       }
     },
   };

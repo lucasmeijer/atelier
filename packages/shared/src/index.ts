@@ -140,12 +140,17 @@ export interface WorkspaceModuleCommandContext {
   workspaceId: string;
   events?: unknown;
   activeTabKey?: string;
+  input: unknown;
   tabKeys(): Promise<string[]>;
   layouts: WorkspaceLayoutPlacementController;
 }
 
+export const emptyWorkspaceCommandInputSchema = { type: "object", additionalProperties: false } as const;
+
 export interface WorkspaceModuleCommandHandler {
   id: string;
+  /** JSON Schema used to validate automation input and advertise the command in OpenAPI. */
+  inputSchema?: unknown;
   execute(context: WorkspaceModuleCommandContext): Promise<WorkspaceModuleCommandResult> | WorkspaceModuleCommandResult;
 }
 

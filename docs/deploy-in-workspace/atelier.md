@@ -19,7 +19,7 @@ On first use, Atelier guides you through setup:
 
 Open **Settings** from the sidebar to change these later.
 
-For programmatic workspace creation, see [REST API](./rest-api.md).
+When controlling or staging an Atelier instance programmatically, see [Automating Atelier](./automation.md). The exact machine-readable contract for a running instance is available from `/openapi.json`.
 
 ## 3. Workspaces
 

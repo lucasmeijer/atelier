@@ -3,8 +3,10 @@ import { renderBrowserFrame, renderBrowserTab } from "./render.ts";
 import { createWorkspaceBrowserTab, deleteWorkspaceBrowserState, deleteWorkspaceBrowserTab, listWorkspaceBrowserTabs, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
 import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppRequestHeaders, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "./proxy.ts";
+import { invalidArguments, readJsonObject, requestAcceptsJson } from "@atelier/core";
 import { createBrowserPresenter } from "./agent-tool.ts";
 import { registerWorkspacePresenter, type WorkspacePresenterDeps } from "@atelier/agent/server";
+import { Type } from "typebox";
 
 const browserCreateCommandId = "browser.create";
 
@@ -26,8 +28,12 @@ export const browserWorkspaceModule: WorkspaceModule = {
   staticFiles: browserStaticFiles,
   commands: [{
     id: browserCreateCommandId,
-    execute({ workspaceId }) {
-      return { createdTabKey: createWorkspaceBrowserTab(workspaceId).key, tabPlacement: "preview-group" };
+    inputSchema: Type.Object({ url: Type.Optional(Type.String()) }),
+    execute({ workspaceId, input }) {
+      const browser = createWorkspaceBrowserTab(workspaceId);
+      const url = (input as { url?: string }).url;
+      if (url) setWorkspaceBrowserTarget(workspaceId, browser.key, url);
+      return { createdTabKey: browser.key, tabPlacement: "preview-group" };
     },
   }],
   routes: [{
@@ -64,8 +70,16 @@ export const browserWorkspaceModule: WorkspaceModule = {
 };
 
 async function browserNavigateEndpoint(workspaceId: string, appKey: string, request: Request): Promise<Response> {
-  const formData = await request.formData();
-  const tab = setWorkspaceBrowserTarget(workspaceId, appKey, String(formData.get("url") ?? ""));
-  if (!tab) return new Response("browser tab not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
-  return new Response(renderBrowserFrame(workspaceId, tab), { headers: { "content-type": "text/html; charset=utf-8" } });
+  const wantsJson = requestAcceptsJson(request);
+  const value = wantsJson ? (await readJsonObject(request)).url : (await request.formData()).get("url");
+  if (wantsJson && typeof value !== "string") throw invalidArguments("url is required");
+  const url = String(value ?? "");
+
+  const tab = setWorkspaceBrowserTarget(workspaceId, appKey, url);
+  if (!tab) return wantsJson
+    ? Response.json({ error: { code: "tab_not_found", message: `browser tab not found: ${appKey}` } }, { status: 404 })
+    : new Response("browser tab not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
+  return wantsJson
+    ? Response.json({ tab: { key: tab.key, label: tab.label, url: tab.targetUrl } })
+    : new Response(renderBrowserFrame(workspaceId, tab), { headers: { "content-type": "text/html; charset=utf-8" } });
 }
