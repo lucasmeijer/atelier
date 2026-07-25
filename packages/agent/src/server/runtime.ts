@@ -462,7 +462,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   async detailHtml(key: string, count = 100): Promise<string> {
     if (key === "model-context") return renderModelContextDetailFrame(this.ctx, this.modelContext());
-    const item = (await this.canonicalItems()).find((candidate) => candidate.key === key);
+    const item = (await this.itemsForDisplay()).find((candidate) => candidate.key === key);
     return item ? renderTranscriptItemDetailFrame(this.ctx, item, { count }) : "";
   }
 
