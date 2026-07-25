@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, forwardAgentTerminalWheel, hasScrolledToMessage, insertPromptTemplate, scrollMessageToTop } from "../../src/client/agent-controllers.ts";
+import { agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, forwardAgentTerminalWheel, insertPromptTemplate, messageNavigationDirection, scrollMessageToTop } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): HTMLTextAreaElement {
   return {
@@ -28,6 +28,8 @@ describe("agent transcript navigation", () => {
     const scrollTo = mock(() => {});
     const transcript = {
       scrollTop: 80,
+      scrollHeight: 1_000,
+      clientHeight: 300,
       scrollTo,
       getBoundingClientRect: () => ({ top: 100 }),
     } as unknown as HTMLElement;
@@ -38,7 +40,7 @@ describe("agent transcript navigation", () => {
     expect(scrollTo).toHaveBeenCalledWith({ top: 220, behavior: "smooth" });
   });
 
-  test("detects whether the transcript has reached a message", () => {
+  test("only considers the message reached while its beginning is aligned", () => {
     const transcript = {
       scrollTop: 100,
       scrollHeight: 1_000,
@@ -47,9 +49,11 @@ describe("agent transcript navigation", () => {
     } as unknown as HTMLElement;
     const message = { getBoundingClientRect: () => ({ top: 340 - transcript.scrollTop }) } as unknown as HTMLElement;
 
-    expect(hasScrolledToMessage(transcript, message)).toBe(false);
+    expect(messageNavigationDirection(transcript, message)).toBe("down");
     transcript.scrollTop = 240;
-    expect(hasScrolledToMessage(transcript, message)).toBe(true);
+    expect(messageNavigationDirection(transcript, message)).toBeUndefined();
+    transcript.scrollTop = 400;
+    expect(messageNavigationDirection(transcript, message)).toBe("up");
   });
 
   test("forwards live terminal wheel input to the agent transcript", () => {

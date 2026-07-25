@@ -299,8 +299,8 @@ ${thinkingSelectHtml(options.formId, thinkingLevels, selectedThinkingLevel)}
 
 function renderTranscriptNavigation(): string {
   return `<div class="agent-transcript-navs">
-    <button class="agent-transcript-nav" type="button" data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToLatestMessage" title="Jump to latest message" aria-label="Jump to latest message" aria-hidden="true" disabled>
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v12m-5-5 5 5 5-5"/></svg>
+    <button class="agent-transcript-nav" type="button" data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToLatestMessage" title="Jump to beginning of latest message" aria-label="Jump to beginning of latest message" aria-hidden="true" disabled>
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 16h12M10 4v9m-4-4 4 4 4-4"/></svg>
     </button>
     <button class="agent-transcript-nav" type="button" data-action="agent-pane#openMessageDialog" title="Browse your messages" aria-label="Browse your messages">
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h12M4 8.5h8M4 12.5h10"/><path d="M5.5 15.5h8l2.5-2.5v-8.5H4v9.5a1.5 1.5 0 0 0 1.5 1.5Z"/></svg>

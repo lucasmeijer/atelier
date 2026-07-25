@@ -64,13 +64,17 @@ function messageScrollTop(transcript: HTMLElement, message: HTMLElement): number
   return transcript.scrollTop + message.getBoundingClientRect().top - transcript.getBoundingClientRect().top;
 }
 
-export function scrollMessageToTop(transcript: HTMLElement, message: HTMLElement): void {
-  transcript.scrollTo({ top: messageScrollTop(transcript, message), behavior: "smooth" });
+function messageScrollTarget(transcript: HTMLElement, message: HTMLElement): number {
+  return Math.min(messageScrollTop(transcript, message), transcript.scrollHeight - transcript.clientHeight);
 }
 
-export function hasScrolledToMessage(transcript: HTMLElement, message: HTMLElement): boolean {
-  const targetTop = Math.min(messageScrollTop(transcript, message), transcript.scrollHeight - transcript.clientHeight);
-  return transcript.scrollTop >= targetTop - 1;
+export function scrollMessageToTop(transcript: HTMLElement, message: HTMLElement): void {
+  transcript.scrollTo({ top: messageScrollTarget(transcript, message), behavior: "smooth" });
+}
+
+export function messageNavigationDirection(transcript: HTMLElement, message: HTMLElement): "up" | "down" | undefined {
+  const distance = transcript.scrollTop - messageScrollTarget(transcript, message);
+  return Math.abs(distance) < 1 ? undefined : distance > 0 ? "up" : "down";
 }
 
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
@@ -121,10 +125,11 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     }
     private updateTranscriptNavigation(): void {
       const latest = this.latestMessage();
-      const hideNavigation = !latest || hasScrolledToMessage(this.transcriptTarget, latest);
+      const direction = latest ? messageNavigationDirection(this.transcriptTarget, latest) : undefined;
       this.element.classList.toggle("agent-transcript-at-end", this.stuck);
-      this.transcriptNavTarget.disabled = hideNavigation;
-      this.transcriptNavTarget.setAttribute("aria-hidden", String(hideNavigation));
+      if (direction) this.transcriptNavTarget.dataset.direction = direction;
+      this.transcriptNavTarget.disabled = !direction;
+      this.transcriptNavTarget.setAttribute("aria-hidden", String(!direction));
     }
     private updateTranscriptPosition(): void {
       if (!isWorkspacePaneVisible(this.element)) return;
