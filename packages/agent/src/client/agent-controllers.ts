@@ -314,8 +314,8 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     inputKeydown(event: KeyboardEvent): void {
       const completionMenuOpen = Boolean(this.element.querySelector(".agent-completion-menu-host:not([hidden])"));
       const noModifiers = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
-      const onFirstLogicalLine = !this.inputTarget.value.slice(0, this.inputTarget.selectionStart).includes("\n");
-      if (event.key === "ArrowUp" && noModifiers && !completionMenuOpen && onFirstLogicalLine && this.userMessages().length > 0) {
+      const atPromptStart = this.inputTarget.selectionStart === 0 && this.inputTarget.selectionEnd === 0;
+      if (event.key === "ArrowUp" && noModifiers && !completionMenuOpen && atPromptStart && this.userMessages().length > 0) {
         event.preventDefault();
         event.stopImmediatePropagation();
         this.showMessageDialog(true);
