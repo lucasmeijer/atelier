@@ -92,10 +92,15 @@ function createFilesController(Controller: ControllerConstructor): unknown {
       (event.currentTarget as HTMLElement).querySelector<HTMLAnchorElement>(".files-row-name > a")!.click();
     }
 
+    preserveSelection(event: MouseEvent): void {
+      if (event.button === 0 && (event.target as Element).closest(".files-row-name > a")) event.preventDefault();
+    }
+
     selectOrOpen(event: MouseEvent): void {
       const row = event.currentTarget as HTMLElement;
       if ((event.target as Element).closest(".files-actions-toggle, .files-actions-menu")) return;
       const openLink = row.querySelector<HTMLAnchorElement>(".files-row-name > a");
+      if (event.detail === 0 && event.target === openLink) return;
       if (document.activeElement !== row) {
         event.preventDefault();
         row.focus();

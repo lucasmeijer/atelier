@@ -65,7 +65,7 @@ function renderEntryRow(workspaceId: string, entry: FileEntry, showConcealed: bo
   const drop = entry.kind === "directory" ? ` data-files-destination="${escapeHtml(entry.path)}"` : "";
   const actions = entry.kind === "directory"
     ? "click->files#openDirectory dragenter->files#folderDragEnter dragover->files#folderDragOver dragleave->files#folderDragLeave drop->files#folderDrop"
-    : "click->files#selectOrOpen";
+    : "mousedown->files#preserveSelection click->files#selectOrOpen";
   const contentUrl = entryContentUrl(workspaceId, entry);
   const menuId = domId("files_actions", filesDirectoryFrameId(workspaceId, entry.path));
   const downloadName = entry.kind === "directory" ? `${entry.name}.tar.gz` : entry.name;

@@ -29,6 +29,7 @@ describe("files rendering", () => {
     expect(html).toContain("files-row concealed");
     expect(html).toContain("data-files-destination");
     expect(html).toContain("click->files#openDirectory");
+    expect(html).toContain("mousedown->files#preserveSelection click->files#selectOrOpen");
     expect(html).toContain("status-spinner sm files-directory-spinner");
     expect(html).toContain("showHidden=1");
     expect(html.match(/class="files-actions-toggle"/g)).toHaveLength(2);
