@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createCableServer, type CableSocketData } from "../src/server/cable.ts";
+import { cableCursorIsNewer } from "../src/client/cable.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
 
 function fakeSocket(data: CableSocketData) {
@@ -10,6 +11,14 @@ function fakeSocket(data: CableSocketData) {
     send(value: string) { sent.push(JSON.parse(value)); return value.length; },
   } as unknown as { data: CableSocketData; sent: unknown[]; send(value: string): number };
 }
+
+test("cable cursors reject stale revisions from the same runtime", () => {
+  expect(cableCursorIsNewer(undefined, "runtime:1")).toBe(true);
+  expect(cableCursorIsNewer("runtime:4", "runtime:5")).toBe(true);
+  expect(cableCursorIsNewer("runtime:4", "runtime:4")).toBe(false);
+  expect(cableCursorIsNewer("runtime:4", "runtime:3")).toBe(false);
+  expect(cableCursorIsNewer("old-runtime:12", "new-runtime:1")).toBe(true);
+});
 
 describe("cable server", () => {
   test("validates /cable upgrades", () => {

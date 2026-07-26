@@ -9,6 +9,22 @@ declare global {
   }
 }
 
+function parseCursor(cursor: string): { generation: string; revision: number } | undefined {
+  const separator = cursor.lastIndexOf(":");
+  if (separator < 1) return undefined;
+  const revision = Number(cursor.slice(separator + 1));
+  if (!Number.isSafeInteger(revision) || revision < 0) return undefined;
+  return { generation: cursor.slice(0, separator), revision };
+}
+
+export function cableCursorIsNewer(current: string | undefined, incoming: string): boolean {
+  if (!current) return true;
+  const currentCursor = parseCursor(current);
+  const incomingCursor = parseCursor(incoming);
+  if (!currentCursor || !incomingCursor || currentCursor.generation !== incomingCursor.generation) return true;
+  return incomingCursor.revision > currentCursor.revision;
+}
+
 export function createAtelierCableClient(): AtelierCableClient {
   const desired = new Map<string, { identifier: CableIdentifier; upTo?: string }>();
   const knownCursors = new Map<string, string>();
@@ -31,9 +47,8 @@ export function createAtelierCableClient(): AtelierCableClient {
     for (const subscription of desired.values()) sendRaw({ command: "subscribe", identifier: subscription.identifier, upTo: subscription.upTo });
   }
 
-  function rememberCursor(identifier: CableIdentifier, cursor: string | undefined): void {
+  function rememberCursor(key: string, cursor: string | undefined): void {
     if (!cursor) return;
-    const key = serializeCableIdentifier(identifier);
     knownCursors.set(key, cursor);
     const subscription = desired.get(key);
     if (subscription) subscription.upTo = cursor;
@@ -60,10 +75,13 @@ export function createAtelierCableClient(): AtelierCableClient {
       case "reject_subscription":
         console.error("Cable subscription rejected", message);
         break;
-      case "turbo_stream":
+      case "turbo_stream": {
+        const key = serializeCableIdentifier(message.identifier);
+        if (message.cursor && !cableCursorIsNewer(knownCursors.get(key), message.cursor)) break;
+        rememberCursor(key, message.cursor);
         window.Turbo?.renderStreamMessage(message.html);
-        rememberCursor(message.identifier, message.cursor);
         break;
+      }
       case "ping":
         sendRaw({ command: "pong", time: message.time });
         break;
@@ -90,7 +108,8 @@ export function createAtelierCableClient(): AtelierCableClient {
     subscribe(identifier, options) {
       const parsed = parseCableIdentifier(identifier);
       const key = serializeCableIdentifier(parsed);
-      const upTo = options?.upTo ?? knownCursors.get(key);
+      const upTo = knownCursors.get(key) ?? options?.upTo;
+      rememberCursor(key, upTo);
       desired.set(key, { identifier: parsed, upTo });
       closingForPageHide = false;
       connect();
