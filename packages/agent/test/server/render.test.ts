@@ -87,6 +87,22 @@ describe("flat transcript rendering", () => {
     expect(html).toContain('<turbo-frame id="ag_ws_agent_detail_live-write"');
     expect(html).toContain('data-turbo-frame="ag_ws_agent_detail_live-write"');
     expect(html).toContain("?count=600");
+    expect(html).toContain("show 500 more lines");
+  });
+
+  test("pagination labels the number of lines that remain", () => {
+    const content = Array.from({ length: 220 }, (_, index) => `line ${index + 1}`).join("\n");
+    const item: TranscriptItem = { type: "tool", key: "short-write", tool: tool({ name: "write", args: { path: "a.ts", content } }) };
+    const html = renderTranscriptItemDetailFrame(ctx, item);
+    expect(html).toContain("?count=220");
+    expect(html).toContain("show 120 more lines");
+    expect(html).not.toContain("show 500 more lines");
+  });
+
+  test("pagination uses a singular line label", () => {
+    const content = Array.from({ length: 101 }, (_, index) => `line ${index + 1}`).join("\n");
+    const item: TranscriptItem = { type: "tool", key: "one-more-write", tool: tool({ name: "write", args: { path: "a.ts", content } }) };
+    expect(renderTranscriptItemDetailFrame(ctx, item)).toContain("show 1 more line</a>");
   });
 
   test("running edit has summary only", () => {

@@ -1228,21 +1228,45 @@ function createAgentThinkingController(Controller: StimulusControllerConstructor
 function createAgentTailFrameController(Controller: StimulusControllerConstructor) {
   return class AgentTailFrameController extends Controller {
     declare readonly element: HTMLElement;
-    private previous?: { height: number; top: number; direction: string };
+    private previous?: {
+      scrollerIndex: number;
+      height: number;
+      top: number;
+      tail: boolean;
+      transcript?: { element: HTMLElement; top: number };
+    };
+    private scrollers(): HTMLElement[] {
+      return [...this.element.querySelectorAll<HTMLElement>(".agent-tool-result, .agent-tool-code")];
+    }
     prepare(event: Event): void {
       const target = event.currentTarget as HTMLElement;
-      const scroller = this.element.querySelector<HTMLElement>(".agent-tool-result, .agent-tool-code");
-      if (scroller) this.previous = { height: scroller.scrollHeight, top: scroller.scrollTop, direction: target.dataset.direction ?? "first" };
+      const scrollers = this.scrollers();
+      const scroller = target.closest(".agent-detail-fullscreen")?.querySelector<HTMLElement>(".agent-tool-result, .agent-tool-code") ?? scrollers[0];
+      if (!scroller) return;
+      const transcript = this.element.closest<HTMLElement>(".agent-transcript");
+      this.previous = {
+        scrollerIndex: scrollers.indexOf(scroller),
+        height: scroller.scrollHeight,
+        top: scroller.scrollTop,
+        tail: target.dataset.direction === "last",
+        transcript: transcript ? { element: transcript, top: transcript.scrollTop } : undefined,
+      };
     }
     loaded(): void {
-      requestAnimationFrame(() => {
-        const scroller = this.element.querySelector<HTMLElement>(".agent-tool-result, .agent-tool-code");
-        if (!scroller) return;
-        if (this.previous) {
-          scroller.scrollTop = this.previous.direction === "last" ? this.previous.top + scroller.scrollHeight - this.previous.height : this.previous.top;
-          this.previous = undefined;
-        } else if (scroller.classList.contains("agent-tail-output")) scroller.scrollTop = scroller.scrollHeight;
-      });
+      const previous = this.previous;
+      this.previous = undefined;
+      if (!previous) {
+        for (const scroller of this.element.querySelectorAll<HTMLElement>(".agent-tail-output")) scroller.scrollTop = scroller.scrollHeight;
+        return;
+      }
+      const scroller = this.scrollers()[previous.scrollerIndex];
+      if (!scroller) return;
+      scroller.scrollTop = previous.tail ? previous.top + scroller.scrollHeight - previous.height : previous.top;
+      if (previous.transcript) {
+        // Keep pagination from activating native anchoring or stick-to-bottom.
+        previous.transcript.element.scrollTop = previous.transcript.top;
+        previous.transcript.element.dispatchEvent(new Event("scroll"));
+      }
     }
   };
 }

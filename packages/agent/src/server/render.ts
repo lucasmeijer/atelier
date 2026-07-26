@@ -509,8 +509,9 @@ function textWindow(text: string, mode: "first" | "last", count: number): { text
 
 function moreLink(ctx: AgentRenderContext, key: string, count: number, hidden: number, direction: "first" | "last"): string {
   if (!hidden) return "";
-  const next = Math.min(count + 500, count + hidden);
-  return `<div class="agent-more-lines"><a href="${escapeHtml(transcriptItemPath(ctx, key, `?count=${next}`))}" data-turbo-frame="${ids.detailFrame(ctx, key)}" data-action="click->agent-tail-frame#prepare" data-direction="${direction}">show 500 more lines</a></div>`;
+  const increment = Math.min(500, hidden);
+  const next = count + increment;
+  return `<div class="agent-more-lines"><a href="${escapeHtml(transcriptItemPath(ctx, key, `?count=${next}`))}" data-turbo-frame="${ids.detailFrame(ctx, key)}" data-action="click->agent-tail-frame#prepare" data-direction="${direction}">show ${increment} more ${increment === 1 ? "line" : "lines"}</a></div>`;
 }
 
 function bashViews(tool: ToolView, count: number): { display: string; model: string; same: boolean; resultWindow: { text: string; hidden: number }; modelWindow: { text: string; hidden: number } } {
