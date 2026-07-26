@@ -110,7 +110,10 @@ export function renderFilesFrame(workspaceId: string, path: string, entries: Fil
     <div class="files-browser" data-controller="files" data-files-workspace-id-value="${escapeHtml(workspaceId)}" data-files-path-value="${escapeHtml(path)}" data-files-upload-url-value="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/upload" data-action="dragenter->files#dragEnter dragover->files#dragOver dragleave->files#dragLeave drop->files#drop keydown->files#keydown">
       <header class="files-toolbar">
         <nav class="files-breadcrumbs" aria-label="Current folder">${breadcrumbs(workspaceId, path, showConcealed)}</nav>
-        <label class="files-hidden-toggle"><input type="checkbox"${showConcealed ? " checked" : ""} data-action="change->files#toggleHidden"> Show hidden &amp; ignored</label>
+        <div class="files-toolbar-actions">
+          <label class="files-hidden-toggle"><input type="checkbox"${showConcealed ? " checked" : ""} data-action="change->files#toggleHidden"> Show hidden &amp; ignored</label>
+          <button class="files-refresh" type="button" title="Refresh files" aria-label="Refresh files" data-action="files#refresh">↻</button>
+        </div>
       </header>
       <div class="files-columns" aria-hidden="true"><span>Name</span><span>Size</span><span></span></div>
       <div class="files-tree" role="tree" aria-label="Files in ${escapeHtml(path)}" tabindex="0">

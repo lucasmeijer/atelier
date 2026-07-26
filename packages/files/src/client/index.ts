@@ -86,6 +86,10 @@ function createFilesController(Controller: ControllerConstructor): unknown {
       this.navigateFrame(this.listingUrl((event.currentTarget as HTMLInputElement).checked));
     }
 
+    refresh(): void {
+      this.navigateFrame(this.listingUrl(this.element.querySelector<HTMLInputElement>(".files-hidden-toggle input")!.checked));
+    }
+
     openDirectory(event: MouseEvent): void {
       if ((event.target as Element).closest("a, .files-actions-toggle, .files-actions-menu")) return;
       event.preventDefault();
@@ -227,10 +231,6 @@ function createFilesController(Controller: ControllerConstructor): unknown {
     private showProgress(): void {
       this.element.querySelector<HTMLElement>(".files-upload-status")!.hidden = false;
       this.updateProgress();
-    }
-
-    private refresh(): void {
-      this.navigateFrame(this.listingUrl(this.element.querySelector<HTMLInputElement>(".files-hidden-toggle input")!.checked));
     }
 
     private listingUrl(showHidden: boolean): URL {
