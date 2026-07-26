@@ -483,20 +483,22 @@ describe("web app contracts", () => {
   });
 
   test("workspace creation keeps selected agent settings without an initial prompt", async () => {
-    let captured: ProvisionWorkspaceOptions | undefined;
-    const { app, registry } = createTestApp({ provision: async (_id, options) => { captured = options; } });
-    await registry.seed([]);
+    await withTempDataDir(async () => {
+      let captured: ProvisionWorkspaceOptions | undefined;
+      const { app, registry } = createTestApp({ provision: async (_id, options) => { captured = options; } });
+      await registry.seed([]);
 
-    const response = await app.fetch(postForm("/agent-workspaces", new URLSearchParams({
-      text: "",
-      model: "openai::gpt-test",
-      level: "medium",
-      attachmentDraft: "",
-    })));
+      const response = await app.fetch(postForm("/agent-workspaces", new URLSearchParams({
+        text: "",
+        model: "openai-codex::gpt-5.6-sol",
+        level: "medium",
+        attachmentDraft: "",
+      })));
 
-    expect(response.status).toBe(200);
-    expect(captured?.context).toEqual({ agent: { initialPrompt: "", model: "openai::gpt-test", thinkingLevel: "medium", attachmentDraft: "" } });
-    expect(await response.text()).toContain('action="update" target="agent_launch_modal"');
+      expect(response.status).toBe(200);
+      expect(captured?.context).toEqual({ agent: { initialPrompt: "", model: "openai-codex::gpt-5.6-sol", thinkingLevel: "medium", attachmentDraft: "" } });
+      expect(await response.text()).toContain('action="update" target="agent_launch_modal"');
+    });
   });
 
   test("blocked delete returns the confirmation modal to the requester and restores the row", async () => {
