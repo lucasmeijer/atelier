@@ -1,245 +1,61 @@
+import MarkdownIt from "markdown-it";
+import { atelierFileEditorHref, renderAtelierEmbed } from "./atelier-markdown.ts";
 import { escapeHtml } from "./html.ts";
 import { highlightCodeHtml } from "./highlight.ts";
 
-/**
- * Minimal server-side markdown renderer for assistant messages.
- * Supports: headings, fenced code blocks, inline code, bold, italics, links,
- * unordered/ordered lists, blockquotes, tables, paragraphs.
- *
- * An optional `rewriteSegment` hook lets callers turn explicit embed directives
- * into HTML; it receives raw (unescaped) text segments outside of code
- * spans/blocks and returns HTML.
- */
-interface MarkdownOptions {
-  rewriteSegment?: (rawText: string) => string | undefined;
-  rewriteLink?: (label: string, href: string) => string | undefined;
-  highlightCode?: boolean;
+interface MarkdownEnvironment {
+  workspaceId: string;
 }
 
-function splitTableRow(line: string): string[] {
-  let value = line.trim();
-  if (value.startsWith("|")) value = value.slice(1);
-  if (value.endsWith("|") && !value.endsWith("\\|")) value = value.slice(0, -1);
+const markdown = new MarkdownIt({
+  html: false,
+  linkify: false,
+  typographer: false,
+});
 
-  const cells: string[] = [];
-  let cell = "";
-  let escaped = false;
-  let inCode = false;
-  for (const character of value) {
-    if (escaped) {
-      cell += character === "|" ? "|" : `\\${character}`;
-      escaped = false;
-    } else if (character === "\\") {
-      escaped = true;
-    } else if (character === "`") {
-      inCode = !inCode;
-      cell += character;
-    } else if (character === "|" && !inCode) {
-      cells.push(cell.trim());
-      cell = "";
-    } else {
-      cell += character;
-    }
-  }
-  if (escaped) cell += "\\";
-  cells.push(cell.trim());
-  return cells;
-}
+markdown.renderer.rules.table_open = () => '<div class="agent-table-scroll"><table>';
+markdown.renderer.rules.table_close = () => "</table></div>";
 
-function parseTableHeader(header: string, delimiter: string): string[] | undefined {
-  if (!header.includes("|")) return undefined;
-  const cells = splitTableRow(header);
-  const delimiters = splitTableRow(delimiter);
-  if (cells.length !== delimiters.length || !delimiters.every((cell) => /^:?-{3,}:?$/.test(cell))) return undefined;
-  return cells;
-}
+markdown.renderer.rules.fence = (tokens, index) => {
+  const token = tokens[index]!;
+  const rawLang = token.info.trim().split(/\s+/)[0] || undefined;
+  const codeText = token.content.replace(/\n$/, "");
+  const highlighted = highlightCodeHtml(codeText, rawLang);
+  const attrs = [
+    rawLang ? `data-lang="${escapeHtml(rawLang)}"` : "",
+    highlighted.language ? `class="language-${escapeHtml(highlighted.language)}"` : "",
+  ].filter(Boolean).join(" ");
+  const label = rawLang ? `Copy ${escapeHtml(rawLang)} code to clipboard` : "Copy code to clipboard";
+  return `<div class="agent-code-block" data-controller="agent-code-copy"><button type="button" class="agent-code-copy" data-action="agent-code-copy#copy" aria-label="${label}" title="Copy code"><span class="agent-code-copy-icon" aria-hidden="true">⧉</span></button><pre${attrs ? ` ${attrs}` : ""}><code data-agent-code-copy-target="code">${highlighted.html}</code></pre></div>`;
+};
 
-function inlineText(raw: string): string {
-  let html = escapeHtml(raw);
-  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, `<a href="$2" target="_blank" rel="noopener">$1</a>`);
-  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  return html.replace(/(^|\W)\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
-}
-
-function inline(raw: string, options: MarkdownOptions): string {
-  let html = "";
-  let cursor = 0;
-  const tokens = /`([^`]*)`|\[([^\]]+)\]\((atelier:\/\/[^\s)]+)\)/g;
-  const renderText = (text: string) => text ? options.rewriteSegment?.(text) ?? inlineText(text) : "";
-
-  for (const match of raw.matchAll(tokens)) {
-    html += renderText(raw.slice(cursor, match.index));
-    html += match[1] !== undefined
-      ? `<code>${escapeHtml(match[1])}</code>`
-      : options.rewriteLink?.(match[2]!, match[3]!) ?? inlineText(match[0]);
-    cursor = match.index + match[0].length;
+const defaultLinkOpen = markdown.renderer.rules.link_open ?? ((tokens, index, options, _environment, renderer) => renderer.renderToken(tokens, index, options));
+markdown.renderer.rules.link_open = (tokens, index, options, environment: MarkdownEnvironment, renderer) => {
+  const token = tokens[index]!;
+  const href = token.attrGet("href") ?? "";
+  const editorHref = atelierFileEditorHref(environment.workspaceId, href);
+  if (editorHref) {
+    token.attrSet("href", editorHref);
+    token.attrSet("data-turbo-stream", "true");
+    return defaultLinkOpen(tokens, index, options, environment, renderer);
   }
 
-  return html + renderText(raw.slice(cursor));
-}
-
-function tableRow(cells: string[], tag: "th" | "td", options: MarkdownOptions): string {
-  return `<tr>${cells.map((cell) => `<${tag}>${inline(cell, options)}</${tag}>`).join("")}</tr>`;
-}
-
-export function renderMarkdown(text: string, options: MarkdownOptions = {}): string {
-  const lines = text.replaceAll("\r\n", "\n").split("\n");
-  const out: string[] = [];
-  let index = 0;
-  interface ListBlock {
-    ordered: boolean;
-    items: ListItem[];
+  if (href.startsWith("http://") || href.startsWith("https://")) {
+    token.attrSet("target", "_blank");
+    token.attrSet("rel", "noopener noreferrer");
   }
-  interface ListItem {
-    text: string;
-    children: ListBlock[];
+  return defaultLinkOpen(tokens, index, options, environment, renderer);
+};
+
+const defaultImage = markdown.renderer.rules.image!;
+markdown.renderer.rules.image = (tokens, index, options, environment: MarkdownEnvironment, renderer) => {
+  const source = tokens[index]!.attrGet("src") ?? "";
+  if (source.startsWith("atelier-embed:")) {
+    return renderAtelierEmbed(environment.workspaceId, source.slice("atelier-embed:".length));
   }
+  return defaultImage(tokens, index, options, environment, renderer);
+};
 
-  let paragraph: string[] = [];
-  let list: ListBlock | undefined;
-  let nestedItem: ListItem | undefined;
-
-  const renderList = (block: ListBlock): string => {
-    const tag = block.ordered ? "ol" : "ul";
-    return `<${tag}>${block.items.map((item) => `<li>${inline(item.text, options)}${item.children.map(renderList).join("")}</li>`).join("")}</${tag}>`;
-  };
-  const flushParagraph = () => {
-    if (paragraph.length === 0) return;
-    out.push(`<p>${inline(paragraph.join("\n"), options)}</p>`);
-    paragraph = [];
-  };
-  const flushList = () => {
-    if (!list) return;
-    out.push(renderList(list));
-    list = undefined;
-    nestedItem = undefined;
-  };
-
-  while (index < lines.length) {
-    const line = lines[index];
-
-    const fence = line.match(/^```(\w*)\s*$/);
-    if (fence) {
-      flushParagraph();
-      flushList();
-      const code: string[] = [];
-      index += 1;
-      while (index < lines.length && !/^```\s*$/.test(lines[index])) {
-        code.push(lines[index]);
-        index += 1;
-      }
-      index += 1; // closing fence
-      const rawLang = fence[1] || undefined;
-      const codeText = code.join("\n");
-      const highlighted = options.highlightCode === false ? { html: escapeHtml(codeText), language: undefined } : highlightCodeHtml(codeText, rawLang);
-      const attrs = [
-        rawLang ? `data-lang="${escapeHtml(rawLang)}"` : "",
-        highlighted.language ? `class="language-${escapeHtml(highlighted.language)}"` : "",
-      ].filter(Boolean).join(" ");
-      const label = rawLang ? `Copy ${escapeHtml(rawLang)} code to clipboard` : "Copy code to clipboard";
-      out.push(`<div class="agent-code-block" data-controller="agent-code-copy"><button type="button" class="agent-code-copy" data-action="agent-code-copy#copy" aria-label="${label}" title="Copy code"><span class="agent-code-copy-icon" aria-hidden="true">⧉</span></button><pre${attrs ? ` ${attrs}` : ""}><code data-agent-code-copy-target="code">${highlighted.html}</code></pre></div>`);
-      continue;
-    }
-
-    const header = index + 1 < lines.length ? parseTableHeader(line, lines[index + 1]) : undefined;
-    if (header) {
-      flushParagraph();
-      flushList();
-      const rows: string[][] = [];
-      index += 2;
-      while (index < lines.length && lines[index].includes("|")) {
-        const cells = splitTableRow(lines[index]);
-        if (cells.length !== header.length) break;
-        rows.push(cells);
-        index += 1;
-      }
-      out.push(`<div class="agent-table-scroll"><table><thead>${tableRow(header, "th", options)}</thead><tbody>${rows.map((row) => tableRow(row, "td", options)).join("")}</tbody></table></div>`);
-      continue;
-    }
-
-    const heading = line.match(/^(#{1,4})\s+(.*)$/);
-    if (heading) {
-      flushParagraph();
-      flushList();
-      const level = Math.min(heading[1].length + 2, 6); // h3..h6: keep transcript headings small
-      out.push(`<h${level}>${inline(heading[2], options)}</h${level}>`);
-      index += 1;
-      continue;
-    }
-
-    const marker = line.match(/^(\s*)([-*]|\d+[.)])\s+(.*)$/);
-    if (marker) {
-      flushParagraph();
-      const isOrdered = /^\d/.test(marker[2]);
-      if (marker[1].length > 0 && list && list.items.length > 0) {
-        const parent = list.items[list.items.length - 1];
-        let child = parent.children[parent.children.length - 1];
-        if (!child || child.ordered !== isOrdered) {
-          child = { ordered: isOrdered, items: [] };
-          parent.children.push(child);
-        }
-        nestedItem = { text: marker[3], children: [] };
-        child.items.push(nestedItem);
-      } else {
-        if (!list || list.ordered !== isOrdered) {
-          flushList();
-          list = { ordered: isOrdered, items: [] };
-        }
-        list.items.push({ text: marker[3], children: [] });
-        nestedItem = undefined;
-      }
-      index += 1;
-      continue;
-    }
-
-    const quote = line.match(/^>\s?(.*)$/);
-    if (quote) {
-      flushParagraph();
-      flushList();
-      const quoted: string[] = [quote[1]];
-      index += 1;
-      while (index < lines.length) {
-        const next = lines[index].match(/^>\s?(.*)$/);
-        if (!next) break;
-        quoted.push(next[1]);
-        index += 1;
-      }
-      out.push(`<blockquote>${inline(quoted.join("\n"), options)}</blockquote>`);
-      continue;
-    }
-
-    if (line.trim() === "") {
-      flushParagraph();
-      if (list) {
-        let nextIndex = index + 1;
-        while (nextIndex < lines.length && lines[nextIndex].trim() === "") nextIndex += 1;
-        const nextLine = lines[nextIndex] ?? "";
-        const nextMarker = nextLine.match(/^(\s*)([-*]|\d+[.)])\s+/);
-        const nextIsNested = Boolean(nextMarker?.[1]);
-        const nextIsOrdered = /^\d/.test(nextMarker?.[2] ?? "");
-        if (nextMarker && (nextIsNested || list.ordered === nextIsOrdered)) {
-          index += 1;
-          continue;
-        }
-      }
-      flushList();
-      index += 1;
-      continue;
-    }
-
-    if (list) {
-      // Continuation line of the previous list item.
-      const item = /^\s/.test(line) && nestedItem ? nestedItem : list.items[list.items.length - 1];
-      item.text += `\n${line.trim()}`;
-      index += 1;
-      continue;
-    }
-
-    paragraph.push(line);
-    index += 1;
-  }
-
-  flushParagraph();
-  flushList();
-  return out.join("");
+export function renderMarkdown(workspaceId: string, text: string): string {
+  return markdown.render(text, { workspaceId } satisfies MarkdownEnvironment).trim();
 }

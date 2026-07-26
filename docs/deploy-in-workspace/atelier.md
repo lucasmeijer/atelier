@@ -102,8 +102,8 @@ Atelier exposes workspace web servers on ports `3000` through `3010`. Start dev 
 
 Agents can show generated files inline using:
 
-```text
-{{atelier:embed /work/path/to/file}}
+```markdown
+![](atelier-embed:/work/path/to/file)
 ```
 
 This is useful for screenshots, images, videos, HTML pages, and other outputs.

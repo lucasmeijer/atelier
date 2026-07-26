@@ -5,7 +5,6 @@ import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded
 import { highlightCodeHtmlForPath } from "./highlight.ts";
 import { domId, escapeHtml } from "./html.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { renderAtelierEmbed, renderAtelierFileLink, rewriteSegment, splitAtelierEmbeds } from "./rewrite.ts";
 import type { WorkspaceAgentInfo } from "./session-store.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
 import {
@@ -61,26 +60,16 @@ function agentPath(ctx: AgentRenderContext, suffix: string): string {
 }
 
 function markdown(ctx: AgentRenderContext, text: string): string {
-  return renderMarkdown(text, {
-    rewriteSegment: (segment) => rewriteSegment(ctx.workspaceId, segment),
-    rewriteLink: (label, href) => renderAtelierFileLink(ctx.workspaceId, label, href),
-  });
+  return renderMarkdown(ctx.workspaceId, text);
 }
 
 function transcriptRow(html: string): string {
   return `<div class="agent-row">${html}</div>`;
 }
 
-function renderMarkdownRows(ctx: AgentRenderContext, text: string, options: { highlightCode?: boolean; className?: string } = {}): string {
-  const className = options.className ?? "agent-md";
-  return splitAtelierEmbeds(text).map((segment) => {
-    if (segment.type === "embed") return transcriptRow(renderAtelierEmbed(ctx.workspaceId, segment.target));
-    const body = renderMarkdown(segment.text, {
-      highlightCode: options.highlightCode,
-      rewriteLink: (label, href) => renderAtelierFileLink(ctx.workspaceId, label, href),
-    }).trim();
-    return body ? transcriptRow(`<div class="${className}">${body}</div>`) : "";
-  }).join("");
+function renderMarkdownRow(ctx: AgentRenderContext, text: string, className = "agent-md"): string {
+  const body = markdown(ctx, text);
+  return body ? transcriptRow(`<div class="${className}">${body}</div>`) : "";
 }
 
 // ---------------------------------------------------------------------------
@@ -391,9 +380,9 @@ export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptIt
   else if (item.type === "thinking") body = renderThinkingItem(ctx, item);
   else if (item.type === "text") body = item.live
     ? transcriptRow(`<div class="agent-stream-text" id="${ids.itemText(ctx, item.key)}">${escapeHtml(item.text)}</div>`)
-    : renderMarkdownRows(ctx, item.text, { className: item.final ? "agent-md agent-final" : "agent-md agent-itext-md" });
+    : renderMarkdownRow(ctx, item.text, item.final ? "agent-md agent-final" : "agent-md agent-itext-md");
   else if (item.type === "tool") body = transcriptRow(renderToolCard(ctx, item.key, item.tool, options));
-  else if (item.type === "note") body = renderMarkdownRows(ctx, item.text, { className: `agent-note ${escapeHtml(item.tone)}` });
+  else if (item.type === "note") body = renderMarkdownRow(ctx, item.text, `agent-note ${escapeHtml(item.tone)}`);
   else body = transcriptRow(`<div class="agent-error">${escapeHtml(item.text)}</div>`);
   return `<div class="agent-item" id="${id}">${rewindHtml(ctx, item)}${body}</div>`;
 }

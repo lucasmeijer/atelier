@@ -1,23 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { renderMarkdown } from "../../src/server/markdown.ts";
-import { renderAtelierFileLink, splitAtelierEmbeds, rewriteSegment } from "../../src/server/rewrite.ts";
-
-const atelierLinks = {
-  rewriteLink: (label: string, href: string) => renderAtelierFileLink("work 1", label, href),
-};
 
 describe("renderMarkdown", () => {
-  test("paragraphs, bold, inline code", () => {
-    const html = renderMarkdown("Hello **world**, see `code`.");
-    expect(html).toBe("<p>Hello <strong>world</strong>, see <code>code</code>.</p>");
+  test("paragraphs, emphasis, and inline code", () => {
+    expect(renderMarkdown("work 1", "Hello **world**, see `code` and *emphasis*.")).toBe(
+      "<p>Hello <strong>world</strong>, see <code>code</code> and <em>emphasis</em>.</p>",
+    );
   });
 
-  test("escapes html", () => {
-    expect(renderMarkdown("<script>alert(1)</script>")).toContain("&lt;script&gt;");
+  test("escapes raw HTML", () => {
+    const html = renderMarkdown("work 1", '<script>alert(1)</script><div onclick="bad()">x</div>');
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).toContain("&lt;div onclick=&quot;bad()&quot;&gt;");
+    expect(html).not.toContain("<script>");
   });
 
-  test("fenced code blocks are highlighted and copyable but markdown is not formatted", () => {
-    const html = renderMarkdown("```bash\nls **/work**\n```");
+  test("fenced code blocks are highlighted and copyable but Markdown is not formatted", () => {
+    const html = renderMarkdown("work 1", "```bash\nls **/work**\n```");
     expect(html.startsWith(`<div class="agent-code-block" data-controller="agent-code-copy">`)).toBe(true);
     expect(html).toContain(`data-action="agent-code-copy#copy"`);
     expect(html).toContain(`<pre data-lang="bash" class="language-bash"><code data-agent-code-copy-target="code">`);
@@ -26,162 +25,94 @@ describe("renderMarkdown", () => {
   });
 
   test("fenced code highlighting supports C# aliases", () => {
-    const html = renderMarkdown("```cs\npublic class Demo {}\n```");
+    const html = renderMarkdown("work 1", "```cs\npublic class Demo {}\n```");
     expect(html).toContain(`data-lang="cs" class="language-csharp"`);
     expect(html).toContain("hljs-keyword");
   });
 
-  test("lists", () => {
-    expect(renderMarkdown("- one\n- two")).toBe("<ul><li>one</li><li>two</li></ul>");
-    expect(renderMarkdown("1. one\n2. two")).toBe("<ol><li>one</li><li>two</li></ol>");
-  });
-
-  test("an ordered list can use 1 for every adjacent Markdown marker", () => {
-    expect(renderMarkdown("1. one\n1. two\n1. three\n1. four")).toBe(
-      "<ol><li>one</li><li>two</li><li>three</li><li>four</li></ol>",
-    );
-  });
-
-  test("an ordered list can use 1 for every Markdown marker with blank lines between items", () => {
-    expect(renderMarkdown("1. one\n\n1. two\n\n1. three\n\n1. four")).toBe(
-      "<ol><li>one</li><li>two</li><li>three</li><li>four</li></ol>",
-    );
-  });
-
-  test("repeated parenthesized markers form one ordered list", () => {
-    expect(renderMarkdown("1) one\n1) two\n1) three")).toBe(
-      "<ol><li>one</li><li>two</li><li>three</li></ol>",
-    );
-  });
-
-  test("nested bullets do not split an outer repeated-marker ordered list", () => {
-    const markdown = [
-      "1. **Wait for workspace readiness**",
-      "   - Provisioning continues asynchronously.",
-      "   - There is no readiness API.",
-      "",
-      "1. **Create an artificial agent conversation**",
-      "   - No API exists for this.",
-      "   - Write valid JSONL directly.",
-      "",
-      "1. **Populate a terminal**",
-      "   - The UI creates an empty terminal.",
-    ].join("\n");
-
-    expect(renderMarkdown(markdown)).toBe(
-      "<ol><li><strong>Wait for workspace readiness</strong><ul><li>Provisioning continues asynchronously.</li><li>There is no readiness API.</li></ul></li><li><strong>Create an artificial agent conversation</strong><ul><li>No API exists for this.</li><li>Write valid JSONL directly.</li></ul></li><li><strong>Populate a terminal</strong><ul><li>The UI creates an empty terminal.</li></ul></li></ol>",
-    );
-  });
-
-  test("GitHub-style tables", () => {
-    const html = renderMarkdown([
+  test("GitHub-style tables receive a horizontal scroll container", () => {
+    const html = renderMarkdown("work 1", [
       "| Provider | Model ID |",
       "|---|---|",
       "| Kimi For Coding | `k3` |",
       "| OpenRouter | `moonshotai/kimi-k3` |",
     ].join("\n"));
-    expect(html).toBe('<div class="agent-table-scroll"><table><thead><tr><th>Provider</th><th>Model ID</th></tr></thead><tbody><tr><td>Kimi For Coding</td><td><code>k3</code></td></tr><tr><td>OpenRouter</td><td><code>moonshotai/kimi-k3</code></td></tr></tbody></table></div>');
+    expect(html).toContain('<div class="agent-table-scroll"><table>');
+    expect(html).toContain("<thead>");
+    expect(html).toContain("<td><code>k3</code></td>");
+    expect(html.endsWith("</table></div>")).toBe(true);
   });
 
-  test("table cells support pipes in inline code and escaped pipes", () => {
-    const html = renderMarkdown("Name | Value\n--- | ---\nCode | `a|b`\nText | a\\|b");
-    expect(html).toContain("<td><code>a|b</code></td>");
-    expect(html).toContain("<td>a|b</td>");
+  test("preserves semantic heading levels", () => {
+    const html = renderMarkdown("work 1", "# Title\n\n#### Detail");
+    expect(html).toContain("<h1>Title</h1>");
+    expect(html).toContain("<h4>Detail</h4>");
   });
 
-  test("does not mistake ordinary pipe-delimited text for a table", () => {
-    expect(renderMarkdown("one | two\nthree | four")).toBe("<p>one | two\nthree | four</p>");
-  });
-
-  test("headings are kept small", () => {
-    expect(renderMarkdown("# Title")).toBe("<h3>Title</h3>");
-  });
-
-  test("renders a plain Atelier file-link label", () => {
-    const html = renderMarkdown("[example.ts:42](atelier://file/work/src/example.ts?line=42&column=3)", atelierLinks);
-    expect(html).toContain(`>example.ts:42</a>`);
-    expect(html).toContain(`/workspaces/work%201/file-editor/open?path=%2Fwork%2Fsrc%2Fexample.ts&amp;line=42&amp;column=3`);
+  test("renders Atelier file links through the editor", () => {
+    const html = renderMarkdown("work 1", "[example.ts:42](atelier://file/work/src/example.ts?line=42&column=3)");
+    expect(html).toContain(">example.ts:42</a>");
+    expect(html).toContain("/workspaces/work%201/file-editor/open?path=%2Fwork%2Fsrc%2Fexample.ts&amp;line=42&amp;column=3");
     expect(html).toContain(`data-turbo-stream="true"`);
   });
 
-  test("renders Atelier links to files outside /work", () => {
-    const html = renderMarkdown("[Open `/tmp/plan.md`](atelier://file/tmp/plan.md)", atelierLinks);
+  test("renders files outside /work and normal inline Markdown in labels", () => {
+    const html = renderMarkdown("work 1", "[Open `/tmp/plan.md`](atelier://file/tmp/plan.md)");
     expect(html).toContain(">Open <code>/tmp/plan.md</code></a>");
     expect(html).toContain("file-editor/open?path=%2Ftmp%2Fplan.md");
-    expect(html).toContain(`data-turbo-stream="true"`);
-  });
-
-  test("renders inline code in an Atelier file-link label", () => {
-    const html = renderMarkdown("[`render.ts:55`](atelier://file/work/packages/files/src/server/render.ts?line=55&column=1)", atelierLinks);
-    expect(html).toContain("><code>render.ts:55</code></a>");
-    expect(html).toContain("line=55&amp;column=1");
   });
 
   test("does not rewrite Atelier links inside inline code", () => {
-    const html = renderMarkdown("`[render.ts:55](atelier://file/work/render.ts?line=55&column=1)`", atelierLinks);
-    expect(html).toBe("<p><code>[render.ts:55](atelier://file/work/render.ts?line=55&amp;column=1)</code></p>");
+    const html = renderMarkdown("work 1", "`[render.ts:55](atelier://file/work/render.ts?line=55&column=1)`");
+    expect(html).toContain("<code>[render.ts:55](atelier://file/work/render.ts?line=55&amp;column=1)</code>");
     expect(html).not.toContain("data-turbo-stream");
   });
 
-  test("escapes special characters in code-formatted Atelier link labels", () => {
-    const html = renderMarkdown("[`<tag>&\"`](atelier://file/work/render.ts)", atelierLinks);
+  test("escapes special characters in code-formatted link labels", () => {
+    const html = renderMarkdown("work 1", "[`<tag>&\"`](atelier://file/work/render.ts)");
     expect(html).toContain("<code>&lt;tag&gt;&amp;&quot;</code>");
   });
 
-  test("keeps HTTP-link behavior unchanged", () => {
-    expect(renderMarkdown("[x](https://example.com)")).toBe(
-      '<p><a href="https://example.com" target="_blank" rel="noopener">x</a></p>',
-    );
-    expect(renderMarkdown("[x](javascript:alert(1))")).not.toContain("href");
-  });
-});
-
-describe("splitAtelierEmbeds", () => {
-  test("splits embed directives outside code", () => {
-    expect(splitAtelierEmbeds("before {{atelier:embed /tmp/a.html}} after")).toEqual([
-      { type: "text", text: "before " },
-      { type: "embed", target: "/tmp/a.html" },
-      { type: "text", text: " after" },
-    ]);
-    expect(splitAtelierEmbeds("`{{atelier:embed /tmp/a.html}}`\n```\n{{atelier:embed /tmp/b.html}}\n```"))
-      .toEqual([{ type: "text", text: "`{{atelier:embed /tmp/a.html}}`\n```\n{{atelier:embed /tmp/b.html}}\n```" }]);
-  });
-});
-
-describe("rewriteSegment", () => {
-  test("returns undefined without tokens", () => {
-    expect(rewriteSegment("ws", "plain text")).toBeUndefined();
+  test("opens HTTP links in a new tab and rejects unsafe links", () => {
+    const html = renderMarkdown("work 1", "[x](https://example.com)");
+    expect(html).toContain('href="https://example.com"');
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
+    expect(renderMarkdown("work 1", "[x](javascript:alert(1))")).not.toContain("href");
   });
 
-  test("rewrites image file embeds to <img>", () => {
-    const html = rewriteSegment("ws", "look: {{atelier:embed /tmp/shot.png}} done")!;
+  test("renders Atelier embeds from the custom image URL anywhere in text", () => {
+    const html = renderMarkdown("work 1", "before ![](atelier-embed:/tmp/shot.png) after");
     expect(html).toContain(`data-agent-proxy-app-key-value="file"`);
     expect(html).toContain(`data-agent-proxy-path-value="/tmp/shot.png"`);
     expect(html).toContain(`<img class="agent-media-img"`);
+    expect(html).toContain("before ");
+    expect(html).toContain(" after");
   });
 
-  test("rewrites video file embeds to <video>", () => {
-    const html = rewriteSegment("ws", "{{atelier:embed /work/demo.mp4}}")!;
-    expect(html).toContain("<video");
-    expect(html).toContain("controls");
+  test("renders video, local application, and remote URL embeds", () => {
+    const video = renderMarkdown("work 1", "![](atelier-embed:/work/demo.mp4)");
+    expect(video).toContain("<video");
+    expect(video).toContain("controls");
+
+    const local = renderMarkdown("work 1", "![](atelier-embed:http://localhost:3000/app?x=1&y=2)");
+    expect(local).toContain(`data-agent-proxy-app-key-value="port-3000"`);
+    expect(local).toContain(`data-agent-proxy-path-value="/app?x=1&amp;y=2"`);
+    expect(local).toContain(`<iframe data-controller="agent-proxy agent-html-preview"`);
+
+    const remote = renderMarkdown("work 1", "![](atelier-embed:https://example.com/app)");
+    expect(remote).toContain(`<iframe src="https://example.com/app"`);
   });
 
-  test("rewrites localhost url embeds to iframes through the workspace app proxy", () => {
-    const html = rewriteSegment("ws", "try {{atelier:embed http://localhost:3000/app?x=1&y=2}}")!;
-    expect(html).toContain(`data-agent-proxy-app-key-value="port-3000"`);
-    expect(html).toContain(`data-agent-proxy-path-value="/app?x=1&amp;y=2"`);
-    expect(html).toContain(`<iframe data-controller="agent-proxy agent-html-preview"`);
+  test("does not render embed syntax inside code", () => {
+    const inline = renderMarkdown("work 1", "`![](atelier-embed:/tmp/a.png)`");
+    const fenced = renderMarkdown("work 1", "```markdown\n![](atelier-embed:/tmp/a.png)\n```");
+    expect(inline).not.toContain("agent-media-img");
+    expect(fenced).not.toContain("agent-media-img");
   });
 
-  test("rewrites remote url embeds to direct iframes", () => {
-    const html = rewriteSegment("ws", "try {{atelier:embed https://example.com/app}}")!;
-    expect(html).toContain(`<iframe src="https://example.com/app"`);
-  });
 
-  test("escapes other content", () => {
-    const html = rewriteSegment("ws", "<b> {{atelier:embed /x.bin}}")!;
-    expect(html).toContain("&lt;b&gt;");
-    expect(html).toContain(`<a class="agent-media-link"`);
-    expect(html).toContain(`data-agent-proxy-app-key-value="file"`);
+  test("ordinary Markdown images retain their normal behavior", () => {
+    expect(renderMarkdown("work 1", "![alt](https://example.com/a.png)")).toContain('<img src="https://example.com/a.png" alt="alt">');
   });
 });

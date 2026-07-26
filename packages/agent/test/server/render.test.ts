@@ -27,11 +27,12 @@ describe("flat transcript rendering", () => {
   test("all transcript content uses the same full-width row", () => {
     const items: TranscriptItem[] = [
       { type: "user", key: "user", text: "question", images: [] },
-      { type: "text", key: "answer", text: "answer\n\n{{atelier:embed /work/preview.html}}", final: true },
+      { type: "text", key: "answer", text: "answer\n\n![](atelier-embed:/work/preview.html)", final: true },
       { type: "tool", key: "read", tool: tool({ name: "read", args: { path: "a.ts" } }) },
     ];
     const html = renderTranscript(ctx, items, { systemPrompt: "system", tools: [] });
-    expect(html.match(/class="agent-row"/g)).toHaveLength(5);
+    expect(html.match(/class="agent-row"/g)).toHaveLength(4);
+    expect(html).toContain('data-agent-proxy-path-value="/work/preview.html"');
   });
 
   test("read summaries include ranges", () => {
