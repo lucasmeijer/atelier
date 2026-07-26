@@ -21,15 +21,18 @@ import {
   deleteProject,
   deleteProjectEnvironmentVariable,
   deleteProjectSecret,
+  deleteProjectSshKey,
   formatProjectSpec,
   isGitProjectInit,
   listProjectEnvironmentVariables,
   listProjectSecrets,
+  hasProjectSshKey,
   listProjects,
   projectWorkspaceInit,
   updateProject,
   updateProjectEnvironmentVariable,
   updateProjectSecret,
+  setProjectSshKey,
   type ProjectEnvironmentVariable,
   type ProjectSecretSummary,
   type ProjectSummary,
@@ -563,6 +566,18 @@ ${moduleStylesHtml()}
     </section>`;
   }
 
+  function projectSshKeyEditor(project: ProjectSummary, configured: boolean): string {
+    const action = `/projects/${encodeURIComponent(project.id)}/ssh-key`;
+    return `<section class="project-configuration-list project-ssh-key" id="${domId("project_ssh_key", project.id)}">
+      <div class="project-configuration-head"><h3>SSH key</h3><p>The private key stays on the Atelier host. Workspaces receive only an SSH agent socket, so <code>ssh</code> can authenticate to servers that list the public key in <code>authorized_keys</code> without exposing the private key.</p></div>
+      <form class="project-ssh-key-form" method="post" action="${action}" data-turbo="true">
+        <label><span>${configured ? "Replace private key" : "Private key"}</span><textarea name="privateKey" placeholder="${configured ? "Leave blank to keep the current key" : "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA…\n-----END OPENSSH PRIVATE KEY-----"}" autocomplete="off"${configured ? "" : " required"}></textarea></label>
+        <div class="project-ssh-key-command"><span>Create an unencrypted Ed25519 key:</span><code>ssh-keygen -t ed25519 -f ~/.ssh/atelier_deploy -N '' -C atelier-deploy</code><span>Paste <code>~/.ssh/atelier_deploy</code> here and add <code>~/.ssh/atelier_deploy.pub</code> to the server’s <code>authorized_keys</code>.</span></div>
+        <div class="project-ssh-key-actions"><small>The private key is encrypted at rest.</small><button class="btn primary" type="submit">${configured ? "Save" : "Add SSH key"}</button>${configured ? `<button class="btn danger" type="submit" formaction="${action}/delete">Remove</button>` : ""}</div>
+      </form>
+    </section>`;
+  }
+
   async function projectPickerListFrame(): Promise<string> {
     const { projects } = await listProjects();
     const rows = projects.map((project) => `<div class="project-picker-option" style="${repoColorStyle(project.id)}">
@@ -584,13 +599,13 @@ ${moduleStylesHtml()}
   }
 
   async function projectPickerEditFrame(project: ProjectSummary): Promise<string> {
-    const [environment, secrets] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id)]);
+    const [environment, secrets, hasSshKey] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id), hasProjectSshKey(project.id)]);
     return `<turbo-frame id="project_picker_frame" class="project-picker-frame">
       <div class="project-picker-page project-picker-detail-page">
         <header class="project-picker-detail-head"><a href="/projects/picker" data-turbo-frame="project_picker_frame" aria-label="Back">‹</a><div><small>Project settings</small><h2>${escapeHtml(project.name)}</h2></div><button type="button" aria-label="Close" data-action="modal#close">×</button></header>
         <div class="project-picker-detail-body">
           <section class="project-edit-section"><div class="project-edit-section-copy"><h3>Repository</h3><p>How this project appears and where new workspaces are cloned from.</p></div><form class="project-edit-form" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="modal-input" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository source</span><input class="modal-input" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
-          <div class="project-edit-config"><div class="project-edit-section-copy"><h3>Workspace configuration</h3><p>Applied whenever a workspace is created from this project.</p></div>${projectEnvironmentEditor(project, environment)}${projectSecretEditor(project, secrets)}</div>
+          <div class="project-edit-config"><div class="project-edit-section-copy"><h3>Workspace configuration</h3><p>Applied whenever a workspace is created from this project.</p></div>${projectEnvironmentEditor(project, environment)}${projectSecretEditor(project, secrets)}${projectSshKeyEditor(project, hasSshKey)}</div>
           <section class="project-edit-danger"><div><h3>Delete project</h3><p>Existing workspaces must be deleted first.</p></div><button class="btn danger" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="${domId("delete_project_modal", project.id)}">Delete project</button></section>
         </div>
       </div>
@@ -1281,6 +1296,25 @@ ${moduleStylesHtml()}
     return turboStreamResponse(await renderProjectSecretStreams(projectId));
   }
 
+  async function renderProjectSshKeyStreams(projectId: string): Promise<string> {
+    const project = await projectById(projectId);
+    return turboReplaceStream(domId("project_ssh_key", projectId), projectSshKeyEditor(project, await hasProjectSshKey(projectId)));
+  }
+
+  async function saveProjectSshKeyFromForm(projectId: string, request: Request): Promise<Response> {
+    await projectById(projectId);
+    const formData = await request.formData();
+    const privateKey = String(formData.get("privateKey") ?? "");
+    if (privateKey) await setProjectSshKey(projectId, privateKey);
+    return turboStreamResponse(await renderProjectSshKeyStreams(projectId));
+  }
+
+  async function deleteProjectSshKeyFromForm(projectId: string): Promise<Response> {
+    await projectById(projectId);
+    await deleteProjectSshKey(projectId);
+    return turboStreamResponse(await renderProjectSshKeyStreams(projectId));
+  }
+
   function projectReferencingWorkspaces(projectId: string): WorkspaceEntry[] {
     return registry.list().filter((entry) => isGitProjectInit(entry.init) && entry.init.projectId === projectId);
   }
@@ -1570,6 +1604,8 @@ ${moduleStylesHtml()}
     if ((params = match(/^\/projects\/([^/]+)\/secrets$/)) && request.method === "POST") return await createProjectSecretFromForm(params[0], request);
     if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)$/)) && request.method === "POST") return await updateProjectSecretFromForm(params[0], params[1], request);
     if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectSecretFromForm(params[0], params[1]);
+    if ((params = match(/^\/projects\/([^/]+)\/ssh-key$/)) && request.method === "POST") return await saveProjectSshKeyFromForm(params[0], request);
+    if ((params = match(/^\/projects\/([^/]+)\/ssh-key\/delete$/)) && request.method === "POST") return await deleteProjectSshKeyFromForm(params[0]);
     if ((params = match(/^\/projects\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectEndpoint(params[0]);
 
     if (url.pathname === "/agent-workspaces" && request.method === "POST") return await createEmptyAgentWorkspaceEndpoint(request);

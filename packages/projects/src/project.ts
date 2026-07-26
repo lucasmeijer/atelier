@@ -41,6 +41,10 @@ export interface StoredProjectSecret extends ProjectSecretSummary {
   encryptedSecret: string;
 }
 
+export interface StoredProjectSshKey {
+  encryptedPrivateKey: string;
+}
+
 export interface ProjectEnvironmentVariable {
   id: string;
   projectId: string;
@@ -52,6 +56,7 @@ export interface ProjectEnvironmentVariable {
 
 export interface ProjectRecord extends ProjectSummary {
   secrets?: StoredProjectSecret[];
+  sshKey?: StoredProjectSshKey;
   environment?: ProjectEnvironmentVariable[];
 }
 
@@ -130,7 +135,7 @@ export function findProjectRecord(store: ProjectStore, projectId: string): Proje
 }
 
 function projectSummary(project: ProjectRecord): ProjectSummary {
-  const { secrets: _secrets, environment: _environment, ...summary } = project;
+  const { secrets: _secrets, sshKey: _sshKey, environment: _environment, ...summary } = project;
   return summary;
 }
 

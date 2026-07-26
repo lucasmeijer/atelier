@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { addProject, createProjectEnvironmentVariable, createProjectSecret, deleteProject, deleteProjectEnvironmentVariable, getGitIdentity, getStoredGitIdentity, gitIdentitySettingsFile, hasGitIdentity, listProjectEnvironmentVariables, listProjects, parseProjectSpec, revealProjectSecrets, setGitIdentity, updateProject, updateProjectEnvironmentVariable, updateProjectSecret } from "@atelier/projects";
+import { addProject, createProjectEnvironmentVariable, createProjectSecret, deleteProject, deleteProjectEnvironmentVariable, getGitIdentity, getStoredGitIdentity, gitIdentitySettingsFile, hasGitIdentity, hasProjectSshKey, listProjectEnvironmentVariables, listProjects, parseProjectSpec, revealProjectSecrets, revealProjectSshKey, setGitIdentity, setProjectSshKey, updateProject, updateProjectEnvironmentVariable, updateProjectSecret } from "@atelier/projects";
 
 describe("projects", () => {
   test("parseProjectSpec supports an optional #branch suffix", () => {
@@ -47,6 +47,21 @@ describe("projects", () => {
 
     await updateProjectSecret(project.id, created.id, { envName: "API_TOKEN", hostPattern: "*.example.com", placeholder: "" }, file, keyFile);
     expect((await revealProjectSecrets(project.id, file, keyFile))[0]).not.toHaveProperty("placeholder");
+  });
+
+  test("project SSH private keys are encrypted at rest", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "atelier-project-ssh-key-"));
+    const file = join(dir, "projects.json");
+    const keyFile = join(dir, "project-secrets.key");
+    const project = (await addProject("git@example.com:org/repo.git", file)).project;
+    const privateKey = "-----BEGIN OPENSSH PRIVATE KEY-----\ntest-private-material\n-----END OPENSSH PRIVATE KEY-----";
+
+    await setProjectSshKey(project.id, privateKey, file, keyFile);
+
+    expect(await hasProjectSshKey(project.id, file)).toBe(true);
+    expect(await readFile(file, "utf8")).not.toContain("test-private-material");
+    expect(await revealProjectSshKey(project.id, file, keyFile)).toBe(privateKey);
+    expect((await listProjects(file)).projects[0]).toEqual(project);
   });
 
   test("project environment variables support empty values", async () => {

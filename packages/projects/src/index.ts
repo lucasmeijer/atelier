@@ -25,6 +25,13 @@ export {
 } from "./project.ts";
 
 export {
+  deleteProjectSshKey,
+  hasProjectSshKey,
+  revealProjectSshKey,
+  setProjectSshKey,
+} from "./ssh-keys.ts";
+
+export {
   createProjectEnvironmentVariable,
   deleteProjectEnvironmentVariable,
   listProjectEnvironmentVariables,

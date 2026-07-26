@@ -343,6 +343,12 @@ describe("web app contracts", () => {
       expect(editor).toContain('name="placeholder"');
       expect(editor).toContain('name="secretValue"');
       expect(editor).toContain(`action="/projects/${project.id}/secrets"`);
+      expect(editor).toContain("The private key stays on the Atelier host");
+      expect(editor).toContain(`action="/projects/${project.id}/ssh-key"`);
+      expect(editor).toContain('name="privateKey"');
+      expect(editor).toContain("BEGIN OPENSSH PRIVATE KEY");
+      expect(editor).toContain("ssh-keygen -t ed25519");
+      expect(editor).toContain("authorized_keys");
       expect(home).toContain(`id="delete_project_modal_${project.id}"`);
       expect(home).toContain(`action="/projects/${project.id}/delete"`);
     });
