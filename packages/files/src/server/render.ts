@@ -1,7 +1,6 @@
 import { posix } from "node:path";
-import { domId, escapeHtml, workspaceProxyUrl, type WorkspaceTabContribution } from "@atelier/shared";
+import { domId, escapeHtml, workspaceFileEditorOpenUrl, workspaceProxyUrl, type WorkspaceTabContribution } from "@atelier/shared";
 import { workspaceRoot } from "@atelier/workspace";
-import { workspaceFileEditorOpenUrl } from "@atelier/editor/server";
 import type { FileEntry } from "./files.ts";
 
 export function filesFrameId(workspaceId: string): string {

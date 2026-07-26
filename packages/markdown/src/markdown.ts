@@ -1,6 +1,6 @@
 import MarkdownIt from "markdown-it";
 import { atelierFileEditorHref, renderAtelierEmbed } from "./atelier-markdown.ts";
-import { escapeHtml } from "./html.ts";
+import { escapeHtml } from "@atelier/shared";
 import { highlightCodeHtml } from "./highlight.ts";
 
 interface MarkdownEnvironment {

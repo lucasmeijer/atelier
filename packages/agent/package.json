@@ -13,18 +13,13 @@
     "@wasm-fmt/ruff_fmt": "0.15.20",
     "@wasm-fmt/shfmt": "0.2.7",
     "@atelier/core": "workspace:*",
-    "@atelier/editor": "workspace:*",
+    "@atelier/markdown": "workspace:*",
     "@atelier/observable-terminal": "workspace:*",
     "@atelier/projects": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@earendil-works/pi-ai": "catalog:",
     "@earendil-works/pi-coding-agent": "catalog:",
-    "highlight.js": "^11.11.1",
-    "markdown-it": "14.3.0",
     "typebox": "^1.0.57",
     "@atelier/workspace": "workspace:*"
-  },
-  "devDependencies": {
-    "@types/markdown-it": "14.1.2"
   }
 }

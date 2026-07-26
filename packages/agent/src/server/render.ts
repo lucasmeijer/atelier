@@ -2,9 +2,8 @@ import { randomUUID } from "node:crypto";
 import { composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel, type ModelRef } from "./model-state.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
 import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded-code.ts";
-import { highlightCodeHtmlForPath } from "./highlight.ts";
+import { highlightCodeHtmlForPath, renderMarkdown } from "@atelier/markdown";
 import { domId, escapeHtml } from "./html.ts";
-import { renderMarkdown } from "./markdown.ts";
 import type { WorkspaceAgentInfo } from "./session-store.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
 import {

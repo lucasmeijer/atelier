@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@atelier/core": "workspace:*",
+    "@atelier/markdown": "workspace:*",
     "@atelier/shared": "workspace:*",
     "@atelier/workspace": "workspace:*",
     "@codemirror/autocomplete": "6.20.3",

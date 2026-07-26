@@ -61,7 +61,7 @@ type EditorRefreshDetail = { workspaceId: string; tabKey?: string; line?: number
 function createFileEditorController(Controller: ControllerConstructor): unknown {
   return class FileEditorController extends Controller {
     static values = { workspaceId: String, path: String, contentUrl: String, line: Number, column: Number };
-    static targets = ["host", "status", "conflict"];
+    static targets = ["host", "status", "conflict", "preview", "previewToggle"];
 
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
@@ -72,8 +72,12 @@ function createFileEditorController(Controller: ControllerConstructor): unknown 
     declare readonly hostTarget: HTMLElement;
     declare readonly statusTarget: HTMLElement;
     declare readonly conflictTarget: HTMLDialogElement;
+    declare readonly previewTarget: HTMLElement;
+    declare readonly previewToggleTarget: HTMLButtonElement;
+    declare readonly hasPreviewTarget: boolean;
 
     private view?: EditorView;
+    private previewSequence = 0;
     private revision = "";
     private savedContent = "";
     private latestDisk?: EditorFileResponse;
@@ -97,11 +101,17 @@ function createFileEditorController(Controller: ControllerConstructor): unknown 
       await this.save(true);
     }
 
+    async togglePreview(): Promise<void> {
+      if (this.previewTarget.hidden) await this.showPreview();
+      else this.showRaw();
+    }
+
     useTheirs(): void {
       const latest = this.latestDisk!;
       this.conflictTarget.close();
       this.applyDisk(latest);
-      this.setStatus("Saved", "saved");
+      this.setStatus("Updated", "");
+      this.refreshVisiblePreview();
     }
 
     private async load(): Promise<void> {
@@ -134,8 +144,9 @@ function createFileEditorController(Controller: ControllerConstructor): unknown 
           ],
         }),
       });
-      this.setStatus(file.writable ? "Saved" : "Read only", file.writable ? "saved" : "");
+      this.setStatus(file.writable ? "" : "Read only", "");
       this.jumpTo(this.lineValue, this.columnValue);
+      if (this.hasPreviewTarget && this.lineValue < 1) await this.showPreview();
     }
 
     private readonly refreshRequested = (event: CustomEvent<EditorRefreshDetail>): void => {
@@ -155,7 +166,8 @@ function createFileEditorController(Controller: ControllerConstructor): unknown 
         return;
       }
       this.applyDisk(latest);
-      this.setStatus(latest.writable ? "Updated" : "Read only", latest.writable ? "saved" : "");
+      this.setStatus(latest.writable ? "Updated" : "Read only", "");
+      this.refreshVisiblePreview();
     }
 
     private async save(force: boolean): Promise<void> {
@@ -164,7 +176,7 @@ function createFileEditorController(Controller: ControllerConstructor): unknown 
       this.saveTimer = undefined;
       const content = this.view.state.doc.toString();
       if (!force && content === this.savedContent) {
-        this.setStatus("Saved", "saved");
+        this.setStatus("", "");
         return;
       }
       const sequence = ++this.saveSequence;
@@ -211,8 +223,42 @@ function createFileEditorController(Controller: ControllerConstructor): unknown 
       if (!this.conflictTarget.open) this.conflictTarget.showModal();
     }
 
+    private async showPreview(): Promise<void> {
+      const sequence = ++this.previewSequence;
+      this.previewToggleTarget.disabled = true;
+      const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/file-editor/markdown-preview`, {
+        method: "POST",
+        headers: { "content-type": "text/plain; charset=utf-8", "accept": "text/html" },
+        body: this.view!.state.doc.toString(),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const html = await response.text();
+      if (sequence !== this.previewSequence) return;
+      this.previewTarget.innerHTML = html;
+      this.setPreviewVisible(true);
+    }
+
+    private showRaw(): void {
+      if (!this.hasPreviewTarget) return;
+      this.previewSequence++;
+      this.setPreviewVisible(false);
+    }
+
+    private setPreviewVisible(visible: boolean): void {
+      this.previewTarget.hidden = !visible;
+      this.hostTarget.hidden = visible;
+      this.previewToggleTarget.disabled = false;
+      this.previewToggleTarget.textContent = visible ? "Raw" : "Preview";
+      this.previewToggleTarget.setAttribute("aria-pressed", String(visible));
+    }
+
+    private refreshVisiblePreview(): void {
+      if (this.hasPreviewTarget && !this.previewTarget.hidden) void this.showPreview();
+    }
+
     private jumpTo(line: number, column = 1): void {
       if (!this.view || line < 1) return;
+      this.showRaw();
       const targetLine = this.view.state.doc.line(Math.min(line, this.view.state.doc.lines));
       const position = Math.min(targetLine.to, targetLine.from + Math.max(0, column - 1));
       this.view.dispatch({ selection: { anchor: position }, effects: EditorView.scrollIntoView(position, { y: "center" }) });

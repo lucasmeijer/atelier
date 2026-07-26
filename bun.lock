@@ -36,7 +36,7 @@
       "name": "@atelier/agent",
       "dependencies": {
         "@atelier/core": "workspace:*",
-        "@atelier/editor": "workspace:*",
+        "@atelier/markdown": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/projects": "workspace:*",
         "@atelier/shared": "workspace:*",
@@ -46,12 +46,7 @@
         "@wasm-fmt/biome_fmt": "0.2.9",
         "@wasm-fmt/ruff_fmt": "0.15.20",
         "@wasm-fmt/shfmt": "0.2.7",
-        "highlight.js": "^11.11.1",
-        "markdown-it": "14.3.0",
         "typebox": "^1.0.57",
-      },
-      "devDependencies": {
-        "@types/markdown-it": "14.1.2",
       },
     },
     "packages/browser": {
@@ -81,6 +76,7 @@
       "name": "@atelier/editor",
       "dependencies": {
         "@atelier/core": "workspace:*",
+        "@atelier/markdown": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
         "@codemirror/autocomplete": "6.20.3",
@@ -115,6 +111,17 @@
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@atelier/shared": "workspace:*",
+      },
+    },
+    "packages/markdown": {
+      "name": "@atelier/markdown",
+      "dependencies": {
+        "@atelier/shared": "workspace:*",
+        "highlight.js": "^11.11.1",
+        "markdown-it": "14.3.0",
+      },
+      "devDependencies": {
+        "@types/markdown-it": "14.1.2",
       },
     },
     "packages/observable-terminal": {
@@ -222,6 +229,8 @@
     "@atelier/files": ["@atelier/files@workspace:packages/files"],
 
     "@atelier/keypress-probe": ["@atelier/keypress-probe@workspace:packages/keypress-probe"],
+
+    "@atelier/markdown": ["@atelier/markdown@workspace:packages/markdown"],
 
     "@atelier/observable-terminal": ["@atelier/observable-terminal@workspace:packages/observable-terminal"],
 

@@ -7,11 +7,19 @@
 [data-theme="nord"] .file-editor-pane { --editor-keyword:#81a1c1; --editor-string:#a3be8c; --editor-number:#b48ead; --editor-comment:#7b889e; --editor-title:#88c0d0; --editor-variable:#d08770; --editor-type:#8fbcbb; }
 .file-editor-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding: 0 13px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 88%, var(--bg)); font: 11px var(--sans); }
 .file-editor-path { min-width: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+.file-editor-toolbar-actions { display: flex; flex: none; align-items: center; gap: 10px; }
+.file-editor-markdown-toggle { border: 1px solid var(--line2); border-radius: 5px; padding: 3px 8px; color: var(--muted); background: var(--bg); font: inherit; cursor: pointer; }
+.file-editor-markdown-toggle:hover, .file-editor-markdown-toggle[aria-pressed="true"] { color: var(--text); background: var(--elev); }
+.file-editor-markdown-toggle:disabled { cursor: wait; opacity: .55; }
 .file-editor-status { flex: none; color: var(--muted2); }
 .file-editor-status.is-error, .file-editor-status.is-conflict { color: var(--red); }
 .file-editor-status.is-saving { color: var(--amber); }
 .file-editor-status.is-saved { color: var(--green); }
 .file-editor-host { min-height: 0; overflow: hidden; }
+.file-editor-preview { min-height: 0; overflow: auto; padding: 22px max(24px, calc((100% - 760px) / 2)) 60px; color: var(--text); font: 14px/1.6 var(--sans); }
+.file-editor-preview[hidden], .file-editor-host[hidden] { display: none; }
+.file-editor-preview > :first-child { margin-top: 0; }
+.file-editor-preview > :last-child { margin-bottom: 0; }
 .file-editor-host .cm-editor { height: 100%; color: var(--text); background: var(--bg); font: 12.5px/1.55 var(--mono); }
 .file-editor-host .cm-scroller { overflow: auto; font-family: inherit; }
 .file-editor-host .cm-content { min-width: max-content; padding: 12px 0 40px; caret-color: var(--text); }

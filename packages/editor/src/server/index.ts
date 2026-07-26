@@ -1,5 +1,6 @@
 import type { AtelierEventBus } from "@atelier/core";
 import { turboStream, turboStreamResponse, type WorkspaceModule } from "@atelier/shared";
+import { renderMarkdown } from "@atelier/markdown";
 import { EditorFileError, maxEditableFileBytes, readEditableFile, writeEditableFile } from "./file.ts";
 import {
   closeWorkspaceFileEditorTab,
@@ -33,6 +34,13 @@ async function openEditorEndpoint(workspaceId: string, url: URL, openTab: (works
   return turboStreamResponse(turboStream("replace", fileEditorSignalId(workspaceId), renderFileEditorSignal(workspaceId, { tabKey: tab.key, line, column })));
 }
 
+async function markdownPreviewEndpoint(workspaceId: string, request: Request): Promise<Response> {
+  if (request.method !== "POST") return textResponse("Method not allowed", 405);
+  return new Response(renderMarkdown(workspaceId, await request.text()), {
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
 async function editorContentEndpoint(workspaceId: string, request: Request, url: URL): Promise<Response> {
   const path = url.searchParams.get("path");
   if (request.method === "GET") return jsonResponse(await readEditableFile(workspaceId, path));
@@ -55,10 +63,11 @@ const editorWorkspaceModule: WorkspaceModule = {
   routes: [{
     async handle(request, url, context) {
       try {
-        const match = url.pathname.match(/^\/workspaces\/([^/]+)\/file-editor\/(open|content)$/);
+        const match = url.pathname.match(/^\/workspaces\/([^/]+)\/file-editor\/(open|content|markdown-preview)$/);
         if (!match) return undefined;
         const workspaceId = decodeURIComponent(match[1]!);
         if (match[2] === "open") return request.method === "GET" ? await openEditorEndpoint(workspaceId, url, context.openTab) : textResponse("Method not allowed", 405);
+        if (match[2] === "markdown-preview") return await markdownPreviewEndpoint(workspaceId, request);
         return await editorContentEndpoint(workspaceId, request, url);
       } catch (error) {
         if (error instanceof EditorFileError) return textResponse(error.message, error.status);
@@ -88,5 +97,4 @@ const editorWorkspaceModule: WorkspaceModule = {
   },
 };
 
-export { workspaceFileEditorOpenUrl } from "./render.ts";
 export { maxEditableFileBytes, editorWorkspaceModule as atelierServerModule };

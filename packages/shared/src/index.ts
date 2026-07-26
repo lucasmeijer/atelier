@@ -6,6 +6,13 @@ export { hopByHopHeaderNames, isHopByHopHeader, stripHopByHopHeaders } from "./p
 
 export const atelierName = "Atelier" as const;
 
+export function workspaceFileEditorOpenUrl(workspaceId: string, path: string, position: { line?: number; column?: number } = {}): string {
+  const query = new URLSearchParams({ path });
+  if (position.line) query.set("line", String(position.line));
+  if (position.column) query.set("column", String(position.column));
+  return `/workspaces/${encodeURIComponent(workspaceId)}/file-editor/open?${query}`;
+}
+
 export function domId(...parts: string[]): string {
   return parts.join("_").replace(/[^a-zA-Z0-9_-]/g, "_");
 }

@@ -1,7 +1,7 @@
 import { format as formatJavaScript } from "@wasm-fmt/biome_fmt";
 import { format as formatPython } from "@wasm-fmt/ruff_fmt";
 import { format as formatShell } from "@wasm-fmt/shfmt";
-import { highlightCodeHtmlForPath, languageFromPath } from "./highlight.ts";
+import { highlightCodeHtmlForPath, languageFromPath } from "@atelier/markdown";
 import { escapeHtml } from "./html.ts";
 
 interface BashHeredoc {

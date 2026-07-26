@@ -1,5 +1,4 @@
-import { workspaceFileEditorOpenUrl } from "@atelier/editor/server";
-import { escapeHtml } from "./html.ts";
+import { escapeHtml, workspaceFileEditorOpenUrl } from "@atelier/shared";
 
 /** Render Atelier-specific links and previews found in parsed Markdown. */
 

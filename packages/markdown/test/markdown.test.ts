@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderMarkdown } from "../../src/server/markdown.ts";
+import { renderMarkdown } from "../src/index.ts";
 
 describe("renderMarkdown", () => {
   test("paragraphs, emphasis, and inline code", () => {
