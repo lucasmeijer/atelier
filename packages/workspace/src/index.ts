@@ -1,6 +1,8 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput } from "@atelier/core";
+import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
+import type { WorkspaceServerProvisioningHook } from "@atelier/shared";
 import { dockerImageId, ensureDefaultWorkspaceImage, nativeLinuxDockerPlatform, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
 import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction } from "./types.ts";
 export type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction, WorkspaceInitInstructionMap } from "./types.ts";
@@ -254,8 +256,8 @@ async function applyRepoWorkspaceManifest(sourcePath: string, plan: WorkspaceDoc
   plan.initScripts.push(...(manifest.initScripts ?? []));
 }
 
-function workspaceExecDockerArgs(resolved: string, command: string[], options: WorkspaceCommandOptions): string[] {
-  return ["exec", ...(options.stdin !== undefined ? ["-i"] : []), "--user", options.user ?? "atelier", "--env", "LANG=C.UTF-8", "--env", "LC_ALL=C.UTF-8", "--workdir", options.workdir ?? workspaceRoot, workspaceContainerName(resolved), ...command];
+function workspaceExecDockerArgs(resolved: string, command: string[], options: WorkspaceCommandOptions, terminal = false): string[] {
+  return ["exec", ...(terminal ? ["--interactive", "--tty"] : options.stdin !== undefined ? ["-i"] : []), "--user", options.user ?? "atelier", "--env", "LANG=C.UTF-8", "--env", "LC_ALL=C.UTF-8", "--workdir", options.workdir ?? workspaceRoot, workspaceContainerName(resolved), ...command];
 }
 
 export async function execWorkspaceCommand(id: string, command: string[], options: WorkspaceCommandOptions = {}): Promise<WorkspaceExecResult> {
@@ -273,6 +275,44 @@ export async function execWorkspaceCommandBuffer(id: string, command: string[], 
   return { ...result, durationMs: Date.now() - startedAt };
 }
 export async function execWorkspaceShell(id: string, script: string, options: WorkspaceCommandOptions = {}): Promise<WorkspaceExecResult> { return await execWorkspaceCommand(id, ["sh", "-lc", script], options); }
+
+const workspaceSetupScript = ".atelier/setup.sh";
+const workspaceSetupStep = "workspace.setup";
+
+export async function runWorkspaceSetupScript(id: string, options: { events?: AtelierEventBus } = {}): Promise<boolean> {
+  if (!(await Bun.file(join(workspaceWorkHostPath(id), workspaceSetupScript)).exists())) {
+    await options.events?.emit("workspace_provision_step", { workspaceId: id, id: workspaceSetupStep, detail: `No ${workspaceSetupScript}` });
+    return false;
+  }
+
+  const session = `atelier-provision-setup-${crypto.randomUUID().slice(0, 8)}`;
+  const dockerCommand = ["docker", ...workspaceExecDockerArgs(id, ["sh", workspaceSetupScript], {}, true)].map(shellQuote).join(" ");
+  const result = await runHostObservableCommand({
+    session,
+    cwd: "/",
+    command: dockerCommand,
+    onSessionStarted: async () => {
+      await options.events?.emit("workspace_provision_step", { workspaceId: id, id: workspaceSetupStep, terminal: { kind: "host-tmux", session } });
+    },
+  });
+  const output = tailTerminalText(stripTerminalControls(result.output));
+  if (result.exitCode !== 0) throw new AtelierCoreError("workspace_setup_failed", output || `${workspaceSetupScript} failed with exit code ${result.exitCode}`);
+  await options.events?.emit("workspace_provision_step", { workspaceId: id, id: workspaceSetupStep, output });
+  return true;
+}
+
+export const workspaceSetupProvisioningHook: WorkspaceServerProvisioningHook = {
+  id: workspaceSetupStep,
+  label: "Run project setup",
+  async run({ workspaceId, creationContext, events }) {
+    const eventBus = events as AtelierEventBus | undefined;
+    if ((creationContext as WorkspaceCreationContext | undefined)?.fork) {
+      await eventBus?.emit("workspace_provision_step", { workspaceId, id: workspaceSetupStep, detail: "Skipped for copied workspace" });
+      return;
+    }
+    await runWorkspaceSetupScript(workspaceId, { events: eventBus });
+  },
+};
 
 function dockerMountArg(mount: WorkspaceDockerMount): string {
   return [`type=${mount.type}`, `src=${mount.source}`, `dst=${mount.target}`, ...(mount.readonly ? ["readonly"] : [])].join(",");

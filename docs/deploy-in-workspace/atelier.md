@@ -56,6 +56,18 @@ Atelier loads repository agent instructions from `AGENTS.md` and, if present, `.
 
 When both files exist, Atelier applies `AGENTS.md` first and `.atelier/AGENTS.md` second.
 
+### Workspace setup
+
+A repository can add `.atelier/setup.sh` to install dependencies or perform other one-time setup for each freshly cloned workspace. Atelier runs the script with `sh` as the `atelier` user from `/work`, after the container starts and before the workspace becomes ready or its initial agent starts.
+
+Setup runs in a tmux session and its live output appears in the workspace creation screen. A non-zero exit marks workspace creation as failed. Copied/forked workspaces skip setup because their files and installed dependencies are copied from the source workspace.
+
+```sh
+#!/bin/sh
+set -eu
+bun install
+```
+
 ### Prompt templates
 
 Prompt templates are reusable prompts stored in the workspace repository. Add Markdown files under `.atelier/prompts`; `.atelier` is the idiomatic Atelier configuration directory. Atelier also reads `.pi/prompts` for convenience and compatibility, but prefer `.atelier/prompts` for new templates. If both directories contain a template with the same filename, the `.atelier` template is used.

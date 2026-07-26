@@ -8,6 +8,7 @@ import {
   execWorkspaceShell,
   generateWorkspaceId,
   listWorkspaces,
+  runWorkspaceSetupScript,
   setWorkspaceParked,
   setWorkspaceTitle,
   workspaceContainerName,
@@ -147,6 +148,23 @@ describe("core workspaces", () => {
     expect(write.exitCode).toBe(0);
     expect(read.exitCode).toBe(0);
     expect(read.stdout).toBe("hello from stdin");
+  });
+
+  test("runWorkspaceSetupScript runs repository setup in an observable tmux session", async () => {
+    const workspaceId = await getReusableWorkspaceId();
+    const events = createAtelierEventBus();
+    const steps: Array<{ terminal?: { kind: string; session: string }; output?: string }> = [];
+    events.on("workspace_provision_step", (event) => { steps.push(event); });
+    await execWorkspaceShell(workspaceId, "mkdir -p .atelier && printf '%s\\n' 'printf setup-visible-output' 'printf setup-ran > setup-marker' > .atelier/setup.sh");
+
+    try {
+      expect(await runWorkspaceSetupScript(workspaceId, { events })).toBe(true);
+      expect((await execWorkspaceShell(workspaceId, "cat setup-marker")).stdout).toBe("setup-ran");
+      expect(steps.some((step) => step.terminal?.kind === "host-tmux" && step.terminal.session.startsWith("atelier-provision-setup-"))).toBe(true);
+      expect(steps.some((step) => step.output?.includes("setup-visible-output"))).toBe(true);
+    } finally {
+      await execWorkspaceShell(workspaceId, "rm -f .atelier/setup.sh setup-marker");
+    }
   });
 
   test("createWorkspace can fork /work into a new container from the source image", async () => {

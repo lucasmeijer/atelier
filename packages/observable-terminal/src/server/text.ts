@@ -2,6 +2,10 @@ export function normalizeCarriageReturns(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/^.*\r/gm, "");
 }
 
+export function tailTerminalText(text: string, lines = 120): string {
+  return text.replaceAll("\r", "").split("\n").slice(-lines).join("\n").trimEnd();
+}
+
 function isCsiParameter(code: number): boolean {
   return code >= 0x30 && code <= 0x3f;
 }

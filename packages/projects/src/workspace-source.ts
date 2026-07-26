@@ -15,7 +15,7 @@ import {
   type AtelierEventBus,
   type CommandResult,
 } from "@atelier/core";
-import { runHostObservableCommand } from "@atelier/observable-terminal/server";
+import { runHostObservableCommand, tailTerminalText } from "@atelier/observable-terminal/server";
 import { projectEnvironment } from "./environment.ts";
 import { isGitProjectInit } from "./project.ts";
 
@@ -146,10 +146,6 @@ async function pathExists(path: string): Promise<boolean> {
   return await stat(path).then(() => true, () => false);
 }
 
-function tailText(text: string, lines = 120): string {
-  return text.replaceAll("\r", "").split("\n").slice(-lines).join("\n").trimEnd();
-}
-
 async function ensureTemplate(gitUrl: string, branch: string | null, key: string, options: { workspaceId: string; events?: AtelierEventBus; logPath: string }): Promise<{ repoPath: string; resolvedCommit: string; effectiveBranch: string | null }> {
   const dir = templateDir(key);
   const repoPath = templateRepoPath(key);
@@ -228,7 +224,7 @@ printf '%s\n' "$effective_branch" > "$effective_branch_file"
     },
   });
   await appendFile(options.logPath, result.output).catch(() => undefined);
-  if (result.exitCode !== 0) throw new AtelierCoreError("git_error", tailText(result.output) || `git provisioning failed with exit code ${result.exitCode}`);
+  if (result.exitCode !== 0) throw new AtelierCoreError("git_error", tailTerminalText(result.output) || `git provisioning failed with exit code ${result.exitCode}`);
 
   const effectiveBranch = (await readFile(effectiveBranchPath, "utf8")).trim() || null;
   const resolvedCommit = (await readFile(resolvedCommitPath, "utf8")).trim();
@@ -358,7 +354,7 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
       };
       await writeFile(join(cleanupPath, "metadata.json"), `${JSON.stringify(metadata, null, 2)}\n`);
 
-      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "project.git", label: "Clone project", parentId: "workspace.init", status: "done", output: tailText(await readFile(logPath, "utf8").catch(() => "")) });
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "project.git", label: "Clone project", parentId: "workspace.init", status: "done", output: tailTerminalText(await readFile(logPath, "utf8").catch(() => "")) });
       return {
         workspaceId: options.workspaceId,
         worktreePath,
@@ -370,7 +366,7 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
       };
     } catch (error) {
       await rm(tmpWorkPath, { recursive: true, force: true }).catch(() => undefined);
-      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "project.git", label: "Clone project", parentId: "workspace.init", status: "failed", output: tailText(await readFile(logPath, "utf8").catch(() => "")), error: error instanceof Error ? error.message : String(error) });
+      await options.events?.emit("workspace_provision_step", { workspaceId: options.workspaceId, id: "project.git", label: "Clone project", parentId: "workspace.init", status: "failed", output: tailTerminalText(await readFile(logPath, "utf8").catch(() => "")), error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   });

@@ -9,6 +9,7 @@ export {
   normalizeCarriageReturns,
   stripObservablePaneFraming,
   stripTerminalControls,
+  tailTerminalText,
 } from "./text.ts";
 export {
   buildCapturePaneCommand,

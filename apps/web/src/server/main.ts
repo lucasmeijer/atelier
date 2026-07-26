@@ -2,7 +2,7 @@ import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
-import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace } from "@atelier/workspace";
+import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace, workspaceSetupProvisioningHook } from "@atelier/workspace";
 import type { WorkspaceDeleteSafetyIssue } from "@atelier/projects";
 import { atelierName, CableTopics, escapeHtml, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler } from "@atelier/shared";
 import {
@@ -195,7 +195,7 @@ async function authResponse(request: Request): Promise<Response | undefined> {
 const atelierEvents = createAtelierEventBus();
 const socketHandlers: WorkspaceServerSocketHandler[] = [];
 const workspaceAppHandlers: WorkspaceServerAppHandler[] = [];
-const provisioningHooks: WorkspaceServerProvisioningHook[] = [];
+const provisioningHooks: WorkspaceServerProvisioningHook[] = [workspaceSetupProvisioningHook];
 const workspaceRemovedHandlers: Array<(workspaceId: string) => void | Promise<void>> = [];
 
 const runtimeContext = getAtelierRuntimeContext();
