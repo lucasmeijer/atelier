@@ -1,4 +1,9 @@
-import { createExtensionRuntime, type ResourceLoader } from "@earendil-works/pi-coding-agent";
+import {
+  createExtensionRuntime,
+  type ResourceDiagnostic,
+  type ResourceLoader,
+  type Skill,
+} from "@earendil-works/pi-coding-agent";
 
 export const atelierSystemPrompt = `You are a coding agent, part of a an online coding management tool called Atelier.
 
@@ -39,10 +44,14 @@ interface AtelierAgentsFile {
   content: string;
 }
 
-export function createAtelierResourceLoader(agentsFiles: AtelierAgentsFile[] = [], appendSystemPrompt: string[] = []): ResourceLoader {
+export function createAtelierResourceLoader(
+  agentsFiles: AtelierAgentsFile[] = [],
+  appendSystemPrompt: string[] = [],
+  skillResources: { skills: Skill[]; diagnostics: ResourceDiagnostic[] } = { skills: [], diagnostics: [] },
+): ResourceLoader {
   return {
     getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
-    getSkills: () => ({ skills: [], diagnostics: [] }),
+    getSkills: () => skillResources,
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
     getAgentsFiles: () => ({ agentsFiles }),

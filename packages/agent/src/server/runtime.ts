@@ -30,6 +30,7 @@ import {
   type AgentToolDefinitionView,
 } from "./render.ts";
 import { replaceWorkspaceAgentSession, type WorkspaceAgentInfo } from "./session-store.ts";
+import { loadWorkspaceSkills } from "./skills.ts";
 import { atelierSystemPrompt, createAtelierResourceLoader } from "./system-prompt.ts";
 import { collectCacheMisses, detectCacheMiss, significantCacheMissNotice, type CacheMiss } from "./cache-miss.ts";
 import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
@@ -999,7 +1000,10 @@ async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgen
   await ensureSessionFile(agent.path);
   await discardBootstrapOnlySession(agent.path);
   const modelRuntime = await createPiModelRuntime();
-  const agentsFiles = await loadWorkspaceAgentsFiles(agent.workspaceId);
+  const [agentsFiles, skillResources] = await Promise.all([
+    loadWorkspaceAgentsFiles(agent.workspaceId),
+    loadWorkspaceSkills(agent.workspaceId),
+  ]);
   const appendSystemPrompt: string[] = [];
   await options.events?.emit("agent_system_prompt_prepare", { workspaceId: agent.workspaceId, lines: appendSystemPrompt });
   const sessionManager = SessionManager.open(agent.path, dirname(agent.path), workspaceRoot);
@@ -1010,7 +1014,7 @@ async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgen
     modelRuntime,
     model: initial.model,
     thinkingLevel: initial.thinkingLevel,
-    resourceLoader: createAtelierResourceLoader(agentsFiles, appendSystemPrompt),
+    resourceLoader: createAtelierResourceLoader(agentsFiles, appendSystemPrompt, skillResources),
     customTools,
     tools: workspaceAgentToolNames(),
     sessionManager,

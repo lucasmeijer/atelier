@@ -56,6 +56,30 @@ Atelier loads repository agent instructions from `AGENTS.md` and, if present, `.
 
 When both files exist, Atelier applies `AGENTS.md` first and `.atelier/AGENTS.md` second.
 
+### Agent Skills
+
+Atelier supports the [Agent Skills](https://agentskills.io/) format for reusable, task-specific instructions. Put each skill in its own directory with a `SKILL.md` file under `.atelier/skills`:
+
+```text
+.atelier/skills/
+└── release-notes/
+    ├── SKILL.md
+    └── examples.md
+```
+
+A skill's `SKILL.md` must include YAML frontmatter with a `description`; `name` is optional and defaults to the containing directory name. Atelier initially gives the agent only each skill's name, description, and file path. The agent reads the full file—and any relative supporting files—only when the task matches, keeping unrelated instructions out of the model context.
+
+Atelier also discovers the open-standard `.agents/skills` location and Pi's `.pi/skills` location for compatibility. If the same skill name exists in more than one location, `.atelier/skills` wins, followed by `.agents/skills`, then `.pi/skills`.
+
+```markdown
+---
+name: release-notes
+description: Draft user-facing release notes from a commit range
+---
+
+Read `examples.md`, inspect the requested changes, and draft concise release notes.
+```
+
 ### Workspace setup
 
 A repository can add `.atelier/setup.sh` to install dependencies or perform other one-time setup for each freshly cloned workspace. Atelier runs the script with `sh` as the `atelier` user from `/work`, after the container starts and before the workspace becomes ready or its initial agent starts.
