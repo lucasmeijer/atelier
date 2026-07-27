@@ -202,6 +202,7 @@ describe("web app contracts", () => {
 
     const body = await response.text();
     expect(body).toContain('target="workspaces_table_rows"');
+    expect(body).toContain(`data-workspace-id="${id}"`);
     expect(body).toContain('data-phase="starting"');
 
     // The broadcast prepends a starting row for everyone (via the rows container).
@@ -432,6 +433,7 @@ describe("web app contracts", () => {
 
       const home = await (await app.fetch(new Request("http://test.local/"))).text();
       const editor = await (await app.fetch(new Request(`http://test.local/projects/${project.id}/picker`))).text();
+      const newProject = await (await app.fetch(new Request("http://test.local/projects/new/picker"))).text();
 
       expect(home).toContain('id="project-picker-modal"');
       expect(home).toContain(`href="/projects/${project.id}/picker"`);
@@ -439,6 +441,9 @@ describe("web app contracts", () => {
       expect(home).toContain('<turbo-frame id="agent_launch_modal"></turbo-frame>');
       expect(home).not.toContain("Describe what you want the agent to do");
       expect(home).not.toContain('class="sidebar-host-repos"');
+      expect(home).toContain('<button class="row workspace-row workspace-placeholder-row" type="button"');
+      expect(newProject).toContain('aria-label="Add project"');
+      expect(editor).toContain('aria-label="Repository"');
       expect(editor).toContain("project-environment");
       expect(editor).toContain(`action="/projects/${project.id}/environment"`);
       expect(editor).toContain("project-secrets");
@@ -448,7 +453,7 @@ describe("web app contracts", () => {
       expect(editor).toContain("Optional token-like value");
       expect(editor).toContain('name="placeholder"');
       expect(editor).toContain('name="secretValue"');
-      expect(editor).toContain(`action="/projects/${project.id}/secrets"`);
+      expect(editor).toContain(`aria-label="Add secret" method="post" action="/projects/${project.id}/secrets"`);
       expect(editor).toContain("The private key stays on the Atelier host");
       expect(editor).toContain(`action="/projects/${project.id}/ssh-key"`);
       expect(editor).toContain('name="privateKey"');
@@ -475,6 +480,7 @@ describe("web app contracts", () => {
       expect(first).toContain('data-controller="agent-launch-dialog submit-shortcut"');
       expect(first).toContain('<turbo-frame id="agent_launch_settings">');
       expect(first).toContain(`action="/project-agent-workspaces/${project.id}"`);
+      expect(first).toContain('aria-label="Describe what you want the agent to do… (optional)"');
       expect(firstDraft).toBeTruthy();
       expect(secondDraft).toBeTruthy();
       expect(firstDraft).not.toBe(secondDraft);

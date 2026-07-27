@@ -270,6 +270,7 @@ class AtelierFullscreenController extends Controller {
     const close = (): void => {
       this.detachIframeShortcuts();
       target.classList.remove("atelier-fullscreen-live");
+      target.removeAttribute("data-atelier-fullscreen-active");
       document.body.classList.remove("atelier-fullscreen-open");
       bar.remove();
       if (activeFullscreenSession === session) activeFullscreenSession = undefined;
@@ -280,6 +281,7 @@ class AtelierFullscreenController extends Controller {
     document.body.append(bar);
     document.body.classList.add("atelier-fullscreen-open");
     target.classList.add("atelier-fullscreen-live");
+    target.dataset.atelierFullscreenActive = "true";
     session = { owner: this, close };
     activeFullscreenSession = session;
     this.attachIframeShortcuts(target);
@@ -309,6 +311,8 @@ class AtelierFullscreenController extends Controller {
   private createBar(closeFullscreen: () => void): HTMLElement {
     const bar = document.createElement("div");
     bar.className = "atelier-fullscreen-bar";
+    bar.setAttribute("role", "toolbar");
+    bar.setAttribute("aria-label", "Fullscreen controls");
     const title = document.createElement("span");
     title.textContent = this.titleValue;
     const hint = document.createElement("small");
