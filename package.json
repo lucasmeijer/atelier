@@ -23,7 +23,8 @@
     "web": "bun run --cwd apps/web dev",
     "kill": "bun run --cwd apps/web kill",
     "list": "bun run --cwd apps/web list",
-    "smoke:vscode": "node apps/web/smoke/vscode-smoke.mjs"
+    "smoke:vscode": "node apps/web/smoke/vscode-smoke.mjs",
+    "demo:recording": "bun apps/web/demo/recording/example.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.61.0",
