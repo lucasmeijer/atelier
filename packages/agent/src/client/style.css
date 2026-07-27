@@ -496,7 +496,7 @@
 .agent-item:has(.agent-user) { margin-top: 14px; margin-bottom: 8px; }
 .agent-item:has(.agent-final) { margin-top: .5rem; margin-bottom: .75rem; }
 .agent-itext-md { color: var(--muted); font-size: 14px; line-height: 1.7; }
-.agent-stream-text { color: var(--muted); font-size: 14px; line-height: 1.7; white-space: pre-wrap; }
+.agent-stream-markdown > div { display: contents; }
 
 .agent-tool { margin: 1px 0; border: 0; border-radius: 0; background: transparent; overflow: visible; }
 .agent-tool > summary { list-style: none; cursor: pointer; }

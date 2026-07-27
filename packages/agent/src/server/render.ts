@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel, type ModelRef } from "./model-state.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
 import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded-code.ts";
-import { highlightCodeHtmlForPath, renderMarkdown } from "@atelier/markdown";
+import { highlightCodeHtmlForPath, renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdown";
 import { domId, escapeHtml } from "./html.ts";
 import type { WorkspaceAgentInfo } from "./session-store.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
@@ -39,6 +39,8 @@ export const ids = {
   systemPrompt: (ctx: AgentRenderContext) => `${prefix(ctx)}_system_prompt`,
   item: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_item`, key),
   itemText: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext`, key),
+  itemTextStable: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext_stable`, key),
+  itemTextTail: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext_tail`, key),
   itemSummary: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary`, key),
   itemSummaryContent: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary_content`, key),
   itemCompletion: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_completion`, key),
@@ -372,13 +374,18 @@ function rewindHtml(ctx: AgentRenderContext, item: TranscriptItem): string {
   return `<div class="agent-rewind-zone"><button class="agent-rewind-btn" type="button" data-action="agent-pane#openRewind" data-entry-id="${escapeHtml(item.rewindEntryId)}" data-user-text="${escapeHtml(preview)}" title="Rewind to here">⟲ Rewind to here</button></div>`;
 }
 
+function renderStreamingTextBody(ctx: AgentRenderContext, key: string, text: string): string {
+  const snapshot = renderStreamingMarkdownSnapshot(ctx.workspaceId, text);
+  return `<div class="agent-md agent-itext-md agent-stream-markdown" id="${ids.itemText(ctx, key)}"><div id="${ids.itemTextStable(ctx, key)}">${snapshot.stableHtml}</div><div id="${ids.itemTextTail(ctx, key)}">${snapshot.tailHtml}</div></div>`;
+}
+
 export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptItem, options: { live?: boolean; open?: boolean } = {}): string {
   const id = ids.item(ctx, item.key);
   let body = "";
   if (item.type === "user") body = renderUserMessage(ctx, item);
   else if (item.type === "thinking") body = renderThinkingItem(ctx, item);
   else if (item.type === "text") body = item.live
-    ? transcriptRow(`<div class="agent-stream-text" id="${ids.itemText(ctx, item.key)}">${escapeHtml(item.text)}</div>`)
+    ? transcriptRow(renderStreamingTextBody(ctx, item.key, item.text))
     : renderMarkdownRow(ctx, item.text, item.final ? "agent-md agent-final" : "agent-md agent-itext-md");
   else if (item.type === "tool") body = transcriptRow(renderToolCard(ctx, item.key, item.tool, options));
   else if (item.type === "note") body = renderMarkdownRow(ctx, item.text, `agent-note ${escapeHtml(item.tone)}`);

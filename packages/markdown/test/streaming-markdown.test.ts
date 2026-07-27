@@ -1,0 +1,80 @@
+import { describe, expect, test } from "bun:test";
+import {
+  StreamingMarkdownRenderer,
+  renderStreamingMarkdownSnapshot,
+  repairStreamingMarkdownTail,
+  streamingMarkdownStableBoundary,
+} from "../src/streaming-markdown.ts";
+
+const workspaceId = "stream workspace";
+
+describe("streaming Markdown", () => {
+  test("advances completed paragraph and heading boundaries monotonically", () => {
+    const renderer = new StreamingMarkdownRenderer(workspaceId);
+    const prefixes = ["First", "First\n\n", "First\n\n# Heading", "First\n\n# Heading\n\nTail"];
+    const boundaries = prefixes.map((prefix) => renderer.render(prefix).stableBoundary);
+    expect(boundaries).toEqual([0, 7, 7, 18]);
+    expect(boundaries.every((boundary, index) => index === 0 || boundary >= boundaries[index - 1]!)).toBe(true);
+    const update = renderer.render(`${prefixes.at(-1)} text`);
+    expect(update.stableHtmlAddition).toBe("");
+    expect(update.tailHtml).toContain("<p>Tail text</p>");
+  });
+
+  test("keeps protected block constructs and everything after them in the mutable tail", () => {
+    const prefix = "before\n\n";
+    for (const tail of [
+      "- item\n  continuation\n\nnext\n\n",
+      "> quote\n> continued\n\nnext\n\n",
+      "| A | B |\n|---|---|\n| 1 | 2 |\n\nnext\n\n",
+      "```ts\nconst x = 1;\n\nnext\n\n",
+      "![preview](atelier-embed:/work/preview",
+      "[file](atelier://file/work/a.ts",
+    ]) {
+      expect(streamingMarkdownStableBoundary(prefix + tail)).toBe(prefix.length);
+    }
+  });
+
+  test("repairs open backtick and tilde fences only for provisional rendering", () => {
+    for (const marker of ["```", "~~~"]) {
+      const source = `${marker}ts\nconst value = **not emphasis**;`;
+      const repaired = repairStreamingMarkdownTail(source);
+      expect(repaired).toEndWith(`\n${marker}\n`);
+      const snapshot = renderStreamingMarkdownSnapshot(workspaceId, source);
+      expect(snapshot.tailHtml).toContain("agent-code-copy");
+      expect(snapshot.tailHtml).not.toContain("<strong>");
+    }
+  });
+
+  test("provisionally closes clear emphasis without changing escaped markers or inline code", () => {
+    expect(repairStreamingMarkdownTail("A *clear emphasis")).toBe("A *clear emphasis*");
+    expect(repairStreamingMarkdownTail("A **clear strong")).toBe("A **clear strong**");
+    expect(repairStreamingMarkdownTail("A \\*escaped")).toBe("A \\*escaped");
+    expect(repairStreamingMarkdownTail("Use `an *unfinished marker")).toBe("Use `an *unfinished marker");
+  });
+
+  test("completes safe links and degrades unfinished images", () => {
+    expect(repairStreamingMarkdownTail("[site](https://example.com/path")).toEndWith(")");
+    expect(repairStreamingMarkdownTail("[file](atelier://file/work/a.ts")).toEndWith(")");
+    expect(repairStreamingMarkdownTail("[bad](javascript:alert")).toBe("[bad](javascript:alert");
+    const image = renderStreamingMarkdownSnapshot(workspaceId, "![alt](https://example.com/incomplete");
+    expect(image.tailHtml).not.toContain("<img");
+    expect(image.tailHtml).toContain("![alt]");
+  });
+
+  test("preserves canonical safety and features in streaming snapshots", () => {
+    const source = [
+      "<script>alert(1)</script>",
+      "",
+      "[web](https://example.com) [file](atelier://file/work/a.ts)",
+      "",
+      "![](atelier-embed:/work/preview.html)",
+    ].join("\n");
+    const snapshot = renderStreamingMarkdownSnapshot(workspaceId, source);
+    const html = snapshot.stableHtml + snapshot.tailHtml;
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("<script>");
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain("file-editor/open");
+    expect(html).toContain("data-agent-proxy-path-value");
+  });
+});

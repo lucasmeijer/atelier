@@ -1,6 +1,7 @@
 import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { shellQuote, type AtelierEventBus } from "@atelier/core";
+import { StreamingMarkdownRenderer } from "@atelier/markdown";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
 import { createPiModelRuntime, getConfiguredAgentModels, getModelThinkingLevel } from "./pi-config-models.ts";
 import {
@@ -127,17 +128,26 @@ export function getWorkspaceAgentRuntime(agent: WorkspaceAgentInfo, options: Wor
 // Base runtime: subscriber fanout and flat live-transcript streaming.
 // ---------------------------------------------------------------------------
 
+interface LiveTextStream {
+  displayedLength: number;
+  renderer: StreamingMarkdownRenderer;
+  timer?: ReturnType<typeof setTimeout>;
+}
+
 interface LiveState {
   id: string;
   items: TranscriptItem[];
   userEntryId?: string;
   open?: { index: number; kind: "text" | "thinking" | "toolargs" };
+  textStream?: LiveTextStream;
   toolIndexByCallId: Map<string, number>;
   terminalTimers: Map<string, ReturnType<typeof setTimeout>>;
 }
 
 /** Only attach the inline terminal when a tool call has been running this long. */
 const terminalRevealMs = 3000;
+const assistantTextFlushIntervalMs = 16;
+const assistantTextCharactersPerFlush = 24;
 
 abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   workspaceId: string;
@@ -166,16 +176,25 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   subscribe(listener: AgentSubscriber): () => void {
+    const wasEmpty = this.subscribers.size === 0;
     this.subscribers.add(listener);
-    return () => this.subscribers.delete(listener);
+    if (wasEmpty) this.alignTextStreamWithAuthoritativeSnapshot();
+    return () => {
+      this.subscribers.delete(listener);
+      if (this.subscribers.size === 0) this.cancelTextFlush();
+    };
   }
 
   private snapshotCursor(): string {
     return `${this.snapshotGeneration}:${this.snapshotRevision}`;
   }
 
-  protected stream(html: string): void {
+  private markSnapshotMutation(): void {
     this.snapshotRevision += 1;
+  }
+
+  protected stream(html: string): void {
+    this.markSnapshotMutation();
     const cursor = this.snapshotCursor();
     for (const subscriber of this.subscribers) subscriber(html, cursor);
   }
@@ -217,6 +236,57 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, item, options)));
   }
 
+  private openTextItem(): Extract<TranscriptItem, { type: "text" }> | undefined {
+    const live = this.live;
+    if (!live?.open || live.open.kind !== "text") return undefined;
+    const item = live.items[live.open.index];
+    return item?.type === "text" ? item : undefined;
+  }
+
+  private cancelTextFlush(): void {
+    const streamState = this.live?.textStream;
+    if (streamState?.timer) clearTimeout(streamState.timer);
+    if (streamState) streamState.timer = undefined;
+  }
+
+  private alignTextStreamWithAuthoritativeSnapshot(): void {
+    const item = this.openTextItem();
+    const streamState = this.live?.textStream;
+    if (!item || !streamState) return;
+    this.cancelTextFlush();
+    streamState.renderer.sync(item.text);
+    streamState.displayedLength = item.text.length;
+  }
+
+  private scheduleTextFlush(): void {
+    const streamState = this.live?.textStream;
+    if (!streamState || streamState.timer || this.subscribers.size === 0) return;
+    streamState.timer = setTimeout(() => {
+      streamState.timer = undefined;
+      this.flushTextChunk();
+    }, assistantTextFlushIntervalMs);
+  }
+
+  private flushTextChunk(): void {
+    const item = this.openTextItem();
+    const streamState = this.live?.textStream;
+    if (!item || !streamState) return;
+    const nextLength = Math.min(item.text.length, streamState.displayedLength + assistantTextCharactersPerFlush);
+    if (nextLength === streamState.displayedLength) return;
+    const update = streamState.renderer.render(item.text.slice(0, nextLength));
+    streamState.displayedLength = nextLength;
+    const stable = update.stableHtmlAddition
+      ? turboStream("append", ids.itemTextStable(this.ctx, item.key), update.stableHtmlAddition)
+      : "";
+    this.stream(stable + turboStream("update", ids.itemTextTail(this.ctx, item.key), update.tailHtml));
+    if (streamState.displayedLength < item.text.length) this.scheduleTextFlush();
+  }
+
+  private releaseTextStream(): void {
+    this.cancelTextFlush();
+    if (this.live) this.live.textStream = undefined;
+  }
+
   private streamActiveToolContent(item: Extract<TranscriptItem, { type: "tool" }>): void {
     const content = renderActiveToolContent(this.ctx, item.key, item.tool);
     const summary = turboStream("update", ids.itemSummaryContent(this.ctx, item.key), content.summary);
@@ -228,6 +298,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const live = this.live;
     if (!live?.open || live.open.kind !== "text") return;
     const item = live.items[live.open.index];
+    this.releaseTextStream();
     if (item?.type === "text") {
       item.live = false;
       item.final = final;
@@ -261,12 +332,16 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       const item: TranscriptItem = { type: "text", key: this.liveKey(live, index, "text"), text: "", final: false, live: true };
       live.items.push(item);
       live.open = { index, kind: "text" };
+      live.textStream = { displayedLength: 0, renderer: new StreamingMarkdownRenderer(this.workspaceId) };
       this.appendLiveItem(item, { live: true });
     }
     const item = live.items[live.open.index];
     if (item?.type !== "text") return;
     item.text += text;
-    this.stream(turboStream("update", ids.itemText(this.ctx, item.key), escapeHtml(item.text)));
+    // Authoritative text changes immediately even though its visible update is
+    // paced. Reconnect cursors must therefore advance before the next flush.
+    this.markSnapshotMutation();
+    this.scheduleTextFlush();
   }
 
   protected liveThinkingDelta(text: string): void {
@@ -421,8 +496,12 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.appendLiveItem(item, { live: true });
   }
 
-  /** End the live model without re-rendering visible clients: observed calls stay open. */
+  /** End the live model; observed tool calls stay open. */
   protected async liveEnd(): Promise<void> {
+    // Supersede any paced tail with one canonical full-source render before the
+    // live state (and its renderer session) is discarded.
+    this.finishOpenText(false);
+    this.releaseTextStream();
     if (this.live) for (const timer of this.live.terminalTimers.values()) clearTimeout(timer);
     this.live = undefined;
     await this.refreshStats();
@@ -456,6 +535,9 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   async paneState(): Promise<AgentPaneState> {
+    // A pane snapshot is authoritative and must never be followed by an older
+    // paced update from this runtime.
+    this.alignTextStreamWithAuthoritativeSnapshot();
     const snapshotCursor = this.snapshotCursor();
     return { transcriptHtml: renderTranscript(this.ctx, await this.itemsForDisplay(), this.modelContext()), busy: this.isStreaming, stats: await this.statsView(), snapshotCursor };
   }

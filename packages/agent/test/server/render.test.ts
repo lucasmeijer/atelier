@@ -24,6 +24,22 @@ describe("flat transcript rendering", () => {
     expect(html).toContain('data-agent-user-text="**bold** &amp; quoted &quot;text&quot;"');
   });
 
+  test("live assistant text uses stable and mutable server-rendered Markdown targets", () => {
+    const html = renderTranscriptItem(ctx, { type: "text", key: "stream", text: "First **bold** paragraph.\n\nTrailing *emphasis*", final: false, live: true });
+    expect(html).toContain("agent-md agent-itext-md agent-stream-markdown");
+    expect(html).toContain('id="ag_ws_agent_itemtext_stable_stream"');
+    expect(html).toContain('id="ag_ws_agent_itemtext_tail_stream"');
+    expect(html).toContain("<strong>bold</strong>");
+    expect(html).toContain("<em>emphasis</em>");
+    expect(html).not.toContain("agent-stream-text");
+  });
+
+  test("streaming fences preserve code-copy markup", () => {
+    const html = renderTranscriptItem(ctx, { type: "text", key: "code-stream", text: "```ts\nconst x = 1;", final: false, live: true });
+    expect(html).toContain('data-controller="agent-code-copy"');
+    expect(html).toContain('data-agent-code-copy-target="code"');
+  });
+
   test("all transcript content uses the same full-width row", () => {
     const items: TranscriptItem[] = [
       { type: "user", key: "user", text: "question", images: [] },
