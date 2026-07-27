@@ -3,6 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { requireDocker, runDocker, shellQuote } from "@atelier/core";
+import { pruneSupersededWorkspaceImages, workspaceImageKindLabel } from "./prune.ts";
 
 export const workspaceCarrierFormatVersion = 1;
 export const workspaceCarrierStorageDriver = "fuse-overlayfs";
@@ -134,6 +135,7 @@ export async function buildWorkspaceImageCarrier(options: { baseImage: string; b
   if (existing) return await existing;
 
   const task = (async (): Promise<WorkspaceImageCarrierResult> => {
+    const buildStartedAt = new Date();
     await assertCarrierBase(options.baseImage, options.preload, platform);
     const suffix = crypto.randomUUID().slice(0, 8);
     const seed = `atelier-carrier-seed-${key.slice(0, 10)}-${suffix}`;
@@ -153,7 +155,7 @@ export async function buildWorkspaceImageCarrier(options: { baseImage: string; b
       await verifySeededImages(seed, options.preload);
       await stopNestedDaemon(seed);
       await requireDocker(["stop", "--time", "30", seed]);
-      const changes = Object.entries(labels).flatMap(([name, value]) => ["--change", `LABEL ${name}=${JSON.stringify(value)}`]);
+      const changes = Object.entries({ ...labels, [workspaceImageKindLabel]: "carrier" }).flatMap(([name, value]) => ["--change", `LABEL ${name}=${JSON.stringify(value)}`]);
       await requireDocker(["commit", ...changes, seed, tag]);
       const carrierEntrypoint = (await requireDocker(["image", "inspect", "--format", "{{json .Config.Entrypoint}}", tag])).stdout.trim();
       if (carrierEntrypoint !== baseEntrypoint) throw new Error("carrier commit changed the workspace image ENTRYPOINT");
@@ -163,6 +165,7 @@ export async function buildWorkspaceImageCarrier(options: { baseImage: string; b
       await exec(verify, carrierDaemonStartScript);
       await verifySeededImages(verify, options.preload);
       await stopNestedDaemon(verify);
+      pruneSupersededWorkspaceImages("carrier", buildStartedAt);
       return { image: tag, key, kind: "locally built" };
     } finally {
       await runDocker(["rm", "-f", verify]);

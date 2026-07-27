@@ -6,10 +6,12 @@ import { fileURLToPath } from "node:url";
 import { requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand } from "@atelier/observable-terminal/server";
 import { buildWorkspaceImageCarrier, defaultAtelierWorkspaceImageSpecifier, nestedDockerDaemonInitScript, type ResolvedDockerImagePreload } from "./carrier.ts";
+import { pruneSupersededWorkspaceImages, workspaceImageKindLabel, type WorkspaceImageKind } from "./prune.ts";
 
 export * from "./carrier.ts";
 
 interface WorkspaceImageMetadata { tag: string; modules: string[] }
+type BuiltWorkspaceImageKind = Exclude<WorkspaceImageKind, "carrier">;
 
 interface WorkspaceImageBuildTask {
   tag: string;
@@ -101,41 +103,44 @@ async function emitImageStep(events: AtelierEventBus | undefined, workspaceId: s
   });
 }
 
-function dockerBuildArgs(tag: string, dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): string[] {
+function dockerBuildArgs(tag: string, kind: BuiltWorkspaceImageKind, dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): string[] {
   return [
     "build",
     ...(options.buildOutput === "inherit" ? ["--progress=plain"] : []),
     ...(process.env.ATELIER_WORKSPACE_IMAGE_NO_CACHE === "1" ? ["--no-cache"] : []),
+    "--label", `${workspaceImageKindLabel}=${kind}`,
     "-t", tag,
     "-f", dockerfile,
     contextDir,
   ];
 }
 
-function startBuildTask(tag: string, modules: string[], dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): WorkspaceImageBuildTask {
+function startBuildTask(tag: string, modules: string[], kind: BuiltWorkspaceImageKind, dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): WorkspaceImageBuildTask {
   const existing = buildTasks.get(tag);
   if (existing) return existing;
 
   const task: WorkspaceImageBuildTask = { tag, modules, output: "", promise: Promise.resolve() };
   task.promise = (async () => {
-    const args = dockerBuildArgs(tag, dockerfile, contextDir, options);
+    const buildStartedAt = new Date();
+    const args = dockerBuildArgs(tag, kind, dockerfile, contextDir, options);
     if (options.buildOutput === "inherit") {
       const proc = Bun.spawn(["docker", ...args], { cwd: contextDir, env: { ...process.env, DOCKER_BUILDKIT: "1" }, stdout: "inherit", stderr: "inherit", stdin: "inherit" });
       const exitCode = await proc.exited;
       if (exitCode !== 0) throw new Error(`docker build failed with exit code ${exitCode}`);
-      return;
+    } else {
+      const result = await runHostObservableCommand({
+        session: `atelier-provision-image-${crypto.randomUUID().slice(0, 8)}`,
+        cwd: contextDir,
+        command: `echo "Starting Docker image build..."\nDOCKER_BUILDKIT=1 docker ${args.map(shellQuote).join(" ")}`,
+        onSessionStarted: async (session) => {
+          task.session = session;
+          await emitImageStep(options.events, options.workspaceId, task, "running");
+        },
+      });
+      appendOutput(task, result.output);
+      if (result.exitCode !== 0) throw new Error(`docker build failed with exit code ${result.exitCode}`);
     }
-    const result = await runHostObservableCommand({
-      session: `atelier-provision-image-${crypto.randomUUID().slice(0, 8)}`,
-      cwd: contextDir,
-      command: `echo "Starting Docker image build..."\nDOCKER_BUILDKIT=1 docker ${args.map(shellQuote).join(" ")}`,
-      onSessionStarted: async (session) => {
-        task.session = session;
-        await emitImageStep(options.events, options.workspaceId, task, "running");
-      },
-    });
-    appendOutput(task, result.output);
-    if (result.exitCode !== 0) throw new Error(`docker build failed with exit code ${result.exitCode}`);
+    pruneSupersededWorkspaceImages(kind, buildStartedAt);
   })().finally(() => {
     buildTasks.delete(tag);
   });
@@ -173,9 +178,9 @@ async function bakedDefaultWorkspaceImageRef(): Promise<string | undefined> {
   return ref || undefined;
 }
 
-async function ensureBuiltImage(contextDir: string, dockerfile: string, metadata: WorkspaceImageMetadata, options: ResolveWorkspaceImageOptions = {}): Promise<string> {
+async function ensureBuiltImage(contextDir: string, dockerfile: string, metadata: WorkspaceImageMetadata, kind: BuiltWorkspaceImageKind, options: ResolveWorkspaceImageOptions = {}): Promise<string> {
   if (await imageExists(metadata.tag)) return metadata.tag;
-  const task = startBuildTask(metadata.tag, metadata.modules, dockerfile, contextDir, options);
+  const task = startBuildTask(metadata.tag, metadata.modules, kind, dockerfile, contextDir, options);
   await waitForBuildTask(task, options);
   return metadata.tag;
 }
@@ -192,7 +197,7 @@ async function resolveDefaultWorkspaceImage(options: ResolveWorkspaceImageOption
   const contextDir = defaultContextDir();
   await generateContext(contextDir);
   const metadata = await contextMetadata(contextDir);
-  return await ensureBuiltImage(contextDir, join(contextDir, "Dockerfile"), metadata, options);
+  return await ensureBuiltImage(contextDir, join(contextDir, "Dockerfile"), metadata, "default", options);
 }
 
 export function ensureDefaultWorkspaceImage(options: ResolveWorkspaceImageOptions = {}): Promise<string> {
@@ -352,7 +357,7 @@ export async function resolveWorkspaceImageResolution(options: ResolveWorkspaceI
   await tagAtelierWorkspaceBase(baseImage);
   const metadata = await repoWorkspaceImageMetadata(dockerfile, baseImage);
   const buildDockerfile = await optimizedRepoDockerfile(options.sourcePath, dockerfile);
-  const image = await ensureBuiltImage(options.sourcePath, buildDockerfile, metadata, options);
+  const image = await ensureBuiltImage(options.sourcePath, buildDockerfile, metadata, "repository", options);
   return { image, defaultImage: baseImage };
 }
 
