@@ -28,6 +28,7 @@ import {
   listProjectSecrets,
   hasProjectSshKey,
   listProjects,
+  parseProjectSpec,
   projectWorkspaceInit,
   updateProject,
   updateProjectEnvironmentVariable,
@@ -126,8 +127,8 @@ function jsonResponse(body: unknown, init: HtmlResponseInit = {}): Response {
 }
 
 function problemJsonResponse(error: unknown): Response {
-  const status = error instanceof AtelierCoreError && error.code === "invalid_arguments" ? 400
-    : error instanceof AtelierCoreError && ["project_not_found", "workspace_not_found", "command_not_found", "agent_not_found", "tab_not_found", "terminal_not_found"].includes(error.code) ? 404
+  const status = error instanceof AtelierCoreError && ["invalid_arguments", "invalid_git_url"].includes(error.code) ? 400
+    : error instanceof AtelierCoreError && ["project_not_found", "project_environment_variable_not_found", "project_secret_not_found", "workspace_not_found", "command_not_found", "agent_not_found", "tab_not_found", "terminal_not_found"].includes(error.code) ? 404
       : 500;
   const message = error instanceof Error ? error.message : String(error);
   const code = error instanceof AtelierCoreError ? error.code : "internal_error";
@@ -876,6 +877,17 @@ ${moduleStylesHtml()}
     return jsonResponse({ workspace });
   }
 
+  function workspaceListEndpoint(request: Request, url: URL): Response {
+    if (!requestAcceptsJson(request)) return Response.redirect(new URL("/", url).toString(), 302);
+    return jsonResponse({ workspaces: registry.list().map((entry) => ({
+      id: entry.id,
+      title: workspaceTitle(entry),
+      phase: entry.phase,
+      parked: entry.parked,
+      ...(isGitProjectInit(entry.init) ? { projectId: entry.init.projectId } : {}),
+    })) });
+  }
+
   async function workspacePage(id: string, request: Request): Promise<Response> {
     if (requestAcceptsJson(request)) return await workspaceJson(id);
     const entry = requireWorkspace(id);
@@ -1218,22 +1230,68 @@ ${moduleStylesHtml()}
     return `${turboUpdateStream("project_modals", await renderProjectModals())}${options.clearCommandModal ? turboUpdateStream(workspaceCommandModalHostId, "") : ""}`;
   }
 
-  async function createProjectFromForm(request: Request, url: URL): Promise<Response> {
-    const formData = await request.formData();
-    const gitUrl = String(formData.get("gitUrl") ?? "");
+  function jsonString(body: Record<string, unknown>, field: string): string {
+    const value = body[field];
+    if (typeof value !== "string") throw invalidArguments(`${field} is required`);
+    return value;
+  }
+
+  function requiredJsonString(body: Record<string, unknown>, field: string): string {
+    const value = jsonString(body, field);
+    if (!value.trim()) throw invalidArguments(`${field} is required`);
+    return value;
+  }
+
+  function optionalJsonString(body: Record<string, unknown>, field: string): string | undefined {
+    const value = body[field];
+    if (value === undefined) return undefined;
+    if (typeof value !== "string") throw invalidArguments(`${field} must be a string`);
+    return value;
+  }
+
+  async function projectDetailEndpoint(projectId: string): Promise<Response> {
+    const project = await projectById(projectId);
+    const [environment, secrets] = await Promise.all([
+      listProjectEnvironmentVariables(projectId),
+      listProjectSecrets(projectId),
+    ]);
+    return jsonResponse({ project: { ...project, environment, secrets } });
+  }
+
+  async function createProjectEndpoint(request: Request, url: URL): Promise<Response> {
+    const json = requestAcceptsJson(request);
+    const gitUrl = json
+      ? requiredJsonString(await readJsonObject(request), "gitUrl")
+      : String((await request.formData()).get("gitUrl") ?? "");
+    let project: ProjectSummary;
     try {
-      await addProject(gitUrl);
+      project = (await addProject(gitUrl)).project;
     } catch (error) {
       if (!(error instanceof AtelierCoreError && error.code === "project_exists")) throw error;
+      const specification = parseProjectSpec(gitUrl);
+      const projects = (await listProjects()).projects;
+      project = projects.find((candidate) => candidate.gitUrl === specification.gitUrl && candidate.branch === specification.branch)!;
     }
+    if (json) return jsonResponse({ project });
     if (wantsTurboStream(request)) return turboStreamResponse(`${await renderProjectModalStreams()}${turboReplaceStream("project_picker_frame", await projectPickerListFrame())}`);
     return Response.redirect(new URL("/", url).toString(), 303);
   }
 
-  async function updateProjectFromForm(projectId: string, request: Request): Promise<Response> {
-    const formData = await request.formData();
-    await updateProject(projectId, { name: String(formData.get("name") ?? ""), spec: String(formData.get("gitUrl") ?? "") });
-    return turboStreamResponse(await renderProjectModalStreams());
+  async function updateProjectEndpoint(projectId: string, request: Request): Promise<Response> {
+    const json = requestAcceptsJson(request);
+    let name: string;
+    let spec: string;
+    if (json) {
+      const body = await readJsonObject(request);
+      name = requiredJsonString(body, "name");
+      spec = requiredJsonString(body, "gitUrl");
+    } else {
+      const formData = await request.formData();
+      name = String(formData.get("name") ?? "");
+      spec = String(formData.get("gitUrl") ?? "");
+    }
+    const { project } = await updateProject(projectId, { name, spec });
+    return json ? jsonResponse({ project }) : turboStreamResponse(await renderProjectModalStreams());
   }
 
   async function renderProjectEnvironmentStreams(projectId: string): Promise<string> {
@@ -1241,24 +1299,32 @@ ${moduleStylesHtml()}
     return turboReplaceStream(domId("project_environment", projectId), projectEnvironmentEditor(project, await listProjectEnvironmentVariables(projectId)));
   }
 
-  async function createProjectEnvironmentVariableFromForm(projectId: string, request: Request): Promise<Response> {
-    await projectById(projectId);
-    const formData = await request.formData();
-    await createProjectEnvironmentVariable(projectId, { name: String(formData.get("name") ?? ""), value: String(formData.get("value") ?? "") });
-    return turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
+  async function projectEnvironmentVariableValues(request: Request): Promise<{ name: string; value: string }> {
+    if (!requestAcceptsJson(request)) {
+      const formData = await request.formData();
+      return { name: String(formData.get("name") ?? ""), value: String(formData.get("value") ?? "") };
+    }
+    const body = await readJsonObject(request);
+    return { name: requiredJsonString(body, "name"), value: jsonString(body, "value") };
   }
 
-  async function updateProjectEnvironmentVariableFromForm(projectId: string, variableId: string, request: Request): Promise<Response> {
-    await projectById(projectId);
-    const formData = await request.formData();
-    await updateProjectEnvironmentVariable(projectId, variableId, { name: String(formData.get("name") ?? ""), value: String(formData.get("value") ?? "") });
-    return turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
+  async function createProjectEnvironmentVariableEndpoint(projectId: string, request: Request): Promise<Response> {
+    const json = requestAcceptsJson(request);
+    const environmentVariable = await createProjectEnvironmentVariable(projectId, await projectEnvironmentVariableValues(request));
+    return json ? jsonResponse({ environmentVariable }) : turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
   }
 
-  async function deleteProjectEnvironmentVariableFromForm(projectId: string, variableId: string): Promise<Response> {
-    await projectById(projectId);
-    await deleteProjectEnvironmentVariable(projectId, variableId);
-    return turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
+  async function updateProjectEnvironmentVariableEndpoint(projectId: string, variableId: string, request: Request): Promise<Response> {
+    const json = requestAcceptsJson(request);
+    const environmentVariable = await updateProjectEnvironmentVariable(projectId, variableId, await projectEnvironmentVariableValues(request));
+    return json ? jsonResponse({ environmentVariable }) : turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
+  }
+
+  async function deleteProjectEnvironmentVariableEndpoint(projectId: string, variableId: string, request: Request): Promise<Response> {
+    const json = requestAcceptsJson(request);
+    if (json) await readJsonObject(request);
+    const environmentVariable = await deleteProjectEnvironmentVariable(projectId, variableId);
+    return json ? jsonResponse({ deleted: true, environmentVariable }) : turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
   }
 
   async function renderProjectSecretStreams(projectId: string): Promise<string> {
@@ -1266,34 +1332,45 @@ ${moduleStylesHtml()}
     return turboReplaceStream(domId("project_secrets", projectId), projectSecretEditor(project, await listProjectSecrets(projectId)));
   }
 
-  async function createProjectSecretFromForm(projectId: string, request: Request): Promise<Response> {
-    await projectById(projectId);
-    const formData = await request.formData();
-    await createProjectSecret(projectId, {
-      envName: String(formData.get("envName") ?? ""),
-      hostPattern: String(formData.get("hostPattern") ?? ""),
-      placeholder: String(formData.get("placeholder") ?? ""),
-      secretValue: String(formData.get("secretValue") ?? ""),
-    });
-    return turboStreamResponse(await renderProjectSecretStreams(projectId));
+  type ProjectSecretValues = { envName: string; hostPattern: string; placeholder?: string; secretValue?: string };
+
+  async function projectSecretValues(request: Request, secretValueRequired: boolean): Promise<ProjectSecretValues> {
+    if (!requestAcceptsJson(request)) {
+      const formData = await request.formData();
+      return {
+        envName: String(formData.get("envName") ?? ""),
+        hostPattern: String(formData.get("hostPattern") ?? ""),
+        placeholder: String(formData.get("placeholder") ?? ""),
+        secretValue: String(formData.get("secretValue") ?? "") || undefined,
+      };
+    }
+    const body = await readJsonObject(request);
+    return {
+      envName: requiredJsonString(body, "envName"),
+      hostPattern: requiredJsonString(body, "hostPattern"),
+      placeholder: optionalJsonString(body, "placeholder"),
+      secretValue: secretValueRequired ? requiredJsonString(body, "secretValue") : optionalJsonString(body, "secretValue"),
+    };
   }
 
-  async function updateProjectSecretFromForm(projectId: string, secretId: string, request: Request): Promise<Response> {
-    await projectById(projectId);
-    const formData = await request.formData();
-    await updateProjectSecret(projectId, secretId, {
-      envName: String(formData.get("envName") ?? ""),
-      hostPattern: String(formData.get("hostPattern") ?? ""),
-      placeholder: String(formData.get("placeholder") ?? ""),
-      secretValue: String(formData.get("secretValue") ?? "") || undefined,
-    });
-    return turboStreamResponse(await renderProjectSecretStreams(projectId));
+  async function createProjectSecretEndpoint(projectId: string, request: Request): Promise<Response> {
+    const json = requestAcceptsJson(request);
+    const values = await projectSecretValues(request, true);
+    const secret = await createProjectSecret(projectId, { ...values, secretValue: values.secretValue! });
+    return json ? jsonResponse({ secret }) : turboStreamResponse(await renderProjectSecretStreams(projectId));
   }
 
-  async function deleteProjectSecretFromForm(projectId: string, secretId: string): Promise<Response> {
-    await projectById(projectId);
-    await deleteProjectSecret(projectId, secretId);
-    return turboStreamResponse(await renderProjectSecretStreams(projectId));
+  async function updateProjectSecretEndpoint(projectId: string, secretId: string, request: Request): Promise<Response> {
+    const json = requestAcceptsJson(request);
+    const secret = await updateProjectSecret(projectId, secretId, await projectSecretValues(request, false));
+    return json ? jsonResponse({ secret }) : turboStreamResponse(await renderProjectSecretStreams(projectId));
+  }
+
+  async function deleteProjectSecretEndpoint(projectId: string, secretId: string, request: Request): Promise<Response> {
+    const json = requestAcceptsJson(request);
+    if (json) await readJsonObject(request);
+    const secret = await deleteProjectSecret(projectId, secretId);
+    return json ? jsonResponse({ deleted: true, secret }) : turboStreamResponse(await renderProjectSecretStreams(projectId));
   }
 
   async function renderProjectSshKeyStreams(projectId: string): Promise<string> {
@@ -1339,13 +1416,21 @@ ${moduleStylesHtml()}
 </dialog>`;
   }
 
-  async function deleteProjectEndpoint(projectId: string): Promise<Response> {
+  async function deleteProjectEndpoint(projectId: string, request: Request): Promise<Response> {
+    const json = requestAcceptsJson(request);
     const project = await projectById(projectId);
+    if (json) await readJsonObject(request);
     const references = projectReferencingWorkspaces(projectId);
     if (references.length > 0) {
+      if (json) return jsonResponse({
+        deleted: false,
+        blocked: true,
+        references: references.map((entry) => ({ workspaceId: entry.id, title: workspaceTitle(entry) })),
+      });
       return turboStreamResponse(`${turboUpdateStream("project_modals", await renderProjectModals())}${turboUpdateStream(workspaceCommandModalHostId, deleteProjectBlockedModal(project, references))}`);
     }
     await deleteProject(projectId);
+    if (json) return jsonResponse({ deleted: true, blocked: false, project });
     return turboStreamResponse(`${await renderProjectModalStreams({ clearCommandModal: true })}${turboReplaceStream("project_picker_frame", await projectPickerListFrame())}`);
   }
 
@@ -1568,11 +1653,12 @@ ${moduleStylesHtml()}
     if (url.pathname === "/openapi.json" && request.method === "GET") return jsonResponse(atelierOpenApi(workspaceModuleCommands()));
     if (url.pathname === "/agent-launch" && request.method === "GET") return response(await launchEmptyAgentFrame());
     if (url.pathname === "/agent-launch/settings" && request.method === "GET") return response(await agentLaunchSettingsFrame(url.searchParams.get("model") ?? undefined));
-    if (url.pathname === "/workspaces" && request.method === "GET") return Response.redirect(new URL("/", url).toString(), 302);
+    if (url.pathname === "/workspaces" && request.method === "GET") return workspaceListEndpoint(request, url);
     if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestUnreadWorkspaceEndpoint();
     if (url.pathname === "/workspaces/active/clear" && request.method === "POST") return clearActiveWorkspaceEndpoint();
-    if (url.pathname === "/projects" && request.method === "POST") return await createProjectFromForm(request, url);
+    if (url.pathname === "/projects" && request.method === "GET" && requestAcceptsJson(request)) return jsonResponse(await listProjects());
+    if (url.pathname === "/projects" && request.method === "POST") return await createProjectEndpoint(request, url);
     if (url.pathname === "/projects/picker" && request.method === "GET") return response(await projectPickerListFrame());
     if (url.pathname === "/projects/new/picker" && request.method === "GET") return response(projectPickerNewFrame());
     if (url.pathname === "/projects/github-search" && request.method === "GET") return await githubRepositorySearchEndpoint(url);
@@ -1597,16 +1683,17 @@ ${moduleStylesHtml()}
 
     if ((params = match(/^\/projects\/([^/]+)\/picker$/)) && request.method === "GET") return response(await projectPickerEditFrame(await projectById(params[0])));
     if ((params = match(/^\/projects\/([^/]+)\/agent-launch$/)) && request.method === "GET") return response(await launchProjectAgentFrame(await projectById(params[0])));
-    if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "POST") return await updateProjectFromForm(params[0], request);
-    if ((params = match(/^\/projects\/([^/]+)\/environment$/)) && request.method === "POST") return await createProjectEnvironmentVariableFromForm(params[0], request);
-    if ((params = match(/^\/projects\/([^/]+)\/environment\/([^/]+)$/)) && request.method === "POST") return await updateProjectEnvironmentVariableFromForm(params[0], params[1], request);
-    if ((params = match(/^\/projects\/([^/]+)\/environment\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectEnvironmentVariableFromForm(params[0], params[1]);
-    if ((params = match(/^\/projects\/([^/]+)\/secrets$/)) && request.method === "POST") return await createProjectSecretFromForm(params[0], request);
-    if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)$/)) && request.method === "POST") return await updateProjectSecretFromForm(params[0], params[1], request);
-    if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectSecretFromForm(params[0], params[1]);
+    if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "GET" && requestAcceptsJson(request)) return await projectDetailEndpoint(params[0]);
+    if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "POST") return await updateProjectEndpoint(params[0], request);
+    if ((params = match(/^\/projects\/([^/]+)\/environment$/)) && request.method === "POST") return await createProjectEnvironmentVariableEndpoint(params[0], request);
+    if ((params = match(/^\/projects\/([^/]+)\/environment\/([^/]+)$/)) && request.method === "POST") return await updateProjectEnvironmentVariableEndpoint(params[0], params[1], request);
+    if ((params = match(/^\/projects\/([^/]+)\/environment\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectEnvironmentVariableEndpoint(params[0], params[1], request);
+    if ((params = match(/^\/projects\/([^/]+)\/secrets$/)) && request.method === "POST") return await createProjectSecretEndpoint(params[0], request);
+    if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)$/)) && request.method === "POST") return await updateProjectSecretEndpoint(params[0], params[1], request);
+    if ((params = match(/^\/projects\/([^/]+)\/secrets\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectSecretEndpoint(params[0], params[1], request);
     if ((params = match(/^\/projects\/([^/]+)\/ssh-key$/)) && request.method === "POST") return await saveProjectSshKeyFromForm(params[0], request);
     if ((params = match(/^\/projects\/([^/]+)\/ssh-key\/delete$/)) && request.method === "POST") return await deleteProjectSshKeyFromForm(params[0]);
-    if ((params = match(/^\/projects\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectEndpoint(params[0]);
+    if ((params = match(/^\/projects\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteProjectEndpoint(params[0], request);
 
     if (url.pathname === "/agent-workspaces" && request.method === "POST") return await createEmptyAgentWorkspaceEndpoint(request);
     if ((params = match(/^\/project-agent-workspaces\/([^/]+)$/)) && request.method === "POST") return await createProjectAgentWorkspaceEndpoint(params[0], request);

@@ -6,7 +6,7 @@ import { createWebApp } from "../src/server/app.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { setWorkspaceGitHubToken } from "@atelier/proxy-egress";
-import { addProject, getGitIdentity, isGitProjectInit, listProjectEnvironmentVariables, listProjects, projectWorkspaceInit, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
+import { addProject, getGitIdentity, isGitProjectInit, listProjectEnvironmentVariables, listProjects, projectWorkspaceInit, revealProjectSecrets, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -303,6 +303,106 @@ describe("web app contracts", () => {
     });
   });
 
+  test("project configuration routes negotiate complete JSON CRUD without exposing secret values", async () => {
+    await withTempDataDir(async () => {
+      const { app, registry } = createTestApp();
+      await registry.seed([]);
+      const specification = "https://github.com/org/json-project.git#main";
+
+      const createdResponse = await app.fetch(postJson("/projects", { gitUrl: specification }));
+      const createdText = await createdResponse.text();
+      const created = JSON.parse(createdText) as { project: { id: string; name: string } };
+      const repeated = await (await app.fetch(postJson("/projects", { gitUrl: specification }))).json() as typeof created;
+      expect(createdResponse.status).toBe(200);
+      expect(repeated.project.id).toBe(created.project.id);
+
+      const listed = await (await app.fetch(new Request("http://test.local/projects", { headers: { accept: "application/json" } }))).json() as { projects: Array<{ id: string }> };
+      expect(listed.projects.map((project) => project.id)).toEqual([created.project.id]);
+
+      const updated = await (await app.fetch(postJson(`/projects/${created.project.id}`, { name: "JSON Project", gitUrl: specification }))).json() as { project: { name: string } };
+      expect(updated.project.name).toBe("JSON Project");
+
+      const environmentCreated = await (await app.fetch(postJson(`/projects/${created.project.id}/environment`, { name: "EMPTY_OK", value: "" }))).json() as { environmentVariable: { id: string; value: string } };
+      expect(environmentCreated.environmentVariable.value).toBe("");
+      const environmentUpdated = await (await app.fetch(postJson(`/projects/${created.project.id}/environment/${environmentCreated.environmentVariable.id}`, { name: "API_URL", value: "https://api.example" }))).json() as { environmentVariable: { name: string } };
+      expect(environmentUpdated.environmentVariable.name).toBe("API_URL");
+
+      const sensitive = "sensitive-value-never-return";
+      const secretResponse = await app.fetch(postJson(`/projects/${created.project.id}/secrets`, {
+        envName: "POETRY_API_KEY", hostPattern: "api.poetry.example", placeholder: "", secretValue: sensitive,
+      }));
+      const secretText = await secretResponse.text();
+      const secretCreated = JSON.parse(secretText) as { secret: { id: string; envName: string } };
+      expect(secretText).not.toContain(sensitive);
+      expect(secretCreated.secret).not.toHaveProperty("secretValue");
+
+      const secretUpdateResponse = await app.fetch(postJson(`/projects/${created.project.id}/secrets/${secretCreated.secret.id}`, {
+        envName: "POETRY_API_KEY", hostPattern: "packages.example", placeholder: "token",
+      }));
+      const secretUpdateText = await secretUpdateResponse.text();
+      expect(secretUpdateText).not.toContain(sensitive);
+      expect((await revealProjectSecrets(created.project.id))[0]?.secretValue).toBe(sensitive);
+
+      const detailResponse = await app.fetch(new Request(`http://test.local/projects/${created.project.id}`, { headers: { accept: "application/json" } }));
+      const detailText = await detailResponse.text();
+      const detail = JSON.parse(detailText) as { project: { environment: unknown[]; secrets: unknown[] } };
+      expect(detail.project.environment).toHaveLength(1);
+      expect(detail.project.secrets).toHaveLength(1);
+      expect(detailText).not.toContain(sensitive);
+      expect(detailText).not.toContain("encryptedSecret");
+
+      const deletedSecret = await (await app.fetch(postJson(`/projects/${created.project.id}/secrets/${secretCreated.secret.id}/delete`, {}))).json() as { deleted: boolean };
+      const deletedEnvironment = await (await app.fetch(postJson(`/projects/${created.project.id}/environment/${environmentCreated.environmentVariable.id}/delete`, {}))).json() as { deleted: boolean };
+      expect(deletedSecret.deleted).toBe(true);
+      expect(deletedEnvironment.deleted).toBe(true);
+    });
+  });
+
+  test("project JSON routes use the structured error envelope for malformed and invalid bodies", async () => {
+    await withTempDataDir(async () => {
+      const { app, registry } = createTestApp();
+      await registry.seed([]);
+      const malformed = await app.fetch(new Request("http://test.local/projects", {
+        method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: "{",
+      }));
+      const missing = await app.fetch(postJson("/projects", {}));
+
+      expect(malformed.status).toBe(400);
+      expect(await malformed.json()).toMatchObject({ error: { code: "invalid_arguments" } });
+      expect(missing.status).toBe(400);
+      expect(await missing.json()).toMatchObject({ error: { code: "invalid_arguments", message: "gitUrl is required" } });
+    });
+  });
+
+  test("project deletion JSON reports success and non-sensitive workspace blockers", async () => {
+    await withTempDataDir(async () => {
+      const first = (await addProject("https://github.com/org/first.git")).project;
+      const second = (await addProject("https://github.com/org/second.git")).project;
+      const { app, registry } = createTestApp();
+      await registry.seed([{ id: "1585eff7", title: "poetry-slideshow", init: projectWorkspaceInit(first) }]);
+
+      const blocked = await (await app.fetch(postJson(`/projects/${first.id}/delete`, {}))).json() as { deleted: boolean; blocked: boolean; references: unknown[] };
+      const deleted = await (await app.fetch(postJson(`/projects/${second.id}/delete`, {}))).json() as { deleted: boolean; blocked: boolean };
+
+      expect(blocked).toEqual({ deleted: false, blocked: true, references: [{ workspaceId: "1585eff7", title: "poetry-slideshow" }] });
+      expect(deleted).toMatchObject({ deleted: true, blocked: false });
+      expect((await listProjects()).projects).toEqual([first]);
+    });
+  });
+
+  test("GET /workspaces lists JSON summaries while ordinary browsers still redirect", async () => {
+    const { app, registry } = createTestApp();
+    const project = projectWorkspaceInit({ id: "project-1", name: "demo", gitUrl: "https://example.test/demo.git", branch: null, sessionShareKey: "demo" });
+    await registry.seed([{ id: "abc12345", title: "Automation target", parked: true, init: project }]);
+
+    const json = await app.fetch(new Request("http://test.local/workspaces", { headers: { accept: "application/json" } }));
+    const browser = await app.fetch(new Request("http://test.local/workspaces"));
+
+    expect(await json.json()).toEqual({ workspaces: [{ id: "abc12345", title: "Automation target", phase: "ready", parked: true, projectId: "project-1" }] });
+    expect(browser.status).toBe(302);
+    expect(browser.headers.get("location")).toBe("http://test.local/");
+  });
+
   test("the removed REST workspace endpoint is not found and OpenAPI advertises UI JSON operations", async () => {
     const { app, registry } = createTestApp();
     await registry.seed([]);
@@ -315,6 +415,12 @@ describe("web app contracts", () => {
     expect(openapi.headers.get("content-type")).toContain("application/json");
     expect(specification.paths["/workspaces"]).toBeDefined();
     expect(specification.paths["/workspaces/{id}/commands/{commandId}"]).toBeDefined();
+    expect(specification.paths["/projects"]).toBeDefined();
+    expect(specification.paths["/projects/{projectId}"]).toBeDefined();
+    expect(specification.paths["/projects/{projectId}/environment/{variableId}/delete"]).toBeDefined();
+    expect(specification.paths["/projects/{projectId}/secrets/{secretId}/delete"]).toBeDefined();
+    expect(specification.paths["/projects/{projectId}/delete"]).toBeDefined();
+    expect(specification.paths["/projects/picker"]).toBeUndefined();
     expect(specification.paths["/api/workspaces"]).toBeUndefined();
   });
 
