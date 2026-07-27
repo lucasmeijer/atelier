@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, forwardAgentTerminalWheel, insertPromptTemplate, messageNavigationDirection, scrollMessageToTop } from "../../src/client/agent-controllers.ts";
+import { agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, forwardAgentTerminalWheel, insertPromptTemplate, messageNavigationDirection, scrollMessageToTop, transcriptFollowingAfterScroll } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): HTMLTextAreaElement {
   return {
@@ -54,6 +54,19 @@ describe("agent transcript navigation", () => {
     expect(messageNavigationDirection(transcript, message)).toBeUndefined();
     transcript.scrollTop = 400;
     expect(messageNavigationDirection(transcript, message)).toBe("up");
+  });
+
+  test("preserves following when a delayed scroll event observes newly streamed content", () => {
+    expect(transcriptFollowingAfterScroll(true, 400, 400, 580)).toBe(true);
+  });
+
+  test("stops following when the user scrolls away from the previous end", () => {
+    expect(transcriptFollowingAfterScroll(true, 400, 300, 580)).toBe(false);
+  });
+
+  test("resumes following when the user returns within the end threshold", () => {
+    expect(transcriptFollowingAfterScroll(false, 580, 525, 580)).toBe(true);
+    expect(transcriptFollowingAfterScroll(false, 580, 519, 580)).toBe(false);
   });
 
   test("forwards live terminal wheel input to the agent transcript", () => {

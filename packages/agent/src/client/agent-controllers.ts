@@ -60,12 +60,16 @@ interface AgentPaneControllerInstance {
 // agent-pane: cable subscription lifecycle, scroll anchoring, prompt behavior, rewind dialog
 // ---------------------------------------------------------------------------
 
+function scrollEnd(element: HTMLElement): number {
+  return Math.max(0, element.scrollHeight - element.clientHeight);
+}
+
 function messageScrollTop(transcript: HTMLElement, message: HTMLElement): number {
   return transcript.scrollTop + message.getBoundingClientRect().top - transcript.getBoundingClientRect().top;
 }
 
 function messageScrollTarget(transcript: HTMLElement, message: HTMLElement): number {
-  return Math.min(messageScrollTop(transcript, message), transcript.scrollHeight - transcript.clientHeight);
+  return Math.min(messageScrollTop(transcript, message), scrollEnd(transcript));
 }
 
 export function scrollMessageToTop(transcript: HTMLElement, message: HTMLElement): void {
@@ -75,6 +79,14 @@ export function scrollMessageToTop(transcript: HTMLElement, message: HTMLElement
 export function messageNavigationDirection(transcript: HTMLElement, message: HTMLElement): "up" | "down" | undefined {
   const distance = transcript.scrollTop - messageScrollTarget(transcript, message);
   return Math.abs(distance) < 1 ? undefined : distance > 0 ? "up" : "down";
+}
+
+export function transcriptFollowingAfterScroll(wasFollowing: boolean, previousEnd: number, scrollTop: number, nextEnd: number): boolean {
+  const threshold = 60;
+  const atNextEnd = scrollTop >= nextEnd - threshold;
+  const endMovedAway = nextEnd > previousEnd;
+  const remainedAtPreviousEnd = scrollTop >= previousEnd - threshold;
+  return atNextEnd || (wasFollowing && endMovedAway && remainedAtPreviousEnd);
 }
 
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
@@ -102,9 +114,9 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private hasSubscribed = false;
     private transcriptMutationObserver?: MutationObserver;
     private promptObserver?: MutationObserver;
-    private transcriptResizeObserver?: ResizeObserver;
-    private composerResizeObserver?: ResizeObserver;
-    private transcriptResizeFrame = 0;
+    private transcriptLayoutObserver?: ResizeObserver;
+    private transcriptLayoutFrame = 0;
+    private transcriptEnd = 0;
     private rewindUserText = "";
     private messageDialogPopulatesPrompt = false;
     private historicalOpenItemIds = new Set<string>();
@@ -116,7 +128,9 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     }
     private readonly onScroll = (): void => {
       const el = this.transcriptTarget;
-      this.stuck = el.scrollTop + el.clientHeight >= el.scrollHeight - 60;
+      const nextEnd = scrollEnd(el);
+      this.stuck = transcriptFollowingAfterScroll(this.stuck, this.transcriptEnd, el.scrollTop, nextEnd);
+      this.transcriptEnd = nextEnd;
       this.updateTranscriptNavigation();
     };
     private latestMessage(): HTMLElement | null {
@@ -136,27 +150,19 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       if (this.stuck) this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
       this.onScroll();
     }
-    private keepTranscriptAtEndAfterLayout(wasStuck = this.stuck): void {
-      if (!wasStuck) return;
-      requestAnimationFrame(() => {
-        this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
-        this.stuck = true;
-        this.updateTranscriptNavigation();
-      });
-    }
     private observeTranscriptItems(): void {
-      for (const item of this.transcriptTarget.children) this.transcriptResizeObserver!.observe(item);
+      for (const item of this.transcriptTarget.children) this.transcriptLayoutObserver!.observe(item);
     }
-    private readonly transcriptResized = (): void => {
-      cancelAnimationFrame(this.transcriptResizeFrame);
-      this.transcriptResizeFrame = requestAnimationFrame(() => this.updateTranscriptPosition());
+    private readonly transcriptLayoutChanged = (): void => {
+      cancelAnimationFrame(this.transcriptLayoutFrame);
+      this.transcriptLayoutFrame = requestAnimationFrame(() => this.updateTranscriptPosition());
     };
     private readonly onVisibilityChange = (): void => {
       if (document.visibilityState === "visible" && isWorkspacePaneVisible(this.element)) this.start();
       else this.stop();
     };
     connect(): void {
-      this.transcriptResizeObserver = new ResizeObserver(this.transcriptResized);
+      this.transcriptLayoutObserver = new ResizeObserver(this.transcriptLayoutChanged);
       this.observeTranscriptItems();
       this.transcriptMutationObserver = new MutationObserver(() => {
         this.restoreHistoricalOpenItems();
@@ -165,8 +171,8 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptMutationObserver.observe(this.transcriptTarget, { childList: true, subtree: true });
       this.promptObserver = new MutationObserver(() => this.updateSendStopButton());
       this.promptObserver.observe(this.formTarget, { childList: true, subtree: true });
-      this.composerResizeObserver = new ResizeObserver(() => this.keepTranscriptAtEndAfterLayout());
-      this.composerResizeObserver.observe(this.element.querySelector<HTMLElement>(".agent-promptwrap")!);
+      this.transcriptLayoutObserver.observe(this.element.querySelector<HTMLElement>(".agent-promptwrap")!);
+      this.transcriptEnd = scrollEnd(this.transcriptTarget);
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       this.updateTranscriptNavigation();
       document.addEventListener("visibilitychange", this.onVisibilityChange);
@@ -179,9 +185,8 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     disconnect(): void {
       this.transcriptMutationObserver?.disconnect();
       this.promptObserver?.disconnect();
-      this.transcriptResizeObserver?.disconnect();
-      this.composerResizeObserver?.disconnect();
-      cancelAnimationFrame(this.transcriptResizeFrame);
+      this.transcriptLayoutObserver?.disconnect();
+      cancelAnimationFrame(this.transcriptLayoutFrame);
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
       this.stop();
@@ -357,7 +362,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     autosize(): void {
       const input = this.inputTarget;
-      const wasStuck = this.stuck;
       const maxHeight = Number.parseFloat(getComputedStyle(input).getPropertyValue("--agent-input-max-height")) || 260;
       input.style.height = "auto";
       // Add a small buffer for fractional line-height/browser rounding so a
@@ -365,7 +369,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       const nextHeight = Math.ceil(input.scrollHeight) + 2;
       input.style.height = `${Math.min(nextHeight, maxHeight)}px`;
       input.style.overflowY = nextHeight > maxHeight ? "auto" : "hidden";
-      this.keepTranscriptAtEndAfterLayout(wasStuck);
       this.updateSendStopButton();
     }
 
