@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createAtelierEventBus } from "@atelier/core";
 import { createCableServer, type CableSocketData } from "../src/server/cable.ts";
 import { cableCursorIsNewer } from "../src/client/cable.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
@@ -23,14 +24,14 @@ test("cable cursors reject stale revisions from the same runtime", () => {
 describe("cable server", () => {
   test("validates /cable upgrades", () => {
     const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
-    const cable = createCableServer({ registry });
+    const cable = createCableServer({ registry, events: createAtelierEventBus() });
     expect(cable.validate(new Request("http://test/cable"), new URL("http://test/cable"))?.kind).toBe("cable");
     expect(cable.validate(new Request("http://test/nope"), new URL("http://test/nope"))).toBeUndefined();
   });
 
   test("subscribes, broadcasts, unsubscribes, and cleans up on close", async () => {
     const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
-    const cable = createCableServer({ registry, shellSnapshot: () => '<turbo-stream action="replace" target="initial"><template>ok</template></turbo-stream>' });
+    const cable = createCableServer({ registry, events: createAtelierEventBus(), shellSnapshot: () => '<turbo-stream action="replace" target="initial"><template>ok</template></turbo-stream>' });
     const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
 
     cable.open(ws as never);
@@ -57,7 +58,7 @@ describe("cable server", () => {
 
   test("rejects unauthorized workspace subscriptions", async () => {
     const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
-    const cable = createCableServer({ registry });
+    const cable = createCableServer({ registry, events: createAtelierEventBus() });
     const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
     cable.open(ws as never);
     cable.message(ws as never, JSON.stringify({ command: "subscribe", identifier: { channel: "workspace", workspaceId: "missing" } }));

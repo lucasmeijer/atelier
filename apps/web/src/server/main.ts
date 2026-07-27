@@ -219,7 +219,7 @@ const registry = createWorkspaceRegistry({
 });
 const layouts = createWorkspaceLayoutStore();
 let app: WebApp;
-const cableServer = createCableServer({ registry, shellSnapshot: () => app.shellSnapshot() });
+const cableServer = createCableServer({ registry, events: atelierEvents, shellSnapshot: () => app.shellSnapshot() });
 
 app = createWebApp({
   registry,

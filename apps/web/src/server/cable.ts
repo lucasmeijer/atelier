@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from "bun";
-import { AtelierCoreError } from "@atelier/core";
+import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { getWorkspaceAgentRuntime, listWorkspaceAgents } from "@atelier/agent/server";
 import {
   parseCableIdentifier,
@@ -24,6 +24,7 @@ type UpstreamSubscription = {
 
 export interface CableServerOptions {
   registry: WorkspaceRegistry;
+  events: AtelierEventBus;
   shellSnapshot?: () => string | Promise<string>;
   logError?: (message: string) => void;
 }
@@ -78,9 +79,14 @@ export function createCableServer(options: CableServerOptions): CableServer {
     await requireAgent(identifier.workspaceId, identifier.label);
   }
 
+  async function agentRuntime(identifier: Extract<CableIdentifier, { channel: "agent" }>) {
+    // Cable can initialize the runtime first, so it must provide the events used by agent tools.
+    return await getWorkspaceAgentRuntime(await requireAgent(identifier.workspaceId, identifier.label), { events: options.events });
+  }
+
   async function snapshot(identifier: CableIdentifier, upTo?: string): Promise<{ html: string; cursor?: string }> {
     if (identifier.channel === "shell") return { html: await options.shellSnapshot?.() ?? "" };
-    if (identifier.channel === "agent") return await (await getWorkspaceAgentRuntime(await requireAgent(identifier.workspaceId, identifier.label))).snapshotStream(upTo);
+    if (identifier.channel === "agent") return await (await agentRuntime(identifier)).snapshotStream(upTo);
     return { html: "" };
   }
 
@@ -92,7 +98,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
       existing.refCount += 1;
       return;
     }
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(identifier.workspaceId, identifier.label));
+    const runtime = await agentRuntime(identifier);
     const unsubscribe = runtime.subscribe((html, cursor) => broadcast(identifier, html, cursor));
     upstreamByIdentifier.set(key, { refCount: 1, unsubscribe });
   }
