@@ -87,7 +87,7 @@ export interface WebAppDeps {
   inspectDeleteSafety(id: string): Promise<WorkspaceDeleteBlockedDetails>;
   /** Force-remove the workspace container. */
   destroyWorkspace(id: string): Promise<void>;
-  /** Persist parked state in the workspace container. Defaults to setWorkspaceParked. */
+  /** Persist parked state and stop or start its workspace container. Defaults to setWorkspaceParked. */
   persistWorkspaceParked?(id: string, parked: boolean): Promise<void>;
   /** Receives background task failures. Defaults to console.error. */
   logError?(message: string): void;
@@ -305,8 +305,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function workspaceSidebarTitleFrame(entry: WorkspaceEntry): string {
     const id = entry.id;
     const frameId = domId("workspace_sidebar_title", id);
+    const title = `<div class="r-title">${escapeHtml(workspaceTitle(entry))}</div>`;
     return `<turbo-frame id="${frameId}" class="workspace-row-title-frame">
-    <a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"><div class="r-title">${escapeHtml(workspaceTitle(entry))}</div></a>
+    ${entry.parked ? `<div class="row-main">${title}</div>` : `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select">${title}</a>`}
   </turbo-frame>`;
   }
 
@@ -317,7 +318,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function workspaceRow(entry: WorkspaceEntry): string {
     const id = entry.id;
     const title = workspaceTitle(entry);
-    const selectable = entry.phase === "starting" || entry.phase === "failed" || entry.phase === "ready";
+    const selectable = !entry.parked && (entry.phase === "starting" || entry.phase === "failed" || entry.phase === "ready");
     const projectClass = isGitProjectInit(entry.init) ? "repo-tinted-row" : "";
     const projectStyle = isGitProjectInit(entry.init) ? ` style="${repoColorStyle(entry.init.projectId)}"` : "";
     const stateClass = registry.workspaceState(id) === "unread" ? "attn-state" : "";
@@ -340,7 +341,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       case "ready": {
         const parkedAction = entry.parked ? "unpark" : "park";
         const parkedLabel = entry.parked ? "Unpark workspace" : "Park workspace";
-        return `${open("")}${workspaceSidebarTitleFrame(entry)}<div class="workspace-row-actions"><span class="workspace-row-notifiers">${renderWorkspaceRowContributions(entry)}${renderWorkspaceStatus(id)}</span><span class="workspace-row-buttons"><a class="workspace-row-edit" href="/workspaces/${encodeURIComponent(id)}/sidebar-title/edit" data-turbo-frame="${domId("workspace_sidebar_title", id)}" title="Rename workspace" aria-label="Rename workspace">✎</a><form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}" data-turbo="true" data-action="turbo:submit-end->workspace-list#parkToggled"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form>${workspaceDeleteForm(id)}</span></div></div>`;
+        const parkForm = `<form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}" data-turbo="true" data-action="turbo:submit-end->workspace-list#parkToggled"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form>`;
+        const editAction = entry.parked ? "" : `<a class="workspace-row-edit" href="/workspaces/${encodeURIComponent(id)}/sidebar-title/edit" data-turbo-frame="${domId("workspace_sidebar_title", id)}" title="Rename workspace" aria-label="Rename workspace">✎</a>`;
+        const deleteAction = entry.parked ? "" : workspaceDeleteForm(id);
+        return `${open("")}${workspaceSidebarTitleFrame(entry)}<div class="workspace-row-actions"><span class="workspace-row-notifiers">${renderWorkspaceRowContributions(entry)}${renderWorkspaceStatus(id)}</span><span class="workspace-row-buttons">${editAction}${parkForm}${deleteAction}</span></div></div>`;
       }
     }
   }
@@ -360,6 +364,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   function initialStatusStreams(): string {
     return registry.list().map((entry) => workspaceStatusStreams(entry.id)).join("");
   }
+
+  const persistWorkspaceParked = deps.persistWorkspaceParked ?? setWorkspaceParked;
+  let skipParkedPersistence = false;
 
   registry.setCallbacks({
     rowChanged(entry, { tabKey, unread }) {
@@ -383,7 +390,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       broadcastShell(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
     },
     parkedChanged(entry) {
-      void (deps.persistWorkspaceParked ?? setWorkspaceParked)(entry.id, entry.parked).catch((error) => logError(`could not persist parked state for workspace ${entry.id}: ${error instanceof Error ? error.message : String(error)}`));
+      if (skipParkedPersistence) return;
+      void persistWorkspaceParked(entry.id, entry.parked).catch((error) => logError(`could not persist parked state for workspace ${entry.id}: ${error instanceof Error ? error.message : String(error)}`));
     },
     removed(id) {
       layouts.delete(id);
@@ -841,7 +849,7 @@ ${moduleStylesHtml()}
   }
 
   async function homePage(): Promise<Response> {
-    const selected = registry.list().find((entry) => entry.phase !== "failed");
+    const selected = registry.list().find((entry) => !entry.parked && entry.phase !== "failed");
     return response(layout("Workspaces", await renderWorkspaceShell(selected?.id), selected?.id));
   }
 
@@ -861,7 +869,7 @@ ${moduleStylesHtml()}
       url: `/workspaces/${encodeURIComponent(entry.id)}`,
       ...(entry.error ? { error: entry.error } : {}),
     };
-    if (entry.phase === "ready" || entry.phase === "checking_delete") {
+    if (!entry.parked && (entry.phase === "ready" || entry.phase === "checking_delete")) {
       const { attachments, tabs } = await workspaceTabsAndAttachments(id);
       const handlers = new Map(workspaceModuleCommands().map((handler) => [handler.id, handler]));
       workspace.tabs = tabs.map((tab) => ({ key: tab.key, label: tabLabel(tab) }));
@@ -891,6 +899,7 @@ ${moduleStylesHtml()}
   async function workspacePage(id: string, request: Request): Promise<Response> {
     if (requestAcceptsJson(request)) return await workspaceJson(id);
     const entry = requireWorkspace(id);
+    if (entry.parked) return Response.redirect(new URL("/", request.url).toString(), 302);
     const url = new URL(request.url);
     if (url.searchParams.get("resident") === "1") return response(await workspaceResidentFor(entry, { visible: true }));
     return response(layout(workspaceTitle(entry), await renderWorkspaceShell(id), id));
@@ -1182,12 +1191,17 @@ ${moduleStylesHtml()}
     return turboStreamResponse(turboRemoveStream("delete-workspace-modal"));
   }
 
-  function parkWorkspaceEndpoint(id: string, parked: boolean, request: Request): Response {
+  async function parkWorkspaceEndpoint(id: string, parked: boolean, request: Request): Promise<Response> {
     const entry = requireWorkspace(id);
     if (entry.phase !== "ready") return requestAcceptsJson(request)
       ? jsonResponse({ error: { code: "workspace_not_ready", message: `workspace ${id} is not ready` } }, { status: 409 })
       : wantsTurboStream(request) ? turboStreamResponse("", { status: 409 }) : response("Workspace is not ready", { status: 409 });
-    registry.setParked(id, parked);
+    if (entry.parked !== parked) {
+      await persistWorkspaceParked(id, parked);
+      skipParkedPersistence = true;
+      registry.setParked(id, parked);
+      skipParkedPersistence = false;
+    }
     if (requestAcceptsJson(request)) return jsonResponse({ workspace: { id, parked } });
     if (wantsTurboStream(request)) return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
     return Response.redirect(request.headers.get("referer") ?? "/", 303);

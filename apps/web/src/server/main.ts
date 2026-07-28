@@ -2,7 +2,7 @@ import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
-import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace, workspaceSetupProvisioningHook } from "@atelier/workspace";
+import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace, setWorkspaceContainerRunning, workspaceSetupProvisioningHook } from "@atelier/workspace";
 import type { WorkspaceDeleteSafetyIssue } from "@atelier/projects";
 import { atelierName, CableTopics, escapeHtml, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler } from "@atelier/shared";
 import {
@@ -262,9 +262,11 @@ atelierEvents.on("workspace_user_activity", ({ workspaceId }) => registry.touch(
 atelierEvents.on("workspace_title_changed", ({ workspaceId, title }) => registry.setTitle(workspaceId, title || null));
 atelierEvents.on("workspace_tab_unread", ({ workspaceId, tabKey, unread }) => registry.setTabUnread(workspaceId, tabKey, unread));
 
-// Docker is the persistent truth for which workspaces exist; seed the registry from it before modules initialize
-// so startup-time row contributions have rows to attach to.
-await registry.seed((await listWorkspaces()).workspaces);
+// Docker is the persistent truth for which workspaces exist. Restore each container to the state recorded by
+// park/unpark before modules initialize, then seed the registry so startup-time contributions have rows to attach to.
+const persistedWorkspaces = (await listWorkspaces()).workspaces;
+await Promise.all(persistedWorkspaces.map((workspace) => setWorkspaceContainerRunning(workspace.id, !workspace.parked)));
+await registry.seed(persistedWorkspaces);
 
 for (const module of workspaceModules) {
   await module.initialize?.({

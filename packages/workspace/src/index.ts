@@ -109,9 +109,14 @@ async function waitForWorkspaceStartup(id: string): Promise<string> {
   throw new AtelierCoreError("workspace_startup_timeout", `workspace did not finish startup: ${id}${output ? `\n${output}` : ""}${log ? `\n\nStartup log:\n${log}` : ""}`);
 }
 
-export async function resolveWorkspace(id: string): Promise<string> {
+async function validateWorkspaceContainer(id: string): Promise<void> {
+  assertValidWorkspaceId(id);
   const labels = await inspectLabels(id);
   if (labels[workspaceTypeLabel] !== "workspace" || labels[namespaceLabel] !== namespace()) throw new AtelierCoreError("workspace_not_found", `workspace not found: ${id}`);
+}
+
+export async function resolveWorkspace(id: string): Promise<string> {
+  await validateWorkspaceContainer(id);
   await ensureWorkspaceFilesystem(id);
   return id;
 }
@@ -604,13 +609,24 @@ export async function setWorkspaceTitle(id: string, title: string): Promise<null
   return null;
 }
 
+async function updateWorkspaceContainerRunning(id: string, running: boolean): Promise<void> {
+  await requireDocker([running ? "start" : "stop", workspaceContainerName(id)]);
+}
+
+export async function setWorkspaceContainerRunning(id: string, running: boolean): Promise<null> {
+  await validateWorkspaceContainer(id);
+  await updateWorkspaceContainerRunning(id, running);
+  return null;
+}
+
 export async function setWorkspaceParked(id: string, parked: boolean): Promise<null> {
-  await resolveWorkspace(id);
+  await validateWorkspaceContainer(id);
   const context = getAtelierRuntimeContext();
   await mkdir(workspaceMetadataDir(context, id), { recursive: true });
   const path = workspaceMetadataPath(context, id, parkedPath);
   if (parked) await writeFile(path, "");
-  else await rm(path, { force: true });
+  await updateWorkspaceContainerRunning(id, !parked);
+  if (!parked) await rm(path, { force: true });
   return null;
 }
 

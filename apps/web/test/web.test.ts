@@ -661,6 +661,12 @@ describe("web app contracts", () => {
 
     expect(registry.list().map((entry) => entry.id)).toEqual(["a", "b"]);
 
+    const parkedPage = await app.fetch(new Request("http://test.local/workspaces/b"));
+    expect(parkedPage.status).toBe(302);
+    expect(parkedPage.headers.get("location")).toBe("http://test.local/");
+    const parkedJson = await (await app.fetch(new Request("http://test.local/workspaces/b", { headers: { accept: "application/json" } }))).json();
+    expect(parkedJson.workspace).not.toHaveProperty("tabs");
+
     const parkResponse = await app.fetch(post("/workspaces/a/park"));
     const parkBody = await parkResponse.text();
     expect(registry.get("a")?.parked).toBe(true);
@@ -669,16 +675,25 @@ describe("web app contracts", () => {
     expect(parkBody).toContain('aria-label="Unpark workspace"');
     expect(parkBody).toContain("💤");
     expect(parkBody).toContain('data-turbo="true" data-action="turbo:submit-end->workspace-list#parkToggled"');
-    expect(parkBody.indexOf('class="workspace-row-park"')).toBeLessThan(parkBody.indexOf('class="workspace-row-delete"'));
+    expect(parkBody).not.toContain('class="workspace-row-delete"');
+    expect(parkBody).not.toContain('class="workspace-row-edit"');
 
-    await app.fetch(post("/workspaces/a/unpark"));
+    const unparkBody = await (await app.fetch(post("/workspaces/a/unpark"))).text();
     expect(registry.get("a")?.parked).toBe(false);
+    expect(unparkBody.indexOf('class="workspace-row-park"')).toBeLessThan(unparkBody.indexOf('class="workspace-row-delete"'));
     expect(parked.at(-1)).toEqual({ id: "a", parked: false });
 
     const fallback = await app.fetch(new Request("http://test.local/workspaces/a/park", { method: "POST", headers: { referer: "http://test.local/" } }));
     expect(fallback.status).toBe(303);
     expect(fallback.headers.get("location")).toBe("http://test.local/");
     expect(registry.get("a")?.parked).toBe(true);
+
+    const home = await app.fetch(new Request("http://test.local/"));
+    expect(home.status).toBe(200);
+    const homeBody = await home.text();
+    expect(homeBody).toContain("Select a workspace");
+    expect(homeBody).not.toContain('href="/workspaces/a"');
+    expect(homeBody).not.toContain('href="/workspaces/b"');
   });
 
   test("workspace rows warn when the workspace image is outdated", async () => {

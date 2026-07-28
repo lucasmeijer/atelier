@@ -89,14 +89,16 @@ describe("core workspaces", () => {
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: workspaceId, title: "Add dark mode toggle" });
   });
 
-  test("setWorkspaceParked sets parked state and listWorkspaces reflects it", async () => {
+  test("setWorkspaceParked persists parked state and stops or starts the container", async () => {
     const created = await createWorkspace();
 
     expect(await setWorkspaceParked(created.id, true)).toBeNull();
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, parked: true });
+    expect((await docker(["inspect", "--format", "{{.State.Running}}", workspaceContainerName(created.id)])).stdout.trim()).toBe("false");
 
     expect(await setWorkspaceParked(created.id, false)).toBeNull();
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
+    expect((await docker(["inspect", "--format", "{{.State.Running}}", workspaceContainerName(created.id)])).stdout.trim()).toBe("true");
   });
 
   test("createWorkspace persists init instructions", async () => {
