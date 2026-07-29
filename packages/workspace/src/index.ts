@@ -615,7 +615,8 @@ export async function setWorkspaceTitle(id: string, title: string): Promise<null
 }
 
 async function updateWorkspaceContainerRunning(id: string, running: boolean): Promise<void> {
-  await requireDocker([running ? "start" : "stop", workspaceContainerName(id)]);
+  const name = workspaceContainerName(id);
+  await requireDocker(running ? ["start", name] : ["stop", "--time", "0", name]);
 }
 
 export async function setWorkspaceContainerRunning(id: string, running: boolean): Promise<null> {
