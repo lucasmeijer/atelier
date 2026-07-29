@@ -1,4 +1,5 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput } from "@atelier/core";
 import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
@@ -22,6 +23,7 @@ export type {
 const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
 const workspaceIdLabel = "com.atelier.workspace-id";
+const workspaceCgroupParentLabel = "com.atelier.workspace-cgroup-parent";
 const titlePath = "title";
 const parkedPath = "parked";
 const initPath = "init.json";
@@ -45,13 +47,14 @@ function namespace(): string { return process.env.ATELIER_NAMESPACE || "host"; }
 export function generateWorkspaceId(): string { return crypto.randomUUID().replaceAll("-", "").slice(0, 8); }
 export function workspaceContainerName(id: string): string { return `atelier-${id}`; }
 
-function envString(name: string): string | undefined {
-  const value = process.env[name]?.trim();
-  return value ? value : undefined;
-}
-
 function workspacePublishHost(): string { return "127.0.0.1"; }
 function workspaceConnectHost(): string { return "127.0.0.1"; }
+async function configuredWorkspaceCgroupParent(): Promise<string | undefined> {
+  const inspected = await runDocker(["inspect", "--format", `{{index .Config.Labels "${workspaceCgroupParentLabel}"}}`, hostname()]);
+  if (inspected.exitCode !== 0) return undefined;
+  const parent = inspected.stdout.trim();
+  return parent && parent !== "<no value>" ? parent : undefined;
+}
 function formatDeleteBlockedMessage(id: string, issues: unknown[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
 async function provisionStep<T>(events: AtelierEventBus | undefined, workspaceId: string, id: string, label: string, fn: () => Promise<T>, options: { parentId?: string; output?: (result: T) => string | Promise<string> } = {}): Promise<T> {
   await events?.emit("workspace_provision_step", { workspaceId, id, label, status: "running", parentId: options.parentId });
@@ -451,6 +454,8 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
     }
     const labels: Record<string, string> = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id };
     plan = baseWorkspacePlan(labels);
+    const cgroupParent = await configuredWorkspaceCgroupParent();
+    if (cgroupParent) plan.extraArgs.push("--cgroup-parent", cgroupParent);
     plan.mounts.push({ type: "bind", source: source.dockerHostWorktreePath, target: workspaceRoot });
     const activePlan = plan;
     await provisionStep(options.events, id, "workspace.plan", "Prepare workspace container plan", async () => {

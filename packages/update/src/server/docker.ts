@@ -45,7 +45,7 @@ export interface DockerInspect {
   RepoDigests?: string[];
   Config?: { Image?: string; Env?: string[]; Labels?: Record<string, string>; Entrypoint?: string[] | string | null; Cmd?: string[] | string | null; WorkingDir?: string; User?: string };
   ImageConfig?: { Config?: { Labels?: Record<string, string> } };
-  HostConfig?: Record<string, unknown> & { Binds?: string[]; Mounts?: unknown[]; NetworkMode?: string; RestartPolicy?: unknown; Init?: boolean };
+  HostConfig?: Record<string, unknown> & { Binds?: string[]; Mounts?: unknown[]; NetworkMode?: string; RestartPolicy?: unknown; Init?: boolean; CpuShares?: number; MemoryReservation?: number; OomScoreAdj?: number };
   Mounts?: unknown[];
   NetworkSettings?: unknown;
 }
@@ -214,6 +214,9 @@ export function replacementCreateArgs(inspect: DockerInspect, targetImage = insp
   const networkMode = inspect.HostConfig?.NetworkMode;
   if (typeof networkMode === "string" && networkMode) args.push("--network", networkMode);
   if (inspect.HostConfig?.Init) args.push("--init");
+  if (inspect.HostConfig?.CpuShares) args.push("--cpu-shares", String(inspect.HostConfig.CpuShares));
+  if (inspect.HostConfig?.MemoryReservation) args.push("--memory-reservation", String(inspect.HostConfig.MemoryReservation));
+  if (inspect.HostConfig?.OomScoreAdj) args.push("--oom-score-adj", String(inspect.HostConfig.OomScoreAdj));
   const restart = inspect.HostConfig?.RestartPolicy as { Name?: string; MaximumRetryCount?: number } | undefined;
   if (restart?.Name) args.push("--restart", restart.Name === "on-failure" && restart.MaximumRetryCount ? `${restart.Name}:${restart.MaximumRetryCount}` : restart.Name);
   if (inspect.Config?.WorkingDir) args.push("--workdir", inspect.Config.WorkingDir);

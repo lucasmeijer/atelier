@@ -33,6 +33,14 @@ bun run scripts/build-atelier-image.ts --push --image ghcr.io/example/atelier --
 
 The installer pulls the required default workspace image. Repositories that request nested-Docker image preloads get deterministic carrier images built on demand when their first matching workspace is created. Carriers embed a `fuse-overlayfs` nested Docker store and are selected only on native Linux, never Docker Desktop.
 
+## Production resource isolation
+
+The Linux installer requires cgroup v2, systemd, Docker's systemd cgroup driver, at least 3 GiB of memory, and at least two logical CPUs. It rejects cgroup v1 before configuring Atelier. It creates `atelier-workspaces.slice` and places every workspace container beneath that slice. The slice applies aggregate limits across all workspaces: it leaves 2 GiB of host memory and one logical CPU outside workspace use, disables workspace swap, limits the pool to 32,768 tasks, and gives workspace CPU and I/O lower scheduling weight. These are pool limits rather than per-workspace limits, so idle workspaces do not strand capacity and active workspaces share what is available.
+
+The Atelier server receives a 1 GiB memory reservation, increased CPU weight, and a reduced OOM score. Its workspace-slice label and server resource settings survive self-update. The hard aggregate memory and CPU limits are what keep runaway workspace workloads from consuming the capacity reserved for Atelier and the host; the scheduling weights improve responsiveness during contention.
+
+These guarantees are installed by `scripts/install.sh`. Ad-hoc `docker run` and `bun run docker:dev` launches do not create host cgroups and therefore do not provide the production resource guarantees.
+
 The resulting container expects access to Docker so it can create Atelier workspace containers. Its entrypoint starts as root, grants the fixed container user `1000:1000` access to the mounted Docker socket, prepares the Atelier data directory, and then runs Atelier as that fixed user. Docker-run workspace containers use the same numeric uid/gid and the `default` namespace. Workspace app ports are published on the Docker host loopback. The Atelier container must run with host networking on Linux so Atelier and host-run Atelier both reach workspace apps at `127.0.0.1:<published-port>`. See [workspace networking](./workspace-networking.md) for the reasoning and experiments behind this model.
 
 A typical local run mounts the host Docker socket and bind-mounts a host data directory. `ATELIER_DOCKER_HOST_DATA_DIR` must be the host path for that same data directory so workspace containers can mount files created by the Atelier container:

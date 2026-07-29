@@ -444,10 +444,10 @@ describe("docker replacement config", () => {
       Image: "sha256:old",
       Config: {
         Env: ["A=B", "ATELIER_COMMIT_ID=old", "ATELIER_COMMIT_DESCRIPTION=old build"],
-        Labels: { "com.atelier.type": "server", "org.opencontainers.image.revision": "old" },
+        Labels: { "com.atelier.type": "server", "com.atelier.workspace-cgroup-parent": "atelier-workspaces.slice", "org.opencontainers.image.revision": "old" },
         Cmd: ["bun", "run", "apps/web/src/server/main.ts"],
       },
-      HostConfig: { NetworkMode: "host", RestartPolicy: { Name: "unless-stopped" }, Init: true },
+      HostConfig: { NetworkMode: "host", RestartPolicy: { Name: "unless-stopped" }, Init: true, CpuShares: 2048, MemoryReservation: 1_073_741_824, OomScoreAdj: -500 },
       Mounts: [{ Type: "bind", Source: "/host", Destination: "/data", RW: true }],
     };
     const args = replacementCreateArgs(inspect);
@@ -457,12 +457,19 @@ describe("docker replacement config", () => {
     expect(args).not.toContain("ATELIER_COMMIT_DESCRIPTION=old build");
     expect(args).toContain("--label");
     expect(args).toContain("com.atelier.type=server");
+    expect(args).toContain("com.atelier.workspace-cgroup-parent=atelier-workspaces.slice");
     expect(args).not.toContain("org.opencontainers.image.revision=old");
     expect(args).toContain("--network");
     expect(args).toContain("host");
     expect(args).toContain("--init");
     expect(args).toContain("--restart");
     expect(args).toContain("unless-stopped");
+    expect(args).toContain("--cpu-shares");
+    expect(args).toContain("2048");
+    expect(args).toContain("--memory-reservation");
+    expect(args).toContain("1073741824");
+    expect(args).toContain("--oom-score-adj");
+    expect(args).toContain("-500");
     expect(args).toContain("type=bind,src=/host,dst=/data");
     expect(args).toContain("ghcr.io/lucasmeijer/atelier:stable");
   });

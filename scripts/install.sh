@@ -7,6 +7,8 @@ atelier_image=""
 atelier_name="atelier"
 atelier_data_dir="/var/lib/atelier"
 atelier_port="80"
+atelier_workspace_slice="atelier-workspaces.slice"
+atelier_reserved_memory_bytes=$((2 * 1024 * 1024 * 1024))
 pull_only=0
 
 if [ -t 1 ] && command -v tput >/dev/null 2>&1 && [ -n "${TERM:-}" ]; then
@@ -440,6 +442,57 @@ pull_atelier_images() {
   pull_required_workspace_images
 }
 
+configure_workspace_resource_controls() {
+  local controllers total_memory_kib total_memory_bytes workspace_memory_bytes cpu_count workspace_cpu_quota slice_path cgroup_driver cpu_quota cpu_period
+
+  if [ ! -f /sys/fs/cgroup/cgroup.controllers ]; then
+    fail "Atelier requires cgroup v2 for workspace resource isolation; this host appears to use cgroup v1"
+  fi
+  [ "$(ps -p 1 -o comm= | tr -d ' ')" = systemd ] || fail "Atelier workspace resource isolation requires systemd as PID 1"
+  controllers=" $(cat /sys/fs/cgroup/cgroup.controllers) "
+  for controller in cpu io memory pids; do
+    case "$controllers" in
+      *" $controller "*) ;;
+      *) fail "Atelier requires the cgroup v2 $controller controller" ;;
+    esac
+  done
+
+  cgroup_driver="$(docker info --format '{{.CgroupDriver}}')"
+  [ "$cgroup_driver" = systemd ] || fail "Atelier requires Docker's systemd cgroup driver (found $cgroup_driver)"
+
+  total_memory_kib="$(awk '/^MemTotal:/ { print $2; exit }' /proc/meminfo)"
+  total_memory_bytes=$((total_memory_kib * 1024))
+  workspace_memory_bytes=$((total_memory_bytes - atelier_reserved_memory_bytes))
+  [ "$workspace_memory_bytes" -ge $((1024 * 1024 * 1024)) ] || fail "Atelier requires at least 3 GiB of memory: 2 GiB is reserved for Atelier and the host"
+  cpu_count="$(getconf _NPROCESSORS_ONLN)"
+  [ "$cpu_count" -ge 2 ] || fail "Atelier requires at least 2 logical CPUs: one CPU is reserved from workspace use"
+  workspace_cpu_quota=$(((cpu_count - 1) * 100))
+
+  slice_path="/etc/systemd/system/$atelier_workspace_slice"
+  info "Reserving 2 GiB memory and 1 CPU from all workspace containers..."
+  cat >"$slice_path" <<EOF
+[Unit]
+Description=Atelier workspace resource pool
+
+[Slice]
+CPUQuota=${workspace_cpu_quota}%
+CPUWeight=10
+IOWeight=10
+MemoryMax=$workspace_memory_bytes
+MemorySwapMax=0
+TasksMax=32768
+EOF
+  systemctl daemon-reload
+  systemctl start "$atelier_workspace_slice"
+
+  [ "$(cat "/sys/fs/cgroup/$atelier_workspace_slice/memory.max")" = "$workspace_memory_bytes" ] || fail "could not apply the workspace memory limit"
+  [ "$(cat "/sys/fs/cgroup/$atelier_workspace_slice/memory.swap.max")" = 0 ] || fail "could not disable workspace swap"
+  [ "$(cat "/sys/fs/cgroup/$atelier_workspace_slice/pids.max")" = 32768 ] || fail "could not apply the workspace task limit"
+  read -r cpu_quota cpu_period < "/sys/fs/cgroup/$atelier_workspace_slice/cpu.max"
+  [ "$cpu_quota" != max ] && [ $((100 * cpu_quota)) -eq $((workspace_cpu_quota * cpu_period)) ] || fail "could not apply the workspace CPU quota"
+  success "Workspace resource pool is limited to $((workspace_memory_bytes / 1024 / 1024)) MiB and $((cpu_count - 1)) CPU(s)"
+}
+
 install_atelier() {
   mkdir -p "$atelier_data_dir"
   chown 1000:1000 "$atelier_data_dir"
@@ -465,8 +518,12 @@ install_atelier() {
     --name "$atelier_name" \
     --label com.atelier.type=server \
     --label "com.atelier.release-channel=$atelier_channel" \
+    --label "com.atelier.workspace-cgroup-parent=$atelier_workspace_slice" \
     --restart unless-stopped \
     --init \
+    --cpu-shares 2048 \
+    --memory-reservation 1g \
+    --oom-score-adj -500 \
     --network host \
     -v /var/run/docker.sock:/var/run/docker.sock \
     --mount "type=bind,src=/var/run/tailscale,dst=/var/run/tailscale" \
@@ -525,10 +582,11 @@ main() {
   fi
 
   require_tailscale
-  configure_tailscale_serve
-  prepare_tailscale_https
   install_docker
   start_docker
+  configure_workspace_resource_controls
+  configure_tailscale_serve
+  prepare_tailscale_https
   install_atelier
   follow_atelier_logs
 }
