@@ -68,6 +68,33 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
+  test("selects a touch autocomplete option before iOS WebKit cancels click", async () => {
+    const page = await browser.newPage();
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<div data-controller="agent-completions" data-agent-completions-url-value="/completions">
+        <div data-agent-completions-target="menu" hidden></div>
+        <textarea data-agent-completions-target="input" data-action="input->agent-completions#input"></textarea>
+      </div><script type="module" src="/workspace-test.js"></script>`,
+    }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/completions?*", (route) => route.fulfill({
+      contentType: "text/html",
+      body: '<button class="agent-completion-option" data-completion-kind="prompt-template" data-template-trigger="/review">Review</button>',
+    }));
+    await page.goto("http://atelier.test/");
+
+    const input = page.locator("textarea");
+    await input.fill("/");
+    const option = page.locator(".agent-completion-option");
+    await option.waitFor();
+    await option.dispatchEvent("pointerdown", { button: 0, pointerType: "touch" });
+
+    expect(await input.inputValue()).toBe("/review ");
+    expect(await option.count()).toBe(0);
+    await page.close();
+  });
+
   test("opens and closes a live Browser tab with Atelier's fullscreen implementation", async () => {
     const page = await browser.newPage();
     await page.route("**/workspaces/demo/view-state", (route) => route.fulfill({ status: 204 }));

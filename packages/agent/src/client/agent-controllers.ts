@@ -790,8 +790,11 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     };
 
     private readonly pointerdown = (event: PointerEvent): void => {
-      // Keep iOS from blurring the input and removing the menu before click fires.
-      if (event.button === 0 && this.optionFromEvent(event)) event.preventDefault();
+      const option = this.optionFromEvent(event);
+      if (event.button !== 0 || !option) return;
+      event.preventDefault();
+      // WebKit cancels click after a prevented touch pointerdown, so select immediately.
+      if (event.pointerType === "touch") this.insert(option);
     };
 
     private readonly pointerover = (event: Event): void => {
