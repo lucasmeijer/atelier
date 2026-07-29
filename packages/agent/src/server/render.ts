@@ -544,6 +544,10 @@ export function renderObservedBashCompletion(ctx: AgentRenderContext, key: strin
   return `<div class="agent-observed-result">${fullscreenSourceRegion("RESULT", `${moreLink(ctx, key, count, views.resultWindow.hidden, "last")}${result}`, fullResult)}</div>${views.same ? "" : `<div class="agent-observed-model">${fullscreenSourceRegion("AS SEEN BY MODEL", `${moreLink(ctx, key, count, views.modelWindow.hidden, "last")}<pre class="agent-tool-result">${escapeHtml(views.modelWindow.text)}</pre>`, `<pre class="agent-tool-result">${escapeHtml(views.model || "(no output)")}</pre>`)}</div>`}`;
 }
 
+function comparisonTabs(group: string, primaryLabel: string, trailingHtml = ""): string {
+  return `<div class="agent-region-tabs"><input type="radio" name="${group}" id="${group}-primary" checked><label for="${group}-primary">${primaryLabel}</label><input type="radio" name="${group}" id="${group}-model"><label for="${group}-model">AS SEEN BY MODEL</label>${trailingHtml}</div>`;
+}
+
 function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
   const { display, model, same, resultWindow, modelWindow } = bashViews(tool, count);
   const result = display ? `<pre class="agent-tool-result agent-tool-ansi agent-tail-output">${bashOutputHtml(resultWindow.text)}</pre>` : `<pre class="agent-tool-result agent-tail-output">${escapeHtml(resultWindow.text)}</pre>`;
@@ -551,13 +555,22 @@ function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolV
   const fullResult = display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(display)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(model || "(no output)")}</pre>`;
   if (same) return fullscreenSourceRegion("RESULT", `<section class="agent-bash-output"><div class="agent-region-title">RESULT${bashCopyButton()}</div>${resultHtml}</section>`, fullResult);
   const group = `bash-view-${domIdFragment(key)}`;
-  return `<section class="agent-bash-output"><div class="agent-region-tabs"><input type="radio" name="${group}" id="${group}-result" checked><label for="${group}-result">RESULT</label><input type="radio" name="${group}" id="${group}-model"><label for="${group}-model">AS SEEN BY MODEL</label>${bashCopyButton()}</div><div class="agent-result-pane result-pane">${fullscreenSourceRegion("RESULT", resultHtml, fullResult)}</div><div class="agent-result-pane model-pane">${fullscreenSourceRegion("AS SEEN BY MODEL", `${moreLink(ctx, key, count, modelWindow.hidden, "last")}<pre class="agent-tool-result agent-tail-output">${escapeHtml(modelWindow.text)}</pre>`, `<pre class="agent-tool-result">${escapeHtml(model || "(no output)")}</pre>`)}</div></section>`;
+  return `<section class="agent-bash-output">${comparisonTabs(group, "RESULT", bashCopyButton())}<div class="agent-region-pane region-primary-pane result-pane">${fullscreenSourceRegion("RESULT", resultHtml, fullResult)}</div><div class="agent-region-pane region-model-pane model-pane">${fullscreenSourceRegion("AS SEEN BY MODEL", `${moreLink(ctx, key, count, modelWindow.hidden, "last")}<pre class="agent-tool-result agent-tail-output">${escapeHtml(modelWindow.text)}</pre>`, `<pre class="agent-tool-result">${escapeHtml(model || "(no output)")}</pre>`)}</div></section>`;
+}
+
+function renderBashCommand(key: string, command: string): string {
+  const formatted = formatBashCommandForDisplay(command);
+  const commandBody = embeddedBashCommandHtml(command, formatted) ?? codeBlockHtml(formatted, "command.sh", "agent-tool-code");
+  if (formatted === command && !commandBody.includes("data-atelier-display-formatted")) return sourceRegionHtml("COMMAND", commandBody, "agent-bash-command");
+
+  const group = `bash-command-${domIdFragment(key)}`;
+  const modelBody = codeBlockHtml(command, "command.sh", "agent-tool-code");
+  return `<section class="agent-bash-command">${comparisonTabs(group, "COMMAND")}<div class="agent-region-pane region-primary-pane">${fullscreenSourceRegion("COMMAND", commandBody, commandBody)}</div><div class="agent-region-pane region-model-pane">${fullscreenSourceRegion("AS SEEN BY MODEL", modelBody, modelBody)}</div></section>`;
 }
 
 function renderBashDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
   const command = stringArg(toolArgs(tool), "command") ?? "";
-  const commandBody = embeddedBashCommandHtml(command) ?? codeBlockHtml(formatBashCommandForDisplay(command), "command.sh", "agent-tool-code");
-  const commandHtml = sourceRegionHtml("COMMAND", commandBody, "agent-bash-command");
+  const commandHtml = renderBashCommand(key, command);
   if (tool.status === "streaming") return `<div class="agent-tool-detail">${commandHtml}</div>`;
   if (tool.status === "running") {
     const terminal = tool.tmuxSession && tool.terminalVisible ? `<section class="agent-bash-output agent-observed-bash"><div id="${ids.itemCompletionTabs(ctx, key)}" class="agent-region-title">LIVE TERMINAL</div><div class="agent-terminal-viewport agent-observed-live"><div class="agent-tool-term agent-terminal-awaiting-output observable-terminal-host" data-controller="agent-term" data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}" data-agent-term-label-value="${escapeHtml(ctx.label)}" data-agent-term-session-value="${escapeHtml(tool.tmuxSession)}"></div></div><div id="${ids.itemCompletion(ctx, key)}"></div></section>` : "";

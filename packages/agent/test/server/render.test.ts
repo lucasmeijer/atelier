@@ -188,10 +188,16 @@ describe("flat transcript rendering", () => {
     expect(html).toContain("color:var(--red)");
   });
 
-  test("bash command visualization starts a new line after every pipe", () => {
+  test("bash command visualization starts a new line after every pipe and exposes the original command", () => {
     const html = renderBash("printf alpha | grep a | sort | uniq -c", { resultText: "1 alpha" });
     expect(html.match(/\|\n/g)).toHaveLength(6);
-    expect(html).not.toContain("| grep");
+    expect(html).toContain("AS SEEN BY MODEL");
+    expect(html).toContain("| grep");
+  });
+
+  test("bash commands omit the model tab when their visualization is unchanged", () => {
+    const html = renderBash("echo ok", { resultText: "ok" });
+    expect(html).not.toContain("AS SEEN BY MODEL");
   });
 
   test("identical bash views omit model tab", () => {

@@ -170,9 +170,9 @@ function highlightedBashShell(command: string): string {
   return highlightCodeHtmlForPath(command, "command.sh").html;
 }
 
-export function embeddedBashCommandHtml(command: string): string | undefined {
+export function embeddedBashCommandHtml(command: string, formattedCommand?: string): string | undefined {
   if (!bashHeredocs(command).length) return undefined;
-  const formattedCommand = formatBashCommandForDisplay(command);
+  formattedCommand ??= formatBashCommandForDisplay(command);
   const heredocs = bashHeredocs(formattedCommand);
   let html = "";
   let cursor = 0;
