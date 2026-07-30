@@ -81,7 +81,7 @@ describe("Atelier Playwright helper", () => {
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/completions?*", (route) => route.fulfill({
       contentType: "text/html",
-      body: '<button class="agent-completion-option" data-completion-kind="prompt-template" data-template-trigger="/review">Review</button>',
+      body: '<button class="agent-completion-option" data-completion-kind="prompt-template" data-command-trigger="/review">Review</button>',
     }));
     await page.goto("http://atelier.test/");
 

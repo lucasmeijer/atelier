@@ -67,7 +67,7 @@ Atelier supports the [Agent Skills](https://agentskills.io/) format for reusable
     └── examples.md
 ```
 
-A skill's `SKILL.md` must include YAML frontmatter with a `description`; `name` is optional and defaults to the containing directory name. Atelier initially gives the agent only each skill's name, description, and file path. The agent reads the full file—and any relative supporting files—only when the task matches, keeping unrelated instructions out of the model context.
+A skill's `SKILL.md` must include YAML frontmatter with a `description`; `name` is optional and defaults to the containing directory name. Atelier initially gives the agent only each skill's name, description, and file path. The agent reads the full file—and any relative supporting files—only when the task matches, keeping unrelated instructions out of the model context. Loaded skills also appear in slash completion as `/skill:<name>` commands; invoking one explicitly loads its full instructions and passes along any trailing arguments.
 
 Atelier also discovers the open-standard `.agents/skills` location and Pi's `.pi/skills` location for compatibility. If the same skill name exists in more than one location, `.atelier/skills` wins, followed by `.agents/skills`, then `.pi/skills`.
 

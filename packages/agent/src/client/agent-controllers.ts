@@ -930,7 +930,7 @@ function rawFileCompletionQuery(prefix: string): string {
 }
 
 export interface AgentCompletionRequest {
-  kind: "prompt-template" | "file";
+  kind: "slash-command" | "file";
   query: string;
   mode?: "direct" | "fuzzy";
 }
@@ -945,15 +945,15 @@ export function agentCompletionRequest(input: HTMLInputElement | HTMLTextAreaEle
   const after = input.value.slice(input.selectionEnd ?? 0);
   if (!after || /^\s/.test(after)) {
     const slash = before.match(/^\/([^/\s]*)$/);
-    if (slash) return { kind: "prompt-template", query: slash[1] };
+    if (slash) return { kind: "slash-command", query: slash[1] };
   }
 
   const prefix = fileCompletionPrefix(input);
   return prefix.startsWith("@") ? { kind: "file", query: rawFileCompletionQuery(prefix), mode: "fuzzy" } : undefined;
 }
 
-export function insertPromptTemplate(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): void {
-  const trigger = option.dataset.templateTrigger;
+export function insertSlashCommand(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): void {
+  const trigger = option.dataset.commandTrigger;
   if (!trigger) return;
   const end = input.selectionEnd ?? 0;
   const after = input.value.slice(end);
@@ -995,7 +995,7 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       };
     },
     select(option, input) {
-      if (option.dataset.completionKind === "prompt-template") insertPromptTemplate(option, input);
+      if (option.dataset.commandTrigger) insertSlashCommand(option, input);
       else if (option.dataset.completionKind === "file") insertFileCompletion(option, input);
     },
     keydown(event, input, url, actions) {
@@ -1003,7 +1003,7 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       const expand = event.key === "Enter" && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
       if (send || expand) {
         const active = actions.open ? actions.activeOption() : undefined;
-        if (active?.dataset.completionKind === "prompt-template") actions.select(active);
+        if (active?.dataset.commandTrigger) actions.select(active);
         if (send || !/^\/[^/\s]+(?:\s+[\s\S]*)?$/.test(input.value.trim())) return false;
         event.preventDefault();
         const body = new FormData();

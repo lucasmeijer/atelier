@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, forwardAgentTerminalWheel, insertPromptTemplate, messageNavigationDirection, scrollMessageToTop, transcriptFollowingAfterScroll } from "../../src/client/agent-controllers.ts";
+import { agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, scrollMessageToTop, transcriptFollowingAfterScroll } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): HTMLTextAreaElement {
   return {
@@ -85,7 +85,8 @@ describe("agent transcript navigation", () => {
 
 describe("agent prompt completion activation", () => {
   test("slash resources and @ references are the only automatic completions", () => {
-    expect(agentCompletionRequest(input("/review"))).toEqual({ kind: "prompt-template", query: "review" });
+    expect(agentCompletionRequest(input("/review"))).toEqual({ kind: "slash-command", query: "review" });
+    expect(agentCompletionRequest(input("/skill:review"))).toEqual({ kind: "slash-command", query: "skill:review" });
     expect(agentCompletionRequest(input("look at @packages/agent"))).toEqual({ kind: "file", query: "packages/agent", mode: "fuzzy" });
     expect(agentCompletionRequest(input("look at packages/agent/src/"))).toBeUndefined();
     expect(agentCompletionRequest(input("look at ./packages"))).toBeUndefined();
@@ -98,7 +99,7 @@ describe("agent prompt completion activation", () => {
   });
 
   test("a leading absolute path can fall through from slash resources to Tab completion", () => {
-    expect(agentCompletionRequest(input("/tmp"))).toEqual({ kind: "prompt-template", query: "tmp" });
+    expect(agentCompletionRequest(input("/tmp"))).toEqual({ kind: "slash-command", query: "tmp" });
     expect(agentCompletionRequest(input("/tmp"), true)).toEqual({ kind: "file", query: "/tmp", mode: "direct" });
     expect(agentCompletionRequest(input("/tmp/bla"))).toBeUndefined();
     expect(agentCompletionRequest(input("/tmp/bla"), true)).toEqual({ kind: "file", query: "/tmp/bla", mode: "direct" });
@@ -106,11 +107,20 @@ describe("agent prompt completion activation", () => {
 
   test("a selected prompt template replaces a partial trigger before inline expansion", () => {
     const textarea = input("/rev");
-    const option = { dataset: { templateTrigger: "/review" } } as unknown as HTMLElement;
+    const option = { dataset: { commandTrigger: "/review" } } as unknown as HTMLElement;
 
-    insertPromptTemplate(option, textarea);
+    insertSlashCommand(option, textarea);
     expect(textarea.value).toBe("/review ");
     expect(textarea.selectionStart).toBe(8);
+  });
+
+  test("a selected skill inserts Pi's namespaced command", () => {
+    const textarea = input("/skill:rev");
+    const option = { dataset: { commandTrigger: "/skill:review" } } as unknown as HTMLElement;
+
+    insertSlashCommand(option, textarea);
+    expect(textarea.value).toBe("/skill:review ");
+    expect(textarea.selectionStart).toBe(14);
   });
 
   test("file token extraction supports quoted and in-sentence paths", () => {
