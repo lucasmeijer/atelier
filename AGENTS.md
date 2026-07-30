@@ -18,3 +18,13 @@ When working on the web app, prefer server-rendered HTML over client-rendered UI
 - your work can immediately be evaluated, without the user having to do more manual preparation steps. 
 
 Run the development server with `bun run web`. It watches TypeScript, CSS, assets, and server code, automatically reloading open pages after successful changes. Successful asset reloads log `[assets] ready`.
+
+## Agent skills
+
+### Issue tracker
+
+Wayfinder-based planning work is tracked in GitHub Issues using the `gh` CLI. This convention does not apply to other project work. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+For Wayfinder-based work, use the single-context layout with `CONTEXT.md` and system-wide ADRs under `docs/adr/`. See `docs/agents/domain.md`.

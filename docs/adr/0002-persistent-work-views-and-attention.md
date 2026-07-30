@@ -1,0 +1,3 @@
+# Persist Work views separately from personal navigation
+
+Atelier persists typed Work view identities, ordering, type-specific resources, Attention requests, and Agent ready state on the server, while each browser owns its active view, pane and drawer visibility, and scroll positions. Agent-facing presentation operations always request attention, visibility acknowledges that attention, and Agent ready remains a separate Agent-only signal tied to whether the newest completed response has been reached. This separation preserves deliberate agent control and durable presentations without forcing desktop and mobile clients to share navigation state.

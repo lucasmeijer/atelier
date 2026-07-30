@@ -21,6 +21,7 @@
     "test": "bun run generate:workspace-modules && bun test --parallel=4 --parallel-delay=0",
     "ci": "bun ci && bun run check && bun run test",
     "web": "bun run --cwd apps/web dev",
+    "preview:redesign": "bun run scripts/run-redesign-preview.ts",
     "kill": "bun run --cwd apps/web kill",
     "list": "bun run --cwd apps/web list",
     "smoke:vscode": "node apps/web/smoke/vscode-smoke.mjs",
