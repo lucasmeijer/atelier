@@ -1239,15 +1239,16 @@ function createAgentTailFrameController(Controller: StimulusControllerConstructo
       height: number;
       top: number;
       tail: boolean;
+      checkedTabs: string[];
       transcript?: { element: HTMLElement; top: number };
     };
     private scrollers(): HTMLElement[] {
-      return [...this.element.querySelectorAll<HTMLElement>(".agent-tool-result, .agent-tool-code")];
+      return [...this.element.querySelectorAll<HTMLElement>(".agent-tail-output")];
     }
     prepare(event: Event): void {
       const target = event.currentTarget as HTMLElement;
       const scrollers = this.scrollers();
-      const scroller = target.closest(".agent-detail-fullscreen")?.querySelector<HTMLElement>(".agent-tool-result, .agent-tool-code") ?? scrollers[0];
+      const scroller = target.closest<HTMLElement>(".agent-tail-output") ?? scrollers[0];
       if (!scroller) return;
       const transcript = this.element.closest<HTMLElement>(".agent-transcript");
       this.previous = {
@@ -1255,6 +1256,7 @@ function createAgentTailFrameController(Controller: StimulusControllerConstructo
         height: scroller.scrollHeight,
         top: scroller.scrollTop,
         tail: target.dataset.direction === "last",
+        checkedTabs: [...this.element.querySelectorAll<HTMLInputElement>(".agent-region-tabs input:checked, .agent-observed-tabs input:checked")].map((input) => input.id),
         transcript: transcript ? { element: transcript, top: transcript.scrollTop } : undefined,
       };
     }
@@ -1262,8 +1264,11 @@ function createAgentTailFrameController(Controller: StimulusControllerConstructo
       const previous = this.previous;
       this.previous = undefined;
       if (!previous) {
-        for (const scroller of this.element.querySelectorAll<HTMLElement>(".agent-tail-output")) scroller.scrollTop = scroller.scrollHeight;
+        for (const scroller of this.element.querySelectorAll<HTMLElement>('.agent-tail-output[data-agent-tail-direction="last"]')) scroller.scrollTop = scroller.scrollHeight;
         return;
+      }
+      for (const input of this.element.querySelectorAll<HTMLInputElement>(".agent-region-tabs input, .agent-observed-tabs input")) {
+        if (previous.checkedTabs.includes(input.id)) input.checked = true;
       }
       const scroller = this.scrollers()[previous.scrollerIndex];
       if (!scroller) return;

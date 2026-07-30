@@ -121,6 +121,21 @@ describe("flat transcript rendering", () => {
     expect(renderTranscriptItemDetailFrame(ctx, item)).toContain("show 1 more line</a>");
   });
 
+  test("pagination links scroll with their result content", () => {
+    const content = Array.from({ length: 101 }, (_, index) => `line ${index + 1}`).join("\n");
+    const write = renderTranscriptItemDetailFrame(ctx, { type: "tool", key: "write-scroll", tool: tool({ name: "write", args: { path: "a.ts", content } }) });
+    const writeWindow = write.indexOf('class="agent-tail-output"');
+    expect(writeWindow).toBeGreaterThan(-1);
+    expect(write.indexOf('class="agent-tool-code', writeWindow)).toBeGreaterThan(writeWindow);
+    expect(write.indexOf('class="agent-more-lines"', writeWindow)).toBeGreaterThan(write.indexOf('class="agent-tool-code', writeWindow));
+
+    const bash = renderBash("seq 1 101", { resultText: content, details: { displayAnsi: content } });
+    const bashWindow = bash.indexOf('class="agent-tail-output"');
+    expect(bashWindow).toBeGreaterThan(-1);
+    expect(bash.indexOf('class="agent-more-lines"', bashWindow)).toBeGreaterThan(bashWindow);
+    expect(bash.indexOf('class="agent-tool-result', bashWindow)).toBeGreaterThan(bash.indexOf('class="agent-more-lines"', bashWindow));
+  });
+
   test("running edit has summary only", () => {
     const item: TranscriptItem = { type: "tool", key: "edit-live", tool: tool({ name: "edit", status: "running", args: { path: "a.ts", oldText: "old", newText: "new" } }) };
     const html = renderTranscriptItem(ctx, item, { live: true });

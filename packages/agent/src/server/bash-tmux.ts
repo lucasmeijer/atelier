@@ -16,7 +16,15 @@ import {
   stripTerminalControls,
   type IPty,
 } from "@atelier/observable-terminal/server";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import {
+  DEFAULT_MAX_BYTES,
+  DEFAULT_MAX_LINES,
+  defineTool,
+  formatSize,
+  truncateLine,
+  truncateTail,
+  type ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 /**
@@ -32,7 +40,7 @@ export const agentTmuxPrefix = "atelier-agent-";
 export const agentTermCols = observableTerminalCols;
 export const agentTermRows = observableTerminalRows;
 
-const maxModelOutputBytes = 200_000;
+const maxModelLineChars = 500;
 const maxDisplayAnsiBytes = 200_000;
 const tmuxHistoryLimit = observableTerminalHistoryLimit;
 const pollIntervalMs = 350;
@@ -42,22 +50,18 @@ interface TmuxBashHooks {
   onSessionStarted?: (toolCallId: string, tmuxSession: string) => void;
 }
 
-function byteLimitUtf8(text: string, maxBytes: number): { text: string; truncated: boolean } {
-  const bytes = Buffer.byteLength(text, "utf8");
-  if (bytes <= maxBytes) return { text, truncated: false };
-  let used = 0;
-  let out = "";
-  for (const char of text) {
-    const size = Buffer.byteLength(char, "utf8");
-    if (used + size > maxBytes) break;
-    out += char;
-    used += size;
-  }
-  return { text: out, truncated: true };
-}
-
 function plainModelOutput(text: string): string {
   return stripTerminalControls(text).trim();
+}
+
+function limitModelLines(text: string): { text: string; linesTruncated: number } {
+  let linesTruncated = 0;
+  const lines = text.split("\n").map((line) => {
+    const limited = truncateLine(line, maxModelLineChars);
+    if (limited.wasTruncated) linesTruncated += 1;
+    return limited.text;
+  });
+  return { text: lines.join("\n"), linesTruncated };
 }
 
 function shellExport(assignments: Record<string, string | number>): string {
@@ -72,7 +76,7 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
   return defineTool({
     name: "bash",
     label: "Bash",
-    description: "the bash toolcall will be executed inside of a tmux session for visibility. avoid redirecting output to nowhere. avoid the programs you're invoking from attempting to read from stdin, as that will hang the toolcall.",
+    description: `the bash toolcall will be executed inside of a tmux session for visibility. output shown to the model is limited to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB, and individual lines are shortened to ${maxModelLineChars} characters; truncated full output is saved to a temporary file. avoid redirecting output to nowhere. avoid the programs you're invoking from attempting to read from stdin, as that will hang the toolcall.`,
     parameters: Type.Object({
       command: Type.String({ description: "The bash command to execute" }),
       timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (default 600)" })),
@@ -80,6 +84,7 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
     execute: async (toolCallId: string, params: { command: string; timeout?: number }, signal?: AbortSignal, onUpdate?: (partial: any) => void) => {
       const sessionName = `${agentTmuxPrefix}${crypto.randomUUID().slice(0, 8)}`;
       const exitFile = `/tmp/${sessionName}.exit`;
+      const fullOutputPath = `/tmp/${sessionName}.log`;
       const timeoutMs = Math.max(1, params.timeout ?? 600) * 1000;
 
       // Interactive editors/pagers/prompts are neutralized (GIT_EDITOR=true,
@@ -103,13 +108,16 @@ export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {
       // start of the wrapped physical row, producing concatenated progress text
       // in the live browser terminal.
       const forceTtySize = `stty cols ${agentTermCols} rows ${agentTermRows} 2>/dev/null || true`;
+      // Capture the complete PTY stream before the command starts. The retained
+      // file is only advertised when the model-facing result is truncated.
+      const captureFullOutput = `tmux pipe-pane -o -t "$TMUX_PANE" ${shellQuote(`umask 077; cat > ${shellQuote(fullOutputPath)}`)}`;
       const runCommand = `(
 ${forceTtySize}
 ${params.command}
 )
 status=$?
 printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
-      const inner = `${buildSetRemainOnExitCommand()}; ${forceTtySize}; ${ninjaStatus}; ${colorEnv}; ${guards}; ${runCommand}`;
+      const inner = `${buildSetRemainOnExitCommand()}; ${captureFullOutput}; ${forceTtySize}; ${ninjaStatus}; ${colorEnv}; ${guards}; ${runCommand}`;
       const create = await execWorkspaceShell(
         workspaceId,
         buildObservableSessionCommand({ session: sessionName, cwd: workspaceRoot, command: shellQuote(inner), cols: agentTermCols, rows: agentTermRows, fixedSize: true, remainOnExit: true, historyLimit: tmuxHistoryLimit }),
@@ -143,14 +151,27 @@ printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
       // the model; ANSI-preserving capture feeds the UI terminal view.
       const modelPane = await execWorkspaceShell(workspaceId, buildCapturePaneCommand({ session: sessionName, historyLimit: tmuxHistoryLimit, ansi: false }));
       const displayPane = await execWorkspaceShell(workspaceId, buildCapturePaneCommand({ session: sessionName, historyLimit: tmuxHistoryLimit }));
-      await execWorkspaceShell(workspaceId, `${buildKillSessionCommand(sessionName)}; rm -f ${shellQuote(exitFile)}; true`);
 
-      const modelLimited = byteLimitUtf8(stripTmuxPaneFraming(modelPane.stdout), maxModelOutputBytes);
-      let output = plainModelOutput(modelLimited.text);
-      if (modelLimited.truncated) output += `\n… output truncated at ${maxModelOutputBytes} bytes`;
-      const displayLimited = byteLimitUtf8(stripTmuxPaneFraming(displayPane.stdout), maxDisplayAnsiBytes);
-      let displayAnsi = normalizeCarriageReturns(displayLimited.text).trimEnd();
-      if (displayLimited.truncated) displayAnsi += `\n… output truncated at ${maxDisplayAnsiBytes} bytes`;
+      const modelLines = limitModelLines(plainModelOutput(stripTmuxPaneFraming(modelPane.stdout)));
+      const modelLimited = truncateTail(modelLines.text);
+      let output = modelLimited.content;
+      const modelTruncated = modelLimited.truncated || modelLines.linesTruncated > 0;
+      let truncationNotice = "";
+      if (modelTruncated) {
+        const reasons = [];
+        if (modelLimited.truncated) reasons.push(`showing the last ${formatSize(modelLimited.outputBytes)} of output`);
+        if (modelLines.linesTruncated > 0) reasons.push(`${modelLines.linesTruncated} line${modelLines.linesTruncated === 1 ? "" : "s"} shortened to ${maxModelLineChars} characters`);
+        truncationNotice = `[Output truncated: ${reasons.join("; ")}. Full output: ${fullOutputPath}]`;
+        output += `\n\n${truncationNotice}`;
+      }
+
+      const displayLimited = truncateTail(stripTmuxPaneFraming(displayPane.stdout), { maxBytes: maxDisplayAnsiBytes, maxLines: Number.MAX_SAFE_INTEGER });
+      let displayAnsi = normalizeCarriageReturns(displayLimited.content).trimEnd();
+      if (displayLimited.truncated) displayAnsi = `… output truncated to last ${maxDisplayAnsiBytes} bytes\n${displayAnsi}`;
+      if (truncationNotice) displayAnsi += `\n\n${truncationNotice}`;
+
+      const removeFullOutput = modelTruncated ? "" : `rm -f ${shellQuote(fullOutputPath)}; `;
+      await execWorkspaceShell(workspaceId, `${buildKillSessionCommand(sessionName)}; rm -f ${shellQuote(exitFile)}; ${removeFullOutput}true`);
       const aborted = signal?.aborted ?? false;
       const timedOut = exitCode === undefined && !aborted;
       let body = output || "(no output)";
@@ -166,6 +187,7 @@ printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
           displayAnsi,
           aborted,
           timedOut,
+          fullOutputPath: modelTruncated ? fullOutputPath : undefined,
         },
       };
     },

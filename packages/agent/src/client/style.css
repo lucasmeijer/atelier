@@ -528,6 +528,8 @@ summary > .agent-tool-head { width: 100%; }
 .agent-tool-term { width: max-content; min-width: calc(120ch + 20px); min-height: calc(30 * 1.45em + 18px); padding: 0; background: color-mix(in srgb, var(--bg) 52%, #000 15%); }
 .agent-terminal-awaiting-output { visibility: hidden; min-height: 0; height: 0; }
 .agent-tool-result { margin: 0; padding: 9px 10px; max-height: 330px; overflow: auto; white-space: pre; color: var(--text); background: color-mix(in srgb, var(--bg) 58%, #000 12%); font: 10.5px/1.45 var(--mono); }
+.agent-tail-output { max-height: 330px; overflow: auto; background: color-mix(in srgb, var(--bg) 58%, #000 12%); }
+.agent-tail-output > .agent-tool-result, .agent-tail-output > .agent-tool-code { max-height: none; overflow: visible; }
 .agent-tool-ansi { color: var(--text); }
 .agent-region-tabs { height: 29px; display: flex; align-items: center; gap: 8px; padding: 0 10px; background: color-mix(in srgb, var(--bg) 82%, #000 6%); border-bottom: 1px solid color-mix(in srgb, var(--text) 15%, transparent); }
 .agent-region-tabs input { position: absolute; opacity: 0; pointer-events: none; }

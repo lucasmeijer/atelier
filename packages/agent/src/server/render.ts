@@ -520,6 +520,10 @@ function moreLink(ctx: AgentRenderContext, key: string, count: number, hidden: n
   return `<div class="agent-more-lines"><a href="${escapeHtml(transcriptItemPath(ctx, key, `?count=${next}`))}" data-turbo-frame="${ids.detailFrame(ctx, key)}" data-action="click->agent-tail-frame#prepare" data-direction="${direction}">show ${increment} more ${increment === 1 ? "line" : "lines"}</a></div>`;
 }
 
+function tailOutput(content: string, pagination: string, direction: "first" | "last"): string {
+  return `<div class="agent-tail-output" data-agent-tail-direction="${direction}">${direction === "last" ? pagination : ""}${content}${direction === "first" ? pagination : ""}</div>`;
+}
+
 function bashViews(tool: ToolView, count: number): { display: string; model: string; same: boolean; resultWindow: { text: string; hidden: number }; modelWindow: { text: string; hidden: number } } {
   const details = bashDetails(tool);
   const display = typeof details?.displayAnsi === "string" ? details.displayAnsi.trimEnd() : "";
@@ -539,9 +543,11 @@ export function renderObservedBashTabs(key: string, tool: ToolView): string {
 
 export function renderObservedBashCompletion(ctx: AgentRenderContext, key: string, tool: ToolView, count = 100): string {
   const views = bashViews(tool, count);
-  const result = views.display ? `<pre class="agent-tool-result agent-tool-ansi agent-tail-output">${bashOutputHtml(views.resultWindow.text)}</pre>` : `<pre class="agent-tool-result agent-tail-output">${escapeHtml(views.resultWindow.text)}</pre>`;
+  const result = views.display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(views.resultWindow.text)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(views.resultWindow.text)}</pre>`;
   const fullResult = views.display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(views.display)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(views.model || "(no output)")}</pre>`;
-  return `<div class="agent-observed-result">${fullscreenSourceRegion("RESULT", `${moreLink(ctx, key, count, views.resultWindow.hidden, "last")}${result}`, fullResult)}</div>${views.same ? "" : `<div class="agent-observed-model">${fullscreenSourceRegion("AS SEEN BY MODEL", `${moreLink(ctx, key, count, views.modelWindow.hidden, "last")}<pre class="agent-tool-result">${escapeHtml(views.modelWindow.text)}</pre>`, `<pre class="agent-tool-result">${escapeHtml(views.model || "(no output)")}</pre>`)}</div>`}`;
+  const resultWindow = tailOutput(result, moreLink(ctx, key, count, views.resultWindow.hidden, "last"), "last");
+  const modelWindow = tailOutput(`<pre class="agent-tool-result">${escapeHtml(views.modelWindow.text)}</pre>`, moreLink(ctx, key, count, views.modelWindow.hidden, "last"), "last");
+  return `<div class="agent-observed-result">${fullscreenSourceRegion("RESULT", resultWindow, fullResult)}</div>${views.same ? "" : `<div class="agent-observed-model">${fullscreenSourceRegion("AS SEEN BY MODEL", modelWindow, `<pre class="agent-tool-result">${escapeHtml(views.model || "(no output)")}</pre>`)}</div>`}`;
 }
 
 function comparisonTabs(group: string, primaryLabel: string, trailingHtml = ""): string {
@@ -550,12 +556,13 @@ function comparisonTabs(group: string, primaryLabel: string, trailingHtml = ""):
 
 function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
   const { display, model, same, resultWindow, modelWindow } = bashViews(tool, count);
-  const result = display ? `<pre class="agent-tool-result agent-tool-ansi agent-tail-output">${bashOutputHtml(resultWindow.text)}</pre>` : `<pre class="agent-tool-result agent-tail-output">${escapeHtml(resultWindow.text)}</pre>`;
-  const resultHtml = `${moreLink(ctx, key, count, resultWindow.hidden, "last")}${result}`;
+  const result = display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(resultWindow.text)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(resultWindow.text)}</pre>`;
+  const resultHtml = tailOutput(result, moreLink(ctx, key, count, resultWindow.hidden, "last"), "last");
   const fullResult = display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(display)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(model || "(no output)")}</pre>`;
   if (same) return fullscreenSourceRegion("RESULT", `<section class="agent-bash-output"><div class="agent-region-title">RESULT${bashCopyButton()}</div>${resultHtml}</section>`, fullResult);
   const group = `bash-view-${domIdFragment(key)}`;
-  return `<section class="agent-bash-output">${comparisonTabs(group, "RESULT", bashCopyButton())}<div class="agent-region-pane region-primary-pane result-pane">${fullscreenSourceRegion("RESULT", resultHtml, fullResult)}</div><div class="agent-region-pane region-model-pane model-pane">${fullscreenSourceRegion("AS SEEN BY MODEL", `${moreLink(ctx, key, count, modelWindow.hidden, "last")}<pre class="agent-tool-result agent-tail-output">${escapeHtml(modelWindow.text)}</pre>`, `<pre class="agent-tool-result">${escapeHtml(model || "(no output)")}</pre>`)}</div></section>`;
+  const modelHtml = tailOutput(`<pre class="agent-tool-result">${escapeHtml(modelWindow.text)}</pre>`, moreLink(ctx, key, count, modelWindow.hidden, "last"), "last");
+  return `<section class="agent-bash-output">${comparisonTabs(group, "RESULT", bashCopyButton())}<div class="agent-region-pane region-primary-pane result-pane">${fullscreenSourceRegion("RESULT", resultHtml, fullResult)}</div><div class="agent-region-pane region-model-pane model-pane">${fullscreenSourceRegion("AS SEEN BY MODEL", modelHtml, `<pre class="agent-tool-result">${escapeHtml(model || "(no output)")}</pre>`)}</div></section>`;
 }
 
 function renderBashCommand(key: string, command: string): string {
@@ -589,7 +596,8 @@ function renderReadDetail(ctx: AgentRenderContext, key: string, tool: ToolView, 
   if (images) return `<div class="agent-tool-detail">${detailFullscreen("READ RESULT", `${images}${result ? `<pre class="agent-tool-note">${escapeHtml(result)}</pre>` : ""}`)}</div>`;
   const window = textWindow(result, "first", count);
   const path = stringArg(toolArgs(tool), "path", "file_path");
-  return `<div class="agent-tool-detail">${fullscreenSourceRegion("READ RESULT", codeBlockHtml(window.text, path), codeBlockHtml(result, path))}${moreLink(ctx, key, count, window.hidden, "first")}</div>`;
+  const shown = tailOutput(codeBlockHtml(window.text, path), moreLink(ctx, key, count, window.hidden, "first"), "first");
+  return `<div class="agent-tool-detail">${fullscreenSourceRegion("READ RESULT", shown, codeBlockHtml(result, path))}</div>`;
 }
 
 function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
@@ -597,8 +605,9 @@ function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView,
   const content = stringArg(args, "content") ?? "";
   const path = stringArg(args, "path", "file_path");
   const shown = tool.status === "streaming" || tool.status === "running" ? { text: content, hidden: 0 } : textWindow(content, "first", count);
+  const preview = tailOutput(codeBlockHtml(shown.text, path), moreLink(ctx, key, count, shown.hidden, "first"), "first");
   const error = tool.status === "error" && tool.resultText ? `<pre class="agent-tool-error-output">${escapeHtml(trimResult(tool))}</pre>` : "";
-  return `<div class="agent-tool-detail">${fullscreenSourceRegion(path || "WRITE", codeBlockHtml(shown.text, path), codeBlockHtml(content, path))}${moreLink(ctx, key, count, shown.hidden, "first")}${error}</div>`;
+  return `<div class="agent-tool-detail">${fullscreenSourceRegion(path || "WRITE", preview, codeBlockHtml(content, path))}${error}</div>`;
 }
 
 function editHunksForDisplay(tool: ToolView, contextual: boolean): DiffDisplayLine[][] {
