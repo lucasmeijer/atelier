@@ -4,6 +4,7 @@ import { renderDesktopTab } from "./render.ts";
 import { resolveDesktopWorkspaceAppTarget } from "./proxy.ts";
 
 type WorkspacePlanEvents = { on(eventName: "workspace_plan_prepare", handler: (event: { plan: { initScripts: string[] } }) => void): void };
+const enabledWorkspaces = new Map<string, boolean>();
 
 export function desktopWorkspaceCommand(enabled: boolean): WorkspaceCommandContribution {
   return {
@@ -24,11 +25,13 @@ export const desktopWorkspaceModule: WorkspaceModule = {
       matches: (app) => app.appKey === desktopAppKey,
       resolveTarget: (app, requestUrl) => resolveDesktopWorkspaceAppTarget(app, requestUrl),
     });
+    context.onWorkspaceRemoved((workspaceId) => { enabledWorkspaces.delete(workspaceId); });
   },
   commands: [{
     id: "desktop.start",
     async execute({ workspaceId }) {
       await ensureWorkspaceDesktop(workspaceId);
+      enabledWorkspaces.set(workspaceId, true);
       return { createdTabKey: desktopTabKey };
     },
   }],
@@ -36,7 +39,11 @@ export const desktopWorkspaceModule: WorkspaceModule = {
     owns: (tabKey) => tabKey === desktopTabKey,
   }],
   async attachToWorkspace({ workspaceId }) {
-    const enabled = await isWorkspaceDesktopEnabled(workspaceId);
+    let enabled = enabledWorkspaces.get(workspaceId);
+    if (enabled === undefined) {
+      enabled = await isWorkspaceDesktopEnabled(workspaceId);
+      enabledWorkspaces.set(workspaceId, enabled);
+    }
     return {
       tabs: enabled ? [renderDesktopTab(workspaceId)] : [],
       commands: [desktopWorkspaceCommand(enabled)],

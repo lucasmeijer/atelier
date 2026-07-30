@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import type { ServerWebSocket } from "bun";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
@@ -295,16 +296,30 @@ function contentTypeForStaticPath(pathname: string): string {
   return "application/octet-stream";
 }
 
-async function serveStatic(pathname: string): Promise<Response | undefined> {
+function requestAcceptsGzip(request: Request): boolean {
+  return request.headers.get("accept-encoding")?.split(",").some((encoding) => {
+    const [name, ...parameters] = encoding.split(";").map((part) => part.trim());
+    return name?.toLowerCase() === "gzip" && !parameters.some((parameter) => /^q\s*=\s*0(?:\.0+)?$/i.test(parameter));
+  }) ?? false;
+}
+
+async function serveStatic(pathname: string, request: Request): Promise<Response | undefined> {
   if (pathname.startsWith("/assets/")) {
     const file = Bun.file(new URL(`../../public${pathname}`, import.meta.url));
     if (!(await file.exists())) return new Response("not found", { status: 404, headers: { "content-type": "text/plain" } });
-    return new Response(file, {
-      headers: {
-        "content-type": contentTypeForStaticPath(pathname),
-        "cache-control": "public, max-age=31536000, immutable",
-      },
-    });
+    const headers: Record<string, string> = {
+      "content-type": contentTypeForStaticPath(pathname),
+      "cache-control": "public, max-age=31536000, immutable",
+      "vary": "Accept-Encoding",
+    };
+    if (requestAcceptsGzip(request)) {
+      const compressed = Bun.file(new URL(`../../public${pathname}.gz`, import.meta.url));
+      if (await compressed.exists()) {
+        headers["content-encoding"] = "gzip";
+        return new Response(compressed, { headers });
+      }
+    }
+    return new Response(file, { headers });
   }
 
   const entry = legacyStaticFiles[pathname];
@@ -314,6 +329,22 @@ async function serveStatic(pathname: string): Promise<Response | undefined> {
   const headers: Record<string, string> = { "content-type": entry.contentType };
   if (pathname === "/workspace.js" || pathname === "/service-worker.js" || pathname === "/manifest.webmanifest") headers["cache-control"] = "no-store";
   return new Response(file, { headers });
+}
+
+async function compressDynamicResponse(request: Request, response: Response): Promise<Response> {
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  const compressible = contentType.startsWith("text/") || contentType.includes("json") || contentType.includes("javascript") || contentType.includes("xml");
+  if (request.method === "HEAD" || !response.body || !compressible || response.headers.has("content-encoding")) return response;
+  const headers = new Headers(response.headers);
+  const vary = headers.get("vary")?.split(",").map((value) => value.trim()).filter(Boolean) ?? [];
+  headers.set("vary", [...new Set([...vary, "Accept-Encoding"])].join(", "));
+  if (!requestAcceptsGzip(request)) return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+
+  const body = new Uint8Array(await response.arrayBuffer());
+  headers.delete("content-length");
+  if (body.byteLength < 1024) return new Response(body, { status: response.status, statusText: response.statusText, headers });
+  headers.set("content-encoding", "gzip");
+  return new Response(gzipSync(body, { level: 6 }), { status: response.status, statusText: response.statusText, headers });
 }
 
 interface ProvisionTermSocketData {
@@ -481,10 +512,10 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
         const canonical = await handleCanonicalProxyRequest(url, request);
         if (canonical) return canonical;
 
-        const staticResponse = await serveStatic(url.pathname);
+        const staticResponse = await serveStatic(url.pathname, request);
         if (staticResponse) return staticResponse;
 
-        return await app.fetch(request);
+        return await compressDynamicResponse(request, await app.fetch(request));
       },
       websocket: {
         open(ws) {

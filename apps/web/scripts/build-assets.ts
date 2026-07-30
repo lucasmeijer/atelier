@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
+import { gzipSync } from "node:zlib";
 import type { StaticFileEntry } from "../src/server/static-files.ts";
 
 await import("./generate-workspace-modules.ts");
@@ -52,6 +53,7 @@ async function buildClientEntrypoints(): Promise<void> {
       outdir: stagingDir.pathname,
       format: "esm",
       target: "browser",
+      minify: true,
       naming: {
         entry: "[name]-[hash].[ext]",
         chunk: "[name]-[hash].[ext]",
@@ -116,6 +118,14 @@ async function publishStagedAssets(): Promise<void> {
   await rename(manifestTempUrl, manifestUrl);
 }
 
+async function compressStagedAssets(): Promise<void> {
+  for (const entry of await readdir(stagingDir, { withFileTypes: true })) {
+    if (!entry.isFile() || ![".css", ".js", ".svg"].includes(extname(entry.name))) continue;
+    const content = new Uint8Array(await Bun.file(join(stagingDir.pathname, entry.name)).arrayBuffer());
+    await Bun.write(join(stagingDir.pathname, `${entry.name}.gz`), gzipSync(content, { level: 9 }));
+  }
+}
+
 await rm(stagingDir, { recursive: true, force: true });
 await mkdir(stagingDir, { recursive: true });
 
@@ -136,6 +146,7 @@ try {
     }
   }
 
+  await compressStagedAssets();
   await publishStagedAssets();
 
   for (const [logicalPath, publicPath] of Object.entries(manifest).sort()) {

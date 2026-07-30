@@ -128,6 +128,12 @@ export function renderFilesFrame(workspaceId: string, path: string, entries: Fil
   </turbo-frame>`;
 }
 
+export function renderLazyFilesFrame(workspaceId: string): string {
+  return `<turbo-frame id="${filesFrameId(workspaceId)}" class="files-frame" src="${escapeHtml(directoryUrl(workspaceId, workspaceRoot, false))}" loading="lazy">
+    <div class="files-loading"><span class="status-spinner"></span> Loading files…</div>
+  </turbo-frame>`;
+}
+
 export function renderFilesTab(frameHtml: string): WorkspaceTabContribution {
   return {
     key: "files",

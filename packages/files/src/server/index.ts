@@ -2,7 +2,7 @@ import { posix } from "node:path";
 import type { WorkspaceModule } from "@atelier/shared";
 import { workspaceContainerName, workspaceRoot } from "@atelier/workspace";
 import { deleteFile, FilesPathError, listFiles, resolveFilesDirectory, uploadFile } from "./files.ts";
-import { renderFilesDirectoryFrame, renderFilesFrame, renderFilesTab } from "./render.ts";
+import { renderFilesDirectoryFrame, renderFilesFrame, renderFilesTab, renderLazyFilesFrame } from "./render.ts";
 
 function textResponse(message: string, status: number): Response {
   return new Response(message, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
@@ -89,9 +89,8 @@ const filesWorkspaceModule: WorkspaceModule = {
       }
     },
   }],
-  async attachToWorkspace({ workspaceId }) {
-    const listing = await listFiles(workspaceId, workspaceRoot, false);
-    return { tabs: [renderFilesTab(renderFilesFrame(workspaceId, listing.path, listing.entries, false))] };
+  attachToWorkspace({ workspaceId }) {
+    return { tabs: [renderFilesTab(renderLazyFilesFrame(workspaceId))] };
   },
 };
 

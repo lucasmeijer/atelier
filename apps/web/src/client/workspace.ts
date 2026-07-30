@@ -29,7 +29,7 @@ import { createAtelierCableClient } from "./cable.ts";
 declare global {
   interface Window {
     Stimulus: {
-      Application: { start(): { register(identifier: string, controllerConstructor: unknown): void; getControllerForElementAndIdentifier(element: Element, identifier: string): unknown } };
+      Application: { start(): { start(): Promise<void>; stop(): void; register(identifier: string, controllerConstructor: unknown): void; getControllerForElementAndIdentifier(element: Element, identifier: string): unknown } };
       Controller: new (...args: unknown[]) => { element: Element };
     };
     Turbo?: { renderStreamMessage(html: string): void };
@@ -177,6 +177,72 @@ function emitPaneVisibilityChanges(before: HTMLElement[], after: HTMLElement[]):
   before.filter((pane) => !afterSet.has(pane)).forEach(emitNoLongerVisible);
   after.filter((pane) => !beforeSet.has(pane)).forEach(emitBecomeVisible);
 }
+
+type WorkspaceLayoutStreamElement = HTMLElement & {
+  readonly targetElements: HTMLElement[];
+  readonly templateContent: DocumentFragment;
+};
+
+function movePaneBefore(parent: ParentNode, pane: HTMLElement, reference: Node): void {
+  const statePreservingParent = parent as ParentNode & { moveBefore?(node: Node, child: Node | null): void };
+  if (statePreservingParent.moveBefore) statePreservingParent.moveBefore(pane, reference);
+  else (parent as Node).insertBefore(pane, reference);
+}
+
+async function performWorkspaceLayoutReplacement(stream: WorkspaceLayoutStreamElement): Promise<void> {
+  const before = visiblePanes(document);
+  const replacements = stream.targetElements.map((target) => {
+    const replacement = stream.templateContent.firstElementChild as HTMLElement | null;
+    if (!replacement) throw new Error("workspace layout stream is missing its replacement");
+    const livePanes = new Map([...target.querySelectorAll<HTMLElement>(".tab-pane[data-tab-pane]")].map((pane) => [pane.dataset.tabPane!, pane]));
+    for (const slot of replacement.querySelectorAll<HTMLElement>("[data-workspace-pane-slot]")) {
+      const key = slot.dataset.workspacePaneSlot!;
+      if (!livePanes.has(key)) throw new Error(`workspace layout cannot preserve missing pane ${key} in ${target.id}`);
+    }
+    return { target, replacement, livePanes };
+  });
+
+  application.stop();
+  try {
+    for (const { target, replacement, livePanes } of replacements) {
+      target.before(replacement);
+
+      for (const slot of replacement.querySelectorAll<HTMLElement>("[data-workspace-pane-slot]")) {
+        const pane = livePanes.get(slot.dataset.workspacePaneSlot!);
+        if (!pane) continue;
+        pane.classList.toggle("visible", slot.dataset.visible === "true");
+        movePaneBefore(slot.parentNode!, pane, slot);
+        slot.remove();
+      }
+
+      for (const newPane of replacement.querySelectorAll<HTMLElement>(".tab-pane[data-tab-pane]")) {
+        const pane = livePanes.get(newPane.dataset.tabPane!);
+        if (!pane || pane === newPane) continue;
+        pane.classList.toggle("visible", newPane.classList.contains("visible"));
+        movePaneBefore(newPane.parentNode!, pane, newPane);
+        newPane.remove();
+      }
+
+      target.remove();
+    }
+  } finally {
+    await application.start();
+  }
+  emitPaneVisibilityChanges(before, visiblePanes(document));
+}
+
+let workspaceLayoutRenderQueue = Promise.resolve();
+
+function replaceWorkspaceLayout(this: WorkspaceLayoutStreamElement): Promise<void> {
+  const render = workspaceLayoutRenderQueue.then(
+    () => performWorkspaceLayoutReplacement(this),
+    () => performWorkspaceLayoutReplacement(this),
+  );
+  workspaceLayoutRenderQueue = render;
+  return render;
+}
+
+(Turbo.StreamActions as Record<string, (this: WorkspaceLayoutStreamElement) => void | Promise<void>>)["replace-workspace-layout"] = replaceWorkspaceLayout;
 
 type FullscreenMode = "tab" | "template" | "media";
 type FullscreenMediaElement = HTMLIFrameElement | HTMLImageElement | HTMLVideoElement;

@@ -801,6 +801,13 @@ describe("web app contracts", () => {
     expect(after.groups[0]!.tabs).toEqual(["b", "a"]);
   });
 
+  test("exposes an initialized layout without another tab reconciliation", () => {
+    const layouts = createWorkspaceLayoutStore();
+    expect(layouts.current("w")).toBeUndefined();
+    const initial = layouts.normalize("w", ["agent:Agent 1", "files"]);
+    expect(layouts.current("w")).toBe(initial);
+  });
+
   test("preview group helper keeps browser in the first non-agent group", () => {
     const layouts = createWorkspaceLayoutStore();
     const tabs = ["agent:Agent 1", "browser", "notes"];

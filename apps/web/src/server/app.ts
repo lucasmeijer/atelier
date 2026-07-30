@@ -149,6 +149,10 @@ function turboUpdateStream(target: string, html: string): string {
   return turboStream("update", target, html);
 }
 
+function workspaceLayoutTurboStream(target: string, html: string): string {
+  return `<turbo-stream action="replace-workspace-layout" target="${escapeHtml(target)}"><template>${html}</template></turbo-stream>`;
+}
+
 function envString(...names: string[]): string | undefined {
   for (const name of names) {
     const value = process.env[name]?.trim();
@@ -212,6 +216,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const agentLaunchModalFrameId = "agent_launch_modal";
   const agentLaunchSettingsFrameId = "agent_launch_settings";
   const agentLaunchFormId = "agent_launch_form";
+  type WorkspacePresentation = { attachments: WorkspaceAttachment[]; tabs: WorkspaceTabContribution[] };
 
   // ---------------------------------------------------------------------------
   // Workspace sidebar rendering. Broadcast HTML never contains per-client state
@@ -694,16 +699,20 @@ ${moduleStylesHtml()}
   // Workspace detail (residency host, groups, tabs)
   // ---------------------------------------------------------------------------
 
-  async function attachWorkspaceModules(workspaceId: string): Promise<WorkspaceAttachment[]> {
+  async function attachWorkspaceModules(workspaceId: string, renderPaneKeys?: ReadonlySet<string>): Promise<WorkspaceAttachment[]> {
     const entry = requireWorkspace(workspaceId);
     return await Promise.all(workspaceModules
       .filter((module) => module.attachToWorkspace)
-      .map((module) => module.attachToWorkspace!({ workspaceId, init: entry.init, events: deps.events })));
+      .map((module) => module.attachToWorkspace!({ workspaceId, init: entry.init, events: deps.events, renderPaneKeys })));
   }
 
-  async function workspaceTabsAndAttachments(workspaceId: string): Promise<{ attachments: WorkspaceAttachment[]; tabs: WorkspaceTabContribution[] }> {
-    const attachments = await attachWorkspaceModules(workspaceId);
+  async function workspaceTabsAndAttachments(workspaceId: string, renderPaneKeys?: ReadonlySet<string>): Promise<WorkspacePresentation> {
+    const attachments = await attachWorkspaceModules(workspaceId, renderPaneKeys);
     return { attachments, tabs: attachments.flatMap((attachment) => attachment.tabs ?? []) };
+  }
+
+  async function workspacePresentation(workspaceId: string): Promise<WorkspacePresentation> {
+    return await workspaceTabsAndAttachments(workspaceId, new Set());
   }
 
   function tabLabel(tab: WorkspaceTabContribution): string {
@@ -723,7 +732,7 @@ ${moduleStylesHtml()}
   }
 
 
-  function renderWorkspaceGroups(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {
+  function renderWorkspaceGroups(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[], options: { preservePaneKeys?: ReadonlySet<string> } = {}): string {
     const layoutState = layouts.normalize(workspaceId, tabs.map((tab) => tab.key));
     const tabByKey = new Map(tabs.map((tab) => [tab.key, tab]));
     const allCommands = attachments.flatMap((attachment) => attachment.commands ?? []);
@@ -758,7 +767,9 @@ ${moduleStylesHtml()}
       const overflowTabs = group.tabs.map(overflowTab).join("");
       const panes = group.tabs.map((key) => {
         const tab = tabByKey.get(key);
-        return tab ? renderTabPane(tab, key === visibleTab) : "";
+        if (!tab) return "";
+        if (options.preservePaneKeys?.has(key)) return `<span hidden data-workspace-pane-slot="${escapeHtml(key)}" data-visible="${key === visibleTab}"></span>`;
+        return renderTabPane(tab, key === visibleTab);
       }).join("");
       const empty = group.tabs.length === 0;
       return `<section class="workspace-group" data-group-id="${escapeHtml(group.id)}" data-workspace-groups-target="group" style="--group-size:${group.size}">
@@ -870,7 +881,7 @@ ${moduleStylesHtml()}
       ...(entry.error ? { error: entry.error } : {}),
     };
     if (!entry.parked && (entry.phase === "ready" || entry.phase === "checking_delete")) {
-      const { attachments, tabs } = await workspaceTabsAndAttachments(id);
+      const { attachments, tabs } = await workspacePresentation(id);
       const handlers = new Map(workspaceModuleCommands().map((handler) => [handler.id, handler]));
       workspace.tabs = tabs.map((tab) => ({ key: tab.key, label: tabLabel(tab) }));
       workspace.commands = attachments.flatMap((attachment) => attachment.commands ?? []).filter((command) => handlers.has(command.id)).map((command) => ({
@@ -1464,40 +1475,48 @@ ${moduleStylesHtml()}
   // ---------------------------------------------------------------------------
 
   async function replaceWorkspaceGroupsTurboStream(workspaceId: string): Promise<string> {
-    return turboStream("replace", workspaceGroupsId(workspaceId), await renderWorkspaceGroupsFor(workspaceId));
-  }
-
-  async function replaceWorkspaceGroupsStream(workspaceId: string): Promise<Response> {
-    return turboStreamResponse(await replaceWorkspaceGroupsTurboStream(workspaceId));
+    return workspaceLayoutTurboStream(workspaceGroupsId(workspaceId), await renderWorkspaceGroupsFor(workspaceId));
   }
 
   async function tabKeysFor(workspaceId: string): Promise<string[]> {
-    return (await workspaceTabsAndAttachments(workspaceId)).tabs.map((tab) => tab.key);
+    return (await workspacePresentation(workspaceId)).tabs.map((tab) => tab.key);
   }
 
-  async function layoutResponse(workspaceId: string, request: Request, tabKeys: string[], extra: Record<string, unknown> = {}): Promise<Response> {
+  function mountedTabKeys(layout: { groups: Array<{ tabs: string[] }> }): Set<string> {
+    return new Set(layout.groups.flatMap((group) => group.tabs));
+  }
+
+  function layoutResponse(workspaceId: string, request: Request, presentation: WorkspacePresentation, preservePaneKeys: ReadonlySet<string>, extra: Record<string, unknown> = {}): Response {
+    const tabKeys = presentation.tabs.map((tab) => tab.key);
     if (requestAcceptsJson(request)) return jsonResponse({ ...extra, layout: layouts.normalize(workspaceId, tabKeys) });
-    return await replaceWorkspaceGroupsStream(workspaceId);
+    return turboStreamResponse(workspaceGroupsTurboStream(workspaceId, presentation.tabs, presentation.attachments, preservePaneKeys));
   }
 
   async function splitWorkspaceGroupEndpoint(workspaceId: string, groupId: string, request: Request): Promise<Response> {
-    const tabKeys = await tabKeysFor(workspaceId);
-    const beforeGroupIds = new Set(layouts.normalize(workspaceId, tabKeys).groups.map((group) => group.id));
+    const presentation = await workspacePresentation(workspaceId);
+    const tabKeys = presentation.tabs.map((tab) => tab.key);
+    const before = layouts.normalize(workspaceId, tabKeys);
+    const preservePaneKeys = mountedTabKeys(before);
+    const beforeGroupIds = new Set(before.groups.map((group) => group.id));
     layouts.splitGroup(workspaceId, tabKeys, groupId);
     const createdGroupId = layouts.normalize(workspaceId, tabKeys).groups.find((group) => !beforeGroupIds.has(group.id))?.id;
-    return layoutResponse(workspaceId, request, tabKeys, createdGroupId ? { createdGroupId } : {});
+    return layoutResponse(workspaceId, request, presentation, preservePaneKeys, createdGroupId ? { createdGroupId } : {});
   }
 
   async function removeWorkspaceGroupEndpoint(workspaceId: string, groupId: string, request: Request): Promise<Response> {
-    const tabKeys = await tabKeysFor(workspaceId);
+    const presentation = await workspacePresentation(workspaceId);
+    const tabKeys = presentation.tabs.map((tab) => tab.key);
+    const preservePaneKeys = mountedTabKeys(layouts.normalize(workspaceId, tabKeys));
     layouts.removeEmptyGroup(workspaceId, tabKeys, groupId);
-    return layoutResponse(workspaceId, request, tabKeys);
+    return layoutResponse(workspaceId, request, presentation, preservePaneKeys);
   }
 
   async function closeWorkspaceGroupEndpoint(workspaceId: string, groupId: string, request: Request): Promise<Response> {
-    const tabKeys = await tabKeysFor(workspaceId);
+    const presentation = await workspacePresentation(workspaceId);
+    const tabKeys = presentation.tabs.map((tab) => tab.key);
+    const preservePaneKeys = mountedTabKeys(layouts.normalize(workspaceId, tabKeys));
     layouts.closeGroup(workspaceId, tabKeys, groupId);
-    return layoutResponse(workspaceId, request, tabKeys);
+    return layoutResponse(workspaceId, request, presentation, preservePaneKeys);
   }
 
   function workspaceModuleCommands(): WorkspaceModuleCommandHandler[] {
@@ -1528,15 +1547,15 @@ ${moduleStylesHtml()}
     return input;
   }
 
-  async function executeWorkspaceCommand(workspaceId: string, commandId: string, request: Request, activeTabKey?: string): Promise<WorkspaceModuleCommandResult> {
+  async function executeWorkspaceCommand(workspaceId: string, commandId: string, request: Request, tabKeys: string[], activeTabKey?: string): Promise<WorkspaceModuleCommandResult> {
     const commands = workspaceModuleCommands();
     const command = commands.find((candidate) => candidate.id === commandId);
     if (!command) throw new AtelierCoreError("command_not_found", `workspace command not found: ${commandId}`, { availableCommands: commands.map((candidate) => candidate.id) });
-    return await command.execute({ workspaceId, events: deps.events, activeTabKey, input: await commandInput(request, command), tabKeys: () => tabKeysFor(workspaceId), layouts });
+    return await command.execute({ workspaceId, events: deps.events, activeTabKey, input: await commandInput(request, command), tabKeys: async () => tabKeys, layouts });
   }
 
-  function workspaceGroupsTurboStream(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[]): string {
-    return turboReplaceStream(workspaceGroupsId(workspaceId), renderWorkspaceGroups(workspaceId, tabs, attachments));
+  function workspaceGroupsTurboStream(workspaceId: string, tabs: WorkspaceTabContribution[], attachments: WorkspaceAttachment[], preservePaneKeys?: ReadonlySet<string>): string {
+    return workspaceLayoutTurboStream(workspaceGroupsId(workspaceId), renderWorkspaceGroups(workspaceId, tabs, attachments, { preservePaneKeys }));
   }
 
   function placeCommandTab(workspaceId: string, tabKeys: string[], result: WorkspaceModuleCommandResult, fallbackGroupId?: string): void {
@@ -1549,7 +1568,8 @@ ${moduleStylesHtml()}
   }
 
   async function openWorkspaceModuleTab(workspaceId: string, tabKey: string, placement: "visible-group" | "preview-group" = "visible-group"): Promise<Response> {
-    const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
+    const preservePaneKeys = mountedTabKeys(layouts.current(workspaceId) ?? { groups: [] });
+    const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId, new Set([tabKey]));
     const tabKeys = tabs.map((tab) => tab.key);
     if (!tabKeys.includes(tabKey)) throw new AtelierCoreError("tab_not_found", `workspace tab not found: ${tabKey}`);
     if (placement === "preview-group") layouts.ensureTabInPreviewGroup(workspaceId, tabKeys, tabKey);
@@ -1557,7 +1577,7 @@ ${moduleStylesHtml()}
       const groupId = layouts.normalize(workspaceId, tabKeys).groups.find((group) => group.visibleTab)?.id;
       if (groupId) layouts.placeNewTab(workspaceId, tabKeys, groupId, tabKey);
     }
-    return turboStreamResponse(workspaceGroupsTurboStream(workspaceId, tabs, attachments));
+    return turboStreamResponse(workspaceGroupsTurboStream(workspaceId, tabs, attachments, preservePaneKeys));
   }
 
   function commandJsonResponse(workspaceId: string, commandId: string, result: WorkspaceModuleCommandResult, tabKeys: string[]): Response {
@@ -1568,56 +1588,75 @@ ${moduleStylesHtml()}
   }
 
   async function workspaceCommandEndpoint(workspaceId: string, commandId: string, request: Request, targetGroupId?: string): Promise<Response> {
-    const beforeTabKeys = await tabKeysFor(workspaceId);
-    const groups = layouts.normalize(workspaceId, beforeTabKeys).groups;
+    const beforePresentation = await workspacePresentation(workspaceId);
+    const beforeTabKeys = beforePresentation.tabs.map((tab) => tab.key);
+    const beforeLayout = layouts.normalize(workspaceId, beforeTabKeys);
+    const preservePaneKeys = mountedTabKeys(beforeLayout);
+    const groups = beforeLayout.groups;
     const activeGroup = targetGroupId ? groups.find((group) => group.id === targetGroupId) : groups.find((group) => group.visibleTab);
-    const result = await executeWorkspaceCommand(workspaceId, commandId, request, activeGroup?.visibleTab);
+    const result = await executeWorkspaceCommand(workspaceId, commandId, request, beforeTabKeys, activeGroup?.visibleTab);
     if (!targetGroupId && !result.createdTabKey && !requestAcceptsJson(request)) return turboStreamResponse(result.streamHtml ?? "");
 
-    const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId);
+    const renderPaneKeys = result.createdTabKey ? new Set([result.createdTabKey]) : new Set<string>();
+    const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId, renderPaneKeys);
     const tabKeys = tabs.map((tab) => tab.key);
     placeCommandTab(workspaceId, tabKeys, result, targetGroupId ?? activeGroup?.id);
     return requestAcceptsJson(request)
       ? commandJsonResponse(workspaceId, commandId, result, tabKeys)
-      : turboStreamResponse(`${workspaceGroupsTurboStream(workspaceId, tabs, attachments)}${result.streamHtml ?? ""}`);
+      : turboStreamResponse(`${workspaceGroupsTurboStream(workspaceId, tabs, attachments, preservePaneKeys)}${result.streamHtml ?? ""}`);
   }
 
   async function closeWorkspaceTabEndpoint(workspaceId: string, tab: string, request: Request): Promise<Response> {
+    const beforePresentation = await workspacePresentation(workspaceId);
+    const beforeTabKeys = beforePresentation.tabs.map((candidate) => candidate.key);
+    const preservePaneKeys = mountedTabKeys(layouts.normalize(workspaceId, beforeTabKeys));
+    preservePaneKeys.delete(tab);
     await Promise.all(workspaceModuleTabLifecycles()
       .filter((lifecycle) => lifecycle.owns(tab))
       .map((lifecycle) => lifecycle.close?.({ workspaceId, tabKey: tab })));
-    const tabKeys = await tabKeysFor(workspaceId);
-    layouts.closeTab(workspaceId, tabKeys, tab);
-    return layoutResponse(workspaceId, request, tabKeys, { closedTabKey: tab });
+    layouts.closeTab(workspaceId, beforeTabKeys, tab);
+    const presentation = await workspaceTabsAndAttachments(workspaceId, new Set());
+    return layoutResponse(workspaceId, request, presentation, preservePaneKeys, { closedTabKey: tab });
   }
 
   async function moveWorkspaceTabEndpoint(workspaceId: string, request: Request): Promise<Response> {
     const body = await readJsonObject(request) as { tab?: unknown; toGroup?: unknown; toIndex?: unknown; newGroup?: unknown };
     if (typeof body.tab !== "string" || !body.tab) throw invalidArguments("tab is required");
-    const tabKeys = await tabKeysFor(workspaceId);
+    const presentation = await workspacePresentation(workspaceId);
+    const tabKeys = presentation.tabs.map((tab) => tab.key);
+    const preservePaneKeys = mountedTabKeys(layouts.normalize(workspaceId, tabKeys));
     layouts.moveTab(workspaceId, tabKeys, {
       tab: body.tab,
       toGroup: typeof body.toGroup === "string" ? body.toGroup : undefined,
       toIndex: typeof body.toIndex === "number" && Number.isFinite(body.toIndex) ? body.toIndex : undefined,
       newGroup: body.newGroup === true,
     });
-    return layoutResponse(workspaceId, request, tabKeys);
+    return layoutResponse(workspaceId, request, presentation, preservePaneKeys);
   }
 
   async function resizeWorkspaceGroupsEndpoint(workspaceId: string, request: Request): Promise<Response> {
     const body = await readJsonObject(request) as { sizes?: unknown };
     const sizes = Array.isArray(body.sizes) ? body.sizes.map(Number).filter((size) => Number.isFinite(size) && size > 0) : [];
     if (!sizes.length) throw invalidArguments("sizes must contain positive numbers");
-    const tabKeys = await tabKeysFor(workspaceId);
+    let current = layouts.current(workspaceId);
+    if (!current) {
+      const presentation = await workspacePresentation(workspaceId);
+      current = layouts.normalize(workspaceId, presentation.tabs.map((tab) => tab.key));
+    }
+    const tabKeys = [...new Set([...current.groups.flatMap((group) => group.tabs), ...(current.closedTabs ?? [])])];
     layouts.resize(workspaceId, tabKeys, sizes);
-    return jsonResponse({ layout: layouts.normalize(workspaceId, tabKeys) });
+    return requestAcceptsJson(request) ? jsonResponse({ layout: layouts.current(workspaceId) }) : new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
   }
 
   async function updateWorkspaceViewStateEndpoint(id: string, request: Request): Promise<Response> {
     const body = await readJsonObject(request) as { visibleTab?: unknown; groupId?: unknown };
     if (typeof body.visibleTab !== "string" || typeof body.groupId !== "string") throw invalidArguments("groupId and visibleTab are required");
+    if (!layouts.current(id)) {
+      const presentation = await workspacePresentation(id);
+      layouts.normalize(id, presentation.tabs.map((tab) => tab.key));
+    }
     layouts.setVisibleTab(id, body.groupId, body.visibleTab);
-    return jsonResponse({ layout: layouts.normalize(id, await tabKeysFor(id)) });
+    return requestAcceptsJson(request) ? jsonResponse({ layout: layouts.current(id) }) : new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
   }
 
   function activeWorkspaceEndpoint(id: string): Response {

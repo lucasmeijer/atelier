@@ -71,6 +71,8 @@ export interface WorkspaceAttachContext {
   workspaceId: string;
   init?: unknown;
   events?: unknown;
+  /** When present, pane HTML is only needed for these tabs; other tabs may return metadata only. */
+  renderPaneKeys?: ReadonlySet<string>;
 }
 
 export interface WorkspaceTabContribution {

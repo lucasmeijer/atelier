@@ -21,6 +21,8 @@ export interface MoveTabRequest {
 }
 
 export interface WorkspaceLayoutStore {
+  /** Return the initialized layout without reconciling it against a tab manifest. */
+  current(workspaceId: string): WorkspaceLayoutState | undefined;
   /** Reconcile the stored layout with the tab keys that currently exist. */
   normalize(workspaceId: string, tabKeys: string[]): WorkspaceLayoutState;
   splitGroup(workspaceId: string, tabKeys: string[], groupId: string): void;
@@ -70,6 +72,10 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
   }
 
   return {
+    current(workspaceId) {
+      return layouts.get(workspaceId);
+    },
+
     normalize,
 
     splitGroup(workspaceId, tabKeys, groupId) {

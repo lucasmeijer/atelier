@@ -11,7 +11,8 @@ beforeAll(async () => {
   if (exitCode !== 0) throw new Error(`workspace client build failed:\n${stdout}${stderr}`);
   const manifest = await Bun.file(new URL("../public/assets-manifest.json", import.meta.url)).json() as Record<string, string>;
   workspaceClient = await Bun.file(new URL(`../public${manifest["/workspace.js"]}`, import.meta.url)).text();
-  browser = await chromium.launch({ executablePath: "/usr/local/bin/chromium", headless: true });
+  const executablePath = process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/local/bin/chromium";
+  browser = await chromium.launch({ executablePath, headless: true });
 });
 
 afterAll(async () => {
@@ -113,6 +114,63 @@ describe("Atelier Playwright helper", () => {
     const fullscreen = await atelierUi.openTabFullscreen(page, { tabKey: "browser-1" });
     expect(await atelierUi.workspaceTabPane(page, "browser-1").getAttribute("data-atelier-fullscreen-active")).toBe("true");
     await fullscreen.close();
+    await page.close();
+  });
+
+  test("moves live panes between server-rendered groups without recreating them", async () => {
+    const page = await browser.newPage();
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<div class="workspace-detail-resident visible" data-workspace-id="demo">
+        <div id="workspace_groups_demo" class="workspace-groups" data-controller="workspace-groups" data-workspace-groups-workspace-id-value="demo">
+          <section class="workspace-group" data-group-id="left" data-workspace-groups-target="group">
+            <div class="group-tabbar" data-controller="workspace-tabs" data-workspace-tabs-workspace-id-value="demo" data-workspace-tabs-group-id-value="left" data-workspace-tabs-initial-tab-value="browser-1">
+              <div class="group-tabs"><div class="group-tab visible" data-tab="browser-1"><button type="button" data-action="click->workspace-tabs#show" data-workspace-tabs-tab-param="browser-1">Browser</button></div></div>
+              <details class="group-overflow-menu"><summary>Hidden tabs</summary><div></div></details>
+            </div>
+            <div class="workspace-panes"><section class="tab-pane visible" data-tab-pane="browser-1"><textarea>draft</textarea><iframe srcdoc="<p>live</p>"></iframe></section></div>
+          </section>
+        </div>
+      </div><div id="side_effect"></div><script type="module" src="/workspace-test.js"></script>`,
+    }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => Boolean(window.Stimulus && window.Turbo));
+    await page.waitForFunction(() => document.querySelector("iframe")?.contentDocument?.readyState === "complete");
+
+    await page.evaluate(() => {
+      const pane = document.querySelector<HTMLElement>('[data-tab-pane="browser-1"]')!;
+      const frame = pane.querySelector<HTMLIFrameElement>("iframe")!;
+      (window as typeof window & { layoutProbe?: unknown }).layoutProbe = { pane, frame, frameWindow: frame.contentWindow };
+      pane.querySelector("textarea")!.value = "unsaved draft";
+      window.Turbo!.renderStreamMessage(`<turbo-stream action="replace-workspace-layout" target="workspace_groups_demo"><template>
+        <div id="workspace_groups_demo" class="workspace-groups" data-controller="workspace-groups" data-workspace-groups-workspace-id-value="demo">
+          <section class="workspace-group" data-group-id="right" data-workspace-groups-target="group">
+            <div class="group-tabbar" data-controller="workspace-tabs" data-workspace-tabs-workspace-id-value="demo" data-workspace-tabs-group-id-value="right" data-workspace-tabs-initial-tab-value="browser-1">
+              <div class="group-tabs"><div class="group-tab visible" data-tab="browser-1"><button type="button" data-action="click->workspace-tabs#show" data-workspace-tabs-tab-param="browser-1">Browser</button></div><div class="group-tab muted" data-tab="new"><button type="button" data-action="click->workspace-tabs#show" data-workspace-tabs-tab-param="new">New</button></div></div>
+              <details class="group-overflow-menu"><summary>Hidden tabs</summary><div></div></details>
+            </div>
+            <div class="workspace-panes"><span hidden data-workspace-pane-slot="browser-1" data-visible="true"></span><section class="tab-pane" data-tab-pane="new">New pane</section></div>
+          </section>
+        </div></template></turbo-stream><turbo-stream action="update" target="side_effect"><template>rendered too</template></turbo-stream>`);
+    });
+
+    await page.waitForFunction(() => document.querySelector(".workspace-group")?.getAttribute("data-group-id") === "right" && document.querySelector("#side_effect")?.textContent === "rendered too");
+    const preserved = await page.evaluate(() => {
+      const probe = (window as typeof window & { layoutProbe: { pane: HTMLElement; frame: HTMLIFrameElement; frameWindow: Window | null } }).layoutProbe;
+      const pane = document.querySelector<HTMLElement>('[data-tab-pane="browser-1"]')!;
+      const frame = pane.querySelector<HTMLIFrameElement>("iframe")!;
+      return {
+        oneLayout: document.querySelectorAll("#workspace_groups_demo").length,
+        paneIdentity: pane === probe.pane,
+        frameIdentity: frame === probe.frame,
+        frameWindowIdentity: frame.contentWindow === probe.frameWindow,
+        draft: pane.querySelector("textarea")!.value,
+        newPane: document.querySelector('[data-tab-pane="new"]')?.textContent,
+      };
+    });
+
+    expect(preserved).toEqual({ oneLayout: 1, paneIdentity: true, frameIdentity: true, frameWindowIdentity: true, draft: "unsaved draft", newPane: "New pane" });
     await page.close();
   });
 });

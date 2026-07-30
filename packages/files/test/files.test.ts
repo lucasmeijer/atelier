@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { workspaceRoot } from "@atelier/workspace";
 import { FilesPathError, normalizeFilesPath } from "../src/server/files.ts";
-import { filesDirectoryFrameId, renderFilesDirectoryFrame, renderFilesFrame } from "../src/server/render.ts";
+import { filesDirectoryFrameId, renderFilesDirectoryFrame, renderFilesFrame, renderLazyFilesFrame } from "../src/server/render.ts";
 
 describe("files paths", () => {
   test("defaults to the configured workspace root", () => {
@@ -19,6 +19,13 @@ describe("files paths", () => {
 });
 
 describe("files rendering", () => {
+  test("defers the workspace listing until the Files pane is visible", () => {
+    const html = renderLazyFilesFrame("work 1");
+    expect(html).toContain('loading="lazy"');
+    expect(html).toContain('/workspaces/work%201/files?path=%2Fwork');
+    expect(html).toContain("Loading files…");
+  });
+
   test("renders folders, sizes, breadcrumbs, and concealed entries", () => {
     const html = renderFilesFrame("work 1", `${workspaceRoot}/src`, [
       { name: "folder", path: `${workspaceRoot}/src/folder`, kind: "directory", size: 0, concealed: false, openable: false },

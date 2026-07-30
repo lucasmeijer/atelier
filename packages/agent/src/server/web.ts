@@ -21,14 +21,16 @@ async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<Workspa
   }
 }
 
-async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[], events?: AtelierEventBus): Promise<WorkspaceTabContribution[]> {
+async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[], events?: AtelierEventBus, renderPaneKeys?: ReadonlySet<string>): Promise<WorkspaceTabContribution[]> {
   return await Promise.all(agents.map(async (agent, index) => {
     const ctx = { workspaceId, label: agent.label };
+    const key = agentTabKey(agent.label);
+    if (renderPaneKeys && !renderPaneKeys.has(key)) return { key, label: agent.label };
     const paneHtml = isWorkspaceAgentRuntimeReady(agent)
       ? await renderAgentPane(ctx, agent, await (await getWorkspaceAgentRuntime(agent, { events })).paneState(), { visible: index === 0 })
       : await renderPendingAgentPane(ctx, agent, { visible: index === 0 });
     return {
-      key: agentTabKey(agent.label),
+      key,
       label: agent.label,
       paneHtml,
     };
@@ -142,12 +144,12 @@ export const agentWorkspaceModule: WorkspaceModule = {
     registerWorkspaceAgentTool("create_workspace", (workspaceId) => createWorkspaceTool((request) => context.createWorkspaceFromAgent(workspaceId, request)));
     registerWorkspaceAgentTool("fork_current_workspace", (workspaceId) => createForkCurrentWorkspaceTool((request) => context.forkCurrentWorkspaceFromAgent(workspaceId, request)));
   },
-  async attachToWorkspace({ workspaceId, init, events }) {
+  async attachToWorkspace({ workspaceId, init, events, renderPaneKeys }) {
     const hasProject = typeof init === "object" && init !== null && "type" in init && init.type === "project.git";
     try {
       const agents = await listOrCreateWorkspaceAgents(workspaceId);
       return {
-        tabs: await renderWorkspaceAgentTabs(workspaceId, agents, events as AtelierEventBus | undefined),
+        tabs: await renderWorkspaceAgentTabs(workspaceId, agents, events as AtelierEventBus | undefined, renderPaneKeys),
         commands: hasProject ? [...agentWorkspaceCommands, projectAgentWorkspaceCommand] : agentWorkspaceCommands,
       };
     } catch (error) {

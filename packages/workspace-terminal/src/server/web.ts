@@ -1,5 +1,4 @@
 import { registerWorkspacePresenter, type WorkspacePresenterDeps } from "@atelier/agent/server";
-import type { AtelierEventBus } from "@atelier/core";
 import { domId, escapeHtml, turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceTabContribution } from "@atelier/shared";
 import { terminalIdFromTabKey, terminalTabKey } from "../shared.ts";
 import { createTmuxPresenter } from "./agent-tool.ts";
@@ -89,10 +88,9 @@ export const terminalWorkspaceModule: WorkspaceModule = {
         command: Type.Optional(Type.String()),
         cwd: Type.Optional(Type.String()),
       }),
-      async execute({ workspaceId, input, events }) {
+      async execute({ workspaceId, input }) {
         const options = input as { title?: string; command?: string; cwd?: string };
         const terminal = await createWorkspaceTerminal(workspaceId, options);
-        await (events as AtelierEventBus | undefined)?.emit("workspace_tabs_changed", { workspaceId });
         return { createdTabKey: terminalTabKey(terminal.id) };
       },
     },
@@ -111,7 +109,6 @@ export const terminalWorkspaceModule: WorkspaceModule = {
       const workspaceId = decodeURIComponent(match[1]!);
       const session = String((await request.formData()).get("session") ?? "");
       const terminal = await attachWorkspaceTerminal(workspaceId, session);
-      await (context.events as AtelierEventBus | undefined)?.emit("workspace_tabs_changed", { workspaceId });
       return context.openTab(workspaceId, terminalTabKey(terminal.id));
     },
   }],
