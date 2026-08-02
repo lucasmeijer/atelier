@@ -1,0 +1,3 @@
+# Use adaptive tabs for desktop Agent conversations
+
+The desktop Agent pane keeps the existing workspace title and Project name when a Workspace has one Agent conversation, then replaces that identity with title-only conversation tabs when another conversation opens. Conversations remain independently mounted while switching; a new conversation begins as `Untitled`, may receive a generated title after meaningful activity, and closing back to one conversation restores the original single-conversation header. This preserves the dominant one-conversation workflow without hiding the uncommon multi-conversation case behind a separate navigation surface.

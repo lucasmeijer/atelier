@@ -22,6 +22,7 @@
     "ci": "bun ci && bun run check && bun run test",
     "web": "bun run --cwd apps/web dev",
     "preview:redesign": "bun run scripts/run-redesign-preview.ts",
+    "prototype:dark-foundation": "bun run scripts/serve-dark-foundation-prototypes.ts",
     "kill": "bun run --cwd apps/web kill",
     "list": "bun run --cwd apps/web list",
     "smoke:vscode": "node apps/web/smoke/vscode-smoke.mjs",
