@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Four phone navigation variants on the accepted visual foundation, switchable with ?mobile-nav=dock|stack|sheet|views. -->
+<!-- Settled Open views phone navigation on the accepted visual foundation. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -23,6 +23,7 @@
         --line: #ffffff14;
         --line-heavy: #ffffff29;
         --blue: #339cff;
+        --yellow: #f4c152;
         --green: #40c977;
         --orange: #ff8549;
         --red: #fa423e;
@@ -126,7 +127,11 @@
         min-height: 0;
         flex: 1;
         overflow: auto;
-        padding: 8px 12px 16px;
+        padding: 0 12px 16px;
+      }
+      .sidebar-top {
+        flex: 0 0 auto;
+        padding: 8px 12px 0;
       }
       .nav,
       .task {
@@ -182,12 +187,38 @@
         align-items: center;
         padding-right: 9px;
       }
-      .project-head .workspace-row {
+      .project-toggle {
         min-width: 0;
-        flex: 1;
+        display: grid;
+        grid-template-columns: 16px minmax(0, 1fr) auto;
+        gap: 8px;
+      }
+      .project-toggle .disclosure {
+        transition: transform 0.14s ease;
+      }
+      .project-toggle[aria-expanded="true"] .disclosure {
+        transform: rotate(90deg);
+      }
+      .nav-marker {
+        width: 16px;
+        height: 16px;
+        display: grid;
+        place-items: center;
+        color: var(--text3);
+      }
+      .nav-marker svg {
+        width: 13px;
+        height: 13px;
+      }
+      .project-name,
+      .task-label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .project-add {
-        opacity: 0;
+        opacity: 1;
       }
       .row-action {
         width: 24px;
@@ -207,20 +238,15 @@
         color: var(--text);
         outline: none;
       }
-      .project-head:hover .project-add,
-      .project-head .workspace-row.active + .project-add,
-      .project-add:focus-visible {
-        opacity: 1;
-      }
       .project-workspaces {
         display: grid;
       }
-      .workspace-row.active {
+      .project-group[data-expanded="false"] .project-workspaces {
+        display: none;
+      }
+      .task.current {
         background: #ffffff13;
         color: var(--text);
-      }
-      .workspace-row svg {
-        color: var(--text3);
       }
       .ready-dot,
       .attention-dot {
@@ -228,29 +254,83 @@
         height: 6px;
         flex: 0 0 6px;
         border-radius: 50%;
+      }
+      .ready-dot {
+        background: var(--yellow);
+        box-shadow: 0 0 0 3px #f4c1521f;
+      }
+      .attention-dot {
         background: var(--blue);
         box-shadow: 0 0 0 3px #339cff1f;
       }
-      .task .ready-dot {
-        margin-left: auto;
+      .workspace-status {
+        width: 24px;
+        height: 30px;
+        display: grid;
+        place-items: center;
       }
       .task {
         position: relative;
         height: 30px;
-        padding-left: 34px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 24px;
+        gap: 0;
+        padding: 0 9px 0 33px;
         font-size: 13px;
       }
-      .task.current {
-        color: var(--text);
+      .task:focus-visible,
+      .project-toggle:focus-visible {
+        outline: 1px solid #339cff99;
+        outline-offset: -1px;
       }
-      .projectless .task {
-        padding-left: 18px;
+      .empty-workspaces {
+        height: 30px;
+        display: flex;
+        align-items: center;
+        padding-left: 33px;
+        color: var(--text3);
+        font-size: 12px;
+      }
+      .workspace-skeleton {
+        display: none;
+        padding-top: 36px;
+      }
+      body.workspace-list-loading .workspace-tree-content {
+        display: none;
+      }
+      body.workspace-list-loading .workspace-skeleton {
+        display: grid;
+        gap: 9px;
+      }
+      .skeleton-row {
+        height: 24px;
+        border-radius: 7px;
+        background: linear-gradient(90deg, #ffffff09, #ffffff12, #ffffff09);
+        background-size: 220% 100%;
+        animation: workspace-skeleton 1.2s ease-in-out infinite;
+      }
+      .skeleton-row.project {
+        width: 64%;
+      }
+      .skeleton-row.workspace {
+        width: 86%;
+        margin-left: 24px;
+      }
+      @keyframes workspace-skeleton {
+        to {
+          background-position: -120% 0;
+        }
       }
       .sidebar-footer {
+        position: relative;
+        z-index: 1;
+        flex: 0 0 auto;
         padding: 8px 12px max(12px, env(safe-area-inset-bottom));
+        border-top: 0.5px solid var(--line);
+        background: #212121;
       }
       .sidebar-footer .nav {
-        color: var(--text3);
+        color: var(--text2);
       }
       .main {
         --agent-min: 420px;
@@ -309,6 +389,44 @@
       .task-title span {
         color: var(--text3);
         font-size: 12px;
+      }
+      .workspace-title-actions {
+        position: relative;
+        flex: 0 0 auto;
+      }
+      .workspace-action-menu {
+        position: absolute;
+        z-index: 40;
+        top: 32px;
+        left: 0;
+        width: 176px;
+        padding: 5px;
+        border: 0.5px solid var(--line-heavy);
+        border-radius: 10px;
+        background: #292929f8;
+        box-shadow: 0 12px 34px #0008;
+      }
+      .workspace-action-menu button {
+        width: 100%;
+        height: 30px;
+        padding: 0 9px;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--text2);
+        text-align: left;
+        font-size: 12px;
+      }
+      .workspace-action-menu button:hover,
+      .workspace-action-menu button:focus-visible {
+        background: #ffffff0e;
+        color: var(--text);
+        outline: 0;
+      }
+      .workspace-action-menu .danger {
+        margin-top: 4px;
+        border-top: 0.5px solid var(--line);
+        border-radius: 0 0 7px 7px;
+        color: #ff9a92;
       }
       .add-conversation {
         flex: 0 0 auto;
@@ -459,6 +577,20 @@
         display: flex;
         flex-direction: column;
       }
+      .conversation-panel.workspace-switching .thread {
+        visibility: hidden;
+      }
+      .conversation-panel.workspace-switching .transcript::after {
+        content: "Loading conversation…";
+        position: absolute;
+        inset: 44% 0 auto;
+        color: var(--text3);
+        text-align: center;
+        font-size: 12px;
+      }
+      .conversation-panel.workspace-switching .composer {
+        opacity: 0.55;
+      }
       .conversation-empty {
         width: min(100%, 620px);
         margin: auto;
@@ -487,7 +619,7 @@
       .thread {
         width: min(100%, 768px);
         margin: 0 auto;
-        padding: 34px 28px 125px;
+        padding: 34px 28px max(125px, calc(100dvh - var(--toolbar) - 40px));
       }
       .message {
         margin-bottom: 26px;
@@ -1258,10 +1390,8 @@
       .indent3 {
         padding-left: 54px;
       }
-      .mobile-switcher,
       .mobile-overlay,
       .mobile-work-header,
-      .mobile-variant-switcher,
       .mobile-view-switcher,
       .mobile-more-menu {
         display: none;
@@ -1786,6 +1916,34 @@
         font-size: 10px;
         backdrop-filter: blur(12px);
       }
+      .workspace-prototype-controls {
+        position: fixed;
+        z-index: 30;
+        left: 10px;
+        bottom: 10px;
+        display: flex;
+        gap: 4px;
+        padding: 3px;
+        border: 0.5px solid var(--line-heavy);
+        border-radius: 10px;
+        background: #282828f2;
+        box-shadow: 0 8px 24px #0007;
+        backdrop-filter: blur(14px);
+      }
+      .workspace-prototype-controls button {
+        height: 25px;
+        padding: 0 8px;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--text3);
+        font-size: 10px;
+      }
+      .workspace-prototype-controls button:hover,
+      .workspace-prototype-controls button:focus-visible {
+        background: #ffffff0e;
+        color: var(--text);
+        outline: 0;
+      }
       button.note:hover,
       button.note:focus-visible {
         color: var(--text2);
@@ -2062,7 +2220,7 @@
           pointer-events: auto;
         }
         .thread {
-          padding: 26px 16px 110px;
+          padding: 26px 16px max(110px, calc(100dvh - var(--toolbar) - 40px));
         }
         .composer-wrap {
           bottom: 48px;
@@ -2095,163 +2253,8 @@
         .change-files {
           display: none;
         }
-        .mobile-switcher {
-          position: absolute;
-          z-index: 10;
-          inset: auto 0 0;
-          height: 48px;
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          padding: 6px 10px max(6px, env(safe-area-inset-bottom));
-          border-top: 0.5px solid var(--line);
-          background: #181818f7;
-        }
-        .mobile-switcher button {
-          height: 34px;
-          border-radius: 9px;
-          background: transparent;
-          color: var(--text3);
-          font-size: 12px;
-        }
-        .mobile-switcher button.active {
-          background: #ffffff14;
-          color: var(--text);
-        }
-        .work-label {
-          display: inline-flex;
-          justify-content: center;
-          align-items: center;
-          gap: 7px;
-        }
-        .mobile-variant-switcher {
-          position: fixed;
-          z-index: 40;
-          inset: auto auto calc(58px + env(safe-area-inset-bottom)) 50%;
-          height: 36px;
-          display: flex;
-          align-items: center;
-          gap: 3px;
-          padding: 4px;
-          border: 0.5px solid var(--line-heavy);
-          border-radius: 12px;
-          background: #303030f2;
-          box-shadow: 0 10px 32px #000a;
-          transform: translateX(-50%);
-          backdrop-filter: blur(16px);
-        }
-        .mobile-variant-switcher button {
-          height: 28px;
-          display: grid;
-          place-items: center;
-          padding: 0 8px;
-          border-radius: 8px;
-          background: transparent;
-          color: var(--text3);
-          font-size: 11px;
-          white-space: nowrap;
-        }
-        .mobile-variant-switcher svg {
-          width: 12px;
-          height: 12px;
-        }
-        .mobile-variant-switcher [data-mobile-variant-label] {
-          min-width: 132px;
-          color: var(--text2);
-        }
-
-        /* A — persistent, peer-level destinations. */
-        body[data-mobile-variant="dock"] .mobile-work-header {
-          display: none;
-        }
-
-        /* B — Work is pushed over Agent and always supplies a way back. */
-        body[data-mobile-variant="stack"] .agent {
-          padding-bottom: 0;
-        }
-        body[data-mobile-variant="stack"] .work {
-          bottom: 0;
-        }
-        body[data-mobile-variant="stack"] .mobile-switcher {
-          display: none;
-        }
-        body[data-mobile-variant="stack"] .work-trigger {
-          display: grid;
-        }
-        body[data-mobile-variant="stack"] .mobile-work-header {
-          display: flex;
-        }
-        body[data-mobile-variant="stack"] .composer-wrap {
-          bottom: 0;
-        }
-        body[data-mobile-variant="stack"] .mobile-variant-switcher {
-          bottom: 12px;
-        }
-        body[data-mobile-variant="stack"].mobile-work .agent {
-          transform: translateX(-32%);
-        }
-        body[data-mobile-variant="stack"].sidebar-open .sidebar {
-          inset: 0;
-          width: 100vw;
-          padding-top: var(--toolbar);
-          box-shadow: none;
-        }
-
-        /* C — Agent remains the place; Work arrives as a dismissible sheet. */
-        body[data-mobile-variant="sheet"] .agent {
-          padding-bottom: 0;
-        }
-        body[data-mobile-variant="sheet"] .work {
-          z-index: 12;
-          inset: 12vh 8px 8px;
-          width: calc(100% - 16px);
-          height: auto;
-          border: 0.5px solid var(--line-heavy);
-          border-radius: 17px;
-          box-shadow: 0 22px 70px #000c;
-          transform: translateY(105%);
-          overflow: hidden;
-        }
-        body[data-mobile-variant="sheet"].mobile-work .agent {
-          transform: scale(0.975) translateY(-1.5%);
-          opacity: 0.62;
-          pointer-events: none;
-        }
-        body[data-mobile-variant="sheet"].mobile-work .work,
-        body[data-mobile-variant="sheet"].work-hidden.mobile-work .work {
-          width: calc(100% - 16px);
-          transform: none;
-        }
-        body[data-mobile-variant="sheet"] .mobile-work-header {
-          display: flex;
-        }
-        body[data-mobile-variant="sheet"] .mobile-work-header [data-action="show-agent"] svg {
-          transform: rotate(90deg);
-        }
-        body[data-mobile-variant="sheet"] .mobile-switcher {
-          height: 54px;
-          inset: auto 10px 10px;
-          grid-template-columns: 1fr 1fr;
-          padding: 6px;
-          border: 0.5px solid var(--line-heavy);
-          border-radius: 15px;
-          background: #282828f2;
-          box-shadow: 0 12px 36px #0009;
-        }
-        body[data-mobile-variant="sheet"] .mobile-switcher [data-action="show-agent"] {
-          display: none;
-        }
-        body[data-mobile-variant="sheet"] .composer-wrap {
-          bottom: 70px;
-        }
-        body[data-mobile-variant="sheet"] .mobile-variant-switcher {
-          bottom: 75px;
-        }
-
-        /* D — open documents are destinations; utilities appear while active. */
-        body[data-mobile-variant="views"] .mobile-switcher {
-          display: none;
-        }
-        body[data-mobile-variant="views"] .mobile-view-switcher {
+        /* Open documents are destinations; contextual utilities live in More. */
+        .mobile-view-switcher {
           position: absolute;
           z-index: 14;
           inset: auto 0 0;
@@ -2303,8 +2306,8 @@
           width: 6px;
           height: 6px;
           border-radius: 50%;
-          background: var(--blue);
-          box-shadow: 0 0 0 3px #339cff1f;
+          background: var(--yellow);
+          box-shadow: 0 0 0 3px #f4c1521f;
         }
         .mobile-destination-dot {
           position: absolute;
@@ -2338,11 +2341,11 @@
           background: #ffffff14;
           color: var(--text);
         }
-        body[data-mobile-variant="views"] .mobile-work-header,
-        body[data-mobile-variant="views"] .work-tabs {
+        .mobile-work-header,
+        .work-tabs {
           display: none;
         }
-        body[data-mobile-variant="views"] .mobile-more-menu {
+        .mobile-more-menu {
           position: fixed;
           z-index: 36;
           inset: auto 8px calc(58px + env(safe-area-inset-bottom));
@@ -2353,7 +2356,7 @@
           box-shadow: 0 18px 54px #000b;
           backdrop-filter: blur(18px);
         }
-        body[data-mobile-variant="views"].mobile-more-open .mobile-more-menu {
+        body.mobile-more-open .mobile-more-menu {
           display: grid;
           gap: 2px;
         }
@@ -2431,9 +2434,6 @@
           color: white;
           font-weight: 560;
         }
-        body[data-mobile-variant="views"] .mobile-variant-switcher {
-          bottom: 145px;
-        }
         .settings-dialog,
         .edit-project-dialog {
           width: calc(100vw - 20px);
@@ -2444,15 +2444,22 @@
         .project-editor-shell {
           grid-template-columns: 1fr;
         }
-        .settings-nav,
         .project-editor-nav {
           flex-direction: row;
           overflow-x: auto;
           border-right: 0;
           border-bottom: 0.5px solid var(--line);
         }
-        .settings-nav button:last-child,
         .project-editor-nav button:last-child {
+          margin-top: 0;
+        }
+        .settings-nav {
+          flex-direction: column;
+          overflow: visible;
+          border-right: 0;
+          border-bottom: 0.5px solid var(--line);
+        }
+        .settings-nav button:last-child {
           margin-top: 0;
         }
         .settings-content,
@@ -2470,6 +2477,7 @@
           display: none;
         }
         .variant-switcher,
+        .workspace-prototype-controls,
         .add-conversation,
         .agent-conversation-rail {
           display: none !important;
@@ -2563,7 +2571,7 @@
     </svg>
     <div class="app">
       <aside class="sidebar">
-        <div class="sidebar-scroll">
+        <div class="sidebar-top">
           <button
             class="nav primary"
             data-action="open-new-workspace"
@@ -2576,18 +2584,45 @@
             <svg><use href="#search" /></svg>Search
             <span class="shortcut">⌘K</span>
           </button>
+        </div>
+        <div class="sidebar-scroll" data-workspace-scroll>
+          <div
+            class="workspace-skeleton"
+            data-workspace-skeleton
+            aria-hidden="true"
+          >
+            <div class="skeleton-row project"></div>
+            <div class="skeleton-row workspace"></div>
+            <div class="skeleton-row workspace"></div>
+            <div class="skeleton-row project"></div>
+            <div class="skeleton-row workspace"></div>
+            <div class="skeleton-row project"></div>
+          </div>
+          <div
+            class="workspace-tree-content"
+            data-workspace-tree
+            role="tree"
+            aria-label="Projects and workspaces"
+          >
           <div class="section">
             Projects<button class="row-action" aria-label="Add project">
               <svg><use href="#plus" /></svg>
             </button>
           </div>
-          <div class="project-group">
+          <div class="project-group" data-project-group="atelier">
             <div class="project-head">
               <button
-                class="nav workspace-row active"
-                data-action="open-edit-project"
+                class="nav project-toggle"
+                data-action="toggle-project"
+                data-project="atelier"
+                data-tree-item
+                role="treeitem"
+                aria-expanded="true"
+                tabindex="-1"
               >
-                <svg><use href="#folder" /></svg>atelier
+                <span class="nav-marker disclosure"
+                  ><svg><use href="#chevron" /></svg></span
+                ><span class="project-name">atelier</span>
               </button>
               <button
                 class="row-action project-add"
@@ -2598,20 +2633,64 @@
                 <svg><use href="#plus" /></svg>
               </button>
             </div>
-            <div class="project-workspaces">
-              <button class="task current">
-                Redesign tabs and Work views<i
-                  class="ready-dot"
-                  title="Agent ready"
-                ></i></button
-              ><button class="task">Persisted Work view state</button
-              ><button class="task">Mobile navigation exploration</button>
+            <div class="project-workspaces" role="group">
+              <button
+                class="task current"
+                data-action="activate-workspace"
+                data-workspace="redesign-tabs"
+                data-project="atelier"
+                data-tree-item
+                role="treeitem"
+                tabindex="0"
+              >
+                <span class="task-label">Redesign tabs and Work views</span
+                ><span class="workspace-status"></span>
+              </button>
+              <button
+                class="task"
+                data-action="activate-workspace"
+                data-workspace="persisted-work-views"
+                data-project="atelier"
+                data-tree-item
+                role="treeitem"
+                tabindex="-1"
+              >
+                <span class="task-label">Persisted Work view state</span
+                ><span class="workspace-status"
+                  ><i class="ready-dot" title="Agent ready"></i></span>
+              </button>
+              <button
+                class="task"
+                data-action="activate-workspace"
+                data-workspace="mobile-navigation"
+                data-project="atelier"
+                data-tree-item
+                role="treeitem"
+                tabindex="-1"
+              >
+                <span class="task-label">Mobile navigation exploration</span
+                ><span class="workspace-status"></span>
+              </button>
             </div>
           </div>
-          <div class="project-group">
+          <div
+            class="project-group"
+            data-project-group="fastpaperwork"
+            data-expanded="false"
+          >
             <div class="project-head">
-              <button class="nav workspace-row">
-                <svg><use href="#folder" /></svg>fastpaperwork
+              <button
+                class="nav project-toggle"
+                data-action="toggle-project"
+                data-project="fastpaperwork"
+                data-tree-item
+                role="treeitem"
+                aria-expanded="false"
+                tabindex="-1"
+              >
+                <span class="nav-marker disclosure"
+                  ><svg><use href="#chevron" /></svg></span
+                ><span class="project-name">fastpaperwork</span>
               </button>
               <button
                 class="row-action project-add"
@@ -2622,14 +2701,36 @@
                 <svg><use href="#plus" /></svg>
               </button>
             </div>
-            <div class="project-workspaces">
-              <button class="task">Extract August invoices</button>
+            <div class="project-workspaces" role="group">
+              <button
+                class="task"
+                data-action="activate-workspace"
+                data-workspace="extract-invoices"
+                data-project="fastpaperwork"
+                data-tree-item
+                role="treeitem"
+                tabindex="-1"
+              >
+                <span class="task-label">Extract August invoices</span
+                ><span class="workspace-status"
+                  ><i class="ready-dot" title="Agent ready"></i></span>
+              </button>
             </div>
           </div>
-          <div class="project-group">
+          <div class="project-group" data-project-group="wayfinder">
             <div class="project-head">
-              <button class="nav workspace-row">
-                <svg><use href="#folder" /></svg>wayfinder
+              <button
+                class="nav project-toggle"
+                data-action="toggle-project"
+                data-project="wayfinder"
+                data-tree-item
+                role="treeitem"
+                aria-expanded="true"
+                tabindex="-1"
+              >
+                <span class="nav-marker disclosure"
+                  ><svg><use href="#chevron" /></svg></span
+                ><span class="project-name">wayfinder</span>
               </button>
               <button
                 class="row-action project-add"
@@ -2640,23 +2741,100 @@
                 <svg><use href="#plus" /></svg>
               </button>
             </div>
-            <div class="project-workspaces">
-              <button class="task">Prototype decision maps</button>
+            <div class="project-workspaces" role="group">
+              <button
+                class="task"
+                data-action="activate-workspace"
+                data-workspace="prototype-decision-maps"
+                data-project="wayfinder"
+                data-tree-item
+                role="treeitem"
+                tabindex="-1"
+              >
+                <span class="task-label">Prototype decision maps</span
+                ><span class="workspace-status"></span>
+              </button>
             </div>
           </div>
-          <div class="section">
-            No project<button
-              class="row-action"
-              data-action="open-new-workspace"
-              data-project="none"
-              aria-label="New projectless workspace"
-            >
-              <svg><use href="#plus" /></svg>
-            </button>
+          <div class="project-group" data-project-group="sandbox">
+            <div class="project-head">
+              <button
+                class="nav project-toggle"
+                data-action="toggle-project"
+                data-project="sandbox"
+                data-tree-item
+                role="treeitem"
+                aria-expanded="true"
+                tabindex="-1"
+              >
+                <span class="nav-marker disclosure"
+                  ><svg><use href="#chevron" /></svg></span
+                ><span class="project-name">sandbox</span>
+              </button>
+              <button
+                class="row-action project-add"
+                data-action="open-new-workspace"
+                data-project="sandbox"
+                aria-label="New sandbox workspace"
+              >
+                <svg><use href="#plus" /></svg>
+              </button>
+            </div>
+            <div class="project-workspaces" role="group">
+              <div class="empty-workspaces">No workspaces yet</div>
+            </div>
           </div>
-          <div class="projectless">
-            <button class="task">Investigate WebSocket reconnect</button
-            ><button class="task">Try Bun 1.3 upgrade</button>
+          <div class="project-group" data-project-group="none">
+            <div class="project-head">
+              <button
+                class="nav project-toggle"
+                data-action="toggle-project"
+                data-project="none"
+                data-tree-item
+                role="treeitem"
+                aria-expanded="true"
+                tabindex="-1"
+              >
+                <span class="nav-marker disclosure"
+                  ><svg><use href="#chevron" /></svg></span
+                ><span class="project-name">No project</span>
+              </button>
+              <button
+                class="row-action project-add"
+                data-action="open-new-workspace"
+                data-project="none"
+                aria-label="New projectless workspace"
+              >
+                <svg><use href="#plus" /></svg>
+              </button>
+            </div>
+            <div class="project-workspaces" role="group">
+              <button
+                class="task"
+                data-action="activate-workspace"
+                data-workspace="websocket-reconnect"
+                data-project="none"
+                data-tree-item
+                role="treeitem"
+                tabindex="-1"
+              >
+                <span class="task-label">Investigate WebSocket reconnect</span
+                ><span class="workspace-status"></span>
+              </button>
+              <button
+                class="task"
+                data-action="activate-workspace"
+                data-workspace="bun-upgrade"
+                data-project="none"
+                data-tree-item
+                role="treeitem"
+                tabindex="-1"
+              >
+                <span class="task-label">Try Bun 1.3 upgrade</span
+                ><span class="workspace-status"></span>
+              </button>
+            </div>
+          </div>
           </div>
         </div>
         <footer class="sidebar-footer">
@@ -2676,7 +2854,24 @@
             <svg><use href="#sidebar" /></svg>
           </button>
           <div class="task-title" data-single-conversation-title>
-            <strong>Redesign tabs and Work views</strong><span>atelier</span>
+            <strong data-workspace-title>Redesign tabs and Work views</strong
+            ><span data-workspace-project>atelier</span>
+          </div>
+          <div class="workspace-title-actions">
+            <button
+              class="icon small"
+              data-action="toggle-workspace-actions"
+              aria-label="Workspace actions"
+              aria-expanded="false"
+            >
+              <svg><use href="#more" /></svg>
+            </button>
+            <div class="workspace-action-menu" data-workspace-actions hidden>
+              <button data-action="prototype-rename-workspace">Rename</button>
+              <button class="danger" data-action="confirm-delete-workspace">
+                Delete workspace…
+              </button>
+            </div>
           </div>
           <button
             class="pill add-conversation"
@@ -3254,13 +3449,6 @@ Should this reuse an existing browser when the view reference is still available
               </aside>
             </div>
           </section>
-          <nav class="mobile-switcher">
-            <button data-action="show-workspace">Workspace</button
-            ><button class="active" data-action="show-agent">Agent</button
-            ><button data-action="show-work">
-              <span class="work-label">More <i class="attention-dot"></i></span>
-            </button>
-          </nav>
           <nav
             class="mobile-view-switcher"
             aria-label="Workspace and open views"
@@ -3433,25 +3621,27 @@ Should this reuse an existing browser when the view reference is still available
         <button
           class="search-result active"
           data-search-result
+          data-workspace="redesign-tabs"
           data-search-text="redesign tabs work views atelier workspace"
           role="option"
         >
           <span class="search-kind">Workspace</span>
           <span class="search-result-copy"
             ><strong>Redesign tabs and Work views</strong
-            ><small>atelier · Agent ready</small></span
+            ><small>atelier</small></span
           ><kbd>↩</kbd>
         </button>
         <button
           class="search-result"
           data-search-result
+          data-workspace="persisted-work-views"
           data-search-text="persisted work view state atelier workspace"
           role="option"
         >
           <span class="search-kind">Workspace</span>
           <span class="search-result-copy"
             ><strong>Persisted Work view state</strong
-            ><small>atelier</small></span
+            ><small>atelier · Agent ready</small></span
           >
         </button>
         <button
@@ -3883,6 +4073,25 @@ Should this reuse an existing browser when the view reference is still available
         </div>
       </div>
     </dialog>
+    <dialog
+      id="workspace-delete-dialog"
+      class="prototype-dialog mobile-close-dialog"
+      aria-labelledby="workspace-delete-title"
+    >
+      <h2 id="workspace-delete-title">Delete this workspace?</h2>
+      <p>
+        <span data-delete-workspace-name>Redesign tabs and Work views</span>
+        and its local files will be removed. This cannot be undone.
+      </p>
+      <div class="mobile-close-actions">
+        <button class="secondary-button" data-action="close-dialog">
+          Cancel
+        </button>
+        <button class="confirm-close" data-action="close-dialog">
+          Delete workspace
+        </button>
+      </div>
+    </dialog>
     <button
       class="note"
       data-action="reset-interaction-state"
@@ -3890,6 +4099,13 @@ Should this reuse an existing browser when the view reference is still available
     >
       <span data-interaction-state>Desktop interaction model</span>
     </button>
+    <nav
+      class="workspace-prototype-controls"
+      aria-label="Workspace pane prototype states"
+    >
+      <button data-action="simulate-workspace-ready">New ready event</button>
+      <button data-action="preview-workspace-loading">Loading state</button>
+    </nav>
     <nav class="variant-switcher" aria-label="Conversation tab variants">
       <button
         data-action="previous-conversation-variant"
@@ -3899,15 +4115,6 @@ Should this reuse an existing browser when the view reference is still available
       </button>
       <button data-variant-label>A · Inline tabs</button>
       <button data-action="next-conversation-variant" aria-label="Next variant">
-        <svg><use href="#chevron" /></svg>
-      </button>
-    </nav>
-    <nav class="mobile-variant-switcher" aria-label="Mobile navigation variants">
-      <button data-action="previous-mobile-variant" aria-label="Previous variant">
-        <svg style="transform: rotate(180deg)"><use href="#chevron" /></svg>
-      </button>
-      <button data-mobile-variant-label>A · Destination bar</button>
-      <button data-action="next-mobile-variant" aria-label="Next variant">
         <svg><use href="#chevron" /></svg>
       </button>
     </nav>

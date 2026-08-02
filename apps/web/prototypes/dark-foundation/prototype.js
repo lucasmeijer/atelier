@@ -1,17 +1,26 @@
-const prototypeStateKey = "atelier-dark-foundation-desktop-v2";
+// Settled prototype: Open views is the sole mobile navigation model.
+const prototypeStateKey = "atelier-dark-foundation-desktop-v3";
+history.scrollRestoration = "manual";
+window.scrollTo(0, 0);
+const prototypeUrl = new URL(location.href);
+prototypeUrl.searchParams.delete("mobile-nav");
+history.replaceState(null, "", prototypeUrl);
 const defaultViewOrder = ["file", "browser", "changes", "terminal"];
+const defaultExpandedProjects = {
+  atelier: true,
+  fastpaperwork: false,
+  wayfinder: true,
+  sandbox: true,
+  none: true,
+};
 const main = document.querySelector(".main");
 const workPane = document.querySelector(".work");
 const workTabs = document.querySelector(".work-tabs");
 const divider = document.querySelector(".divider");
 const workspaceTrigger = document.querySelector(".sidebar-trigger");
+const workspaceScroll = document.querySelector("[data-workspace-scroll]");
+const workspaceTree = document.querySelector("[data-workspace-tree]");
 const workTrigger = document.querySelector(".work-trigger");
-const mobileVariants = [
-  { id: "dock", label: "A · Destination bar" },
-  { id: "stack", label: "B · Navigation stack" },
-  { id: "sheet", label: "C · View sheet" },
-  { id: "views", label: "D · Open views" },
-];
 const documentViewIds = ["file", "browser", "terminal"];
 const mobileViewDetails = {
   file: { label: "work-view.ts", icon: "file" },
@@ -21,14 +30,6 @@ const mobileViewDetails = {
 };
 const mobileIndicators = new Set(["browser", "changes"]);
 let pendingMobileCloseView = null;
-const requestedMobileVariant = new URLSearchParams(location.search).get(
-  "mobile-nav",
-);
-let mobileVariant = mobileVariants.some(
-  (variant) => variant.id === requestedMobileVariant,
-)
-  ? requestedMobileVariant
-  : "dock";
 const conversationVariants = [
   { id: "inline", label: "A · Inline tabs" },
   { id: "rail", label: "B · Dedicated rail" },
@@ -60,6 +61,15 @@ function loadInteractionState() {
       ? saved.openViews
       : [...defaultViewOrder],
     drawers: saved?.drawers ?? { file: false, changes: false },
+    expandedProjects: {
+      ...defaultExpandedProjects,
+      ...(saved?.expandedProjects ?? {}),
+    },
+    activeWorkspace: saved?.activeWorkspace ?? "redesign-tabs",
+    sidebarScroll: saved?.sidebarScroll ?? 0,
+    readyWorkspaces: Array.isArray(saved?.readyWorkspaces)
+      ? saved.readyWorkspaces
+      : ["persisted-work-views", "extract-invoices"],
   };
 }
 
@@ -77,6 +87,149 @@ function isMobile() {
 
 function workspaceOverlays() {
   return matchMedia("(max-width: 1160px)").matches;
+}
+
+function projectGroup(project) {
+  return document.querySelector(`[data-project-group="${project}"]`);
+}
+
+function setProjectExpanded(project, expanded, { persist = true } = {}) {
+  const group = projectGroup(project);
+  if (!group) return;
+  const toggle = group.querySelector('[data-action="toggle-project"]');
+  group.dataset.expanded = String(expanded);
+  toggle.setAttribute("aria-expanded", String(expanded));
+  interaction.expandedProjects[project] = expanded;
+  if (persist) saveInteractionState();
+}
+
+function syncProjectState() {
+  document.querySelectorAll("[data-project-group]").forEach((group) => {
+    setProjectExpanded(
+      group.dataset.projectGroup,
+      interaction.expandedProjects[group.dataset.projectGroup] ?? true,
+      { persist: false },
+    );
+  });
+}
+
+function syncWorkspaceReadyState() {
+  document.querySelectorAll(".task[data-workspace]").forEach((row) => {
+    const marker = row.querySelector(".workspace-status");
+    const shouldBeReady = interaction.readyWorkspaces.includes(
+      row.dataset.workspace,
+    );
+    const existingDot = marker.querySelector(".ready-dot");
+    if (shouldBeReady && !existingDot) {
+      const dot = document.createElement("i");
+      dot.className = "ready-dot";
+      dot.title = "Agent ready";
+      marker.append(dot);
+    } else if (!shouldBeReady) {
+      existingDot?.remove();
+    }
+  });
+}
+
+function setWorkspaceReady(workspace, ready) {
+  interaction.readyWorkspaces = interaction.readyWorkspaces.filter(
+    (candidate) => candidate !== workspace,
+  );
+  if (ready) interaction.readyWorkspaces.push(workspace);
+  syncWorkspaceReadyState();
+  saveInteractionState();
+}
+
+function setTreeFocus(item, { focus = true } = {}) {
+  workspaceTree.querySelectorAll("[data-tree-item]").forEach((candidate) => {
+    candidate.tabIndex = candidate === item ? 0 : -1;
+  });
+  if (focus && item) {
+    item.focus({ preventScroll: true });
+    keepWorkspaceItemVisible(item);
+  }
+}
+
+function visibleTreeItems() {
+  return [...workspaceTree.querySelectorAll("[data-tree-item]")].filter(
+    (item) => item.offsetParent !== null,
+  );
+}
+
+function keepWorkspaceItemVisible(item) {
+  const containerRect = workspaceScroll.getBoundingClientRect();
+  const itemRect = item.getBoundingClientRect();
+  if (itemRect.top < containerRect.top) {
+    workspaceScroll.scrollTop -= containerRect.top - itemRect.top;
+  } else if (itemRect.bottom > containerRect.bottom) {
+    workspaceScroll.scrollTop += itemRect.bottom - containerRect.bottom;
+  }
+}
+
+function scrollAgentToNewest({ focusComposer = true } = {}) {
+  const panel = document.querySelector(
+    `[data-conversation-panel="${conversationState.active}"]`,
+  );
+  const transcript = panel?.querySelector(".transcript");
+  const newest = transcript?.querySelector(".message:last-child");
+  if (transcript && newest) {
+    transcript.style.scrollBehavior = "auto";
+    transcript.scrollTop +=
+      newest.getBoundingClientRect().top - transcript.getBoundingClientRect().top;
+    requestAnimationFrame(() => {
+      transcript.style.removeProperty("scroll-behavior");
+    });
+  }
+  if (focusComposer) activeComposer()?.focus({ preventScroll: true });
+}
+
+function activateWorkspace(
+  workspace,
+  { focusComposer = true, handoff = true } = {},
+) {
+  const row = document.querySelector(`.task[data-workspace="${workspace}"]`);
+  if (!row) return;
+  const changed = interaction.activeWorkspace !== workspace;
+  const project = row.dataset.project;
+  setProjectExpanded(project, true);
+  document.querySelectorAll(".task.current").forEach((task) => {
+    task.classList.toggle("current", task === row);
+  });
+  interaction.activeWorkspace = workspace;
+  setTreeFocus(row, { focus: handoff });
+  if (handoff) keepWorkspaceItemVisible(row);
+
+  const title = row.querySelector(".task-label").textContent.trim();
+  const projectLabel =
+    project === "none"
+      ? "No project"
+      : projectGroup(project).querySelector(".project-name").textContent.trim();
+  document.querySelector("[data-workspace-title]").textContent = title;
+  document.querySelector("[data-workspace-project]").textContent = projectLabel;
+  document.querySelector("[data-delete-workspace-name]").textContent = title;
+  setWorkspaceReady(workspace, false);
+  saveInteractionState();
+
+  if (!handoff) return;
+  if (workspaceOverlays()) setWorkspaceOpen(false);
+  if (isMobile()) showMobilePane("agent");
+
+  const panel = document.querySelector(
+    `[data-conversation-panel="${conversationState.active}"]`,
+  );
+  const composer = activeComposer();
+  if (changed) {
+    panel?.classList.add("workspace-switching");
+    if (composer) composer.disabled = true;
+    window.setTimeout(() => {
+      panel?.classList.remove("workspace-switching");
+      if (composer) composer.disabled = false;
+      scrollAgentToNewest({ focusComposer });
+    }, 320);
+  } else {
+    scrollAgentToNewest({ focusComposer });
+  }
+  updateStateNote(`${title} · newest message · composer focused`);
 }
 
 function openViewIds() {
@@ -215,15 +368,6 @@ function cycleConversationVariant(delta) {
   renderConversationState();
 }
 
-function renderMobileVariant() {
-  document.body.dataset.mobileVariant = mobileVariant;
-  document.body.classList.remove("mobile-more-open");
-  document.querySelector("[data-mobile-variant-label]").textContent =
-    mobileVariants.find((variant) => variant.id === mobileVariant).label;
-  renderMobileViewBar();
-  updateStateNote();
-}
-
 function mobileDestinationMarkup(
   id,
   label,
@@ -323,22 +467,6 @@ function confirmMobileClose() {
   closeView(view);
 }
 
-function cycleMobileVariant(delta) {
-  const current = mobileVariants.findIndex(
-    (variant) => variant.id === mobileVariant,
-  );
-  mobileVariant =
-    mobileVariants[
-      (current + delta + mobileVariants.length) % mobileVariants.length
-    ].id;
-  const url = new URL(location.href);
-  url.searchParams.set("mobile-nav", mobileVariant);
-  history.replaceState(null, "", url);
-  showMobilePane("agent");
-  setWorkspaceOpen(false);
-  renderMobileVariant();
-}
-
 function updateStateNote(message) {
   const state = document.querySelector("[data-interaction-state]");
   if (!state) return;
@@ -350,7 +478,7 @@ function updateStateNote(message) {
     : "Workspace docked";
   state.textContent =
     message ||
-    `${isMobile() ? mobileVariants.find((variant) => variant.id === mobileVariant).label : workspaceMode} · Work ${interaction.workOpen ? `${width}px` : "hidden"} · ${conversationState.multiple ? `2 conversations · ${conversationState.active}` : "1 conversation"}`;
+    `${isMobile() ? "Open views" : workspaceMode} · Work ${interaction.workOpen ? `${width}px` : "hidden"} · ${conversationState.multiple ? `2 conversations · ${conversationState.active}` : "1 conversation"}`;
 }
 
 function syncSidebar() {
@@ -385,7 +513,12 @@ function setWorkspaceOpen(open, { focusPane = false } = {}) {
   renderMobileViewBar();
   saveInteractionState();
   if (open && focusPane) {
-    document.querySelector(".workspace-row.active")?.focus();
+    const activeWorkspace = document.querySelector(".task.current");
+    activeWorkspace?.focus({ preventScroll: true });
+    requestAnimationFrame(() => {
+      workspaceScroll.scrollTop = interaction.sidebarScroll;
+      if (activeWorkspace) keepWorkspaceItemVisible(activeWorkspace);
+    });
   } else if (!open && focusWasInside) {
     workspaceTrigger.focus();
   }
@@ -644,7 +777,11 @@ const newWorkspaceDialog = document.querySelector("#new-workspace-dialog");
 const searchDialog = document.querySelector("#search-dialog");
 const settingsDialog = document.querySelector("#settings-dialog");
 const editProjectDialog = document.querySelector("#edit-project-dialog");
+const workspaceDeleteDialog = document.querySelector(
+  "#workspace-delete-dialog",
+);
 const projectMenu = document.querySelector("[data-project-menu]");
+const workspaceActions = document.querySelector("[data-workspace-actions]");
 
 function selectProject(project) {
   const option = document.querySelector(
@@ -711,6 +848,67 @@ document
     if (results.length > 0) selectSearchResult(0);
   });
 
+workspaceScroll.addEventListener("scroll", () => {
+  if (document.body.classList.contains("workspace-list-loading")) return;
+  interaction.sidebarScroll = workspaceScroll.scrollTop;
+  saveInteractionState();
+});
+
+workspaceTree.addEventListener("focusin", (event) => {
+  const item = event.target.closest?.("[data-tree-item]");
+  if (item) setTreeFocus(item);
+});
+
+workspaceTree.addEventListener("keydown", (event) => {
+  const item = event.target.closest?.("[data-tree-item]");
+  if (!item) return;
+  const items = visibleTreeItems();
+  const index = items.indexOf(item);
+  const project = item.dataset.project;
+  const isProject = item.dataset.action === "toggle-project";
+
+  if (["ArrowUp", "ArrowDown"].includes(event.key)) {
+    event.preventDefault();
+    const next = Math.max(
+      0,
+      Math.min(items.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)),
+    );
+    setTreeFocus(items[next]);
+  }
+  if (event.key === "ArrowRight" && isProject) {
+    event.preventDefault();
+    if (item.getAttribute("aria-expanded") !== "true") {
+      setProjectExpanded(project, true);
+    } else {
+      const firstWorkspace = projectGroup(project).querySelector(
+        ".task[data-tree-item]",
+      );
+      if (firstWorkspace) setTreeFocus(firstWorkspace);
+    }
+  }
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    if (isProject && item.getAttribute("aria-expanded") === "true") {
+      setProjectExpanded(project, false);
+    } else if (!isProject) {
+      setTreeFocus(
+        projectGroup(project).querySelector('[data-action="toggle-project"]'),
+      );
+    }
+  }
+  if (["Enter", " "].includes(event.key)) {
+    event.preventDefault();
+    if (isProject) {
+      setProjectExpanded(
+        project,
+        item.getAttribute("aria-expanded") !== "true",
+      );
+    } else if (event.key === "Enter") {
+      activateWorkspace(item.dataset.workspace);
+    }
+  }
+});
+
 document.querySelectorAll(".prototype-dialog").forEach((dialog) => {
   dialog.addEventListener("click", (event) => {
     if (event.target === dialog) dialog.close();
@@ -720,6 +918,21 @@ document.querySelectorAll(".prototype-dialog").forEach((dialog) => {
 document.addEventListener("click", (event) => {
   const control = event.target.closest("button, [data-action]");
   if (!control) return;
+  if (!control.closest(".workspace-title-actions")) {
+    workspaceActions.hidden = true;
+    document
+      .querySelector('[data-action="toggle-workspace-actions"]')
+      .setAttribute("aria-expanded", "false");
+  }
+  if (control.dataset.action === "toggle-project") {
+    setProjectExpanded(
+      control.dataset.project,
+      control.getAttribute("aria-expanded") !== "true",
+    );
+  }
+  if (control.dataset.action === "activate-workspace") {
+    activateWorkspace(control.dataset.workspace);
+  }
   if (control.dataset.conversation) {
     activateConversation(control.dataset.conversation);
   }
@@ -737,10 +950,6 @@ document.addEventListener("click", (event) => {
   if (control.dataset.action === "next-conversation-variant") {
     cycleConversationVariant(1);
   }
-  if (control.dataset.action === "previous-mobile-variant") {
-    cycleMobileVariant(-1);
-  }
-  if (control.dataset.action === "next-mobile-variant") cycleMobileVariant(1);
   if (control.dataset.mobileCloseView) {
     requestMobileClose(control.dataset.mobileCloseView);
   }
@@ -795,9 +1004,6 @@ document.addEventListener("click", (event) => {
       saveInteractionState();
     }
   }
-  if (control.matches(".task, .workspace-row") && workspaceOverlays()) {
-    setWorkspaceOpen(false);
-  }
   if (control.dataset.action === "show-agent") showMobilePane("agent");
   if (control.dataset.action === "show-work") showMobilePane("work");
   if (control.dataset.action === "show-workspace") {
@@ -813,6 +1019,18 @@ document.addEventListener("click", (event) => {
   if (control.dataset.action === "open-new-workspace")
     openNewWorkspace(control.dataset.project);
   if (control.dataset.action === "open-search") openSearch();
+  if (control.dataset.action === "toggle-workspace-actions") {
+    workspaceActions.hidden = !workspaceActions.hidden;
+    control.setAttribute("aria-expanded", String(!workspaceActions.hidden));
+  }
+  if (control.dataset.action === "prototype-rename-workspace") {
+    workspaceActions.hidden = true;
+    updateStateNote("Rename now lives in the Workspace title bar");
+  }
+  if (control.dataset.action === "confirm-delete-workspace") {
+    workspaceActions.hidden = true;
+    workspaceDeleteDialog.showModal();
+  }
   if (control.dataset.action === "open-settings") {
     showSettingsPage("general");
     settingsDialog.showModal();
@@ -860,7 +1078,39 @@ document.addEventListener("click", (event) => {
   if (control.dataset.action === "remove-comment-attachment") {
     document.querySelector("[data-comment-attachment]").hidden = true;
   }
-  if (control.matches("[data-search-result]")) searchDialog.close();
+  if (control.matches("[data-search-result]")) {
+    if (control.dataset.workspace) activateWorkspace(control.dataset.workspace);
+    searchDialog.close();
+  }
+  if (control.dataset.action === "simulate-workspace-ready") {
+    const preferred = document.querySelector(
+      '.task[data-workspace="prototype-decision-maps"]',
+    );
+    const row =
+      preferred && !preferred.querySelector(".ready-dot")
+        ? preferred
+        : [...document.querySelectorAll(".task[data-workspace]")].find(
+            (task) =>
+              !task.classList.contains("current") &&
+              !task.querySelector(".ready-dot"),
+          );
+    if (row) {
+      setWorkspaceReady(row.dataset.workspace, true);
+      setProjectExpanded(row.dataset.project, true);
+      updateStateNote(
+        `${row.querySelector(".task-label").textContent.trim()} became Agent ready · Project expanded`,
+      );
+    }
+  }
+  if (control.dataset.action === "preview-workspace-loading") {
+    document.body.classList.add("workspace-list-loading");
+    workspaceTree.setAttribute("aria-busy", "true");
+    window.setTimeout(() => {
+      document.body.classList.remove("workspace-list-loading");
+      workspaceTree.setAttribute("aria-busy", "false");
+      updateStateNote("Workspace navigation loaded");
+    }, 1400);
+  }
   if (control.dataset.action === "jump-latest") {
     document
       .querySelector(".message:last-child")
@@ -911,13 +1161,6 @@ addEventListener("keydown", (event) => {
   ) {
     event.preventDefault();
     cycleConversationVariant(event.key === "ArrowRight" ? 1 : -1);
-  }
-  if (
-    event.target.closest?.(".mobile-variant-switcher") &&
-    ["ArrowLeft", "ArrowRight"].includes(event.key)
-  ) {
-    event.preventDefault();
-    cycleMobileVariant(event.key === "ArrowRight" ? 1 : -1);
   }
   if (event.key === "Escape" && !document.querySelector("dialog[open]")) {
     if (document.body.classList.contains("tree-open")) {
@@ -971,11 +1214,24 @@ addEventListener("keydown", (event) => {
   }
   if (searchDialog.open && event.key === "Enter") {
     event.preventDefault();
+    const selected = visibleSearchResults().find((result) =>
+      result.classList.contains("active"),
+    );
+    if (selected?.dataset.workspace) {
+      activateWorkspace(selected.dataset.workspace);
+    }
     searchDialog.close();
   }
 });
 
 function restoreInteractionState() {
+  window.scrollTo(0, 0);
+  syncProjectState();
+  syncWorkspaceReadyState();
+  activateWorkspace(interaction.activeWorkspace, {
+    focusComposer: false,
+    handoff: false,
+  });
   interaction.openViews = interaction.openViews.filter((view) =>
     defaultViewOrder.includes(view),
   );
@@ -996,6 +1252,12 @@ function restoreInteractionState() {
     setWorkWidth(interaction.workSize, { persist: false });
   else setWorkWidth(main.clientWidth * 0.44, { persist: false });
   syncSidebar();
+  requestAnimationFrame(() => {
+    window.scrollTo(0, 0);
+    workspaceScroll.scrollTop = interaction.sidebarScroll;
+    scrollAgentToNewest({ focusComposer: false });
+    requestAnimationFrame(() => window.scrollTo(0, 0));
+  });
   syncWorkVisibility();
   if (interaction.activeView)
     activateView(interaction.activeView, { revealWork: false });
@@ -1011,4 +1273,4 @@ addEventListener("resize", () => {
 
 restoreInteractionState();
 renderConversationState();
-renderMobileVariant();
+renderMobileViewBar();
