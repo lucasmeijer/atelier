@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
-import { expandPromptTemplateText, loadPromptTemplatesFromRoot, parseWorkspaceNameCommand, renderPromptTemplateMenu } from "../../src/server/prompt-templates.ts";
+import { expandPromptTemplateText, loadPromptTemplatesFromRoot, parseWorkspaceNameCommand } from "../../src/server/prompt-templates.ts";
 
 describe("prompt templates", () => {
   test("loads .atelier and .pi prompt templates", async () => {
@@ -44,22 +44,6 @@ describe("prompt templates", () => {
     expect(parseWorkspaceNameCommand("/name")).toEqual({});
     expect(parseWorkspaceNameCommand(" /name   my-custom-name ")).toEqual({ title: "my-custom-name" });
     expect(parseWorkspaceNameCommand("/names")).toBeUndefined();
-  });
-
-  test("renders typed options for the unified completion menu", () => {
-    const html = renderPromptTemplateMenu([{ name: "review", trigger: "/review", description: "Review changes", prompt: "Review" }], "rev");
-    expect(html).toContain('class="agent-completion-menu"');
-    expect(html).toContain("agent-completion-option agent-template-option active");
-    expect(html).toContain('data-completion-kind="prompt-template"');
-  });
-
-  test("ranks prefix matches ahead of substring matches", () => {
-    const html = renderPromptTemplateMenu([
-      { name: "release-notes", trigger: "/release-notes", description: "Release notes", prompt: "Notes" },
-      { name: "simplify", trigger: "/simplify", description: "Simplify", prompt: "Simplify" },
-    ], "s");
-
-    expect(html.indexOf("/simplify")).toBeLessThan(html.indexOf("/release-notes"));
   });
 
   test("leaves normal prompts unchanged", () => {

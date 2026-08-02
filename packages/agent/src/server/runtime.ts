@@ -4,6 +4,7 @@ import { shellQuote, type AtelierEventBus } from "@atelier/core";
 import { StreamingMarkdownRenderer } from "@atelier/markdown";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
 import { createPiModelRuntime, getConfiguredAgentModels, getModelThinkingLevel } from "./pi-config-models.ts";
+import { preferredNewWorkspaceAgentModel } from "./model-state.ts";
 import {
   createAgentSession,
   SessionManager,
@@ -999,7 +1000,10 @@ export async function discardBootstrapOnlySession(path: string): Promise<void> {
 async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions, initial: InitialSessionSettings = {}): Promise<{ session: any; toolViews: AgentToolDefinitionView[] }> {
   await ensureSessionFile(agent.path);
   await discardBootstrapOnlySession(agent.path);
-  const modelRuntime = await createPiModelRuntime();
+  const [modelRuntime, defaultModel] = await Promise.all([
+    createPiModelRuntime(),
+    preferredNewWorkspaceAgentModel(),
+  ]);
   const [agentsFiles, skillResources] = await Promise.all([
     loadWorkspaceAgentsFiles(agent.workspaceId),
     loadWorkspaceSkills(agent.workspaceId),
@@ -1018,7 +1022,10 @@ async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgen
     customTools,
     tools: workspaceAgentToolNames(),
     sessionManager,
-    settingsManager: SettingsManager.inMemory({ compaction: { enabled: true } } as any),
+    settingsManager: SettingsManager.inMemory({
+      ...(defaultModel ? { defaultProvider: defaultModel.provider, defaultModel: defaultModel.id } : {}),
+      compaction: { enabled: true },
+    }),
   });
   return {
     session,

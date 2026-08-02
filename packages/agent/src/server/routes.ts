@@ -15,8 +15,10 @@ import {
 } from "./attachment-drafts.ts";
 import { ids, renderAttachmentChip } from "./render.ts";
 import { turboStream, turboStreamResponse } from "./html.ts";
-import { expandPromptTemplate, listPromptTemplates, parseWorkspaceNameCommand, renderPromptTemplateMenu } from "./prompt-templates.ts";
+import { expandPromptTemplate, listPromptTemplates, parseWorkspaceNameCommand } from "./prompt-templates.ts";
 import { listFileCompletions, renderFileCompletionMenu } from "./file-completions.ts";
+import { loadWorkspaceSkills } from "./skills.ts";
+import { renderSlashCommandMenu } from "./slash-commands.ts";
 import { getWorkspaceAgentRuntime, type SubmitMode } from "./runtime.ts";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
 import { maybeNameWorkspaceFromAgentPrompt, renameWorkspaceFromAgentContext } from "./workspace-title-suggestion.ts";
@@ -178,9 +180,13 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
 
 async function completionsEndpoint(workspaceId: string, url: URL): Promise<Response> {
   const query = url.searchParams.get("q") ?? "";
-  const html = url.searchParams.get("kind") === "prompt-template"
-    ? renderPromptTemplateMenu(await listPromptTemplates(workspaceId), query)
-    : renderFileCompletionMenu(await listFileCompletions(workspaceId, query, url.searchParams.get("mode") === "fuzzy" ? "fuzzy" : "direct"));
+  let html: string;
+  if (url.searchParams.get("kind") === "slash-command") {
+    const [templates, { skills }] = await Promise.all([listPromptTemplates(workspaceId), loadWorkspaceSkills(workspaceId)]);
+    html = renderSlashCommandMenu(templates, skills, query);
+  } else {
+    html = renderFileCompletionMenu(await listFileCompletions(workspaceId, query, url.searchParams.get("mode") === "fuzzy" ? "fuzzy" : "direct"));
+  }
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
 

@@ -1,7 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { workspaceWorkHostPath } from "@atelier/workspace";
-import { escapeHtml } from "./html.ts";
 
 export interface PromptTemplate {
   name: string;
@@ -162,25 +161,4 @@ export function parseWorkspaceNameCommand(text: string): { title?: string } | un
   if (!match) return undefined;
   const title = match[1]?.trim();
   return title ? { title } : {};
-}
-
-export function renderPromptTemplateMenu(templates: readonly PromptTemplate[], query: string): string {
-  const normalized = query.toLowerCase();
-  const filtered = templates
-    .filter((template) => !normalized || template.name.toLowerCase().includes(normalized))
-    .sort((a, b) => {
-      const aStartsWithQuery = a.name.toLowerCase().startsWith(normalized);
-      const bStartsWithQuery = b.name.toLowerCase().startsWith(normalized);
-      if (aStartsWithQuery !== bStartsWithQuery) return aStartsWithQuery ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    })
-    .slice(0, 12);
-  if (filtered.length === 0) return `<div class="agent-completion-menu empty">No prompt templates</div>`;
-  return `<div class="agent-completion-menu" role="listbox" aria-label="Prompt templates">${filtered.map((template, index) => {
-    const preview = `<pre class="agent-template-preview">${escapeHtml(template.prompt)}</pre>`;
-    return `<button type="button" class="agent-completion-option agent-template-option${index === 0 ? " active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="prompt-template" data-template-trigger="${escapeHtml(template.trigger)}" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(template.trigger)}">
-      <span class="agent-template-name">${escapeHtml(template.trigger)}</span>${template.argumentHint ? `<span class="agent-template-args">${escapeHtml(template.argumentHint)}</span>` : ""}<span class="agent-template-desc">${escapeHtml(template.description)}</span>
-      <template data-atelier-fullscreen-target="content">${preview}</template>
-    </button>`;
-  }).join("")}</div>`;
 }
