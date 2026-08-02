@@ -4,6 +4,7 @@ history.scrollRestoration = "manual";
 window.scrollTo(0, 0);
 const prototypeUrl = new URL(location.href);
 prototypeUrl.searchParams.delete("mobile-nav");
+prototypeUrl.searchParams.delete("agent-tabs");
 history.replaceState(null, "", prototypeUrl);
 const defaultViewOrder = ["file", "browser", "changes", "terminal"];
 const defaultExpandedProjects = {
@@ -30,19 +31,6 @@ const mobileViewDetails = {
 };
 const mobileIndicators = new Set(["browser", "changes"]);
 let pendingMobileCloseView = null;
-const conversationVariants = [
-  { id: "inline", label: "A · Inline tabs" },
-  { id: "rail", label: "B · Dedicated rail" },
-  { id: "compact", label: "C · Compact tabs" },
-];
-const requestedConversationVariant = new URLSearchParams(location.search).get(
-  "agent-tabs",
-);
-let conversationVariant = conversationVariants.some(
-  (variant) => variant.id === requestedConversationVariant,
-)
-  ? requestedConversationVariant
-  : "inline";
 let conversationState = {
   multiple: false,
   active: "primary",
@@ -140,22 +128,6 @@ function setWorkspaceReady(workspace, ready) {
   saveInteractionState();
 }
 
-function setTreeFocus(item, { focus = true } = {}) {
-  workspaceTree.querySelectorAll("[data-tree-item]").forEach((candidate) => {
-    candidate.tabIndex = candidate === item ? 0 : -1;
-  });
-  if (focus && item) {
-    item.focus({ preventScroll: true });
-    keepWorkspaceItemVisible(item);
-  }
-}
-
-function visibleTreeItems() {
-  return [...workspaceTree.querySelectorAll("[data-tree-item]")].filter(
-    (item) => item.offsetParent !== null,
-  );
-}
-
 function keepWorkspaceItemVisible(item) {
   const containerRect = workspaceScroll.getBoundingClientRect();
   const itemRect = item.getBoundingClientRect();
@@ -196,7 +168,6 @@ function activateWorkspace(
     task.classList.toggle("current", task === row);
   });
   interaction.activeWorkspace = workspace;
-  setTreeFocus(row, { focus: handoff });
   if (handoff) keepWorkspaceItemVisible(row);
 
   const title = row.querySelector(".task-label").textContent.trim();
@@ -249,18 +220,6 @@ function activeComposer() {
 }
 
 function conversationTabLabel(conversation) {
-  if (conversationVariant === "rail") {
-    return conversation === "primary"
-      ? "Primary"
-      : conversationState.secondaryTitle;
-  }
-  if (conversationVariant === "compact") {
-    return conversation === "primary"
-      ? "Main"
-      : conversationState.secondaryTitle === "Untitled"
-        ? "Agent 2"
-        : conversationState.secondaryTitle;
-  }
   return conversation === "primary"
     ? "Redesign tabs and Work views"
     : conversationState.secondaryTitle;
@@ -280,7 +239,6 @@ function conversationTabMarkup(conversation) {
 }
 
 function renderConversationState({ focusTab = false } = {}) {
-  document.body.dataset.conversationVariant = conversationVariant;
   document.body.classList.toggle(
     "multiple-conversations",
     conversationState.multiple,
@@ -288,9 +246,7 @@ function renderConversationState({ focusTab = false } = {}) {
   const tabs = conversationState.multiple
     ? `${conversationTabMarkup("primary")}${conversationTabMarkup("secondary")}`
     : "";
-  document.querySelectorAll("[data-conversation-tabs]").forEach((tablist) => {
-    tablist.innerHTML = tabs;
-  });
+  document.querySelector("[data-conversation-tabs]").innerHTML = tabs;
   document.querySelectorAll("[data-conversation-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.conversationPanel !== conversationState.active;
   });
@@ -309,23 +265,12 @@ function renderConversationState({ focusTab = false } = {}) {
           ? "Generate a title"
           : "Regenerate title";
     });
-  const variant = conversationVariants.find(
-    (candidate) => candidate.id === conversationVariant,
-  );
-  document.querySelector("[data-variant-label]").textContent = variant.label;
   if (focusTab) {
     document
       .querySelector(
-        `[data-conversation-tabs]:not(.agent-conversation-rail) [data-conversation="${conversationState.active}"]`,
+        `[data-conversation-tabs] [data-conversation="${conversationState.active}"]`,
       )
       ?.focus();
-    if (conversationVariant === "rail") {
-      document
-        .querySelector(
-          `.agent-conversation-rail [data-conversation="${conversationState.active}"]`,
-        )
-        ?.focus();
-    }
   }
   updateStateNote();
 }
@@ -353,34 +298,16 @@ function closeSecondaryConversation() {
   document.querySelector('[data-action="add-conversation"]')?.focus();
 }
 
-function cycleConversationVariant(delta) {
-  const current = conversationVariants.findIndex(
-    (variant) => variant.id === conversationVariant,
-  );
-  conversationVariant =
-    conversationVariants[
-      (current + delta + conversationVariants.length) %
-        conversationVariants.length
-    ].id;
-  const url = new URL(location.href);
-  url.searchParams.set("agent-tabs", conversationVariant);
-  history.replaceState(null, "", url);
-  renderConversationState();
-}
-
 function mobileDestinationMarkup(
   id,
   label,
   icon,
-  { active = false, indicator = false, closable = false } = {},
+  { active = false, indicator = false } = {},
 ) {
   const destination = `<button class="mobile-view-destination${active ? " active" : ""}" data-mobile-destination="${id}" aria-label="${label}"${active ? ' aria-current="page"' : ""}>
     <span class="mobile-view-icon"><svg><use href="#${icon}" /></svg>${indicator ? '<i class="mobile-destination-dot"></i>' : ""}</span><span class="mobile-view-label">${label}</span>
   </button>`;
-  const close = closable
-    ? `<button class="mobile-view-close" data-mobile-close-view="${id}" aria-label="Close ${label}"><svg><use href="#x" /></svg></button>`
-    : "";
-  return `<span class="mobile-view-destination-shell">${destination}${close}</span>`;
+  return `<span class="mobile-view-destination-shell">${destination}</span>`;
 }
 
 function renderMobileViewBar() {
@@ -412,7 +339,6 @@ function renderMobileViewBar() {
         {
           active: viewActive && activeView === view,
           indicator: mobileIndicators.has(view),
-          closable: true,
         },
       ),
     ),
@@ -424,7 +350,6 @@ function renderMobileViewBar() {
         {
           active: true,
           indicator: mobileIndicators.has(view),
-          closable: true,
         },
       ),
     ),
@@ -579,6 +504,9 @@ function activateView(view, { focusTab = false, revealWork = true } = {}) {
   const activeLabel = viewTab(view)?.querySelector("span")?.textContent || view;
   document.querySelector("[data-mobile-work-title]").textContent =
     activeLabel;
+  const mobileClose = document.querySelector("[data-mobile-close-active]");
+  mobileClose.dataset.mobileCloseView = view;
+  mobileClose.setAttribute("aria-label", `Close ${activeLabel}`);
   if (revealWork) setWorkOpen(true);
   if (focusTab) viewTab(view)?.focus();
   saveInteractionState();
@@ -854,61 +782,6 @@ workspaceScroll.addEventListener("scroll", () => {
   saveInteractionState();
 });
 
-workspaceTree.addEventListener("focusin", (event) => {
-  const item = event.target.closest?.("[data-tree-item]");
-  if (item) setTreeFocus(item);
-});
-
-workspaceTree.addEventListener("keydown", (event) => {
-  const item = event.target.closest?.("[data-tree-item]");
-  if (!item) return;
-  const items = visibleTreeItems();
-  const index = items.indexOf(item);
-  const project = item.dataset.project;
-  const isProject = item.dataset.action === "toggle-project";
-
-  if (["ArrowUp", "ArrowDown"].includes(event.key)) {
-    event.preventDefault();
-    const next = Math.max(
-      0,
-      Math.min(items.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)),
-    );
-    setTreeFocus(items[next]);
-  }
-  if (event.key === "ArrowRight" && isProject) {
-    event.preventDefault();
-    if (item.getAttribute("aria-expanded") !== "true") {
-      setProjectExpanded(project, true);
-    } else {
-      const firstWorkspace = projectGroup(project).querySelector(
-        ".task[data-tree-item]",
-      );
-      if (firstWorkspace) setTreeFocus(firstWorkspace);
-    }
-  }
-  if (event.key === "ArrowLeft") {
-    event.preventDefault();
-    if (isProject && item.getAttribute("aria-expanded") === "true") {
-      setProjectExpanded(project, false);
-    } else if (!isProject) {
-      setTreeFocus(
-        projectGroup(project).querySelector('[data-action="toggle-project"]'),
-      );
-    }
-  }
-  if (["Enter", " "].includes(event.key)) {
-    event.preventDefault();
-    if (isProject) {
-      setProjectExpanded(
-        project,
-        item.getAttribute("aria-expanded") !== "true",
-      );
-    } else if (event.key === "Enter") {
-      activateWorkspace(item.dataset.workspace);
-    }
-  }
-});
-
 document.querySelectorAll(".prototype-dialog").forEach((dialog) => {
   dialog.addEventListener("click", (event) => {
     if (event.target === dialog) dialog.close();
@@ -943,12 +816,6 @@ document.addEventListener("click", (event) => {
   if (control.dataset.action === "generate-conversation-title") {
     conversationState.secondaryTitle = "Explore agent conversation tabs";
     renderConversationState();
-  }
-  if (control.dataset.action === "previous-conversation-variant") {
-    cycleConversationVariant(-1);
-  }
-  if (control.dataset.action === "next-conversation-variant") {
-    cycleConversationVariant(1);
   }
   if (control.dataset.mobileCloseView) {
     requestMobileClose(control.dataset.mobileCloseView);
@@ -1154,13 +1021,6 @@ addEventListener("keydown", (event) => {
                 conversations.length
             ];
     activateConversation(next, { focusTab: true });
-  }
-  if (
-    event.target.closest?.(".variant-switcher") &&
-    ["ArrowLeft", "ArrowRight"].includes(event.key)
-  ) {
-    event.preventDefault();
-    cycleConversationVariant(event.key === "ArrowRight" ? 1 : -1);
   }
   if (event.key === "Escape" && !document.querySelector("dialog[open]")) {
     if (document.body.classList.contains("tree-open")) {

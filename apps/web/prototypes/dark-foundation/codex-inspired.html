@@ -255,13 +255,10 @@
         flex: 0 0 6px;
         border-radius: 50%;
       }
-      .ready-dot {
+      .ready-dot,
+      .attention-dot {
         background: var(--yellow);
         box-shadow: 0 0 0 3px #f4c1521f;
-      }
-      .attention-dot {
-        background: var(--blue);
-        box-shadow: 0 0 0 3px #339cff1f;
       }
       .workspace-status {
         width: 24px;
@@ -495,26 +492,12 @@
         width: 10px;
         height: 10px;
       }
-      body.multiple-conversations[data-conversation-variant="inline"]
-        [data-single-conversation-title],
-      body.multiple-conversations[data-conversation-variant="compact"]
-        [data-single-conversation-title],
+      body.multiple-conversations [data-single-conversation-title],
       body.multiple-conversations .add-conversation {
         display: none;
       }
-      body.multiple-conversations[data-conversation-variant="inline"]
-        .app-toolbar
-        > .conversation-tabs,
-      body.multiple-conversations[data-conversation-variant="compact"]
-        .app-toolbar
-        > .conversation-tabs {
+      body.multiple-conversations .app-toolbar > .conversation-tabs {
         display: flex;
-      }
-      body[data-conversation-variant="compact"] .conversation-tab-shell {
-        max-width: 124px;
-      }
-      body[data-conversation-variant="compact"] .conversation-tab {
-        padding-inline: 6px;
       }
       .spacer {
         flex: 1;
@@ -557,18 +540,6 @@
         display: flex;
         flex-direction: column;
         background: var(--surface);
-      }
-      .agent-conversation-rail {
-        height: 38px;
-        flex: 0 0 38px;
-        align-items: center;
-        padding: 3px 10px;
-        border-bottom: 0.5px solid var(--line);
-        background: #1b1b1b;
-      }
-      body.multiple-conversations[data-conversation-variant="rail"]
-        .agent-conversation-rail {
-        display: flex;
       }
       .conversation-panel {
         position: relative;
@@ -1949,44 +1920,6 @@
         color: var(--text2);
         outline: 0.5px solid var(--line-heavy);
       }
-      .variant-switcher {
-        position: fixed;
-        z-index: 30;
-        inset: auto auto 10px 50%;
-        height: 34px;
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        padding: 3px;
-        border: 0.5px solid var(--line-heavy);
-        border-radius: 11px;
-        background: #282828f2;
-        box-shadow: 0 8px 24px #0007;
-        transform: translateX(-50%);
-        backdrop-filter: blur(14px);
-      }
-      .variant-switcher button {
-        height: 26px;
-        display: grid;
-        place-items: center;
-        padding: 0 8px;
-        border-radius: 8px;
-        background: transparent;
-        color: var(--text3);
-        font-size: 11px;
-      }
-      .variant-switcher button:hover {
-        background: #ffffff0e;
-        color: var(--text);
-      }
-      .variant-switcher svg {
-        width: 12px;
-        height: 12px;
-      }
-      .variant-switcher [data-variant-label] {
-        min-width: 126px;
-        color: var(--text2);
-      }
       body.tree-open .navigator {
         transform: none;
       }
@@ -2341,7 +2274,9 @@
           background: #ffffff14;
           color: var(--text);
         }
-        .mobile-work-header,
+        .mobile-work-header {
+          display: flex;
+        }
         .work-tabs {
           display: none;
         }
@@ -2476,10 +2411,8 @@
         .note {
           display: none;
         }
-        .variant-switcher,
         .workspace-prototype-controls,
-        .add-conversation,
-        .agent-conversation-rail {
+        .add-conversation {
           display: none !important;
         }
       }
@@ -2488,6 +2421,32 @@
           transition-duration: 0.01ms !important;
           scroll-behavior: auto !important;
         }
+      }
+      .icon:active,
+      .nav:active,
+      .task:active,
+      .row-action:active,
+      .conversation-tab:active,
+      .conversation-tab-close:active,
+      .pill:active,
+      .composer-option:active,
+      .work-tab:active,
+      .tab-close:active,
+      .change-file:active,
+      .line-comment-trigger:active,
+      .review-button:active,
+      .project-select:active,
+      .project-option:active,
+      .search-result:active,
+      .settings-nav button:active,
+      .project-editor-nav button:active,
+      .secondary-button:active,
+      .add-row:active,
+      .mobile-view-destination:active,
+      .mobile-view-close:active,
+      .mobile-more-menu [data-mobile-view]:active {
+        background: #ffffff1c;
+        color: var(--text);
       }
     </style>
   </head>
@@ -2601,8 +2560,8 @@
           <div
             class="workspace-tree-content"
             data-workspace-tree
-            role="tree"
-            aria-label="Projects and workspaces"
+            role="navigation"
+            aria-label="Projects and Workspaces"
           >
           <div class="section">
             Projects<button class="row-action" aria-label="Add project">
@@ -2615,10 +2574,7 @@
                 class="nav project-toggle"
                 data-action="toggle-project"
                 data-project="atelier"
-                data-tree-item
-                role="treeitem"
                 aria-expanded="true"
-                tabindex="-1"
               >
                 <span class="nav-marker disclosure"
                   ><svg><use href="#chevron" /></svg></span
@@ -2639,9 +2595,6 @@
                 data-action="activate-workspace"
                 data-workspace="redesign-tabs"
                 data-project="atelier"
-                data-tree-item
-                role="treeitem"
-                tabindex="0"
               >
                 <span class="task-label">Redesign tabs and Work views</span
                 ><span class="workspace-status"></span>
@@ -2651,9 +2604,6 @@
                 data-action="activate-workspace"
                 data-workspace="persisted-work-views"
                 data-project="atelier"
-                data-tree-item
-                role="treeitem"
-                tabindex="-1"
               >
                 <span class="task-label">Persisted Work view state</span
                 ><span class="workspace-status"
@@ -2664,9 +2614,6 @@
                 data-action="activate-workspace"
                 data-workspace="mobile-navigation"
                 data-project="atelier"
-                data-tree-item
-                role="treeitem"
-                tabindex="-1"
               >
                 <span class="task-label">Mobile navigation exploration</span
                 ><span class="workspace-status"></span>
@@ -2683,10 +2630,7 @@
                 class="nav project-toggle"
                 data-action="toggle-project"
                 data-project="fastpaperwork"
-                data-tree-item
-                role="treeitem"
                 aria-expanded="false"
-                tabindex="-1"
               >
                 <span class="nav-marker disclosure"
                   ><svg><use href="#chevron" /></svg></span
@@ -2707,9 +2651,6 @@
                 data-action="activate-workspace"
                 data-workspace="extract-invoices"
                 data-project="fastpaperwork"
-                data-tree-item
-                role="treeitem"
-                tabindex="-1"
               >
                 <span class="task-label">Extract August invoices</span
                 ><span class="workspace-status"
@@ -2723,10 +2664,7 @@
                 class="nav project-toggle"
                 data-action="toggle-project"
                 data-project="wayfinder"
-                data-tree-item
-                role="treeitem"
                 aria-expanded="true"
-                tabindex="-1"
               >
                 <span class="nav-marker disclosure"
                   ><svg><use href="#chevron" /></svg></span
@@ -2747,9 +2685,6 @@
                 data-action="activate-workspace"
                 data-workspace="prototype-decision-maps"
                 data-project="wayfinder"
-                data-tree-item
-                role="treeitem"
-                tabindex="-1"
               >
                 <span class="task-label">Prototype decision maps</span
                 ><span class="workspace-status"></span>
@@ -2762,10 +2697,7 @@
                 class="nav project-toggle"
                 data-action="toggle-project"
                 data-project="sandbox"
-                data-tree-item
-                role="treeitem"
                 aria-expanded="true"
-                tabindex="-1"
               >
                 <span class="nav-marker disclosure"
                   ><svg><use href="#chevron" /></svg></span
@@ -2790,10 +2722,7 @@
                 class="nav project-toggle"
                 data-action="toggle-project"
                 data-project="none"
-                data-tree-item
-                role="treeitem"
                 aria-expanded="true"
-                tabindex="-1"
               >
                 <span class="nav-marker disclosure"
                   ><svg><use href="#chevron" /></svg></span
@@ -2814,9 +2743,6 @@
                 data-action="activate-workspace"
                 data-workspace="websocket-reconnect"
                 data-project="none"
-                data-tree-item
-                role="treeitem"
-                tabindex="-1"
               >
                 <span class="task-label">Investigate WebSocket reconnect</span
                 ><span class="workspace-status"></span>
@@ -2826,9 +2752,6 @@
                 data-action="activate-workspace"
                 data-workspace="bun-upgrade"
                 data-project="none"
-                data-tree-item
-                role="treeitem"
-                tabindex="-1"
               >
                 <span class="task-label">Try Bun 1.3 upgrade</span
                 ><span class="workspace-status"></span>
@@ -2898,12 +2821,6 @@
         </header>
         <div class="workspace">
           <section class="agent">
-            <nav
-              class="conversation-tabs agent-conversation-rail"
-              role="tablist"
-              aria-label="Agent conversations"
-              data-conversation-tabs
-            ></nav>
             <div class="conversation-panel" data-conversation-panel="primary">
               <div class="transcript">
                 <div class="thread">
@@ -3075,6 +2992,14 @@ text     14px      border   white / 8%</pre>
                 aria-label="Open navigator"
               >
                 <svg><use href="#tree" /></svg>
+              </button>
+              <button
+                class="icon small"
+                data-mobile-close-active
+                data-mobile-close-view="file"
+                aria-label="Close work-view.ts"
+              >
+                <svg><use href="#x" /></svg>
               </button>
             </header>
             <nav class="work-tabs" role="tablist" aria-label="Work views">
@@ -4105,18 +4030,6 @@ Should this reuse an existing browser when the view reference is still available
     >
       <button data-action="simulate-workspace-ready">New ready event</button>
       <button data-action="preview-workspace-loading">Loading state</button>
-    </nav>
-    <nav class="variant-switcher" aria-label="Conversation tab variants">
-      <button
-        data-action="previous-conversation-variant"
-        aria-label="Previous variant"
-      >
-        <svg style="transform: rotate(180deg)"><use href="#chevron" /></svg>
-      </button>
-      <button data-variant-label>A · Inline tabs</button>
-      <button data-action="next-conversation-variant" aria-label="Next variant">
-        <svg><use href="#chevron" /></svg>
-      </button>
     </nav>
     <script src="prototype.js"></script>
   </body>
