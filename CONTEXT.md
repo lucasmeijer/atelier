@@ -4,6 +4,18 @@ Atelier is a workspace interface for collaborating with coding agents while insp
 
 ## Language
 
+**Project**:
+A reusable source and configuration from which multiple workspaces can be created.
+_Avoid_: Workspace folder, repository
+
+**Workspace**:
+An isolated environment in which a user collaborates with agents and inspects or operates on their work. A workspace may be created from a Project or without one.
+_Avoid_: Task, chat
+
+**Projectless workspace**:
+A workspace created without a Project and therefore without a reusable project source or configuration.
+_Avoid_: Empty project, miscellaneous project
+
 **Workspace pane**:
 The collapsible navigation region for finding and switching between workspaces.
 _Avoid_: Left sidebar, workspace tab
