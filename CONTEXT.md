@@ -21,8 +21,12 @@ The collapsible navigation region for finding and switching between workspaces.
 _Avoid_: Left sidebar, workspace tab
 
 **Agent pane**:
-The primary region for conversing with the active agent in a workspace.
+The primary region for using the active Agent conversation in a workspace.
 _Avoid_: Left tab, chat tab
+
+**Agent conversation**:
+An independently stateful transcript and composer for collaborating with an agent inside a Workspace. A Workspace may contain one or more Agent conversations, with one active at a time.
+_Avoid_: Agent view, agent tab, chat, thread
 
 **Work pane**:
 The contextual region that slides in when needed to show files, changes, terminals, browsers, editors, and other working views.
@@ -31,6 +35,22 @@ _Avoid_: Right tab, preview tab
 **Work view**:
 A closable, reorderable tab inside the Work pane, such as a terminal, browser, File view, or Changes view. Only one Work view is active and visible at a time; Work views are not split into additional layout groups.
 _Avoid_: Workspace group, preview group
+
+**Resource Work view**:
+A Work view representing an independently open resource or running session, such as a File, Browser, or Terminal view. It remains directly reachable while open.
+_Avoid_: Document view, permanent view
+
+**Contextual Work view**:
+A workspace-level utility Work view, such as Changes, that is directly reachable on mobile while active and otherwise discovered through More.
+_Avoid_: Permanent view, special view
+
+**Mobile destination**:
+A top-level phone navigation target for the Workspace pane, Agent pane, or an open Work view. Resource Work views remain destinations while open; a Contextual Work view is a destination only while active.
+_Avoid_: Mobile tab, mobile Work pane
+
+**More**:
+The user-facing phone destination for finding Work views that are not currently top-level Mobile destinations. “Work” remains domain language and is not exposed as the name of this mobile affordance.
+_Avoid_: Work, overflow
 
 **Work view reference**:
 A stable, type-bearing identity for one Work view. Generic Work pane actions accept any Work view reference, while type-specific actions accept only references of their own kind.
@@ -57,7 +77,7 @@ A persistent, repeatable signal from an agent asking the user to inspect a parti
 _Avoid_: Work view unread, highlighted tab
 
 **Agent ready**:
-A persistent workspace-level status indicating that an Agent view has completed work whose newest assistant response has not yet been reached. Following the response to its tail, reaching the transcript bottom later, or viewing the beginning of the latest assistant message clears it; only Agent views contribute to this status.
+A persistent workspace-level status indicating that an Agent conversation has completed work whose newest assistant response has not yet been reached. Following the response to its tail, reaching the transcript bottom later, or viewing the beginning of the latest assistant message clears it; only Agent conversations contribute to this status.
 _Avoid_: Workspace unread, workspace ready
 
 **Changes view**:

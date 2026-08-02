@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- Four phone navigation variants on the accepted visual foundation, switchable with ?mobile-nav=dock|stack|sheet|views. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -252,8 +253,14 @@
         color: var(--text3);
       }
       .main {
-        --work-size: clamp(440px, 44%, 760px);
-        --work-width: clamp(240px, var(--work-size), calc(100% - 260px));
+        --agent-min: 420px;
+        --workspace-offset: var(--sidebar);
+        --work-size: 44vw;
+        --work-width: clamp(
+          360px,
+          var(--work-size),
+          calc(100% - var(--workspace-offset) - var(--agent-min))
+        );
         position: relative;
         z-index: 4;
         min-width: 0;
@@ -303,6 +310,94 @@
         color: var(--text3);
         font-size: 12px;
       }
+      .add-conversation {
+        flex: 0 0 auto;
+        margin-left: 2px;
+        color: var(--text2);
+      }
+      .conversation-tabs {
+        min-width: 0;
+        display: none;
+        align-items: center;
+        gap: 2px;
+      }
+      .conversation-tab-shell {
+        min-width: 0;
+        max-width: 210px;
+        display: flex;
+        align-items: center;
+        border-radius: 8px;
+      }
+      .conversation-tab {
+        min-width: 0;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 0 9px;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text3);
+        font-size: 12px;
+      }
+      .conversation-tab:hover {
+        background: #ffffff0d;
+        color: var(--text2);
+      }
+      .conversation-tab.active {
+        background: #ffffff13;
+        color: var(--text);
+      }
+      .conversation-tab span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .conversation-tab-close {
+        width: 20px;
+        height: 20px;
+        flex: 0 0 20px;
+        display: grid;
+        place-items: center;
+        margin-left: -5px;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text3);
+        opacity: 0;
+      }
+      .conversation-tab-shell:hover .conversation-tab-close,
+      .conversation-tab-shell:focus-within .conversation-tab-close {
+        opacity: 1;
+      }
+      .conversation-tab-close:hover {
+        background: #ffffff12;
+        color: var(--text);
+      }
+      .conversation-tab-close svg {
+        width: 10px;
+        height: 10px;
+      }
+      body.multiple-conversations[data-conversation-variant="inline"]
+        [data-single-conversation-title],
+      body.multiple-conversations[data-conversation-variant="compact"]
+        [data-single-conversation-title],
+      body.multiple-conversations .add-conversation {
+        display: none;
+      }
+      body.multiple-conversations[data-conversation-variant="inline"]
+        .app-toolbar
+        > .conversation-tabs,
+      body.multiple-conversations[data-conversation-variant="compact"]
+        .app-toolbar
+        > .conversation-tabs {
+        display: flex;
+      }
+      body[data-conversation-variant="compact"] .conversation-tab-shell {
+        max-width: 124px;
+      }
+      body[data-conversation-variant="compact"] .conversation-tab {
+        padding-inline: 6px;
+      }
       .spacer {
         flex: 1;
       }
@@ -344,6 +439,44 @@
         display: flex;
         flex-direction: column;
         background: var(--surface);
+      }
+      .agent-conversation-rail {
+        height: 38px;
+        flex: 0 0 38px;
+        align-items: center;
+        padding: 3px 10px;
+        border-bottom: 0.5px solid var(--line);
+        background: #1b1b1b;
+      }
+      body.multiple-conversations[data-conversation-variant="rail"]
+        .agent-conversation-rail {
+        display: flex;
+      }
+      .conversation-panel {
+        position: relative;
+        min-height: 0;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+      .conversation-empty {
+        width: min(100%, 620px);
+        margin: auto;
+        padding: 40px 28px 170px;
+        color: var(--text3);
+        text-align: center;
+      }
+      .conversation-empty h2 {
+        margin: 0 0 8px;
+        color: var(--text2);
+        font-size: 15px;
+        font-weight: 550;
+      }
+      .conversation-empty p {
+        margin: 0 auto 16px;
+        max-width: 390px;
+        font-size: 13px;
+        line-height: 1.5;
       }
       .transcript {
         min-height: 0;
@@ -642,6 +775,47 @@
       .work-tab.active {
         background: #ffffff13;
         color: var(--text);
+      }
+      .work-tab-shell {
+        min-width: 44px;
+        max-width: 176px;
+        display: flex;
+        align-items: center;
+        border-radius: 8px;
+      }
+      .work-tab-shell.dragging {
+        opacity: 0.45;
+      }
+      .work-tab-shell .work-tab {
+        flex: 1;
+        padding-right: 6px;
+      }
+      .tab-close {
+        width: 22px;
+        height: 22px;
+        flex: 0 0 22px;
+        display: grid;
+        place-items: center;
+        margin-left: -5px;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text3);
+        opacity: 0;
+      }
+      .tab-close svg {
+        width: 11px;
+        height: 11px;
+      }
+      .work-tab-shell:hover .tab-close,
+      .work-tab-shell:focus-within .tab-close,
+      .work-tab-shell .work-tab.active + .tab-close {
+        opacity: 1;
+      }
+      .tab-close:hover,
+      .tab-close:focus-visible {
+        background: #ffffff12;
+        color: var(--text);
+        outline: none;
       }
       .close-work {
         margin: 0 8px 0 auto;
@@ -1085,7 +1259,11 @@
         padding-left: 54px;
       }
       .mobile-switcher,
-      .mobile-overlay {
+      .mobile-overlay,
+      .mobile-work-header,
+      .mobile-variant-switcher,
+      .mobile-view-switcher,
+      .mobile-more-menu {
         display: none;
       }
       .prototype-dialog {
@@ -1608,6 +1786,49 @@
         font-size: 10px;
         backdrop-filter: blur(12px);
       }
+      button.note:hover,
+      button.note:focus-visible {
+        color: var(--text2);
+        outline: 0.5px solid var(--line-heavy);
+      }
+      .variant-switcher {
+        position: fixed;
+        z-index: 30;
+        inset: auto auto 10px 50%;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px;
+        border: 0.5px solid var(--line-heavy);
+        border-radius: 11px;
+        background: #282828f2;
+        box-shadow: 0 8px 24px #0007;
+        transform: translateX(-50%);
+        backdrop-filter: blur(14px);
+      }
+      .variant-switcher button {
+        height: 26px;
+        display: grid;
+        place-items: center;
+        padding: 0 8px;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text3);
+        font-size: 11px;
+      }
+      .variant-switcher button:hover {
+        background: #ffffff0e;
+        color: var(--text);
+      }
+      .variant-switcher svg {
+        width: 12px;
+        height: 12px;
+      }
+      .variant-switcher [data-variant-label] {
+        min-width: 126px;
+        color: var(--text2);
+      }
       body.tree-open .navigator {
         transform: none;
       }
@@ -1665,8 +1886,12 @@
         }
       }
       @media (max-width: 1160px) and (min-width: 761px) {
+        .main {
+          --agent-min: 380px;
+          --workspace-offset: 0px;
+        }
         .sidebar {
-          width: 0;
+          width: 275px;
           transform: translateX(-20px);
           opacity: 0;
           pointer-events: none;
@@ -1677,7 +1902,6 @@
           display: block;
         }
         body.sidebar-open .sidebar {
-          width: 275px;
           transform: none;
           opacity: 1;
           pointer-events: auto;
@@ -1686,10 +1910,24 @@
           margin-left: 0;
         }
         body.sidebar-open .workspace {
-          margin-left: 275px;
+          margin-left: 0;
         }
         .agent {
           min-width: 0;
+        }
+        .mobile-overlay {
+          position: fixed;
+          z-index: 7;
+          inset: var(--toolbar) 0 0;
+          display: block;
+          background: #0006;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.18s;
+        }
+        body.sidebar-open .mobile-overlay {
+          opacity: 1;
+          pointer-events: auto;
         }
       }
       @media (max-width: 760px) {
@@ -1788,6 +2026,25 @@
           opacity: 0;
           pointer-events: none;
         }
+        .mobile-work-header {
+          height: 44px;
+          flex: 0 0 44px;
+          align-items: center;
+          gap: 8px;
+          padding: 0 10px;
+          border-bottom: 0.5px solid var(--line);
+          background: var(--surface);
+        }
+        .mobile-work-header strong {
+          min-width: 0;
+          flex: 1;
+          overflow: hidden;
+          color: var(--text2);
+          font-size: 12px;
+          font-weight: 560;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
         .divider {
           display: none;
         }
@@ -1844,7 +2101,7 @@
           inset: auto 0 0;
           height: 48px;
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: repeat(3, 1fr);
           padding: 6px 10px max(6px, env(safe-area-inset-bottom));
           border-top: 0.5px solid var(--line);
           background: #181818f7;
@@ -1865,6 +2122,317 @@
           justify-content: center;
           align-items: center;
           gap: 7px;
+        }
+        .mobile-variant-switcher {
+          position: fixed;
+          z-index: 40;
+          inset: auto auto calc(58px + env(safe-area-inset-bottom)) 50%;
+          height: 36px;
+          display: flex;
+          align-items: center;
+          gap: 3px;
+          padding: 4px;
+          border: 0.5px solid var(--line-heavy);
+          border-radius: 12px;
+          background: #303030f2;
+          box-shadow: 0 10px 32px #000a;
+          transform: translateX(-50%);
+          backdrop-filter: blur(16px);
+        }
+        .mobile-variant-switcher button {
+          height: 28px;
+          display: grid;
+          place-items: center;
+          padding: 0 8px;
+          border-radius: 8px;
+          background: transparent;
+          color: var(--text3);
+          font-size: 11px;
+          white-space: nowrap;
+        }
+        .mobile-variant-switcher svg {
+          width: 12px;
+          height: 12px;
+        }
+        .mobile-variant-switcher [data-mobile-variant-label] {
+          min-width: 132px;
+          color: var(--text2);
+        }
+
+        /* A — persistent, peer-level destinations. */
+        body[data-mobile-variant="dock"] .mobile-work-header {
+          display: none;
+        }
+
+        /* B — Work is pushed over Agent and always supplies a way back. */
+        body[data-mobile-variant="stack"] .agent {
+          padding-bottom: 0;
+        }
+        body[data-mobile-variant="stack"] .work {
+          bottom: 0;
+        }
+        body[data-mobile-variant="stack"] .mobile-switcher {
+          display: none;
+        }
+        body[data-mobile-variant="stack"] .work-trigger {
+          display: grid;
+        }
+        body[data-mobile-variant="stack"] .mobile-work-header {
+          display: flex;
+        }
+        body[data-mobile-variant="stack"] .composer-wrap {
+          bottom: 0;
+        }
+        body[data-mobile-variant="stack"] .mobile-variant-switcher {
+          bottom: 12px;
+        }
+        body[data-mobile-variant="stack"].mobile-work .agent {
+          transform: translateX(-32%);
+        }
+        body[data-mobile-variant="stack"].sidebar-open .sidebar {
+          inset: 0;
+          width: 100vw;
+          padding-top: var(--toolbar);
+          box-shadow: none;
+        }
+
+        /* C — Agent remains the place; Work arrives as a dismissible sheet. */
+        body[data-mobile-variant="sheet"] .agent {
+          padding-bottom: 0;
+        }
+        body[data-mobile-variant="sheet"] .work {
+          z-index: 12;
+          inset: 12vh 8px 8px;
+          width: calc(100% - 16px);
+          height: auto;
+          border: 0.5px solid var(--line-heavy);
+          border-radius: 17px;
+          box-shadow: 0 22px 70px #000c;
+          transform: translateY(105%);
+          overflow: hidden;
+        }
+        body[data-mobile-variant="sheet"].mobile-work .agent {
+          transform: scale(0.975) translateY(-1.5%);
+          opacity: 0.62;
+          pointer-events: none;
+        }
+        body[data-mobile-variant="sheet"].mobile-work .work,
+        body[data-mobile-variant="sheet"].work-hidden.mobile-work .work {
+          width: calc(100% - 16px);
+          transform: none;
+        }
+        body[data-mobile-variant="sheet"] .mobile-work-header {
+          display: flex;
+        }
+        body[data-mobile-variant="sheet"] .mobile-work-header [data-action="show-agent"] svg {
+          transform: rotate(90deg);
+        }
+        body[data-mobile-variant="sheet"] .mobile-switcher {
+          height: 54px;
+          inset: auto 10px 10px;
+          grid-template-columns: 1fr 1fr;
+          padding: 6px;
+          border: 0.5px solid var(--line-heavy);
+          border-radius: 15px;
+          background: #282828f2;
+          box-shadow: 0 12px 36px #0009;
+        }
+        body[data-mobile-variant="sheet"] .mobile-switcher [data-action="show-agent"] {
+          display: none;
+        }
+        body[data-mobile-variant="sheet"] .composer-wrap {
+          bottom: 70px;
+        }
+        body[data-mobile-variant="sheet"] .mobile-variant-switcher {
+          bottom: 75px;
+        }
+
+        /* D — open documents are destinations; utilities appear while active. */
+        body[data-mobile-variant="views"] .mobile-switcher {
+          display: none;
+        }
+        body[data-mobile-variant="views"] .mobile-view-switcher {
+          position: absolute;
+          z-index: 14;
+          inset: auto 0 0;
+          min-height: 52px;
+          display: flex;
+          align-items: stretch;
+          padding: 5px 4px max(5px, env(safe-area-inset-bottom));
+          border-top: 0.5px solid var(--line);
+          background: #181818fa;
+        }
+        .mobile-view-destination {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          min-width: 0;
+          display: grid;
+          justify-items: center;
+          align-content: center;
+          gap: 2px;
+          padding: 3px 2px;
+          border-radius: 9px;
+          background: transparent;
+          color: var(--text3);
+          font-size: 9px;
+          line-height: 1;
+        }
+        .mobile-view-destination-shell {
+          position: relative;
+          min-width: 0;
+          flex: 1 1 0;
+        }
+        .mobile-view-destination svg {
+          width: 16px;
+          height: 16px;
+        }
+        .mobile-view-destination .mobile-view-label {
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .mobile-view-icon {
+          position: relative;
+          display: grid;
+          place-items: center;
+        }
+        .mobile-destination-dot,
+        .mobile-more-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: var(--blue);
+          box-shadow: 0 0 0 3px #339cff1f;
+        }
+        .mobile-destination-dot {
+          position: absolute;
+          inset: -2px -7px auto auto;
+        }
+        .mobile-view-close {
+          position: absolute;
+          z-index: 2;
+          inset: -2px -1px auto auto;
+          width: 22px;
+          height: 22px;
+          display: grid;
+          place-items: center;
+          padding: 0;
+          border-radius: 50%;
+          background: #303030;
+          color: var(--text3);
+          box-shadow: 0 0 0 0.5px var(--line-heavy);
+        }
+        .mobile-view-close:hover,
+        .mobile-view-close:focus-visible {
+          background: #3a3a3a;
+          color: var(--text);
+          outline: none;
+        }
+        .mobile-view-close svg {
+          width: 10px;
+          height: 10px;
+        }
+        .mobile-view-destination.active {
+          background: #ffffff14;
+          color: var(--text);
+        }
+        body[data-mobile-variant="views"] .mobile-work-header,
+        body[data-mobile-variant="views"] .work-tabs {
+          display: none;
+        }
+        body[data-mobile-variant="views"] .mobile-more-menu {
+          position: fixed;
+          z-index: 36;
+          inset: auto 8px calc(58px + env(safe-area-inset-bottom));
+          padding: 6px;
+          border: 0.5px solid var(--line-heavy);
+          border-radius: 14px;
+          background: #282828f7;
+          box-shadow: 0 18px 54px #000b;
+          backdrop-filter: blur(18px);
+        }
+        body[data-mobile-variant="views"].mobile-more-open .mobile-more-menu {
+          display: grid;
+          gap: 2px;
+        }
+        .mobile-more-menu header {
+          padding: 7px 9px 5px;
+          color: var(--text3);
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.07em;
+        }
+        .mobile-more-view-row {
+          position: relative;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 36px;
+          align-items: center;
+        }
+        .mobile-more-menu [data-mobile-view] {
+          height: 42px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 0 10px;
+          border-radius: 9px;
+          background: transparent;
+          color: var(--text2);
+          text-align: left;
+        }
+        .mobile-more-menu [data-mobile-view]:hover,
+        .mobile-more-menu [data-mobile-view]:focus-visible {
+          background: #ffffff0d;
+          color: var(--text);
+          outline: none;
+        }
+        .mobile-more-menu button svg {
+          width: 16px;
+          height: 16px;
+        }
+        .mobile-more-menu .mobile-view-close {
+          position: static;
+          justify-self: center;
+        }
+        .mobile-more-dot {
+          margin-left: auto;
+          margin-right: 5px;
+        }
+        .mobile-close-dialog {
+          width: min(360px, calc(100vw - 28px));
+          margin-top: 28vh;
+          padding: 20px;
+          border-radius: 17px;
+        }
+        .mobile-close-dialog h2 {
+          margin: 0 0 8px;
+          font-size: 17px;
+          letter-spacing: -0.02em;
+        }
+        .mobile-close-dialog p {
+          margin: 0;
+          color: var(--text3);
+          font-size: 12px;
+          line-height: 1.5;
+        }
+        .mobile-close-actions {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+          margin-top: 20px;
+        }
+        .mobile-close-actions button {
+          height: 40px;
+          border-radius: 10px;
+        }
+        .mobile-close-actions .confirm-close {
+          background: var(--red);
+          color: white;
+          font-weight: 560;
+        }
+        body[data-mobile-variant="views"] .mobile-variant-switcher {
+          bottom: 145px;
         }
         .settings-dialog,
         .edit-project-dialog {
@@ -1900,6 +2468,11 @@
         }
         .note {
           display: none;
+        }
+        .variant-switcher,
+        .add-conversation,
+        .agent-conversation-rail {
+          display: none !important;
         }
       }
       @media (prefers-reduced-motion: reduce) {
@@ -1968,6 +2541,11 @@
       <symbol id="up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6" /></symbol>
       <symbol id="check" viewBox="0 0 24 24">
         <path d="m5 12 4 4L19 6" />
+      </symbol>
+      <symbol id="sparkles" viewBox="0 0 24 24">
+        <path
+          d="m12 3 1.4 4.1L17.5 8.5l-4.1 1.4L12 14l-1.4-4.1-4.1-1.4 4.1-1.4zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"
+        />
       </symbol>
       <symbol id="code" viewBox="0 0 24 24">
         <path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14" />
@@ -2097,9 +2675,23 @@
           >
             <svg><use href="#sidebar" /></svg>
           </button>
-          <div class="task-title">
+          <div class="task-title" data-single-conversation-title>
             <strong>Redesign tabs and Work views</strong><span>atelier</span>
           </div>
+          <button
+            class="pill add-conversation"
+            data-action="add-conversation"
+            aria-label="Add conversation"
+            title="Add conversation"
+          >
+            <svg><use href="#plus" /></svg><span>New conversation</span>
+          </button>
+          <nav
+            class="conversation-tabs"
+            role="tablist"
+            aria-label="Agent conversations"
+            data-conversation-tabs
+          ></nav>
           <div class="spacer"></div>
           <button
             class="icon work-trigger"
@@ -2111,91 +2703,156 @@
         </header>
         <div class="workspace">
           <section class="agent">
-            <div class="transcript">
-              <div class="thread">
-                <article class="message user">
-                  <p>
-                    Make a visual prototype that stays as close as possible to
-                    the Codex desktop app, while applying our decisions for
-                    Atelier’s Agent and Work panes.
-                  </p>
-                </article>
-                <article class="message assistant">
-                  <h2>
-                    I’ve rebuilt the prototype around Codex’s actual desktop
-                    hierarchy.
-                  </h2>
-                  <p>
-                    The workspace sidebar remains subordinate to a raised main
-                    surface. The Agent transcript is the stable left pane, while
-                    the Work pane on the right hosts one active tab at a time.
-                  </p>
-                  <div class="activity">
-                    <svg><use href="#check" /></svg>Inspected the Codex Lucas
-                    Electron app styles
-                  </div>
-                  <div class="tool-card">
-                    <header>
-                      <svg><use href="#code" /></svg
-                      ><span>Read visual tokens</span><span>Done</span>
-                    </header>
-                    <pre>
+            <nav
+              class="conversation-tabs agent-conversation-rail"
+              role="tablist"
+              aria-label="Agent conversations"
+              data-conversation-tabs
+            ></nav>
+            <div class="conversation-panel" data-conversation-panel="primary">
+              <div class="transcript">
+                <div class="thread">
+                  <article class="message user">
+                    <p>
+                      Make a visual prototype that stays as close as possible to
+                      the Codex desktop app, while applying our decisions for
+                      Atelier’s Agent and Work panes.
+                    </p>
+                  </article>
+                  <article class="message assistant">
+                    <h2>
+                      I’ve rebuilt the prototype around Codex’s actual desktop
+                      hierarchy.
+                    </h2>
+                    <p>
+                      The workspace sidebar remains subordinate to a raised main
+                      surface. The Agent transcript is the stable left pane,
+                      while the Work pane on the right hosts one active tab at a
+                      time.
+                    </p>
+                    <div class="activity">
+                      <svg><use href="#check" /></svg>Inspected the Codex Lucas
+                      Electron app styles
+                    </div>
+                    <div class="tool-card">
+                      <header>
+                        <svg><use href="#code" /></svg
+                        ><span>Read visual tokens</span><span>Done</span>
+                      </header>
+                      <pre>
 sidebar  275px     toolbar  46px
 surface  #181818   editor   #212121
 text     14px      border   white / 8%</pre>
-                  </div>
-                  <p>
-                    The browser tab is still asking for attention. Activating it
-                    clears only that tab’s indicator; the workspace’s ready
-                    state belongs to the Agent and clears independently.
-                  </p>
-                </article>
-                <article class="message user">
-                  <p>
-                    Keep File and Changes as separate view types, but let them
-                    share the sliding navigator pattern.
-                  </p>
-                </article>
-                <article class="message assistant">
-                  <p>
-                    Agreed. File keeps the full project tree, Changes gets the
-                    same navigator filtered to changed files, and opening a file
-                    from Changes creates or reveals a separate File tab.
-                  </p>
-                </article>
-              </div>
-            </div>
-            <div class="composer-wrap">
-              <button class="jump" data-action="jump-latest">
-                <svg><use href="#down" /></svg>Jump to latest
-              </button>
-              <div class="composer">
-                <div class="comment-attachment" data-comment-attachment hidden>
-                  <div class="comment-attachment-head">
-                    <svg><use href="#code" /></svg>
-                    <span>work-view.ts · R44</span>
+                    </div>
+                    <p>
+                      Presenting Preview reveals and activates its Work view.
+                      The request clears as soon as that view is visible; the
+                      workspace’s ready state belongs to the Agent and clears
+                      independently.
+                    </p>
                     <button
-                      class="icon small"
-                      data-action="remove-comment-attachment"
-                      aria-label="Remove code comment"
+                      class="pill"
+                      data-action="request-preview-attention"
+                      aria-label="Present Preview"
                     >
-                      <svg><use href="#x" /></svg>
+                      <svg><use href="#browser" /></svg
+                      ><span>Present Preview</span>
+                    </button>
+                  </article>
+                  <article class="message user">
+                    <p>
+                      Keep File and Changes as separate view types, but let them
+                      share the sliding navigator pattern.
+                    </p>
+                  </article>
+                  <article class="message assistant">
+                    <p>
+                      Agreed. File keeps the full project tree, Changes gets the
+                      same navigator filtered to changed files, and opening a
+                      file from Changes creates or reveals a separate File tab.
+                    </p>
+                  </article>
+                </div>
+              </div>
+              <div class="composer-wrap">
+                <button class="jump" data-action="jump-latest">
+                  <svg><use href="#down" /></svg>Jump to latest
+                </button>
+                <div class="composer">
+                  <div
+                    class="comment-attachment"
+                    data-comment-attachment
+                    hidden
+                  >
+                    <div class="comment-attachment-head">
+                      <svg><use href="#code" /></svg>
+                      <span>work-view.ts · R44</span>
+                      <button
+                        class="icon small"
+                        data-action="remove-comment-attachment"
+                        aria-label="Remove code comment"
+                      >
+                        <svg><use href="#x" /></svg>
+                      </button>
+                    </div>
+                    <pre data-comment-snippet>
++ | { type: "browser"; id: BrowserViewId }</pre>
+                  </div>
+                  <textarea placeholder="Ask for follow-up changes"></textarea>
+                  <div class="composer-foot">
+                    <button class="icon">
+                      <svg><use href="#plus" /></svg></button
+                    ><button class="composer-option">
+                      GPT-5.6 <svg><use href="#down" /></svg></button
+                    ><button class="composer-option mobile-hide">
+                      High <svg><use href="#down" /></svg></button
+                    ><button class="send">
+                      <svg><use href="#up" /></svg>
                     </button>
                   </div>
-                  <pre data-comment-snippet>
-+ | { type: "browser"; id: BrowserViewId }</pre>
                 </div>
-                <textarea placeholder="Ask for follow-up changes"></textarea>
-                <div class="composer-foot">
-                  <button class="icon">
-                    <svg><use href="#plus" /></svg></button
-                  ><button class="composer-option">
-                    GPT-5.6 <svg><use href="#down" /></svg></button
-                  ><button class="composer-option mobile-hide">
-                    High <svg><use href="#down" /></svg></button
-                  ><button class="send">
-                    <svg><use href="#up" /></svg>
+              </div>
+            </div>
+            <div
+              class="conversation-panel"
+              data-conversation-panel="secondary"
+              hidden
+            >
+              <div class="transcript">
+                <div class="conversation-empty">
+                  <h2>Start another conversation</h2>
+                  <p>
+                    This conversation shares the workspace and its Work views,
+                    but keeps a separate transcript and composer.
+                  </p>
+                  <button
+                    class="pill"
+                    data-action="generate-conversation-title"
+                  >
+                    <svg><use href="#sparkles" /></svg
+                    ><span>Generate a title</span>
                   </button>
+                </div>
+              </div>
+              <div class="composer-wrap">
+                <div class="composer">
+                  <textarea
+                    placeholder="Message the new agent conversation"
+                  ></textarea>
+                  <div class="composer-foot">
+                    <button class="icon">
+                      <svg><use href="#plus" /></svg>
+                    </button>
+                    <button class="composer-option">
+                      GPT-5.6 <svg><use href="#down" /></svg>
+                    </button>
+                    <button class="composer-option mobile-hide">
+                      High <svg><use href="#down" /></svg>
+                    </button>
+                    <button class="send">
+                      <svg><use href="#up" /></svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2208,33 +2865,113 @@ text     14px      border   white / 8%</pre>
             tabindex="0"
           ></div>
           <section class="work">
-            <nav class="work-tabs" role="tablist">
+            <header class="mobile-work-header">
               <button
-                class="work-tab active"
-                data-view="file"
-                aria-selected="true"
+                class="icon small"
+                data-action="show-agent"
+                aria-label="Back to Agent"
               >
-                <svg><use href="#file" /></svg><span>work-view.ts</span></button
-              ><button
-                class="work-tab"
-                data-view="browser"
-                aria-selected="false"
+                <svg style="transform: rotate(180deg)"><use href="#chevron" /></svg>
+              </button>
+              <strong data-mobile-work-title>work-view.ts</strong>
+              <button
+                class="icon small"
+                data-action="toggle-tree"
+                aria-label="Open navigator"
               >
-                <svg><use href="#browser" /></svg><span>Preview</span
-                ><i class="attention-dot"></i></button
-              ><button
-                class="work-tab"
-                data-view="changes"
-                aria-selected="false"
+                <svg><use href="#tree" /></svg>
+              </button>
+            </header>
+            <nav class="work-tabs" role="tablist" aria-label="Work views">
+              <div
+                class="work-tab-shell"
+                data-view-shell="file"
+                draggable="true"
               >
-                <svg><use href="#git" /></svg><span>Changes</span></button
-              ><button
-                class="work-tab"
-                data-view="terminal"
-                aria-selected="false"
+                <button
+                  class="work-tab active"
+                  data-view="file"
+                  role="tab"
+                  aria-selected="true"
+                >
+                  <svg><use href="#file" /></svg><span>work-view.ts</span>
+                </button>
+                <button
+                  class="tab-close"
+                  data-action="close-view"
+                  data-close-view="file"
+                  aria-label="Close work-view.ts"
+                >
+                  <svg><use href="#x" /></svg>
+                </button>
+              </div>
+              <div
+                class="work-tab-shell"
+                data-view-shell="browser"
+                draggable="true"
               >
-                <svg><use href="#terminal" /></svg><span>Terminal</span></button
-              ><button
+                <button
+                  class="work-tab"
+                  data-view="browser"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  <svg><use href="#browser" /></svg><span>Preview</span>
+                </button>
+                <button
+                  class="tab-close"
+                  data-action="close-view"
+                  data-close-view="browser"
+                  aria-label="Close Preview"
+                >
+                  <svg><use href="#x" /></svg>
+                </button>
+              </div>
+              <div
+                class="work-tab-shell"
+                data-view-shell="changes"
+                draggable="true"
+              >
+                <button
+                  class="work-tab"
+                  data-view="changes"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  <svg><use href="#git" /></svg><span>Changes</span>
+                </button>
+                <button
+                  class="tab-close"
+                  data-action="close-view"
+                  data-close-view="changes"
+                  aria-label="Close Changes"
+                >
+                  <svg><use href="#x" /></svg>
+                </button>
+              </div>
+              <div
+                class="work-tab-shell"
+                data-view-shell="terminal"
+                draggable="true"
+              >
+                <button
+                  class="work-tab"
+                  data-view="terminal"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  <svg><use href="#terminal" /></svg><span>Terminal</span>
+                </button>
+                <button
+                  class="tab-close"
+                  data-action="close-view"
+                  data-close-view="terminal"
+                  aria-label="Close Terminal"
+                >
+                  <svg><use href="#x" /></svg>
+                </button>
+              </div>
+              <button
                 class="icon small close-work"
                 data-action="toggle-work"
                 aria-label="Hide Work pane"
@@ -2518,14 +3255,55 @@ Should this reuse an existing browser when the view reference is still available
             </div>
           </section>
           <nav class="mobile-switcher">
-            <button class="active" data-action="show-agent">Agent</button
+            <button data-action="show-workspace">Workspace</button
+            ><button class="active" data-action="show-agent">Agent</button
             ><button data-action="show-work">
-              <span class="work-label">Work <i class="attention-dot"></i></span>
+              <span class="work-label">More <i class="attention-dot"></i></span>
             </button>
           </nav>
+          <nav
+            class="mobile-view-switcher"
+            aria-label="Workspace and open views"
+            data-mobile-view-switcher
+          ></nav>
         </div>
       </main>
     </div>
+    <aside class="mobile-more-menu" aria-label="More views">
+      <header>More</header>
+      <div class="mobile-more-view-row" data-mobile-more-row="changes">
+        <button data-mobile-view="changes">
+          <svg><use href="#git" /></svg><span>Changes</span
+          ><i class="mobile-more-dot" data-mobile-more-dot="changes"></i>
+        </button>
+        <button
+          class="mobile-view-close"
+          data-mobile-close-view="changes"
+          aria-label="Close Changes"
+        >
+          <svg><use href="#x" /></svg>
+        </button>
+      </div>
+    </aside>
+    <dialog
+      id="mobile-close-dialog"
+      class="prototype-dialog mobile-close-dialog"
+      aria-labelledby="mobile-close-title"
+    >
+      <h2 id="mobile-close-title">Close this view?</h2>
+      <p>
+        <span data-mobile-close-name>This view</span> will be removed from this
+        workspace. Its running state will end.
+      </p>
+      <div class="mobile-close-actions">
+        <button class="secondary-button" data-action="cancel-mobile-close">
+          Cancel
+        </button>
+        <button class="confirm-close" data-action="confirm-mobile-close">
+          Close view
+        </button>
+      </div>
+    </dialog>
     <dialog
       id="new-workspace-dialog"
       class="prototype-dialog"
@@ -3105,7 +3883,34 @@ Should this reuse an existing browser when the view reference is still available
         </div>
       </div>
     </dialog>
-    <span class="note">Standalone prototype · Codex Lucas reference</span>
+    <button
+      class="note"
+      data-action="reset-interaction-state"
+      title="Reset saved prototype state"
+    >
+      <span data-interaction-state>Desktop interaction model</span>
+    </button>
+    <nav class="variant-switcher" aria-label="Conversation tab variants">
+      <button
+        data-action="previous-conversation-variant"
+        aria-label="Previous variant"
+      >
+        <svg style="transform: rotate(180deg)"><use href="#chevron" /></svg>
+      </button>
+      <button data-variant-label>A · Inline tabs</button>
+      <button data-action="next-conversation-variant" aria-label="Next variant">
+        <svg><use href="#chevron" /></svg>
+      </button>
+    </nav>
+    <nav class="mobile-variant-switcher" aria-label="Mobile navigation variants">
+      <button data-action="previous-mobile-variant" aria-label="Previous variant">
+        <svg style="transform: rotate(180deg)"><use href="#chevron" /></svg>
+      </button>
+      <button data-mobile-variant-label>A · Destination bar</button>
+      <button data-action="next-mobile-variant" aria-label="Next variant">
+        <svg><use href="#chevron" /></svg>
+      </button>
+    </nav>
     <script src="prototype.js"></script>
   </body>
 </html>

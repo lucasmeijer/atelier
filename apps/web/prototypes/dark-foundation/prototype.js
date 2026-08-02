@@ -1,62 +1,643 @@
-function activateView(view) {
+const prototypeStateKey = "atelier-dark-foundation-desktop-v2";
+const defaultViewOrder = ["file", "browser", "changes", "terminal"];
+const main = document.querySelector(".main");
+const workPane = document.querySelector(".work");
+const workTabs = document.querySelector(".work-tabs");
+const divider = document.querySelector(".divider");
+const workspaceTrigger = document.querySelector(".sidebar-trigger");
+const workTrigger = document.querySelector(".work-trigger");
+const mobileVariants = [
+  { id: "dock", label: "A · Destination bar" },
+  { id: "stack", label: "B · Navigation stack" },
+  { id: "sheet", label: "C · View sheet" },
+  { id: "views", label: "D · Open views" },
+];
+const documentViewIds = ["file", "browser", "terminal"];
+const mobileViewDetails = {
+  file: { label: "work-view.ts", icon: "file" },
+  browser: { label: "Preview", icon: "browser" },
+  changes: { label: "Changes", icon: "git" },
+  terminal: { label: "Terminal", icon: "terminal" },
+};
+const mobileIndicators = new Set(["browser", "changes"]);
+let pendingMobileCloseView = null;
+const requestedMobileVariant = new URLSearchParams(location.search).get(
+  "mobile-nav",
+);
+let mobileVariant = mobileVariants.some(
+  (variant) => variant.id === requestedMobileVariant,
+)
+  ? requestedMobileVariant
+  : "dock";
+const conversationVariants = [
+  { id: "inline", label: "A · Inline tabs" },
+  { id: "rail", label: "B · Dedicated rail" },
+  { id: "compact", label: "C · Compact tabs" },
+];
+const requestedConversationVariant = new URLSearchParams(location.search).get(
+  "agent-tabs",
+);
+let conversationVariant = conversationVariants.some(
+  (variant) => variant.id === requestedConversationVariant,
+)
+  ? requestedConversationVariant
+  : "inline";
+let conversationState = {
+  multiple: false,
+  active: "primary",
+  secondaryTitle: "Untitled",
+};
+
+function loadInteractionState() {
+  const saved = JSON.parse(localStorage.getItem(prototypeStateKey) || "null");
+  return {
+    workspaceOpen: saved?.workspaceOpen ?? true,
+    workOpen: saved?.workOpen ?? true,
+    activeView: saved?.activeView ?? "file",
+    workSize: saved?.workSize ?? null,
+    order: Array.isArray(saved?.order) ? saved.order : [...defaultViewOrder],
+    openViews: Array.isArray(saved?.openViews)
+      ? saved.openViews
+      : [...defaultViewOrder],
+    drawers: saved?.drawers ?? { file: false, changes: false },
+  };
+}
+
+let interaction = loadInteractionState();
+let resizingWork = false;
+let draggedView = null;
+
+function saveInteractionState() {
+  localStorage.setItem(prototypeStateKey, JSON.stringify(interaction));
+}
+
+function isMobile() {
+  return matchMedia("(max-width: 760px)").matches;
+}
+
+function workspaceOverlays() {
+  return matchMedia("(max-width: 1160px)").matches;
+}
+
+function openViewIds() {
+  return [...document.querySelectorAll("[data-view-shell]")].map(
+    (shell) => shell.dataset.viewShell,
+  );
+}
+
+function viewTab(view) {
+  return document.querySelector(`[data-view="${view}"]`);
+}
+
+function activeComposer() {
+  return document.querySelector(
+    `[data-conversation-panel="${conversationState.active}"] .composer textarea`,
+  );
+}
+
+function conversationTabLabel(conversation) {
+  if (conversationVariant === "rail") {
+    return conversation === "primary"
+      ? "Primary"
+      : conversationState.secondaryTitle;
+  }
+  if (conversationVariant === "compact") {
+    return conversation === "primary"
+      ? "Main"
+      : conversationState.secondaryTitle === "Untitled"
+        ? "Agent 2"
+        : conversationState.secondaryTitle;
+  }
+  return conversation === "primary"
+    ? "Redesign tabs and Work views"
+    : conversationState.secondaryTitle;
+}
+
+function conversationTabMarkup(conversation) {
+  const active = conversationState.active === conversation;
+  const close =
+    conversation === "secondary"
+      ? `<button class="conversation-tab-close" data-action="close-conversation" aria-label="Close ${conversationState.secondaryTitle}"><svg><use href="#x" /></svg></button>`
+      : "";
+  return `<span class="conversation-tab-shell">
+    <button class="conversation-tab${active ? " active" : ""}" data-conversation="${conversation}" role="tab" aria-selected="${active}" tabindex="${active ? "0" : "-1"}">
+      <span>${conversationTabLabel(conversation)}</span>
+    </button>${close}
+  </span>`;
+}
+
+function renderConversationState({ focusTab = false } = {}) {
+  document.body.dataset.conversationVariant = conversationVariant;
+  document.body.classList.toggle(
+    "multiple-conversations",
+    conversationState.multiple,
+  );
+  const tabs = conversationState.multiple
+    ? `${conversationTabMarkup("primary")}${conversationTabMarkup("secondary")}`
+    : "";
+  document.querySelectorAll("[data-conversation-tabs]").forEach((tablist) => {
+    tablist.innerHTML = tabs;
+  });
+  document.querySelectorAll("[data-conversation-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.conversationPanel !== conversationState.active;
+  });
+  const generatedHeading = document.querySelector(
+    '[data-conversation-panel="secondary"] .conversation-empty h2',
+  );
+  generatedHeading.textContent =
+    conversationState.secondaryTitle === "Untitled"
+      ? "Start another conversation"
+      : conversationState.secondaryTitle;
+  document
+    .querySelectorAll('[data-action="generate-conversation-title"] span')
+    .forEach((label) => {
+      label.textContent =
+        conversationState.secondaryTitle === "Untitled"
+          ? "Generate a title"
+          : "Regenerate title";
+    });
+  const variant = conversationVariants.find(
+    (candidate) => candidate.id === conversationVariant,
+  );
+  document.querySelector("[data-variant-label]").textContent = variant.label;
+  if (focusTab) {
+    document
+      .querySelector(
+        `[data-conversation-tabs]:not(.agent-conversation-rail) [data-conversation="${conversationState.active}"]`,
+      )
+      ?.focus();
+    if (conversationVariant === "rail") {
+      document
+        .querySelector(
+          `.agent-conversation-rail [data-conversation="${conversationState.active}"]`,
+        )
+        ?.focus();
+    }
+  }
+  updateStateNote();
+}
+
+function activateConversation(conversation, { focusTab = false } = {}) {
+  conversationState.active = conversation;
+  renderConversationState({ focusTab });
+}
+
+function addConversation() {
+  if (!conversationState.multiple) {
+    conversationState.multiple = true;
+    conversationState.active = "secondary";
+  }
+  renderConversationState({ focusTab: true });
+}
+
+function closeSecondaryConversation() {
+  conversationState = {
+    multiple: false,
+    active: "primary",
+    secondaryTitle: "Untitled",
+  };
+  renderConversationState();
+  document.querySelector('[data-action="add-conversation"]')?.focus();
+}
+
+function cycleConversationVariant(delta) {
+  const current = conversationVariants.findIndex(
+    (variant) => variant.id === conversationVariant,
+  );
+  conversationVariant =
+    conversationVariants[
+      (current + delta + conversationVariants.length) %
+        conversationVariants.length
+    ].id;
+  const url = new URL(location.href);
+  url.searchParams.set("agent-tabs", conversationVariant);
+  history.replaceState(null, "", url);
+  renderConversationState();
+}
+
+function renderMobileVariant() {
+  document.body.dataset.mobileVariant = mobileVariant;
+  document.body.classList.remove("mobile-more-open");
+  document.querySelector("[data-mobile-variant-label]").textContent =
+    mobileVariants.find((variant) => variant.id === mobileVariant).label;
+  renderMobileViewBar();
+  updateStateNote();
+}
+
+function mobileDestinationMarkup(
+  id,
+  label,
+  icon,
+  { active = false, indicator = false, closable = false } = {},
+) {
+  const destination = `<button class="mobile-view-destination${active ? " active" : ""}" data-mobile-destination="${id}" aria-label="${label}"${active ? ' aria-current="page"' : ""}>
+    <span class="mobile-view-icon"><svg><use href="#${icon}" /></svg>${indicator ? '<i class="mobile-destination-dot"></i>' : ""}</span><span class="mobile-view-label">${label}</span>
+  </button>`;
+  const close = closable
+    ? `<button class="mobile-view-close" data-mobile-close-view="${id}" aria-label="Close ${label}"><svg><use href="#x" /></svg></button>`
+    : "";
+  return `<span class="mobile-view-destination-shell">${destination}${close}</span>`;
+}
+
+function renderMobileViewBar() {
+  const bar = document.querySelector("[data-mobile-view-switcher]");
+  if (!bar) return;
+  const workspaceActive = document.body.classList.contains("sidebar-open");
+  const viewActive = document.body.classList.contains("mobile-work");
+  const activeView = interaction.activeView;
+  const documents = documentViewIds.filter((view) => viewTab(view));
+  const contextual =
+    viewActive && activeView && !documents.includes(activeView)
+      ? [activeView]
+      : [];
+  bar.innerHTML = [
+    mobileDestinationMarkup("workspace", "Workspace", "sidebar", {
+      active: workspaceActive,
+    }),
+    mobileDestinationMarkup(
+      "agent",
+      "Agent",
+      "sparkles",
+      { active: !workspaceActive && !viewActive },
+    ),
+    ...documents.map((view) =>
+      mobileDestinationMarkup(
+        view,
+        mobileViewDetails[view].label,
+        mobileViewDetails[view].icon,
+        {
+          active: viewActive && activeView === view,
+          indicator: mobileIndicators.has(view),
+          closable: true,
+        },
+      ),
+    ),
+    ...contextual.map((view) =>
+      mobileDestinationMarkup(
+        view,
+        mobileViewDetails[view].label,
+        mobileViewDetails[view].icon,
+        {
+          active: true,
+          indicator: mobileIndicators.has(view),
+          closable: true,
+        },
+      ),
+    ),
+    mobileDestinationMarkup(
+      "more",
+      "More",
+      "more",
+      {
+        active: document.body.classList.contains("mobile-more-open"),
+        indicator: [...mobileIndicators].some(
+          (view) => !documents.includes(view) && viewTab(view),
+        ),
+      },
+    ),
+  ].join("");
+  document.querySelector("[data-mobile-more-row='changes']").hidden =
+    !viewTab("changes");
+  document.querySelector("[data-mobile-more-dot='changes']").hidden =
+    !mobileIndicators.has("changes");
+}
+
+function requestMobileClose(view) {
+  pendingMobileCloseView = view;
+  const label = mobileViewDetails[view].label;
+  document.querySelector("[data-mobile-close-name]").textContent = label;
+  document.querySelector("#mobile-close-title").textContent = `Close ${label}?`;
+  document.querySelector("#mobile-close-dialog").showModal();
+}
+
+function cancelMobileClose() {
+  pendingMobileCloseView = null;
+  document.querySelector("#mobile-close-dialog").close();
+}
+
+function confirmMobileClose() {
+  const view = pendingMobileCloseView;
+  pendingMobileCloseView = null;
+  document.querySelector("#mobile-close-dialog").close();
+  mobileIndicators.delete(view);
+  closeView(view);
+}
+
+function cycleMobileVariant(delta) {
+  const current = mobileVariants.findIndex(
+    (variant) => variant.id === mobileVariant,
+  );
+  mobileVariant =
+    mobileVariants[
+      (current + delta + mobileVariants.length) % mobileVariants.length
+    ].id;
+  const url = new URL(location.href);
+  url.searchParams.set("mobile-nav", mobileVariant);
+  history.replaceState(null, "", url);
+  showMobilePane("agent");
+  setWorkspaceOpen(false);
+  renderMobileVariant();
+}
+
+function updateStateNote(message) {
+  const state = document.querySelector("[data-interaction-state]");
+  if (!state) return;
+  const width = Math.round(
+    interaction.workSize || workPane.getBoundingClientRect().width,
+  );
+  const workspaceMode = workspaceOverlays()
+    ? "Workspace overlay"
+    : "Workspace docked";
+  state.textContent =
+    message ||
+    `${isMobile() ? mobileVariants.find((variant) => variant.id === mobileVariant).label : workspaceMode} · Work ${interaction.workOpen ? `${width}px` : "hidden"} · ${conversationState.multiple ? `2 conversations · ${conversationState.active}` : "1 conversation"}`;
+}
+
+function syncSidebar() {
+  main.style.setProperty(
+    "--workspace-offset",
+    interaction.workspaceOpen && !workspaceOverlays() ? "275px" : "0px",
+  );
+  if (workspaceOverlays()) {
+    document.body.classList.remove("sidebar-hidden");
+    document.body.classList.toggle("sidebar-open", interaction.workspaceOpen);
+  } else {
+    document.body.classList.remove("sidebar-open");
+    document.body.classList.toggle(
+      "sidebar-hidden",
+      !interaction.workspaceOpen,
+    );
+  }
+  workspaceTrigger.setAttribute(
+    "aria-label",
+    interaction.workspaceOpen ? "Hide Workspace pane" : "Show Workspace pane",
+  );
+  workspaceTrigger.title = `${workspaceTrigger.getAttribute("aria-label")} (⌘\\)`;
+  updateStateNote();
+}
+
+function setWorkspaceOpen(open, { focusPane = false } = {}) {
+  const focusWasInside = document
+    .querySelector(".sidebar")
+    .contains(document.activeElement);
+  interaction.workspaceOpen = open;
+  syncSidebar();
+  renderMobileViewBar();
+  saveInteractionState();
+  if (open && focusPane) {
+    document.querySelector(".workspace-row.active")?.focus();
+  } else if (!open && focusWasInside) {
+    workspaceTrigger.focus();
+  }
+}
+
+function syncWorkVisibility() {
+  document.body.classList.toggle("work-hidden", !interaction.workOpen);
+  workTrigger.setAttribute(
+    "aria-label",
+    isMobile()
+      ? "Show More"
+      : interaction.workOpen
+        ? "Hide Work pane"
+        : "Show Work pane",
+  );
+  workTrigger.title = `${workTrigger.getAttribute("aria-label")} (⌘⇧\\)`;
+  divider.setAttribute("aria-hidden", String(!interaction.workOpen));
+  updateStateNote();
+}
+
+function setWorkOpen(open, { focusPane = false } = {}) {
+  if (open && openViewIds().length === 0) return;
+  const focusWasInside = workPane.contains(document.activeElement);
+  interaction.workOpen = open;
+  syncWorkVisibility();
+  saveInteractionState();
+  if (open && focusPane) {
+    viewTab(interaction.activeView)?.focus();
+  } else if (!open && focusWasInside) {
+    workTrigger.focus();
+  }
+}
+
+function syncDrawer() {
+  const supportsDrawer = ["file", "changes"].includes(interaction.activeView);
+  document.body.classList.toggle(
+    "tree-open",
+    supportsDrawer && interaction.drawers[interaction.activeView],
+  );
+  document.querySelector("[data-nav-title]").textContent =
+    interaction.activeView === "changes" ? "Changed files" : "Files";
+}
+
+function activateView(view, { focusTab = false, revealWork = true } = {}) {
+  if (!viewTab(view)) return;
+  interaction.activeView = view;
   document.querySelectorAll("[data-view]").forEach((tab) => {
     const active = tab.dataset.view === view;
     tab.classList.toggle("active", active);
     tab.setAttribute("aria-selected", String(active));
+    tab.tabIndex = active ? 0 : -1;
     if (active) tab.querySelector(".attention-dot")?.remove();
   });
   document.querySelectorAll("[data-view-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.viewPanel !== view;
   });
-  document.querySelector("[data-nav-title]").textContent =
-    view === "changes" ? "Changed files" : "Files";
-  document.body.classList.remove("tree-open", "work-hidden");
+  syncDrawer();
+  const activeLabel = viewTab(view)?.querySelector("span")?.textContent || view;
+  document.querySelector("[data-mobile-work-title]").textContent =
+    activeLabel;
+  if (revealWork) setWorkOpen(true);
+  if (focusTab) viewTab(view)?.focus();
+  saveInteractionState();
+  updateStateNote();
 }
 
-function showMobilePane(pane) {
-  const work = pane === "work";
-  document.body.classList.toggle("mobile-work", work);
-  document.body.classList.remove("work-hidden");
-  document.querySelectorAll(".mobile-switcher button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.action === `show-${pane}`);
+function closeView(view) {
+  const ids = openViewIds();
+  const closingIndex = ids.indexOf(view);
+  if (closingIndex < 0) return;
+  const closingActive = interaction.activeView === view;
+  document.querySelector(`[data-view-shell="${view}"]`)?.remove();
+  document.querySelector(`[data-view-panel="${view}"]`)?.remove();
+  interaction.openViews = openViewIds();
+  interaction.order = [...interaction.openViews];
+  if (closingActive) {
+    const replacement =
+      interaction.openViews[closingIndex] ||
+      interaction.openViews[closingIndex - 1] ||
+      null;
+    interaction.activeView = replacement;
+    if (replacement) activateView(replacement, { focusTab: true });
+    else {
+      setWorkOpen(false);
+      activeComposer().focus();
+    }
+  }
+  saveInteractionState();
+  renderMobileViewBar();
+  updateStateNote(`${view} closed · explicit close unmounted it`);
+}
+
+function reorderView(view, beforeView) {
+  const moving = document.querySelector(`[data-view-shell="${view}"]`);
+  const before = beforeView
+    ? document.querySelector(`[data-view-shell="${beforeView}"]`)
+    : document.querySelector(".close-work");
+  if (!moving || !before || moving === before) return;
+  workTabs.insertBefore(moving, before);
+  interaction.order = openViewIds();
+  interaction.openViews = [...interaction.order];
+  saveInteractionState();
+  updateStateNote(`${view} reordered · order persists with the workspace`);
+}
+
+function requestAttention(view) {
+  const tab = viewTab(view);
+  if (!tab) return;
+  if (!tab.querySelector(".attention-dot")) {
+    const dot = document.createElement("i");
+    dot.className = "attention-dot";
+    tab.append(dot);
+  }
+  updateStateNote(`${view} requested attention`);
+  requestAnimationFrame(() => {
+    activateView(view, { focusTab: false, revealWork: true });
+    if (isMobile()) showMobilePane("work");
+    updateStateNote(`${view} visible · attention acknowledged`);
   });
 }
 
-const divider = document.querySelector(".divider");
-const main = document.querySelector(".main");
-let resizingWork = false;
+function workWidthLimits() {
+  const styles = getComputedStyle(main);
+  const agentMin = Number.parseFloat(styles.getPropertyValue("--agent-min"));
+  const workspaceOffset = Number.parseFloat(
+    styles.getPropertyValue("--workspace-offset"),
+  );
+  return {
+    min: 360,
+    max: Math.min(760, main.clientWidth - agentMin - workspaceOffset),
+  };
+}
+
+function setWorkWidth(width, { persist = true } = {}) {
+  const limits = workWidthLimits();
+  const clamped = Math.round(Math.min(limits.max, Math.max(limits.min, width)));
+  interaction.workSize = clamped;
+  main.style.setProperty("--work-size", `${clamped}px`);
+  divider.setAttribute("aria-valuemin", String(limits.min));
+  divider.setAttribute("aria-valuemax", String(Math.round(limits.max)));
+  divider.setAttribute("aria-valuenow", String(clamped));
+  if (persist) saveInteractionState();
+  updateStateNote();
+}
 
 function resizeWork(clientX) {
   const bounds = main.getBoundingClientRect();
-  main.style.setProperty("--work-size", `${bounds.right - clientX}px`);
+  setWorkWidth(bounds.right - clientX, { persist: false });
 }
 
 divider.addEventListener("pointerdown", (event) => {
-  if (matchMedia("(max-width: 760px)").matches) return;
+  if (isMobile() || !interaction.workOpen) return;
   resizingWork = true;
   document.body.classList.add("resizing-work");
   resizeWork(event.clientX);
 });
 
 addEventListener("pointermove", (event) => {
-  if (!resizingWork) return;
-  resizeWork(event.clientX);
+  if (resizingWork) resizeWork(event.clientX);
 });
 
 function finishWorkResize() {
+  if (!resizingWork) return;
   resizingWork = false;
   document.body.classList.remove("resizing-work");
+  saveInteractionState();
+  updateStateNote("Work width saved for this browser");
 }
 
 addEventListener("pointerup", finishWorkResize);
 addEventListener("pointercancel", finishWorkResize);
 
+divider.addEventListener("dblclick", () =>
+  setWorkWidth(main.clientWidth * 0.44),
+);
 divider.addEventListener("keydown", (event) => {
-  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
   event.preventDefault();
-  const width = document.querySelector(".work").getBoundingClientRect().width;
-  const delta = event.key === "ArrowLeft" ? 24 : -24;
-  main.style.setProperty("--work-size", `${width + delta}px`);
+  const limits = workWidthLimits();
+  const width = workPane.getBoundingClientRect().width;
+  const step = event.shiftKey ? 80 : 24;
+  if (event.key === "Home") setWorkWidth(limits.min);
+  else if (event.key === "End") setWorkWidth(limits.max);
+  else setWorkWidth(width + (event.key === "ArrowLeft" ? step : -step));
+});
+
+workTabs.addEventListener("keydown", (event) => {
+  const tab = event.target.closest("[data-view]");
+  if (!tab) return;
+  const tabs = [...document.querySelectorAll("[data-view]")];
+  const current = tabs.indexOf(tab);
+  let next = null;
+  if (!event.altKey && event.key === "ArrowLeft") {
+    next = tabs[(current - 1 + tabs.length) % tabs.length];
+  }
+  if (!event.altKey && event.key === "ArrowRight") {
+    next = tabs[(current + 1) % tabs.length];
+  }
+  if (!event.altKey && event.key === "Home") next = tabs[0];
+  if (!event.altKey && event.key === "End") next = tabs[tabs.length - 1];
+  if (next) {
+    event.preventDefault();
+    activateView(next.dataset.view, { focusTab: true });
+  }
+  if (
+    event.key === "Delete" ||
+    (event.metaKey && event.key.toLowerCase() === "w")
+  ) {
+    event.preventDefault();
+    closeView(tab.dataset.view);
+  }
+  if (
+    event.altKey &&
+    (event.key === "ArrowLeft" || event.key === "ArrowRight")
+  ) {
+    event.preventDefault();
+    const beforeIndex = event.key === "ArrowLeft" ? current - 1 : current + 2;
+    const beforeView = tabs[beforeIndex]?.dataset.view;
+    reorderView(tab.dataset.view, beforeView);
+    tab.focus();
+  }
+});
+
+workTabs.addEventListener("dragstart", (event) => {
+  const shell = event.target.closest("[data-view-shell]");
+  if (!shell) return;
+  draggedView = shell.dataset.viewShell;
+  shell.classList.add("dragging");
+});
+
+workTabs.addEventListener("dragover", (event) => {
+  const shell = event.target.closest("[data-view-shell]");
+  if (!draggedView || !shell || shell.dataset.viewShell === draggedView) return;
+  event.preventDefault();
+  const bounds = shell.getBoundingClientRect();
+  const beforeView =
+    event.clientX < bounds.left + bounds.width / 2
+      ? shell.dataset.viewShell
+      : shell.nextElementSibling?.dataset.viewShell;
+  reorderView(draggedView, beforeView);
+});
+
+workTabs.addEventListener("dragend", () => {
+  document
+    .querySelector(".work-tab-shell.dragging")
+    ?.classList.remove("dragging");
+  draggedView = null;
+});
+
+workTabs.addEventListener("auxclick", (event) => {
+  if (event.button === 1)
+    closeView(event.target.closest("[data-view]")?.dataset.view);
 });
 
 const newWorkspaceDialog = document.querySelector("#new-workspace-dialog");
@@ -93,19 +674,6 @@ function openSearch() {
   document.querySelector("[data-search-input]").focus();
 }
 
-function sidebarIsOpen() {
-  return matchMedia("(max-width: 1160px)").matches
-    ? document.body.classList.contains("sidebar-open")
-    : !document.body.classList.contains("sidebar-hidden");
-}
-
-function syncSidebarButton() {
-  const open = sidebarIsOpen();
-  const button = document.querySelector(".sidebar-trigger");
-  button.setAttribute("aria-label", open ? "Hide sidebar" : "Show sidebar");
-  button.title = open ? "Hide sidebar" : "Show sidebar";
-}
-
 function showSettingsPage(page) {
   document.querySelectorAll("[data-settings-page]").forEach((button) => {
     button.classList.toggle("active", button.dataset.settingsPage === page);
@@ -123,11 +691,12 @@ function visibleSearchResults() {
 
 function selectSearchResult(index) {
   const results = visibleSearchResults();
+  if (results.length === 0) return;
   const selected = results[(index + results.length) % results.length];
   results.forEach((result) =>
     result.classList.toggle("active", result === selected),
   );
-  selected?.scrollIntoView({ block: "nearest" });
+  selected.scrollIntoView({ block: "nearest" });
 }
 
 document
@@ -151,23 +720,96 @@ document.querySelectorAll(".prototype-dialog").forEach((dialog) => {
 document.addEventListener("click", (event) => {
   const control = event.target.closest("button, [data-action]");
   if (!control) return;
+  if (control.dataset.conversation) {
+    activateConversation(control.dataset.conversation);
+  }
+  if (control.dataset.action === "add-conversation") addConversation();
+  if (control.dataset.action === "close-conversation") {
+    closeSecondaryConversation();
+  }
+  if (control.dataset.action === "generate-conversation-title") {
+    conversationState.secondaryTitle = "Explore agent conversation tabs";
+    renderConversationState();
+  }
+  if (control.dataset.action === "previous-conversation-variant") {
+    cycleConversationVariant(-1);
+  }
+  if (control.dataset.action === "next-conversation-variant") {
+    cycleConversationVariant(1);
+  }
+  if (control.dataset.action === "previous-mobile-variant") {
+    cycleMobileVariant(-1);
+  }
+  if (control.dataset.action === "next-mobile-variant") cycleMobileVariant(1);
+  if (control.dataset.mobileCloseView) {
+    requestMobileClose(control.dataset.mobileCloseView);
+  }
+  if (control.dataset.action === "cancel-mobile-close") cancelMobileClose();
+  if (control.dataset.action === "confirm-mobile-close") confirmMobileClose();
+  if (control.dataset.mobileDestination) {
+    const destination = control.dataset.mobileDestination;
+    document.body.classList.remove("mobile-more-open");
+    if (destination === "workspace") {
+      showMobilePane("agent");
+      setWorkspaceOpen(true, { focusPane: true });
+    } else if (destination === "agent") {
+      setWorkspaceOpen(false);
+      showMobilePane("agent");
+    } else if (destination === "more") {
+      document.body.classList.add("mobile-more-open");
+      renderMobileViewBar();
+    } else {
+      setWorkspaceOpen(false);
+      activateView(destination);
+      showMobilePane("work");
+    }
+  }
+  if (control.dataset.mobileView) {
+    document.body.classList.remove("mobile-more-open");
+    setWorkspaceOpen(false);
+    activateView(control.dataset.mobileView);
+    showMobilePane("work");
+  }
   if (control.dataset.view) activateView(control.dataset.view);
   if (control.dataset.action === "toggle-sidebar") {
-    const overlays = matchMedia("(max-width: 1160px)").matches;
-    if (overlays) document.body.classList.toggle("sidebar-open");
-    else document.body.classList.toggle("sidebar-hidden");
-    syncSidebarButton();
+    setWorkspaceOpen(!interaction.workspaceOpen);
   }
-  if (control.dataset.action === "close-sidebar") {
-    document.body.classList.remove("sidebar-open");
-    syncSidebarButton();
+  if (control.dataset.action === "close-sidebar") setWorkspaceOpen(false);
+  if (control.dataset.action === "toggle-work") {
+    if (isMobile()) showMobilePane("work");
+    else setWorkOpen(!interaction.workOpen);
   }
-  if (control.dataset.action === "toggle-work")
-    document.body.classList.toggle("work-hidden");
-  if (control.dataset.action === "toggle-tree")
-    document.body.classList.toggle("tree-open");
+  if (control.dataset.action === "close-view")
+    closeView(control.dataset.closeView);
+  if (control.dataset.action === "request-preview-attention")
+    requestAttention("browser");
+  if (control.dataset.action === "reset-interaction-state") {
+    localStorage.removeItem(prototypeStateKey);
+    location.reload();
+  }
+  if (control.dataset.action === "toggle-tree") {
+    if (["file", "changes"].includes(interaction.activeView)) {
+      interaction.drawers[interaction.activeView] =
+        !interaction.drawers[interaction.activeView];
+      syncDrawer();
+      saveInteractionState();
+    }
+  }
+  if (control.matches(".task, .workspace-row") && workspaceOverlays()) {
+    setWorkspaceOpen(false);
+  }
   if (control.dataset.action === "show-agent") showMobilePane("agent");
   if (control.dataset.action === "show-work") showMobilePane("work");
+  if (control.dataset.action === "show-workspace") {
+    showMobilePane("agent");
+    setWorkspaceOpen(true, { focusPane: true });
+    document.querySelectorAll(".mobile-switcher button").forEach((button) => {
+      button.classList.toggle(
+        "active",
+        button.dataset.action === "show-workspace",
+      );
+    });
+  }
   if (control.dataset.action === "open-new-workspace")
     openNewWorkspace(control.dataset.project);
   if (control.dataset.action === "open-search") openSearch();
@@ -186,14 +828,12 @@ document.addEventListener("click", (event) => {
   if (control.dataset.action === "show-settings-page")
     showSettingsPage(control.dataset.settingsPage);
   if (control.dataset.action === "scroll-project-section") {
-    document
-      .querySelectorAll("[data-project-section]")
-      .forEach((button) =>
-        button.classList.toggle(
-          "active",
-          button.dataset.projectSection === control.dataset.projectSection,
-        ),
+    document.querySelectorAll("[data-project-section]").forEach((button) => {
+      button.classList.toggle(
+        "active",
+        button.dataset.projectSection === control.dataset.projectSection,
       );
+    });
     document
       .querySelector(
         `[data-project-section-panel="${control.dataset.projectSection}"]`,
@@ -205,20 +845,21 @@ document.addEventListener("click", (event) => {
     comment.hidden = false;
     comment.querySelector("[data-review-comment-input]").focus();
   }
-  if (control.dataset.action === "cancel-review-comment")
+  if (control.dataset.action === "cancel-review-comment") {
     document.querySelector("[data-review-comment]").hidden = true;
+  }
   if (control.dataset.action === "submit-review-comment") {
     const comment = document.querySelector("[data-review-comment]");
     const text = comment.querySelector("[data-review-comment-input]").value;
-    const card = comment.querySelector(".review-comment-card");
     const saved = document.createElement("div");
     saved.className = "review-comment-saved";
     saved.textContent = text;
-    card.replaceChildren(saved);
+    comment.querySelector(".review-comment-card").replaceChildren(saved);
     document.querySelector("[data-comment-attachment]").hidden = false;
   }
-  if (control.dataset.action === "remove-comment-attachment")
+  if (control.dataset.action === "remove-comment-attachment") {
     document.querySelector("[data-comment-attachment]").hidden = true;
+  }
   if (control.matches("[data-search-result]")) searchDialog.close();
   if (control.dataset.action === "jump-latest") {
     document
@@ -228,7 +869,82 @@ document.addEventListener("click", (event) => {
   }
 });
 
+function showMobilePane(pane) {
+  const work = pane === "work";
+  document.body.classList.toggle("mobile-work", work);
+  if (work && interaction.activeView) {
+    mobileIndicators.delete(interaction.activeView);
+  }
+  if (work) setWorkOpen(true);
+  document.querySelectorAll(".mobile-switcher button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.action === `show-${pane}`);
+  });
+  document.body.classList.remove("mobile-more-open");
+  renderMobileViewBar();
+}
+
 addEventListener("keydown", (event) => {
+  const conversationTab = event.target.closest?.("[data-conversation]");
+  if (
+    conversationTab &&
+    ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+  ) {
+    event.preventDefault();
+    const conversations = ["primary", "secondary"];
+    const current = conversations.indexOf(conversationTab.dataset.conversation);
+    const next =
+      event.key === "Home"
+        ? conversations[0]
+        : event.key === "End"
+          ? conversations[1]
+          : conversations[
+              (current +
+                (event.key === "ArrowRight" ? 1 : -1) +
+                conversations.length) %
+                conversations.length
+            ];
+    activateConversation(next, { focusTab: true });
+  }
+  if (
+    event.target.closest?.(".variant-switcher") &&
+    ["ArrowLeft", "ArrowRight"].includes(event.key)
+  ) {
+    event.preventDefault();
+    cycleConversationVariant(event.key === "ArrowRight" ? 1 : -1);
+  }
+  if (
+    event.target.closest?.(".mobile-variant-switcher") &&
+    ["ArrowLeft", "ArrowRight"].includes(event.key)
+  ) {
+    event.preventDefault();
+    cycleMobileVariant(event.key === "ArrowRight" ? 1 : -1);
+  }
+  if (event.key === "Escape" && !document.querySelector("dialog[open]")) {
+    if (document.body.classList.contains("tree-open")) {
+      event.preventDefault();
+      interaction.drawers[interaction.activeView] = false;
+      syncDrawer();
+      saveInteractionState();
+      document
+        .querySelector(
+          `[data-view-panel="${interaction.activeView}"] [data-action="toggle-tree"]`,
+        )
+        ?.focus();
+    } else if (interaction.workspaceOpen && workspaceOverlays()) {
+      event.preventDefault();
+      setWorkspaceOpen(false);
+      workspaceTrigger.focus();
+    }
+  }
+  if (event.metaKey && !event.altKey && event.code === "Backslash") {
+    event.preventDefault();
+    if (event.shiftKey)
+      setWorkOpen(!interaction.workOpen, { focusPane: !interaction.workOpen });
+    else
+      setWorkspaceOpen(!interaction.workspaceOpen, {
+        focusPane: !interaction.workspaceOpen,
+      });
+  }
   if (event.metaKey && !event.altKey && event.key.toLowerCase() === "n") {
     event.preventDefault();
     openNewWorkspace("atelier");
@@ -245,10 +961,7 @@ addEventListener("keydown", (event) => {
     event.preventDefault();
     newWorkspaceDialog.close();
   }
-  if (
-    searchDialog.open &&
-    (event.key === "ArrowDown" || event.key === "ArrowUp")
-  ) {
+  if (searchDialog.open && ["ArrowDown", "ArrowUp"].includes(event.key)) {
     event.preventDefault();
     const results = visibleSearchResults();
     const current = results.findIndex((result) =>
@@ -262,10 +975,40 @@ addEventListener("keydown", (event) => {
   }
 });
 
+function restoreInteractionState() {
+  interaction.openViews = interaction.openViews.filter((view) =>
+    defaultViewOrder.includes(view),
+  );
+  interaction.order = interaction.order.filter((view) =>
+    interaction.openViews.includes(view),
+  );
+  defaultViewOrder.forEach((view) => {
+    if (!interaction.openViews.includes(view)) {
+      document.querySelector(`[data-view-shell="${view}"]`)?.remove();
+      document.querySelector(`[data-view-panel="${view}"]`)?.remove();
+    }
+  });
+  interaction.order.forEach((view) => reorderView(view, null));
+  if (!interaction.openViews.includes(interaction.activeView)) {
+    interaction.activeView = interaction.openViews[0] || null;
+  }
+  if (interaction.workSize)
+    setWorkWidth(interaction.workSize, { persist: false });
+  else setWorkWidth(main.clientWidth * 0.44, { persist: false });
+  syncSidebar();
+  syncWorkVisibility();
+  if (interaction.activeView)
+    activateView(interaction.activeView, { revealWork: false });
+  else setWorkOpen(false);
+  saveInteractionState();
+}
+
 addEventListener("resize", () => {
-  if (!matchMedia("(max-width: 760px)").matches)
-    document.body.classList.remove("sidebar-open", "mobile-work");
-  syncSidebarButton();
+  if (!isMobile()) document.body.classList.remove("mobile-work");
+  syncSidebar();
+  setWorkWidth(interaction.workSize || main.clientWidth * 0.44);
 });
 
-syncSidebarButton();
+restoreInteractionState();
+renderConversationState();
+renderMobileVariant();
