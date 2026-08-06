@@ -66,6 +66,10 @@
         border: 0;
         cursor: default;
       }
+      *:focus-visible {
+        outline: 1.5px solid var(--yellow) !important;
+        outline-offset: 2px !important;
+      }
       svg {
         display: block;
         width: 16px;
@@ -967,7 +971,8 @@
         background: #1e1e1e;
       }
       .code {
-        min-width: 620px;
+        width: max-content;
+        min-width: 100%;
         padding: 16px 0 100px;
         color: #d4d4d4;
         font:
@@ -979,7 +984,9 @@
       }
       .code-line {
         display: grid;
-        grid-template-columns: 48px 1fr;
+        width: max-content;
+        min-width: 100%;
+        grid-template-columns: 48px max-content;
         padding-right: 20px;
         white-space: pre;
       }
@@ -1871,6 +1878,174 @@
         font-size: 11px;
         font-weight: 560;
       }
+      .onboarding-dialog {
+        --onboarding-accent: var(--yellow);
+        width: min(760px, calc(100vw - 48px));
+        height: fit-content;
+        max-height: calc(100vh - 56px);
+        margin: 28px auto auto;
+        border-radius: 22px;
+        overflow: hidden;
+        background: #1b1b1b;
+      }
+      .onboarding-dialog::backdrop {
+        background: #000a;
+        backdrop-filter: blur(7px);
+      }
+      .onboarding-layout {
+        height: auto;
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) auto;
+      }
+      .onboarding-progress {
+        position: absolute;
+        top: 30px;
+        right: 50%;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        transform: translateX(50%);
+      }
+      .onboarding-progress span {
+        width: 25px;
+        height: 3px;
+        padding: 0;
+        border-radius: 999px;
+        background: #ffffff1c;
+      }
+      .onboarding-progress span.complete,
+      .onboarding-progress span.active {
+        background: var(--onboarding-accent);
+      }
+      .onboarding-progress span.active {
+        box-shadow: 0 0 0 3px #f4c15215;
+      }
+      .onboarding-stage {
+        min-height: 0;
+        max-height: calc(100vh - 118px);
+        overflow: auto;
+        padding: 72px 36px 32px;
+      }
+      .onboarding-pane {
+        display: none;
+        max-width: 650px;
+        margin: 0 auto;
+      }
+      .onboarding-pane.visible {
+        display: block;
+        animation: onboarding-enter 180ms ease-out;
+      }
+      @keyframes onboarding-enter {
+        from {
+          opacity: 0;
+          transform: translateY(5px);
+        }
+      }
+      .onboarding-step-heading {
+        margin: 0 0 16px;
+      }
+      .onboarding-step-heading h2 {
+        margin: 0 0 5px;
+        font-size: 16px;
+        font-weight: 570;
+      }
+      .shared-setup-widget {
+        display: grid;
+        gap: 20px;
+      }
+      .shared-setup-widget .settings-section {
+        margin: 0;
+      }
+      .provider-mark {
+        width: 27px;
+        height: 27px;
+        display: grid;
+        place-items: center;
+        border: 0.5px solid var(--line-heavy);
+        border-radius: 8px;
+        background: #fff;
+        color: #111;
+        font-size: 12px;
+        font-weight: 750;
+      }
+      .shared-provider-row {
+        grid-template-columns: 27px minmax(0, 1fr) auto;
+        gap: 10px;
+      }
+      .favorite-toggle {
+        min-width: 58px;
+      }
+      .favorite-toggle.selected {
+        border-color: #f4c15255;
+        background: #f4c15215;
+        color: var(--yellow);
+      }
+      .onboarding-checklist {
+        display: grid;
+        gap: 8px;
+        margin: 22px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      .onboarding-checklist li {
+        min-height: 46px;
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        padding: 9px 12px;
+        border: 0.5px solid var(--line);
+        border-radius: 12px;
+        background: #ffffff04;
+        color: var(--text2);
+      }
+      .onboarding-checklist i {
+        width: 24px;
+        height: 24px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: #ffffff0d;
+        color: var(--text3);
+        font-style: normal;
+      }
+      .onboarding-checklist li.complete i {
+        background: #f4c1521c;
+        color: var(--yellow);
+      }
+      .onboarding-footer {
+        min-height: 62px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 18px;
+        border-top: 0.5px solid var(--line);
+        background: #181818e8;
+        backdrop-filter: blur(14px);
+      }
+      .onboarding-back,
+      .onboarding-continue {
+        height: 34px;
+        padding: 0 12px;
+        border-radius: 9px;
+        font-size: 11px;
+      }
+      .onboarding-back {
+        margin-right: auto;
+        background: transparent;
+        color: var(--text3);
+      }
+      .onboarding-back:hover {
+        background: #ffffff0b;
+        color: var(--text);
+      }
+      .onboarding-continue {
+        min-width: 94px;
+        margin-left: auto;
+        background: #fff;
+        color: #171717;
+        font-weight: 590;
+      }
       .note {
         position: fixed;
         z-index: 20;
@@ -2112,7 +2287,7 @@
           z-index: 3;
           inset: 0 0 48px;
           width: 100%;
-          height: auto;
+          height: fit-content;
           transform: translateX(100%);
           opacity: 0;
           pointer-events: none;
@@ -2374,6 +2549,27 @@
           width: calc(100vw - 20px);
           height: calc(100vh - 28px);
           margin-top: 14px;
+        }
+        .onboarding-dialog {
+          width: calc(100vw - 12px);
+          height: fit-content;
+          max-height: calc(100dvh - 12px);
+          margin: 6px;
+          border-radius: 16px;
+        }
+        .onboarding-progress {
+          top: 26px;
+          right: 50%;
+        }
+        .onboarding-stage {
+          max-height: calc(100dvh - 74px);
+          padding: 66px 20px 28px;
+        }
+        .onboarding-footer {
+          padding-inline: 10px;
+        }
+        .onboarding-back {
+          margin-right: auto;
         }
         .settings-shell,
         .project-editor-shell {
@@ -3110,80 +3306,20 @@ text     14px      border   white / 8%</pre>
                 </header>
                 <div class="code-wrap">
                   <div class="code">
-                    <div class="code-line">
-                      <span
-                        ><span class="kw">export type</span>
-                        <span class="type">WorkViewRef</span> =</span
-                      >
-                    </div>
-                    <div class="code-line">
-                      <span>
-                        | { <span class="prop">type</span>:
-                        <span class="str">"file"</span>;
-                        <span class="prop">id</span>:
-                        <span class="type">FileViewId</span> }</span
-                      >
-                    </div>
-                    <div class="code-line">
-                      <span>
-                        | { <span class="prop">type</span>:
-                        <span class="str">"browser"</span>;
-                        <span class="prop">id</span>:
-                        <span class="type">BrowserViewId</span> }</span
-                      >
-                    </div>
-                    <div class="code-line">
-                      <span>
-                        | { <span class="prop">type</span>:
-                        <span class="str">"terminal"</span>;
-                        <span class="prop">id</span>:
-                        <span class="type">TerminalViewId</span> }</span
-                      >
-                    </div>
-                    <div class="code-line">
-                      <span>
-                        | { <span class="prop">type</span>:
-                        <span class="str">"changes"</span>;
-                        <span class="prop">id</span>:
-                        <span class="type">ChangesViewId</span> }</span
-                      >
-                    </div>
+                    <div class="code-line"><span><span class="kw">export type</span> <span class="type">WorkViewRef</span> =</span></div>
+                    <div class="code-line"><span>  | { <span class="prop">type</span>: <span class="str">"file"</span>; <span class="prop">id</span>: <span class="type">FileViewId</span> }</span></div>
+                    <div class="code-line"><span>  | { <span class="prop">type</span>: <span class="str">"browser"</span>; <span class="prop">id</span>: <span class="type">BrowserViewId</span> }</span></div>
+                    <div class="code-line"><span>  | { <span class="prop">type</span>: <span class="str">"terminal"</span>; <span class="prop">id</span>: <span class="type">TerminalViewId</span> }</span></div>
+                    <div class="code-line"><span>  | { <span class="prop">type</span>: <span class="str">"changes"</span>; <span class="prop">id</span>: <span class="type">ChangesViewId</span> }</span></div>
                     <div class="code-line"><span> </span></div>
-                    <div class="code-line">
-                      <span
-                        ><span class="kw">export function</span>
-                        <span class="fn">requestAttention</span>(view:
-                        <span class="type">WorkViewRef</span>) {</span
-                      >
-                    </div>
-                    <div class="code-line">
-                      <span>
-                        attention.<span class="fn">mark</span>(view, {</span
-                      >
-                    </div>
-                    <div class="code-line">
-                      <span>
-                        <span class="prop">requestedAt</span>: clock.<span
-                          class="fn"
-                          >now</span
-                        >(),</span
-                      >
-                    </div>
-                    <div class="code-line">
-                      <span>
-                        <span class="prop">repeatable</span>:
-                        <span class="kw">true</span>,</span
-                      >
-                    </div>
-                    <div class="code-line"><span> })</span></div>
+                    <div class="code-line"><span><span class="kw">export function</span> <span class="fn">requestAttention</span>(view: <span class="type">WorkViewRef</span>) {</span></div>
+                    <div class="code-line"><span>  attention.<span class="fn">mark</span>(view, {</span></div>
+                    <div class="code-line"><span>    <span class="prop">requestedAt</span>: clock.<span class="fn">now</span>(),</span></div>
+                    <div class="code-line"><span>    <span class="prop">repeatable</span>: <span class="kw">true</span>,</span></div>
+                    <div class="code-line"><span>  })</span></div>
                     <div class="code-line"><span>}</span></div>
                     <div class="code-line"><span> </span></div>
-                    <div class="code-line">
-                      <span class="comment"
-                        >// Attention clears when this view becomes
-                        visible.</span
-                      >
-                    </div>
+                    <div class="code-line"><span class="comment">// Attention clears when this view becomes visible.</span></div>
                   </div>
                 </div>
               </section>
@@ -3622,6 +3758,80 @@ Should this reuse an existing browser when the view reference is still available
       <footer class="search-foot">
         <span>↑↓ Navigate</span><span>↩ Open</span><span>esc Close</span>
       </footer>
+    </dialog>
+    <dialog
+      id="onboarding-dialog"
+      class="prototype-dialog onboarding-dialog"
+      aria-label="Onboarding"
+    >
+      <div class="onboarding-layout">
+        <div class="onboarding-progress" aria-hidden="true">
+          <span class="active" data-onboarding-step="0"></span>
+          <span data-onboarding-step="1"></span>
+          <span data-onboarding-step="2"></span>
+        </div>
+        <main class="onboarding-stage">
+          <section class="onboarding-pane visible" data-onboarding-pane="0">
+            <header class="onboarding-step-heading">
+              <h2>Connect GitHub</h2>
+            </header>
+            <div class="shared-setup-widget" data-shared-widget="github">
+              <div class="settings-card">
+                <div class="setting-row shared-provider-row">
+                  <span class="provider-mark">GH</span>
+                  <span class="setting-copy"><strong>GitHub</strong></span>
+                  <button class="secondary-button" data-action="toggle-onboarding-github">Connect</button>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="onboarding-pane" data-onboarding-pane="1">
+            <div class="shared-setup-widget" data-shared-widget="models">
+              <div class="settings-section">
+                <h3>Providers</h3>
+                <div class="settings-card">
+                  <div class="setting-row shared-provider-row">
+                    <span class="provider-mark">AI</span>
+                    <span class="setting-copy"><strong>OpenAI</strong></span>
+                    <span class="status-label"><i></i>Connected</span>
+                  </div>
+                  <div class="setting-row shared-provider-row">
+                    <span class="provider-mark">A</span>
+                    <span class="setting-copy"><strong>Anthropic</strong></span>
+                    <button class="secondary-button">Connect</button>
+                  </div>
+                </div>
+              </div>
+              <div class="settings-section">
+                <h3>Favorite models</h3>
+                <div class="settings-card">
+                  <div class="setting-row">
+                    <span class="setting-copy"><strong>GPT-5.6</strong></span>
+                    <button class="secondary-button favorite-toggle selected" data-action="toggle-onboarding-model">Favorited</button>
+                  </div>
+                  <div class="setting-row">
+                    <span class="setting-copy"><strong>Claude Opus 4.6</strong></span>
+                    <button class="secondary-button favorite-toggle" data-action="toggle-onboarding-model">Favorite</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="onboarding-pane" data-onboarding-pane="2">
+            <header class="onboarding-step-heading">
+              <h2>Ready to start</h2>
+            </header>
+            <ul class="onboarding-checklist">
+              <li data-onboarding-check="github"><i>○</i><strong>GitHub</strong></li>
+              <li class="complete" data-onboarding-check="models"><i>✓</i><strong>Models</strong></li>
+            </ul>
+          </section>
+        </main>
+        <footer class="onboarding-footer">
+          <button class="onboarding-back" data-action="onboarding-back" hidden>Back</button>
+          <button class="onboarding-continue" data-action="onboarding-next">Continue</button>
+        </footer>
+      </div>
     </dialog>
     <dialog
       id="settings-dialog"

@@ -704,12 +704,37 @@ workTabs.addEventListener("auxclick", (event) => {
 const newWorkspaceDialog = document.querySelector("#new-workspace-dialog");
 const searchDialog = document.querySelector("#search-dialog");
 const settingsDialog = document.querySelector("#settings-dialog");
+const onboardingDialog = document.querySelector("#onboarding-dialog");
 const editProjectDialog = document.querySelector("#edit-project-dialog");
 const workspaceDeleteDialog = document.querySelector(
   "#workspace-delete-dialog",
 );
 const projectMenu = document.querySelector("[data-project-menu]");
 const workspaceActions = document.querySelector("[data-workspace-actions]");
+let onboardingStep = 0;
+
+function showOnboardingStep(index) {
+  onboardingStep = Math.max(0, Math.min(index, 2));
+  document.querySelectorAll("[data-onboarding-pane]").forEach((pane) => {
+    pane.classList.toggle("visible", Number(pane.dataset.onboardingPane) === onboardingStep);
+  });
+  document.querySelectorAll("[data-onboarding-step]").forEach((button) => {
+    const step = Number(button.dataset.onboardingStep);
+    button.classList.toggle("active", step === onboardingStep);
+    button.classList.toggle("complete", step < onboardingStep);
+  });
+  const back = document.querySelector('[data-action="onboarding-back"]');
+  const next = document.querySelector('[data-action="onboarding-next"]');
+  back.hidden = onboardingStep === 0;
+  next.textContent = onboardingStep === 2 ? "Start using Atelier" : "Continue";
+}
+
+function syncOnboardingChecklist() {
+  const connected = document.querySelector('[data-action="toggle-onboarding-github"]').classList.contains("selected");
+  const github = document.querySelector('[data-onboarding-check="github"]');
+  github.classList.toggle("complete", connected);
+  github.querySelector("i").textContent = connected ? "✓" : "○";
+}
 
 function selectProject(project) {
   const option = document.querySelector(
@@ -901,6 +926,24 @@ document.addEventListener("click", (event) => {
   if (control.dataset.action === "open-settings") {
     showSettingsPage("general");
     settingsDialog.showModal();
+  }
+  if (control.dataset.action === "onboarding-back") {
+    showOnboardingStep(onboardingStep - 1);
+  }
+  if (control.dataset.action === "onboarding-next") {
+    if (onboardingStep === 2) onboardingDialog.close();
+    else showOnboardingStep(onboardingStep + 1);
+  }
+  if (control.dataset.action === "toggle-onboarding-github") {
+    const connected = !control.classList.contains("selected");
+    control.classList.toggle("selected", connected);
+    control.textContent = connected ? "Disconnect" : "Connect";
+    syncOnboardingChecklist();
+  }
+  if (control.dataset.action === "toggle-onboarding-model") {
+    const selected = !control.classList.contains("selected");
+    control.classList.toggle("selected", selected);
+    control.textContent = selected ? "Favorited" : "Favorite";
   }
   if (control.dataset.action === "open-edit-project")
     editProjectDialog.showModal();
@@ -1134,3 +1177,5 @@ addEventListener("resize", () => {
 restoreInteractionState();
 renderConversationState();
 renderMobileViewBar();
+showOnboardingStep(0);
+if (!prototypeUrl.searchParams.has("file-nav")) onboardingDialog.showModal();
