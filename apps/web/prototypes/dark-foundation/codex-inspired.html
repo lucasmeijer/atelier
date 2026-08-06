@@ -669,6 +669,331 @@
           Menlo,
           monospace;
       }
+      .agent-tool {
+        margin: 12px 0;
+        border: 0.5px solid var(--line);
+        border-radius: 10px;
+        background: #ffffff04;
+        overflow: hidden;
+      }
+      .agent-tool[open],
+      .agent-tool.active {
+        background: #ffffff06;
+      }
+      .agent-tool.error {
+        border-color: #fa423e55;
+      }
+      .agent-tool > summary {
+        min-height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        list-style: none;
+        color: var(--text3);
+        font-size: 12px;
+        cursor: default;
+      }
+      .agent-tool > summary::-webkit-details-marker {
+        display: none;
+      }
+      .agent-tool > summary::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        flex: 0 0 6px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+      .agent-tool.streaming > summary::before,
+      .agent-tool.running > summary::before {
+        background: var(--yellow);
+        box-shadow: 0 0 0 3px #f4c1521f;
+        animation: tool-pulse 1.4s ease-in-out infinite;
+      }
+      .agent-tool.error > summary::before {
+        background: var(--red);
+      }
+      .agent-tool-name {
+        color: var(--text2);
+        font:
+          11px/1.4 ui-monospace,
+          "SFMono-Regular",
+          Menlo,
+          monospace;
+      }
+      .agent-tool-summary {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .agent-tool-meta {
+        margin-left: auto;
+        flex: 0 0 auto;
+        color: var(--text3);
+      }
+      .agent-tool-chevron {
+        width: 12px;
+        height: 12px;
+        flex: 0 0 12px;
+        transition: transform 0.15s;
+      }
+      .agent-tool[open] .agent-tool-chevron {
+        transform: rotate(180deg);
+      }
+      .agent-tool-detail {
+        border-top: 0.5px solid var(--line);
+      }
+      .agent-tool-region + .agent-tool-region {
+        border-top: 0.5px solid var(--line);
+      }
+      .agent-tool-region-head,
+      .agent-tool-tabs {
+        min-height: 31px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 0 8px 0 10px;
+        color: var(--text3);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+      }
+      .agent-tool-region-head > span:first-child {
+        flex: 1;
+      }
+      .agent-tool-action {
+        width: 24px;
+        height: 24px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text3);
+      }
+      .agent-tool-action:hover {
+        background: #ffffff0e;
+        color: var(--text2);
+      }
+      .agent-tool-action svg {
+        width: 12px;
+        height: 12px;
+      }
+      .agent-tool pre {
+        margin: 0;
+        max-height: 260px;
+        overflow: auto;
+        padding: 10px;
+        background: #1118;
+        color: #ffffffa8;
+        font:
+          11px/1.55 ui-monospace,
+          "SFMono-Regular",
+          Menlo,
+          monospace;
+        white-space: pre-wrap;
+      }
+      .agent-tool pre.error-output {
+        color: #ff8e8b;
+      }
+      .agent-tool-tabs {
+        padding-left: 7px;
+      }
+      .agent-tool-tab {
+        height: 24px;
+        padding: 0 6px;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text3);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+      }
+      .agent-tool-tab.active {
+        background: #ffffff0d;
+        color: var(--text2);
+      }
+      .agent-tool-tabs .agent-tool-action {
+        margin-left: auto;
+      }
+      .agent-edit-lines {
+        max-height: none !important;
+        border-left: 2px solid transparent;
+      }
+      .agent-edit-lines.removed {
+        border-left-color: var(--red);
+        background: #fa423e0f;
+        color: #ffaaa7;
+      }
+      .agent-edit-lines.added {
+        border-left-color: var(--green);
+        background: #40c9770f;
+        color: #9ce8bb;
+      }
+      .agent-more-lines {
+        width: 100%;
+        height: 30px;
+        border-radius: 0;
+        border-top: 0.5px solid var(--line);
+        background: #ffffff05;
+        color: var(--text3);
+        font-size: 11px;
+      }
+      .agent-more-lines:hover {
+        background: #ffffff0a;
+        color: var(--text2);
+      }
+      .agent-tool-image {
+        display: block;
+        width: min(100%, 520px);
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+        margin: 0 auto;
+        background: #111;
+      }
+      .queue-list {
+        width: min(100%, 768px);
+        margin: 0 auto 6px;
+        display: grid;
+        gap: 4px;
+        pointer-events: auto;
+      }
+      .queued-message {
+        min-width: 0;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 7px 0 12px;
+        border: 0.5px solid var(--line-heavy);
+        border-radius: 10px;
+        background: #282828f7;
+        box-shadow: 0 4px 12px #0005;
+      }
+      .queued-message-copy {
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        color: var(--text2);
+        font-size: 12px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .queue-steer {
+        height: 25px;
+        padding: 0 7px;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--text3);
+        font-size: 11px;
+      }
+      .queue-steer:hover {
+        background: #ffffff0d;
+        color: var(--text);
+      }
+      .slash-menu {
+        width: min(100%, 768px);
+        max-height: 284px;
+        margin: 0 auto 6px;
+        padding: 5px;
+        overflow-y: auto;
+        border: 0.5px solid var(--line-heavy);
+        border-radius: 13px;
+        background: #282828fb;
+        box-shadow: 0 12px 34px #0009;
+        pointer-events: auto;
+      }
+      .slash-option {
+        width: 100%;
+        min-height: 42px;
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: 2px 10px;
+        align-items: center;
+        padding: 6px 9px;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text2);
+        text-align: left;
+      }
+      .slash-option.active {
+        background: #ffffff0e;
+        color: var(--text);
+      }
+      .slash-trigger {
+        font:
+          12px/1.3 ui-monospace,
+          "SFMono-Regular",
+          Menlo,
+          monospace;
+      }
+      .slash-kind {
+        color: var(--text3);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .slash-description {
+        grid-column: 1 / -1;
+        overflow: hidden;
+        color: var(--text3);
+        font-size: 11px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .send[data-running="true"] {
+        background: var(--text2);
+      }
+      .send[data-running="true"] svg {
+        transform: rotate(45deg);
+      }
+      .fullscreen-tool {
+        width: min(960px, calc(100vw - 32px));
+        height: min(720px, calc(100dvh - 32px));
+        padding: 0;
+        border: 0.5px solid var(--line-heavy);
+        border-radius: 16px;
+        background: var(--surface);
+        color: var(--text);
+        box-shadow: 0 24px 80px #000c;
+      }
+      .fullscreen-tool::backdrop {
+        background: #000b;
+      }
+      .fullscreen-tool-head {
+        height: 44px;
+        display: flex;
+        align-items: center;
+        padding: 0 10px 0 14px;
+        border-bottom: 0.5px solid var(--line);
+        color: var(--text2);
+        font-size: 12px;
+      }
+      .fullscreen-tool-head strong {
+        flex: 1;
+        font-weight: 560;
+      }
+      .fullscreen-tool-body {
+        height: calc(100% - 44px);
+        overflow: auto;
+        background: #111;
+      }
+      .fullscreen-tool-body pre {
+        min-height: 100%;
+        margin: 0;
+        padding: 18px;
+        color: #ffffffb8;
+        font: 12px/1.6 ui-monospace, "SFMono-Regular", Menlo, monospace;
+        white-space: pre-wrap;
+      }
+      .fullscreen-tool-body img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      @keyframes tool-pulse {
+        50% { opacity: 0.45; }
+      }
       .jump {
         position: relative;
         z-index: 2;
@@ -2562,6 +2887,28 @@
           min-height: 102px;
           border-radius: 20px;
         }
+        .slash-menu,
+        .queue-list {
+          width: 100%;
+        }
+        .slash-menu {
+          max-height: min(248px, 38dvh);
+        }
+        .agent-tool > summary {
+          gap: 6px;
+        }
+        .agent-tool-meta {
+          display: none;
+        }
+        .agent-tool pre {
+          max-height: 210px;
+          font-size: 10px;
+        }
+        .fullscreen-tool {
+          width: calc(100vw - 12px);
+          height: calc(100dvh - 12px);
+          border-radius: 12px;
+        }
         .composer-option.mobile-hide {
           display: none;
         }
@@ -2948,6 +3295,8 @@
       </symbol>
       <symbol id="down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
       <symbol id="up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6" /></symbol>
+      <symbol id="copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></symbol>
+      <symbol id="maximize" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" /></symbol>
       <symbol id="check" viewBox="0 0 24 24">
         <path d="m5 12 4 4L19 6" />
       </symbol>
@@ -3271,71 +3620,113 @@
               <div class="transcript">
                 <div class="thread">
                   <article class="message user">
-                    <p>
-                      Make a visual prototype that stays as close as possible to
-                      the Codex desktop app, while applying our decisions for
-                      Atelier’s Agent and Work panes.
-                    </p>
+                    <p>Implement issue #19 in the accepted dark-foundation prototype. Keep the shell, but make queueing, slash autocomplete, and every production tool presentation directly evaluable.</p>
                   </article>
                   <article class="message assistant">
-                    <h2>
-                      I’ve rebuilt the prototype around Codex’s actual desktop
-                      hierarchy.
-                    </h2>
-                    <p>
-                      The workspace sidebar remains subordinate to a raised main
-                      surface. The Agent transcript is the stable left pane,
-                      while the Work pane on the right hosts one active tab at a
-                      time.
-                    </p>
-                    <div class="activity">
-                      <svg><use href="#check" /></svg>Inspected the Codex Lucas
-                      Electron app styles
-                    </div>
-                    <div class="tool-card">
-                      <header>
-                        <svg><use href="#code" /></svg
-                        ><span>Read visual tokens</span><span>Done</span>
-                      </header>
-                      <pre>
-sidebar  275px     toolbar  46px
-surface  #181818   editor   #212121
-text     14px      border   white / 8%</pre>
-                    </div>
-                    <p>
-                      Presenting Preview reveals and activates its Work view.
-                      The request clears as soon as that view is visible; the
-                      workspace’s ready state belongs to the Agent and clears
-                      independently.
-                    </p>
-                    <button
-                      class="pill"
-                      data-action="request-preview-attention"
-                      aria-label="Present Preview"
-                    >
-                      <svg><use href="#browser" /></svg
-                      ><span>Present Preview</span>
-                    </button>
+                    <p>I’ll preserve the accepted Agent and Work shell, inspect the composer first, then build the interaction fixture in the standalone prototype only.</p>
+                    <details class="agent-tool" data-tool="read">
+                      <summary><svg class="agent-tool-chevron"><use href="#down" /></svg><code class="agent-tool-name">read</code><span class="agent-tool-summary">codex-inspired.html:3270-3410</span><span class="agent-tool-meta">4.8k tok ↑</span></summary>
+                      <div class="agent-tool-detail"><section class="agent-tool-region" data-tool-source>
+                        <div class="agent-tool-region-head"><span>READ RESULT</span><button class="agent-tool-action" data-action="tool-fullscreen" data-fullscreen-title="READ RESULT" aria-label="Open read result fullscreen"><svg><use href="#maximize" /></svg></button></div>
+                        <pre>&lt;div class="composer-wrap"&gt;
+  &lt;div class="composer"&gt;
+    &lt;textarea placeholder="Ask for follow-up changes"&gt;&lt;/textarea&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</pre>
+                        <button class="agent-more-lines" data-action="show-more-lines">show 28 more lines</button>
+                        <pre data-more-lines hidden>&lt;div class="composer-foot"&gt;
+  &lt;button&gt;GPT-5.6&lt;/button&gt;
+  &lt;button class="send"&gt;↑&lt;/button&gt;
+&lt;/div&gt;</pre>
+                      </section></div>
+                    </details>
+                    <details class="agent-tool" data-tool="edit">
+                      <summary><svg class="agent-tool-chevron"><use href="#down" /></svg><code class="agent-tool-name">edit</code><span class="agent-tool-summary">prototype.js · 3 edits · +91 −4</span><span class="agent-tool-meta">2.1k tok ↓</span></summary>
+                      <div class="agent-tool-detail" data-tool-source>
+                        <div class="agent-tool-region-head"><span>EDIT</span><button class="agent-tool-action" data-action="tool-fullscreen" data-fullscreen-title="EDIT" aria-label="Open edit fullscreen"><svg><use href="#maximize" /></svg></button></div>
+                        <pre class="agent-edit-lines removed">- sendButton.addEventListener("click", sendPrompt);</pre>
+                        <pre class="agent-edit-lines added">+ composer.addEventListener("submit", queueWhileRunning);
++ slashMenu.addEventListener("keydown", selectCommand);
++ queueList.addEventListener("click", steerOrDelete);</pre>
+                      </div>
+                    </details>
+                    <details class="agent-tool streaming active" data-tool="write" open>
+                      <summary><svg class="agent-tool-chevron"><use href="#down" /></svg><code class="agent-tool-name">write</code><span class="agent-tool-summary">prototype.js</span><span class="agent-tool-meta">streaming</span></summary>
+                      <div class="agent-tool-detail" data-tool-source>
+                        <div class="agent-tool-region-head"><span>PROTOTYPE.JS</span><button class="agent-tool-action" data-action="tool-fullscreen" data-fullscreen-title="WRITE · prototype.js" aria-label="Open write fullscreen"><svg><use href="#maximize" /></svg></button></div>
+                        <pre>const agentRun = { active: true, queued: [] };
+
+function submitComposer(text) {
+  if (agentRun.active) agentRun.queued.push(text);
+  renderQueue();
+}</pre>
+                      </div>
+                    </details>
                   </article>
-                  <article class="message user">
-                    <p>
-                      Keep File and Changes as separate view types, but let them
-                      share the sliding navigator pattern.
-                    </p>
-                  </article>
+                  <article class="message user"><p>Run the prototype checks and verify long-output, error, media, and generic-tool states.</p></article>
                   <article class="message assistant">
-                    <p>
-                      Agreed. File keeps the full project tree, Changes gets the
-                      same navigator filtered to changed files, and opening a
-                      file from Changes creates or reveals a separate File tab.
-                    </p>
+                    <p>The first check exposed a malformed selector. I fixed it, reran the workflow, and kept the shell behavior intact.</p>
+                    <details class="agent-tool" data-tool="bash">
+                      <summary><svg class="agent-tool-chevron"><use href="#down" /></svg><code class="agent-tool-name">bash</code><span class="agent-tool-summary">bun run check:prototype | tail -n 140</span><span class="agent-tool-meta">2.4s / 10m · exitcode 0 · 1.7k tok ↑</span></summary>
+                      <div class="agent-tool-detail" data-tool-source>
+                        <section class="agent-tool-region">
+                          <div class="agent-tool-tabs" role="tablist" aria-label="Bash command views"><button class="agent-tool-tab active" data-tool-tab="command">COMMAND</button><button class="agent-tool-tab" data-tool-tab="command-model">AS SEEN BY MODEL</button><button class="agent-tool-action" data-action="tool-fullscreen" data-fullscreen-title="COMMAND" aria-label="Open command fullscreen"><svg><use href="#maximize" /></svg></button></div>
+                          <pre data-tool-pane="command">bun run check:prototype |
+  tail -n 140</pre>
+                          <pre data-tool-pane="command-model" hidden>bun run check:prototype | tail -n 140</pre>
+                        </section>
+                        <section class="agent-tool-region">
+                          <div class="agent-tool-tabs" role="tablist" aria-label="Bash result views"><button class="agent-tool-tab active" data-tool-tab="result">RESULT</button><button class="agent-tool-tab" data-tool-tab="result-model">AS SEEN BY MODEL</button><button class="agent-tool-action" data-action="copy-tool-output" aria-label="Copy selected Bash output"><svg><use href="#copy" /></svg></button><button class="agent-tool-action" data-action="tool-fullscreen" data-fullscreen-title="RESULT" aria-label="Open result fullscreen"><svg><use href="#maximize" /></svg></button></div>
+                          <pre data-tool-pane="result">✓ markup validates
+✓ queue → Steer and queue → Delete
+✓ slash menu keyboard selection
+✓ tool details expand and collapse</pre>
+                          <pre data-tool-pane="result-model" hidden>markup validates
+queue flows ok
+slash keyboard ok
+tool detail ok</pre>
+                          <button class="agent-more-lines" data-action="show-more-lines">show 134 more lines</button>
+                          <pre data-more-lines hidden>[assets] ready
+desktop 1440×900 passed
+mobile 390×844 passed
+focus order passed</pre>
+                        </section>
+                      </div>
+                    </details>
+                    <details class="agent-tool error" data-tool="bash">
+                      <summary><svg class="agent-tool-chevron"><use href="#down" /></svg><code class="agent-tool-name">bash</code><span class="agent-tool-summary">bun run check:prototype</span><span class="agent-tool-meta">0.3s / 10m · exitcode 1</span></summary>
+                      <div class="agent-tool-detail" data-tool-source>
+                        <div class="agent-tool-region-head"><span>COMMAND</span><button class="agent-tool-action" data-action="tool-fullscreen" data-fullscreen-title="FAILED COMMAND" aria-label="Open failed command fullscreen"><svg><use href="#maximize" /></svg></button></div><pre>bun run check:prototype</pre>
+                        <div class="agent-tool-region-head"><span>RESULT</span><button class="agent-tool-action" data-action="copy-tool-output" aria-label="Copy error output"><svg><use href="#copy" /></svg></button></div><pre class="error-output">SyntaxError: slash option selector is not valid
+at selectSlashCommand (prototype.js:1412:18)</pre>
+                      </div>
+                    </details>
+                    <details class="agent-tool" data-tool="generic">
+                      <summary><svg class="agent-tool-chevron"><use href="#down" /></svg><code class="agent-tool-name">view_image</code><span class="agent-tool-summary">desktop-agent-tools.png · 800×450 · image/svg+xml</span><span class="agent-tool-meta">completed</span></summary>
+                      <div class="agent-tool-detail" data-tool-source>
+                        <div class="agent-tool-region-head"><span>DESKTOP-AGENT-TOOLS.PNG</span><button class="agent-tool-action" data-action="tool-fullscreen" data-fullscreen-title="desktop-agent-tools.png" aria-label="Open image fullscreen"><svg><use href="#maximize" /></svg></button></div>
+                        <img class="agent-tool-image" alt="Dark Atelier Agent pane showing tool calls and composer" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MDAgNDUwIj48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjQ1MCIgZmlsbD0iIzE4MTgxOCIvPjxyZWN0IHg9IjI0IiB5PSIyNCIgd2lkdGg9IjE5MCIgaGVpZ2h0PSI0MDIiIHJ4PSIxMiIgZmlsbD0iIzIxMjEyMSIvPjxyZWN0IHg9IjIyOCIgeT0iMjQiIHdpZHRoPSI1NDgiIGhlaWdodD0iNDAyIiByeD0iMTIiIGZpbGw9IiMyMTIxMjEiLz48cmVjdCB4PSIyNTAiIHk9IjUyIiB3aWR0aD0iMzIwIiBoZWlnaHQ9IjE0IiByeD0iNyIgZmlsbD0iI2ZmZmZmZjE4Ii8+PHJlY3QgeD0iMjUwIiB5PSI4NiIgd2lkdGg9IjQ2MCIgaGVpZ2h0PSI5IiByeD0iNCIgZmlsbD0iI2ZmZmZmZjEwIi8+PHJlY3QgeD0iMjUwIiB5PSIxMDgiIHdpZHRoPSI0MTAiIGhlaWdodD0iOSIgcng9IjQiIGZpbGw9IiNmZmZmZmYxMCIvPjxyZWN0IHg9IjI1MCIgeT0iMTUyIiB3aWR0aD0iNTA0IiBoZWlnaHQ9IjE0OCIgcng9IjEwIiBmaWxsPSIjMjgyODI4IiBzdHJva2U9IiNmZmZmZmYyMCIvPjxjaXJjbGUgY3g9IjI3MCIgY3k9IjE3NCIgcj0iNCIgZmlsbD0iIzQwYzk3NyIvPjxyZWN0IHg9IjI4NCIgeT0iMTY5IiB3aWR0aD0iODIiIGhlaWdodD0iMTAiIHJ4PSI1IiBmaWxsPSIjZmZmZmZmNjAiLz48cmVjdCB4PSIyNTAiIHk9IjMyNiIgd2lkdGg9IjUwNCIgaGVpZ2h0PSI3NiIgcng9IjIwIiBmaWxsPSIjMjgyODI4IiBzdHJva2U9IiNmZmZmZmYyOSIvPjxyZWN0IHg9IjI3MCIgeT0iMzQ2IiB3aWR0aD0iMjIwIiBoZWlnaHQ9IjEwIiByeD0iNSIgZmlsbD0iI2ZmZmZmZjE4Ii8+PGNpcmNsZSBjeD0iNzI0IiBjeT0iMzc2IiByPSIxNCIgZmlsbD0iI2ZmZmZmZiIvPjwvc3ZnPg==" />
+                      </div>
+                    </details>
+                    <details class="agent-tool running active" data-tool="generic" open>
+                      <summary><svg class="agent-tool-chevron"><use href="#down" /></svg><code class="agent-tool-name">browser.inspect</code><span class="agent-tool-summary">mobile queue and slash menu</span><span class="agent-tool-meta">running · 12s</span></summary>
+                      <div class="agent-tool-detail" data-tool-source>
+                        <div class="agent-tool-region-head"><span>ARGUMENTS.JSON</span><button class="agent-tool-action" data-action="tool-fullscreen" data-fullscreen-title="BROWSER.INSPECT" aria-label="Open tool fullscreen"><svg><use href="#maximize" /></svg></button></div>
+                        <pre>{ "viewport": { "width": 390, "height": 844 },
+  "flows": ["queue-steer", "queue-delete", "slash-keyboard"] }</pre>
+                        <div class="agent-tool-region-head"><span>LIVE RESULT</span></div><pre>Checking autocomplete placement above the composer…</pre>
+                      </div>
+                    </details>
                   </article>
+                  <div data-steered-messages></div>
                 </div>
               </div>
               <div class="composer-wrap">
                 <button class="jump" data-action="jump-latest">
                   <svg><use href="#down" /></svg>Jump to latest
                 </button>
+                <div class="slash-menu" data-slash-menu role="listbox" aria-label="Slash commands" hidden></div>
+                <div class="queue-list" data-queue-list aria-label="Queued messages" hidden></div>
                 <div class="composer">
                   <div
                     class="comment-attachment"
@@ -3370,7 +3761,7 @@ text     14px      border   white / 8%</pre>
                     </div>
                     <pre>/tmp/atelier-uploads/reference.pdf · path reference</pre>
                   </div>
-                  <textarea placeholder="Ask for follow-up changes"></textarea>
+                  <textarea data-agent-composer placeholder="Message the active agent"></textarea>
                   <div class="composer-foot">
                     <button
                       class="icon"
@@ -3382,7 +3773,7 @@ text     14px      border   white / 8%</pre>
                       GPT-5.6 <svg><use href="#down" /></svg></button
                     ><button class="composer-option mobile-hide">
                       High <svg><use href="#down" /></svg></button
-                    ><button class="send">
+                    ><button class="send" data-action="submit-agent-message" data-running="true" aria-label="Queue message">
                       <svg><use href="#up" /></svg>
                     </button>
                   </div>
@@ -4605,6 +4996,10 @@ Should this reuse an existing browser when the view reference is still available
         <button class="confirm-close" data-action="confirm-file-delete">Delete file</button>
       </div>
     </dialog>
+    <dialog class="fullscreen-tool" data-tool-fullscreen aria-labelledby="tool-fullscreen-title">
+      <header class="fullscreen-tool-head"><strong id="tool-fullscreen-title" data-tool-fullscreen-title>Tool detail</strong><button class="icon" data-action="close-tool-fullscreen" aria-label="Close fullscreen"><svg><use href="#x" /></svg></button></header>
+      <div class="fullscreen-tool-body" data-tool-fullscreen-body></div>
+    </dialog>
     <button
       class="note"
       data-action="reset-interaction-state"
@@ -4619,7 +5014,7 @@ Should this reuse an existing browser when the view reference is still available
       <button data-action="simulate-workspace-ready">New ready event</button>
       <button data-action="preview-workspace-loading">Loading state</button>
     </nav>
-    <script src="prototype.js?v=8"></script>
+    <script src="prototype.js?v=9"></script>
     <script type="module" src="file-view-prototype.js?v=7"></script>
   </body>
 </html>

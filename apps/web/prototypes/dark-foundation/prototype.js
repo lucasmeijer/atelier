@@ -45,6 +45,122 @@ let conversationState = {
   secondaryTitle: "Untitled",
 };
 
+const slashCommands = [
+  { trigger: "/name", args: "[workspace-name]", description: "Rename this workspace, using AI when no name is provided.", kind: "command" },
+  { trigger: "/new", args: "", description: "Start a new agent session in this tab.", kind: "command" },
+  { trigger: "/land", args: "", description: "Commit, push, and delete this workspace when successful.", kind: "prompt" },
+  { trigger: "/review-prototype", args: "[focus]", description: "Review this prototype against its accepted interaction decisions.", kind: "workspace prompt" },
+  { trigger: "/skill:grilling", args: "", description: "Stress-test a plan, decision, or interaction proposal.", kind: "skill" },
+  { trigger: "/skill:prototype", args: "", description: "Build a throwaway prototype to answer a design question.", kind: "skill" },
+  { trigger: "/skill:research", args: "", description: "Investigate a question against high-trust primary sources.", kind: "skill" },
+];
+const agentComposer = document.querySelector("[data-agent-composer]");
+const slashMenu = document.querySelector("[data-slash-menu]");
+const queueList = document.querySelector("[data-queue-list]");
+const steeredMessages = document.querySelector("[data-steered-messages]");
+const toolFullscreen = document.querySelector("[data-tool-fullscreen]");
+let queuedMessages = [];
+let nextQueuedMessageId = 1;
+let slashSelection = 0;
+let visibleSlashCommands = [];
+
+function escaped(text) {
+  const node = document.createElement("span");
+  node.textContent = text;
+  return node.innerHTML;
+}
+
+function renderQueue() {
+  queueList.hidden = queuedMessages.length === 0;
+  queueList.innerHTML = queuedMessages
+    .map((message) => `<div class="queued-message" data-queued-message="${message.id}"><span class="queued-message-copy">${escaped(message.text)}</span><button class="queue-steer" data-action="steer-queued-message" data-queue-id="${message.id}">Steer</button><button class="icon small" data-action="delete-queued-message" data-queue-id="${message.id}" aria-label="Delete queued message"><svg><use href="#x" /></svg></button></div>`)
+    .join("");
+}
+
+function renderSlashMenu(query) {
+  const normalized = query.slice(1).toLowerCase();
+  visibleSlashCommands = slashCommands
+    .filter((command) => command.trigger.slice(1).toLowerCase().includes(normalized))
+    .sort((a, b) => Number(b.trigger.slice(1).startsWith(normalized)) - Number(a.trigger.slice(1).startsWith(normalized)) || a.trigger.localeCompare(b.trigger));
+  slashSelection = Math.min(slashSelection, Math.max(0, visibleSlashCommands.length - 1));
+  slashMenu.innerHTML = visibleSlashCommands.length
+    ? visibleSlashCommands.map((command, index) => `<button class="slash-option${index === slashSelection ? " active" : ""}" role="option" aria-selected="${index === slashSelection}" data-action="select-slash-command" data-command-index="${index}"><span class="slash-trigger">${escaped(command.trigger)}${command.args ? ` ${escaped(command.args)}` : ""}</span><span class="slash-kind">${escaped(command.kind)}</span><span class="slash-description">${escaped(command.description)}</span></button>`).join("")
+    : `<div class="slash-option"><span class="slash-description">No slash commands</span></div>`;
+  slashMenu.hidden = false;
+  slashMenu.querySelector(".slash-option.active")?.scrollIntoView({ block: "nearest" });
+}
+
+function dismissSlashMenu() {
+  slashMenu.hidden = true;
+  visibleSlashCommands = [];
+}
+
+function selectSlashCommand(index) {
+  const command = visibleSlashCommands[index];
+  agentComposer.value = `${command.trigger}${command.args ? " " : ""}`;
+  dismissSlashMenu();
+  agentComposer.focus();
+}
+
+function submitAgentMessage() {
+  const text = agentComposer.value.trim();
+  if (!text) return;
+  queuedMessages.push({ id: nextQueuedMessageId++, text });
+  agentComposer.value = "";
+  dismissSlashMenu();
+  renderQueue();
+  updateStateNote("Message queued while Agent is running");
+}
+
+function removeQueuedMessage(id, { steer = false } = {}) {
+  const message = queuedMessages.find((candidate) => candidate.id === id);
+  queuedMessages = queuedMessages.filter((candidate) => candidate.id !== id);
+  renderQueue();
+  if (!steer) {
+    updateStateNote("Queued message deleted");
+    agentComposer.focus();
+    return;
+  }
+  const article = document.createElement("article");
+  article.className = "message user";
+  const copy = document.createElement("p");
+  copy.textContent = message.text;
+  article.append(copy);
+  steeredMessages.before(article);
+  article.scrollIntoView({ behavior: "smooth", block: "center" });
+  updateStateNote("Queued message steered into the active run");
+}
+
+agentComposer.addEventListener("input", () => {
+  slashSelection = 0;
+  if (/^\/\S*$/.test(agentComposer.value)) renderSlashMenu(agentComposer.value);
+  else dismissSlashMenu();
+});
+
+agentComposer.addEventListener("keydown", (event) => {
+  if (!slashMenu.hidden && ["ArrowDown", "ArrowUp"].includes(event.key)) {
+    event.preventDefault();
+    if (visibleSlashCommands.length === 0) return;
+    slashSelection = (slashSelection + (event.key === "ArrowDown" ? 1 : -1) + visibleSlashCommands.length) % visibleSlashCommands.length;
+    renderSlashMenu(agentComposer.value);
+    return;
+  }
+  if (!slashMenu.hidden && event.key === "Escape") {
+    event.preventDefault();
+    dismissSlashMenu();
+    return;
+  }
+  if (!slashMenu.hidden && event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    selectSlashCommand(slashSelection);
+    return;
+  }
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    submitAgentMessage();
+  }
+});
+
 function loadInteractionState() {
   const saved = JSON.parse(localStorage.getItem(prototypeStateKey) || "null");
   return {
@@ -866,6 +982,49 @@ document.querySelectorAll(".prototype-dialog").forEach((dialog) => {
 document.addEventListener("click", (event) => {
   const control = event.target.closest("button, [data-action]");
   if (!control) return;
+  if (control.dataset.action === "submit-agent-message") submitAgentMessage();
+  if (control.dataset.action === "select-slash-command") {
+    selectSlashCommand(Number(control.dataset.commandIndex));
+  }
+  if (control.dataset.action === "steer-queued-message") {
+    removeQueuedMessage(Number(control.dataset.queueId), { steer: true });
+  }
+  if (control.dataset.action === "delete-queued-message") {
+    removeQueuedMessage(Number(control.dataset.queueId));
+  }
+  if (control.dataset.toolTab) {
+    const region = control.closest(".agent-tool-region");
+    region.querySelectorAll("[data-tool-tab]").forEach((tab) => tab.classList.toggle("active", tab === control));
+    region.querySelectorAll("[data-tool-pane]").forEach((pane) => {
+      pane.hidden = pane.dataset.toolPane !== control.dataset.toolTab;
+    });
+  }
+  if (control.dataset.action === "show-more-lines") {
+    control.parentElement.querySelector("[data-more-lines]").hidden = false;
+    control.remove();
+  }
+  if (control.dataset.action === "copy-tool-output") {
+    const source = control.closest(".agent-tool-region, [data-tool-source]");
+    const text = [...source.querySelectorAll("pre:not([hidden])")].map((pre) => pre.textContent).join("\n");
+    navigator.clipboard.writeText(text).then(() => {
+      control.setAttribute("aria-label", "Copied");
+      updateStateNote("Tool output copied");
+    });
+  }
+  if (control.dataset.action === "tool-fullscreen") {
+    const source = control.closest(".agent-tool-region, [data-tool-source]");
+    const body = toolFullscreen.querySelector("[data-tool-fullscreen-body]");
+    const image = source.querySelector("img");
+    if (image) body.replaceChildren(image.cloneNode());
+    else {
+      const pre = document.createElement("pre");
+      pre.textContent = [...source.querySelectorAll("pre:not([hidden])")].map((node) => node.textContent).join("\n\n");
+      body.replaceChildren(pre);
+    }
+    toolFullscreen.querySelector("[data-tool-fullscreen-title]").textContent = control.dataset.fullscreenTitle;
+    toolFullscreen.showModal();
+  }
+  if (control.dataset.action === "close-tool-fullscreen") toolFullscreen.close();
   if (control.dataset.fileAction) {
     const file = control.dataset.fileId || "file";
     const status = document.querySelector(`[data-file-status="${file}"]`);
