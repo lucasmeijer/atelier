@@ -998,6 +998,151 @@
         text-align: right;
         user-select: none;
       }
+      .file-view {
+        position: relative;
+        background: #1e1e1e;
+      }
+      .file-view .view-toolbar {
+        background: var(--editor);
+      }
+      .file-editor-status {
+        margin-left: auto;
+        color: var(--text3);
+        white-space: nowrap;
+      }
+      .file-editor-status.is-saving {
+        color: var(--text2);
+      }
+      .file-editor-status.is-saved {
+        color: var(--green);
+      }
+      .file-editor-status.is-error,
+      .file-editor-status.is-conflict {
+        color: var(--orange);
+      }
+      .file-editor-status.is-readonly {
+        color: var(--text2);
+      }
+      .file-location {
+        min-width: 72px;
+        color: var(--text3);
+        text-align: right;
+        white-space: nowrap;
+      }
+      .file-editor-shell {
+        min-height: 0;
+        flex: 1;
+        position: relative;
+      }
+      .file-editor-host,
+      .file-editor-host > .cm-editor {
+        height: 100%;
+      }
+      .file-scenarios {
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        overflow-x: auto;
+        border-bottom: 0.5px solid var(--line);
+        background: #1b1b1b;
+        scrollbar-width: none;
+      }
+      .file-scenarios::-webkit-scrollbar {
+        display: none;
+      }
+      .file-scenarios > span {
+        margin-right: 4px;
+        color: var(--text3);
+        font-size: 9px;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .file-scenarios button,
+      .file-toolbar-button,
+      .navigator-action,
+      .file-mode-toggle {
+        height: 24px;
+        flex: 0 0 auto;
+        padding: 0 8px;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--text3);
+        font-size: 10px;
+        white-space: nowrap;
+      }
+      .file-scenarios button:hover,
+      .file-scenarios button.active,
+      .file-toolbar-button:hover,
+      .navigator-action:hover,
+      .file-mode-toggle:hover,
+      .file-mode-toggle[aria-pressed="true"] {
+        background: #ffffff10;
+        color: var(--text);
+      }
+      .markdown-preview {
+        height: 100%;
+        padding: 28px clamp(22px, 8vw, 72px) 90px;
+        overflow: auto;
+        background: #1e1e1e;
+        color: #ffffffd6;
+        line-height: 1.65;
+      }
+      .markdown-preview h1 {
+        margin: 0 0 22px;
+        font-size: 25px;
+      }
+      .markdown-preview h2 {
+        margin: 30px 0 8px;
+        font-size: 16px;
+      }
+      .markdown-preview p {
+        margin: 0 0 12px;
+        color: var(--text2);
+      }
+      .file-conflict-dialog {
+        width: min(420px, calc(100vw - 28px));
+        margin: 24vh auto auto;
+        padding: 20px;
+        border: 0.5px solid var(--line-heavy);
+        border-radius: 16px;
+        background: var(--raised);
+        color: var(--text);
+        box-shadow: 0 22px 70px #000c;
+      }
+      .file-conflict-dialog::backdrop {
+        background: #0009;
+      }
+      .file-conflict-dialog h2 {
+        margin: 0 0 8px;
+        font-size: 15px;
+      }
+      .file-conflict-dialog p {
+        margin: 0;
+        color: var(--text2);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+      .file-conflict-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 7px;
+        margin-top: 18px;
+      }
+      .file-conflict-actions button {
+        height: 30px;
+        padding: 0 12px;
+        border-radius: 8px;
+        background: #ffffff0d;
+        color: var(--text2);
+        font-size: 11px;
+      }
+      .file-conflict-actions button.primary {
+        background: #fff;
+        color: #171717;
+      }
       .kw {
         color: #c586c0;
       }
@@ -1319,6 +1464,7 @@
         border-left: 0.5px solid var(--line-heavy);
         background: #212121f7;
         box-shadow: -12px 0 30px #0006;
+        pointer-events: none;
         transform: translateX(102%);
         transition: transform 0.24s cubic-bezier(0.23, 1, 0.32, 1);
       }
@@ -1334,6 +1480,83 @@
       }
       .navigator header button {
         margin-left: auto;
+      }
+      .navigator-breadcrumbs {
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        padding: 4px 10px;
+        overflow-x: auto;
+        border-bottom: 0.5px solid var(--line);
+        color: var(--text3);
+        font-size: 10px;
+        white-space: nowrap;
+      }
+      .navigator-breadcrumbs button {
+        padding: 3px 4px;
+        border-radius: 5px;
+        background: transparent;
+        color: inherit;
+      }
+      .navigator-breadcrumbs button:hover {
+        background: #ffffff0d;
+        color: var(--text);
+      }
+      .navigator-filter {
+        position: relative;
+        padding: 7px 8px;
+        border-bottom: 0.5px solid var(--line);
+      }
+      .navigator-filter svg {
+        position: absolute;
+        inset: 14px auto auto 17px;
+        width: 13px;
+        height: 13px;
+        color: var(--text3);
+        pointer-events: none;
+      }
+      .navigator-filter input {
+        width: 100%;
+        height: 28px;
+        padding: 0 10px 0 29px;
+        border: 0.5px solid var(--line);
+        border-radius: 8px;
+        outline: 0;
+        background: #ffffff0a;
+        color: var(--text);
+        font: inherit;
+        font-size: 11px;
+      }
+      .navigator-filter input::placeholder {
+        color: var(--text3);
+      }
+      .navigator-filter input:focus {
+        border-color: var(--line-heavy);
+        background: #ffffff0e;
+      }
+      .navigator-empty {
+        padding: 18px 10px;
+        color: var(--text3);
+        font-size: 11px;
+        text-align: center;
+      }
+      .navigator-actions {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 5px 8px;
+        border-bottom: 0.5px solid var(--line);
+      }
+      .navigator-actions .navigator-action:last-child {
+        margin-left: auto;
+        color: #ff8a80;
+      }
+      .tree-row {
+        width: 100%;
+        background: transparent;
+        color: inherit;
+        text-align: left;
       }
       .tree {
         min-height: 0;
@@ -2096,6 +2319,7 @@
         outline: 0.5px solid var(--line-heavy);
       }
       body.tree-open .navigator {
+        pointer-events: auto;
         transform: none;
       }
       body.sidebar-hidden .sidebar {
@@ -2287,7 +2511,7 @@
           z-index: 3;
           inset: 0 0 48px;
           width: 100%;
-          height: fit-content;
+          height: auto;
           transform: translateX(100%);
           opacity: 0;
           pointer-events: none;
@@ -2351,6 +2575,28 @@
         }
         .work-tab span {
           display: none;
+        }
+        .file-scenarios {
+          min-height: 38px;
+          padding-inline: 7px;
+        }
+        .file-scenarios > span {
+          position: sticky;
+          left: 0;
+          padding: 5px 6px 5px 2px;
+          background: #1b1b1b;
+        }
+        .file-view .view-toolbar {
+          padding-left: 10px;
+        }
+        .file-view .path {
+          flex: 1;
+        }
+        .file-location {
+          display: none;
+        }
+        .file-conflict-dialog {
+          margin-top: 22vh;
         }
         .close-work {
           display: none;
@@ -2704,6 +2950,10 @@
       <symbol id="up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6" /></symbol>
       <symbol id="check" viewBox="0 0 24 24">
         <path d="m5 12 4 4L19 6" />
+      </symbol>
+      <symbol id="refresh" viewBox="0 0 24 24">
+        <path d="M20 7v5h-5M4 17v-5h5" />
+        <path d="M6.1 9a7 7 0 0 1 11.6-2L20 9M4 15l2.3 2a7 7 0 0 0 11.6-2" />
       </symbol>
       <symbol id="sparkles" viewBox="0 0 24 24">
         <path
@@ -3106,9 +3356,27 @@ text     14px      border   white / 8%</pre>
                     <pre data-comment-snippet>
 + | { type: "browser"; id: BrowserViewId }</pre>
                   </div>
+                  <div class="comment-attachment" data-agent-attachment hidden>
+                    <div class="comment-attachment-head">
+                      <svg><use href="#file" /></svg>
+                      <span>reference.pdf</span>
+                      <button
+                        class="icon small"
+                        data-action="remove-agent-attachment"
+                        aria-label="Remove reference.pdf"
+                      >
+                        <svg><use href="#x" /></svg>
+                      </button>
+                    </div>
+                    <pre>/tmp/atelier-uploads/reference.pdf · path reference</pre>
+                  </div>
                   <textarea placeholder="Ask for follow-up changes"></textarea>
                   <div class="composer-foot">
-                    <button class="icon">
+                    <button
+                      class="icon"
+                      data-action="attach-agent-file"
+                      aria-label="Attach a file"
+                    >
                       <svg><use href="#plus" /></svg></button
                     ><button class="composer-option">
                       GPT-5.6 <svg><use href="#down" /></svg></button
@@ -3223,6 +3491,28 @@ text     14px      border   white / 8%</pre>
               </div>
               <div
                 class="work-tab-shell"
+                data-view-shell="file-context"
+                draggable="true"
+              >
+                <button
+                  class="work-tab"
+                  data-view="file-context"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  <svg><use href="#file" /></svg><span>CONTEXT.md</span>
+                </button>
+                <button
+                  class="tab-close"
+                  data-action="close-view"
+                  data-close-view="file-context"
+                  aria-label="Close CONTEXT.md"
+                >
+                  <svg><use href="#x" /></svg>
+                </button>
+              </div>
+              <div
+                class="work-tab-shell"
                 data-view-shell="browser"
                 draggable="true"
               >
@@ -3296,32 +3586,76 @@ text     14px      border   white / 8%</pre>
               </button>
             </nav>
             <div class="stage">
-              <section class="view" data-view-panel="file">
+              <section class="view file-view" data-view-panel="file">
                 <header class="view-toolbar">
                   <span class="path"
                     >apps / web / src / <b>work-view.ts</b></span
-                  ><button class="icon small" data-action="toggle-tree">
+                  ><span class="file-editor-status is-saved" data-file-status="file">Saved</span>
+                  <span class="file-location" data-file-location="file">Ln 1, Col 1</span>
+                  <button
+                    class="icon small"
+                    data-file-action="refresh"
+                    data-file-id="file"
+                    aria-label="Refresh work-view.ts from disk"
+                  >
+                    <svg><use href="#refresh" /></svg>
+                  </button>
+                  <button class="icon small" data-action="toggle-tree">
                     <svg><use href="#tree" /></svg>
                   </button>
                 </header>
-                <div class="code-wrap">
-                  <div class="code">
-                    <div class="code-line"><span><span class="kw">export type</span> <span class="type">WorkViewRef</span> =</span></div>
-                    <div class="code-line"><span>  | { <span class="prop">type</span>: <span class="str">"file"</span>; <span class="prop">id</span>: <span class="type">FileViewId</span> }</span></div>
-                    <div class="code-line"><span>  | { <span class="prop">type</span>: <span class="str">"browser"</span>; <span class="prop">id</span>: <span class="type">BrowserViewId</span> }</span></div>
-                    <div class="code-line"><span>  | { <span class="prop">type</span>: <span class="str">"terminal"</span>; <span class="prop">id</span>: <span class="type">TerminalViewId</span> }</span></div>
-                    <div class="code-line"><span>  | { <span class="prop">type</span>: <span class="str">"changes"</span>; <span class="prop">id</span>: <span class="type">ChangesViewId</span> }</span></div>
-                    <div class="code-line"><span> </span></div>
-                    <div class="code-line"><span><span class="kw">export function</span> <span class="fn">requestAttention</span>(view: <span class="type">WorkViewRef</span>) {</span></div>
-                    <div class="code-line"><span>  attention.<span class="fn">mark</span>(view, {</span></div>
-                    <div class="code-line"><span>    <span class="prop">requestedAt</span>: clock.<span class="fn">now</span>(),</span></div>
-                    <div class="code-line"><span>    <span class="prop">repeatable</span>: <span class="kw">true</span>,</span></div>
-                    <div class="code-line"><span>  })</span></div>
-                    <div class="code-line"><span>}</span></div>
-                    <div class="code-line"><span> </span></div>
-                    <div class="code-line"><span class="comment">// Attention clears when this view becomes visible.</span></div>
-                  </div>
+                <div class="file-scenarios" aria-label="Prototype File states">
+                  <span>Try states</span>
+                  <button data-file-action="jump" data-file-id="file" data-line="42" data-column="8">Open at 42:8</button>
+                  <button data-file-action="external-change" data-file-id="file">Agent changed disk</button>
+                  <button data-file-action="force-conflict" data-file-id="file">Conflict</button>
+                  <button data-file-action="save-error" data-file-id="file">Save error</button>
+                  <button data-file-action="read-only" data-file-id="file">Read only</button>
                 </div>
+                <div class="file-editor-shell">
+                  <div class="file-editor-host" data-file-editor="file"></div>
+                </div>
+                <dialog class="file-conflict-dialog" data-file-conflict="file">
+                  <h2>work-view.ts changed on disk</h2>
+                  <p>You have unsaved edits and an agent wrote a newer version. Choose which complete version to keep.</p>
+                  <div class="file-conflict-actions">
+                    <button data-file-action="use-theirs" data-file-id="file">Use theirs</button>
+                    <button class="primary" data-file-action="use-mine" data-file-id="file">Use mine</button>
+                  </div>
+                </dialog>
+              </section>
+              <section class="view file-view" data-view-panel="file-context" hidden>
+                <header class="view-toolbar">
+                  <span class="path"><b>CONTEXT.md</b></span>
+                  <span class="file-editor-status is-saved" data-file-status="file-context">Saved</span>
+                  <span class="file-location" data-file-location="file-context">Ln 1, Col 1</span>
+                  <button class="file-mode-toggle" data-file-action="toggle-preview" data-file-id="file-context" aria-pressed="false">Preview</button>
+                  <button class="icon small" data-file-action="refresh" data-file-id="file-context" aria-label="Refresh CONTEXT.md from disk">
+                    <svg><use href="#refresh" /></svg>
+                  </button>
+                  <button class="icon small" data-action="toggle-tree">
+                    <svg><use href="#tree" /></svg>
+                  </button>
+                </header>
+                <div class="file-scenarios" aria-label="Prototype Markdown File states">
+                  <span>Try states</span>
+                  <button data-file-action="external-change" data-file-id="file-context">Agent changed disk</button>
+                  <button data-file-action="force-conflict" data-file-id="file-context">Conflict</button>
+                  <button data-file-action="save-error" data-file-id="file-context">Save error</button>
+                  <button data-file-action="read-only" data-file-id="file-context">Read only</button>
+                </div>
+                <div class="file-editor-shell">
+                  <div class="file-editor-host" data-file-editor="file-context"></div>
+                  <article class="markdown-preview" data-markdown-preview="file-context" hidden></article>
+                </div>
+                <dialog class="file-conflict-dialog" data-file-conflict="file-context">
+                  <h2>CONTEXT.md changed on disk</h2>
+                  <p>You have unsaved edits and a newer disk version is available. Choose which complete version to keep.</p>
+                  <div class="file-conflict-actions">
+                    <button data-file-action="use-theirs" data-file-id="file-context">Use theirs</button>
+                    <button class="primary" data-file-action="use-mine" data-file-id="file-context">Use mine</button>
+                  </div>
+                </dialog>
               </section>
               <section
                 class="view browser-view"
@@ -3473,38 +3807,67 @@ Should this reuse an existing browser when the view reference is still available
               </section>
               <aside class="navigator">
                 <header>
-                  <span data-nav-title>Files</span
+                  <span data-nav-title>File navigator</span
                   ><button class="icon small" data-action="toggle-tree">
                     <svg><use href="#x" /></svg>
                   </button>
                 </header>
+                <div class="navigator-breadcrumbs" aria-label="Current folder">
+                  <button data-nav-path=".">atelier</button><span>/</span>
+                  <button data-nav-path="apps">apps</button><span>/</span>
+                  <button data-nav-path="apps/web">web</button><span>/</span>
+                  <button data-nav-path="apps/web/src">src</button>
+                </div>
+                <label class="navigator-filter">
+                  <svg><use href="#search" /></svg>
+                  <input
+                    type="search"
+                    data-navigator-filter
+                    placeholder="Filter files"
+                    aria-label="Filter files"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </label>
+                <div class="navigator-actions" aria-label="File actions">
+                  <button class="navigator-action" data-action="navigator-refresh">Refresh</button>
+                  <button class="navigator-action" data-action="navigator-download">Download</button>
+                  <button class="navigator-action" data-action="navigator-copy-url">Copy URL</button>
+                  <button class="navigator-action" data-action="navigator-delete">Delete</button>
+                </div>
                 <div class="tree">
-                  <div class="tree-row">
+                  <button class="tree-row" data-nav-entry data-nav-search="apps">
                     <svg><use href="#down" /></svg>apps
-                  </div>
-                  <div class="tree-row indent1">
+                  </button>
+                  <button class="tree-row indent1" data-nav-entry data-nav-search="apps/web">
                     <svg><use href="#down" /></svg>web
-                  </div>
-                  <div class="tree-row indent2">
+                  </button>
+                  <button class="tree-row indent2" data-nav-entry data-nav-search="apps/web/src">
                     <svg><use href="#down" /></svg>src
-                  </div>
-                  <div class="tree-row indent3 selected">
+                  </button>
+                  <button class="tree-row indent3 selected" data-nav-entry data-nav-search="apps/web/src/work-view.ts" data-action="open-prototype-file" data-file-view="file" data-canonical-path="apps/web/src/work-view.ts">
                     <svg><use href="#file" /></svg>work-view.ts
-                  </div>
-                  <div class="tree-row indent3">
+                  </button>
+                  <button class="tree-row indent3" data-nav-entry data-nav-search="apps/web/src/work-view.ts alias" data-action="open-prototype-file" data-file-view="file" data-canonical-path="apps/web/src/../src/work-view.ts" title="Canonical path resolves to the open work-view.ts view">
+                    <svg><use href="#file" /></svg>work-view.ts alias
+                  </button>
+                  <button class="tree-row indent3" data-nav-entry data-nav-search="apps/web/src/workspace.ts">
                     <svg><use href="#file" /></svg>workspace.ts
-                  </div>
-                  <div class="tree-row indent2">
+                  </button>
+                  <button class="tree-row indent2" data-nav-entry data-nav-search="apps/web/public">
                     <svg><use href="#folder" /></svg>public
-                  </div>
-                  <div class="tree-row">
+                  </button>
+                  <button class="tree-row" data-nav-entry data-nav-search="docs">
                     <svg><use href="#folder" /></svg>docs
-                  </div>
-                  <div class="tree-row">
+                  </button>
+                  <button class="tree-row" data-nav-entry data-nav-search="context.md" data-action="open-prototype-file" data-file-view="file-context" data-canonical-path="CONTEXT.md">
                     <svg><use href="#file" /></svg>CONTEXT.md
-                  </div>
-                  <div class="tree-row">
+                  </button>
+                  <button class="tree-row" data-nav-entry data-nav-search="package.json">
                     <svg><use href="#file" /></svg>package.json
+                  </button>
+                  <div class="navigator-empty" data-navigator-empty hidden>
+                    No matching files
                   </div>
                 </div>
               </aside>
@@ -4227,6 +4590,21 @@ Should this reuse an existing browser when the view reference is still available
         </button>
       </div>
     </dialog>
+    <dialog
+      id="file-delete-dialog"
+      class="prototype-dialog mobile-close-dialog"
+      aria-labelledby="file-delete-title"
+    >
+      <h2 id="file-delete-title">Delete work-view.ts?</h2>
+      <p>
+        The file will be removed from this workspace. The File view stays open
+        as unavailable until you close it or the file returns.
+      </p>
+      <div class="mobile-close-actions">
+        <button class="secondary-button" data-action="close-dialog">Cancel</button>
+        <button class="confirm-close" data-action="confirm-file-delete">Delete file</button>
+      </div>
+    </dialog>
     <button
       class="note"
       data-action="reset-interaction-state"
@@ -4241,6 +4619,7 @@ Should this reuse an existing browser when the view reference is still available
       <button data-action="simulate-workspace-ready">New ready event</button>
       <button data-action="preview-workspace-loading">Loading state</button>
     </nav>
-    <script src="prototype.js"></script>
+    <script src="prototype.js?v=8"></script>
+    <script type="module" src="file-view-prototype.js?v=7"></script>
   </body>
 </html>

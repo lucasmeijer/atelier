@@ -1,12 +1,18 @@
 // Settled prototype: Open views is the sole mobile navigation model.
-const prototypeStateKey = "atelier-dark-foundation-desktop-v3";
+const prototypeStateKey = "atelier-dark-foundation-desktop-v4";
 history.scrollRestoration = "manual";
 window.scrollTo(0, 0);
 const prototypeUrl = new URL(location.href);
 prototypeUrl.searchParams.delete("mobile-nav");
 prototypeUrl.searchParams.delete("agent-tabs");
 history.replaceState(null, "", prototypeUrl);
-const defaultViewOrder = ["file", "browser", "changes", "terminal"];
+const defaultViewOrder = [
+  "file",
+  "file-context",
+  "browser",
+  "changes",
+  "terminal",
+];
 const defaultExpandedProjects = {
   atelier: true,
   fastpaperwork: false,
@@ -22,15 +28,17 @@ const workspaceTrigger = document.querySelector(".sidebar-trigger");
 const workspaceScroll = document.querySelector("[data-workspace-scroll]");
 const workspaceTree = document.querySelector("[data-workspace-tree]");
 const workTrigger = document.querySelector(".work-trigger");
-const documentViewIds = ["file", "browser", "terminal"];
+const documentViewIds = ["file", "file-context", "browser", "terminal"];
 const mobileViewDetails = {
   file: { label: "work-view.ts", icon: "file" },
+  "file-context": { label: "CONTEXT.md", icon: "file" },
   browser: { label: "Preview", icon: "browser" },
   changes: { label: "Changes", icon: "git" },
   terminal: { label: "Terminal", icon: "terminal" },
 };
 const mobileIndicators = new Set(["browser", "changes"]);
 let pendingMobileCloseView = null;
+const readOnlyPrototypeFiles = new Set();
 let conversationState = {
   multiple: false,
   active: "primary",
@@ -478,13 +486,15 @@ function setWorkOpen(open, { focusPane = false } = {}) {
 }
 
 function syncDrawer() {
-  const supportsDrawer = ["file", "changes"].includes(interaction.activeView);
+  const supportsDrawer = ["file", "file-context", "changes"].includes(
+    interaction.activeView,
+  );
   document.body.classList.toggle(
     "tree-open",
     supportsDrawer && interaction.drawers[interaction.activeView],
   );
   document.querySelector("[data-nav-title]").textContent =
-    interaction.activeView === "changes" ? "Changed files" : "Files";
+    interaction.activeView === "changes" ? "Changed files" : "File navigator";
 }
 
 function activateView(view, { focusTab = false, revealWork = true } = {}) {
@@ -801,6 +811,46 @@ document
     if (results.length > 0) selectSearchResult(0);
   });
 
+const navigatorFilter = document.querySelector("[data-navigator-filter]");
+
+function filterNavigator(query) {
+  const normalized = query.trim().toLowerCase();
+  const entries = [...document.querySelectorAll("[data-nav-entry]")];
+  const matches = normalized
+    ? entries.filter((entry) => entry.dataset.navSearch.includes(normalized))
+    : entries;
+  entries.forEach((entry) => {
+    entry.hidden =
+      normalized.length > 0 &&
+      !matches.some(
+        (match) =>
+          match === entry ||
+          match.dataset.navSearch.startsWith(`${entry.dataset.navSearch}/`),
+      );
+  });
+  const visibleFiles = entries.filter(
+    (entry) =>
+      !entry.hidden && entry.querySelector('use[href="#file"]'),
+  ).length;
+  document.querySelector("[data-navigator-empty]").hidden = matches.length > 0;
+  if (normalized) {
+    updateStateNote(
+      `${visibleFiles} matching ${visibleFiles === 1 ? "file" : "files"} · parent folders retained`,
+    );
+  }
+}
+
+navigatorFilter.addEventListener("input", (event) => {
+  filterNavigator(event.target.value);
+});
+
+navigatorFilter.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !event.currentTarget.value) return;
+  event.stopPropagation();
+  event.currentTarget.value = "";
+  filterNavigator("");
+});
+
 workspaceScroll.addEventListener("scroll", () => {
   if (document.body.classList.contains("workspace-list-loading")) return;
   interaction.sidebarScroll = workspaceScroll.scrollTop;
@@ -816,6 +866,75 @@ document.querySelectorAll(".prototype-dialog").forEach((dialog) => {
 document.addEventListener("click", (event) => {
   const control = event.target.closest("button, [data-action]");
   if (!control) return;
+  if (control.dataset.fileAction) {
+    const file = control.dataset.fileId || "file";
+    const status = document.querySelector(`[data-file-status="${file}"]`);
+    const action = control.dataset.fileAction;
+    if (action === "save-error") {
+      status.textContent = "Couldn’t save";
+      status.className = "file-editor-status is-error";
+      document.querySelector(`[data-file-editor="${file}"] .cm-content`)?.focus();
+    }
+    if (action === "external-change") {
+      status.textContent = "Updated from disk";
+      status.className = "file-editor-status is-saved";
+      updateStateNote(`${file} refreshed after an agent changed it on disk`);
+    }
+    if (action === "force-conflict") {
+      status.textContent = "Conflict";
+      status.className = "file-editor-status is-conflict";
+      document.querySelector(`[data-file-conflict="${file}"]`).showModal();
+    }
+    if (["use-mine", "use-theirs"].includes(action)) {
+      document.querySelector(`[data-file-conflict="${file}"]`).close();
+      status.textContent = action === "use-mine" ? "Saved mine" : "Using disk version";
+      status.className = "file-editor-status is-saved";
+      updateStateNote(action === "use-mine" ? "Local version kept and saved" : "Disk version loaded explicitly");
+    }
+    if (action === "read-only") {
+      const readOnly = !readOnlyPrototypeFiles.has(file);
+      if (readOnly) readOnlyPrototypeFiles.add(file);
+      else readOnlyPrototypeFiles.delete(file);
+      document
+        .querySelector(`[data-file-editor="${file}"] .cm-content`)
+        ?.setAttribute("contenteditable", String(!readOnly));
+      control.textContent = readOnly ? "Make writable" : "Read only";
+      control.classList.toggle("active", readOnly);
+      status.textContent = readOnly ? "Read only" : "Saved";
+      status.className = readOnly
+        ? "file-editor-status is-readonly"
+        : "file-editor-status is-saved";
+    }
+    if (action === "jump") {
+      const line = Number(control.dataset.line);
+      const column = Number(control.dataset.column);
+      const target = document.querySelectorAll(
+        `[data-file-editor="${file}"] .cm-line`,
+      )[line - 1];
+      target?.scrollIntoView({ block: "center" });
+      document.querySelector(`[data-file-location="${file}"]`).textContent =
+        `Ln ${line}, Col ${column}`;
+      document.querySelector(`[data-file-editor="${file}"] .cm-content`)?.focus();
+      updateStateNote(`${file} revealed at line ${line}, column ${column}`);
+    }
+    if (action === "refresh") {
+      status.textContent = "Checking disk…";
+      status.className = "file-editor-status is-saving";
+      window.setTimeout(() => {
+        status.textContent = "Up to date";
+        status.className = "file-editor-status is-saved";
+      }, 500);
+    }
+    if (action === "toggle-preview") {
+      const host = document.querySelector(`[data-file-editor="${file}"]`);
+      const preview = document.querySelector(`[data-markdown-preview="${file}"]`);
+      const show = preview.hidden;
+      host.hidden = show;
+      preview.hidden = !show;
+      control.textContent = show ? "Raw" : "Preview";
+      control.setAttribute("aria-pressed", String(show));
+    }
+  }
   if (!control.closest(".workspace-title-actions")) {
     workspaceActions.hidden = true;
     document
@@ -889,7 +1008,7 @@ document.addEventListener("click", (event) => {
     location.reload();
   }
   if (control.dataset.action === "toggle-tree") {
-    if (["file", "changes"].includes(interaction.activeView)) {
+    if (["file", "file-context", "changes"].includes(interaction.activeView)) {
       interaction.drawers[interaction.activeView] =
         !interaction.drawers[interaction.activeView];
       syncDrawer();
@@ -987,6 +1106,57 @@ document.addEventListener("click", (event) => {
   }
   if (control.dataset.action === "remove-comment-attachment") {
     document.querySelector("[data-comment-attachment]").hidden = true;
+  }
+  if (control.dataset.action === "attach-agent-file") {
+    const attachment = document.querySelector("[data-agent-attachment]");
+    attachment.hidden = false;
+    const textarea = control.closest(".composer").querySelector("textarea");
+    textarea.value =
+      "Review the file at /tmp/atelier-uploads/reference.pdf";
+    textarea.focus();
+    updateStateNote("Attachment added · prompt receives its workspace path only");
+  }
+  if (control.dataset.action === "remove-agent-attachment") {
+    control.closest("[data-agent-attachment]").hidden = true;
+    updateStateNote("Attachment removed before sending");
+  }
+  if (control.dataset.action === "open-prototype-file") {
+    const view = control.dataset.fileView;
+    activateView(view);
+    if (isMobile()) showMobilePane("work");
+    updateStateNote(
+      `${control.dataset.canonicalPath} · revealed existing canonical File view`,
+    );
+  }
+  if (control.dataset.action === "navigator-refresh") {
+    document
+      .querySelector(
+        `[data-view-panel="${interaction.activeView}"] [data-file-action="refresh"]`,
+      )
+      ?.click();
+    updateStateNote("File navigator refreshed");
+  }
+  if (control.dataset.action === "navigator-download") {
+    updateStateNote(`${interaction.activeView} · download prepared`);
+  }
+  if (control.dataset.action === "navigator-copy-url") {
+    navigator.clipboard
+      .writeText(`atelier://workspace/redesign-tabs/${interaction.activeView}`)
+      .then(() => updateStateNote("File URL copied"));
+  }
+  if (control.dataset.action === "navigator-delete") {
+    document.querySelector("#file-delete-dialog").showModal();
+  }
+  if (control.dataset.action === "confirm-file-delete") {
+    document.querySelector("#file-delete-dialog").close();
+    const status = document.querySelector(
+      `[data-file-status="${interaction.activeView}"]`,
+    );
+    if (status) {
+      status.textContent = "Unavailable";
+      status.className = "file-editor-status is-error";
+    }
+    updateStateNote("File deleted · open File view is now unavailable");
   }
   if (control.matches("[data-search-result]")) {
     if (control.dataset.workspace) activateWorkspace(control.dataset.workspace);

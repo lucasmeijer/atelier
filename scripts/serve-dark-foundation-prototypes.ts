@@ -23,6 +23,21 @@ Bun.serve({
   hostname: "127.0.0.1",
   port,
   async fetch(request) {
+    if (new URL(request.url).pathname === "/file-view-prototype.js") {
+      const build = await Bun.build({
+        entrypoints: [
+          resolve(root, "../../../../packages/editor/prototypes/file-view-prototype.ts"),
+        ],
+        target: "browser",
+        minify: false,
+      });
+      return new Response(build.outputs[0], {
+        headers: {
+          "content-type": "text/javascript; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      });
+    }
     const route = files.get(new URL(request.url).pathname);
     if (!route) return new Response("not found", { status: 404 });
     return new Response(Bun.file(resolve(root, route[0])), {
