@@ -523,7 +523,7 @@ summary > .agent-tool-head { width: 100%; }
 .agent-source-region, .agent-bash-command, .agent-bash-output { margin: 0; padding: 0; }
 .agent-bash-command { border-bottom: 1px solid color-mix(in srgb, var(--text) 15%, transparent); }
 .agent-tool-detail .agent-tool-code { margin: 0; padding: 9px 10px; max-height: 330px; overflow: auto; border: 0; border-radius: 0; white-space: pre; color: var(--text); background: color-mix(in srgb, var(--bg) 72%, #000 8%); }
-.agent-bash-command .agent-tool-code { max-height: none; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agent-bash-command .agent-tool-code { max-height: none; overflow: visible; white-space: pre-wrap; overflow-wrap: anywhere; }
 .agent-terminal-viewport { overflow: auto; background: color-mix(in srgb, var(--bg) 70%, #000 7%); }
 .agent-tool-term { width: max-content; min-width: calc(120ch + 20px); min-height: calc(30 * 1.45em + 18px); padding: 0; background: color-mix(in srgb, var(--bg) 52%, #000 15%); }
 .agent-terminal-awaiting-output { visibility: hidden; min-height: 0; height: 0; }
