@@ -443,7 +443,7 @@ pull_atelier_images() {
 }
 
 configure_workspace_resource_controls() {
-  local controllers total_memory_kib total_memory_bytes workspace_memory_bytes cpu_count workspace_cpu_quota slice_path cgroup_driver cpu_quota cpu_period
+  local controllers total_memory_kib total_memory_bytes workspace_memory_bytes cpu_count workspace_cpu_quota slice_path slice_cgroup cgroup_driver cpu_quota cpu_period
 
   if [ ! -f /sys/fs/cgroup/cgroup.controllers ]; then
     fail "Atelier requires cgroup v2 for workspace resource isolation; this host appears to use cgroup v1"
@@ -484,11 +484,12 @@ TasksMax=32768
 EOF
   systemctl daemon-reload
   systemctl start "$atelier_workspace_slice"
+  slice_cgroup="/sys/fs/cgroup$(systemctl show -p ControlGroup --value "$atelier_workspace_slice")"
 
-  [ "$(cat "/sys/fs/cgroup/$atelier_workspace_slice/memory.max")" = "$workspace_memory_bytes" ] || fail "could not apply the workspace memory limit"
-  [ "$(cat "/sys/fs/cgroup/$atelier_workspace_slice/memory.swap.max")" = 0 ] || fail "could not disable workspace swap"
-  [ "$(cat "/sys/fs/cgroup/$atelier_workspace_slice/pids.max")" = 32768 ] || fail "could not apply the workspace task limit"
-  read -r cpu_quota cpu_period < "/sys/fs/cgroup/$atelier_workspace_slice/cpu.max"
+  [ "$(cat "$slice_cgroup/memory.max")" = "$workspace_memory_bytes" ] || fail "could not apply the workspace memory limit"
+  [ "$(cat "$slice_cgroup/memory.swap.max")" = 0 ] || fail "could not disable workspace swap"
+  [ "$(cat "$slice_cgroup/pids.max")" = 32768 ] || fail "could not apply the workspace task limit"
+  read -r cpu_quota cpu_period < "$slice_cgroup/cpu.max"
   [ "$cpu_quota" != max ] && [ $((100 * cpu_quota)) -eq $((workspace_cpu_quota * cpu_period)) ] || fail "could not apply the workspace CPU quota"
   success "Workspace resource pool is limited to $((workspace_memory_bytes / 1024 / 1024)) MiB and $((cpu_count - 1)) CPU(s)"
 }
