@@ -1,10 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { renderAgentComposer, renderAgentPane, renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../src/server/render.ts";
 import type { ToolView, TranscriptItem } from "../../src/server/transcript.ts";
+import { parseStreamingToolInput, parseToolInput, parseToolResultDetails } from "../../src/server/tool-domain.ts";
 
 const ctx: AgentRenderContext = { workspaceId: "ws", label: "agent" };
-const tool = (overrides: Partial<ToolView>): ToolView => ({ callId: "call", name: "read", args: {}, status: "ok", ...overrides });
-const renderBash = (command: string, overrides: Partial<ToolView> = {}): string => renderTranscriptItemDetailFrame(ctx, { type: "tool", key: "bash", tool: tool({ name: "bash", args: { command }, ...overrides }) });
+type ToolOverrides = Partial<Omit<ToolView, "input" | "resultDetails">> & { name?: string; args?: unknown; details?: unknown };
+const tool = ({ name = "read", args = {}, details, argsStream, ...overrides }: ToolOverrides): ToolView => ({
+  callId: "call",
+  input: argsStream === undefined ? parseToolInput(name, args) : parseStreamingToolInput(name, argsStream),
+  resultDetails: details === undefined ? undefined : parseToolResultDetails(name, details),
+  status: "ok",
+  argsStream,
+  ...overrides,
+});
+const renderBash = (command: string, overrides: ToolOverrides = {}): string => renderTranscriptItemDetailFrame(ctx, { type: "tool", key: "bash", tool: tool({ name: "bash", args: { command }, ...overrides }) });
 
 describe("flat transcript rendering", () => {
   test("server-rendered panes expose their snapshot cursor", async () => {

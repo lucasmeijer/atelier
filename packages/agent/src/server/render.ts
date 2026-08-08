@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel, type ModelRef } from "./model-state.ts";
-import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
+import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine } from "./diff.ts";
 import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded-code.ts";
 import { highlightCodeHtmlForPath, renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdown";
 import { domId, escapeHtml } from "./html.ts";
@@ -14,6 +14,7 @@ import {
   type SessionImageRef,
   type ToolView,
 } from "./transcript.ts";
+import type { BashToolInput, EditToolInput, GenericToolInput, ReadToolInput, WriteToolInput } from "./tool-domain.ts";
 
 export interface AgentRenderContext {
   workspaceId: string;
@@ -370,7 +371,7 @@ function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images
 
 function rewindHtml(ctx: AgentRenderContext, item: TranscriptItem): string {
   if (!item.rewindEntryId) return "";
-  const preview = item.type === "user" || item.type === "text" || item.type === "thinking" || item.type === "note" ? item.text : item.type === "tool" ? item.tool.name : "this point";
+  const preview = item.type === "user" || item.type === "text" || item.type === "thinking" || item.type === "note" ? item.text : item.type === "tool" ? item.tool.input.name : "this point";
   return `<div class="agent-rewind-zone"><button class="agent-rewind-btn" type="button" data-action="agent-pane#openRewind" data-entry-id="${escapeHtml(item.rewindEntryId)}" data-user-text="${escapeHtml(preview)}" title="Rewind to here">⟲ Rewind to here</button></div>`;
 }
 
@@ -420,54 +421,47 @@ function summaryHtml(parts: Array<string | undefined>): string {
   return parts.filter(Boolean).map((part) => escapeHtml(part!)).join(" · ");
 }
 
-function bashSummary(tool: ToolView): string {
-  const details = bashDetails(tool);
-  const timeout = tool.timeoutSeconds ?? numberArg(toolArgs(tool), "timeout") ?? 600;
+function bashSummary(tool: ToolView, input: Extract<ToolView["input"], { kind: "bash" }>): string {
+  const details = tool.resultDetails;
+  const timeout = input.timeoutSeconds;
   if (tool.status === "running") return "";
   const duration = tool.durationMs === undefined ? "" : `${formatDuration(tool.durationMs)} / ${formatDuration(timeout * 1000)}`;
-  const outcome = details?.timedOut === true ? "timed out" : details?.aborted === true ? "aborted" : typeof details?.exitCode === "number" ? `exitcode ${details.exitCode}` : "";
+  const outcome = details?.timedOut ? "timed out" : details?.aborted ? "aborted" : details?.exitCode !== undefined ? `exitcode ${details.exitCode}` : "";
   return [summaryHtml([duration, outcome]), tokenSummary(tool, "up")].filter(Boolean).join(" · ");
 }
 
 function toolSummaryHtml(tool: ToolView): string {
-  if (tool.name === "bash") return bashSummary(tool);
-  if (tool.name === "read") {
+  const input = tool.input;
+  if (input.kind === "bash") return bashSummary(tool, input);
+  if (input.kind === "read") {
     const image = tool.resultImages?.[0];
     const imageMeta = image ? [image.width && image.height ? `${image.width}×${image.height}` : "", image.mimeType ?? ""].filter(Boolean).join(" · ") : "";
-    return [summaryHtml([pathSummary(tool, formatReadRange(toolArgs(tool))), imageMeta]), image ? "" : tokenSummary(tool, "up")].filter(Boolean).join(" · ");
+    return [summaryHtml([pathSummary(input.path, formatReadRange(input)), imageMeta]), image ? "" : tokenSummary(tool, "up")].filter(Boolean).join(" · ");
   }
-  if (tool.name === "write") return [summaryHtml([pathSummary(tool)]), tokenSummary(tool, "down")].filter(Boolean).join(" · ");
-  if (tool.name === "edit") {
-    const operations = getEditOperations(toolArgs(tool));
-    const stats = diffStats(operations);
-    const editCount = operations.length ? `${operations.length} ${operations.length === 1 ? "edit" : "edits"}` : "";
-    const changes = operations.length ? `+${stats.added} −${stats.deleted}` : "";
-    return [summaryHtml([pathSummary(tool), editCount, changes]), tokenSummary(tool, "down")].filter(Boolean).join(" · ");
+  if (input.kind === "write") return [summaryHtml([pathSummary(input.path)]), tokenSummary(tool, "down")].filter(Boolean).join(" · ");
+  if (input.kind === "edit") {
+    const stats = diffStats(input.operations);
+    const editCount = input.operations.length ? `${input.operations.length} ${input.operations.length === 1 ? "edit" : "edits"}` : "";
+    const changes = input.operations.length ? `+${stats.added} −${stats.deleted}` : "";
+    return [summaryHtml([pathSummary(input.path), editCount, changes]), tokenSummary(tool, "down")].filter(Boolean).join(" · ");
   }
-  return escapeHtml(genericToolSummary(tool));
+  return escapeHtml(genericToolSummary(input));
 }
 
 function runningElapsedHtml(tool: ToolView): string {
-  if (!tool.startedAt) return "";
-  return `<span class="agent-tool-elapsed agent-duration-slot" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}"${tool.timeoutSeconds ? ` data-agent-elapsed-max-value="${tool.timeoutSeconds}"` : ""}><span data-agent-elapsed-target="time">0s</span></span>`;
-}
-
-function toolForRender(original: ToolView): ToolView {
-  return original.status === "streaming" && original.argsStream
-    ? { ...original, args: parseKnownStreamedArgs(original.name, original.argsStream) }
-    : original;
+  if (!tool.startedAt || tool.input.kind !== "bash") return "";
+  return `<span class="agent-tool-elapsed agent-duration-slot" data-controller="agent-elapsed" data-agent-elapsed-since-value="${tool.startedAt}" data-agent-elapsed-max-value="${tool.input.timeoutSeconds}"><span data-agent-elapsed-target="time">0s</span></span>`;
 }
 
 function toolSummaryContentHtml(tool: ToolView): string {
   const summary = toolSummaryHtml(tool);
-  return `<code class="agent-tool-name">${escapeHtml(tool.name || "tool")}</code>${summary ? `<span class="agent-tool-sep">·</span><span class="agent-tool-args${tool.status === "error" ? " error" : ""}">${summary}</span>` : ""}${tool.status === "running" && tool.name === "bash" ? `<span class="agent-tool-sep">·</span>${runningElapsedHtml(tool)}` : ""}`;
+  return `<code class="agent-tool-name">${escapeHtml(tool.input.name || "tool")}</code>${summary ? `<span class="agent-tool-sep">·</span><span class="agent-tool-args${tool.status === "error" ? " error" : ""}">${summary}</span>` : ""}${tool.status === "running" && tool.input.kind === "bash" ? `<span class="agent-tool-sep">·</span>${runningElapsedHtml(tool)}` : ""}`;
 }
 
-export function renderActiveToolContent(ctx: AgentRenderContext, key: string, original: ToolView): { summary: string; detail?: string } {
-  const tool = toolForRender(original);
+export function renderActiveToolContent(ctx: AgentRenderContext, key: string, tool: ToolView): { summary: string; detail?: string } {
   return {
     summary: toolSummaryContentHtml(tool),
-    detail: tool.name === "edit" ? undefined : renderToolDetail(ctx, key, tool, 100),
+    detail: tool.input.kind === "edit" ? undefined : renderToolDetail(ctx, key, tool, 100),
   };
 }
 
@@ -476,23 +470,22 @@ function toolSummaryCardHtml(ctx: AgentRenderContext, key: string, tool: ToolVie
 }
 
 export function renderToolSummary(ctx: AgentRenderContext, key: string, tool: ToolView): string {
-  return toolSummaryCardHtml(ctx, key, toolForRender(tool));
+  return toolSummaryCardHtml(ctx, key, tool);
 }
 
 function tailFrameAttributes(ctx: AgentRenderContext, key: string): string {
   return `id="${ids.detailFrame(ctx, key)}" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded"`;
 }
 
-function renderToolCard(ctx: AgentRenderContext, key: string, original: ToolView, options: { open?: boolean; live?: boolean } = {}): string {
-  const tool = toolForRender(original);
+function renderToolCard(ctx: AgentRenderContext, key: string, tool: ToolView, options: { open?: boolean; live?: boolean } = {}): string {
   const summary = toolSummaryCardHtml(ctx, key, tool);
   const active = tool.status === "streaming" || tool.status === "running";
-  if (active && tool.name === "edit") return `<div class="agent-tool agent-tool-summary-only ${toolClass(tool.name)}">${summary}</div>`;
+  if (active && tool.input.kind === "edit") return `<div class="agent-tool agent-tool-summary-only ${toolClass(tool.input.name)}">${summary}</div>`;
   const open = Boolean(options.open || active);
   if (!options.live && !active) {
-    return `<details class="agent-tool ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load"><summary>${summary}</summary><turbo-frame ${tailFrameAttributes(ctx, key)} data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame></details>`;
+    return `<details class="agent-tool ${toolClass(tool.input.name)}${tool.status === "error" ? " error" : ""}" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load"><summary>${summary}</summary><turbo-frame ${tailFrameAttributes(ctx, key)} data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame></details>`;
   }
-  return `<details class="agent-tool ${toolClass(tool.name)}${active ? " active" : ""}${tool.status === "error" ? " error" : ""}"${open ? " open" : ""}><summary>${summary}</summary><turbo-frame ${tailFrameAttributes(ctx, key)} class="agent-tool-detail-host">${renderToolDetail(ctx, key, tool, 100)}</turbo-frame></details>`;
+  return `<details class="agent-tool ${toolClass(tool.input.name)}${active ? " active" : ""}${tool.status === "error" ? " error" : ""}"${open ? " open" : ""}><summary>${summary}</summary><turbo-frame ${tailFrameAttributes(ctx, key)} class="agent-tool-detail-host">${renderToolDetail(ctx, key, tool, 100)}</turbo-frame></details>`;
 }
 
 function detailFullscreen(title: string, html: string): string {
@@ -525,8 +518,7 @@ function tailOutput(content: string, pagination: string, direction: "first" | "l
 }
 
 function bashViews(tool: ToolView, count: number): { display: string; model: string; same: boolean; resultWindow: { text: string; hidden: number }; modelWindow: { text: string; hidden: number } } {
-  const details = bashDetails(tool);
-  const display = typeof details?.displayAnsi === "string" ? details.displayAnsi.trimEnd() : "";
+  const display = tool.resultDetails?.displayAnsi?.trimEnd() ?? "";
   const model = trimResult(tool);
   return { display, model, same: !display || display === model, resultWindow: textWindow(display || model || "(no output)", "last", count), modelWindow: textWindow(model || "(no output)", "last", count) };
 }
@@ -575,9 +567,8 @@ function renderBashCommand(key: string, command: string): string {
   return `<section class="agent-bash-command">${comparisonTabs(group, "COMMAND")}<div class="agent-region-pane region-primary-pane">${fullscreenSourceRegion("COMMAND", commandBody, commandBody)}</div><div class="agent-region-pane region-model-pane">${fullscreenSourceRegion("AS SEEN BY MODEL", modelBody, modelBody)}</div></section>`;
 }
 
-function renderBashDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
-  const command = stringArg(toolArgs(tool), "command") ?? "";
-  const commandHtml = renderBashCommand(key, command);
+function renderBashDetail(ctx: AgentRenderContext, key: string, tool: ToolView, input: BashToolInput, count: number): string {
+  const commandHtml = renderBashCommand(key, input.command);
   if (tool.status === "streaming") return `<div class="agent-tool-detail">${commandHtml}</div>`;
   if (tool.status === "running") {
     const terminal = tool.tmuxSession && tool.terminalVisible ? `<section class="agent-bash-output agent-observed-bash"><div id="${ids.itemCompletionTabs(ctx, key)}" class="agent-region-title">LIVE TERMINAL</div><div class="agent-terminal-viewport agent-observed-live"><div class="agent-tool-term agent-terminal-awaiting-output observable-terminal-host" data-controller="agent-term" data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}" data-agent-term-label-value="${escapeHtml(ctx.label)}" data-agent-term-session-value="${escapeHtml(tool.tmuxSession)}"></div></div><div id="${ids.itemCompletion(ctx, key)}"></div></section>` : "";
@@ -590,37 +581,32 @@ function fullscreenSourceRegion(title: string, inlineHtml: string, fullHtml: str
   return `<div class="agent-detail-fullscreen"${fullscreenAttributes(title)}>${inlineHtml}<template data-atelier-fullscreen-target="content">${fullHtml}</template></div>`;
 }
 
-function renderReadDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
+function renderReadDetail(ctx: AgentRenderContext, key: string, tool: ToolView, input: ReadToolInput, count: number): string {
   const images = toolResultImagesHtml(ctx, tool);
   const result = trimResult(tool);
   if (images) return `<div class="agent-tool-detail">${detailFullscreen("READ RESULT", `${images}${result ? `<pre class="agent-tool-note">${escapeHtml(result)}</pre>` : ""}`)}</div>`;
   const window = textWindow(result, "first", count);
-  const path = stringArg(toolArgs(tool), "path", "file_path");
-  const shown = tailOutput(codeBlockHtml(window.text, path), moreLink(ctx, key, count, window.hidden, "first"), "first");
-  return `<div class="agent-tool-detail">${fullscreenSourceRegion("READ RESULT", shown, codeBlockHtml(result, path))}</div>`;
+  const shown = tailOutput(codeBlockHtml(window.text, input.path), moreLink(ctx, key, count, window.hidden, "first"), "first");
+  return `<div class="agent-tool-detail">${fullscreenSourceRegion("READ RESULT", shown, codeBlockHtml(result, input.path))}</div>`;
 }
 
-function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
-  const args = toolArgs(tool);
-  const content = stringArg(args, "content") ?? "";
-  const path = stringArg(args, "path", "file_path");
-  const shown = tool.status === "streaming" || tool.status === "running" ? { text: content, hidden: 0 } : textWindow(content, "first", count);
-  const preview = tailOutput(codeBlockHtml(shown.text, path), moreLink(ctx, key, count, shown.hidden, "first"), "first");
+function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView, input: WriteToolInput, count: number): string {
+  const shown = tool.status === "streaming" || tool.status === "running" ? { text: input.content, hidden: 0 } : textWindow(input.content, "first", count);
+  const preview = tailOutput(codeBlockHtml(shown.text, input.path), moreLink(ctx, key, count, shown.hidden, "first"), "first");
   const error = tool.status === "error" && tool.resultText ? `<pre class="agent-tool-error-output">${escapeHtml(trimResult(tool))}</pre>` : "";
-  return `<div class="agent-tool-detail">${fullscreenSourceRegion(path || "WRITE", preview, codeBlockHtml(content, path))}${error}</div>`;
+  return `<div class="agent-tool-detail">${fullscreenSourceRegion(input.path || "WRITE", preview, codeBlockHtml(input.content, input.path))}${error}</div>`;
 }
 
-function editHunksForDisplay(tool: ToolView, contextual: boolean): DiffDisplayLine[][] {
-  const details = tool.details && typeof tool.details === "object" ? tool.details as Record<string, unknown> : undefined;
-  const patch = typeof details?.patch === "string" ? parseUnifiedPatchHunks(details.patch) : [];
+function editHunksForDisplay(tool: ToolView, input: EditToolInput, contextual: boolean): DiffDisplayLine[][] {
+  const patchText = tool.resultDetails?.patch;
+  const patch = patchText ? parseUnifiedPatchHunks(patchText) : [];
   if (patch.length) return patch;
   const contextLines = contextual ? 3 : Number.POSITIVE_INFINITY;
-  return getEditOperations(toolArgs(tool)).map((operation) => contextualDiffLines(operation, contextLines));
+  return input.operations.map((operation) => contextualDiffLines(operation, contextLines));
 }
 
-function highlightedEditHtml(tool: ToolView, contextual: boolean): string {
-  const path = stringArg(toolArgs(tool), "path", "file_path");
-  return editHunksForDisplay(tool, contextual).map((hunk) => {
+function highlightedEditHtml(tool: ToolView, input: EditToolInput, contextual: boolean): string {
+  return editHunksForDisplay(tool, input, contextual).map((hunk) => {
     const groups: DiffDisplayLine[][] = [];
     for (const line of hunk) {
       const group = groups.at(-1);
@@ -629,32 +615,33 @@ function highlightedEditHtml(tool: ToolView, contextual: boolean): string {
     }
     const html = groups.map((group) => {
       const code = group.map((line) => line.text).join("\n");
-      return `<pre class="agent-edit-lines ${group[0]!.kind}"><code>${highlightCodeHtmlForPath(code, path).html}</code></pre>`;
+      return `<pre class="agent-edit-lines ${group[0]!.kind}"><code>${highlightCodeHtmlForPath(code, input.path).html}</code></pre>`;
     }).join("");
     return `<div class="agent-edit-operation">${html}</div>`;
   }).join("");
 }
 
-function renderEditDetail(tool: ToolView): string {
-  const preview = highlightedEditHtml(tool, true) || genericParamsHtml(tool);
-  const full = highlightedEditHtml(tool, false) || genericParamsHtml(tool);
+function renderEditDetail(tool: ToolView, input: EditToolInput): string {
+  const preview = highlightedEditHtml(tool, input, true);
+  const full = highlightedEditHtml(tool, input, false);
   const edits = fullscreenSourceRegion("EDIT", `<div class="agent-edit-details">${preview}</div>`, `<div class="agent-edit-details">${full}</div>`);
   const error = tool.status === "error" && tool.resultText ? `<pre class="agent-tool-error-output">${escapeHtml(trimResult(tool))}</pre>` : "";
   return `<div class="agent-tool-detail">${edits}${error}</div>`;
 }
 
-function renderGenericDetail(ctx: AgentRenderContext, tool: ToolView): string {
-  const html = `${genericParamsHtml(tool)}${genericResultHtml(ctx, tool)}`;
-  return `<div class="agent-tool-detail">${detailFullscreen(tool.name, html)}</div>`;
+function renderGenericDetail(ctx: AgentRenderContext, tool: ToolView, input: GenericToolInput): string {
+  const html = `${genericParamsHtml(input)}${genericResultHtml(ctx, tool)}`;
+  return `<div class="agent-tool-detail">${detailFullscreen(input.name, html)}</div>`;
 }
 
 function renderToolDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
-  if (tool.name === "bash") return renderBashDetail(ctx, key, tool, count);
-  if (tool.name === "read") return renderReadDetail(ctx, key, tool, count);
-  if (tool.name === "write") return renderWriteDetail(ctx, key, tool, count);
-  if (tool.name === "edit") return renderEditDetail(tool);
+  const input = tool.input;
+  if (input.kind === "bash") return renderBashDetail(ctx, key, tool, input, count);
+  if (input.kind === "read") return renderReadDetail(ctx, key, tool, input, count);
+  if (input.kind === "write") return renderWriteDetail(ctx, key, tool, input, count);
+  if (input.kind === "edit") return renderEditDetail(tool, input);
   if (tool.status === "streaming" && tool.argsStream !== undefined) return `<div class="agent-tool-detail">${codeBlockHtml(tool.argsStream, "arguments.json", "agent-tool-code")}</div>`;
-  return renderGenericDetail(ctx, tool);
+  return renderGenericDetail(ctx, tool, input);
 }
 
 function toolClass(name: string): string {
@@ -670,33 +657,24 @@ function fullscreenAttributes(title: string, mode: "template" | "media" = "templ
   return ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="${mode}" data-atelier-fullscreen-title-value="${escapeHtml(title)}"`;
 }
 
-function toolArgs(tool: ToolView): Record<string, unknown> | undefined {
-  return tool.args && typeof tool.args === "object" && !Array.isArray(tool.args) ? tool.args as Record<string, unknown> : undefined;
-}
-
-function stringArg(args: Record<string, unknown> | undefined, ...keys: string[]): string | undefined {
-  for (const key of keys) if (typeof args?.[key] === "string") return args[key] as string;
-  return undefined;
-}
-
-function numberArg(args: Record<string, unknown> | undefined, key: string): number | undefined {
-  const value = args?.[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function formatReadRange(args: Record<string, unknown> | undefined): string {
-  const offset = numberArg(args, "offset");
-  const limit = numberArg(args, "limit");
-  if (offset === undefined && limit === undefined) return "";
-  const start = offset ?? 1;
-  const end = limit !== undefined ? start + limit - 1 : undefined;
+function formatReadRange(input: ReadToolInput): string {
+  if (input.offset === undefined && input.limit === undefined) return "";
+  const start = input.offset ?? 1;
+  const end = input.limit !== undefined ? start + input.limit - 1 : undefined;
   return `:${start}${end !== undefined ? `-${end}` : ""}`;
 }
 
-function pathSummary(tool: ToolView, range = ""): string {
-  const args = toolArgs(tool);
-  const path = stringArg(args, "path", "file_path");
+function pathSummary(path: string | undefined, range = ""): string {
   return path ? `${path}${range}` : "";
+}
+
+function toolPath(input: ToolView["input"]): string | undefined {
+  if (input.kind === "read" || input.kind === "write" || input.kind === "edit") return input.path;
+  if (input.kind === "generic") {
+    const path = input.args?.path ?? input.args?.file_path;
+    return typeof path === "string" ? path : undefined;
+  }
+  return undefined;
 }
 
 function truncateOneLine(text: string, limit: number): string {
@@ -721,7 +699,7 @@ function resultPreHtml(text: string, className = "agent-tool-result"): string {
 function toolResultImagesHtml(ctx: AgentRenderContext, tool: ToolView): string {
   const images = tool.resultImages ?? [];
   if (images.length === 0) return "";
-  const baseTitle = pathSummary(tool) || "image";
+  const baseTitle = pathSummary(toolPath(tool.input)) || "image";
   return `<div class="agent-tool-images">${images.map((image, index) => {
     const title = images.length === 1 ? baseTitle : `${baseTitle} ${index + 1}`;
     return `<img class="agent-media-img agent-tool-image"${fullscreenAttributes(title, "media")} src="${escapeHtml(sessionImageUrl(ctx, image))}" alt="${escapeHtml(title)}" loading="lazy">`;
@@ -851,10 +829,6 @@ function ansiToHtml(text: string): string {
   return html;
 }
 
-function bashDetails(tool: ToolView): Record<string, unknown> | undefined {
-  return tool.details && typeof tool.details === "object" ? tool.details as Record<string, unknown> : undefined;
-}
-
 function hasAnsiSgr(text: string): boolean {
   return /\x1b\[[0-9;?]*m/.test(text);
 }
@@ -880,33 +854,22 @@ function bashOutputHtml(text: string): string {
   return colorizePlainBuildOutput(text);
 }
 
-function getEditOperations(args: Record<string, unknown> | undefined): DiffOperation[] {
-  if (!args) return [];
-  if (Array.isArray(args.edits)) {
-    return args.edits.flatMap((edit) => {
-      if (!edit || typeof edit !== "object") return [];
-      const entry = edit as Record<string, unknown>;
-      return typeof entry.oldText === "string" && typeof entry.newText === "string" ? [{ oldText: entry.oldText, newText: entry.newText }] : [];
-    });
-  }
-  return typeof args.oldText === "string" && typeof args.newText === "string" ? [{ oldText: args.oldText, newText: args.newText }] : [];
-}
-
-function genericToolSummary(tool: ToolView): string {
-  const args = toolArgs(tool);
+function genericToolSummary(input: GenericToolInput): string {
+  const args = input.args;
   if (!args) return "";
-  const direct = stringArg(args, "command", "path", "file_path");
-  if (direct) return truncateOneLine(direct, 120);
+  const direct = args.command ?? args.path ?? args.file_path;
+  if (typeof direct === "string") return truncateOneLine(direct, 120);
   const json = JSON.stringify(args);
   return json && json !== "{}" ? truncateOneLine(json, 120) : "";
 }
 
-function genericParamsHtml(tool: ToolView): string {
-  const args = toolArgs(tool);
+function genericParamsHtml(input: GenericToolInput): string {
+  const args = input.args;
   if (!args) return "";
   const keys = Object.keys(args);
   if (keys.length === 0) return "";
-  if (keys.length === 1 && typeof args[keys[0]] === "string" && genericToolSummary(tool) === args[keys[0]]) return "";
+  const onlyValue = keys.length === 1 ? args[keys[0]!] : undefined;
+  if (typeof onlyValue === "string" && genericToolSummary(input) === onlyValue) return "";
   return codeBlockHtml(JSON.stringify(args, null, 2), "arguments.json", "agent-tool-code");
 }
 
@@ -914,41 +877,6 @@ function genericResultHtml(ctx: AgentRenderContext, tool: ToolView): string {
   const result = trimResult(tool);
   const images = toolResultImagesHtml(ctx, tool);
   return `${resultPreHtml(result)}${images}`;
-}
-
-function partialStringField(stream: string, key: string): string | undefined {
-  const marker = new RegExp(`"${key}"\\s*:\\s*"`).exec(stream);
-  if (!marker) return undefined;
-  const start = marker.index + marker[0].length;
-  let escaped = false;
-  let raw = "";
-  for (let index = start; index < stream.length; index++) {
-    const char = stream[index]!;
-    if (!escaped && char === '"') break;
-    raw += char;
-    if (escaped) escaped = false;
-    else if (char === "\\\\") escaped = true;
-  }
-  if (raw.endsWith("\\\\")) raw = raw.slice(0, -1);
-  try { return JSON.parse(`"${raw}"`) as string; } catch { return raw.replaceAll("\\n", "\n").replaceAll('\\"', '"'); }
-}
-
-function parseKnownStreamedArgs(name: string, stream: string): unknown | undefined {
-  const parsed = parseStreamedArgs(stream);
-  if (parsed) return parsed;
-  if (name === "bash") return { command: partialStringField(stream, "command") ?? "" };
-  if (name === "write") return { path: partialStringField(stream, "path"), content: partialStringField(stream, "content") ?? "" };
-  if (name === "read" || name === "edit") return { path: partialStringField(stream, "path") };
-  return undefined;
-}
-
-function parseStreamedArgs(argsStream: string): unknown | undefined {
-  if (!argsStream.trim()) return undefined;
-  try {
-    return JSON.parse(argsStream);
-  } catch {
-    return undefined;
-  }
 }
 
 // ---------------------------------------------------------------------------

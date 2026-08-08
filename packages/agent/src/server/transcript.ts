@@ -1,5 +1,7 @@
 /** Flat, renderer-friendly transcript model for the pi-backed runtime. */
 
+import { toolResultIndicatesError, type ToolInput, type ToolResultDetails } from "./tool-domain.ts";
+
 export interface ImageRef {
   mimeType: string;
   data: string;
@@ -16,20 +18,20 @@ export interface SessionImageRef {
 type AssistantPart =
   | { type: "thinking"; text: string }
   | { type: "text"; text: string }
-  | { type: "toolCall"; callId: string; name: string; args: unknown };
+  | { type: "toolCall"; callId: string; input: ToolInput };
 
 export type TranscriptRecord =
   | { kind: "user"; id: string; text: string; images: SessionImageRef[]; timestamp: number; rewindable?: boolean }
   | { kind: "assistant"; id: string; parts: AssistantPart[]; stopReason: string; errorMessage?: string; timestamp: number }
-  | { kind: "toolResult"; callId: string; text: string; images: SessionImageRef[]; isError: boolean; timestamp: number; details?: unknown }
+  | { kind: "toolResult"; callId: string; text: string; images: SessionImageRef[]; isError: boolean; timestamp: number; details: ToolResultDetails }
   | { kind: "note"; id?: string; text: string; tone: NoteTone; timestamp?: number };
 
 export type NoteTone = "system" | "summary" | "warning" | "error";
 
 export interface ToolView {
   callId: string;
-  name: string;
-  args: unknown;
+  input: ToolInput;
+  resultDetails?: ToolResultDetails;
   status: "streaming" | "running" | "ok" | "error";
   resultText?: string;
   resultImages?: SessionImageRef[];
@@ -37,10 +39,8 @@ export interface ToolView {
   tmuxSession?: string;
   terminalVisible?: boolean;
   startedAt?: number;
-  timeoutSeconds?: number;
   durationMs?: number;
   tokenCount?: number;
-  details?: unknown;
   /** Timestamp of the assistant entry that issued this call. */
   issuedAt?: number;
 }
@@ -88,7 +88,7 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
           items.push({ type: "text", key: `${record.id}:text:${index}`, rewindEntryId, text: part.text, final: !hasTools && record.stopReason !== "toolUse" });
           first = false;
         } else if (part.type === "toolCall") {
-          const tool: ToolView = { callId: part.callId, name: part.name, args: part.args, status: "ok", issuedAt: record.timestamp };
+          const tool: ToolView = { callId: part.callId, input: part.input, status: "ok", issuedAt: record.timestamp };
           tools.set(part.callId, tool);
           items.push({ type: "tool", key: `tool:${part.callId}`, rewindEntryId, tool });
           first = false;
@@ -104,8 +104,8 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
       if (tool) {
         tool.resultText = record.text;
         if (record.images.length) tool.resultImages = record.images;
-        tool.details = record.details;
-        tool.status = record.isError || toolDetailsIndicateError(record.details) ? "error" : "ok";
+        tool.resultDetails = record.details;
+        tool.status = record.isError || toolResultIndicatesError(record.details) ? "error" : "ok";
         if (tool.issuedAt && record.timestamp) tool.durationMs = Math.max(0, record.timestamp - tool.issuedAt);
       }
       continue;
@@ -120,12 +120,6 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
     });
   }
   return items;
-}
-
-export function toolDetailsIndicateError(details: unknown): boolean {
-  if (!details || typeof details !== "object") return false;
-  const entry = details as Record<string, unknown>;
-  return entry.aborted === true || entry.timedOut === true || (typeof entry.exitCode === "number" && entry.exitCode !== 0);
 }
 
 export function formatTokens(count: number): string {

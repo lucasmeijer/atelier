@@ -37,13 +37,13 @@ import { collectCacheMisses, detectCacheMiss, significantCacheMissNotice, type C
 import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
 import {
   buildTranscript,
-  toolDetailsIndicateError,
   type ImageRef,
   type SessionImageRef,
   type TranscriptItem,
   type ToolView,
   type TranscriptRecord,
 } from "./transcript.ts";
+import { parseStreamingToolInput, parseToolInput, parseToolResultDetails, toolResultIndicatesError } from "./tool-domain.ts";
 
 // ---------------------------------------------------------------------------
 // Public surface
@@ -369,7 +369,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     live.open = undefined;
     const index = live.items.length;
     const key = this.liveKey(live, index, "tool");
-    const tool: ToolView = { callId: key, name, args: undefined, status: "streaming", argsStream: "" };
+    const tool: ToolView = { callId: key, input: parseToolInput(name, undefined), status: "streaming", argsStream: "" };
     const item: TranscriptItem = { type: "tool", key, tool };
     live.items.push(item);
     live.open = { index, kind: "toolargs" };
@@ -383,7 +383,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const item = live.items[live.open.index];
     if (item?.type !== "tool") return;
     item.tool.argsStream = (item.tool.argsStream ?? "") + text;
-    try { item.tool.args = JSON.parse(item.tool.argsStream); } catch { /* partial external JSON */ }
+    item.tool.input = parseStreamingToolInput(item.tool.input.name, item.tool.argsStream);
     this.streamActiveToolContent(item);
   }
 
@@ -395,21 +395,16 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     else {
       index = live.items.length;
       const key = this.liveKey(live, index, "tool");
-      live.items.push({ type: "tool", key, tool: { callId, name, args, status: "running" } });
+      live.items.push({ type: "tool", key, tool: { callId, input: parseToolInput(name, args), status: "running" } });
     }
     live.open = undefined;
     const item = live.items[index];
     if (item?.type !== "tool") return;
     item.tool.callId = callId;
-    item.tool.name = name;
-    item.tool.args = args;
+    item.tool.input = parseToolInput(name, args);
     item.tool.status = "running";
     item.tool.argsStream = undefined;
     item.tool.startedAt = Date.now();
-    if (name === "bash") {
-      const timeout = (args as { timeout?: number } | undefined)?.timeout;
-      item.tool.timeoutSeconds = typeof timeout === "number" && timeout > 0 ? timeout : 600;
-    }
     live.toolIndexByCallId.set(callId, index);
     if (streamedIndex !== undefined) {
       this.streamActiveToolContent(item);
@@ -441,7 +436,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       live.terminalTimers.set(callId, timer);
     }
     if (update.outputText !== undefined) item.tool.resultText = update.outputText;
-    if (update.details !== undefined) item.tool.details = update.details;
+    if (update.details !== undefined) item.tool.resultDetails = parseToolResultDetails(item.tool.input.name, update.details);
   }
 
   protected liveToolEnd(callId: string, resultText: string, isError: boolean, details?: unknown): void {
@@ -454,10 +449,10 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const item = live.items[index];
     if (item?.type !== "tool") return;
     item.tool.durationMs = item.tool.startedAt ? Date.now() - item.tool.startedAt : undefined;
-    item.tool.status = isError || toolDetailsIndicateError(details) ? "error" : "ok";
+    item.tool.resultDetails = parseToolResultDetails(item.tool.input.name, details);
+    item.tool.status = isError || toolResultIndicatesError(item.tool.resultDetails) ? "error" : "ok";
     item.tool.resultText = resultText;
-    item.tool.details = details;
-    if (item.tool.name === "bash" && item.tool.terminalVisible) {
+    if (item.tool.input.kind === "bash" && item.tool.terminalVisible) {
       this.stream(turboStream("replace", ids.itemSummary(this.ctx, item.key), renderToolSummary(this.ctx, item.key, item.tool)));
       this.stream(turboStream("update", ids.itemCompletionTabs(this.ctx, item.key), renderObservedBashTabs(item.key, item.tool)));
       this.stream(turboStream("update", ids.itemCompletion(this.ctx, item.key), renderObservedBashCompletion(this.ctx, item.key, item.tool)));
@@ -626,6 +621,7 @@ function entryTimestamp(entry: { timestamp?: string }, message?: { timestamp?: n
 
 export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<any, CacheMiss>()): TranscriptRecord[] {
   const records: TranscriptRecord[] = [];
+  const toolNames = new Map<string, string>();
   for (const entry of entries) {
     if (entry.type === "message") {
       const message = entry.message;
@@ -637,7 +633,10 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
         for (const part of message.content ?? []) {
           if (part.type === "thinking") parts.push({ type: "thinking", text: part.thinking ?? "" });
           else if (part.type === "text") parts.push({ type: "text", text: part.text ?? "" });
-          else if (part.type === "toolCall") parts.push({ type: "toolCall", callId: part.id, name: part.name, args: part.arguments });
+          else if (part.type === "toolCall") {
+            toolNames.set(part.id, part.name);
+            parts.push({ type: "toolCall", callId: part.id, input: parseToolInput(part.name, part.arguments) });
+          }
         }
         records.push({
           kind: "assistant",
@@ -652,7 +651,7 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
           records.push({ kind: "note", text: notice, tone: "warning", timestamp: entryTimestamp(entry, message) });
         }
       } else if (message.role === "toolResult") {
-        records.push({ kind: "toolResult", callId: message.toolCallId, text: contentToText(message.content), images: sessionContentImages(entry), isError: Boolean(message.isError), timestamp: entryTimestamp(entry, message), details: message.details });
+        records.push({ kind: "toolResult", callId: message.toolCallId, text: contentToText(message.content), images: sessionContentImages(entry), isError: Boolean(message.isError), timestamp: entryTimestamp(entry, message), details: parseToolResultDetails(toolNames.get(message.toolCallId) ?? message.toolName ?? "generic", message.details) });
       } else if (message.role === "bashExecution") {
         records.push({ kind: "note", id: entry.id, text: `\`$ ${message.command}\`\n\n\`\`\`\n${message.output ?? ""}\n\`\`\``, tone: "system", timestamp: entryTimestamp(entry, message) });
       } else if (message.role === "custom" && message.display) {
@@ -800,7 +799,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
     const entry = this.latestSessionMessage((message) => message?.role === "toolResult" && message.toolCallId === callId);
     if (!entry) return;
     item.tool.resultImages = sessionContentImages(entry);
-    if (!(item.tool.name === "bash" && item.tool.terminalVisible)) this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
+    if (!(item.tool.input.kind === "bash" && item.tool.terminalVisible)) this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
   }
 
   private async handleEvent(event: any): Promise<void> {

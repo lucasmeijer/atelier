@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { buildTranscript, formatDuration, formatTokens, toolDetailsIndicateError, type TranscriptRecord } from "../../src/server/transcript.ts";
+import { buildTranscript, formatDuration, formatTokens, type TranscriptRecord } from "../../src/server/transcript.ts";
+import { parseToolInput, parseToolResultDetails } from "../../src/server/tool-domain.ts";
 
 describe("flat transcript", () => {
   test("preserves record order and joins tool results", () => {
     const records: TranscriptRecord[] = [
       { kind: "user", id: "u1", text: "go", images: [], timestamp: 1000 },
-      { kind: "assistant", id: "a1", parts: [{ type: "thinking", text: "hmm" }, { type: "toolCall", callId: "c1", name: "bash", args: { command: "ls" } }], stopReason: "toolUse", timestamp: 2000 },
-      { kind: "toolResult", callId: "c1", text: "file.txt", images: [], isError: false, timestamp: 3000, details: { exitCode: 0, displayAnsi: "file.txt" } },
+      { kind: "assistant", id: "a1", parts: [{ type: "thinking", text: "hmm" }, { type: "toolCall", callId: "c1", input: parseToolInput("bash", { command: "ls" }) }], stopReason: "toolUse", timestamp: 2000 },
+      { kind: "toolResult", callId: "c1", text: "file.txt", images: [], isError: false, timestamp: 3000, details: parseToolResultDetails("bash", { exitCode: 0, displayAnsi: "file.txt" }) },
       { kind: "assistant", id: "a2", parts: [{ type: "text", text: "Done." }], stopReason: "stop", timestamp: 4000 },
     ];
     const items = buildTranscript(records);
@@ -22,12 +23,6 @@ describe("flat transcript", () => {
     const items = buildTranscript([{ kind: "assistant", id: "a", parts: [{ type: "thinking", text: "one" }, { type: "text", text: "two" }], stopReason: "stop", timestamp: 1 }]);
     expect(items[0]?.rewindEntryId).toBe("a");
     expect(items[1]?.rewindEntryId).toBeUndefined();
-  });
-
-  test("errors derive from result details", () => {
-    expect(toolDetailsIndicateError({ exitCode: 1 })).toBe(true);
-    expect(toolDetailsIndicateError({ timedOut: true })).toBe(true);
-    expect(toolDetailsIndicateError({ exitCode: 0 })).toBe(false);
   });
 
   test("compact formatting is stable", () => {
