@@ -12,6 +12,14 @@ _Avoid_: Workspace folder, repository
 An isolated environment in which a user collaborates with agents and inspects or operates on their work. A workspace may be created from a Project or without one.
 _Avoid_: Task, chat
 
+**Workspace residency**:
+The browser-local presence of a Workspace's mounted presentation. Residency is independent of the Workspace's persistent state and the lifetimes of its agents and Work-view resources.
+_Avoid_: Open workspace, active workspace
+
+**Workspace preload**:
+Workspace residency established in anticipation of a user visit because the Workspace is Agent ready. A preload is not visibility and cannot acknowledge Agent ready or Attention.
+_Avoid_: Workspace prefetch, background activation
+
 **Projectless workspace**:
 A workspace created without a Project and therefore without a reusable project source or configuration.
 _Avoid_: Empty project, miscellaneous project
