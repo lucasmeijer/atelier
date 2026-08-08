@@ -4,9 +4,11 @@ export interface ObservableTerminalResizeMessage {
   rows: number;
 }
 
+export type ObservableTerminalProgressState = 0 | 1 | 2 | 3 | 4;
+
 export interface ObservableTerminalProgressMessage {
   type: "progress";
-  state: number;
+  state: ObservableTerminalProgressState;
   value?: number;
 }
 
@@ -16,24 +18,36 @@ export function encodeObservableTerminalMessage(message: ObservableTerminalContr
   return JSON.stringify(message);
 }
 
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function isObservableTerminalProgressState(value: unknown): value is ObservableTerminalProgressState {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 4;
+}
+
 export function parseObservableTerminalMessage(text: string): ObservableTerminalControlMessage | undefined {
-  let parsed: unknown;
+  let value: unknown;
   try {
-    parsed = JSON.parse(text);
+    value = JSON.parse(text);
   } catch {
     return undefined;
   }
-  if (!parsed || typeof parsed !== "object") return undefined;
-  const object = parsed as Record<string, unknown>;
-  if (object.type === "resize") {
-    const cols = Number(object.cols);
-    const rows = Number(object.rows);
-    return Number.isInteger(cols) && Number.isInteger(rows) && cols > 0 && rows > 0 ? { type: "resize", cols, rows } : undefined;
+  if (!value || typeof value !== "object" || !("type" in value)) return undefined;
+
+  if (value.type === "resize" && "cols" in value && "rows" in value) {
+    const { cols, rows } = value;
+    return isPositiveInteger(cols) && isPositiveInteger(rows) ? { type: "resize", cols, rows } : undefined;
   }
-  if (object.type === "progress") {
-    const state = Number(object.state);
-    const value = object.value === undefined ? undefined : Number(object.value);
-    return Number.isInteger(state) && state >= 0 && state <= 4 && (value === undefined || Number.isFinite(value)) ? { type: "progress", state, value } : undefined;
+
+  if (value.type === "progress" && "state" in value) {
+    const state = value.state;
+    const progressValue = "value" in value ? value.value : undefined;
+    return isObservableTerminalProgressState(state)
+      && (progressValue === undefined || (typeof progressValue === "number" && Number.isFinite(progressValue)))
+      ? { type: "progress", state, value: progressValue }
+      : undefined;
   }
+
   return undefined;
 }
