@@ -91,19 +91,28 @@ async function validCarrier(ref: string, labels: Record<string, string>): Promis
   return Object.entries(labels).every(([key, value]) => actual[key] === value);
 }
 
+function requiredCarrierLabel(labels: Map<string, unknown>, name: string): string {
+  const value = labels.get(name);
+  if (typeof value !== "string" || !value) throw new Error("invalid workspace carrier metadata");
+  return value;
+}
+
 export function parseWorkspaceCarrierMetadata(output: string): WorkspaceCarrierMetadata | undefined {
-  const labels = JSON.parse(output.trim() || "null") as Record<string, unknown> | null;
-  if (!labels?.["com.atelier.workspace-carrier.version"]) return undefined;
-  const metadata = {
-    version: labels["com.atelier.workspace-carrier.version"],
-    key: labels["com.atelier.workspace-carrier.key"],
-    baseImage: labels["com.atelier.workspace-carrier.base-image"],
-    storageDriver: labels["com.atelier.workspace-carrier.storage-driver"],
-    platform: labels["com.atelier.workspace-carrier.platform"],
-    preload: labels["com.atelier.workspace-carrier.preload"],
+  const parsed: unknown = JSON.parse(output.trim() || "null");
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+
+  const labels = new Map<string, unknown>(Object.entries(parsed));
+  const versionLabel = "com.atelier.workspace-carrier.version";
+  if (!labels.has(versionLabel)) return undefined;
+
+  return {
+    version: requiredCarrierLabel(labels, versionLabel),
+    key: requiredCarrierLabel(labels, "com.atelier.workspace-carrier.key"),
+    baseImage: requiredCarrierLabel(labels, "com.atelier.workspace-carrier.base-image"),
+    storageDriver: requiredCarrierLabel(labels, "com.atelier.workspace-carrier.storage-driver"),
+    platform: requiredCarrierLabel(labels, "com.atelier.workspace-carrier.platform"),
+    preload: requiredCarrierLabel(labels, "com.atelier.workspace-carrier.preload"),
   };
-  if (Object.values(metadata).some((value) => typeof value !== "string" || !value)) throw new Error("invalid workspace carrier metadata");
-  return metadata as WorkspaceCarrierMetadata;
 }
 
 export function workspaceCarrierMatches(metadata: WorkspaceCarrierMetadata, platform: string, preload: ResolvedDockerImagePreload): boolean {

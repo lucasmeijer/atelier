@@ -29,6 +29,12 @@ describe("workspace carrier identity", () => {
     expect(workspaceCarrierKey("base-a", "linux/amd64", preload, 1)).not.toBe(workspaceCarrierKey("base-a", "linux/amd64", preload, 2));
   });
 
+  test("rejects carrier labels that are not strings at the Docker boundary", () => {
+    expect(() => parseWorkspaceCarrierMetadata(JSON.stringify({
+      "com.atelier.workspace-carrier.version": 1,
+    }))).toThrow("invalid workspace carrier metadata");
+  });
+
   test("recognizes a compatible carrier independently of preload declaration order", () => {
     const metadata = parseWorkspaceCarrierMetadata(JSON.stringify({
       "com.atelier.workspace-carrier.version": "1",
