@@ -3,6 +3,7 @@ import { AtelierCoreError, invalidArguments, readJsonObject, requestAcceptsJson,
 import { getModelThinkingLevel, setModelThinkingLevel } from "./pi-config-models.ts";
 import { parseModelRef } from "./model-state.ts";
 import { setWorkspaceTitle, workspaceContainerName, workspacePreviewPortUrl } from "@atelier/workspace";
+import type { AgentWorkspaceParameters } from "@atelier/shared";
 import {
   deliverAttachmentDraft,
   extensionOf,
@@ -27,13 +28,6 @@ interface AgentRouteOptions {
   events?: AtelierEventBus;
 }
 
-interface AgentWorkspaceCreationContext {
-  initialPrompt?: string;
-  model?: string;
-  thinkingLevel?: string;
-  attachmentDraft?: string;
-}
-
 interface AgentMessageRequest {
   text: string;
   attachmentDraft: string;
@@ -56,18 +50,18 @@ function parseAgentMessageRequest(fields: JsonObject): AgentMessageRequest {
   return { text: text ?? "", attachmentDraft: attachmentDraft ?? "", mode: mode ?? "send" };
 }
 
-function parseAgentWorkspaceCreationContext(value: unknown): AgentWorkspaceCreationContext | undefined {
+function parseAgentWorkspaceCreationContext(value: unknown): AgentWorkspaceParameters | undefined {
   if (!value || typeof value !== "object") return undefined;
-  const record = value as Record<string, unknown>;
-  const initialPrompt = typeof record.initialPrompt === "string" ? record.initialPrompt : undefined;
-  const model = typeof record.model === "string" ? record.model : undefined;
-  const thinkingLevel = typeof record.thinkingLevel === "string" ? record.thinkingLevel : undefined;
+  const fields = value as JsonObject;
+  const initialPrompt = typeof fields.initialPrompt === "string" ? fields.initialPrompt : undefined;
+  const model = typeof fields.model === "string" ? fields.model : undefined;
+  const thinkingLevel = typeof fields.thinkingLevel === "string" ? fields.thinkingLevel : undefined;
   if (!initialPrompt?.trim() && !model && !thinkingLevel) return undefined;
   return {
     initialPrompt,
     model,
     thinkingLevel,
-    attachmentDraft: typeof record.attachmentDraft === "string" ? record.attachmentDraft : undefined,
+    attachmentDraft: typeof fields.attachmentDraft === "string" ? fields.attachmentDraft : undefined,
   };
 }
 
@@ -259,7 +253,7 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
   return json ? Response.json({ agent: { label, state: "running" } }, { status: 202 }) : turboStreamResponse("");
 }
 
-async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorkspaceCreationContext, options: AgentRouteOptions): Promise<void> {
+async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorkspaceParameters, options: AgentRouteOptions): Promise<void> {
   const agent = await ensureDefaultWorkspaceAgent(workspaceId);
   const runtime = await getWorkspaceAgentRuntime(agent, options);
   const modelRef = context.model ? parseModelRef(context.model) : undefined;

@@ -19,7 +19,7 @@ const jsonBody = (schema: unknown) => ({ required: true, content: { "application
 const emptyObjectSchema = { type: "object", additionalProperties: false };
 const projectSummaryProperties = { id: { type: "string" }, name: { type: "string" }, gitUrl: { type: "string" }, branch: { type: ["string", "null"] }, sessionShareKey: { type: "string" } };
 
-export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[]): Record<string, unknown> {
+export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[]) {
   const commandSchemas = Object.fromEntries(commands.map((command) => [command.id, command.inputSchema ?? emptyWorkspaceCommandInputSchema]));
   return {
     openapi: "3.1.0",

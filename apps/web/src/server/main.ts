@@ -353,7 +353,11 @@ interface ProvisionTermSocketData {
   pty?: IPty;
 }
 
-type SocketData = ({ kind: string } & Record<string, unknown>) | ProvisionTermSocketData | CableSocketData;
+interface WorkspaceModuleSocketData {
+  kind: string;
+}
+
+type SocketData = WorkspaceModuleSocketData | ProvisionTermSocketData | CableSocketData;
 const socketHandlersByKind = new Map<string, WorkspaceServerSocketHandler>();
 
 const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, requestUrl) => {

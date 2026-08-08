@@ -13,9 +13,11 @@ export interface ConfiguredAgentModel {
   active?: boolean;
 }
 
+type AgentModelProviderValue = null | boolean | number | string | AgentModelProviderValue[] | { [setting: string]: AgentModelProviderValue };
+
 interface ModelPreference { thinkingLevel?: string }
 interface AgentModelsSettings {
-  providers?: Record<string, unknown>;
+  providers?: { [providerId: string]: AgentModelProviderValue };
   picker?: Array<{ provider?: unknown; id?: unknown; label?: unknown }>;
   activeModel?: { provider?: unknown; id?: unknown };
   modelPreferences?: Record<string, ModelPreference>;

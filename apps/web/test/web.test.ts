@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
 import { createWebApp } from "../src/server/app.ts";
+import type { atelierOpenApi } from "../src/server/openapi.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { setWorkspaceGitHubToken } from "@atelier/proxy-egress";
@@ -410,7 +411,7 @@ describe("web app contracts", () => {
 
     const removed = await app.fetch(postJson("/api/workspaces", {}));
     const openapi = await app.fetch(new Request("http://test.local/openapi.json"));
-    const specification = await openapi.json() as { paths: Record<string, unknown> };
+    const specification = await openapi.json() as ReturnType<typeof atelierOpenApi>;
 
     expect(removed.status).toBe(404);
     expect(openapi.headers.get("content-type")).toContain("application/json");
@@ -421,8 +422,8 @@ describe("web app contracts", () => {
     expect(specification.paths["/projects/{projectId}/environment/{variableId}/delete"]).toBeDefined();
     expect(specification.paths["/projects/{projectId}/secrets/{secretId}/delete"]).toBeDefined();
     expect(specification.paths["/projects/{projectId}/delete"]).toBeDefined();
-    expect(specification.paths["/projects/picker"]).toBeUndefined();
-    expect(specification.paths["/api/workspaces"]).toBeUndefined();
+    expect("/projects/picker" in specification.paths).toBeFalse();
+    expect("/api/workspaces" in specification.paths).toBeFalse();
   });
 
   test("the project picker launches workspaces and links to project settings", async () => {

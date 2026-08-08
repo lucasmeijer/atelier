@@ -1,8 +1,9 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 
-interface PackageJson {
+interface WorkspacePackageManifest {
   name?: string;
-  exports?: Record<string, unknown>;
+  clientExport: boolean;
+  serverExport: boolean;
 }
 
 interface DiscoveredModule {
@@ -24,8 +25,17 @@ function disabledPackageNames(): Set<string> {
   return disabled;
 }
 
-async function readJson<T>(url: URL): Promise<T> {
-  return JSON.parse(await readFile(url, "utf8")) as T;
+async function readWorkspacePackageManifest(url: URL): Promise<WorkspacePackageManifest> {
+  const value: unknown = JSON.parse(await readFile(url, "utf8"));
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${url.pathname} must contain a JSON object`);
+  const name = "name" in value && typeof value.name === "string" ? value.name : undefined;
+  const exports = "exports" in value ? value.exports : undefined;
+  if (exports !== undefined && (!exports || typeof exports !== "object" || Array.isArray(exports))) throw new Error(`${url.pathname} exports must be a JSON object`);
+  return {
+    name,
+    clientExport: exports !== undefined && "./client" in exports,
+    serverExport: exports !== undefined && "./server" in exports,
+  };
 }
 
 async function fileText(url: URL): Promise<string | undefined> {
@@ -35,10 +45,6 @@ async function fileText(url: URL): Promise<string | undefined> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
-}
-
-function hasExport(manifest: PackageJson, subpath: "./client" | "./server"): boolean {
-  return subpath in (manifest.exports ?? {});
 }
 
 function exportsName(source: string, exportName: string): boolean {
@@ -53,8 +59,9 @@ async function discoverModules(subpath: "client" | "server", exportName: Discove
   for (const entry of packages) {
     if (!entry.isDirectory()) continue;
     const packageJsonUrl = new URL(`${entry.name}/package.json`, packagesDir);
-    const manifest = await readJson<PackageJson>(packageJsonUrl);
-    if (!manifest.name || disabled.has(manifest.name) || !hasExport(manifest, `./${subpath}`)) continue;
+    const manifest = await readWorkspacePackageManifest(packageJsonUrl);
+    const exportsModule = subpath === "client" ? manifest.clientExport : manifest.serverExport;
+    if (!manifest.name || disabled.has(manifest.name) || !exportsModule) continue;
 
     const index = await fileText(new URL(`${entry.name}/src/${subpath}/index.ts`, packagesDir));
     if (!index || !exportsName(index, exportName)) continue;

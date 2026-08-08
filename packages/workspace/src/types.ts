@@ -4,7 +4,7 @@ export interface WorkspaceCreationForkContext {
   sourceWorkspaceId: string;
 }
 
-export interface WorkspaceCreationContext extends Record<string, unknown> {
+export interface WorkspaceCreationContext {
   agent?: AgentWorkspaceParameters;
   fork?: WorkspaceCreationForkContext;
 }
