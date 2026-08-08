@@ -25,6 +25,23 @@ type VSCodeThemeDefaults = {
   colorCustomizations: Record<string, string>;
 };
 
+type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
+type JsonObject = { [key: string]: JsonValue };
+type VSCodeWorkbenchConfiguration = JsonObject & { configurationDefaults: JsonObject };
+
+function parseJsonObject(value: unknown, context: string): JsonObject {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error(`${context} must be a JSON object`);
+  return value as JsonObject;
+}
+
+function parseVSCodeWorkbenchConfiguration(serialized: string): VSCodeWorkbenchConfiguration {
+  const settings = parseJsonObject(JSON.parse(serialized), "VS Code workbench configuration");
+  const configurationDefaults = settings.configurationDefaults === undefined
+    ? {}
+    : parseJsonObject(settings.configurationDefaults, "VS Code configuration defaults");
+  return { ...settings, configurationDefaults };
+}
+
 function requestColor(url: URL, name: string): string | undefined {
   const color = url.searchParams.get(name)?.trim();
   return color && /^#[0-9a-f]{6}$/i.test(color) ? color : undefined;
@@ -149,10 +166,10 @@ export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, res
   const configPattern = /(<meta id="vscode-workbench-web-configuration" data-settings=")([^"]+)(">)/;
   if (!configPattern.test(text)) return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
   const themed = text.replace(configPattern, (_match, prefix, rawSettings, suffix) => {
-    const settings = JSON.parse(unescapeHtmlAttribute(rawSettings)) as Record<string, unknown>;
+    const settings = parseVSCodeWorkbenchConfiguration(unescapeHtmlAttribute(rawSettings));
     settings.enableWorkspaceTrust = false;
     settings.configurationDefaults = {
-      ...(settings.configurationDefaults as Record<string, unknown> | undefined),
+      ...settings.configurationDefaults,
       "security.workspace.trust.enabled": false,
       "security.workspace.trust.startupPrompt": "never",
       "security.workspace.trust.banner": "never",
