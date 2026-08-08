@@ -16,6 +16,10 @@ _Avoid_: Task, chat
 A workspace created without a Project and therefore without a reusable project source or configuration.
 _Avoid_: Empty project, miscellaneous project
 
+**Parked workspace**:
+A retained Workspace set aside from active use while remaining associated with its Project. Activity requiring user attention automatically unparks it.
+_Avoid_: Archived workspace, inactive workspace
+
 **Workspace pane**:
 The collapsible navigation region for finding and switching between workspaces.
 _Avoid_: Left sidebar, workspace tab

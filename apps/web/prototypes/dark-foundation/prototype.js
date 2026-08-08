@@ -19,7 +19,9 @@ const defaultExpandedProjects = {
   wayfinder: true,
   sandbox: true,
   none: true,
+  parked: false,
 };
+const defaultParkedWorkspaces = ["mobile-navigation", "bun-upgrade"];
 const main = document.querySelector(".main");
 const workPane = document.querySelector(".work");
 const workTabs = document.querySelector(".work-tabs");
@@ -178,6 +180,12 @@ function loadInteractionState() {
       ...(saved?.expandedProjects ?? {}),
     },
     activeWorkspace: saved?.activeWorkspace ?? "redesign-tabs",
+    workspaceHistory: Array.isArray(saved?.workspaceHistory)
+      ? saved.workspaceHistory
+      : ["redesign-tabs"],
+    parkedWorkspaces: Array.isArray(saved?.parkedWorkspaces)
+      ? saved.parkedWorkspaces
+      : [...defaultParkedWorkspaces],
     sidebarScroll: saved?.sidebarScroll ?? 0,
     readyWorkspaces: Array.isArray(saved?.readyWorkspaces)
       ? saved.readyWorkspaces
@@ -188,6 +196,12 @@ function loadInteractionState() {
 let interaction = loadInteractionState();
 let resizingWork = false;
 let draggedView = null;
+const workspaceOrigins = new Map(
+  [...document.querySelectorAll(".task[data-workspace]")].map((row, order) => [
+    row.dataset.workspace,
+    { container: row.parentElement, order },
+  ]),
+);
 
 function saveInteractionState() {
   localStorage.setItem(prototypeStateKey, JSON.stringify(interaction));
@@ -230,7 +244,7 @@ function syncWorkspaceReadyState() {
     const marker = row.querySelector(".workspace-status");
     const shouldBeReady = interaction.readyWorkspaces.includes(
       row.dataset.workspace,
-    );
+    ) && !isWorkspaceParked(row.dataset.workspace);
     const existingDot = marker.querySelector(".ready-dot");
     if (shouldBeReady && !existingDot) {
       const dot = document.createElement("i");
@@ -241,6 +255,7 @@ function syncWorkspaceReadyState() {
       existingDot?.remove();
     }
   });
+  syncParkedGroupState();
 }
 
 function setWorkspaceReady(workspace, ready) {
@@ -249,6 +264,140 @@ function setWorkspaceReady(workspace, ready) {
   );
   if (ready) interaction.readyWorkspaces.push(workspace);
   syncWorkspaceReadyState();
+  saveInteractionState();
+}
+
+function isWorkspaceParked(workspace) {
+  return interaction.parkedWorkspaces.includes(workspace);
+}
+
+function workspaceProjectLabel(row) {
+  if (row.dataset.project === "none") return "No project";
+  return projectGroup(row.dataset.project)
+    .querySelector(".project-name")
+    .textContent.trim();
+}
+
+function syncParkedGroupState() {
+  const group = document.querySelector("[data-parked-group]");
+  const parkedRows = [...document.querySelectorAll(".task.parked[data-workspace]")];
+  group.hidden = parkedRows.length === 0;
+  group.querySelector("[data-parked-count]").textContent = String(
+    parkedRows.length,
+  );
+}
+
+function syncWorkspacePlacement() {
+  const parkedContainer = document.querySelector("[data-parked-workspaces]");
+  workspaceOrigins.forEach(({ container }, workspace) => {
+    const row = document.querySelector(
+      `.task[data-workspace="${workspace}"]`,
+    );
+    const parked = isWorkspaceParked(workspace);
+    row.classList.toggle("parked", parked);
+    row.title = parked ? "Unpark and open workspace" : "";
+    let project = row.querySelector(".parked-project");
+    if (parked) {
+      if (!project) {
+        project = document.createElement("span");
+        project.className = "parked-project";
+        row.querySelector(".workspace-status").before(project);
+      }
+      project.textContent = workspaceProjectLabel(row);
+      parkedContainer.append(row);
+    } else {
+      project?.remove();
+      container.append(row);
+    }
+    document
+      .querySelectorAll(`[data-workspace-search-state="${workspace}"]`)
+      .forEach((state) => {
+        state.textContent = `${workspaceProjectLabel(row)}${parked ? " · Parked" : ""}`;
+      });
+  });
+
+  const byOriginalOrder = (left, right) =>
+    workspaceOrigins.get(left.dataset.workspace).order -
+    workspaceOrigins.get(right.dataset.workspace).order;
+  document
+    .querySelectorAll(".project-group .project-workspaces")
+    .forEach((container) => {
+      [...container.querySelectorAll(":scope > .task")]
+        .sort(byOriginalOrder)
+        .forEach((row) => container.append(row));
+    });
+  [...parkedContainer.querySelectorAll(":scope > .task")]
+    .sort(byOriginalOrder)
+    .forEach((row) => parkedContainer.append(row));
+  syncParkedGroupState();
+}
+
+function workspaceAfterParking(workspace) {
+  const parkedRow = document.querySelector(
+    `.task[data-workspace="${workspace}"]`,
+  );
+  const candidates = [...workspaceOrigins.keys()].filter(
+    (candidate) => !isWorkspaceParked(candidate) && candidate !== workspace,
+  );
+  const history = [...interaction.workspaceHistory].reverse();
+  return (
+    history.find(
+      (candidate) =>
+        candidates.includes(candidate) &&
+        document.querySelector(`.task[data-workspace="${candidate}"]`).dataset
+          .project === parkedRow.dataset.project,
+    ) ??
+    history.find((candidate) => candidates.includes(candidate)) ??
+    candidates.find(
+      (candidate) =>
+        document.querySelector(`.task[data-workspace="${candidate}"]`).dataset
+          .project === parkedRow.dataset.project,
+    ) ??
+    candidates[0]
+  );
+}
+
+function setWorkspaceParked(workspace, parked, { activate = true } = {}) {
+  interaction.parkedWorkspaces = interaction.parkedWorkspaces.filter(
+    (candidate) => candidate !== workspace,
+  );
+  if (parked) interaction.parkedWorkspaces.push(workspace);
+  const nextWorkspace = parked ? workspaceAfterParking(workspace) : workspace;
+  syncWorkspacePlacement();
+
+  const row = document.querySelector(`.task[data-workspace="${workspace}"]`);
+  const title = row.querySelector(".task-label").textContent.trim();
+  if (parked) {
+    setProjectExpanded("parked", true);
+    if (interaction.activeWorkspace === workspace && nextWorkspace) {
+      activateWorkspace(nextWorkspace);
+    } else if (interaction.activeWorkspace === workspace) {
+      clearActiveWorkspace();
+    }
+    updateStateNote(
+      nextWorkspace
+        ? `${title} parked · selection moved to another workspace`
+        : `${title} parked · no active workspace`,
+    );
+  } else {
+    setProjectExpanded(row.dataset.project, true);
+    if (activate) activateWorkspace(workspace);
+    updateStateNote(`${title} unparked · workspace activated`);
+  }
+  saveInteractionState();
+}
+
+function clearActiveWorkspace() {
+  document.querySelectorAll(".task.current").forEach((task) => {
+    task.classList.remove("current");
+  });
+  interaction.activeWorkspace = null;
+  document.querySelector("[data-workspace-title]").textContent =
+    "No active workspace";
+  document.querySelector("[data-workspace-project]").textContent = "";
+  document.querySelector("[data-no-active-workspace]").hidden = false;
+  document.querySelector(".workspace-title-actions").hidden = true;
+  if (isMobile()) setWorkspaceOpen(true, { focusPane: true });
   saveInteractionState();
 }
 
@@ -285,13 +434,21 @@ function activateWorkspace(
 ) {
   const row = document.querySelector(`.task[data-workspace="${workspace}"]`);
   if (!row) return;
+  const wasParked = isWorkspaceParked(workspace);
+  if (wasParked) setWorkspaceParked(workspace, false, { activate: false });
+  document.querySelector("[data-no-active-workspace]").hidden = true;
+  document.querySelector(".workspace-title-actions").hidden = false;
   const changed = interaction.activeWorkspace !== workspace;
   const project = row.dataset.project;
   setProjectExpanded(project, true);
-  document.querySelectorAll(".task.current").forEach((task) => {
+  document.querySelectorAll(".task[data-workspace]").forEach((task) => {
     task.classList.toggle("current", task === row);
   });
   interaction.activeWorkspace = workspace;
+  interaction.workspaceHistory = interaction.workspaceHistory.filter(
+    (candidate) => candidate !== workspace,
+  );
+  interaction.workspaceHistory.push(workspace);
   if (handoff) keepWorkspaceItemVisible(row);
 
   const title = row.querySelector(".task-label").textContent.trim();
@@ -324,7 +481,11 @@ function activateWorkspace(
   } else {
     scrollAgentToNewest({ focusComposer });
   }
-  updateStateNote(`${title} · newest message · composer focused`);
+  updateStateNote(
+    wasParked
+      ? `${title} unparked · newest message · composer focused`
+      : `${title} · newest message · composer focused`,
+  );
 }
 
 function openViewIds() {
@@ -1197,6 +1358,10 @@ document.addEventListener("click", (event) => {
     workspaceActions.hidden = true;
     updateStateNote("Rename now lives in the Workspace title bar");
   }
+  if (control.dataset.action === "park-active-workspace") {
+    workspaceActions.hidden = true;
+    setWorkspaceParked(interaction.activeWorkspace, true);
+  }
   if (control.dataset.action === "confirm-delete-workspace") {
     workspaceActions.hidden = true;
     workspaceDeleteDialog.showModal();
@@ -1341,6 +1506,21 @@ document.addEventListener("click", (event) => {
       );
     }
   }
+  if (control.dataset.action === "simulate-parked-ready") {
+    const row = [...document.querySelectorAll(".task.parked[data-workspace]")].find(
+      (task) => !interaction.readyWorkspaces.includes(task.dataset.workspace),
+    );
+    if (row) {
+      const title = row.querySelector(".task-label").textContent.trim();
+      const project = row.dataset.project;
+      setWorkspaceParked(row.dataset.workspace, false, { activate: false });
+      setWorkspaceReady(row.dataset.workspace, true);
+      setProjectExpanded(project, true);
+      updateStateNote(
+        `${title} became Agent ready · automatically unparked · Project expanded`,
+      );
+    }
+  }
   if (control.dataset.action === "preview-workspace-loading") {
     document.body.classList.add("workspace-list-loading");
     workspaceTree.setAttribute("aria-busy", "true");
@@ -1458,12 +1638,26 @@ addEventListener("keydown", (event) => {
 
 function restoreInteractionState() {
   window.scrollTo(0, 0);
+  interaction.parkedWorkspaces
+    .filter((workspace) => interaction.readyWorkspaces.includes(workspace))
+    .forEach((workspace) => {
+      interaction.parkedWorkspaces = interaction.parkedWorkspaces.filter(
+        (candidate) => candidate !== workspace,
+      );
+      const row = document.querySelector(`.task[data-workspace="${workspace}"]`);
+      interaction.expandedProjects[row.dataset.project] = true;
+    });
+  syncWorkspacePlacement();
   syncProjectState();
   syncWorkspaceReadyState();
-  activateWorkspace(interaction.activeWorkspace, {
-    focusComposer: false,
-    handoff: false,
-  });
+  if (interaction.activeWorkspace) {
+    activateWorkspace(interaction.activeWorkspace, {
+      focusComposer: false,
+      handoff: false,
+    });
+  } else {
+    clearActiveWorkspace();
+  }
   interaction.openViews = interaction.openViews.filter((view) =>
     defaultViewOrder.includes(view),
   );
