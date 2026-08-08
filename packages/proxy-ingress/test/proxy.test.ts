@@ -7,6 +7,7 @@ import { resetAtelierRuntimeContextForTests } from "@atelier/core";
 import {
   createWorkspaceIngressProxy,
   ensureTailscaleServePortConfig,
+  parseTailscaleServeConfig,
   ensureWorkspacePublicProxyRoute,
   listWorkspacePublicProxyRoutes,
   publicProxyPortRangeFromEnv,
@@ -178,6 +179,27 @@ describe("workspace public proxy route state", () => {
 });
 
 describe("Tailscale Serve config", () => {
+  test("parses typed config at the local API boundary while retaining extension fields", () => {
+    const config = parseTailscaleServeConfig(JSON.stringify({
+      TCP: { "443": { HTTPS: true, Funnel: true } },
+      Web: { "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/", PreservePath: true } } } },
+      AllowFunnel: { "atelier.tailnet.ts.net:443": true },
+    }));
+
+    expect(config.TCP?.["443"]?.HTTPS).toBe(true);
+    expect(config.Web?.["atelier.tailnet.ts.net:443"]?.Handlers?.["/"]?.Proxy).toBe("http://127.0.0.1:3000/");
+    expect(config).toEqual({
+      TCP: { "443": { HTTPS: true, Funnel: true } },
+      Web: { "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/", PreservePath: true } } } },
+      AllowFunnel: { "atelier.tailnet.ts.net:443": true },
+    });
+  });
+
+  test("rejects malformed known config fields at the local API boundary", () => {
+    expect(() => parseTailscaleServeConfig('{"TCP":{"443":{"HTTPS":"yes"}}}')).toThrow("Tailscale Serve TCP port 443 HTTPS field is not a boolean");
+    expect(() => parseTailscaleServeConfig('{"Web":{"atelier.tailnet.ts.net:443":{"Handlers":[]}}}')).toThrow("Tailscale Serve web route atelier.tailnet.ts.net:443 handlers is not an object");
+  });
+
   test("adds one HTTPS proxy port without disturbing existing stable routes", () => {
     const config: TailscaleServeConfig = {
       TCP: { "443": { HTTPS: true } },

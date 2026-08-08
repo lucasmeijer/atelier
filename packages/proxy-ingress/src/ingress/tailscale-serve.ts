@@ -19,11 +19,40 @@ export interface TailscaleServePortExposerOptions {
   targetHost?: string;
 }
 
-export interface TailscaleServeConfig {
-  TCP?: Record<string, unknown>;
-  Web?: Record<string, unknown>;
-  [key: string]: unknown;
+type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
+
+interface JsonObject {
+  [key: string]: JsonValue;
 }
+
+type TailscaleServeTcpPortConfig = JsonObject & {
+  HTTPS?: boolean;
+  TCPForward?: string;
+  TerminateTLS?: string;
+};
+
+interface TailscaleServeTcpConfig {
+  [port: string]: TailscaleServeTcpPortConfig;
+}
+
+type TailscaleServeWebHandler = JsonObject & {
+  Proxy?: string;
+  Text?: string;
+  Path?: string;
+};
+
+type TailscaleServeWebEntry = JsonObject & {
+  Handlers?: { [path: string]: TailscaleServeWebHandler };
+};
+
+interface TailscaleServeWebConfig {
+  [hostPort: string]: TailscaleServeWebEntry;
+}
+
+export type TailscaleServeConfig = JsonObject & {
+  TCP?: TailscaleServeTcpConfig;
+  Web?: TailscaleServeWebConfig;
+};
 
 type ServeConfigMutator = (config: TailscaleServeConfig) => boolean;
 
@@ -116,15 +145,12 @@ export function ensureTailscaleServePortConfig(config: TailscaleServeConfig, opt
   const host = normalizeServeHost(options.host);
   const targetHost = options.targetHost ?? "127.0.0.1";
   const portKey = String(options.port);
-  const tcp = ensureRecord(config, "TCP");
+  const tcp = config.TCP ??= {};
   const currentTcp = tcp[portKey];
-  if (currentTcp !== undefined && !isCompatibleTcpHttpsEntry(currentTcp)) throw new Error(`Tailscale Serve TCP port ${options.port} is already configured for another service`);
+  if (currentTcp && currentTcp.HTTPS !== true) throw new Error(`Tailscale Serve TCP port ${options.port} is already configured for another service`);
 
-  let changed = false;
-  if (!isObject(currentTcp) || (currentTcp as { HTTPS?: unknown }).HTTPS !== true) {
-    tcp[portKey] = { HTTPS: true };
-    changed = true;
-  }
+  const changed = currentTcp === undefined;
+  if (changed) tcp[portKey] = { HTTPS: true };
 
   return ensureWebProxyHandler(config, host, options.port, targetHost) || changed;
 }
@@ -157,9 +183,39 @@ export async function mutateTailscaleServeConfig(socketPath: string, mutator: Se
 
 async function readTailscaleServeConfig(socketPath: string): Promise<TailscaleServeConfig> {
   const body = await tailscaleLocalApiRequest(socketPath, "GET", "/localapi/v0/serve-config");
-  const parsed = JSON.parse(body || "{}") as TailscaleServeConfig;
-  if (!isObject(parsed)) throw new Error("Tailscale Serve config response is not an object");
-  return parsed;
+  return parseTailscaleServeConfig(body);
+}
+
+export function parseTailscaleServeConfig(json: string): TailscaleServeConfig {
+  const config = parseJsonObject(JSON.parse(json || "{}"), "Tailscale Serve config response");
+  if (config.TCP !== undefined) parseTcpConfig(config.TCP);
+  if (config.Web !== undefined) parseWebConfig(config.Web);
+  return config as TailscaleServeConfig;
+}
+
+function parseTcpConfig(value: JsonValue): asserts value is TailscaleServeTcpConfig {
+  const tcp = parseJsonObject(value, "Tailscale Serve config TCP field");
+  for (const [port, rawEntry] of Object.entries(tcp)) {
+    const context = `Tailscale Serve TCP port ${port}`;
+    const entry = parseJsonObject(rawEntry, context);
+    assertOptionalFieldType(entry, "HTTPS", "boolean", context);
+    assertOptionalFieldType(entry, "TCPForward", "string", context);
+    assertOptionalFieldType(entry, "TerminateTLS", "string", context);
+  }
+}
+
+function parseWebConfig(value: JsonValue): asserts value is TailscaleServeWebConfig {
+  const web = parseJsonObject(value, "Tailscale Serve config Web field");
+  for (const [hostPort, rawEntry] of Object.entries(web)) {
+    const entry = parseJsonObject(rawEntry, `Tailscale Serve web route ${hostPort}`);
+    if (entry.Handlers === undefined) continue;
+    const handlers = parseJsonObject(entry.Handlers, `Tailscale Serve web route ${hostPort} handlers`);
+    for (const [path, rawHandler] of Object.entries(handlers)) {
+      const context = `Tailscale Serve web route ${hostPort}${path}`;
+      const handler = parseJsonObject(rawHandler, context);
+      for (const field of ["Proxy", "Text", "Path"] as const) assertOptionalFieldType(handler, field, "string", context);
+    }
+  }
 }
 
 async function writeTailscaleServeConfig(socketPath: string, config: TailscaleServeConfig): Promise<void> {
@@ -193,20 +249,16 @@ export async function tailscaleLocalApiRequest(socketPath: string, method: "GET"
 }
 
 function ensureWebProxyHandler(config: TailscaleServeConfig, host: string, port: number, targetHost: string): boolean {
-  const web = ensureRecord(config, "Web");
+  const web = config.Web ??= {};
   const key = webKey(host, port);
-  const currentEntry = web[key];
-  if (currentEntry !== undefined && !isObject(currentEntry)) throw new Error(`Tailscale Serve web route ${key} is already configured for another service`);
-
-  const entry = currentEntry ?? {};
-  const currentHandlers = entry.Handlers;
-  if (currentHandlers !== undefined && !isObject(currentHandlers)) throw new Error(`Tailscale Serve web route ${key} handlers are not an object`);
-
-  const handlers = currentHandlers ?? {};
+  const entry = web[key] ?? {};
+  const handlers = entry.Handlers ?? {};
   const target = proxyTarget(port, targetHost);
   const root = handlers["/"];
-  if (root !== undefined && !isProxyHandler(root, target)) throw new Error(`Tailscale Serve web route ${key}/ is already configured for another service`);
-  if (isProxyHandler(root, target)) return false;
+  if (root) {
+    if (root.Proxy !== target) throw new Error(`Tailscale Serve web route ${key}/ is already configured for another service`);
+    return false;
+  }
 
   handlers["/"] = { Proxy: target };
   entry.Handlers = handlers;
@@ -219,57 +271,38 @@ function pruneManagedPort(config: TailscaleServeConfig, port: number, options: {
   const key = webKey(options.desiredHost, port);
   const target = proxyTarget(port, options.targetHost);
 
-  if (!options.active && isObject(config.Web) && removeOwnedRootHandler(config.Web[key], target)) {
-    if (isEmptyWebEntry(config.Web[key])) delete config.Web[key];
-    if (Object.keys(config.Web).length === 0) delete config.Web;
+  const web = config.Web;
+  const webEntry = web?.[key];
+  if (!options.active && web && webEntry && removeOwnedRootHandler(webEntry, target)) {
+    if (isEmptyWebEntry(webEntry)) delete web[key];
+    if (Object.keys(web).length === 0) delete config.Web;
     changed = true;
   }
 
-  if (!options.active && isObject(config.TCP)) {
-    const tcpKey = String(port);
-    if (Object.prototype.hasOwnProperty.call(config.TCP, tcpKey) && isCompatibleTcpHttpsEntry(config.TCP[tcpKey]) && !hasWebEntryForPort(config, port)) {
-      delete config.TCP[tcpKey];
-      if (Object.keys(config.TCP).length === 0) delete config.TCP;
-      changed = true;
-    }
+  const tcp = config.TCP;
+  const tcpKey = String(port);
+  if (!options.active && tcp?.[tcpKey]?.HTTPS === true && !hasWebEntryForPort(config, port)) {
+    delete tcp[tcpKey];
+    if (Object.keys(tcp).length === 0) delete config.TCP;
+    changed = true;
   }
 
   return changed;
 }
 
-function removeOwnedRootHandler(value: unknown, target: string): boolean {
-  if (!isObject(value) || !isObject(value.Handlers)) return false;
-  if (!isProxyHandler(value.Handlers["/"], target)) return false;
-  delete value.Handlers["/"];
-  if (Object.keys(value.Handlers).length === 0) delete value.Handlers;
+function removeOwnedRootHandler(entry: TailscaleServeWebEntry, target: string): boolean {
+  if (entry.Handlers?.["/"]?.Proxy !== target) return false;
+  delete entry.Handlers["/"];
+  if (Object.keys(entry.Handlers).length === 0) delete entry.Handlers;
   return true;
 }
 
-function isEmptyWebEntry(value: unknown): boolean {
-  return isObject(value) && (!isObject(value.Handlers) || Object.keys(value.Handlers).length === 0) && Object.keys(value).every((key) => key === "Handlers");
+function isEmptyWebEntry(entry: TailscaleServeWebEntry): boolean {
+  return (!entry.Handlers || Object.keys(entry.Handlers).length === 0) && Object.keys(entry).every((key) => key === "Handlers");
 }
 
 function hasWebEntryForPort(config: TailscaleServeConfig, port: number): boolean {
-  return isObject(config.Web) && Object.keys(config.Web).some((key) => webKeyPort(key) === port);
-}
-
-function isCompatibleTcpHttpsEntry(value: unknown): boolean {
-  return value === undefined || (isObject(value) && value.HTTPS === true);
-}
-
-function isProxyHandler(value: unknown, target: string): boolean {
-  return isObject(value) && value.Proxy === target;
-}
-
-function ensureRecord(config: TailscaleServeConfig, key: "TCP" | "Web"): Record<string, unknown> {
-  const value = config[key];
-  if (value === undefined) {
-    const record: Record<string, unknown> = {};
-    config[key] = record;
-    return record;
-  }
-  if (!isObject(value)) throw new Error(`Tailscale Serve config ${key} field is not an object`);
-  return value;
+  return config.Web !== undefined && Object.keys(config.Web).some((key) => webKeyPort(key) === port);
 }
 
 export function validateManagedPort(port: number, range: PublicProxyPortRange): void {
@@ -298,6 +331,11 @@ function proxyTarget(port: number, targetHost: string): string {
   return `http://${targetHost}:${port}/`;
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function assertOptionalFieldType(object: JsonObject, field: string, type: "boolean" | "string", context: string): void {
+  if (object[field] !== undefined && typeof object[field] !== type) throw new Error(`${context} ${field} field is not a ${type}`);
+}
+
+function parseJsonObject(value: unknown, context: string): JsonObject {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${context} is not an object`);
+  return value as JsonObject;
 }
