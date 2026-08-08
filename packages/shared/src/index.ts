@@ -356,7 +356,7 @@ export interface WorkspaceClientModule {
 
 export {
   CableTopics,
-  parseCableIdentifier,
+  parseCableClientMessage,
   serializeCableIdentifier,
   type AtelierCableClient,
   type CableClientMessage,

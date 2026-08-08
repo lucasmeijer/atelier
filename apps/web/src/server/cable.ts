@@ -2,7 +2,7 @@ import type { ServerWebSocket } from "bun";
 import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { getWorkspaceAgentRuntime, listWorkspaceAgents } from "@atelier/agent/server";
 import {
-  parseCableIdentifier,
+  parseCableClientMessage,
   serializeCableIdentifier,
   type CableClientMessage,
   type CableIdentifier,
@@ -112,8 +112,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
     upstreamByIdentifier.delete(key);
   }
 
-  async function subscribe(ws: CableSocket, rawIdentifier: unknown, upTo?: string): Promise<void> {
-    const identifier = parseCableIdentifier(rawIdentifier);
+  async function subscribe(ws: CableSocket, identifier: CableIdentifier, upTo?: string): Promise<void> {
     const key = serializeCableIdentifier(identifier);
     await authorize(identifier);
 
@@ -132,8 +131,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
     if (current.html) send(ws, { type: "turbo_stream", identifier, html: current.html, ...(current.cursor ? { cursor: current.cursor } : {}) });
   }
 
-  function unsubscribe(ws: CableSocket, rawIdentifier: unknown): void {
-    const identifier = parseCableIdentifier(rawIdentifier);
+  function unsubscribe(ws: CableSocket, identifier: CableIdentifier): void {
     const key = serializeCableIdentifier(identifier);
     const socketIdentifiers = identifiersBySocket.get(ws);
     if (!socketIdentifiers?.delete(key)) return;
@@ -145,9 +143,8 @@ export function createCableServer(options: CableServerOptions): CableServer {
 
   function broadcast(identifier: CableIdentifier, html: string, cursor?: string): void {
     if (!html) return;
-    const parsed = parseCableIdentifier(identifier);
-    const key = serializeCableIdentifier(parsed);
-    for (const ws of socketsByIdentifier.get(key) ?? []) send(ws, { type: "turbo_stream", identifier: parsed, html, ...(cursor ? { cursor } : {}) });
+    const key = serializeCableIdentifier(identifier);
+    for (const ws of socketsByIdentifier.get(key) ?? []) send(ws, { type: "turbo_stream", identifier, html, ...(cursor ? { cursor } : {}) });
   }
 
   function close(ws: CableSocket): void {
@@ -174,24 +171,17 @@ export function createCableServer(options: CableServerOptions): CableServer {
       void (async () => {
         let message: CableClientMessage | undefined;
         try {
-          message = JSON.parse(textMessage(raw)) as CableClientMessage;
-          if (message.command === "subscribe") await subscribe(ws, message.identifier, typeof message.upTo === "string" ? message.upTo : undefined);
-          else if (message.command === "unsubscribe") unsubscribe(ws, message.identifier);
-          else if (message.command === "pong") return;
-          else if (message.command === "message") send(ws, { type: "error", message: "channel messages are not supported yet" });
-          else send(ws, { type: "error", message: "unknown cable command" });
+          message = parseCableClientMessage(JSON.parse(textMessage(raw)));
+          switch (message.command) {
+            case "subscribe": await subscribe(ws, message.identifier, message.upTo); break;
+            case "unsubscribe": unsubscribe(ws, message.identifier); break;
+            case "message": send(ws, { type: "error", message: "channel messages are not supported yet" }); break;
+            case "pong": break;
+          }
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
-          const rawIdentifier = (message as { identifier?: unknown } | undefined)?.identifier;
-          if ((message as { command?: unknown } | undefined)?.command === "subscribe" && rawIdentifier) {
-            try {
-              send(ws, { type: "reject_subscription", identifier: parseCableIdentifier(rawIdentifier), reason });
-            } catch {
-              send(ws, { type: "error", message: reason });
-            }
-          } else {
-            send(ws, { type: "error", message: reason });
-          }
+          if (message?.command === "subscribe") send(ws, { type: "reject_subscription", identifier: message.identifier, reason });
+          else send(ws, { type: "error", message: reason });
           logError(`cable message failed: ${reason}`);
         }
       })();

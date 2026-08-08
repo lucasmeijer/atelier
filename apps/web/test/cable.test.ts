@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
+import { parseCableClientMessage } from "@atelier/shared";
 import { createCableServer, type CableSocketData } from "../src/server/cable.ts";
 import { cableCursorIsNewer } from "../src/client/cable.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
@@ -12,6 +13,16 @@ function fakeSocket(data: CableSocketData) {
     send(value: string) { sent.push(JSON.parse(value)); return value.length; },
   } as unknown as { data: CableSocketData; sent: unknown[]; send(value: string): number };
 }
+
+test("cable messages are parsed into domain types at the wire boundary", () => {
+  expect(parseCableClientMessage({ command: "subscribe", identifier: { channel: "workspace", workspaceId: "workspace-1" }, upTo: "runtime:3" })).toEqual({
+    command: "subscribe",
+    identifier: { channel: "workspace", workspaceId: "workspace-1" },
+    upTo: "runtime:3",
+  });
+  expect(() => parseCableClientMessage({ command: "subscribe", identifier: { channel: "workspace" } })).toThrow("unsupported cable identifier");
+  expect(() => parseCableClientMessage({ command: "pong", time: "now" })).toThrow("pong time must be a number");
+});
 
 test("cable cursors reject stale revisions from the same runtime", () => {
   expect(cableCursorIsNewer(undefined, "runtime:1")).toBe(true);
