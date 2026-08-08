@@ -181,18 +181,20 @@ export interface RepoWorkspaceManifest {
   };
 }
 
-function optionalString(record: Record<string, unknown>, key: string, path: string, label = key): string | undefined {
-  const value = record[key];
+function field(object: object, key: string): unknown {
+  return Reflect.get(object, key);
+}
+
+function optionalObject(value: unknown, label: string, path: string): object | undefined {
   if (value === undefined) return undefined;
-  if (typeof value !== "string" || !value.trim()) throw invalidArguments(`invalid ${path}: ${label} must be a non-empty string`);
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw invalidArguments(`invalid ${path}: ${label} must be an object`);
   return value;
 }
 
-function optionalRecord(record: Record<string, unknown>, key: string, path: string): Record<string, unknown> | undefined {
-  const value = record[key];
+function optionalString(value: unknown, label: string, path: string): string | undefined {
   if (value === undefined) return undefined;
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw invalidArguments(`invalid ${path}: ${key} must be an object`);
-  return value as Record<string, unknown>;
+  if (typeof value !== "string" || !value.trim()) throw invalidArguments(`invalid ${path}: ${label} must be a non-empty string`);
+  return value;
 }
 
 export function parseRepoWorkspaceManifest(text: string, path = workspaceManifestPath): RepoWorkspaceManifest {
@@ -203,33 +205,42 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
     throw invalidArguments(`invalid ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw invalidArguments(`invalid ${path}: expected object`);
-  const record = parsed as Record<string, unknown>;
-  if (record.version !== 1) throw invalidArguments(`invalid ${path}: unsupported version`);
-  if (record.privileged !== undefined) throw invalidArguments(`invalid ${path}: privileged is no longer supported; use docker.privileged`);
-  if (record.isAtelier !== undefined) throw invalidArguments(`invalid ${path}: isAtelier is no longer supported; use docker.preloadImages`);
-  const dockerRecord = optionalRecord(record, "docker", path);
-  if (dockerRecord?.privileged !== undefined && typeof dockerRecord.privileged !== "boolean") throw invalidArguments(`invalid ${path}: docker.privileged must be a boolean`);
-  const preloadImagesValue = dockerRecord?.preloadImages;
-  if (preloadImagesValue !== undefined && !Array.isArray(preloadImagesValue)) throw invalidArguments(`invalid ${path}: docker.preloadImages must be an array of non-empty strings`);
-  if (Array.isArray(preloadImagesValue) && !preloadImagesValue.every((spec) => typeof spec === "string" && spec.trim())) throw invalidArguments(`invalid ${path}: docker.preloadImages must be an array of non-empty strings`);
-  if (Array.isArray(preloadImagesValue) && preloadImagesValue.length > 0 && dockerRecord?.privileged !== true) throw invalidArguments(`invalid ${path}: docker.preloadImages requires docker.privileged to be true`);
-  const docker: RepoWorkspaceManifest["docker"] | undefined = dockerRecord ? {} : undefined;
-  if (docker && dockerRecord?.privileged !== undefined) docker.privileged = dockerRecord.privileged;
-  if (docker && Array.isArray(preloadImagesValue)) docker.preloadImages = preloadImagesValue.map((spec) => spec.trim());
-  const initScripts = record.initScripts;
+  if (field(parsed, "version") !== 1) throw invalidArguments(`invalid ${path}: unsupported version`);
+  if (field(parsed, "privileged") !== undefined) throw invalidArguments(`invalid ${path}: privileged is no longer supported; use docker.privileged`);
+  if (field(parsed, "isAtelier") !== undefined) throw invalidArguments(`invalid ${path}: isAtelier is no longer supported; use docker.preloadImages`);
+
+  const manifest: RepoWorkspaceManifest = { version: 1 };
+
+  const dockerInput = optionalObject(field(parsed, "docker"), "docker", path);
+  if (dockerInput) {
+    const privileged = field(dockerInput, "privileged");
+    if (privileged !== undefined && typeof privileged !== "boolean") throw invalidArguments(`invalid ${path}: docker.privileged must be a boolean`);
+    const preloadImages = field(dockerInput, "preloadImages");
+    if (preloadImages !== undefined && (!Array.isArray(preloadImages) || !preloadImages.every((spec) => typeof spec === "string" && spec.trim()))) throw invalidArguments(`invalid ${path}: docker.preloadImages must be an array of non-empty strings`);
+    if (Array.isArray(preloadImages) && preloadImages.length > 0 && privileged !== true) throw invalidArguments(`invalid ${path}: docker.preloadImages requires docker.privileged to be true`);
+    manifest.docker = {};
+    if (privileged !== undefined) manifest.docker.privileged = privileged;
+    if (Array.isArray(preloadImages)) manifest.docker.preloadImages = preloadImages.map((spec) => String(spec).trim());
+  }
+
+  const initScripts = field(parsed, "initScripts");
   if (initScripts !== undefined && (!Array.isArray(initScripts) || !initScripts.every((script) => typeof script === "string"))) throw invalidArguments(`invalid ${path}: initScripts must be an array of strings`);
-  const seedPiConfigRecord = optionalRecord(record, "seedPiConfig", path);
-  const authJson = seedPiConfigRecord ? optionalString(seedPiConfigRecord, "authJson", path, "seedPiConfig.authJson") : undefined;
-  const modelsJson = seedPiConfigRecord ? optionalString(seedPiConfigRecord, "modelsJson", path, "seedPiConfig.modelsJson") : undefined;
-  const seedAtelierConfigRecord = optionalRecord(record, "seedAtelierConfig", path);
-  const projectsJson = seedAtelierConfigRecord ? optionalString(seedAtelierConfigRecord, "projectsJson", path, "seedAtelierConfig.projectsJson") : undefined;
-  return {
-    version: 1,
-    ...(docker ? { docker } : {}),
-    ...(initScripts ? { initScripts } : {}),
-    ...(seedPiConfigRecord ? { seedPiConfig: { ...(authJson ? { authJson } : {}), ...(modelsJson ? { modelsJson } : {}) } } : {}),
-    ...(seedAtelierConfigRecord ? { seedAtelierConfig: { ...(projectsJson ? { projectsJson } : {}) } } : {}),
-  };
+  if (Array.isArray(initScripts)) manifest.initScripts = initScripts.map(String);
+
+  const seedPiConfigInput = optionalObject(field(parsed, "seedPiConfig"), "seedPiConfig", path);
+  if (seedPiConfigInput) {
+    const authJson = optionalString(field(seedPiConfigInput, "authJson"), "seedPiConfig.authJson", path);
+    const modelsJson = optionalString(field(seedPiConfigInput, "modelsJson"), "seedPiConfig.modelsJson", path);
+    manifest.seedPiConfig = { ...(authJson ? { authJson } : {}), ...(modelsJson ? { modelsJson } : {}) };
+  }
+
+  const seedAtelierConfigInput = optionalObject(field(parsed, "seedAtelierConfig"), "seedAtelierConfig", path);
+  if (seedAtelierConfigInput) {
+    const projectsJson = optionalString(field(seedAtelierConfigInput, "projectsJson"), "seedAtelierConfig.projectsJson", path);
+    manifest.seedAtelierConfig = { ...(projectsJson ? { projectsJson } : {}) };
+  }
+
+  return manifest;
 }
 
 function seedConfigInstallScript(source: string, target: string): string {
