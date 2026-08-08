@@ -560,7 +560,7 @@
         height: 14px;
       }
       .workspace {
-        position: static;
+        position: relative;
         min-height: 0;
         flex: 1;
         display: flex;
@@ -2696,6 +2696,239 @@
         color: var(--text);
         outline: 0;
       }
+      .lifecycle-agent-card {
+        width: min(calc(100% - 56px), 712px);
+        margin: 28px auto 0;
+        padding: 14px;
+        border: 0.5px solid var(--line-heavy);
+        border-radius: 12px;
+        background: #ffffff05;
+        color: var(--text2);
+      }
+      .lifecycle-agent-card[hidden] {
+        display: none;
+      }
+      .lifecycle-agent-card.attention {
+        border-color: #f4c15266;
+        background: #f4c1520b;
+      }
+      .lifecycle-agent-card.error {
+        border-color: #f06b6b66;
+        background: #f06b6b0a;
+      }
+      .lifecycle-agent-card header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .lifecycle-agent-card header strong {
+        flex: 1;
+        font-size: 12px;
+        font-weight: 620;
+      }
+      .lifecycle-agent-card p {
+        margin: 8px 0 0;
+        color: var(--text3);
+        font-size: 11px;
+        line-height: 1.5;
+      }
+      .lifecycle-agent-card ol,
+      .lifecycle-agent-card ul {
+        margin: 10px 0 0;
+        padding-left: 20px;
+        color: var(--text3);
+        font-size: 10px;
+        line-height: 1.55;
+      }
+      .lifecycle-card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 12px;
+      }
+      .lifecycle-card-actions button {
+        height: 28px;
+        padding: 0 9px;
+        border-radius: 8px;
+        background: #ffffff0c;
+        color: var(--text2);
+        font-size: 10px;
+      }
+      .lifecycle-card-actions button.danger {
+        background: #f06b6b22;
+        color: #ff9a9a;
+      }
+      .lifecycle-work-cover {
+        position: absolute;
+        z-index: 8;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 28px;
+        background: #171717e8;
+        text-align: center;
+        backdrop-filter: blur(4px);
+      }
+      .lifecycle-work-cover[hidden] {
+        display: none;
+      }
+      .lifecycle-work-cover strong {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--text2);
+        font-size: 12px;
+      }
+      .lifecycle-work-cover span {
+        display: block;
+        max-width: 280px;
+        color: var(--text3);
+        font-size: 11px;
+        line-height: 1.45;
+      }
+      .lifecycle-startup-surface {
+        position: fixed;
+        z-index: 24;
+        inset: var(--toolbar) 0 0 var(--sidebar);
+        background: var(--surface);
+        overflow: hidden;
+      }
+      body.sidebar-hidden .lifecycle-startup-surface {
+        left: 0;
+      }
+      @media (max-width: 1160px) {
+        .lifecycle-startup-surface {
+          left: 0;
+        }
+      }
+      .lifecycle-startup-surface[hidden] {
+        display: none;
+      }
+      .lifecycle-startup-split h1 {
+        margin: 0;
+        color: var(--text);
+        font-size: clamp(20px, 2.4vw, 30px);
+        font-weight: 580;
+        letter-spacing: -0.035em;
+      }
+      .lifecycle-startup-steps {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .lifecycle-startup-steps li {
+        min-height: 38px;
+        display: grid;
+        grid-template-columns: 18px 1fr;
+        align-items: center;
+        gap: 8px;
+        border-bottom: 0.5px solid var(--line);
+        color: var(--text3);
+        font-size: 11px;
+      }
+      .lifecycle-startup-steps li i {
+        width: 17px;
+        height: 17px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: #ffffff08;
+        color: var(--text3);
+        font-style: normal;
+        font-size: 9px;
+      }
+      .lifecycle-startup-steps li.done {
+        color: var(--text2);
+      }
+      .lifecycle-startup-steps li.done i {
+        color: var(--green);
+      }
+      .lifecycle-startup-steps li.running {
+        color: var(--text);
+      }
+      .lifecycle-startup-steps li.running i {
+        background: #f4c15218;
+        color: var(--yellow);
+      }
+      .lifecycle-startup-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin-top: 16px;
+      }
+      .lifecycle-startup-actions:empty {
+        display: none;
+      }
+      .lifecycle-startup-actions button {
+        height: 31px;
+        padding: 0 11px;
+        border-radius: 8px;
+        background: #ffffff0c;
+        color: var(--text2);
+        font-size: 10px;
+      }
+      .lifecycle-startup-actions button.danger {
+        background: #f06b6b20;
+        color: #ff9a9a;
+      }
+      body.lifecycle-startup-active .add-conversation,
+      body.lifecycle-startup-active .conversation-tabs,
+      body.lifecycle-startup-active .work-trigger,
+      body.lifecycle-startup-active .task-title,
+      body.lifecycle-startup-active .workspace-title-actions,
+      body.lifecycle-startup-active .workspace-prototype-controls,
+      body.lifecycle-startup-active .note {
+        visibility: hidden;
+        pointer-events: none;
+      }
+      .lifecycle-startup-split-output pre {
+        margin: 0;
+        color: #ffffff70;
+        font: 10px/1.6 ui-monospace, "SFMono-Regular", Menlo, monospace;
+        white-space: pre-wrap;
+      }
+      .lifecycle-startup-split {
+        display: grid;
+        grid-template-columns: minmax(340px, 42%) 1fr;
+      }
+      .lifecycle-startup-split-status,
+      .lifecycle-startup-split-output {
+        min-height: 0;
+        overflow: auto;
+      }
+      .lifecycle-startup-split-status {
+        padding: clamp(38px, 7vh, 72px) clamp(28px, 5vw, 64px) 76px;
+        border-right: 0.5px solid var(--line);
+      }
+      .lifecycle-startup-split-output {
+        display: flex;
+        flex-direction: column;
+        padding: clamp(38px, 7vh, 72px) clamp(28px, 5vw, 64px) 76px;
+        background: #141414;
+      }
+      .lifecycle-startup-split-output > header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 22px;
+        color: var(--text3);
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .lifecycle-startup-split-output pre {
+        min-height: 180px;
+        flex: 1;
+      }
+      .workspace-status .lifecycle-phase {
+        color: var(--text3);
+        font-size: 9px;
+      }
+      .workspace-status .lifecycle-phase.attention {
+        color: var(--yellow);
+      }
+      .task.lifecycle-disabled {
+        opacity: 0.58;
+        pointer-events: none;
+      }
       button.note:hover,
       button.note:focus-visible {
         color: var(--text2);
@@ -3262,6 +3495,31 @@
         .add-conversation {
           display: none !important;
         }
+        .lifecycle-agent-card {
+          width: calc(100% - 32px);
+          margin-top: 16px;
+        }
+        .lifecycle-startup-split h1 {
+          font-size: 22px;
+        }
+        .lifecycle-startup-split {
+          display: block;
+          overflow: auto;
+        }
+        .lifecycle-startup-split-status,
+        .lifecycle-startup-split-output {
+          overflow: visible;
+        }
+        .lifecycle-startup-split-status {
+          min-height: 100%;
+          padding: 34px 20px 74px;
+          border-right: 0;
+        }
+        .lifecycle-startup-split-output {
+          min-height: 70%;
+          padding: 34px 20px 74px;
+          border-top: 0.5px solid var(--line);
+        }
       }
       @media (prefers-reduced-motion: reduce) {
         * {
@@ -3701,6 +3959,19 @@
           </button>
         </header>
         <div class="workspace">
+          <section class="lifecycle-startup-surface" data-lifecycle-startup-surface aria-live="polite" hidden>
+            <div class="lifecycle-startup-split">
+              <section class="lifecycle-startup-split-status">
+                <h1 data-lifecycle-startup-title>Starting workspace</h1>
+                <ol class="lifecycle-startup-steps" data-lifecycle-startup-steps></ol>
+                <div class="lifecycle-startup-actions" data-lifecycle-startup-actions></div>
+              </section>
+              <section class="lifecycle-startup-split-output">
+                <header><span>Output</span><span data-lifecycle-startup-output-state>Live</span></header>
+                <pre data-lifecycle-startup-log>Waiting for provisioning events…</pre>
+              </section>
+            </div>
+          </section>
           <section class="agent">
             <div class="no-active-workspace" data-no-active-workspace hidden>
               <div>
@@ -3710,6 +3981,14 @@
             </div>
             <div class="conversation-panel" data-conversation-panel="primary">
               <div class="transcript">
+                <section class="lifecycle-agent-card" data-lifecycle-agent-card aria-live="polite" hidden>
+                  <header>
+                    <span data-lifecycle-card-icon>●</span>
+                    <strong data-lifecycle-card-title>Preparing workspace</strong>
+                  </header>
+                  <div data-lifecycle-card-body></div>
+                  <div class="lifecycle-card-actions" data-lifecycle-card-actions></div>
+                </section>
                 <div class="thread">
                   <article class="message user">
                     <p>Implement issue #19 in the accepted dark-foundation prototype. Keep the shell, but make queueing, slash autocomplete, and every production tool presentation directly evaluable.</p>
@@ -4069,6 +4348,12 @@ at selectSlashCommand (prototype.js:1412:18)</pre>
               </button>
             </nav>
             <div class="stage">
+              <div class="lifecycle-work-cover" data-lifecycle-work-cover hidden>
+                <div>
+                  <strong data-lifecycle-work-title>Work is not ready</strong>
+                  <span data-lifecycle-work-detail>The Agent conversation remains available while the workspace runtime starts.</span>
+                </div>
+              </div>
               <section class="view file-view" data-view-panel="file">
                 <header class="view-toolbar">
                   <span class="path"
@@ -5120,7 +5405,7 @@ Should this reuse an existing browser when the view reference is still available
       <button data-action="simulate-parked-ready">Parked ready event</button>
       <button data-action="preview-workspace-loading">Loading state</button>
     </nav>
-    <script src="prototype.js?v=10"></script>
+    <script src="prototype.js?v=11"></script>
     <script type="module" src="file-view-prototype.js?v=7"></script>
   </body>
 </html>

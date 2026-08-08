@@ -5,6 +5,7 @@ window.scrollTo(0, 0);
 const prototypeUrl = new URL(location.href);
 prototypeUrl.searchParams.delete("mobile-nav");
 prototypeUrl.searchParams.delete("agent-tabs");
+prototypeUrl.searchParams.delete("lifecycle-layout");
 history.replaceState(null, "", prototypeUrl);
 const defaultViewOrder = [
   "file",
@@ -22,6 +23,171 @@ const defaultExpandedProjects = {
   parked: false,
 };
 const defaultParkedWorkspaces = ["mobile-navigation", "bun-upgrade"];
+
+// PROTOTYPE — pure workspace lifecycle model for issue #21.
+// Durable phase intentionally does not absorb activity, signal, parking,
+// image age, Work-view condition, selection, or presence.
+const lifecycleInitialState = Object.freeze({
+  phase: "ready",
+  activity: "idle",
+  agentSignal: "none",
+  parked: false,
+  imageAge: "current",
+  workViews: "live",
+  selected: true,
+  presence: "present",
+  progressIndex: 6,
+  failureKind: null,
+  error: null,
+  deleteBlock: null,
+});
+
+const lifecycleProvisionSteps = [
+  "Create workspace directory",
+  "Prepare workspace",
+  "Resolve workspace image",
+  "Start workspace container",
+  "Wait for workspace startup",
+  "Run startup integrations",
+];
+
+function workspaceLifecycleReducer(state, event) {
+  const next = { ...state };
+  switch (event.type) {
+    case "RESET_READY":
+      return { ...lifecycleInitialState };
+    case "RESET_STARTING":
+      return {
+        ...lifecycleInitialState,
+        phase: "starting",
+        activity: "busy",
+        workViews: "waiting for runtime",
+        progressIndex: 0,
+      };
+    case "ADVANCE_PROVISIONING":
+      if (state.phase !== "starting") throw new Error("Provisioning can advance only while starting");
+      next.progressIndex = Math.min(lifecycleProvisionSteps.length - 1, state.progressIndex + 1);
+      return next;
+    case "PROVISIONED":
+      if (state.phase !== "starting") throw new Error("Only a starting workspace can become ready");
+      return {
+        ...next,
+        phase: "ready",
+        activity: "idle",
+        workViews: "live",
+        progressIndex: lifecycleProvisionSteps.length,
+        error: null,
+        failureKind: null,
+      };
+    case "PROVISION_FAILED":
+      if (state.phase !== "starting") throw new Error("Provisioning can fail only while starting");
+      return {
+        ...next,
+        phase: "failed",
+        activity: "idle",
+        agentSignal: "attention",
+        workViews: "unavailable",
+        failureKind: "provisioning",
+        error: "Workspace setup exited while running .atelier/setup.sh",
+      };
+    case "RETRY_PROVISIONING":
+      if (state.phase !== "failed" || state.failureKind !== "provisioning") throw new Error("Only a provisioning failure can be retried");
+      return {
+        ...lifecycleInitialState,
+        phase: "starting",
+        activity: "busy",
+        workViews: "waiting for runtime",
+        progressIndex: 0,
+      };
+    case "START_ACTIVITY":
+      if (state.phase !== "ready") throw new Error("Workspace activity requires a ready runtime");
+      next.activity = "busy";
+      next.agentSignal = "none";
+      return next;
+    case "AGENT_READY":
+      if (state.phase !== "ready") throw new Error("Agent ready requires a ready runtime");
+      next.activity = "idle";
+      next.agentSignal = "ready";
+      return next;
+    case "REQUEST_ATTENTION":
+      if (state.phase !== "ready") throw new Error("Attention requires a ready runtime");
+      next.agentSignal = "attention";
+      return next;
+    case "ACKNOWLEDGE_SIGNAL":
+      next.agentSignal = "none";
+      return next;
+    case "PARK":
+      if (state.phase !== "ready") throw new Error("Only a ready workspace can be parked");
+      next.parked = true;
+      next.selected = false;
+      return next;
+    case "UNPARK":
+      if (state.phase !== "ready") throw new Error("Only a ready workspace can be unparked");
+      next.parked = false;
+      next.selected = true;
+      return next;
+    case "MARK_IMAGE_OUTDATED":
+      next.imageAge = state.imageAge === "current" ? "outdated" : "current";
+      return next;
+    case "REQUEST_DELETE":
+      if (!["ready", "failed"].includes(state.phase)) throw new Error("Deletion can start only from ready or failed");
+      return {
+        ...next,
+        phase: "checking_delete",
+        activity: "busy",
+        agentSignal: "none",
+        deleteBlock: null,
+      };
+    case "DELETE_BLOCKED":
+      if (state.phase !== "checking_delete") throw new Error("A deletion check must be running before it can block");
+      return {
+        ...next,
+        phase: "ready",
+        activity: "idle",
+        agentSignal: "attention",
+        deleteBlock: {
+          paths: ["apps/web/src/server/app.ts", "CONTEXT.md"],
+          commits: ["7ad91e2 Describe lifecycle migration contract"],
+        },
+      };
+    case "CANCEL_DELETE":
+      if (!state.deleteBlock) throw new Error("There is no blocked deletion to cancel");
+      return { ...next, agentSignal: "none", deleteBlock: null };
+    case "DELETE_ALLOWED":
+    case "FORCE_DELETE":
+      if (event.type === "DELETE_ALLOWED" && state.phase !== "checking_delete") throw new Error("A deletion check must allow deletion");
+      if (event.type === "FORCE_DELETE" && !state.deleteBlock) throw new Error("Force delete is offered only after a blocked check");
+      return {
+        ...next,
+        phase: "deleting",
+        activity: "busy",
+        agentSignal: "none",
+        selected: false,
+        deleteBlock: null,
+      };
+    case "DELETE_FAILED":
+      if (state.phase !== "deleting") throw new Error("Deletion can fail only while deleting");
+      return {
+        ...next,
+        phase: "failed",
+        activity: "idle",
+        agentSignal: "attention",
+        workViews: "unavailable",
+        failureKind: "deletion",
+        error: "Docker could not remove the workspace container",
+      };
+    case "OPEN_FAILED_WORKSPACE":
+      if (state.phase !== "failed") throw new Error("Only a failed workspace has failure details");
+      next.selected = true;
+      return next;
+    case "DELETED":
+      if (state.phase !== "deleting") throw new Error("Only a deleting workspace can be removed");
+      return { ...next, activity: "idle", presence: "removed", selected: false };
+    default:
+      throw new Error(`Unknown workspace lifecycle event: ${event.type}`);
+  }
+}
+
 const main = document.querySelector(".main");
 const workPane = document.querySelector(".work");
 const workTabs = document.querySelector(".work-tabs");
@@ -196,6 +362,185 @@ function loadInteractionState() {
 let interaction = loadInteractionState();
 let resizingWork = false;
 let draggedView = null;
+let lifecycleState = workspaceLifecycleReducer(lifecycleInitialState, { type: "RESET_STARTING" });
+const lifecycleTargetWorkspace = "redesign-tabs";
+const lifecycleAgentCard = document.querySelector("[data-lifecycle-agent-card]");
+const lifecycleWorkCover = document.querySelector("[data-lifecycle-work-cover]");
+const lifecycleStartupSurface = document.querySelector("[data-lifecycle-startup-surface]");
+
+function dispatchWorkspaceLifecycle(type) {
+  lifecycleState = workspaceLifecycleReducer(lifecycleState, { type });
+
+  if (type === "PARK") {
+    setWorkspaceParked(lifecycleTargetWorkspace, true);
+  } else if (type === "UNPARK") {
+    setWorkspaceParked(lifecycleTargetWorkspace, false);
+  } else if (["DELETE_ALLOWED", "FORCE_DELETE"].includes(type)) {
+    activateWorkspace("persisted-work-views", { focusComposer: false });
+  } else if (type === "OPEN_FAILED_WORKSPACE") {
+    activateWorkspace(lifecycleTargetWorkspace, { focusComposer: false });
+  }
+  renderLifecyclePrototype();
+}
+
+function lifecycleCardAction(type, label, danger = false) {
+  return `<button class="${danger ? "danger" : ""}" data-lifecycle-event="${type}">${label}</button>`;
+}
+
+function renderLifecycleStartupSurface() {
+  const replacesWorkspace = lifecycleState.selected
+    && lifecycleState.presence === "present"
+    && interaction.activeWorkspace === lifecycleTargetWorkspace
+    && (lifecycleState.phase === "starting" || (lifecycleState.phase === "failed" && lifecycleState.failureKind === "provisioning"));
+  const targetRow = document.querySelector(`.task[data-workspace="${lifecycleTargetWorkspace}"]`);
+  const targetLabel = targetRow.querySelector(".task-label");
+  targetLabel.textContent = replacesWorkspace
+    ? lifecycleState.phase === "failed" ? "Workspace failed to start" : "Creating workspace…"
+    : "Redesign tabs and Work views";
+  if (!replacesWorkspace && interaction.activeWorkspace === lifecycleTargetWorkspace) {
+    document.querySelector("[data-workspace-title]").textContent = "Redesign tabs and Work views";
+  }
+  lifecycleStartupSurface.hidden = !replacesWorkspace;
+  document.body.classList.toggle("lifecycle-startup-active", replacesWorkspace);
+  [document.querySelector(".agent"), document.querySelector(".work"), document.querySelector(".divider")].forEach((pane) => {
+    pane.inert = replacesWorkspace;
+    pane.setAttribute("aria-hidden", String(replacesWorkspace));
+  });
+  if (!replacesWorkspace) return;
+
+  const failed = lifecycleState.phase === "failed";
+  const currentIndex = Math.min(lifecycleState.progressIndex, lifecycleProvisionSteps.length - 1);
+  const currentStep = lifecycleProvisionSteps[currentIndex];
+  const progress = failed ? currentIndex + 1 : Math.min(currentIndex + 1, lifecycleProvisionSteps.length);
+  const title = failed ? "Workspace failed to start" : "Starting workspace";
+  const log = failed
+    ? `$ .atelier/setup.sh\nerror: setup exited with status 1\n${lifecycleState.error}`
+    : `$ atelier workspace prepare\n[${progress}/${lifecycleProvisionSteps.length}] ${currentStep}`;
+  const steps = lifecycleProvisionSteps.map((step, index) => {
+    const status = index < currentIndex ? "done" : index === currentIndex ? failed ? "failed" : "running" : "pending";
+    const symbol = status === "done" ? "✓" : status === "running" ? "⟳" : status === "failed" ? "!" : "·";
+    return `<li class="${status}"><i>${symbol}</i><span>${step}</span></li>`;
+  }).join("");
+  const actions = failed
+    ? `${lifecycleCardAction("RETRY_PROVISIONING", "Retry setup")}${lifecycleCardAction("REQUEST_DELETE", "Delete workspace", true)}`
+    : "";
+
+  lifecycleStartupSurface.classList.toggle("is-error", failed);
+  lifecycleStartupSurface.querySelectorAll("[data-lifecycle-startup-title]").forEach((node) => { node.textContent = title; });
+  lifecycleStartupSurface.querySelectorAll("[data-lifecycle-startup-log]").forEach((node) => { node.textContent = log; });
+  lifecycleStartupSurface.querySelectorAll("[data-lifecycle-startup-steps]").forEach((node) => { node.innerHTML = steps; });
+  lifecycleStartupSurface.querySelectorAll("[data-lifecycle-startup-actions]").forEach((node) => { node.innerHTML = actions; });
+  lifecycleStartupSurface.querySelector("[data-lifecycle-startup-output-state]").textContent = failed ? "Failed" : "Live";
+}
+
+function renderLifecycleAgentCard() {
+  const startupReplacesPanes = lifecycleState.phase === "starting" || (lifecycleState.phase === "failed" && lifecycleState.failureKind === "provisioning");
+  lifecycleAgentCard.hidden = startupReplacesPanes || !lifecycleState.selected || lifecycleState.presence === "removed";
+  if (lifecycleAgentCard.hidden) return;
+  lifecycleAgentCard.className = "lifecycle-agent-card";
+  const title = lifecycleAgentCard.querySelector("[data-lifecycle-card-title]");
+  const icon = lifecycleAgentCard.querySelector("[data-lifecycle-card-icon]");
+  const body = lifecycleAgentCard.querySelector("[data-lifecycle-card-body]");
+  const actions = lifecycleAgentCard.querySelector("[data-lifecycle-card-actions]");
+  actions.innerHTML = "";
+
+  if (lifecycleState.phase === "starting") {
+    title.textContent = "Preparing workspace";
+    icon.textContent = "⟳";
+    const steps = lifecycleProvisionSteps.map((step, index) => {
+      const status = index < lifecycleState.progressIndex ? "✓" : index === lifecycleState.progressIndex ? "⟳" : "·";
+      return `<li>${status} ${step}</li>`;
+    }).join("");
+    body.innerHTML = `<p>The conversation is available now. Messages sent before the runtime is ready wait here and run when setup completes.</p><ol>${steps}</ol>`;
+    return;
+  }
+
+  if (lifecycleState.phase === "checking_delete") {
+    title.textContent = "Checking whether this workspace can be deleted";
+    icon.textContent = "⟳";
+    body.innerHTML = "<p>Agent, Work views, selection, and unsaved browser state stay mounted while Atelier checks local repositories.</p>";
+    return;
+  }
+
+  if (lifecycleState.deleteBlock) {
+    lifecycleAgentCard.classList.add("attention");
+    title.textContent = "Deletion needs your attention";
+    icon.textContent = "●";
+    body.innerHTML = `<p>Deleting would discard work that has not been preserved elsewhere.</p><ul><li><code>apps/web/src/server/app.ts</code> · uncommitted</li><li><code>CONTEXT.md</code> · untracked</li><li><code>7ad91e2</code> · unpushed commit</li></ul>`;
+    actions.innerHTML = `${lifecycleCardAction("CANCEL_DELETE", "Keep workspace")}${lifecycleCardAction("FORCE_DELETE", "Force delete", true)}`;
+    return;
+  }
+
+  if (lifecycleState.phase === "failed") {
+    lifecycleAgentCard.classList.add("error");
+    title.textContent = lifecycleState.failureKind === "deletion" ? "Workspace deletion failed" : "Workspace creation failed";
+    icon.textContent = "!";
+    body.innerHTML = `<p>${lifecycleState.error}</p><ul><li>Failed operation remains visible</li><li>Diagnostic output stays attached to this workspace</li><li>The transcript remains readable</li></ul>`;
+    actions.innerHTML = lifecycleState.failureKind === "provisioning"
+      ? `${lifecycleCardAction("RETRY_PROVISIONING", "Retry setup")}${lifecycleCardAction("REQUEST_DELETE", "Delete workspace", true)}`
+      : lifecycleCardAction("REQUEST_DELETE", "Retry deletion", true);
+    return;
+  }
+
+  if (lifecycleState.imageAge === "outdated") {
+    title.textContent = "Workspace uses an older Atelier image";
+    icon.textContent = "△";
+    body.innerHTML = "<p>The runtime is ready and remains usable. Some newer features may require a new workspace; image age does not become a lifecycle phase.</p>";
+    return;
+  }
+
+  lifecycleAgentCard.hidden = true;
+}
+
+function renderLifecycleWorkState() {
+  const show = lifecycleState.selected && lifecycleState.phase === "failed" && lifecycleState.failureKind === "deletion";
+  lifecycleWorkCover.hidden = !show;
+  if (!show) return;
+  const title = lifecycleWorkCover.querySelector("[data-lifecycle-work-title]");
+  const detail = lifecycleWorkCover.querySelector("[data-lifecycle-work-detail]");
+  if (lifecycleState.phase === "starting") {
+    title.textContent = "Work waits for the runtime";
+    detail.textContent = "The Agent conversation is already available. Runtime-backed Work views appear when provisioning completes.";
+  } else {
+    title.textContent = "Runtime-backed Work is unavailable";
+    detail.textContent = "Failure diagnostics and recovery live with the workspace in Agent; Work-view-specific recovery is decided by ticket #22.";
+  }
+}
+
+function renderLifecycleWorkspaceRow() {
+  const row = document.querySelector(`.task[data-workspace="${lifecycleTargetWorkspace}"]`);
+  row.hidden = lifecycleState.presence === "removed";
+  row.classList.toggle("lifecycle-disabled", ["checking_delete", "deleting"].includes(lifecycleState.phase));
+  const marker = row.querySelector(".workspace-status");
+  if (lifecycleState.presence === "removed") return;
+  let status = "";
+  if (["starting", "checking_delete", "deleting"].includes(lifecycleState.phase)) {
+    const label = lifecycleState.phase === "starting" ? "Starting" : lifecycleState.phase === "checking_delete" ? "Checking" : "Deleting";
+    status = `<span class="status-spinner sm" aria-label="${label}"></span>${lifecycleState.phase === "starting" ? "" : `<span class="lifecycle-phase">${label}</span>`}`;
+  } else if (lifecycleState.phase === "failed") {
+    status = '<span class="lifecycle-phase attention">Needs attention</span>';
+  } else if (lifecycleState.activity === "busy") {
+    status = '<span class="status-spinner sm" title="Agent working"></span>';
+  } else if (lifecycleState.agentSignal !== "none") {
+    status = `<i class="ready-dot" title="${lifecycleState.agentSignal === "ready" ? "Agent ready" : "Attention needed"}"></i>`;
+  }
+  if (lifecycleState.imageAge === "outdated") status += '<span class="lifecycle-phase" title="Older Atelier image">△</span>';
+  marker.innerHTML = status;
+}
+
+function renderLifecyclePrototype() {
+  renderLifecycleStartupSurface();
+  renderLifecycleAgentCard();
+  renderLifecycleWorkState();
+  renderLifecycleWorkspaceRow();
+  if (interaction.activeWorkspace === lifecycleTargetWorkspace) {
+    const parkAction = document.querySelector('[data-action="park-active-workspace"]');
+    const deleteAction = document.querySelector('[data-action="confirm-delete-workspace"]');
+    parkAction.disabled = lifecycleState.phase !== "ready" || Boolean(lifecycleState.deleteBlock);
+    deleteAction.disabled = !["ready", "failed"].includes(lifecycleState.phase) || Boolean(lifecycleState.deleteBlock);
+  }
+}
+
 const workspaceOrigins = new Map(
   [...document.querySelectorAll(".task[data-workspace]")].map((row, order) => [
     row.dataset.workspace,
@@ -1143,6 +1488,9 @@ document.querySelectorAll(".prototype-dialog").forEach((dialog) => {
 document.addEventListener("click", (event) => {
   const control = event.target.closest("button, [data-action]");
   if (!control) return;
+  if (control.dataset.lifecycleEvent) {
+    dispatchWorkspaceLifecycle(control.dataset.lifecycleEvent);
+  }
   if (control.dataset.action === "submit-agent-message") submitAgentMessage();
   if (control.dataset.action === "select-slash-command") {
     selectSlashCommand(Number(control.dataset.commandIndex));
@@ -1364,7 +1712,11 @@ document.addEventListener("click", (event) => {
   }
   if (control.dataset.action === "confirm-delete-workspace") {
     workspaceActions.hidden = true;
-    workspaceDeleteDialog.showModal();
+    if (interaction.activeWorkspace === lifecycleTargetWorkspace) {
+      dispatchWorkspaceLifecycle("REQUEST_DELETE");
+    } else {
+      workspaceDeleteDialog.showModal();
+    }
   }
   if (control.dataset.action === "open-settings") {
     showSettingsPage("general");
@@ -1693,12 +2045,20 @@ function restoreInteractionState() {
 
 addEventListener("resize", () => {
   if (!isMobile()) document.body.classList.remove("mobile-work");
+  if (!lifecycleStartupSurface.hidden) setWorkspaceOpen(!workspaceOverlays());
   syncSidebar();
   setWorkWidth(interaction.workSize || main.clientWidth * 0.44);
 });
 
 restoreInteractionState();
+document.querySelector(`.task[data-workspace="${lifecycleTargetWorkspace}"]`).hidden = false;
+if (isWorkspaceParked(lifecycleTargetWorkspace)) {
+  setWorkspaceParked(lifecycleTargetWorkspace, false, { activate: false });
+}
+activateWorkspace(lifecycleTargetWorkspace, { focusComposer: false, handoff: false });
+setWorkspaceOpen(!workspaceOverlays());
 renderConversationState();
 renderMobileViewBar();
+renderLifecyclePrototype();
 showOnboardingStep(0);
 if (!prototypeUrl.searchParams.has("file-nav")) onboardingDialog.showModal();
