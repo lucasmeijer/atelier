@@ -10,6 +10,7 @@ import {
   discoverHostGitHubToken,
   dockerHostAtelierDataPath,
   getAtelierRuntimeContext,
+  gitHubCredentialHelperCommand,
   invalidArguments,
   shellQuote,
   type AtelierEventBus,
@@ -130,16 +131,11 @@ async function requireCommand(name: string, args: string[], options: { env?: Rec
 }
 
 async function git(args: string[], options: { errorCode?: string } = {}): Promise<CommandResult> {
-  const token = await githubTokenAsync();
-  const credentialHelper = `!f() { test "$1" = get || exit 0; token="\${GH_TOKEN:-}"; [ -n "$token" ] || exit 0; echo username=x-access-token; echo password="$token"; }; f`;
-  return await requireCommand("git", ["-c", `credential.helper=${credentialHelper}`, ...args], {
+  const token = discoverHostGitHubToken();
+  return await requireCommand("git", ["-c", `credential.helper=${gitHubCredentialHelperCommand}`, ...args], {
     env: token ? { GH_TOKEN: token } : undefined,
     errorCode: options.errorCode ?? "git_error",
   });
-}
-
-async function githubTokenAsync(): Promise<string | undefined> {
-  return discoverHostGitHubToken();
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -157,8 +153,7 @@ async function ensureTemplate(gitUrl: string, branch: string | null, key: string
   await rm(effectiveBranchPath, { force: true });
   await rm(resolvedCommitPath, { force: true });
 
-  const token = await githubTokenAsync();
-  const credentialHelper = `!f() { test "$1" = get || exit 0; token="\${GH_TOKEN:-}"; [ -n "$token" ] || exit 0; echo username=x-access-token; echo password="$token"; }; f`;
+  const token = discoverHostGitHubToken();
   const script = `
 set -euo pipefail
 export GIT_TERMINAL_PROMPT=0
@@ -166,7 +161,7 @@ repo_path=${shellQuote(repoPath)}
 tmp_path=${shellQuote(tmpPath)}
 git_url=${shellQuote(gitUrl)}
 branch=${shellQuote(branch ?? "")}
-credential_helper=${shellQuote(credentialHelper)}
+credential_helper=${shellQuote(gitHubCredentialHelperCommand)}
 effective_branch_file=${shellQuote(effectiveBranchPath)}
 resolved_commit_file=${shellQuote(resolvedCommitPath)}
 
@@ -202,6 +197,9 @@ git_cmd -C "$repo_path" clean -ffdx
 git_cmd lfs version
 git_cmd -C "$repo_path" lfs install --local
 git_cmd -C "$repo_path" lfs pull origin "$effective_branch"
+git_cmd -C "$repo_path" submodule sync --recursive
+git_cmd -C "$repo_path" submodule update --init --recursive --checkout --force
+git_cmd -C "$repo_path" submodule foreach --quiet --recursive 'git clean -ffdx && git lfs install --local && git lfs pull'
 
 status="$(git_cmd -C "$repo_path" status --porcelain=v1)"
 if [ -n "$status" ]; then

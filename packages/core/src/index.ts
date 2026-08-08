@@ -51,6 +51,8 @@ export {
 export {
   clearWorkspaceGitHubToken,
   discoverHostGitHubToken,
+  gitHubCredentialHelperCommand,
+  gitHubCredentialHelperShellBody,
   hasWorkspaceGitHubToken,
   setWorkspaceGitHubToken,
 } from "./github-token.ts";

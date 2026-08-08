@@ -27,20 +27,36 @@ function parseOutgoingCommits(output: string): Array<{ hash: string; subject: st
   });
 }
 
-async function inspectWorkspaceDeleteSafety(id: string): Promise<WorkspaceDeleteSafetyIssue[]> {
-  const quotedPath = shellQuote(workspaceRoot);
-  const repo = await execWorkspaceShell(id, `git -C ${quotedPath} rev-parse --is-inside-work-tree >/dev/null 2>&1`);
-  if (repo.exitCode !== 0) return [];
-
+async function inspectRepositoryDeleteSafety(id: string, path: string, repoName: string): Promise<WorkspaceDeleteSafetyIssue | null> {
+  const quotedPath = shellQuote(path);
   const status = await execWorkspaceShell(id, `git -C ${quotedPath} status --porcelain=v1 -z`);
-  if (status.exitCode !== 0) throw new AtelierCoreError("git_error", status.stderr.trim() || `could not check status for ${workspaceRepoName}`);
+  if (status.exitCode !== 0) throw new AtelierCoreError("git_error", status.stderr.trim() || `could not check status for ${repoName}`);
   await execWorkspaceShell(id, `git -C ${quotedPath} fetch --quiet`);
   const head = await execWorkspaceShell(id, `git -C ${quotedPath} rev-parse --verify HEAD`);
   const upstream = head.exitCode === 0 ? await execWorkspaceShell(id, `git -C ${quotedPath} rev-parse --verify '@{upstream}'`) : { exitCode: 1, stdout: "", stderr: "", durationMs: 0 };
   const commits = head.exitCode !== 0 ? { exitCode: 0, stdout: "", stderr: "", durationMs: 0 } : upstream.exitCode === 0 ? await execWorkspaceShell(id, `git -C ${quotedPath} log --format='%H%x1f%s%x1e' '@{upstream}..HEAD'`) : await execWorkspaceShell(id, `git -C ${quotedPath} log --format='%H%x1f%s%x1e' HEAD --not --remotes`);
-  if (commits.exitCode !== 0) throw new AtelierCoreError("git_error", commits.stderr.trim() || `could not check outgoing commits for ${workspaceRepoName}`);
-  const issue = { repo: workspaceRepoName, uncommittedPaths: parsePorcelainPaths(status.stdout), outgoingCommits: parseOutgoingCommits(commits.stdout) };
-  return issue.uncommittedPaths.length || issue.outgoingCommits.length ? [issue] : [];
+  if (commits.exitCode !== 0) throw new AtelierCoreError("git_error", commits.stderr.trim() || `could not check outgoing commits for ${repoName}`);
+  const issue = { repo: repoName, uncommittedPaths: parsePorcelainPaths(status.stdout), outgoingCommits: parseOutgoingCommits(commits.stdout) };
+  return issue.uncommittedPaths.length || issue.outgoingCommits.length ? issue : null;
+}
+
+async function inspectWorkspaceDeleteSafety(id: string): Promise<WorkspaceDeleteSafetyIssue[]> {
+  const quotedRoot = shellQuote(workspaceRoot);
+  const repo = await execWorkspaceShell(id, `git -C ${quotedRoot} rev-parse --is-inside-work-tree >/dev/null 2>&1`);
+  if (repo.exitCode !== 0) return [];
+
+  const submodules = await execWorkspaceShell(id, `git -C ${quotedRoot} submodule foreach --quiet --recursive 'printf "%s\\0" "$displaypath"'`);
+  if (submodules.exitCode !== 0) throw new AtelierCoreError("git_error", submodules.stderr.trim() || "could not enumerate workspace submodules");
+  const repositories = [
+    { path: workspaceRoot, name: workspaceRepoName },
+    ...submodules.stdout.split("\0").filter(Boolean).map((path) => ({ path: `${workspaceRoot}/${path}`, name: path })),
+  ];
+  const issues: WorkspaceDeleteSafetyIssue[] = [];
+  for (const repository of repositories) {
+    const issue = await inspectRepositoryDeleteSafety(id, repository.path, repository.name);
+    if (issue) issues.push(issue);
+  }
+  return issues;
 }
 
 export function registerProjectWorkspaceEvents(events: AtelierEventBus): void {

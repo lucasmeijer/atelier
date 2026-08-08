@@ -8,6 +8,7 @@ import {
 } from "@atelier/agent/server";
 import {
   AtelierCoreError,
+  gitHubCredentialHelperCommand,
   invalidArguments,
   readJsonObject,
   requestAcceptsJson,
@@ -640,8 +641,7 @@ ${moduleStylesHtml()}
 
   async function canReadRemoteWithConfiguredToken(gitUrl: string): Promise<boolean> {
     const token = discoverHostGitHubToken();
-    const credentialHelper = `!f() { test "$1" = get || exit 0; token="\${GH_TOKEN:-}"; [ -n "$token" ] || exit 0; echo username=x-access-token; echo password="$token"; }; f`;
-    const proc = Bun.spawn(["git", "-c", `credential.helper=${credentialHelper}`, "ls-remote", "--exit-code", gitUrl, "HEAD"], {
+    const proc = Bun.spawn(["git", "-c", `credential.helper=${gitHubCredentialHelperCommand}`, "ls-remote", "--exit-code", gitUrl, "HEAD"], {
       stdout: "ignore",
       stderr: "pipe",
       env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...(token ? { GH_TOKEN: token } : {}) },

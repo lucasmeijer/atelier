@@ -2,7 +2,21 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { clearWorkspaceGitHubToken, discoverHostGitHubToken, hasWorkspaceGitHubToken, setWorkspaceGitHubToken } from "../src/github-token.ts";
+import { clearWorkspaceGitHubToken, discoverHostGitHubToken, gitHubCredentialHelperShellBody, hasWorkspaceGitHubToken, setWorkspaceGitHubToken } from "../src/github-token.ts";
+
+async function runCredentialHelper(input: string): Promise<string> {
+  const proc = Bun.spawn(["sh", "-c", gitHubCredentialHelperShellBody, "atelier-git-credential", "get"], {
+    env: { ...process.env, GH_TOKEN: "secret-token" },
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  proc.stdin.write(input);
+  proc.stdin.end();
+  const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  if (exitCode !== 0) throw new Error(stderr);
+  return stdout;
+}
 
 let previousDataDir: string | undefined;
 let previousGitHubToken: string | undefined;
@@ -55,5 +69,12 @@ describe("GitHub token discovery", () => {
 
     expect(discoverHostGitHubToken()).toBeUndefined();
     expect(hasWorkspaceGitHubToken()).toBe(false);
+  });
+
+  test("credential helper supplies the token only to GitHub HTTPS remotes", async () => {
+    expect(await runCredentialHelper("protocol=https\nhost=github.com\n\n")).toBe("username=x-access-token\npassword=secret-token\n");
+    expect(await runCredentialHelper("protocol=https\nhost=github.com:443\n\n")).toBe("username=x-access-token\npassword=secret-token\n");
+    expect(await runCredentialHelper("protocol=https\nhost=example.com\n\n")).toBe("");
+    expect(await runCredentialHelper("protocol=ssh\nhost=github.com\n\n")).toBe("");
   });
 });

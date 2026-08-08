@@ -1,7 +1,7 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
-import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, invalidArguments, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput } from "@atelier/core";
+import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, gitHubCredentialHelperShellBody, invalidArguments, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput } from "@atelier/core";
 import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
 import type { WorkspaceServerProvisioningHook } from "@atelier/shared";
 import { dockerImageId, ensureDefaultWorkspaceImage, nativeLinuxDockerPlatform, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
@@ -349,10 +349,7 @@ function workspaceCreateDockerArgs(container: string, image: string, publishHost
 function workspaceGitCredentialInitScript(): string {
   return `cat > /usr/local/bin/atelier-git-credential <<'EOF'
 #!/bin/sh
-test "$1" = get || exit 0
-[ -n "\${GH_TOKEN:-}" ] || exit 0
-echo username=x-access-token
-echo password="$GH_TOKEN"
+${gitHubCredentialHelperShellBody}
 EOF
 chmod 755 /usr/local/bin/atelier-git-credential; cat > /etc/profile.d/atelier-github-token.sh <<'EOF'
 # GH_TOKEN, when present, is an Atelier placeholder. It is not the real secret.

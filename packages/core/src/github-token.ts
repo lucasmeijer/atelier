@@ -2,6 +2,24 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { dirname, join } from "node:path";
 import { getAtelierRuntimeContext } from "./runtime-context.ts";
 
+// Submodule URLs are repository-controlled, so never offer the GitHub token to another host.
+export const gitHubCredentialHelperShellBody = `test "$1" = get || exit 0
+protocol=
+host=
+while IFS='=' read -r key value; do
+  case "$key" in
+    protocol) protocol="$value" ;;
+    host) host="$value" ;;
+  esac
+done
+[ "$protocol" = https ] || exit 0
+case "$host" in github.com|github.com:443) ;; *) exit 0 ;; esac
+[ -n "\${GH_TOKEN:-}" ] || exit 0
+echo username=x-access-token
+echo password="$GH_TOKEN"`;
+
+export const gitHubCredentialHelperCommand = `!f() { ${gitHubCredentialHelperShellBody}; }; f`;
+
 function storedGitHubTokenPath(): string {
   return join(getAtelierRuntimeContext().atelierDataDir, "workspace", "github-token");
 }

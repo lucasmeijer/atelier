@@ -146,11 +146,11 @@ This is useful for screenshots, images, videos, HTML pages, and other outputs.
 
 ## 7. Git and Repositories
 
-Atelier clones repository workspaces from the saved Git URL. For GitHub repositories, Atelier can use the GitHub token configured in Settings.
+Atelier clones repository workspaces from the saved Git URL. Git submodules are synchronized, initialized, and checked out recursively as part of the reusable project checkout, so fresh workspaces include submodule contents without additional setup. Forked workspaces preserve the source workspace's initialized submodules.
 
-The token is handled by Atelier for Git operations. It is not stored as the real token in the workspace environment.
+For GitHub repositories and HTTPS GitHub submodules, Atelier can use the GitHub token configured in Settings. The token is handled by Atelier for Git operations, is only offered to HTTPS requests for `github.com`, and is not stored as the real token in the workspace environment.
 
-Before deleting a workspace, Atelier checks for uncommitted changes and unpushed commits. If work should be kept, commit and push it before deleting.
+Before deleting a workspace, Atelier checks the top-level repository and every initialized submodule recursively for uncommitted changes and unpushed commits. If work should be kept, commit and push it before deleting.
 
 Repository workspaces also include `/persistent`, a directory shared by all workspaces for that saved repository. Use it for files you want to keep across workspaces but not commit to Git.
 

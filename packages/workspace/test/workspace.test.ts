@@ -248,6 +248,45 @@ describe("core workspaces", () => {
     expect(await deleteWorkspace(created.id, { force: true })).toBeNull();
   });
 
+  test("deleteWorkspace reports changes inside initialized submodules", async () => {
+    const created = await createWorkspace();
+    const setup = await execWorkspaceShell(created.id, `set -eu
+rm -rf /tmp/atelier-submodule-seed /tmp/atelier-submodule.git
+mkdir /tmp/atelier-submodule-seed
+git -C /tmp/atelier-submodule-seed init -b main
+git -C /tmp/atelier-submodule-seed config user.name Test
+git -C /tmp/atelier-submodule-seed config user.email test@example.com
+printf original > /tmp/atelier-submodule-seed/tracked.txt
+git -C /tmp/atelier-submodule-seed add tracked.txt
+git -C /tmp/atelier-submodule-seed commit -m initial
+git clone --bare /tmp/atelier-submodule-seed /tmp/atelier-submodule.git
+git -C /work init -b main
+git -C /work config user.name Test
+git -C /work config user.email test@example.com
+git -c protocol.file.allow=always -C /work submodule add /tmp/atelier-submodule.git deps/sub
+git -C /work commit -m 'add submodule'
+git -C /work/deps/sub config user.name Test
+git -C /work/deps/sub config user.email test@example.com
+printf committed > /work/deps/sub/tracked.txt
+git -C /work/deps/sub add tracked.txt
+git -C /work/deps/sub commit -m 'submodule work'
+printf changed > /work/deps/sub/tracked.txt`);
+    expect(setup.exitCode).toBe(0);
+
+    const events = createAtelierEventBus();
+    registerProjectWorkspaceEvents(events);
+    const error = await expectCoreError(() => deleteWorkspace(created.id, { events }));
+    expect(error.code).toBe("workspace_delete_blocked");
+    const details = error.details as { issues: Array<{ repo: string; uncommittedPaths: string[]; outgoingCommits: Array<{ subject: string }> }> };
+    expect(details.issues).toContainEqual(expect.objectContaining({
+      repo: "deps/sub",
+      uncommittedPaths: ["tracked.txt"],
+      outgoingCommits: [expect.objectContaining({ subject: "submodule work" })],
+    }));
+
+    expect(await deleteWorkspace(created.id, { force: true })).toBeNull();
+  });
+
   test("execWorkspaceCommand on a deleted workspace throws workspace_not_found", async () => {
     const created = await createWorkspace();
     await deleteWorkspace(created.id);

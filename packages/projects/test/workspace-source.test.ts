@@ -33,6 +33,22 @@ async function createRemote(): Promise<{ root: string; remote: string; seed: str
   return { root, remote, seed };
 }
 
+async function addSubmoduleRepository(parent: { seed: string }, childRemote: string, path: string): Promise<void> {
+  await run(["git", "submodule", "add", childRemote, path], { cwd: parent.seed });
+  await run(["git", "commit", "-m", `add ${path}`], { cwd: parent.seed });
+}
+
+async function startGitDaemon(): Promise<{ urlFor(path: string): string; stop(): void }> {
+  const port = 20_000 + Math.floor(Math.random() * 20_000);
+  const proc = Bun.spawn(["git", "daemon", "--reuseaddr", "--export-all", "--base-path=/", "--listen=127.0.0.1", `--port=${port}`, "/"], { stdout: "ignore", stderr: "pipe" });
+  await Bun.sleep(100);
+  if (proc.exitCode !== null) throw new Error(await new Response(proc.stderr).text());
+  return {
+    urlFor: (path) => `git://127.0.0.1:${port}${path}`,
+    stop: () => proc.kill(),
+  };
+}
+
 describe("workspace source preparation", () => {
   let dataDir: string;
   let previousDataDir: string | undefined;
@@ -93,6 +109,28 @@ describe("workspace source preparation", () => {
     const tokens = (await Bun.file(tokenLog).text()).trim().split("\n");
     expect(tokens.length).toBeGreaterThan(0);
     expect(tokens.every((token) => token === "stored-token")).toBe(true);
+  });
+
+  test("initializes nested submodules recursively in the reusable template and workspace", async () => {
+    const leaf = await createRemote();
+    const middle = await createRemote();
+    const parent = await createRemote();
+    tempRoots.push(leaf.root, middle.root, parent.root);
+    const daemon = await startGitDaemon();
+    try {
+      await addSubmoduleRepository(middle, daemon.urlFor(leaf.remote), "vendor/leaf");
+      await run(["git", "push", middle.remote, "main"], { cwd: middle.seed });
+      await addSubmoduleRepository(parent, daemon.urlFor(middle.remote), "deps/middle");
+      await run(["git", "push", parent.remote, "main"], { cwd: parent.seed });
+
+      const source = await prepareWorkspaceSource({ workspaceId: "ws-submodules", gitUrl: parent.remote, branch: "main" });
+
+      expect(await Bun.file(join(source.worktreePath, "deps", "middle", "file.txt")).text()).toBe("one\n");
+      expect(await Bun.file(join(source.worktreePath, "deps", "middle", "vendor", "leaf", "file.txt")).text()).toBe("one\n");
+      expect((await run(["git", "-C", source.worktreePath, "submodule", "status", "--recursive"])).stdout.split("\n").filter(Boolean).every((line) => line.startsWith(" "))).toBe(true);
+    } finally {
+      daemon.stop();
+    }
   });
 
   test("updates the template for later workspaces without changing existing workspaces", async () => {
