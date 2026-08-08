@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { AtelierCoreError, readJsonObject, requestAcceptsJson, type AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, invalidArguments, readJsonObject, requestAcceptsJson, type AtelierEventBus, type JsonObject } from "@atelier/core";
 import { getModelThinkingLevel, setModelThinkingLevel } from "./pi-config-models.ts";
 import { parseModelRef } from "./model-state.ts";
 import { setWorkspaceTitle, workspaceContainerName, workspacePreviewPortUrl } from "@atelier/workspace";
@@ -32,6 +32,28 @@ interface AgentWorkspaceCreationContext {
   model?: string;
   thinkingLevel?: string;
   attachmentDraft?: string;
+}
+
+interface AgentMessageRequest {
+  text: string;
+  attachmentDraft: string;
+  mode: SubmitMode;
+}
+
+function requiredStringField(value: JsonObject, field: string): string {
+  const fieldValue = value[field];
+  if (typeof fieldValue !== "string" || !fieldValue) throw invalidArguments(`${field} is required`);
+  return fieldValue;
+}
+
+function parseAgentMessageRequest(fields: JsonObject): AgentMessageRequest {
+  const text = fields.text;
+  const attachmentDraft = fields.attachmentDraft;
+  const mode = fields.mode;
+  if (text !== undefined && typeof text !== "string") throw invalidArguments("text must be a string");
+  if (attachmentDraft !== undefined && typeof attachmentDraft !== "string") throw invalidArguments("attachmentDraft must be a string");
+  if (mode !== undefined && mode !== "send" && mode !== "steer") throw invalidArguments("mode must be send or steer");
+  return { text: text ?? "", attachmentDraft: attachmentDraft ?? "", mode: mode ?? "send" };
 }
 
 function parseAgentWorkspaceCreationContext(value: unknown): AgentWorkspaceCreationContext | undefined {
@@ -137,7 +159,7 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/model$/)) && request.method === "POST") {
     const json = requestAcceptsJson(request);
-    const value = json ? (await readJsonObject(request)).model : (await request.formData()).get("model");
+    const value = json ? await readJsonObject(request, (value) => requiredStringField(value, "model")) : (await request.formData()).get("model");
     const model = parseModelRef(String(value ?? ""));
     if (!model) {
       if (json) throw new AtelierCoreError("invalid_arguments", "valid model is required");
@@ -149,7 +171,7 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/thinking$/)) && request.method === "POST") {
     const json = requestAcceptsJson(request);
-    const value = json ? (await readJsonObject(request)).level : (await request.formData()).get("level");
+    const value = json ? await readJsonObject(request, (value) => requiredStringField(value, "level")) : (await request.formData()).get("level");
     const level = String(value ?? "");
     if (!level) {
       if (json) throw new AtelierCoreError("invalid_arguments", "level is required");
@@ -200,10 +222,10 @@ async function expandPromptTemplateEndpoint(workspaceId: string, request: Reques
 async function agentMessagesEndpoint(workspaceId: string, label: string, request: Request, options: AgentRouteOptions): Promise<Response> {
   const agent = await requireAgent(workspaceId, label);
   const runtime = await getWorkspaceAgentRuntime(agent, options);
-  const json = requestAcceptsJson(request) ? await readJsonObject(request) : undefined;
+  const json = requestAcceptsJson(request) ? await readJsonObject(request, parseAgentMessageRequest) : undefined;
   const form = json ? undefined : await request.formData();
-  const text = String(json?.text ?? form?.get("text") ?? "");
-  const attachmentDraft = String(json?.attachmentDraft ?? form?.get("attachmentDraft") ?? "");
+  const text = json?.text ?? String(form?.get("text") ?? "");
+  const attachmentDraft = json?.attachmentDraft ?? String(form?.get("attachmentDraft") ?? "");
   if (text.trim() === "/new") {
     await runtime.newSession();
     if (validDraftId(attachmentDraft)) await removeAttachmentDraft(attachmentDraft);
@@ -221,7 +243,7 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
     return json ? Response.json({ agent: { label, state: "idle" } }) : turboStreamResponse("");
   }
 
-  const mode: SubmitMode = (json?.mode ?? form?.get("mode")) === "steer" ? "steer" : "send";
+  const mode: SubmitMode = json?.mode ?? (form?.get("mode") === "steer" ? "steer" : "send");
   const attachmentIds = form?.getAll("attachment").map(String) ?? [];
   const { images, attachmentNotes } = attachmentIds.length > 0
     ? await deliverAttachmentDraft(workspaceId, attachmentDraft, attachmentIds)

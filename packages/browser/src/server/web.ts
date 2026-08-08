@@ -3,7 +3,7 @@ import { renderBrowserFrame, renderBrowserTab } from "./render.ts";
 import { createWorkspaceBrowserTab, deleteWorkspaceBrowserState, deleteWorkspaceBrowserTab, listWorkspaceBrowserTabs, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
 import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppRequestHeaders, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "./proxy.ts";
-import { invalidArguments, readJsonObject, requestAcceptsJson } from "@atelier/core";
+import { invalidArguments, readJsonObject, requestAcceptsJson, type JsonObject } from "@atelier/core";
 import { createBrowserPresenter } from "./agent-tool.ts";
 import { registerWorkspacePresenter, type WorkspacePresenterDeps } from "@atelier/agent/server";
 import { Type } from "typebox";
@@ -69,11 +69,17 @@ export const browserWorkspaceModule: WorkspaceModule = {
   },
 };
 
+function parseBrowserNavigationUrl(value: JsonObject): string {
+  const url = value.url;
+  if (typeof url !== "string") throw invalidArguments("url is required");
+  return url;
+}
+
 async function browserNavigateEndpoint(workspaceId: string, appKey: string, request: Request): Promise<Response> {
   const wantsJson = requestAcceptsJson(request);
-  const value = wantsJson ? (await readJsonObject(request)).url : (await request.formData()).get("url");
-  if (wantsJson && typeof value !== "string") throw invalidArguments("url is required");
-  const url = String(value ?? "");
+  const url = wantsJson
+    ? await readJsonObject(request, parseBrowserNavigationUrl)
+    : String((await request.formData()).get("url") ?? "");
 
   const tab = setWorkspaceBrowserTarget(workspaceId, appKey, url);
   if (!tab) return wantsJson

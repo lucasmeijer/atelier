@@ -24,6 +24,7 @@ export {
 export {
   readJsonObject,
   requestAcceptsJson,
+  type JsonObject,
 } from "./json-request.ts";
 
 export {

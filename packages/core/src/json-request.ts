@@ -1,10 +1,14 @@
 import { invalidArguments } from "./errors.ts";
 
+export interface JsonObject {
+  [field: string]: unknown;
+}
+
 export function requestAcceptsJson(request: Request): boolean {
   return request.headers.get("accept")?.includes("application/json") ?? false;
 }
 
-export async function readJsonObject(request: Request): Promise<Record<string, unknown>> {
+export async function readJsonObject<T>(request: Request, parse: (value: JsonObject) => T): Promise<T> {
   let value: unknown;
   try {
     value = await request.json();
@@ -12,5 +16,5 @@ export async function readJsonObject(request: Request): Promise<Record<string, u
     throw invalidArguments("valid JSON object body is required");
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) throw invalidArguments("JSON object body is required");
-  return value as Record<string, unknown>;
+  return parse(value as JsonObject);
 }

@@ -13,6 +13,7 @@ import {
   readJsonObject,
   requestAcceptsJson,
   type AtelierEventBus,
+  type JsonObject,
 } from "@atelier/core";
 import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
@@ -67,7 +68,7 @@ import {
   type WorkspaceServerProvisioningHook,
   type WorkspaceTabContribution,
 } from "@atelier/shared";
-import type { WorkspaceLayoutStore } from "./workspace-layout.ts";
+import type { MoveTabRequest, WorkspaceLayoutStore } from "./workspace-layout.ts";
 import type { WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
 import { workspaceModules } from "./workspace-modules.ts";
 import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.ts";
@@ -982,24 +983,19 @@ ${moduleStylesHtml()}
 
   async function createWorkspaceEndpoint(url: URL, request: Request): Promise<Response> {
     if (requestAcceptsJson(request)) {
-      const body = await readWorkspaceCreateJson(request);
-      const sourceType = stringField(body.source?.type, "source.type") ?? "empty";
-      if (sourceType !== "empty" && sourceType !== "project") throw invalidArguments("source.type must be empty or project");
-      const projectReference = stringField(body.source?.project, "source.project");
-      let source: WorkspaceCreateSource = { type: "empty" };
-      if (sourceType === "project") {
-        if (!projectReference) throw invalidArguments("source.project is required for project workspaces");
-        source = { type: "project", project: await projectByReference(projectReference) };
-      }
+      const body = await readJsonObject(request, parseWorkspaceCreateJson);
+      const source: WorkspaceCreateSource = body.source.type === "project"
+        ? { type: "project", project: await projectByReference(body.source.projectReference) }
+        : { type: "empty" };
       const agent = body.agent;
       const { id } = createWorkspaceFromCommand({
         source,
-        title: stringField(body.title, "title"),
+        title: body.title,
         agent: {
-          initialPrompt: stringField(agent?.initialPrompt, "agent.initialPrompt") ?? "",
-          model: stringField(agent?.model, "agent.model") ?? "",
-          thinkingLevel: stringField(agent?.thinkingLevel, "agent.thinkingLevel") ?? "",
-          attachmentDraft: stringField(agent?.attachmentDraft, "agent.attachmentDraft") ?? "",
+          initialPrompt: agent?.initialPrompt ?? "",
+          model: agent?.model ?? "",
+          thinkingLevel: agent?.thinkingLevel ?? "",
+          attachmentDraft: agent?.attachmentDraft ?? "",
         },
       });
       const location = new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString();
@@ -1034,23 +1030,44 @@ ${moduleStylesHtml()}
     return await createAgentWorkspaceFromForm(request);
   }
 
-  type WorkspaceCreateJsonBody = {
-    source?: { type?: unknown; project?: unknown };
-    title?: unknown;
-    agent?: { initialPrompt?: unknown; model?: unknown; thinkingLevel?: unknown; attachmentDraft?: unknown };
+  type WorkspaceCreateRequest = {
+    source: { type: "empty" } | { type: "project"; projectReference: string };
+    title?: string;
+    agent?: { initialPrompt?: string; model?: string; thinkingLevel?: string; attachmentDraft?: string };
   };
 
-  async function readWorkspaceCreateJson(request: Request): Promise<WorkspaceCreateJsonBody> {
-    const record = await readJsonObject(request);
-    if (record.source !== undefined && (!record.source || typeof record.source !== "object" || Array.isArray(record.source))) throw invalidArguments("source must be an object");
-    if (record.agent !== undefined && (!record.agent || typeof record.agent !== "object" || Array.isArray(record.agent))) throw invalidArguments("agent must be an object");
-    return record as WorkspaceCreateJsonBody;
+  function nestedJsonObject(value: unknown, name: string): JsonObject {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw invalidArguments(`${name} must be an object`);
+    return value as JsonObject;
   }
 
   function stringField(value: unknown, name: string): string | undefined {
     if (value === undefined || value === null) return undefined;
     if (typeof value !== "string") throw invalidArguments(`${name} must be a string`);
     return value.trim();
+  }
+
+  function parseWorkspaceCreateJson(body: JsonObject): WorkspaceCreateRequest {
+    const source = body.source === undefined ? undefined : nestedJsonObject(body.source, "source");
+    const sourceType = stringField(source?.type, "source.type") ?? "empty";
+    if (sourceType !== "empty" && sourceType !== "project") throw invalidArguments("source.type must be empty or project");
+    const projectReference = stringField(source?.project, "source.project");
+    let parsedSource: WorkspaceCreateRequest["source"] = { type: "empty" };
+    if (sourceType === "project") {
+      if (!projectReference) throw invalidArguments("source.project is required for project workspaces");
+      parsedSource = { type: "project", projectReference };
+    }
+    const agent = body.agent === undefined ? undefined : nestedJsonObject(body.agent, "agent");
+    return {
+      source: parsedSource,
+      title: stringField(body.title, "title"),
+      agent: agent ? {
+        initialPrompt: stringField(agent.initialPrompt, "agent.initialPrompt"),
+        model: stringField(agent.model, "agent.model"),
+        thinkingLevel: stringField(agent.thinkingLevel, "agent.thinkingLevel"),
+        attachmentDraft: stringField(agent.attachmentDraft, "agent.attachmentDraft"),
+      } : undefined,
+    };
   }
 
   async function projectByReference(reference: string): Promise<ProjectSummary> {
@@ -1194,7 +1211,7 @@ ${moduleStylesHtml()}
       return turboStreamResponse(turboRemoveStream("delete-workspace-modal"), { status: 409 });
     }
     const force = requestAcceptsJson(request)
-      ? (await readJsonObject(request)).force === true
+      ? await readJsonObject(request, parseDeleteWorkspaceForce)
       : new URL(request.url).searchParams.get("force") === "1";
     const result = await inspectAndScheduleWorkspaceDeletion(id, force);
     if (requestAcceptsJson(request)) return jsonResponse(result);
@@ -1240,7 +1257,7 @@ ${moduleStylesHtml()}
   async function updateWorkspaceSidebarTitle(id: string, request: Request): Promise<Response> {
     const entry = requireWorkspace(id);
     const title = requestAcceptsJson(request)
-      ? stringField((await readJsonObject(request)).title, "title") ?? ""
+      ? await readJsonObject(request, (body) => stringField(body.title, "title") ?? "")
       : String((await request.formData()).get("title") ?? "").trim();
     await setWorkspaceTitle(id, title);
     registry.setTitle(id, title || null);
@@ -1274,6 +1291,31 @@ ${moduleStylesHtml()}
     return value;
   }
 
+  function parseDeleteWorkspaceForce(value: JsonObject): boolean {
+    const force = value.force;
+    if (force !== undefined && typeof force !== "boolean") throw invalidArguments("force must be a boolean");
+    return force ?? false;
+  }
+
+  function parseProjectUpdateJson(value: JsonObject): { name: string; gitUrl: string } {
+    return { name: requiredJsonString(value, "name"), gitUrl: requiredJsonString(value, "gitUrl") };
+  }
+
+  function parseEnvironmentVariableJson(value: JsonObject): { name: string; value: string } {
+    return { name: requiredJsonString(value, "name"), value: jsonString(value, "value") };
+  }
+
+  type ProjectSecretValues = { envName: string; hostPattern: string; placeholder?: string; secretValue?: string };
+
+  function parseProjectSecretJson(value: JsonObject, secretValueRequired: boolean): ProjectSecretValues {
+    return {
+      envName: requiredJsonString(value, "envName"),
+      hostPattern: requiredJsonString(value, "hostPattern"),
+      placeholder: optionalJsonString(value, "placeholder"),
+      secretValue: secretValueRequired ? requiredJsonString(value, "secretValue") : optionalJsonString(value, "secretValue"),
+    };
+  }
+
   async function projectDetailEndpoint(projectId: string): Promise<Response> {
     const project = await projectById(projectId);
     const [environment, secrets] = await Promise.all([
@@ -1286,7 +1328,7 @@ ${moduleStylesHtml()}
   async function createProjectEndpoint(request: Request, url: URL): Promise<Response> {
     const json = requestAcceptsJson(request);
     const gitUrl = json
-      ? requiredJsonString(await readJsonObject(request), "gitUrl")
+      ? await readJsonObject(request, (body) => requiredJsonString(body, "gitUrl"))
       : String((await request.formData()).get("gitUrl") ?? "");
     let project: ProjectSummary;
     try {
@@ -1307,9 +1349,9 @@ ${moduleStylesHtml()}
     let name: string;
     let spec: string;
     if (json) {
-      const body = await readJsonObject(request);
-      name = requiredJsonString(body, "name");
-      spec = requiredJsonString(body, "gitUrl");
+      const body = await readJsonObject(request, parseProjectUpdateJson);
+      name = body.name;
+      spec = body.gitUrl;
     } else {
       const formData = await request.formData();
       name = String(formData.get("name") ?? "");
@@ -1329,8 +1371,7 @@ ${moduleStylesHtml()}
       const formData = await request.formData();
       return { name: String(formData.get("name") ?? ""), value: String(formData.get("value") ?? "") };
     }
-    const body = await readJsonObject(request);
-    return { name: requiredJsonString(body, "name"), value: jsonString(body, "value") };
+    return await readJsonObject(request, parseEnvironmentVariableJson);
   }
 
   async function createProjectEnvironmentVariableEndpoint(projectId: string, request: Request): Promise<Response> {
@@ -1347,7 +1388,7 @@ ${moduleStylesHtml()}
 
   async function deleteProjectEnvironmentVariableEndpoint(projectId: string, variableId: string, request: Request): Promise<Response> {
     const json = requestAcceptsJson(request);
-    if (json) await readJsonObject(request);
+    if (json) await readJsonObject(request, () => undefined);
     const environmentVariable = await deleteProjectEnvironmentVariable(projectId, variableId);
     return json ? jsonResponse({ deleted: true, environmentVariable }) : turboStreamResponse(await renderProjectEnvironmentStreams(projectId));
   }
@@ -1356,8 +1397,6 @@ ${moduleStylesHtml()}
     const project = await projectById(projectId);
     return turboReplaceStream(domId("project_secrets", projectId), projectSecretEditor(project, await listProjectSecrets(projectId)));
   }
-
-  type ProjectSecretValues = { envName: string; hostPattern: string; placeholder?: string; secretValue?: string };
 
   async function projectSecretValues(request: Request, secretValueRequired: boolean): Promise<ProjectSecretValues> {
     if (!requestAcceptsJson(request)) {
@@ -1369,13 +1408,7 @@ ${moduleStylesHtml()}
         secretValue: String(formData.get("secretValue") ?? "") || undefined,
       };
     }
-    const body = await readJsonObject(request);
-    return {
-      envName: requiredJsonString(body, "envName"),
-      hostPattern: requiredJsonString(body, "hostPattern"),
-      placeholder: optionalJsonString(body, "placeholder"),
-      secretValue: secretValueRequired ? requiredJsonString(body, "secretValue") : optionalJsonString(body, "secretValue"),
-    };
+    return await readJsonObject(request, (value) => parseProjectSecretJson(value, secretValueRequired));
   }
 
   async function createProjectSecretEndpoint(projectId: string, request: Request): Promise<Response> {
@@ -1393,7 +1426,7 @@ ${moduleStylesHtml()}
 
   async function deleteProjectSecretEndpoint(projectId: string, secretId: string, request: Request): Promise<Response> {
     const json = requestAcceptsJson(request);
-    if (json) await readJsonObject(request);
+    if (json) await readJsonObject(request, () => undefined);
     const secret = await deleteProjectSecret(projectId, secretId);
     return json ? jsonResponse({ deleted: true, secret }) : turboStreamResponse(await renderProjectSecretStreams(projectId));
   }
@@ -1444,7 +1477,7 @@ ${moduleStylesHtml()}
   async function deleteProjectEndpoint(projectId: string, request: Request): Promise<Response> {
     const json = requestAcceptsJson(request);
     const project = await projectById(projectId);
-    if (json) await readJsonObject(request);
+    if (json) await readJsonObject(request, () => undefined);
     const references = projectReferencingWorkspaces(projectId);
     if (references.length > 0) {
       if (json) return jsonResponse({
@@ -1619,25 +1652,44 @@ ${moduleStylesHtml()}
     return layoutResponse(workspaceId, request, presentation, preservePaneKeys, { closedTabKey: tab });
   }
 
+  function parseMoveWorkspaceTabJson(value: JsonObject): MoveTabRequest {
+    const tab = value.tab;
+    const toGroup = value.toGroup;
+    const toIndex = value.toIndex;
+    const newGroup = value.newGroup;
+    if (typeof tab !== "string" || !tab) throw invalidArguments("tab is required");
+    if (toGroup !== undefined && typeof toGroup !== "string") throw invalidArguments("toGroup must be a string");
+    if (toIndex !== undefined && (typeof toIndex !== "number" || !Number.isFinite(toIndex))) throw invalidArguments("toIndex must be a number");
+    if (newGroup !== undefined && typeof newGroup !== "boolean") throw invalidArguments("newGroup must be a boolean");
+    return { tab, toGroup, toIndex, newGroup };
+  }
+
+  function parseResizeWorkspaceGroupsJson(value: JsonObject): number[] {
+    const sizes = value.sizes;
+    if (!Array.isArray(sizes) || !sizes.every((size): size is number => typeof size === "number" && Number.isFinite(size) && size > 0)) {
+      throw invalidArguments("sizes must contain positive numbers");
+    }
+    return sizes;
+  }
+
+  function parseWorkspaceViewStateJson(value: JsonObject): { visibleTab: string; groupId: string } {
+    const visibleTab = value.visibleTab;
+    const groupId = value.groupId;
+    if (typeof visibleTab !== "string" || typeof groupId !== "string") throw invalidArguments("groupId and visibleTab are required");
+    return { visibleTab, groupId };
+  }
+
   async function moveWorkspaceTabEndpoint(workspaceId: string, request: Request): Promise<Response> {
-    const body = await readJsonObject(request) as { tab?: unknown; toGroup?: unknown; toIndex?: unknown; newGroup?: unknown };
-    if (typeof body.tab !== "string" || !body.tab) throw invalidArguments("tab is required");
+    const body = await readJsonObject(request, parseMoveWorkspaceTabJson);
     const presentation = await workspacePresentation(workspaceId);
     const tabKeys = presentation.tabs.map((tab) => tab.key);
     const preservePaneKeys = mountedTabKeys(layouts.normalize(workspaceId, tabKeys));
-    layouts.moveTab(workspaceId, tabKeys, {
-      tab: body.tab,
-      toGroup: typeof body.toGroup === "string" ? body.toGroup : undefined,
-      toIndex: typeof body.toIndex === "number" && Number.isFinite(body.toIndex) ? body.toIndex : undefined,
-      newGroup: body.newGroup === true,
-    });
+    layouts.moveTab(workspaceId, tabKeys, body);
     return layoutResponse(workspaceId, request, presentation, preservePaneKeys);
   }
 
   async function resizeWorkspaceGroupsEndpoint(workspaceId: string, request: Request): Promise<Response> {
-    const body = await readJsonObject(request) as { sizes?: unknown };
-    const sizes = Array.isArray(body.sizes) ? body.sizes.map(Number).filter((size) => Number.isFinite(size) && size > 0) : [];
-    if (!sizes.length) throw invalidArguments("sizes must contain positive numbers");
+    const sizes = await readJsonObject(request, parseResizeWorkspaceGroupsJson);
     let current = layouts.current(workspaceId);
     if (!current) {
       const presentation = await workspacePresentation(workspaceId);
@@ -1649,8 +1701,7 @@ ${moduleStylesHtml()}
   }
 
   async function updateWorkspaceViewStateEndpoint(id: string, request: Request): Promise<Response> {
-    const body = await readJsonObject(request) as { visibleTab?: unknown; groupId?: unknown };
-    if (typeof body.visibleTab !== "string" || typeof body.groupId !== "string") throw invalidArguments("groupId and visibleTab are required");
+    const body = await readJsonObject(request, parseWorkspaceViewStateJson);
     if (!layouts.current(id)) {
       const presentation = await workspacePresentation(id);
       layouts.normalize(id, presentation.tabs.map((tab) => tab.key));
