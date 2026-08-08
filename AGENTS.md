@@ -1,7 +1,5 @@
 # Agent instructions
 
-Do not commit or push changes unless explicitly requested by the user.
-
 When working on the web app, prefer server-rendered HTML over client-rendered UI.
 
 - Prefer Turbo Frames and Turbo Streams for webpage/server interactions whenever possible.
