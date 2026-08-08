@@ -116,10 +116,17 @@ for i in $(seq 1 300); do docker info >/dev/null 2>&1 || exit 0; sleep .1; done
 echo "nested Docker daemon did not stop" >&2; exit 1`);
 }
 
+export function parseDockerVolumePaths(output: string): Set<string> {
+  const value: unknown = JSON.parse(output);
+  if (value === null) return new Set();
+  if (typeof value !== "object" || Array.isArray(value)) throw new Error("Docker image volumes must be an object or null");
+  return new Set(Object.keys(value));
+}
+
 async function assertCarrierBase(baseImage: string, preload: ResolvedDockerImagePreload, platform: string): Promise<void> {
   const volumes = await requireDocker(["image", "inspect", "--format", "{{json .Config.Volumes}}", baseImage]);
-  const parsed = JSON.parse(volumes.stdout.trim() || "null") as Record<string, unknown> | null;
-  if (parsed?.["/var/lib/docker"]) throw new Error(`${baseImage} declares /var/lib/docker as a volume`);
+  const declaredVolumes = parseDockerVolumePaths(volumes.stdout);
+  if (declaredVolumes.has("/var/lib/docker")) throw new Error(`${baseImage} declares /var/lib/docker as a volume`);
   if (await dockerPlatform(baseImage) !== platform) throw new Error(`workspace image platform does not match ${platform}`);
   for (const image of preload.images) if (await dockerPlatform(image.sourceRef) !== platform) throw new Error(`${image.sourceRef} platform does not match ${platform}`);
 }
