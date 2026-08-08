@@ -1,4 +1,5 @@
 import type { AtelierEventBus } from "@atelier/core";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { listWorkspaces, setWorkspaceTitle } from "@atelier/workspace";
 import { getProviderFastModel } from "./hardcoded-provider-knowledge.ts";
 import type { ModelRef } from "./model-state.ts";
@@ -16,9 +17,9 @@ ${userPrompt}
 respond with the name, or with "error" if for some reason there is not enough to go on to make a name.`;
 }
 
-function textFromResponse(response: { content: Array<{ type: string; text?: string }> }): string {
+function textFromResponse(response: AssistantMessage): string {
   return response.content
-    .filter((block): block is { type: "text"; text: string } => block.type === "text")
+    .filter((block) => block.type === "text")
     .map((block) => block.text)
     .join("")
     .trim();
@@ -47,7 +48,14 @@ function workspaceTitleModelFor(agentModel: ModelRef): ModelRef {
   return { provider: agentModel.provider, id: fastModel?.id ?? agentModel.id };
 }
 
-function logWorkspaceTitleSuggestionError(workspaceId: string, model: ModelRef | undefined, message: string, details: Record<string, unknown> = {}): void {
+interface WorkspaceTitleSuggestionErrorDetails {
+  responseText?: string;
+  stopReason?: AssistantMessage["stopReason"];
+  diagnostics?: AssistantMessage["diagnostics"];
+  error?: Error;
+}
+
+function logWorkspaceTitleSuggestionError(workspaceId: string, model: ModelRef | undefined, message: string, details: WorkspaceTitleSuggestionErrorDetails = {}): void {
   console.error("could not suggest workspace title", { workspaceId, model: model ? `${model.provider}/${model.id}` : undefined, message, ...details });
 }
 
@@ -96,8 +104,9 @@ function suggestWorkspaceTitle(workspaceId: string, userMessages: string[], opti
       if (options.onlyIfUnnamed && !(await workspaceIsUnnamed(workspaceId))) return;
       await setWorkspaceTitle(workspaceId, title);
       await options.events?.emit("workspace_title_changed", { workspaceId, title });
-    } catch (error) {
-      logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, error instanceof Error ? error.message : String(error), { error });
+    } catch (thrown) {
+      const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+      logWorkspaceTitleSuggestionError(workspaceId, titleModelRef, error.message, { error });
     } finally {
       pending.delete(workspaceId);
     }
