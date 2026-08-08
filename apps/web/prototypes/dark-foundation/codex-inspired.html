@@ -1280,6 +1280,35 @@
         flex: 1;
         padding-right: 6px;
       }
+      .work-view-nav-status {
+        width: 7px;
+        height: 7px;
+        flex: 0 0 7px;
+        border: 1.5px solid var(--text3);
+        border-radius: 50%;
+      }
+      .work-view-nav-status.is-opening,
+      .work-view-nav-status.is-reconnecting {
+        border-color: transparent var(--text2) var(--text2) transparent;
+        animation: work-state-spin 0.8s linear infinite;
+      }
+      .work-view-nav-status.is-unavailable {
+        border-color: var(--red);
+        background: var(--red);
+      }
+      .work-view-nav-status.is-attention {
+        border-color: var(--yellow);
+        background: var(--yellow);
+        box-shadow: 0 0 0 3px #f4c1521f;
+      }
+      .work-view-nav-status.is-live {
+        border-color: var(--green);
+        background: var(--green);
+      }
+      .work-tab-shell.work-view-closed .work-tab span {
+        text-decoration: line-through;
+        opacity: 0.55;
+      }
       .tab-close {
         width: 22px;
         height: 22px;
@@ -1318,10 +1347,122 @@
         background: var(--editor);
       }
       .view {
+        position: relative;
         height: 100%;
         min-height: 0;
         display: flex;
         flex-direction: column;
+      }
+      @keyframes work-state-spin {
+        to { transform: rotate(360deg); }
+      }
+      .work-view-state-surface {
+        position: absolute;
+        z-index: 8;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 28px;
+        background: #181818f2;
+        backdrop-filter: blur(8px);
+      }
+      .work-view-state-surface.is-reconnecting {
+        place-items: end center;
+        background: linear-gradient(transparent 45%, #181818ed);
+        backdrop-filter: saturate(0.45);
+        pointer-events: auto;
+      }
+      .work-view-state-card {
+        width: min(100%, 520px);
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr);
+        gap: 12px;
+        padding: 18px;
+        border: 0.5px solid var(--line-heavy);
+        border-radius: 13px;
+        background: #242424f5;
+        box-shadow: 0 18px 48px #0008;
+      }
+      .work-state-spinner,
+      .work-state-warning {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+      }
+      .work-state-spinner {
+        border: 2px solid #ffffff1f;
+        border-top-color: var(--text2);
+        animation: work-state-spin 0.8s linear infinite;
+      }
+      .work-state-warning {
+        background: #fa423e1a;
+        color: var(--red);
+        font-style: normal;
+        font-weight: 700;
+      }
+      .work-view-state-copy small {
+        color: var(--text3);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+      }
+      .work-view-state-copy h2 {
+        margin: 4px 0 7px;
+        font-size: 17px;
+        font-weight: 590;
+      }
+      .work-view-state-copy p {
+        margin: 0 0 8px;
+        color: var(--text2);
+        line-height: 1.45;
+      }
+      .work-view-state-copy > span {
+        color: var(--text3);
+        font-size: 11px;
+      }
+      .work-view-state-copy kbd {
+        display: block;
+        width: max-content;
+        margin-top: 10px;
+        padding: 3px 6px;
+        border: 0.5px solid var(--line-heavy);
+        border-radius: 5px;
+        color: var(--text3);
+        font: 9px/1.2 inherit;
+      }
+      .work-view-state-actions {
+        grid-column: 2;
+        display: flex;
+        gap: 7px;
+      }
+      .work-view-state-actions button {
+        height: 30px;
+        padding: 0 10px;
+        border-radius: 8px;
+        background: #ffffff10;
+        color: var(--text2);
+        font-size: 11px;
+      }
+      .work-view-state-actions button.primary {
+        background: #fff;
+        color: #171717;
+        font-weight: 580;
+      }
+      .work-view-recovered {
+        position: absolute;
+        z-index: 7;
+        top: 48px;
+        left: 50%;
+        padding: 6px 10px;
+        border: 0.5px solid #40c97755;
+        border-radius: 999px;
+        background: #183522ed;
+        color: #9ae5b8;
+        font-size: 10px;
+        transform: translateX(-50%);
+        box-shadow: 0 8px 24px #0008;
       }
       .view-toolbar {
         height: 36px;
@@ -1547,6 +1688,72 @@
       .browser-view {
         background: #111;
       }
+      .remote-view {
+        background: #151515;
+      }
+      .remote-live {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-left: auto;
+        color: var(--text3);
+      }
+      .remote-live i {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+      .desktop-preview {
+        flex: 1;
+        display: grid;
+        place-items: center;
+        padding: 34px;
+        background: radial-gradient(circle at 30% 20%, #3b5063, #1b2228 60%, #111);
+      }
+      .desktop-window {
+        width: min(100%, 570px);
+        min-height: 310px;
+        overflow: hidden;
+        border: 0.5px solid #ffffff3a;
+        border-radius: 12px;
+        background: #eee;
+        color: #222;
+        box-shadow: 0 24px 80px #0009;
+      }
+      .desktop-window > header {
+        height: 31px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 10px;
+        background: #e3e3e3;
+        border-bottom: 1px solid #ccc;
+      }
+      .desktop-window > header span {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #aaa;
+      }
+      .desktop-window > header strong {
+        margin-left: 8px;
+        font-size: 10px;
+      }
+      .desktop-window-body { display: grid; grid-template-columns: 120px 1fr; min-height: 279px; }
+      .desktop-window-body aside { background: #d7d7d7; border-right: 1px solid #c4c4c4; }
+      .desktop-window-body main { padding: 36px; }
+      .desktop-window-body h2 { margin: 8px 0; font-size: 22px; }
+      .desktop-window-body p { color: #666; line-height: 1.5; }
+      .vscode-preview { min-height: 0; flex: 1; display: grid; grid-template-columns: 150px 1fr; background: #1e1e1e; }
+      .vscode-preview aside { padding: 14px; border-right: 1px solid #333; color: #999; font-size: 10px; }
+      .vscode-preview aside b { display: block; margin: 14px 0 9px; color: #ddd; }
+      .vscode-preview aside p { margin: 7px 0; }
+      .vscode-preview main { min-width: 0; }
+      .vscode-preview main header { height: 34px; padding: 10px 14px; background: #252526; color: #ddd; font-size: 11px; }
+      .vscode-preview pre { padding: 28px; color: #d4d4d4; font: 13px/1.7 ui-monospace, monospace; }
+      .vscode-preview pre span { color: #569cd6; }
+      .vscode-preview pre em { color: #ce9178; font-style: normal; }
       .browser-bar {
         height: 42px;
         flex: 0 0 42px;
@@ -2696,6 +2903,95 @@
         color: var(--text);
         outline: 0;
       }
+      .work-state-lab {
+        position: fixed;
+        z-index: 50;
+        left: 10px;
+        bottom: 47px;
+        width: min(560px, calc(100vw - 20px));
+        max-height: calc(100dvh - 66px);
+        overflow: auto;
+        border: 0.5px solid var(--line-heavy);
+        border-radius: 14px;
+        background: #202020f8;
+        box-shadow: 0 24px 80px #000c;
+        backdrop-filter: blur(20px);
+      }
+      .work-state-lab-head {
+        position: sticky;
+        z-index: 2;
+        top: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 13px 14px;
+        border-bottom: 0.5px solid var(--line);
+        background: #202020f5;
+      }
+      .work-state-lab-head div { display: grid; gap: 2px; }
+      .work-state-lab-head small { color: var(--yellow); font-size: 9px; letter-spacing: 0.08em; }
+      .work-state-lab-head strong { font-size: 13px; font-weight: 590; }
+      .work-state-question {
+        margin: 0;
+        padding: 12px 14px;
+        border-bottom: 0.5px solid var(--line);
+        color: var(--text2);
+        font-size: 11px;
+        line-height: 1.45;
+      }
+      .work-state-lab section { padding: 12px 14px; border-bottom: 0.5px solid var(--line); }
+      .work-state-current-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .work-state-current-head > strong,
+      .work-state-free-play > strong,
+      .work-state-walkthroughs > strong { color: var(--text2); font-size: 11px; font-weight: 580; }
+      .work-state-current-head label { display: flex; align-items: center; gap: 7px; color: var(--text3); font-size: 10px; }
+      .work-state-current-head select {
+        height: 26px;
+        border: 0.5px solid var(--line-heavy);
+        border-radius: 7px;
+        background: #2b2b2b;
+        color: var(--text2);
+        font: inherit;
+      }
+      .work-state-inspector {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1px;
+        margin-top: 10px;
+        overflow: hidden;
+        border: 0.5px solid var(--line);
+        border-radius: 9px;
+        background: var(--line);
+      }
+      .work-state-inspector div { min-width: 0; display: grid; gap: 3px; padding: 8px 9px; background: #262626; }
+      .work-state-inspector span { color: var(--text3); font-size: 9px; }
+      .work-state-inspector strong { overflow: hidden; color: var(--text2); font-size: 10px; font-weight: 520; text-overflow: ellipsis; }
+      .work-state-last-change { margin: 9px 0 0; color: #9ae5b8; font-size: 10px; line-height: 1.4; }
+      .work-state-last-change.is-error { color: #ff9b97; }
+      .work-state-free-play > div { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+      .work-state-free-play button,
+      .work-state-walkthroughs nav button,
+      .work-state-steps button {
+        min-height: 27px;
+        padding: 0 8px;
+        border-radius: 7px;
+        background: #ffffff0b;
+        color: var(--text3);
+        font-size: 10px;
+      }
+      .work-state-free-play button:hover,
+      .work-state-walkthroughs button:hover { background: #ffffff13; color: var(--text); }
+      .work-state-walkthroughs nav { display: flex; gap: 5px; margin: 9px 0; overflow-x: auto; padding-bottom: 3px; }
+      .work-state-walkthroughs nav button { flex: 0 0 auto; }
+      .work-state-walkthroughs nav button.active { background: #ffffff18; color: var(--text); }
+      .work-state-walkthroughs > p { margin: 0 0 9px; color: var(--text3); font-size: 10px; line-height: 1.4; }
+      .work-state-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+      .work-state-steps button { display: flex; align-items: center; gap: 7px; text-align: left; }
+      .work-state-steps button i { width: 16px; height: 16px; display: grid; place-items: center; border: 0.5px solid var(--line-heavy); border-radius: 50%; font-size: 8px; font-style: normal; }
+      .work-state-steps button.next { color: var(--text); box-shadow: inset 0 0 0 0.5px var(--yellow); }
+      .work-state-steps button.done { color: #9ae5b8; }
+      .work-state-steps button:disabled { opacity: 0.4; }
+      .fullscreen-work-view { width: 100%; height: 100%; }
       .lifecycle-agent-card {
         width: min(calc(100% - 56px), 712px);
         margin: 28px auto 0;
@@ -3305,6 +3601,23 @@
           position: absolute;
           inset: -2px -7px auto auto;
         }
+        .mobile-work-state {
+          position: absolute;
+          inset: -2px -7px auto auto;
+          width: 6px;
+          height: 6px;
+          border: 1.5px solid var(--text3);
+          border-radius: 50%;
+          background: #181818;
+        }
+        .mobile-work-state.is-opening,
+        .mobile-work-state.is-reconnecting {
+          border-color: transparent var(--text2) var(--text2) transparent;
+          animation: work-state-spin 0.8s linear infinite;
+        }
+        .mobile-work-state.is-unavailable { border-color: var(--red); background: var(--red); }
+        .mobile-work-state.is-attention { border-color: var(--yellow); background: var(--yellow); box-shadow: 0 0 0 3px #f4c1521f; }
+        .mobile-work-state.is-live { border-color: var(--green); background: var(--green); }
         .mobile-view-close {
           position: absolute;
           z-index: 2;
@@ -3367,6 +3680,13 @@
           grid-template-columns: minmax(0, 1fr) 36px;
           align-items: center;
         }
+        .mobile-more-status {
+          margin-left: auto;
+          color: var(--text3);
+          font-size: 9px;
+        }
+        .mobile-more-status.is-attention { color: var(--yellow); }
+        .mobile-more-status.is-unavailable { color: #ff9b97; }
         .mobile-more-menu [data-mobile-view] {
           height: 42px;
           display: flex;
@@ -3491,10 +3811,30 @@
         .note {
           display: none;
         }
-        .workspace-prototype-controls,
         .add-conversation {
           display: none !important;
         }
+        .workspace-prototype-controls {
+          left: auto;
+          right: 8px;
+          bottom: calc(60px + env(safe-area-inset-bottom));
+          display: flex !important;
+        }
+        .workspace-prototype-controls button:not(:last-child) { display: none; }
+        .work-state-lab {
+          inset: 6px 6px calc(58px + env(safe-area-inset-bottom));
+          width: auto;
+          max-height: none;
+          border-radius: 12px;
+        }
+        .work-state-inspector { grid-template-columns: 1fr; }
+        .work-state-steps { grid-template-columns: 1fr; }
+        .work-view-state-surface { padding: 16px; }
+        .work-view-state-card { grid-template-columns: 28px minmax(0, 1fr); padding: 14px; }
+        .work-state-spinner,
+        .work-state-warning { width: 24px; height: 24px; }
+        .desktop-preview { padding: 14px; }
+        .vscode-preview { grid-template-columns: 86px 1fr; }
         .lifecycle-agent-card {
           width: calc(100% - 32px);
           margin-top: 16px;
@@ -3584,6 +3924,10 @@
       <symbol id="browser" viewBox="0 0 24 24">
         <rect x="3" y="4" width="18" height="16" rx="2" />
         <path d="M3 9h18M7 6.5h.01M10 6.5h.01" />
+      </symbol>
+      <symbol id="desktop" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="14" rx="2" />
+        <path d="M8 21h8M12 18v3" />
       </symbol>
       <symbol id="git" viewBox="0 0 24 24">
         <circle cx="6" cy="5" r="2" />
@@ -4297,6 +4641,50 @@ at selectSlashCommand (prototype.js:1412:18)</pre>
               </div>
               <div
                 class="work-tab-shell"
+                data-view-shell="desktop"
+                draggable="true"
+              >
+                <button
+                  class="work-tab"
+                  data-view="desktop"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  <svg><use href="#desktop" /></svg><span>Desktop</span>
+                </button>
+                <button
+                  class="tab-close"
+                  data-action="close-view"
+                  data-close-view="desktop"
+                  aria-label="Close Desktop"
+                >
+                  <svg><use href="#x" /></svg>
+                </button>
+              </div>
+              <div
+                class="work-tab-shell"
+                data-view-shell="vscode"
+                draggable="true"
+              >
+                <button
+                  class="work-tab"
+                  data-view="vscode"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  <svg><use href="#code" /></svg><span>VS Code</span>
+                </button>
+                <button
+                  class="tab-close"
+                  data-action="close-view"
+                  data-close-view="vscode"
+                  aria-label="Close VS Code"
+                >
+                  <svg><use href="#x" /></svg>
+                </button>
+              </div>
+              <div
+                class="work-tab-shell"
                 data-view-shell="changes"
                 draggable="true"
               >
@@ -4456,6 +4844,35 @@ at selectSlashCommand (prototype.js:1412:18)</pre>
                       requests attention.
                     </p>
                   </article>
+                </div>
+              </section>
+              <section class="view remote-view" data-view-panel="desktop" hidden>
+                <header class="view-toolbar">
+                  <span class="path"><b>Desktop</b> · workspace display :1</span>
+                  <span class="remote-live"><i></i>Live</span>
+                </header>
+                <div class="desktop-preview">
+                  <div class="desktop-window">
+                    <header><span></span><span></span><span></span><strong>Atelier workspace</strong></header>
+                    <div class="desktop-window-body">
+                      <aside></aside>
+                      <main><small>apps/web</small><h2>Workspace desktop</h2><p>The last frame remains visible during a reconnect.</p></main>
+                    </div>
+                  </div>
+                </div>
+              </section>
+              <section class="view remote-view" data-view-panel="vscode" hidden>
+                <header class="view-toolbar">
+                  <span class="path"><b>VS Code</b> · apps/web/src/work-view.ts</span>
+                  <span class="remote-live"><i></i>Connected</span>
+                </header>
+                <div class="vscode-preview">
+                  <aside><span>EXPLORER</span><b>ATELIER</b><p>apps</p><p>packages</p><p>CONTEXT.md</p></aside>
+                  <main><header>work-view.ts</header><pre><span>type</span> WorkViewState =
+  | <em>"opening"</em>
+  | <em>"live"</em>
+  | <em>"reconnecting"</em>
+  | <em>"unavailable"</em>;</pre></main>
                 </div>
               </section>
               <section class="view" data-view-panel="changes" hidden>
@@ -4654,6 +5071,7 @@ Should this reuse an existing browser when the view reference is still available
       <div class="mobile-more-view-row" data-mobile-more-row="changes">
         <button data-mobile-view="changes">
           <svg><use href="#git" /></svg><span>Changes</span
+          ><small class="mobile-more-status" data-mobile-more-status="changes" hidden></small
           ><i class="mobile-more-dot" data-mobile-more-dot="changes"></i>
         </button>
         <button
@@ -5397,6 +5815,56 @@ Should this reuse an existing browser when the view reference is still available
     >
       <span data-interaction-state>Desktop interaction model</span>
     </button>
+    <aside class="work-state-lab" data-work-state-lab hidden>
+      <header class="work-state-lab-head">
+        <div>
+          <small>PROTOTYPE · ISSUE #22</small>
+          <strong>Unavailable Work view lab</strong>
+        </div>
+        <button class="icon small" data-action="toggle-work-state-lab" aria-label="Close Work state lab">
+          <svg><use href="#x" /></svg>
+        </button>
+      </header>
+      <p class="work-state-question">Can one availability grammar keep persistent Work views understandable through opening, reconnection, failure, recovery, Attention, and explicit close while type adapters retain resource ownership?</p>
+      <section class="work-state-current">
+        <div class="work-state-current-head">
+          <strong>Current state</strong>
+          <label>Inspect
+            <select data-work-state-target>
+              <option value="file">File</option>
+              <option value="browser">Browser</option>
+              <option value="desktop">Desktop</option>
+              <option value="vscode">VS Code</option>
+              <option value="terminal">Terminal</option>
+              <option value="changes">Changes · More</option>
+            </select>
+          </label>
+        </div>
+        <div class="work-state-inspector" data-work-state-inspector></div>
+        <p class="work-state-last-change" data-work-state-last-change></p>
+      </section>
+      <section class="work-state-free-play">
+        <strong>Free play</strong>
+        <div>
+          <button data-work-event="OPEN">Open</button>
+          <button data-work-event="OPENED">Become live</button>
+          <button data-work-event="CONNECTION_LOST">Lose connection</button>
+          <button data-work-event="RESOURCE_MISSING">Resource missing</button>
+          <button data-work-event="CREATE_FAILED">Startup fails</button>
+          <button data-work-event="AUTO_RECOVERY_FAILED">Auto-recovery stops</button>
+          <button data-work-event="AUTO_RECOVERED">Recover</button>
+          <button data-work-event="RETRY">Retry</button>
+          <button data-work-event="REQUEST_ATTENTION">Request Attention</button>
+          <button data-work-event="CLOSE">Close</button>
+        </div>
+      </section>
+      <section class="work-state-walkthroughs">
+        <strong>Guided walkthroughs</strong>
+        <nav data-work-scenario-tabs></nav>
+        <p data-work-scenario-intro></p>
+        <div class="work-state-steps" data-work-scenario-steps></div>
+      </section>
+    </aside>
     <nav
       class="workspace-prototype-controls"
       aria-label="Workspace pane prototype states"
@@ -5404,8 +5872,9 @@ Should this reuse an existing browser when the view reference is still available
       <button data-action="simulate-workspace-ready">New ready event</button>
       <button data-action="simulate-parked-ready">Parked ready event</button>
       <button data-action="preview-workspace-loading">Loading state</button>
+      <button data-action="toggle-work-state-lab" aria-expanded="false">Work state lab</button>
     </nav>
-    <script src="prototype.js?v=11"></script>
+    <script src="prototype.js?v=12"></script>
     <script type="module" src="file-view-prototype.js?v=7"></script>
   </body>
 </html>

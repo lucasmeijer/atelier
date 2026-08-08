@@ -1,5 +1,5 @@
 // Settled prototype: Open views is the sole mobile navigation model.
-const prototypeStateKey = "atelier-dark-foundation-desktop-v4";
+const prototypeStateKey = "atelier-dark-foundation-desktop-v5";
 history.scrollRestoration = "manual";
 window.scrollTo(0, 0);
 const prototypeUrl = new URL(location.href);
@@ -11,6 +11,8 @@ const defaultViewOrder = [
   "file",
   "file-context",
   "browser",
+  "desktop",
+  "vscode",
   "changes",
   "terminal",
 ];
@@ -188,6 +190,243 @@ function workspaceLifecycleReducer(state, event) {
   }
 }
 
+// PROTOTYPE — pure Work-view availability model for issue #22.
+// A type adapter supplies resource semantics; shared state owns presentation,
+// recovery, Attention, and explicit-close behavior.
+const workViewAdapters = Object.freeze({
+  file: {
+    label: "work-view.ts",
+    kind: "File",
+    ownership: "attached",
+    closeLive: "The File view closes; the workspace file remains.",
+    closeUnavailable: "The unavailable File view closes; the missing path remains unchanged.",
+    retryLabel: "Check again",
+    fullscreen: false,
+  },
+  "file-context": {
+    label: "CONTEXT.md",
+    kind: "File",
+    ownership: "attached",
+    closeLive: "The File view closes; the workspace file remains.",
+    closeUnavailable: "The unavailable File view closes; the missing path remains unchanged.",
+    retryLabel: "Check again",
+    fullscreen: false,
+  },
+  browser: {
+    label: "Preview",
+    kind: "Browser",
+    ownership: "owned",
+    closeLive: "The Browser view closes and its Atelier browser session ends.",
+    closeUnavailable: "The unavailable Browser view closes; no replacement browser is created.",
+    retryLabel: "Restart browser",
+    fullscreen: true,
+  },
+  desktop: {
+    label: "Desktop",
+    kind: "Desktop",
+    ownership: "attached",
+    closeLive: "The Desktop view closes; the workspace desktop keeps running.",
+    closeUnavailable: "The unavailable Desktop view closes; the workspace desktop is not stopped.",
+    retryLabel: "Reconnect",
+    fullscreen: true,
+  },
+  vscode: {
+    label: "VS Code",
+    kind: "VS Code",
+    ownership: "attached",
+    closeLive: "The VS Code view closes; the workspace editor service keeps running.",
+    closeUnavailable: "The unavailable VS Code view closes; the editor service is not stopped.",
+    retryLabel: "Reconnect",
+    fullscreen: true,
+  },
+  changes: {
+    label: "Changes",
+    kind: "Changes",
+    ownership: "attached",
+    closeLive: "The Changes view closes; repository state remains unchanged.",
+    closeUnavailable: "The unavailable Changes view closes; repository state remains unchanged.",
+    retryLabel: "Check again",
+    fullscreen: false,
+  },
+  terminal: {
+    label: "Terminal",
+    kind: "Terminal",
+    ownership: "owned",
+    closeLive: "The Terminal view closes and its owned terminal session ends.",
+    closeUnavailable: "The unavailable Terminal view closes; its owned session record is released.",
+    retryLabel: "Start replacement",
+    fullscreen: true,
+  },
+});
+
+function initialWorkViewAvailability() {
+  return Object.fromEntries(
+    Object.entries(workViewAdapters).map(([id, adapter]) => [
+      id,
+      {
+        id,
+        phase: "live",
+        ownership: adapter.ownership,
+        recovery: "none",
+        needsAction: false,
+        attention: false,
+        failureStage: null,
+        detail: `${adapter.kind} resource is available.`,
+        recovered: false,
+        closeOutcome: null,
+      },
+    ]),
+  );
+}
+
+const workViewPrototypeInitialState = Object.freeze({
+  activeView: "file",
+  lastChange: "All representative Work views are live.",
+  views: initialWorkViewAvailability(),
+});
+
+function reduceWorkViewAvailability(state, event) {
+  if (event.type === "RESET") {
+    return {
+      activeView: event.activeView || "file",
+      lastChange: "Scenario reset to live resources.",
+      views: initialWorkViewAvailability(),
+    };
+  }
+
+  const views = Object.fromEntries(
+    Object.entries(state.views).map(([id, view]) => [id, { ...view }]),
+  );
+  const id = event.view || state.activeView;
+  const view = views[id];
+  if (!view) throw new Error(`Unknown Work view: ${id}`);
+  let activeView = state.activeView;
+  let lastChange = state.lastChange;
+
+  switch (event.type) {
+    case "ACTIVATE":
+      activeView = id;
+      view.attention = false;
+      lastChange = `${workViewAdapters[id].label} became visible; its Attention cleared.`;
+      break;
+    case "OPEN":
+      view.phase = "opening";
+      view.recovery = "automatic";
+      view.needsAction = false;
+      view.attention = false;
+      view.failureStage = null;
+      view.detail = `Opening ${workViewAdapters[id].kind.toLowerCase()} resource…`;
+      view.recovered = false;
+      view.closeOutcome = null;
+      lastChange = `${workViewAdapters[id].label} is opening without requesting Attention.`;
+      break;
+    case "OPENED":
+    case "AUTO_RECOVERED":
+    case "RESOURCE_RETURNED":
+      view.phase = "live";
+      view.recovery = "none";
+      view.needsAction = false;
+      view.attention = false;
+      view.failureStage = null;
+      view.detail = `${workViewAdapters[id].kind} resource is available.`;
+      view.recovered = event.type !== "OPENED";
+      view.closeOutcome = null;
+      lastChange = event.type === "OPENED"
+        ? `${workViewAdapters[id].label} opened.`
+        : `${workViewAdapters[id].label} recovered automatically; stale Attention was removed.`;
+      break;
+    case "CONNECTION_LOST":
+      if (view.phase !== "live") throw new Error("Only a live resource can lose its connection");
+      view.phase = "reconnecting";
+      view.recovery = "automatic";
+      view.needsAction = false;
+      view.attention = false;
+      view.failureStage = "after-live";
+      view.detail = "Connection lost. Atelier is reconnecting and preserving the last visible content.";
+      view.recovered = false;
+      lastChange = `${workViewAdapters[id].label} is reconnecting in place without stealing focus.`;
+      break;
+    case "RESOURCE_MISSING":
+      view.phase = "unavailable";
+      view.recovery = "automatic";
+      view.needsAction = false;
+      view.attention = false;
+      view.failureStage = "missing";
+      view.detail = event.detail || "The referenced resource is missing. Atelier will keep watching for it.";
+      view.recovered = false;
+      lastChange = `${workViewAdapters[id].label} remains open as an Unavailable Work view while Atelier watches for its resource.`;
+      break;
+    case "CREATE_FAILED":
+      view.phase = "unavailable";
+      view.recovery = "manual";
+      view.needsAction = true;
+      view.attention = id !== state.activeView;
+      view.failureStage = "opening";
+      view.detail = event.detail || `${workViewAdapters[id].kind} could not start.`;
+      view.recovered = false;
+      lastChange = `${workViewAdapters[id].label} failed while opening and now offers ${workViewAdapters[id].retryLabel}.`;
+      break;
+    case "AUTO_RECOVERY_FAILED":
+      if (!["reconnecting", "unavailable"].includes(view.phase)) {
+        throw new Error("Automatic recovery can fail only while reconnecting or unavailable");
+      }
+      view.phase = "unavailable";
+      view.recovery = "manual";
+      view.needsAction = true;
+      view.attention = id !== state.activeView;
+      view.failureStage = "after-live";
+      view.detail = event.detail || "Automatic recovery stopped after repeated failures.";
+      view.recovered = false;
+      lastChange = `${workViewAdapters[id].label} now needs user action${view.attention ? " and requests Attention in the background" : ""}.`;
+      break;
+    case "RETRY":
+      if (!view.needsAction) throw new Error("Retry is offered only when user action is required");
+      view.phase = view.failureStage === "opening" ? "opening" : "reconnecting";
+      view.recovery = "automatic";
+      view.needsAction = false;
+      view.attention = false;
+      view.detail = view.failureStage === "opening"
+        ? `Retrying ${workViewAdapters[id].kind.toLowerCase()} startup…`
+        : "Retrying the connection…";
+      view.recovered = false;
+      lastChange = `${workViewAdapters[id].retryLabel} started; the same Work view stays mounted.`;
+      break;
+    case "REQUEST_ATTENTION":
+      if (!view.needsAction) throw new Error("Only an actionable failure requests Attention");
+      view.attention = true;
+      activeView = id;
+      view.attention = false;
+      lastChange = `${workViewAdapters[id].label} requested Attention, revealed itself, and cleared Attention when visible.`;
+      break;
+    case "SET_OWNERSHIP":
+      if (id !== "terminal") throw new Error("This prototype varies ownership only for Terminal");
+      view.ownership = event.ownership;
+      lastChange = `Terminal now represents an ${event.ownership} session.`;
+      break;
+    case "CLOSE": {
+      const adapter = workViewAdapters[id];
+      const unavailable = view.phase === "unavailable";
+      view.phase = "closed";
+      view.recovery = "none";
+      view.needsAction = false;
+      view.attention = false;
+      view.recovered = false;
+      if (id === "terminal" && view.ownership === "attached") {
+        view.closeOutcome = "The Terminal view detaches; the independently existing terminal session keeps running.";
+      } else {
+        view.closeOutcome = unavailable ? adapter.closeUnavailable : adapter.closeLive;
+      }
+      view.detail = view.closeOutcome;
+      lastChange = view.closeOutcome;
+      break;
+    }
+    default:
+      throw new Error(`Unknown Work-view event: ${event.type}`);
+  }
+
+  return { activeView, lastChange, views };
+}
+
 const main = document.querySelector(".main");
 const workPane = document.querySelector(".work");
 const workTabs = document.querySelector(".work-tabs");
@@ -196,11 +435,20 @@ const workspaceTrigger = document.querySelector(".sidebar-trigger");
 const workspaceScroll = document.querySelector("[data-workspace-scroll]");
 const workspaceTree = document.querySelector("[data-workspace-tree]");
 const workTrigger = document.querySelector(".work-trigger");
-const documentViewIds = ["file", "file-context", "browser", "terminal"];
+const documentViewIds = [
+  "file",
+  "file-context",
+  "browser",
+  "desktop",
+  "vscode",
+  "terminal",
+];
 const mobileViewDetails = {
   file: { label: "work-view.ts", icon: "file" },
   "file-context": { label: "CONTEXT.md", icon: "file" },
   browser: { label: "Preview", icon: "browser" },
+  desktop: { label: "Desktop", icon: "desktop" },
+  vscode: { label: "VS Code", icon: "code" },
   changes: { label: "Changes", icon: "git" },
   terminal: { label: "Terminal", icon: "terminal" },
 };
@@ -362,11 +610,258 @@ function loadInteractionState() {
 let interaction = loadInteractionState();
 let resizingWork = false;
 let draggedView = null;
-let lifecycleState = workspaceLifecycleReducer(lifecycleInitialState, { type: "RESET_STARTING" });
+let lifecycleState = workspaceLifecycleReducer(lifecycleInitialState, { type: "RESET_READY" });
 const lifecycleTargetWorkspace = "redesign-tabs";
 const lifecycleAgentCard = document.querySelector("[data-lifecycle-agent-card]");
 const lifecycleWorkCover = document.querySelector("[data-lifecycle-work-cover]");
 const lifecycleStartupSurface = document.querySelector("[data-lifecycle-startup-surface]");
+let workViewPrototypeState = reduceWorkViewAvailability(
+  workViewPrototypeInitialState,
+  { type: "RESET", activeView: "file" },
+);
+let activeWorkViewScenario = "opening";
+let workViewScenarioStep = 0;
+let workViewPrototypeError = null;
+let hoveredFullscreenView = null;
+let workViewLabStarted = false;
+
+const workViewScenarios = Object.freeze({
+  opening: {
+    label: "Open a resource",
+    intro: "A new Browser view stays mounted and quiet while its owned browser starts.",
+    activeView: "browser",
+    steps: [
+      { label: "Begin opening", event: { type: "OPEN", view: "browser" } },
+      { label: "Browser becomes live", event: { type: "OPENED", view: "browser" } },
+    ],
+  },
+  reconnect: {
+    label: "Transient reconnect",
+    intro: "A live Desktop connection drops, preserves its last frame, and recovers automatically without Attention.",
+    activeView: "desktop",
+    steps: [
+      { label: "Lose connection", event: { type: "CONNECTION_LOST", view: "desktop" } },
+      { label: "Recover automatically", event: { type: "AUTO_RECOVERED", view: "desktop" } },
+    ],
+  },
+  missing: {
+    label: "Missing resource",
+    intro: "A File view remains visible as an Unavailable Work view while Atelier watches its canonical path.",
+    activeView: "file",
+    steps: [
+      { label: "File disappears", event: { type: "RESOURCE_MISSING", view: "file", detail: "apps/web/src/work-view.ts is missing. Atelier is watching the canonical path." } },
+      { label: "File returns", event: { type: "RESOURCE_RETURNED", view: "file" } },
+    ],
+  },
+  startFailure: {
+    label: "Startup failure",
+    intro: "VS Code fails before it becomes live, keeps the same view reference, and offers a type-specific retry.",
+    activeView: "vscode",
+    steps: [
+      { label: "Begin opening", event: { type: "OPEN", view: "vscode" } },
+      { label: "Editor service fails", event: { type: "CREATE_FAILED", view: "vscode", detail: "The workspace editor service exited before the VS Code connection opened." } },
+      { label: "Reconnect", event: { type: "RETRY", view: "vscode" } },
+      { label: "VS Code becomes live", event: { type: "OPENED", view: "vscode" } },
+    ],
+  },
+  backgroundFailure: {
+    label: "Background failure",
+    intro: "Browser recovery exhausts in the background. It signals in desktop and phone navigation, then Attention reveals it only when requested.",
+    activeView: "file",
+    steps: [
+      { label: "Preview loses connection", event: { type: "CONNECTION_LOST", view: "browser" } },
+      { label: "Automatic recovery stops", event: { type: "AUTO_RECOVERY_FAILED", view: "browser" } },
+      { label: "Request Attention", event: { type: "REQUEST_ATTENTION", view: "browser" } },
+      { label: "Restart browser", event: { type: "RETRY", view: "browser" } },
+      { label: "Browser recovers", event: { type: "AUTO_RECOVERED", view: "browser" } },
+    ],
+  },
+  ownership: {
+    label: "Owned vs attached close",
+    intro: "Closing the same Terminal view has a different resource outcome depending on whether the session belongs to the view.",
+    activeView: "terminal",
+    steps: [
+      { label: "Use owned session", event: { type: "SET_OWNERSHIP", view: "terminal", ownership: "owned" } },
+      { label: "Close owned Terminal", event: { type: "CLOSE", view: "terminal" } },
+      { label: "Reset Terminal", event: { type: "RESET", activeView: "terminal" } },
+      { label: "Use attached session", event: { type: "SET_OWNERSHIP", view: "terminal", ownership: "attached" } },
+      { label: "Close attached Terminal", event: { type: "CLOSE", view: "terminal" } },
+    ],
+  },
+  more: {
+    label: "Signal in More",
+    intro: "The contextual Changes view becomes unavailable off-screen so phone More carries the same actionable yellow signal.",
+    activeView: "file",
+    steps: [
+      { label: "Repository becomes unreachable", event: { type: "RESOURCE_MISSING", view: "changes", detail: "Repository status could not be read. Atelier is retrying automatically." } },
+      { label: "Automatic recovery stops", event: { type: "AUTO_RECOVERY_FAILED", view: "changes" } },
+      { label: "Open More on phone", uiAction: "more" },
+      { label: "Reveal Changes", event: { type: "REQUEST_ATTENTION", view: "changes" } },
+    ],
+  },
+});
+
+function workViewStatusLabel(view) {
+  if (view.phase === "opening") return "Opening";
+  if (view.phase === "reconnecting") return "Reconnecting";
+  if (view.phase === "unavailable") return "Unavailable Work view";
+  if (view.phase === "closed") return "Closed";
+  return view.recovered ? "Recovered" : "Live";
+}
+
+function renderWorkViewStateSurface(id, view) {
+  const panel = document.querySelector(`[data-view-panel="${id}"]`);
+  if (!panel) return;
+  let surface = panel.querySelector(":scope > [data-work-view-state-surface]");
+  if (!surface) {
+    surface = document.createElement("div");
+    surface.dataset.workViewStateSurface = id;
+    panel.append(surface);
+  }
+  const adapter = workViewAdapters[id];
+  const showSurface = view.phase !== "live";
+  surface.hidden = !showSurface;
+  surface.className = `work-view-state-surface is-${view.phase}`;
+  surface.dataset.fullscreenEligible = String(
+    adapter.fullscreen || view.phase === "unavailable",
+  );
+  if (showSurface) {
+    const title = view.phase === "opening"
+      ? `Opening ${adapter.label}`
+      : view.phase === "reconnecting"
+        ? `Reconnecting ${adapter.label}`
+        : view.phase === "closed"
+          ? `${adapter.label} closed`
+          : `${adapter.label} is unavailable`;
+    const status = view.phase === "opening" || view.phase === "reconnecting"
+      ? '<i class="work-state-spinner" aria-hidden="true"></i>'
+      : '<i class="work-state-warning" aria-hidden="true">!</i>';
+    const recovery = view.recovery === "automatic"
+      ? "Automatic recovery is active."
+      : view.recovery === "manual"
+        ? "User action is required."
+        : "Production unmounts this view; the lab keeps its fixture only so Reset can rerun it.";
+    const actions = view.phase === "closed"
+      ? '<button data-work-event="RESET_ACTIVE">Reset scenario</button>'
+      : `${view.needsAction ? `<button class="primary" data-work-event="RETRY" data-work-view="${id}">${adapter.retryLabel}</button>` : ""}<button data-work-event="CLOSE" data-work-view="${id}">Close view</button>`;
+    surface.innerHTML = `<div class="work-view-state-card">${status}<div class="work-view-state-copy"><small>${adapter.kind} · ${view.ownership} resource</small><h2>${title}</h2><p>${view.detail}</p><span>${recovery}</span>${surface.dataset.fullscreenEligible === "true" ? "<kbd>Hover + F for fullscreen</kbd>" : ""}</div><div class="work-view-state-actions">${actions}</div></div>`;
+  }
+  panel.classList.toggle("has-work-view-state", showSurface);
+  panel.classList.toggle("is-reconnecting", view.phase === "reconnecting");
+  let recovered = panel.querySelector(":scope > [data-work-view-recovered]");
+  if (!recovered) {
+    recovered = document.createElement("div");
+    recovered.dataset.workViewRecovered = id;
+    recovered.className = "work-view-recovered";
+    panel.append(recovered);
+  }
+  recovered.hidden = !view.recovered;
+  recovered.textContent = `${adapter.label} recovered`;
+}
+
+function renderWorkViewNavigationState(id, view) {
+  const shell = document.querySelector(`[data-view-shell="${id}"]`);
+  if (!shell) return;
+  shell.classList.toggle("work-view-unavailable", view.phase === "unavailable");
+  shell.classList.toggle("work-view-busy", ["opening", "reconnecting"].includes(view.phase));
+  shell.classList.toggle("work-view-closed", view.phase === "closed");
+  const tab = shell.querySelector("[data-view]");
+  let status = tab.querySelector(".work-view-nav-status");
+  if (!status) {
+    status = document.createElement("i");
+    status.className = "work-view-nav-status";
+    tab.append(status);
+  }
+  status.className = `work-view-nav-status is-${view.attention ? "attention" : view.phase}`;
+  status.hidden = view.phase === "live" && !view.recovered;
+  status.setAttribute("aria-label", view.attention ? "Attention" : workViewStatusLabel(view));
+  tab.setAttribute("aria-label", `${workViewAdapters[id].label} · ${workViewStatusLabel(view)}`);
+}
+
+function renderWorkViewLab() {
+  const lab = document.querySelector("[data-work-state-lab]");
+  if (!lab) return;
+  const target = lab.querySelector("[data-work-state-target]");
+  if (![...target.options].some((option) => option.value === target.value)) {
+    target.value = workViewPrototypeState.activeView;
+  }
+  const inspected = workViewPrototypeState.views[target.value];
+  lab.querySelector("[data-work-state-last-change]").textContent = workViewPrototypeError || workViewPrototypeState.lastChange;
+  lab.querySelector("[data-work-state-last-change]").classList.toggle("is-error", Boolean(workViewPrototypeError));
+  lab.querySelector("[data-work-state-inspector]").innerHTML = [
+    ["View", `${workViewAdapters[inspected.id].kind} · ${workViewAdapters[inspected.id].label}`],
+    ["Availability", workViewStatusLabel(inspected)],
+    ["Recovery", inspected.recovery],
+    ["Needs action", inspected.needsAction ? "Yes" : "No"],
+    ["Attention", inspected.attention ? "Requested in background" : "None"],
+    ["Ownership", inspected.ownership],
+    ["Close outcome", inspected.closeOutcome || "Not closed"],
+  ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("");
+  lab.querySelector("[data-work-scenario-tabs]").innerHTML = Object.entries(workViewScenarios)
+    .map(([id, scenario]) => `<button class="${id === activeWorkViewScenario ? "active" : ""}" data-work-scenario="${id}">${scenario.label}</button>`)
+    .join("");
+  const scenario = workViewScenarios[activeWorkViewScenario];
+  lab.querySelector("[data-work-scenario-intro]").textContent = scenario.intro;
+  lab.querySelector("[data-work-scenario-steps]").innerHTML = scenario.steps
+    .map((step, index) => `<button class="${index < workViewScenarioStep ? "done" : index === workViewScenarioStep ? "next" : ""}" data-work-scenario-step="${index}" ${index > workViewScenarioStep ? "disabled" : ""}><i>${index < workViewScenarioStep ? "✓" : index + 1}</i><span>${step.label}</span></button>`)
+    .join("");
+}
+
+function renderWorkViewAvailabilityPrototype() {
+  Object.entries(workViewPrototypeState.views).forEach(([id, view]) => {
+    renderWorkViewStateSurface(id, view);
+    renderWorkViewNavigationState(id, view);
+    if (view.attention) mobileIndicators.add(id);
+    else mobileIndicators.delete(id);
+  });
+  renderMobileViewBar();
+  renderWorkViewLab();
+}
+
+function dispatchWorkViewPrototype(event) {
+  workViewPrototypeError = null;
+  try {
+    workViewPrototypeState = reduceWorkViewAvailability(workViewPrototypeState, event);
+  } catch (error) {
+    workViewPrototypeError = `Illegal transition: ${error.message}`;
+  }
+  if (!workViewPrototypeError && workViewPrototypeState.activeView !== interaction.activeView) {
+    activateView(workViewPrototypeState.activeView, { revealWork: true });
+    if (isMobile()) showMobilePane("work");
+  }
+  renderWorkViewAvailabilityPrototype();
+}
+
+function startWorkViewScenario(id) {
+  activeWorkViewScenario = id;
+  workViewScenarioStep = 0;
+  workViewPrototypeError = null;
+  const scenario = workViewScenarios[id];
+  workViewPrototypeState = reduceWorkViewAvailability(workViewPrototypeState, {
+    type: "RESET",
+    activeView: scenario.activeView,
+  });
+  document.querySelector("[data-work-state-target]").value = scenario.activeView;
+  activateView(scenario.activeView, { revealWork: true });
+  renderWorkViewAvailabilityPrototype();
+}
+
+function runWorkViewScenarioStep(index) {
+  if (index !== workViewScenarioStep) return;
+  const step = workViewScenarios[activeWorkViewScenario].steps[index];
+  if (step.uiAction === "more") {
+    document.body.classList.add("mobile-more-open");
+    workViewPrototypeState = {
+      ...workViewPrototypeState,
+      lastChange: "More reveals the same actionable Attention signal for Changes.",
+    };
+    renderWorkViewAvailabilityPrototype();
+  } else {
+    dispatchWorkViewPrototype(step.event);
+  }
+  if (!workViewPrototypeError) workViewScenarioStep += 1;
+  renderWorkViewLab();
+}
 
 function dispatchWorkspaceLifecycle(type) {
   lifecycleState = workspaceLifecycleReducer(lifecycleState, { type });
@@ -934,10 +1429,18 @@ function mobileDestinationMarkup(
   icon,
   { active = false, indicator = false } = {},
 ) {
+  const workState = workViewPrototypeState?.views[id];
+  const stateSignal = workState && (workState.phase !== "live" || workState.recovered)
+    ? `<i class="mobile-work-state is-${workState.attention ? "attention" : workState.phase}" aria-label="${workStateStatusText(workState)}"></i>`
+    : "";
   const destination = `<button class="mobile-view-destination${active ? " active" : ""}" data-mobile-destination="${id}" aria-label="${label}"${active ? ' aria-current="page"' : ""}>
-    <span class="mobile-view-icon"><svg><use href="#${icon}" /></svg>${indicator ? '<i class="mobile-destination-dot"></i>' : ""}</span><span class="mobile-view-label">${label}</span>
+    <span class="mobile-view-icon"><svg><use href="#${icon}" /></svg>${indicator ? '<i class="mobile-destination-dot"></i>' : ""}${stateSignal}</span><span class="mobile-view-label">${label}</span>
   </button>`;
   return `<span class="mobile-view-destination-shell">${destination}</span>`;
+}
+
+function workStateStatusText(view) {
+  return view.attention ? "Attention" : workViewStatusLabel(view);
 }
 
 function renderMobileViewBar() {
@@ -999,6 +1502,13 @@ function renderMobileViewBar() {
     !viewTab("changes");
   document.querySelector("[data-mobile-more-dot='changes']").hidden =
     !mobileIndicators.has("changes");
+  const changesState = workViewPrototypeState?.views.changes;
+  const moreStatus = document.querySelector("[data-mobile-more-status='changes']");
+  if (changesState && moreStatus) {
+    moreStatus.textContent = workStateStatusText(changesState);
+    moreStatus.hidden = changesState.phase === "live" && !changesState.recovered;
+    moreStatus.className = `mobile-more-status is-${changesState.attention ? "attention" : changesState.phase}`;
+  }
 }
 
 function requestMobileClose(view) {
@@ -1473,6 +1983,37 @@ navigatorFilter.addEventListener("keydown", (event) => {
   filterNavigator("");
 });
 
+document
+  .querySelector("[data-work-state-target]")
+  ?.addEventListener("change", () => renderWorkViewLab());
+
+document.querySelector(".stage").addEventListener("pointerover", (event) => {
+  const panel = event.target.closest("[data-view-panel]");
+  hoveredFullscreenView = panel?.dataset.viewPanel || null;
+});
+
+document.querySelector(".stage").addEventListener("pointerleave", () => {
+  hoveredFullscreenView = null;
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key.toLowerCase() !== "f" || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.target.matches("input, textarea, [contenteditable]")) return;
+  if (!hoveredFullscreenView) return;
+  const view = workViewPrototypeState.views[hoveredFullscreenView];
+  const adapter = workViewAdapters[hoveredFullscreenView];
+  if (!adapter || (!adapter.fullscreen && view.phase !== "unavailable")) return;
+  event.preventDefault();
+  const source = document.querySelector(`[data-view-panel="${hoveredFullscreenView}"]`);
+  const clone = source.cloneNode(true);
+  clone.hidden = false;
+  clone.removeAttribute("data-view-panel");
+  clone.classList.add("fullscreen-work-view");
+  toolFullscreen.querySelector("[data-tool-fullscreen-title]").textContent = `${adapter.label} · ${workViewStatusLabel(view)}`;
+  toolFullscreen.querySelector("[data-tool-fullscreen-body]").replaceChildren(clone);
+  toolFullscreen.showModal();
+});
+
 workspaceScroll.addEventListener("scroll", () => {
   if (document.body.classList.contains("workspace-list-loading")) return;
   interaction.sidebarScroll = workspaceScroll.scrollTop;
@@ -1488,6 +2029,27 @@ document.querySelectorAll(".prototype-dialog").forEach((dialog) => {
 document.addEventListener("click", (event) => {
   const control = event.target.closest("button, [data-action]");
   if (!control) return;
+  if (control.dataset.action === "toggle-work-state-lab") {
+    const lab = document.querySelector("[data-work-state-lab]");
+    lab.hidden = !lab.hidden;
+    control.setAttribute("aria-expanded", String(!lab.hidden));
+    if (!lab.hidden && !workViewLabStarted) {
+      workViewLabStarted = true;
+      startWorkViewScenario(activeWorkViewScenario);
+    } else if (!lab.hidden) renderWorkViewLab();
+  }
+  if (control.dataset.workScenario) startWorkViewScenario(control.dataset.workScenario);
+  if (control.dataset.workScenarioStep !== undefined) {
+    runWorkViewScenarioStep(Number(control.dataset.workScenarioStep));
+  }
+  if (control.dataset.workEvent) {
+    const type = control.dataset.workEvent;
+    if (type === "RESET_ACTIVE") startWorkViewScenario(activeWorkViewScenario);
+    else dispatchWorkViewPrototype({
+      type,
+      view: control.dataset.workView || document.querySelector("[data-work-state-target]").value,
+    });
+  }
   if (control.dataset.lifecycleEvent) {
     dispatchWorkspaceLifecycle(control.dataset.lifecycleEvent);
   }
@@ -1649,6 +2211,7 @@ document.addEventListener("click", (event) => {
     } else {
       setWorkspaceOpen(false);
       activateView(destination);
+      dispatchWorkViewPrototype({ type: "ACTIVATE", view: destination });
       showMobilePane("work");
     }
   }
@@ -1656,9 +2219,13 @@ document.addEventListener("click", (event) => {
     document.body.classList.remove("mobile-more-open");
     setWorkspaceOpen(false);
     activateView(control.dataset.mobileView);
+    dispatchWorkViewPrototype({ type: "ACTIVATE", view: control.dataset.mobileView });
     showMobilePane("work");
   }
-  if (control.dataset.view) activateView(control.dataset.view);
+  if (control.dataset.view) {
+    activateView(control.dataset.view);
+    dispatchWorkViewPrototype({ type: "ACTIVATE", view: control.dataset.view });
+  }
   if (control.dataset.action === "toggle-sidebar") {
     setWorkspaceOpen(!interaction.workspaceOpen);
   }
@@ -2060,5 +2627,6 @@ setWorkspaceOpen(!workspaceOverlays());
 renderConversationState();
 renderMobileViewBar();
 renderLifecyclePrototype();
+renderWorkViewAvailabilityPrototype();
 showOnboardingStep(0);
 if (!prototypeUrl.searchParams.has("file-nav")) onboardingDialog.showModal();
