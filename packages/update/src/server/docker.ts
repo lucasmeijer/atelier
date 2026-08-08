@@ -38,49 +38,153 @@ export async function ownContainerId(): Promise<string | undefined> {
   return parseContainerIdFromCgroup(cgroup) ?? parseContainerIdFromMountInfo(mountInfo) ?? hostname();
 }
 
+interface DockerConfig {
+  Image?: string;
+  Env?: string[];
+  Labels?: Record<string, string>;
+  Cmd?: string[] | null;
+  WorkingDir?: string;
+  User?: string;
+}
+
+interface DockerRestartPolicy { Name?: string; MaximumRetryCount?: number }
+interface DockerHostConfig { NetworkMode?: string; RestartPolicy?: DockerRestartPolicy; Init?: boolean; CpuShares?: number; MemoryReservation?: number; OomScoreAdj?: number }
+interface DockerMount { Type?: string; Source?: string; Destination?: string; RW?: boolean }
+interface DockerImageMetadata { RepoDigests?: string[]; Labels?: Record<string, string> }
+
 export interface DockerInspect {
   Id: string;
   Name?: string;
   Image: string;
-  RepoDigests?: string[];
-  Config?: { Image?: string; Env?: string[]; Labels?: Record<string, string>; Entrypoint?: string[] | string | null; Cmd?: string[] | string | null; WorkingDir?: string; User?: string };
-  ImageConfig?: { Config?: { Labels?: Record<string, string> } };
-  HostConfig?: Record<string, unknown> & { Binds?: string[]; Mounts?: unknown[]; NetworkMode?: string; RestartPolicy?: unknown; Init?: boolean; CpuShares?: number; MemoryReservation?: number; OomScoreAdj?: number };
-  Mounts?: unknown[];
-  NetworkSettings?: unknown;
+  Config?: DockerConfig;
+  HostConfig?: DockerHostConfig;
+  Mounts?: DockerMount[];
+}
+
+type JsonObject = { [key: string]: unknown };
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function jsonObject(value: unknown, context: string): JsonObject {
+  if (!isJsonObject(value)) throw new Error(`${context} must be an object`);
+  return value;
+}
+
+function optionalObject(value: unknown, context: string): JsonObject | undefined {
+  return value === undefined || value === null ? undefined : jsonObject(value, context);
+}
+
+function optionalString(value: unknown, context: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") throw new Error(`${context} must be a string`);
+  return value;
+}
+
+function optionalNumber(value: unknown, context: string): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number") throw new Error(`${context} must be a number`);
+  return value;
+}
+
+function optionalBoolean(value: unknown, context: string): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "boolean") throw new Error(`${context} must be a boolean`);
+  return value;
+}
+
+function optionalStrings(value: unknown, context: string): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) throw new Error(`${context} must be an array of strings`);
+  return value;
+}
+
+function optionalLabels(value: unknown, context: string): Record<string, string> | undefined {
+  const object = optionalObject(value, context);
+  if (!object) return undefined;
+  const labels: Record<string, string> = {};
+  for (const [key, label] of Object.entries(object)) {
+    if (typeof label !== "string") throw new Error(`${context}.${key} must be a string`);
+    labels[key] = label;
+  }
+  return labels;
+}
+
+function parseConfig(value: unknown, context: string): DockerConfig | undefined {
+  const object = optionalObject(value, context);
+  if (!object) return undefined;
+  return {
+    Image: optionalString(object.Image, `${context}.Image`),
+    Env: optionalStrings(object.Env, `${context}.Env`),
+    Labels: optionalLabels(object.Labels, `${context}.Labels`),
+    Cmd: object.Cmd === null ? null : optionalStrings(object.Cmd, `${context}.Cmd`),
+    WorkingDir: optionalString(object.WorkingDir, `${context}.WorkingDir`),
+    User: optionalString(object.User, `${context}.User`),
+  };
+}
+
+function parseImageMetadata(object: JsonObject): DockerImageMetadata {
+  const config = optionalObject(object.Config, "docker inspect result.Config");
+  return { RepoDigests: optionalStrings(object.RepoDigests, "docker inspect result.RepoDigests"), Labels: optionalLabels(config?.Labels, "docker inspect result.Config.Labels") };
+}
+
+async function inspectObject(id: string, exec: DockerExec): Promise<JsonObject> {
+  const result = await exec(["inspect", id]);
+  if (result.code !== 0) throw new Error(result.stderr.trim() || `docker inspect failed for ${id}`);
+  const value: unknown = JSON.parse(result.stdout);
+  if (!Array.isArray(value)) throw new Error("docker inspect response must be an array");
+  if (!value[0]) throw new Error(`docker inspect returned no result for ${id}`);
+  return jsonObject(value[0], "docker inspect result");
+}
+
+function parseDockerContainer(object: JsonObject): DockerInspect {
+  const id = optionalString(object.Id, "docker inspect result.Id");
+  const image = optionalString(object.Image, "docker inspect result.Image");
+  if (!id || !image) throw new Error("docker inspect result must identify a container");
+  const host = optionalObject(object.HostConfig, "docker inspect result.HostConfig");
+  const restart = optionalObject(host?.RestartPolicy, "docker inspect result.HostConfig.RestartPolicy");
+  const mounts = object.Mounts;
+  if (mounts !== undefined && mounts !== null && !Array.isArray(mounts)) throw new Error("docker inspect result.Mounts must be an array");
+  return {
+    Id: id,
+    Name: optionalString(object.Name, "docker inspect result.Name"),
+    Image: image,
+    HostConfig: host ? {
+      NetworkMode: optionalString(host.NetworkMode, "docker inspect result.HostConfig.NetworkMode"),
+      RestartPolicy: restart ? { Name: optionalString(restart.Name, "docker inspect result.HostConfig.RestartPolicy.Name"), MaximumRetryCount: optionalNumber(restart.MaximumRetryCount, "docker inspect result.HostConfig.RestartPolicy.MaximumRetryCount") } : undefined,
+      Init: optionalBoolean(host.Init, "docker inspect result.HostConfig.Init"),
+      CpuShares: optionalNumber(host.CpuShares, "docker inspect result.HostConfig.CpuShares"),
+      MemoryReservation: optionalNumber(host.MemoryReservation, "docker inspect result.HostConfig.MemoryReservation"),
+      OomScoreAdj: optionalNumber(host.OomScoreAdj, "docker inspect result.HostConfig.OomScoreAdj"),
+    } : undefined,
+    Mounts: Array.isArray(mounts) ? mounts.map((mount, index) => {
+      const context = `docker inspect result.Mounts[${index}]`;
+      const item = jsonObject(mount, context);
+      return { Type: optionalString(item.Type, `${context}.Type`), Source: optionalString(item.Source, `${context}.Source`), Destination: optionalString(item.Destination, `${context}.Destination`), RW: optionalBoolean(item.RW, `${context}.RW`) };
+    }) : undefined,
+  };
 }
 
 export async function dockerInspect(id: string, exec: DockerExec = dockerExec): Promise<DockerInspect> {
-  const result = await exec(["inspect", id]);
-  if (result.code !== 0) throw new Error(result.stderr.trim() || `docker inspect failed for ${id}`);
-  const parsed = JSON.parse(result.stdout) as DockerInspect[];
-  if (!parsed[0]) throw new Error(`docker inspect returned no result for ${id}`);
-  return parsed[0];
+  return parseDockerContainer(await inspectObject(id, exec));
 }
 
-export function labelsFromInspect(inspect: DockerInspect): Record<string, string> {
-  return { ...(inspect.ImageConfig?.Config?.Labels ?? {}), ...(inspect.Config?.Labels ?? {}) };
+async function dockerImageInspect(id: string, exec: DockerExec): Promise<DockerImageMetadata> {
+  return parseImageMetadata(await inspectObject(id, exec));
 }
 
-export function isAtelierImageRef(value: string | undefined): boolean {
+function isAtelierImageRef(value: string | undefined): boolean {
   return Boolean(value && /(^|\/|@)ghcr\.io\/lucasmeijer\/atelier(?::|@|$)/.test(value));
-}
-
-export function inspectRevision(inspect: DockerInspect): string | undefined {
-  return labelsFromInspect(inspect)["org.opencontainers.image.revision"];
-}
-
-export function inspectSelfUpdateCompatibility(inspect: DockerInspect): string | undefined {
-  return labelsFromInspect(inspect)["com.atelier.self-update-compatibility"];
 }
 
 export interface SelfUpdateRuntime { container: DockerInspect; containerId: string; imageId: string; releaseChannel: ReleaseChannel; currentRevision?: string; currentDigest?: string; selfUpdateCompatibility?: string }
 
-function atelierRepoDigest(inspect: DockerInspect): string | undefined {
+function atelierRepoDigest(inspect: DockerImageMetadata): string | undefined {
   return inspect.RepoDigests?.find((digest) => digest.startsWith("ghcr.io/lucasmeijer/atelier@"))?.split("@")[1];
 }
 
-export function releaseChannelFromInspect(inspect: DockerInspect): ReleaseChannel {
+function releaseChannelFromInspect(inspect: DockerInspect): ReleaseChannel {
   const label = inspect.Config?.Labels?.["com.atelier.release-channel"];
   if (isReleaseChannel(label)) return label;
   const image = inspect.Config?.Image ?? "";
@@ -111,17 +215,17 @@ export async function detectSelfUpdateRuntime(exec: DockerExec = dockerExec): Pr
   if (!container) return undefined;
   const labels = container.Config?.Labels ?? {};
   if (labels["com.atelier.type"] !== "server") return undefined;
-  const image = await dockerInspect(container.Image, exec).catch(() => undefined);
-  const repoDigest = atelierRepoDigest(image ?? container) ?? atelierRepoDigest(container);
+  const image = await dockerImageInspect(container.Image, exec).catch(() => undefined);
+  const repoDigest = image && atelierRepoDigest(image);
   if (!isAtelierImageRef(container.Config?.Image) && !repoDigest) return undefined;
   return {
     container,
     containerId: container.Id,
     imageId: container.Image,
     releaseChannel: releaseChannelFromInspect(container),
-    currentRevision: inspectRevision(image ?? container) ?? inspectRevision(container),
+    currentRevision: image?.Labels?.["org.opencontainers.image.revision"] ?? labels["org.opencontainers.image.revision"],
     currentDigest: repoDigest ?? container.Image,
-    selfUpdateCompatibility: inspectSelfUpdateCompatibility(image ?? container) ?? inspectSelfUpdateCompatibility(container),
+    selfUpdateCompatibility: image?.Labels?.["com.atelier.self-update-compatibility"] ?? labels["com.atelier.self-update-compatibility"],
   };
 }
 
@@ -207,22 +311,21 @@ export function replacementCreateArgs(inspect: DockerInspect, targetImage = insp
   const labels = Object.fromEntries(Object.entries(inspect.Config?.Labels ?? {}).filter(([key]) => shouldPreserveContainerLabel(key)));
   for (const [key, value] of Object.entries({ ...labels, "com.atelier.release-channel": releaseChannel })) args.push("--label", `${key}=${value}`);
   for (const mount of inspect.Mounts ?? []) {
-    const m = mount as { Type?: string; Source?: string; Destination?: string; RW?: boolean };
-    if (m.Type === "bind" && m.Source && m.Destination) args.push("--mount", `type=bind,src=${m.Source},dst=${m.Destination}${m.RW === false ? ",readonly" : ""}`);
-    if (m.Type === "volume" && m.Source && m.Destination) args.push("--mount", `type=volume,src=${m.Source},dst=${m.Destination}${m.RW === false ? ",readonly" : ""}`);
+    if (mount.Type === "bind" && mount.Source && mount.Destination) args.push("--mount", `type=bind,src=${mount.Source},dst=${mount.Destination}${mount.RW === false ? ",readonly" : ""}`);
+    if (mount.Type === "volume" && mount.Source && mount.Destination) args.push("--mount", `type=volume,src=${mount.Source},dst=${mount.Destination}${mount.RW === false ? ",readonly" : ""}`);
   }
   const networkMode = inspect.HostConfig?.NetworkMode;
-  if (typeof networkMode === "string" && networkMode) args.push("--network", networkMode);
+  if (networkMode) args.push("--network", networkMode);
   if (inspect.HostConfig?.Init) args.push("--init");
   if (inspect.HostConfig?.CpuShares) args.push("--cpu-shares", String(inspect.HostConfig.CpuShares));
   if (inspect.HostConfig?.MemoryReservation) args.push("--memory-reservation", String(inspect.HostConfig.MemoryReservation));
   if (inspect.HostConfig?.OomScoreAdj) args.push("--oom-score-adj", String(inspect.HostConfig.OomScoreAdj));
-  const restart = inspect.HostConfig?.RestartPolicy as { Name?: string; MaximumRetryCount?: number } | undefined;
+  const restart = inspect.HostConfig?.RestartPolicy;
   if (restart?.Name) args.push("--restart", restart.Name === "on-failure" && restart.MaximumRetryCount ? `${restart.Name}:${restart.MaximumRetryCount}` : restart.Name);
   if (inspect.Config?.WorkingDir) args.push("--workdir", inspect.Config.WorkingDir);
   if (inspect.Config?.User) args.push("--user", inspect.Config.User);
   args.push(targetImage);
   const cmd = inspect.Config?.Cmd;
-  if (Array.isArray(cmd)) args.push(...cmd);
+  if (cmd) args.push(...cmd);
   return args;
 }

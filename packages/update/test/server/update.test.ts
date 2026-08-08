@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { parseContainerIdFromCgroup, parseContainerIdFromMountInfo, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
+import { dockerInspect, parseContainerIdFromCgroup, parseContainerIdFromMountInfo, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
 import { createUpdateRouteHandler, UpdateManager } from "../../src/server/index.ts";
 import { parseWwwAuthenticate, selectManifestFromIndex, fetchChannelImageMetadata } from "../../src/server/registry.ts";
 import { fetchReleaseNotes, releaseNoteFilenames, renderMarkdown } from "../../src/server/release-notes.ts";
@@ -433,6 +433,23 @@ describe("update helper health URL", () => {
   test("falls back to the browser return URL for wildcard binds", () => {
     const inspect: DockerInspect = { Id: "container", Image: "sha256:old", Config: { Env: ["HOST=0.0.0.0", "PORT=80"] } };
     expect(serverHealthUrlFromInspect(inspect, "http://agent-test/").toString()).toBe("http://agent-test/up");
+  });
+});
+
+describe("docker inspect parsing", () => {
+  test("parses container configuration at the Docker CLI boundary", async () => {
+    const inspect = await dockerInspect("container", async () => ({
+      code: 0,
+      stderr: "",
+      stdout: JSON.stringify([{ Id: "container", Image: "sha256:image", HostConfig: { RestartPolicy: { Name: "on-failure", MaximumRetryCount: 3 } }, Mounts: [{ Type: "volume", Source: "data", Destination: "/data", RW: false }] }]),
+    }));
+    expect(inspect.HostConfig?.RestartPolicy).toEqual({ Name: "on-failure", MaximumRetryCount: 3 });
+    expect(inspect.Mounts?.[0]).toEqual({ Type: "volume", Source: "data", Destination: "/data", RW: false });
+  });
+
+  test("rejects malformed container configuration", async () => {
+    expect(dockerInspect("container", async () => ({ code: 0, stderr: "", stdout: JSON.stringify([{ Id: "container", Image: "sha256:image", HostConfig: { Init: "yes" } }]) })))
+      .rejects.toThrow("docker inspect result.HostConfig.Init must be a boolean");
   });
 });
 
