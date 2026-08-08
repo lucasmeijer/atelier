@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { requireDocker, runDocker } from "@atelier/core";
 import { buildWorkspaceImageCarrier, nativeLinuxDockerPlatform } from "./carrier.ts";
-import { nestedDockerDaemonInitScript, resolveDockerImagePreload } from "./index.ts";
+import { dockerImageId, nestedDockerDaemonInitScript, resolveDockerImagePreload } from "./index.ts";
 
 setDefaultTimeout(15 * 60_000);
 // Deliberately opt-in: this builds a nested-Docker base and a carrier.
@@ -27,6 +27,10 @@ carrierIntegrationTest("native Linux carriers are reusable and give workspaces i
     const second = await buildWorkspaceImageCarrier({ baseImage: base, baseIdentity: base, platform, preload });
     expect(second.image).toBe(first.image);
     expect(second.kind).toBe("local hit");
+    const reused = await buildWorkspaceImageCarrier({ baseImage: first.image, baseIdentity: await dockerImageId(first.image), platform, preload });
+    expect(reused.image).toBe(first.image);
+    expect(reused.key).toBe(first.key);
+    expect(reused.kind).toBe("local hit");
 
     for (const container of containers) {
       await requireDocker(["run", "--detach", "--name", container, "--privileged", first.image, "sh", "-lc", "sleep infinity"]);

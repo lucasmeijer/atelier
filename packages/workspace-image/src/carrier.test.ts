@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseDockerVolumePaths, workspaceCarrierKey, type ResolvedDockerImagePreload } from "./carrier.ts";
+import { parseDockerVolumePaths, parseWorkspaceCarrierMetadata, workspaceCarrierKey, workspaceCarrierMatches, type ResolvedDockerImagePreload } from "./carrier.ts";
 
 const preload: ResolvedDockerImagePreload = {
   refs: ["ubuntu:24.04", "ghcr.io/example/workspace:0123456789abcdef", "atelier-workspace:0123456789abcdef"],
@@ -27,5 +27,22 @@ describe("workspace carrier identity", () => {
     expect(workspaceCarrierKey("base-a", "linux/amd64", preload)).not.toBe(workspaceCarrierKey("base-b", "linux/amd64", preload));
     expect(workspaceCarrierKey("base-a", "linux/amd64", preload)).not.toBe(workspaceCarrierKey("base-a", "linux/amd64", { ...preload, images: [{ ...preload.images[0]!, imageId: "sha256:changed" }, preload.images[1]!] }));
     expect(workspaceCarrierKey("base-a", "linux/amd64", preload, 1)).not.toBe(workspaceCarrierKey("base-a", "linux/amd64", preload, 2));
+  });
+
+  test("recognizes a compatible carrier independently of preload declaration order", () => {
+    const metadata = parseWorkspaceCarrierMetadata(JSON.stringify({
+      "com.atelier.workspace-carrier.version": "1",
+      "com.atelier.workspace-carrier.key": "carrier-key",
+      "com.atelier.workspace-carrier.base-image": "sha256:base",
+      "com.atelier.workspace-carrier.storage-driver": "fuse-overlayfs",
+      "com.atelier.workspace-carrier.platform": "linux/amd64",
+      "com.atelier.workspace-carrier.preload": JSON.stringify([
+        { ref: "ghcr.io/example/workspace:0123456789abcdef", id: "sha256:workspace", aliases: ["atelier-workspace:0123456789abcdef"] },
+        { ref: "ubuntu:24.04", id: "sha256:ubuntu", aliases: [] },
+      ]),
+    }));
+    expect(metadata).toBeDefined();
+    expect(workspaceCarrierMatches(metadata!, "linux/amd64", { ...preload, images: [...preload.images].reverse() })).toBe(true);
+    expect(workspaceCarrierMatches(metadata!, "linux/arm64", preload)).toBe(false);
   });
 });
