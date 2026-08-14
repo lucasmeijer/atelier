@@ -25,6 +25,7 @@ import {
 import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
 import { createAtelierCableClient } from "./cable.ts";
+import { createWorkspacePresentationController, installWorkspacePresentationTurboStream } from "./workspace-presentation.ts";
 
 declare global {
   interface Window {
@@ -2556,10 +2557,12 @@ class DevReloadController extends Controller {
 }
 
 const application = Application.start();
+installWorkspacePresentationTurboStream(Turbo, application);
 for (const module of workspaceClientModules) await module.install({ application, Controller, hooks: clientHooks });
 application.register("cable-shell", CableShellController);
 application.register("dev-reload", DevReloadController);
 application.register("workspace-shell", WorkspaceShellController);
+application.register("workspace-presentation", createWorkspacePresentationController(Controller, application, clientHooks));
 application.register("workspace-tabs", WorkspaceTabsController);
 application.register("workspace-tab-close", WorkspaceTabCloseController);
 application.register("workspace-groups", WorkspaceGroupsController);

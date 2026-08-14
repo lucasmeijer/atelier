@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium, type Browser } from "@playwright/test";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
+import { renderWorkspacePresentation, workspacePresentationTurboStream, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 
 let browser: Browser;
 let workspaceClient: string;
@@ -171,6 +172,154 @@ describe("Atelier Playwright helper", () => {
     });
 
     expect(preserved).toEqual({ oneLayout: 1, paneIdentity: true, frameIdentity: true, frameWindowIdentity: true, draft: "unsaved draft", newPane: "New pane" });
+    await page.close();
+  });
+
+  test("navigates the inactive role-fixed presentation without recreating live nodes", async () => {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "fixed-demo", title: "Fixed shell", projectTitle: "Atelier" },
+      projects: [{ id: "atelier", title: "Atelier", workspaces: [{ id: "fixed-demo", title: "Fixed shell" }] }],
+      agentConversations: [
+        { id: "agent-1", title: "Plan", bodyHtml: '<textarea data-probe="draft">initial</textarea>' },
+        { id: "agent-2", title: "Build", bodyHtml: '<div data-probe="agent-2">Second transcript</div>' },
+      ],
+      workViews: [
+        { key: "terminal:1", label: "Terminal", kind: "resource", attention: false, availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea><iframe srcdoc="<p>terminal</p>"></iframe>' },
+        { key: "changes", label: "Changes", kind: "contextual", attention: true, availability: { phase: "live" }, bodyHtml: '<div data-probe="changes">Changes</div>' },
+      ],
+    };
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>`,
+    }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+
+    await page.evaluate(() => {
+      const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
+      const terminal = document.querySelector<HTMLElement>('[data-workspace-live-node="work:terminal:1"]')!;
+      const frame = terminal.querySelector<HTMLIFrameElement>("iframe")!;
+      agent.querySelector("textarea")!.value = "unsaved agent draft";
+      terminal.querySelector("textarea")!.value = "unsaved command";
+      (window as typeof window & { fixedProbe?: unknown }).fixedProbe = { agent, terminal, frame, frameWindow: frame.contentWindow };
+    });
+    await page.locator('[data-work-view-key="changes"]').click();
+    await page.locator('[data-agent-tab-id="agent-2"]').click();
+    await page.locator('[data-work-view-key="terminal:1"]').click();
+    await page.locator('[data-agent-tab-id="agent-1"]').click();
+
+    expect(await page.evaluate(() => {
+      const probe = (window as typeof window & { fixedProbe: { agent: HTMLElement; terminal: HTMLElement; frame: HTMLIFrameElement; frameWindow: Window | null } }).fixedProbe;
+      const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
+      const terminal = document.querySelector<HTMLElement>('[data-workspace-live-node="work:terminal:1"]')!;
+      const frame = terminal.querySelector<HTMLIFrameElement>("iframe")!;
+      return {
+        agentIdentity: agent === probe.agent,
+        terminalIdentity: terminal === probe.terminal,
+        frameIdentity: frame === probe.frame,
+        frameWindowIdentity: frame.contentWindow === probe.frameWindow,
+        agentDraft: agent.querySelector("textarea")!.value,
+        terminalDraft: terminal.querySelector("textarea")!.value,
+      };
+    })).toEqual({ agentIdentity: true, terminalIdentity: true, frameIdentity: true, frameWindowIdentity: true, agentDraft: "unsaved agent draft", terminalDraft: "unsaved command" });
+    await page.close();
+  });
+
+  test("keeps personal navigation independent while sharing profile preferences", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "client-demo", title: "Client state" },
+      projects: [{ id: "project", title: "Project", workspaces: [{ id: "client-demo", title: "Client state" }] }],
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      workViews: [
+        { key: "terminal:1", label: "Terminal", kind: "resource", attention: false, availability: { phase: "live" }, bodyHtml: "<p>Terminal</p>" },
+        { key: "browser:1", label: "Browser", kind: "resource", attention: false, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" },
+      ],
+    };
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await context.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
+    await context.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    const first = await context.newPage();
+    const second = await context.newPage();
+    await Promise.all([first.goto("http://atelier.test/"), second.goto("http://atelier.test/")]);
+    await Promise.all([first.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true"), second.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true")]);
+
+    await first.locator('[data-work-view-key="browser:1"]').click();
+    expect(await first.locator('[data-work-view-key="browser:1"]').getAttribute("aria-selected")).toBe("true");
+    expect(await second.locator('[data-work-view-key="terminal:1"]').getAttribute("aria-selected")).toBe("true");
+
+    await first.locator(".fixed-shell-project-heading").click();
+    await second.reload();
+    await second.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    expect(await second.locator(".fixed-shell-project").getAttribute("class")).toContain("is-collapsed");
+    await context.close();
+  });
+
+  test("uses one phone surface and reports genuine visibility transitions", async () => {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "phone-demo", title: "Phone" },
+      projects: [{ id: "project", title: "Project", workspaces: [{ id: "phone-demo", title: "Phone" }] }],
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      workViews: [
+        { key: "terminal:1", label: "Terminal", kind: "resource", attention: false, availability: { phase: "live" }, bodyHtml: "<p>Terminal</p>" },
+        { key: "changes", label: "Changes", kind: "contextual", attention: true, availability: { phase: "live" }, bodyHtml: "<p>Changes</p>" },
+      ],
+    };
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    await page.evaluate(() => {
+      (window as typeof window & { transitions?: string[] }).transitions = [];
+      document.addEventListener("atelier:workspace-pane-visible", (event) => (window as typeof window & { transitions: string[] }).transitions.push(`visible:${(event as CustomEvent).detail.id}`));
+      document.addEventListener("atelier:workspace-pane-hidden", (event) => (window as typeof window & { transitions: string[] }).transitions.push(`hidden:${(event as CustomEvent).detail.id}`));
+    });
+
+    await page.locator('[data-mobile-destination="work:terminal:1"]').click();
+    await page.locator('[data-mobile-destination="more"]').click();
+    await page.locator('[data-more-work-key="changes"]').click();
+
+    expect(await page.locator(".fixed-workspace-presentation").getAttribute("data-phone-destination")).toBe("work:changes");
+    expect(await page.locator('[data-mobile-contextual-key="changes"]').isVisible()).toBe(true);
+    expect(await page.evaluate(() => (window as typeof window & { transitions: string[] }).transitions)).toEqual([
+      "hidden:agent-1", "visible:terminal:1", "hidden:terminal:1", "visible:changes",
+    ]);
+    await page.close();
+  });
+
+  test("transplants live nodes through the role-fixed Turbo seam", async () => {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "stream-demo", title: "Before" },
+      projects: [],
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<textarea data-probe="draft">draft</textarea>' }],
+      workViews: [{ key: "terminal:1", label: "Terminal", kind: "resource", attention: false, availability: { phase: "live" }, bodyHtml: '<iframe srcdoc="<p>live</p>"></iframe>' }],
+    };
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    const next = { ...presentation, workspace: { id: "stream-demo", title: "After" }, preserveLiveKeys: new Set(["agent:agent-1", "work:terminal:1"]) };
+    const stream = workspacePresentationTurboStream("stream-demo", next);
+    await page.evaluate((html) => {
+      const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
+      const terminal = document.querySelector<HTMLElement>('[data-workspace-live-node="work:terminal:1"]')!;
+      const frame = terminal.querySelector<HTMLIFrameElement>("iframe")!;
+      agent.querySelector("textarea")!.value = "unsaved";
+      (window as typeof window & { streamProbe?: unknown }).streamProbe = { agent, terminal, frame, frameWindow: frame.contentWindow };
+      window.Turbo!.renderStreamMessage(html);
+    }, stream);
+    await page.waitForFunction(() => document.querySelector(".fixed-shell-workspace-title")?.textContent?.includes("After"));
+
+    expect(await page.evaluate(() => {
+      const probe = (window as typeof window & { streamProbe: { agent: HTMLElement; terminal: HTMLElement; frame: HTMLIFrameElement; frameWindow: Window | null } }).streamProbe;
+      const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
+      const terminal = document.querySelector<HTMLElement>('[data-workspace-live-node="work:terminal:1"]')!;
+      const frame = terminal.querySelector<HTMLIFrameElement>("iframe")!;
+      return { agent: agent === probe.agent, terminal: terminal === probe.terminal, frame: frame === probe.frame, frameWindow: frame.contentWindow === probe.frameWindow, draft: agent.querySelector("textarea")!.value };
+    })).toEqual({ agent: true, terminal: true, frame: true, frameWindow: true, draft: "unsaved" });
     await page.close();
   });
 });

@@ -94,6 +94,16 @@ const blockedDetails = (id: string): WorkspaceDeleteBlockedDetails => ({
 });
 
 describe("web app contracts", () => {
+  test("development exposes the inactive typed Workspace shell preview only in development", async () => {
+    const development = createTestApp({ devReload: true });
+    const production = createTestApp();
+
+    const preview = await development.app.fetch(new Request("http://test.local/__atelier_workspace_shell_preview"));
+    expect(preview.status).toBe(200);
+    expect(await preview.text()).toContain('data-controller="workspace-presentation"');
+    expect((await production.app.fetch(new Request("http://test.local/__atelier_workspace_shell_preview"))).status).toBe(404);
+  });
+
   test("HEAD / and /up match their GET status without a body", async () => {
     const { app } = createTestApp();
     const home = await app.fetch(new Request("http://test.local/", { method: "HEAD" }));

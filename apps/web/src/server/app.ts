@@ -76,6 +76,7 @@ import { handleOnboardingRequest, renderOnboardingDialogIfNeeded } from "./onboa
 import { GitHubRepositorySearchRateLimitError, renderGitHubRepositorySearchMenu, renderGitHubRepositorySearchRateLimitMenu, searchGitHubRepositories, shouldSearchGitHubRepositories } from "./github-repo-search.ts";
 import { atelierOpenApi } from "./openapi.ts";
 import { Value } from "typebox/value";
+import { renderWorkspacePresentation, workspacePresentationPreviewFixture } from "./workspace-presentation.ts";
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
@@ -1761,6 +1762,9 @@ ${moduleStylesHtml()}
     if (url.pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
       const page = await homePage();
       return request.method === "HEAD" ? new Response(null, { status: page.status, statusText: page.statusText, headers: page.headers }) : page;
+    }
+    if (deps.devReload && url.pathname === "/__atelier_workspace_shell_preview" && request.method === "GET") {
+      return response(layout("Workspace shell preview", `<main style="height:100dvh">${renderWorkspacePresentation(workspacePresentationPreviewFixture())}</main>`));
     }
     if (url.pathname === "/openapi.json" && request.method === "GET") return jsonResponse(atelierOpenApi(workspaceModuleCommands()));
     if (url.pathname === "/agent-launch" && request.method === "GET") return response(await launchEmptyAgentFrame());
