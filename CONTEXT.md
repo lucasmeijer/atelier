@@ -20,6 +20,10 @@ _Avoid_: Open workspace, active workspace
 Workspace residency established in anticipation of a user visit because the Workspace is Agent ready. A preload is not visibility and cannot acknowledge Agent ready or Attention.
 _Avoid_: Workspace prefetch, background activation
 
+**Workspace client**:
+One top-level browser tab or window presenting Atelier. Each Workspace client owns its navigation and residency independently, while browser-profile preferences may be shared.
+_Avoid_: Browser session, active workspace
+
 **Projectless workspace**:
 A workspace created without a Project and therefore without a reusable project source or configuration.
 _Avoid_: Empty project, miscellaneous project
@@ -37,16 +41,24 @@ The primary region for using the active Agent conversation in a workspace.
 _Avoid_: Left tab, chat tab
 
 **Agent conversation**:
-An independently stateful transcript and composer for collaborating with an agent inside a Workspace. A Workspace may contain one or more Agent conversations, with one active at a time.
+A transcript and composer with an immutable identity and mutable title for collaborating with an agent inside a Workspace. A Workspace contains one or more Agent conversations, with one active at a time.
 _Avoid_: Agent view, agent tab, chat, thread
+
+**Archived Agent conversation**:
+An Agent conversation retained as history but removed from active Agent-pane navigation. Closing an Agent conversation archives it; a Workspace's last Agent conversation cannot be closed.
+_Avoid_: Deleted conversation, closed tab
 
 **Work pane**:
 The contextual region that slides in when needed to show files, changes, terminals, browsers, editors, and other working views.
 _Avoid_: Right tab, preview tab
 
 **Work view**:
-A closable, reorderable tab inside the Work pane, such as a terminal, browser, File view, or Changes view. Only one Work view is active and visible at a time; Work views are not split into additional layout groups.
+A closable, reorderable tab inside the Work pane, such as a terminal, browser, File view, or Changes view. Open Work views remain mounted while their Workspace is resident; only one is active and visible at a time, and they are not split into additional layout groups.
 _Avoid_: Workspace group, preview group
+
+**Work view availability**:
+The resource-connection condition of a Work view: opening, live, reconnecting, or unavailable. Availability is independent of visibility, Attention, and whether recovery requires user action.
+_Avoid_: Loading state, tab status
 
 **Resource Work view**:
 A Work view representing an independently open resource or running session, such as a File, Browser, or Terminal view. It remains directly reachable while open.
@@ -65,7 +77,7 @@ The user-facing phone destination for finding Work views that are not currently 
 _Avoid_: Work, overflow
 
 **Work view reference**:
-A stable, type-bearing identity for one Work view. Generic Work pane actions accept any Work view reference, while type-specific actions accept only references of their own kind.
+A stable, type-bearing identity for one Work view whose identity and multiplicity follow its kind; its mutable label is not part of its identity. Generic Work pane actions accept any Work view reference, while type-specific actions accept only references of their own kind.
 _Avoid_: Tab key, untyped view ID
 
 **Unavailable Work view**:

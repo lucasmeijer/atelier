@@ -1,0 +1,3 @@
+# Cut over directly to typed workspace presentation
+
+Atelier will replace the process-memory arbitrary-group layout with persistent typed Work-view state and separate Agent and Work presentation interfaces in one production cutover. Intermediate implementation may be built inactive, but production will not carry a feature flag, dual renderer, compatibility reader, migration path, or legacy runtime adapter; after every production capability moves into the role-fixed shell, the generic tab/group architecture is deleted immediately. This concentrates shared rendering and navigation in one server presentation module, keeps resource state behind type adapters, and preserves personal navigation in each Workspace client without making it server-authoritative.
