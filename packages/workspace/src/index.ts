@@ -20,6 +20,17 @@ export type {
   WorkspaceUserActivityEvent,
 } from "./events.ts";
 
+export {
+  createWorkspacePresentationStore,
+  type WorkspaceAgentConversation,
+  type WorkspaceAgentConversationContribution,
+  type WorkspacePresentationStore,
+  type WorkspacePresentationStoreOptions,
+  type WorkspaceWorkViewContribution,
+  type WorkspaceWorkViewReference,
+  type WorkspaceWorkViewState,
+} from "./presentation.ts";
+
 const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
 const workspaceIdLabel = "com.atelier.workspace-id";
@@ -643,4 +654,3 @@ export async function setWorkspaceParked(id: string, parked: boolean): Promise<n
   if (!parked) await rm(path, { force: true });
   return null;
 }
-

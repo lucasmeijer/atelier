@@ -1,4 +1,5 @@
 export {
+  archiveWorkspaceAgentConversation,
   createNextWorkspaceAgent,
   ensureDefaultWorkspaceAgent,
   listWorkspaceAgents,
@@ -6,7 +7,9 @@ export {
   sessionShareDir,
   sessionShareKeySlug,
   sessionShareMountPath,
+  setWorkspaceAgentConversationTitle,
   type WorkspaceAgentInfo,
+  workspaceAgentConversationContributions,
 } from "./session-store.ts";
 export {
   getWorkspaceAgentRuntime,

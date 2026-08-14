@@ -73,6 +73,7 @@ type RewindMode = "discard" | "summary";
 
 interface WorkspaceAgentRuntime {
   workspaceId: string;
+  conversationId: string;
   label: string;
   sessionFile: string;
   readonly isStreaming: boolean;
@@ -153,6 +154,8 @@ const assistantTextCharactersPerFlush = 24;
 
 abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   workspaceId: string;
+  conversationId: string;
+  title: string;
   label: string;
   sessionFile: string;
   protected ctx: AgentRenderContext;
@@ -164,6 +167,8 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   constructor(agent: WorkspaceAgentInfo, protected readonly options: WorkspaceAgentRuntimeOptions = {}) {
     this.workspaceId = agent.workspaceId;
+    this.conversationId = agent.conversationId;
+    this.title = agent.title;
     this.label = agent.label;
     this.sessionFile = agent.path;
     this.ctx = { workspaceId: agent.workspaceId, label: agent.label };
@@ -933,7 +938,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
     if (this.isStreaming) throw new Error("Stop the agent before starting a new session.");
     const model = this.session.model;
     const thinkingLevel = this.session.thinkingLevel;
-    const agent = await replaceWorkspaceAgentSession({ workspaceId: this.workspaceId, label: this.label, path: this.sessionFile });
+    const agent = await replaceWorkspaceAgentSession({ workspaceId: this.workspaceId, conversationId: this.conversationId, label: this.label, title: this.title, path: this.sessionFile });
     const created = await createPiSession(agent, this.options, { model, thinkingLevel });
     this.unsubscribeSession?.();
     this.session = created.session;
