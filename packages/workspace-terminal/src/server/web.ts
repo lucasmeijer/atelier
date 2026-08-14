@@ -13,7 +13,14 @@ function renderWorkspaceTerminalTabs(workspaceId: string, terminals: WorkspaceTe
     key: terminalTabKey(terminal.id),
     label: terminal.title,
     paneHtml: renderTerminalPane(workspaceId, terminal),
+    workView: { reference: { type: "terminal", terminalId: terminal.id }, kind: "resource", availability: { phase: "live" } },
   }));
+}
+
+function parseTerminalReference(value: unknown): { type: "terminal"; terminalId: string } {
+  const reference = value as { type?: unknown; terminalId?: unknown };
+  if (reference?.type !== "terminal" || typeof reference.terminalId !== "string" || !reference.terminalId) throw new Error("terminalId is required");
+  return { type: "terminal", terminalId: reference.terminalId };
 }
 
 const terminalWorkspaceCommands: WorkspaceCommandContribution[] = [
@@ -69,6 +76,12 @@ async function renderAttachDialog(workspaceId: string): Promise<string> {
 
 export const terminalWorkspaceModule: WorkspaceModule = {
   id: "terminal",
+  workViews: [{
+    type: "terminal",
+    parseReference: parseTerminalReference,
+    identity: (reference: { type: "terminal"; terminalId: string }) => reference.terminalId,
+    close: async ({ workspaceId, reference }: { workspaceId: string; reference: { type: "terminal"; terminalId: string } }) => await deleteWorkspaceTerminal(workspaceId, reference.terminalId),
+  }],
   staticFiles: terminalStaticFiles,
   initialize(context) {
     context.registerSocketHandler(createTerminalSocketHandler({
@@ -114,9 +127,7 @@ export const terminalWorkspaceModule: WorkspaceModule = {
   }],
   tabs: [{
     owns: (tabKey) => terminalIdFromTabKey(tabKey) !== undefined,
-    async close({ workspaceId, tabKey }) {
-      await deleteWorkspaceTerminal(workspaceId, terminalIdFromTabKey(tabKey)!);
-    },
+    async close({ workspaceId, tabKey }) { await deleteWorkspaceTerminal(workspaceId, terminalIdFromTabKey(tabKey)!); },
   }],
   async attachToWorkspace({ workspaceId }) {
     const terminals = await listWorkspaceTerminals(workspaceId);

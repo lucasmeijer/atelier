@@ -23,6 +23,7 @@ export function renderFileEditorTab(workspaceId: string, tab: WorkspaceFileEdito
   return {
     key: tab.key,
     label,
+    workView: { reference: { type: "file", path: tab.path }, kind: "resource", availability: { phase: "live" } },
     paneHtml: `<section class="tab-pane file-editor-pane" data-tab-pane="${escapeHtml(tab.key)}" data-controller="file-editor" data-file-editor-workspace-id-value="${escapeHtml(workspaceId)}" data-file-editor-path-value="${escapeHtml(tab.path)}" data-file-editor-content-url-value="${escapeHtml(contentUrl)}" data-file-editor-line-value="${tab.line ?? 0}" data-file-editor-column-value="${tab.column ?? 0}">
       <header class="file-editor-toolbar"><span class="file-editor-path" title="${escapeHtml(tab.path)}">${escapeHtml(tab.path)}</span><span class="file-editor-toolbar-actions">${markdown ? `<button class="file-editor-markdown-toggle" type="button" data-file-editor-target="previewToggle" data-action="file-editor#togglePreview" aria-pressed="false">Preview</button>` : ""}<span class="file-editor-status" data-file-editor-target="status">Loading…</span></span></header>
       <div class="file-editor-host" data-file-editor-target="host"></div>

@@ -394,16 +394,21 @@ class AtelierFullscreenController extends Controller {
   }
 
   private liveTabTarget(): HTMLElement {
-    const group = this.element.closest<HTMLElement>(".workspace-group")!;
-    return group.querySelector<HTMLElement>(`.workspace-panes > .tab-pane[data-tab-pane="${CSS.escape(this.tabKeyValue)}"]`)!;
+    const group = this.element.closest<HTMLElement>(".workspace-group");
+    if (group) return group.querySelector<HTMLElement>(`.workspace-panes > .tab-pane[data-tab-pane="${CSS.escape(this.tabKeyValue)}"]`)!;
+    return this.element.closest<HTMLElement>(".fixed-shell-work-pane")!.querySelector<HTMLElement>(`[data-workspace-pane-role="work"][data-source-tab-key="${CSS.escape(this.tabKeyValue)}"]`)!;
   }
 
   private showTab(): void {
-    const group = this.element.closest<HTMLElement>(".workspace-group")!;
-    const tabbar = group.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]')!;
-    const controller = application.getControllerForElementAndIdentifier(tabbar, "workspace-tabs") as { showTab(tabName: string): void };
-    controller.showTab(this.tabKeyValue);
-    this.element.closest<HTMLDetailsElement>("details")?.removeAttribute("open");
+    const group = this.element.closest<HTMLElement>(".workspace-group");
+    if (group) {
+      const tabbar = group.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]')!;
+      const controller = application.getControllerForElementAndIdentifier(tabbar, "workspace-tabs") as { showTab(tabName: string): void };
+      controller.showTab(this.tabKeyValue);
+      this.element.closest<HTMLDetailsElement>("details")?.removeAttribute("open");
+      return;
+    }
+    (this.element as HTMLButtonElement).click();
   }
 
   private createViewer(): FullscreenViewer {
@@ -986,6 +991,8 @@ class AtelierShortcutsController extends Controller {
 
   private workspaceCommands(): WorkspaceCommandRegistration[] {
     const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
+    const presentation = resident?.querySelector<HTMLElement>(".fixed-workspace-presentation[data-workspace-commands]");
+    if (presentation) return JSON.parse(presentation.dataset.workspaceCommands!) as WorkspaceCommandRegistration[];
     const groups = resident?.querySelector<HTMLElement>(".workspace-groups[data-workspace-commands]");
     return groups ? JSON.parse(groups.dataset.workspaceCommands!) as WorkspaceCommandRegistration[] : [];
   }
@@ -1194,6 +1201,21 @@ class AtelierShortcutsController extends Controller {
   }
 
   private workspacePaletteItems(fuzzyScore: (candidate: string) => number): WorkspacePaletteItem[] {
+    const fixedRows = [...document.querySelectorAll<HTMLElement>(".workspace-detail-resident.visible .fixed-shell-workspace-row[data-workspace-entry-id]")];
+    if (fixedRows.length > 0) return fixedRows.map((row) => {
+      const workspaceId = row.dataset.workspaceEntryId!;
+      const title = row.querySelector("span")?.textContent?.trim() || workspaceId;
+      const visible = workspaceId === residencyController()?.visibleWorkspaceId();
+      return {
+        id: `workspace:${workspaceId}`,
+        title,
+        subtitle: "Workspace",
+        badge: visible ? "open" : undefined,
+        keywords: [workspaceId],
+        score: fuzzyScore(`${title} ${workspaceId}`) + (visible ? 15 : 0),
+        run: () => void residencyController()?.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`),
+      };
+    });
     return this.workspaceRows().map((row) => {
       const workspaceId = row.dataset.workspaceId!;
       const title = row.querySelector<HTMLElement>(".r-title")?.textContent?.trim() || workspaceId;
@@ -1216,6 +1238,21 @@ class AtelierShortcutsController extends Controller {
     const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible[data-workspace-id]");
     if (!resident) return [];
     const workspaceId = resident.dataset.workspaceId!;
+    const fixedTabs = [...resident.querySelectorAll<HTMLButtonElement>("[data-work-view-key], [data-agent-tab-id]")];
+    if (fixedTabs.length > 0) return fixedTabs.map((tab) => {
+      const key = tab.dataset.workViewKey ?? tab.dataset.agentTabId!;
+      const label = tab.textContent?.trim() || key;
+      const visible = tab.getAttribute("aria-selected") === "true";
+      return {
+        id: `view:${workspaceId}:${key}`,
+        title: label,
+        subtitle: tab.dataset.agentTabId ? "Agent conversation" : "Work view",
+        badge: visible ? "open" : undefined,
+        keywords: [key],
+        score: fuzzyScore(`${label} ${key}`) + (visible ? 20 : 0),
+        run: () => tab.click(),
+      };
+    });
     const workspaceTitle = document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"] .r-title`)?.textContent?.trim() ?? workspaceId;
     const groups = [...resident.querySelectorAll<HTMLElement>(".workspace-group[data-group-id]")];
     return groups.flatMap((group) => [...group.querySelectorAll<HTMLElement>(".group-tab[data-tab]")].map((tab) => {
@@ -1471,6 +1508,7 @@ class WorkspaceResidencyController extends Controller {
 
   connect(): void {
     document.addEventListener("visibilitychange", this.visibilityChanged);
+    document.addEventListener("atelier:workspace-selected", this.workspaceSelected as EventListener);
     window.addEventListener("pagehide", this.pageHidden);
     const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
     const visibleResident = this.residentTargets.find((resident) => resident.classList.contains("visible"))
@@ -1481,8 +1519,15 @@ class WorkspaceResidencyController extends Controller {
 
   disconnect(): void {
     document.removeEventListener("visibilitychange", this.visibilityChanged);
+    document.removeEventListener("atelier:workspace-selected", this.workspaceSelected as EventListener);
     window.removeEventListener("pagehide", this.pageHidden);
   }
+
+  private readonly workspaceSelected = (event: CustomEvent<{ workspaceId?: string }>): void => {
+    const workspaceId = event.detail?.workspaceId;
+    if (!workspaceId || workspaceId === this.visibleWorkspaceId()) return;
+    void this.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`);
+  };
 
   async selectWorkspace(workspaceId: string, href: string): Promise<void> {
     // Update the URL first: selection state is derived from it, and stream
@@ -1542,7 +1587,11 @@ class WorkspaceResidencyController extends Controller {
 
   private hideResidents(): void {
     const before = visiblePanes(this.element);
-    this.residentTargets.forEach((resident) => resident.classList.remove("visible"));
+    this.residentTargets.forEach((resident) => {
+      const wasVisible = resident.classList.contains("visible");
+      resident.classList.remove("visible");
+      if (wasVisible) resident.querySelector<HTMLElement>(".fixed-workspace-presentation")?.dispatchEvent(new CustomEvent("atelier:workspace-residency-hidden"));
+    });
     emitPaneVisibilityChanges(before, visiblePanes(this.element));
     if (before.length > 0) this.clearActiveWorkspace();
   }
@@ -1648,6 +1697,7 @@ class WorkspaceResidencyController extends Controller {
     this.loadingTargets.forEach((loading) => { loading.hidden = true; });
     resident.dataset.lastActivatedAt = String(Date.now());
     this.residentTargets.forEach((candidate) => candidate.classList.toggle("visible", candidate === resident));
+    resident.querySelector<HTMLElement>(".fixed-workspace-presentation")?.dispatchEvent(new CustomEvent("atelier:workspace-residency-visible"));
     const tabs = resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]');
     const controller = tabs ? application.getControllerForElementAndIdentifier(tabs, "workspace-tabs") as WorkspaceTabsController | null : null;
     const visibleTab = tabs?.querySelector<HTMLElement>(".group-tab.visible[data-tab]")?.dataset.tab;

@@ -9,7 +9,14 @@ export function renderWorkspaceVSCodeTabs(workspaceId: string, tabs: WorkspaceVS
     key: vscodeTabKey(tab.title),
     label: tab.title,
     paneHtml: renderVSCodePane(workspaceId, tab.title),
+    workView: { reference: { type: "vscode", title: tab.title }, kind: "resource", availability: { phase: "live" } },
   }));
+}
+
+function parseVSCodeReference(value: unknown): { type: "vscode"; title: string } {
+  const reference = value as { type?: unknown; title?: unknown };
+  if (reference?.type !== "vscode" || typeof reference.title !== "string" || !reference.title.trim()) throw new Error("title is required");
+  return { type: "vscode", title: reference.title };
 }
 
 export const vscodeWorkspaceCommands: WorkspaceCommandContribution[] = [
@@ -26,6 +33,12 @@ export const vscodeWorkspaceCommands: WorkspaceCommandContribution[] = [
 
 export const vscodeWorkspaceModule: WorkspaceModule = {
   id: "vscode",
+  workViews: [{
+    type: "vscode",
+    parseReference: parseVSCodeReference,
+    identity: (reference: { type: "vscode"; title: string }) => reference.title,
+    close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "vscode"; title: string } }) => deleteWorkspaceVSCodeTab(workspaceId, reference.title),
+  }],
   staticFiles: vscodeStaticFiles,
   initialize(context) {
     context.registerWorkspaceAppHandler({

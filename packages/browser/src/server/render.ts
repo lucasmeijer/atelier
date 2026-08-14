@@ -7,6 +7,7 @@ export function renderBrowserTab(workspaceId: string, tab: WorkspaceBrowserTab):
     key,
     label: tab.label,
     paneHtml: `<section class="tab-pane" data-tab-pane="${escapeHtml(key)}">${renderBrowserPane(workspaceId, tab)}</section>`,
+    workView: { reference: { type: "browser", browserId: key }, kind: "resource", availability: { phase: "live" } },
   };
 }
 

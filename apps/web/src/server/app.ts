@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import {
+  workspaceAgentConversationContributions,
   renderAgentComposer,
   renderAgentLaunchSettings,
   rememberNewWorkspaceAgentSettings,
@@ -41,7 +42,7 @@ import {
   type ProjectSummary,
   type WorkspaceDeleteBlockedDetails,
 } from "@atelier/projects";
-import { generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction } from "@atelier/workspace";
+import { createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceWorkViewReference } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
 import {
   atelierName,
@@ -64,6 +65,7 @@ import {
   type WorkspaceModuleCommandResult,
   type WorkspaceModuleRouteHandler,
   type WorkspaceModuleTabLifecycleHandler,
+  type WorkspaceModuleWorkViewAdapter,
   type WorkspaceRowContributionRegistry,
   type WorkspaceServerProvisioningHook,
   type WorkspaceTabContribution,
@@ -76,7 +78,7 @@ import { handleOnboardingRequest, renderOnboardingDialogIfNeeded } from "./onboa
 import { GitHubRepositorySearchRateLimitError, renderGitHubRepositorySearchMenu, renderGitHubRepositorySearchRateLimitMenu, searchGitHubRepositories, shouldSearchGitHubRepositories } from "./github-repo-search.ts";
 import { atelierOpenApi } from "./openapi.ts";
 import { Value } from "typebox/value";
-import { renderWorkspacePresentation, workspacePresentationPreviewFixture } from "./workspace-presentation.ts";
+import { renderWorkspacePresentation, workspacePresentationTurboStream, workspacePresentationPreviewFixture, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
@@ -209,6 +211,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const { registry, layouts } = deps;
   const logError = deps.logError ?? ((message: string) => console.error(message));
   const versionTooltip = atelierVersionTooltip();
+  const workViewAdapters = workspaceModules.flatMap((module) => module.workViews ?? []) as WorkspaceModuleWorkViewAdapter[];
+  const presentationStore = createWorkspacePresentationStore({
+    workViewContributions: workViewAdapters,
+    agentConversations: workspaceAgentConversationContributions,
+  });
 
   function broadcastShell(html: string): void {
     deps.cable?.broadcast(CableTopics.shell(), html);
@@ -722,6 +729,88 @@ ${moduleStylesHtml()}
     return await workspaceTabsAndAttachments(workspaceId, new Set());
   }
 
+  const workViewAdapterByType = new Map(workViewAdapters.map((adapter) => [adapter.type, adapter]));
+
+  function workViewKey(reference: WorkspaceWorkViewReference): string {
+    const adapter = workViewAdapterByType.get(reference.type);
+    if (!adapter) throw new AtelierCoreError("work_view_reference_invalid", `unknown Work view type: ${reference.type}`);
+    return `${reference.type}:${adapter.identity(reference)}`;
+  }
+
+  function workViewCloseForm(workspaceId: string, reference: WorkspaceWorkViewReference, label: string): string {
+    const encoded = encodeURIComponent(JSON.stringify(reference));
+    return `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/work-views/${encoded}/close"><button class="fixed-shell-tab-close" type="submit" title="Close ${escapeHtml(label)}" aria-label="Close ${escapeHtml(label)}">×</button></form>`;
+  }
+
+  function agentCloseForm(workspaceId: string, conversationId: string, title: string): string {
+    return `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/agent-conversations/${encodeURIComponent(conversationId)}/close"><button class="fixed-shell-tab-close" type="submit" title="Close ${escapeHtml(title)}" aria-label="Close ${escapeHtml(title)}">×</button></form>`;
+  }
+
+  async function workspacePaneCollections(activeWorkspaceId: string): Promise<Pick<FixedWorkspacePresentation, "projects" | "projectlessWorkspaces" | "parkedWorkspaces">> {
+    const projects = await listProjects();
+    const projectTitles = new Map(projects.projects.map((project) => [project.id, project.name]));
+    const active = registry.list().filter((entry) => !entry.parked && entry.phase !== "deleting");
+    const grouped = new Map<string, typeof active>();
+    const projectless = [] as typeof active;
+    for (const entry of active) {
+      if (!isGitProjectInit(entry.init)) projectless.push(entry);
+      else grouped.set(entry.init.projectId, [...(grouped.get(entry.init.projectId) ?? []), entry]);
+    }
+    const paneEntry = (entry: WorkspaceEntry) => ({ id: entry.id, title: workspaceTitle(entry), ready: registry.isWorkspaceUnread(entry.id) && entry.id !== activeWorkspaceId });
+    return {
+      projects: [...grouped].map(([id, entries]) => ({ id, title: projectTitles.get(id) ?? entries[0]!.init!.name, workspaces: entries.map(paneEntry) })),
+      projectlessWorkspaces: projectless.map(paneEntry),
+      parkedWorkspaces: registry.list().filter((entry) => entry.parked).map((entry) => ({ ...paneEntry(entry), ...(isGitProjectInit(entry.init) ? { projectTitle: projectTitles.get(entry.init.projectId) ?? entry.init.name } : {}) })),
+    };
+  }
+
+  async function fixedWorkspacePresentation(workspaceId: string, options: { renderPaneKeys?: ReadonlySet<string>; preserveLiveKeys?: ReadonlySet<string> } = {}): Promise<FixedWorkspacePresentation> {
+    const entry = requireWorkspace(workspaceId);
+    const attachments = await attachWorkspaceModules(workspaceId, options.renderPaneKeys);
+    const tabs = attachments.flatMap((attachment) => attachment.tabs ?? []);
+    const agentTabs = tabs.filter((tab) => tab.agentConversation);
+    const currentWorkTabs = tabs.filter((tab) => tab.workView);
+    await presentationStore.initialize(workspaceId, currentWorkTabs.map((tab) => tab.workView!.reference));
+    const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
+    const currentByKey = new Map(currentWorkTabs.map((tab) => [workViewKey(tab.workView!.reference), tab]));
+    const handledCommandIds = new Set(workspaceModuleCommands().map((command) => command.id));
+    const commands = attachments.flatMap((attachment) => attachment.commands ?? []).filter((command) => handledCommandIds.has(command.id)).map((command) => ({
+      id: command.id,
+      label: command.label,
+      description: command.description,
+      scope: command.scope,
+      binding: command.surfaces?.shortcut?.defaultBinding,
+    }));
+    const projectTitle = isGitProjectInit(entry.init) ? (await listProjects()).projects.find((project) => project.id === entry.init!.projectId)?.name ?? entry.init.name : undefined;
+    return {
+      workspace: { id: entry.id, title: workspaceTitle(entry), ...(projectTitle ? { projectTitle } : {}) },
+      ...await workspacePaneCollections(workspaceId),
+      agentConversations: agentTabs.map((tab) => ({
+        id: tab.agentConversation!.id,
+        title: tab.agentConversation!.title,
+        bodyHtml: tab.paneHtml ? renderTabPane(tab, true) : "",
+        ...(agentTabs.length > 1 ? { closeHtml: agentCloseForm(workspaceId, tab.agentConversation!.id, tab.agentConversation!.title) } : {}),
+      })),
+      workViews: storedWorkViews.map((stored) => {
+        const key = workViewKey(stored.reference);
+        const tab = currentByKey.get(key);
+        return {
+          key,
+          label: tab?.label ?? `${stored.reference.type} unavailable`,
+          kind: tab?.workView?.kind ?? "resource",
+          attention: stored.attention,
+          availability: tab?.workView?.availability ?? { phase: "unavailable", detail: "The referenced resource is not currently available." },
+          bodyHtml: tab?.paneHtml ? renderTabPane(tab, true) : "",
+          sourceKey: tab?.key,
+          actionsHtml: tab?.workView?.actionsHtml,
+          closeHtml: workViewCloseForm(workspaceId, stored.reference, tab?.label ?? stored.reference.type),
+        };
+      }),
+      commands,
+      preserveLiveKeys: options.preserveLiveKeys,
+    };
+  }
+
   function tabLabel(tab: WorkspaceTabContribution): string {
     return tab.label || tab.key;
   }
@@ -797,12 +886,7 @@ ${moduleStylesHtml()}
   }
 
   async function workspaceDetailContent(id: string): Promise<string> {
-    const { attachments, tabs } = await workspaceTabsAndAttachments(id);
-    return `<div class="main workspace-detail-main" data-workspace-id="${escapeHtml(id)}">
-    <div class="body wide workspace-body">
-      ${renderWorkspaceGroups(id, tabs, attachments)}
-    </div>
-</div>`;
+    return renderWorkspacePresentation(await fixedWorkspacePresentation(id));
   }
 
   async function workspaceDetailResidentHtml(id: string, options: { visible?: boolean } = {}): Promise<string> {
@@ -812,7 +896,8 @@ ${moduleStylesHtml()}
   }
 
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { visible?: boolean } = {}): string {
-    const inner = provisioning.render(entry.id, { failed: entry.phase === "failed", error: entry.error });
+    const deleteAction = entry.phase === "failed" ? `<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete" data-action="click->workspace-list#deleteClicked submit->workspace-list#deleteStarted"><button class="btn danger" type="submit" aria-label="Delete workspace">Delete workspace</button></form>` : "";
+    const inner = `${provisioning.render(entry.id, { failed: entry.phase === "failed", error: entry.error })}${deleteAction}`;
     const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
     return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><header class="header"><h1>${escapeHtml(workspaceTitle(entry))}</h1></header><div class="body"><div class="panel">${inner}</div></div></div></div>`;
   }
@@ -834,7 +919,7 @@ ${moduleStylesHtml()}
     const entry = selectedId ? registry.get(selectedId) : undefined;
     const resident = entry ? await workspaceResidentFor(entry, { visible: true }) : "";
     return `<div id="workspace_detail" class="workspace-detail-host" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5">
-      <div class="workspace-detail-empty" data-workspace-residency-target="empty"${resident ? " hidden" : ""}><div class="main"><header class="header"><h1>Select a workspace</h1></header><div class="body"><div class="panel"><div class="pad">Create or select a workspace to begin.</div></div></div></div></div>
+      <div class="workspace-detail-empty" data-workspace-residency-target="empty"${resident ? " hidden" : ""}><div class="main"><header class="header"><h1>Atelier</h1></header><div class="body"><div class="panel"><div class="pad">Create or select a workspace to begin.<p><button type="button" class="fixed-shell-settings" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="project-picker-modal">＋ New workspace</button></p></div></div></div></div></div>
       <div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden><div class="main"><div class="body"><div class="panel"><div class="pad workspace-boot-pad"><span class="status-spinner"></span> Loading workspace…</div></div></div></div></div>
       ${resident}
     </div>`;
@@ -853,9 +938,8 @@ ${moduleStylesHtml()}
   }
 
   async function renderWorkspaceShell(selectedId?: string, options: { mainHtml?: string; showWhatsNew?: boolean } = {}): Promise<string> {
-    return `<div class="app workspace-shell" data-controller="workspace-shell atelier-shortcuts" data-workspace-shell-selected-value="${selectedId ? "true" : "false"}">
-    <aside class="workspace-shell-sidebar" data-action="pointerenter->workspace-shell#reveal">${await renderWorkspaceSidebar()}</aside>
-    <main class="workspace-shell-main" data-action="focusin->workspace-shell#focusTab pointerdown->workspace-shell#focusTab">${options.mainHtml ?? await workspaceDetailHostHtml(selectedId)}</main>
+    return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts">
+    <main class="fixed-shell-app-main">${options.mainHtml ?? await workspaceDetailHostHtml(selectedId)}</main>
   </div>
   ${await projectPickerModal()}
   <div id="update_modal_host"></div>
@@ -867,7 +951,7 @@ ${moduleStylesHtml()}
   }
 
   async function homePage(): Promise<Response> {
-    const selected = registry.list().find((entry) => !entry.parked && entry.phase !== "failed");
+    const selected = registry.list().find((entry) => !entry.parked);
     return response(layout("Workspaces", await renderWorkspaceShell(selected?.id), selected?.id));
   }
 
@@ -889,7 +973,8 @@ ${moduleStylesHtml()}
     };
     if (entry.parked || (entry.phase !== "ready" && entry.phase !== "checking_delete")) return jsonResponse({ workspace });
 
-    const { attachments, tabs } = await workspacePresentation(id);
+    const presentation = await fixedWorkspacePresentation(id, { renderPaneKeys: new Set() });
+    const attachments = await attachWorkspaceModules(id, new Set());
     const handlers = new Map(workspaceModuleCommands().map((handler) => [handler.id, handler]));
     const commands = attachments.flatMap((attachment) => attachment.commands ?? []).filter((command) => handlers.has(command.id)).map((command) => ({
       id: command.id,
@@ -900,9 +985,9 @@ ${moduleStylesHtml()}
     }));
     return jsonResponse({ workspace: {
       ...workspace,
-      tabs: tabs.map((tab) => ({ key: tab.key, label: tabLabel(tab) })),
+      agentConversations: presentation.agentConversations.map(({ id, title }) => ({ id, title })),
+      workViews: (await presentationStore.listWorkViews(id)).map((view) => view),
       commands,
-      layout: layouts.normalize(id, tabs.map((tab) => tab.key)),
     } });
   }
 
@@ -1610,16 +1695,17 @@ ${moduleStylesHtml()}
   }
 
   async function openWorkspaceModuleTab(workspaceId: string, tabKey: string, placement: "visible-group" | "preview-group" = "visible-group"): Promise<Response> {
-    const preservePaneKeys = mountedTabKeys(layouts.current(workspaceId) ?? { groups: [] });
-    const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId, new Set([tabKey]));
-    const tabKeys = tabs.map((tab) => tab.key);
-    if (!tabKeys.includes(tabKey)) throw new AtelierCoreError("tab_not_found", `workspace tab not found: ${tabKey}`);
-    if (placement === "preview-group") layouts.ensureTabInPreviewGroup(workspaceId, tabKeys, tabKey);
-    else {
-      const groupId = layouts.normalize(workspaceId, tabKeys).groups.find((group) => group.visibleTab)?.id;
-      if (groupId) layouts.placeNewTab(workspaceId, tabKeys, groupId, tabKey);
-    }
-    return turboStreamResponse(workspaceGroupsTurboStream(workspaceId, tabs, attachments, preservePaneKeys));
+    void placement;
+    const before = await fixedWorkspacePresentation(workspaceId, { renderPaneKeys: new Set() });
+    const { tabs } = await workspaceTabsAndAttachments(workspaceId, new Set([tabKey]));
+    const tab = tabs.find((candidate) => candidate.key === tabKey && candidate.workView);
+    if (!tab?.workView) throw new AtelierCoreError("work_view_not_found", `Work view not found: ${tabKey}`);
+    await presentationStore.openWorkView(workspaceId, tab.workView.reference);
+    const preserveLiveKeys = new Set([
+      ...before.agentConversations.map((agent) => `agent:${agent.id}`),
+      ...before.workViews.map((view) => `work:${view.key}`),
+    ]);
+    return turboStreamResponse(workspacePresentationTurboStream(workspaceId, await fixedWorkspacePresentation(workspaceId, { renderPaneKeys: new Set([tabKey]), preserveLiveKeys })));
   }
 
   function commandJsonResponse(workspaceId: string, commandId: string, result: WorkspaceModuleCommandResult, tabKeys: string[]): Response {
@@ -1630,22 +1716,78 @@ ${moduleStylesHtml()}
   }
 
   async function workspaceCommandEndpoint(workspaceId: string, commandId: string, request: Request, targetGroupId?: string): Promise<Response> {
-    const beforePresentation = await workspacePresentation(workspaceId);
-    const beforeTabKeys = beforePresentation.tabs.map((tab) => tab.key);
-    const beforeLayout = layouts.normalize(workspaceId, beforeTabKeys);
-    const preservePaneKeys = mountedTabKeys(beforeLayout);
-    const groups = beforeLayout.groups;
-    const activeGroup = targetGroupId ? groups.find((group) => group.id === targetGroupId) : groups.find((group) => group.visibleTab);
-    const result = await executeWorkspaceCommand(workspaceId, commandId, request, beforeTabKeys, activeGroup?.visibleTab);
-    if (!targetGroupId && !result.createdTabKey && !requestAcceptsJson(request)) return turboStreamResponse(result.streamHtml ?? "");
+    if (targetGroupId) throw new AtelierCoreError("invalid_arguments", "layout groups are not part of the role-fixed Workspace shell");
+    const before = await fixedWorkspacePresentation(workspaceId, { renderPaneKeys: new Set() });
+    const beforeTabs = (await workspacePresentation(workspaceId)).tabs;
+    const result = await executeWorkspaceCommand(workspaceId, commandId, request, beforeTabs.map((tab) => tab.key), undefined);
+    let createdReference: WorkspaceWorkViewReference | undefined;
+    if (result.createdTabKey) {
+      const afterTabs = (await workspaceTabsAndAttachments(workspaceId, new Set([result.createdTabKey]))).tabs;
+      const created = afterTabs.find((tab) => tab.key === result.createdTabKey);
+      if (created?.agentConversation) {
+        // Agent conversations are owned by the Agent pane and are not Work views.
+      } else if (created?.workView) {
+        createdReference = created.workView.reference;
+        await presentationStore.openWorkView(workspaceId, createdReference);
+      } else {
+        throw new AtelierCoreError("work_view_not_found", `Command ${commandId} did not produce a typed Agent conversation or Work view`);
+      }
+    }
+    if (requestAcceptsJson(request)) {
+      const workViews = await presentationStore.listWorkViews(workspaceId);
+      return jsonResponse({ command: { id: commandId, ...(createdReference ? { workView: createdReference } : {}) }, workViews });
+    }
+    if (!result.createdTabKey) return turboStreamResponse(result.streamHtml ?? "");
+    const preserveLiveKeys = new Set([
+      ...before.agentConversations.map((agent) => `agent:${agent.id}`),
+      ...before.workViews.map((view) => `work:${view.key}`),
+    ]);
+    const presentation = await fixedWorkspacePresentation(workspaceId, { renderPaneKeys: new Set([result.createdTabKey]), preserveLiveKeys });
+    return turboStreamResponse(`${workspacePresentationTurboStream(workspaceId, presentation)}${result.streamHtml ?? ""}`);
+  }
 
-    const renderPaneKeys = result.createdTabKey ? new Set([result.createdTabKey]) : new Set<string>();
-    const { attachments, tabs } = await workspaceTabsAndAttachments(workspaceId, renderPaneKeys);
-    const tabKeys = tabs.map((tab) => tab.key);
-    placeCommandTab(workspaceId, tabKeys, result, targetGroupId ?? activeGroup?.id);
-    return requestAcceptsJson(request)
-      ? commandJsonResponse(workspaceId, commandId, result, tabKeys)
-      : turboStreamResponse(`${workspaceGroupsTurboStream(workspaceId, tabs, attachments, preservePaneKeys)}${result.streamHtml ?? ""}`);
+  async function closeWorkViewEndpoint(workspaceId: string, encodedReference: string, request: Request): Promise<Response> {
+    const reference = JSON.parse(encodedReference) as WorkspaceWorkViewReference;
+    const before = await fixedWorkspacePresentation(workspaceId, { renderPaneKeys: new Set() });
+    const adapter = workViewAdapterByType.get(reference.type);
+    if (!adapter) throw new AtelierCoreError("work_view_reference_invalid", `unknown Work view type: ${reference.type}`);
+    const parsed = adapter.parseReference(reference);
+    await presentationStore.closeWorkView(workspaceId, parsed);
+    await adapter.close?.({ workspaceId, reference: parsed });
+    const preserveLiveKeys = new Set([
+      ...before.agentConversations.map((agent) => `agent:${agent.id}`),
+      ...before.workViews.filter((view) => view.key !== workViewKey(parsed)).map((view) => `work:${view.key}`),
+    ]);
+    if (requestAcceptsJson(request)) return jsonResponse({ closed: parsed, workViews: await presentationStore.listWorkViews(workspaceId) });
+    return turboStreamResponse(workspacePresentationTurboStream(workspaceId, await fixedWorkspacePresentation(workspaceId, { renderPaneKeys: new Set(), preserveLiveKeys })));
+  }
+
+  async function reorderWorkViewEndpoint(workspaceId: string, request: Request): Promise<Response> {
+    const body = await readJsonObject(request, (value) => {
+      if (!value.reference || typeof value.index !== "number") throw invalidArguments("reference and index are required");
+      return { reference: value.reference as WorkspaceWorkViewReference, index: value.index };
+    });
+    await presentationStore.reorderWorkView(workspaceId, body.reference, body.index);
+    return jsonResponse({ workViews: await presentationStore.listWorkViews(workspaceId) });
+  }
+
+  async function closeWorkViewJsonEndpoint(workspaceId: string, request: Request): Promise<Response> {
+    const body = await readJsonObject(request, (value) => {
+      if (!value.reference || typeof value.reference !== "object" || Array.isArray(value.reference)) throw invalidArguments("reference is required");
+      return value.reference as WorkspaceWorkViewReference;
+    });
+    return await closeWorkViewEndpoint(workspaceId, JSON.stringify(body), request);
+  }
+
+  async function closeAgentConversationEndpoint(workspaceId: string, conversationId: string, request: Request): Promise<Response> {
+    const before = await fixedWorkspacePresentation(workspaceId, { renderPaneKeys: new Set() });
+    await presentationStore.closeAgentConversation(workspaceId, conversationId);
+    const preserveLiveKeys = new Set([
+      ...before.agentConversations.filter((agent) => agent.id !== conversationId).map((agent) => `agent:${agent.id}`),
+      ...before.workViews.map((view) => `work:${view.key}`),
+    ]);
+    if (requestAcceptsJson(request)) return jsonResponse({ archivedConversationId: conversationId, agentConversations: await presentationStore.listAgentConversations(workspaceId) });
+    return turboStreamResponse(workspacePresentationTurboStream(workspaceId, await fixedWorkspacePresentation(workspaceId, { renderPaneKeys: new Set(), preserveLiveKeys })));
   }
 
   async function closeWorkspaceTabEndpoint(workspaceId: string, tab: string, request: Request): Promise<Response> {
@@ -1738,7 +1880,19 @@ ${moduleStylesHtml()}
   }
 
   deps.events?.on("workspace_tabs_changed", ({ workspaceId }) => {
-    void replaceWorkspaceGroupsTurboStream(workspaceId)
+    void (async () => {
+      const before = await fixedWorkspacePresentation(workspaceId, { renderPaneKeys: new Set() });
+      const tabs = (await workspaceTabsAndAttachments(workspaceId, new Set())).tabs;
+      const beforeKeys = new Set(before.workViews.map((view) => view.key));
+      const createdTabs = tabs.filter((tab) => tab.workView && !beforeKeys.has(workViewKey(tab.workView.reference)));
+      for (const tab of createdTabs) await presentationStore.openWorkView(workspaceId, tab.workView!.reference);
+      const preserveLiveKeys = new Set([
+        ...before.agentConversations.map((agent) => `agent:${agent.id}`),
+        ...before.workViews.map((view) => `work:${view.key}`),
+      ]);
+      const presentation = await fixedWorkspacePresentation(workspaceId, { renderPaneKeys: new Set(createdTabs.map((tab) => tab.key)), preserveLiveKeys });
+      return workspacePresentationTurboStream(workspaceId, presentation);
+    })()
       .then((html) => broadcastShell(html))
       .catch((error) => logError(`could not broadcast workspace tab changes for ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`));
   });
@@ -1819,17 +1973,12 @@ ${moduleStylesHtml()}
       if (request.method === "GET") return workspaceSidebarTitleShowFrame(params[0]);
       if (request.method === "POST") return await updateWorkspaceSidebarTitle(params[0], request);
     }
-    if ((params = match(/^\/workspaces\/([^/]+)\/view-state$/)) && request.method === "POST") return await updateWorkspaceViewStateEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/active$/)) && request.method === "POST") return activeWorkspaceEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[2], request, params[1]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/split$/)) && request.method === "POST") return await splitWorkspaceGroupEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/remove$/)) && request.method === "POST") return await removeWorkspaceGroupEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/groups\/([^/]+)\/close$/)) && request.method === "POST") return await closeWorkspaceGroupEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/tabs\/([^/]+)\/close$/)) && request.method === "POST") return await closeWorkspaceTabEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/layout\/move-tab$/)) && request.method === "POST") return await moveWorkspaceTabEndpoint(params[0], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/tabs\/(.+)\/close$/)) && request.method === "POST") return await closeWorkspaceTabEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/layout\/resize$/)) && request.method === "POST") return await resizeWorkspaceGroupsEndpoint(params[0], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/close$/)) && request.method === "POST") return await closeWorkViewJsonEndpoint(params[0], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/close$/)) && request.method === "POST") return await closeWorkViewEndpoint(params[0], params[1], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/reorder$/)) && request.method === "POST") return await reorderWorkViewEndpoint(params[0], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/agent-conversations\/([^/]+)\/close$/)) && request.method === "POST") return await closeAgentConversationEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/park$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], true, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/unpark$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], false, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete$/)) && request.method === "POST") return await deleteWorkspaceEndpoint(params[0], request);

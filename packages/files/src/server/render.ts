@@ -138,6 +138,7 @@ export function renderFilesTab(frameHtml: string): WorkspaceTabContribution {
   return {
     key: "files",
     label: "Files",
+    workView: { reference: { type: "files" }, kind: "contextual", availability: { phase: "live" } },
     paneHtml: `<section class="tab-pane" data-tab-pane="files">${frameHtml}</section>`,
   };
 }

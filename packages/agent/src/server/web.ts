@@ -25,7 +25,8 @@ async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAg
   return await Promise.all(agents.map(async (agent, index) => {
     const ctx = { workspaceId, label: agent.label };
     const key = agentTabKey(agent.label);
-    if (renderPaneKeys && !renderPaneKeys.has(key)) return { key, label: agent.label };
+    const agentConversation = { id: agent.conversationId, title: agent.title };
+    if (renderPaneKeys && !renderPaneKeys.has(key)) return { key, label: agent.label, agentConversation };
     const paneHtml = isWorkspaceAgentRuntimeReady(agent)
       ? await renderAgentPane(ctx, agent, await (await getWorkspaceAgentRuntime(agent, { events })).paneState(), { visible: index === 0 })
       : await renderPendingAgentPane(ctx, agent, { visible: index === 0 });
@@ -33,6 +34,7 @@ async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAg
       key,
       label: agent.label,
       paneHtml,
+      agentConversation,
     };
   }));
 }

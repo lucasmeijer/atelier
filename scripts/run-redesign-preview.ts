@@ -21,24 +21,13 @@ interface WorkspaceSummary {
   phase: string;
 }
 
-interface WorkspaceTab {
-  key: string;
-  label: string;
-}
-
-interface WorkspaceGroup {
-  id: string;
-  tabs: string[];
-  visibleTab?: string;
-}
-
 interface WorkspaceState {
   id: string;
   title: string;
   phase: string;
   url: string;
-  tabs: WorkspaceTab[];
-  layout: { groups: WorkspaceGroup[] };
+  agentConversations: Array<{ id: string; title: string }>;
+  workViews: Array<{ reference: { type: string; [field: string]: unknown }; attention: boolean }>;
 }
 
 const fixture = `# Atelier workspace redesign preview
@@ -54,8 +43,8 @@ This isolated workspace keeps the current implementation visible while the redes
 
 ## What this preview contains
 
-- An Agent surface in the left group.
-- File, browser, terminal, Files, and VS Code surfaces in the right group.
+- An Agent surface in the stable Agent pane.
+- File, browser, terminal, Files, and VS Code surfaces in the Work pane.
 - One modified tracked file and this untracked file, ready for Changes review work.
 `;
 
@@ -136,26 +125,6 @@ function fixtureCommand(): string {
   ].join(" && ");
 }
 
-async function ensureWorkGroup(workspaceId: string): Promise<{ agentGroupId: string; workGroupId: string }> {
-  let current = await state(workspaceId);
-  const agentTab = current.tabs.find((tab) => tab.key.startsWith("agent:"));
-  if (!agentTab) throw new Error("preview workspace has no Agent tab");
-  let agentGroup = current.layout.groups.find((group) => group.tabs.includes(agentTab.key));
-  if (!agentGroup) throw new Error("preview workspace Agent tab is not in a layout group");
-  let workGroup = current.layout.groups.find((group) => group.id !== agentGroup!.id && !group.tabs.some((tab) => tab.startsWith("agent:")));
-
-  if (!workGroup) {
-    const browser = current.tabs.find((tab) => tab.key.startsWith("browser-"));
-    if (browser) await post(`/workspaces/${workspaceId}/layout/move-tab`, { tab: browser.key, newGroup: true });
-    else await createBrowser(workspaceId);
-    current = await state(workspaceId);
-    agentGroup = current.layout.groups.find((group) => group.tabs.includes(agentTab.key));
-    workGroup = current.layout.groups.find((group) => group.id !== agentGroup!.id && !group.tabs.some((tab) => tab.startsWith("agent:")));
-  }
-  if (!agentGroup || !workGroup) throw new Error("could not establish Agent and Work layout groups");
-  return { agentGroupId: agentGroup.id, workGroupId: workGroup.id };
-}
-
 async function waitForFixture(workspaceId: string): Promise<void> {
   const path = `/workspaces/${workspaceId}/file-editor/content?path=${encodeURIComponent(previewFile)}`;
   const deadline = Date.now() + 30_000;
@@ -172,16 +141,16 @@ async function preparePreview(): Promise<string> {
   const previewWorkspace = await workspace(previewProject.id);
   let current = await state(previewWorkspace.id);
 
-  if (!current.tabs.some((tab) => tab.key.startsWith("browser-"))) await createBrowser(current.id);
-  let groups = await ensureWorkGroup(current.id);
+  if (!current.workViews.some((view) => view.reference.type === "browser")) await createBrowser(current.id);
   current = await state(current.id);
 
-  if (!current.tabs.some((tab) => tab.label === previewTerminalTitle)) {
-    await post(`/workspaces/${current.id}/groups/${groups.workGroupId}/commands/terminal.create`, {
-      title: previewTerminalTitle,
-      command: fixtureCommand(),
-    });
+  for (const terminalView of current.workViews.filter((view) => view.reference.type === "terminal")) {
+    await post(`/workspaces/${current.id}/work-views/close`, { reference: terminalView.reference });
   }
+  await post(`/workspaces/${current.id}/commands/terminal.create`, {
+    title: previewTerminalTitle,
+    command: fixtureCommand(),
+  });
   await waitForFixture(current.id);
 
   const openResponse = await fetch(`${baseUrl}/workspaces/${current.id}/file-editor/open?path=${encodeURIComponent(previewFile)}`, {
@@ -189,27 +158,16 @@ async function preparePreview(): Promise<string> {
   });
   if (!openResponse.ok) throw new Error(`opening preview file failed (${openResponse.status}): ${await openResponse.text()}`);
 
-  groups = await ensureWorkGroup(current.id);
   current = await state(current.id);
-  for (const tab of current.tabs) {
-    const targetGroup = tab.key.startsWith("agent:") ? groups.agentGroupId : groups.workGroupId;
-    const containingGroup = current.layout.groups.find((group) => group.tabs.includes(tab.key));
-    if (containingGroup?.id !== targetGroup) await post(`/workspaces/${current.id}/layout/move-tab`, { tab: tab.key, toGroup: targetGroup });
+  if (!current.workViews.some((view) => view.reference.type === "vscode")) {
+    await post(`/workspaces/${current.id}/commands/vscode.open`, {});
+    current = await state(current.id);
   }
 
-  current = await state(current.id);
-  for (const group of current.layout.groups) {
-    if (group.id !== groups.agentGroupId && group.id !== groups.workGroupId && group.tabs.length === 0) {
-      await post(`/workspaces/${current.id}/groups/${group.id}/remove`);
-    }
-  }
+  const previewFileView = current.workViews.find((view) => view.reference.type === "file" && view.reference.path === previewFile);
+  if (!previewFileView) throw new Error("preview File view was not created");
+  await post(`/workspaces/${current.id}/work-views/reorder`, { reference: previewFileView.reference, index: 0 });
 
-  current = await state(current.id);
-  const agentTab = current.tabs.find((tab) => tab.key.startsWith("agent:"))!;
-  const fileTab = current.tabs.find((tab) => tab.key.startsWith("file-editor:"))!;
-  await post(`/workspaces/${current.id}/view-state`, { groupId: groups.agentGroupId, visibleTab: agentTab.key });
-  await post(`/workspaces/${current.id}/view-state`, { groupId: groups.workGroupId, visibleTab: fileTab.key });
-  await post(`/workspaces/${current.id}/layout/resize`, { sizes: [0.56, 0.44] });
   return `${baseUrl}${current.url}`;
 }
 

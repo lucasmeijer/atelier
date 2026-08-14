@@ -17,6 +17,15 @@ export function desktopWorkspaceCommand(enabled: boolean): WorkspaceCommandContr
 
 export const desktopWorkspaceModule: WorkspaceModule = {
   id: "desktop",
+  workViews: [{
+    type: "desktop",
+    parseReference(value: unknown) {
+      const reference = value as { type?: unknown };
+      if (reference?.type !== "desktop" || Object.keys(reference).length !== 1) throw new Error("desktop reference has no identity fields");
+      return { type: "desktop" };
+    },
+    identity: () => "workspace",
+  }],
   initialize(context) {
     (context.events as WorkspacePlanEvents).on("workspace_plan_prepare", ({ plan }) => {
       plan.initScripts.push(`if command -v dbus-daemon >/dev/null 2>&1 && [ -f /usr/share/dbus-1/system.conf ]; then mkdir -p /run/dbus; dbus-daemon --system --fork 2>/dev/null || true; fi`);

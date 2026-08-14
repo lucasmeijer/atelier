@@ -287,7 +287,10 @@ function createFileEditorSignalController(Controller: ControllerConstructor): un
       queueMicrotask(() => {
         if (this.hasTabKeyValue) {
           const resident = this.element.closest<HTMLElement>(`.workspace-detail-resident[data-workspace-id="${CSS.escape(this.workspaceIdValue)}"]`)!;
-          resident.querySelector<HTMLButtonElement>(`.group-tab[data-tab="${CSS.escape(this.tabKeyValue)}"] .group-tab-label`)?.click();
+          const fixedPane = resident.querySelector<HTMLElement>(`[data-workspace-pane-role="work"][data-source-tab-key="${CSS.escape(this.tabKeyValue)}"]`);
+          const fixedKey = fixedPane?.dataset.workspacePaneId;
+          if (fixedKey) resident.querySelector<HTMLButtonElement>(`[data-work-view-key="${CSS.escape(fixedKey)}"]`)?.click();
+          else resident.querySelector<HTMLButtonElement>(`.group-tab[data-tab="${CSS.escape(this.tabKeyValue)}"] .group-tab-label`)?.click();
         }
         window.dispatchEvent(new CustomEvent<EditorRefreshDetail>("atelier:file-editor-refresh", { detail: {
           workspaceId: this.workspaceIdValue,

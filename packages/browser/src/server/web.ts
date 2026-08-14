@@ -10,6 +10,12 @@ import { Type } from "typebox";
 
 const browserCreateCommandId = "browser.create";
 
+function parseBrowserReference(value: unknown): { type: "browser"; browserId: string } {
+  const reference = value as { type?: unknown; browserId?: unknown };
+  if (reference?.type !== "browser" || typeof reference.browserId !== "string" || !/^browser-\d+$/.test(reference.browserId)) throw new Error("browserId is invalid");
+  return { type: "browser", browserId: reference.browserId };
+}
+
 function renderWorkspaceBrowserTabs(workspaceId: string): WorkspaceTabContribution[] {
   return listWorkspaceBrowserTabs(workspaceId).map((tab) => renderBrowserTab(workspaceId, tab));
 }
@@ -25,6 +31,12 @@ const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
 
 export const browserWorkspaceModule: WorkspaceModule = {
   id: "browser",
+  workViews: [{
+    type: "browser",
+    parseReference: parseBrowserReference,
+    identity: (reference: { type: "browser"; browserId: string }) => reference.browserId,
+    close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "browser"; browserId: string } }) => deleteWorkspaceBrowserTab(workspaceId, reference.browserId),
+  }],
   staticFiles: browserStaticFiles,
   commands: [{
     id: browserCreateCommandId,

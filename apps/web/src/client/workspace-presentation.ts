@@ -90,6 +90,8 @@ export function createWorkspacePresentationController(
       this.media.addEventListener("change", this.viewportChanged);
       window.addEventListener("resize", this.viewportChanged);
       this.element.addEventListener("keydown", this.keydown);
+      this.element.addEventListener("atelier:workspace-residency-visible", this.residencyChanged);
+      this.element.addEventListener("atelier:workspace-residency-hidden", this.residencyChanged);
       this.workspaceScroll?.addEventListener("scroll", this.workspaceScrolled, { passive: true });
       this.restorePreferences();
       this.normalizeState();
@@ -100,6 +102,8 @@ export function createWorkspacePresentationController(
       this.media?.removeEventListener("change", this.viewportChanged);
       window.removeEventListener("resize", this.viewportChanged);
       this.element.removeEventListener("keydown", this.keydown);
+      this.element.removeEventListener("atelier:workspace-residency-visible", this.residencyChanged);
+      this.element.removeEventListener("atelier:workspace-residency-hidden", this.residencyChanged);
       this.workspaceScroll?.removeEventListener("scroll", this.workspaceScrolled);
       if (this.scrollTimer) clearTimeout(this.scrollTimer);
       this.visiblePanes().forEach((pane) => this.emitHidden(pane));
@@ -273,6 +277,8 @@ export function createWorkspacePresentationController(
     }
 
     private visiblePanes(): PresentationPane[] {
+      const resident = this.element.closest(".workspace-detail-resident");
+      if (resident && !resident.classList.contains("visible")) return [];
       const selector = this.isPhone
         ? this.state.phoneDestination === "agent" ? `[data-workspace-pane-role='agent'].is-active` : this.state.phoneDestination.startsWith("work:") ? `[data-workspace-pane-role='work'].is-active` : ".fixed-shell-never"
         : `[data-workspace-pane-role='agent'].is-active${this.state.workPaneVisible ? ", [data-workspace-pane-role='work'].is-active" : ""}`;
@@ -363,6 +369,7 @@ export function createWorkspacePresentationController(
     };
 
     private viewportChanged = (): void => { this.setWorkWidth(this.workPane.getBoundingClientRect().width || 520, false); this.applyState({ emit: true }); };
+    private residencyChanged = (): void => this.applyState({ emit: true });
     private workspaceScrolled = (): void => {
       if (this.scrollTimer) clearTimeout(this.scrollTimer);
       this.scrollTimer = setTimeout(() => localStorage.setItem("atelier:workspace-pane-scroll", String(this.workspaceScroll?.scrollTop ?? 0)), 80);

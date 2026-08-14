@@ -5,6 +5,7 @@ export function renderDesktopTab(workspaceId: string): WorkspaceTabContribution 
   return {
     key: desktopTabKey,
     label: "Desktop",
+    workView: { reference: { type: "desktop" }, kind: "resource", availability: { phase: "live" } },
     paneHtml: `<section class="tab-pane" data-tab-pane="${desktopTabKey}">${renderDesktopPane(workspaceId)}</section>`,
   };
 }

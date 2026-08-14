@@ -68,6 +68,15 @@ async function archiveEndpoint(workspaceId: string, url: URL): Promise<Response>
 
 const filesWorkspaceModule: WorkspaceModule = {
   id: "files",
+  workViews: [{
+    type: "files",
+    parseReference(value: unknown) {
+      const reference = value as { type?: unknown };
+      if (reference?.type !== "files" || Object.keys(reference).length !== 1) throw new Error("Files reference has no identity fields");
+      return { type: "files" };
+    },
+    identity: () => "workspace",
+  }],
   staticFiles: {
     "/files.css": { url: new URL("../client/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   },

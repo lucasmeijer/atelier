@@ -22,6 +22,7 @@ export interface AgentPaneContribution {
   id: string;
   title: string;
   bodyHtml: string;
+  closeHtml?: string;
 }
 
 export interface WorkPaneContribution {
@@ -32,6 +33,7 @@ export interface WorkPaneContribution {
   attention: boolean;
   availability: WorkViewAvailability;
   bodyHtml: string;
+  sourceKey?: string;
   actionsHtml?: string;
   closeHtml?: string;
 }
@@ -43,6 +45,7 @@ export interface WorkspacePresentation {
   parkedWorkspaces?: readonly (WorkspacePaneEntry & { projectTitle?: string })[];
   agentConversations: readonly AgentPaneContribution[];
   workViews: readonly WorkPaneContribution[];
+  commands?: readonly { id: string; label: string; description?: string; scope: string; binding?: string }[];
   /** Live nodes named here are transplanted from the current DOM by the Turbo seam. */
   preserveLiveKeys?: ReadonlySet<string>;
 }
@@ -82,14 +85,14 @@ function renderWorkspacePane(presentation: WorkspacePresentation): string {
   return `<aside class="fixed-shell-workspace-pane" data-workspace-presentation-target="workspacePane" aria-label="Workspaces">
     <header><strong>Atelier</strong>${button("Close Workspace pane", "click->workspace-presentation#toggleWorkspacePane", "menu")}</header>
     <div class="fixed-shell-workspace-scroll" data-workspace-presentation-target="workspaceScroll">${projects}${projectless}${parked}</div>
-    <footer><button type="button" class="fixed-shell-settings">${icon("settings")}<span>Settings</span></button></footer>
+    <footer><button type="button" class="fixed-shell-settings" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="project-picker-modal"><span aria-hidden="true">＋</span><span>New workspace</span></button><a class="fixed-shell-settings" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">${icon("settings")}<span>Settings</span></a></footer>
   </aside>`;
 }
 
 function renderAgentPane(presentation: WorkspacePresentation): string {
   const multiple = presentation.agentConversations.length > 1;
   const title = multiple
-    ? `<div class="fixed-shell-agent-tabs" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => `<button type="button" role="tab" aria-selected="false" tabindex="-1" data-agent-tab-id="${escapeHtml(agent.id)}" data-action="click->workspace-presentation#selectAgent">${escapeHtml(agent.title)}</button>`).join("")}</div>`
+    ? `<div class="fixed-shell-agent-tabs" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => `<div class="fixed-shell-agent-tab"><button type="button" role="tab" aria-selected="false" tabindex="-1" data-agent-tab-id="${escapeHtml(agent.id)}" data-action="click->workspace-presentation#selectAgent">${escapeHtml(agent.title)}</button>${agent.closeHtml ?? ""}</div>`).join("")}</div>`
     : `<div class="fixed-shell-workspace-title"><strong>${escapeHtml(presentation.workspace.title)}</strong>${presentation.workspace.projectTitle ? `<small>${escapeHtml(presentation.workspace.projectTitle)}</small>` : ""}</div>`;
   const panes = presentation.agentConversations.map((agent) => renderLiveNode(`agent:${agent.id}`, "agent", agent.id, agent.bodyHtml, presentation.preserveLiveKeys)).join("");
   return `<section class="fixed-shell-agent-pane" data-workspace-role-region="agent" data-workspace-presentation-target="agentPane" aria-label="Agent">
@@ -114,16 +117,17 @@ function renderAvailability(view: WorkPaneContribution): string {
 
 function renderLiveNode(key: string, role: "agent" | "work", id: string, bodyHtml: string, preserved?: ReadonlySet<string>, workView?: WorkPaneContribution): string {
   if (preserved?.has(key)) return `<span hidden data-workspace-live-slot="${escapeHtml(key)}"></span>`;
-  return `<section class="fixed-shell-live-node" data-workspace-live-node="${escapeHtml(key)}" data-workspace-pane-role="${role}" data-workspace-pane-id="${escapeHtml(id)}" tabindex="-1">${workView ? renderAvailability(workView) : ""}<div class="fixed-shell-live-body">${bodyHtml}</div></section>`;
+  return `<section class="fixed-shell-live-node" data-workspace-live-node="${escapeHtml(key)}" data-workspace-pane-role="${role}" data-workspace-pane-id="${escapeHtml(id)}"${workView?.sourceKey ? ` data-source-tab-key="${escapeHtml(workView.sourceKey)}"` : ""} tabindex="-1">${workView ? renderAvailability(workView) : ""}<div class="fixed-shell-live-body">${bodyHtml}</div></section>`;
 }
 
 function renderWorkPane(presentation: WorkspacePresentation): string {
   const tabs = presentation.workViews.map((view) => `<div class="fixed-shell-work-tab" data-work-tab-key="${escapeHtml(view.key)}">
-    <button type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}" data-action="click->workspace-presentation#selectWorkView">${escapeHtml(view.label)}${view.attention ? '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>' : ""}<span class="fixed-shell-work-status fixed-shell-work-status-${view.availability.phase}" aria-label="${availabilityLabel(view.availability) || "Live"}"></span></button>${view.closeHtml ?? ""}
+    <button type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="tab" data-atelier-fullscreen-tab-key-value="${escapeHtml(view.sourceKey ?? view.key)}" data-atelier-fullscreen-title-value="${escapeHtml(view.label)}" data-action="click->workspace-presentation#selectWorkView">${escapeHtml(view.label)}${view.attention ? '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>' : ""}<span class="fixed-shell-work-status fixed-shell-work-status-${view.availability.phase}" aria-label="${availabilityLabel(view.availability) || "Live"}"></span></button>${view.closeHtml ?? ""}
   </div>`).join("");
   const panes = presentation.workViews.map((view) => renderLiveNode(`work:${view.key}`, "work", view.key, `${view.actionsHtml ? `<div class="fixed-shell-work-actions">${view.actionsHtml}</div>` : ""}${view.bodyHtml}`, presentation.preserveLiveKeys, view)).join("");
+  const addMenu = presentation.commands?.length ? `<details class="fixed-shell-add-menu"><summary class="fixed-shell-icon-button" aria-label="Open view or conversation">+</summary><div>${presentation.commands.map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button type="submit">${escapeHtml(command.label)}</button></form>`).join("")}</div></details>` : "";
   return `<section class="fixed-shell-work-pane" data-workspace-role-region="work" data-workspace-presentation-target="workPane" aria-label="Work">
-    <header><div class="fixed-shell-work-tabs" role="tablist" aria-label="Work views">${tabs}</div>${button("Close Work pane", "click->workspace-presentation#toggleWorkPane", "panel")}</header>
+    <header><div class="fixed-shell-work-tabs" role="tablist" aria-label="Work views">${tabs}</div>${addMenu}${button("Close Work pane", "click->workspace-presentation#toggleWorkPane", "panel")}</header>
     <div class="fixed-shell-work-bodies">${panes || '<div class="fixed-shell-empty-work">Open a file, terminal, browser, or Changes to work alongside the Agent.</div>'}</div>
     <div class="fixed-shell-work-resizer" role="separator" aria-label="Resize Work pane" aria-orientation="vertical" tabindex="0" data-action="pointerdown->workspace-presentation#beginWorkResize keydown->workspace-presentation#resizeWorkWithKeyboard"></div>
   </section>`;
@@ -146,7 +150,7 @@ function renderMobileNavigation(presentation: WorkspacePresentation): string {
 export function renderWorkspacePresentation(presentation: WorkspacePresentation): string {
   if (presentation.agentConversations.length === 0) throw new Error("Workspace presentation requires an Agent conversation");
   const id = domId("fixed_workspace", presentation.workspace.id);
-  return `<div id="${id}" class="fixed-workspace-presentation" data-controller="workspace-presentation" data-workspace-presentation-workspace-id-value="${escapeHtml(presentation.workspace.id)}" data-workspace-id="${escapeHtml(presentation.workspace.id)}">
+  return `<div id="${id}" class="fixed-workspace-presentation" data-controller="workspace-presentation" data-workspace-presentation-workspace-id-value="${escapeHtml(presentation.workspace.id)}" data-workspace-id="${escapeHtml(presentation.workspace.id)}" data-workspace-commands="${escapeHtml(JSON.stringify(presentation.commands ?? []))}">
     ${renderWorkspacePane(presentation)}
     <div class="fixed-shell-main">${renderAgentPane(presentation)}${renderWorkPane(presentation)}</div>
     <button type="button" class="fixed-shell-overlay-scrim" aria-label="Close Workspace pane" data-action="click->workspace-presentation#closeWorkspacePane"></button>

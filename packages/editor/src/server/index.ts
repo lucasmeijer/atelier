@@ -57,6 +57,16 @@ async function editorContentEndpoint(workspaceId: string, request: Request, url:
 
 const editorWorkspaceModule: WorkspaceModule = {
   id: "editor",
+  workViews: [{
+    type: "file",
+    parseReference(value: unknown) {
+      const reference = value as { type?: unknown; path?: unknown };
+      if (reference?.type !== "file" || typeof reference.path !== "string" || !reference.path.startsWith("/")) throw new Error("path must be absolute");
+      return { type: "file", path: reference.path };
+    },
+    identity: (reference: { type: "file"; path: string }) => reference.path,
+    close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "file"; path: string } }) => closeWorkspaceFileEditorTab(workspaceId, `file-editor:${Buffer.from(reference.path).toString("base64url")}`),
+  }],
   staticFiles: {
     "/editor.css": { url: new URL("../client/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   },

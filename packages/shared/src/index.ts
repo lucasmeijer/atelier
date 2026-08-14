@@ -80,6 +80,32 @@ export interface WorkspaceTabContribution {
   label: string;
   /** Eager tabs include their pane HTML in the workspace detail response. */
   paneHtml?: string;
+  /** Typed role-fixed presentation metadata. Agent tabs use agentConversation; all other tabs use workView. */
+  agentConversation?: { id: string; title: string };
+  workView?: {
+    reference: WorkspaceWorkViewReference;
+    kind: "resource" | "contextual";
+    availability?: WorkspaceWorkViewAvailability;
+    actionsHtml?: string;
+  };
+}
+
+export interface WorkspaceWorkViewReference {
+  type: string;
+  [field: string]: unknown;
+}
+
+export type WorkspaceWorkViewAvailability =
+  | { phase: "opening"; detail?: string }
+  | { phase: "live" }
+  | { phase: "reconnecting"; detail?: string }
+  | { phase: "unavailable"; detail: string; recoveryHtml?: string };
+
+export interface WorkspaceModuleWorkViewAdapter<Reference extends WorkspaceWorkViewReference = WorkspaceWorkViewReference> {
+  type: Reference["type"];
+  parseReference(value: unknown): Reference;
+  identity(reference: Reference): string;
+  close?(context: { workspaceId: string; reference: Reference }): Promise<void> | void;
 }
 
 export interface WorkspaceCommandUiSurface {
@@ -272,6 +298,7 @@ export interface WorkspaceModule {
   commands?: WorkspaceModuleCommandHandler[];
   routes?: WorkspaceModuleRouteHandler[];
   tabs?: WorkspaceModuleTabLifecycleHandler[];
+  workViews?: WorkspaceModuleWorkViewAdapter[];
   initialize?(context: WorkspaceServerModuleContext): Promise<void> | void;
   attachToWorkspace?(context: WorkspaceAttachContext): Promise<WorkspaceAttachment> | WorkspaceAttachment;
 }

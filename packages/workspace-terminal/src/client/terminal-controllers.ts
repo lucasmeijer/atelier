@@ -116,7 +116,9 @@ function createTerminalPaneController(Controller: StimulusControllerConstructor)
     }
 
     disconnect(): void {
-      stopTerminal(this.workspaceIdValue, this.idValue);
+      queueMicrotask(() => {
+        if (!findTerminalPane(this.workspaceIdValue, this.idValue)) stopTerminal(this.workspaceIdValue, this.idValue);
+      });
     }
   };
 }
@@ -129,10 +131,6 @@ export const workspaceTerminalClientModule: WorkspaceClientModule = {
     hooks.onBecomeVisible(({ workspaceId, tabKey }) => {
       const terminalId = terminalIdFromTabKey(tabKey);
       if (terminalId) void startTerminal(workspaceId, terminalId);
-    });
-    hooks.onNoLongerVisible(({ workspaceId, tabKey }) => {
-      const terminalId = terminalIdFromTabKey(tabKey);
-      if (terminalId) stopTerminal(workspaceId, terminalId);
     });
     hooks.onFocusGroup(({ workspaceId, tabKey }) => {
       const terminalId = tabKey ? terminalIdFromTabKey(tabKey) : undefined;

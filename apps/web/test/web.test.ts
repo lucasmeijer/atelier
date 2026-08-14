@@ -415,6 +415,38 @@ describe("web app contracts", () => {
     expect(browser.headers.get("location")).toBe("http://test.local/");
   });
 
+  test("production workspaces use typed Agent and Work presentation without layout automation", async () => {
+    await withTempDataDir(async () => {
+      const { app, registry } = createTestApp();
+      await registry.seed([{ id: "typed-shell", title: "Typed shell" }]);
+
+      const html = await (await app.fetch(new Request("http://test.local/workspaces/typed-shell"))).text();
+      expect(html).toContain('class="fixed-workspace-presentation"');
+      expect(html).toContain('data-workspace-pane-role="agent"');
+      expect(html).toContain('data-work-view-key="files:workspace"');
+      expect(html).not.toContain('class="workspace-groups"');
+
+      const state = await (await app.fetch(new Request("http://test.local/workspaces/typed-shell", { headers: { accept: "application/json" } }))).json() as { workspace: { agentConversations: unknown[]; workViews: Array<{ reference: { type: string } }> } };
+      expect(state.workspace.agentConversations).toHaveLength(1);
+      expect(state.workspace.workViews.some((view) => view.reference.type === "files")).toBe(true);
+
+      const legacy = await app.fetch(postJson("/workspaces/typed-shell/layout/move-tab", { tab: "files", newGroup: true }));
+      expect(legacy.status).toBe(404);
+
+      const browserCommand = await app.fetch(postJson("/workspaces/typed-shell/commands/browser.create", { url: "http://localhost:3000" }));
+      const browserResult = await browserCommand.json() as { command: { workView: { type: string; browserId: string } } };
+      expect(browserResult.command.workView.type).toBe("browser");
+      expect((await app.fetch(postJson("/workspaces/typed-shell/work-views/close", { reference: browserResult.command.workView }))).status).toBe(200);
+      const duplicateBrowserClose = await app.fetch(postJson("/workspaces/typed-shell/work-views/close", { reference: browserResult.command.workView }));
+      expect((await duplicateBrowserClose.json()).error.code).toBe("work_view_not_found");
+
+      const closed = await app.fetch(postJson("/workspaces/typed-shell/work-views/close", { reference: { type: "files" } }));
+      expect(closed.status).toBe(200);
+      const duplicate = await app.fetch(postJson("/workspaces/typed-shell/work-views/close", { reference: { type: "files" } }));
+      expect((await duplicate.json()).error.code).toBe("work_view_not_found");
+    });
+  });
+
   test("the removed REST workspace endpoint is not found and OpenAPI advertises UI JSON operations", async () => {
     const { app, registry } = createTestApp();
     await registry.seed([]);
@@ -452,7 +484,7 @@ describe("web app contracts", () => {
       expect(home).toContain('<turbo-frame id="agent_launch_modal"></turbo-frame>');
       expect(home).not.toContain("Describe what you want the agent to do");
       expect(home).not.toContain('class="sidebar-host-repos"');
-      expect(home).toContain('<button class="row workspace-row workspace-placeholder-row" type="button"');
+      expect(home).toContain('<button type="button" class="fixed-shell-settings" data-controller="modal-opener"');
       expect(newProject).toContain('aria-label="Add project"');
       expect(editor).toContain('aria-label="Repository"');
       expect(editor).toContain("project-environment");
@@ -702,7 +734,7 @@ describe("web app contracts", () => {
     const home = await app.fetch(new Request("http://test.local/"));
     expect(home.status).toBe(200);
     const homeBody = await home.text();
-    expect(homeBody).toContain("Select a workspace");
+    expect(homeBody).toContain("Create or select a workspace");
     expect(homeBody).not.toContain('href="/workspaces/a"');
     expect(homeBody).not.toContain('href="/workspaces/b"');
   });
