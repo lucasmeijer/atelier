@@ -144,7 +144,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
     subscribeWorkspaceTabBusy(({ workspaceId, tabKey, busy }) => context.registry.setTabBusy(workspaceId, tabKey, busy));
     registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force) as DeleteCurrentWorkspaceResult));
     registerWorkspaceAgentTool("create_workspace", (workspaceId) => createWorkspaceTool((request) => context.createWorkspaceFromAgent(workspaceId, request)));
-    registerWorkspaceAgentTool("fork_current_workspace", (workspaceId) => createForkCurrentWorkspaceTool((request) => context.forkCurrentWorkspaceFromAgent(workspaceId, request)));
+    // registerWorkspaceAgentTool("fork_current_workspace", (workspaceId) => createForkCurrentWorkspaceTool((request) => context.forkCurrentWorkspaceFromAgent(workspaceId, request)));
   },
   async attachToWorkspace({ workspaceId, init, events, renderPaneKeys }) {
     const hasProject = typeof init === "object" && init !== null && "type" in init && init.type === "project.git";
