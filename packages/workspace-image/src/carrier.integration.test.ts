@@ -10,6 +10,10 @@ setDefaultTimeout(15 * 60_000);
 // Deliberately opt-in: this builds a nested-Docker base and a carrier.
 const carrierIntegrationTest = process.env.ATELIER_RUN_CARRIER_INTEGRATION === "1" ? test : test.skip;
 
+test("nested Docker serializes registry uploads", () => {
+  expect(nestedDockerDaemonInitScript()).toContain("--max-concurrent-uploads=1");
+});
+
 carrierIntegrationTest("native Linux carriers are reusable and give workspaces isolated writable stores", async () => {
   const platform = await nativeLinuxDockerPlatform();
   if (!platform) throw new Error("ATELIER_RUN_CARRIER_INTEGRATION requires a native Linux Docker Engine");

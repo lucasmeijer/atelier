@@ -88,7 +88,7 @@ export function nestedDockerDaemonInitScript(options: { logPath?: string; pidPat
   return `mkdir -p /.atelier /var/lib/docker
 if ! docker info >/dev/null 2>&1; then
   rm -f /var/run/docker.sock
-  nohup dockerd -H unix:///var/run/docker.sock --tls=false --storage-driver=fuse-overlayfs > ${shellQuote(logPath)} 2>&1 &${recordPid}
+  nohup dockerd -H unix:///var/run/docker.sock --tls=false --storage-driver=fuse-overlayfs --max-concurrent-uploads=1 > ${shellQuote(logPath)} 2>&1 &${recordPid}
 fi
 for i in $(seq 1 300); do docker info >/dev/null 2>&1 && break; sleep .1; done
 if ! docker info >/dev/null 2>&1; then tail -n 120 ${shellQuote(logPath)} >&2; exit 1; fi

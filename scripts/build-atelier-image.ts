@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { arch, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -212,10 +212,18 @@ function workspaceHashTag(metadataTag: string): string {
   return metadataTag.slice(marker.length);
 }
 
-function dockerBuildCommand(options: Options, args: string[]): string[] {
+function ensurePublishBuilder(configPath: string): string {
+  const name = "atelier-publish-serial-v1";
+  if (maybeRun(["docker", "buildx", "inspect", name])) return name;
+  writeFileSync(configPath, "[worker.oci]\n  max-parallelism = 1\n");
+  run(["docker", "buildx", "create", "--name", name, "--driver", "docker-container", "--buildkitd-config", configPath]);
+  return name;
+}
+
+function dockerBuildCommand(options: Options, args: string[], builder?: string): string[] {
   if (options.platform?.includes(",") && !options.push) fail("multi-platform builds require --push");
   const command = options.platform || options.push
-    ? ["docker", "buildx", "build", ...(options.push ? ["--push", "--provenance=false"] : ["--load"])]
+    ? ["docker", "buildx", "build", ...(builder ? ["--builder", builder] : []), ...(options.push ? ["--push", "--provenance=false"] : ["--load"])]
     : ["docker", "build"];
   return [
     ...command,
@@ -229,6 +237,7 @@ function dockerBuildCommand(options: Options, args: string[]): string[] {
 const options = parseArgs(process.argv.slice(2));
 authenticateGhcr(options);
 const workspaceTempDir = mkdtempSync(join(tmpdir(), "atelier-image-"));
+const publishBuilder = options.push ? ensurePublishBuilder(join(workspaceTempDir, "buildkitd.toml")) : undefined;
 const workspaceContextDir = join(workspaceTempDir, "atelier-workspace");
 process.on("exit", () => rmSync(workspaceTempDir, { recursive: true, force: true }));
 
@@ -248,7 +257,7 @@ const workspaceBuildCommand = dockerBuildCommand(options, [
   "--tag", defaultWorkspaceImageRef,
   "--file", `${workspaceContextDir}/Dockerfile`,
   workspaceContextDir,
-]);
+], publishBuilder);
 
 const shouldBuildWorkspace = options.forceWorkspace || options.noCache || !workspaceImageExists(defaultWorkspaceImageRef, options);
 if (shouldBuildWorkspace) {
@@ -278,7 +287,7 @@ const appBuildCommand = dockerBuildCommand(options, [
   ...imageRefs.flatMap((ref) => ["--tag", ref]),
   ...allBuildArgs.flatMap((buildArg) => ["--build-arg", buildArg]),
   "--file", "apps/web/Dockerfile", ".",
-]);
+], publishBuilder);
 
 console.log();
 console.log(`${options.push ? "Publishing" : "Building"} Atelier image:`);
