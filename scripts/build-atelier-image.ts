@@ -286,7 +286,7 @@ for (const ref of imageRefs) console.log(`  ${ref}`);
 console.log(`  default workspace image: ${defaultWorkspaceImageRef}`);
 console.log();
 const buildCommands = shouldBuildWorkspace ? [workspaceBuildCommand, appBuildCommand] : [appBuildCommand];
-await Promise.all(buildCommands.map(runInherited));
+for (const command of buildCommands) await runInherited(command);
 
 console.log();
 console.log(options.push ? "Published:" : "Built:");
