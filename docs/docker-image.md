@@ -26,10 +26,10 @@ bun run image:build -- --image ghcr.io/example/atelier --tag v0.1.0 --latest
 bun run image:build -- --tag dev --workspace --progress plain
 bun run image:build -- --tag dev --no-cache --progress plain
 bun run image:publish -- --image ghcr.io/example/atelier --tag v0.1.0
-bun run scripts/build-atelier-image.ts --push --image ghcr.io/example/atelier --tag v0.1.0 --platform linux/amd64 --builder-host root@agent-test
+bun run scripts/build-atelier-image.ts --push --image ghcr.io/example/atelier --tag v0.1.0 --platform linux/amd64
 ```
 
-`image:publish` is the same build pipeline with `--push` enabled and defaults to `--platform linux/amd64 --builder-host root@atelier`. The build script creates a buildx docker-container builder for the SSH host when needed.
+`image:publish` is the same build pipeline with `--push` enabled and defaults to `--platform linux/amd64`. Builds run against the local Docker daemon.
 
 The installer pulls the required default workspace image. Repositories that request nested-Docker image preloads get deterministic carrier images built on demand when their first matching workspace is created. Carriers embed a `fuse-overlayfs` nested Docker store and are selected only on native Linux, never Docker Desktop.
 

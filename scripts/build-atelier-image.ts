@@ -16,7 +16,6 @@ Options:
   --stable             Also tag the image as <image>:stable
   --push               Push the built images instead of only loading them locally. Uses GH_PACKAGE_TOKEN for ghcr.io.
   --platform <value>   Docker platform(s), e.g. linux/amd64 or linux/amd64,linux/arm64
-  --builder-host <ssh> Docker SSH host to create/use as a buildx builder
   --no-cache           Build without Docker cache
   --workspace          Force building the default workspace image even when the deterministic tag already exists
   --progress <value>   Docker progress mode (auto, plain, tty, quiet, rawjson)
@@ -36,7 +35,6 @@ interface Options {
   stable: boolean;
   push: boolean;
   platform?: string;
-  builderHost?: string;
   noCache: boolean;
   forceWorkspace: boolean;
   progress?: string;
@@ -88,9 +86,6 @@ function parseArgs(args: string[]): Options {
       options.push = true;
     } else if (arg === "--platform") {
       options.platform = takeValue(args, i, arg);
-      i++;
-    } else if (arg === "--builder-host") {
-      options.builderHost = takeValue(args, i, arg);
       i++;
     } else if (arg === "--no-cache") {
       options.noCache = true;
@@ -217,27 +212,10 @@ function workspaceHashTag(metadataTag: string): string {
   return metadataTag.slice(marker.length);
 }
 
-function builderNameForHost(host: string): string {
-  return host.replaceAll(/[^A-Za-z0-9_.-]/g, "-").replaceAll(/^[.-]+/g, "") || "remote";
-}
-
-function builderName(options: Options): string | undefined {
-  return options.builderHost ? builderNameForHost(options.builderHost) : undefined;
-}
-
-async function ensureBuilder(options: Options): Promise<void> {
-  if (!options.builderHost) return;
-  const name = builderName(options)!;
-  if (maybeRun(["docker", "buildx", "inspect", "--bootstrap", name])) return;
-  await runInherited(["docker", "buildx", "create", "--name", name, "--driver", "docker-container", `ssh://${options.builderHost}`]);
-  await runInherited(["docker", "buildx", "inspect", "--bootstrap", name]);
-}
-
 function dockerBuildCommand(options: Options, args: string[]): string[] {
   if (options.platform?.includes(",") && !options.push) fail("multi-platform builds require --push");
-  const name = builderName(options);
-  const command = options.platform || options.push || name
-    ? ["docker", "buildx", "build", ...(name ? ["--builder", name] : []), ...(options.push ? ["--push", "--provenance=false"] : ["--load"])]
+  const command = options.platform || options.push
+    ? ["docker", "buildx", "build", ...(options.push ? ["--push", "--provenance=false"] : ["--load"])]
     : ["docker", "build"];
   return [
     ...command,
@@ -250,7 +228,6 @@ function dockerBuildCommand(options: Options, args: string[]): string[] {
 
 const options = parseArgs(process.argv.slice(2));
 authenticateGhcr(options);
-await ensureBuilder(options);
 const workspaceTempDir = mkdtempSync(join(tmpdir(), "atelier-image-"));
 const workspaceContextDir = join(workspaceTempDir, "atelier-workspace");
 process.on("exit", () => rmSync(workspaceTempDir, { recursive: true, force: true }));
