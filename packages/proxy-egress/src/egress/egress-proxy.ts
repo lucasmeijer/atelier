@@ -24,7 +24,7 @@ let sharedProxy: Promise<AtelierWorkspaceProxy> | undefined;
 const mitmTargetServers = new Map<string, Promise<MitmTargetServer>>();
 
 type MitmConnectionContext = { workspaceId: string; hostname: string };
-type MitmTargetServer = { server: ReturnType<typeof createHttpsServer>; port: number; connections: Map<number, MitmConnectionContext> };
+type MitmTargetServer = { server: ReturnType<typeof createHttpsServer>; port: number; connections: Map<number, MitmConnectionContext>; renewAt: number };
 
 function workspaceProxyHost(): string {
   return getAtelierRuntimeContext().dockerBridgeHost;
@@ -169,13 +169,25 @@ async function tunnelConnect(hostname: string, port: number, socket: net.Socket,
 async function ensureMitmTargetServer(ca: MitmCa, hostname: string): Promise<MitmTargetServer> {
   const key = hostname.toLowerCase();
   const existing = mitmTargetServers.get(key);
-  if (existing) return existing;
-  const created = startMitmTargetServer(ca, hostname).catch((error) => {
-    mitmTargetServers.delete(key);
+  let expiring: MitmTargetServer | undefined;
+  if (existing) {
+    const target = await existing;
+    if (Date.now() < target.renewAt) return target;
+    if (mitmTargetServers.get(key) !== existing) return await mitmTargetServers.get(key)!;
+    expiring = target;
+  }
+  const created: Promise<MitmTargetServer> = startMitmTargetServer(ca, hostname).then((replacement) => {
+    expiring?.server.close();
+    return replacement;
+  }).catch((error) => {
+    if (mitmTargetServers.get(key) === created) {
+      if (existing) mitmTargetServers.set(key, existing);
+      else mitmTargetServers.delete(key);
+    }
     throw error;
   });
   mitmTargetServers.set(key, created);
-  return created;
+  return await created;
 }
 
 async function startMitmTargetServer(ca: MitmCa, hostname: string): Promise<MitmTargetServer> {
@@ -203,7 +215,7 @@ async function startMitmTargetServer(ca: MitmCa, hostname: string): Promise<Mitm
   server.unref();
   const address = server.address();
   const serverPort = typeof address === "object" && address ? address.port : 0;
-  return { server, port: serverPort, connections };
+  return { server, port: serverPort, connections, renewAt: leaf.renewAt };
 }
 
 async function closeMitmTargetServers(): Promise<void> {
