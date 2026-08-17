@@ -2,12 +2,32 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { parseContainerIdFromCgroup, parseContainerIdFromMountInfo, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
+import { dockerInspect, parseContainerIdFromCgroup, parseContainerIdFromMountInfo, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
 import { createUpdateRouteHandler, UpdateManager } from "../../src/server/index.ts";
 import { parseWwwAuthenticate, selectManifestFromIndex, fetchChannelImageMetadata } from "../../src/server/registry.ts";
 import { fetchReleaseNotes, releaseNoteFilenames, renderMarkdown } from "../../src/server/release-notes.ts";
 
 describe("self container parsing", () => {
+  test("preserves container config needed to detect a managed install", async () => {
+    const inspect = await dockerInspect("container-id", async () => ({
+      stdout: JSON.stringify([{
+        Id: "container-id",
+        Image: "sha256:image-id",
+        Config: {
+          Image: "ghcr.io/lucasmeijer/atelier:latest",
+          Labels: { "com.atelier.type": "server" },
+        },
+      }]),
+      stderr: "",
+      code: 0,
+    }));
+
+    expect(inspect.Config).toEqual({
+      Image: "ghcr.io/lucasmeijer/atelier:latest",
+      Labels: { "com.atelier.type": "server" },
+    });
+  });
+
   test("parses cgroup v1 docker ids", () => {
     const id = "a".repeat(64);
     expect(parseContainerIdFromCgroup(`12:cpu:/docker/${id}\n`)).toBe(id);
