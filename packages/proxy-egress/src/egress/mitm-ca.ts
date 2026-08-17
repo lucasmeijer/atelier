@@ -57,7 +57,7 @@ async function ensureLeafCertificateUncached(ca: MitmCa, hostname: string, safeN
     const subjectAltName = net.isIP(hostname) ? `IP:${hostname}` : `DNS:${hostname}`;
     await writeFile(ext, `basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=${subjectAltName}\n`);
     await runOpenSsl(["req", "-newkey", "rsa:2048", "-nodes", "-subj", `/CN=${hostname}`, "-keyout", keyPath, "-out", csr]);
-    await runOpenSsl(["x509", "-req", "-in", csr, "-CA", ca.certPath, "-CAkey", ca.keyPath, "-CAcreateserial", "-days", "30", "-sha256", "-extfile", ext, "-out", certPath]);
+    await runOpenSsl(["x509", "-req", "-in", csr, "-CA", ca.certPath, "-CAkey", ca.keyPath, "-CAcreateserial", "-days", "90", "-sha256", "-extfile", ext, "-out", certPath]);
     await chmod(keyPath, 0o600);
     return { certPath, keyPath };
   } finally {
