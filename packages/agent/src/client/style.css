@@ -435,6 +435,10 @@
 .agent-stat-right form { position: relative; display: flex; height: 24px; align-items: center; }
 .agent-stat-right form:has(.agent-model-button) { min-width: 0; }
 .agent-stat-right .agent-model-button { min-width: 0; max-width: 100%; }
+.agent-fast-toggle { display: inline-flex; align-items: center; padding: 2px; border: 0; background: none; font: inherit; font-size: 15px; line-height: 1; opacity: .3; cursor: pointer; }
+.agent-fast-toggle:hover { opacity: .65; }
+.agent-fast-toggle.active, .agent-fast-toggle:has(input:checked) { opacity: 1; }
+.agent-fast-toggle input { position: absolute; opacity: 0; pointer-events: none; }
 
 /* Keep composer settings available before secondary session statistics. */
 @container (max-width: 500px) {

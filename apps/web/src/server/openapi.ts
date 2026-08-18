@@ -67,6 +67,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[]) {
       "/workspaces/{id}/agents/{label}/messages": { post: { summary: "Submit or steer an agent message", parameters: [workspaceId, agentLabel], requestBody: jsonBody({ type: "object", required: ["text"], properties: { text: { type: "string" }, mode: { type: "string", enum: ["send", "steer"] } }, additionalProperties: false }), responses: jsonResponse("Message accepted", { type: "object" }, "202") } },
       "/workspaces/{id}/agents/{label}/model": { post: { summary: "Select an agent model", parameters: [workspaceId, agentLabel], requestBody: jsonBody({ type: "object", required: ["model"], properties: { model: { type: "string" } }, additionalProperties: false }), responses: jsonResponse("Model selected", { type: "object" }) } },
       "/workspaces/{id}/agents/{label}/thinking": { post: { summary: "Select an agent thinking level", parameters: [workspaceId, agentLabel], requestBody: jsonBody({ type: "object", required: ["level"], properties: { level: { type: "string" } }, additionalProperties: false }), responses: jsonResponse("Thinking level selected", { type: "object" }) } },
+      "/workspaces/{id}/agents/{label}/service-tier": { post: { summary: "Select an agent inference service tier", parameters: [workspaceId, agentLabel], requestBody: jsonBody({ type: "object", required: ["serviceTier"], properties: { serviceTier: { type: "string", enum: ["default", "priority"] } }, additionalProperties: false }), responses: jsonResponse("Service tier selected", { type: "object" }) } },
       "/workspaces/{id}/agents/{label}/abort": { post: { summary: "Abort the active agent turn", parameters: [workspaceId, agentLabel], responses: jsonResponse("Agent aborted", { type: "object" }) } },
     },
     components: {
@@ -84,7 +85,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[]) {
               { type: "object", required: ["type", "project"], properties: { type: { const: "project" }, project: { type: "string" } }, additionalProperties: false },
             ] },
             title: { type: "string" },
-            agent: { type: "object", properties: { initialPrompt: { type: "string" }, model: { type: "string" }, thinkingLevel: { type: "string" }, attachmentDraft: { type: "string" } }, additionalProperties: false },
+            agent: { type: "object", properties: { initialPrompt: { type: "string" }, model: { type: "string" }, thinkingLevel: { type: "string" }, serviceTier: { type: "string", enum: ["default", "priority"] }, attachmentDraft: { type: "string" } }, additionalProperties: false },
           },
           additionalProperties: false,
         },

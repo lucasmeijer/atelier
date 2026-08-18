@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderAgentComposer, renderAgentPane, renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../src/server/render.ts";
+import { renderAgentComposer, renderAgentPane, renderStatsBar, renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../src/server/render.ts";
 import type { ToolView, TranscriptItem } from "../../src/server/transcript.ts";
 
 const ctx: AgentRenderContext = { workspaceId: "ws", label: "agent" };
@@ -17,6 +17,20 @@ describe("flat transcript rendering", () => {
     const html = await renderAgentComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
     expect(html).toContain('data-controller="agent-attachments agent-completions"');
     expect(html).toContain('data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged"');
+  });
+
+  test("active Codex composers render Fast as an icon toggle", () => {
+    const html = renderStatsBar(ctx, { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "GPT", provider: "openai-codex", thinkingLevel: "high", thinkingLevels: ["high"], serviceTier: "priority", models: [] });
+    expect(html).toContain('action="/workspaces/ws/agents/agent/service-tier"');
+    expect(html).toContain('class="agent-fast-toggle active"');
+    expect(html).toContain('name="serviceTier" value="default"');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).not.toContain("⚡ Fast");
+  });
+
+  test("other providers do not render a Fast toggle", () => {
+    const html = renderStatsBar(ctx, { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "Claude", provider: "anthropic", thinkingLevel: "high", thinkingLevels: ["high"], models: [] });
+    expect(html).not.toContain("agent-fast-toggle");
   });
 
   test("user messages retain their original text for prompt history", () => {

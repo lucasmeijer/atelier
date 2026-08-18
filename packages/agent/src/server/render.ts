@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { JsonValue } from "@atelier/core";
-import { composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel, type ModelRef } from "./model-state.ts";
+import { composerServiceTier, composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel, type ModelRef } from "./model-state.ts";
+import type { AgentServiceTier } from "./service-tier.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
 import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded-code.ts";
 import { highlightCodeHtmlForPath, renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdown";
@@ -97,6 +98,7 @@ export interface AgentStatsView {
   provider: string | undefined;
   thinkingLevel: string;
   thinkingLevels: string[];
+  serviceTier?: AgentServiceTier;
   models: AgentModelOption[];
 }
 
@@ -280,12 +282,13 @@ async function renderAgentModelOptions(selectedModel?: string): Promise<string> 
   }).join("");
 }
 
-async function composerSettingsState(selectedModel?: string): Promise<{ selected: ModelRef | undefined; selectedThinkingLevel: string | undefined; thinkingLevels: string[] }> {
+async function composerSettingsState(selectedModel?: string): Promise<{ selected: ModelRef | undefined; selectedThinkingLevel: string | undefined; thinkingLevels: string[]; serviceTier?: AgentServiceTier }> {
   const selected = await selectedComposerModel(selectedModel);
   return {
     selected,
     selectedThinkingLevel: await composerThinkingLevel(selected),
     thinkingLevels: await composerThinkingLevels(selected),
+    serviceTier: await composerServiceTier(selected),
   };
 }
 
@@ -295,8 +298,12 @@ function thinkingSelectHtml(formId: string, thinkingLevels: string[], selectedTh
     : "";
 }
 
+function fastModeTitle(serviceTier: AgentServiceTier): string {
+  return serviceTier === "priority" ? "Fast is on. Switch to Standard for the next model call." : "Switch to Fast for the next model call; uses plan limits faster.";
+}
+
 export async function renderAgentLaunchSettings(options: { frameId: string; formId: string; url: string; selectedModel?: string }): Promise<string> {
-  const { selected, selectedThinkingLevel, thinkingLevels } = await composerSettingsState(options.selectedModel);
+  const { selected, selectedThinkingLevel, thinkingLevels, serviceTier } = await composerSettingsState(options.selectedModel);
   const selectedValue = selected ? modelRefValue(selected) : "";
   return `<turbo-frame id="${escapeHtml(options.frameId)}"><span class="agent-stat-right">
 <form method="get" action="${escapeHtml(options.url)}" data-controller="agent-autosubmit" data-turbo-frame="${escapeHtml(options.frameId)}">
@@ -304,6 +311,7 @@ export async function renderAgentLaunchSettings(options: { frameId: string; form
 </form>
 <input type="hidden" name="model" value="${escapeHtml(selectedValue)}" form="${escapeHtml(options.formId)}">
 ${thinkingSelectHtml(options.formId, thinkingLevels, selectedThinkingLevel)}
+${serviceTier ? `<label class="agent-fast-toggle" title="${fastModeTitle(serviceTier)}"><input type="checkbox" name="serviceTier" value="priority" form="${escapeHtml(options.formId)}" aria-label="Fast mode"${serviceTier === "priority" ? " checked" : ""}><span aria-hidden="true">⚡</span></label>` : ""}
 </span></turbo-frame>`;
 }
 
@@ -350,6 +358,7 @@ export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): 
 <span class="agent-stat-right">
 <form method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-model-menu" name="model" data-action="change->agent-autosubmit#submit" title="Model">${modelOptions || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`}</select></form>
 ${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-select-menu" name="level" data-action="change->agent-autosubmit#submit" title="Thinking level">${thinkingOptions}</select></form>` : ""}
+${stats.serviceTier ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/service-tier"))}"><button class="agent-fast-toggle${stats.serviceTier === "priority" ? " active" : ""}" type="submit" name="serviceTier" value="${stats.serviceTier === "priority" ? "default" : "priority"}" aria-label="Fast mode" aria-pressed="${stats.serviceTier === "priority"}" title="${fastModeTitle(stats.serviceTier)}"><span aria-hidden="true">⚡</span></button></form>` : ""}
 </span>`;
 }
 

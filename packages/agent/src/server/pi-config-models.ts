@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { atelierDataPath, getAtelierRuntimeContext, isJsonObject, type JsonObject } from "@atelier/core";
+import type { AgentServiceTier } from "@atelier/shared";
 import type { AuthInteraction, AuthPrompt } from "@earendil-works/pi-ai";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
@@ -14,11 +15,13 @@ export interface ConfiguredAgentModel {
 }
 
 interface ModelPreference { thinkingLevel?: string }
+interface ProviderPreference { serviceTier?: AgentServiceTier }
 interface AgentModelsSettings {
   providers?: JsonObject;
   picker?: Array<{ provider?: unknown; id?: unknown; label?: unknown }>;
   activeModel?: { provider?: unknown; id?: unknown };
   modelPreferences?: Record<string, ModelPreference>;
+  providerPreferences?: Record<string, ProviderPreference>;
 }
 
 function piConfigDir(): string { return atelierDataPath(getAtelierRuntimeContext(), "pi-config"); }
@@ -40,11 +43,17 @@ async function getAgentModelsSettings(path = piModelsJsonPath()): Promise<AgentM
         ? [[key, { thinkingLevel: typeof preference.thinkingLevel === "string" ? preference.thinkingLevel : undefined }]]
         : []))
       : undefined;
+    const providerPreferences = isJsonObject(parsed.providerPreferences)
+      ? Object.fromEntries(Object.entries(parsed.providerPreferences).flatMap(([key, preference]) => isJsonObject(preference)
+        ? [[key, { serviceTier: preference.serviceTier === "priority" ? "priority" : "default" } satisfies ProviderPreference]]
+        : []))
+      : undefined;
     return {
       providers: isJsonObject(parsed.providers) ? parsed.providers : undefined,
       picker,
       activeModel,
       modelPreferences,
+      providerPreferences,
     };
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return { providers: {} };
@@ -109,6 +118,18 @@ export async function setModelThinkingLevel(provider: string, id: string, thinki
   const config = await getAgentModelsSettings();
   config.modelPreferences = { ...(config.modelPreferences ?? {}) };
   config.modelPreferences[modelSettingsKey(provider, id)] = { ...(config.modelPreferences[modelSettingsKey(provider, id)] ?? {}), thinkingLevel };
+  await setAgentModelsSettings(config);
+}
+
+export async function getLastProviderServiceTier(provider: string): Promise<AgentServiceTier | undefined> {
+  return (await getAgentModelsSettings()).providerPreferences?.[provider]?.serviceTier;
+}
+
+export async function setLastProviderServiceTier(provider: string, serviceTier: AgentServiceTier): Promise<void> {
+  const config = await getAgentModelsSettings();
+  if (config.providerPreferences?.[provider]?.serviceTier === serviceTier) return;
+  config.providerPreferences = { ...(config.providerPreferences ?? {}) };
+  config.providerPreferences[provider] = { ...(config.providerPreferences[provider] ?? {}), serviceTier };
   await setAgentModelsSettings(config);
 }
 

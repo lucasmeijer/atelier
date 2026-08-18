@@ -633,7 +633,7 @@ describe("web app contracts", () => {
       })));
 
       expect(response.status).toBe(200);
-      expect(captured?.context).toEqual({ agent: { initialPrompt: "", model: "openai-codex::gpt-5.6-sol", thinkingLevel: "medium", attachmentDraft: "" } });
+      expect(captured?.context).toEqual({ agent: { initialPrompt: "", model: "openai-codex::gpt-5.6-sol", thinkingLevel: "medium", serviceTier: "default", attachmentDraft: "" } });
       expect(await response.text()).toContain('action="update" target="agent_launch_modal"');
     });
   });

@@ -37,7 +37,7 @@ created=$(curl -sS -X POST http://localhost:3000/workspaces \
 id=$(jq -r '.workspace.id' <<<"$created")
 ```
 
-`source` may be `{ "type": "empty" }` or `{ "type": "project", "project": "name-or-id" }`. Optional `agent` fields are `initialPrompt`, `model`, `thinkingLevel`, and `attachmentDraft`.
+`source` may be `{ "type": "empty" }` or `{ "type": "project", "project": "name-or-id" }`. Optional `agent` fields are `initialPrompt`, `model`, `thinkingLevel`, `serviceTier`, and `attachmentDraft`.
 
 Poll the same UI URL with JSON content negotiation:
 
@@ -90,6 +90,7 @@ Rename with `POST /workspaces/:id/sidebar-title` and `{ "title": "..." }`. Park,
 
 - `POST /workspaces/:id/agents/:label/model` with `{ "model": "provider::model" }`
 - `POST /workspaces/:id/agents/:label/thinking` with `{ "level": "medium" }`
+- `POST /workspaces/:id/agents/:label/service-tier` with `{ "serviceTier": "default" | "priority" }`
 - `POST /workspaces/:id/agents/:label/messages` with `{ "text": "...", "mode": "send" }`
 - `POST /workspaces/:id/agents/:label/abort`
 

@@ -35,6 +35,7 @@ import { renderAgentSessionTree, updateAgentSessionTreeLabel, type TreeFilterMod
 import { loadWorkspaceSkills } from "./skills.ts";
 import { atelierSystemPrompt, createAtelierResourceLoader } from "./system-prompt.ts";
 import { collectCacheMisses, detectCacheMiss, significantCacheMissNotice, type CacheMiss } from "./cache-miss.ts";
+import { AgentServiceTierState, modelRuntimeWithServiceTiers, supportsFastMode, type AgentServiceTier } from "./service-tier.ts";
 import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
 import {
   buildTranscript,
@@ -52,7 +53,7 @@ import {
 
 type AgentSubscriber = (streamHtml: string, cursor: string) => void;
 type WorkspaceTabBusyListener = (event: { workspaceId: string; tabKey: string; busy: boolean }) => void;
-type InitialSessionSettings = Pick<NonNullable<Parameters<typeof createAgentSession>[0]>, "model" | "thinkingLevel">;
+type InitialSessionSettings = Pick<NonNullable<Parameters<typeof createAgentSession>[0]>, "model" | "thinkingLevel"> & { serviceTier?: AgentServiceTier };
 
 const workspaceTabBusyListeners = new Set<WorkspaceTabBusyListener>();
 
@@ -91,6 +92,7 @@ interface WorkspaceAgentRuntime {
   availableThinkingLevels(): string[];
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: string): Promise<void>;
+  setServiceTier(serviceTier: AgentServiceTier): Promise<void>;
   rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void>;
   treeHtml(options: { filter: TreeFilterMode; query: string }): string;
   labelTreeEntry(entryId: string, label: string, operation: "add" | "remove"): void;
@@ -571,6 +573,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   abstract availableThinkingLevels(): string[];
   abstract setModel(provider: string, modelId: string): Promise<void>;
   abstract setThinkingLevel(level: string): Promise<void>;
+  abstract setServiceTier(serviceTier: AgentServiceTier): Promise<void>;
   abstract rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void>;
   abstract treeHtml(options: { filter: TreeFilterMode; query: string }): string;
   abstract labelTreeEntry(entryId: string, label: string, operation: "add" | "remove"): void;
@@ -704,7 +707,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
   private summarizing = false;
   private unsubscribeSession?: () => void;
 
-  constructor(agent: WorkspaceAgentInfo, private session: any, private toolsForModel: AgentToolDefinitionView[], options: WorkspaceAgentRuntimeOptions = {}) {
+  constructor(agent: WorkspaceAgentInfo, private session: any, private toolsForModel: AgentToolDefinitionView[], private serviceTiers: AgentServiceTierState, options: WorkspaceAgentRuntimeOptions = {}) {
     super(agent, options);
     this.ctx.model = this.currentModel();
     this.subscribeToSession();
@@ -750,6 +753,11 @@ class RealAgentRuntime extends BaseAgentRuntime {
     return this.session.supportsThinking?.() ? this.session.getAvailableThinkingLevels() : [];
   }
 
+  private async currentServiceTier(): Promise<AgentServiceTier | undefined> {
+    const provider = this.currentModel()?.provider;
+    return provider && supportsFastMode(provider) ? await this.serviceTiers.get(provider) : undefined;
+  }
+
   userMessages(): string[] {
     return recordsFromSessionEntries(this.session.sessionManager.getBranch())
       .filter((record) => record.kind === "user")
@@ -789,6 +797,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       provider: model?.provider,
       thinkingLevel: this.currentThinkingLevel(),
       thinkingLevels: this.availableThinkingLevels(),
+      serviceTier: await this.currentServiceTier(),
       models,
     };
   }
@@ -968,15 +977,24 @@ class RealAgentRuntime extends BaseAgentRuntime {
     await this.refreshStats();
   }
 
+  async setServiceTier(serviceTier: AgentServiceTier): Promise<void> {
+    const provider = this.currentModel()?.provider;
+    if (!provider || !supportsFastMode(provider)) return;
+    await this.serviceTiers.set(provider, serviceTier);
+    await this.refreshStats();
+  }
+
   async newSession(): Promise<void> {
     if (this.isStreaming) throw new Error("Stop the agent before starting a new session.");
     const model = this.session.model;
     const thinkingLevel = this.session.thinkingLevel;
+    const serviceTier = await this.currentServiceTier();
     const agent = await replaceWorkspaceAgentSession({ workspaceId: this.workspaceId, label: this.label, path: this.sessionFile });
-    const created = await createPiSession(agent, this.options, { model, thinkingLevel });
+    const created = await createPiSession(agent, this.options, { model, thinkingLevel, serviceTier });
     this.unsubscribeSession?.();
     this.session = created.session;
     this.toolsForModel = created.toolViews;
+    this.serviceTiers = created.serviceTiers;
     this.sessionFile = agent.path;
     this.subscribeToSession();
     this.stream((await this.snapshotStream()).html);
@@ -1001,6 +1019,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
         summarize: options.summarize,
         customInstructions: options.customInstructions?.trim() || undefined,
       });
+      this.serviceTiers.reload();
       await this.refreshTranscript();
       await this.refreshStats();
       return result.editorText ?? "";
@@ -1037,6 +1056,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       return;
     }
     await this.session.navigateTree(target, { summarize: false });
+    this.serviceTiers.reload();
     await this.refreshTranscript();
     await this.refreshStats();
   }
@@ -1065,7 +1085,7 @@ export async function discardBootstrapOnlySession(path: string): Promise<void> {
   if (entries.every((entry) => bootstrapOnlySessionEntryTypes.has(entry.type))) await writeFile(path, "");
 }
 
-async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions, initial: InitialSessionSettings = {}): Promise<{ session: any; toolViews: AgentToolDefinitionView[] }> {
+async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions, initial: InitialSessionSettings = {}): Promise<{ session: any; toolViews: AgentToolDefinitionView[]; serviceTiers: AgentServiceTierState }> {
   await ensureSessionFile(agent.path);
   await discardBootstrapOnlySession(agent.path);
   const [modelRuntime, defaultModel] = await Promise.all([
@@ -1089,11 +1109,12 @@ async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgen
     sessionSettings = { compaction: { enabled: true, keepRecentTokens: compactionKeepRecentTokens } };
   }
   const sessionManager = SessionManager.open(agent.path, dirname(agent.path), workspaceRoot);
+  const serviceTiers = new AgentServiceTierState(sessionManager);
   const customTools = createWorkspaceAgentTools(agent.workspaceId, { events: options.events });
   const { session } = await createAgentSession({
     cwd: workspaceRoot,
     agentDir: dirname(agent.path),
-    modelRuntime,
+    modelRuntime: modelRuntimeWithServiceTiers(modelRuntime, serviceTiers),
     model: initial.model,
     thinkingLevel: initial.thinkingLevel,
     resourceLoader: createAtelierResourceLoader(agentsFiles, appendSystemPrompt, skillResources),
@@ -1102,15 +1123,18 @@ async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgen
     sessionManager,
     settingsManager: SettingsManager.inMemory(sessionSettings),
   });
+  const provider = session.model?.provider;
+  if (provider && initial.serviceTier && supportsFastMode(provider)) await serviceTiers.set(provider, initial.serviceTier);
   return {
     session,
+    serviceTiers,
     toolViews: customTools.map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters })),
   };
 }
 
 async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
   const created = await createPiSession(agent, options);
-  return new RealAgentRuntime(agent, created.session, created.toolViews, options);
+  return new RealAgentRuntime(agent, created.session, created.toolViews, created.serviceTiers, options);
 }
 
 async function ensureSessionFile(path: string): Promise<void> {

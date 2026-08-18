@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { AtelierCoreError, readJsonObject, requestAcceptsJson, type AtelierEventBus } from "@atelier/core";
+import type { AgentWorkspaceParameters } from "@atelier/shared";
 import { getModelThinkingLevel, setModelThinkingLevel } from "./pi-config-models.ts";
 import { parseModelRef } from "./model-state.ts";
 import { setWorkspaceTitle, workspaceContainerName, workspacePreviewPortUrl } from "@atelier/workspace";
@@ -23,37 +24,34 @@ import { getWorkspaceAgentRuntime, type SubmitMode } from "./runtime.ts";
 import { handleAgentTreeRequest } from "./session-tree.ts";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
 import { maybeNameWorkspaceFromAgentPrompt, renameWorkspaceFromAgentContext } from "./workspace-title-suggestion.ts";
+import { parseAgentServiceTier } from "./service-tier.ts";
 
 interface AgentRouteOptions {
   events?: AtelierEventBus;
-}
-
-interface AgentWorkspaceCreationContext {
-  initialPrompt?: string;
-  model?: string;
-  thinkingLevel?: string;
-  attachmentDraft?: string;
 }
 
 interface AgentWorkspaceCreationInput {
   initialPrompt?: unknown;
   model?: unknown;
   thinkingLevel?: unknown;
+  serviceTier?: unknown;
   attachmentDraft?: unknown;
 }
 
-function parseAgentWorkspaceCreationContext(value: unknown): AgentWorkspaceCreationContext | undefined {
+function parseAgentWorkspaceCreationContext(value: unknown): AgentWorkspaceParameters | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   // SAFETY: AgentWorkspaceCreationInput only names optional properties with unknown values.
   const record = value as AgentWorkspaceCreationInput;
   const initialPrompt = typeof record.initialPrompt === "string" ? record.initialPrompt : undefined;
   const model = typeof record.model === "string" ? record.model : undefined;
   const thinkingLevel = typeof record.thinkingLevel === "string" ? record.thinkingLevel : undefined;
-  if (!initialPrompt?.trim() && !model && !thinkingLevel) return undefined;
+  const serviceTier = typeof record.serviceTier === "string" ? parseAgentServiceTier(record.serviceTier) : undefined;
+  if (!initialPrompt?.trim() && !model && !thinkingLevel && !serviceTier) return undefined;
   return {
     initialPrompt,
     model,
     thinkingLevel,
+    serviceTier,
     attachmentDraft: typeof record.attachmentDraft === "string" ? record.attachmentDraft : undefined,
   };
 }
@@ -167,6 +165,14 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
     await runtime.setModel(model.provider, model.id);
     return json ? Response.json({ agent: { label: params[1], model: `${model.provider}::${model.id}` } }) : turboStreamResponse("");
   }
+  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/service-tier$/)) && request.method === "POST") {
+    const json = requestAcceptsJson(request);
+    const value = json ? (await readJsonObject(request)).serviceTier : (await request.formData()).get("serviceTier");
+    const serviceTier = parseAgentServiceTier(value);
+    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
+    await runtime.setServiceTier(serviceTier);
+    return json ? Response.json({ agent: { label: params[1], serviceTier } }) : turboStreamResponse("");
+  }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/thinking$/)) && request.method === "POST") {
     const json = requestAcceptsJson(request);
     const value = json ? (await readJsonObject(request)).level : (await request.formData()).get("level");
@@ -264,13 +270,14 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
   return json ? Response.json({ agent: { label, state: "running" } }, { status: 202 }) : turboStreamResponse("");
 }
 
-async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorkspaceCreationContext, options: AgentRouteOptions): Promise<void> {
+async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorkspaceParameters, options: AgentRouteOptions): Promise<void> {
   const agent = await ensureDefaultWorkspaceAgent(workspaceId);
   const runtime = await getWorkspaceAgentRuntime(agent, options);
   const modelRef = context.model ? parseModelRef(context.model) : undefined;
   if (modelRef) await runtime.setModel(modelRef.provider, modelRef.id);
   const thinkingLevel = context.thinkingLevel || (modelRef ? await getModelThinkingLevel(modelRef.provider, modelRef.id) : undefined);
   if (thinkingLevel) await runtime.setThinkingLevel(thinkingLevel);
+  if (context.serviceTier) await runtime.setServiceTier(context.serviceTier);
 
   const prompt = await expandPromptTemplate(workspaceId, context.initialPrompt ?? "");
   const draftId = context.attachmentDraft ?? "";

@@ -1,5 +1,6 @@
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
-import { createPiModelRuntime, getConfiguredAgentModels, getModelThinkingLevel, setActiveAgentModel, type ConfiguredAgentModel } from "./pi-config-models.ts";
+import { createPiModelRuntime, getConfiguredAgentModels, getLastProviderServiceTier, getModelThinkingLevel, setActiveAgentModel, type ConfiguredAgentModel } from "./pi-config-models.ts";
+import { supportsFastMode, type AgentServiceTier } from "./service-tier.ts";
 
 export interface ModelRef {
   provider: string;
@@ -72,4 +73,10 @@ export async function composerThinkingLevels(model: ModelRef | undefined): Promi
   const runtime = await createPiModelRuntime();
   const piModel = runtime.getModel(model.provider, model.id);
   return piModel ? getSupportedThinkingLevels(piModel) : [];
+}
+
+export async function composerServiceTier(model: ModelRef | undefined): Promise<AgentServiceTier | undefined> {
+  return model && supportsFastMode(model.provider)
+    ? await getLastProviderServiceTier(model.provider) ?? "default"
+    : undefined;
 }

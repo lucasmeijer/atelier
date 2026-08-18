@@ -233,10 +233,13 @@ export interface DeleteCurrentWorkspaceResult {
   details?: unknown;
 }
 
+export type AgentServiceTier = "default" | "priority";
+
 export interface AgentWorkspaceParameters {
   initialPrompt?: string;
   model?: string;
   thinkingLevel?: string;
+  serviceTier?: AgentServiceTier;
   attachmentDraft?: string;
 }
 

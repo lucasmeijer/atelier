@@ -975,9 +975,10 @@ ${moduleStylesHtml()}
     const initialPrompt = agent?.initialPrompt?.trim() ?? "";
     const model = agent?.model ?? "";
     const thinkingLevel = agent?.thinkingLevel ?? "";
+    const serviceTier = agent?.serviceTier ?? "";
     const attachmentDraft = agent?.attachmentDraft ?? "";
-    if (!initialPrompt && !model && !thinkingLevel && !attachmentDraft) return undefined;
-    return { initialPrompt, model, thinkingLevel, attachmentDraft };
+    if (!initialPrompt && !model && !thinkingLevel && !serviceTier && !attachmentDraft) return undefined;
+    return { initialPrompt, model, thinkingLevel, serviceTier: serviceTier || undefined, attachmentDraft };
   }
 
   function creationContext(source: WorkspaceCreateSource, agent: AgentWorkspaceParameters | undefined): WorkspaceCreationContext | undefined {
@@ -1022,6 +1023,7 @@ ${moduleStylesHtml()}
         source = { type: "project", project: await projectByReference(projectReference) };
       }
       const agent = body.agent;
+      const serviceTier = stringField(agent?.serviceTier, "agent.serviceTier");
       const { id } = createWorkspaceFromCommand({
         source,
         title: stringField(body.title, "title"),
@@ -1029,6 +1031,7 @@ ${moduleStylesHtml()}
           initialPrompt: stringField(agent?.initialPrompt, "agent.initialPrompt") ?? "",
           model: stringField(agent?.model, "agent.model") ?? "",
           thinkingLevel: stringField(agent?.thinkingLevel, "agent.thinkingLevel") ?? "",
+          serviceTier: serviceTier ? (serviceTier === "priority" ? "priority" : "default") : undefined,
           attachmentDraft: stringField(agent?.attachmentDraft, "agent.attachmentDraft") ?? "",
         },
       });
@@ -1046,6 +1049,7 @@ ${moduleStylesHtml()}
     const form = await request.formData();
     const model = String(form.get("model") ?? "");
     const thinkingLevel = String(form.get("level") ?? "");
+    const serviceTier = form.get("serviceTier") === "priority" ? "priority" : "default";
     await rememberNewWorkspaceAgentSettings(model, thinkingLevel);
     createWorkspaceFromCommand({
       source: options.project ? { type: "project", project: options.project } : { type: "empty" },
@@ -1053,6 +1057,7 @@ ${moduleStylesHtml()}
         initialPrompt: String(form.get("text") ?? ""),
         model,
         thinkingLevel,
+        serviceTier,
         attachmentDraft: String(form.get("attachmentDraft") ?? ""),
       },
     });
@@ -1067,7 +1072,7 @@ ${moduleStylesHtml()}
   type WorkspaceCreateJsonBody = {
     source?: { type?: unknown; project?: unknown };
     title?: unknown;
-    agent?: { initialPrompt?: unknown; model?: unknown; thinkingLevel?: unknown; attachmentDraft?: unknown };
+    agent?: { initialPrompt?: unknown; model?: unknown; thinkingLevel?: unknown; serviceTier?: unknown; attachmentDraft?: unknown };
   };
 
   async function readWorkspaceCreateJson(request: Request): Promise<WorkspaceCreateJsonBody> {
