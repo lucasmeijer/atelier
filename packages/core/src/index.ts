@@ -22,6 +22,8 @@ export {
 } from "./errors.ts";
 
 export {
+  isJsonObject,
+  isJsonValue,
   readJsonObject,
   requestAcceptsJson,
   type JsonObject,

@@ -1,7 +1,7 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
-import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, gitHubCredentialHelperShellBody, invalidArguments, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput } from "@atelier/core";
+import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, gitHubCredentialHelperShellBody, invalidArguments, isJsonObject, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput, type JsonObject } from "@atelier/core";
 import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
 import type { WorkspaceServerProvisioningHook } from "@atelier/shared";
 import { dockerImageId, ensureDefaultWorkspaceImage, nativeLinuxDockerPlatform, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
@@ -181,18 +181,18 @@ export interface RepoWorkspaceManifest {
   };
 }
 
-function optionalString(record: Record<string, unknown>, key: string, path: string, label = key): string | undefined {
+function optionalString(record: JsonObject, key: string, path: string, label = key): string | undefined {
   const value = record[key];
   if (value === undefined) return undefined;
   if (typeof value !== "string" || !value.trim()) throw invalidArguments(`invalid ${path}: ${label} must be a non-empty string`);
   return value;
 }
 
-function optionalRecord(record: Record<string, unknown>, key: string, path: string): Record<string, unknown> | undefined {
+function optionalRecord(record: JsonObject, key: string, path: string): JsonObject | undefined {
   const value = record[key];
   if (value === undefined) return undefined;
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw invalidArguments(`invalid ${path}: ${key} must be an object`);
-  return value as Record<string, unknown>;
+  if (!isJsonObject(value)) throw invalidArguments(`invalid ${path}: ${key} must be an object`);
+  return value;
 }
 
 export function parseRepoWorkspaceManifest(text: string, path = workspaceManifestPath): RepoWorkspaceManifest {
@@ -202,20 +202,22 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
   } catch (error) {
     throw invalidArguments(`invalid ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw invalidArguments(`invalid ${path}: expected object`);
-  const record = parsed as Record<string, unknown>;
+  if (!isJsonObject(parsed)) throw invalidArguments(`invalid ${path}: expected object`);
+  const record = parsed;
   if (record.version !== 1) throw invalidArguments(`invalid ${path}: unsupported version`);
   if (record.privileged !== undefined) throw invalidArguments(`invalid ${path}: privileged is no longer supported; use docker.privileged`);
   if (record.isAtelier !== undefined) throw invalidArguments(`invalid ${path}: isAtelier is no longer supported; use docker.preloadImages`);
   const dockerRecord = optionalRecord(record, "docker", path);
   if (dockerRecord?.privileged !== undefined && typeof dockerRecord.privileged !== "boolean") throw invalidArguments(`invalid ${path}: docker.privileged must be a boolean`);
   const preloadImagesValue = dockerRecord?.preloadImages;
-  if (preloadImagesValue !== undefined && !Array.isArray(preloadImagesValue)) throw invalidArguments(`invalid ${path}: docker.preloadImages must be an array of non-empty strings`);
-  if (Array.isArray(preloadImagesValue) && !preloadImagesValue.every((spec) => typeof spec === "string" && spec.trim())) throw invalidArguments(`invalid ${path}: docker.preloadImages must be an array of non-empty strings`);
-  if (Array.isArray(preloadImagesValue) && preloadImagesValue.length > 0 && dockerRecord?.privileged !== true) throw invalidArguments(`invalid ${path}: docker.preloadImages requires docker.privileged to be true`);
+  if (preloadImagesValue !== undefined && (!Array.isArray(preloadImagesValue) || !preloadImagesValue.every((spec): spec is string => typeof spec === "string" && Boolean(spec.trim())))) {
+    throw invalidArguments(`invalid ${path}: docker.preloadImages must be an array of non-empty strings`);
+  }
+  const preloadImages = preloadImagesValue?.map((spec) => spec.trim());
+  if (preloadImages && preloadImages.length > 0 && dockerRecord?.privileged !== true) throw invalidArguments(`invalid ${path}: docker.preloadImages requires docker.privileged to be true`);
   const docker: RepoWorkspaceManifest["docker"] | undefined = dockerRecord ? {} : undefined;
   if (docker && dockerRecord?.privileged !== undefined) docker.privileged = dockerRecord.privileged;
-  if (docker && Array.isArray(preloadImagesValue)) docker.preloadImages = preloadImagesValue.map((spec) => spec.trim());
+  if (docker && preloadImages) docker.preloadImages = preloadImages;
   const initScripts = record.initScripts;
   if (initScripts !== undefined && (!Array.isArray(initScripts) || !initScripts.every((script) => typeof script === "string"))) throw invalidArguments(`invalid ${path}: initScripts must be an array of strings`);
   const seedPiConfigRecord = optionalRecord(record, "seedPiConfig", path);

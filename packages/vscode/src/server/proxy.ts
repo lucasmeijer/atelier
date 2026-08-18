@@ -1,3 +1,4 @@
+import { isJsonObject } from "@atelier/core";
 import { workspacePortUrl, workspaceVSCodePort } from "@atelier/workspace";
 import type { WorkspaceAppHost } from "@atelier/proxy-ingress/server";
 import { ensureWorkspaceVSCodeServer } from "./workspace-vscode.ts";
@@ -149,10 +150,12 @@ export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, res
   const configPattern = /(<meta id="vscode-workbench-web-configuration" data-settings=")([^"]+)(">)/;
   if (!configPattern.test(text)) return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
   const themed = text.replace(configPattern, (_match, prefix, rawSettings, suffix) => {
-    const settings = JSON.parse(unescapeHtmlAttribute(rawSettings)) as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(unescapeHtmlAttribute(rawSettings));
+    if (!isJsonObject(parsed)) throw new Error("VS Code workbench configuration is not a JSON object");
+    const settings = parsed;
     settings.enableWorkspaceTrust = false;
     settings.configurationDefaults = {
-      ...(settings.configurationDefaults as Record<string, unknown> | undefined),
+      ...(isJsonObject(settings.configurationDefaults) ? settings.configurationDefaults : {}),
       "security.workspace.trust.enabled": false,
       "security.workspace.trust.startupPrompt": "never",
       "security.workspace.trust.banner": "never",

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { request as httpRequest } from "node:http";
-import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext } from "@atelier/core";
+import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext, isJsonObject, type JsonObject } from "@atelier/core";
 import { defaultPublicProxyPortRange, type PublicProxyPortRange } from "./route-state.ts";
 
 export const defaultTailscaleLocalApiSocketPath = "/var/run/tailscale/tailscaled.sock";
@@ -19,11 +19,7 @@ export interface TailscaleServePortExposerOptions {
   targetHost?: string;
 }
 
-export interface TailscaleServeConfig {
-  TCP?: Record<string, unknown>;
-  Web?: Record<string, unknown>;
-  [key: string]: unknown;
-}
+export type TailscaleServeConfig = JsonObject;
 
 type ServeConfigMutator = (config: TailscaleServeConfig) => boolean;
 
@@ -157,8 +153,8 @@ export async function mutateTailscaleServeConfig(socketPath: string, mutator: Se
 
 async function readTailscaleServeConfig(socketPath: string): Promise<TailscaleServeConfig> {
   const body = await tailscaleLocalApiRequest(socketPath, "GET", "/localapi/v0/serve-config");
-  const parsed = JSON.parse(body || "{}") as TailscaleServeConfig;
-  if (!isObject(parsed)) throw new Error("Tailscale Serve config response is not an object");
+  const parsed: unknown = JSON.parse(body || "{}");
+  if (!isJsonObject(parsed)) throw new Error("Tailscale Serve config response is not an object");
   return parsed;
 }
 
@@ -198,11 +194,11 @@ function ensureWebProxyHandler(config: TailscaleServeConfig, host: string, port:
   const currentEntry = web[key];
   if (currentEntry !== undefined && !isObject(currentEntry)) throw new Error(`Tailscale Serve web route ${key} is already configured for another service`);
 
-  const entry = currentEntry ?? {};
+  const entry: JsonObject = currentEntry ?? {};
   const currentHandlers = entry.Handlers;
   if (currentHandlers !== undefined && !isObject(currentHandlers)) throw new Error(`Tailscale Serve web route ${key} handlers are not an object`);
 
-  const handlers = currentHandlers ?? {};
+  const handlers: JsonObject = currentHandlers ?? {};
   const target = proxyTarget(port, targetHost);
   const root = handlers["/"];
   if (root !== undefined && !isProxyHandler(root, target)) throw new Error(`Tailscale Serve web route ${key}/ is already configured for another service`);
@@ -261,10 +257,10 @@ function isProxyHandler(value: unknown, target: string): boolean {
   return isObject(value) && value.Proxy === target;
 }
 
-function ensureRecord(config: TailscaleServeConfig, key: "TCP" | "Web"): Record<string, unknown> {
+function ensureRecord(config: TailscaleServeConfig, key: "TCP" | "Web"): JsonObject {
   const value = config[key];
   if (value === undefined) {
-    const record: Record<string, unknown> = {};
+    const record: JsonObject = {};
     config[key] = record;
     return record;
   }
@@ -298,6 +294,4 @@ function proxyTarget(port: number, targetHost: string): string {
   return `http://${targetHost}:${port}/`;
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const isObject = isJsonObject;

@@ -10,6 +10,18 @@ export interface JsonObject {
   [key: string]: JsonValue;
 }
 
+export function isJsonValue(value: unknown): value is JsonValue {
+  return value === null
+    || typeof value === "boolean"
+    || (typeof value === "number" && Number.isFinite(value))
+    || typeof value === "string"
+    || (Array.isArray(value) ? value.every(isJsonValue) : isJsonObject(value));
+}
+
+export function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.values(value).every(isJsonValue);
+}
+
 export async function readJsonObject(request: Request): Promise<JsonObject> {
   let value: unknown;
   try {
@@ -17,7 +29,6 @@ export async function readJsonObject(request: Request): Promise<JsonObject> {
   } catch {
     throw invalidArguments("valid JSON object body is required");
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw invalidArguments("JSON object body is required");
-  // SAFETY: Request.json() only produces JSON values, and the checks above establish the object variant.
-  return value as JsonObject;
+  if (!isJsonObject(value)) throw invalidArguments("JSON object body is required");
+  return value;
 }

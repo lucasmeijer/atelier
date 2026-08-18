@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { requireDocker, runDocker, shellQuote } from "@atelier/core";
+import { isJsonObject, requireDocker, runDocker, shellQuote } from "@atelier/core";
 import { pruneSupersededWorkspaceImages, workspaceImageKindLabel } from "./prune.ts";
 
 export const workspaceCarrierFormatVersion = 1;
@@ -118,7 +118,8 @@ echo "nested Docker daemon did not stop" >&2; exit 1`);
 
 async function assertCarrierBase(baseImage: string, preload: ResolvedDockerImagePreload, platform: string): Promise<void> {
   const volumes = await requireDocker(["image", "inspect", "--format", "{{json .Config.Volumes}}", baseImage]);
-  const parsed = JSON.parse(volumes.stdout.trim() || "null") as Record<string, unknown> | null;
+  const parsed: unknown = JSON.parse(volumes.stdout.trim() || "null");
+  if (parsed !== null && !isJsonObject(parsed)) throw new Error(`${baseImage} returned an invalid volume declaration`);
   if (parsed?.["/var/lib/docker"]) throw new Error(`${baseImage} declares /var/lib/docker as a volume`);
   if (await dockerPlatform(baseImage) !== platform) throw new Error(`workspace image platform does not match ${platform}`);
   for (const image of preload.images) if (await dockerPlatform(image.sourceRef) !== platform) throw new Error(`${image.sourceRef} platform does not match ${platform}`);
