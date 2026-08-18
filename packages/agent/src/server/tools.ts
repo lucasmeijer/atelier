@@ -1,6 +1,6 @@
 import { dirname, posix } from "node:path";
 import { shellQuote, type AtelierEventBus } from "@atelier/core";
-import type { AgentWorkspaceCreateRequest, AgentWorkspaceCreateResult, AgentWorkspaceForkRequest, DeleteCurrentWorkspaceResult, WorkspaceLayoutPlacementController } from "@atelier/shared";
+import type { AgentWorkspaceCreateRequest, AgentWorkspaceCreateResult, AgentWorkspaceForkRequest, DeleteCurrentWorkspaceResult, WorkspaceWorkViewReference } from "@atelier/shared";
 import { execWorkspaceCommand, execWorkspaceCommandBuffer, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import {
   createEditToolDefinition,
@@ -72,8 +72,7 @@ interface WorkspaceAgentToolOptions {
 
 export interface WorkspacePresenterDeps {
   events?: AtelierEventBus;
-  getTabKeys(): Promise<string[]>;
-  layouts: WorkspaceLayoutPlacementController;
+  presentWorkView(reference: WorkspaceWorkViewReference): Promise<void>;
 }
 
 type WorkspaceAgentToolFactory = (workspaceId: string, options: WorkspaceAgentToolOptions) => ToolDefinition<any, any>;

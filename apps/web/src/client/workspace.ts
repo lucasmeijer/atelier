@@ -1,8 +1,6 @@
 /// <reference lib="dom" />
 
 import { Application as StimulusApplication, Controller as StimulusController } from "@hotwired/stimulus";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
 // Turbo does not publish TypeScript declarations, but Bun resolves and bundles its browser module.
 // @ts-expect-error No declaration file is included in @hotwired/turbo.
 import * as Turbo from "@hotwired/turbo";
@@ -13,11 +11,10 @@ import {
   escapeHtml,
   looksLikeProjectSpec,
   isWorkspacePaneVisible,
-  parseSerializedWorkspaceCommands,
   providerBrandIconHtml,
   workspaceProxyUrl,
   type AtelierCableClient,
-  type WorkspaceClientTabVisibilityContext,
+  type WorkspaceClientSurfaceVisibilityContext,
   type WorkspaceClientFocusContext,
   type WorkspaceClientHooks,
   type WorkspaceClientControllerConstructor,
@@ -25,23 +22,13 @@ import {
   type WorkspacePaletteItem,
   type WorkspacePaletteProvider,
   type WorkspacePaletteSearchContext,
-  type SerializedWorkspaceCommand,
 } from "@atelier/shared";
 import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
 import { createAtelierCableClient } from "./cable.ts";
-
-type TurboSubmitEndEvent = CustomEvent<{ success?: boolean }>;
-type TurboBeforeStreamRenderEvent = CustomEvent<{
-  render(element: Element): void | Promise<void>;
-}>;
-const devReloadResponseSchema = Type.Object({ revision: Type.Number() });
+import { createWorkspacePresentationController, installWorkspacePresentationTurboStream } from "./workspace-presentation.ts";
 
 declare global {
-  interface DocumentEventMap {
-    "turbo:before-stream-render": TurboBeforeStreamRenderEvent;
-  }
-
   interface Window {
     Stimulus: {
       Application: { start(): { start(): Promise<void>; stop(): void; register(identifier: string, controllerConstructor: WorkspaceClientControllerConstructor): void; getControllerForElementAndIdentifier(element: Element, identifier: string): { element: Element } | null } };
@@ -53,37 +40,35 @@ declare global {
 }
 
 window.Stimulus = {
-  // SAFETY: The directly imported Stimulus Application implements this narrower
-  // Atelier facade; shared module types intentionally erase Stimulus internals.
   Application: StimulusApplication as typeof window.Stimulus.Application,
-  Controller: StimulusController,
+  Controller: StimulusController as typeof window.Stimulus.Controller,
 };
 window.Turbo = Turbo;
 
 const { Application, Controller } = window.Stimulus;
 
 class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
-  private readonly becomeVisibleHandlers: Array<(context: WorkspaceClientTabVisibilityContext) => void> = [];
-  private readonly noLongerVisibleHandlers: Array<(context: WorkspaceClientTabVisibilityContext) => void> = [];
+  private readonly becomeVisibleHandlers: Array<(context: WorkspaceClientSurfaceVisibilityContext) => void> = [];
+  private readonly noLongerVisibleHandlers: Array<(context: WorkspaceClientSurfaceVisibilityContext) => void> = [];
   private readonly focusGroupHandlers: Array<(context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>> = [];
   private readonly workspaceCommandHandlers: Array<(commandId: string) => boolean | void | Promise<boolean | void>> = [];
   private readonly workspaceAppFrameUrlHandlers: Array<(context: WorkspaceClientWorkspaceAppFrameContext) => void> = [];
   private readonly workspaceAppFrameRefreshHandlers: Array<(context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void> = [];
   private readonly paletteProviders = new Map<string, WorkspacePaletteProvider>();
 
-  onBecomeVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void { this.becomeVisibleHandlers.push(handler); }
-  onNoLongerVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void { this.noLongerVisibleHandlers.push(handler); }
+  onBecomeVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void { this.becomeVisibleHandlers.push(handler); }
+  onNoLongerVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void { this.noLongerVisibleHandlers.push(handler); }
   onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void { this.focusGroupHandlers.push(handler); }
   onWorkspaceCommand(handler: (commandId: string) => boolean | void | Promise<boolean | void>): void { this.workspaceCommandHandlers.push(handler); }
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void { this.workspaceAppFrameUrlHandlers.push(handler); }
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void { this.workspaceAppFrameRefreshHandlers.push(handler); }
   registerPaletteProvider(provider: WorkspacePaletteProvider): void { this.paletteProviders.set(provider.id, provider); }
 
-  becomeVisible(context: WorkspaceClientTabVisibilityContext): void {
+  becomeVisible(context: WorkspaceClientSurfaceVisibilityContext): void {
     this.becomeVisibleHandlers.forEach((handler) => handler(context));
   }
 
-  noLongerVisible(context: WorkspaceClientTabVisibilityContext): void {
+  noLongerVisible(context: WorkspaceClientSurfaceVisibilityContext): void {
     this.noLongerVisibleHandlers.forEach((handler) => handler(context));
   }
 
@@ -129,7 +114,6 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
 type PaletteResult = WorkspacePaletteItem & { provider: WorkspacePaletteProvider; score: number };
 
 const clientHooks = new WorkspaceClientHookRegistry();
-const visiblePaneState = new WeakSet<HTMLElement>();
 
 function fuzzyScore(query: string, candidate: string): number {
   const q = query.trim().toLowerCase();
@@ -154,119 +138,6 @@ function fuzzyScore(query: string, candidate: string): number {
   }
   return Math.max(1, score - Math.max(0, c.length - q.length) * 0.05);
 }
-
-function tabVisibilityContext(pane: HTMLElement): WorkspaceClientTabVisibilityContext | undefined {
-  const tabKey = pane.dataset.tabPane;
-  const resident = pane.closest<HTMLElement>(".workspace-detail-resident[data-workspace-id]");
-  const workspaceId = resident?.dataset.workspaceId;
-  const group = pane.closest<HTMLElement>(".workspace-group");
-  if (!tabKey || !workspaceId || !group) return undefined;
-  return { workspaceId, tabKey, group, pane, application };
-}
-
-function visiblePanes(root: ParentNode): HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>(".workspace-detail-resident.visible .tab-pane.visible[data-tab-pane]")];
-}
-
-function emitBecomeVisible(pane: HTMLElement): void {
-  if (visiblePaneState.has(pane)) return;
-  const context = tabVisibilityContext(pane);
-  if (!context) return;
-  visiblePaneState.add(pane);
-  pane.querySelectorAll<HTMLIFrameElement>('[data-controller~="workspace-app-frame"]').forEach((frame) => {
-    const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame");
-    if (controller instanceof WorkspaceAppFrameController) controller.becomeVisible();
-  });
-  clientHooks.becomeVisible(context);
-}
-
-function emitNoLongerVisible(pane: HTMLElement): void {
-  if (!visiblePaneState.has(pane)) return;
-  const context = tabVisibilityContext(pane);
-  if (!context) return;
-  visiblePaneState.delete(pane);
-  clientHooks.noLongerVisible(context);
-}
-
-function emitPaneVisibilityChanges(before: HTMLElement[], after: HTMLElement[]): void {
-  const afterSet = new Set(after);
-  const beforeSet = new Set(before);
-  before.filter((pane) => !afterSet.has(pane)).forEach(emitNoLongerVisible);
-  after.filter((pane) => !beforeSet.has(pane)).forEach(emitBecomeVisible);
-}
-
-type WorkspaceLayoutStreamElement = HTMLElement & {
-  readonly targetElements: HTMLElement[];
-  readonly templateContent: DocumentFragment;
-};
-
-function isWorkspaceLayoutStreamElement(value: unknown): value is WorkspaceLayoutStreamElement {
-  if (!(value instanceof HTMLElement) || !("targetElements" in value) || !Array.isArray(value.targetElements)) return false;
-  return value.targetElements.every((target) => target instanceof HTMLElement)
-    && "templateContent" in value
-    && value.templateContent instanceof DocumentFragment;
-}
-
-function movePaneBefore(parent: ParentNode, pane: HTMLElement, reference: Node): void {
-  if (parent.moveBefore) parent.moveBefore(pane, reference);
-  else parent.insertBefore(pane, reference);
-}
-
-async function performWorkspaceLayoutReplacement(stream: WorkspaceLayoutStreamElement): Promise<void> {
-  const before = visiblePanes(document);
-  const replacements = stream.targetElements.map((target) => {
-    const replacement = stream.templateContent.firstElementChild;
-    if (!(replacement instanceof HTMLElement)) throw new Error("workspace layout stream is missing an HTML replacement");
-    const livePanes = new Map([...target.querySelectorAll<HTMLElement>(".tab-pane[data-tab-pane]")].map((pane) => [pane.dataset.tabPane!, pane]));
-    for (const slot of replacement.querySelectorAll<HTMLElement>("[data-workspace-pane-slot]")) {
-      const key = slot.dataset.workspacePaneSlot!;
-      if (!livePanes.has(key)) throw new Error(`workspace layout cannot preserve missing pane ${key} in ${target.id}`);
-    }
-    return { target, replacement, livePanes };
-  });
-
-  application.stop();
-  try {
-    for (const { target, replacement, livePanes } of replacements) {
-      target.before(replacement);
-
-      for (const slot of replacement.querySelectorAll<HTMLElement>("[data-workspace-pane-slot]")) {
-        const pane = livePanes.get(slot.dataset.workspacePaneSlot!);
-        if (!pane) continue;
-        pane.classList.toggle("visible", slot.dataset.visible === "true");
-        movePaneBefore(slot.parentNode!, pane, slot);
-        slot.remove();
-      }
-
-      for (const newPane of replacement.querySelectorAll<HTMLElement>(".tab-pane[data-tab-pane]")) {
-        const pane = livePanes.get(newPane.dataset.tabPane!);
-        if (!pane || pane === newPane) continue;
-        pane.classList.toggle("visible", newPane.classList.contains("visible"));
-        movePaneBefore(newPane.parentNode!, pane, newPane);
-        newPane.remove();
-      }
-
-      target.remove();
-    }
-  } finally {
-    await application.start();
-  }
-  emitPaneVisibilityChanges(before, visiblePanes(document));
-}
-
-let workspaceLayoutRenderQueue = Promise.resolve();
-
-function replaceWorkspaceLayout(this: Element): Promise<void> {
-  if (!isWorkspaceLayoutStreamElement(this)) throw new TypeError("Turbo workspace layout action requires a stream element");
-  const render = workspaceLayoutRenderQueue.then(
-    () => performWorkspaceLayoutReplacement(this),
-    () => performWorkspaceLayoutReplacement(this),
-  );
-  workspaceLayoutRenderQueue = render;
-  return render;
-}
-
-Object.assign(Turbo.StreamActions, { "replace-workspace-layout": replaceWorkspaceLayout });
 
 type FullscreenMode = "tab" | "template" | "media";
 type FullscreenMediaElement = HTMLIFrameElement | HTMLImageElement | HTMLVideoElement;
@@ -322,8 +193,7 @@ class AtelierFullscreenController extends Controller {
   };
   private readonly pointerleave = (): void => removeFullscreenHover(this);
   private readonly iframeLoaded = (event: Event): void => {
-    if (!(event.currentTarget instanceof HTMLIFrameElement)) return;
-    const frame = event.currentTarget;
+    const frame = event.currentTarget as HTMLIFrameElement;
     frame.contentDocument?.removeEventListener("keydown", documentFullscreenKeydown, true);
     frame.contentDocument?.addEventListener("keydown", documentFullscreenKeydown, true);
   };
@@ -418,17 +288,11 @@ class AtelierFullscreenController extends Controller {
   }
 
   private liveTabTarget(): HTMLElement {
-    const group = this.element.closest<HTMLElement>(".workspace-group")!;
-    return group.querySelector<HTMLElement>(`.workspace-panes > .tab-pane[data-tab-pane="${CSS.escape(this.tabKeyValue)}"]`)!;
+    return this.element.closest<HTMLElement>(".fixed-shell-work-pane")!.querySelector<HTMLElement>(`[data-workspace-pane-role="work"][data-source-tab-key="${CSS.escape(this.tabKeyValue)}"]`)!;
   }
 
   private showTab(): void {
-    const group = this.element.closest<HTMLElement>(".workspace-group")!;
-    const tabbar = group.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]')!;
-    const controller = workspaceTabsController(tabbar);
-    if (!controller) throw new Error("Workspace tabs controller is not connected");
-    controller.showTab(this.tabKeyValue);
-    this.element.closest<HTMLDetailsElement>("details")?.removeAttribute("open");
+    (this.element as HTMLButtonElement).click();
   }
 
   private createViewer(): FullscreenViewer {
@@ -516,297 +380,16 @@ class AtelierFullscreenController extends Controller {
   }
 }
 
-class WorkspaceShellController extends Controller {
-  static targets = ["toggle"];
-  declare readonly element: HTMLElement;
-  declare readonly toggleTarget: HTMLButtonElement;
-
-  toggle(): void {
-    this.element.classList.toggle("workspace-shell-collapsed");
-    const collapsed = this.element.classList.contains("workspace-shell-collapsed");
-    const label = `${collapsed ? "Show" : "Hide"} workspace pane`;
-    this.toggleTarget.setAttribute("aria-expanded", String(!collapsed));
-    this.toggleTarget.setAttribute("aria-label", label);
-    this.toggleTarget.title = label;
-  }
-}
-
-class WorkspaceTabsController extends Controller {
-  static values = { workspaceId: String, groupId: String, initialTab: String };
-  declare readonly element: HTMLElement;
-  declare readonly workspaceIdValue: string;
-  declare readonly groupIdValue: string;
-  declare readonly initialTabValue: string;
-  declare readonly hasInitialTabValue: boolean;
-  private resizeObserver: ResizeObserver | undefined;
-  private overflowFrame = 0;
-
-  connect(): void {
-    const visibleTab = this.hasInitialTabValue && this.initialTabValue
-      ? this.initialTabValue
-      : this.element.querySelector<HTMLElement>(".group-tab.visible[data-tab]")?.dataset.tab;
-    if (visibleTab) this.showTab(visibleTab, { persist: false, emitCurrent: true });
-    this.resizeObserver = new ResizeObserver(() => this.scheduleOverflowLayout());
-    this.resizeObserver.observe(this.element);
-    document.fonts.ready.then(() => this.scheduleOverflowLayout());
-    this.scheduleOverflowLayout();
-  }
-
-  disconnect(): void {
-    this.resizeObserver?.disconnect();
-    cancelAnimationFrame(this.overflowFrame);
-  }
-
-  private get root(): ParentNode {
-    return this.element.closest("[data-workspace-id]") ?? document;
-  }
-
-  show(event: Event & { params?: { tab?: string } }): void {
-    const tabName = event.params?.tab ?? (event.currentTarget instanceof HTMLElement ? event.currentTarget.dataset.tab : undefined);
-    if (!tabName) return;
-    this.element.querySelector<HTMLDetailsElement>(".group-overflow-menu")?.removeAttribute("open");
-    this.showTab(tabName);
-  }
-
-  showTab(tabName: string, options: { persist?: boolean; emitLifecycle?: boolean; emitCurrent?: boolean } = {}): void {
-    const group = this.group;
-    const before = group.querySelector<HTMLElement>(".tab-pane.visible[data-tab-pane]");
-    const beforeWasVisible = before ? isWorkspacePaneVisible(before) : false;
-    this.element.querySelectorAll<HTMLElement>(".group-tab[data-tab]").forEach((tab) => {
-      tab.classList.toggle("visible", tab.dataset.tab === tabName);
-      tab.classList.toggle("muted", tab.dataset.tab !== tabName);
-    });
-    group.querySelectorAll<HTMLElement>(".tab-pane[data-tab-pane]").forEach((pane) => {
-      pane.classList.toggle("visible", pane.dataset.tabPane === tabName);
-    });
-
-    const after = group.querySelector<HTMLElement>(`.tab-pane.visible[data-tab-pane="${CSS.escape(tabName)}"]`);
-    if (options.emitLifecycle !== false) {
-      if (before && before !== after && beforeWasVisible) emitNoLongerVisible(before);
-      if (after && before !== after && isWorkspacePaneVisible(after)) emitBecomeVisible(after);
-      if (after && before === after && options.emitCurrent && isWorkspacePaneVisible(after)) emitBecomeVisible(after);
-    }
-    this.scheduleOverflowLayout();
-    if (options.persist !== false) void this.persistVisibleTab(tabName);
-  }
-
-  private scheduleOverflowLayout(): void {
-    cancelAnimationFrame(this.overflowFrame);
-    this.overflowFrame = requestAnimationFrame(() => this.layoutOverflow());
-  }
-
-  private layoutOverflow(): void {
-    const tabsContainer = this.element.querySelector<HTMLElement>(".group-tabs")!;
-    const overflowMenu = this.element.querySelector<HTMLElement>(".group-overflow-menu")!;
-    const tabs = [...tabsContainer.querySelectorAll<HTMLElement>(".group-tab[data-tab]")];
-    const overflowTabs = [...overflowMenu.querySelectorAll<HTMLElement>(".group-overflow-tab[data-overflow-tab]")];
-
-    for (const tab of tabs) tab.classList.remove("overflowed");
-    for (const tab of overflowTabs) tab.classList.remove("overflowed", "visible");
-    overflowMenu.classList.remove("has-overflow");
-    overflowMenu.removeAttribute("open");
-
-    if (tabsContainer.scrollWidth <= tabsContainer.clientWidth) return;
-
-    overflowMenu.classList.add("has-overflow");
-    const candidates = tabs.filter((tab) => !tab.classList.contains("visible")).reverse();
-    for (const tab of candidates) {
-      if (tabsContainer.scrollWidth <= tabsContainer.clientWidth) break;
-      tab.classList.add("overflowed");
-    }
-
-    const hiddenTabs = new Set(tabs.filter((tab) => tab.classList.contains("overflowed")).map((tab) => tab.dataset.tab!));
-    const visibleTab = tabs.find((tab) => tab.classList.contains("visible"))?.dataset.tab;
-    for (const tab of overflowTabs) {
-      const tabName = tab.dataset.overflowTab!;
-      tab.classList.toggle("overflowed", hiddenTabs.has(tabName));
-      tab.classList.toggle("visible", tabName === visibleTab);
-    }
-    overflowMenu.classList.toggle("has-overflow", hiddenTabs.size > 0);
-  }
-
-  private get group(): ParentNode {
-    return this.element.closest(".workspace-group") ?? this.root;
-  }
-
-  private async persistVisibleTab(tabName: string): Promise<void> {
-    await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/view-state`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ visibleTab: tabName, groupId: this.groupIdValue }),
-    });
-  }
-}
-
-function workspaceTabsController(element: Element): WorkspaceTabsController | undefined {
-  const controller = application.getControllerForElementAndIdentifier(element, "workspace-tabs");
-  if (!controller) return undefined;
-  if (!(controller instanceof WorkspaceTabsController)) throw new Error("workspace-tabs element is connected to an incompatible controller");
-  return controller;
-}
-
-class WorkspaceTabCloseController extends Controller {
-  static values = { label: String };
-  declare readonly labelValue: string;
-
-  confirm(event: SubmitEvent): void {
-    const label = this.labelValue || "this tab";
-    if (!window.confirm(`Close ${label}?`)) event.preventDefault();
-  }
-}
-
-type WorkspaceLayoutMutation =
-  | { tab: string; fromGroup: string; newGroup: true }
-  | { tab: string; fromGroup: string; toGroup: string; toIndex: number };
-
-class WorkspaceGroupsController extends Controller {
-  static targets = ["group"];
-  static values = { workspaceId: String };
-  declare readonly element: HTMLElement;
-  declare readonly groupTargets: HTMLElement[];
-  declare readonly workspaceIdValue: string;
-  private dragged?: { tab: string; fromGroup: string };
-  private resize?: { index: number; startX: number; sizes: number[]; totalWidth: number };
-
-  dragStart(event: DragEvent): void {
-    const tab = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    const tabName = tab?.dataset.tab;
-    const groupId = tab?.dataset.groupId;
-    if (!tabName || !groupId) return;
-    this.dragged = { tab: tabName, fromGroup: groupId };
-    this.element.classList.add("dragging-tab");
-    event.dataTransfer?.setData("text/plain", tabName);
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-  }
-
-  dragEnd(): void {
-    this.dragged = undefined;
-    this.element.classList.remove("dragging-tab");
-    this.clearDropTargets();
-  }
-
-  dragOver(event: DragEvent): void {
-    if (!this.dragged) return;
-    event.preventDefault();
-    this.highlightDropTarget(event);
-  }
-
-  dragLeave(event: DragEvent): void {
-    const target = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    if (target?.matches("[data-new-group-drop-zone]")) target.classList.remove("drop-target");
-  }
-
-  async drop(event: DragEvent): Promise<void> {
-    if (!this.dragged) return;
-    event.preventDefault();
-    const target = event.target instanceof HTMLElement ? event.target : event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    if (target?.closest<HTMLElement>("[data-new-group-drop-zone]")) {
-      this.clearDropTargets();
-      await this.renderStream(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/layout/move-tab`, { tab: this.dragged.tab, fromGroup: this.dragged.fromGroup, newGroup: true });
-      this.dragged = undefined;
-      this.element.classList.remove("dragging-tab");
-      return;
-    }
-    const group = target?.closest<HTMLElement>(".workspace-group");
-    const toGroup = group?.dataset.groupId;
-    if (!toGroup) return;
-    const targetTab = target?.closest<HTMLElement>(".group-tab[data-tab]");
-    const baseIndex = targetTab ? Number(targetTab.dataset.tabIndex ?? 0) : group.querySelectorAll(".group-tab[data-tab]").length;
-    const after = targetTab?.classList.contains("drop-after") ? 1 : 0;
-    let toIndex = baseIndex + after;
-    const fromIndex = this.dragged.fromGroup === toGroup ? Number(this.element.querySelector<HTMLElement>(`.group-tab[data-tab="${CSS.escape(this.dragged.tab)}"]`)?.dataset.tabIndex ?? -1) : -1;
-    if (fromIndex >= 0 && fromIndex < toIndex) toIndex -= 1;
-    this.clearDropTargets();
-    await this.renderStream(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/layout/move-tab`, { tab: this.dragged.tab, fromGroup: this.dragged.fromGroup, toGroup, toIndex });
-    this.dragged = undefined;
-    this.element.classList.remove("dragging-tab");
-  }
-
-  startResize(event: PointerEvent): void {
-    const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    const index = Number(handle?.dataset.resizerIndex ?? -1);
-    if (index < 0) return;
-    this.resize = { index, startX: event.clientX, sizes: this.sizes(), totalWidth: this.element.getBoundingClientRect().width };
-    handle?.setPointerCapture(event.pointerId);
-    window.addEventListener("pointermove", this.pointerMove);
-    window.addEventListener("pointerup", this.pointerUp, { once: true });
-  }
-
-  private pointerMove = (event: PointerEvent): void => {
-    if (!this.resize) return;
-    const { index, startX, sizes, totalWidth } = this.resize;
-    const delta = (event.clientX - startX) / Math.max(totalWidth, 1);
-    const next = [...sizes];
-    next[index] = Math.max(0.08, (next[index] ?? 0) + delta);
-    next[index + 1] = Math.max(0.08, (next[index + 1] ?? 0) - delta);
-    this.applySizes(next);
-  };
-
-  private pointerUp = async (): Promise<void> => {
-    window.removeEventListener("pointermove", this.pointerMove);
-    const sizes = this.sizes();
-    this.resize = undefined;
-    await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/layout/resize`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sizes }),
-    });
-  };
-
-  private highlightDropTarget(event: DragEvent): void {
-    this.clearDropTargets();
-    const target = event.target instanceof HTMLElement ? event.target : event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    const newGroupDropZone = target?.closest<HTMLElement>("[data-new-group-drop-zone]");
-    if (newGroupDropZone) {
-      newGroupDropZone.classList.add("drop-target");
-      return;
-    }
-    const group = target?.closest<HTMLElement>(".workspace-group");
-    if (!group) return;
-    group.classList.add("drop-target");
-    const tab = target?.closest<HTMLElement>(".group-tab[data-tab]");
-    if (tab) {
-      const rect = tab.getBoundingClientRect();
-      tab.classList.add(event.clientX > rect.left + rect.width / 2 ? "drop-after" : "drop-before");
-      return;
-    }
-    const tabs = [...group.querySelectorAll<HTMLElement>(".group-tab[data-tab]")];
-    const nearest = tabs.find((candidate) => event.clientX < candidate.getBoundingClientRect().left + candidate.getBoundingClientRect().width / 2);
-    if (nearest) nearest.classList.add("drop-before");
-    else tabs.at(-1)?.classList.add("drop-after");
-  }
-
-  private clearDropTargets(): void {
-    this.element.querySelectorAll<HTMLElement>(".drop-target,.drop-before,.drop-after").forEach((element) => element.classList.remove("drop-target", "drop-before", "drop-after"));
-  }
-
-  private sizes(): number[] {
-    return this.groupTargets.map((group) => Number.parseFloat(getComputedStyle(group).getPropertyValue("--group-size")) || 1);
-  }
-
-  private applySizes(sizes: number[]): void {
-    const total = sizes.reduce((sum, size) => sum + size, 0) || 1;
-    this.groupTargets.forEach((group, index) => group.style.setProperty("--group-size", String((sizes[index] ?? 1) / total)));
-  }
-
-  private async renderStream(url: string, body: WorkspaceLayoutMutation): Promise<void> {
-    const html = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "text/vnd.turbo-stream.html" },
-      body: JSON.stringify(body),
-    }).then((response) => response.text());
-    window.Turbo?.renderStreamMessage(html);
-  }
-}
-
 type CommandRegistration = {
   id: string;
   label: string;
   description?: string;
-  scope: "global" | "workspace" | "group" | "tab";
+  scope: "global" | "workspace" | "agent-conversation" | "work-view";
   binding?: string;
   run: () => void | Promise<void>;
 };
+type WorkspaceCommandRegistration = Omit<CommandRegistration, "run">;
+
 class AtelierShortcutsController extends Controller {
   declare readonly element: HTMLElement;
   private readonly commands = new Map<string, CommandRegistration>();
@@ -842,9 +425,9 @@ class AtelierShortcutsController extends Controller {
       search: ({ fuzzyScore }) => this.workspacePaletteItems(fuzzyScore),
     });
     clientHooks.registerPaletteProvider({
-      id: "atelier.tabs",
-      label: "Tab",
-      search: ({ fuzzyScore }) => this.workspaceTabPaletteItems(fuzzyScore),
+      id: "atelier.destinations",
+      label: "Destination",
+      search: ({ fuzzyScore }) => this.workspaceDestinationPaletteItems(fuzzyScore),
     });
     // Listen at window capture so we get first chance at shortcuts that focused
     // Atelier-owned widgets (not iframes) might otherwise consume.
@@ -923,7 +506,7 @@ class AtelierShortcutsController extends Controller {
       label: "New workspace",
       scope: "global",
       binding: "Meta+Alt+Semicolon",
-      run: () => this.openProjectPickerDialog(),
+      run: () => this.openDialogPrompt("project-picker-modal"),
     });
     this.registerCommand({
       id: "atelier.open-palette",
@@ -975,11 +558,11 @@ class AtelierShortcutsController extends Controller {
     if (form) submitFormWithFirstButton(form);
   }
 
-  private workspaceCommands(): SerializedWorkspaceCommand[] {
+  private workspaceCommands(): WorkspaceCommandRegistration[] {
     const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
-    const groups = resident?.querySelector<HTMLElement>(".workspace-groups[data-workspace-commands]");
-    const serializedCommands = groups?.dataset.workspaceCommands;
-    return serializedCommands === undefined ? [] : parseSerializedWorkspaceCommands(serializedCommands);
+    const presentation = resident?.querySelector<HTMLElement>(".fixed-workspace-presentation[data-workspace-commands]");
+    if (presentation) return JSON.parse(presentation.dataset.workspaceCommands!) as WorkspaceCommandRegistration[];
+    return [];
   }
 
   private scheduleShortcutOverlay(): void {
@@ -1186,6 +769,21 @@ class AtelierShortcutsController extends Controller {
   }
 
   private workspacePaletteItems(fuzzyScore: (candidate: string) => number): WorkspacePaletteItem[] {
+    const fixedRows = [...document.querySelectorAll<HTMLElement>(".workspace-detail-resident.visible .fixed-shell-workspace-row[data-workspace-entry-id]")];
+    if (fixedRows.length > 0) return fixedRows.map((row) => {
+      const workspaceId = row.dataset.workspaceEntryId!;
+      const title = row.querySelector("span")?.textContent?.trim() || workspaceId;
+      const visible = workspaceId === residencyController()?.visibleWorkspaceId();
+      return {
+        id: `workspace:${workspaceId}`,
+        title,
+        subtitle: "Workspace",
+        badge: visible ? "open" : undefined,
+        keywords: [workspaceId],
+        score: fuzzyScore(`${title} ${workspaceId}`) + (visible ? 15 : 0),
+        run: () => void residencyController()?.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`),
+      };
+    });
     return this.workspaceRows().map((row) => {
       const workspaceId = row.dataset.workspaceId!;
       const title = row.querySelector<HTMLElement>(".r-title")?.textContent?.trim() || workspaceId;
@@ -1204,28 +802,24 @@ class AtelierShortcutsController extends Controller {
     });
   }
 
-  private workspaceTabPaletteItems(fuzzyScore: (candidate: string) => number): WorkspacePaletteItem[] {
+  private workspaceDestinationPaletteItems(fuzzyScore: (candidate: string) => number): WorkspacePaletteItem[] {
     const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible[data-workspace-id]");
     if (!resident) return [];
     const workspaceId = resident.dataset.workspaceId!;
-    const workspaceTitle = document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"] .r-title`)?.textContent?.trim() ?? workspaceId;
-    const groups = [...resident.querySelectorAll<HTMLElement>(".workspace-group[data-group-id]")];
-    return groups.flatMap((group) => [...group.querySelectorAll<HTMLElement>(".group-tab[data-tab]")].map((tab) => {
-      const groupId = group.dataset.groupId!;
-      const tabName = tab.dataset.tab!;
-      const label = tab.querySelector<HTMLElement>(".group-tab-label span")?.textContent?.trim() || tabName;
-      const visible = tab.classList.contains("visible");
+    return [...resident.querySelectorAll<HTMLButtonElement>("[data-work-view-key], [data-agent-tab-id]")].map((destination) => {
+      const key = destination.dataset.workViewKey ?? destination.dataset.agentTabId!;
+      const label = destination.textContent?.trim() || key;
+      const visible = destination.getAttribute("aria-selected") === "true";
       return {
-        id: `tab:${workspaceId}:${groupId}:${tabName}`,
+        id: `destination:${workspaceId}:${key}`,
         title: label,
-        subtitle: workspaceTitle,
-        detail: groups.length > 1 ? `Group ${groupId}` : undefined,
+        subtitle: destination.dataset.agentTabId ? "Agent conversation" : "Work view",
         badge: visible ? "open" : undefined,
-        keywords: [tabName, groupId],
-        score: fuzzyScore([label, tabName].join(" ")) + (visible ? 20 : 0),
-        run: () => this.openCurrentWorkspaceTab(groupId, tabName),
+        keywords: [key],
+        score: fuzzyScore(`${label} ${key}`) + (visible ? 20 : 0),
+        run: () => destination.click(),
       };
-    }));
+    });
   }
 
   private workspaceRows(): HTMLElement[] {
@@ -1241,10 +835,6 @@ class AtelierShortcutsController extends Controller {
     await residencyController()?.selectWorkspace(workspaceId, href);
   }
 
-  private openCurrentWorkspaceTab(groupId: string, tabName: string): void {
-    const group = document.querySelector<HTMLElement>(`.workspace-detail-resident.visible .workspace-group[data-group-id="${CSS.escape(groupId)}"]`);
-    group?.querySelector<HTMLButtonElement>(`.group-tab[data-tab="${CSS.escape(tabName)}"] .group-tab-label`)?.click();
-  }
 
   private async openSettingsDialog(): Promise<void> {
     const response = await fetch("/settings", { headers: { "Accept": "text/vnd.turbo-stream.html" } });
@@ -1253,8 +843,8 @@ class AtelierShortcutsController extends Controller {
     if (html) window.Turbo?.renderStreamMessage(html);
   }
 
-  private openProjectPickerDialog(): void {
-    const dialog = dialogById("project-picker-modal");
+  private openDialogPrompt(id: string): void {
+    const dialog = document.getElementById(id) as HTMLDialogElement | null;
     if (!dialog) return;
     if (!dialog.open) dialog.showModal();
     focusDialogPromptEnd(dialog);
@@ -1328,25 +918,19 @@ function focusDialogPromptEnd(dialog: ParentNode): void {
   });
 }
 
-function dialogById(id: string): HTMLDialogElement | null {
-  const element = document.getElementById(id);
-  return element instanceof HTMLDialogElement ? element : null;
-}
-
 function submitFormWithFirstButton(form: HTMLFormElement): void {
   const submitter = form.querySelector<HTMLButtonElement>('button[type="submit"], button:not([type])');
   form.requestSubmit(submitter ?? undefined);
 }
 
 class SubmitShortcutController extends Controller {
-  declare readonly element: HTMLFormElement;
   private submitting = false;
 
   keydown(event: KeyboardEvent): void {
     if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
     event.preventDefault();
     if (this.submitting) return;
-    submitFormWithFirstButton(this.element);
+    submitFormWithFirstButton(event.currentTarget as HTMLFormElement);
   }
 
   submit(event: SubmitEvent): void {
@@ -1409,8 +993,9 @@ class ModalController extends Controller {
     this.element.close();
   }
 
-  submitted(event: TurboSubmitEndEvent): void {
-    if (event.detail.success !== true) return;
+  submitted(event: Event): void {
+    const detail = (event as CustomEvent).detail as { success?: boolean } | undefined;
+    if (detail?.success === false) return;
     this.element.close();
   }
 }
@@ -1447,7 +1032,7 @@ class ModalOpenerController extends Controller {
     const target = event?.target instanceof HTMLElement ? event.target : null;
     const interactive = target?.closest("a, button, input, textarea, select, form");
     if (interactive && interactive !== this.element) return;
-    const dialog = dialogById(this.targetIdValue);
+    const dialog = document.getElementById(this.targetIdValue) as HTMLDialogElement | null;
     if (!dialog || dialog.open) return;
     dialog.showModal();
     this.element.blur();
@@ -1468,6 +1053,7 @@ class WorkspaceResidencyController extends Controller {
 
   connect(): void {
     document.addEventListener("visibilitychange", this.visibilityChanged);
+    document.addEventListener("atelier:workspace-selected", this.workspaceSelected as EventListener);
     window.addEventListener("pagehide", this.pageHidden);
     const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
     const visibleResident = this.residentTargets.find((resident) => resident.classList.contains("visible"))
@@ -1478,8 +1064,15 @@ class WorkspaceResidencyController extends Controller {
 
   disconnect(): void {
     document.removeEventListener("visibilitychange", this.visibilityChanged);
+    document.removeEventListener("atelier:workspace-selected", this.workspaceSelected as EventListener);
     window.removeEventListener("pagehide", this.pageHidden);
   }
+
+  private readonly workspaceSelected = (event: CustomEvent<{ workspaceId?: string }>): void => {
+    const workspaceId = event.detail?.workspaceId;
+    if (!workspaceId || workspaceId === this.visibleWorkspaceId()) return;
+    void this.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`);
+  };
 
   async selectWorkspace(workspaceId: string, href: string): Promise<void> {
     // Update the URL first: selection state is derived from it, and stream
@@ -1528,7 +1121,6 @@ class WorkspaceResidencyController extends Controller {
     const resident = this.residentTargets.find((candidate) => candidate.dataset.workspaceId === workspaceId);
     if (!resident) return;
     const wasVisible = resident.classList.contains("visible");
-    if (wasVisible) visiblePanes(resident).forEach(emitNoLongerVisible);
     resident.remove();
     if (wasVisible) this.showEmpty();
   }
@@ -1538,10 +1130,12 @@ class WorkspaceResidencyController extends Controller {
   }
 
   private hideResidents(): void {
-    const before = visiblePanes(this.element);
-    this.residentTargets.forEach((resident) => resident.classList.remove("visible"));
-    emitPaneVisibilityChanges(before, visiblePanes(this.element));
-    if (before.length > 0) this.clearActiveWorkspace();
+    this.residentTargets.forEach((resident) => {
+      const wasVisible = resident.classList.contains("visible");
+      resident.classList.remove("visible");
+      if (wasVisible) resident.querySelector<HTMLElement>(".fixed-workspace-presentation")?.dispatchEvent(new CustomEvent("atelier:workspace-residency-hidden"));
+    });
+    this.clearActiveWorkspace();
   }
 
   private showEmpty(): void {
@@ -1639,16 +1233,14 @@ class WorkspaceResidencyController extends Controller {
   }
 
   private showResident(resident: HTMLElement): void {
-    const before = visiblePanes(this.element);
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
     this.loadingTargets.forEach((loading) => { loading.hidden = true; });
     resident.dataset.lastActivatedAt = String(Date.now());
-    this.residentTargets.forEach((candidate) => candidate.classList.toggle("visible", candidate === resident));
-    const tabs = resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]');
-    const controller = tabs ? workspaceTabsController(tabs) : undefined;
-    const visibleTab = tabs?.querySelector<HTMLElement>(".group-tab.visible[data-tab]")?.dataset.tab;
-    if (visibleTab) controller?.showTab(visibleTab, { persist: false, emitLifecycle: false });
-    emitPaneVisibilityChanges(before, visiblePanes(this.element));
+    this.residentTargets.forEach((candidate) => {
+      if (candidate !== resident && candidate.classList.contains("visible")) candidate.querySelector<HTMLElement>(".fixed-workspace-presentation")?.dispatchEvent(new CustomEvent("atelier:workspace-residency-hidden"));
+      candidate.classList.toggle("visible", candidate === resident);
+    });
+    resident.querySelector<HTMLElement>(".fixed-workspace-presentation")?.dispatchEvent(new CustomEvent("atelier:workspace-residency-visible"));
     const workspaceId = resident.dataset.workspaceId;
     if (workspaceId) void this.markActiveWorkspace(workspaceId);
   }
@@ -1699,16 +1291,12 @@ class WorkspaceResidencyController extends Controller {
 
 function residencyController(): WorkspaceResidencyController | null {
   const residency = document.querySelector<HTMLElement>('[data-controller~="workspace-residency"]');
-  if (!residency) return null;
-  const controller = application.getControllerForElementAndIdentifier(residency, "workspace-residency");
-  return controller instanceof WorkspaceResidencyController ? controller : null;
+  return residency ? application.getControllerForElementAndIdentifier(residency, "workspace-residency") as WorkspaceResidencyController | null : null;
 }
 
 function workspaceListController(): WorkspaceListController | null {
   const list = document.querySelector<HTMLElement>('[data-controller~="workspace-list"]');
-  if (!list) return null;
-  const controller = application.getControllerForElementAndIdentifier(list, "workspace-list");
-  return controller instanceof WorkspaceListController ? controller : null;
+  return list ? application.getControllerForElementAndIdentifier(list, "workspace-list") as WorkspaceListController | null : null;
 }
 
 /**
@@ -1718,14 +1306,19 @@ function workspaceListController(): WorkspaceListController | null {
 class WorkspaceListController extends Controller {
   static targets = ["status"];
   declare readonly element: HTMLElement;
-  private readonly onStreamRender = (event: TurboBeforeStreamRenderEvent): void => {
+  private readonly onStreamRender = (event: Event): void => {
     // Turbo applies stream renders after the next repaint, so wrap the render
     // callback to re-sync only after the DOM change actually happened.
-    const original = event.detail.render;
-    event.detail.render = async (element: Element) => {
-      await original(element);
-      this.sync();
-    };
+    const detail = (event as CustomEvent).detail as { render?: (element: Element) => Promise<void> } | undefined;
+    const original = detail?.render;
+    if (detail && original) {
+      detail.render = async (element: Element) => {
+        await original(element);
+        this.sync();
+      };
+      return;
+    }
+    queueMicrotask(() => this.sync());
   };
 
   connect(): void {
@@ -1816,8 +1409,9 @@ class WorkspaceListController extends Controller {
     if (!preloading) spinner?.remove();
   }
 
-  parkToggled(event: TurboSubmitEndEvent): void {
-    if (event.detail.success !== true) return;
+  parkToggled(event: Event): void {
+    const detail = (event as CustomEvent<{ success?: boolean }>).detail;
+    if (detail && detail.success === false) return;
     const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
     if (!form || !new URL(form.action, window.location.href).pathname.endsWith("/unpark")) return;
     const row = form.closest<HTMLElement>(".workspace-row");
@@ -2157,7 +1751,6 @@ class ModelAddMenuController extends Controller {
 
 class OnboardingController extends Controller {
   static targets = ["pane", "dot", "continue", "back"];
-  declare readonly element: HTMLDialogElement;
   declare readonly paneTargets: HTMLElement[];
   declare readonly dotTargets: HTMLElement[];
   declare readonly continueTarget: HTMLButtonElement;
@@ -2179,7 +1772,7 @@ class OnboardingController extends Controller {
 
   next(): void {
     if (this.index >= this.paneTargets.length - 1) {
-      this.element.close();
+      (this.element as HTMLDialogElement).close?.();
       return;
     }
     this.show(this.index + 1);
@@ -2531,12 +2124,14 @@ class DevReloadController extends Controller {
     try {
       const response = await fetch(this.urlValue, { cache: "no-store" });
       if (response.ok) {
-        const { revision } = Value.Parse(devReloadResponseSchema, await response.json());
-        if (this.revision !== undefined && revision !== this.revision) {
-          window.location.reload();
-          return;
+        const value = await response.json() as { revision?: unknown };
+        if (typeof value.revision === "number") {
+          if (this.revision !== undefined && value.revision !== this.revision) {
+            window.location.reload();
+            return;
+          }
+          this.revision = value.revision;
         }
-        this.revision = revision;
       }
     } catch {
       // Server restarts temporarily make the development endpoint unavailable.
@@ -2546,13 +2141,11 @@ class DevReloadController extends Controller {
 }
 
 const application = Application.start();
+installWorkspacePresentationTurboStream(Turbo, application);
 for (const module of workspaceClientModules) await module.install({ application, Controller, hooks: clientHooks });
 application.register("cable-shell", CableShellController);
 application.register("dev-reload", DevReloadController);
-application.register("workspace-shell", WorkspaceShellController);
-application.register("workspace-tabs", WorkspaceTabsController);
-application.register("workspace-tab-close", WorkspaceTabCloseController);
-application.register("workspace-groups", WorkspaceGroupsController);
+application.register("workspace-presentation", createWorkspacePresentationController(Controller, application, clientHooks));
 application.register("workspace-command-form", WorkspaceCommandFormController);
 application.register("workspace-residency", WorkspaceResidencyController);
 application.register("atelier-shortcuts", AtelierShortcutsController);

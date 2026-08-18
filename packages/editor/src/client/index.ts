@@ -291,7 +291,9 @@ function createFileEditorSignalController(Controller: WorkspaceClientControllerC
       queueMicrotask(() => {
         if (this.hasTabKeyValue) {
           const resident = this.element.closest<HTMLElement>(`.workspace-detail-resident[data-workspace-id="${CSS.escape(this.workspaceIdValue)}"]`)!;
-          resident.querySelector<HTMLButtonElement>(`.group-tab[data-tab="${CSS.escape(this.tabKeyValue)}"] .group-tab-label`)?.click();
+          const workPane = resident.querySelector<HTMLElement>(`[data-workspace-pane-role="work"][data-source-tab-key="${CSS.escape(this.tabKeyValue)}"]`);
+          const workViewKey = workPane?.dataset.workspacePaneId;
+          if (workViewKey) resident.querySelector<HTMLButtonElement>(`[data-work-view-key="${CSS.escape(workViewKey)}"]`)?.click();
         }
         const detail: EditorRefreshDetail = {
           workspaceId: this.workspaceIdValue,

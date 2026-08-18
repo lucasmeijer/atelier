@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium, type Browser } from "@playwright/test";
-import { parseAssetManifest } from "../src/server/asset-manifest.ts";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
+import { renderWorkspacePresentation, workspacePresentationTurboStream, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 
 let browser: Browser;
 let workspaceClient: string;
@@ -10,7 +10,7 @@ beforeAll(async () => {
   const build = Bun.spawn(["bun", "run", "apps/web/scripts/build-assets.ts"], { cwd: new URL("../../..", import.meta.url).pathname, stdout: "pipe", stderr: "pipe" });
   const [exitCode, stdout, stderr] = await Promise.all([build.exited, new Response(build.stdout).text(), new Response(build.stderr).text()]);
   if (exitCode !== 0) throw new Error(`workspace client build failed:\n${stdout}${stderr}`);
-  const manifest = parseAssetManifest(await Bun.file(new URL("../public/assets-manifest.json", import.meta.url)).text());
+  const manifest = await Bun.file(new URL("../public/assets-manifest.json", import.meta.url)).json() as Record<string, string>;
   workspaceClient = await Bun.file(new URL(`../public${manifest["/workspace.js"]}`, import.meta.url)).text();
   const executablePath = process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/local/bin/chromium";
   browser = await chromium.launch({ executablePath, headless: true });
@@ -48,8 +48,7 @@ describe("Atelier Playwright helper", () => {
     </div><div id="workspace_detail"></div>`);
     await page.locator("#workspaces_table_rows").evaluate((rows) => {
       rows.addEventListener("click", (event) => {
-        if (!(event.target instanceof Element)) return;
-        const link = event.target.closest("a");
+        const link = (event.target as Element).closest("a");
         if (!link) return;
         event.preventDefault();
         const id = link.closest<HTMLElement>("[data-workspace-id]")!.dataset.workspaceId!;
@@ -101,14 +100,10 @@ describe("Atelier Playwright helper", () => {
 
   test("opens and closes a live Browser tab with Atelier's fullscreen implementation", async () => {
     const page = await browser.newPage();
-    await page.route("**/workspaces/demo/view-state", (route) => route.fulfill({ status: 204 }));
     await page.setContent(`<div data-workspace-id="demo">
-      <section class="workspace-group">
-        <div class="group-tabbar" data-controller="workspace-tabs" data-workspace-tabs-workspace-id-value="demo" data-workspace-tabs-group-id-value="group-1" data-workspace-tabs-initial-tab-value="browser-1">
-          <div class="group-tabs"><div class="group-tab visible" data-tab="browser-1"><button type="button" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="tab" data-atelier-fullscreen-tab-key-value="browser-1" data-atelier-fullscreen-title-value="Browser" data-action="click->workspace-tabs#show" data-workspace-tabs-tab-param="browser-1">Browser</button></div></div>
-          <details class="group-overflow-menu"><summary>Hidden tabs</summary><div></div></details>
-        </div>
-        <div class="workspace-panes"><section class="tab-pane visible" data-tab-pane="browser-1"><button type="button">Preview content</button></section></div>
+      <section class="fixed-shell-work-pane">
+        <div class="fixed-shell-work-tabs"><button type="button" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="tab" data-atelier-fullscreen-tab-key-value="browser-1" data-atelier-fullscreen-title-value="Browser">Browser</button></div>
+        <section class="fixed-shell-live-node is-active" data-workspace-pane-role="work" data-source-tab-key="browser-1"><button type="button">Preview content</button></section>
       </section>
     </div>`);
     await page.addScriptTag({ content: workspaceClient, type: "module" });
@@ -120,59 +115,114 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
-  test("moves live panes between server-rendered groups without recreating them", async () => {
-    const page = await browser.newPage();
-    await page.route("http://atelier.test/", (route) => route.fulfill({
-      contentType: "text/html",
-      body: `<div class="workspace-detail-resident visible" data-workspace-id="demo">
-        <div id="workspace_groups_demo" class="workspace-groups" data-controller="workspace-groups" data-workspace-groups-workspace-id-value="demo">
-          <section class="workspace-group" data-group-id="left" data-workspace-groups-target="group">
-            <div class="group-tabbar" data-controller="workspace-tabs" data-workspace-tabs-workspace-id-value="demo" data-workspace-tabs-group-id-value="left" data-workspace-tabs-initial-tab-value="browser-1">
-              <div class="group-tabs"><div class="group-tab visible" data-tab="browser-1"><button type="button" data-action="click->workspace-tabs#show" data-workspace-tabs-tab-param="browser-1">Browser</button></div></div>
-              <details class="group-overflow-menu"><summary>Hidden tabs</summary><div></div></details>
-            </div>
-            <div class="workspace-panes"><section class="tab-pane visible" data-tab-pane="browser-1"><textarea>draft</textarea><iframe srcdoc="<p>live</p>"></iframe></section></div>
-          </section>
-        </div>
-      </div><div id="side_effect"></div><script type="module" src="/workspace-test.js"></script>`,
-    }));
+
+  test("keeps live Agent and Work nodes mounted while restoring personal navigation", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "fixed-demo", title: "Fixed shell", projectTitle: "Atelier" },
+      projects: [{ id: "atelier", title: "Atelier", workspaces: [{ id: "fixed-demo", title: "Fixed shell" }] }],
+      agentConversations: [
+        { id: "agent-1", title: "Plan", bodyHtml: '<textarea data-probe="agent">initial</textarea>' },
+        { id: "agent-2", title: "Build", bodyHtml: "<p>Second transcript</p>" },
+      ],
+      workViews: [
+        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", attention: false, availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea><iframe srcdoc="<p>live</p>"></iframe>' },
+        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attention: true, availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
+      ],
+    };
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+
+    expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).not.toContain("is-work-pane-open");
+    await page.evaluate(() => {
+      const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
+      const terminal = document.querySelector<HTMLElement>('[data-workspace-live-node="work:terminal:1"]')!;
+      const frame = terminal.querySelector<HTMLIFrameElement>("iframe")!;
+      agent.querySelector("textarea")!.value = "unsaved agent draft";
+      terminal.querySelector("textarea")!.value = "unsaved command";
+      (window as typeof window & { fixedProbe?: unknown }).fixedProbe = { agent, terminal, frame, frameWindow: frame.contentWindow };
+    });
+    await page.locator('[data-work-view-key="terminal:1"]').click({ force: true });
+    await page.locator('[data-agent-tab-id="agent-2"]').click();
+    await page.locator('[data-agent-tab-id="agent-1"]').click();
+
+    expect(await page.evaluate(() => {
+      const probe = (window as typeof window & { fixedProbe: { agent: HTMLElement; terminal: HTMLElement; frame: HTMLIFrameElement; frameWindow: Window | null } }).fixedProbe;
+      const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
+      const terminal = document.querySelector<HTMLElement>('[data-workspace-live-node="work:terminal:1"]')!;
+      const frame = terminal.querySelector<HTMLIFrameElement>("iframe")!;
+      return { agent: agent === probe.agent, terminal: terminal === probe.terminal, frame: frame === probe.frame, frameWindow: frame.contentWindow === probe.frameWindow, agentDraft: agent.querySelector("textarea")!.value, terminalDraft: terminal.querySelector("textarea")!.value };
+    })).toEqual({ agent: true, terminal: true, frame: true, frameWindow: true, agentDraft: "unsaved agent draft", terminalDraft: "unsaved command" });
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    expect(await page.locator('[data-work-view-key="terminal:1"]').getAttribute("aria-selected")).toBe("true");
+    expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-work-pane-open");
+    await page.close();
+  });
+
+  test("transplants editor drafts and iframe identity through a Turbo presentation refresh", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "stream-demo", title: "Before" }, projects: [],
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<textarea data-probe="draft">draft</textarea>' }],
+      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attention: false, availability: { phase: "live" }, bodyHtml: '<iframe srcdoc="<p>live</p>"></iframe>' }],
+    };
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.goto("http://atelier.test/");
-    await page.waitForFunction(() => Boolean(window.Stimulus && window.Turbo));
-    await page.waitForFunction(() => document.querySelector("iframe")?.contentDocument?.readyState === "complete");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    const stream = workspacePresentationTurboStream("stream-demo", { ...presentation, workspace: { id: "stream-demo", title: "After" }, preserveLiveKeys: new Set(["agent:agent-1", "work:browser:1"]) });
+    await page.evaluate((html) => {
+      const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
+      const work = document.querySelector<HTMLElement>('[data-workspace-live-node="work:browser:1"]')!;
+      const frame = work.querySelector<HTMLIFrameElement>("iframe")!;
+      agent.querySelector("textarea")!.value = "unsaved";
+      (window as typeof window & { streamProbe?: unknown }).streamProbe = { agent, work, frame, frameWindow: frame.contentWindow };
+      window.Turbo!.renderStreamMessage(html);
+    }, stream);
+    await page.waitForFunction(() => document.querySelector(".fixed-shell-workspace-title")?.textContent?.includes("After"));
+    expect(await page.evaluate(() => {
+      const probe = (window as typeof window & { streamProbe: { agent: HTMLElement; work: HTMLElement; frame: HTMLIFrameElement; frameWindow: Window | null } }).streamProbe;
+      const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
+      const work = document.querySelector<HTMLElement>('[data-workspace-live-node="work:browser:1"]')!;
+      const frame = work.querySelector<HTMLIFrameElement>("iframe")!;
+      return { agent: agent === probe.agent, work: work === probe.work, frame: frame === probe.frame, frameWindow: frame.contentWindow === probe.frameWindow, draft: agent.querySelector("textarea")!.value };
+    })).toEqual({ agent: true, work: true, frame: true, frameWindow: true, draft: "unsaved" });
+    await page.close();
+  });
 
-    const layoutProbe = await page.evaluateHandle(() => {
-      const pane = document.querySelector<HTMLElement>('[data-tab-pane="browser-1"]')!;
-      const frame = pane.querySelector<HTMLIFrameElement>("iframe")!;
-      pane.querySelector("textarea")!.value = "unsaved draft";
-      window.Turbo!.renderStreamMessage(`<turbo-stream action="replace-workspace-layout" target="workspace_groups_demo"><template>
-        <div id="workspace_groups_demo" class="workspace-groups" data-controller="workspace-groups" data-workspace-groups-workspace-id-value="demo">
-          <section class="workspace-group" data-group-id="right" data-workspace-groups-target="group">
-            <div class="group-tabbar" data-controller="workspace-tabs" data-workspace-tabs-workspace-id-value="demo" data-workspace-tabs-group-id-value="right" data-workspace-tabs-initial-tab-value="browser-1">
-              <div class="group-tabs"><div class="group-tab visible" data-tab="browser-1"><button type="button" data-action="click->workspace-tabs#show" data-workspace-tabs-tab-param="browser-1">Browser</button></div><div class="group-tab muted" data-tab="new"><button type="button" data-action="click->workspace-tabs#show" data-workspace-tabs-tab-param="new">New</button></div></div>
-              <details class="group-overflow-menu"><summary>Hidden tabs</summary><div></div></details>
-            </div>
-            <div class="workspace-panes"><span hidden data-workspace-pane-slot="browser-1" data-visible="true"></span><section class="tab-pane" data-tab-pane="new">New pane</section></div>
-          </section>
-        </div></template></turbo-stream><turbo-stream action="update" target="side_effect"><template>rendered too</template></turbo-stream>`);
-      return { pane, frame, frameWindow: frame.contentWindow };
-    });
-
-    await page.waitForFunction(() => document.querySelector(".workspace-group")?.getAttribute("data-group-id") === "right" && document.querySelector("#side_effect")?.textContent === "rendered too");
-    const preserved = await layoutProbe.evaluate((probe) => {
-      const pane = document.querySelector<HTMLElement>('[data-tab-pane="browser-1"]')!;
-      const frame = pane.querySelector<HTMLIFrameElement>("iframe")!;
-      return {
-        oneLayout: document.querySelectorAll("#workspace_groups_demo").length,
-        paneIdentity: pane === probe.pane,
-        frameIdentity: frame === probe.frame,
-        frameWindowIdentity: frame.contentWindow === probe.frameWindow,
-        draft: pane.querySelector("textarea")!.value,
-        newPane: document.querySelector('[data-tab-pane="new"]')?.textContent,
-      };
-    });
-
-    expect(preserved).toEqual({ oneLayout: 1, paneIdentity: true, frameIdentity: true, frameWindowIdentity: true, draft: "unsaved draft", newPane: "New pane" });
+  test("uses fixed mobile destinations and keeps secondary Work views behind More across responsive transitions", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "phone-demo", title: "Phone" }, projects: [],
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<textarea data-probe="agent">draft</textarea>' }],
+      workViews: [
+        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", attention: false, availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea>' },
+        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attention: true, availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
+      ],
+      commands: [{ id: "files.open", label: "Files", scope: "workspace", placement: "work-launcher" }, { id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }],
+    };
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    expect(await page.locator('[data-mobile-destination="work:files:workspace"]').count()).toBe(0);
+    expect(await page.locator("[data-mobile-more] .fixed-shell-attention-dot").count()).toBe(1);
+    expect(await page.locator(".fixed-shell-more-section").first().locator("button", { hasText: "Files" }).count()).toBe(1);
+    await page.locator('[data-mobile-destination="work:terminal:1"]').click();
+    await page.locator("[data-mobile-more]").click();
+    await page.locator('[data-more-work-key="files:workspace"]').click();
+    expect(await page.locator(".fixed-workspace-presentation").getAttribute("data-phone-destination")).toBe("work:files:workspace");
+    expect(await page.locator("[data-mobile-more]").getAttribute("class")).toContain("is-active");
+    expect(await page.locator('[data-mobile-destination="work:files:workspace"]').count()).toBe(0);
+    await page.evaluate(() => (window as typeof window & { filesNode?: Element }).filesNode = document.querySelector('[data-workspace-live-node="work:files:workspace"]')!);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => (window as typeof window & { filesNode?: Element }).filesNode === document.querySelector('[data-workspace-live-node="work:files:workspace"]'))).toBe(true);
     await page.close();
   });
 });

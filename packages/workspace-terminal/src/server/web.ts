@@ -1,53 +1,47 @@
 import { registerWorkspacePresenter } from "@atelier/agent/server";
-import { domId, escapeHtml, turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceModuleCommandHandler, type WorkspaceTabContribution } from "@atelier/shared";
-import { terminalIdFromTabKey, terminalTabKey } from "../shared.ts";
+import { domId, escapeHtml, turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceWorkViewPresentation, type WorkspaceWorkViewReference } from "@atelier/shared";
+import { terminalTabKey } from "../shared.ts";
 import { createTmuxPresenter } from "./agent-tool.ts";
 import { renderTerminalPane } from "./render.ts";
 import { createTerminalSocketHandler } from "./sockets.ts";
 import { terminalStaticFiles } from "./static.ts";
 import { attachWorkspaceTerminal, createWorkspaceTerminal, deleteWorkspaceTerminal, listTmuxSessions, listWorkspaceTerminals, type WorkspaceTerminal } from "./workspace-terminals.ts";
-import { Type, type Static } from "typebox";
+import { Type } from "typebox";
 
-function renderWorkspaceTerminalTabs(workspaceId: string, terminals: WorkspaceTerminal[]): WorkspaceTabContribution[] {
+function renderWorkspaceTerminalWorkViews(workspaceId: string, terminals: WorkspaceTerminal[]): WorkspaceWorkViewPresentation[] {
   return terminals.map((terminal) => ({
-    key: terminalTabKey(terminal.id),
+    sourceKey: terminalTabKey(terminal.id),
     label: terminal.title,
-    paneHtml: renderTerminalPane(workspaceId, terminal),
+    bodyHtml: renderTerminalPane(workspaceId, terminal),
+    reference: { type: "terminal", terminalId: terminal.id },
+    kind: "resource",
+    availability: { phase: "live" },
   }));
 }
 
-const terminalCreateCommandId = "terminal.create";
+interface TerminalWorkViewReference extends WorkspaceWorkViewReference { type: "terminal"; terminalId: string }
+
+function parseTerminalReference(value: unknown): TerminalWorkViewReference {
+  const reference = value as { type?: unknown; terminalId?: unknown };
+  if (reference?.type !== "terminal" || typeof reference.terminalId !== "string" || !reference.terminalId) throw new Error("terminalId is required");
+  return { type: "terminal", terminalId: reference.terminalId };
+}
 
 const terminalWorkspaceCommands: WorkspaceCommandContribution[] = [
   {
-    id: terminalCreateCommandId,
+    id: "terminal.create",
     label: "New Terminal",
     scope: "workspace",
-    surfaces: { ui: { placement: "group-menu" }, shortcut: { defaultBinding: "Meta+Alt+KeyT" } },
+    surfaces: { ui: { placement: "work-launcher" }, shortcut: { defaultBinding: "Meta+Alt+KeyT" } },
   },
   {
     id: "terminal.attach",
     label: "Attach Terminal",
     description: "Open a terminal tab attached to an existing tmux session",
     scope: "workspace",
-    surfaces: { ui: { placement: "group-menu" } },
+    surfaces: { ui: { placement: "work-launcher" } },
   },
 ];
-
-const terminalCreateInputSchema = Type.Object({
-  title: Type.Optional(Type.String()),
-  command: Type.Optional(Type.String()),
-  cwd: Type.Optional(Type.String()),
-});
-
-const terminalCreateCommand: WorkspaceModuleCommandHandler<Static<typeof terminalCreateInputSchema>> = {
-  id: terminalCreateCommandId,
-  inputSchema: terminalCreateInputSchema,
-  async execute({ workspaceId, input }) {
-    const terminal = await createWorkspaceTerminal(workspaceId, input);
-    return { createdTabKey: terminalTabKey(terminal.id) };
-  },
-};
 
 function relativeAge(timestamp: number): string {
   const seconds = Math.max(0, Math.round(Date.now() / 1000 - timestamp));
@@ -86,6 +80,12 @@ async function renderAttachDialog(workspaceId: string): Promise<string> {
 
 export const terminalWorkspaceModule: WorkspaceModule = {
   id: "terminal",
+  workViews: [{
+    type: "terminal",
+    parseReference: parseTerminalReference,
+    identity: (reference: { type: "terminal"; terminalId: string }) => reference.terminalId,
+    close: async ({ workspaceId, reference }: { workspaceId: string; reference: { type: "terminal"; terminalId: string } }) => await deleteWorkspaceTerminal(workspaceId, reference.terminalId),
+  }],
   staticFiles: terminalStaticFiles,
   initialize(context) {
     context.registerSocketHandler(createTerminalSocketHandler({
@@ -93,12 +93,23 @@ export const terminalWorkspaceModule: WorkspaceModule = {
     }));
     registerWorkspacePresenter("tmux", (workspaceId, options) => createTmuxPresenter(workspaceId, {
       events: options.events,
-      getTabKeys: () => context.getTabKeys(workspaceId),
-      layouts: context.layouts,
+      presentWorkView: (reference) => context.presentWorkView(workspaceId, reference),
     }));
   },
   commands: [
-    terminalCreateCommand,
+    {
+      id: "terminal.create",
+      inputSchema: Type.Object({
+        title: Type.Optional(Type.String()),
+        command: Type.Optional(Type.String()),
+        cwd: Type.Optional(Type.String()),
+      }),
+      async execute({ workspaceId, input }) {
+        const options = input as { title?: string; command?: string; cwd?: string };
+        const terminal = await createWorkspaceTerminal(workspaceId, options);
+        return { createdWorkView: { type: "terminal", terminalId: terminal.id } };
+      },
+    },
     {
       id: "terminal.attach",
       async execute({ workspaceId }) {
@@ -114,17 +125,11 @@ export const terminalWorkspaceModule: WorkspaceModule = {
       const workspaceId = decodeURIComponent(match[1]!);
       const session = String((await request.formData()).get("session") ?? "");
       const terminal = await attachWorkspaceTerminal(workspaceId, session);
-      return context.openTab(workspaceId, terminalTabKey(terminal.id));
-    },
-  }],
-  tabs: [{
-    owns: (tabKey) => terminalIdFromTabKey(tabKey) !== undefined,
-    async close({ workspaceId, tabKey }) {
-      await deleteWorkspaceTerminal(workspaceId, terminalIdFromTabKey(tabKey)!);
+      return context.openWorkView(workspaceId, { type: "terminal", terminalId: terminal.id });
     },
   }],
   async attachToWorkspace({ workspaceId }) {
     const terminals = await listWorkspaceTerminals(workspaceId);
-    return { tabs: renderWorkspaceTerminalTabs(workspaceId, terminals), commands: terminalWorkspaceCommands };
+    return { workViews: renderWorkspaceTerminalWorkViews(workspaceId, terminals), commands: terminalWorkspaceCommands };
   },
 };

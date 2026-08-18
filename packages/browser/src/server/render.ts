@@ -1,12 +1,14 @@
-import { escapeHtml, type WorkspaceTabContribution } from "@atelier/shared";
+import { escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { browserFrameId, type WorkspaceBrowserTab } from "./state.ts";
 
-export function renderBrowserTab(workspaceId: string, tab: WorkspaceBrowserTab): WorkspaceTabContribution {
-  const key = tab.key;
+export function renderBrowserWorkView(workspaceId: string, tab: WorkspaceBrowserTab): WorkspaceWorkViewPresentation {
   return {
-    key,
+    sourceKey: tab.key,
     label: tab.label,
-    paneHtml: `<section class="tab-pane" data-tab-pane="${escapeHtml(key)}">${renderBrowserPane(workspaceId, tab)}</section>`,
+    reference: { type: "browser", browserId: tab.key },
+    kind: "resource",
+    availability: { phase: "live" },
+    bodyHtml: `<section class="work-view-pane" data-work-view-source="${escapeHtml(tab.key)}">${renderBrowserPane(workspaceId, tab)}</section>`,
   };
 }
 

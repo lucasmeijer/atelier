@@ -1,11 +1,8 @@
-import type { AtelierEventBus } from "@atelier/core";
-import type { TSchema } from "typebox";
 import { escapeHtml } from "./html.ts";
 
 export { providerBrandColor, providerBrandIconHtml } from "./brand-icons.ts";
 export { escapeHtml } from "./html.ts";
 export { hopByHopHeaderNames, isHopByHopHeader, stripHopByHopHeaders } from "./proxy-headers.ts";
-export { parseSerializedWorkspaceCommands, type SerializedWorkspaceCommand } from "./workspace-commands.ts";
 
 export const atelierName = "Atelier" as const;
 
@@ -73,21 +70,49 @@ export function turboStreamResponse(body: string, init: ResponseInit = {}): Resp
 export interface WorkspaceAttachContext {
   workspaceId: string;
   init?: unknown;
-  events?: AtelierEventBus;
-  /** When present, pane HTML is only needed for these tabs; other tabs may return metadata only. */
-  renderPaneKeys?: ReadonlySet<string>;
+  events?: unknown;
+  /** When present, body HTML is only needed for these module-native source keys. */
+  renderWorkViewSourceKeys?: ReadonlySet<string>;
 }
 
-export interface WorkspaceTabContribution {
-  key: string;
+export interface WorkspaceAgentConversationPresentation {
+  id: string;
+  title: string;
+  sourceKey: string;
+  bodyHtml?: string;
+}
+
+export interface WorkspaceWorkViewPresentation {
+  reference: WorkspaceWorkViewReference;
+  sourceKey: string;
   label: string;
-  /** Eager tabs include their pane HTML in the workspace detail response. */
-  paneHtml?: string;
+  kind: "resource" | "contextual";
+  availability?: WorkspaceWorkViewAvailability;
+  bodyHtml?: string;
+  actionsHtml?: string;
+}
+
+export interface WorkspaceWorkViewReference {
+  type: string;
+  [field: string]: string | number | boolean | null | undefined;
+}
+
+export type WorkspaceWorkViewAvailability =
+  | { phase: "opening"; detail?: string }
+  | { phase: "live" }
+  | { phase: "reconnecting"; detail?: string }
+  | { phase: "unavailable"; detail: string; recoveryHtml?: string };
+
+export interface WorkspaceModuleWorkViewAdapter<Reference extends WorkspaceWorkViewReference = WorkspaceWorkViewReference> {
+  type: Reference["type"];
+  parseReference(value: unknown): Reference;
+  identity(reference: Reference): string;
+  close?(context: { workspaceId: string; reference: Reference }): Promise<void> | void;
 }
 
 export interface WorkspaceCommandUiSurface {
   /** Where the server-rendered web UI should place this command. */
-  placement: "group-menu";
+  placement: "work-launcher" | "agent-action";
   label?: string;
 }
 
@@ -100,25 +125,25 @@ export interface WorkspaceCommandSurfaces {
   shortcut?: WorkspaceCommandShortcutSurface;
 }
 
-export type WorkspaceCommandScope = "global" | "workspace" | "group" | "tab";
+export type WorkspaceCommandScope = "global" | "workspace" | "agent-conversation" | "work-view";
 
 export interface WorkspaceCommandContribution<Input = Record<string, never>> {
   id: string;
   label: string;
   description?: string;
   scope: WorkspaceCommandScope;
-  /** Runtime schema for validation and future typed form/palette generation. */
-  inputSchema?: TSchema;
+  /** Runtime schema placeholder for future typed form/palette generation. */
+  inputSchema?: unknown;
   surfaces?: WorkspaceCommandSurfaces;
   /** Type carrier only; command metadata stays serializable. */
   readonly __input?: Input;
 }
 
 export interface WorkspaceAttachment {
-  tabs?: WorkspaceTabContribution[];
+  agentConversations?: WorkspaceAgentConversationPresentation[];
+  workViews?: WorkspaceWorkViewPresentation[];
   commands?: WorkspaceCommandContribution[];
-  /** Server-rendered per-workspace chrome layered around tab groups. */
-  workspaceChromeHtml?: string[];
+  overlayHtml?: string[];
 }
 
 export interface StaticFileContribution {
@@ -126,35 +151,16 @@ export interface StaticFileContribution {
   contentType: string;
 }
 
-export type WorkspaceTabPlacement = "visible-group" | "preview-group";
-
-export interface WorkspaceTabPlacementResult {
-  groupId: string;
-  moved: boolean;
-  createdGroup: boolean;
-}
-
-export interface WorkspaceLayoutPlacementController {
-  /**
-   * Ensure a tab is visible in the preview layout group: the first group without
-   * an agent tab, creating a new group when every group has one.
-   */
-  ensureTabInPreviewGroup(workspaceId: string, tabKeys: string[], tabKey: string): WorkspaceTabPlacementResult | undefined;
-}
-
 export interface WorkspaceModuleCommandResult {
-  createdTabKey?: string;
-  tabPlacement?: WorkspaceTabPlacement;
+  createdAgentConversationId?: string;
+  createdWorkView?: WorkspaceWorkViewReference;
   streamHtml?: string;
 }
 
 export interface WorkspaceModuleCommandContext<Input = unknown> {
   workspaceId: string;
-  events?: AtelierEventBus;
-  activeTabKey?: string;
+  events?: unknown;
   input: Input;
-  tabKeys(): Promise<string[]>;
-  layouts: WorkspaceLayoutPlacementController;
 }
 
 export const emptyWorkspaceCommandInputSchema = { type: "object", additionalProperties: false } as const;
@@ -162,23 +168,19 @@ export const emptyWorkspaceCommandInputSchema = { type: "object", additionalProp
 export interface WorkspaceModuleCommandHandler<Input = unknown> {
   id: string;
   /** JSON Schema used to validate automation input and advertise the command in OpenAPI. */
-  inputSchema?: TSchema;
+  inputSchema?: unknown;
   execute(context: WorkspaceModuleCommandContext<Input>): Promise<WorkspaceModuleCommandResult> | WorkspaceModuleCommandResult;
 }
 
 export interface WorkspaceModuleRouteContext {
-  events?: AtelierEventBus;
-  openTab(workspaceId: string, tabKey: string, placement?: WorkspaceTabPlacement): Promise<Response>;
+  events?: unknown;
+  openWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<Response>;
 }
 
 export interface WorkspaceModuleRouteHandler {
   handle(request: Request, url: URL, context: WorkspaceModuleRouteContext): Promise<Response | undefined> | Response | undefined;
 }
 
-export interface WorkspaceModuleTabLifecycleHandler {
-  owns(tabKey: string): boolean;
-  close?(context: { workspaceId: string; tabKey: string }): Promise<void> | void;
-}
 
 export interface WorkspaceSocketConnection {
   send(message: string | Uint8Array): void;
@@ -207,7 +209,7 @@ export interface WorkspaceServerProvisioningHook {
   id: string;
   label: string;
   parentId?: string;
-  run(context: { workspaceId: string; creationContext?: WorkspaceCreationContext; events?: AtelierEventBus }): Promise<void> | void;
+  run(context: { workspaceId: string; creationContext?: WorkspaceCreationContext; events?: unknown }): Promise<void> | void;
 }
 
 export interface WorkspaceRowContributionRegistry {
@@ -271,15 +273,14 @@ export interface AgentWorkspaceCreateResult {
 }
 
 export interface WorkspaceServerModuleContext {
-  events: AtelierEventBus;
+  events: unknown;
   registry: {
     setTabBusy(workspaceId: string, tabKey: string, busy: boolean): void;
     setTabUnread(workspaceId: string, tabKey: string, unread: boolean): void;
   };
   workspaceRowContributions: WorkspaceRowContributionRegistry;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
-  layouts: WorkspaceLayoutPlacementController;
-  getTabKeys(workspaceId: string): Promise<string[]>;
+  presentWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   broadcastWorkspace(workspaceId: string, html: string): void;
   deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult>;
@@ -296,7 +297,7 @@ export interface WorkspaceModule {
   settingsContributions?: SettingsContribution[];
   commands?: WorkspaceModuleCommandHandler[];
   routes?: WorkspaceModuleRouteHandler[];
-  tabs?: WorkspaceModuleTabLifecycleHandler[];
+  workViews?: WorkspaceModuleWorkViewAdapter[];
   initialize?(context: WorkspaceServerModuleContext): Promise<void> | void;
   attachToWorkspace?(context: WorkspaceAttachContext): Promise<WorkspaceAttachment> | WorkspaceAttachment;
 }
@@ -312,26 +313,36 @@ export interface WorkspaceClientApplication {
   getControllerForElementAndIdentifier(element: Element, identifier: string): WorkspaceClientController | null;
 }
 
-export interface WorkspaceClientTabVisibilityContext {
+export interface WorkspaceClientSurfaceVisibilityContext {
   workspaceId: string;
-  tabKey: string;
-  group: Element;
+  surfaceKey: string;
+  region: Element;
   pane: HTMLElement;
   application: WorkspaceClientApplication;
 }
 
 export interface WorkspaceClientFocusContext {
   workspaceId?: string;
-  tabKey?: string;
+  surfaceKey?: string;
   pane?: HTMLElement | null;
-  group: HTMLElement;
+  region: HTMLElement;
   application: WorkspaceClientApplication;
 }
 
 export function isWorkspacePaneVisible(element: Element): boolean {
-  const pane = element.closest(".tab-pane");
   const resident = element.closest(".workspace-detail-resident");
-  return (!pane || pane.classList.contains("visible")) && (!resident || resident.classList.contains("visible"));
+  if (resident && !resident.classList.contains("visible")) return false;
+  const presentationPane = element.closest<HTMLElement>("[data-workspace-pane-role][data-workspace-pane-id]");
+  if (presentationPane) {
+    if (!presentationPane.classList.contains("is-active")) return false;
+    const presentation = presentationPane.closest<HTMLElement>(".fixed-workspace-presentation")!;
+    if (window.matchMedia("(max-width: 700px)").matches) {
+      return presentation.dataset.phoneDestination === `${presentationPane.dataset.workspacePaneRole}:${presentationPane.dataset.workspacePaneId}`;
+    }
+    return presentationPane.dataset.workspacePaneRole === "agent" || presentation.classList.contains("is-work-pane-open");
+  }
+  const pane = element.closest(".tab-pane");
+  return !pane || pane.classList.contains("visible");
 }
 
 export interface WorkspaceClientWorkspaceAppFrameContext {
@@ -363,8 +374,8 @@ export interface WorkspacePaletteProvider {
 }
 
 export interface WorkspaceClientHooks {
-  onBecomeVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void;
-  onNoLongerVisible(handler: (context: WorkspaceClientTabVisibilityContext) => void): void;
+  onBecomeVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void;
+  onNoLongerVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void;
   onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void;
   onWorkspaceCommand(handler: (commandId: string) => boolean | void | Promise<boolean | void>): void;
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void;
@@ -385,8 +396,6 @@ export interface WorkspaceClientModule {
 
 export {
   CableTopics,
-  decodeCableClientMessage,
-  decodeCableServerMessage,
   serializeCableIdentifier,
   type AtelierCableClient,
   type CableClientMessage,

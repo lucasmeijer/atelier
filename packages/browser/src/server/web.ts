@@ -1,5 +1,5 @@
-import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceModuleCommandHandler, WorkspaceTabContribution } from "@atelier/shared";
-import { renderBrowserFrame, renderBrowserTab } from "./render.ts";
+import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceModuleCommandHandler, WorkspaceWorkViewPresentation, WorkspaceWorkViewReference } from "@atelier/shared";
+import { renderBrowserFrame, renderBrowserWorkView } from "./render.ts";
 import { createWorkspaceBrowserTab, deleteWorkspaceBrowserState, deleteWorkspaceBrowserTab, listWorkspaceBrowserTabs, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
 import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppRequestHeaders, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "./proxy.ts";
@@ -17,12 +17,20 @@ const browserCreateCommand: WorkspaceModuleCommandHandler<Static<typeof browserC
   execute({ workspaceId, input }) {
     const browser = createWorkspaceBrowserTab(workspaceId);
     if (input.url) setWorkspaceBrowserTarget(workspaceId, browser.key, input.url);
-    return { createdTabKey: browser.key, tabPlacement: "preview-group" };
+    return { createdWorkView: { type: "browser", browserId: browser.key } };
   },
 };
 
-function renderWorkspaceBrowserTabs(workspaceId: string): WorkspaceTabContribution[] {
-  return listWorkspaceBrowserTabs(workspaceId).map((tab) => renderBrowserTab(workspaceId, tab));
+interface BrowserWorkViewReference extends WorkspaceWorkViewReference { type: "browser"; browserId: string }
+
+function parseBrowserReference(value: unknown): BrowserWorkViewReference {
+  const reference = value as { type?: unknown; browserId?: unknown };
+  if (reference?.type !== "browser" || typeof reference.browserId !== "string" || !/^browser-\d+$/.test(reference.browserId)) throw new Error("browserId is invalid");
+  return { type: "browser", browserId: reference.browserId };
+}
+
+function renderWorkspaceBrowserWorkViews(workspaceId: string): WorkspaceWorkViewPresentation[] {
+  return listWorkspaceBrowserTabs(workspaceId).map((view) => renderBrowserWorkView(workspaceId, view));
 }
 
 const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
@@ -30,12 +38,18 @@ const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
     id: browserCreateCommandId,
     label: "New Browser",
     scope: "workspace",
-    surfaces: { ui: { placement: "group-menu" } },
+    surfaces: { ui: { placement: "work-launcher" } },
   },
 ];
 
 export const browserWorkspaceModule: WorkspaceModule = {
   id: "browser",
+  workViews: [{
+    type: "browser",
+    parseReference: parseBrowserReference,
+    identity: (reference: { type: "browser"; browserId: string }) => reference.browserId,
+    close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "browser"; browserId: string } }) => deleteWorkspaceBrowserTab(workspaceId, reference.browserId),
+  }],
   staticFiles: browserStaticFiles,
   commands: [browserCreateCommand],
   routes: [{
@@ -55,17 +69,12 @@ export const browserWorkspaceModule: WorkspaceModule = {
     context.onWorkspaceRemoved((workspaceId) => deleteWorkspaceBrowserState(workspaceId));
     registerWorkspacePresenter("browser", (workspaceId, options) => createBrowserPresenter(workspaceId, {
       events: options.events,
-      getTabKeys: () => context.getTabKeys(workspaceId),
-      layouts: context.layouts,
+      presentWorkView: (reference) => context.presentWorkView(workspaceId, reference),
     }));
   },
-  tabs: [{
-    owns: (tabKey) => /^browser-\d+$/.test(tabKey),
-    close: ({ workspaceId, tabKey }) => deleteWorkspaceBrowserTab(workspaceId, tabKey),
-  }],
   attachToWorkspace({ workspaceId }) {
     return {
-      tabs: renderWorkspaceBrowserTabs(workspaceId),
+      workViews: renderWorkspaceBrowserWorkViews(workspaceId),
       commands: browserWorkspaceCommands,
     };
   },

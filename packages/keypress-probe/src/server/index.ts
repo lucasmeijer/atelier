@@ -49,7 +49,7 @@ const keypressProbeSettingsContribution: SettingsContribution = {
     const form = await request.formData();
     const enabled = form.has("enabled");
     await setKeypressProbeEnabled(enabled);
-    return turboStreamResponse(`${turboStream("replace", settingsSectionId, await renderKeypressProbeSettings())}${turboStream("remove", ".keypress-probe", "", { targets: true })}${enabled ? turboStream("append", ".workspace-groups", renderKeypressProbe(), { targets: true }) : ""}`);
+    return turboStreamResponse(`${turboStream("replace", settingsSectionId, await renderKeypressProbeSettings())}${turboStream("remove", ".keypress-probe", "", { targets: true })}${enabled ? turboStream("append", ".fixed-workspace-presentation", renderKeypressProbe(), { targets: true }) : ""}`);
   },
 };
 
@@ -62,7 +62,7 @@ const keypressProbeWorkspaceModule: WorkspaceModule = {
   staticFiles: keypressProbeStaticFiles,
   settingsContributions: [keypressProbeSettingsContribution],
   async attachToWorkspace() {
-    return await isKeypressProbeEnabled() ? { workspaceChromeHtml: [renderKeypressProbe()] } : {};
+    return await isKeypressProbeEnabled() ? { overlayHtml: [renderKeypressProbe()] } : {};
   },
 };
 

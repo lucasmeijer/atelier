@@ -2,7 +2,7 @@ import { posix } from "node:path";
 import type { WorkspaceModule } from "@atelier/shared";
 import { workspaceContainerName, workspaceRoot } from "@atelier/workspace";
 import { deleteFile, FilesPathError, listFiles, resolveFilesDirectory, uploadFile } from "./files.ts";
-import { renderFilesDirectoryFrame, renderFilesFrame, renderFilesTab, renderLazyFilesFrame } from "./render.ts";
+import { renderFilesDirectoryFrame, renderFilesFrame, renderFilesWorkView, renderLazyFilesFrame } from "./render.ts";
 
 function textResponse(message: string, status: number): Response {
   return new Response(message, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
@@ -68,6 +68,19 @@ async function archiveEndpoint(workspaceId: string, url: URL): Promise<Response>
 
 const filesWorkspaceModule: WorkspaceModule = {
   id: "files",
+  workViews: [{
+    type: "files",
+    parseReference(value: unknown) {
+      const reference = value as { type?: unknown };
+      if (reference?.type !== "files" || Object.keys(reference).length !== 1) throw new Error("Files reference has no identity fields");
+      return { type: "files" };
+    },
+    identity: () => "workspace",
+  }],
+  commands: [{
+    id: "files.open",
+    execute: () => ({ createdWorkView: { type: "files" } }),
+  }],
   staticFiles: {
     "/files.css": { url: new URL("../client/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   },
@@ -90,7 +103,10 @@ const filesWorkspaceModule: WorkspaceModule = {
     },
   }],
   attachToWorkspace({ workspaceId }) {
-    return { tabs: [renderFilesTab(renderLazyFilesFrame(workspaceId))] };
+    return {
+      workViews: [renderFilesWorkView(renderLazyFilesFrame(workspaceId))],
+      commands: [{ id: "files.open", label: "Files", scope: "workspace", surfaces: { ui: { placement: "work-launcher", label: "Files" } } }],
+    };
   },
 };
 

@@ -14,15 +14,9 @@ export function createBrowserPresenter(workspaceId: string, deps: WorkspacePrese
     execute: async (_toolCallId: string, params: { kind: "browser"; url: string }) => {
       const browserTab = listWorkspaceBrowserTabs(workspaceId)[0] ?? createWorkspaceBrowserTab(workspaceId);
       const tab = setWorkspaceBrowserTarget(workspaceId, browserTab.key, params.url) ?? browserTab;
-      const placement = deps.layouts.ensureTabInPreviewGroup(workspaceId, await deps.getTabKeys(), browserTab.key);
       await deps.events?.emit("workspace_tabs_changed", { workspaceId });
-      const details = {
-        tab: browserTab.key,
-        url: tab.targetUrl,
-        groupId: placement?.groupId,
-        moved: placement?.moved ?? false,
-        createdGroup: placement?.createdGroup ?? false,
-      };
+      await deps.presentWorkView({ type: "browser", browserId: browserTab.key });
+      const details = { workView: { type: "browser", browserId: browserTab.key }, url: tab.targetUrl };
       return {
         content: [{ type: "text" as const, text: `Preview browser opened at ${tab.targetUrl}` }],
         details,

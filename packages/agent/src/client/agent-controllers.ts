@@ -1589,15 +1589,15 @@ async function waitForAgentResident(workspaceId: string): Promise<HTMLElement> {
   throw new Error(`Workspace ${workspaceId} did not become visible`);
 }
 
-async function openAgentSession(workspaceId: string, tabKey: string): Promise<void> {
+async function openAgentConversation(workspaceId: string, conversationId: string): Promise<void> {
   const visible = document.querySelector<HTMLElement>(`.workspace-detail-resident.visible[data-workspace-id="${CSS.escape(workspaceId)}"]`);
   if (!visible) {
     const row = document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`);
     row?.querySelector<HTMLAnchorElement>("a.row-main")?.click();
   }
   const resident = await waitForAgentResident(workspaceId);
-  resident.querySelector<HTMLButtonElement>(`.group-tab[data-tab="${CSS.escape(tabKey)}"] .group-tab-label`)?.click();
-  const pane = resident.querySelector<HTMLElement>(`.tab-pane[data-tab-pane="${CSS.escape(tabKey)}"]`);
+  resident.querySelector<HTMLButtonElement>(`[data-agent-tab-id="${CSS.escape(conversationId)}"]`)?.click();
+  const pane = resident.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(conversationId)}"]`);
   const input = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
   input?.focus();
 }
@@ -1608,7 +1608,7 @@ function agentPaletteItems(fuzzyScore: (candidate: string) => number): Workspace
     const label = pane.dataset.agentPaneLabelValue!;
     const resident = pane.closest<HTMLElement>(".workspace-detail-resident[data-workspace-id]");
     const workspaceTitle = document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"] .r-title`)?.textContent?.trim() ?? workspaceId;
-    const tabKey = pane.closest<HTMLElement>(".tab-pane[data-tab-pane]")?.dataset.tabPane ?? `agent:${label}`;
+    const conversationId = pane.closest<HTMLElement>("[data-workspace-pane-role='agent'][data-workspace-pane-id]")!.dataset.workspacePaneId!;
     const busy = pane.querySelector<HTMLElement>(".agent-sendstop[data-agent-busy='true']") ? "busy" : "idle";
     const transcript = pane.querySelector<HTMLElement>(".agent-transcript")?.textContent?.trim().replace(/\s+/g, " ") ?? "";
     const tail = transcript.slice(-600);
@@ -1619,9 +1619,9 @@ function agentPaletteItems(fuzzyScore: (candidate: string) => number): Workspace
       subtitle: workspaceTitle,
       detail: tail.length > 140 ? `…${tail.slice(-140)}` : tail,
       badge: busy,
-      keywords: [workspaceId, tabKey, busy],
+      keywords: [workspaceId, conversationId, busy],
       score,
-      run: () => openAgentSession(workspaceId, tabKey),
+      run: () => openAgentConversation(workspaceId, conversationId),
     };
   });
 }

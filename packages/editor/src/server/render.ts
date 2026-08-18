@@ -1,4 +1,4 @@
-import { domId, escapeHtml, type WorkspaceTabContribution } from "@atelier/shared";
+import { domId, escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import type { WorkspaceFileEditorTab } from "./state.ts";
 
 export function fileEditorSignalId(workspaceId: string): string {
@@ -17,13 +17,16 @@ export function renderFileEditorSignal(workspaceId: string, action: { tabKey?: s
   return `<span ${attributes} hidden></span>`;
 }
 
-export function renderFileEditorTab(workspaceId: string, tab: WorkspaceFileEditorTab, label: string): WorkspaceTabContribution {
+export function renderFileWorkView(workspaceId: string, tab: WorkspaceFileEditorTab, label: string): WorkspaceWorkViewPresentation {
   const contentUrl = `/workspaces/${encodeURIComponent(workspaceId)}/file-editor/content?${new URLSearchParams({ path: tab.path })}`;
   const markdown = /\.(?:md|markdown)$/i.test(tab.path);
   return {
-    key: tab.key,
+    sourceKey: tab.key,
     label,
-    paneHtml: `<section class="tab-pane file-editor-pane" data-tab-pane="${escapeHtml(tab.key)}" data-controller="file-editor" data-file-editor-workspace-id-value="${escapeHtml(workspaceId)}" data-file-editor-path-value="${escapeHtml(tab.path)}" data-file-editor-content-url-value="${escapeHtml(contentUrl)}" data-file-editor-line-value="${tab.line ?? 0}" data-file-editor-column-value="${tab.column ?? 0}">
+    reference: { type: "file", path: tab.path },
+    kind: "resource",
+    availability: { phase: "live" },
+    bodyHtml: `<section class="work-view-pane file-editor-pane" data-work-view-source="${escapeHtml(tab.key)}" data-controller="file-editor" data-file-editor-workspace-id-value="${escapeHtml(workspaceId)}" data-file-editor-path-value="${escapeHtml(tab.path)}" data-file-editor-content-url-value="${escapeHtml(contentUrl)}" data-file-editor-line-value="${tab.line ?? 0}" data-file-editor-column-value="${tab.column ?? 0}">
       <header class="file-editor-toolbar"><span class="file-editor-path" title="${escapeHtml(tab.path)}">${escapeHtml(tab.path)}</span><span class="file-editor-toolbar-actions">${markdown ? `<button class="file-editor-markdown-toggle" type="button" data-file-editor-target="previewToggle" data-action="file-editor#togglePreview" aria-pressed="false">Preview</button>` : ""}<span class="file-editor-status" data-file-editor-target="status">Loading…</span></span></header>
       <div class="file-editor-host" data-file-editor-target="host"></div>
       ${markdown ? `<div class="file-editor-preview agent-md" data-file-editor-target="preview" hidden></div>` : ""}

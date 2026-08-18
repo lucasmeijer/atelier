@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { domId, escapeHtml, workspaceFileEditorOpenUrl, workspaceProxyUrl, type WorkspaceTabContribution } from "@atelier/shared";
+import { domId, escapeHtml, workspaceFileEditorOpenUrl, workspaceProxyUrl, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { workspaceRoot } from "@atelier/workspace";
 import type { FileEntry } from "./files.ts";
 
@@ -134,10 +134,13 @@ export function renderLazyFilesFrame(workspaceId: string): string {
   </turbo-frame>`;
 }
 
-export function renderFilesTab(frameHtml: string): WorkspaceTabContribution {
+export function renderFilesWorkView(frameHtml: string): WorkspaceWorkViewPresentation {
   return {
-    key: "files",
+    sourceKey: "files",
     label: "Files",
-    paneHtml: `<section class="tab-pane" data-tab-pane="files">${frameHtml}</section>`,
+    reference: { type: "files" },
+    kind: "contextual",
+    availability: { phase: "live" },
+    bodyHtml: `<section class="work-view-pane" data-work-view-source="files">${frameHtml}</section>`,
   };
 }

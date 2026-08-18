@@ -73,8 +73,8 @@ export const atelierUi = {
     return this.workspaceTab(page, tabKey);
   },
 
-  workspaceTabPane(page: Page, tabKey: string): Locator {
-    return page.locator(`[data-tab-pane=${attributeValue(tabKey)}]`);
+  workspaceTabPane(page: Page, sourceKey: string): Locator {
+    return page.locator(`[data-source-tab-key=${attributeValue(sourceKey)}], [data-work-view-source=${attributeValue(sourceKey)}], [data-tab-pane=${attributeValue(sourceKey)}]`).first();
   },
 
   async waitForNewWorkspace(page: Page, performCreation: () => Promise<void>, options: { timeout?: number } = {}): Promise<NewWorkspace> {
@@ -109,7 +109,7 @@ export const atelierUi = {
     await tab.hover();
     await page.keyboard.press("f");
 
-    const active = page.locator(`[data-atelier-fullscreen-active="true"][data-tab-pane=${attributeValue(options.tabKey)}]`);
+    const active = page.locator(`[data-atelier-fullscreen-active="true"][data-source-tab-key=${attributeValue(options.tabKey)}]`);
     await active.waitFor({ state: "visible", timeout: options.timeout });
 
     return {

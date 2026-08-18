@@ -53,7 +53,7 @@ done
 
 A ready response advertises its `tabs`, normalized `layout`, and available `commands` with their `inputSchema`.
 
-## Stage tabs
+## Stage Agent conversations and Work views
 
 Execute commands using their advertised schema:
 
@@ -70,19 +70,15 @@ curl -sS -X POST "http://localhost:3000/workspaces/$id/commands/agent.create" \
   -H 'Accept: application/json' -H 'Content-Type: application/json' -d '{}'
 ```
 
-A group-specific command can be sent to `/workspaces/:id/groups/:groupId/commands/:commandId`.
+Navigate an existing Browser Work view with `POST /workspaces/:id/browser/:browserId/navigate` and `{ "url": "..." }`.
 
-Navigate an existing browser with `POST /workspaces/:id/browser/:tabKey/navigate` and `{ "url": "..." }`.
+## Arrange Work views
 
-## Arrange the workspace
+- `POST /workspaces/:id/work-views/reorder` with `key` and `index`
+- `POST /workspaces/:id/work-views/close` with a typed `reference`
+- `POST /workspaces/:id/work-views/:key/attention/request` to reveal a Work view and request Attention
 
-- `POST /workspaces/:id/view-state` with `groupId` and `visibleTab`
-- `POST /workspaces/:id/layout/move-tab` with `tab`, and optionally `toGroup`, `toIndex`, or `newGroup`
-- `POST /workspaces/:id/layout/resize` with `sizes`
-- `POST /workspaces/:id/groups/:groupId/split`
-- `POST /workspaces/:id/tabs/:tabKey/close`
-
-Layout mutations return the normalized layout.
+Open Work-view identity, order, and Attention are server-persistent. Active destinations, pane visibility, and Work-pane width are browser-local.
 
 Rename with `POST /workspaces/:id/sidebar-title` and `{ "title": "..." }`. Park, unpark, and delete use the corresponding existing workspace UI routes with `Accept: application/json`.
 
@@ -98,7 +94,7 @@ Message submission returns `202 Accepted`; it does not wait for inference to fin
 
 ## Present the result
 
-After staging and selecting the desired visible tab, use the agent's `present` tool with:
+After staging the desired Work view, use the agent's `present` tool with:
 
 ```text
 http://localhost:3000/workspaces/<id>

@@ -41,7 +41,7 @@ const builtinApplicationCommands: PromptTemplate[] = [{
 }, {
   name: "new",
   trigger: "/new",
-  description: "Start a new agent session in this tab.",
+  description: "Start a new Agent conversation.",
   prompt: "/new",
 }];
 

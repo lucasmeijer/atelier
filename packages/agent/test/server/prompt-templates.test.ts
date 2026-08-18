@@ -32,7 +32,7 @@ describe("prompt templates", () => {
     expect(templates[0]).toMatchObject({ trigger: "/compact", argumentHint: "[instructions]", prompt: "/compact", preserveArguments: true });
     expect(templates[1]?.prompt).toBe("Commit and push your work, rebasing when necessary. When successful, delete this workspace.");
     expect(templates[2]).toMatchObject({ trigger: "/name", description: "Rename this workspace, using AI when no name is provided.", prompt: "/name" });
-    expect(templates[3]).toMatchObject({ trigger: "/new", description: "Start a new agent session in this tab.", prompt: "/new" });
+    expect(templates[3]).toMatchObject({ trigger: "/new", description: "Start a new Agent conversation.", prompt: "/new" });
   });
 
   test("expands triggers with arguments", () => {

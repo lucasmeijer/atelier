@@ -1,6 +1,6 @@
 import type { WorkspaceCommandContribution, WorkspaceModule } from "@atelier/shared";
 import { desktopAppKey, desktopTabKey, ensureWorkspaceDesktop, isWorkspaceDesktopEnabled } from "./runtime.ts";
-import { renderDesktopTab } from "./render.ts";
+import { renderDesktopWorkView } from "./render.ts";
 import { resolveDesktopWorkspaceAppTarget } from "./proxy.ts";
 
 const enabledWorkspaces = new Map<string, boolean>();
@@ -10,12 +10,21 @@ export function desktopWorkspaceCommand(enabled: boolean): WorkspaceCommandContr
     id: "desktop.start",
     label: enabled ? "Open Desktop" : "Turn on Desktop",
     scope: "workspace",
-    surfaces: { ui: { placement: "group-menu" } },
+    surfaces: { ui: { placement: "work-launcher" } },
   };
 }
 
 export const desktopWorkspaceModule: WorkspaceModule = {
   id: "desktop",
+  workViews: [{
+    type: "desktop",
+    parseReference(value: unknown) {
+      const reference = value as { type?: unknown };
+      if (reference?.type !== "desktop" || Object.keys(reference).length !== 1) throw new Error("desktop reference has no identity fields");
+      return { type: "desktop" };
+    },
+    identity: () => "workspace",
+  }],
   initialize(context) {
     context.events.on("workspace_plan_prepare", ({ plan }) => {
       plan.initScripts.push(`if command -v dbus-daemon >/dev/null 2>&1 && [ -f /usr/share/dbus-1/system.conf ]; then mkdir -p /run/dbus; dbus-daemon --system --fork 2>/dev/null || true; fi`);
@@ -31,11 +40,8 @@ export const desktopWorkspaceModule: WorkspaceModule = {
     async execute({ workspaceId }) {
       await ensureWorkspaceDesktop(workspaceId);
       enabledWorkspaces.set(workspaceId, true);
-      return { createdTabKey: desktopTabKey };
+      return { createdWorkView: { type: "desktop" } };
     },
-  }],
-  tabs: [{
-    owns: (tabKey) => tabKey === desktopTabKey,
   }],
   async attachToWorkspace({ workspaceId }) {
     let enabled = enabledWorkspaces.get(workspaceId);
@@ -44,7 +50,7 @@ export const desktopWorkspaceModule: WorkspaceModule = {
       enabledWorkspaces.set(workspaceId, enabled);
     }
     return {
-      tabs: enabled ? [renderDesktopTab(workspaceId)] : [],
+      workViews: enabled ? [renderDesktopWorkView(workspaceId)] : [],
       commands: [desktopWorkspaceCommand(enabled)],
     };
   },

@@ -2,15 +2,19 @@ import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "bun:test";
+import { createWorkspacePresentationStore } from "@atelier/workspace";
 import {
+  archiveWorkspaceAgentConversation,
   createNextWorkspaceAgent,
   ensureDefaultWorkspaceAgent,
   listWorkspaceAgents,
   parseWorkspaceAgentFilename,
   replaceWorkspaceAgentSession,
+  setWorkspaceAgentConversationTitle,
   sessionShareDir,
   sessionShareKeySlug,
   sessionTopicSlug,
+  workspaceAgentConversationContributions,
 } from "../../src/server/session-store.ts";
 
 let dir: string | undefined;
@@ -36,14 +40,19 @@ afterEach(async () => {
 describe("workspace agent session store", () => {
   test("parses and ignores filenames", () => {
     expect(parseWorkspaceAgentFilename("Agent 1.jsonl")).toBeUndefined();
-    expect(parseWorkspaceAgentFilename("fix-auth-flow--ws1--agent-2--a1b2c3.jsonl", "ws1")).toEqual({ label: "Agent 2", number: 2 });
-    expect(parseWorkspaceAgentFilename("fix-auth-flow--ws1--agent-2--a1b2c3.jsonl", "ws2")).toBeUndefined();
+    expect(parseWorkspaceAgentFilename("fix-auth-flow--ws1--agent-2--53fc77b7-dc19-42d5-b200-2e134ec67529.jsonl", "ws1")).toEqual({
+      conversationId: "53fc77b7-dc19-42d5-b200-2e134ec67529",
+      label: "Agent 2",
+      number: 2,
+    });
+    expect(parseWorkspaceAgentFilename("fix-auth-flow--ws1--agent-2--53fc77b7-dc19-42d5-b200-2e134ec67529.jsonl", "ws2")).toBeUndefined();
   });
 
   test("projectless workspace agents live in the projectless session share", async () => {
     const root = await dataDir();
     const agent = await ensureDefaultWorkspaceAgent("ws1", { topic: "Scratch bug hunt" });
     expect(agent.label).toBe("Agent 1");
+    expect(agent.conversationId).toMatch(/^[0-9a-f-]{36}$/);
     expect(agent.path).toStartWith(join(root, "session-shares", "projectless", "scratch-bug-hunt--ws1--agent-1--"));
     expect(agent.path).toEndWith(".jsonl");
     expect(await Bun.file(agent.path).exists()).toBe(true);
@@ -83,12 +92,53 @@ describe("workspace agent session store", () => {
   test("createNextWorkspaceAgent creates lowest unused agent number and list sorts", async () => {
     const root = await dataDir();
     await ensureDefaultWorkspaceAgent("ws1");
-    await writeFile(join(root, "session-shares", "projectless", "old-task--ws1--agent-10--abcdef.jsonl"), "");
+    const oldAgentPath = join(root, "session-shares", "projectless", "old-task--ws1--agent-10--268604ac-d16a-4a4a-ab1e-1ed3ca54687d.jsonl");
+    await writeFile(oldAgentPath, "");
+    await writeFile(oldAgentPath.replace(/\.jsonl$/, ".title"), "Old task\n");
     await writeFile(join(root, "session-shares", "projectless", "notes.txt"), "ignored");
     const next = await createNextWorkspaceAgent("ws1");
     expect(next.label).toBe("Agent 2");
     const agents = await listWorkspaceAgents("ws1");
     expect(agents.map((agent) => agent.label)).toEqual(["Agent 1", "Agent 2", "Agent 10"]);
+  });
+
+  test("Agent conversations have immutable identities and mutable titles", async () => {
+    await dataDir();
+    const created = await ensureDefaultWorkspaceAgent("ws1");
+    expect(created.title).toBe("Untitled");
+
+    const renamed = await setWorkspaceAgentConversationTitle(created, "Investigate persistence");
+
+    expect(renamed).toMatchObject({ conversationId: created.conversationId, title: "Investigate persistence" });
+    expect(await listWorkspaceAgents("ws1")).toEqual([renamed]);
+  });
+
+  test("archiving an Agent conversation retains its transcript and title as history", async () => {
+    await dataDir();
+    const first = await ensureDefaultWorkspaceAgent("ws1");
+    const second = await createNextWorkspaceAgent("ws1");
+    await writeFile(second.path, '{"type":"message"}\n');
+
+    await archiveWorkspaceAgentConversation(second);
+
+    expect(await listWorkspaceAgents("ws1")).toEqual([first]);
+    expect(await Bun.file(second.path.replace(/\.jsonl$/, ".archived.jsonl")).text()).toBe('{"type":"message"}\n');
+    expect(await Bun.file(second.path.replace(/\.jsonl$/, ".archived.title")).text()).toBe("Untitled\n");
+  });
+
+  test("Agent conversation contributions integrate archive-on-close with Workspace presentation", async () => {
+    const root = await dataDir();
+    const first = await ensureDefaultWorkspaceAgent("ws1");
+    const second = await createNextWorkspaceAgent("ws1");
+    const presentation = createWorkspacePresentationStore({
+      dataDir: root,
+      workViewContributions: [],
+      agentConversations: workspaceAgentConversationContributions,
+    });
+
+    await presentation.closeAgentConversation("ws1", second.conversationId);
+
+    expect(await presentation.listAgentConversations("ws1")).toEqual([{ id: first.conversationId, title: "Untitled" }]);
   });
 
   test("replaces the session behind an existing agent tab and archives the old session", async () => {
@@ -99,7 +149,8 @@ describe("workspace agent session store", () => {
     const replacement = await replaceWorkspaceAgentSession(original);
 
     expect(replacement.label).toBe(original.label);
-    expect(replacement.path).not.toBe(original.path);
+    expect(replacement.conversationId).toBe(original.conversationId);
+    expect(replacement.path).toBe(original.path);
     expect(await Bun.file(replacement.path).text()).toBe("");
     expect(await Bun.file(original.path.replace(/\.jsonl$/, ".archived.jsonl")).text()).toBe('{"type":"message"}\n');
     expect(await listWorkspaceAgents("ws1")).toEqual([replacement]);

@@ -22,6 +22,17 @@ export type {
   WorkspaceUserActivityEvent,
 } from "./events.ts";
 
+export {
+  createWorkspacePresentationStore,
+  type WorkspaceAgentConversation,
+  type WorkspaceAgentConversationContribution,
+  type WorkspacePresentationStore,
+  type WorkspacePresentationStoreOptions,
+  type WorkspaceWorkViewContribution,
+  type WorkspaceWorkViewReference,
+  type WorkspaceWorkViewState,
+} from "./presentation.ts";
+
 const workspaceTypeLabel = "com.atelier.type";
 const namespaceLabel = "com.atelier.namespace";
 const workspaceIdLabel = "com.atelier.workspace-id";

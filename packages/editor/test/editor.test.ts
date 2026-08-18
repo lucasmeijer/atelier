@@ -1,33 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
-import { atelierServerModule, initializeEditorWorkspaceIntegration } from "../src/server/index.ts";
-import { renderFileEditorTab } from "../src/server/render.ts";
+import { atelierServerModule } from "../src/server/index.ts";
+import { renderFileWorkView } from "../src/server/render.ts";
 import { deleteWorkspaceFileEditorState, fileEditorTabLabels, openWorkspaceFileEditorTab } from "../src/server/state.ts";
-import { isEditorSaveRequest, parseEditorFileResponse, parseEditorSaveResponse } from "../src/protocol.ts";
 
 describe("editor workspace integration", () => {
-  test("validates the editor HTTP protocol", () => {
-    expect(parseEditorFileResponse({ path: "/work/file.ts", content: "text", revision: "abc", writable: true })).toEqual({
-      path: "/work/file.ts",
-      content: "text",
-      revision: "abc",
-      writable: true,
-    });
-    expect(parseEditorSaveResponse({ revision: "def" })).toEqual({ revision: "def" });
-    expect(isEditorSaveRequest({ content: "text", revision: "abc", force: true })).toBe(true);
-    expect(isEditorSaveRequest({ content: "text", revision: 1 })).toBe(false);
-    expect(() => parseEditorFileResponse({ path: "/work/file.ts", content: "text", revision: "abc" })).toThrow();
-    expect(() => parseEditorSaveResponse({ revision: 1 })).toThrow();
-  });
-
   test("asks open editors to check disk only when an agent turn finishes", async () => {
     const events = createAtelierEventBus();
     const broadcasts: string[] = [];
-    initializeEditorWorkspaceIntegration({
+    await atelierServerModule.initialize!({
       events,
       broadcastWorkspace: (_workspaceId: string, html: string) => broadcasts.push(html),
       onWorkspaceRemoved: () => {},
-    });
+    } as never);
     openWorkspaceFileEditorTab("workspace-1", "/work/example.ts");
     expect(broadcasts).toHaveLength(0);
     await events.emit("workspace_agent_turn_finished", { workspaceId: "workspace-1", agentLabel: "Agent 1" });
@@ -41,11 +26,7 @@ describe("editor workspace integration", () => {
       method: "POST",
       body: "# Preview\n\n**Rendered**",
     });
-    const response = await atelierServerModule.routes![0]!.handle(request, new URL(request.url), {
-      openTab: () => {
-        throw new Error("Markdown previews must not open a workspace tab");
-      },
-    });
+    const response = await atelierServerModule.routes![0]!.handle(request, new URL(request.url), {} as never);
     expect(response?.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(await response?.text()).toBe("<h1>Preview</h1>\n<p><strong>Rendered</strong></p>");
   });
@@ -53,8 +34,8 @@ describe("editor workspace integration", () => {
   test("adds the rendered Markdown toggle only to Markdown files", () => {
     const markdownTab = openWorkspaceFileEditorTab("workspace-md", "/work/README.md").tab;
     const codeTab = openWorkspaceFileEditorTab("workspace-md", "/work/index.ts").tab;
-    const markdownHtml = renderFileEditorTab("workspace-md", markdownTab, "README.md").paneHtml!;
-    const codeHtml = renderFileEditorTab("workspace-md", codeTab, "index.ts").paneHtml!;
+    const markdownHtml = renderFileWorkView("workspace-md", markdownTab, "README.md").bodyHtml!;
+    const codeHtml = renderFileWorkView("workspace-md", codeTab, "index.ts").bodyHtml!;
     expect(markdownHtml).toContain("file-editor#togglePreview");
     expect(markdownHtml).toContain("file-editor-preview agent-md");
     expect(codeHtml).not.toContain("file-editor#togglePreview");

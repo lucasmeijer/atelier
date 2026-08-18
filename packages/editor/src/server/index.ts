@@ -9,8 +9,7 @@ import {
   listWorkspaceFileEditorTabs,
   openWorkspaceFileEditorTab,
 } from "./state.ts";
-import { fileEditorSignalId, renderFileEditorSignal, renderFileEditorTab } from "./render.ts";
-import { isEditorSaveRequest } from "../protocol.ts";
+import { fileEditorSignalId, renderFileEditorSignal, renderFileWorkView } from "./render.ts";
 
 function textResponse(message: string, status: number): Response {
   return new Response(message, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
@@ -20,33 +19,18 @@ function jsonResponse<Body extends object>(value: Body, status = 200): Response 
   return Response.json(value, { status, headers: { "cache-control": "no-store" } });
 }
 
-interface EditorWorkspaceIntegration {
-  events: AtelierEventBus;
-  broadcastWorkspace(workspaceId: string, html: string): void;
-  onWorkspaceRemoved(handler: (workspaceId: string) => void | Promise<void>): void;
-}
-
-function initializeEditorWorkspaceIntegration(context: EditorWorkspaceIntegration): void {
-  context.events.on("workspace_agent_turn_finished", ({ workspaceId }) => {
-    if (listWorkspaceFileEditorTabs(workspaceId).length === 0) return;
-    context.broadcastWorkspace(workspaceId, turboStream("replace", fileEditorSignalId(workspaceId), renderFileEditorSignal(workspaceId)));
-  });
-  context.onWorkspaceRemoved((workspaceId) => deleteWorkspaceFileEditorState(workspaceId));
-}
-
 function positiveInteger(value: string | null): number | undefined {
   if (!value) return undefined;
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-async function openEditorEndpoint(workspaceId: string, url: URL, openTab: (workspaceId: string, tabKey: string, placement: "preview-group") => Promise<Response>): Promise<Response> {
+async function openEditorEndpoint(workspaceId: string, url: URL, openWorkView: (workspaceId: string, reference: { type: "file"; path: string }) => Promise<Response>): Promise<Response> {
   const file = await readEditableFile(workspaceId, url.searchParams.get("path"));
   const line = positiveInteger(url.searchParams.get("line"));
   const column = positiveInteger(url.searchParams.get("column"));
-  const { tab, created } = openWorkspaceFileEditorTab(workspaceId, file.path, { line, column });
-  if (created) return await openTab(workspaceId, tab.key, "preview-group");
-  return turboStreamResponse(turboStream("replace", fileEditorSignalId(workspaceId), renderFileEditorSignal(workspaceId, { tabKey: tab.key, line, column })));
+  const { tab } = openWorkspaceFileEditorTab(workspaceId, file.path, { line, column });
+  return await openWorkView(workspaceId, { type: "file", path: tab.path });
 }
 
 async function markdownPreviewEndpoint(workspaceId: string, request: Request): Promise<Response> {
@@ -60,8 +44,8 @@ async function editorContentEndpoint(workspaceId: string, request: Request, url:
   const path = url.searchParams.get("path");
   if (request.method === "GET") return jsonResponse(await readEditableFile(workspaceId, path));
   if (request.method !== "PUT") return textResponse("Method not allowed", 405);
-  const body: unknown = await request.json();
-  if (!isEditorSaveRequest(body)) return textResponse("Invalid editor save", 422);
+  const body = await request.json() as { content?: unknown; revision?: unknown; force?: unknown };
+  if (typeof body.content !== "string" || typeof body.revision !== "string") return textResponse("Invalid editor save", 422);
   try {
     return jsonResponse({ revision: await writeEditableFile(workspaceId, path, body.content, body.revision, body.force === true) });
   } catch (error) {
@@ -72,6 +56,16 @@ async function editorContentEndpoint(workspaceId: string, request: Request, url:
 
 const editorWorkspaceModule: WorkspaceModule = {
   id: "editor",
+  workViews: [{
+    type: "file",
+    parseReference(value: unknown) {
+      const reference = value as { type?: unknown; path?: unknown };
+      if (reference?.type !== "file" || typeof reference.path !== "string" || !reference.path.startsWith("/")) throw new Error("path must be absolute");
+      return { type: "file", path: reference.path };
+    },
+    identity: (reference: { type: "file"; path: string }) => reference.path,
+    close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "file"; path: string } }) => closeWorkspaceFileEditorTab(workspaceId, `file-editor:${Buffer.from(reference.path).toString("base64url")}`),
+  }],
   staticFiles: {
     "/editor.css": { url: new URL("../client/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   },
@@ -81,7 +75,7 @@ const editorWorkspaceModule: WorkspaceModule = {
         const match = url.pathname.match(/^\/workspaces\/([^/]+)\/file-editor\/(open|content|markdown-preview)$/);
         if (!match) return undefined;
         const workspaceId = decodeURIComponent(match[1]!);
-        if (match[2] === "open") return request.method === "GET" ? await openEditorEndpoint(workspaceId, url, context.openTab) : textResponse("Method not allowed", 405);
+        if (match[2] === "open") return request.method === "GET" ? await openEditorEndpoint(workspaceId, url, context.openWorkView) : textResponse("Method not allowed", 405);
         if (match[2] === "markdown-preview") return await markdownPreviewEndpoint(workspaceId, request);
         return await editorContentEndpoint(workspaceId, request, url);
       } catch (error) {
@@ -91,24 +85,21 @@ const editorWorkspaceModule: WorkspaceModule = {
     },
   }],
   initialize(context) {
-    initializeEditorWorkspaceIntegration({
-      events: context.events,
-      broadcastWorkspace: context.broadcastWorkspace,
-      onWorkspaceRemoved: context.onWorkspaceRemoved,
+    const events = context.events as AtelierEventBus;
+    events.on("workspace_agent_turn_finished", ({ workspaceId }) => {
+      if (listWorkspaceFileEditorTabs(workspaceId).length === 0) return;
+      context.broadcastWorkspace(workspaceId, turboStream("replace", fileEditorSignalId(workspaceId), renderFileEditorSignal(workspaceId)));
     });
+    context.onWorkspaceRemoved((workspaceId) => deleteWorkspaceFileEditorState(workspaceId));
   },
-  tabs: [{
-    owns: (tabKey) => tabKey.startsWith("file-editor:"),
-    close: ({ workspaceId, tabKey }) => closeWorkspaceFileEditorTab(workspaceId, tabKey),
-  }],
   attachToWorkspace({ workspaceId }) {
     const editorTabs = listWorkspaceFileEditorTabs(workspaceId);
     const labels = fileEditorTabLabels(editorTabs);
     return {
-      tabs: editorTabs.map((tab) => renderFileEditorTab(workspaceId, tab, labels.get(tab.key)!)),
+      workViews: editorTabs.map((tab) => renderFileWorkView(workspaceId, tab, labels.get(tab.key)!)),
       workspaceChromeHtml: [renderFileEditorSignal(workspaceId)],
     };
   },
 };
 
-export { initializeEditorWorkspaceIntegration, maxEditableFileBytes, editorWorkspaceModule as atelierServerModule };
+export { maxEditableFileBytes, editorWorkspaceModule as atelierServerModule };

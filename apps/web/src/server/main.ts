@@ -23,7 +23,6 @@ import {
 import { createWebApp, type WebApp } from "./app.ts";
 import { createCableServer, type CableSocketData } from "./cable.ts";
 import { legacyStaticFiles } from "./static-files.ts";
-import { createWorkspaceLayoutStore } from "./workspace-layout.ts";
 import { createFileWorkspaceActivityStore, createFileWorkspaceUnreadStore, createWorkspaceRegistry } from "./workspace-registry.ts";
 import { workspaceModules } from "./workspace-modules.ts";
 
@@ -227,14 +226,12 @@ const registry = createWorkspaceRegistry({
   activityStore: createFileWorkspaceActivityStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-activity.json")),
   unreadStore: createFileWorkspaceUnreadStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-unread.json")),
 });
-const layouts = createWorkspaceLayoutStore();
 let app: WebApp;
 const cableServer = createCableServer({ registry, events: atelierEvents, shellSnapshot: () => app.shellSnapshot() });
 
 app = createWebApp({
   registry,
   cable: cableServer,
-  layouts,
   events: atelierEvents,
   devReload: devReloadFile !== undefined,
   provisioningHooks,
@@ -284,8 +281,7 @@ for (const module of workspaceModules) {
     registry,
     workspaceRowContributions: app.workspaceRowContributions,
     globalSidebarContributions: app.globalSidebarContributions,
-    layouts,
-    getTabKeys: (workspaceId) => app.tabKeysFor(workspaceId),
+    presentWorkView: (workspaceId, reference) => app.presentWorkViewFromAgent(workspaceId, reference),
     broadcastWorkspace: (workspaceId, html) => cableServer.broadcast(CableTopics.workspace(workspaceId), html),
     deleteCurrentWorkspace: (workspaceId, force) => app.deleteCurrentWorkspaceFromAgent(workspaceId, force),
     createWorkspaceFromAgent: (workspaceId, request) => app.createWorkspaceFromAgent(workspaceId, request),

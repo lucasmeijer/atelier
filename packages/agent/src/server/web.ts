@@ -1,4 +1,4 @@
-import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
+import type { WorkspaceAgentConversationPresentation, WorkspaceCommandContribution, WorkspaceModule } from "@atelier/shared";
 import {
   createDeleteCurrentWorkspaceTool,
   // createForkCurrentWorkspaceTool,
@@ -14,7 +14,7 @@ import { preferredNewWorkspaceAgentModel } from "./model-state.ts";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
 import { mkdir } from "node:fs/promises";
-import type { WorkspacePlanPrepareEvent } from "@atelier/workspace";
+import type { WorkspaceDockerMount, WorkspaceInitInstruction } from "@atelier/workspace";
 
 async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgentInfo[]> {
   try {
@@ -26,19 +26,13 @@ async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<Workspa
   }
 }
 
-async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAgentInfo[], events?: AtelierEventBus, renderPaneKeys?: ReadonlySet<string>): Promise<WorkspaceTabContribution[]> {
+async function renderWorkspaceAgentConversations(workspaceId: string, agents: WorkspaceAgentInfo[], events?: AtelierEventBus): Promise<WorkspaceAgentConversationPresentation[]> {
   return await Promise.all(agents.map(async (agent, index) => {
     const ctx = { workspaceId, label: agent.label };
-    const key = agentTabKey(agent.label);
-    if (renderPaneKeys && !renderPaneKeys.has(key)) return { key, label: agent.label };
-    const paneHtml = isWorkspaceAgentRuntimeReady(agent)
-      ? await renderAgentPane(ctx, await (await getWorkspaceAgentRuntime(agent, { events })).paneState(), { visible: index === 0 })
-      : await renderPendingAgentPane(ctx, { visible: index === 0 });
-    return {
-      key,
-      label: agent.label,
-      paneHtml,
-    };
+    const bodyHtml = isWorkspaceAgentRuntimeReady(agent)
+      ? await renderAgentPane(ctx, agent, await (await getWorkspaceAgentRuntime(agent, { events })).paneState(), { visible: index === 0 })
+      : await renderPendingAgentPane(ctx, agent, { visible: index === 0 });
+    return { id: agent.conversationId, title: agent.title, sourceKey: agentTabKey(agent.label), bodyHtml };
   }));
 }
 
@@ -47,7 +41,7 @@ export const agentWorkspaceCommands: WorkspaceCommandContribution[] = [
     id: "agent.create",
     label: "New Agent",
     scope: "workspace",
-    surfaces: { ui: { placement: "group-menu" } },
+    surfaces: { ui: { placement: "agent-action" } },
   },
 ];
 
@@ -59,12 +53,16 @@ const projectAgentWorkspaceCommand: WorkspaceCommandContribution = {
   surfaces: { shortcut: { defaultBinding: "Meta+Alt+Quote" } },
 };
 
+type WorkspacePlanEvents = {
+  on(eventName: "workspace_plan_prepare", handler: (event: { init?: WorkspaceInitInstruction; plan: { mounts: WorkspaceDockerMount[] } }) => void | Promise<void>): void;
+};
+
 function dockerHostSessionShareDir(shareKey: string): string {
   return dockerHostAtelierDataPath(getAtelierRuntimeContext(), "session-shares", shareKey);
 }
 
 function registerSessionShareMountEvents(events: AtelierEventBus): void {
-  events.on("workspace_plan_prepare", async ({ init, plan }: WorkspacePlanPrepareEvent) => {
+  (events as WorkspacePlanEvents).on("workspace_plan_prepare", async ({ init, plan }) => {
     const shareKey = sessionShareKeyForInit(init);
     await mkdir(sessionShareDir(shareKey), { recursive: true });
     plan.mounts.push({ type: "bind", source: dockerHostSessionShareDir(shareKey), target: sessionShareMountPath, readonly: true });
@@ -85,27 +83,24 @@ export const agentWorkspaceModule: WorkspaceModule = {
   staticFiles: agentStaticFiles,
   commands: [{
     id: "agent.create",
-    async execute({ workspaceId, events, activeTabKey }) {
-      const sourceLabel = activeTabKey?.startsWith("agent:") ? activeTabKey.slice("agent:".length) : undefined;
-      const sourceAgent = sourceLabel ? (await listWorkspaceAgents(workspaceId)).find((candidate) => candidate.label === sourceLabel) : undefined;
+    async execute({ workspaceId, events }) {
+      const sourceAgent = (await listWorkspaceAgents(workspaceId))[0];
       const agent = await createNextWorkspaceAgent(workspaceId);
       const applySettingsTimer = setTimeout(() => {
-        void applyNewAgentSettings(agent, sourceAgent, events).catch((error) => console.error("Could not apply settings to new agent", error));
+        // SAFETY: Workspace commands receive the web server's AtelierEventBus.
+        void applyNewAgentSettings(agent, sourceAgent, events as AtelierEventBus | undefined).catch((error) => console.error("Could not apply settings to new agent", error));
       }, 0);
       applySettingsTimer.unref?.();
-      return { createdTabKey: agentTabKey(agent.label) };
+      return { createdAgentConversationId: agent.conversationId };
     },
   }],
   routes: [{
     handle(request, url, context) {
-      return handleAgentRequest(request, url, { events: context.events });
+      return handleAgentRequest(request, url, { events: context.events as AtelierEventBus | undefined });
     },
   }],
-  tabs: [{
-    owns: (tabKey) => tabKey.startsWith("agent:"),
-  }],
   initialize(context) {
-    const events = context.events;
+    const events = context.events as AtelierEventBus;
     registerAgentEvents(events);
     registerSessionShareMountEvents(events);
     events.on("workspace_agent_turn_finished", ({ workspaceId, agentLabel }) => {
@@ -133,16 +128,16 @@ export const agentWorkspaceModule: WorkspaceModule = {
     // Temporarily keep workspace forking unavailable to agents; they invoke it too readily.
     // registerWorkspaceAgentTool("fork_current_workspace", (workspaceId) => createForkCurrentWorkspaceTool((request) => context.forkCurrentWorkspaceFromAgent(workspaceId, request)));
   },
-  async attachToWorkspace({ workspaceId, init, events, renderPaneKeys }) {
+  async attachToWorkspace({ workspaceId, init, events }) {
     const hasProject = typeof init === "object" && init !== null && "type" in init && init.type === "project.git";
     try {
       const agents = await listOrCreateWorkspaceAgents(workspaceId);
       return {
-        tabs: await renderWorkspaceAgentTabs(workspaceId, agents, events, renderPaneKeys),
+        agentConversations: await renderWorkspaceAgentConversations(workspaceId, agents, events as AtelierEventBus | undefined),
         commands: hasProject ? [...agentWorkspaceCommands, projectAgentWorkspaceCommand] : agentWorkspaceCommands,
       };
     } catch (error) {
-      if (error instanceof AtelierCoreError && error.code === "workspace_not_found") return { tabs: [], commands: hasProject ? [...agentWorkspaceCommands, projectAgentWorkspaceCommand] : agentWorkspaceCommands };
+      if (error instanceof AtelierCoreError && error.code === "workspace_not_found") return { agentConversations: [], commands: hasProject ? [...agentWorkspaceCommands, projectAgentWorkspaceCommand] : agentWorkspaceCommands };
       throw error;
     }
   },

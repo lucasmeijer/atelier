@@ -126,16 +126,16 @@ export const workspaceTerminalClientModule: WorkspaceClientModule = {
   install({ application, Controller, hooks }) {
     initializeTerminalTheme();
     application.register("terminal-pane", createTerminalPaneController(Controller));
-    hooks.onBecomeVisible(({ workspaceId, tabKey }) => {
-      const terminalId = terminalIdFromTabKey(tabKey);
+    hooks.onBecomeVisible(({ workspaceId, surfaceKey }) => {
+      const terminalId = terminalIdFromTabKey(surfaceKey);
       if (terminalId) void startTerminal(workspaceId, terminalId);
     });
-    hooks.onNoLongerVisible(({ workspaceId, tabKey }) => {
-      const terminalId = terminalIdFromTabKey(tabKey);
+    hooks.onNoLongerVisible(({ workspaceId, surfaceKey }) => {
+      const terminalId = terminalIdFromTabKey(surfaceKey);
       if (terminalId) stopTerminal(workspaceId, terminalId);
     });
-    hooks.onFocusGroup(({ workspaceId, tabKey }) => {
-      const terminalId = tabKey ? terminalIdFromTabKey(tabKey) : undefined;
+    hooks.onFocusGroup(({ workspaceId, surfaceKey }) => {
+      const terminalId = surfaceKey ? terminalIdFromTabKey(surfaceKey) : undefined;
       if (!workspaceId || !terminalId) return false;
       void startTerminal(workspaceId, terminalId, { focus: true });
       return true;

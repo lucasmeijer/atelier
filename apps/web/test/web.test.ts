@@ -6,7 +6,6 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { JsonObject } from "@atelier/core";
 import { createWebApp } from "../src/server/app.ts";
-import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { setWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { addProject, getGitIdentity, isGitProjectInit, listProjectEnvironmentVariables, listProjects, projectWorkspaceInit, revealProjectSecrets, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
@@ -106,11 +105,9 @@ function createTestApp(options: TestAppOptions = {}) {
   const registry = createWorkspaceRegistry({
     activityStore: { load: async () => ({}), save: async () => {} },
   });
-  const layouts = createWorkspaceLayoutStore();
   const broadcasts: string[] = [];
   const app = createWebApp({
     registry,
-    layouts,
     cable: { broadcast: (_identifier, html) => broadcasts.push(html) },
     devReload: options.devReload,
     provisionWorkspace: options.provision ?? (async () => {}),
@@ -486,17 +483,16 @@ describe("web app contracts", () => {
     expect(browser.headers.get("location")).toBe("http://test.local/");
   });
 
-  test("the workspace pane uses an explicit hide and show control", async () => {
+  test("the role-fixed shell removes the legacy global sidebar", async () => {
     const { app, registry } = createTestApp();
     await registry.seed([]);
 
     const home = await (await app.fetch(new Request("http://test.local/"))).text();
 
-    expect(home).toContain('class="workspace-pane-toggle"');
-    expect(home).toContain('data-action="workspace-shell#toggle"');
-    expect(home).toContain('aria-expanded="true" aria-label="Hide workspace pane"');
-    expect(home).not.toContain("pointerenter->workspace-shell#reveal");
-    expect(home).not.toContain("workspace-shell#focusTab");
+    expect(home).toContain('class="app fixed-shell-app"');
+    expect(home).toContain("Create or select a workspace");
+    expect(home).not.toContain("workspace-shell-sidebar");
+    expect(home).not.toContain("workspace-shell#toggle");
   });
 
   test("the removed REST workspace endpoint is not found and OpenAPI advertises UI JSON operations", async () => {
@@ -537,7 +533,7 @@ describe("web app contracts", () => {
       expect(home).toContain('<turbo-frame id="agent_launch_modal"></turbo-frame>');
       expect(home).not.toContain("Describe what you want the agent to do");
       expect(home).not.toContain('class="sidebar-host-repos"');
-      expect(home).toContain('<button class="row workspace-row workspace-placeholder-row" type="button"');
+      expect(home).toContain('data-modal-opener-target-id-value="project-picker-modal"');
       expect(newProject).toContain('aria-label="Add project"');
       expect(editor).toContain('aria-label="Repository"');
       expect(editor).toContain("project-environment");
@@ -788,7 +784,7 @@ describe("web app contracts", () => {
     const home = await app.fetch(new Request("http://test.local/"));
     expect(home.status).toBe(200);
     const homeBody = await home.text();
-    expect(homeBody).toContain("Select a workspace");
+    expect(homeBody).toContain("Create or select a workspace");
     expect(homeBody).not.toContain('href="/workspaces/a"');
     expect(homeBody).not.toContain('href="/workspaces/b"');
   });
@@ -858,7 +854,6 @@ describe("web app contracts", () => {
     const broadcasts: string[] = [];
     createWebApp({
       registry,
-      layouts: createWorkspaceLayoutStore(),
       cable: { broadcast: (_identifier, html) => broadcasts.push(html) },
       provisionWorkspace: async () => {},
       provisioningHooks: [],
@@ -878,76 +873,6 @@ describe("web app contracts", () => {
     expect(reorder).toContain('action="update"');
     // "b" now renders before "a".
     expect(reorder!.indexOf('id="workspace_row_b"')).toBeLessThan(reorder!.indexOf('id="workspace_row_a"'));
-  });
-
-  test("moving the last tab out of a group removes the emptied group", () => {
-    const layouts = createWorkspaceLayoutStore();
-    layouts.normalize("w", ["a", "b"]);
-    layouts.splitGroup("w", ["a", "b"], layouts.normalize("w", ["a", "b"]).groups[0]!.id);
-    const state = layouts.normalize("w", ["a", "b"]);
-    const [left, right] = state.groups;
-    expect(left).toBeDefined();
-    expect(right).toBeDefined();
-
-    layouts.moveTab("w", ["a", "b"], { tab: "b", toGroup: right!.id });
-    layouts.moveTab("w", ["a", "b"], { tab: "a", toGroup: right!.id });
-
-    const after = layouts.normalize("w", ["a", "b"]);
-    expect(after.groups).toHaveLength(1);
-    expect(after.groups[0]!.id).toBe(right!.id);
-    expect(after.groups[0]!.tabs).toEqual(["b", "a"]);
-  });
-
-  test("exposes an initialized layout without another tab reconciliation", () => {
-    const layouts = createWorkspaceLayoutStore();
-    expect(layouts.current("w")).toBeUndefined();
-    const initial = layouts.normalize("w", ["agent:Agent 1", "files"]);
-    expect(layouts.current("w")).toBe(initial);
-  });
-
-  test("preview group helper keeps browser in the first non-agent group", () => {
-    const layouts = createWorkspaceLayoutStore();
-    const tabs = ["agent:Agent 1", "browser", "notes"];
-    const initial = layouts.normalize("w", tabs);
-    layouts.splitGroup("w", tabs, initial.groups[0]!.id);
-    const right = layouts.normalize("w", tabs).groups[1]!;
-    layouts.moveTab("w", tabs, { tab: "notes", toGroup: right.id });
-
-    const result = layouts.ensureTabInPreviewGroup("w", tabs, "browser");
-
-    const after = layouts.normalize("w", tabs);
-    expect(result?.moved).toBe(true);
-    expect(result?.createdGroup).toBe(false);
-    expect(after.groups.find((group) => group.tabs.includes("browser"))?.id).toBe(right.id);
-    expect(right.tabs).not.toContain("agent:Agent 1");
-  });
-
-  test("preview group helper creates a non-agent group when required", () => {
-    const layouts = createWorkspaceLayoutStore();
-    const tabs = ["agent:Agent 1", "browser"];
-    layouts.normalize("w", tabs);
-
-    const result = layouts.ensureTabInPreviewGroup("w", tabs, "browser");
-
-    const after = layouts.normalize("w", tabs);
-    expect(result?.moved).toBe(true);
-    expect(result?.createdGroup).toBe(true);
-    expect(after.groups).toHaveLength(2);
-    expect(after.groups[1]!.tabs).toEqual(["browser"]);
-    expect(after.groups[1]!.visibleTab).toBe("browser");
-  });
-
-  test("preview group helper reopens a closed browser tab", () => {
-    const layouts = createWorkspaceLayoutStore();
-    const tabs = ["agent:Agent 1", "browser"];
-    layouts.closeTab("w", tabs, "browser");
-
-    const result = layouts.ensureTabInPreviewGroup("w", tabs, "browser");
-
-    const after = layouts.normalize("w", tabs);
-    expect(result?.createdGroup).toBe(true);
-    expect(after.closedTabs).not.toContain("browser");
-    expect(after.groups.some((group) => group.tabs.includes("browser"))).toBe(true);
   });
 
   test("GitHub connect flow asks for GitHub CLI token output", async () => {

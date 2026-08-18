@@ -23,16 +23,14 @@ export function createTmuxPresenter(workspaceId: string, deps: WorkspacePresente
       }
 
       const tabKey = terminalTabKey(terminal.id);
-      const placement = deps.layouts.ensureTabInPreviewGroup(workspaceId, await deps.getTabKeys(), tabKey);
       await deps.events?.emit("workspace_tabs_changed", { workspaceId });
+      await deps.presentWorkView({ type: "terminal", terminalId: terminal.id });
       return {
         content: [{ type: "text" as const, text: `Presented tmux session ${params.session}` }],
         details: {
           session: params.session,
-          tab: tabKey,
-          groupId: placement?.groupId,
-          moved: placement?.moved ?? false,
-          createdGroup: placement?.createdGroup ?? false,
+          workView: { type: "terminal", terminalId: terminal.id },
+          sourceKey: tabKey,
         },
       };
     },
