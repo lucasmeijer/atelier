@@ -40,7 +40,7 @@ export default defineConfig({
     "anti-slop/no-shape-in-symbol-names": "warn",
     "anti-slop/no-unknown-parameters": "warn",
     "anti-slop/no-unknown-returns": "error",
-    "anti-slop/no-unknown-type-aliases": "warn",
+    "anti-slop/no-unknown-type-aliases": "error",
     "anti-slop/no-unsafe-dictionary-type": "warn",
     "anti-slop/no-widen-then-assert": "warn",
     "anti-slop/require-safety-comment-for-type-assertion": "warn",
