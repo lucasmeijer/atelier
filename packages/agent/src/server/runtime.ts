@@ -1015,6 +1015,16 @@ async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgen
   ]);
   const appendSystemPrompt: string[] = [];
   await options.events?.emit("agent_system_prompt_prepare", { workspaceId: agent.workspaceId, lines: appendSystemPrompt });
+  let sessionSettings;
+  if (defaultModel) {
+    sessionSettings = {
+      defaultProvider: defaultModel.provider,
+      defaultModel: defaultModel.id,
+      compaction: { enabled: true },
+    };
+  } else {
+    sessionSettings = { compaction: { enabled: true } };
+  }
   const sessionManager = SessionManager.open(agent.path, dirname(agent.path), workspaceRoot);
   const customTools = createWorkspaceAgentTools(agent.workspaceId, { events: options.events });
   const { session } = await createAgentSession({
@@ -1027,10 +1037,7 @@ async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgen
     customTools,
     tools: workspaceAgentToolNames(),
     sessionManager,
-    settingsManager: SettingsManager.inMemory({
-      ...(defaultModel ? { defaultProvider: defaultModel.provider, defaultModel: defaultModel.id } : {}),
-      compaction: { enabled: true },
-    }),
+    settingsManager: SettingsManager.inMemory(sessionSettings),
   });
   return {
     session,
