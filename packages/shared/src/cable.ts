@@ -30,6 +30,12 @@ export interface AtelierCableClient {
   connected(): boolean;
 }
 
+interface CableIdentifierCandidate {
+  channel?: unknown;
+  workspaceId?: unknown;
+  label?: unknown;
+}
+
 export const CableTopics = {
   shell(): CableIdentifier { return { channel: "shell" }; },
   update(): CableIdentifier { return { channel: "update" }; },
@@ -38,8 +44,9 @@ export const CableTopics = {
 };
 
 export function parseCableIdentifier(value: unknown): CableIdentifier {
-  if (!value || typeof value !== "object") throw new Error("identifier must be an object");
-  const record = value as Record<string, unknown>;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("identifier must be an object");
+  // SAFETY: CableIdentifierCandidate only names optional properties with unknown values.
+  const record = value as CableIdentifierCandidate;
   if (record.channel === "shell") return { channel: "shell" };
   if (record.channel === "update") return { channel: "update" };
   if (record.channel === "workspace" && typeof record.workspaceId === "string" && record.workspaceId.length > 0) return { channel: "workspace", workspaceId: record.workspaceId };
