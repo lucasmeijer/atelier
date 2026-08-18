@@ -58,6 +58,11 @@ done`;
   return new Set(result.stdout.toString("utf8").split("\0").filter(Boolean));
 }
 
+export function isConcealedEntry(entry: Pick<FileEntry, "name" | "kind">, ignored: boolean): boolean {
+  if (entry.kind === "directory" && entry.name.startsWith(".")) return false;
+  return ignored || entry.name.startsWith(".");
+}
+
 async function ignoredPaths(workspaceId: string, paths: string[]): Promise<Set<string>> {
   if (paths.length === 0) return new Set();
   const result = await execWorkspaceCommand(workspaceId, ["git", "-C", workspaceRoot, "check-ignore", "--no-index", "-z", "--stdin"], {
@@ -77,7 +82,7 @@ export async function listFiles(workspaceId: string, inputPath: string | null, s
     openablePaths(workspaceId, rawEntries),
   ]);
   const entries = rawEntries
-    .map((entry) => ({ ...entry, concealed: entry.name.startsWith(".") || ignored.has(entry.path), openable: openable.has(entry.path) }))
+    .map((entry) => ({ ...entry, concealed: isConcealedEntry(entry, ignored.has(entry.path)), openable: openable.has(entry.path) }))
     .filter((entry) => showConcealed || !entry.concealed)
     .sort((left, right) => Number(right.kind === "directory") - Number(left.kind === "directory") || left.name.localeCompare(right.name));
   return { path, entries };

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { workspaceRoot } from "@atelier/workspace";
-import { FilesPathError, normalizeFilesPath } from "../src/server/files.ts";
+import { FilesPathError, isConcealedEntry, normalizeFilesPath } from "../src/server/files.ts";
 import { filesDirectoryFrameId, renderFilesDirectoryFrame, renderFilesFrame, renderLazyFilesFrame } from "../src/server/render.ts";
 
 describe("files paths", () => {
@@ -15,6 +15,14 @@ describe("files paths", () => {
   test("rejects absolute paths and traversal outside the workspace root", () => {
     expect(() => normalizeFilesPath("/etc")).toThrow(FilesPathError);
     expect(() => normalizeFilesPath(`${workspaceRoot}/../etc`)).toThrow("outside the workspace");
+  });
+});
+
+describe("files listing", () => {
+  test("does not conceal folders whose names start with a dot", () => {
+    expect(isConcealedEntry({ name: ".github", kind: "directory" }, false)).toBeFalse();
+    expect(isConcealedEntry({ name: ".cache", kind: "directory" }, true)).toBeFalse();
+    expect(isConcealedEntry({ name: ".env", kind: "file" }, false)).toBeTrue();
   });
 });
 
