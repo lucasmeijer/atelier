@@ -53,12 +53,8 @@ function createBrowserAddressController(Controller: WorkspaceClientControllerCon
       const iframe = this.iframe();
       if (!iframe?.contentWindow || event.source !== iframe.contentWindow) return;
       if (!this.isTrustedFrameOrigin(event.origin, iframe)) return;
-      if (!isRecord(event.data)) return;
-
-      if (event.data.type === "atelier:browser-location" && typeof event.data.href === "string") {
-        this.setLocationFromFrame(event.data as BrowserBridgeLocationMessage);
-        return;
-      }
+      if (!isBrowserBridgeLocationMessage(event.data)) return;
+      this.setLocationFromFrame(event.data);
     }
 
     private setLocationFromFrame(message: BrowserBridgeLocationMessage): void {
@@ -145,8 +141,11 @@ function stripAtelierBrowserParams(url: URL): void {
   url.searchParams.delete("atelierColorScheme");
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+function isBrowserBridgeLocationMessage(value: unknown): value is BrowserBridgeLocationMessage {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  // SAFETY: BrowserBridgeLocationMessage only requires the two properties checked below.
+  const message = value as { type?: unknown; href?: unknown };
+  return message.type === "atelier:browser-location" && typeof message.href === "string";
 }
 
 function addAtelierThemeParams(url: URL): void {
