@@ -177,8 +177,12 @@ export interface WorkspaceModuleTabLifecycleHandler {
   close?(context: { workspaceId: string; tabKey: string }): Promise<void> | void;
 }
 
+export interface WorkspaceServerSocketData {
+  kind: string;
+}
+
 export interface WorkspaceServerSocketHandler {
-  validate?(request: Request, url: URL): Promise<unknown | undefined> | unknown | undefined;
+  validate?(request: Request, url: URL): Promise<WorkspaceServerSocketData | undefined> | WorkspaceServerSocketData | undefined;
   open?(socket: unknown): void;
   message?(socket: unknown, message: unknown): void;
   close?(socket: unknown): void;
