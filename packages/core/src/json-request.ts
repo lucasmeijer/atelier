@@ -4,7 +4,13 @@ export function requestAcceptsJson(request: Request): boolean {
   return request.headers.get("accept")?.includes("application/json") ?? false;
 }
 
-export async function readJsonObject(request: Request): Promise<Record<string, unknown>> {
+export type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
+
+export interface JsonObject {
+  [key: string]: JsonValue;
+}
+
+export async function readJsonObject(request: Request): Promise<JsonObject> {
   let value: unknown;
   try {
     value = await request.json();
@@ -12,5 +18,6 @@ export async function readJsonObject(request: Request): Promise<Record<string, u
     throw invalidArguments("valid JSON object body is required");
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) throw invalidArguments("JSON object body is required");
-  return value as Record<string, unknown>;
+  // SAFETY: Request.json() only produces JSON values, and the checks above establish the object variant.
+  return value as JsonObject;
 }

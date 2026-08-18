@@ -13,6 +13,7 @@ import {
   readJsonObject,
   requestAcceptsJson,
   type AtelierEventBus,
+  type JsonObject,
 } from "@atelier/core";
 import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
@@ -218,6 +219,10 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const agentLaunchSettingsFrameId = "agent_launch_settings";
   const agentLaunchFormId = "agent_launch_form";
   type WorkspacePresentation = { attachments: WorkspaceAttachment[]; tabs: WorkspaceTabContribution[] };
+  interface LayoutResponseExtra {
+    createdGroupId?: string;
+    closedTabKey?: string;
+  }
 
   // ---------------------------------------------------------------------------
   // Workspace sidebar rendering. Broadcast HTML never contains per-client state
@@ -875,7 +880,7 @@ ${moduleStylesHtml()}
 
   async function workspaceJson(id: string): Promise<Response> {
     const entry = requireWorkspace(id);
-    const workspace: Record<string, unknown> = {
+    const workspace = {
       id: entry.id,
       title: workspaceTitle(entry),
       phase: entry.phase,
@@ -883,20 +888,22 @@ ${moduleStylesHtml()}
       url: `/workspaces/${encodeURIComponent(entry.id)}`,
       ...(entry.error ? { error: entry.error } : {}),
     };
-    if (!entry.parked && (entry.phase === "ready" || entry.phase === "checking_delete")) {
-      const { attachments, tabs } = await workspacePresentation(id);
-      const handlers = new Map(workspaceModuleCommands().map((handler) => [handler.id, handler]));
-      workspace.tabs = tabs.map((tab) => ({ key: tab.key, label: tabLabel(tab) }));
-      workspace.commands = attachments.flatMap((attachment) => attachment.commands ?? []).filter((command) => handlers.has(command.id)).map((command) => ({
+    if (entry.parked || (entry.phase !== "ready" && entry.phase !== "checking_delete")) return jsonResponse({ workspace });
+
+    const { attachments, tabs } = await workspacePresentation(id);
+    const handlers = new Map(workspaceModuleCommands().map((handler) => [handler.id, handler]));
+    return jsonResponse({ workspace: {
+      ...workspace,
+      tabs: tabs.map((tab) => ({ key: tab.key, label: tabLabel(tab) })),
+      commands: attachments.flatMap((attachment) => attachment.commands ?? []).filter((command) => handlers.has(command.id)).map((command) => ({
         id: command.id,
         label: command.label,
         description: command.description,
         scope: command.scope,
         inputSchema: handlers.get(command.id)?.inputSchema ?? command.inputSchema ?? emptyWorkspaceCommandInputSchema,
-      }));
-      workspace.layout = layouts.normalize(id, tabs.map((tab) => tab.key));
-    }
-    return jsonResponse({ workspace });
+      })),
+      layout: layouts.normalize(id, tabs.map((tab) => tab.key)),
+    } });
   }
 
   function workspaceListEndpoint(request: Request, url: URL): Response {
@@ -1258,19 +1265,19 @@ ${moduleStylesHtml()}
     return `${turboUpdateStream("project_modals", await renderProjectModals())}${options.clearCommandModal ? turboUpdateStream(workspaceCommandModalHostId, "") : ""}`;
   }
 
-  function jsonString(body: Record<string, unknown>, field: string): string {
+  function jsonString(body: JsonObject, field: string): string {
     const value = body[field];
     if (typeof value !== "string") throw invalidArguments(`${field} is required`);
     return value;
   }
 
-  function requiredJsonString(body: Record<string, unknown>, field: string): string {
+  function requiredJsonString(body: JsonObject, field: string): string {
     const value = jsonString(body, field);
     if (!value.trim()) throw invalidArguments(`${field} is required`);
     return value;
   }
 
-  function optionalJsonString(body: Record<string, unknown>, field: string): string | undefined {
+  function optionalJsonString(body: JsonObject, field: string): string | undefined {
     const value = body[field];
     if (value === undefined) return undefined;
     if (typeof value !== "string") throw invalidArguments(`${field} must be a string`);
@@ -1489,7 +1496,7 @@ ${moduleStylesHtml()}
     return new Set(layout.groups.flatMap((group) => group.tabs));
   }
 
-  function layoutResponse(workspaceId: string, request: Request, presentation: WorkspacePresentation, preservePaneKeys: ReadonlySet<string>, extra: Record<string, unknown> = {}): Response {
+  function layoutResponse(workspaceId: string, request: Request, presentation: WorkspacePresentation, preservePaneKeys: ReadonlySet<string>, extra: LayoutResponseExtra = {}): Response {
     const tabKeys = presentation.tabs.map((tab) => tab.key);
     if (requestAcceptsJson(request)) return jsonResponse({ ...extra, layout: layouts.normalize(workspaceId, tabKeys) });
     return turboStreamResponse(workspaceGroupsTurboStream(workspaceId, presentation.tabs, presentation.attachments, preservePaneKeys));
