@@ -404,6 +404,19 @@ describe("web app contracts", () => {
     expect(browser.headers.get("location")).toBe("http://test.local/");
   });
 
+  test("the workspace pane uses an explicit hide and show control", async () => {
+    const { app, registry } = createTestApp();
+    await registry.seed([]);
+
+    const home = await (await app.fetch(new Request("http://test.local/"))).text();
+
+    expect(home).toContain('class="workspace-pane-toggle"');
+    expect(home).toContain('data-action="workspace-shell#toggle"');
+    expect(home).toContain('aria-expanded="true" aria-label="Hide workspace pane"');
+    expect(home).not.toContain("pointerenter->workspace-shell#reveal");
+    expect(home).not.toContain("workspace-shell#focusTab");
+  });
+
   test("the removed REST workspace endpoint is not found and OpenAPI advertises UI JSON operations", async () => {
     const { app, registry } = createTestApp();
     await registry.seed([]);
