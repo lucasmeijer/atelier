@@ -933,6 +933,8 @@ function partialStringField(stream: string, key: string): string | undefined {
   try { return JSON.parse(`"${raw}"`) as string; } catch { return raw.replaceAll("\\n", "\n").replaceAll('\\"', '"'); }
 }
 
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
 function parseKnownStreamedArgs(name: string, stream: string): unknown | undefined {
   const parsed = parseStreamedArgs(stream);
   if (parsed) return parsed;
@@ -942,10 +944,11 @@ function parseKnownStreamedArgs(name: string, stream: string): unknown | undefin
   return undefined;
 }
 
-function parseStreamedArgs(argsStream: string): unknown | undefined {
+function parseStreamedArgs(argsStream: string): JsonValue | undefined {
   if (!argsStream.trim()) return undefined;
   try {
-    return JSON.parse(argsStream);
+    // SAFETY: JSON.parse returns only values representable by the recursive JsonValue contract.
+    return JSON.parse(argsStream) as JsonValue;
   } catch {
     return undefined;
   }
