@@ -1,12 +1,10 @@
 /// <reference lib="dom" />
 
-import { copyTextToClipboard, type WorkspaceClientModule } from "@atelier/shared";
-
-type ControllerConstructor = new (...args: unknown[]) => { element: Element };
+import { copyTextToClipboard, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
 type UploadResult = { kind: "ok" | "conflict" | "error" | "cancelled"; message?: string };
 type UploadTask = { file: File; loaded: number; xhr?: XMLHttpRequest };
 
-function createFilesController(Controller: ControllerConstructor): unknown {
+function createFilesController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FilesController extends Controller {
     static values = { workspaceId: String, path: String, uploadUrl: String };
     static targets = ["progress", "status"];
