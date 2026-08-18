@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { atelierDataPath, getAtelierRuntimeContext } from "@atelier/core";
+import { atelierDataPath, getAtelierRuntimeContext, type JsonObject } from "@atelier/core";
 import type { AuthInteraction, AuthPrompt } from "@earendil-works/pi-ai";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
@@ -15,7 +15,7 @@ export interface ConfiguredAgentModel {
 
 interface ModelPreference { thinkingLevel?: string }
 interface AgentModelsSettings {
-  providers?: Record<string, unknown>;
+  providers?: JsonObject;
   picker?: Array<{ provider?: unknown; id?: unknown; label?: unknown }>;
   activeModel?: { provider?: unknown; id?: unknown };
   modelPreferences?: Record<string, ModelPreference>;
