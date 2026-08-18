@@ -18,7 +18,7 @@ import { turboStream, turboStreamResponse } from "./html.ts";
 import { expandPromptTemplate, listPromptTemplates, parseCompactCommand, parseWorkspaceNameCommand } from "./prompt-templates.ts";
 import { listFileCompletions, renderFileCompletionMenu } from "./file-completions.ts";
 import { loadWorkspaceSkills } from "./skills.ts";
-import { renderSlashCommandMenu } from "./slash-commands.ts";
+import { renderSlashCommandCatalog } from "./slash-commands.ts";
 import { getWorkspaceAgentRuntime, type SubmitMode } from "./runtime.ts";
 import { handleAgentTreeRequest } from "./session-tree.ts";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
@@ -136,6 +136,9 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/completions$/)) && request.method === "GET") {
     return await completionsEndpoint(params[0], url);
   }
+  if ((params = match(/^\/workspaces\/([^/]+)\/completion-catalog$/)) && request.method === "GET") {
+    return await completionCatalogEndpoint(params[0]);
+  }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/tree(\/summary|\/label|)$/))) {
     const [workspaceId, label, suffix] = params;
     return await handleAgentTreeRequest(request, url, suffix, async () => await getWorkspaceAgentRuntime(await requireAgent(workspaceId, label), options));
@@ -191,15 +194,15 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
 // Completions + messages
 // ---------------------------------------------------------------------------
 
+async function completionCatalogEndpoint(workspaceId: string): Promise<Response> {
+  const [templates, { skills }] = await Promise.all([listPromptTemplates(workspaceId), loadWorkspaceSkills(workspaceId)]);
+  return new Response(renderSlashCommandCatalog(templates, skills), { headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
 async function completionsEndpoint(workspaceId: string, url: URL): Promise<Response> {
   const query = url.searchParams.get("q") ?? "";
-  let html: string;
-  if (url.searchParams.get("kind") === "slash-command") {
-    const [templates, { skills }] = await Promise.all([listPromptTemplates(workspaceId), loadWorkspaceSkills(workspaceId)]);
-    html = renderSlashCommandMenu(templates, skills, query);
-  } else {
-    html = renderFileCompletionMenu(await listFileCompletions(workspaceId, query, url.searchParams.get("mode") === "fuzzy" ? "fuzzy" : "direct"));
-  }
+  const mode = url.searchParams.get("mode") === "fuzzy" ? "fuzzy" : "direct";
+  const html = renderFileCompletionMenu(await listFileCompletions(workspaceId, query, mode));
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
 

@@ -7,13 +7,15 @@ import { notifyInputListeners, setTextInputValue } from "./text-input.ts";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
+type HtmlAutocompleteRequest = { query: string; params?: Record<string, string>; debounceMs?: number };
+
 type HtmlAutocompleteOptions = {
   optionSelector: string;
-  request(input: HTMLInputElement | HTMLTextAreaElement, force?: boolean): { query: string; params?: Record<string, string> } | undefined;
+  request(input: HTMLInputElement | HTMLTextAreaElement, force?: boolean): HtmlAutocompleteRequest | undefined;
+  loadHtml?(request: HtmlAutocompleteRequest, url: URL, interaction: object): Promise<string> | undefined;
   /** Return false when selection starts an interaction that owns the open menu. */
   select(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): boolean | void;
   keydown?(event: KeyboardEvent, input: HTMLInputElement | HTMLTextAreaElement, url: string, actions: HtmlAutocompleteActions): boolean;
-  debounceMs?: number;
   loadingHtml?: string;
   triggerKeysWhenClosed?: string[];
   fullscreenShortcut?: boolean | ((option: HTMLElement) => boolean);
@@ -691,6 +693,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     private optionId = 0;
     private debounceTimer: number | undefined;
     private form: HTMLFormElement | null = null;
+    private interaction = {};
 
     connect(): void {
       this.form = this.inputTarget.closest("form");
@@ -772,16 +775,21 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     private scheduleRefresh(force = false): void {
       window.clearTimeout(this.debounceTimer);
       this.requestId++;
-      if (autocomplete.loadingHtml && this.menuTarget.hidden && autocomplete.request(this.inputTarget, force)) {
+      const request = autocomplete.request(this.inputTarget, force);
+      if (!request) {
+        this.close();
+        return;
+      }
+      if (autocomplete.loadingHtml && this.menuTarget.hidden) {
         this.menuTarget.innerHTML = autocomplete.loadingHtml;
         this.menuTarget.hidden = false;
       }
-      const debounceMs = force ? 0 : autocomplete.debounceMs ?? 0;
+      const debounceMs = force ? 0 : request.debounceMs ?? 0;
       if (debounceMs === 0) {
-        void this.refresh(force);
+        void this.refresh(request);
         return;
       }
-      this.debounceTimer = window.setTimeout(() => void this.refresh(force), debounceMs);
+      this.debounceTimer = window.setTimeout(() => void this.refresh(request), debounceMs);
     }
 
     private readonly click = (event: Event): void => {
@@ -834,17 +842,13 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       this.scheduleRefresh();
     };
 
-    private async refresh(force = false): Promise<void> {
-      const request = autocomplete.request(this.inputTarget, force);
-      if (!request) {
-        this.close();
-        return;
-      }
+    private async refresh(request: HtmlAutocompleteRequest): Promise<void> {
       const id = ++this.requestId;
       const url = new URL(this.urlValue, window.location.href);
       url.searchParams.set("q", request.query);
       for (const [name, value] of Object.entries(request.params ?? {})) url.searchParams.set(name, value);
-      const html = await fetch(url, { headers: { Accept: "text/html" } }).then((response) => response.text());
+      const html = await (autocomplete.loadHtml?.(request, url, this.interaction)
+        ?? fetch(url, { headers: { Accept: "text/html" } }).then((response) => response.text()));
       if (id !== this.requestId) return;
       this.menuTarget.innerHTML = html;
       this.menuTarget.hidden = false;
@@ -858,6 +862,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       this.menuTarget.hidden = true;
       this.inputTarget.removeAttribute("aria-activedescendant");
       this.menuTarget.replaceChildren();
+      this.interaction = {};
     }
 
     private options(): HTMLElement[] {
@@ -992,10 +997,83 @@ function insertFileCompletion(option: HTMLElement, input: HTMLInputElement | HTM
   input.setSelectionRange(nextCursor, nextCursor);
 }
 
+interface SlashCatalogCacheEntry {
+  html?: string;
+  refresh?: Promise<string>;
+}
+
+const slashCatalogCache = new Map<string, SlashCatalogCacheEntry>();
+const slashCatalogSnapshots = new WeakMap<object, string>();
+
+function slashCatalogUrl(completionsUrl: string | URL): URL {
+  const url = new URL(completionsUrl, window.location.href);
+  const workspacePath = url.pathname.match(/^\/workspaces\/[^/]+/)![0];
+  url.pathname = `${workspacePath}/completion-catalog`;
+  url.search = "";
+  return url;
+}
+
+function refreshSlashCatalog(completionsUrl: string | URL): Promise<string> {
+  const catalogUrl = slashCatalogUrl(completionsUrl);
+  const key = catalogUrl.href;
+  const entry = slashCatalogCache.get(key) ?? {};
+  slashCatalogCache.set(key, entry);
+  if (entry.refresh) return entry.refresh;
+
+  entry.refresh = fetch(catalogUrl, { headers: { Accept: "text/html" } })
+    .then((response) => response.text())
+    .then((html) => {
+      entry.html = html;
+      entry.refresh = undefined;
+      return html;
+    }, (error) => {
+      entry.refresh = undefined;
+      throw error;
+    });
+  return entry.refresh;
+}
+
+function filterSlashCompletionCatalog(html: string, query: string): string {
+  const container = document.createElement("template");
+  container.innerHTML = html.trim();
+  const menu = container.content.querySelector<HTMLElement>(".agent-completion-menu")!;
+  const normalized = query.toLowerCase();
+  const options = [...menu.querySelectorAll<HTMLElement>(".agent-completion-option")]
+    .filter((option) => option.dataset.commandTrigger!.slice(1).toLowerCase().includes(normalized))
+    .sort((a, b) => {
+      const aName = a.dataset.commandTrigger!.slice(1).toLowerCase();
+      const bName = b.dataset.commandTrigger!.slice(1).toLowerCase();
+      return Number(bName.startsWith(normalized)) - Number(aName.startsWith(normalized)) || aName.localeCompare(bName);
+    })
+    .slice(0, 12);
+
+  if (options.length === 0) return `<div class="agent-completion-menu empty">No slash commands</div>`;
+  menu.replaceChildren(...options);
+  for (const [index, option] of options.entries()) {
+    option.classList.toggle("active", index === 0);
+    option.setAttribute("aria-selected", index === 0 ? "true" : "false");
+  }
+  return menu.outerHTML;
+}
+
+async function slashCompletionHtml(url: URL, interaction: object, query: string): Promise<string> {
+  let catalog = slashCatalogSnapshots.get(interaction);
+  if (!catalog) {
+    const entry = slashCatalogCache.get(slashCatalogUrl(url).href);
+    if (entry?.html) {
+      catalog = entry.html;
+      void refreshSlashCatalog(url);
+    } else {
+      catalog = await refreshSlashCatalog(url);
+    }
+    slashCatalogSnapshots.set(interaction, catalog);
+  }
+  return filterSlashCompletionCatalog(catalog, query);
+}
+
 function createAgentCompletionsController(Controller: StimulusControllerConstructor) {
-  return createHtmlAutocompleteController(Controller, {
+  const HtmlAutocompleteController = createHtmlAutocompleteController(Controller, {
     optionSelector: ".agent-completion-option:not([hidden])",
-    debounceMs: 70,
     loadingHtml: `<div class="agent-completion-menu empty" role="status"><span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…</div>`,
     triggerKeysWhenClosed: ["/", "@"],
     fullscreenShortcut: (option) => option.dataset.completionKind === "prompt-template",
@@ -1005,7 +1083,11 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       return completion && {
         query: completion.query,
         params: { kind: completion.kind, ...(completion.mode ? { mode: completion.mode } : {}) },
+        debounceMs: completion.kind === "file" ? 70 : 0,
       };
+    },
+    loadHtml(request, url, interaction) {
+      if (request.params?.kind === "slash-command") return slashCompletionHtml(url, interaction, request.query);
     },
     select(option, input) {
       if (selectAgentTreeOption(option, input)) return false;
@@ -1038,6 +1120,13 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       return true;
     },
   });
+
+  return class AgentCompletionsController extends HtmlAutocompleteController {
+    connect(): void {
+      super.connect();
+      void refreshSlashCatalog(this.urlValue);
+    }
+  };
 }
 
 // ---------------------------------------------------------------------------

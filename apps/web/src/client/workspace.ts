@@ -2447,12 +2447,11 @@ class AgentSelectMenuController extends Controller {
 
 const ProjectGithubSearchController = createHtmlAutocompleteController(Controller, {
   optionSelector: ".agent-completion-option",
-  debounceMs: 200,
   loadingHtml: `<div class="agent-completion-menu empty"><span class="agent-completion-spinner" aria-hidden="true"></span>Searching GitHub…</div>`,
   request(input) {
     const query = input.value.trim();
     if (query.length < 2 || looksLikeProjectSpec(query)) return undefined;
-    return { query };
+    return { query, debounceMs: 200 };
   },
   select(option, input) {
     const gitUrl = option.dataset.gitUrl;

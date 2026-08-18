@@ -73,22 +73,23 @@ describe("Atelier Playwright helper", () => {
     const page = await browser.newPage();
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<div data-controller="agent-completions" data-agent-completions-url-value="/completions">
+      body: `<div data-controller="agent-completions" data-agent-completions-url-value="/workspaces/demo/agents/Agent%201/completions">
         <div data-agent-completions-target="menu" hidden></div>
         <textarea data-agent-completions-target="input" data-action="input->agent-completions#input"></textarea>
       </div><script type="module" src="/workspace-test.js"></script>`,
     }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
-    await page.route("**/completions?*", (route) => route.fulfill({
+    await page.route("**/workspaces/demo/completion-catalog", (route) => route.fulfill({
       contentType: "text/html",
-      body: '<button class="agent-completion-option" data-completion-kind="prompt-template" data-command-trigger="/review">Review</button>',
+      body: '<div class="agent-completion-menu"><button class="agent-completion-option" data-completion-kind="prompt-template" data-command-trigger="/review">Review</button><button class="agent-completion-option" data-completion-kind="prompt-template" data-command-trigger="/simplify">Simplify</button></div>',
     }));
     await page.goto("http://atelier.test/");
 
     const input = page.locator("textarea");
-    await input.fill("/");
+    await input.fill("/rev");
     const option = page.locator(".agent-completion-option");
     await option.waitFor();
+    expect(await option.count()).toBe(1);
     await option.dispatchEvent("pointerdown", { button: 0, pointerType: "touch" });
 
     expect(await input.inputValue()).toBe("/review ");
