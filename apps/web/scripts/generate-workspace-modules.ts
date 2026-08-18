@@ -2,7 +2,10 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 
 interface PackageJson {
   name?: string;
-  exports?: Record<string, unknown>;
+  exports?: {
+    "./client"?: unknown;
+    "./server"?: unknown;
+  };
 }
 
 interface DiscoveredModule {
