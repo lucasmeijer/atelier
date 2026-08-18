@@ -39,7 +39,7 @@ export default defineConfig({
     "anti-slop/no-runtime-typeof": "warn",
     "anti-slop/no-shape-in-symbol-names": "warn",
     "anti-slop/no-unknown-parameters": "warn",
-    "anti-slop/no-unknown-returns": "warn",
+    "anti-slop/no-unknown-returns": "error",
     "anti-slop/no-unknown-type-aliases": "warn",
     "anti-slop/no-unsafe-dictionary-type": "warn",
     "anti-slop/no-widen-then-assert": "warn",
