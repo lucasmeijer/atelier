@@ -104,6 +104,32 @@ export interface AgentToolDefinitionView {
   parameters: unknown;
 }
 
+interface ToolArguments {
+  command?: unknown;
+  path?: unknown;
+  file_path?: unknown;
+  content?: unknown;
+  offset?: unknown;
+  limit?: unknown;
+  timeout?: unknown;
+  edits?: unknown;
+  oldText?: unknown;
+  newText?: unknown;
+}
+
+interface ToolDetails {
+  patch?: unknown;
+  displayAnsi?: unknown;
+  timedOut?: unknown;
+  aborted?: unknown;
+  exitCode?: unknown;
+}
+
+interface EditOperationCandidate {
+  oldText?: unknown;
+  newText?: unknown;
+}
+
 export interface AgentModelContextView {
   systemPrompt: string;
   tools: AgentToolDefinitionView[];
@@ -611,7 +637,7 @@ function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView,
 }
 
 function editHunksForDisplay(tool: ToolView, contextual: boolean): DiffDisplayLine[][] {
-  const details = tool.details && typeof tool.details === "object" ? tool.details as Record<string, unknown> : undefined;
+  const details = toolDetails(tool);
   const patch = typeof details?.patch === "string" ? parseUnifiedPatchHunks(details.patch) : [];
   if (patch.length) return patch;
   const contextLines = contextual ? 3 : Number.POSITIVE_INFINITY;
@@ -670,21 +696,26 @@ function fullscreenAttributes(title: string, mode: "template" | "media" = "templ
   return ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="${mode}" data-atelier-fullscreen-title-value="${escapeHtml(title)}"`;
 }
 
-function toolArgs(tool: ToolView): Record<string, unknown> | undefined {
-  return tool.args && typeof tool.args === "object" && !Array.isArray(tool.args) ? tool.args as Record<string, unknown> : undefined;
+function toolArgs(tool: ToolView): ToolArguments | undefined {
+  if (!tool.args || typeof tool.args !== "object" || Array.isArray(tool.args)) return undefined;
+  // SAFETY: ToolArguments only names optional properties with unknown values.
+  return tool.args as ToolArguments;
 }
 
-function stringArg(args: Record<string, unknown> | undefined, ...keys: string[]): string | undefined {
-  for (const key of keys) if (typeof args?.[key] === "string") return args[key] as string;
+function stringArg(args: ToolArguments | undefined, ...keys: Array<keyof ToolArguments>): string | undefined {
+  for (const key of keys) {
+    const value = args?.[key];
+    if (typeof value === "string") return value;
+  }
   return undefined;
 }
 
-function numberArg(args: Record<string, unknown> | undefined, key: string): number | undefined {
+function numberArg(args: ToolArguments | undefined, key: keyof ToolArguments): number | undefined {
   const value = args?.[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function formatReadRange(args: Record<string, unknown> | undefined): string {
+function formatReadRange(args: ToolArguments | undefined): string {
   const offset = numberArg(args, "offset");
   const limit = numberArg(args, "limit");
   if (offset === undefined && limit === undefined) return "";
@@ -851,9 +882,13 @@ function ansiToHtml(text: string): string {
   return html;
 }
 
-function bashDetails(tool: ToolView): Record<string, unknown> | undefined {
-  return tool.details && typeof tool.details === "object" ? tool.details as Record<string, unknown> : undefined;
+function toolDetails(tool: ToolView): ToolDetails | undefined {
+  if (!tool.details || typeof tool.details !== "object" || Array.isArray(tool.details)) return undefined;
+  // SAFETY: ToolDetails only names optional properties with unknown values.
+  return tool.details as ToolDetails;
 }
+
+const bashDetails = toolDetails;
 
 function hasAnsiSgr(text: string): boolean {
   return /\x1b\[[0-9;?]*m/.test(text);
@@ -880,12 +915,13 @@ function bashOutputHtml(text: string): string {
   return colorizePlainBuildOutput(text);
 }
 
-function getEditOperations(args: Record<string, unknown> | undefined): DiffOperation[] {
+function getEditOperations(args: ToolArguments | undefined): DiffOperation[] {
   if (!args) return [];
   if (Array.isArray(args.edits)) {
     return args.edits.flatMap((edit) => {
       if (!edit || typeof edit !== "object") return [];
-      const entry = edit as Record<string, unknown>;
+      // SAFETY: EditOperationCandidate only names optional properties with unknown values.
+      const entry = edit as EditOperationCandidate;
       return typeof entry.oldText === "string" && typeof entry.newText === "string" ? [{ oldText: entry.oldText, newText: entry.newText }] : [];
     });
   }
@@ -904,9 +940,9 @@ function genericToolSummary(tool: ToolView): string {
 function genericParamsHtml(tool: ToolView): string {
   const args = toolArgs(tool);
   if (!args) return "";
-  const keys = Object.keys(args);
-  if (keys.length === 0) return "";
-  if (keys.length === 1 && typeof args[keys[0]] === "string" && genericToolSummary(tool) === args[keys[0]]) return "";
+  const values = Object.values(args);
+  if (values.length === 0) return "";
+  if (values.length === 1 && typeof values[0] === "string" && genericToolSummary(tool) === values[0]) return "";
   return codeBlockHtml(JSON.stringify(args, null, 2), "arguments.json", "agent-tool-code");
 }
 
