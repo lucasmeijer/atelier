@@ -2,6 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { createWebApp } from "../src/server/app.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
@@ -20,6 +22,20 @@ function deferred<T = void>() {
 
 type ProvisionWorkspace = Parameters<typeof createWebApp>[0]["provisionWorkspace"];
 type ProvisionWorkspaceOptions = Parameters<ProvisionWorkspace>[1];
+
+const openApiPathPresenceSchema = Type.Object({
+  paths: Type.Object({
+    "/workspaces": Type.Optional(Type.Unknown()),
+    "/workspaces/{id}/commands/{commandId}": Type.Optional(Type.Unknown()),
+    "/projects": Type.Optional(Type.Unknown()),
+    "/projects/{projectId}": Type.Optional(Type.Unknown()),
+    "/projects/{projectId}/environment/{variableId}/delete": Type.Optional(Type.Unknown()),
+    "/projects/{projectId}/secrets/{secretId}/delete": Type.Optional(Type.Unknown()),
+    "/projects/{projectId}/delete": Type.Optional(Type.Unknown()),
+    "/projects/picker": Type.Optional(Type.Unknown()),
+    "/api/workspaces": Type.Optional(Type.Unknown()),
+  }),
+});
 
 interface TestAppOptions {
   provision?: (id: string, options?: ProvisionWorkspaceOptions) => Promise<void>;
@@ -423,7 +439,7 @@ describe("web app contracts", () => {
 
     const removed = await app.fetch(postJson("/api/workspaces", {}));
     const openapi = await app.fetch(new Request("http://test.local/openapi.json"));
-    const specification = await openapi.json() as { paths: Record<string, unknown> };
+    const specification = Value.Parse(openApiPathPresenceSchema, await openapi.json());
 
     expect(removed.status).toBe(404);
     expect(openapi.headers.get("content-type")).toContain("application/json");
