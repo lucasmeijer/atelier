@@ -884,11 +884,13 @@ describe("web app contracts", () => {
     await withTempDataDir(async () => {
       const originalFetch = globalThis.fetch;
       try {
-        globalThis.fetch = ((url: Parameters<typeof fetch>[0]) => {
-          if (url === "https://api.github.com/user") return Promise.resolve(Response.json({ login: "octocat", name: "Mona Lisa", email: "octocat@github.com" }));
-          if (url === "https://api.github.com/user/emails") return Promise.resolve(Response.json([]));
-          throw new Error(`unexpected fetch ${String(url)}`);
-        }) as unknown as typeof fetch;
+        const fetchMock = Object.assign(async (input: Parameters<typeof fetch>[0]) => {
+          const url = input instanceof Request ? input.url : String(input);
+          if (url === "https://api.github.com/user") return Response.json({ login: "octocat", name: "Mona Lisa", email: "octocat@github.com" });
+          if (url === "https://api.github.com/user/emails") return Response.json([]);
+          throw new Error(`unexpected fetch ${url}`);
+        }, { preconnect: originalFetch.preconnect }) satisfies typeof fetch;
+        globalThis.fetch = fetchMock;
         const { app } = createTestApp();
 
         const response = await app.fetch(postForm("/settings/github/connect", new URLSearchParams({ token: "cli-token" })));
