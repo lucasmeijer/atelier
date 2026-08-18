@@ -27,6 +27,10 @@ export interface WorkspaceImageCarrierResult {
   kind: "local hit" | "locally built";
 }
 
+interface CarrierLabels {
+  [name: string]: string;
+}
+
 const carrierTasks = new Map<string, Promise<WorkspaceImageCarrierResult>>();
 
 function sortedUnique(values: string[]): string[] { return [...new Set(values)].sort(); }
@@ -64,7 +68,7 @@ export async function nativeLinuxDockerPlatform(): Promise<string | undefined> {
   return type === "linux" && architecture ? `linux/${architecture}` : undefined;
 }
 
-function carrierLabels(key: string, baseIdentity: string, platform: string, preload: ResolvedDockerImagePreload): Record<string, string> {
+function carrierLabels(key: string, baseIdentity: string, platform: string, preload: ResolvedDockerImagePreload): CarrierLabels {
   return {
     "com.atelier.workspace-carrier.version": String(workspaceCarrierFormatVersion),
     "com.atelier.workspace-carrier.key": key,

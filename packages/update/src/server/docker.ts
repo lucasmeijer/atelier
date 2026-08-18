@@ -71,6 +71,10 @@ export interface DockerInspect {
   NetworkSettings?: unknown;
 }
 
+export interface DockerLabels {
+  [name: string]: string;
+}
+
 export async function dockerInspect(id: string, exec: DockerExec = dockerExec): Promise<DockerInspect> {
   const result = await exec(["inspect", id]);
   if (result.code !== 0) throw new Error(result.stderr.trim() || `docker inspect failed for ${id}`);
@@ -79,7 +83,7 @@ export async function dockerInspect(id: string, exec: DockerExec = dockerExec): 
   return parsed[0];
 }
 
-export function labelsFromInspect(inspect: DockerInspect): Record<string, string> {
+export function labelsFromInspect(inspect: DockerInspect): DockerLabels {
   return { ...(inspect.ImageConfig?.Config?.Labels ?? {}), ...(inspect.Config?.Labels ?? {}) };
 }
 

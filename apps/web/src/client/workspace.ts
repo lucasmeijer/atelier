@@ -17,6 +17,7 @@ import {
   type WorkspaceClientTabVisibilityContext,
   type WorkspaceClientFocusContext,
   type WorkspaceClientHooks,
+  type WorkspaceClientControllerConstructor,
   type WorkspaceClientWorkspaceAppFrameContext,
   type WorkspacePaletteItem,
   type WorkspacePaletteProvider,
@@ -29,8 +30,8 @@ import { createAtelierCableClient } from "./cable.ts";
 declare global {
   interface Window {
     Stimulus: {
-      Application: { start(): { start(): Promise<void>; stop(): void; register(identifier: string, controllerConstructor: unknown): void; getControllerForElementAndIdentifier(element: Element, identifier: string): { element: Element } | null } };
-      Controller: new (...args: unknown[]) => { element: Element };
+      Application: { start(): { start(): Promise<void>; stop(): void; register(identifier: string, controllerConstructor: WorkspaceClientControllerConstructor): void; getControllerForElementAndIdentifier(element: Element, identifier: string): { element: Element } | null } };
+      Controller: new (...args: never[]) => { element: Element };
     };
     Turbo?: { renderStreamMessage(html: string): void };
     AtelierCable?: AtelierCableClient;
@@ -38,8 +39,8 @@ declare global {
 }
 
 window.Stimulus = {
-  Application: StimulusApplication as unknown as typeof window.Stimulus.Application,
-  Controller: StimulusController as unknown as typeof window.Stimulus.Controller,
+  Application: StimulusApplication as typeof window.Stimulus.Application,
+  Controller: StimulusController as typeof window.Stimulus.Controller,
 };
 window.Turbo = Turbo;
 
@@ -622,6 +623,10 @@ class WorkspaceTabCloseController extends Controller {
   }
 }
 
+type WorkspaceLayoutMutation =
+  | { tab: string; fromGroup: string; newGroup: true }
+  | { tab: string; fromGroup: string; toGroup: string; toIndex: number };
+
 class WorkspaceGroupsController extends Controller {
   static targets = ["group"];
   static values = { workspaceId: String };
@@ -752,7 +757,7 @@ class WorkspaceGroupsController extends Controller {
     this.groupTargets.forEach((group, index) => group.style.setProperty("--group-size", String((sizes[index] ?? 1) / total)));
   }
 
-  private async renderStream(url: string, body: unknown): Promise<void> {
+  private async renderStream(url: string, body: WorkspaceLayoutMutation): Promise<void> {
     const html = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "text/vnd.turbo-stream.html" },

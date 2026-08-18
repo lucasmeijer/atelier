@@ -5,14 +5,27 @@ import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, workspaceProx
 import { agentTreeOwnsMenu, handleAgentTreeKeydown, handleAgentTreeMenuEvent, selectAgentTreeOption } from "./session-tree.ts";
 import { notifyInputListeners, setTextInputValue } from "./text-input.ts";
 
-type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
+type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
+
+interface ScrollTranscript {
+  scrollTop: number;
+  readonly scrollHeight: number;
+  readonly clientHeight: number;
+  getBoundingClientRect(): Pick<DOMRect, "top">;
+}
+
+interface TranscriptMessage {
+  getBoundingClientRect(): Pick<DOMRect, "top">;
+}
 
 type HtmlAutocompleteRequest = { query: string; params?: Record<string, string>; debounceMs?: number };
+
+interface HtmlAutocompleteInteraction {}
 
 type HtmlAutocompleteOptions = {
   optionSelector: string;
   request(input: HTMLInputElement | HTMLTextAreaElement, force?: boolean): HtmlAutocompleteRequest | undefined;
-  loadHtml?(request: HtmlAutocompleteRequest, url: URL, interaction: object): Promise<string> | undefined;
+  loadHtml?(request: HtmlAutocompleteRequest, url: URL, interaction: HtmlAutocompleteInteraction): Promise<string> | undefined;
   /** Return false when selection starts an interaction that owns the open menu. */
   select(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): boolean | void;
   keydown?(event: KeyboardEvent, input: HTMLInputElement | HTMLTextAreaElement, url: string, actions: HtmlAutocompleteActions): boolean;
@@ -57,23 +70,23 @@ interface AgentPaneControllerInstance {
 // agent-pane: cable subscription lifecycle, scroll anchoring, prompt behavior, rewind dialog
 // ---------------------------------------------------------------------------
 
-function scrollEnd(element: HTMLElement): number {
+function scrollEnd(element: Pick<ScrollTranscript, "scrollHeight" | "clientHeight">): number {
   return Math.max(0, element.scrollHeight - element.clientHeight);
 }
 
-function messageScrollTop(transcript: HTMLElement, message: HTMLElement): number {
+function messageScrollTop(transcript: ScrollTranscript, message: TranscriptMessage): number {
   return transcript.scrollTop + message.getBoundingClientRect().top - transcript.getBoundingClientRect().top;
 }
 
-function messageScrollTarget(transcript: HTMLElement, message: HTMLElement): number {
+function messageScrollTarget(transcript: ScrollTranscript, message: TranscriptMessage): number {
   return Math.min(messageScrollTop(transcript, message), scrollEnd(transcript));
 }
 
-export function scrollMessageToTop(transcript: HTMLElement, message: HTMLElement): void {
+export function scrollMessageToTop(transcript: ScrollTranscript & Pick<HTMLElement, "scrollTo">, message: TranscriptMessage): void {
   transcript.scrollTo({ top: messageScrollTarget(transcript, message), behavior: "smooth" });
 }
 
-export function messageNavigationDirection(transcript: HTMLElement, message: HTMLElement): "up" | "down" | undefined {
+export function messageNavigationDirection(transcript: ScrollTranscript, message: TranscriptMessage): "up" | "down" | undefined {
   const distance = transcript.scrollTop - messageScrollTarget(transcript, message);
   return Math.abs(distance) < 1 ? undefined : distance > 0 ? "up" : "down";
 }
@@ -227,7 +240,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     private disposeAgentTerminals(): void {
       this.element.querySelectorAll<HTMLElement>('[data-controller~="agent-term"]').forEach((terminal) => {
-        const controller = (this.application as unknown as StimulusApplication).getControllerForElementAndIdentifier(terminal, "agent-term") as { disconnect?(): void } | null;
+        const controller = this.application.getControllerForElementAndIdentifier(terminal, "agent-term") as { disconnect?(): void } | null;
         controller?.disconnect?.();
         terminal.remove();
       });
@@ -968,7 +981,7 @@ export function agentCompletionRequest(input: HTMLInputElement | HTMLTextAreaEle
   return prefix.startsWith("@") ? { kind: "file", query: rawFileCompletionQuery(prefix), mode: "fuzzy" } : undefined;
 }
 
-export function insertSlashCommand(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): void {
+export function insertSlashCommand(option: Pick<HTMLElement, "dataset">, input: HTMLInputElement | HTMLTextAreaElement): void {
   const trigger = option.dataset.commandTrigger;
   if (!trigger) return;
   const end = input.selectionEnd ?? 0;
@@ -1056,7 +1069,7 @@ function filterSlashCompletionCatalog(html: string, query: string): string {
   return menu.outerHTML;
 }
 
-async function slashCompletionHtml(url: URL, interaction: object, query: string): Promise<string> {
+async function slashCompletionHtml(url: URL, interaction: HtmlAutocompleteInteraction, query: string): Promise<string> {
   let catalog = slashCatalogSnapshots.get(interaction);
   if (!catalog) {
     const entry = slashCatalogCache.get(slashCatalogUrl(url).href);
@@ -1080,11 +1093,14 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
     menuEvent: handleAgentTreeMenuEvent,
     request(input, force) {
       const completion = agentCompletionRequest(input, force);
-      return completion && {
-        query: completion.query,
-        params: { kind: completion.kind, ...(completion.mode ? { mode: completion.mode } : {}) },
-        debounceMs: completion.kind === "file" ? 70 : 0,
-      };
+      if (!completion) return completion;
+      interface CompletionRequestParams {
+        [name: string]: string;
+        kind: typeof completion.kind;
+      }
+      const params: CompletionRequestParams = { kind: completion.kind };
+      if (completion.mode) params["mode"] = completion.mode;
+      return { query: completion.query, params, debounceMs: completion.kind === "file" ? 70 : 0 };
     },
     loadHtml(request, url, interaction) {
       if (request.params?.kind === "slash-command") return slashCompletionHtml(url, interaction, request.query);
@@ -1404,8 +1420,14 @@ function createAgentLazyDetailController(Controller: StimulusControllerConstruct
 // agent-term: inline read-only xterm attached to an agent tmux session
 // ---------------------------------------------------------------------------
 
-export function forwardAgentTerminalWheel(terminal: HTMLElement, event: WheelEvent): boolean {
-  const transcript = terminal.closest<HTMLElement>(".agent-transcript");
+export function forwardAgentTerminalWheel<T extends Pick<HTMLElement, "scrollTop" | "clientHeight">>(
+  terminal: { closest(selectors: string): T | null },
+  event: Pick<WheelEvent, "ctrlKey" | "deltaY" | "deltaMode" | "preventDefault" | "stopPropagation"> & {
+    readonly DOM_DELTA_LINE: number;
+    readonly DOM_DELTA_PAGE: number;
+  },
+): boolean {
+  const transcript = terminal.closest(".agent-transcript");
   if (!transcript || event.ctrlKey || event.deltaY === 0) return false;
   const delta = event.deltaMode === event.DOM_DELTA_LINE
     ? event.deltaY * 16
@@ -1512,8 +1534,8 @@ function agentPaneController(application: StimulusApplication, pane: HTMLElement
   return agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
 }
 
-export function focusAgentPrompt(pane?: HTMLElement | null): boolean {
-  const input = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
+export function focusAgentPrompt(pane?: { querySelector(selectors: string): Pick<HTMLTextAreaElement, "focus"> | null } | null): boolean {
+  const input = pane?.querySelector(".agent-input");
   if (!input) return false;
   input.focus({ preventScroll: true });
   return true;

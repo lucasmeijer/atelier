@@ -4,7 +4,12 @@ export interface OrderedContribution {
   order?: number;
 }
 
-export function createContributionRegistry<T extends OrderedContribution>(): { register(contribution: T): void; list(): T[] } {
+export interface ContributionRegistry<T extends OrderedContribution> {
+  register(contribution: T): void;
+  list(): T[];
+}
+
+export function createContributionRegistry<T extends OrderedContribution>(): ContributionRegistry<T> {
   const contributions: T[] = [];
   return {
     register(contribution) {

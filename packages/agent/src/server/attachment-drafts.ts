@@ -4,7 +4,11 @@ import { getAtelierRuntimeContext, shellQuote } from "@atelier/core";
 import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import type { ImageRef } from "./transcript.ts";
 
-export const imageMimeByExtension: Record<string, string> = {
+export interface ImageMimeTypeRegistry {
+  [extension: string]: string;
+}
+
+export const imageMimeByExtension: ImageMimeTypeRegistry = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",

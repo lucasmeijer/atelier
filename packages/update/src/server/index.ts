@@ -27,7 +27,7 @@ export interface UpdateManagerDeps {
   docker?: DockerExec;
   checkUpdaterPortAvailable?: () => Promise<void>;
   waitForUpdater?: (url: string) => Promise<void>;
-  setInterval?: typeof setInterval;
+  setInterval?: (handler: () => void, interval: number) => void;
 }
 
 export class UpdateManager {
@@ -52,8 +52,13 @@ export class UpdateManager {
     this.updateSidebar();
     if (!this.runtime) return;
     await this.checkNow();
-    const interval = (this.deps.setInterval ?? setInterval)(() => void this.checkNow().catch((error) => this.fail(error)), pollIntervalMs);
-    interval.unref?.();
+    const checkForUpdate = () => void this.checkNow().catch((error) => this.fail(error));
+    if (this.deps.setInterval) {
+      this.deps.setInterval(checkForUpdate, pollIntervalMs);
+    } else {
+      const interval = setInterval(checkForUpdate, pollIntervalMs);
+      interval.unref?.();
+    }
   }
 
   snapshot(): StateSnapshot {
@@ -229,12 +234,17 @@ async function waitForUpdater(url: string): Promise<void> {
 const manager = new UpdateManager();
 
 function progressBar(percent?: number): string {
-  const style = typeof percent === "number" ? ` style="width:${percent}%"` : "";
-  const label = typeof percent === "number" ? `${percent}%` : "Pulling…";
+  const style = percent === undefined ? "" : ` style="width:${percent}%"`;
+  const label = percent === undefined ? "Pulling…" : `${percent}%`;
   return `<div class="update-sidebar-progress${percent === undefined ? " indeterminate" : ""}" aria-label="Pulling update" title="${escapeHtml(label)}"><span${style}></span></div><span class="update-sidebar-percent">${escapeHtml(label)}</span>`;
 }
 
-function updateStatusText(snapshot: StateSnapshot): { label: string; detail: string } {
+interface UpdateStatusText {
+  label: string;
+  detail: string;
+}
+
+function updateStatusText(snapshot: StateSnapshot): UpdateStatusText {
   if (!snapshot.selfUpdatable) return { label: "Self-update unavailable", detail: "Atelier is not running in a managed Docker install." };
   if (snapshot.state === "checking") return { label: "Checking for updates…", detail: `Checking the ${snapshot.releaseChannel} channel.` };
   if (snapshot.state === "idle") return { label: "Up to date", detail: `Atelier is up to date on the ${snapshot.releaseChannel} channel.` };

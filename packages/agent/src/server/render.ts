@@ -483,7 +483,12 @@ function toolSummaryContentHtml(tool: ToolView): string {
   return `<code class="agent-tool-name">${escapeHtml(tool.name || "tool")}</code>${summary ? `<span class="agent-tool-sep">·</span><span class="agent-tool-args${tool.status === "error" ? " error" : ""}">${summary}</span>` : ""}${tool.status === "running" && tool.name === "bash" ? `<span class="agent-tool-sep">·</span>${runningElapsedHtml(tool)}` : ""}`;
 }
 
-export function renderActiveToolContent(ctx: AgentRenderContext, key: string, original: ToolView): { summary: string; detail?: string } {
+export interface ActiveToolContent {
+  summary: string;
+  detail?: string;
+}
+
+export function renderActiveToolContent(ctx: AgentRenderContext, key: string, original: ToolView): ActiveToolContent {
   const tool = toolForRender(original);
   return {
     summary: toolSummaryContentHtml(tool),
@@ -527,7 +532,12 @@ function sourceRegion(title: string, code: string, path: string | undefined, cla
   return sourceRegionHtml(title, codeBlockHtml(code, path, "agent-tool-code"), className);
 }
 
-function textWindow(text: string, mode: "first" | "last", count: number): { text: string; hidden: number } {
+interface TextWindow {
+  text: string;
+  hidden: number;
+}
+
+function textWindow(text: string, mode: "first" | "last", count: number): TextWindow {
   const lines = text.replaceAll("\r\n", "\n").split("\n");
   if (lines.length <= count) return { text, hidden: 0 };
   return mode === "first" ? { text: lines.slice(0, count).join("\n"), hidden: lines.length - count } : { text: lines.slice(-count).join("\n"), hidden: lines.length - count };
@@ -544,7 +554,15 @@ function tailOutput(content: string, pagination: string, direction: "first" | "l
   return `<div class="agent-tail-output" data-agent-tail-direction="${direction}">${direction === "last" ? pagination : ""}${content}${direction === "first" ? pagination : ""}</div>`;
 }
 
-function bashViews(tool: ToolView, count: number): { display: string; model: string; same: boolean; resultWindow: { text: string; hidden: number }; modelWindow: { text: string; hidden: number } } {
+interface BashViews {
+  display: string;
+  model: string;
+  same: boolean;
+  resultWindow: TextWindow;
+  modelWindow: TextWindow;
+}
+
+function bashViews(tool: ToolView, count: number): BashViews {
   const details = toolDetails(tool);
   const display = typeof details?.displayAnsi === "string" ? details.displayAnsi.trimEnd() : "";
   const model = trimResult(tool);
@@ -776,7 +794,15 @@ function ansi256(index: number): string | undefined {
   return undefined;
 }
 
-function styleAttr(style: { bold?: boolean; italic?: boolean; underline?: boolean; fg?: string; bg?: string }): string {
+interface AnsiStyle {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  fg?: string;
+  bg?: string;
+}
+
+function styleAttr(style: AnsiStyle): string {
   const rules: string[] = [];
   if (style.bold) rules.push("font-weight:700");
   if (style.italic) rules.push("font-style:italic");
@@ -788,7 +814,7 @@ function styleAttr(style: { bold?: boolean; italic?: boolean; underline?: boolea
 
 function ansiToHtml(text: string): string {
   let html = "";
-  let style: { bold?: boolean; italic?: boolean; underline?: boolean; fg?: string; bg?: string } = {};
+  let style: AnsiStyle = {};
   let open = false;
   const close = () => {
     if (open) html += "</span>";

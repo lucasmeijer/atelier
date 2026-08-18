@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { AtelierCoreError } from "@atelier/core";
+import { AtelierCoreError, type JsonObject } from "@atelier/core";
 import { parseRepoWorkspaceManifest } from "@atelier/workspace";
 
-function parse(value: unknown) { return parseRepoWorkspaceManifest(JSON.stringify(value)); }
-function expectInvalid(value: unknown, text: string): void {
+function parse(value: JsonObject) { return parseRepoWorkspaceManifest(JSON.stringify(value)); }
+function expectInvalid(value: JsonObject, text: string): void {
   try { parse(value); } catch (error) {
     expect(error).toBeInstanceOf(AtelierCoreError);
-    expect((error as Error).message).toContain(text);
+    if (!(error instanceof AtelierCoreError)) throw error;
+    expect(error.message).toContain(text);
     return;
   }
   throw new Error("expected invalid manifest");

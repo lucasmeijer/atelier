@@ -307,15 +307,15 @@ async function serveStatic(pathname: string, request: Request): Promise<Response
   if (pathname.startsWith("/assets/")) {
     const file = Bun.file(new URL(`../../public${pathname}`, import.meta.url));
     if (!(await file.exists())) return new Response("not found", { status: 404, headers: { "content-type": "text/plain" } });
-    const headers: Record<string, string> = {
+    const headers = new Headers({
       "content-type": contentTypeForStaticPath(pathname),
       "cache-control": "public, max-age=31536000, immutable",
       "vary": "Accept-Encoding",
-    };
+    });
     if (requestAcceptsGzip(request)) {
       const compressed = Bun.file(new URL(`../../public${pathname}.gz`, import.meta.url));
       if (await compressed.exists()) {
-        headers["content-encoding"] = "gzip";
+        headers.set("content-encoding", "gzip");
         return new Response(compressed, { headers });
       }
     }
@@ -326,8 +326,8 @@ async function serveStatic(pathname: string, request: Request): Promise<Response
   if (!entry) return undefined;
   const file = Bun.file(entry.url);
   if (!(await file.exists())) return new Response("not found", { status: 404, headers: { "content-type": "text/plain" } });
-  const headers: Record<string, string> = { "content-type": entry.contentType };
-  if (pathname === "/workspace.js" || pathname === "/service-worker.js" || pathname === "/manifest.webmanifest") headers["cache-control"] = "no-store";
+  const headers = new Headers({ "content-type": entry.contentType });
+  if (pathname === "/workspace.js" || pathname === "/service-worker.js" || pathname === "/manifest.webmanifest") headers.set("cache-control", "no-store");
   return new Response(file, { headers });
 }
 

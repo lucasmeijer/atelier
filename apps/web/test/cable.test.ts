@@ -10,7 +10,7 @@ function fakeSocket(data: CableSocketData) {
     data,
     sent,
     send(value: string) { sent.push(JSON.parse(value)); return value.length; },
-  } as unknown as { data: CableSocketData; sent: unknown[]; send(value: string): number };
+  };
 }
 
 test("cable cursors reject stale revisions from the same runtime", () => {

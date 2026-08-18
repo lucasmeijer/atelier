@@ -123,7 +123,7 @@ export function createWorkspaceLayoutStore(): WorkspaceLayoutStore {
         source.tabs = source.tabs.filter((key) => key !== tab);
         if (wasVisible) source.visibleTab = source.tabs[Math.max(0, oldIndex - 1)] ?? source.tabs[0];
       }
-      const toIndex = typeof request.toIndex === "number" && Number.isFinite(request.toIndex)
+      const toIndex = request.toIndex !== undefined && Number.isFinite(request.toIndex)
         ? Math.max(0, Math.min(request.toIndex, target.tabs.length))
         : target.tabs.length;
       target.tabs.splice(toIndex, 0, tab);

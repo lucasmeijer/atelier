@@ -121,7 +121,7 @@ function wantsTurboStream(request: Request): boolean {
   return request.headers.get("accept")?.includes("text/vnd.turbo-stream.html") ?? false;
 }
 
-function jsonResponse(body: unknown, init: HtmlResponseInit = {}): Response {
+function jsonResponse<Body extends object>(body: Body, init: HtmlResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   headers.set("content-type", "application/json; charset=utf-8");
   if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
@@ -646,10 +646,15 @@ ${moduleStylesHtml()}
 
   async function canReadRemoteWithConfiguredToken(gitUrl: string): Promise<boolean> {
     const token = discoverHostGitHubToken();
+    interface GitProcessEnvironment {
+      [name: string]: string | undefined;
+    }
+    const env: GitProcessEnvironment = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
+    if (token) env.GH_TOKEN = token;
     const proc = Bun.spawn(["git", "-c", `credential.helper=${gitHubCredentialHelperCommand}`, "ls-remote", "--exit-code", gitUrl, "HEAD"], {
       stdout: "ignore",
       stderr: "pipe",
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...(token ? { GH_TOKEN: token } : {}) },
+      env,
     });
     await new Response(proc.stderr).text().catch(() => "");
     return await proc.exited === 0;
@@ -880,14 +885,14 @@ ${moduleStylesHtml()}
 
   async function workspaceJson(id: string): Promise<Response> {
     const entry = requireWorkspace(id);
-    const workspace = {
+    const workspace: Pick<WorkspaceEntry, "id" | "phase" | "parked" | "error"> & { title: string; url: string } = {
       id: entry.id,
       title: workspaceTitle(entry),
       phase: entry.phase,
       parked: entry.parked,
       url: `/workspaces/${encodeURIComponent(entry.id)}`,
-      ...(entry.error ? { error: entry.error } : {}),
     };
+    if (entry.error) workspace.error = entry.error;
     if (entry.parked || (entry.phase !== "ready" && entry.phase !== "checking_delete")) return jsonResponse({ workspace });
 
     const { attachments, tabs } = await workspacePresentation(id);
@@ -908,13 +913,16 @@ ${moduleStylesHtml()}
 
   function workspaceListEndpoint(request: Request, url: URL): Response {
     if (!requestAcceptsJson(request)) return Response.redirect(new URL("/", url).toString(), 302);
-    return jsonResponse({ workspaces: registry.list().map((entry) => ({
-      id: entry.id,
-      title: workspaceTitle(entry),
-      phase: entry.phase,
-      parked: entry.parked,
-      ...(isGitProjectInit(entry.init) ? { projectId: entry.init.projectId } : {}),
-    })) });
+    return jsonResponse({ workspaces: registry.list().map((entry) => {
+      const workspace: Pick<WorkspaceEntry, "id" | "phase" | "parked"> & { title: string; projectId?: string } = {
+        id: entry.id,
+        title: workspaceTitle(entry),
+        phase: entry.phase,
+        parked: entry.parked,
+      };
+      if (isGitProjectInit(entry.init)) workspace.projectId = entry.init.projectId;
+      return workspace;
+    }) });
   }
 
   async function workspacePage(id: string, request: Request): Promise<Response> {
@@ -976,17 +984,29 @@ ${moduleStylesHtml()}
     const fork = forkForSource(source);
     const agentParameters = agentContext(agent);
     if (!fork && !agentParameters) return undefined;
-    return { ...(fork ? { fork } : {}), ...(agentParameters ? { agent: agentParameters } : {}) };
+    const context: WorkspaceCreationContext = {};
+    if (fork) context.fork = fork;
+    if (agentParameters) context.agent = agentParameters;
+    return context;
   }
 
-  function createWorkspaceFromCommand(command: { source: WorkspaceCreateSource; agent?: AgentWorkspaceParameters; title?: string }): { id: string } {
+  interface CreatedWorkspace {
+    id: string;
+  }
+
+  function createWorkspaceFromCommand(command: { source: WorkspaceCreateSource; agent?: AgentWorkspaceParameters; title?: string }): CreatedWorkspace {
     const id = generateWorkspaceId();
     const init = initForSource(command.source);
     const title = command.title?.trim() ?? "";
     const context = creationContext(command.source, command.agent);
     const fork = forkForSource(command.source);
     registry.add(id, title || null, init);
-    startWorkspaceProvisioning(id, { ...(init !== undefined ? { init } : {}), ...(context ? { context } : {}), ...(title ? { title } : {}), ...(fork ? { fork } : {}) });
+    const options: Parameters<typeof startWorkspaceProvisioning>[1] = {};
+    if (init !== undefined) options.init = init;
+    if (context) options.context = context;
+    if (title) options.title = title;
+    if (fork) options.fork = fork;
+    startWorkspaceProvisioning(id, options);
     return { id };
   }
 
@@ -1542,7 +1562,7 @@ ${moduleStylesHtml()}
   }
 
   async function commandInput<Input>(request: Request, command: WorkspaceModuleCommandHandler<Input>): Promise<Input> {
-    let input: unknown = {};
+    let input = {};
     if (requestAcceptsJson(request)) {
       const text = await request.text();
       if (text.trim()) {
@@ -1593,8 +1613,14 @@ ${moduleStylesHtml()}
   }
 
   function commandJsonResponse(workspaceId: string, commandId: string, result: WorkspaceModuleCommandResult, tabKeys: string[]): Response {
+    interface CommandResponseMetadata {
+      id: string;
+      createdTabKey?: string;
+    }
+    const command: CommandResponseMetadata = { id: commandId };
+    if (result.createdTabKey) command.createdTabKey = result.createdTabKey;
     return jsonResponse({
-      command: { id: commandId, ...(result.createdTabKey ? { createdTabKey: result.createdTabKey } : {}) },
+      command,
       layout: layouts.normalize(workspaceId, tabKeys),
     });
   }

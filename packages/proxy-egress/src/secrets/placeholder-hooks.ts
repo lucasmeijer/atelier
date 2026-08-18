@@ -106,7 +106,9 @@ function assertSecretPlaceholderIsSafe(name: string, placeholder: string, existi
 function cloneRequestWith(request: Request, options: { url: string; headers: Headers }): Request {
   const method = request.method.toUpperCase();
   const canHaveBody = method !== "GET" && method !== "HEAD";
-  return new Request(options.url, { method: request.method, headers: options.headers, body: canHaveBody ? request.body : undefined, ...(canHaveBody && request.body ? ({ duplex: "half" } as const) : {}) });
+  const init: RequestInit & { duplex?: "half" } = { method: request.method, headers: options.headers, body: canHaveBody ? request.body : undefined };
+  if (canHaveBody && request.body) init.duplex = "half";
+  return new Request(options.url, init);
 }
 function syncHeaders(target: Headers, source: Headers): void {
   const sourceNames = new Set<string>();

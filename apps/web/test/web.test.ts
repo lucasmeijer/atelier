@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import type { JsonObject } from "@atelier/core";
 import { createWebApp } from "../src/server/app.ts";
 import { createWorkspaceLayoutStore } from "../src/server/workspace-layout.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
@@ -23,7 +24,7 @@ function deferred<T = void>() {
 type ProvisionWorkspace = Parameters<typeof createWebApp>[0]["provisionWorkspace"];
 type ProvisionWorkspaceOptions = Parameters<ProvisionWorkspace>[1];
 
-const openApiDocumentShape = Type.Object({ paths: Type.Object({}) });
+const openApiDocumentSchema = Type.Object({ paths: Type.Object({}) });
 
 interface TestAppOptions {
   provision?: (id: string, options?: ProvisionWorkspaceOptions) => Promise<void>;
@@ -66,7 +67,7 @@ function postForm(path: string, body: URLSearchParams): Request {
   });
 }
 
-function postJson(path: string, body: unknown): Request {
+function postJson(path: string, body: JsonObject): Request {
   return new Request(`http://test.local${path}`, {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json" },
@@ -427,7 +428,7 @@ describe("web app contracts", () => {
 
     const removed = await app.fetch(postJson("/api/workspaces", {}));
     const openapi = await app.fetch(new Request("http://test.local/openapi.json"));
-    const specification = Value.Parse(openApiDocumentShape, await openapi.json());
+    const specification = Value.Parse(openApiDocumentSchema, await openapi.json());
     const pathNames = Object.keys(specification.paths);
 
     expect(removed.status).toBe(404);

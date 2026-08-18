@@ -31,7 +31,11 @@ hljs.registerLanguage("rust", rust);
 hljs.registerLanguage("go", go);
 hljs.registerLanguage("java", java);
 
-const extensionLanguages: Record<string, string> = {
+interface HighlightLanguageDictionary {
+  [name: string]: string;
+}
+
+const extensionLanguages: HighlightLanguageDictionary = {
   ts: "typescript",
   tsx: "typescript",
   js: "javascript",
@@ -59,7 +63,7 @@ const extensionLanguages: Record<string, string> = {
   java: "java",
 };
 
-const languageAliases: Record<string, string> = {
+const languageAliases: HighlightLanguageDictionary = {
   ts: "typescript",
   tsx: "typescript",
   js: "javascript",
@@ -80,6 +84,11 @@ const languageAliases: Record<string, string> = {
   rs: "rust",
 };
 
+export interface HighlightedCode {
+  html: string;
+  language?: string;
+}
+
 export function languageFromPath(filePath: string | undefined): string | undefined {
   if (!filePath) return undefined;
   const extension = path.extname(filePath).replace(/^\./, "").toLowerCase();
@@ -94,7 +103,7 @@ function normalizeLanguage(lang: string | undefined): string | undefined {
   return hljs.getLanguage(language) ? language : undefined;
 }
 
-export function highlightCodeHtml(code: string, lang?: string): { html: string; language?: string } {
+export function highlightCodeHtml(code: string, lang?: string): HighlightedCode {
   const language = normalizeLanguage(lang);
   if (!language) return { html: escapeHtml(code) };
   try {
@@ -104,6 +113,6 @@ export function highlightCodeHtml(code: string, lang?: string): { html: string; 
   }
 }
 
-export function highlightCodeHtmlForPath(code: string, filePath?: string): { html: string; language?: string } {
+export function highlightCodeHtmlForPath(code: string, filePath?: string): HighlightedCode {
   return highlightCodeHtml(code, languageFromPath(filePath));
 }

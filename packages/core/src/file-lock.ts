@@ -29,7 +29,7 @@ export async function acquireFileLock(lockDir: string, label: string): Promise<(
       await mkdir(lockDir, { mode: 0o700 });
       return async () => { await rmdir(lockDir); };
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
+      const code = error instanceof Error && "code" in error ? error.code : undefined;
       if (code !== "EEXIST") throw error;
       if (Date.now() > deadline) throw new Error(`timed out waiting for ${label} lock: ${lockDir}`);
       await new Promise((resolve) => setTimeout(resolve, 25));

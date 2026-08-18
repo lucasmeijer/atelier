@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { resolve } from "node:path";
+import type { JsonObject } from "@atelier/core";
 
 const previewNamespace = "atelier-redesign-preview";
 const previewTitle = "Atelier redesign preview";
@@ -66,16 +67,22 @@ function gitRemote(): string {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers();
+  headers.set("Accept", "application/json");
+  if (init?.body) headers.set("Content-Type", "application/json");
+  new Headers(init?.headers).forEach((value, name) => headers.set(name, value));
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
-    headers: { Accept: "application/json", ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers },
+    headers,
   });
   if (!response.ok) throw new Error(`${init?.method ?? "GET"} ${path} failed (${response.status}): ${await response.text()}`);
   return await response.json() as T;
 }
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
-  return await api<T>(path, { method: "POST", ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+async function post<T>(path: string, body?: JsonObject): Promise<T> {
+  const init: RequestInit = { method: "POST" };
+  if (body !== undefined) init.body = JSON.stringify(body);
+  return await api<T>(path, init);
 }
 
 async function waitForServer(server?: ReturnType<typeof Bun.spawn>): Promise<void> {

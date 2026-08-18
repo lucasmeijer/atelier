@@ -296,7 +296,12 @@ function assertAbsoluteFile(path: string, extension: string, label: string): voi
 	}
 }
 
-function normalizeViewport(viewport: AtelierRecordingOptions["viewport"]): { width: number; height: number } {
+interface NormalizedViewport {
+	width: number;
+	height: number;
+}
+
+function normalizeViewport(viewport: AtelierRecordingOptions["viewport"]): NormalizedViewport {
 	const value = viewport ?? DEFAULT_VIEWPORT;
 	assertPositiveNumber(value.width, "viewport.width");
 	assertPositiveNumber(value.height, "viewport.height");

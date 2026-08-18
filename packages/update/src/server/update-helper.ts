@@ -19,8 +19,12 @@ function parseArgs(argv: string[]): Options {
     else if (argv[i] === "--return-host") out.returnUrl = `http://${argv[++i]}/`;
   }
   if (!out.serverContainer || !out.targetImage || !out.returnUrl) throw new Error("missing update helper arguments");
-  out.releaseChannel ??= out.targetImage.endsWith(":latest") ? "latest" : "stable";
-  return out as Options;
+  return {
+    serverContainer: out.serverContainer,
+    targetImage: out.targetImage,
+    returnUrl: out.returnUrl,
+    releaseChannel: out.releaseChannel ?? (out.targetImage.endsWith(":latest") ? "latest" : "stable"),
+  };
 }
 
 const options = parseArgs(Bun.argv.slice(2));

@@ -18,5 +18,5 @@ export function stripHopByHopHeaders(headers: Headers, extra: string[] = []): He
 
 export function isHopByHopHeader(name: string, extra: string[] = []): boolean {
   const lower = name.toLowerCase();
-  return (hopByHopHeaderNames as readonly string[]).includes(lower) || extra.some((header) => header.toLowerCase() === lower);
+  return hopByHopHeaderNames.some((header) => header === lower) || extra.some((header) => header.toLowerCase() === lower);
 }

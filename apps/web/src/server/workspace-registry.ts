@@ -41,7 +41,15 @@ export interface WorkspaceRegistryOptions {
   now?(): number;
 }
 
-const allowedTransitions: Record<WorkspacePhase, WorkspacePhase[]> = {
+interface WorkspacePhaseTransitions {
+  starting: WorkspacePhase[];
+  ready: WorkspacePhase[];
+  checking_delete: WorkspacePhase[];
+  deleting: WorkspacePhase[];
+  failed: WorkspacePhase[];
+}
+
+const allowedTransitions: WorkspacePhaseTransitions = {
   starting: ["ready", "failed"],
   ready: ["checking_delete", "deleting"],
   checking_delete: ["ready", "deleting"],
@@ -63,11 +71,16 @@ function createFileTimestampStore(path: string): WorkspaceActivityStore {
   return {
     async load() {
       try {
-        const parsed = JSON.parse(await readFile(path, "utf8"));
+        const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`${path} must contain a JSON object`);
-        return parsed as Record<string, number>;
+        const timestamps: Record<string, number> = {};
+        for (const [workspaceId, timestamp] of Object.entries(parsed)) {
+          if (typeof timestamp !== "number") throw new Error(`${path} contains a non-numeric timestamp for ${workspaceId}`);
+          timestamps[workspaceId] = timestamp;
+        }
+        return timestamps;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return {};
         throw error;
       }
     },

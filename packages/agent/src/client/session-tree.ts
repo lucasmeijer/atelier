@@ -10,7 +10,12 @@ type TreeAutocompleteActions = {
   close(): void;
 };
 
-function elements(input: TextInput): { menu: HTMLElement; url: string } {
+interface SessionTreeElements {
+  menu: HTMLElement;
+  url: string;
+}
+
+function elements(input: TextInput): SessionTreeElements {
   const host = input.closest<HTMLElement>("[data-agent-completions-url-value]")!;
   return {
     menu: host.querySelector<HTMLElement>("[data-agent-completions-target='menu']")!,

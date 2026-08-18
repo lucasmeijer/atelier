@@ -19,9 +19,10 @@ export function gitIdentitySettingsFile(dataDir = getAtelierRuntimeContext().ate
 
 async function readStore(file: string): Promise<GitIdentityStore> {
   try {
-    const parsed = JSON.parse(await readFile(file, "utf8")) as Partial<GitIdentityStore>;
+    const parsed: unknown = JSON.parse(await readFile(file, "utf8"));
+    if (!(parsed instanceof Object) || !("gitIdentity" in parsed)) return {};
     const candidate = parsed.gitIdentity;
-    if (!candidate || typeof candidate !== "object") return {};
+    if (!(candidate instanceof Object) || !("name" in candidate) || !("email" in candidate)) return {};
     const name = typeof candidate.name === "string" ? candidate.name.trim() : "";
     const email = typeof candidate.email === "string" ? candidate.email.trim() : "";
     return name && email ? { gitIdentity: { name, email } } : {};

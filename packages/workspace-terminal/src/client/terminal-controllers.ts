@@ -12,7 +12,7 @@ import {
 import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
 import { terminalTabKey, terminalIdFromTabKey } from "../shared.ts";
 
-type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
+type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
 
 const terminals = new Map<string, ObservableTerminalViewer>();
 const startingTerminals = new Set<string>();

@@ -3,6 +3,9 @@ import { workspaceProvisioningStaticFiles } from "@atelier/workspace/server/prov
 import { workspaceModules } from "./workspace-modules.ts";
 
 export type StaticFileEntry = StaticFileContribution;
+interface StaticFileRegistry {
+  [path: string]: StaticFileEntry;
+}
 
 function workspaceModuleStaticFiles(): Record<string, StaticFileEntry> {
   return Object.fromEntries(workspaceModules.flatMap((module) => Object.entries(module.staticFiles ?? {})));
@@ -26,7 +29,7 @@ export const fingerprintedStaticFiles = {
   ...workspaceModuleStaticFiles(),
 } satisfies Record<string, StaticFileEntry>;
 
-export const legacyStaticFiles: Record<string, StaticFileEntry> = {
+export const legacyStaticFiles: StaticFileRegistry = {
   "/workspace.js": { url: new URL("../../public/workspace.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
   ...fingerprintedStaticFiles,
 };

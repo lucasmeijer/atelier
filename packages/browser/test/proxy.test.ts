@@ -3,7 +3,12 @@ import { patchBrowserWorkspaceAppRequestHeaders, patchBrowserWorkspaceAppRespons
 import { renderBrowserFrame } from "../src/server/render.ts";
 import { createWorkspaceBrowserTab, listWorkspaceBrowserTabs, normalizeBrowserUrl, setWorkspaceBrowserTarget } from "../src/server/state.ts";
 
-function browserApp(workspaceId: string): { appKey: string; workspaceId: string } {
+interface BrowserApp {
+  appKey: string;
+  workspaceId: string;
+}
+
+function browserApp(workspaceId: string): BrowserApp {
   const tab = createWorkspaceBrowserTab(workspaceId);
   setWorkspaceBrowserTarget(workspaceId, tab.key, "http://localhost:3000/");
   return { appKey: tab.key, workspaceId };

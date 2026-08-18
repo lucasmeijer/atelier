@@ -6,7 +6,9 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { Terminal } from "@xterm/xterm";
 import { encodeObservableTerminalMessage } from "../shared/index.ts";
 
-export type ObservableTerminalTheme = Record<string, string>;
+export interface ObservableTerminalTheme {
+  [color: string]: string;
+}
 
 export const DEFAULT_OBSERVABLE_TERMINAL_THEME = {
   background: "#2e3440",

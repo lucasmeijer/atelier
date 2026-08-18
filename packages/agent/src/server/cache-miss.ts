@@ -65,7 +65,12 @@ function asPreviousRequest(message: AssistantMessage, reportedCache: boolean): P
   };
 }
 
-function scan(entries: SessionEntry[], models: ModelPriceSource): { prev: PreviousRequest | undefined; misses: Map<AssistantMessage, CacheMiss> } {
+interface CacheMissScan {
+  prev: PreviousRequest | undefined;
+  misses: Map<AssistantMessage, CacheMiss>;
+}
+
+function scan(entries: SessionEntry[], models: ModelPriceSource): CacheMissScan {
   let prev: PreviousRequest | undefined;
   const misses = new Map<AssistantMessage, CacheMiss>();
 

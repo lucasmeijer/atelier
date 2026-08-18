@@ -11,8 +11,14 @@ interface GitHubRepositorySearchItem {
   default_branch: string;
 }
 
-interface GitHubRepositorySearchResponse {
-  items: GitHubRepositorySearchItem[];
+function isGitHubRepositorySearchItem(value: unknown): value is GitHubRepositorySearchItem {
+  return value instanceof Object
+    && "full_name" in value && typeof value.full_name === "string"
+    && "description" in value && (value.description === null || typeof value.description === "string")
+    && "private" in value && typeof value.private === "boolean"
+    && "clone_url" in value && typeof value.clone_url === "string"
+    && "html_url" in value && typeof value.html_url === "string"
+    && "default_branch" in value && typeof value.default_branch === "string";
 }
 
 const searchCache = new Map<string, { expiresAt: number; results: GitHubRepositorySearchResult[] }>();
@@ -59,7 +65,10 @@ async function searchGitHubRepositoryPage(query: string, visibility: "public" | 
     throw new Error(`GitHub repository search failed: ${response.status} ${message}`);
   }
 
-  const body = await response.json() as GitHubRepositorySearchResponse;
+  const body: unknown = await response.json();
+  if (!(body instanceof Object) || !("items" in body) || !Array.isArray(body.items) || !body.items.every(isGitHubRepositorySearchItem)) {
+    throw new Error("GitHub repository search returned an invalid response");
+  }
   return body.items.map((repo) => ({
     fullName: repo.full_name,
     description: repo.description,

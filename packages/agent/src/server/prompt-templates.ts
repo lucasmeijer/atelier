@@ -16,6 +16,11 @@ interface PromptFrontmatter {
   argumentHint?: string;
 }
 
+interface ParsedPromptFrontmatter {
+  frontmatter: PromptFrontmatter;
+  body: string;
+}
+
 const promptDirs = [".atelier/prompts", ".pi/prompts"] as const;
 
 const builtinLandPrompt = "Commit and push your work, rebasing when necessary. When successful, delete this workspace.";
@@ -40,7 +45,7 @@ const builtinApplicationCommands: PromptTemplate[] = [{
   prompt: "/new",
 }];
 
-function parseFrontmatter(markdown: string): { frontmatter: PromptFrontmatter; body: string } {
+function parseFrontmatter(markdown: string): ParsedPromptFrontmatter {
   if (!markdown.startsWith("---\n")) return { frontmatter: {}, body: markdown };
   const end = markdown.indexOf("\n---", 4);
   if (end === -1) return { frontmatter: {}, body: markdown };
@@ -119,7 +124,7 @@ export async function loadPromptTemplatesFromRoot(root: string): Promise<PromptT
   for (const dir of promptDirs) {
     const path = join(root, dir);
     const entries = await readdir(path, { withFileTypes: true }).catch((error: unknown) => {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
       throw error;
     });
     for (const entry of entries) {

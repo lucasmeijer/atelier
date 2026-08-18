@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { getAtelierRuntimeContext } from "@atelier/core";
 import type { GitProjectInitInstruction } from "@atelier/projects";
 import { isGitProjectInit } from "@atelier/projects";
+import type { WorkspaceInitInstruction } from "@atelier/workspace";
 
 export interface WorkspaceAgentInfo {
   workspaceId: string;
@@ -44,12 +45,11 @@ export function sessionShareKeySlug(value: string): string {
   return sessionSlug(value, 80, projectlessSessionShareKey);
 }
 
-export function sessionShareKeyForInit(init: unknown): string {
-  const workspaceInit = init as Parameters<typeof isGitProjectInit>[0];
-  if (!isGitProjectInit(workspaceInit)) return projectlessSessionShareKey;
-  const key = typeof workspaceInit.sessionShareKey === "string" && workspaceInit.sessionShareKey.trim()
-    ? workspaceInit.sessionShareKey
-    : workspaceInit.name;
+export function sessionShareKeyForInit(init: WorkspaceInitInstruction | undefined): string {
+  if (!isGitProjectInit(init)) return projectlessSessionShareKey;
+  const key = typeof init.sessionShareKey === "string" && init.sessionShareKey.trim()
+    ? init.sessionShareKey
+    : init.name;
   return sessionShareKeySlug(key);
 }
 

@@ -69,7 +69,11 @@ export function registerAgentEvents(events: AtelierEventBus): void {
   });
 }
 
-const mimeByExtension: Record<string, string> = {
+interface AgentFileMimeRegistry {
+  [extension: string]: string;
+}
+
+const mimeByExtension: AgentFileMimeRegistry = {
   ...imageMimeByExtension,
   mp4: "video/mp4",
   webm: "video/webm",
@@ -363,16 +367,16 @@ export async function workspaceFileEndpoint(workspaceId: string, path: string, r
     ? `tail -c +${range.start + 1} ${quoted} | head -c ${range.end - range.start + 1}`
     : `cat ${quoted}`;
   const proc = Bun.spawn(["docker", "exec", container, "sh", "-c", command], { stdout: "pipe", stderr: "ignore" });
-  const headers: Record<string, string> = {
+  const headers = new Headers({
     "content-type": contentTypeFor(path),
     "accept-ranges": "bytes",
-  };
+  });
   if (range) {
-    headers["content-range"] = `bytes ${range.start}-${range.end}/${size}`;
-    headers["content-length"] = String(range.end - range.start + 1);
+    headers.set("content-range", `bytes ${range.start}-${range.end}/${size}`);
+    headers.set("content-length", String(range.end - range.start + 1));
     return new Response(proc.stdout, { status: 206, headers });
   }
-  headers["content-length"] = String(size);
+  headers.set("content-length", String(size));
   return new Response(proc.stdout, { headers });
 }
 
@@ -384,4 +388,3 @@ export async function resolveWorkspacePortProxyTarget(workspaceId: string, port:
   if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new Error("bad port");
   return await workspacePreviewPortUrl(workspaceId, port, `${path.startsWith("/") ? path : `/${path}`}${search}`);
 }
-

@@ -129,7 +129,11 @@ export function createCableServer(options: CableServerOptions): CableServer {
 
     const current = await snapshot(identifier, upTo);
     send(ws, { type: "confirm_subscription", identifier });
-    if (current.html) send(ws, { type: "turbo_stream", identifier, html: current.html, ...(current.cursor ? { cursor: current.cursor } : {}) });
+    if (current.html) {
+      const message: Extract<CableServerMessage, { type: "turbo_stream" }> = { type: "turbo_stream", identifier, html: current.html };
+      if (current.cursor) message.cursor = current.cursor;
+      send(ws, message);
+    }
   }
 
   function unsubscribe(ws: CableSocket, rawIdentifier: unknown): void {
@@ -147,7 +151,9 @@ export function createCableServer(options: CableServerOptions): CableServer {
     if (!html) return;
     const parsed = parseCableIdentifier(identifier);
     const key = serializeCableIdentifier(parsed);
-    for (const ws of socketsByIdentifier.get(key) ?? []) send(ws, { type: "turbo_stream", identifier: parsed, html, ...(cursor ? { cursor } : {}) });
+    const message: Extract<CableServerMessage, { type: "turbo_stream" }> = { type: "turbo_stream", identifier: parsed, html };
+    if (cursor) message.cursor = cursor;
+    for (const ws of socketsByIdentifier.get(key) ?? []) send(ws, message);
   }
 
   function close(ws: CableSocket): void {

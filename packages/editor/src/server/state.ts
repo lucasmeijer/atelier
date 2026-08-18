@@ -7,6 +7,11 @@ export interface WorkspaceFileEditorTab {
   column?: number;
 }
 
+export interface OpenWorkspaceFileEditorTabResult {
+  tab: WorkspaceFileEditorTab;
+  created: boolean;
+}
+
 const tabsByWorkspace = new Map<string, WorkspaceFileEditorTab[]>();
 
 function tabKey(path: string): string {
@@ -17,7 +22,7 @@ export function listWorkspaceFileEditorTabs(workspaceId: string): WorkspaceFileE
   return tabsByWorkspace.get(workspaceId) ?? [];
 }
 
-export function openWorkspaceFileEditorTab(workspaceId: string, path: string, position: { line?: number; column?: number } = {}): { tab: WorkspaceFileEditorTab; created: boolean } {
+export function openWorkspaceFileEditorTab(workspaceId: string, path: string, position: { line?: number; column?: number } = {}): OpenWorkspaceFileEditorTabResult {
   let tabs = tabsByWorkspace.get(workspaceId);
   if (!tabs) tabsByWorkspace.set(workspaceId, tabs = []);
   const existing = tabs.find((tab) => tab.path === path);

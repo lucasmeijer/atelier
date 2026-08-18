@@ -225,13 +225,19 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
   const modelsJson = seedPiConfigRecord ? optionalString(seedPiConfigRecord, "modelsJson", path, "seedPiConfig.modelsJson") : undefined;
   const seedAtelierConfigRecord = optionalRecord(record, "seedAtelierConfig", path);
   const projectsJson = seedAtelierConfigRecord ? optionalString(seedAtelierConfigRecord, "projectsJson", path, "seedAtelierConfig.projectsJson") : undefined;
-  return {
-    version: 1,
-    ...(docker ? { docker } : {}),
-    ...(initScripts ? { initScripts } : {}),
-    ...(seedPiConfigRecord ? { seedPiConfig: { ...(authJson ? { authJson } : {}), ...(modelsJson ? { modelsJson } : {}) } } : {}),
-    ...(seedAtelierConfigRecord ? { seedAtelierConfig: { ...(projectsJson ? { projectsJson } : {}) } } : {}),
-  };
+  const manifest: RepoWorkspaceManifest = { version: 1 };
+  if (docker) manifest.docker = docker;
+  if (initScripts) manifest.initScripts = initScripts;
+  if (seedPiConfigRecord) {
+    manifest.seedPiConfig = {};
+    if (authJson) manifest.seedPiConfig.authJson = authJson;
+    if (modelsJson) manifest.seedPiConfig.modelsJson = modelsJson;
+  }
+  if (seedAtelierConfigRecord) {
+    manifest.seedAtelierConfig = {};
+    if (projectsJson) manifest.seedAtelierConfig.projectsJson = projectsJson;
+  }
+  return manifest;
 }
 
 function seedConfigInstallScript(source: string, target: string): string {
@@ -359,7 +365,11 @@ EOF
 su atelier -c ${shellQuote("git config --global credential.helper '!/usr/local/bin/atelier-git-credential'")}`;
 }
 
-function hostUserEnv(): Record<string, string> {
+interface WorkspaceEnvironment {
+  [name: string]: string;
+}
+
+function hostUserEnv(): WorkspaceEnvironment {
   if (typeof process.getuid !== "function" || typeof process.getgid !== "function") throw new AtelierCoreError("unsupported_platform", "workspace containers require a POSIX host uid/gid");
   const uid = process.getuid();
   const gid = process.getgid();
@@ -451,7 +461,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions = {}): Pro
         await options.events?.emit("workspace_source_prepare", { workspaceId: id, init, context, workHostPath: source.worktreePath, workContainerPath: workspaceRoot });
       });
     }
-    const labels: Record<string, string> = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id };
+    const labels = { [workspaceTypeLabel]: "workspace", [namespaceLabel]: namespace(), [workspaceIdLabel]: id } satisfies Record<string, string>;
     plan = baseWorkspacePlan(labels);
     const cgroupParent = await configuredWorkspaceCgroupParent();
     if (cgroupParent) plan.extraArgs.push("--cgroup-parent", cgroupParent);
@@ -577,7 +587,11 @@ export async function listWorkspaces(): Promise<WorkspaceListResult> {
       requireDocker(["inspect", "--format", "{{.Image}}", containerId!]),
     ]);
     const imageOutdated = actualImage.stdout.trim() !== expectedImageId;
-    return { id, title, ...(parked ? { parked } : {}), ...(init !== undefined ? { init } : {}), ...(imageOutdated ? { imageOutdated } : {}) };
+    const workspace: WorkspaceListResult["workspaces"][number] = { id, title };
+    if (parked) workspace.parked = parked;
+    if (init !== undefined) workspace.init = init;
+    if (imageOutdated) workspace.imageOutdated = imageOutdated;
+    return workspace;
   }));
   return { workspaces };
 }
@@ -634,4 +648,3 @@ export async function setWorkspaceParked(id: string, parked: boolean): Promise<n
   if (!parked) await rm(path, { force: true });
   return null;
 }
-

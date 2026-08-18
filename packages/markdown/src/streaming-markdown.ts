@@ -43,7 +43,8 @@ export function streamingMarkdownStableBoundary(source: string): number {
 function nextFence(open: Fence | undefined, line: string): Fence | undefined {
   const match = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
   if (!match) return open;
-  const marker = match[1]![0] as Fence["marker"];
+  const marker = match[1]![0];
+  if (marker !== "`" && marker !== "~") throw new Error("fence pattern matched an unsupported marker");
   if (!open) return { marker, size: match[1]!.length };
   const closes = marker === open.marker && match[1]!.length >= open.size && !match[2]!.trim();
   return closes ? undefined : open;

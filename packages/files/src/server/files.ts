@@ -36,7 +36,9 @@ function parseFindOutput(stdout: Buffer, directory: string): Omit<FileEntry, "co
   const fields = stdout.toString("utf8").split("\0");
   const entries: Omit<FileEntry, "concealed" | "openable">[] = [];
   for (let index = 0; index + 2 < fields.length; index += 3) {
-    const [type, sizeText, name] = fields.slice(index, index + 3) as [string, string, string];
+    const type = fields[index];
+    const sizeText = fields[index + 1];
+    const name = fields[index + 2];
     if (!name) continue;
     const kind = type === "d" ? "directory" : type === "f" ? "file" : type === "l" ? "symlink" : "other";
     entries.push({ name, path: posix.join(directory, name), kind, size: Number(sizeText) });

@@ -14,7 +14,7 @@ import { preferredNewWorkspaceAgentModel } from "./model-state.ts";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
 import { mkdir } from "node:fs/promises";
-import type { WorkspaceDockerMount } from "@atelier/workspace";
+import type { WorkspaceDockerMount, WorkspaceInitInstruction } from "@atelier/workspace";
 
 async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgentInfo[]> {
   try {
@@ -68,7 +68,7 @@ function agentTopicFromCreationContext(value: unknown): string | undefined {
 }
 
 type WorkspacePlanEvents = {
-  on(eventName: "workspace_plan_prepare", handler: (event: { init?: unknown; plan: { mounts: WorkspaceDockerMount[] } }) => void | Promise<void>): void;
+  on(eventName: "workspace_plan_prepare", handler: (event: { init?: WorkspaceInitInstruction; plan: { mounts: WorkspaceDockerMount[] } }) => void | Promise<void>): void;
 };
 
 function dockerHostSessionShareDir(shareKey: string): string {
@@ -83,8 +83,8 @@ function registerSessionShareMountEvents(events: AtelierEventBus): void {
   });
 }
 
-async function applyNewAgentSettings(agent: WorkspaceAgentInfo, source: WorkspaceAgentInfo | undefined, events?: unknown): Promise<void> {
-  const runtimeOptions = { events: events as AtelierEventBus | undefined };
+async function applyNewAgentSettings(agent: WorkspaceAgentInfo, source: WorkspaceAgentInfo | undefined, events?: AtelierEventBus): Promise<void> {
+  const runtimeOptions = { events };
   const sourceRuntime = source ? await getWorkspaceAgentRuntime(source, runtimeOptions) : undefined;
   const model = sourceRuntime?.currentModel() ?? await preferredNewWorkspaceAgentModel();
   const targetRuntime = await getWorkspaceAgentRuntime(agent, runtimeOptions);
@@ -102,7 +102,8 @@ export const agentWorkspaceModule: WorkspaceModule = {
       const sourceAgent = sourceLabel ? (await listWorkspaceAgents(workspaceId)).find((candidate) => candidate.label === sourceLabel) : undefined;
       const agent = await createNextWorkspaceAgent(workspaceId);
       const applySettingsTimer = setTimeout(() => {
-        void applyNewAgentSettings(agent, sourceAgent, events).catch((error) => console.error("Could not apply settings to new agent", error));
+        // SAFETY: Workspace commands receive the web server's AtelierEventBus.
+        void applyNewAgentSettings(agent, sourceAgent, events as AtelierEventBus | undefined).catch((error) => console.error("Could not apply settings to new agent", error));
       }, 0);
       applySettingsTimer.unref?.();
       return { createdTabKey: agentTabKey(agent.label) };

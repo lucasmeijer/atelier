@@ -5,6 +5,11 @@ import { escapeHtml, workspaceFileEditorOpenUrl } from "@atelier/shared";
 const imageExtensions = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"]);
 const videoExtensions = new Set(["mp4", "webm", "mov", "m4v", "ogv"]);
 
+interface AtelierFilePosition {
+  line?: number;
+  column?: number;
+}
+
 function workspaceProxyController(workspaceId: string, appKey: string, path: string): string {
   return [
     `data-controller="agent-proxy"`,
@@ -87,7 +92,7 @@ export function atelierFileEditorHref(workspaceId: string, rawHref: string): str
   } catch {
     return undefined;
   }
-  const position: { line?: number; column?: number } = {};
+  const position: AtelierFilePosition = {};
   for (const name of ["line", "column"] as const) {
     const value = url.searchParams.get(name);
     if (value && /^\d+$/.test(value)) position[name] = Number(value);

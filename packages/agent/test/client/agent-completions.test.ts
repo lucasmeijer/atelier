@@ -16,7 +16,7 @@ function input(value: string, cursor = value.length): HTMLTextAreaElement {
 describe("agent prompt focus", () => {
   test("focuses without scrolling the tab", () => {
     const focus = mock(() => {});
-    const pane = { querySelector: () => ({ focus }) } as unknown as HTMLElement;
+    const pane = { querySelector: () => ({ focus }) };
 
     expect(focusAgentPrompt(pane)).toBe(true);
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
@@ -32,8 +32,8 @@ describe("agent transcript navigation", () => {
       clientHeight: 300,
       scrollTo,
       getBoundingClientRect: () => ({ top: 100 }),
-    } as unknown as HTMLElement;
-    const message = { getBoundingClientRect: () => ({ top: 240 }) } as unknown as HTMLElement;
+    };
+    const message = { getBoundingClientRect: () => ({ top: 240 }) };
 
     scrollMessageToTop(transcript, message);
 
@@ -46,8 +46,8 @@ describe("agent transcript navigation", () => {
       scrollHeight: 1_000,
       clientHeight: 300,
       getBoundingClientRect: () => ({ top: 100 }),
-    } as unknown as HTMLElement;
-    const message = { getBoundingClientRect: () => ({ top: 340 - transcript.scrollTop }) } as unknown as HTMLElement;
+    };
+    const message = { getBoundingClientRect: () => ({ top: 340 - transcript.scrollTop }) };
 
     expect(messageNavigationDirection(transcript, message)).toBe("down");
     transcript.scrollTop = 240;
@@ -70,11 +70,11 @@ describe("agent transcript navigation", () => {
   });
 
   test("forwards live terminal wheel input to the agent transcript", () => {
-    const transcript = { scrollTop: 120, clientHeight: 500 } as HTMLElement;
-    const terminal = { closest: () => transcript } as unknown as HTMLElement;
+    const transcript = { scrollTop: 120, clientHeight: 500 };
+    const terminal = { closest: () => transcript };
     const preventDefault = mock(() => {});
     const stopPropagation = mock(() => {});
-    const event = { deltaY: 3, deltaMode: 1, DOM_DELTA_LINE: 1, DOM_DELTA_PAGE: 2, ctrlKey: false, preventDefault, stopPropagation } as unknown as WheelEvent;
+    const event = { deltaY: 3, deltaMode: 1, DOM_DELTA_LINE: 1, DOM_DELTA_PAGE: 2, ctrlKey: false, preventDefault, stopPropagation };
 
     expect(forwardAgentTerminalWheel(terminal, event)).toBe(true);
     expect(transcript.scrollTop).toBe(168);
@@ -107,7 +107,7 @@ describe("agent prompt completion activation", () => {
 
   test("a selected prompt template replaces a partial trigger before inline expansion", () => {
     const textarea = input("/rev");
-    const option = { dataset: { commandTrigger: "/review" } } as unknown as HTMLElement;
+    const option = { dataset: { commandTrigger: "/review" } };
 
     insertSlashCommand(option, textarea);
     expect(textarea.value).toBe("/review ");
@@ -116,7 +116,7 @@ describe("agent prompt completion activation", () => {
 
   test("a selected skill inserts Pi's namespaced command", () => {
     const textarea = input("/skill:rev");
-    const option = { dataset: { commandTrigger: "/skill:review" } } as unknown as HTMLElement;
+    const option = { dataset: { commandTrigger: "/skill:review" } };
 
     insertSlashCommand(option, textarea);
     expect(textarea.value).toBe("/skill:review ");

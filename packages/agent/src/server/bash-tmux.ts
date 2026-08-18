@@ -50,11 +50,18 @@ interface TmuxBashHooks {
   onSessionStarted?: (toolCallId: string, tmuxSession: string) => void;
 }
 
+type ExecWorkspaceShell = typeof execWorkspaceShell;
+
+interface LimitedModelLines {
+  text: string;
+  linesTruncated: number;
+}
+
 function plainModelOutput(text: string): string {
   return stripTerminalControls(text).trim();
 }
 
-function limitModelLines(text: string): { text: string; linesTruncated: number } {
+function limitModelLines(text: string): LimitedModelLines {
   let linesTruncated = 0;
   const lines = text.split("\n").map((line) => {
     const limited = truncateLine(line, maxModelLineChars);
@@ -72,7 +79,11 @@ export function stripTmuxPaneFraming(text: string): string {
   return stripObservablePaneFraming(text);
 }
 
-export function createTmuxBashTool(workspaceId: string, hooks: TmuxBashHooks = {}): ToolDefinition<any, any> {
+export function createTmuxBashTool(
+  workspaceId: string,
+  hooks: TmuxBashHooks = {},
+  runWorkspaceShell: ExecWorkspaceShell = execWorkspaceShell,
+): ToolDefinition<any, any> {
   return defineTool({
     name: "bash",
     label: "Bash",
@@ -118,7 +129,7 @@ ${params.command}
 status=$?
 printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
       const inner = `${buildSetRemainOnExitCommand()}; ${captureFullOutput}; ${forceTtySize}; ${ninjaStatus}; ${colorEnv}; ${guards}; ${runCommand}`;
-      const create = await execWorkspaceShell(
+      const create = await runWorkspaceShell(
         workspaceId,
         buildObservableSessionCommand({ session: sessionName, cwd: workspaceRoot, command: shellQuote(inner), cols: agentTermCols, rows: agentTermRows, fixedSize: true, remainOnExit: true, historyLimit: tmuxHistoryLimit }),
       );
@@ -131,17 +142,17 @@ printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
       let exitCode: number | undefined;
       for (;;) {
         if (signal?.aborted) {
-          await execWorkspaceShell(workspaceId, buildSendInterruptCommand(sessionName));
+          await runWorkspaceShell(workspaceId, buildSendInterruptCommand(sessionName));
           break;
         }
-        const probe = await execWorkspaceShell(workspaceId, `cat ${shellQuote(exitFile)} 2>/dev/null`);
+        const probe = await runWorkspaceShell(workspaceId, `cat ${shellQuote(exitFile)} 2>/dev/null`);
         const text = probe.stdout.trim();
         if (text !== "") {
           exitCode = Number(text);
           break;
         }
         if (Date.now() - startedAt > timeoutMs) {
-          await execWorkspaceShell(workspaceId, buildSendInterruptCommand(sessionName));
+          await runWorkspaceShell(workspaceId, buildSendInterruptCommand(sessionName));
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
@@ -149,8 +160,8 @@ printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
 
       // Capture tmux's rendered scrollback and active screen. Plain capture feeds
       // the model; ANSI-preserving capture feeds the UI terminal view.
-      const modelPane = await execWorkspaceShell(workspaceId, buildCapturePaneCommand({ session: sessionName, historyLimit: tmuxHistoryLimit, ansi: false }));
-      const displayPane = await execWorkspaceShell(workspaceId, buildCapturePaneCommand({ session: sessionName, historyLimit: tmuxHistoryLimit }));
+      const modelPane = await runWorkspaceShell(workspaceId, buildCapturePaneCommand({ session: sessionName, historyLimit: tmuxHistoryLimit, ansi: false }));
+      const displayPane = await runWorkspaceShell(workspaceId, buildCapturePaneCommand({ session: sessionName, historyLimit: tmuxHistoryLimit }));
 
       const modelLines = limitModelLines(plainModelOutput(stripTmuxPaneFraming(modelPane.stdout)));
       const modelLimited = truncateTail(modelLines.text);
@@ -171,7 +182,7 @@ printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
       if (truncationNotice) displayAnsi += `\n\n${truncationNotice}`;
 
       const removeFullOutput = modelTruncated ? "" : `rm -f ${shellQuote(fullOutputPath)}; `;
-      await execWorkspaceShell(workspaceId, `${buildKillSessionCommand(sessionName)}; rm -f ${shellQuote(exitFile)}; ${removeFullOutput}true`);
+      await runWorkspaceShell(workspaceId, `${buildKillSessionCommand(sessionName)}; rm -f ${shellQuote(exitFile)}; ${removeFullOutput}true`);
       const aborted = signal?.aborted ?? false;
       const timedOut = exitCode === undefined && !aborted;
       let body = output || "(no output)";

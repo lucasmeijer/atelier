@@ -20,6 +20,17 @@ import { resolveWorkspaceImage } from "@atelier/workspace-image";
 import { registerProjectWorkspaceEvents, setGitIdentity } from "@atelier/projects";
 import { cleanupNamespace, createTestNamespace, docker } from "./helpers.ts";
 
+interface TestWorkspaceInitInstruction {
+  type: "test.init";
+  value: string;
+}
+
+declare module "@atelier/workspace" {
+  interface WorkspaceInitInstructionMap {
+    "test.init": TestWorkspaceInitInstruction;
+  }
+}
+
 // The first workspace-image build is intentionally heavy: it installs VS Code,
 // prewarms the VS Code server, and installs large extensions. On a cold Docker
 // cache this regularly takes several minutes, so keep the integration-test
@@ -40,7 +51,8 @@ async function expectCoreError(action: () => Promise<unknown>): Promise<AtelierC
     await action();
   } catch (error) {
     expect(error).toBeInstanceOf(AtelierCoreError);
-    return error as AtelierCoreError;
+    if (error instanceof AtelierCoreError) return error;
+    throw error;
   }
   throw new Error("expected AtelierCoreError");
 }
@@ -103,7 +115,7 @@ describe("core workspaces", () => {
   });
 
   test("createWorkspace persists init instructions", async () => {
-    const init = { type: "test.init", value: "atelier" } as unknown as WorkspaceInitInstruction;
+    const init = { type: "test.init", value: "atelier" } satisfies WorkspaceInitInstruction;
     const created = await createWorkspace({ init });
 
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, init });
@@ -172,7 +184,7 @@ describe("core workspaces", () => {
 
   test("createWorkspace can fork /work into a new container from the source image", async () => {
     const source = await createWorkspace();
-    const init = { type: "test.init", value: "fork" } as unknown as WorkspaceInitInstruction;
+    const init = { type: "test.init", value: "fork" } satisfies WorkspaceInitInstruction;
     const write = await execWorkspaceShell(source.id, "printf forked > /work/copied.txt");
     expect(write.exitCode).toBe(0);
     const sourceImage = (await docker(["inspect", "--format", "{{.Image}}", workspaceContainerName(source.id)])).stdout.trim();
@@ -278,11 +290,12 @@ printf changed > /work/deps/sub/tracked.txt`);
     registerProjectWorkspaceEvents(events);
     const error = await expectCoreError(() => deleteWorkspace(created.id, { events }));
     expect(error.code).toBe("workspace_delete_blocked");
-    const details = error.details as { issues: Array<{ repo: string; uncommittedPaths: string[]; outgoingCommits: Array<{ subject: string }> }> };
-    expect(details.issues).toContainEqual(expect.objectContaining({
-      repo: "deps/sub",
-      uncommittedPaths: ["tracked.txt"],
-      outgoingCommits: [expect.objectContaining({ subject: "submodule work" })],
+    expect(error.details).toEqual(expect.objectContaining({
+      issues: expect.arrayContaining([expect.objectContaining({
+        repo: "deps/sub",
+        uncommittedPaths: ["tracked.txt"],
+        outgoingCommits: [expect.objectContaining({ subject: "submodule work" })],
+      })]),
     }));
 
     expect(await deleteWorkspace(created.id, { force: true })).toBeNull();

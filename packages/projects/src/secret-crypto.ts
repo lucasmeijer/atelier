@@ -16,7 +16,7 @@ async function readOrCreateMasterKey(file: string): Promise<Buffer> {
     if (key.byteLength !== keyBytes) throw new AtelierCoreError("invalid_project_secret_key", `project secrets key must be ${keyBytes} bytes`);
     return key;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     const key = randomBytes(keyBytes);
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, `${key.toString("base64url")}\n`, { encoding: "utf8", mode: 0o600 });

@@ -83,8 +83,8 @@ function context() {
   };
 }
 
-function noInterval(): typeof setInterval {
-  return (() => ({ unref() {} })) as unknown as typeof setInterval;
+function noInterval() {
+  return () => ({ unref() {} });
 }
 
 function deferred<T = void>() {

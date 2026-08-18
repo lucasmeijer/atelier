@@ -58,7 +58,12 @@ export function contextualDiffLines(operation: DiffOperation, contextLines = 3):
   ];
 }
 
-function operationStats(operation: DiffOperation): { added: number; deleted: number } {
+interface DiffStats {
+  added: number;
+  deleted: number;
+}
+
+function operationStats(operation: DiffOperation): DiffStats {
   const oldLines = splitLines(operation.oldText);
   const newLines = splitLines(operation.newText);
   if (oldLines.length * newLines.length > 40_000) return { added: newLines.length, deleted: oldLines.length };
@@ -75,7 +80,7 @@ function operationStats(operation: DiffOperation): { added: number; deleted: num
   return { added: newLines.length - unchanged, deleted: oldLines.length - unchanged };
 }
 
-export function diffStats(operations: DiffOperation[]): { added: number; deleted: number } {
+export function diffStats(operations: DiffOperation[]): DiffStats {
   return operations.reduce((total, operation) => {
     const stats = operationStats(operation);
     total.added += stats.added;

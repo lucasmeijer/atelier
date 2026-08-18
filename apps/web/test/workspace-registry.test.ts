@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createWorkspaceRegistry, type WorkspaceActivityStore, type WorkspaceEntry, type WorkspaceUnreadStore } from "../src/server/workspace-registry.ts";
+import { createWorkspaceRegistry, type WorkspaceActivityStore, type WorkspaceEntry } from "../src/server/workspace-registry.ts";
 
 interface Captured {
   rows: Array<{ entry: WorkspaceEntry; tabKey?: string }>;
@@ -23,7 +23,7 @@ function memoryStore(initial: Record<string, number> = {}): WorkspaceActivitySto
 
 function setup(options: { activity?: Record<string, number>; unread?: Record<string, number>; now?: () => number } = {}) {
   const store = memoryStore(options.activity);
-  const unreadStore = memoryStore(options.unread) as WorkspaceUnreadStore & { saved: Record<string, number>[] };
+  const unreadStore = memoryStore(options.unread);
   const registry = createWorkspaceRegistry({ activityStore: store, unreadStore, now: options.now });
   const captured: Captured = { rows: [], lists: [], removed: [], parked: [] };
   registry.setCallbacks({

@@ -45,6 +45,11 @@ interface ContentPartCandidate {
   text?: unknown;
 }
 
+interface SessionEntryView {
+  kind: string;
+  text: string;
+}
+
 function contentText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -82,7 +87,7 @@ function visibleEntry(node: SessionTreeNode, current: boolean, filter: TreeFilte
   return true;
 }
 
-function entryView(entry: SessionEntry): { kind: string; text: string } {
+function entryView(entry: SessionEntry): SessionEntryView {
   if (entry.type === "message") {
     const message = entry.message;
     if (message.role === "user") return { kind: "You", text: contentText(message.content) };

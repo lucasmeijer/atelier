@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { atelierDataPath, getAtelierRuntimeContext, type JsonObject } from "@atelier/core";
+import { atelierDataPath, getAtelierRuntimeContext, isJsonObject, type JsonObject } from "@atelier/core";
 import type { AuthInteraction, AuthPrompt } from "@earendil-works/pi-ai";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
@@ -27,9 +27,25 @@ function piAuthJsonPath(): string { return join(piConfigDir(), "auth.json"); }
 
 async function getAgentModelsSettings(path = piModelsJsonPath()): Promise<AgentModelsSettings> {
   try {
-    const parsed = JSON.parse(await readFile(path, "utf8"));
-    if (!parsed || typeof parsed !== "object") throw new Error(`${path} must contain a JSON object`);
-    return parsed as AgentModelsSettings;
+    const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (!isJsonObject(parsed)) throw new Error(`${path} must contain a JSON object`);
+    const picker = Array.isArray(parsed.picker)
+      ? parsed.picker.filter(isJsonObject).map((entry) => ({ provider: entry.provider, id: entry.id, label: entry.label }))
+      : undefined;
+    const activeModel = isJsonObject(parsed.activeModel)
+      ? { provider: parsed.activeModel.provider, id: parsed.activeModel.id }
+      : undefined;
+    const modelPreferences = isJsonObject(parsed.modelPreferences)
+      ? Object.fromEntries(Object.entries(parsed.modelPreferences).flatMap(([key, preference]) => isJsonObject(preference)
+        ? [[key, { thinkingLevel: typeof preference.thinkingLevel === "string" ? preference.thinkingLevel : undefined }]]
+        : []))
+      : undefined;
+    return {
+      providers: isJsonObject(parsed.providers) ? parsed.providers : undefined,
+      picker,
+      activeModel,
+      modelPreferences,
+    };
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return { providers: {} };
     throw error;

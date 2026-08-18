@@ -233,12 +233,13 @@ async function handleProxyHttp(workspaceId: string, req: IncomingMessage, res: S
 
   const method = (req.method || "GET").toUpperCase();
   const canHaveBody = !["GET", "HEAD"].includes(method);
-  const request = new Request(parsed.toString(), {
+  const requestInit: RequestInit & { duplex?: "half" } = {
     method: req.method,
     headers: incomingHeaders(req),
     body: canHaveBody ? Readable.toWeb(req) as any : undefined,
-    ...(canHaveBody ? ({ duplex: "half" } as const) : {}),
-  });
+  };
+  if (canHaveBody) requestInit.duplex = "half";
+  const request = new Request(parsed.toString(), requestInit);
 
   const context = await getWorkspaceSecretContext(workspaceId);
   const hooks = context.hooks;
@@ -251,13 +252,14 @@ async function handleProxyHttp(workspaceId: string, req: IncomingMessage, res: S
   if (hooks?.isRequestAllowed && !(await hooks.isRequestAllowed(new Request(next.url, { method: next.method, headers: next.headers })))) throw new HttpRequestBlockedError("request blocked by policy");
 
   const upstreamHeaders = filteredForwardHeaders(next.headers);
-  const upstream = await fetch(next.url, {
+  const upstreamInit: RequestInit & { duplex?: "half" } = {
     method: next.method,
     headers: upstreamHeaders,
     body: ["GET", "HEAD"].includes(next.method.toUpperCase()) ? undefined : next.body,
     redirect: "manual",
-    ...(!["GET", "HEAD"].includes(next.method.toUpperCase()) ? ({ duplex: "half" } as const) : {}),
-  });
+  };
+  if (!["GET", "HEAD"].includes(next.method.toUpperCase())) upstreamInit.duplex = "half";
+  const upstream = await fetch(next.url, upstreamInit);
   const finalResponse = hooks?.onResponse ? await hooks.onResponse(upstream, next) ?? upstream : upstream;
   await writeFetchResponse(res, finalResponse);
 }
@@ -283,7 +285,12 @@ function requestTargetUrl(req: IncomingMessage): string {
   return `${encrypted ? "https" : "http"}://${host}${raw.startsWith("/") ? raw : `/${raw}`}`;
 }
 
-function parseConnectTarget(target: string): { hostname: string; port: number } {
+interface ConnectTarget {
+  hostname: string;
+  port: number;
+}
+
+function parseConnectTarget(target: string): ConnectTarget {
   const match = target.match(/^\[([^\]]+)\]:(\d+)$/) || target.match(/^([^:]+):(\d+)$/);
   if (!match) throw new HttpRequestBlockedError(`invalid CONNECT target: ${target}`);
   return { hostname: match[1]!.toLowerCase(), port: Number(match[2]) };
@@ -324,7 +331,10 @@ async function writeFetchResponse(res: ServerResponse, response: Response): Prom
 function writeError(res: ServerResponse, error: unknown): void {
   const status = error instanceof HttpRequestBlockedError ? error.status : 502;
   const statusText = error instanceof HttpRequestBlockedError ? error.statusText : "Bad Gateway";
-  const headers: Record<string, string> = { "content-type": "text/plain" };
+  interface ErrorResponseHeaders {
+    [name: string]: string;
+  }
+  const headers: ErrorResponseHeaders = { "content-type": "text/plain" };
   if (status === 407) headers["proxy-authenticate"] = "Basic realm=\"Atelier Workspace Proxy\"";
   res.writeHead(status, statusText, headers);
   res.end(`${safeErrorMessage(error)}\n`);

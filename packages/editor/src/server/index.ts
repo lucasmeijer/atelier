@@ -15,7 +15,7 @@ function textResponse(message: string, status: number): Response {
   return new Response(message, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
 }
 
-function jsonResponse(value: unknown, status = 200): Response {
+function jsonResponse<Body extends object>(value: Body, status = 200): Response {
   return Response.json(value, { status, headers: { "cache-control": "no-store" } });
 }
 

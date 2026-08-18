@@ -287,10 +287,11 @@ function createFileEditorSignalController(Controller: WorkspaceClientControllerC
           const resident = this.element.closest<HTMLElement>(`.workspace-detail-resident[data-workspace-id="${CSS.escape(this.workspaceIdValue)}"]`)!;
           resident.querySelector<HTMLButtonElement>(`.group-tab[data-tab="${CSS.escape(this.tabKeyValue)}"] .group-tab-label`)?.click();
         }
-        window.dispatchEvent(new CustomEvent<EditorRefreshDetail>("atelier:file-editor-refresh", { detail: {
+        const detail: EditorRefreshDetail = {
           workspaceId: this.workspaceIdValue,
-          ...(this.hasTabKeyValue ? { tabKey: this.tabKeyValue, line: this.lineValue, column: this.columnValue } : {}),
-        } }));
+        };
+        if (this.hasTabKeyValue) Object.assign(detail, { tabKey: this.tabKeyValue, line: this.lineValue, column: this.columnValue });
+        window.dispatchEvent(new CustomEvent<EditorRefreshDetail>("atelier:file-editor-refresh", { detail }));
       });
     }
 

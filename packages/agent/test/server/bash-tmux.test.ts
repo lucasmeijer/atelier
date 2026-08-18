@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-const success = { stdout: "", stderr: "", exitCode: 0 };
+import { agentTermCols, agentTermRows, createTmuxBashTool, stripTmuxPaneFraming } from "../../src/server/bash-tmux.ts";
+
+const success = { stdout: "", stderr: "", exitCode: 0, durationMs: 0 };
 
 async function defaultExecWorkspaceShell(_workspaceId: string, command: string) {
   if (command.includes("cat '/tmp/atelier-agent-") && command.includes(".exit")) return { ...success, stdout: "0\n" };
@@ -9,23 +11,12 @@ async function defaultExecWorkspaceShell(_workspaceId: string, command: string) 
 
 const execWorkspaceShell = mock(defaultExecWorkspaceShell);
 
-const execWorkspaceCommand = mock(async (_workspaceId: string, _args: string[]) => ({ stdout: "", stderr: "", exitCode: 0 }));
-
-mock.module("@atelier/workspace", () => ({
-  execWorkspaceShell,
-  execWorkspaceCommand,
-  workspaceContainerName: (workspaceId: string) => `atelier-${workspaceId}`,
-  workspaceRoot: "/work",
-}));
-
-const { agentTermCols, agentTermRows, createTmuxBashTool, stripTmuxPaneFraming } = await import("../../src/server/bash-tmux.ts");
-
 function textResult(result: any): string {
   return result.content.map((part: { text?: string }) => part.text ?? "").join("");
 }
 
 async function executeBash(params: { command: string; timeout?: number }) {
-  return await createTmuxBashTool("ws").execute("call", params, undefined, undefined, {} as any);
+  return await createTmuxBashTool("ws", {}, execWorkspaceShell).execute("call", params, undefined, undefined, {} as any);
 }
 
 function mockPaneOutput(stdout: string, exitCode = 0): void {

@@ -290,12 +290,12 @@ export interface WorkspaceClientController {
   element: Element;
 }
 
+export type WorkspaceClientControllerConstructor = new (...args: never[]) => WorkspaceClientController;
+
 export interface WorkspaceClientApplication {
-  register(identifier: string, controllerConstructor: unknown): void;
+  register(identifier: string, controllerConstructor: WorkspaceClientControllerConstructor): void;
   getControllerForElementAndIdentifier(element: Element, identifier: string): WorkspaceClientController | null;
 }
-
-export type WorkspaceClientControllerConstructor = new (...args: unknown[]) => WorkspaceClientController;
 
 export interface WorkspaceClientTabVisibilityContext {
   workspaceId: string;

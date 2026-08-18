@@ -11,7 +11,11 @@ export interface HardcodedProviderKnowledge {
   fastModel?: HardcodedProviderModel;
 }
 
-export const hardcodedProviderKnowledge: Readonly<Record<string, HardcodedProviderKnowledge>> = {
+interface ProviderKnowledgeRegistry {
+  readonly [provider: string]: HardcodedProviderKnowledge;
+}
+
+export const hardcodedProviderKnowledge: ProviderKnowledgeRegistry = {
   openai: {
     apiKeyExample: "sk-proj-abc123def456...",
     models: [{ id: "gpt-5.6-sol" }],

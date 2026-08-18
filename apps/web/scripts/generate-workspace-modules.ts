@@ -27,15 +27,25 @@ function disabledPackageNames(): Set<string> {
   return disabled;
 }
 
-async function readJson<T>(url: URL): Promise<T> {
-  return JSON.parse(await readFile(url, "utf8")) as T;
+async function readPackageJson(url: URL): Promise<PackageJson> {
+  const value: unknown = JSON.parse(await readFile(url, "utf8"));
+  if (!(value instanceof Object)) throw new Error(`${url.pathname} must contain a JSON object`);
+  const name = "name" in value && typeof value.name === "string" ? value.name : undefined;
+  const packageExports = "exports" in value && value.exports instanceof Object ? value.exports : undefined;
+  return {
+    name,
+    exports: packageExports ? {
+      "./client": "./client" in packageExports ? packageExports["./client"] : undefined,
+      "./server": "./server" in packageExports ? packageExports["./server"] : undefined,
+    } : undefined,
+  };
 }
 
 async function fileText(url: URL): Promise<string | undefined> {
   try {
     return await readFile(url, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
     throw error;
   }
 }
@@ -56,7 +66,7 @@ async function discoverModules(subpath: "client" | "server", exportName: Discove
   for (const entry of packages) {
     if (!entry.isDirectory()) continue;
     const packageJsonUrl = new URL(`${entry.name}/package.json`, packagesDir);
-    const manifest = await readJson<PackageJson>(packageJsonUrl);
+    const manifest = await readPackageJson(packageJsonUrl);
     if (!manifest.name || disabled.has(manifest.name) || !hasExport(manifest, `./${subpath}`)) continue;
 
     const index = await fileText(new URL(`${entry.name}/src/${subpath}/index.ts`, packagesDir));

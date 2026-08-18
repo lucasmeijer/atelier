@@ -4,6 +4,14 @@ import { repository } from "./constants.ts";
 export interface CompareFile { filename: string; status: string }
 export interface ReleaseNoteEntry { filename: string; html: string }
 
+function isCompareFile(value: unknown): value is CompareFile {
+  return value instanceof Object
+    && "filename" in value
+    && typeof value.filename === "string"
+    && "status" in value
+    && typeof value.status === "string";
+}
+
 export function releaseNoteFilenames(files: CompareFile[]): string[] {
   return files
     .filter((file) => file.status === "added" && file.filename.startsWith("release_notes/") && file.filename.endsWith(".md"))
@@ -87,8 +95,11 @@ export async function fetchReleaseNotes(currentSha: string | undefined, stableSh
   if (!currentSha || !stableSha) return `<p>What’s new is unavailable for this update because the current image does not include revision metadata.</p>`;
   const compare = await fetcher(`https://api.github.com/repos/${repository}/compare/${encodeURIComponent(currentSha)}...${encodeURIComponent(stableSha)}`, { headers: { accept: "application/vnd.github+json" } });
   if (!compare.ok) throw new Error(`GitHub compare request failed: ${compare.status}`);
-  const json = await compare.json() as { files?: CompareFile[] };
-  const filenames = releaseNoteFilenames(json.files ?? []);
+  const json: unknown = await compare.json();
+  if (!(json instanceof Object) || !("files" in json) || !Array.isArray(json.files) || !json.files.every(isCompareFile)) {
+    throw new Error("GitHub compare response did not contain a valid files array");
+  }
+  const filenames = releaseNoteFilenames(json.files);
   if (filenames.length === 0) return `<p>No release notes were published for this update.</p>`;
   const entries: ReleaseNoteEntry[] = [];
   for (const filename of filenames) {

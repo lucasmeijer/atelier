@@ -91,16 +91,17 @@ function imageDetail(task: Pick<WorkspaceImageBuildTask, "tag" | "modules">): st
 
 async function emitImageStep(events: AtelierEventBus | undefined, workspaceId: string | undefined, task: WorkspaceImageBuildTask, status: "running" | "done" | "failed", error?: string): Promise<void> {
   if (!events || !workspaceId) return;
-  await events.emit("workspace_provision_step", {
+  const event = {
     workspaceId,
     id: "workspace.image",
     label: "Resolve workspace image",
     status,
     detail: imageDetail(task),
     output: tailOutput(task.output),
-    ...(task.session ? { terminal: { kind: "host-tmux" as const, session: task.session } } : {}),
     error,
-  });
+  };
+  if (task.session) Object.assign(event, { terminal: { kind: "host-tmux" as const, session: task.session } });
+  await events.emit("workspace_provision_step", event);
 }
 
 function dockerBuildArgs(tag: string, kind: BuiltWorkspaceImageKind, dockerfile: string, contextDir: string, options: ResolveWorkspaceImageOptions): string[] {
@@ -233,7 +234,12 @@ function removeAptListCleanup(instruction: string): string {
     .replaceAll(/\s*&&\s*rm\s+-rf\s+\/var\/lib\/apt\/lists\/\*/g, "");
 }
 
-function addAptCacheMount(instruction: string): { instruction: string; changed: boolean } {
+interface AptCacheMountResult {
+  instruction: string;
+  changed: boolean;
+}
+
+function addAptCacheMount(instruction: string): AptCacheMountResult {
   const cleaned = removeAptListCleanup(instruction);
   const next = cleaned.replace(/^(\s*)RUN\s+apt-get\s+update\b/, "$1RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \\\n    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\\n    apt-get update");
   return { instruction: next, changed: next !== cleaned || cleaned !== instruction };

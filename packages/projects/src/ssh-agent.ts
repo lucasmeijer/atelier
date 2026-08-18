@@ -20,7 +20,7 @@ async function waitForSocket(path: string, child: ChildProcess, stderr: () => st
     try {
       if ((await stat(path)).isSocket()) return;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     await Bun.sleep(20);
   }

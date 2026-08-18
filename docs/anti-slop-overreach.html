@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Where the anti-slop rules overreach</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f4f0e8;
+      --muted: #a8a49c;
+      --line: #34322f;
+      --paper: #171715;
+      --panel: #201f1c;
+      --accent: #ffb45b;
+      --accent-soft: #3a2c1d;
+      --blue: #83b9ff;
+      --green: #8bd6a5;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; color: var(--ink); background: var(--paper); line-height: 1.55; }
+    a { color: inherit; }
+    header, main, footer { width: min(1120px, calc(100% - 40px)); margin-inline: auto; }
+    header { padding: 88px 0 52px; border-bottom: 1px solid var(--line); }
+    .eyebrow { color: var(--accent); font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { max-width: 900px; margin: 18px 0 24px; font-size: clamp(42px, 7vw, 78px); line-height: .98; letter-spacing: -.055em; }
+    .lede { max-width: 760px; margin: 0; color: #cbc7be; font-size: 19px; }
+    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 38px; }
+    .metric { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+    .metric strong { display: block; color: var(--accent); font-size: 30px; line-height: 1; }
+    .metric span { display: block; margin-top: 8px; color: var(--muted); font-size: 13px; }
+    nav { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; padding: 12px 0; background: color-mix(in srgb, var(--paper) 92%, transparent); backdrop-filter: blur(12px); }
+    nav a { padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); text-decoration: none; font-size: 13px; }
+    nav a:hover { color: var(--ink); border-color: #605d56; }
+    section { padding: 72px 0; border-top: 1px solid var(--line); }
+    .rule-head { display: grid; grid-template-columns: 1.25fr .75fr; gap: 36px; align-items: end; margin-bottom: 30px; }
+    .rule-head h2 { margin: 10px 0 0; font-size: clamp(30px, 4vw, 52px); line-height: 1; letter-spacing: -.035em; }
+    .rule-head p { margin: 0; color: var(--muted); }
+    .intent { padding: 20px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 12px 12px 0; }
+    .intent strong { color: var(--accent); }
+    .cases { display: grid; gap: 16px; }
+    article { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+    .case-head { display: flex; justify-content: space-between; gap: 20px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+    .case-head h3 { margin: 0; font-size: 17px; }
+    .path { flex: 0 0 auto; color: var(--blue); font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    pre { margin: 0; padding: 20px; overflow-x: auto; background: #121210; color: #ddd8cf; font: 12.5px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 2; }
+    code mark { color: #fff; background: #65431f; border-radius: 3px; padding: 1px 2px; }
+    .argument { display: grid; grid-template-columns: 110px 1fr; gap: 16px; padding: 18px 20px 22px; }
+    .argument strong { color: var(--green); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+    .argument p { margin: 0; color: #c9c5bc; }
+    .verdict { margin-top: 24px; padding: 20px; border: 1px solid #4e422e; border-radius: 14px; background: #211c14; color: #d7d0c3; }
+    .verdict strong { color: var(--accent); }
+    footer { padding: 36px 0 70px; color: var(--muted); font-size: 13px; }
+    @media (max-width: 760px) {
+      header { padding-top: 56px; }
+      .summary, .rule-head { grid-template-columns: 1fr; }
+      nav { overflow-x: auto; }
+      .case-head { display: block; }
+      .path { display: block; margin-top: 8px; }
+      .argument { grid-template-columns: 1fr; gap: 6px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Atelier engineering note · anti-slop review</div>
+    <h1>When a good rule mistakes evidence for slop</h1>
+    <p class="lede">These rules are directionally useful. The problem is their unit of observation: syntax alone cannot always tell an unprincipled escape hatch from a parser, a runtime union, or a framework seam. This note uses current Atelier code to draw that boundary.</p>
+    <div class="summary">
+      <div class="metric"><strong>3</strong><span>rules that should remain warnings</span></div>
+      <div class="metric"><strong>15</strong><span>representative overreach cases</span></div>
+      <div class="metric"><strong>9</strong><span>clean rules promoted to errors</span></div>
+    </div>
+  </header>
+
+  <main>
+    <nav aria-label="Rules in this report">
+      <a href="#runtime-typeof">no-runtime-typeof</a>
+      <a href="#unknown-parameters">no-unknown-parameters</a>
+      <a href="#safety-comments">require-safety-comment</a>
+    </nav>
+
+    <section id="runtime-typeof">
+      <div class="rule-head">
+        <div>
+          <div class="eyebrow">Rule 01</div>
+          <h2>no-runtime-typeof</h2>
+        </div>
+        <p class="intent"><strong>The slop it prevents.</strong> Code receives a vaguely typed value, probes it with scattered <code>typeof</code> checks, and quietly grows a second, incomplete type system at runtime. The rule pushes validation toward an explicit I/O boundary and domain types.</p>
+      </div>
+      <div class="cases">
+        <article>
+          <div class="case-head"><h3>The JSON boundary is the parser</h3><span class="path">packages/core/src/json-request.ts:13</span></div>
+          <pre><code>function isJsonValue(value: unknown): value is JsonValue {
+  return value === null
+    || <mark>typeof value === "boolean"</mark>
+    || (typeof value === "number" &amp;&amp; Number.isFinite(value))
+    || typeof value === "string"
+    || (Array.isArray(value) ? value.every(isJsonValue) : isJsonObject(value));
+}</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>This function is exactly the boundary the diagnostic asks for. JSON has runtime tags, and a recursive type guard must inspect them to establish the contract. Moving these checks elsewhere would only rename the parser or replace evidence with an assertion.</p></div>
+        </article>
+        <article>
+          <div class="case-head"><h3>A wire identifier is decoded once</h3><span class="path">packages/shared/src/cable.ts:46</span></div>
+          <pre><code>export function parseCableIdentifier(value: unknown): CableIdentifier {
+  if (!value || <mark>typeof value !== "object"</mark> || Array.isArray(value))
+    throw new Error("identifier must be an object");
+  const record = value as CableIdentifierCandidate;
+  if (record.channel === "workspace" &amp;&amp; <mark>typeof record.workspaceId === "string"</mark>)
+    return { channel: "workspace", workspaceId: record.workspaceId };
+  // …other channel variants…
+}</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>Cable identifiers cross a WebSocket boundary as untrusted JSON. The checks convert that representation into a closed discriminated union before domain code sees it. This is contract establishment, not representation-driven branching inside the domain.</p></div>
+        </article>
+        <article>
+          <div class="case-head"><h3>Persisted settings need field validation</h3><span class="path">packages/projects/src/git-identity.ts:26</span></div>
+          <pre><code>const candidate = parsed.gitIdentity;
+if (!(candidate instanceof Object) || !("name" in candidate) || !("email" in candidate)) return {};
+const name = <mark>typeof candidate.name === "string"</mark> ? candidate.name.trim() : "";
+const email = <mark>typeof candidate.email === "string"</mark> ? candidate.email.trim() : "";
+return name &amp;&amp; email ? { gitIdentity: { name, email } } : {};</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>The file can be old, edited by a human, or partially corrupt. Rejecting non-string fields before constructing <code>GitIdentitySettings</code> is the evidence that makes the returned type trustworthy.</p></div>
+        </article>
+        <article>
+          <div class="case-head"><h3>A manifest parser must describe failures precisely</h3><span class="path">packages/workspace/src/index.ts:211</span></div>
+          <pre><code>const dockerRecord = optionalRecord(record, "docker", path);
+if (dockerRecord?.privileged !== undefined
+  &amp;&amp; <mark>typeof dockerRecord.privileged !== "boolean"</mark>)
+  throw invalidArguments(`invalid ${path}: docker.privileged must be a boolean`);
+
+if (initScripts !== undefined &amp;&amp; (!Array.isArray(initScripts)
+  || !initScripts.every((script) =&gt; <mark>typeof script === "string"</mark>)))
+  throw invalidArguments(`invalid ${path}: initScripts must be an array of strings`);</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>This is the repository manifest’s I/O boundary. Inline checks allow field-specific error messages and create a typed manifest only after every relevant invariant holds. A schema library could express the same work, but it would not make the runtime checks less necessary.</p></div>
+        </article>
+        <article>
+          <div class="case-head"><h3>The platform API defines a real runtime union</h3><span class="path">packages/observable-terminal/src/client/index.ts:169</span></div>
+          <pre><code>ws.onmessage = (event) =&gt; {
+  if (<mark>typeof event.data === "string"</mark>) {
+    options.onOutput?.(event.data);
+    term.write(event.data);
+  } else event.data.arrayBuffer().then((buffer: ArrayBuffer) =&gt; {
+    const data = new Uint8Array(buffer);
+    options.onOutput?.(data);
+    term.write(data);
+  });
+};</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p><code>MessageEvent.data</code> is intentionally polymorphic. The branch selects the platform-supported text and binary paths; there is no single domain value to parse first, and coercing either branch would alter terminal bytes.</p></div>
+        </article>
+      </div>
+      <p class="verdict"><strong>Recommended boundary:</strong> flag ad-hoc <code>typeof</code> narrowing in ordinary domain functions, but recognize declared type guards, parser/decoder functions, and unions supplied by platform APIs. An explicit boundary annotation would cover cases syntax cannot infer.</p>
+    </section>
+
+    <section id="unknown-parameters">
+      <div class="rule-head">
+        <div>
+          <div class="eyebrow">Rule 02</div>
+          <h2>no-unknown-parameters</h2>
+        </div>
+        <p class="intent"><strong>The slop it prevents.</strong> A function accepts <code>unknown</code> because its author has not decided what it owns, then spreads narrowing and assertions through every caller. The rule asks APIs to accept domain types and parse external values before calling them.</p>
+      </div>
+      <div class="cases">
+        <article>
+          <div class="case-head"><h3>A decoder cannot require decoded input</h3><span class="path">packages/core/src/json-request.ts:13</span></div>
+          <pre><code>function isJsonValue(<mark>value: unknown</mark>): value is JsonValue { /* validation */ }
+
+export function isJsonObject(<mark>value: unknown</mark>): value is JsonObject {
+  return typeof value === "object" &amp;&amp; value !== null
+    &amp;&amp; !Array.isArray(value) &amp;&amp; Object.values(value).every(isJsonValue);
+}</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>The function’s purpose is to decide whether an external value is a <code>JsonObject</code>. Requiring a domain type at its entry would assume the fact it exists to prove and make the guard unusable at actual boundaries.</p></div>
+        </article>
+        <article>
+          <div class="case-head"><h3>Promise rejection reasons are unknown by contract</h3><span class="path">packages/update/src/server/index.ts:101</span></div>
+          <pre><code>private fail(<mark>error: unknown</mark>): void {
+  this.setState("failed", {
+    error: error instanceof Error ? error.message : String(error),
+  });
+}</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>JavaScript permits throwing any value. A rejection handler that claims <code>Error</code> would lie; this function responsibly normalizes the throwable immediately. Renaming the parameter to an exempt word would merely game the rule.</p></div>
+        </article>
+        <article>
+          <div class="case-head"><h3>Transport extension points defer ownership</h3><span class="path">packages/shared/src/index.ts:186</span></div>
+          <pre><code>export interface WorkspaceServerSocketHandler {
+  validate?(request: Request, url: URL): WorkspaceServerSocketData | undefined;
+  open?(<mark>socket: unknown</mark>): void;
+  message?(<mark>socket: unknown, message: unknown</mark>): void;
+  close?(<mark>socket: unknown</mark>): void;
+}</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>The shared registry intentionally does not depend on Bun’s socket type or a module-specific message format. Each registered owner narrows the opaque transport values at its adapter. Making the shared package name every implementation type would invert the dependency.</p></div>
+        </article>
+        <article>
+          <div class="case-head"><h3>OpenAPI schemas are opaque extension data</h3><span class="path">apps/web/src/server/openapi.ts:7</span></div>
+          <pre><code>const jsonResponse = (description: string, <mark>schema: unknown</mark>, status = "200") =&gt; ({
+  [status]: { description, content: { "application/json": { schema } } },
+  "400": errorResponse,
+  "404": errorResponse,
+});
+
+const jsonBody = (<mark>schema: unknown</mark>) =&gt; ({
+  required: true, content: { "application/json": { schema } },
+});</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>Workspace modules contribute schemas from an external schema system. This layer stores and emits them; it does not interpret them. A home-grown “schema” type would either be inaccurate or recreate the upstream library’s open extension vocabulary.</p></div>
+        </article>
+        <article>
+          <div class="case-head"><h3>Agent SDK payloads are decoded by their consumer</h3><span class="path">packages/agent/src/server/runtime.ts:399</span></div>
+          <pre><code>protected liveToolCallComplete(callId: string, name: string, <mark>args: unknown</mark>): void {
+  // Store the SDK event first; the selected tool renderer owns its shape.
+  live.items.push({ type: "tool", tool: { callId, name, args, status: "running" } });
+  if (name === "bash") {
+    const timeout = (args as { timeout?: number } | undefined)?.timeout;
+    // …bash-specific interpretation…
+  }
+}</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>The SDK deliberately gives tool arguments an open shape because every tool owns a different schema. The runtime must retain opaque payloads for generic rendering, while specialized consumers decode only the fields they own.</p></div>
+        </article>
+      </div>
+      <p class="verdict"><strong>Recommended boundary:</strong> keep rejecting <code>unknown</code> in ordinary application APIs, but exempt type guards/decoders, throwable callbacks, and explicitly declared transport or extension seams. Prefer an annotation or typed marker interface over parameter-name heuristics.</p>
+    </section>
+
+    <section id="safety-comments">
+      <div class="rule-head">
+        <div>
+          <div class="eyebrow">Rule 03</div>
+          <h2>require-safety-comment-for-type-assertion</h2>
+        </div>
+        <p class="intent"><strong>The slop it prevents.</strong> An assertion erases compiler evidence and replaces it with author confidence. Requiring a nearby <code>SAFETY:</code> note makes the missing invariant visible in review and discourages casual casts.</p>
+      </div>
+      <div class="cases">
+        <article>
+          <div class="case-head"><h3>A schema engine already validated the command</h3><span class="path">packages/browser/src/server/web.ts:34</span></div>
+          <pre><code>commands: [{
+  inputSchema: Type.Object({ url: Type.Optional(Type.String()) }),
+  execute({ workspaceId, input }) {
+    const browser = createWorkspaceBrowserTab(workspaceId);
+    const url = <mark>(input as { url?: string })</mark>.url;
+    if (url) setWorkspaceBrowserTarget(workspaceId, browser.key, url);
+  },
+}]</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>The command framework validates <code>input</code> against the adjacent TypeBox schema before execution. The cast bridges a generic framework type that does not carry the schema’s static type. Repeating a comment at every command adds ceremony without new evidence.</p></div>
+        </article>
+        <article>
+          <div class="case-head"><h3>The shared socket seam is intentionally erased</h3><span class="path">packages/agent/src/server/web.ts:136</span></div>
+          <pre><code>context.registerSocketHandler({
+  validate: (_request, url) =&gt; validateAgentTermSocket(url),
+  open: (socket) =&gt; openAgentTermSocket(<mark>socket as Parameters&lt;typeof openAgentTermSocket&gt;[0]</mark>),
+  message: (socket, message) =&gt; handleAgentTermSocketMessage(
+    socket as Parameters&lt;typeof handleAgentTermSocketMessage&gt;[0],
+    message as string | Buffer,
+  ),
+});</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>The registry erases implementation-specific socket types to avoid coupling shared code to Bun and individual modules. Registration is the adapter where the concrete handler and its validated socket data are reunited. The assertion documents that architectural seam in types.</p></div>
+        </article>
+        <article>
+          <div class="case-head"><h3>DOM event targets lose the markup contract</h3><span class="path">packages/files/src/client/index.ts:57</span></div>
+          <pre><code>folderDragEnter(event: DragEvent): void {
+  if (!this.hasFiles(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  <mark>(event.currentTarget as HTMLElement)</mark>.classList.add("is-drop-target");
+}
+
+toggleHidden(event: Event): void {
+  this.navigateFrame(this.listingUrl(<mark>(event.currentTarget as HTMLInputElement)</mark>.checked));
+}</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>Stimulus actions are attached by server-rendered markup to known element kinds, but the DOM event API exposes only <code>EventTarget</code>. The missing evidence lives in HTML, beyond a syntax-only TypeScript rule. Per-handler comments would duplicate that markup contract dozens of times.</p></div>
+        </article>
+        <article>
+          <div class="case-head"><h3>A test has just asserted the runtime type</h3><span class="path">packages/proxy-egress/test/secrets/placeholder-hooks.test.ts:18</span></div>
+          <pre><code>const result = await hooks.httpHooks.onRequest!(new Request("https://api.github.com/user", {
+  headers: { authorization: "Bearer ATELIER_SECRET_fake" },
+}));
+expect(result).toBeInstanceOf(Request);
+expect(<mark>(result as Request)</mark>.headers.get("authorization")).toBe("Bearer real-secret");</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>The line immediately above is the runtime proof, but Bun’s matcher does not narrow the following expression. A mandatory prose comment would restate the assertion. Test code often needs casts to inspect deliberately partial fixtures and union results after expectations.</p></div>
+        </article>
+        <article>
+          <div class="case-head"><h3>Bun implements an overload missing from DOM types</h3><span class="path">packages/proxy-ingress/src/ingress/index.ts:362</span></div>
+          <pre><code>function openWorkspaceAppProxySocket(ws: ServerWebSocket&lt;WorkspaceAppProxySocketData&gt;): void {
+  const WebSocketWithOptions = WebSocket <mark>as typeof WebSocket &amp;
+    (new (url: string | URL, options: Bun.WebSocketOptions) =&gt; WebSocket)</mark>;
+  const upstream = new WebSocketWithOptions(ws.data.target, {
+    headers: { Host: ws.data.host }, protocols: ws.data.protocols,
+  });
+}</code></pre>
+          <div class="argument"><strong>Why exempt it</strong><p>This preserves the standard constructor and adds Bun’s documented options overload, which the ambient DOM declaration lacks. The assertion corrects an environment typing gap; it does not narrow an untrusted runtime value.</p></div>
+        </article>
+      </div>
+      <p class="verdict"><strong>Recommended boundary:</strong> require justification primarily for assertions originating in <code>unknown</code>/<code>any</code> or external boundary expressions. Exempt tests, known framework adapters, and ambient-type augmentation—or make those exemptions explicit in configuration. Type-aware assignability is needed to distinguish a real downcast from harmless interop.</p>
+    </section>
+  </main>
+
+  <footer>
+    Prepared from the post-cleanup Atelier checkout. Examples are intentionally capped at five per rule and selected to represent distinct reasons for overreach rather than every remaining diagnostic.
+  </footer>
+</body>
+</html>

@@ -45,47 +45,51 @@ function themeDefaultsForRequest(request: Request): VSCodeThemeDefaults | undefi
   const line = requestColor(url, "atelierLine");
   const accent = requestColor(url, "atelierAccent");
   if (!bg || !panel || !elev || !text) return undefined;
+  interface VSCodeColorCustomizations {
+    [name: string]: string;
+  }
+  const colorCustomizations: VSCodeColorCustomizations = {
+    "activityBar.background": panel,
+    "activityBar.foreground": text,
+    "editor.background": bg,
+    "editor.foreground": text,
+    "editorGroup.border": line ?? elev,
+    "editorGroupHeader.tabsBackground": panel,
+    "editorGroupHeader.tabsBorder": line ?? elev,
+    "tab.activeBackground": bg,
+    "tab.activeForeground": text,
+    "tab.border": line ?? elev,
+    "tab.hoverBackground": elev,
+    "tab.inactiveBackground": panel,
+    "tab.inactiveForeground": text,
+    "tab.unfocusedActiveBackground": bg,
+    "tab.unfocusedActiveForeground": text,
+    "tab.unfocusedInactiveBackground": panel,
+    "tab.unfocusedInactiveForeground": text,
+    "sideBar.background": panel,
+    "sideBar.foreground": text,
+    "sideBarSectionHeader.background": elev,
+    "sideBarSectionHeader.border": line ?? elev,
+    "sideBarSectionHeader.foreground": text,
+    "sideBarTitle.foreground": text,
+    "list.activeSelectionBackground": elev,
+    "list.activeSelectionForeground": text,
+    "list.hoverBackground": elev,
+    "list.hoverForeground": text,
+    "list.inactiveSelectionBackground": elev,
+    "list.inactiveSelectionForeground": text,
+    "statusBar.background": elev,
+    "statusBar.foreground": text,
+    "titleBar.activeBackground": panel,
+    "titleBar.activeForeground": text,
+    "titleBar.inactiveBackground": panel,
+    "titleBar.inactiveForeground": text,
+  };
+  if (line) Object.assign(colorCustomizations, { "panel.border": line, "sideBar.border": line, "titleBar.border": line });
+  if (accent) Object.assign(colorCustomizations, { "focusBorder": accent, "button.background": accent });
   return {
     colorTheme: luminance(bg) > 0.55 ? "Default Light Modern" : "Default Dark Modern",
-    colorCustomizations: {
-      "activityBar.background": panel,
-      "activityBar.foreground": text,
-      "editor.background": bg,
-      "editor.foreground": text,
-      "editorGroup.border": line ?? elev,
-      "editorGroupHeader.tabsBackground": panel,
-      "editorGroupHeader.tabsBorder": line ?? elev,
-      "tab.activeBackground": bg,
-      "tab.activeForeground": text,
-      "tab.border": line ?? elev,
-      "tab.hoverBackground": elev,
-      "tab.inactiveBackground": panel,
-      "tab.inactiveForeground": text,
-      "tab.unfocusedActiveBackground": bg,
-      "tab.unfocusedActiveForeground": text,
-      "tab.unfocusedInactiveBackground": panel,
-      "tab.unfocusedInactiveForeground": text,
-      "sideBar.background": panel,
-      "sideBar.foreground": text,
-      "sideBarSectionHeader.background": elev,
-      "sideBarSectionHeader.border": line ?? elev,
-      "sideBarSectionHeader.foreground": text,
-      "sideBarTitle.foreground": text,
-      "list.activeSelectionBackground": elev,
-      "list.activeSelectionForeground": text,
-      "list.hoverBackground": elev,
-      "list.hoverForeground": text,
-      "list.inactiveSelectionBackground": elev,
-      "list.inactiveSelectionForeground": text,
-      "statusBar.background": elev,
-      "statusBar.foreground": text,
-      "titleBar.activeBackground": panel,
-      "titleBar.activeForeground": text,
-      "titleBar.inactiveBackground": panel,
-      "titleBar.inactiveForeground": text,
-      ...(line ? { "panel.border": line, "sideBar.border": line, "titleBar.border": line } : {}),
-      ...(accent ? { "focusBorder": accent, "button.background": accent } : {}),
-    },
+    colorCustomizations,
   };
 }
 
@@ -154,16 +158,20 @@ export async function patchVSCodeWorkspaceAppResponse(app: WorkspaceAppHost, res
     if (!isJsonObject(parsed)) throw new Error("VS Code workbench configuration is not a JSON object");
     const settings = parsed;
     settings.enableWorkspaceTrust = false;
-    settings.configurationDefaults = {
-      ...(isJsonObject(settings.configurationDefaults) ? settings.configurationDefaults : {}),
+    const configurationDefaults = isJsonObject(settings.configurationDefaults) ? settings.configurationDefaults : {};
+    Object.assign(configurationDefaults, {
       "security.workspace.trust.enabled": false,
       "security.workspace.trust.startupPrompt": "never",
       "security.workspace.trust.banner": "never",
       "workbench.secondarySideBar.defaultVisibility": "hidden",
       "workbench.startupEditor": "none",
       "chat.disableAIFeatures": true,
-      ...(themeDefaults ? { "workbench.colorTheme": themeDefaults.colorTheme, "workbench.colorCustomizations": themeDefaults.colorCustomizations } : {}),
-    };
+    });
+    if (themeDefaults) {
+      configurationDefaults["workbench.colorTheme"] = themeDefaults.colorTheme;
+      configurationDefaults["workbench.colorCustomizations"] = themeDefaults.colorCustomizations;
+    }
+    settings.configurationDefaults = configurationDefaults;
     return `${prefix}${escapeHtmlAttribute(JSON.stringify(settings))}${suffix}`;
   });
   const nonce = response.headers.get("content-security-policy")?.match(/'nonce-([^']+)'/)?.[1];

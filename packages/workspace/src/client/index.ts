@@ -2,7 +2,7 @@
 
 import { createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
 
-export function createProvisionTerminalController(Controller: new (...args: unknown[]) => { element: Element }) {
+export function createProvisionTerminalController(Controller: new (...args: never[]) => { element: Element }) {
   return class ProvisionTerminalController extends Controller {
     static values = { session: String };
     declare readonly element: HTMLElement;
