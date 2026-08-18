@@ -4,7 +4,6 @@ import {
   // createForkCurrentWorkspaceTool,
   createWorkspaceTool,
   registerWorkspaceAgentTool,
-  type DeleteCurrentWorkspaceResult,
 } from "./tools.ts";
 import { closeAgentTermSocket, handleAgentTermSocketMessage, openAgentTermSocket, validateAgentTermSocket } from "./bash-tmux.ts";
 import { getWorkspaceAgentRuntime, isWorkspaceAgentRuntimeReady, subscribeWorkspaceTabBusy } from "./runtime.ts";
@@ -146,7 +145,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
       },
     });
     subscribeWorkspaceTabBusy(({ workspaceId, tabKey, busy }) => context.registry.setTabBusy(workspaceId, tabKey, busy));
-    registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force) as DeleteCurrentWorkspaceResult));
+    registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force)));
     registerWorkspaceAgentTool("create_workspace", (workspaceId) => createWorkspaceTool((request) => context.createWorkspaceFromAgent(workspaceId, request)));
     // Temporarily keep workspace forking unavailable to agents; they invoke it too readily.
     // registerWorkspaceAgentTool("fork_current_workspace", (workspaceId) => createForkCurrentWorkspaceTool((request) => context.forkCurrentWorkspaceFromAgent(workspaceId, request)));

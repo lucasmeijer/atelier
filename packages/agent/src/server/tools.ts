@@ -1,6 +1,6 @@
 import { dirname, posix } from "node:path";
 import { shellQuote, type AtelierEventBus } from "@atelier/core";
-import type { AgentWorkspaceCreateRequest, AgentWorkspaceCreateResult, AgentWorkspaceForkRequest, WorkspaceLayoutPlacementController } from "@atelier/shared";
+import type { AgentWorkspaceCreateRequest, AgentWorkspaceCreateResult, AgentWorkspaceForkRequest, DeleteCurrentWorkspaceResult, WorkspaceLayoutPlacementController } from "@atelier/shared";
 import { execWorkspaceCommand, execWorkspaceCommandBuffer, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import {
   createEditToolDefinition,
@@ -106,12 +106,6 @@ export function registerWorkspacePresenter(kind: string, factory: WorkspacePrese
 
 export function workspaceAgentToolNames(): string[] {
   return ["read", "write", "edit", "bash", ...(registeredWorkspacePresenters.size ? ["present"] : []), ...registeredWorkspaceAgentTools.keys()];
-}
-
-export interface DeleteCurrentWorkspaceResult {
-  deleted: boolean;
-  blocked: boolean;
-  details?: unknown;
 }
 
 const agentWorkspaceParameterSchemas = {

@@ -227,6 +227,12 @@ export interface SettingsContribution {
   handleAction?(context: SettingsActionContext): Promise<Response | undefined>;
 }
 
+export interface DeleteCurrentWorkspaceResult {
+  deleted: boolean;
+  blocked: boolean;
+  details?: unknown;
+}
+
 export interface AgentWorkspaceParameters {
   initialPrompt?: string;
   model?: string;
@@ -260,7 +266,7 @@ export interface WorkspaceServerModuleContext {
   layouts: unknown;
   getTabKeys(workspaceId: string): Promise<string[]>;
   broadcastWorkspace(workspaceId: string, html: string): void;
-  deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<unknown>;
+  deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
   createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult>;
   forkCurrentWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceForkRequest): Promise<AgentWorkspaceCreateResult>;
   registerSocketHandler(handler: WorkspaceServerSocketHandler): void;
