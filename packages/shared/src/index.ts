@@ -145,22 +145,22 @@ export interface WorkspaceModuleCommandResult {
   streamHtml?: string;
 }
 
-export interface WorkspaceModuleCommandContext {
+export interface WorkspaceModuleCommandContext<Input = unknown> {
   workspaceId: string;
   events?: unknown;
   activeTabKey?: string;
-  input: unknown;
+  input: Input;
   tabKeys(): Promise<string[]>;
   layouts: WorkspaceLayoutPlacementController;
 }
 
 export const emptyWorkspaceCommandInputSchema = { type: "object", additionalProperties: false } as const;
 
-export interface WorkspaceModuleCommandHandler {
+export interface WorkspaceModuleCommandHandler<Input = unknown> {
   id: string;
   /** JSON Schema used to validate automation input and advertise the command in OpenAPI. */
   inputSchema?: unknown;
-  execute(context: WorkspaceModuleCommandContext): Promise<WorkspaceModuleCommandResult> | WorkspaceModuleCommandResult;
+  execute(context: WorkspaceModuleCommandContext<Input>): Promise<WorkspaceModuleCommandResult> | WorkspaceModuleCommandResult;
 }
 
 export interface WorkspaceModuleRouteContext {

@@ -1534,12 +1534,13 @@ ${moduleStylesHtml()}
     return workspaceModules.flatMap((module) => module.tabs ?? []);
   }
 
-  async function commandInput(request: Request, command: WorkspaceModuleCommandHandler): Promise<unknown> {
-    if (!requestAcceptsJson(request)) return {};
-    const text = await request.text();
+  async function commandInput<Input>(request: Request, command: WorkspaceModuleCommandHandler<Input>): Promise<Input> {
     let input: unknown = {};
-    if (text.trim()) {
-      try { input = JSON.parse(text); } catch { throw invalidArguments("valid JSON command input is required"); }
+    if (requestAcceptsJson(request)) {
+      const text = await request.text();
+      if (text.trim()) {
+        try { input = JSON.parse(text); } catch { throw invalidArguments("valid JSON command input is required"); }
+      }
     }
     if (!input || typeof input !== "object" || Array.isArray(input)) throw invalidArguments("JSON command input must be an object");
     const schema = command.inputSchema ?? emptyWorkspaceCommandInputSchema;
@@ -1547,7 +1548,8 @@ ${moduleStylesHtml()}
       const issue = [...Value.Errors(schema as never, input)][0];
       throw invalidArguments(`invalid ${command.id} input: ${issue?.message ?? "schema check failed"}`);
     }
-    return input;
+    // SAFETY: the command-owned schema validated input against the handler's Input contract.
+    return input as Input;
   }
 
   async function executeWorkspaceCommand(workspaceId: string, commandId: string, request: Request, tabKeys: string[], activeTabKey?: string): Promise<WorkspaceModuleCommandResult> {
