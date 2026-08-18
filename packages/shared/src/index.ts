@@ -276,12 +276,16 @@ export interface WorkspaceModule {
   attachToWorkspace?(context: WorkspaceAttachContext): Promise<WorkspaceAttachment> | WorkspaceAttachment;
 }
 
-export interface WorkspaceClientApplication {
-  register(identifier: string, controllerConstructor: unknown): void;
-  getControllerForElementAndIdentifier(element: Element, identifier: string): unknown;
+export interface WorkspaceClientController {
+  element: Element;
 }
 
-export type WorkspaceClientControllerConstructor = new (...args: unknown[]) => { element: Element };
+export interface WorkspaceClientApplication {
+  register(identifier: string, controllerConstructor: unknown): void;
+  getControllerForElementAndIdentifier(element: Element, identifier: string): WorkspaceClientController | null;
+}
+
+export type WorkspaceClientControllerConstructor = new (...args: unknown[]) => WorkspaceClientController;
 
 export interface WorkspaceClientTabVisibilityContext {
   workspaceId: string;
