@@ -1,15 +1,13 @@
 /// <reference lib="dom" />
 
-import type { WorkspaceClientModule } from "@atelier/shared";
-
-type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
+import type { WorkspaceClientControllerConstructor, WorkspaceClientModule } from "@atelier/shared";
 
 type BrowserBridgeLocationMessage = {
   type: "atelier:browser-location";
   href: string;
 };
 
-function createBrowserAddressController(Controller: StimulusControllerConstructor): unknown {
+function createBrowserAddressController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class BrowserAddressController extends Controller {
     static values = { targetOrigin: String };
 
