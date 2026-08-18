@@ -40,12 +40,18 @@ interface FlatTreeEntry {
   onActivePath: boolean;
 }
 
+interface ContentPartCandidate {
+  type?: unknown;
+  text?: unknown;
+}
+
 function contentText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content.map((part) => {
-    if (!part || typeof part !== "object") return "";
-    const record = part as Record<string, unknown>;
+    if (!part || typeof part !== "object" || Array.isArray(part)) return "";
+    // SAFETY: ContentPartCandidate only names optional properties with unknown values.
+    const record = part as ContentPartCandidate;
     return record.type === "text" && typeof record.text === "string" ? record.text : "";
   }).filter(Boolean).join("\n");
 }

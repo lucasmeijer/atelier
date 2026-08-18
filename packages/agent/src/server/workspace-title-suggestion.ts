@@ -47,7 +47,14 @@ function workspaceTitleModelFor(agentModel: ModelRef): ModelRef {
   return { provider: agentModel.provider, id: fastModel?.id ?? agentModel.id };
 }
 
-function logWorkspaceTitleSuggestionError(workspaceId: string, model: ModelRef | undefined, message: string, details: Record<string, unknown> = {}): void {
+interface WorkspaceTitleSuggestionErrorDetails {
+  stopReason?: string;
+  diagnostics?: unknown;
+  responseText?: string;
+  error?: unknown;
+}
+
+function logWorkspaceTitleSuggestionError(workspaceId: string, model: ModelRef | undefined, message: string, details: WorkspaceTitleSuggestionErrorDetails = {}): void {
   console.error("could not suggest workspace title", { workspaceId, model: model ? `${model.provider}/${model.id}` : undefined, message, ...details });
 }
 
