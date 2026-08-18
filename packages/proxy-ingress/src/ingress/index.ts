@@ -32,7 +32,7 @@ export type WorkspaceIngressAuthHandler = (request: Request) => Promise<Response
 export interface WorkspaceIngressProxyOptions {
   hostname: string;
   authResponse?: WorkspaceIngressAuthHandler;
-  resolveWorkspace(workspaceId: string): Promise<unknown> | unknown;
+  resolveWorkspace(workspaceId: string): Promise<void> | void;
   listWorkspaceIds(): Promise<string[]> | string[];
   resolveTarget: WorkspaceAppTargetResolver;
   transformRequestHeaders?: WorkspaceAppRequestHeaderTransformer;

@@ -384,7 +384,7 @@ const patchWorkspaceAppResponse: WorkspaceAppResponseTransformer = async (app, r
 const publicWorkspaceAppProxy = createWorkspaceIngressProxy({
   hostname,
   authResponse,
-  resolveWorkspace,
+  resolveWorkspace: async (workspaceId) => { await resolveWorkspace(workspaceId); },
   listWorkspaceIds: async () => (await listWorkspaces()).workspaces.map((workspace) => workspace.id),
   resolveTarget: resolveWorkspaceAppTarget,
   transformRequestHeaders: patchWorkspaceAppRequestHeaders,
