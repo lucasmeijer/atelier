@@ -5,7 +5,7 @@ import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
 import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace, setWorkspaceContainerRunning, workspaceSetupProvisioningHook } from "@atelier/workspace";
 import type { WorkspaceDeleteSafetyIssue } from "@atelier/projects";
-import { atelierName, CableTopics, escapeHtml, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler } from "@atelier/shared";
+import { atelierName, CableTopics, escapeHtml, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketData, type WorkspaceServerSocketHandler } from "@atelier/shared";
 import {
   createTailscaleServePortExposer,
   createWorkspaceIngressProxy,
@@ -353,7 +353,7 @@ interface ProvisionTermSocketData {
   pty?: IPty;
 }
 
-type SocketData = ({ kind: string } & Record<string, unknown>) | ProvisionTermSocketData | CableSocketData;
+type SocketData = WorkspaceServerSocketData | ProvisionTermSocketData | CableSocketData;
 const socketHandlersByKind = new Map<string, WorkspaceServerSocketHandler>();
 
 const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, requestUrl) => {
