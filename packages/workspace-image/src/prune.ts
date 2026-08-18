@@ -8,7 +8,7 @@ export function workspaceImagePruneArgs(kind: WorkspaceImageKind, buildStartedAt
   return [
     "image", "prune", "--all", "--force",
     "--filter", `label=${workspaceImageKindLabel}=${kind}`,
-    "--filter", `until=${Math.floor(buildStartedAt.getTime() / 1000)}`,
+    "--filter", `until=${Math.floor(buildStartedAt.getTime() / 1000) - 1}`,
   ];
 }
 
