@@ -41,19 +41,19 @@ A closable, reorderable tab inside the Work pane, such as a terminal, browser, F
 _Avoid_: Workspace group, preview group
 
 **Resource Work view**:
-A Work view representing an independently open resource or running session, such as a File, Browser, or Terminal view. It remains directly reachable while open.
+A Work view representing an independently open resource or running session, such as a File, Browser, Terminal, VS Code, or Desktop view.
 _Avoid_: Document view, permanent view
 
 **Contextual Work view**:
-A workspace-level utility Work view, such as Changes, that is directly reachable on mobile while active and otherwise discovered through More.
+A workspace-level utility Work view, such as Files or Changes.
 _Avoid_: Permanent view, special view
 
 **Mobile destination**:
-A top-level phone navigation target for the Workspace pane, Agent pane, or an open Work view. Resource Work views remain destinations while open; a Contextual Work view is a destination only while active.
+A top-level phone navigation target for the Workspace pane, an open Agent conversation, or a Work view configured for direct mobile access. Every open Agent conversation is directly reachable. Open File, Browser, and Terminal views are directly reachable; Files, Changes, VS Code, and Desktop views are found through More.
 _Avoid_: Mobile tab, mobile Work pane
 
 **More**:
-The user-facing phone destination for finding Work views that are not currently top-level Mobile destinations. “Work” remains domain language and is not exposed as the name of this mobile affordance.
+The user-facing phone destination that opens a bottom sheet with separate sections for Work views not configured for direct mobile access and launchers that create or reveal Work views. Singleton utility launchers such as Files and Changes remain available when their live Work views are closed. Selecting a Work view from More leaves the stable bottom destination bar unchanged, and More remains highlighted while a secondary Work view is visible. “Work” remains domain language and is not exposed as the name of this mobile affordance.
 _Avoid_: Work, overflow
 
 **Work view reference**:
@@ -77,12 +77,16 @@ A pre-existing terminal session surfaced through a Terminal view while retaining
 _Avoid_: Owned session
 
 **Attention request**:
-A persistent, repeatable signal from an agent asking the user to inspect a particular Work view. It activates and reveals that view, clears when the view becomes visible, and may be requested again later.
-_Avoid_: Work view unread, highlighted tab
+A persistent, repeatable signal asking the user to inspect a particular Work view in the requesting agent's own Workspace. A presentation operation may request attention for its target Work view. The request clears when its target Work view becomes visible and may be requested again later; a request made while its target is already visible is acknowledged immediately. Agent conversations do not receive Attention requests, agents cannot request attention across Workspaces, and Work-view Attention does not appear on Workspace rows.
+_Avoid_: Fresh data, Work view unread, highlighted tab
 
 **Agent ready**:
-A persistent workspace-level status indicating that an Agent conversation has completed work whose newest assistant response has not yet been reached. Following the response to its tail, reaching the transcript bottom later, or viewing the beginning of the latest assistant message clears it; only Agent conversations contribute to this status.
-_Avoid_: Workspace unread, workspace ready
+A state indicating that an Agent conversation has completed work whose newest assistant response has not yet been read. It contributes only to Workspace unread and is not shown as an Attention request or Agent-conversation indicator.
+_Avoid_: Agent attention, Agent unread
+
+**Workspace unread**:
+A Workspace-level status set when one of its Agent conversations completes while the Workspace is not selected. Selecting the Workspace clears the status; Agent completion does not set it while the Workspace is selected.
+_Avoid_: Workspace attention, Workspace ready
 
 **Changes view**:
 A review-only Work pane view for inspecting files changed in a workspace and reading their diffs. A workspace has at most one open Changes view.
@@ -101,5 +105,5 @@ The server-restorable identity, order, and type-specific resource state of an op
 _Avoid_: Published workspace state, saved layout
 
 **Personal navigation state**:
-A browser-local record of the user's choices while navigating persistent Work views, such as the selected Work view, pane and drawer visibility, and scroll position. It may be restored by that browser but is not server-authoritative workspace state.
+A browser-local record of the user's choices while navigating persistent Work views, such as the selected destination, pane and drawer visibility, Work-pane width, and scroll position. It may be restored by that browser but is not server-authoritative workspace state.
 _Avoid_: Workspace state
