@@ -34,6 +34,7 @@ async function getReusableWorkspaceId(): Promise<string> {
   return reusableWorkspaceId;
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-returns -- The action's fulfillment value is intentionally discarded.
 async function expectCoreError(action: () => Promise<unknown>): Promise<AtelierCoreError> {
   try {
     await action();
