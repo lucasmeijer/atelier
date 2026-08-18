@@ -9,6 +9,7 @@
   "dependencies": {
     "@atelier/core": "workspace:*",
     "@atelier/observable-terminal": "workspace:*",
-    "@atelier/workspace": "workspace:*"
+    "@atelier/workspace": "workspace:*",
+    "typebox": "^1.0.57"
   }
 }

@@ -10,6 +10,13 @@ describe("projects", () => {
     expect(parseProjectSpec("git@github.com:org/repo.git")).toEqual({ gitUrl: "git@github.com:org/repo.git", branch: null });
   });
 
+  test("rejects malformed persisted projects", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "atelier-projects-")), "projects.json");
+    await writeFile(file, JSON.stringify({ projects: [{ id: 42 }] }));
+
+    expect(listProjects(file)).rejects.toThrow();
+  });
+
   test("addProject records a remote URL without cloning it", async () => {
     const file = join(await mkdtemp(join(tmpdir(), "atelier-projects-")), "projects.json");
 

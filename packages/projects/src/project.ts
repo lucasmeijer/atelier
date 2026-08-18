@@ -3,6 +3,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { AtelierCoreError, getAtelierRuntimeContext } from "@atelier/core";
 import type { WorkspaceInitInstruction } from "@atelier/workspace";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
 export interface GitProjectInitInstruction {
   type: "project.git";
@@ -80,6 +82,39 @@ export interface ProjectStore {
   projects: ProjectRecord[];
 }
 
+const storedProjectSecretSchema = Type.Object({
+  id: Type.String(),
+  projectId: Type.String(),
+  envName: Type.String(),
+  hostPattern: Type.String(),
+  placeholder: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  encryptedSecret: Type.String(),
+});
+
+const projectEnvironmentVariableSchema = Type.Object({
+  id: Type.String(),
+  projectId: Type.String(),
+  name: Type.String(),
+  value: Type.String(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+
+const projectStoreSchema = Type.Object({
+  projects: Type.Array(Type.Object({
+    id: Type.String(),
+    name: Type.String(),
+    gitUrl: Type.String(),
+    branch: Type.Union([Type.String(), Type.Null()]),
+    sessionShareKey: Type.String(),
+    secrets: Type.Optional(Type.Array(storedProjectSecretSchema)),
+    sshKey: Type.Optional(Type.Object({ encryptedPrivateKey: Type.String() })),
+    environment: Type.Optional(Type.Array(projectEnvironmentVariableSchema)),
+  })),
+});
+
 export function projectsFile(dataDir = getAtelierRuntimeContext().atelierDataDir): string {
   return join(dataDir, "projects.json");
 }
@@ -113,7 +148,7 @@ export function parseProjectSpec(spec: string): { gitUrl: string; branch: string
 
 export async function readProjectStore(file: string): Promise<ProjectStore> {
   try {
-    return JSON.parse(await readFile(file, "utf8")) as ProjectStore;
+    return Value.Parse(projectStoreSchema, JSON.parse(await readFile(file, "utf8")));
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
     if (code === "ENOENT") return { projects: [] };

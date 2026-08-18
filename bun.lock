@@ -145,6 +145,7 @@
         "@atelier/core": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/workspace": "workspace:*",
+        "typebox": "^1.0.57",
       },
     },
     "packages/proxy-egress": {
