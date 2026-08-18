@@ -270,7 +270,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
   };
 }
 
-function createFileEditorSignalController(Controller: WorkspaceClientControllerConstructor): unknown {
+function createFileEditorSignalController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FileEditorSignalController extends Controller {
     static values = { workspaceId: String, tabKey: String, line: Number, column: Number };
     declare readonly element: HTMLElement;
