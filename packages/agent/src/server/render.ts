@@ -934,8 +934,9 @@ function partialStringField(stream: string, key: string): string | undefined {
 }
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+type StreamedToolArgs = JsonValue | { command: string } | { path?: string; content?: string };
 
-function parseKnownStreamedArgs(name: string, stream: string): unknown | undefined {
+function parseKnownStreamedArgs(name: string, stream: string): StreamedToolArgs | undefined {
   const parsed = parseStreamedArgs(stream);
   if (parsed) return parsed;
   if (name === "bash") return { command: partialStringField(stream, "command") ?? "" };
