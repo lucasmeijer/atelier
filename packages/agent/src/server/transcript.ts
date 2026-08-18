@@ -26,10 +26,12 @@ export type TranscriptRecord =
 
 export type NoteTone = "system" | "summary" | "warning" | "error";
 
-interface ToolResultDetailsCandidate {
+export interface ToolViewDetails {
   aborted?: unknown;
   timedOut?: unknown;
   exitCode?: unknown;
+  patch?: unknown;
+  displayAnsi?: unknown;
 }
 
 export interface ToolView {
@@ -130,8 +132,8 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
 
 export function toolDetailsIndicateError(details: unknown): boolean {
   if (!details || typeof details !== "object" || Array.isArray(details)) return false;
-  // SAFETY: ToolResultDetailsCandidate only names optional properties with unknown values.
-  const entry = details as ToolResultDetailsCandidate;
+  // SAFETY: ToolViewDetails only names optional properties with unknown values.
+  const entry = details as ToolViewDetails;
   return entry.aborted === true || entry.timedOut === true || (typeof entry.exitCode === "number" && entry.exitCode !== 0);
 }
 

@@ -38,21 +38,19 @@ export async function ownContainerId(): Promise<string | undefined> {
   return parseContainerIdFromCgroup(cgroup) ?? parseContainerIdFromMountInfo(mountInfo) ?? hostname();
 }
 
-export interface DockerMount {
+interface DockerMount {
   Type?: string;
   Source?: string;
   Destination?: string;
   RW?: boolean;
 }
 
-export interface DockerRestartPolicy {
+interface DockerRestartPolicy {
   Name?: string;
   MaximumRetryCount?: number;
 }
 
-export interface DockerHostConfig {
-  Binds?: string[];
-  Mounts?: DockerMount[];
+interface DockerHostConfig {
   NetworkMode?: string;
   RestartPolicy?: DockerRestartPolicy;
   Init?: boolean;

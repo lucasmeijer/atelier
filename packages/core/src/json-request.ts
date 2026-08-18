@@ -10,7 +10,7 @@ export interface JsonObject {
   [key: string]: JsonValue;
 }
 
-export function isJsonValue(value: unknown): value is JsonValue {
+function isJsonValue(value: unknown): value is JsonValue {
   return value === null
     || typeof value === "boolean"
     || (typeof value === "number" && Number.isFinite(value))

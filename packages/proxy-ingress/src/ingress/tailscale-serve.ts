@@ -117,7 +117,7 @@ export function ensureTailscaleServePortConfig(config: TailscaleServeConfig, opt
   if (currentTcp !== undefined && !isCompatibleTcpHttpsEntry(currentTcp)) throw new Error(`Tailscale Serve TCP port ${options.port} is already configured for another service`);
 
   let changed = false;
-  if (!isObject(currentTcp) || (currentTcp as { HTTPS?: unknown }).HTTPS !== true) {
+  if (!isJsonObject(currentTcp) || currentTcp.HTTPS !== true) {
     tcp[portKey] = { HTTPS: true };
     changed = true;
   }
@@ -192,11 +192,11 @@ function ensureWebProxyHandler(config: TailscaleServeConfig, host: string, port:
   const web = ensureRecord(config, "Web");
   const key = webKey(host, port);
   const currentEntry = web[key];
-  if (currentEntry !== undefined && !isObject(currentEntry)) throw new Error(`Tailscale Serve web route ${key} is already configured for another service`);
+  if (currentEntry !== undefined && !isJsonObject(currentEntry)) throw new Error(`Tailscale Serve web route ${key} is already configured for another service`);
 
   const entry: JsonObject = currentEntry ?? {};
   const currentHandlers = entry.Handlers;
-  if (currentHandlers !== undefined && !isObject(currentHandlers)) throw new Error(`Tailscale Serve web route ${key} handlers are not an object`);
+  if (currentHandlers !== undefined && !isJsonObject(currentHandlers)) throw new Error(`Tailscale Serve web route ${key} handlers are not an object`);
 
   const handlers: JsonObject = currentHandlers ?? {};
   const target = proxyTarget(port, targetHost);
@@ -215,13 +215,13 @@ function pruneManagedPort(config: TailscaleServeConfig, port: number, options: {
   const key = webKey(options.desiredHost, port);
   const target = proxyTarget(port, options.targetHost);
 
-  if (!options.active && isObject(config.Web) && removeOwnedRootHandler(config.Web[key], target)) {
+  if (!options.active && isJsonObject(config.Web) && removeOwnedRootHandler(config.Web[key], target)) {
     if (isEmptyWebEntry(config.Web[key])) delete config.Web[key];
     if (Object.keys(config.Web).length === 0) delete config.Web;
     changed = true;
   }
 
-  if (!options.active && isObject(config.TCP)) {
+  if (!options.active && isJsonObject(config.TCP)) {
     const tcpKey = String(port);
     if (Object.prototype.hasOwnProperty.call(config.TCP, tcpKey) && isCompatibleTcpHttpsEntry(config.TCP[tcpKey]) && !hasWebEntryForPort(config, port)) {
       delete config.TCP[tcpKey];
@@ -234,7 +234,7 @@ function pruneManagedPort(config: TailscaleServeConfig, port: number, options: {
 }
 
 function removeOwnedRootHandler(value: unknown, target: string): boolean {
-  if (!isObject(value) || !isObject(value.Handlers)) return false;
+  if (!isJsonObject(value) || !isJsonObject(value.Handlers)) return false;
   if (!isProxyHandler(value.Handlers["/"], target)) return false;
   delete value.Handlers["/"];
   if (Object.keys(value.Handlers).length === 0) delete value.Handlers;
@@ -242,19 +242,19 @@ function removeOwnedRootHandler(value: unknown, target: string): boolean {
 }
 
 function isEmptyWebEntry(value: unknown): boolean {
-  return isObject(value) && (!isObject(value.Handlers) || Object.keys(value.Handlers).length === 0) && Object.keys(value).every((key) => key === "Handlers");
+  return isJsonObject(value) && (!isJsonObject(value.Handlers) || Object.keys(value.Handlers).length === 0) && Object.keys(value).every((key) => key === "Handlers");
 }
 
 function hasWebEntryForPort(config: TailscaleServeConfig, port: number): boolean {
-  return isObject(config.Web) && Object.keys(config.Web).some((key) => webKeyPort(key) === port);
+  return isJsonObject(config.Web) && Object.keys(config.Web).some((key) => webKeyPort(key) === port);
 }
 
 function isCompatibleTcpHttpsEntry(value: unknown): boolean {
-  return value === undefined || (isObject(value) && value.HTTPS === true);
+  return value === undefined || (isJsonObject(value) && value.HTTPS === true);
 }
 
 function isProxyHandler(value: unknown, target: string): boolean {
-  return isObject(value) && value.Proxy === target;
+  return isJsonObject(value) && value.Proxy === target;
 }
 
 function ensureRecord(config: TailscaleServeConfig, key: "TCP" | "Web"): JsonObject {
@@ -264,7 +264,7 @@ function ensureRecord(config: TailscaleServeConfig, key: "TCP" | "Web"): JsonObj
     config[key] = record;
     return record;
   }
-  if (!isObject(value)) throw new Error(`Tailscale Serve config ${key} field is not an object`);
+  if (!isJsonObject(value)) throw new Error(`Tailscale Serve config ${key} field is not an object`);
   return value;
 }
 
@@ -293,5 +293,3 @@ function webKeyPort(key: string): number | undefined {
 function proxyTarget(port: number, targetHost: string): string {
   return `http://${targetHost}:${port}/`;
 }
-
-const isObject = isJsonObject;

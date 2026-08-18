@@ -23,7 +23,6 @@ export {
 
 export {
   isJsonObject,
-  isJsonValue,
   readJsonObject,
   requestAcceptsJson,
   type JsonObject,

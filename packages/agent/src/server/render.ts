@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { JsonValue } from "@atelier/core";
 import { composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel, type ModelRef } from "./model-state.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
 import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded-code.ts";
@@ -13,6 +14,7 @@ import {
   type TranscriptItem,
   type SessionImageRef,
   type ToolView,
+  type ToolViewDetails,
 } from "./transcript.ts";
 
 export interface AgentRenderContext {
@@ -115,14 +117,6 @@ interface ToolArguments {
   edits?: unknown;
   oldText?: unknown;
   newText?: unknown;
-}
-
-interface ToolDetails {
-  patch?: unknown;
-  displayAnsi?: unknown;
-  timedOut?: unknown;
-  aborted?: unknown;
-  exitCode?: unknown;
 }
 
 interface EditOperationCandidate {
@@ -447,7 +441,7 @@ function summaryHtml(parts: Array<string | undefined>): string {
 }
 
 function bashSummary(tool: ToolView): string {
-  const details = bashDetails(tool);
+  const details = toolDetails(tool);
   const timeout = tool.timeoutSeconds ?? numberArg(toolArgs(tool), "timeout") ?? 600;
   if (tool.status === "running") return "";
   const duration = tool.durationMs === undefined ? "" : `${formatDuration(tool.durationMs)} / ${formatDuration(timeout * 1000)}`;
@@ -551,7 +545,7 @@ function tailOutput(content: string, pagination: string, direction: "first" | "l
 }
 
 function bashViews(tool: ToolView, count: number): { display: string; model: string; same: boolean; resultWindow: { text: string; hidden: number }; modelWindow: { text: string; hidden: number } } {
-  const details = bashDetails(tool);
+  const details = toolDetails(tool);
   const display = typeof details?.displayAnsi === "string" ? details.displayAnsi.trimEnd() : "";
   const model = trimResult(tool);
   return { display, model, same: !display || display === model, resultWindow: textWindow(display || model || "(no output)", "last", count), modelWindow: textWindow(model || "(no output)", "last", count) };
@@ -882,13 +876,11 @@ function ansiToHtml(text: string): string {
   return html;
 }
 
-function toolDetails(tool: ToolView): ToolDetails | undefined {
+function toolDetails(tool: ToolView): ToolViewDetails | undefined {
   if (!tool.details || typeof tool.details !== "object" || Array.isArray(tool.details)) return undefined;
-  // SAFETY: ToolDetails only names optional properties with unknown values.
-  return tool.details as ToolDetails;
+  // SAFETY: ToolViewDetails only names optional properties with unknown values.
+  return tool.details as ToolViewDetails;
 }
-
-const bashDetails = toolDetails;
 
 function hasAnsiSgr(text: string): boolean {
   return /\x1b\[[0-9;?]*m/.test(text);
@@ -969,7 +961,6 @@ function partialStringField(stream: string, key: string): string | undefined {
   try { return JSON.parse(`"${raw}"`) as string; } catch { return raw.replaceAll("\\n", "\n").replaceAll('\\"', '"'); }
 }
 
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 type StreamedToolArgs = JsonValue | { command: string } | { path?: string; content?: string };
 
 function parseKnownStreamedArgs(name: string, stream: string): StreamedToolArgs | undefined {

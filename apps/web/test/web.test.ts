@@ -23,19 +23,7 @@ function deferred<T = void>() {
 type ProvisionWorkspace = Parameters<typeof createWebApp>[0]["provisionWorkspace"];
 type ProvisionWorkspaceOptions = Parameters<ProvisionWorkspace>[1];
 
-const openApiPathPresenceSchema = Type.Object({
-  paths: Type.Object({
-    "/workspaces": Type.Optional(Type.Unknown()),
-    "/workspaces/{id}/commands/{commandId}": Type.Optional(Type.Unknown()),
-    "/projects": Type.Optional(Type.Unknown()),
-    "/projects/{projectId}": Type.Optional(Type.Unknown()),
-    "/projects/{projectId}/environment/{variableId}/delete": Type.Optional(Type.Unknown()),
-    "/projects/{projectId}/secrets/{secretId}/delete": Type.Optional(Type.Unknown()),
-    "/projects/{projectId}/delete": Type.Optional(Type.Unknown()),
-    "/projects/picker": Type.Optional(Type.Unknown()),
-    "/api/workspaces": Type.Optional(Type.Unknown()),
-  }),
-});
+const openApiDocumentShape = Type.Object({ paths: Type.Object({}) });
 
 interface TestAppOptions {
   provision?: (id: string, options?: ProvisionWorkspaceOptions) => Promise<void>;
@@ -439,19 +427,20 @@ describe("web app contracts", () => {
 
     const removed = await app.fetch(postJson("/api/workspaces", {}));
     const openapi = await app.fetch(new Request("http://test.local/openapi.json"));
-    const specification = Value.Parse(openApiPathPresenceSchema, await openapi.json());
+    const specification = Value.Parse(openApiDocumentShape, await openapi.json());
+    const pathNames = Object.keys(specification.paths);
 
     expect(removed.status).toBe(404);
     expect(openapi.headers.get("content-type")).toContain("application/json");
-    expect(specification.paths["/workspaces"]).toBeDefined();
-    expect(specification.paths["/workspaces/{id}/commands/{commandId}"]).toBeDefined();
-    expect(specification.paths["/projects"]).toBeDefined();
-    expect(specification.paths["/projects/{projectId}"]).toBeDefined();
-    expect(specification.paths["/projects/{projectId}/environment/{variableId}/delete"]).toBeDefined();
-    expect(specification.paths["/projects/{projectId}/secrets/{secretId}/delete"]).toBeDefined();
-    expect(specification.paths["/projects/{projectId}/delete"]).toBeDefined();
-    expect(specification.paths["/projects/picker"]).toBeUndefined();
-    expect(specification.paths["/api/workspaces"]).toBeUndefined();
+    expect(pathNames).toContain("/workspaces");
+    expect(pathNames).toContain("/workspaces/{id}/commands/{commandId}");
+    expect(pathNames).toContain("/projects");
+    expect(pathNames).toContain("/projects/{projectId}");
+    expect(pathNames).toContain("/projects/{projectId}/environment/{variableId}/delete");
+    expect(pathNames).toContain("/projects/{projectId}/secrets/{secretId}/delete");
+    expect(pathNames).toContain("/projects/{projectId}/delete");
+    expect(pathNames).not.toContain("/projects/picker");
+    expect(pathNames).not.toContain("/api/workspaces");
   });
 
   test("the project picker launches workspaces and links to project settings", async () => {
