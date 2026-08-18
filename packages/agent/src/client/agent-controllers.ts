@@ -774,6 +774,11 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
 
     private scheduleRefresh(force = false): void {
       window.clearTimeout(this.debounceTimer);
+      this.requestId++;
+      if (autocomplete.loadingHtml && this.menuTarget.hidden && autocomplete.request(this.inputTarget, force)) {
+        this.menuTarget.innerHTML = autocomplete.loadingHtml;
+        this.menuTarget.hidden = false;
+      }
       const debounceMs = force ? 0 : autocomplete.debounceMs ?? 0;
       if (debounceMs === 0) {
         void this.refresh(force);
@@ -826,10 +831,6 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
         return;
       }
       const id = ++this.requestId;
-      if (autocomplete.loadingHtml) {
-        this.menuTarget.innerHTML = autocomplete.loadingHtml;
-        this.menuTarget.hidden = false;
-      }
       const url = new URL(this.urlValue, window.location.href);
       url.searchParams.set("q", request.query);
       for (const [name, value] of Object.entries(request.params ?? {})) url.searchParams.set(name, value);
@@ -985,6 +986,7 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
   return createHtmlAutocompleteController(Controller, {
     optionSelector: ".agent-completion-option",
     debounceMs: 70,
+    loadingHtml: `<div class="agent-completion-menu empty" role="status"><span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…</div>`,
     triggerKeysWhenClosed: ["/", "@"],
     fullscreenShortcut: (option) => option.dataset.completionKind === "prompt-template",
     request(input, force) {
