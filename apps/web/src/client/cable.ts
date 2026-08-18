@@ -107,7 +107,8 @@ export function createAtelierCableClient(): AtelierCableClient {
   const client: AtelierCableClient = {
     subscribe(identifier, options) {
       const key = serializeCableIdentifier(identifier);
-      const upTo = knownCursors.get(key) ?? options?.upTo;
+      const upTo = options === undefined ? knownCursors.get(key) : options.upTo;
+      if (options !== undefined) knownCursors.delete(key);
       rememberCursor(key, upTo);
       desired.set(key, { identifier, upTo });
       closingForPageHide = false;

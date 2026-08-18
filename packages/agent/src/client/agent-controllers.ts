@@ -209,7 +209,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       });
       if (document.visibilityState !== "visible" || !isWorkspacePaneVisible(this.element) || this.subscribed) return;
       this.startAgentTerminals();
-      const options = !this.hasSubscribed && this.hasSnapshotCursorValue ? { upTo: this.snapshotCursorValue } : undefined;
+      const options = this.hasSubscribed ? undefined : { upTo: this.hasSnapshotCursorValue ? this.snapshotCursorValue : undefined };
       window.AtelierCable?.subscribe(this.cableIdentifier(), options);
       this.subscribed = true;
       this.hasSubscribed = true;
