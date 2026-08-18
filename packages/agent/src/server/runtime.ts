@@ -84,6 +84,7 @@ interface WorkspaceAgentRuntime {
   paneState(): Promise<AgentPaneState>;
   userMessages(): string[];
   submit(text: string, options: SubmitOptions): Promise<void>;
+  compact(customInstructions?: string): Promise<void>;
   abort(): Promise<void>;
   currentModel(): { provider: string; id: string } | undefined;
   currentThinkingLevel(): string;
@@ -154,6 +155,10 @@ interface LiveState {
 const terminalRevealMs = 3000;
 const assistantTextFlushIntervalMs = 16;
 const assistantTextCharactersPerFlush = 24;
+// Pi's 20k default makes manual compaction a no-op for many substantial
+// Atelier sessions. Keep enough recent context while allowing an explicit
+// /compact to summarize medium-length conversations.
+const compactionKeepRecentTokens = 6000;
 
 abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   workspaceId: string;
@@ -559,6 +564,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected abstract canonicalItems(leafId?: string): Promise<TranscriptItem[]>;
   protected abstract statsView(): Promise<AgentStatsView>;
   abstract submit(text: string, options: SubmitOptions): Promise<void>;
+  abstract compact(customInstructions?: string): Promise<void>;
   abstract abort(): Promise<void>;
   abstract currentModel(): { provider: string; id: string } | undefined;
   abstract currentThinkingLevel(): string;
@@ -878,11 +884,18 @@ class RealAgentRuntime extends BaseAgentRuntime {
         await this.emitTurnFinished();
         break;
       case "compaction_start":
-        this.notice("info", "Compacting context…");
+        this.setBusy(true);
+        this.notice("info", event.reason === "manual" ? "Compacting context…" : "Auto-compacting context…");
         break;
       case "compaction_end":
-        this.notice("info", event.aborted ? "Compaction cancelled" : "Context compacted");
         await this.refreshTranscript();
+        await this.refreshStats();
+        this.notice(
+          event.errorMessage ? "error" : "info",
+          event.errorMessage ?? (event.aborted ? "Compaction cancelled" : "Context compacted"),
+        );
+        if (!event.willRetry) this.setBusy(false);
+        if (event.reason === "manual") await this.emitTurnFinished();
         break;
       case "auto_retry_start":
         this.notice("info", `Provider error, retrying (attempt ${event.attempt}/${event.maxAttempts})…`);
@@ -917,7 +930,20 @@ class RealAgentRuntime extends BaseAgentRuntime {
       });
   }
 
+  async compact(customInstructions?: string): Promise<void> {
+    try {
+      await this.session.compact(customInstructions?.trim() || undefined);
+    } catch {
+      // Pi reports compaction failures through compaction_end; handleEvent renders
+      // that error in the agent pane, so the command response must remain successful.
+    }
+  }
+
   async abort(): Promise<void> {
+    if (this.session.isCompacting) {
+      this.session.abortCompaction();
+      return;
+    }
     if (this.summarizing) {
       this.session.abortBranchSummary?.();
       return;
@@ -1057,10 +1083,10 @@ async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgen
     sessionSettings = {
       defaultProvider: defaultModel.provider,
       defaultModel: defaultModel.id,
-      compaction: { enabled: true },
+      compaction: { enabled: true, keepRecentTokens: compactionKeepRecentTokens },
     };
   } else {
-    sessionSettings = { compaction: { enabled: true } };
+    sessionSettings = { compaction: { enabled: true, keepRecentTokens: compactionKeepRecentTokens } };
   }
   const sessionManager = SessionManager.open(agent.path, dirname(agent.path), workspaceRoot);
   const customTools = createWorkspaceAgentTools(agent.workspaceId, { events: options.events });

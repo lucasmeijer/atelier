@@ -342,7 +342,7 @@ function transcriptItemPath(ctx: AgentRenderContext, key: string, query = ""): s
 }
 
 export function renderTranscript(ctx: AgentRenderContext, items: TranscriptItem[], modelContext: AgentModelContextView): string {
-  return `${renderModelContextCard(ctx, modelContext)}<div class="agent-notices" id="${ids.notices(ctx)}"></div>${items.map((item) => renderTranscriptItem(ctx, item)).join("")}`;
+  return `${renderModelContextCard(ctx, modelContext)}${items.map((item) => renderTranscriptItem(ctx, item)).join("")}<div class="agent-notices" id="${ids.notices(ctx)}"></div>`;
 }
 
 function renderModelContextCard(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {

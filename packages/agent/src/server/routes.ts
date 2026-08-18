@@ -15,7 +15,7 @@ import {
 } from "./attachment-drafts.ts";
 import { ids, renderAttachmentChip } from "./render.ts";
 import { turboStream, turboStreamResponse } from "./html.ts";
-import { expandPromptTemplate, listPromptTemplates, parseWorkspaceNameCommand } from "./prompt-templates.ts";
+import { expandPromptTemplate, listPromptTemplates, parseCompactCommand, parseWorkspaceNameCommand } from "./prompt-templates.ts";
 import { listFileCompletions, renderFileCompletionMenu } from "./file-completions.ts";
 import { loadWorkspaceSkills } from "./skills.ts";
 import { renderSlashCommandMenu } from "./slash-commands.ts";
@@ -213,6 +213,13 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
     await runtime.newSession();
     if (validDraftId(attachmentDraft)) await removeAttachmentDraft(attachmentDraft);
     return json ? Response.json({ agent: { label, state: "idle" } }) : turboStreamResponse("");
+  }
+  const compactCommand = parseCompactCommand(text);
+  if (compactCommand) {
+    if (validDraftId(attachmentDraft)) await removeAttachmentDraft(attachmentDraft);
+    await options.events?.emit("workspace_user_activity", { workspaceId });
+    await runtime.compact(compactCommand.customInstructions);
+    return json ? Response.json({ agent: { label, state: "idle", compacted: true } }) : turboStreamResponse("");
   }
   const nameCommand = parseWorkspaceNameCommand(text);
   if (nameCommand) {

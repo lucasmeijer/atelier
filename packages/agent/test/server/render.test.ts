@@ -40,6 +40,11 @@ describe("flat transcript rendering", () => {
     expect(html).toContain('data-agent-code-copy-target="code"');
   });
 
+  test("places transient notices after transcript items", () => {
+    const html = renderTranscript(ctx, [{ type: "user", key: "user", text: "question", images: [] }], { systemPrompt: "", tools: [] });
+    expect(html.indexOf('data-agent-item-key="user"')).toBeLessThan(html.indexOf('class="agent-notices"'));
+  });
+
   test("all transcript content uses the same full-width row", () => {
     const items: TranscriptItem[] = [
       { type: "user", key: "user", text: "question", images: [] },

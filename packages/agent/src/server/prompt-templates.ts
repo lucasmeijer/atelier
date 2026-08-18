@@ -20,6 +20,13 @@ const promptDirs = [".atelier/prompts", ".pi/prompts"] as const;
 
 const builtinLandPrompt = "Commit and push your work, rebasing when necessary. When successful, delete this workspace.";
 const builtinApplicationCommands: PromptTemplate[] = [{
+  name: "compact",
+  trigger: "/compact",
+  description: "Compact the conversation context, optionally with custom instructions.",
+  argumentHint: "[instructions]",
+  prompt: "/compact",
+  preserveArguments: true,
+}, {
   name: "name",
   trigger: "/name",
   description: "Rename this workspace, using AI when no name is provided.",
@@ -154,6 +161,13 @@ export function expandPromptTemplateText(text: string, templates: readonly Promp
 
 export async function expandPromptTemplate(workspaceId: string, text: string): Promise<string> {
   return expandPromptTemplateText(text, await listPromptTemplates(workspaceId));
+}
+
+export function parseCompactCommand(text: string): { customInstructions?: string } | undefined {
+  const match = text.trim().match(/^\/compact(?:\s+([\s\S]+))?$/);
+  if (!match) return undefined;
+  const customInstructions = match[1]?.trim();
+  return customInstructions ? { customInstructions } : {};
 }
 
 export function parseWorkspaceNameCommand(text: string): { title?: string } | undefined {
