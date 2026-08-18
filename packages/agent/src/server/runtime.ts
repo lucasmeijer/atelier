@@ -1,10 +1,12 @@
 import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { shellQuote, type AtelierEventBus } from "@atelier/core";
+import { isJsonObject, shellQuote, type AtelierEventBus, type JsonObject } from "@atelier/core";
 import { StreamingMarkdownRenderer } from "@atelier/markdown";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
 import { createPiModelRuntime, getConfiguredAgentModels, getModelThinkingLevel } from "./pi-config-models.ts";
 import { preferredNewWorkspaceAgentModel } from "./model-state.ts";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import {
   createAgentSession,
   SessionManager,
@@ -151,6 +153,18 @@ interface LiveState {
   textStream?: LiveTextStream;
   toolIndexByCallId: Map<string, number>;
   terminalTimers: Map<string, ReturnType<typeof setTimeout>>;
+}
+
+interface LiveToolCall {
+  callId: string;
+  name: string;
+  args: JsonObject;
+}
+
+const positiveSecondsSchema = Type.Number({ exclusiveMinimum: 0 });
+
+function bashTimeoutSeconds(args: JsonObject): number {
+  return Value.Check(positiveSecondsSchema, args.timeout) ? args.timeout : 600;
 }
 
 /** Only attach the inline terminal when a tool call has been running this long. */
@@ -398,7 +412,8 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.streamActiveToolContent(item);
   }
 
-  protected liveToolCallComplete(callId: string, name: string, args: unknown): void {
+  protected liveToolCallComplete(call: LiveToolCall): void {
+    const { callId, name, args } = call;
     const live = this.liveEnsure();
     const streamedIndex = live.open?.kind === "toolargs" ? live.open.index : undefined;
     let index: number;
@@ -417,10 +432,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     item.tool.status = "running";
     item.tool.argsStream = undefined;
     item.tool.startedAt = Date.now();
-    if (name === "bash") {
-      const timeout = (args as { timeout?: number } | undefined)?.timeout;
-      item.tool.timeoutSeconds = typeof timeout === "number" && timeout > 0 ? timeout : 600;
-    }
+    if (name === "bash") item.tool.timeoutSeconds = bashTimeoutSeconds(args);
     live.toolIndexByCallId.set(callId, index);
     if (streamedIndex !== undefined) {
       this.streamActiveToolContent(item);
@@ -429,9 +441,9 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     }
   }
 
-  protected liveToolExecStart(callId: string, name: string, args: unknown): void {
+  protected liveToolExecStart(call: LiveToolCall): void {
     const live = this.liveEnsure();
-    if (!live.toolIndexByCallId.has(callId)) this.liveToolCallComplete(callId, name, args);
+    if (!live.toolIndexByCallId.has(call.callId)) this.liveToolCallComplete(call);
   }
 
   protected liveToolUpdate(callId: string, update: { tmuxSession?: string; outputText?: string; details?: unknown }): void {
@@ -846,13 +858,16 @@ class RealAgentRuntime extends BaseAgentRuntime {
           this.liveToolStreamStart(part?.name ?? "tool");
         } else if (inner.type === "toolcall_delta") this.liveToolArgsDelta(inner.delta ?? "");
         else if (inner.type === "toolcall_end" && inner.toolCall) {
-          this.liveToolCallComplete(inner.toolCall.id, inner.toolCall.name, inner.toolCall.arguments);
+          if (!isJsonObject(inner.toolCall.arguments)) throw new TypeError(`tool ${inner.toolCall.name} arguments must be a JSON object`);
+          this.liveToolCallComplete({ callId: inner.toolCall.id, name: inner.toolCall.name, args: inner.toolCall.arguments });
         }
         break;
       }
-      case "tool_execution_start":
-        this.liveToolExecStart(event.toolCallId, event.toolName, event.args);
+      case "tool_execution_start": {
+        if (!isJsonObject(event.args)) throw new TypeError(`tool ${event.toolName} arguments must be a JSON object`);
+        this.liveToolExecStart({ callId: event.toolCallId, name: event.toolName, args: event.args });
         break;
+      }
       case "tool_execution_update": {
         const details = event.partialResult?.details;
         const text = contentToText(event.partialResult?.content);

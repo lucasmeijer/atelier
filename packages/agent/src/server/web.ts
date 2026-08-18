@@ -5,7 +5,7 @@ import {
   createWorkspaceTool,
   registerWorkspaceAgentTool,
 } from "./tools.ts";
-import { closeAgentTermSocket, handleAgentTermSocketMessage, openAgentTermSocket, validateAgentTermSocket } from "./bash-tmux.ts";
+import { createAgentTermSocketSession } from "./bash-tmux.ts";
 import { getWorkspaceAgentRuntime, isWorkspaceAgentRuntimeReady, subscribeWorkspaceTabBusy } from "./runtime.ts";
 import { handleAgentRequest, registerAgentEvents, resolveWorkspacePortProxyTarget, workspaceFileEndpoint } from "./routes.ts";
 import { createNextWorkspaceAgent, ensureDefaultWorkspaceAgent, listWorkspaceAgents, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentInfo } from "./session-store.ts";
@@ -131,12 +131,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
         await ensureDefaultWorkspaceAgent(workspaceId, { topic: agentTopicFromCreationContext(creationContext) });
       },
     });
-    context.registerSocketHandler({
-      validate: (_request, url) => validateAgentTermSocket(url),
-      open: (socket) => openAgentTermSocket(socket as Parameters<typeof openAgentTermSocket>[0]),
-      message: (socket, message) => handleAgentTermSocketMessage(socket as Parameters<typeof handleAgentTermSocketMessage>[0], message as string | Buffer),
-      close: (socket) => closeAgentTermSocket(socket as Parameters<typeof closeAgentTermSocket>[0]),
-    });
+    context.registerSocketHandler(createAgentTermSocketSession);
     context.registerWorkspaceAppHandler({
       matches: (app) => app.appKey === "file" || /^port-(\d+)$/.test(app.appKey),
       handleRequest: (app, request, url) => app.appKey === "file" ? workspaceFileEndpoint(app.workspaceId, decodeURIComponent(url.pathname), request) : undefined,

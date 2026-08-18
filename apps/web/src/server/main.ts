@@ -5,7 +5,7 @@ import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
 import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace, setWorkspaceContainerRunning, workspaceSetupProvisioningHook } from "@atelier/workspace";
 import type { WorkspaceDeleteSafetyIssue } from "@atelier/projects";
-import { atelierName, CableTopics, escapeHtml, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketData, type WorkspaceServerSocketHandler } from "@atelier/shared";
+import { atelierName, CableTopics, escapeHtml, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler, type WorkspaceServerSocketSession } from "@atelier/shared";
 import {
   createTailscaleServePortExposer,
   createWorkspaceIngressProxy,
@@ -353,8 +353,8 @@ interface ProvisionTermSocketData {
   pty?: IPty;
 }
 
-type SocketData = WorkspaceServerSocketData | ProvisionTermSocketData | CableSocketData;
-const socketHandlersByKind = new Map<string, WorkspaceServerSocketHandler>();
+type WorkspaceModuleSocketData = WorkspaceServerSocketSession & { kind: "workspace-module" };
+type SocketData = WorkspaceModuleSocketData | ProvisionTermSocketData | CableSocketData;
 
 const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, requestUrl) => {
   for (const handler of workspaceAppHandlers) {
@@ -441,10 +441,8 @@ async function validateSocket(request: Request, url: URL): Promise<SocketData | 
     return { kind: "provision-term", session };
   }
   for (const handler of socketHandlers) {
-    const data = await handler.validate?.(request, url);
-    if (!data || typeof data !== "object" || typeof (data as { kind?: unknown }).kind !== "string") continue;
-    socketHandlersByKind.set((data as { kind: string }).kind, handler);
-    return data as SocketData;
+    const session = await handler(url);
+    if (session) return { kind: "workspace-module", ...session };
   }
   return undefined;
 }
@@ -521,16 +519,16 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
         open(ws) {
           if (ws.data.kind === "cable") cableServer.open(ws as ServerWebSocket<CableSocketData>);
           else if (ws.data.kind === "provision-term") openProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
-          else socketHandlersByKind.get(ws.data.kind)?.open?.(ws);
+          else ws.data.open?.(ws);
         },
         message(ws, message) {
           if (ws.data.kind === "cable") cableServer.message(ws as ServerWebSocket<CableSocketData>, message);
-          else socketHandlersByKind.get(ws.data.kind)?.message?.(ws, message);
+          else if (ws.data.kind === "workspace-module") ws.data.message?.(ws, message);
         },
         close(ws) {
           if (ws.data.kind === "cable") cableServer.close(ws as ServerWebSocket<CableSocketData>);
           else if (ws.data.kind === "provision-term") closeProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
-          else socketHandlersByKind.get(ws.data.kind)?.close?.(ws);
+          else ws.data.close?.(ws);
         },
       },
     });

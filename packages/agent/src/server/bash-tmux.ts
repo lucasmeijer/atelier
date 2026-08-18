@@ -1,5 +1,5 @@
 import { shellQuote } from "@atelier/core";
-import type { ServerWebSocket } from "bun";
+import type { WorkspaceServerSocketSession, WorkspaceSocketConnection } from "@atelier/shared";
 import { execWorkspaceShell, workspaceContainerName, workspaceRoot } from "@atelier/workspace";
 import {
   attachObservableTerminal,
@@ -210,42 +210,39 @@ printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
 // ---------------------------------------------------------------------------
 
 interface AgentTermSocketData {
-  kind: "agent-term";
   workspaceId: string;
   session: string;
-  cols: number;
-  rows: number;
   pty?: IPty;
 }
 
-export function validateAgentTermSocket(url: URL): AgentTermSocketData | undefined {
+export function createAgentTermSocketSession(url: URL): WorkspaceServerSocketSession | undefined {
   const match = url.pathname.match(/^\/workspaces\/([^/]+)\/agent-term\/([^/]+)\/ws$/);
   if (!match) return undefined;
   const workspaceId = decodeURIComponent(match[1]);
   const session = decodeURIComponent(match[2]);
   if (!session.startsWith(agentTmuxPrefix)) return undefined;
-  return {
-    kind: "agent-term",
+  const data: AgentTermSocketData = {
     workspaceId,
     session,
-    // Agent bash sessions have a fixed, desktop-like size. Do not trust the
-    // browser/PTY-reported attach size here: hidden or freshly-mounted inline
-    // terminals can briefly report tiny dimensions (for example 5x5), and a
-    // tmux attach client may otherwise propagate that size to the running
-    // command.
-    cols: agentTermCols,
-    rows: agentTermRows,
+  };
+  return {
+    open: (socket) => openAgentTermSocket(socket, data),
+    close: () => closeAgentTermSocket(data),
   };
 }
 
-export function openAgentTermSocket(ws: ServerWebSocket<AgentTermSocketData>): void {
-  const data = ws.data;
+function openAgentTermSocket(socket: WorkspaceSocketConnection, data: AgentTermSocketData): void {
   try {
     const pty = attachObservableTerminal({
       containerName: workspaceContainerName(data.workspaceId),
       session: data.session,
-      cols: data.cols,
-      rows: data.rows,
+      // Agent bash sessions have a fixed, desktop-like size. Do not trust the
+      // browser/PTY-reported attach size here: hidden or freshly-mounted inline
+      // terminals can briefly report tiny dimensions (for example 5x5), and a
+      // tmux attach client may otherwise propagate that size to the running
+      // command.
+      cols: agentTermCols,
+      rows: agentTermRows,
       user: "atelier",
       readonly: true,
       fixedSize: true,
@@ -254,24 +251,20 @@ export function openAgentTermSocket(ws: ServerWebSocket<AgentTermSocketData>): v
     pty.onData((chunk) => {
       setTimeout(() => {
         try {
-          ws.send(chunk);
+          socket.send(chunk);
         } catch {
           // Socket closed.
         }
       }, 0);
     });
-    pty.onExit(() => ws.close());
+    pty.onExit(() => socket.close());
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    ws.send(`\r\n[terminal attach failed: ${message}]\r\n`);
-    ws.close();
+    socket.send(`\r\n[terminal attach failed: ${message}]\r\n`);
+    socket.close();
   }
 }
 
-export function handleAgentTermSocketMessage(_ws: ServerWebSocket<AgentTermSocketData>, _message: string | Buffer): void {
-  // Read-only attach with a fixed window size: ignore all input and resizes.
-}
-
-export function closeAgentTermSocket(ws: ServerWebSocket<AgentTermSocketData>): void {
-  ws.data.pty?.kill();
+function closeAgentTermSocket(data: AgentTermSocketData): void {
+  data.pty?.kill();
 }

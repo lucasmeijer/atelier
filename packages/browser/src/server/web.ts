@@ -1,4 +1,4 @@
-import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceTabContribution } from "@atelier/shared";
+import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceModuleCommandHandler, WorkspaceTabContribution } from "@atelier/shared";
 import { renderBrowserFrame, renderBrowserTab } from "./render.ts";
 import { createWorkspaceBrowserTab, deleteWorkspaceBrowserState, deleteWorkspaceBrowserTab, listWorkspaceBrowserTabs, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
@@ -6,9 +6,20 @@ import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppRequestHeaders, patchBro
 import { invalidArguments, readJsonObject, requestAcceptsJson } from "@atelier/core";
 import { createBrowserPresenter } from "./agent-tool.ts";
 import { registerWorkspacePresenter, type WorkspacePresenterDeps } from "@atelier/agent/server";
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
 
 const browserCreateCommandId = "browser.create";
+const browserCreateInputSchema = Type.Object({ url: Type.Optional(Type.String()) });
+
+const browserCreateCommand: WorkspaceModuleCommandHandler<Static<typeof browserCreateInputSchema>> = {
+  id: browserCreateCommandId,
+  inputSchema: browserCreateInputSchema,
+  execute({ workspaceId, input }) {
+    const browser = createWorkspaceBrowserTab(workspaceId);
+    if (input.url) setWorkspaceBrowserTarget(workspaceId, browser.key, input.url);
+    return { createdTabKey: browser.key, tabPlacement: "preview-group" };
+  },
+};
 
 function renderWorkspaceBrowserTabs(workspaceId: string): WorkspaceTabContribution[] {
   return listWorkspaceBrowserTabs(workspaceId).map((tab) => renderBrowserTab(workspaceId, tab));
@@ -26,16 +37,7 @@ const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
 export const browserWorkspaceModule: WorkspaceModule = {
   id: "browser",
   staticFiles: browserStaticFiles,
-  commands: [{
-    id: browserCreateCommandId,
-    inputSchema: Type.Object({ url: Type.Optional(Type.String()) }),
-    execute({ workspaceId, input }) {
-      const browser = createWorkspaceBrowserTab(workspaceId);
-      const url = (input as { url?: string }).url;
-      if (url) setWorkspaceBrowserTarget(workspaceId, browser.key, url);
-      return { createdTabKey: browser.key, tabPlacement: "preview-group" };
-    },
-  }],
+  commands: [browserCreateCommand],
   routes: [{
     async handle(request, url) {
       const match = url.pathname.match(/^\/workspaces\/([^/]+)\/browser\/([^/]+)\/navigate$/);

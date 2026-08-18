@@ -1,10 +1,11 @@
 import { emptyWorkspaceCommandInputSchema, type WorkspaceModuleCommandHandler } from "@atelier/shared";
+import type { TSchema } from "typebox";
 
 const errorResponse = {
   description: "Request failed",
   content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
 };
-const jsonResponse = (description: string, schema: unknown, status = "200") => ({
+const jsonResponse = (description: string, schema: TSchema, status = "200") => ({
   [status]: { description, content: { "application/json": { schema } } },
   "400": errorResponse,
   "404": errorResponse,
@@ -15,7 +16,7 @@ const variableId = { name: "variableId", in: "path", required: true, schema: { t
 const secretId = { name: "secretId", in: "path", required: true, schema: { type: "string" } };
 const groupId = { name: "groupId", in: "path", required: true, schema: { type: "string" } };
 const agentLabel = { name: "label", in: "path", required: true, schema: { type: "string" } };
-const jsonBody = (schema: unknown) => ({ required: true, content: { "application/json": { schema } } });
+const jsonBody = (schema: TSchema) => ({ required: true, content: { "application/json": { schema } } });
 const emptyObjectSchema = { type: "object", additionalProperties: false };
 const projectSummaryProperties = { id: { type: "string" }, name: { type: "string" }, gitUrl: { type: "string" }, branch: { type: ["string", "null"] }, sessionShareKey: { type: "string" } };
 

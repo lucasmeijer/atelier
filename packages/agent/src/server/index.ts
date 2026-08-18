@@ -18,13 +18,6 @@ export {
   resolveWorkspacePortProxyTarget,
   workspaceFileEndpoint,
 } from "./routes.ts";
-export {
-  validateAgentTermSocket,
-  openAgentTermSocket,
-  handleAgentTermSocketMessage,
-  closeAgentTermSocket,
-  agentTmuxPrefix,
-} from "./bash-tmux.ts";
 export { agentTabKey, renderAgentComposer, renderAgentLaunchSettings, renderAgentPane } from "./render.ts";
 export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule } from "./web.ts";
 export { rememberNewWorkspaceAgentSettings } from "./model-state.ts";

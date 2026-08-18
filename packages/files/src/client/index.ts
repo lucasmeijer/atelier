@@ -3,6 +3,9 @@
 import { copyTextToClipboard, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
 type UploadResult = { kind: "ok" | "conflict" | "error" | "cancelled"; message?: string };
 type UploadTask = { file: File; loaded: number; xhr?: XMLHttpRequest };
+type StimulusActionEvent<EventType extends Event, CurrentTarget extends EventTarget> = EventType & {
+  readonly currentTarget: CurrentTarget;
+};
 
 function createFilesController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FilesController extends Controller {
@@ -50,11 +53,11 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
       void this.startUpload(event, this.pathValue);
     }
 
-    folderDragEnter(event: DragEvent): void {
+    folderDragEnter(event: StimulusActionEvent<DragEvent, HTMLElement>): void {
       if (!this.hasFiles(event)) return;
       event.preventDefault();
       event.stopPropagation();
-      (event.currentTarget as HTMLElement).classList.add("is-drop-target");
+      event.currentTarget.classList.add("is-drop-target");
     }
 
     folderDragOver(event: DragEvent): void {
@@ -64,42 +67,42 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
       if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
     }
 
-    folderDragLeave(event: DragEvent): void {
+    folderDragLeave(event: StimulusActionEvent<DragEvent, HTMLElement>): void {
       event.stopPropagation();
-      const row = event.currentTarget as HTMLElement;
+      const row = event.currentTarget;
       if (!event.relatedTarget || !row.contains(event.relatedTarget as Node)) row.classList.remove("is-drop-target");
     }
 
-    folderDrop(event: DragEvent): void {
+    folderDrop(event: StimulusActionEvent<DragEvent, HTMLElement>): void {
       if (!this.hasFiles(event)) return;
       event.preventDefault();
       event.stopPropagation();
-      const row = event.currentTarget as HTMLElement;
+      const row = event.currentTarget;
       row.classList.remove("is-drop-target");
       this.clearDragState();
       void this.startUpload(event, row.dataset.filesDestination!);
     }
 
-    toggleHidden(event: Event): void {
-      this.navigateFrame(this.listingUrl((event.currentTarget as HTMLInputElement).checked));
+    toggleHidden(event: StimulusActionEvent<Event, HTMLInputElement>): void {
+      this.navigateFrame(this.listingUrl(event.currentTarget.checked));
     }
 
     refresh(): void {
       this.navigateFrame(this.listingUrl(this.element.querySelector<HTMLInputElement>(".files-hidden-toggle input")!.checked));
     }
 
-    openDirectory(event: MouseEvent): void {
+    openDirectory(event: StimulusActionEvent<MouseEvent, HTMLElement>): void {
       if ((event.target as Element).closest("a, .files-actions-toggle, .files-actions-menu")) return;
       event.preventDefault();
-      (event.currentTarget as HTMLElement).querySelector<HTMLAnchorElement>(".files-row-name > a")!.click();
+      event.currentTarget.querySelector<HTMLAnchorElement>(".files-row-name > a")!.click();
     }
 
     preserveSelection(event: MouseEvent): void {
       if (event.button === 0 && (event.target as Element).closest(".files-row-name > a")) event.preventDefault();
     }
 
-    selectOrOpen(event: MouseEvent): void {
-      const row = event.currentTarget as HTMLElement;
+    selectOrOpen(event: StimulusActionEvent<MouseEvent, HTMLElement>): void {
+      const row = event.currentTarget;
       if ((event.target as Element).closest(".files-actions-toggle, .files-actions-menu")) return;
       const openLink = row.querySelector<HTMLAnchorElement>(".files-row-name > a");
       if (event.detail === 0 && event.target === openLink) return;
@@ -112,8 +115,8 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
       }
     }
 
-    toggleMenu(event: Event): void {
-      const button = event.currentTarget as HTMLButtonElement;
+    toggleMenu(event: StimulusActionEvent<Event, HTMLButtonElement>): void {
+      const button = event.currentTarget;
       const menu = document.getElementById(button.getAttribute("aria-controls")!) as HTMLElement & { hidePopover(): void; showPopover(): void };
       if (menu.matches(":popover-open")) {
         menu.hidePopover();
@@ -130,8 +133,8 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
       menu.style.top = `${top}px`;
     }
 
-    async copyUrl(event: Event): Promise<void> {
-      const button = event.currentTarget as HTMLButtonElement;
+    async copyUrl(event: StimulusActionEvent<Event, HTMLButtonElement>): Promise<void> {
+      const button = event.currentTarget;
       await copyTextToClipboard(new URL(button.dataset.filesCopyUrl!, location.href).href);
       button.textContent = "Copied!";
       window.setTimeout(() => { button.textContent = "Copy URL"; }, 1200);

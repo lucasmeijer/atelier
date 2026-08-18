@@ -177,16 +177,20 @@ export interface WorkspaceModuleTabLifecycleHandler {
   close?(context: { workspaceId: string; tabKey: string }): Promise<void> | void;
 }
 
-export interface WorkspaceServerSocketData {
-  kind: string;
+export interface WorkspaceSocketConnection {
+  send(message: string | Uint8Array): void;
+  close(code?: number, reason?: string): void;
 }
 
-export interface WorkspaceServerSocketHandler {
-  validate?(request: Request, url: URL): Promise<WorkspaceServerSocketData | undefined> | WorkspaceServerSocketData | undefined;
-  open?(socket: unknown): void;
-  message?(socket: unknown, message: unknown): void;
-  close?(socket: unknown): void;
+export interface WorkspaceServerSocketSession {
+  open?(socket: WorkspaceSocketConnection): void;
+  message?(socket: WorkspaceSocketConnection, message: string | Uint8Array): void;
+  close?(socket: WorkspaceSocketConnection): void;
 }
+
+export type WorkspaceServerSocketHandler = (
+  url: URL,
+) => Promise<WorkspaceServerSocketSession | undefined> | WorkspaceServerSocketSession | undefined;
 
 export interface WorkspaceServerAppHandler {
   matches(app: { appKey: string; workspaceId: string }): boolean;

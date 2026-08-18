@@ -39,13 +39,19 @@ function parameterName(parameter: Parameter, sourceText: string): string {
     : sourceText.replace(/\s*:\s*unknown\s*$/u, "");
 }
 
-/** Disallow unknown inputs except explicitly named error-cause enrichment. */
+function typePredicateParameterName(node: ParameterOwner): string | undefined {
+  const predicate = node.returnType?.typeAnnotation;
+  if (predicate?.type !== "TSTypePredicate" || predicate.parameterName.type !== "Identifier") return undefined;
+  return predicate.parameterName.name;
+}
+
+/** Disallow unknown inputs except error-cause enrichment and the input proven by a type guard. */
 export const noUnknownParametersRule = defineRule({
   meta: {
     type: "problem",
     docs: {
       description:
-        "Disallow explicitly unknown function parameters except `cause`; decode unknown input at its I/O boundary instead.",
+        "Disallow explicitly unknown function parameters except `cause` and type-guard inputs; decode unknown input at its I/O boundary instead.",
     },
     messages: {
       unknownParameter:
@@ -54,11 +60,12 @@ export const noUnknownParametersRule = defineRule({
   },
   createOnce(context) {
     const checkParameters = (node: ParameterOwner) => {
+      const guardedParameterName = typePredicateParameterName(node);
       for (const parameter of node.params) {
         const annotation = parameterAnnotation(parameter);
         if (annotation?.typeAnnotation.type !== "TSUnknownKeyword") continue;
         const name = parameterName(parameter, context.sourceCode.getText(parameter));
-        if (name === "cause") continue;
+        if (name === "cause" || name === guardedParameterName) continue;
         context.report({
           node: annotation.typeAnnotation,
           messageId: "unknownParameter",

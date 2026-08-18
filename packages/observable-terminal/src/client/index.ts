@@ -145,6 +145,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
   }
 
   const ws = new WebSocket(options.websocketUrl);
+  ws.binaryType = "arraybuffer";
 
   if (options.mode === "interactive") {
     if (progress) {
@@ -165,15 +166,10 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
   ws.onopen = () => {
     if (options.mode === "interactive") ws.send(encodeObservableTerminalMessage({ type: "resize", cols: term.cols, rows: term.rows }));
   };
-  ws.onmessage = (event) => {
-    if (typeof event.data === "string") {
-      options.onOutput?.(event.data);
-      term.write(event.data);
-    } else event.data.arrayBuffer().then((buffer: ArrayBuffer) => {
-      const data = new Uint8Array(buffer);
-      options.onOutput?.(data);
-      term.write(data);
-    });
+  ws.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
+    const data = event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : event.data;
+    options.onOutput?.(data);
+    term.write(data);
   };
   ws.onclose = () => {
     options.onClose?.();

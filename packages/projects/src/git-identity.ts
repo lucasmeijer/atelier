@@ -3,15 +3,21 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getAtelierRuntimeContext, invalidArguments, shellQuote, type AtelierEventBus } from "@atelier/core";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
-export interface GitIdentitySettings {
-  name: string;
-  email: string;
-}
+const gitIdentitySchema = Type.Object({
+  name: Type.String(),
+  email: Type.String(),
+});
 
-interface GitIdentityStore {
-  gitIdentity?: GitIdentitySettings;
-}
+export type GitIdentitySettings = Static<typeof gitIdentitySchema>;
+
+const gitIdentityStoreSchema = Type.Object({
+  gitIdentity: Type.Optional(gitIdentitySchema),
+});
+
+type GitIdentityStore = Static<typeof gitIdentityStoreSchema>;
 
 export function gitIdentitySettingsFile(dataDir = getAtelierRuntimeContext().atelierDataDir): string {
   return join(dataDir, "project-settings.json");
@@ -20,14 +26,12 @@ export function gitIdentitySettingsFile(dataDir = getAtelierRuntimeContext().ate
 async function readStore(file: string): Promise<GitIdentityStore> {
   try {
     const parsed: unknown = JSON.parse(await readFile(file, "utf8"));
-    if (!(parsed instanceof Object) || !("gitIdentity" in parsed)) return {};
-    const candidate = parsed.gitIdentity;
-    if (!(candidate instanceof Object) || !("name" in candidate) || !("email" in candidate)) return {};
-    const name = typeof candidate.name === "string" ? candidate.name.trim() : "";
-    const email = typeof candidate.email === "string" ? candidate.email.trim() : "";
+    if (!Value.Check(gitIdentityStoreSchema, parsed) || !parsed.gitIdentity) return {};
+    const name = parsed.gitIdentity.name.trim();
+    const email = parsed.gitIdentity.email.trim();
     return name && email ? { gitIdentity: { name, email } } : {};
   } catch (error) {
-    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
     if (code === "ENOENT") return {};
     throw error;
   }
@@ -48,7 +52,6 @@ function validateGitIdentity(identity: GitIdentitySettings): GitIdentitySettings
   if (/\r|\n/.test(name) || /\r|\n/.test(email)) throw invalidArguments("git identity must fit on one line");
   return { name, email };
 }
-
 
 function execGitConfig(key: string): Promise<string | undefined> {
   return new Promise((resolve) => {

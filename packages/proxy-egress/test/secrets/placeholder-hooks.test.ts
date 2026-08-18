@@ -4,6 +4,10 @@ import { createHttpHooks } from "../../src/secrets/placeholder-hooks.ts";
 import { matchHostname } from "../../src/secrets/patterns.ts";
 import { isInternalAddress } from "../../src/secrets/ip.ts";
 
+function expectRequest(result: Request | Response | void): asserts result is Request {
+  expect(result).toBeInstanceOf(Request);
+}
+
 describe("secret placeholder hooks", () => {
   test("creates placeholder env var, not real secret", () => {
     const hooks = createHttpHooks({ secrets: { GH_TOKEN: { value: "real-secret", hosts: ["github.com"] } } });
@@ -14,8 +18,8 @@ describe("secret placeholder hooks", () => {
   test("replaces bearer placeholder for allowed host", async () => {
     const hooks = createHttpHooks({ secrets: { GH_TOKEN: { value: "real-secret", hosts: ["api.github.com"], placeholder: "ATELIER_SECRET_fake" } } });
     const result = await hooks.httpHooks.onRequest!(new Request("https://api.github.com/user", { headers: { authorization: "Bearer ATELIER_SECRET_fake" } }));
-    expect(result).toBeInstanceOf(Request);
-    expect((result as Request).headers.get("authorization")).toBe("Bearer real-secret");
+    expectRequest(result);
+    expect(result.headers.get("authorization")).toBe("Bearer real-secret");
   });
 
   test("blocks placeholder sent to disallowed host", async () => {
@@ -27,51 +31,60 @@ describe("secret placeholder hooks", () => {
     const hooks = createHttpHooks({ secrets: { GH_TOKEN: { value: "real-secret", hosts: ["github.com"], placeholder: "ATELIER_SECRET_fake" } } });
     const basic = Buffer.from("x-access-token:ATELIER_SECRET_fake").toString("base64");
     const result = await hooks.httpHooks.onRequest!(new Request("https://github.com/repo.git", { headers: { authorization: `Basic ${basic}` } }));
-    expect((result as Request).headers.get("authorization")).toBe(`Basic ${Buffer.from("x-access-token:real-secret").toString("base64")}`);
+    expectRequest(result);
+    expect(result.headers.get("authorization")).toBe(`Basic ${Buffer.from("x-access-token:real-secret").toString("base64")}`);
   });
 
   test("does not replace request body", async () => {
     const hooks = createHttpHooks({ secrets: { GH_TOKEN: { value: "real-secret", hosts: ["github.com"], placeholder: "ATELIER_SECRET_fake" } } });
     const result = await hooks.httpHooks.onRequest!(new Request("https://github.com", { method: "POST", body: "ATELIER_SECRET_fake" }));
-    expect(await (result as Request).text()).toBe("ATELIER_SECRET_fake");
+    expectRequest(result);
+    expect(await result.text()).toBe("ATELIER_SECRET_fake");
   });
 
   test("does not replace URL path by default", async () => {
     const hooks = createHttpHooks({ secrets: { API_TOKEN: { value: "123:secret", hosts: ["api.example.com"], placeholder: "ATELIER_SECRET_fake" } } });
     const result = await hooks.httpHooks.onRequest!(new Request("https://api.example.com/botATELIER_SECRET_fake/getMe"));
-    expect((result as Request).url).toBe("https://api.example.com/botATELIER_SECRET_fake/getMe");
+    expectRequest(result);
+    expect(result.url).toBe("https://api.example.com/botATELIER_SECRET_fake/getMe");
   });
 
   test("optionally replaces a URL path placeholder for an allowed host", async () => {
     const hooks = createHttpHooks({ replaceSecretsInPath: true, secrets: { API_TOKEN: { value: "123:secret", hosts: ["api.example.com"], placeholder: "ATELIER_SECRET_fake" } } });
     const result = await hooks.httpHooks.onRequest!(new Request("https://api.example.com/botATELIER_SECRET_fake/getMe"));
-    expect((result as Request).url).toBe("https://api.example.com/bot123:secret/getMe");
+    expectRequest(result);
+    expect(result.url).toBe("https://api.example.com/bot123:secret/getMe");
   });
 
   test("leaves a URL path placeholder unchanged for a nonmatching host", async () => {
     const hooks = createHttpHooks({ replaceSecretsInPath: true, secrets: { API_TOKEN: { value: "123:secret", hosts: ["api.example.com"], placeholder: "ATELIER_SECRET_fake" } } });
     const result = await hooks.httpHooks.onRequest!(new Request("https://example.com/botATELIER_SECRET_fake/getMe"));
-    expect((result as Request).url).toBe("https://example.com/botATELIER_SECRET_fake/getMe");
+    expectRequest(result);
+    expect(result.url).toBe("https://example.com/botATELIER_SECRET_fake/getMe");
   });
 
   test("URL-encodes reserved characters injected into a path", async () => {
     const hooks = createHttpHooks({ replaceSecretsInPath: true, secrets: { API_TOKEN: { value: "secret value?#", hosts: ["api.example.com"], placeholder: "ATELIER_SECRET_fake" } } });
     const result = await hooks.httpHooks.onRequest!(new Request("https://api.example.com/token/ATELIER_SECRET_fake"));
-    expect((result as Request).url).toBe("https://api.example.com/token/secret%20value%3F%23");
+    expectRequest(result);
+    expect(result.url).toBe("https://api.example.com/token/secret%20value%3F%23");
   });
 
   test("does not replace query string by default", async () => {
     const hooks = createHttpHooks({ secrets: { GH_TOKEN: { value: "real-secret", hosts: ["github.com"], placeholder: "ATELIER_SECRET_fake" } } });
     const result = await hooks.httpHooks.onRequest!(new Request("https://github.com/?token=ATELIER_SECRET_fake"));
-    expect((result as Request).url).toContain("ATELIER_SECRET_fake");
+    expectRequest(result);
+    expect(result.url).toContain("ATELIER_SECRET_fake");
   });
 
   test("optionally replaces query string only for a matching host", async () => {
     const hooks = createHttpHooks({ replaceSecretsInQuery: true, secrets: { GH_TOKEN: { value: "real-secret", hosts: ["github.com"], placeholder: "ATELIER_SECRET_fake" } } });
     const matching = await hooks.httpHooks.onRequest!(new Request("https://github.com/?token=ATELIER_SECRET_fake"));
     const nonmatching = await hooks.httpHooks.onRequest!(new Request("https://example.com/?token=ATELIER_SECRET_fake"));
-    expect((matching as Request).url).toContain("token=real-secret");
-    expect((nonmatching as Request).url).toContain("token=ATELIER_SECRET_fake");
+    expectRequest(matching);
+    expectRequest(nonmatching);
+    expect(matching.url).toContain("token=real-secret");
+    expect(nonmatching.url).toContain("token=ATELIER_SECRET_fake");
   });
 
   test("rejects duplicate and overlapping placeholders", () => {
