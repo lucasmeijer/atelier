@@ -30,36 +30,36 @@ export interface AtelierCableClient {
   connected(): boolean;
 }
 
-interface CableIdentifierCandidate {
-  channel?: unknown;
-  workspaceId?: unknown;
-  label?: unknown;
+function requireNonEmpty(value: string, message: string): string {
+  if (!(value.length > 0)) throw new Error(message);
+  return value;
 }
 
 export const CableTopics = {
   shell(): CableIdentifier { return { channel: "shell" }; },
   update(): CableIdentifier { return { channel: "update" }; },
-  workspace(workspaceId: string): CableIdentifier { return { channel: "workspace", workspaceId }; },
-  agent(workspaceId: string, label: string): CableIdentifier { return { channel: "agent", workspaceId, label }; },
+  workspace(workspaceId: string): CableIdentifier {
+    return { channel: "workspace", workspaceId: requireNonEmpty(workspaceId, "workspace identifier must not be empty") };
+  },
+  agent(workspaceId: string, label: string): CableIdentifier {
+    return {
+      channel: "agent",
+      workspaceId: requireNonEmpty(workspaceId, "workspace identifier must not be empty"),
+      label: requireNonEmpty(label, "agent label must not be empty"),
+    };
+  },
 };
 
-export function parseCableIdentifier(value: unknown): CableIdentifier {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("identifier must be an object");
-  // SAFETY: CableIdentifierCandidate only names optional properties with unknown values.
-  const record = value as CableIdentifierCandidate;
-  if (record.channel === "shell") return { channel: "shell" };
-  if (record.channel === "update") return { channel: "update" };
-  if (record.channel === "workspace" && typeof record.workspaceId === "string" && record.workspaceId.length > 0) return { channel: "workspace", workspaceId: record.workspaceId };
-  if (record.channel === "agent" && typeof record.workspaceId === "string" && record.workspaceId.length > 0 && typeof record.label === "string" && record.label.length > 0) return { channel: "agent", workspaceId: record.workspaceId, label: record.label };
-  throw new Error("unsupported cable identifier");
-}
-
 export function serializeCableIdentifier(identifier: CableIdentifier): string {
-  const parsed = parseCableIdentifier(identifier);
-  switch (parsed.channel) {
+  switch (identifier.channel) {
     case "shell": return JSON.stringify(["shell"]);
     case "update": return JSON.stringify(["update"]);
-    case "workspace": return JSON.stringify(["workspace", parsed.workspaceId]);
-    case "agent": return JSON.stringify(["agent", parsed.workspaceId, parsed.label]);
+    case "workspace": return JSON.stringify(["workspace", requireNonEmpty(identifier.workspaceId, "workspace identifier must not be empty")]);
+    case "agent": return JSON.stringify([
+      "agent",
+      requireNonEmpty(identifier.workspaceId, "workspace identifier must not be empty"),
+      requireNonEmpty(identifier.label, "agent label must not be empty"),
+    ]);
+    default: throw new Error("unsupported cable identifier");
   }
 }

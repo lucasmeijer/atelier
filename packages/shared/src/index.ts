@@ -370,7 +370,6 @@ export interface WorkspaceClientModule {
 
 export {
   CableTopics,
-  parseCableIdentifier,
   serializeCableIdentifier,
   type AtelierCableClient,
   type CableClientMessage,

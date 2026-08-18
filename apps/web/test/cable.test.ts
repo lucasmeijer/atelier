@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
+import { CableTopics, serializeCableIdentifier } from "@atelier/shared";
 import { createCableServer, type CableSocketData } from "../src/server/cable.ts";
 import { cableCursorIsNewer } from "../src/client/cable.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
@@ -19,6 +20,14 @@ test("cable cursors reject stale revisions from the same runtime", () => {
   expect(cableCursorIsNewer("runtime:4", "runtime:4")).toBe(false);
   expect(cableCursorIsNewer("runtime:4", "runtime:3")).toBe(false);
   expect(cableCursorIsNewer("old-runtime:12", "new-runtime:1")).toBe(true);
+});
+
+test("cable topics enforce identifier invariants", () => {
+  expect(() => CableTopics.workspace("")).toThrow("workspace identifier must not be empty");
+  expect(() => CableTopics.agent("workspace", "")).toThrow("agent label must not be empty");
+  expect(() => serializeCableIdentifier({ channel: "workspace", workspaceId: "" })).toThrow("workspace identifier must not be empty");
+  // SAFETY: This invalid discriminant deliberately exercises the serializer's runtime guard.
+  expect(() => serializeCableIdentifier({ channel: "bogus" } as never)).toThrow("unsupported cable identifier");
 });
 
 describe("cable server", () => {
@@ -64,5 +73,41 @@ describe("cable server", () => {
     cable.message(ws as never, JSON.stringify({ command: "subscribe", identifier: { channel: "workspace", workspaceId: "missing" } }));
     await Bun.sleep(0);
     expect(ws.sent).toContainEqual({ type: "reject_subscription", identifier: { channel: "workspace", workspaceId: "missing" }, reason: "workspace not found: missing" });
+  });
+
+  for (const [name, raw, reason] of [
+    ["empty workspace identifiers", JSON.stringify({ command: "subscribe", identifier: { channel: "workspace", workspaceId: "" } }), "unsupported cable message"],
+    ["unknown commands", JSON.stringify({ command: "mystery", identifier: { channel: "shell" } }), "unsupported cable message"],
+    ["invalid subscription cursors", JSON.stringify({ command: "subscribe", identifier: { channel: "shell" }, upTo: 42 }), "unsupported cable message"],
+    ["invalid pong timestamps", JSON.stringify({ command: "pong", time: "now" }), "unsupported cable message"],
+    ["malformed JSON", "not JSON", "cable message must be valid JSON"],
+  ]) {
+    test(`rejects ${name}`, async () => {
+      const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
+      const cable = createCableServer({ registry, events: createAtelierEventBus() });
+      const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
+      cable.open(ws as never);
+
+      cable.message(ws as never, raw);
+      await Bun.sleep(0);
+
+      expect(ws.sent).toEqual([
+        { type: "welcome", connectionId: "conn-1" },
+        { type: "error", message: reason },
+      ]);
+      expect(cable.stats().subscriptions).toEqual({});
+    });
+  }
+
+  test("strips unrecognized message and identifier properties", async () => {
+    const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
+    const cable = createCableServer({ registry, events: createAtelierEventBus() });
+    const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
+    cable.open(ws as never);
+
+    cable.message(ws as never, JSON.stringify({ command: "subscribe", identifier: { channel: "shell", extra: true }, extra: true }));
+    await Bun.sleep(0);
+
+    expect(ws.sent).toContainEqual({ type: "confirm_subscription", identifier: { channel: "shell" } });
   });
 });

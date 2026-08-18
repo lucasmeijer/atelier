@@ -70,7 +70,7 @@
     <p class="lede">These rules are directionally useful. The problem is their unit of observation: syntax alone cannot always tell an unprincipled escape hatch from a parser, a runtime union, or a framework seam. This note uses current Atelier code to draw that boundary.</p>
     <div class="summary">
       <div class="metric"><strong>3</strong><span>rules that should remain warnings</span></div>
-      <div class="metric"><strong>15</strong><span>representative overreach cases</span></div>
+      <div class="metric"><strong>14</strong><span>representative overreach cases</span></div>
       <div class="metric"><strong>9</strong><span>clean rules promoted to errors</span></div>
     </div>
   </header>
@@ -101,18 +101,6 @@
     || (Array.isArray(value) ? value.every(isJsonValue) : isJsonObject(value));
 }</code></pre>
           <div class="argument"><strong>Why exempt it</strong><p>This function is exactly the boundary the diagnostic asks for. JSON has runtime tags, and a recursive type guard must inspect them to establish the contract. Moving these checks elsewhere would only rename the parser or replace evidence with an assertion.</p></div>
-        </article>
-        <article>
-          <div class="case-head"><h3>A wire identifier is decoded once</h3><span class="path">packages/shared/src/cable.ts:46</span></div>
-          <pre><code>export function parseCableIdentifier(value: unknown): CableIdentifier {
-  if (!value || <mark>typeof value !== "object"</mark> || Array.isArray(value))
-    throw new Error("identifier must be an object");
-  const record = value as CableIdentifierCandidate;
-  if (record.channel === "workspace" &amp;&amp; <mark>typeof record.workspaceId === "string"</mark>)
-    return { channel: "workspace", workspaceId: record.workspaceId };
-  // …other channel variants…
-}</code></pre>
-          <div class="argument"><strong>Why exempt it</strong><p>Cable identifiers cross a WebSocket boundary as untrusted JSON. The checks convert that representation into a closed discriminated union before domain code sees it. This is contract establishment, not representation-driven branching inside the domain.</p></div>
         </article>
         <article>
           <div class="case-head"><h3>Persisted settings need field validation</h3><span class="path">packages/projects/src/git-identity.ts:26</span></div>
@@ -293,7 +281,7 @@ expect(<mark>(result as Request)</mark>.headers.get("authorization")).toBe("Bear
   </main>
 
   <footer>
-    Prepared from the post-cleanup Atelier checkout. Examples are intentionally capped at five per rule and selected to represent distinct reasons for overreach rather than every remaining diagnostic.
+    Prepared from the post-cleanup Atelier checkout. Examples are intentionally capped at five per rule and selected to represent distinct reasons for overreach rather than every remaining diagnostic. The former Cable identifier example was removed after the complete client message moved behind a schema-backed transport seam.
   </footer>
 </body>
 </html>

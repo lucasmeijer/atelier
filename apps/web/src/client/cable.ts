@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { parseCableIdentifier, serializeCableIdentifier, type AtelierCableClient, type CableClientMessage, type CableIdentifier, type CableServerMessage } from "@atelier/shared";
+import { serializeCableIdentifier, type AtelierCableClient, type CableClientMessage, type CableIdentifier, type CableServerMessage } from "@atelier/shared";
 
 declare global {
   interface Window {
@@ -106,23 +106,22 @@ export function createAtelierCableClient(): AtelierCableClient {
 
   const client: AtelierCableClient = {
     subscribe(identifier, options) {
-      const parsed = parseCableIdentifier(identifier);
-      const key = serializeCableIdentifier(parsed);
+      const key = serializeCableIdentifier(identifier);
       const upTo = knownCursors.get(key) ?? options?.upTo;
       rememberCursor(key, upTo);
-      desired.set(key, { identifier: parsed, upTo });
+      desired.set(key, { identifier, upTo });
       closingForPageHide = false;
       connect();
-      sendRaw({ command: "subscribe", identifier: parsed, upTo });
+      sendRaw({ command: "subscribe", identifier, upTo });
     },
     unsubscribe(identifier) {
-      const parsed = parseCableIdentifier(identifier);
-      const key = serializeCableIdentifier(parsed);
+      const key = serializeCableIdentifier(identifier);
       desired.delete(key);
-      sendRaw({ command: "unsubscribe", identifier: parsed });
+      sendRaw({ command: "unsubscribe", identifier });
     },
     send(identifier, data) {
-      sendRaw({ command: "message", identifier: parseCableIdentifier(identifier), data });
+      serializeCableIdentifier(identifier);
+      sendRaw({ command: "message", identifier, data });
     },
     connected() {
       return socket?.readyState === WebSocket.OPEN;
