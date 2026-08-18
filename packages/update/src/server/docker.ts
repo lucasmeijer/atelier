@@ -38,6 +38,29 @@ export async function ownContainerId(): Promise<string | undefined> {
   return parseContainerIdFromCgroup(cgroup) ?? parseContainerIdFromMountInfo(mountInfo) ?? hostname();
 }
 
+export interface DockerMount {
+  Type?: string;
+  Source?: string;
+  Destination?: string;
+  RW?: boolean;
+}
+
+export interface DockerRestartPolicy {
+  Name?: string;
+  MaximumRetryCount?: number;
+}
+
+export interface DockerHostConfig {
+  Binds?: string[];
+  Mounts?: DockerMount[];
+  NetworkMode?: string;
+  RestartPolicy?: DockerRestartPolicy;
+  Init?: boolean;
+  CpuShares?: number;
+  MemoryReservation?: number;
+  OomScoreAdj?: number;
+}
+
 export interface DockerInspect {
   Id: string;
   Name?: string;
@@ -45,8 +68,8 @@ export interface DockerInspect {
   RepoDigests?: string[];
   Config?: { Image?: string; Env?: string[]; Labels?: Record<string, string>; Entrypoint?: string[] | string | null; Cmd?: string[] | string | null; WorkingDir?: string; User?: string };
   ImageConfig?: { Config?: { Labels?: Record<string, string> } };
-  HostConfig?: Record<string, unknown> & { Binds?: string[]; Mounts?: unknown[]; NetworkMode?: string; RestartPolicy?: unknown; Init?: boolean; CpuShares?: number; MemoryReservation?: number; OomScoreAdj?: number };
-  Mounts?: unknown[];
+  HostConfig?: DockerHostConfig;
+  Mounts?: DockerMount[];
   NetworkSettings?: unknown;
 }
 
@@ -207,9 +230,8 @@ export function replacementCreateArgs(inspect: DockerInspect, targetImage = insp
   const labels = Object.fromEntries(Object.entries(inspect.Config?.Labels ?? {}).filter(([key]) => shouldPreserveContainerLabel(key)));
   for (const [key, value] of Object.entries({ ...labels, "com.atelier.release-channel": releaseChannel })) args.push("--label", `${key}=${value}`);
   for (const mount of inspect.Mounts ?? []) {
-    const m = mount as { Type?: string; Source?: string; Destination?: string; RW?: boolean };
-    if (m.Type === "bind" && m.Source && m.Destination) args.push("--mount", `type=bind,src=${m.Source},dst=${m.Destination}${m.RW === false ? ",readonly" : ""}`);
-    if (m.Type === "volume" && m.Source && m.Destination) args.push("--mount", `type=volume,src=${m.Source},dst=${m.Destination}${m.RW === false ? ",readonly" : ""}`);
+    if (mount.Type === "bind" && mount.Source && mount.Destination) args.push("--mount", `type=bind,src=${mount.Source},dst=${mount.Destination}${mount.RW === false ? ",readonly" : ""}`);
+    if (mount.Type === "volume" && mount.Source && mount.Destination) args.push("--mount", `type=volume,src=${mount.Source},dst=${mount.Destination}${mount.RW === false ? ",readonly" : ""}`);
   }
   const networkMode = inspect.HostConfig?.NetworkMode;
   if (typeof networkMode === "string" && networkMode) args.push("--network", networkMode);
@@ -217,7 +239,7 @@ export function replacementCreateArgs(inspect: DockerInspect, targetImage = insp
   if (inspect.HostConfig?.CpuShares) args.push("--cpu-shares", String(inspect.HostConfig.CpuShares));
   if (inspect.HostConfig?.MemoryReservation) args.push("--memory-reservation", String(inspect.HostConfig.MemoryReservation));
   if (inspect.HostConfig?.OomScoreAdj) args.push("--oom-score-adj", String(inspect.HostConfig.OomScoreAdj));
-  const restart = inspect.HostConfig?.RestartPolicy as { Name?: string; MaximumRetryCount?: number } | undefined;
+  const restart = inspect.HostConfig?.RestartPolicy;
   if (restart?.Name) args.push("--restart", restart.Name === "on-failure" && restart.MaximumRetryCount ? `${restart.Name}:${restart.MaximumRetryCount}` : restart.Name);
   if (inspect.Config?.WorkingDir) args.push("--workdir", inspect.Config.WorkingDir);
   if (inspect.Config?.User) args.push("--user", inspect.Config.User);
