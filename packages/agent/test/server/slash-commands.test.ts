@@ -15,6 +15,7 @@ describe("slash commands", () => {
     );
 
     expect(html).toContain('aria-label="Slash commands"');
+    expect(html).toContain('data-command-trigger="/tree" data-command-action="tree"');
     expect(html).toContain("agent-completion-option agent-template-option active");
     expect(html).toContain('data-completion-kind="prompt-template"');
     expect(html).toContain('data-command-trigger="/review"');

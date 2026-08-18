@@ -3,7 +3,7 @@ import { escapeHtml } from "./html.ts";
 import type { PromptTemplate } from "./prompt-templates.ts";
 
 interface SlashCommand {
-  kind: "prompt-template" | "skill";
+  kind: "prompt-template" | "skill" | "application-command";
   trigger: string;
   description: string;
   argumentHint?: string;
@@ -12,7 +12,8 @@ interface SlashCommand {
 
 function slashCommands(templates: readonly PromptTemplate[], skills: readonly Pick<Skill, "name" | "description">[]): SlashCommand[] {
   return [
-    ...templates.map((template) => ({
+    { kind: "application-command" as const, trigger: "/tree", description: "Inspect and navigate the agent session tree." },
+    ...templates.filter((template) => template.trigger !== "/tree").map((template) => ({
       kind: "prompt-template" as const,
       trigger: template.trigger,
       description: template.description,
@@ -36,7 +37,7 @@ export function renderSlashCommandMenu(templates: readonly PromptTemplate[], ski
   if (filtered.length === 0) return `<div class="agent-completion-menu empty">No slash commands</div>`;
   return `<div class="agent-completion-menu" role="listbox" aria-label="Slash commands">${filtered.map((command, index) => {
     const template = command.prompt !== undefined;
-    return `<button type="button" class="agent-completion-option agent-template-option${index === 0 ? " active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="${command.kind}" data-command-trigger="${escapeHtml(command.trigger)}"${template ? ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(command.trigger)}"` : ""}>
+    return `<button type="button" class="agent-completion-option agent-template-option${index === 0 ? " active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="${command.kind}" data-command-trigger="${escapeHtml(command.trigger)}"${command.trigger === "/tree" ? ` data-command-action="tree"` : ""}${template ? ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(command.trigger)}"` : ""}>
       <span class="agent-template-name">${escapeHtml(command.trigger)}</span><span class="agent-template-args">${escapeHtml(command.argumentHint ?? "")}</span><span class="agent-template-desc">${escapeHtml(command.description)}</span>${command.prompt !== undefined ? `<template data-atelier-fullscreen-target="content"><pre class="agent-template-preview">${escapeHtml(command.prompt)}</pre></template>` : ""}
     </button>`;
   }).join("")}</div>`;

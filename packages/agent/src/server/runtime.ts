@@ -31,6 +31,7 @@ import {
   type AgentToolDefinitionView,
 } from "./render.ts";
 import { replaceWorkspaceAgentSession, type WorkspaceAgentInfo } from "./session-store.ts";
+import { renderAgentSessionTree, updateAgentSessionTreeLabel, type TreeFilterMode } from "./session-tree.ts";
 import { loadWorkspaceSkills } from "./skills.ts";
 import { atelierSystemPrompt, createAtelierResourceLoader } from "./system-prompt.ts";
 import { collectCacheMisses, detectCacheMiss, significantCacheMissNotice, type CacheMiss } from "./cache-miss.ts";
@@ -90,6 +91,9 @@ interface WorkspaceAgentRuntime {
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: string): Promise<void>;
   rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void>;
+  treeHtml(options: { filter: TreeFilterMode; query: string }): string;
+  labelTreeEntry(entryId: string, label: string, operation: "add" | "remove"): void;
+  navigateTree(entryId: string, options: { summarize: boolean; customInstructions?: string }): Promise<string>;
   newSession(): Promise<void>;
   detailHtml(key: string, count?: number): Promise<string>;
 }
@@ -562,6 +566,9 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   abstract setModel(provider: string, modelId: string): Promise<void>;
   abstract setThinkingLevel(level: string): Promise<void>;
   abstract rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void>;
+  abstract treeHtml(options: { filter: TreeFilterMode; query: string }): string;
+  abstract labelTreeEntry(entryId: string, label: string, operation: "add" | "remove"): void;
+  abstract navigateTree(entryId: string, options: { summarize: boolean; customInstructions?: string }): Promise<string>;
   abstract newSession(): Promise<void>;
 }
 
@@ -947,6 +954,36 @@ class RealAgentRuntime extends BaseAgentRuntime {
     this.sessionFile = agent.path;
     this.subscribeToSession();
     this.stream((await this.snapshotStream()).html);
+  }
+
+  treeHtml(options: { filter: TreeFilterMode; query: string }): string {
+    return renderAgentSessionTree(this.session.sessionManager, options);
+  }
+
+  labelTreeEntry(entryId: string, label: string, operation: "add" | "remove"): void {
+    updateAgentSessionTreeLabel(this.session.sessionManager, entryId, label, operation);
+  }
+
+  async navigateTree(entryId: string, options: { summarize: boolean; customInstructions?: string }): Promise<string> {
+    if (this.isStreaming) throw new Error("Stop the agent before navigating the session tree.");
+    if (options.summarize) {
+      this.summarizing = true;
+      this.setBusy(true);
+    }
+    try {
+      const result = await this.session.navigateTree(entryId, {
+        summarize: options.summarize,
+        customInstructions: options.customInstructions?.trim() || undefined,
+      });
+      await this.refreshTranscript();
+      await this.refreshStats();
+      return result.editorText ?? "";
+    } finally {
+      if (options.summarize) {
+        this.summarizing = false;
+        this.setBusy(false);
+      }
+    }
   }
 
   async rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void> {

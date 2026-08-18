@@ -20,6 +20,7 @@ import { listFileCompletions, renderFileCompletionMenu } from "./file-completion
 import { loadWorkspaceSkills } from "./skills.ts";
 import { renderSlashCommandMenu } from "./slash-commands.ts";
 import { getWorkspaceAgentRuntime, type SubmitMode } from "./runtime.ts";
+import { handleAgentTreeRequest } from "./session-tree.ts";
 import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
 import { maybeNameWorkspaceFromAgentPrompt, renameWorkspaceFromAgentContext } from "./workspace-title-suggestion.ts";
 
@@ -126,6 +127,10 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/completions$/)) && request.method === "GET") {
     return await completionsEndpoint(params[0], url);
+  }
+  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/tree(\/summary|\/label|)$/))) {
+    const [workspaceId, label, suffix] = params;
+    return await handleAgentTreeRequest(request, url, suffix, async () => await getWorkspaceAgentRuntime(await requireAgent(workspaceId, label), options));
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/completions\/prompt-template-expand$/)) && request.method === "POST") {
     return await expandPromptTemplateEndpoint(params[0], request);

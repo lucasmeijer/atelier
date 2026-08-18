@@ -2,18 +2,23 @@
 
 import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalTheme, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
 import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type WorkspaceClientController, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
+import { agentTreeOwnsMenu, handleAgentTreeKeydown, handleAgentTreeMenuEvent, selectAgentTreeOption } from "./session-tree.ts";
+import { notifyInputListeners, setTextInputValue } from "./text-input.ts";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
 type HtmlAutocompleteOptions = {
   optionSelector: string;
   request(input: HTMLInputElement | HTMLTextAreaElement, force?: boolean): { query: string; params?: Record<string, string> } | undefined;
-  select(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): void;
+  /** Return false when selection starts an interaction that owns the open menu. */
+  select(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): boolean | void;
   keydown?(event: KeyboardEvent, input: HTMLInputElement | HTMLTextAreaElement, url: string, actions: HtmlAutocompleteActions): boolean;
   debounceMs?: number;
   loadingHtml?: string;
   triggerKeysWhenClosed?: string[];
   fullscreenShortcut?: boolean | ((option: HTMLElement) => boolean);
+  /** Return true when an event inside the menu has been handled. */
+  menuEvent?(event: Event, input: HTMLInputElement | HTMLTextAreaElement): boolean | void;
 };
 
 type HtmlAutocompleteActions = {
@@ -25,16 +30,6 @@ type HtmlAutocompleteActions = {
   close(): void;
   refresh(force?: boolean): void;
 };
-
-function notifyInputListeners(input: HTMLInputElement | HTMLTextAreaElement): void {
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-function setTextInputValue(input: HTMLInputElement | HTMLTextAreaElement, value: string): void {
-  input.value = value;
-  input.setSelectionRange(value.length, value.length);
-  notifyInputListeners(input);
-}
 
 function isSubmitShortcut(event: KeyboardEvent): boolean {
   return event.key === "Enter" && (event.metaKey || event.ctrlKey);
@@ -702,6 +697,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       this.menuTarget.addEventListener("click", this.click);
       this.menuTarget.addEventListener("pointerdown", this.pointerdown);
       this.menuTarget.addEventListener("pointerover", this.pointerover);
+      for (const type of ["input", "change", "keydown"]) this.menuTarget.addEventListener(type, this.menuEvent);
       this.inputTarget.addEventListener("blur", this.blur);
       this.form?.addEventListener("submit", this.submitted);
       document.addEventListener("selectionchange", this.selectionchange);
@@ -711,6 +707,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       this.menuTarget.removeEventListener("click", this.click);
       this.menuTarget.removeEventListener("pointerdown", this.pointerdown);
       this.menuTarget.removeEventListener("pointerover", this.pointerover);
+      for (const type of ["input", "change", "keydown"]) this.menuTarget.removeEventListener(type, this.menuEvent);
       this.inputTarget.removeEventListener("blur", this.blur);
       this.form?.removeEventListener("submit", this.submitted);
       document.removeEventListener("selectionchange", this.selectionchange);
@@ -788,6 +785,10 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     }
 
     private readonly click = (event: Event): void => {
+      if (autocomplete.menuEvent?.(event, this.inputTarget)) {
+        event.preventDefault();
+        return;
+      }
       const option = this.optionFromEvent(event);
       if (!option) return;
       event.preventDefault();
@@ -795,8 +796,13 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     };
 
     private readonly pointerdown = (event: PointerEvent): void => {
+      if (event.button !== 0) return;
+      if (autocomplete.menuEvent?.(event, this.inputTarget)) {
+        event.preventDefault();
+        return;
+      }
       const option = this.optionFromEvent(event);
-      if (event.button !== 0 || !option) return;
+      if (!option) return;
       event.preventDefault();
       // WebKit cancels click after a prevented touch pointerdown, so select immediately.
       if (event.pointerType === "touch") this.insert(option);
@@ -811,6 +817,10 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       return event.target instanceof Element ? event.target.closest<HTMLElement>(autocomplete.optionSelector) : null;
     }
 
+    private readonly menuEvent = (event: Event): void => {
+      autocomplete.menuEvent?.(event, this.inputTarget);
+    };
+
     private readonly blur = (event: Event): void => {
       const relatedTarget = (event as FocusEvent).relatedTarget;
       if (relatedTarget instanceof Node && this.menuTarget.contains(relatedTarget)) return;
@@ -820,7 +830,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     private readonly submitted = (): void => this.close();
 
     private readonly selectionchange = (): void => {
-      if (this.menuTarget.hidden || document.activeElement !== this.inputTarget) return;
+      if (this.menuTarget.hidden || document.activeElement !== this.inputTarget || agentTreeOwnsMenu(this.menuTarget)) return;
       this.scheduleRefresh();
     };
 
@@ -884,7 +894,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     }
 
     private insert(option: HTMLElement): void {
-      autocomplete.select(option, this.inputTarget);
+      if (autocomplete.select(option, this.inputTarget) === false) return;
       notifyInputListeners(this.inputTarget);
       this.close();
     }
@@ -984,11 +994,12 @@ function insertFileCompletion(option: HTMLElement, input: HTMLInputElement | HTM
 
 function createAgentCompletionsController(Controller: StimulusControllerConstructor) {
   return createHtmlAutocompleteController(Controller, {
-    optionSelector: ".agent-completion-option",
+    optionSelector: ".agent-completion-option:not([hidden])",
     debounceMs: 70,
     loadingHtml: `<div class="agent-completion-menu empty" role="status"><span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…</div>`,
     triggerKeysWhenClosed: ["/", "@"],
     fullscreenShortcut: (option) => option.dataset.completionKind === "prompt-template",
+    menuEvent: handleAgentTreeMenuEvent,
     request(input, force) {
       const completion = agentCompletionRequest(input, force);
       return completion && {
@@ -997,12 +1008,14 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       };
     },
     select(option, input) {
+      if (selectAgentTreeOption(option, input)) return false;
       if (option.dataset.commandTrigger) insertSlashCommand(option, input);
       else if (option.dataset.completionKind === "file") insertFileCompletion(option, input);
     },
     keydown(event, input, url, actions) {
       const send = isSubmitShortcut(event);
       const expand = event.key === "Enter" && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
+      if (handleAgentTreeKeydown(event, input, actions)) return true;
       if (send || expand) {
         const active = actions.open ? actions.activeOption() : undefined;
         if (active?.dataset.commandTrigger) actions.select(active);
