@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import net from "node:net";
 import { chmod, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { acquireFileLock, atelierDataPath, getAtelierRuntimeContext, type AtelierRuntimeContext } from "@atelier/core";
@@ -45,7 +44,7 @@ export async function ensureLeafCertificate(ca: MitmCa, hostname: string): Promi
       if (Date.now() < renewAt) return { certPath, keyPath, renewAt };
     }
 
-    tmp = await mkdtemp(join(tmpdir(), "atelier-leaf-"));
+    tmp = await mkdtemp(join(ca.leafDir, ".atelier-leaf-"));
     const csr = join(tmp, "leaf.csr");
     const ext = join(tmp, "leaf.ext");
     const temporaryCertPath = join(tmp, "leaf.pem");

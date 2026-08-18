@@ -53,4 +53,15 @@ describe("MITM leaf certificates", () => {
     expect(remaining).toBeGreaterThan(6 * 24 * 60 * 60 * 1000);
     expect(openssl(["x509", "-fingerprint", "-sha256", "-noout", "-in", renewed.certPath])).not.toBe(nearExpiryFingerprint);
   });
+
+  test.skipIf(process.platform !== "linux")("create a leaf when the CA directory is on a different filesystem from the system temporary directory", async () => {
+    const crossDeviceDataDir = await mkdtemp("/dev/shm/atelier-mitm-ca-test-");
+    try {
+      const ca = await ensureMitmCa({ atelierDataDir: crossDeviceDataDir, dockerHostAtelierDataDir: crossDeviceDataDir, dockerBridgeHost: "127.0.0.1" });
+      const leaf = await ensureLeafCertificate(ca, "api.github.com");
+      expect(certificateExpiration(leaf.certPath) - Date.now()).toBeGreaterThan(6 * 24 * 60 * 60 * 1000);
+    } finally {
+      await rm(crossDeviceDataDir, { recursive: true, force: true });
+    }
+  });
 });
