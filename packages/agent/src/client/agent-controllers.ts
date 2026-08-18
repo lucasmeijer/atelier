@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalTheme, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
+import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type WorkspaceClientController, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
 
 type StimulusControllerConstructor = new (...args: unknown[]) => { element: Element };
 
@@ -41,7 +41,7 @@ function isSubmitShortcut(event: KeyboardEvent): boolean {
 }
 
 type StimulusApplication = {
-  getControllerForElementAndIdentifier(element: Element, identifier: string): unknown;
+  getControllerForElementAndIdentifier(element: Element, identifier: string): WorkspaceClientController | null;
 };
 
 declare global {
