@@ -1,8 +1,6 @@
 /// <reference lib="dom" />
 
-import { escapeHtml, type WorkspaceClientModule } from "@atelier/shared";
-
-type StimulusControllerBase = new (...args: unknown[]) => { element: Element };
+import { escapeHtml, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
 
 export type KeypressProbeDetail = {
   type: string;
@@ -73,7 +71,7 @@ function uninstallKeypressProbe(): void {
   installedListeners = [];
 }
 
-function createKeypressProbeController(Controller: StimulusControllerBase): unknown {
+function createKeypressProbeController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class KeypressProbeController extends Controller {
     static targets = ["list", "count"];
     declare readonly listTarget: HTMLOListElement;
