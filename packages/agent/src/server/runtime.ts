@@ -578,7 +578,12 @@ function contentToText(content: unknown): string {
     .join("\n");
 }
 
-function imageDimensions(data: Uint8Array, mimeType: string): { width?: number; height?: number } {
+interface ImageDimensions {
+  width: number;
+  height: number;
+}
+
+function imageDimensions(data: Uint8Array, mimeType: string): ImageDimensions | undefined {
   if (mimeType === "image/png" && data.length >= 24) return { width: new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(16), height: new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(20) };
   if (mimeType === "image/gif" && data.length >= 10) return { width: data[6]! | data[7]! << 8, height: data[8]! | data[9]! << 8 };
   if (mimeType === "image/bmp" && data.length >= 26) {
@@ -599,7 +604,7 @@ function imageDimensions(data: Uint8Array, mimeType: string): { width?: number; 
       offset += 2 + length;
     }
   }
-  return {};
+  return undefined;
 }
 
 function sessionContentImages(entry: { id: string; message?: { content?: unknown } }): SessionImageRef[] {
@@ -609,7 +614,7 @@ function sessionContentImages(entry: { id: string; message?: { content?: unknown
     if (!part || typeof part !== "object") return;
     const image = part as { type?: string; mimeType?: string; data?: string };
     if (image.type !== "image") return;
-    const dimensions = typeof image.data === "string" && typeof image.mimeType === "string" ? imageDimensions(Buffer.from(image.data.slice(0, 87_384), "base64"), image.mimeType) : {};
+    const dimensions = typeof image.data === "string" && typeof image.mimeType === "string" ? imageDimensions(Buffer.from(image.data.slice(0, 87_384), "base64"), image.mimeType) : undefined;
     images.push({ entryId: entry.id, contentIndex, mimeType: image.mimeType, ...dimensions });
   });
   return images;
