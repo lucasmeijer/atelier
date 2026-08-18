@@ -19,9 +19,7 @@ import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
-import { CableTopics, type WorkspaceClientModule } from "@atelier/shared";
-
-type ControllerConstructor = new (...args: unknown[]) => { element: Element };
+import { CableTopics, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
 
 const editorHighlightStyle = HighlightStyle.define([
   { tag: [tags.keyword, tags.operatorKeyword, tags.modifier], color: "var(--editor-keyword)" },
@@ -58,7 +56,7 @@ function languageExtension(path: string): Extension {
 type EditorFileResponse = { path: string; content: string; revision: string; writable: boolean };
 type EditorRefreshDetail = { workspaceId: string; tabKey?: string; line?: number; column?: number };
 
-function createFileEditorController(Controller: ControllerConstructor): unknown {
+function createFileEditorController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FileEditorController extends Controller {
     static values = { workspaceId: String, path: String, contentUrl: String, line: Number, column: Number };
     static targets = ["host", "status", "conflict", "preview", "previewToggle"];
@@ -272,7 +270,7 @@ function createFileEditorController(Controller: ControllerConstructor): unknown 
   };
 }
 
-function createFileEditorSignalController(Controller: ControllerConstructor): unknown {
+function createFileEditorSignalController(Controller: WorkspaceClientControllerConstructor): unknown {
   return class FileEditorSignalController extends Controller {
     static values = { workspaceId: String, tabKey: String, line: Number, column: Number };
     declare readonly element: HTMLElement;
