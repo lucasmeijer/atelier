@@ -29,7 +29,7 @@ import { createAtelierCableClient } from "./cable.ts";
 declare global {
   interface Window {
     Stimulus: {
-      Application: { start(): { start(): Promise<void>; stop(): void; register(identifier: string, controllerConstructor: unknown): void; getControllerForElementAndIdentifier(element: Element, identifier: string): unknown } };
+      Application: { start(): { start(): Promise<void>; stop(): void; register(identifier: string, controllerConstructor: unknown): void; getControllerForElementAndIdentifier(element: Element, identifier: string): { element: Element } | null } };
       Controller: new (...args: unknown[]) => { element: Element };
     };
     Turbo?: { renderStreamMessage(html: string): void };
@@ -400,7 +400,7 @@ class AtelierFullscreenController extends Controller {
   private showTab(): void {
     const group = this.element.closest<HTMLElement>(".workspace-group")!;
     const tabbar = group.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]')!;
-    const controller = application.getControllerForElementAndIdentifier(tabbar, "workspace-tabs") as { showTab(tabName: string): void };
+    const controller = application.getControllerForElementAndIdentifier(tabbar, "workspace-tabs") as { element: Element; showTab(tabName: string): void };
     controller.showTab(this.tabKeyValue);
     this.element.closest<HTMLDetailsElement>("details")?.removeAttribute("open");
   }
