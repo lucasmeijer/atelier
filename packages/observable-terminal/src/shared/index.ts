@@ -12,6 +12,14 @@ export interface ObservableTerminalProgressMessage {
 
 export type ObservableTerminalControlMessage = ObservableTerminalResizeMessage | ObservableTerminalProgressMessage;
 
+interface ObservableTerminalMessageCandidate {
+  type?: unknown;
+  cols?: unknown;
+  rows?: unknown;
+  state?: unknown;
+  value?: unknown;
+}
+
 export function encodeObservableTerminalMessage(message: ObservableTerminalControlMessage): string {
   return JSON.stringify(message);
 }
@@ -23,8 +31,9 @@ export function parseObservableTerminalMessage(text: string): ObservableTerminal
   } catch {
     return undefined;
   }
-  if (!parsed || typeof parsed !== "object") return undefined;
-  const object = parsed as Record<string, unknown>;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+  // SAFETY: ObservableTerminalMessageCandidate only names optional properties with unknown values.
+  const object = parsed as ObservableTerminalMessageCandidate;
   if (object.type === "resize") {
     const cols = Number(object.cols);
     const rows = Number(object.rows);
