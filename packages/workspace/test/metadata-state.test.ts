@@ -3,24 +3,24 @@ import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { JsonValue } from "@atelier/core";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { createWorkspaceMetadataState } from "../src/metadata-state.ts";
 
 let dataDir: string;
 afterEach(async () => { if (dataDir) await rm(dataDir, { recursive: true, force: true }); });
 
-function numbers(value: JsonValue): number[] {
-  if (!Array.isArray(value)) throw new Error("expected numbers");
-  return value.map((item) => {
-    if (typeof item !== "number") throw new Error("expected numbers");
-    return item;
-  });
+const numbersSchema = Type.Array(Type.Number());
+
+function parseNumbers(value: JsonValue): number[] {
+  return Value.Parse(numbersSchema, value);
 }
 
 describe("adapter-owned Workspace metadata state", () => {
   test("writes atomically and restores through a fresh adapter instance", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "atelier-resource-state-"));
-    createWorkspaceMetadataState("resource.json", numbers, () => [], { dataDir }).write("workspace-1", [1, 2]);
-    expect(createWorkspaceMetadataState("resource.json", numbers, () => [], { dataDir }).read("workspace-1")).toEqual([1, 2]);
+    createWorkspaceMetadataState("resource.json", parseNumbers, () => [], { dataDir }).write("workspace-1", [1, 2]);
+    expect(createWorkspaceMetadataState("resource.json", parseNumbers, () => [], { dataDir }).read("workspace-1")).toEqual([1, 2]);
   });
 
   test("rejects malformed stored adapter state", async () => {
@@ -28,6 +28,6 @@ describe("adapter-owned Workspace metadata state", () => {
     const metadata = join(dataDir, "workspaces", "workspace-1", "metadata");
     await mkdir(metadata, { recursive: true });
     await writeFile(join(metadata, "resource.json"), "{}\n");
-    expect(() => createWorkspaceMetadataState("resource.json", numbers, () => [], { dataDir }).read("workspace-1")).toThrow("expected numbers");
+    expect(() => createWorkspaceMetadataState("resource.json", parseNumbers, () => [], { dataDir }).read("workspace-1")).toThrow();
   });
 });
