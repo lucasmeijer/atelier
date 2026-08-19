@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { gzipSync } from "node:zlib";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 import type { StaticFileEntry } from "../src/server/static-files.ts";
 
 await import("./generate-workspace-modules.ts");
@@ -14,7 +16,8 @@ const manifestTempUrl = new URL(`../.assets-manifest-${process.pid}.json`, impor
 const maxCssManifestPasses = 10;
 const clientOnly = process.argv.includes("--client-only") && await Bun.file(manifestUrl).exists();
 
-type Manifest = Record<string, string>;
+const manifestSchema = Type.Record(Type.String(), Type.String());
+type Manifest = Static<typeof manifestSchema>;
 type StaticFileRecord = [logicalPath: string, entry: StaticFileEntry];
 
 const manifest: Manifest = {};
@@ -130,7 +133,10 @@ await rm(stagingDir, { recursive: true, force: true });
 await mkdir(stagingDir, { recursive: true });
 
 try {
-  if (clientOnly) Object.assign(manifest, await Bun.file(manifestUrl).json() as Manifest);
+  if (clientOnly) {
+    const encodedManifest: unknown = await Bun.file(manifestUrl).json();
+    Object.assign(manifest, Value.Parse(manifestSchema, encodedManifest));
+  }
   await buildClientEntrypoints();
 
   if (!clientOnly) {
