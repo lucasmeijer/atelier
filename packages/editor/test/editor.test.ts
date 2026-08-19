@@ -3,8 +3,23 @@ import { createAtelierEventBus } from "@atelier/core";
 import { atelierServerModule, initializeEditorWorkspaceIntegration } from "../src/server/index.ts";
 import { renderFileEditorTab } from "../src/server/render.ts";
 import { deleteWorkspaceFileEditorState, fileEditorTabLabels, openWorkspaceFileEditorTab } from "../src/server/state.ts";
+import { isEditorSaveRequest, parseEditorFileResponse, parseEditorSaveResponse } from "../src/protocol.ts";
 
 describe("editor workspace integration", () => {
+  test("validates the editor HTTP protocol", () => {
+    expect(parseEditorFileResponse({ path: "/work/file.ts", content: "text", revision: "abc", writable: true })).toEqual({
+      path: "/work/file.ts",
+      content: "text",
+      revision: "abc",
+      writable: true,
+    });
+    expect(parseEditorSaveResponse({ revision: "def" })).toEqual({ revision: "def" });
+    expect(isEditorSaveRequest({ content: "text", revision: "abc", force: true })).toBe(true);
+    expect(isEditorSaveRequest({ content: "text", revision: 1 })).toBe(false);
+    expect(() => parseEditorFileResponse({ path: "/work/file.ts", content: "text", revision: "abc" })).toThrow();
+    expect(() => parseEditorSaveResponse({ revision: 1 })).toThrow();
+  });
+
   test("asks open editors to check disk only when an agent turn finishes", async () => {
     const events = createAtelierEventBus();
     const broadcasts: string[] = [];

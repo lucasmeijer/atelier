@@ -20,6 +20,7 @@ import { EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { CableTopics, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
+import { parseEditorFileResponse, parseEditorSaveResponse, type EditorFileResponse } from "../protocol.ts";
 
 const editorHighlightStyle = HighlightStyle.define([
   { tag: [tags.keyword, tags.operatorKeyword, tags.modifier], color: "var(--editor-keyword)" },
@@ -53,7 +54,6 @@ function languageExtension(path: string): Extension {
   return [];
 }
 
-type EditorFileResponse = { path: string; content: string; revision: string; writable: boolean };
 type EditorRefreshDetail = { workspaceId: string; tabKey?: string; line?: number; column?: number };
 
 declare global {
@@ -192,14 +192,14 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       });
       if (sequence !== this.saveSequence) return;
       if (response.status === 409) {
-        this.showConflict(await response.json() as EditorFileResponse);
+        this.showConflict(parseEditorFileResponse(await response.json()));
         return;
       }
       if (!response.ok) {
         this.setStatus(await response.text(), "error");
         return;
       }
-      const result = await response.json() as { revision: string };
+      const result = parseEditorSaveResponse(await response.json());
       this.revision = result.revision;
       this.savedContent = content;
       this.setStatus("Saved", "saved");
@@ -208,7 +208,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private async fetchFile(): Promise<EditorFileResponse> {
       const response = await fetch(this.contentUrlValue, { headers: { "accept": "application/json" } });
       if (!response.ok) throw new Error(await response.text());
-      return await response.json() as EditorFileResponse;
+      return parseEditorFileResponse(await response.json());
     }
 
     private applyDisk(file: EditorFileResponse): void {

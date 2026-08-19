@@ -10,6 +10,7 @@ import {
   openWorkspaceFileEditorTab,
 } from "./state.ts";
 import { fileEditorSignalId, renderFileEditorSignal, renderFileEditorTab } from "./render.ts";
+import { isEditorSaveRequest } from "../protocol.ts";
 
 function textResponse(message: string, status: number): Response {
   return new Response(message, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
@@ -59,8 +60,8 @@ async function editorContentEndpoint(workspaceId: string, request: Request, url:
   const path = url.searchParams.get("path");
   if (request.method === "GET") return jsonResponse(await readEditableFile(workspaceId, path));
   if (request.method !== "PUT") return textResponse("Method not allowed", 405);
-  const body = await request.json() as { content?: unknown; revision?: unknown; force?: unknown };
-  if (typeof body.content !== "string" || typeof body.revision !== "string") return textResponse("Invalid editor save", 422);
+  const body: unknown = await request.json();
+  if (!isEditorSaveRequest(body)) return textResponse("Invalid editor save", 422);
   try {
     return jsonResponse({ revision: await writeEditableFile(workspaceId, path, body.content, body.revision, body.force === true) });
   } catch (error) {
