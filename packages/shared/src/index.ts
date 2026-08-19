@@ -384,6 +384,8 @@ export interface WorkspaceClientModule {
 
 export {
   CableTopics,
+  decodeCableClientMessage,
+  decodeCableServerMessage,
   serializeCableIdentifier,
   type AtelierCableClient,
   type CableClientMessage,

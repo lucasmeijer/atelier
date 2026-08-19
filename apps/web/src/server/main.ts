@@ -526,16 +526,16 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       },
       websocket: {
         open(ws) {
-          if (ws.data.kind === "cable") cableServer.open(ws as ServerWebSocket<CableSocketData>);
+          if (ws.data.kind === "cable") cableServer.open(ws, ws.data);
           else if (ws.data.kind === "provision-term") openProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
           else ws.data.open?.(ws);
         },
         message(ws, message) {
-          if (ws.data.kind === "cable") cableServer.message(ws as ServerWebSocket<CableSocketData>, message);
+          if (ws.data.kind === "cable") cableServer.message(ws, message);
           else if (ws.data.kind === "workspace-module") ws.data.message?.(ws, message);
         },
         close(ws) {
-          if (ws.data.kind === "cable") cableServer.close(ws as ServerWebSocket<CableSocketData>);
+          if (ws.data.kind === "cable") cableServer.close(ws);
           else if (ws.data.kind === "provision-term") closeProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
           else ws.data.close?.(ws);
         },

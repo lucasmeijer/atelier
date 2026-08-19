@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { serializeCableIdentifier, type AtelierCableClient, type CableClientMessage, type CableIdentifier, type CableServerMessage } from "@atelier/shared";
+import { decodeCableServerMessage, serializeCableIdentifier, type AtelierCableClient, type CableClientMessage, type CableIdentifier } from "@atelier/shared";
 
 declare global {
   interface Window {
@@ -64,7 +64,7 @@ export function createAtelierCableClient(): AtelierCableClient {
   }
 
   function handleMessage(event: MessageEvent): void {
-    const message = JSON.parse(String(event.data)) as CableServerMessage;
+    const message = decodeCableServerMessage(String(event.data));
     switch (message.type) {
       case "welcome":
         attempts = 0;

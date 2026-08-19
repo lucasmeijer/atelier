@@ -1,12 +1,12 @@
 import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { getWorkspaceAgentRuntime, listWorkspaceAgents } from "@atelier/agent/server";
 import {
+  decodeCableClientMessage,
   serializeCableIdentifier,
   type CableClientMessage,
   type CableIdentifier,
   type CableServerMessage,
 } from "@atelier/shared";
-import { decodeCableClientMessage } from "./cable-message.ts";
 import type { WorkspaceRegistry } from "./workspace-registry.ts";
 
 export interface CableSocketData {
@@ -15,7 +15,6 @@ export interface CableSocketData {
 }
 
 export interface CableSocket {
-  data: CableSocketData;
   send(message: string): number;
 }
 
@@ -39,7 +38,7 @@ export interface CableConnectionStats {
 
 export interface CableServer {
   validate(request: Request, url: URL): CableSocketData | undefined;
-  open(ws: CableSocket): void;
+  open(ws: CableSocket, data: CableSocketData): void;
   message(ws: CableSocket, message: string | Buffer): void;
   close(ws: CableSocket): void;
   broadcast(identifier: CableIdentifier, html: string): void;
@@ -171,9 +170,9 @@ export function createCableServer(options: CableServerOptions): CableServer {
       if (url.pathname !== "/cable") return undefined;
       return { kind: "cable", connectionId: crypto.randomUUID() };
     },
-    open(ws) {
+    open(ws, data) {
       sockets.add(ws);
-      send(ws, { type: "welcome", connectionId: ws.data.connectionId });
+      send(ws, { type: "welcome", connectionId: data.connectionId });
     },
     message(ws, raw) {
       void (async () => {

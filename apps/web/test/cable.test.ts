@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
-import { CableTopics, serializeCableIdentifier } from "@atelier/shared";
+import { CableTopics, decodeCableServerMessage, serializeCableIdentifier } from "@atelier/shared";
 import { createCableServer, type CableSocketData } from "../src/server/cable.ts";
 import { cableCursorIsNewer } from "../src/client/cable.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
@@ -30,6 +30,12 @@ test("cable topics enforce identifier invariants", () => {
   expect(() => serializeCableIdentifier({ channel: "bogus" } as never)).toThrow("unsupported cable identifier");
 });
 
+test("cable server messages are validated at the client boundary", () => {
+  expect(decodeCableServerMessage(JSON.stringify({ type: "ping", time: 42 }))).toEqual({ type: "ping", time: 42 });
+  expect(() => decodeCableServerMessage(JSON.stringify({ type: "ping", time: "now" }))).toThrow("unsupported cable server message");
+  expect(() => decodeCableServerMessage("not JSON")).toThrow("cable server message must be valid JSON");
+});
+
 describe("cable server", () => {
   test("validates /cable upgrades", () => {
     const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
@@ -43,7 +49,7 @@ describe("cable server", () => {
     const cable = createCableServer({ registry, events: createAtelierEventBus(), shellSnapshot: () => '<turbo-stream action="replace" target="initial"><template>ok</template></turbo-stream>' });
     const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
 
-    cable.open(ws);
+    cable.open(ws, ws.data);
     cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
     await Bun.sleep(0);
 
@@ -69,7 +75,7 @@ describe("cable server", () => {
     const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
     const cable = createCableServer({ registry, events: createAtelierEventBus() });
     const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
-    cable.open(ws);
+    cable.open(ws, ws.data);
     cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "workspace", workspaceId: "missing" } }));
     await Bun.sleep(0);
     expect(ws.sent).toContainEqual({ type: "reject_subscription", identifier: { channel: "workspace", workspaceId: "missing" }, reason: "workspace not found: missing" });
@@ -87,7 +93,7 @@ describe("cable server", () => {
       const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
       const cable = createCableServer({ registry, events: createAtelierEventBus() });
       const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
-      cable.open(ws as never);
+      cable.open(ws, ws.data);
 
       cable.message(ws as never, raw);
       await Bun.sleep(0);
@@ -104,7 +110,7 @@ describe("cable server", () => {
     const registry = createWorkspaceRegistry({ activityStore: { load: async () => ({}), save: async () => {} } });
     const cable = createCableServer({ registry, events: createAtelierEventBus() });
     const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
-    cable.open(ws as never);
+    cable.open(ws, ws.data);
 
     cable.message(ws as never, JSON.stringify({ command: "subscribe", identifier: { channel: "shell", extra: true }, extra: true }));
     await Bun.sleep(0);
