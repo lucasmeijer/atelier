@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext } from "@atelier/core";
+import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext, isJsonObject } from "@atelier/core";
 
 export interface WorkspacePublicProxyRoute {
   appKey: string;
@@ -56,11 +56,12 @@ async function writeWorkspacePublicProxyState(workspaceId: string, state: Worksp
 
 async function readStatePath(path: string): Promise<WorkspacePublicProxyState> {
   try {
-    const parsed = JSON.parse(await readFile(path, "utf8")) as Partial<WorkspacePublicProxyState>;
-    if (parsed.version !== 1 || !parsed.routes || typeof parsed.routes !== "object") return emptyState();
+    const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (!isJsonObject(parsed) || parsed.version !== 1 || !isJsonObject(parsed.routes)) return emptyState();
     const routes: WorkspacePublicProxyState["routes"] = {};
     for (const [appKey, route] of Object.entries(parsed.routes)) {
-      const publicPort = Number((route as { publicPort?: unknown }).publicPort);
+      if (!isJsonObject(route)) continue;
+      const publicPort = Number(route.publicPort);
       if (isValidAppKey(appKey) && Number.isInteger(publicPort)) routes[appKey] = { publicPort };
     }
     return { version: 1, routes };
