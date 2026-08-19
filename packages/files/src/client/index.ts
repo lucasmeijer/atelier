@@ -167,7 +167,7 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
       if (files.length === 0) return;
       const items = [...(event.dataTransfer?.items ?? [])];
       const hasDirectory = items.some((item) => {
-        const entry = (item as DataTransferItem & { webkitGetAsEntry?: () => { isDirectory: boolean } | null }).webkitGetAsEntry?.();
+        const entry = item.webkitGetAsEntry?.();
         return entry?.isDirectory;
       });
       if (hasDirectory || files.some((file) => Boolean((file as File & { webkitRelativePath?: string }).webkitRelativePath))) {
