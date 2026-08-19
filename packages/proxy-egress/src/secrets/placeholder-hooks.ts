@@ -21,10 +21,15 @@ export type CreateHttpHooksOptions = {
   onResponse?: HttpHooks["onResponse"];
 };
 export type SecretInfo = { name: string; placeholder: string; hosts: string[] };
-export type CreateHttpHooksResult = { httpHooks: HttpHooks; env: Record<string, string>; allowedHosts: string[]; secrets: SecretInfo[] };
+export type RequestTransformHttpHooks = Omit<HttpHooks, "onRequest"> & {
+  onRequest(request: Request): Promise<Request>;
+};
+export type CreateHttpHooksResult<Hooks extends HttpHooks = HttpHooks> = { httpHooks: Hooks; env: Record<string, string>; allowedHosts: string[]; secrets: SecretInfo[] };
 
 type SecretEntry = { name: string; placeholder: string; value: string; hosts: string[] };
 
+export function createHttpHooks(options?: CreateHttpHooksOptions & { onRequest?: undefined }): CreateHttpHooksResult<RequestTransformHttpHooks>;
+export function createHttpHooks(options: CreateHttpHooksOptions): CreateHttpHooksResult;
 export function createHttpHooks(options: CreateHttpHooksOptions = {}): CreateHttpHooksResult {
   const env: Record<string, string> = {};
   const blockInternalRanges = options.blockInternalRanges ?? true;

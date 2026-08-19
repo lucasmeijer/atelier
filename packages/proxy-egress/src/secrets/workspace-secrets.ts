@@ -1,15 +1,14 @@
 import { clearWorkspaceGitHubToken as clearStoredWorkspaceGitHubToken, discoverHostGitHubToken, hasWorkspaceGitHubToken as hasStoredWorkspaceGitHubToken, setWorkspaceGitHubToken as setStoredWorkspaceGitHubToken } from "@atelier/core";
 import { isGitProjectInit, revealProjectSecrets } from "@atelier/projects";
 import { getWorkspaceInit, type WorkspaceInitInstruction } from "@atelier/workspace";
-import { createHttpHooks, type SecretDefinition } from "./placeholder-hooks.ts";
-import type { HttpHooks } from "./types.ts";
+import { createHttpHooks, type RequestTransformHttpHooks, type SecretDefinition } from "./placeholder-hooks.ts";
 
 export const githubTokenEnvVar = "GH_TOKEN";
 
 export type WorkspaceSecretContext = {
   workspaceId: string;
   env: Record<string, string>;
-  hooks: HttpHooks;
+  hooks: RequestTransformHttpHooks;
   secrets: Array<{ name: string; placeholder: string; hosts: string[] }>;
 };
 

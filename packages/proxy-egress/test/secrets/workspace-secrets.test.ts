@@ -50,14 +50,14 @@ describe("workspace secrets", () => {
     await createProjectSecret(project.id, { envName: "STRICT_TOKEN", hostPattern: "api.example.com", placeholder: "sk-test-placeholder", secretValue: "strict-secret" });
 
     const context = await createWorkspaceSecretContext("test-workspace", projectInit(project.id));
-    const result = await context.hooks.onRequest!(new Request("https://api.example.com/v1/sk-test-placeholder", { headers: { authorization: "Bearer sk-test-placeholder" } }));
+    const result = await context.hooks.onRequest(new Request("https://api.example.com/v1/sk-test-placeholder", { headers: { authorization: "Bearer sk-test-placeholder" } }));
 
     expect(context.env.API_TOKEN).toBe("ATELIER_INJECT_API_TOKEN");
     expect(context.env.STRICT_TOKEN).toBe("sk-test-placeholder");
     expect(context.secrets).toContainEqual({ name: "API_TOKEN", placeholder: "ATELIER_INJECT_API_TOKEN", hosts: ["api.example.com", "*.example.org"] });
     expect(context.secrets).toContainEqual({ name: "STRICT_TOKEN", placeholder: "sk-test-placeholder", hosts: ["api.example.com"] });
-    expect((result as Request).headers.get("authorization")).toBe("Bearer strict-secret");
-    expect((result as Request).url).toBe("https://api.example.com/v1/strict-secret");
+    expect(result.headers.get("authorization")).toBe("Bearer strict-secret");
+    expect(result.url).toBe("https://api.example.com/v1/strict-secret");
   });
 
   test("reloads persisted project secrets when rebuilding context after restart", async () => {
@@ -71,11 +71,11 @@ describe("workspace secrets", () => {
       expect(workspaceId).toBe("test-workspace");
       return init;
     });
-    const result = await context.hooks.onRequest!(new Request("https://registry.example.com/v2/", { headers: { authorization: "Bearer PACKAGE_TOKEN" } }));
+    const result = await context.hooks.onRequest(new Request("https://registry.example.com/v2/", { headers: { authorization: "Bearer PACKAGE_TOKEN" } }));
 
     expect(context.env.PACKAGE_TOKEN).toBe("PACKAGE_TOKEN");
     expect(context.secrets).toContainEqual({ name: "PACKAGE_TOKEN", placeholder: "PACKAGE_TOKEN", hosts: ["registry.example.com"] });
-    expect((result as Request).headers.get("authorization")).toBe("Bearer real-package-secret");
+    expect(result.headers.get("authorization")).toBe("Bearer real-package-secret");
   });
 
   test("passes an inherited placeholder onward for nested Atelier", async () => {
@@ -83,8 +83,8 @@ describe("workspace secrets", () => {
 
     const context = await createWorkspaceSecretContext("test-workspace");
     const basic = Buffer.from("x-access-token:ATELIER_INJECT_GH_TOKEN").toString("base64");
-    const result = await context.hooks.onRequest!(new Request("https://github.com/repo.git", { headers: { authorization: `Basic ${basic}` } }));
+    const result = await context.hooks.onRequest(new Request("https://github.com/repo.git", { headers: { authorization: `Basic ${basic}` } }));
 
-    expect((result as Request).headers.get("authorization")).toBe(`Basic ${basic}`);
+    expect(result.headers.get("authorization")).toBe(`Basic ${basic}`);
   });
 });
