@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
+import { Type, type Static, type TSchema } from "typebox";
+import { Value } from "typebox/value";
 import { composerServiceTier, composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel, type ModelRef } from "./model-state.ts";
 import type { AgentServiceTier } from "./service-tier.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
@@ -109,6 +111,9 @@ export interface AgentToolDefinitionView {
 }
 
 type ToolArgumentKey = "command" | "path" | "file_path" | "content" | "offset" | "limit" | "timeout" | "edits" | "oldText" | "newText";
+
+const toolStringArgumentSchema = Type.String();
+const toolNumberArgumentSchema = Type.Number();
 
 interface EditOperationCandidate {
   oldText?: unknown;
@@ -710,17 +715,20 @@ function toolArgs(tool: ToolView): JsonObject | undefined {
   return isJsonObject(tool.args) ? tool.args : undefined;
 }
 
-function stringArg(args: JsonObject | undefined, ...keys: ToolArgumentKey[]): string | undefined {
+function toolArgument<Schema extends TSchema>(args: JsonObject | undefined, schema: Schema, ...keys: ToolArgumentKey[]): Static<Schema> | undefined {
   for (const key of keys) {
     const value = args?.[key];
-    if (typeof value === "string") return value;
+    if (Value.Check(schema, value)) return value;
   }
   return undefined;
 }
 
+function stringArg(args: JsonObject | undefined, ...keys: ToolArgumentKey[]): string | undefined {
+  return toolArgument(args, toolStringArgumentSchema, ...keys);
+}
+
 function numberArg(args: JsonObject | undefined, key: ToolArgumentKey): number | undefined {
-  const value = args?.[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return toolArgument(args, toolNumberArgumentSchema, key);
 }
 
 function formatReadRange(args: JsonObject | undefined): string {
