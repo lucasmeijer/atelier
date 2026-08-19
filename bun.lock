@@ -78,6 +78,7 @@
         "@atelier/proxy-ingress": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
+        "typebox": "^1.0.57",
       },
     },
     "packages/editor": {
@@ -195,6 +196,7 @@
         "@atelier/proxy-ingress": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
+        "typebox": "^1.0.57",
       },
     },
     "packages/workspace": {

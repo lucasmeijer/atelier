@@ -4,6 +4,8 @@ import { renderVSCodePane, vscodeViewKey } from "./render.ts";
 import { createWorkspaceVSCodeView, deleteWorkspaceVSCodeState, deleteWorkspaceVSCodeView, listWorkspaceVSCodeViews, type WorkspaceVSCodeView } from "./workspace-vscode.ts";
 import { vscodeStaticFiles } from "./static.ts";
 import { deleteWorkspaceVSCodeProxyState, patchVSCodeWorkspaceAppResponse, resolveVSCodeWorkspaceAppTarget, vscodeAppKey } from "./proxy.ts";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
 export function renderWorkspaceVSCodeWorkViews(workspaceId: string, views: WorkspaceVSCodeView[]): WorkspaceWorkViewPresentation[] {
   return views.map((view) => ({
@@ -16,13 +18,16 @@ export function renderWorkspaceVSCodeWorkViews(workspaceId: string, views: Works
   }));
 }
 
-interface VSCodeWorkViewReference extends WorkspaceWorkViewReference { type: "vscode"; title: string }
+const vscodeWorkViewReferenceSchema = Type.Object({
+  type: Type.Literal("vscode"),
+  title: Type.String({ pattern: "\\S" }),
+});
+
+type VSCodeWorkViewReference = Static<typeof vscodeWorkViewReferenceSchema> & WorkspaceWorkViewReference;
 
 function parseVSCodeReference(value: JsonValue): VSCodeWorkViewReference {
-  // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
-  const reference = value as { type?: unknown; title?: unknown };
-  if (reference?.type !== "vscode" || typeof reference.title !== "string" || !reference.title.trim()) throw new Error("title is required");
-  return { type: "vscode", title: reference.title };
+  if (!Value.Check(vscodeWorkViewReferenceSchema, value)) throw new Error("title is required");
+  return { type: "vscode", title: value.title };
 }
 
 export const vscodeWorkspaceCommands: WorkspaceCommandContribution[] = [
