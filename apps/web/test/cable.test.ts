@@ -54,7 +54,7 @@ describe("cable server", () => {
     cable.broadcast({ channel: "shell" }, '<turbo-stream action="replace" target="x"><template>1</template></turbo-stream>');
     expect(ws.sent).toContainEqual({ type: "turbo_stream", identifier: { channel: "shell" }, html: '<turbo-stream action="replace" target="x"><template>1</template></turbo-stream>' });
 
-    cable.message(ws as never, JSON.stringify({ command: "unsubscribe", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "unsubscribe", identifier: { channel: "shell" } }));
     cable.broadcast({ channel: "shell" }, '<turbo-stream action="replace" target="x"><template>2</template></turbo-stream>');
     expect(ws.sent).not.toContainEqual({ type: "turbo_stream", identifier: { channel: "shell" }, html: '<turbo-stream action="replace" target="x"><template>2</template></turbo-stream>' });
 
