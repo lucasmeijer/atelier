@@ -3,14 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
-import { dockerInspect, parseContainerIdFromCgroup, parseContainerIdFromMountInfo, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
+import { dockerContainerInspect, dockerImageInspect, parseContainerIdFromCgroup, parseContainerIdFromMountInfo, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
 import { createUpdateRouteHandler, UpdateManager } from "../../src/server/index.ts";
 import { parseWwwAuthenticate, selectManifestFromIndex, fetchChannelImageMetadata } from "../../src/server/registry.ts";
 import { fetchReleaseNotes, releaseNoteFilenames, renderMarkdown } from "../../src/server/release-notes.ts";
 
 describe("self container parsing", () => {
   test("preserves container config needed to detect a managed install", async () => {
-    const inspect = await dockerInspect("container-id", async () => ({
+    const inspect = await dockerContainerInspect("container-id", async () => ({
       stdout: JSON.stringify([{
         Id: "container-id",
         Image: "sha256:image-id",
@@ -27,6 +27,28 @@ describe("self container parsing", () => {
       Image: "ghcr.io/lucasmeijer/atelier:latest",
       Labels: { "com.atelier.type": "server" },
     });
+  });
+
+  test("rejects malformed Docker inspect output", async () => {
+    await expect(dockerContainerInspect("container-id", async () => ({
+      stdout: JSON.stringify([{ Id: 42, Image: "sha256:image-id" }]),
+      stderr: "",
+      code: 0,
+    }))).rejects.toThrow();
+  });
+
+  test("accepts image inspect output without container-only fields", async () => {
+    const inspect = await dockerImageInspect("sha256:image-id", async () => ({
+      stdout: JSON.stringify([{
+        Id: "sha256:image-id",
+        RepoDigests: ["ghcr.io/lucasmeijer/atelier@sha256:digest"],
+        Config: { Labels: null },
+      }]),
+      stderr: "",
+      code: 0,
+    }));
+
+    expect(inspect.RepoDigests).toEqual(["ghcr.io/lucasmeijer/atelier@sha256:digest"]);
   });
 
   test("parses cgroup v1 docker ids", () => {

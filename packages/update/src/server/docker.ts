@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { request } from "node:http";
 import { hostname } from "node:os";
+import { Type, type Static, type TSchema } from "typebox";
+import { Value } from "typebox/value";
 import { isReleaseChannel, targetImageForChannel, type ReleaseChannel } from "./channels.ts";
 import { repository } from "./constants.ts";
 
@@ -38,52 +40,77 @@ export async function ownContainerId(): Promise<string | undefined> {
   return parseContainerIdFromCgroup(cgroup) ?? parseContainerIdFromMountInfo(mountInfo) ?? hostname();
 }
 
-interface DockerMount {
-  Type?: string;
-  Source?: string;
-  Destination?: string;
-  RW?: boolean;
-}
+const dockerLabelsSchema = Type.Record(Type.String(), Type.String());
+const dockerCommandSchema = Type.Union([Type.Array(Type.String()), Type.String(), Type.Null()]);
+const dockerConfigSchema = Type.Object({
+  Image: Type.Optional(Type.String()),
+  Env: Type.Optional(Type.Union([Type.Array(Type.String()), Type.Null()])),
+  Labels: Type.Optional(Type.Union([dockerLabelsSchema, Type.Null()])),
+  Entrypoint: Type.Optional(dockerCommandSchema),
+  Cmd: Type.Optional(dockerCommandSchema),
+  WorkingDir: Type.Optional(Type.String()),
+  User: Type.Optional(Type.String()),
+});
+const dockerMetadataProperties = {
+  Id: Type.String(),
+  RepoDigests: Type.Optional(Type.Union([Type.Array(Type.String()), Type.Null()])),
+  Config: Type.Optional(Type.Union([dockerConfigSchema, Type.Null()])),
+  ImageConfig: Type.Optional(Type.Union([Type.Object({
+    Config: Type.Optional(Type.Union([Type.Object({
+      Labels: Type.Optional(Type.Union([dockerLabelsSchema, Type.Null()])),
+    }), Type.Null()])),
+  }), Type.Null()])),
+} as const;
+const dockerContainerInspectSchema = Type.Object({
+  ...dockerMetadataProperties,
+  Name: Type.Optional(Type.String()),
+  Image: Type.String(),
+  HostConfig: Type.Optional(Type.Object({
+    NetworkMode: Type.Optional(Type.String()),
+    RestartPolicy: Type.Optional(Type.Object({
+      Name: Type.Optional(Type.String()),
+      MaximumRetryCount: Type.Optional(Type.Number()),
+    })),
+    Init: Type.Optional(Type.Boolean()),
+    CpuShares: Type.Optional(Type.Number()),
+    MemoryReservation: Type.Optional(Type.Number()),
+    OomScoreAdj: Type.Optional(Type.Number()),
+  })),
+  Mounts: Type.Optional(Type.Array(Type.Object({
+    Type: Type.Optional(Type.String()),
+    Source: Type.Optional(Type.String()),
+    Destination: Type.Optional(Type.String()),
+    RW: Type.Optional(Type.Boolean()),
+  }))),
+  NetworkSettings: Type.Optional(Type.Unknown()),
+});
+const dockerImageInspectSchema = Type.Object(dockerMetadataProperties);
 
-interface DockerRestartPolicy {
-  Name?: string;
-  MaximumRetryCount?: number;
-}
-
-interface DockerHostConfig {
-  NetworkMode?: string;
-  RestartPolicy?: DockerRestartPolicy;
-  Init?: boolean;
-  CpuShares?: number;
-  MemoryReservation?: number;
-  OomScoreAdj?: number;
-}
-
-export interface DockerInspect {
-  Id: string;
-  Name?: string;
-  Image: string;
-  RepoDigests?: string[];
-  Config?: { Image?: string; Env?: string[]; Labels?: Record<string, string>; Entrypoint?: string[] | string | null; Cmd?: string[] | string | null; WorkingDir?: string; User?: string };
-  ImageConfig?: { Config?: { Labels?: Record<string, string> } };
-  HostConfig?: DockerHostConfig;
-  Mounts?: DockerMount[];
-  NetworkSettings?: unknown;
-}
+export type DockerInspect = Static<typeof dockerContainerInspectSchema>;
+type DockerImageInspect = Static<typeof dockerImageInspectSchema>;
+type DockerMetadataInspect = DockerInspect | DockerImageInspect;
 
 export interface DockerLabels {
   [name: string]: string;
 }
 
-export async function dockerInspect(id: string, exec: DockerExec = dockerExec): Promise<DockerInspect> {
+async function inspectWithSchema<T extends TSchema>(id: string, schema: T, exec: DockerExec): Promise<Static<T>> {
   const result = await exec(["inspect", id]);
   if (result.code !== 0) throw new Error(result.stderr.trim() || `docker inspect failed for ${id}`);
-  const parsed = JSON.parse(result.stdout) as DockerInspect[];
+  const parsed = Value.Parse(Type.Array(schema), JSON.parse(result.stdout));
   if (!parsed[0]) throw new Error(`docker inspect returned no result for ${id}`);
   return parsed[0];
 }
 
-export function labelsFromInspect(inspect: DockerInspect): DockerLabels {
+export function dockerContainerInspect(id: string, exec: DockerExec = dockerExec): Promise<DockerInspect> {
+  return inspectWithSchema(id, dockerContainerInspectSchema, exec);
+}
+
+export function dockerImageInspect(id: string, exec: DockerExec = dockerExec): Promise<DockerImageInspect> {
+  return inspectWithSchema(id, dockerImageInspectSchema, exec);
+}
+
+export function labelsFromInspect(inspect: DockerMetadataInspect): DockerLabels {
   return { ...(inspect.ImageConfig?.Config?.Labels ?? {}), ...(inspect.Config?.Labels ?? {}) };
 }
 
@@ -91,17 +118,17 @@ export function isAtelierImageRef(value: string | undefined): boolean {
   return Boolean(value && /(^|\/|@)ghcr\.io\/lucasmeijer\/atelier(?::|@|$)/.test(value));
 }
 
-export function inspectRevision(inspect: DockerInspect): string | undefined {
+export function inspectRevision(inspect: DockerMetadataInspect): string | undefined {
   return labelsFromInspect(inspect)["org.opencontainers.image.revision"];
 }
 
-export function inspectSelfUpdateCompatibility(inspect: DockerInspect): string | undefined {
+export function inspectSelfUpdateCompatibility(inspect: DockerMetadataInspect): string | undefined {
   return labelsFromInspect(inspect)["com.atelier.self-update-compatibility"];
 }
 
 export interface SelfUpdateRuntime { container: DockerInspect; containerId: string; imageId: string; releaseChannel: ReleaseChannel; currentRevision?: string; currentDigest?: string; selfUpdateCompatibility?: string }
 
-function atelierRepoDigest(inspect: DockerInspect): string | undefined {
+function atelierRepoDigest(inspect: DockerMetadataInspect): string | undefined {
   return inspect.RepoDigests?.find((digest) => digest.startsWith("ghcr.io/lucasmeijer/atelier@"))?.split("@")[1];
 }
 
@@ -113,7 +140,7 @@ export function releaseChannelFromInspect(inspect: DockerInspect): ReleaseChanne
   return "stable";
 }
 
-function envValue(env: string[] | undefined, name: string): string | undefined {
+function envValue(env: string[] | null | undefined, name: string): string | undefined {
   const prefix = `${name}=`;
   return env?.find((entry) => entry.startsWith(prefix))?.slice(prefix.length);
 }
@@ -132,11 +159,11 @@ export async function detectSelfUpdateRuntime(exec: DockerExec = dockerExec): Pr
   if (ps.code !== 0) return undefined;
   const id = await ownContainerId();
   if (!id) return undefined;
-  const container = await dockerInspect(id, exec).catch(() => undefined);
+  const container = await dockerContainerInspect(id, exec).catch(() => undefined);
   if (!container) return undefined;
   const labels = container.Config?.Labels ?? {};
   if (labels["com.atelier.type"] !== "server") return undefined;
-  const image = await dockerInspect(container.Image, exec).catch(() => undefined);
+  const image = await dockerImageInspect(container.Image, exec).catch(() => undefined);
   const repoDigest = atelierRepoDigest(image ?? container) ?? atelierRepoDigest(container);
   if (!isAtelierImageRef(container.Config?.Image) && !repoDigest) return undefined;
   return {

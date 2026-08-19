@@ -1,5 +1,5 @@
 import { escapeHtml } from "@atelier/shared";
-import { replacementCreateArgs, dockerExec, dockerInspect, serverHealthUrlFromInspect } from "./docker.ts";
+import { replacementCreateArgs, dockerExec, dockerContainerInspect, serverHealthUrlFromInspect } from "./docker.ts";
 import { updaterPort } from "./constants.ts";
 import { isReleaseChannel, type ReleaseChannel } from "./channels.ts";
 
@@ -57,7 +57,7 @@ function startUpdate(): void {
 async function run(): Promise<void> {
   try {
     setStep("prepare", "running");
-    const inspect = await dockerInspect(options.serverContainer);
+    const inspect = await dockerContainerInspect(options.serverContainer);
     const image = await dockerExec(["image", "inspect", options.targetImage]);
     if (image.code !== 0) throw new Error(`${options.targetImage} is not present locally`);
     setStep("prepare", "done");
