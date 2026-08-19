@@ -86,7 +86,11 @@ export const atelierUi = {
       return [...document.querySelectorAll<HTMLElement>(selector)]
         .map((row) => row.dataset.workspaceId)
         .find((workspaceId): workspaceId is string => Boolean(workspaceId && !previous.has(workspaceId)));
-    }, { selector: workspaceRowsSelector, previousIds: before }, { timeout: options.timeout }).then((handle) => handle.jsonValue()) as string;
+    }, { selector: workspaceRowsSelector, previousIds: before }, { timeout: options.timeout }).then((handle) => handle.jsonValue());
+
+    if (id === undefined) {
+      throw new Error("Playwright resolved the new-workspace wait without a workspace ID");
+    }
 
     const row = this.workspaceRow(page, id);
     return {
