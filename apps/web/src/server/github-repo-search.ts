@@ -1,25 +1,19 @@
 import { createHash } from "node:crypto";
 import { discoverHostGitHubToken } from "@atelier/proxy-egress";
 import { escapeHtml, looksLikeProjectSpec } from "@atelier/shared";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
-interface GitHubRepositorySearchItem {
-  full_name: string;
-  description: string | null;
-  private: boolean;
-  clone_url: string;
-  html_url: string;
-  default_branch: string;
-}
-
-function isGitHubRepositorySearchItem(value: unknown): value is GitHubRepositorySearchItem {
-  return value instanceof Object
-    && "full_name" in value && typeof value.full_name === "string"
-    && "description" in value && (value.description === null || typeof value.description === "string")
-    && "private" in value && typeof value.private === "boolean"
-    && "clone_url" in value && typeof value.clone_url === "string"
-    && "html_url" in value && typeof value.html_url === "string"
-    && "default_branch" in value && typeof value.default_branch === "string";
-}
+const githubRepositorySearchResponseSchema = Type.Object({
+  items: Type.Array(Type.Object({
+    full_name: Type.String(),
+    description: Type.Union([Type.String(), Type.Null()]),
+    private: Type.Boolean(),
+    clone_url: Type.String(),
+    html_url: Type.String(),
+    default_branch: Type.String(),
+  })),
+});
 
 const searchCache = new Map<string, { expiresAt: number; results: GitHubRepositorySearchResult[] }>();
 const searchCacheMs = 60_000;
@@ -65,10 +59,7 @@ async function searchGitHubRepositoryPage(query: string, visibility: "public" | 
     throw new Error(`GitHub repository search failed: ${response.status} ${message}`);
   }
 
-  const body: unknown = await response.json();
-  if (!(body instanceof Object) || !("items" in body) || !Array.isArray(body.items) || !body.items.every(isGitHubRepositorySearchItem)) {
-    throw new Error("GitHub repository search returned an invalid response");
-  }
+  const body = Value.Parse(githubRepositorySearchResponseSchema, await response.json());
   return body.items.map((repo) => ({
     fullName: repo.full_name,
     description: repo.description,
