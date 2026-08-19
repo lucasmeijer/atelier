@@ -3,13 +3,15 @@ import { renderBrowserFrame, renderBrowserWorkView } from "./render.ts";
 import { createWorkspaceBrowserView, deleteWorkspaceBrowserState, deleteWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
 import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppRequestHeaders, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "./proxy.ts";
-import { invalidArguments, readJsonObject, requestAcceptsJson, type JsonValue } from "@atelier/core";
+import { invalidArguments, readJsonObject, requestAcceptsJson, type JsonObject, type JsonValue } from "@atelier/core";
 import { createBrowserPresenter } from "./agent-tool.ts";
 import { registerWorkspacePresenter } from "@atelier/agent/server";
 import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
 const browserCreateCommandId = "browser.create";
 const browserCreateInputSchema = Type.Object({ url: Type.Optional(Type.String()) });
+const browserNavigateInputSchema = Type.Object({ url: Type.String() });
 
 const browserCreateCommand: WorkspaceModuleCommandHandler<Static<typeof browserCreateInputSchema>> = {
   id: browserCreateCommandId,
@@ -83,9 +85,9 @@ export const browserWorkspaceModule: WorkspaceModule = {
 
 async function browserNavigateEndpoint(workspaceId: string, appKey: string, request: Request): Promise<Response> {
   const wantsJson = requestAcceptsJson(request);
-  const value = wantsJson ? (await readJsonObject(request)).url : (await request.formData()).get("url");
-  if (wantsJson && typeof value !== "string") throw invalidArguments("url is required");
-  const url = String(value ?? "");
+  const url = wantsJson
+    ? browserNavigateJsonUrl(await readJsonObject(request))
+    : String((await request.formData()).get("url") ?? "");
 
   const view = setWorkspaceBrowserTarget(workspaceId, appKey, url);
   if (!view) return wantsJson
@@ -94,4 +96,9 @@ async function browserNavigateEndpoint(workspaceId: string, appKey: string, requ
   return wantsJson
     ? Response.json({ view: { key: view.key, label: view.label, url: view.targetUrl } })
     : new Response(renderBrowserFrame(workspaceId, view), { headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
+function browserNavigateJsonUrl(input: JsonObject): string {
+  if (!Value.Check(browserNavigateInputSchema, input)) throw invalidArguments("url is required");
+  return input.url;
 }
