@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -33,5 +33,13 @@ describe("workspace egress proxy internals", () => {
 
     await forgetWorkspaceProxyAuthToken("ws1");
     await expect(authenticateProxyRequest(req as any)).rejects.toThrow("invalid proxy authentication");
+  });
+
+  test("rejects malformed persisted proxy credentials", async () => {
+    const proxyDir = join(dataDir, "proxy");
+    await mkdir(proxyDir, { recursive: true });
+    await writeFile(join(proxyDir, "workspace-auth.json"), JSON.stringify({ version: 1, workspaces: { ws1: { token: 42 } } }));
+
+    await expect(ensureWorkspaceProxyAuthToken("ws1")).rejects.toThrow();
   });
 });

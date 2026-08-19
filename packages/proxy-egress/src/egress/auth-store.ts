@@ -4,15 +4,21 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import type { IncomingMessage } from "node:http";
 import { dirname } from "node:path";
 import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext } from "@atelier/core";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 import { HttpRequestBlockedError } from "../secrets/errors.ts";
 
 const proxyAuthVersion = 1;
+const proxyAuthFileSchema = Type.Object({
+  version: Type.Literal(proxyAuthVersion),
+  workspaces: Type.Record(Type.String(), Type.Object({ token: Type.String() })),
+});
 const withProxyAuthFileLock = createProcessFileLock({
   label: "proxy auth",
   lockDir: () => `${proxyAuthFilePath()}.lock`,
 });
 
-type ProxyAuthFile = { version: number; workspaces: Record<string, { token: string }> };
+type ProxyAuthFile = Static<typeof proxyAuthFileSchema>;
 
 export async function ensureWorkspaceProxyAuthToken(workspaceId: string): Promise<string> {
   return await updateProxyAuthFile((file) => {
@@ -73,10 +79,7 @@ async function readProxyAuthFile(): Promise<ProxyAuthFile> {
 
 function readProxyAuthFileAt(path: string): ProxyAuthFile {
   if (!existsSync(path)) return { version: proxyAuthVersion, workspaces: {} };
-  const parsed = JSON.parse(readFileSync(path, "utf8")) as ProxyAuthFile;
-  if (parsed.version !== proxyAuthVersion) throw new Error(`unsupported proxy auth file version: ${parsed.version}`);
-  if (!parsed.workspaces || typeof parsed.workspaces !== "object" || Array.isArray(parsed.workspaces)) throw new Error("invalid proxy auth file: workspaces must be an object");
-  return parsed;
+  return Value.Parse(proxyAuthFileSchema, JSON.parse(readFileSync(path, "utf8")));
 }
 
 async function writeProxyAuthFileAt(path: string, file: ProxyAuthFile): Promise<void> {

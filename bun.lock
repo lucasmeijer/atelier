@@ -155,6 +155,7 @@
         "@atelier/projects": "workspace:*",
         "@atelier/shared": "workspace:*",
         "@atelier/workspace": "workspace:*",
+        "typebox": "^1.0.57",
       },
     },
     "packages/proxy-ingress": {
