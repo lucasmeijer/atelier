@@ -1388,16 +1388,16 @@ function createAgentTailFrameController(Controller: StimulusControllerConstructo
       return [...this.element.querySelectorAll<HTMLElement>(".agent-tail-output")];
     }
     prepare(event: Event): void {
-      const target = event.currentTarget as HTMLElement;
+      if (!(event.currentTarget instanceof HTMLAnchorElement)) throw new Error("Agent tail pagination action requires a link");
       const scrollers = this.scrollers();
-      const scroller = target.closest<HTMLElement>(".agent-tail-output") ?? scrollers[0];
-      if (!scroller) return;
+      const scroller = event.currentTarget.closest<HTMLElement>(".agent-tail-output");
+      if (!scroller) throw new Error("Agent tail pagination link requires an output container");
       const transcript = this.element.closest<HTMLElement>(".agent-transcript");
       this.previous = {
         scrollerIndex: scrollers.indexOf(scroller),
         height: scroller.scrollHeight,
         top: scroller.scrollTop,
-        tail: target.dataset.direction === "last",
+        tail: scroller.dataset.agentTailDirection === "last",
         checkedTabs: [...this.element.querySelectorAll<HTMLInputElement>(".agent-region-tabs input:checked, .agent-observed-tabs input:checked")].map((input) => input.id),
         transcript: transcript ? { element: transcript, top: transcript.scrollTop } : undefined,
       };
