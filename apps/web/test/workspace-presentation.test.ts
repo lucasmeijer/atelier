@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderWorkspacePane, renderWorkspacePresentation, workspacePresentationTurboStream, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
+import { removeWorkspaceResidentTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePresentationTurboStream, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 
 function fixture(overrides: Partial<WorkspacePresentation> = {}): WorkspacePresentation {
   return {
@@ -46,7 +46,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy"');
   });
 
-  test("shows only the workspace name in a single-conversation Agent header", () => {
+  test("shows the workspace name and delete action in a single-conversation Agent header", () => {
     const html = renderWorkspacePresentation(fixture({
       agentConversations: [{ id: "agent-a", title: "Agent", bodyHtml: "<p>Agent</p>" }],
     }));
@@ -54,6 +54,9 @@ describe("role-fixed Workspace presentation", () => {
 
     expect(header).toContain("Typed shell");
     expect(header).not.toContain("Atelier");
+    expect(header).toContain('class="fixed-shell-delete-workspace"');
+    expect(header).toContain('action="/workspaces/workspace-1/delete"');
+    expect(header).toContain('title="Delete workspace" aria-label="Delete workspace"');
   });
 
   test("keeps adapter HTML inside stable type-native live nodes", () => {
@@ -107,6 +110,10 @@ describe("role-fixed Workspace presentation", () => {
     expect(more).toContain('/commands/files.open');
     expect(more.indexOf('/commands/files.open')).toBeLessThan(more.indexOf("Open or create"));
     expect(more.indexOf('/commands/browser.create')).toBeGreaterThan(more.indexOf("Open or create"));
+  });
+
+  test("targets the deleted Workspace's resident presentation", () => {
+    expect(removeWorkspaceResidentTurboStream("workspace-1")).toBe('<turbo-stream action="remove-workspace-resident" target="fixed_workspace_workspace-1"></turbo-stream>');
   });
 
   test("renders transplant slots only for explicitly preserved live nodes", () => {

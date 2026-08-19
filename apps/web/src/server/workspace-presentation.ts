@@ -63,7 +63,7 @@ export interface WorkspacePresentation {
   preserveLiveKeys?: ReadonlySet<string>;
 }
 
-type IconName = "agent" | "browser" | "close" | "file" | "more" | "panel" | "settings" | "sidebar" | "terminal" | "workspace";
+type IconName = "agent" | "browser" | "close" | "file" | "more" | "panel" | "settings" | "sidebar" | "terminal" | "trash" | "workspace";
 
 function icon(name: IconName): string {
   const paths = {
@@ -76,6 +76,7 @@ function icon(name: IconName): string {
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>',
     sidebar: '<path d="M4 4h16v16H4zM9 4v16"/>',
     terminal: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
+    trash: '<path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/>',
     workspace: '<path d="M4 5h16v14H4zM8 9h8M8 13h5"/>',
   } as const;
   return `<svg aria-hidden="true" viewBox="0 0 24 24">${paths[name]}</svg>`;
@@ -129,8 +130,9 @@ function renderAgentPane(presentation: WorkspacePresentation): string {
     : `<div class="fixed-shell-workspace-title"><strong>${escapeHtml(presentation.workspace.title)}</strong></div>`;
   const panes = presentation.agentConversations.map((agent) => renderLiveNode(`agent:${agent.id}`, "agent", agent.id, agent.bodyHtml, presentation.preserveLiveKeys)).join("");
   const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button class="fixed-shell-icon-button" type="submit" aria-label="${escapeHtml(command.label)}">＋</button></form>`).join("");
+  const deleteWorkspace = `<form class="fixed-shell-delete-workspace" data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/delete"><button class="fixed-shell-icon-button" type="submit" title="Delete workspace" aria-label="Delete workspace">${icon("trash")}</button></form>`;
   return `<section class="fixed-shell-agent-pane" data-workspace-role-region="agent" data-workspace-presentation-target="agentPane" aria-label="Agent">
-    <header>${title}${agentActions}${button("Open Work pane", "click->workspace-presentation#toggleWorkPane", "panel", 'data-collapsed-pane-toggle="work"')}</header>
+    <header>${title}${agentActions}${deleteWorkspace}${button("Open Work pane", "click->workspace-presentation#toggleWorkPane", "panel", 'data-collapsed-pane-toggle="work"')}</header>
     <div class="fixed-shell-agent-bodies">${panes}</div>
   </section>`;
 }
@@ -213,6 +215,10 @@ export function renderWorkspacePresentation(presentation: WorkspacePresentation)
 
 export function workspacePresentationTurboStream(workspaceId: string, presentation: WorkspacePresentation): string {
   return `<turbo-stream action="replace-workspace-presentation" target="${escapeHtml(domId("fixed_workspace", workspaceId))}"><template>${renderWorkspacePresentation(presentation)}</template></turbo-stream>`;
+}
+
+export function removeWorkspaceResidentTurboStream(workspaceId: string): string {
+  return `<turbo-stream action="remove-workspace-resident" target="${escapeHtml(domId("fixed_workspace", workspaceId))}"></turbo-stream>`;
 }
 
 export function workspacePaneCollectionsTurboStream(presentation: WorkspacePanePresentation): string {

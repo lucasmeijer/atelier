@@ -419,6 +419,8 @@ a.btn { text-decoration: none; }
 .fixed-shell-main { min-width: 0; min-height: 0; flex: 1; display: flex; }
 .fixed-shell-agent-pane { min-width: 380px; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; background: var(--fixed-shell-bg); }
 .fixed-shell-agent-pane > header { justify-content: space-between; }
+.fixed-shell-delete-workspace { display: flex; margin: 0; }
+.fixed-shell-delete-workspace .fixed-shell-icon-button:hover { background: var(--red-soft); color: var(--red); }
 .fixed-shell-workspace-title { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 8px; }
 .fixed-shell-workspace-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fixed-shell-workspace-title small { color: var(--fixed-shell-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

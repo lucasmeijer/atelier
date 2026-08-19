@@ -1,6 +1,6 @@
 import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { isJsonObject, shellQuote, type AtelierEventBus, type JsonObject } from "@atelier/core";
+import { AtelierCoreError, isJsonObject, shellQuote, type AtelierEventBus, type JsonObject } from "@atelier/core";
 import { StreamingMarkdownRenderer } from "@atelier/markdown";
 import { execWorkspaceCommand, workspaceRoot } from "@atelier/workspace";
 import { createPiModelRuntime, getConfiguredAgentModels, getModelThinkingLevel } from "./pi-config-models.ts";
@@ -110,6 +110,7 @@ interface WorkspaceAgentRuntime {
 
 const runtimes = new Map<string, Promise<WorkspaceAgentRuntime>>();
 const readyRuntimeKeys = new Set<string>();
+const removedWorkspaceIds = new Set<string>();
 
 function runtimeKey(workspaceId: string, label: string): string {
   return `${workspaceId}\u0000${label}`;
@@ -123,7 +124,19 @@ export function isWorkspaceAgentRuntimeReady(agent: WorkspaceAgentInfo): boolean
   return readyRuntimeKeys.has(runtimeKey(agent.workspaceId, agent.label));
 }
 
+export async function removeWorkspaceAgentRuntimes(workspaceId: string): Promise<void> {
+  removedWorkspaceIds.add(workspaceId);
+  const matching = [...runtimes.entries()].filter(([key]) => key.startsWith(`${workspaceId}\u0000`));
+  for (const [key] of matching) {
+    runtimes.delete(key);
+    readyRuntimeKeys.delete(key);
+  }
+  const settled = await Promise.allSettled(matching.map(([, runtime]) => runtime));
+  await Promise.all(settled.flatMap((result) => result.status === "fulfilled" ? [result.value.abort()] : []));
+}
+
 export function getWorkspaceAgentRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
+  if (removedWorkspaceIds.has(agent.workspaceId)) throw new AtelierCoreError("workspace_not_found", `workspace not found: ${agent.workspaceId}`);
   const key = runtimeKey(agent.workspaceId, agent.label);
   let runtime = runtimes.get(key);
   if (!runtime) {

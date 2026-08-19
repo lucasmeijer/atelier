@@ -13,6 +13,7 @@ export {
 } from "./session-store.ts";
 export {
   getWorkspaceAgentRuntime,
+  removeWorkspaceAgentRuntimes,
   subscribeWorkspaceViewBusy,
 } from "./runtime.ts";
 export {

@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "bun:test";
-import { contextUsagePercent, discardBootstrapOnlySession } from "../../src/server/runtime.ts";
+import { contextUsagePercent, discardBootstrapOnlySession, getWorkspaceAgentRuntime, removeWorkspaceAgentRuntimes } from "../../src/server/runtime.ts";
 
 let dir: string | undefined;
 
@@ -22,6 +22,12 @@ describe("contextUsagePercent", () => {
     expect(contextUsagePercent(undefined, undefined, 128_000)).toBeNull();
     expect(contextUsagePercent(12.5, 8_000, 128_000)).toBe(12.5);
   });
+});
+
+test("removed Workspace runtimes cannot be recreated by stale Agent requests", async () => {
+  await removeWorkspaceAgentRuntimes("removed-runtime-test");
+
+  expect(() => getWorkspaceAgentRuntime({ workspaceId: "removed-runtime-test", conversationId: "conversation", label: "Agent 1", title: "Agent", path: "/tmp/removed-session.jsonl" })).toThrow("workspace not found");
 });
 
 describe("runtime session persistence", () => {

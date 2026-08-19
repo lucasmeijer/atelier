@@ -6,7 +6,7 @@ import {
   registerWorkspaceAgentTool,
 } from "./tools.ts";
 import { createAgentTermSocketSession } from "./bash-tmux.ts";
-import { getWorkspaceAgentRuntime, isWorkspaceAgentRuntimeReady, subscribeWorkspaceViewBusy } from "./runtime.ts";
+import { getWorkspaceAgentRuntime, isWorkspaceAgentRuntimeReady, removeWorkspaceAgentRuntimes, subscribeWorkspaceViewBusy } from "./runtime.ts";
 import { handleAgentRequest, registerAgentEvents, resolveWorkspacePortProxyTarget, workspaceFileEndpoint } from "./routes.ts";
 import { createNextWorkspaceAgent, ensureDefaultWorkspaceAgent, listWorkspaceAgents, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentInfo } from "./session-store.ts";
 import { agentConversationKey, renderAgentPane, renderPendingAgentPane } from "./render.ts";
@@ -127,6 +127,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
       },
     });
     subscribeWorkspaceViewBusy(({ workspaceId, viewKey, busy }) => context.registry.setViewBusy(workspaceId, viewKey, busy));
+    context.onWorkspaceRemoved(removeWorkspaceAgentRuntimes);
     registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force)));
     registerWorkspaceAgentTool("create_workspace", (workspaceId) => createWorkspaceTool((request) => context.createWorkspaceFromAgent(workspaceId, request)));
     // Temporarily keep workspace forking unavailable to agents; they invoke it too readily.

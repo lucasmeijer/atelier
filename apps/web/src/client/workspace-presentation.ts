@@ -433,6 +433,13 @@ export function createWorkspacePresentationController(
 }
 
 export function installWorkspacePresentationTurboStream(Turbo: TurboLike, application: PresentationApplication): void {
+  Turbo.StreamActions["remove-workspace-resident"] = function removeWorkspaceResident(this: StreamElement): void {
+    for (const target of this.targetElements) {
+      const resident = target.closest<HTMLElement>(".workspace-detail-resident[data-workspace-id]");
+      const workspaceId = resident?.dataset.workspaceId;
+      if (workspaceId) document.dispatchEvent(new CustomEvent("atelier:workspace-removed", { detail: { workspaceId } }));
+    }
+  };
   Turbo.StreamActions["replace-workspace-pane-collections"] = function replaceWorkspacePaneCollections(this: StreamElement): void {
     for (const target of this.targetElements) {
       const replacement = this.templateContent.firstElementChild?.cloneNode(true);

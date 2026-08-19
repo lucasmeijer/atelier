@@ -556,7 +556,9 @@ class AtelierShortcutsController extends Controller {
   private visibleWorkspaceDeleteForm(): HTMLFormElement | null {
     const workspaceId = this.visibleWorkspaceId();
     if (!workspaceId) return null;
-    return document.querySelector<HTMLFormElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"] form.workspace-row-delete[action$="/delete"]`);
+    const action = `/workspaces/${CSS.escape(workspaceId)}/delete`;
+    return document.querySelector<HTMLFormElement>(`.workspace-detail-resident.visible form.fixed-shell-delete-workspace[action="${action}"]`)
+      ?? document.querySelector<HTMLFormElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"] form.workspace-row-delete[action$="/delete"]`);
   }
 
   private deleteVisibleWorkspace(): void {
@@ -1148,6 +1150,7 @@ class WorkspaceResidencyController extends Controller {
 
   connect(): void {
     document.addEventListener("visibilitychange", this.visibilityChanged);
+    document.addEventListener("atelier:workspace-removed", this.workspaceRemoved);
     window.addEventListener("pagehide", this.pageHidden);
     const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
     const visibleResident = this.residentTargets.find((resident) => resident.classList.contains("visible"))
@@ -1158,6 +1161,7 @@ class WorkspaceResidencyController extends Controller {
 
   disconnect(): void {
     document.removeEventListener("visibilitychange", this.visibilityChanged);
+    document.removeEventListener("atelier:workspace-removed", this.workspaceRemoved);
     window.removeEventListener("pagehide", this.pageHidden);
   }
 
@@ -1209,8 +1213,17 @@ class WorkspaceResidencyController extends Controller {
     if (!resident) return;
     const wasVisible = resident.classList.contains("visible");
     resident.remove();
-    if (wasVisible) this.showEmpty();
+    if (wasVisible) {
+      if (location.pathname === `/workspaces/${encodeURIComponent(workspaceId)}`) history.replaceState({}, "", "/");
+      this.showEmpty();
+    }
   }
+
+  private readonly workspaceRemoved = (event: Event): void => {
+    // SAFETY: remove-workspace-resident streams construct this event detail.
+    const { workspaceId } = (event as CustomEvent<{ workspaceId: string }>).detail;
+    this.removeWorkspace(workspaceId);
+  };
 
   visibleWorkspaceId(): string | undefined {
     return this.residentTargets.find((resident) => resident.classList.contains("visible"))?.dataset.workspaceId;

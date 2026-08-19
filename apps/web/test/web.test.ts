@@ -757,6 +757,7 @@ describe("web app contracts", () => {
     expect(response.status).toBe(200);
     expect(registry.get("abc")?.phase).toBe("deleting");
     expect(broadcasts.some((html) => html.includes('data-phase="deleting"'))).toBe(true);
+    expect(broadcasts).toContain('<turbo-stream action="remove-workspace-resident" target="fixed_workspace_abc"></turbo-stream>');
 
     destroy.resolve();
     await Bun.sleep(20);

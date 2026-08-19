@@ -125,6 +125,28 @@ describe("Atelier Playwright helper", () => {
   });
 
 
+  test("removes a deleted Workspace resident so its Agent can no longer be used", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "deleted-demo", title: "Delete me" },
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<textarea data-agent-input></textarea>' }],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "deleted-demo", title: "Delete me" }] };
+    const page = await browser.newPage();
+    await page.route("http://atelier.test/workspaces/deleted-demo", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.goto("http://atelier.test/workspaces/deleted-demo");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+
+    await page.evaluate(() => window.Turbo!.renderStreamMessage('<turbo-stream action="remove-workspace-resident" target="fixed_workspace_deleted-demo"></turbo-stream>'));
+
+    await page.waitForFunction(() => !document.querySelector("[data-agent-input]"));
+    expect(await page.locator("[data-agent-input]").count()).toBe(0);
+    expect(await page.locator("[data-workspace-residency-target='empty']").getAttribute("hidden")).toBeNull();
+    expect(new URL(page.url()).pathname).toBe("/");
+    await page.close();
+  });
+
   test("keeps live Agent and Work nodes mounted while restoring personal navigation", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "fixed-demo", title: "Fixed shell" },

@@ -81,7 +81,7 @@ import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { removeWorkspaceResidentTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 
 const jsonStringSchema = Type.String();
 
@@ -395,6 +395,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   registry.setCallbacks({
     rowChanged(entry, { viewKey }) {
+      if (entry.phase === "deleting") broadcastShell(removeWorkspaceResidentTurboStream(entry.id));
       if (viewKey !== undefined) {
         // Status changes replace only the status spans so they cannot clobber an
         // in-progress title edit in the row.
