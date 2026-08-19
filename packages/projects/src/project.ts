@@ -152,7 +152,7 @@ export async function readProjectStore(file: string): Promise<ProjectStore> {
   try {
     return Value.Parse(projectStoreSchema, JSON.parse(await readFile(file, "utf8")));
   } catch (error) {
-    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
     if (code === "ENOENT") return { projects: [] };
     throw error;
   }
