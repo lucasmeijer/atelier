@@ -239,10 +239,13 @@ async function handleProxyHttp(workspaceId: string, req: IncomingMessage, res: S
 
   const method = (req.method || "GET").toUpperCase();
   const canHaveBody = !["GET", "HEAD"].includes(method);
+  // SAFETY: Readable.toWeb returns a WHATWG ReadableStream at runtime. Node's
+  // declaration differs from the DOM declaration only in overloads; Bun accepts it as BodyInit.
+  const body = canHaveBody ? Readable.toWeb(req) as any : undefined;
   const requestInit: RequestInit & { duplex?: "half" } = {
     method: req.method,
     headers: incomingHeaders(req),
-    body: canHaveBody ? Readable.toWeb(req) as any : undefined,
+    body,
   };
   if (canHaveBody) requestInit.duplex = "half";
   const request = new Request(parsed.toString(), requestInit);
