@@ -82,7 +82,8 @@ function carrierLabels(key: string, baseIdentity: string, platform: string, prel
 async function validCarrier(ref: string, labels: Record<string, string>): Promise<boolean> {
   const result = await runDocker(["image", "inspect", "--format", "{{json .Config.Labels}}", ref]);
   if (result.exitCode !== 0) return false;
-  const actual = JSON.parse(result.stdout.trim() || "{}") as Record<string, string>;
+  const actual: unknown = JSON.parse(result.stdout.trim() || "{}");
+  if (!isJsonObject(actual)) return false;
   return Object.entries(labels).every(([key, value]) => actual[key] === value);
 }
 
