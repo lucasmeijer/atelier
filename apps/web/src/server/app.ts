@@ -1545,7 +1545,7 @@ ${moduleStylesHtml()}
         try { input = JSON.parse(text); } catch { throw invalidArguments("valid JSON command input is required"); }
       }
     }
-    if (!input || typeof input !== "object" || Array.isArray(input)) throw invalidArguments("JSON command input must be an object");
+    if (!isJsonObject(input)) throw invalidArguments("JSON command input must be an object");
     const schema = command.inputSchema ?? emptyWorkspaceCommandInputSchema;
     // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
     if (!Value.Check(schema as never, input)) {
