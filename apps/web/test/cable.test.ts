@@ -60,7 +60,7 @@ describe("cable server", () => {
 
     cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
     await Bun.sleep(0);
-    cable.close(ws as never);
+    cable.close(ws);
     expect(cable.stats().sockets).toBe(0);
     expect(cable.stats().subscriptions).toEqual({});
   });
