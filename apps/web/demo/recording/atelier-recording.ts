@@ -178,7 +178,6 @@ export async function createAtelierRecording(options: AtelierRecordingOptions): 
 			await delay(afterMs);
 		},
 		async humanType(locator, text, actionOptions = {}) {
-			if (typeof text !== "string") throw new Error("humanType text must be a string");
 			const beforeMs = actionOptions.beforeMs ?? timings.beforeTypeMs;
 			const keyDelayMs = actionOptions.keyDelayMs ?? timings.keyDelayMs;
 			const afterMs = actionOptions.afterMs ?? timings.afterTypeMs;
