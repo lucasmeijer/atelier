@@ -7,14 +7,9 @@ import {
 } from "@atelier/core";
 import type { AtelierRuntimeContext } from "@atelier/core";
 import type { WorkspaceModule } from "@atelier/shared";
-import type { WorkspaceDockerMount } from "../types.ts";
 
 const docsSourceUrl = new URL("../../../../docs/deploy-in-workspace/", import.meta.url);
 const docsMountPath = "/opt/atelier/docs";
-
-type WorkspacePlanEvents = {
-  on(eventName: "workspace_plan_prepare", handler: (event: { plan: { mounts: WorkspaceDockerMount[] } }) => void | Promise<void>): void;
-};
 
 async function installReadOnlyFile(sourceUrl: URL, destinationPath: string): Promise<void> {
   await mkdir(dirname(destinationPath), { recursive: true });
@@ -38,7 +33,7 @@ export const workspaceDocsModule: WorkspaceModule = {
   id: "workspace-docs",
   async initialize({ events }) {
     const docs = await syncAtelierDocs();
-    (events as WorkspacePlanEvents).on("workspace_plan_prepare", ({ plan }) => {
+    events.on("workspace_plan_prepare", ({ plan }) => {
       if (plan.mounts.some((mount) => mount.target === docsMountPath)) return;
       plan.mounts.push({
         type: "bind",
