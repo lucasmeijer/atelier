@@ -49,6 +49,17 @@ const environmentVariableResponseSchema = Type.Object({
     value: Type.String(),
   }),
 });
+const projectSecretResponseSchema = Type.Object({
+  secret: Type.Object({
+    id: Type.String(),
+    projectId: Type.String(),
+    envName: Type.String(),
+    hostPattern: Type.String(),
+    placeholder: Type.Optional(Type.String()),
+    createdAt: Type.String(),
+    updatedAt: Type.String(),
+  }, { additionalProperties: false }),
+}, { additionalProperties: false });
 
 interface TestAppOptions {
   provision?: (id: string, options?: ProvisionWorkspaceOptions) => Promise<void>;
@@ -367,7 +378,7 @@ describe("web app contracts", () => {
         envName: "POETRY_API_KEY", hostPattern: "api.poetry.example", placeholder: "", secretValue: sensitive,
       }));
       const secretText = await secretResponse.text();
-      const secretCreated = JSON.parse(secretText) as { secret: { id: string; envName: string } };
+      const secretCreated = Value.Parse(projectSecretResponseSchema, JSON.parse(secretText));
       expect(secretText).not.toContain(sensitive);
       expect(secretCreated.secret).not.toHaveProperty("secretValue");
 
