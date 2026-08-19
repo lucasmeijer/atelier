@@ -30,6 +30,12 @@ const workspaceCreatedResponseSchema = Type.Object({
     phase: Type.Literal("starting"),
   }),
 });
+const workspaceStatusResponseSchema = Type.Object({
+  workspace: Type.Object({
+    title: Type.String(),
+    phase: Type.String(),
+  }),
+});
 
 interface TestAppOptions {
   provision?: (id: string, options?: ProvisionWorkspaceOptions) => Promise<void>;
@@ -277,7 +283,7 @@ describe("web app contracts", () => {
     const response = await app.fetch(postJson("/workspaces", { title: "Evaluation" }));
     const body = Value.Parse(workspaceCreatedResponseSchema, await response.json());
     const status = await app.fetch(new Request(`http://test.local/workspaces/${body.workspace.id}`, { headers: { accept: "application/json" } }));
-    const statusBody = await status.json() as { workspace: { title: string; phase: string } };
+    const statusBody = Value.Parse(workspaceStatusResponseSchema, await status.json());
 
     expect(response.status).toBe(202);
     expect(response.headers.get("content-type")).toContain("application/json");
