@@ -98,7 +98,7 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
     }
 
     preserveSelection(event: MouseEvent): void {
-      if (event.button === 0 && (event.target as Element).closest(".files-row-name > a")) event.preventDefault();
+      if (event.button === 0 && event.target instanceof Element && event.target.closest(".files-row-name > a")) event.preventDefault();
     }
 
     selectOrOpen(event: StimulusActionEvent<MouseEvent, HTMLElement>): void {
