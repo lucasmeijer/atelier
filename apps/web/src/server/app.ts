@@ -489,7 +489,7 @@ ${moduleStylesHtml()}
 
   async function launchAgentWorkspaceFrame(options: { titleHtml: string; action: string }): Promise<string> {
     const draftId = crypto.randomUUID();
-    return `<turbo-frame id="${agentLaunchModalFrameId}"><dialog class="agent-launch-modal" data-controller="agent-launch-dialog submit-shortcut" data-agent-launch-dialog-discard-url-value="/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard">
+    return `<turbo-frame id="${agentLaunchModalFrameId}"><dialog class="agent-launch-modal" data-controller="agent-launch-dialog" data-agent-launch-dialog-discard-url-value="/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard">
   <div class="agent-launch-title">${options.titleHtml}</div>
   ${await renderAgentComposer({
     action: options.action,
@@ -500,6 +500,7 @@ ${moduleStylesHtml()}
     submitLabel: "Create workspace",
     submitShortcut: "⌘↩",
     rows: 8,
+    formControllers: ["submit-shortcut"],
     formActions: "keydown->submit-shortcut#keydown submit->submit-shortcut#submit turbo:submit-end->submit-shortcut#submitted",
     formTurbo: true,
     launchSettings: { frameId: agentLaunchSettingsFrameId, url: "/agent-launch/settings" },

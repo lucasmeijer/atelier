@@ -212,6 +212,7 @@ interface AgentComposerRenderOptions {
   submitShortcut?: string;
   formId?: string;
   rows?: number;
+  formControllers?: string[];
   formActions?: string;
   formTurbo?: boolean;
   launchSettings?: { frameId: string; url: string };
@@ -239,6 +240,7 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
     ? `<span id="${ids.actions(options.ctx)}">${renderPromptActions(options.ctx, Boolean(options.busy))}</span>`
     : `<button class="agent-btn primary" type="submit" name="mode" value="send">${escapeHtml(options.submitLabel ?? "Send")}${shortcut}</button>`;
   const formId = options.formId ?? `agent_composer_${draftId}`;
+  const formControllerAttrs = options.formControllers?.length ? ` data-controller="${escapeHtml(options.formControllers.join(" "))}"` : "";
   const statbar = options.stats && options.ctx
     ? `<div class="agent-statbar" id="${ids.stats(options.ctx)}">${renderStatsBar(options.ctx, options.stats)}</div>`
     : `<div class="agent-statbar">${await renderAgentLaunchSettings({ ...options.launchSettings!, formId })}</div>`;
@@ -257,7 +259,7 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
   return `<div class="agent-promptwrap"${promptAttrs ? ` ${promptAttrs}` : ""}>
         ${composerOverlays ? `<div class="agent-composer-overlays">${composerOverlays}</div>` : ""}
         <div class="agent-promptbox">
-          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
+          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${formControllerAttrs}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
             <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row"></div>
             <textarea class="agent-input" name="text" rows="${options.rows ?? 2}" placeholder="${escapeHtml(options.placeholder)}" aria-label="${escapeHtml(options.placeholder)}"${inputTarget ? ` ${inputTarget}` : ""}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>

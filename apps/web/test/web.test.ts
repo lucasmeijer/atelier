@@ -36,6 +36,12 @@ const workspaceStatusResponseSchema = Type.Object({
     phase: Type.String(),
   }),
 });
+const projectCreatedResponseSchema = Type.Object({
+  project: Type.Object({
+    id: Type.String(),
+    name: Type.String(),
+  }),
+});
 
 interface TestAppOptions {
   provision?: (id: string, options?: ProvisionWorkspaceOptions) => Promise<void>;
@@ -327,8 +333,7 @@ describe("web app contracts", () => {
       const specification = "https://github.com/org/json-project.git#main";
 
       const createdResponse = await app.fetch(postJson("/projects", { gitUrl: specification }));
-      const createdText = await createdResponse.text();
-      const created = JSON.parse(createdText) as { project: { id: string; name: string } };
+      const created = Value.Parse(projectCreatedResponseSchema, await createdResponse.json());
       const repeated = await (await app.fetch(postJson("/projects", { gitUrl: specification }))).json() as typeof created;
       expect(createdResponse.status).toBe(200);
       expect(repeated.project.id).toBe(created.project.id);
@@ -507,7 +512,8 @@ describe("web app contracts", () => {
       const secondDraft = second.match(/name="attachmentDraft" value="([^"]+)"/)?.[1];
 
       expect(first).toContain('<turbo-frame id="agent_launch_modal">');
-      expect(first).toContain('data-controller="agent-launch-dialog submit-shortcut"');
+      expect(first).toContain('data-controller="agent-launch-dialog"');
+      expect(first).toContain('data-controller="submit-shortcut"');
       expect(first).toContain('<turbo-frame id="agent_launch_settings">');
       expect(first).toContain(`action="/project-agent-workspaces/${project.id}"`);
       expect(first).toContain('aria-label="Describe what you want the agent to do… (optional)"');

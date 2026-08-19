@@ -1320,13 +1320,14 @@ function submitFormWithFirstButton(form: HTMLFormElement): void {
 }
 
 class SubmitShortcutController extends Controller {
+  declare readonly element: HTMLFormElement;
   private submitting = false;
 
   keydown(event: KeyboardEvent): void {
     if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
     event.preventDefault();
     if (this.submitting) return;
-    submitFormWithFirstButton(event.currentTarget as HTMLFormElement);
+    submitFormWithFirstButton(this.element);
   }
 
   submit(event: SubmitEvent): void {
