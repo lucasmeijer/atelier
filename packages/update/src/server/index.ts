@@ -215,7 +215,7 @@ async function checkUpdaterPortAvailable(): Promise<void> {
     const server = Bun.serve({ hostname: "127.0.0.1", port: updaterPort, fetch: () => new Response("ok") });
     server.stop(true);
   } catch (error) {
-    const code = error instanceof Error ? (error as Error & { code?: unknown }).code : undefined;
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
     if (code === "EADDRINUSE") throw new Error(`Update helper port ${updaterPort} is already in use on 127.0.0.1. Stop the process using 127.0.0.1:${updaterPort} and retry the update.`);
     throw error;
   }
