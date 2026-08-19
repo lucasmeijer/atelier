@@ -29,10 +29,10 @@ describe("workspace egress proxy internals", () => {
     expect(await ensureWorkspaceProxyAuthToken("ws1")).toBe(token);
 
     const req = { headers: { "proxy-authorization": `Basic ${Buffer.from(`ws1:${token}`).toString("base64")}` } };
-    expect(await authenticateProxyRequest(req as any)).toBe("ws1");
+    expect(await authenticateProxyRequest(req)).toBe("ws1");
 
     await forgetWorkspaceProxyAuthToken("ws1");
-    await expect(authenticateProxyRequest(req as any)).rejects.toThrow("invalid proxy authentication");
+    await expect(authenticateProxyRequest(req)).rejects.toThrow("invalid proxy authentication");
   });
 
   test("rejects malformed persisted proxy credentials", async () => {

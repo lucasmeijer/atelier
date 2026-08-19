@@ -1,7 +1,6 @@
 import { timingSafeEqual as nodeTimingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
-import type { IncomingMessage } from "node:http";
 import { dirname } from "node:path";
 import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext } from "@atelier/core";
 import { Type, type Static } from "typebox";
@@ -20,6 +19,12 @@ const withProxyAuthFileLock = createProcessFileLock({
 
 type ProxyAuthFile = Static<typeof proxyAuthFileSchema>;
 
+interface ProxyAuthRequest {
+  readonly headers: {
+    readonly "proxy-authorization"?: string | string[];
+  };
+}
+
 export async function ensureWorkspaceProxyAuthToken(workspaceId: string): Promise<string> {
   return await updateProxyAuthFile((file) => {
     const existing = file.workspaces[workspaceId]?.token;
@@ -36,7 +41,7 @@ export async function forgetWorkspaceProxyAuthToken(workspaceId: string): Promis
   });
 }
 
-export async function authenticateProxyRequest(req: IncomingMessage): Promise<string> {
+export async function authenticateProxyRequest(req: ProxyAuthRequest): Promise<string> {
   const header = req.headers["proxy-authorization"];
   const value = Array.isArray(header) ? header[0] : header;
   const credentials = decodeProxyBasicAuth(value ?? "");
