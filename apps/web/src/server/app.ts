@@ -1328,7 +1328,7 @@ ${moduleStylesHtml()}
   function optionalJsonString(body: JsonObject, field: string): string | undefined {
     const value = body[field];
     if (value === undefined) return undefined;
-    if (typeof value !== "string") throw invalidArguments(`${field} must be a string`);
+    if (!Value.Check(jsonStringSchema, value)) throw invalidArguments(`${field} must be a string`);
     return value;
   }
 
