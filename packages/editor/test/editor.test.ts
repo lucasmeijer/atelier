@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
-import { atelierServerModule } from "../src/server/index.ts";
+import { atelierServerModule, initializeEditorWorkspaceIntegration } from "../src/server/index.ts";
 import { renderFileEditorTab } from "../src/server/render.ts";
 import { deleteWorkspaceFileEditorState, fileEditorTabLabels, openWorkspaceFileEditorTab } from "../src/server/state.ts";
 
@@ -8,11 +8,11 @@ describe("editor workspace integration", () => {
   test("asks open editors to check disk only when an agent turn finishes", async () => {
     const events = createAtelierEventBus();
     const broadcasts: string[] = [];
-    await atelierServerModule.initialize!({
+    initializeEditorWorkspaceIntegration({
       events,
       broadcastWorkspace: (_workspaceId: string, html: string) => broadcasts.push(html),
       onWorkspaceRemoved: () => {},
-    } as never);
+    });
     openWorkspaceFileEditorTab("workspace-1", "/work/example.ts");
     expect(broadcasts).toHaveLength(0);
     await events.emit("workspace_agent_turn_finished", { workspaceId: "workspace-1", agentLabel: "Agent 1" });

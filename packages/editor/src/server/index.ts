@@ -19,6 +19,20 @@ function jsonResponse<Body extends object>(value: Body, status = 200): Response 
   return Response.json(value, { status, headers: { "cache-control": "no-store" } });
 }
 
+interface EditorWorkspaceIntegration {
+  events: AtelierEventBus;
+  broadcastWorkspace(workspaceId: string, html: string): void;
+  onWorkspaceRemoved(handler: (workspaceId: string) => void | Promise<void>): void;
+}
+
+function initializeEditorWorkspaceIntegration(context: EditorWorkspaceIntegration): void {
+  context.events.on("workspace_agent_turn_finished", ({ workspaceId }) => {
+    if (listWorkspaceFileEditorTabs(workspaceId).length === 0) return;
+    context.broadcastWorkspace(workspaceId, turboStream("replace", fileEditorSignalId(workspaceId), renderFileEditorSignal(workspaceId)));
+  });
+  context.onWorkspaceRemoved((workspaceId) => deleteWorkspaceFileEditorState(workspaceId));
+}
+
 function positiveInteger(value: string | null): number | undefined {
   if (!value) return undefined;
   const parsed = Number(value);
@@ -76,12 +90,11 @@ const editorWorkspaceModule: WorkspaceModule = {
     },
   }],
   initialize(context) {
-    const events = context.events as AtelierEventBus;
-    events.on("workspace_agent_turn_finished", ({ workspaceId }) => {
-      if (listWorkspaceFileEditorTabs(workspaceId).length === 0) return;
-      context.broadcastWorkspace(workspaceId, turboStream("replace", fileEditorSignalId(workspaceId), renderFileEditorSignal(workspaceId)));
+    initializeEditorWorkspaceIntegration({
+      events: context.events as AtelierEventBus,
+      broadcastWorkspace: context.broadcastWorkspace,
+      onWorkspaceRemoved: context.onWorkspaceRemoved,
     });
-    context.onWorkspaceRemoved((workspaceId) => deleteWorkspaceFileEditorState(workspaceId));
   },
   tabs: [{
     owns: (tabKey) => tabKey.startsWith("file-editor:"),
@@ -97,4 +110,4 @@ const editorWorkspaceModule: WorkspaceModule = {
   },
 };
 
-export { maxEditableFileBytes, editorWorkspaceModule as atelierServerModule };
+export { initializeEditorWorkspaceIntegration, maxEditableFileBytes, editorWorkspaceModule as atelierServerModule };
