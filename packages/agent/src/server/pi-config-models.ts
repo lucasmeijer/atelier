@@ -5,6 +5,8 @@ import type { AgentServiceTier } from "@atelier/shared";
 import type { AuthInteraction, AuthPrompt } from "@earendil-works/pi-ai";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
 /** The configured list of models offered in the agent model picker. */
 export interface ConfiguredAgentModel {
@@ -16,6 +18,7 @@ export interface ConfiguredAgentModel {
 
 interface ModelPreference { thinkingLevel?: string }
 interface ProviderPreference { serviceTier?: AgentServiceTier }
+const modelPreferenceSchema = Type.Object({ thinkingLevel: Type.Optional(Type.String()) });
 interface AgentModelsSettings {
   providers?: JsonObject;
   picker?: Array<{ provider?: unknown; id?: unknown; label?: unknown }>;
@@ -39,8 +42,8 @@ async function getAgentModelsSettings(path = piModelsJsonPath()): Promise<AgentM
       ? { provider: parsed.activeModel.provider, id: parsed.activeModel.id }
       : undefined;
     const modelPreferences = isJsonObject(parsed.modelPreferences)
-      ? Object.fromEntries(Object.entries(parsed.modelPreferences).flatMap(([key, preference]) => isJsonObject(preference)
-        ? [[key, { thinkingLevel: typeof preference.thinkingLevel === "string" ? preference.thinkingLevel : undefined }]]
+      ? Object.fromEntries(Object.entries(parsed.modelPreferences).flatMap(([key, preference]) => Value.Check(modelPreferenceSchema, preference)
+        ? [[key, preference]]
         : []))
       : undefined;
     const providerPreferences = isJsonObject(parsed.providerPreferences)
