@@ -991,7 +991,13 @@ function partialStringField(stream: string, key: string): string | undefined {
     else if (char === "\\\\") escaped = true;
   }
   if (raw.endsWith("\\\\")) raw = raw.slice(0, -1);
-  try { return JSON.parse(`"${raw}"`) as string; } catch { return raw.replaceAll("\\n", "\n").replaceAll('\\"', '"'); }
+  try {
+    const decoded: unknown = JSON.parse(`"${raw}"`);
+    if (typeof decoded === "string") return decoded;
+  } catch {
+    // The streamed field may end mid-escape, so retain the best-effort fallback.
+  }
+  return raw.replaceAll("\\n", "\n").replaceAll('\\"', '"');
 }
 
 type StreamedToolArgs = JsonValue | { command: string } | { path?: string; content?: string };
