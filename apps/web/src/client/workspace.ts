@@ -184,6 +184,13 @@ type WorkspaceLayoutStreamElement = HTMLElement & {
   readonly templateContent: DocumentFragment;
 };
 
+function isWorkspaceLayoutStreamElement(value: unknown): value is WorkspaceLayoutStreamElement {
+  if (!(value instanceof HTMLElement) || !("targetElements" in value) || !Array.isArray(value.targetElements)) return false;
+  return value.targetElements.every((target) => target instanceof HTMLElement)
+    && "templateContent" in value
+    && value.templateContent instanceof DocumentFragment;
+}
+
 function movePaneBefore(parent: ParentNode, pane: HTMLElement, reference: Node): void {
   if (parent.moveBefore) parent.moveBefore(pane, reference);
   else parent.insertBefore(pane, reference);
@@ -192,8 +199,8 @@ function movePaneBefore(parent: ParentNode, pane: HTMLElement, reference: Node):
 async function performWorkspaceLayoutReplacement(stream: WorkspaceLayoutStreamElement): Promise<void> {
   const before = visiblePanes(document);
   const replacements = stream.targetElements.map((target) => {
-    const replacement = stream.templateContent.firstElementChild as HTMLElement | null;
-    if (!replacement) throw new Error("workspace layout stream is missing its replacement");
+    const replacement = stream.templateContent.firstElementChild;
+    if (!(replacement instanceof HTMLElement)) throw new Error("workspace layout stream is missing an HTML replacement");
     const livePanes = new Map([...target.querySelectorAll<HTMLElement>(".tab-pane[data-tab-pane]")].map((pane) => [pane.dataset.tabPane!, pane]));
     for (const slot of replacement.querySelectorAll<HTMLElement>("[data-workspace-pane-slot]")) {
       const key = slot.dataset.workspacePaneSlot!;
@@ -233,7 +240,8 @@ async function performWorkspaceLayoutReplacement(stream: WorkspaceLayoutStreamEl
 
 let workspaceLayoutRenderQueue = Promise.resolve();
 
-function replaceWorkspaceLayout(this: WorkspaceLayoutStreamElement): Promise<void> {
+function replaceWorkspaceLayout(this: unknown): Promise<void> {
+  if (!isWorkspaceLayoutStreamElement(this)) throw new TypeError("Turbo workspace layout action requires a stream element");
   const render = workspaceLayoutRenderQueue.then(
     () => performWorkspaceLayoutReplacement(this),
     () => performWorkspaceLayoutReplacement(this),
@@ -242,7 +250,7 @@ function replaceWorkspaceLayout(this: WorkspaceLayoutStreamElement): Promise<voi
   return render;
 }
 
-(Turbo.StreamActions as Record<string, (this: WorkspaceLayoutStreamElement) => void | Promise<void>>)["replace-workspace-layout"] = replaceWorkspaceLayout;
+Object.assign(Turbo.StreamActions, { "replace-workspace-layout": replaceWorkspaceLayout });
 
 type FullscreenMode = "tab" | "template" | "media";
 type FullscreenMediaElement = HTMLIFrameElement | HTMLImageElement | HTMLVideoElement;
@@ -298,7 +306,8 @@ class AtelierFullscreenController extends Controller {
   };
   private readonly pointerleave = (): void => removeFullscreenHover(this);
   private readonly iframeLoaded = (event: Event): void => {
-    const frame = event.currentTarget as HTMLIFrameElement;
+    if (!(event.currentTarget instanceof HTMLIFrameElement)) return;
+    const frame = event.currentTarget;
     frame.contentDocument?.removeEventListener("keydown", documentFullscreenKeydown, true);
     frame.contentDocument?.addEventListener("keydown", documentFullscreenKeydown, true);
   };
