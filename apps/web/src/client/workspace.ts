@@ -409,7 +409,8 @@ class AtelierFullscreenController extends Controller {
   private showTab(): void {
     const group = this.element.closest<HTMLElement>(".workspace-group")!;
     const tabbar = group.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]')!;
-    const controller = application.getControllerForElementAndIdentifier(tabbar, "workspace-tabs") as { element: Element; showTab(tabName: string): void };
+    const controller = workspaceTabsController(tabbar);
+    if (!controller) throw new Error("Workspace tabs controller is not connected");
     controller.showTab(this.tabKeyValue);
     this.element.closest<HTMLDetailsElement>("details")?.removeAttribute("open");
   }
@@ -608,8 +609,8 @@ class WorkspaceTabsController extends Controller {
     overflowMenu.classList.toggle("has-overflow", hiddenTabs.size > 0);
   }
 
-  private get group(): ParentNode & Element {
-    return this.element.closest(".workspace-group") ?? this.root as ParentNode & Element;
+  private get group(): ParentNode {
+    return this.element.closest(".workspace-group") ?? this.root;
   }
 
   private async persistVisibleTab(tabName: string): Promise<void> {
@@ -619,6 +620,13 @@ class WorkspaceTabsController extends Controller {
       body: JSON.stringify({ visibleTab: tabName, groupId: this.groupIdValue }),
     });
   }
+}
+
+function workspaceTabsController(element: Element): WorkspaceTabsController | undefined {
+  const controller = application.getControllerForElementAndIdentifier(element, "workspace-tabs");
+  if (!controller) return undefined;
+  if (!(controller instanceof WorkspaceTabsController)) throw new Error("workspace-tabs element is connected to an incompatible controller");
+  return controller;
 }
 
 class WorkspaceTabCloseController extends Controller {
@@ -1617,7 +1625,7 @@ class WorkspaceResidencyController extends Controller {
     resident.dataset.lastActivatedAt = String(Date.now());
     this.residentTargets.forEach((candidate) => candidate.classList.toggle("visible", candidate === resident));
     const tabs = resident.querySelector<HTMLElement>('[data-controller~="workspace-tabs"]');
-    const controller = tabs ? application.getControllerForElementAndIdentifier(tabs, "workspace-tabs") as WorkspaceTabsController | null : null;
+    const controller = tabs ? workspaceTabsController(tabs) : undefined;
     const visibleTab = tabs?.querySelector<HTMLElement>(".group-tab.visible[data-tab]")?.dataset.tab;
     if (visibleTab) controller?.showTab(visibleTab, { persist: false, emitLifecycle: false });
     emitPaneVisibilityChanges(before, visiblePanes(this.element));
