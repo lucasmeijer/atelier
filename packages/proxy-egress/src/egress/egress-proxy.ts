@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import net from "node:net";
-import { Readable } from "node:stream";
+import { Readable, type Duplex } from "node:stream";
 import tls from "node:tls";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext, shellQuote } from "@atelier/core";
 import { HttpRequestBlockedError } from "../secrets/errors.ts";
@@ -101,11 +101,10 @@ async function startAtelierWorkspaceProxy(): Promise<AtelierWorkspaceProxy> {
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
     writeError(res, proxyFailure(error));
   }));
-  server.on("connect", (req, socket, head) => void handleConnect(ca, req, socket as net.Socket, head).catch((thrown) => {
+  server.on("connect", (req, socket, head) => void handleConnect(ca, req, socket, head).catch((thrown) => {
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
-    const netSocket = socket as net.Socket;
-    netSocket.write(connectErrorResponse(proxyFailure(error)));
-    netSocket.destroy();
+    socket.write(connectErrorResponse(proxyFailure(error)));
+    socket.destroy();
   }));
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -120,7 +119,7 @@ async function handleProxyHttpRequest(req: IncomingMessage, res: ServerResponse)
   await handleProxyHttp(workspaceId, req, res);
 }
 
-async function handleConnect(ca: MitmCa, req: IncomingMessage, socket: net.Socket, head: Buffer): Promise<void> {
+async function handleConnect(ca: MitmCa, req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
   const workspaceId = await authenticateProxyRequest(req);
   const { hostname, port } = parseConnectTarget(req.url || "");
   await assertDestinationAllowed(workspaceId, hostname, port, port === 443 ? "https" : "http");
@@ -148,7 +147,7 @@ async function shouldMitmConnectTarget(workspaceId: string, hostname: string): P
   return context.secrets.some((secret) => secret.hosts.some((host) => matchHostname(hostname, host)));
 }
 
-async function tunnelConnect(hostname: string, port: number, socket: net.Socket, head: Buffer): Promise<void> {
+async function tunnelConnect(hostname: string, port: number, socket: Duplex, head: Buffer): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const upstream = net.connect(port, hostname);
     const onError = (error: Error) => {
