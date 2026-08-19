@@ -774,7 +774,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
   userMessages(): string[] {
     return recordsFromSessionEntries(this.session.sessionManager.getBranch())
       .filter((record) => record.kind === "user")
-      .map((record) => (record as { text: string }).text);
+      .map((record) => record.text);
   }
 
   protected async canonicalItems(leafId?: string): Promise<TranscriptItem[]> {
