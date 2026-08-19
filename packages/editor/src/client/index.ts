@@ -56,6 +56,12 @@ function languageExtension(path: string): Extension {
 type EditorFileResponse = { path: string; content: string; revision: string; writable: boolean };
 type EditorRefreshDetail = { workspaceId: string; tabKey?: string; line?: number; column?: number };
 
+declare global {
+  interface WindowEventMap {
+    "atelier:file-editor-refresh": CustomEvent<EditorRefreshDetail>;
+  }
+}
+
 function createFileEditorController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FileEditorController extends Controller {
     static values = { workspaceId: String, path: String, contentUrl: String, line: Number, column: Number };
@@ -84,12 +90,12 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private saveSequence = 0;
 
     connect(): void {
-      window.addEventListener("atelier:file-editor-refresh", this.refreshRequested as EventListener);
+      window.addEventListener("atelier:file-editor-refresh", this.refreshRequested);
       void this.load();
     }
 
     disconnect(): void {
-      window.removeEventListener("atelier:file-editor-refresh", this.refreshRequested as EventListener);
+      window.removeEventListener("atelier:file-editor-refresh", this.refreshRequested);
       if (this.saveTimer) clearTimeout(this.saveTimer);
       this.view?.destroy();
     }
