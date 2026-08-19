@@ -1,6 +1,8 @@
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import type { ServerWebSocket } from "bun";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
 import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace, setWorkspaceContainerRunning, workspaceSetupProvisioningHook } from "@atelier/workspace";
@@ -39,6 +41,10 @@ function displayUrl(host: string, port: number): string {
 }
 const authCookieName = "atelier_session";
 const authCookieMaxAgeSeconds = 60 * 60 * 24 * 30;
+const authSessionPayloadSchema = Type.Object({
+  expires: Type.Integer(),
+  nonce: Type.String(),
+});
 
 function authSecret(): string {
   return process.env.ATELIER_AUTH_SECRET || authPassword;
@@ -94,8 +100,11 @@ async function isAuthenticated(request: Request): Promise<boolean> {
   try {
     const normalized = payload.replaceAll("-", "+").replaceAll("_", "/");
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(padded), (char) => char.charCodeAt(0)))) as { expires?: number };
-    return typeof data.expires === "number" && data.expires > Math.floor(Date.now() / 1000);
+    const data = Value.Parse(
+      authSessionPayloadSchema,
+      JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(padded), (char) => char.charCodeAt(0)))),
+    );
+    return data.expires > Math.floor(Date.now() / 1000);
   } catch {
     return false;
   }
