@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { atelierDataPath, getAtelierRuntimeContext, isJsonObject, type JsonObject } from "@atelier/core";
+import { atelierDataPath, getAtelierRuntimeContext, isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import type { AgentServiceTier } from "@atelier/shared";
 import type { AuthInteraction, AuthPrompt } from "@earendil-works/pi-ai";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
@@ -9,20 +9,20 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 
 /** The configured list of models offered in the agent model picker. */
-export interface ConfiguredAgentModel {
-  provider: string;
-  id: string;
-  label: string;
+interface ModelReference { provider: string; id: string }
+interface ModelPickerEntry extends ModelReference { label: string }
+export interface ConfiguredAgentModel extends ModelPickerEntry {
   active?: boolean;
 }
 
 interface ModelPreference { thinkingLevel?: string }
 interface ProviderPreference { serviceTier?: AgentServiceTier }
 const modelPreferenceSchema = Type.Object({ thinkingLevel: Type.Optional(Type.String()) });
+const stringSchema = Type.String();
 interface AgentModelsSettings {
   providers?: JsonObject;
-  picker?: Array<{ provider?: unknown; id?: unknown; label?: unknown }>;
-  activeModel?: { provider?: unknown; id?: unknown };
+  picker?: ModelPickerEntry[];
+  activeModel?: ModelReference;
   modelPreferences?: Record<string, ModelPreference>;
   providerPreferences?: Record<string, ProviderPreference>;
 }
@@ -31,15 +31,35 @@ function piConfigDir(): string { return atelierDataPath(getAtelierRuntimeContext
 function piModelsJsonPath(): string { return join(piConfigDir(), "models.json"); }
 function piAuthJsonPath(): string { return join(piConfigDir(), "auth.json"); }
 
+function jsonString(value: JsonValue | undefined): string | undefined {
+  return Value.Check(stringSchema, value) ? value : undefined;
+}
+
+function modelReferenceFromJsonObject(value: JsonObject): ModelReference | undefined {
+  const provider = jsonString(value.provider);
+  const id = jsonString(value.id);
+  return provider && id ? { provider, id } : undefined;
+}
+
+function configuredModelFromJson(value: JsonValue | undefined): ModelPickerEntry | undefined {
+  if (!isJsonObject(value)) return undefined;
+  const reference = modelReferenceFromJsonObject(value);
+  if (!reference) return undefined;
+  return { ...reference, label: jsonString(value.label)?.trim() || reference.id };
+}
+
 async function getAgentModelsSettings(path = piModelsJsonPath()): Promise<AgentModelsSettings> {
   try {
     const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
     if (!isJsonObject(parsed)) throw new Error(`${path} must contain a JSON object`);
     const picker = Array.isArray(parsed.picker)
-      ? parsed.picker.filter(isJsonObject).map((entry) => ({ provider: entry.provider, id: entry.id, label: entry.label }))
+      ? parsed.picker.flatMap((entry) => {
+        const model = configuredModelFromJson(entry);
+        return model ? [model] : [];
+      })
       : undefined;
     const activeModel = isJsonObject(parsed.activeModel)
-      ? { provider: parsed.activeModel.provider, id: parsed.activeModel.id }
+      ? modelReferenceFromJsonObject(parsed.activeModel)
       : undefined;
     const modelPreferences = isJsonObject(parsed.modelPreferences)
       ? Object.fromEntries(Object.entries(parsed.modelPreferences).flatMap(([key, preference]) => Value.Check(modelPreferenceSchema, preference)
@@ -74,18 +94,16 @@ async function setAgentModelsSettings(config: AgentModelsSettings): Promise<void
 }
 
 function modelSettingsKey(provider: string, id: string): string { return `${provider}::${id}`; }
-function configuredFromJson(config: AgentModelsSettings | undefined): ConfiguredAgentModel[] {
-  const models = Array.isArray(config?.picker) ? config.picker.flatMap((entry) => {
-    const provider = typeof entry.provider === "string" ? entry.provider : "";
-    const id = typeof entry.id === "string" ? entry.id : "";
-    return provider && id ? [{ provider, id, label: typeof entry.label === "string" && entry.label.trim() ? entry.label : id }] : [];
-  }) : [];
-  const activeProvider = typeof config?.activeModel?.provider === "string" ? config.activeModel.provider : models[0]?.provider;
-  const activeId = typeof config?.activeModel?.id === "string" ? config.activeModel.id : models[0]?.id;
-  return models.map((model, index) => ({ ...model, active: activeProvider && activeId ? model.provider === activeProvider && model.id === activeId : index === 0 }));
+function configuredFromSettings(config: AgentModelsSettings | undefined): ConfiguredAgentModel[] {
+  const models = config?.picker ?? [];
+  const active = config?.activeModel ?? models[0];
+  return models.map((model) => ({
+    ...model,
+    active: model.provider === active?.provider && model.id === active.id,
+  }));
 }
 
-export async function getConfiguredAgentModels(): Promise<ConfiguredAgentModel[]> { return configuredFromJson(await getAgentModelsSettings()); }
+export async function getConfiguredAgentModels(): Promise<ConfiguredAgentModel[]> { return configuredFromSettings(await getAgentModelsSettings()); }
 export async function hasAvailableConfiguredAgentModel(): Promise<boolean> {
   const runtime = await createPiModelRuntime();
   const available = new Set((await runtime.getAvailable()).map((model) => modelSettingsKey(model.provider, model.id)));
@@ -94,7 +112,7 @@ export async function hasAvailableConfiguredAgentModel(): Promise<boolean> {
 
 export async function setActiveAgentModel(provider: string, id: string, thinkingLevel?: string): Promise<void> {
   const config = await getAgentModelsSettings();
-  const current = configuredFromJson(config);
+  const current = configuredFromSettings(config);
   config.picker = current.map((model) => ({ provider: model.provider, id: model.id, label: model.label }));
   config.activeModel = { provider, id };
   if (!current.some((model) => model.provider === provider && model.id === id)) config.picker.unshift({ provider, id, label: id });
@@ -115,7 +133,7 @@ export async function setPickerAgentModels(models: ConfiguredAgentModel[], activ
 
 export async function getModelThinkingLevel(provider: string, id: string): Promise<string | undefined> {
   const level = (await getAgentModelsSettings()).modelPreferences?.[modelSettingsKey(provider, id)]?.thinkingLevel;
-  return typeof level === "string" && level ? level : undefined;
+  return level || undefined;
 }
 export async function setModelThinkingLevel(provider: string, id: string, thinkingLevel: string): Promise<void> {
   const config = await getAgentModelsSettings();
