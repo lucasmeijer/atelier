@@ -38,4 +38,29 @@ describe("recordsFromSessionEntries", () => {
     ]);
     expect(records[0]).toMatchObject({ kind: "user", rewindable: true });
   });
+
+  test("narrows malformed image metadata before adding it to transcript records", () => {
+    const records = recordsFromSessionEntries([
+      {
+        type: "message",
+        id: "e10",
+        parentId: null,
+        message: {
+          role: "user",
+          content: [
+            { type: "image", mimeType: 42, data: false },
+            { type: "image", mimeType: "image/png", data: "not-an-image" },
+          ],
+        },
+      },
+    ]);
+
+    expect(records[0]).toMatchObject({
+      kind: "user",
+      images: [
+        { entryId: "e10", contentIndex: 0, mimeType: undefined },
+        { entryId: "e10", contentIndex: 1, mimeType: "image/png" },
+      ],
+    });
+  });
 });

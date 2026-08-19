@@ -638,11 +638,11 @@ function sessionContentImages(entry: { id: string; message?: { content?: unknown
   if (!Array.isArray(entry.message?.content)) return [];
   const images: SessionImageRef[] = [];
   entry.message.content.forEach((part, contentIndex) => {
-    if (!part || typeof part !== "object") return;
-    const image = part as { type?: string; mimeType?: string; data?: string };
-    if (image.type !== "image") return;
-    const dimensions = typeof image.data === "string" && typeof image.mimeType === "string" ? imageDimensions(Buffer.from(image.data.slice(0, 87_384), "base64"), image.mimeType) : undefined;
-    images.push({ entryId: entry.id, contentIndex, mimeType: image.mimeType, ...dimensions });
+    if (!part || typeof part !== "object" || !("type" in part) || part.type !== "image") return;
+    const mimeType = "mimeType" in part && typeof part.mimeType === "string" ? part.mimeType : undefined;
+    const data = "data" in part && typeof part.data === "string" ? part.data : undefined;
+    const dimensions = data && mimeType ? imageDimensions(Buffer.from(data.slice(0, 87_384), "base64"), mimeType) : undefined;
+    images.push({ entryId: entry.id, contentIndex, mimeType, ...dimensions });
   });
   return images;
 }
