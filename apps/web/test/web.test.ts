@@ -334,8 +334,10 @@ describe("web app contracts", () => {
 
       const createdResponse = await app.fetch(postJson("/projects", { gitUrl: specification }));
       const created = Value.Parse(projectCreatedResponseSchema, await createdResponse.json());
-      const repeated = await (await app.fetch(postJson("/projects", { gitUrl: specification }))).json() as typeof created;
+      const repeatedResponse = await app.fetch(postJson("/projects", { gitUrl: specification }));
+      const repeated = Value.Parse(projectCreatedResponseSchema, await repeatedResponse.json());
       expect(createdResponse.status).toBe(200);
+      expect(repeatedResponse.status).toBe(200);
       expect(repeated.project.id).toBe(created.project.id);
 
       const listed = await (await app.fetch(new Request("http://test.local/projects", { headers: { accept: "application/json" } }))).json() as { projects: Array<{ id: string }> };
