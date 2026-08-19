@@ -12,6 +12,8 @@ const previewTerminalTitle = "Changes · 2 files";
 const baseUrl = "http://127.0.0.1:3000";
 const repoRoot = resolve(new URL("..", import.meta.url).pathname);
 
+const packageMetadataSchema = Type.Object({ name: Type.String({ minLength: 1 }) });
+
 const projectSchema = Type.Object({
   id: Type.String(),
   name: Type.String(),
@@ -116,7 +118,7 @@ async function waitForServer(server?: ReturnType<typeof Bun.spawn>): Promise<voi
 }
 
 async function project(): Promise<Project> {
-  const packageJson = await Bun.file(resolve(repoRoot, "package.json")).json() as { name: string };
+  const packageJson = Value.Parse(packageMetadataSchema, await Bun.file(resolve(repoRoot, "package.json")).json());
   const projects = (await api("/projects", projectsResponseSchema)).projects;
   const existing = projects.find((candidate) => candidate.name === packageJson.name);
   if (existing) return existing;
