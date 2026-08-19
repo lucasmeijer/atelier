@@ -244,8 +244,9 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
     }
 
     private navigateFrame(url: URL): void {
-      const frame = this.element.closest<HTMLElement>("turbo-frame")! as HTMLElement & { src: string };
-      frame.src = `${url.pathname}${url.search}`;
+      const frame = this.element.closest("turbo-frame");
+      if (!frame) throw new Error("Files controller must be inside a Turbo Frame");
+      frame.setAttribute("src", `${url.pathname}${url.search}`);
     }
 
     private abortUploads(): void {
