@@ -220,7 +220,6 @@ export async function recordAtelierDemo(
 	options: AtelierRecordingOptions & { outputPath?: string },
 	scenario: (recording: AtelierRecording) => Promise<void>,
 ): Promise<VideoReport> {
-	if (typeof scenario !== "function") throw new Error("scenario must be a function");
 	if (options.outputPath !== undefined) assertOutputPath(options.outputPath);
 	const recording = await createAtelierRecording(options);
 	try {
