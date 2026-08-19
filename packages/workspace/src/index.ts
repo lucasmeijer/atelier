@@ -402,9 +402,9 @@ interface WorkspaceEnvironment {
 }
 
 function hostUserEnv(): WorkspaceEnvironment {
-  if (typeof process.getuid !== "function" || typeof process.getgid !== "function") throw new AtelierCoreError("unsupported_platform", "workspace containers require a POSIX host uid/gid");
-  const uid = process.getuid();
-  const gid = process.getgid();
+  const uid = process.getuid?.();
+  const gid = process.getgid?.();
+  if (uid === undefined || gid === undefined) throw new AtelierCoreError("unsupported_platform", "workspace containers require a POSIX host uid/gid");
   if (uid === 0 || gid === 0) throw new AtelierCoreError("unsupported_root_user", "workspace containers require a non-root Atelier process");
   return { ATELIER_HOST_UID: String(uid), ATELIER_HOST_GID: String(gid) };
 }
