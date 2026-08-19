@@ -359,6 +359,8 @@ function websocketProtocols(request: Request): string[] {
 }
 
 function openWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocketData>): void {
+  // SAFETY: With DOM types loaded, TypeScript omits Bun's runtime-supported
+  // WebSocket options overload. Ingress needs it to preserve Host and subprotocols.
   const WebSocketWithOptions = WebSocket as typeof WebSocket & (new (url: string | URL, options: Bun.WebSocketOptions) => WebSocket);
   const upstream = new WebSocketWithOptions(ws.data.target, { headers: { Host: ws.data.host }, protocols: ws.data.protocols });
   upstream.binaryType = "arraybuffer";
