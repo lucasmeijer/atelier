@@ -19,6 +19,7 @@ export interface WorkspaceAgentCreateOptions {
 }
 
 const sharedAgentFilePattern = /^([a-z0-9][a-z0-9-]*)--([a-zA-Z0-9][a-zA-Z0-9_.-]*)--agent-([1-9]\d*)--([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.jsonl$/;
+const legacySharedAgentFilePattern = /^([a-z0-9][a-z0-9-]*)--([a-zA-Z0-9][a-zA-Z0-9_.-]*)--agent-([1-9]\d*)--[a-f0-9]{6}\.jsonl$/;
 export const projectlessSessionShareKey = "projectless";
 export const sessionShareMountPath = "/atelier/session-share";
 
@@ -67,9 +68,13 @@ export function sessionTopicSlug(value: string): string {
   return sessionSlug(value, 48, "agent-session");
 }
 
-function sharedAgentSessionPath(shareKey: string, workspaceId: string, label: string, topic: string, conversationId: string, dataDir = getAtelierRuntimeContext().atelierDataDir): string {
+function sharedAgentSessionFilename(workspaceId: string, label: string, topic: string, conversationId: string): string {
   const number = Number(label.slice("Agent ".length));
-  return join(sessionShareDir(shareKey, dataDir), `${sessionTopicSlug(topic)}--${workspaceId}--agent-${number}--${conversationId}.jsonl`);
+  return `${sessionTopicSlug(topic)}--${workspaceId}--agent-${number}--${conversationId}.jsonl`;
+}
+
+function sharedAgentSessionPath(shareKey: string, workspaceId: string, label: string, topic: string, conversationId: string, dataDir = getAtelierRuntimeContext().atelierDataDir): string {
+  return join(sessionShareDir(shareKey, dataDir), sharedAgentSessionFilename(workspaceId, label, topic, conversationId));
 }
 
 export function parseWorkspaceAgentFilename(name: string, workspaceId?: string): { conversationId: string; label: string; number: number } | undefined {
@@ -104,6 +109,47 @@ async function sessionDirForWorkspace(workspaceId: string, dataDir = getAtelierR
   return { shareKey, dir: sessionShareDir(shareKey, dataDir) };
 }
 
+function recoveredConversationTitle(topic: string, agentNumber: number): string {
+  if (topic === "agent-session") return `Recovered Agent ${agentNumber}`;
+  const words = topic.replaceAll("-", " ");
+  return words[0]!.toUpperCase() + words.slice(1);
+}
+
+// Remove this legacy short-ID migration after 2026-08-26, once upgraded installs have had a week to recover their sessions.
+const legacyMigrationByWorkspace = new Map<string, Promise<void>>();
+
+async function migrateLegacyWorkspaceAgentSessions(dir: string, workspaceId: string, entries: string[]): Promise<void> {
+  const usedNumbers = new Set(entries.flatMap((entry) => {
+    const parsed = parseWorkspaceAgentFilename(entry, workspaceId);
+    return parsed ? [parsed.number] : [];
+  }));
+  const legacy = entries.flatMap((entry) => {
+    const match = entry.match(legacySharedAgentFilePattern);
+    if (!match || match[2] !== workspaceId) return [];
+    return [{ name: entry, topic: match[1]!, number: Number(match[3]) }];
+  }).sort((a, b) => a.number - b.number || a.name.localeCompare(b.name));
+
+  for (const session of legacy) {
+    let number = session.number;
+    while (usedNumbers.has(number)) number += 1;
+    usedNumbers.add(number);
+
+    const conversationId = randomUUID();
+    const migratedPath = join(dir, sharedAgentSessionFilename(workspaceId, `Agent ${number}`, session.topic, conversationId));
+    await writeConversationTitle(migratedPath, recoveredConversationTitle(session.topic, session.number));
+    await rename(join(dir, session.name), migratedPath);
+  }
+}
+
+async function ensureLegacyWorkspaceAgentSessionsMigrated(dir: string, workspaceId: string, entries: string[]): Promise<void> {
+  const key = `${dir}\0${workspaceId}`;
+  const current = legacyMigrationByWorkspace.get(key);
+  if (current) return await current;
+  const migration = migrateLegacyWorkspaceAgentSessions(dir, workspaceId, entries);
+  legacyMigrationByWorkspace.set(key, migration);
+  await migration;
+}
+
 async function createWorkspaceAgentSession(workspaceId: string, label: string, topic = "agent-session", conversationId = randomUUID()): Promise<WorkspaceAgentInfo> {
   const store = await sessionDirForWorkspace(workspaceId);
   await mkdir(store.dir, { recursive: true });
@@ -128,6 +174,8 @@ export async function listWorkspaceAgents(workspaceId: string): Promise<Workspac
     if (code === "ENOENT") return [];
     throw error;
   }
+  await ensureLegacyWorkspaceAgentSessionsMigrated(store.dir, workspaceId, entries);
+  entries = await readdir(store.dir);
   const agents = entries
     .map((entry) => ({ name: entry, parsed: parseWorkspaceAgentFilename(entry, workspaceId) }))
     .filter((entry): entry is { name: string; parsed: { conversationId: string; label: string; number: number } } => Boolean(entry.parsed))

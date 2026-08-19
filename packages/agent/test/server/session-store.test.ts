@@ -102,6 +102,46 @@ describe("workspace agent session store", () => {
     expect(agents.map((agent) => agent.label)).toEqual(["Agent 1", "Agent 2", "Agent 10"]);
   });
 
+  test("migrates legacy short-id sessions to titled immutable conversations", async () => {
+    const root = await dataDir();
+    const share = join(root, "session-shares", "projectless");
+    await mkdir(share, { recursive: true });
+    const legacyPath = join(share, "investigate-persistence--ws1--agent-1--a1b2c3.jsonl");
+    await writeFile(legacyPath, '{"type":"message"}\n');
+
+    const [firstListing, secondListing] = await Promise.all([listWorkspaceAgents("ws1"), listWorkspaceAgents("ws1")]);
+    const [agent] = firstListing;
+
+    expect(secondListing).toEqual(firstListing);
+    expect(agent).toMatchObject({ label: "Agent 1", title: "Investigate persistence" });
+    expect(agent!.conversationId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(await Bun.file(agent!.path).text()).toBe('{"type":"message"}\n');
+    expect(await Bun.file(agent!.path.replace(/\.jsonl$/, ".title")).text()).toBe("Investigate persistence\n");
+    expect(await Bun.file(legacyPath).exists()).toBe(false);
+  });
+
+  test("preserves new sessions while renumbering recovered legacy label collisions", async () => {
+    const root = await dataDir();
+    const current = await ensureDefaultWorkspaceAgent("ws1");
+    await writeFile(current.path, '{"type":"current"}\n');
+    const share = join(root, "session-shares", "projectless");
+    await writeFile(join(share, "agent-session--ws1--agent-1--a1b2c3.jsonl"), '{"type":"legacy-one"}\n');
+    await writeFile(join(share, "older-work--ws1--agent-2--d4e5f6.jsonl"), '{"type":"legacy-two"}\n');
+
+    const agents = await listWorkspaceAgents("ws1");
+
+    expect(agents.map((agent) => [agent.label, agent.title])).toEqual([
+      ["Agent 1", "Untitled"],
+      ["Agent 2", "Recovered Agent 1"],
+      ["Agent 3", "Older work"],
+    ]);
+    expect(await Promise.all(agents.map((agent) => Bun.file(agent.path).text()))).toEqual([
+      '{"type":"current"}\n',
+      '{"type":"legacy-one"}\n',
+      '{"type":"legacy-two"}\n',
+    ]);
+  });
+
   test("Agent conversations have immutable identities and mutable titles", async () => {
     await dataDir();
     const created = await ensureDefaultWorkspaceAgent("ws1");
