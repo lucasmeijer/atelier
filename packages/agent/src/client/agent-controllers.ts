@@ -304,7 +304,8 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       const messages = this.messageLinks();
       if (messages.length === 0) return;
       event.preventDefault();
-      const current = messages.indexOf(document.activeElement as HTMLButtonElement);
+      const activeElement = document.activeElement;
+      const current = messages.findIndex((message) => message === activeElement);
       const next = event.key === "Home" ? 0
         : event.key === "End" ? messages.length - 1
         : event.key === "ArrowDown" ? (current + 1) % messages.length
