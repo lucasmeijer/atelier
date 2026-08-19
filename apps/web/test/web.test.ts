@@ -150,7 +150,7 @@ describe("web app contracts", () => {
       globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = new URL(String(input));
         queries.push(url.searchParams.get("q") ?? "");
-        expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer github-token");
+        expect(new Headers(init?.headers).get("authorization")).toBe("Bearer github-token");
         return Response.json({
           items: url.searchParams.get("q")?.includes("is:private")
             ? [{ full_name: "me/private-atelier", description: "mine", private: true, clone_url: "https://github.com/me/private-atelier.git", html_url: "https://github.com/me/private-atelier", default_branch: "main" }]
