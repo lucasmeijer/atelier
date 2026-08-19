@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { AtelierCoreError, readJsonObject, requestAcceptsJson, type AtelierEventBus } from "@atelier/core";
 import type { AgentWorkspaceParameters } from "@atelier/shared";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { getModelThinkingLevel, setModelThinkingLevel } from "./pi-config-models.ts";
 import { parseModelRef } from "./model-state.ts";
 import { setWorkspaceTitle, workspaceContainerName, workspacePreviewPortUrl } from "@atelier/workspace";
@@ -290,16 +292,28 @@ async function deleteAttachmentEndpoint(draftId: string, attachmentId: string): 
 // ---------------------------------------------------------------------------
 
 const sessionImageMimeTypes = new Set(Object.values(imageMimeByExtension));
+const sessionImageEntrySchema = Type.Object({
+  id: Type.String(),
+  message: Type.Object({ content: Type.Array(Type.Unknown()) }),
+});
+const sessionImagePartSchema = Type.Object({
+  type: Type.Literal("image"),
+  mimeType: Type.String(),
+  data: Type.String(),
+});
 
 export async function sessionImageEndpoint(sessionFile: string, entryId: string, contentIndex: number): Promise<Response> {
   const lines = (await readFile(sessionFile, "utf8")).split("\n").filter(Boolean);
   const entry = lines
-    .map((line) => JSON.parse(line) as { id?: string; message?: { content?: unknown } })
-    .find((candidate) => candidate.id === entryId);
-  if (!entry || !Array.isArray(entry.message?.content)) return new Response("not found", { status: 404 });
+    .map((line) => {
+      const candidate: unknown = JSON.parse(line);
+      return Value.Check(sessionImageEntrySchema, candidate) ? candidate : undefined;
+    })
+    .find((candidate) => candidate?.id === entryId);
+  if (!entry) return new Response("not found", { status: 404 });
 
-  const part = entry.message.content[contentIndex] as { type?: unknown; mimeType?: unknown; data?: unknown } | undefined;
-  if (part?.type !== "image" || typeof part.mimeType !== "string" || !sessionImageMimeTypes.has(part.mimeType) || typeof part.data !== "string") {
+  const part = entry.message.content[contentIndex];
+  if (!Value.Check(sessionImagePartSchema, part) || !sessionImageMimeTypes.has(part.mimeType)) {
     return new Response("not found", { status: 404 });
   }
 

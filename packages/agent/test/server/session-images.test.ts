@@ -42,4 +42,15 @@ describe("pi session images", () => {
     const response = await sessionImageEndpoint(await makeSession(), "image-entry", 0);
     expect(response.status).toBe(404);
   });
+
+  test("rejects image parts with invalid persisted data", async () => {
+    const path = await makeSession();
+    await writeFile(path, `${JSON.stringify({
+      id: "image-entry",
+      message: { content: [{ type: "image", mimeType: "image/png", data: 42 }] },
+    })}\n`);
+
+    const response = await sessionImageEndpoint(path, "image-entry", 0);
+    expect(response.status).toBe(404);
+  });
 });
