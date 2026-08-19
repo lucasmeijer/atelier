@@ -267,7 +267,7 @@ app = createWebApp({
 
 atelierEvents.on("workspace_user_activity", ({ workspaceId }) => registry.touch(workspaceId));
 atelierEvents.on("workspace_title_changed", ({ workspaceId, title }) => registry.setTitle(workspaceId, title || null));
-atelierEvents.on("workspace_tab_unread", ({ workspaceId, tabKey, unread }) => registry.setTabUnread(workspaceId, tabKey, unread));
+atelierEvents.on("workspace_view_unread", ({ workspaceId, viewKey, unread }) => registry.setViewUnread(workspaceId, viewKey, unread));
 
 // Docker is the persistent truth for which workspaces exist. Restore each container to the state recorded by
 // park/unpark before modules initialize, then seed the registry so startup-time contributions have rows to attach to.

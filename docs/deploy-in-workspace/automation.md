@@ -51,7 +51,7 @@ while :; do
 done
 ```
 
-A ready response advertises its `tabs`, normalized `layout`, and available `commands` with their `inputSchema`.
+A ready response advertises its `agentConversations`, typed `workViews`, and available `commands` with their `inputSchema`.
 
 ## Stage Agent conversations and Work views
 

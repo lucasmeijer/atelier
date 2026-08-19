@@ -15,8 +15,11 @@ type TestWorkViewReference =
 const terminalWorkViewAdapter: WorkspaceWorkViewContribution<Extract<TestWorkViewReference, { type: "terminal" }>> = {
     type: "terminal",
     parseReference(value) {
+      // SAFETY: The test fixture controls this value and establishes the asserted shape.
       const reference = value as Partial<TestWorkViewReference>;
+      // SAFETY: The test fixture controls this value and establishes the asserted shape.
       if (reference.type !== "terminal" || typeof (reference as { terminalId?: unknown }).terminalId !== "string") throw new Error("invalid terminal reference");
+      // SAFETY: The test fixture controls this value and establishes the asserted shape.
       return value as Extract<TestWorkViewReference, { type: "terminal" }>;
     },
     identity: (reference) => reference.terminalId,
@@ -24,8 +27,11 @@ const terminalWorkViewAdapter: WorkspaceWorkViewContribution<Extract<TestWorkVie
 const fileWorkViewAdapter: WorkspaceWorkViewContribution<Extract<TestWorkViewReference, { type: "file" }>> = {
     type: "file",
     parseReference(value) {
+      // SAFETY: The test fixture controls this value and establishes the asserted shape.
       const reference = value as Partial<TestWorkViewReference>;
+      // SAFETY: The test fixture controls this value and establishes the asserted shape.
       if (reference.type !== "file" || typeof (reference as { path?: unknown }).path !== "string") throw new Error("invalid file reference");
+      // SAFETY: The test fixture controls this value and establishes the asserted shape.
       return value as Extract<TestWorkViewReference, { type: "file" }>;
     },
     identity: (reference) => reference.path,

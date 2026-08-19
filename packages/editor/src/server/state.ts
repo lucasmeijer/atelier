@@ -1,59 +1,75 @@
 import { posix } from "node:path";
+import { isJsonObject, type JsonValue } from "@atelier/core";
+import { createWorkspaceMetadataState } from "@atelier/workspace";
 
-export interface WorkspaceFileEditorTab {
+export interface WorkspaceFileEditorView {
   key: string;
   path: string;
   line?: number;
   column?: number;
 }
 
-export interface OpenWorkspaceFileEditorTabResult {
-  tab: WorkspaceFileEditorTab;
+export interface OpenWorkspaceFileEditorViewResult {
+  view: WorkspaceFileEditorView;
   created: boolean;
 }
 
-const tabsByWorkspace = new Map<string, WorkspaceFileEditorTab[]>();
+function parseFileViews(value: JsonValue): WorkspaceFileEditorView[] {
+  if (!Array.isArray(value)) throw new Error("invalid persisted File Work views");
+  return value.map((entry) => {
+    if (!isJsonObject(entry) || typeof entry.key !== "string" || typeof entry.path !== "string" || !entry.path.startsWith("/")
+      || (entry.line !== undefined && typeof entry.line !== "number") || (entry.column !== undefined && typeof entry.column !== "number")) {
+      throw new Error("invalid persisted File Work view");
+    }
+    const view: WorkspaceFileEditorView = { key: entry.key, path: entry.path };
+    if (entry.line !== undefined) view.line = entry.line;
+    if (entry.column !== undefined) view.column = entry.column;
+    return view;
+  });
+}
 
-function tabKey(path: string): string {
+const fileViews = createWorkspaceMetadataState("file-work-views.json", parseFileViews, () => []);
+
+function viewKey(path: string): string {
   return `file-editor:${Buffer.from(path).toString("base64url")}`;
 }
 
-export function listWorkspaceFileEditorTabs(workspaceId: string): WorkspaceFileEditorTab[] {
-  return tabsByWorkspace.get(workspaceId) ?? [];
+export function listWorkspaceFileEditorViews(workspaceId: string): WorkspaceFileEditorView[] {
+  return fileViews.read(workspaceId);
 }
 
-export function openWorkspaceFileEditorTab(workspaceId: string, path: string, position: { line?: number; column?: number } = {}): OpenWorkspaceFileEditorTabResult {
-  let tabs = tabsByWorkspace.get(workspaceId);
-  if (!tabs) tabsByWorkspace.set(workspaceId, tabs = []);
-  const existing = tabs.find((tab) => tab.path === path);
+export function openWorkspaceFileEditorView(workspaceId: string, path: string, position: { line?: number; column?: number } = {}): OpenWorkspaceFileEditorViewResult {
+  const views = fileViews.read(workspaceId);
+  const existing = views.find((view) => view.path === path);
   if (existing) {
     existing.line = position.line;
     existing.column = position.column;
-    return { tab: existing, created: false };
+    fileViews.write(workspaceId, views);
+    return { view: existing, created: false };
   }
-  const tab = { key: tabKey(path), path, ...position };
-  tabs.push(tab);
-  return { tab, created: true };
+  const view = { key: viewKey(path), path, ...position };
+  views.push(view);
+  fileViews.write(workspaceId, views);
+  return { view, created: true };
 }
 
-export function closeWorkspaceFileEditorTab(workspaceId: string, key: string): void {
-  const tabs = tabsByWorkspace.get(workspaceId);
-  if (tabs) tabsByWorkspace.set(workspaceId, tabs.filter((tab) => tab.key !== key));
+export function closeWorkspaceFileEditorView(workspaceId: string, key: string): void {
+  fileViews.write(workspaceId, fileViews.read(workspaceId).filter((view) => view.key !== key));
 }
 
 export function deleteWorkspaceFileEditorState(workspaceId: string): void {
-  tabsByWorkspace.delete(workspaceId);
+  fileViews.delete(workspaceId);
 }
 
-export function fileEditorTabLabels(tabs: WorkspaceFileEditorTab[]): Map<string, string> {
+export function fileEditorViewLabels(views: WorkspaceFileEditorView[]): Map<string, string> {
   const basenameCounts = new Map<string, number>();
-  for (const tab of tabs) {
-    const basename = posix.basename(tab.path);
+  for (const view of views) {
+    const basename = posix.basename(view.path);
     basenameCounts.set(basename, (basenameCounts.get(basename) ?? 0) + 1);
   }
-  return new Map(tabs.map((tab) => {
-    const basename = posix.basename(tab.path);
-    const label = (basenameCounts.get(basename) ?? 0) > 1 ? `${posix.basename(posix.dirname(tab.path))}/${basename}` : basename;
-    return [tab.key, label];
+  return new Map(views.map((view) => {
+    const basename = posix.basename(view.path);
+    const label = (basenameCounts.get(basename) ?? 0) > 1 ? `${posix.basename(posix.dirname(view.path))}/${basename}` : basename;
+    return [view.key, label];
   }));
 }

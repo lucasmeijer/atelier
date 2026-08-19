@@ -1,10 +1,10 @@
-const terminalTabPrefix = "terminal:";
+const terminalViewPrefix = "terminal:";
 
-export function terminalTabKey(id: string): string {
-  return `${terminalTabPrefix}${id}`;
+export function terminalViewKey(id: string): string {
+  return `${terminalViewPrefix}${id}`;
 }
 
-export function terminalIdFromTabKey(tabKey: string): string | undefined {
-  if (!tabKey.startsWith(terminalTabPrefix)) return undefined;
-  return tabKey.slice(terminalTabPrefix.length) || undefined;
+export function terminalIdFromViewKey(viewKey: string): string | undefined {
+  if (!viewKey.startsWith(terminalViewPrefix)) return undefined;
+  return viewKey.slice(terminalViewPrefix.length) || undefined;
 }

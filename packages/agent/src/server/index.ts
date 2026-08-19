@@ -13,7 +13,7 @@ export {
 } from "./session-store.ts";
 export {
   getWorkspaceAgentRuntime,
-  subscribeWorkspaceTabBusy,
+  subscribeWorkspaceViewBusy,
 } from "./runtime.ts";
 export {
   handleAgentRequest,
@@ -21,7 +21,7 @@ export {
   resolveWorkspacePortProxyTarget,
   workspaceFileEndpoint,
 } from "./routes.ts";
-export { agentTabKey, renderAgentComposer, renderAgentLaunchSettings, renderAgentPane } from "./render.ts";
+export { agentConversationKey, renderAgentComposer, renderAgentLaunchSettings, renderAgentPane } from "./render.ts";
 export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule } from "./web.ts";
 export { rememberNewWorkspaceAgentSettings } from "./model-state.ts";
 export {

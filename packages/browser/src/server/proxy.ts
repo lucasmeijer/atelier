@@ -1,15 +1,15 @@
 import { isWorkspacePreviewPort, workspacePreviewPortUrl, workspacePreviewPorts } from "@atelier/workspace";
 import { publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/proxy-ingress/server";
-import { getWorkspaceBrowserTab } from "./state.ts";
+import { getWorkspaceBrowserView } from "./state.ts";
 
 export function isBrowserWorkspaceApp(workspaceId: string, appKey: string): boolean {
-  return Boolean(getWorkspaceBrowserTab(workspaceId, appKey));
+  return Boolean(getWorkspaceBrowserView(workspaceId, appKey));
 }
 
 export async function patchBrowserWorkspaceAppRequestHeaders(app: WorkspaceAppHost, headers: Headers, _target: URL, _request: Request): Promise<Headers> {
-  const browserTab = getWorkspaceBrowserTab(app.workspaceId, app.appKey);
-  if (!browserTab) return headers;
-  const targetBase = new URL(browserTab.targetUrl);
+  const browserView = getWorkspaceBrowserView(app.workspaceId, app.appKey);
+  if (!browserView) return headers;
+  const targetBase = new URL(browserView.targetUrl);
   if (!isLoopbackHost(targetBase.hostname)) headers.set("host", targetBase.host);
   return headers;
 }
@@ -39,10 +39,10 @@ export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, re
 }
 
 export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {
-  const browserTab = getWorkspaceBrowserTab(app.workspaceId, app.appKey);
-  if (!browserTab) throw new Error(`unknown workspace app: ${app.appKey}`);
-  if (!browserTab.targetUrl) throw new Error(`browser tab has no target url: ${app.appKey}`);
-  const targetBase = new URL(browserTab.targetUrl);
+  const browserView = getWorkspaceBrowserView(app.workspaceId, app.appKey);
+  if (!browserView) throw new Error(`unknown workspace app: ${app.appKey}`);
+  if (!browserView.targetUrl) throw new Error(`Browser view has no target URL: ${app.appKey}`);
+  const targetBase = new URL(browserView.targetUrl);
   const target = new URL(requestUrl.pathname + requestUrl.search, targetBase);
   stripAtelierBrowserParams(target);
 

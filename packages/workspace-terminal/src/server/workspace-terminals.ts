@@ -29,7 +29,7 @@ interface TmuxSessionMetadata {
 }
 
 interface WorkspaceTerminalCreateOptions {
-  /** Preferred terminal tab and tmux session title. If already used, a numeric suffix is added. */
+  /** Preferred Terminal view and tmux session title. If already used, a numeric suffix is added. */
   title?: string;
   command?: string;
   cwd?: string;

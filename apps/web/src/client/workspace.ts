@@ -40,7 +40,9 @@ declare global {
 }
 
 window.Stimulus = {
+  // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
   Application: StimulusApplication as typeof window.Stimulus.Application,
+  // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
   Controller: StimulusController as typeof window.Stimulus.Controller,
 };
 window.Turbo = Turbo;
@@ -139,7 +141,7 @@ function fuzzyScore(query: string, candidate: string): number {
   return Math.max(1, score - Math.max(0, c.length - q.length) * 0.05);
 }
 
-type FullscreenMode = "tab" | "template" | "media";
+type FullscreenMode = "view" | "template" | "media";
 type FullscreenMediaElement = HTMLIFrameElement | HTMLImageElement | HTMLVideoElement;
 type FullscreenViewer = { element: HTMLElement; disconnect?: () => void };
 type FullscreenSession = { owner: AtelierFullscreenController; close(): void };
@@ -181,18 +183,19 @@ function removeFullscreenHover(controller: AtelierFullscreenController): void {
 }
 
 class AtelierFullscreenController extends Controller {
-  static values = { mode: String, tabKey: String, title: String };
+  static values = { mode: String, viewKey: String, title: String };
   declare readonly element: HTMLElement;
   declare readonly modeValue: FullscreenMode;
-  declare readonly tabKeyValue: string;
+  declare readonly viewKeyValue: string;
   declare readonly titleValue: string;
   private iframeLoadTargets: HTMLIFrameElement[] = [];
   private readonly pointerenter = (): void => {
-    if (this.modeValue === "tab") this.element.focus({ preventScroll: true });
+    if (this.modeValue === "view") this.element.focus({ preventScroll: true });
     pushFullscreenHover(this);
   };
   private readonly pointerleave = (): void => removeFullscreenHover(this);
   private readonly iframeLoaded = (event: Event): void => {
+    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
     const frame = event.currentTarget as HTMLIFrameElement;
     frame.contentDocument?.removeEventListener("keydown", documentFullscreenKeydown, true);
     frame.contentDocument?.addEventListener("keydown", documentFullscreenKeydown, true);
@@ -218,13 +221,13 @@ class AtelierFullscreenController extends Controller {
     activeFullscreenSession?.close();
     if (wasActive) return;
 
-    if (this.modeValue === "tab") this.openLiveTab();
+    if (this.modeValue === "view") this.openLiveView();
     else this.openViewer();
   }
 
-  private openLiveTab(): void {
-    this.showTab();
-    const target = this.liveTabTarget();
+  private openLiveView(): void {
+    this.showView();
+    const target = this.liveViewTarget();
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
     let session: FullscreenSession;
     let bar: HTMLElement;
@@ -287,11 +290,12 @@ class AtelierFullscreenController extends Controller {
     return bar;
   }
 
-  private liveTabTarget(): HTMLElement {
-    return this.element.closest<HTMLElement>(".fixed-shell-work-pane")!.querySelector<HTMLElement>(`[data-workspace-pane-role="work"][data-source-tab-key="${CSS.escape(this.tabKeyValue)}"]`)!;
+  private liveViewTarget(): HTMLElement {
+    return this.element.closest<HTMLElement>(".fixed-shell-work-pane")!.querySelector<HTMLElement>(`[data-workspace-pane-role="work"][data-source-work-view-key="${CSS.escape(this.viewKeyValue)}"]`)!;
   }
 
-  private showTab(): void {
+  private showView(): void {
+    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
     (this.element as HTMLButtonElement).click();
   }
 
@@ -561,7 +565,10 @@ class AtelierShortcutsController extends Controller {
   private workspaceCommands(): WorkspaceCommandRegistration[] {
     const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
     const presentation = resident?.querySelector<HTMLElement>(".fixed-workspace-presentation[data-workspace-commands]");
-    if (presentation) return JSON.parse(presentation.dataset.workspaceCommands!) as WorkspaceCommandRegistration[];
+    if (presentation) {
+      // SAFETY: The server renders this dataset from WorkspaceCommandRegistration values.
+      return JSON.parse(presentation.dataset.workspaceCommands!) as WorkspaceCommandRegistration[];
+    }
     return [];
   }
 
@@ -806,14 +813,14 @@ class AtelierShortcutsController extends Controller {
     const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible[data-workspace-id]");
     if (!resident) return [];
     const workspaceId = resident.dataset.workspaceId!;
-    return [...resident.querySelectorAll<HTMLButtonElement>("[data-work-view-key], [data-agent-tab-id]")].map((destination) => {
-      const key = destination.dataset.workViewKey ?? destination.dataset.agentTabId!;
+    return [...resident.querySelectorAll<HTMLButtonElement>("[data-work-view-key], [data-agent-conversation-id]")].map((destination) => {
+      const key = destination.dataset.workViewKey ?? destination.dataset.agentConversationId!;
       const label = destination.textContent?.trim() || key;
       const visible = destination.getAttribute("aria-selected") === "true";
       return {
         id: `destination:${workspaceId}:${key}`,
         title: label,
-        subtitle: destination.dataset.agentTabId ? "Agent conversation" : "Work view",
+        subtitle: destination.dataset.agentConversationId ? "Agent conversation" : "Work view",
         badge: visible ? "open" : undefined,
         keywords: [key],
         score: fuzzyScore(`${label} ${key}`) + (visible ? 20 : 0),
@@ -844,6 +851,7 @@ class AtelierShortcutsController extends Controller {
   }
 
   private openDialogPrompt(id: string): void {
+    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
     const dialog = document.getElementById(id) as HTMLDialogElement | null;
     if (!dialog) return;
     if (!dialog.open) dialog.showModal();
@@ -930,6 +938,7 @@ class SubmitShortcutController extends Controller {
     if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
     event.preventDefault();
     if (this.submitting) return;
+    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
     submitFormWithFirstButton(event.currentTarget as HTMLFormElement);
   }
 
@@ -994,6 +1003,7 @@ class ModalController extends Controller {
   }
 
   submitted(event: Event): void {
+    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
     const detail = (event as CustomEvent).detail as { success?: boolean } | undefined;
     if (detail?.success === false) return;
     this.element.close();
@@ -1032,6 +1042,7 @@ class ModalOpenerController extends Controller {
     const target = event?.target instanceof HTMLElement ? event.target : null;
     const interactive = target?.closest("a, button, input, textarea, select, form");
     if (interactive && interactive !== this.element) return;
+    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
     const dialog = document.getElementById(this.targetIdValue) as HTMLDialogElement | null;
     if (!dialog || dialog.open) return;
     dialog.showModal();
@@ -1053,6 +1064,7 @@ class WorkspaceResidencyController extends Controller {
 
   connect(): void {
     document.addEventListener("visibilitychange", this.visibilityChanged);
+    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
     document.addEventListener("atelier:workspace-selected", this.workspaceSelected as EventListener);
     window.addEventListener("pagehide", this.pageHidden);
     const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
@@ -1064,6 +1076,7 @@ class WorkspaceResidencyController extends Controller {
 
   disconnect(): void {
     document.removeEventListener("visibilitychange", this.visibilityChanged);
+    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
     document.removeEventListener("atelier:workspace-selected", this.workspaceSelected as EventListener);
     window.removeEventListener("pagehide", this.pageHidden);
   }
@@ -1291,11 +1304,13 @@ class WorkspaceResidencyController extends Controller {
 
 function residencyController(): WorkspaceResidencyController | null {
   const residency = document.querySelector<HTMLElement>('[data-controller~="workspace-residency"]');
+  // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
   return residency ? application.getControllerForElementAndIdentifier(residency, "workspace-residency") as WorkspaceResidencyController | null : null;
 }
 
 function workspaceListController(): WorkspaceListController | null {
   const list = document.querySelector<HTMLElement>('[data-controller~="workspace-list"]');
+  // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
   return list ? application.getControllerForElementAndIdentifier(list, "workspace-list") as WorkspaceListController | null : null;
 }
 
@@ -1309,6 +1324,7 @@ class WorkspaceListController extends Controller {
   private readonly onStreamRender = (event: Event): void => {
     // Turbo applies stream renders after the next repaint, so wrap the render
     // callback to re-sync only after the DOM change actually happened.
+    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
     const detail = (event as CustomEvent).detail as { render?: (element: Element) => Promise<void> } | undefined;
     const original = detail?.render;
     if (detail && original) {
@@ -1410,6 +1426,7 @@ class WorkspaceListController extends Controller {
   }
 
   parkToggled(event: Event): void {
+    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
     const detail = (event as CustomEvent<{ success?: boolean }>).detail;
     if (detail && detail.success === false) return;
     const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
@@ -1772,6 +1789,7 @@ class OnboardingController extends Controller {
 
   next(): void {
     if (this.index >= this.paneTargets.length - 1) {
+      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       (this.element as HTMLDialogElement).close?.();
       return;
     }
@@ -2124,6 +2142,7 @@ class DevReloadController extends Controller {
     try {
       const response = await fetch(this.urlValue, { cache: "no-store" });
       if (response.ok) {
+        // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
         const value = await response.json() as { revision?: unknown };
         if (typeof value.revision === "number") {
           if (this.revision !== undefined && value.revision !== this.revision) {

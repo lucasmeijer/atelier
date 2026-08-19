@@ -4,7 +4,10 @@ import { renderWorkspacePresentation, workspacePresentationTurboStream, type Wor
 function fixture(overrides: Partial<WorkspacePresentation> = {}): WorkspacePresentation {
   return {
     workspace: { id: "workspace-1", title: "Typed shell", projectTitle: "Atelier" },
-    projects: [{ id: "project-1", title: "Atelier", workspaces: [{ id: "workspace-1", title: "Typed shell", ready: true }] }],
+    projects: [{ id: "project-1", title: "Atelier", workspaces: [
+      { id: "workspace-1", title: "Typed shell", color: "#3b82f6", active: true, ready: true },
+      { id: "workspace-2", title: "Working", color: "#3b82f6", busy: true },
+    ] }],
     agentConversations: [
       { id: "agent-a", title: "First", bodyHtml: '<textarea data-probe="agent-a">draft</textarea>' },
       { id: "agent-b", title: "Second", bodyHtml: '<div data-probe="agent-b">Transcript</div>' },
@@ -31,6 +34,20 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).not.toContain('aria-selected="true"');
     expect(html.match(/data-workspace-pane-role="agent"/g)).toHaveLength(2);
     expect(html.match(/data-workspace-pane-role="work"/g)).toHaveLength(3);
+    expect(html).toContain('class="fixed-shell-workspace-row active"');
+    expect(html).toContain('aria-current="page"');
+    expect(html).toContain('class="fixed-shell-workspace-color"');
+    expect(html).toContain('class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy"');
+  });
+
+  test("shows only the workspace name in a single-conversation Agent header", () => {
+    const html = renderWorkspacePresentation(fixture({
+      agentConversations: [{ id: "agent-a", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+    }));
+    const header = html.slice(html.indexOf('<section class="fixed-shell-agent-pane"'), html.indexOf('<div class="fixed-shell-agent-bodies"'));
+
+    expect(header).toContain("Typed shell");
+    expect(header).not.toContain("Atelier");
   });
 
   test("keeps adapter HTML inside stable type-native live nodes", () => {
@@ -60,9 +77,12 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('data-mobile-destination="work:terminal:one"');
     expect(html).toContain('data-mobile-destination="work:browser:preview"');
     expect(html).not.toContain('data-mobile-destination="work:files:workspace"');
-    expect(html).toContain('data-mobile-destination="agent:agent-a"');
+    expect(html).toContain('aria-label="Terminal" title="Terminal" data-mobile-destination="work:terminal:one"');
+    expect(html).toContain('aria-label="Preview" title="Preview" data-mobile-destination="work:browser:preview"');
+    expect(html).toContain('aria-label="First" title="First" data-mobile-destination="agent:agent-a"');
     expect(html).toContain('data-more-work-key="files:workspace"');
     expect(html).toContain('aria-label="Hidden Attention"');
+    expect(html).not.toContain("fixed-shell-more-scrim");
   });
 
   test("keeps the closed Files singleton discoverable with secondary Work views", () => {
@@ -74,7 +94,9 @@ describe("role-fixed Workspace presentation", () => {
       ],
     }));
 
-    const more = html.slice(html.indexOf("Secondary Work views"));
+    const more = html.slice(html.indexOf('class="fixed-shell-more-menu"'));
+    expect(more).not.toContain("Secondary Work views");
+    expect(more).toContain('aria-label="Close More"');
     expect(more).toContain('/commands/files.open');
     expect(more.indexOf('/commands/files.open')).toBeLessThan(more.indexOf("Open or create"));
     expect(more.indexOf('/commands/browser.create')).toBeGreaterThan(more.indexOf("Open or create"));

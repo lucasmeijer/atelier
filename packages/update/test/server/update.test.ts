@@ -2,14 +2,15 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { dockerInspect, parseContainerIdFromCgroup, parseContainerIdFromMountInfo, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
+import { createAtelierEventBus } from "@atelier/core";
+import { dockerContainerInspect, dockerImageInspect, parseContainerIdFromCgroup, parseContainerIdFromMountInfo, parseDockerPullEventLine, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
 import { createUpdateRouteHandler, UpdateManager } from "../../src/server/index.ts";
 import { parseWwwAuthenticate, selectManifestFromIndex, fetchChannelImageMetadata } from "../../src/server/registry.ts";
 import { fetchReleaseNotes, releaseNoteFilenames, renderMarkdown } from "../../src/server/release-notes.ts";
 
 describe("self container parsing", () => {
   test("preserves container config needed to detect a managed install", async () => {
-    const inspect = await dockerInspect("container-id", async () => ({
+    const inspect = await dockerContainerInspect("container-id", async () => ({
       stdout: JSON.stringify([{
         Id: "container-id",
         Image: "sha256:image-id",
@@ -26,6 +27,28 @@ describe("self container parsing", () => {
       Image: "ghcr.io/lucasmeijer/atelier:latest",
       Labels: { "com.atelier.type": "server" },
     });
+  });
+
+  test("rejects malformed Docker inspect output", async () => {
+    await expect(dockerContainerInspect("container-id", async () => ({
+      stdout: JSON.stringify([{ Id: 42, Image: "sha256:image-id" }]),
+      stderr: "",
+      code: 0,
+    }))).rejects.toThrow();
+  });
+
+  test("accepts image inspect output without container-only fields", async () => {
+    const inspect = await dockerImageInspect("sha256:image-id", async () => ({
+      stdout: JSON.stringify([{
+        Id: "sha256:image-id",
+        RepoDigests: ["ghcr.io/lucasmeijer/atelier@sha256:digest"],
+        Config: { Labels: null },
+      }]),
+      stderr: "",
+      code: 0,
+    }));
+
+    expect(inspect.RepoDigests).toEqual(["ghcr.io/lucasmeijer/atelier@sha256:digest"]);
   });
 
   test("parses cgroup v1 docker ids", () => {
@@ -65,8 +88,8 @@ function context() {
   return {
     sidebar,
     ctx: {
-      events: {},
-      registry: { setTabBusy: () => {}, setTabUnread: () => {} },
+      events: createAtelierEventBus(),
+      registry: { setViewBusy: () => {}, setViewUnread: () => {} },
       workspaceRowContributions: { set: () => {} },
       globalSidebarContributions: { set: (_id: string, html?: string) => sidebar.push(html ?? "") },
       presentWorkView: async () => {},
@@ -103,7 +126,7 @@ describe("registry helpers", () => {
 
   test("fetches config labels through public GHCR token auth flow", async () => {
     const calls: string[] = [];
-    const fetcher = (async (input: URL | RequestInfo) => {
+    const fetcher = async (input: URL | RequestInfo) => {
       const url = String(input);
       calls.push(url);
       if (url.endsWith("/manifests/stable") && calls.filter((call) => call === url).length === 1) {
@@ -113,8 +136,72 @@ describe("registry helpers", () => {
       if (url.endsWith("/manifests/stable")) return Response.json({ config: { digest: "sha256:config" } }, { headers: { "docker-content-digest": "sha256:manifest" } });
       if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { "org.opencontainers.image.revision": "new", "com.atelier.self-update-compatibility": "contract-v1" } } });
       throw new Error(`unexpected fetch ${url}`);
-    }) as typeof fetch;
+    };
     await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({ digest: "sha256:manifest", platformDigest: undefined, revision: "new", selfUpdateCompatibility: "contract-v1" });
+  });
+
+  test("accepts null optional config label fields", async () => {
+    for (const config of [null, { Labels: null }]) {
+      const fetcher = async (input: URL | RequestInfo) => {
+        const url = String(input);
+        if (url.endsWith("/manifests/stable")) return Response.json({ config: { digest: "sha256:config" } }, { headers: { "docker-content-digest": "sha256:manifest" } });
+        if (url.endsWith("/blobs/sha256:config")) return Response.json({ config });
+        throw new Error(`unexpected fetch ${url}`);
+      };
+      await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({
+        digest: "sha256:manifest",
+        platformDigest: undefined,
+        revision: undefined,
+        selfUpdateCompatibility: undefined,
+      });
+    }
+  });
+
+  test("selects and fetches an image manifest from a registry index", async () => {
+    const architecture = process.arch === "arm64" ? "arm64" : "amd64";
+    const fetcher = async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith("/manifests/stable")) return Response.json({ manifests: [{ digest: "sha256:platform", platform: { os: "linux", architecture } }] });
+      if (url.endsWith("/manifests/sha256:platform")) return Response.json({ config: { digest: "sha256:config" } });
+      if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { "org.opencontainers.image.revision": "indexed" } } });
+      throw new Error(`unexpected fetch ${url}`);
+    };
+
+    await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({
+      digest: "sha256:platform",
+      platformDigest: "sha256:platform",
+      revision: "indexed",
+      selfUpdateCompatibility: undefined,
+    });
+  });
+
+  test("rejects malformed registry token responses", async () => {
+    const fetcher = async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith("/manifests/stable")) return new Response("", { status: 401, headers: { "www-authenticate": 'Bearer realm="https://ghcr.io/token"' } });
+      if (url === "https://ghcr.io/token") return Response.json({ token: 42 });
+      throw new Error(`unexpected fetch ${url}`);
+    };
+
+    await expect(fetchChannelImageMetadata("stable", fetcher)).rejects.toThrow();
+  });
+
+  test("rejects malformed registry manifests and config labels", async () => {
+    const malformedManifest = async () => Response.json({ config: { digest: 42 } });
+    await expect(fetchChannelImageMetadata("stable", malformedManifest)).rejects.toThrow();
+
+    const malformedIndex = async () => Response.json({
+      manifests: [{ digest: 42, platform: { os: "linux", architecture: "amd64" } }],
+    });
+    await expect(fetchChannelImageMetadata("stable", malformedIndex)).rejects.toThrow();
+
+    const malformedConfig = async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith("/manifests/stable")) return Response.json({ config: { digest: "sha256:config" } });
+      if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { revision: 42 } } });
+      throw new Error(`unexpected fetch ${url}`);
+    };
+    await expect(fetchChannelImageMetadata("stable", malformedConfig)).rejects.toThrow();
   });
 
   test("selects current linux platform manifest", () => {
@@ -137,7 +224,7 @@ describe("release notes", () => {
   });
 
   test("fetches added release notes from compare API and raw GitHub", async () => {
-    const fetcher = (async (input: URL | RequestInfo) => {
+    const fetcher = async (input: URL | RequestInfo) => {
       const url = String(input);
       if (url.includes("/compare/old...new")) return Response.json({ files: [
         { filename: "release_notes/002.md", status: "added" },
@@ -148,7 +235,7 @@ describe("release notes", () => {
       if (url.endsWith("/release_notes/001.md")) return new Response("# One");
       if (url.endsWith("/release_notes/002.md")) return new Response("# Two");
       throw new Error(`unexpected fetch ${url}`);
-    }) as typeof fetch;
+    };
     const html = await fetchReleaseNotes("old", "new", fetcher);
     expect(html.indexOf("<h1>One</h1>")).toBeLessThan(html.indexOf("<h1>Two</h1>"));
     expect(html).not.toContain("changed");
@@ -439,6 +526,27 @@ describe("update routes", () => {
     expect(await state!.json()).toMatchObject({ state: "available", selfUpdatable: true });
     const sse = await route(new Request("http://test/update/events"), new URL("http://test/update/events"));
     expect(sse).toBeUndefined();
+  });
+});
+
+describe("Docker pull event parsing", () => {
+  test("parses streamed layer progress", () => {
+    expect(parseDockerPullEventLine(JSON.stringify({
+      id: "layer-id",
+      status: "Downloading",
+      progressDetail: { current: 40, total: 100 },
+    }))).toEqual({
+      id: "layer-id",
+      status: "Downloading",
+      progressDetail: { current: 40, total: 100 },
+    });
+  });
+
+  test("rejects malformed progress fields", () => {
+    expect(() => parseDockerPullEventLine(JSON.stringify({
+      id: "layer-id",
+      progressDetail: { current: "40", total: 100 },
+    }))).toThrow();
   });
 });
 

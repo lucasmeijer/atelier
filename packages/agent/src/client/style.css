@@ -1,7 +1,7 @@
 /* Agent conversation — transcript + pinned prompt box */
 
-.fixed-shell-live-body:has(> .agent-tab-pane) { padding: 0; overflow: hidden; }
-.agent-tab-pane { height: 100%; min-height: 0; }
+.fixed-shell-live-body:has(> .agent-conversation-pane) { padding: 0; overflow: hidden; }
+.agent-conversation-pane { height: 100%; min-height: 0; }
 
 .agent-pane {
   --agent-inline-gutter: 2.5rem;
@@ -352,7 +352,7 @@
 .agent-rewind-opt:has(input:checked) textarea { display: block; }
 .agent-rewind-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
-/* Agent tab layout */
+/* Agent pane layout */
 .agent-row + .agent-row { margin-top: 8px; }
 
 .agent-md code { font-family: var(--mono); font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }

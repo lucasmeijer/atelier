@@ -79,7 +79,7 @@ describe("workspace agent session store", () => {
     expect(agent.path).toStartWith(join(root, "session-shares", "projectless"));
   });
 
-  test("workspaces with the same session share key share storage while tabs stay workspace-local", async () => {
+  test("workspaces with the same session share key share storage while Agent conversations stay Workspace-local", async () => {
     await dataDir();
     await writeProjectInit("front", "frontend", "suite");
     await writeProjectInit("back", "backend", "suite");

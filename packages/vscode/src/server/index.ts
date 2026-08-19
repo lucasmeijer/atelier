@@ -1,5 +1,5 @@
-export { renderWorkspaceVSCodeWorkViews, vscodeWorkspaceModule, vscodeWorkspaceModule as atelierServerModule, createWorkspaceVSCodeTab } from "./web.ts";
-export { deleteWorkspaceVSCodeTab, ensureWorkspaceVSCodeServer, listWorkspaceVSCodeTabs } from "./workspace-vscode.ts";
-export { renderVSCodePane, vscodeTabKey } from "./render.ts";
+export { renderWorkspaceVSCodeWorkViews, vscodeWorkspaceModule, vscodeWorkspaceModule as atelierServerModule, createWorkspaceVSCodeView } from "./web.ts";
+export { deleteWorkspaceVSCodeView, ensureWorkspaceVSCodeServer, listWorkspaceVSCodeViews } from "./workspace-vscode.ts";
+export { renderVSCodePane, vscodeViewKey } from "./render.ts";
 export { patchVSCodeWorkspaceAppResponse, resolveVSCodeWorkspaceAppTarget, vscodeAppKey, vscodeContainerPort } from "./proxy.ts";
 export { vscodeStaticFiles } from "./static.ts";

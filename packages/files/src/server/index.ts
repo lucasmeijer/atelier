@@ -1,4 +1,5 @@
 import { posix } from "node:path";
+import type { JsonValue } from "@atelier/core";
 import type { WorkspaceModule } from "@atelier/shared";
 import { workspaceContainerName, workspaceRoot } from "@atelier/workspace";
 import { deleteFile, FilesPathError, listFiles, resolveFilesDirectory, uploadFile } from "./files.ts";
@@ -70,7 +71,8 @@ const filesWorkspaceModule: WorkspaceModule = {
   id: "files",
   workViews: [{
     type: "files",
-    parseReference(value: unknown) {
+    parseReference(value: JsonValue) {
+      // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
       const reference = value as { type?: unknown };
       if (reference?.type !== "files" || Object.keys(reference).length !== 1) throw new Error("Files reference has no identity fields");
       return { type: "files" };

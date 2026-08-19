@@ -1554,7 +1554,7 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
 }
 
 // ---------------------------------------------------------------------------
-// Tab visibility hook
+// Agent conversation visibility hook
 // ---------------------------------------------------------------------------
 
 function agentPaneController(application: StimulusApplication, pane: HTMLElement): AgentPaneControllerInstance | null {
@@ -1571,12 +1571,12 @@ export function focusAgentPrompt(pane?: { querySelector(selectors: string): Pick
   return true;
 }
 
-function agentTabBecameVisible(application: StimulusApplication, pane: HTMLElement): void {
+function agentConversationBecameVisible(application: StimulusApplication, pane: HTMLElement): void {
   agentPaneController(application, pane)?.start();
   focusAgentPrompt(pane);
 }
 
-function agentTabNoLongerVisible(application: StimulusApplication, pane: HTMLElement): void {
+function agentConversationNoLongerVisible(application: StimulusApplication, pane: HTMLElement): void {
   agentPaneController(application, pane)?.stop();
 }
 
@@ -1596,7 +1596,7 @@ async function openAgentConversation(workspaceId: string, conversationId: string
     row?.querySelector<HTMLAnchorElement>("a.row-main")?.click();
   }
   const resident = await waitForAgentResident(workspaceId);
-  resident.querySelector<HTMLButtonElement>(`[data-agent-tab-id="${CSS.escape(conversationId)}"]`)?.click();
+  resident.querySelector<HTMLButtonElement>(`[data-agent-conversation-id="${CSS.escape(conversationId)}"]`)?.click();
   const pane = resident.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(conversationId)}"]`);
   const input = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
   input?.focus();
@@ -1649,8 +1649,8 @@ export const agentClientModule: WorkspaceClientModule = {
       label: "Agent session",
       search: ({ fuzzyScore }) => agentPaletteItems(fuzzyScore),
     });
-    hooks.onBecomeVisible(({ pane }) => agentTabBecameVisible(application, pane));
-    hooks.onNoLongerVisible(({ pane }) => agentTabNoLongerVisible(application, pane));
+    hooks.onBecomeVisible(({ pane }) => agentConversationBecameVisible(application, pane));
+    hooks.onNoLongerVisible(({ pane }) => agentConversationNoLongerVisible(application, pane));
     hooks.onFocusGroup(({ pane }) => focusAgentPrompt(pane));
     hooks.onWorkspaceCommand((commandId) => {
       if (commandId !== "agent.launch-project-workspace") return false;

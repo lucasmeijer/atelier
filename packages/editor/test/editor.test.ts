@@ -2,18 +2,19 @@ import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
 import { atelierServerModule } from "../src/server/index.ts";
 import { renderFileWorkView } from "../src/server/render.ts";
-import { deleteWorkspaceFileEditorState, fileEditorTabLabels, openWorkspaceFileEditorTab } from "../src/server/state.ts";
+import { deleteWorkspaceFileEditorState, fileEditorViewLabels, openWorkspaceFileEditorView } from "../src/server/state.ts";
 
 describe("editor workspace integration", () => {
   test("asks open editors to check disk only when an agent turn finishes", async () => {
     const events = createAtelierEventBus();
     const broadcasts: string[] = [];
+    // SAFETY: The test fixture controls this value and establishes the asserted shape.
     await atelierServerModule.initialize!({
       events,
       broadcastWorkspace: (_workspaceId: string, html: string) => broadcasts.push(html),
       onWorkspaceRemoved: () => {},
     } as never);
-    openWorkspaceFileEditorTab("workspace-1", "/work/example.ts");
+    openWorkspaceFileEditorView("workspace-1", "/work/example.ts");
     expect(broadcasts).toHaveLength(0);
     await events.emit("workspace_agent_turn_finished", { workspaceId: "workspace-1", agentLabel: "Agent 1" });
     expect(broadcasts).toHaveLength(1);
@@ -26,14 +27,15 @@ describe("editor workspace integration", () => {
       method: "POST",
       body: "# Preview\n\n**Rendered**",
     });
+    // SAFETY: The test fixture controls this value and establishes the asserted shape.
     const response = await atelierServerModule.routes![0]!.handle(request, new URL(request.url), {} as never);
     expect(response?.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(await response?.text()).toBe("<h1>Preview</h1>\n<p><strong>Rendered</strong></p>");
   });
 
   test("adds the rendered Markdown toggle only to Markdown files", () => {
-    const markdownTab = openWorkspaceFileEditorTab("workspace-md", "/work/README.md").tab;
-    const codeTab = openWorkspaceFileEditorTab("workspace-md", "/work/index.ts").tab;
+    const markdownTab = openWorkspaceFileEditorView("workspace-md", "/work/README.md").view;
+    const codeTab = openWorkspaceFileEditorView("workspace-md", "/work/index.ts").view;
     const markdownHtml = renderFileWorkView("workspace-md", markdownTab, "README.md").bodyHtml!;
     const codeHtml = renderFileWorkView("workspace-md", codeTab, "index.ts").bodyHtml!;
     expect(markdownHtml).toContain("file-editor#togglePreview");
@@ -42,16 +44,16 @@ describe("editor workspace integration", () => {
     deleteWorkspaceFileEditorState("workspace-md");
   });
 
-  test("reuses file tabs and disambiguates duplicate basenames", () => {
-    const first = openWorkspaceFileEditorTab("workspace-2", "/work/one/index.ts");
-    const reopened = openWorkspaceFileEditorTab("workspace-2", "/work/one/index.ts", { line: 4 });
-    const second = openWorkspaceFileEditorTab("workspace-2", "/work/two/index.ts");
+  test("reuses file views and disambiguates duplicate basenames", () => {
+    const first = openWorkspaceFileEditorView("workspace-2", "/work/one/index.ts");
+    const reopened = openWorkspaceFileEditorView("workspace-2", "/work/one/index.ts", { line: 4 });
+    const second = openWorkspaceFileEditorView("workspace-2", "/work/two/index.ts");
     expect(reopened.created).toBe(false);
-    expect(reopened.tab).toBe(first.tab);
-    expect(reopened.tab.line).toBe(4);
-    expect(fileEditorTabLabels([first.tab, second.tab])).toEqual(new Map([
-      [first.tab.key, "one/index.ts"],
-      [second.tab.key, "two/index.ts"],
+    expect(reopened.view).toBe(first.view);
+    expect(reopened.view.line).toBe(4);
+    expect(fileEditorViewLabels([first.view, second.view])).toEqual(new Map([
+      [first.view.key, "one/index.ts"],
+      [second.view.key, "two/index.ts"],
     ]));
     deleteWorkspaceFileEditorState("workspace-2");
   });

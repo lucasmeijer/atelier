@@ -1,3 +1,5 @@
+import type { AtelierEventBus, JsonObject, JsonValue } from "@atelier/core";
+import type { TSchema } from "typebox";
 import { escapeHtml } from "./html.ts";
 
 export { providerBrandColor, providerBrandIconHtml } from "./brand-icons.ts";
@@ -70,7 +72,7 @@ export function turboStreamResponse(body: string, init: ResponseInit = {}): Resp
 export interface WorkspaceAttachContext {
   workspaceId: string;
   init?: unknown;
-  events?: unknown;
+  events?: AtelierEventBus;
   /** When present, body HTML is only needed for these module-native source keys. */
   renderWorkViewSourceKeys?: ReadonlySet<string>;
 }
@@ -92,9 +94,8 @@ export interface WorkspaceWorkViewPresentation {
   actionsHtml?: string;
 }
 
-export interface WorkspaceWorkViewReference {
+export interface WorkspaceWorkViewReference extends JsonObject {
   type: string;
-  [field: string]: string | number | boolean | null | undefined;
 }
 
 export type WorkspaceWorkViewAvailability =
@@ -105,7 +106,7 @@ export type WorkspaceWorkViewAvailability =
 
 export interface WorkspaceModuleWorkViewAdapter<Reference extends WorkspaceWorkViewReference = WorkspaceWorkViewReference> {
   type: Reference["type"];
-  parseReference(value: unknown): Reference;
+  parseReference(value: JsonValue): Reference;
   identity(reference: Reference): string;
   close?(context: { workspaceId: string; reference: Reference }): Promise<void> | void;
 }
@@ -132,8 +133,8 @@ export interface WorkspaceCommandContribution<Input = Record<string, never>> {
   label: string;
   description?: string;
   scope: WorkspaceCommandScope;
-  /** Runtime schema placeholder for future typed form/palette generation. */
-  inputSchema?: unknown;
+  /** Runtime schema for validation and future typed form/palette generation. */
+  inputSchema?: TSchema;
   surfaces?: WorkspaceCommandSurfaces;
   /** Type carrier only; command metadata stays serializable. */
   readonly __input?: Input;
@@ -159,7 +160,7 @@ export interface WorkspaceModuleCommandResult {
 
 export interface WorkspaceModuleCommandContext<Input = unknown> {
   workspaceId: string;
-  events?: unknown;
+  events?: AtelierEventBus;
   input: Input;
 }
 
@@ -168,12 +169,12 @@ export const emptyWorkspaceCommandInputSchema = { type: "object", additionalProp
 export interface WorkspaceModuleCommandHandler<Input = unknown> {
   id: string;
   /** JSON Schema used to validate automation input and advertise the command in OpenAPI. */
-  inputSchema?: unknown;
+  inputSchema?: TSchema;
   execute(context: WorkspaceModuleCommandContext<Input>): Promise<WorkspaceModuleCommandResult> | WorkspaceModuleCommandResult;
 }
 
 export interface WorkspaceModuleRouteContext {
-  events?: unknown;
+  events?: AtelierEventBus;
   openWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<Response>;
 }
 
@@ -209,7 +210,7 @@ export interface WorkspaceServerProvisioningHook {
   id: string;
   label: string;
   parentId?: string;
-  run(context: { workspaceId: string; creationContext?: WorkspaceCreationContext; events?: unknown }): Promise<void> | void;
+  run(context: { workspaceId: string; creationContext?: WorkspaceCreationContext; events?: AtelierEventBus }): Promise<void> | void;
 }
 
 export interface WorkspaceRowContributionRegistry {
@@ -273,10 +274,10 @@ export interface AgentWorkspaceCreateResult {
 }
 
 export interface WorkspaceServerModuleContext {
-  events: unknown;
+  events: AtelierEventBus;
   registry: {
-    setTabBusy(workspaceId: string, tabKey: string, busy: boolean): void;
-    setTabUnread(workspaceId: string, tabKey: string, unread: boolean): void;
+    setViewBusy(workspaceId: string, viewKey: string, busy: boolean): void;
+    setViewUnread(workspaceId: string, viewKey: string, unread: boolean): void;
   };
   workspaceRowContributions: WorkspaceRowContributionRegistry;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
@@ -341,8 +342,7 @@ export function isWorkspacePaneVisible(element: Element): boolean {
     }
     return presentationPane.dataset.workspacePaneRole === "agent" || presentation.classList.contains("is-work-pane-open");
   }
-  const pane = element.closest(".tab-pane");
-  return !pane || pane.classList.contains("visible");
+  return true;
 }
 
 export interface WorkspaceClientWorkspaceAppFrameContext {
@@ -396,6 +396,8 @@ export interface WorkspaceClientModule {
 
 export {
   CableTopics,
+  decodeCableClientMessage,
+  decodeCableServerMessage,
   serializeCableIdentifier,
   type AtelierCableClient,
   type CableClientMessage,

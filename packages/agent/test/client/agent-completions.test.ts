@@ -14,7 +14,7 @@ function input(value: string, cursor = value.length): AgentCompletionInput {
 }
 
 describe("agent prompt focus", () => {
-  test("focuses without scrolling the tab", () => {
+  test("focuses without scrolling the Agent pane", () => {
     const focus = mock(() => {});
     const pane = { querySelector: () => ({ focus }) };
 

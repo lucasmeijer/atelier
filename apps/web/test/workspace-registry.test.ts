@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createWorkspaceRegistry, type WorkspaceActivityStore, type WorkspaceEntry } from "../src/server/workspace-registry.ts";
 
 interface Captured {
-  rows: Array<{ entry: WorkspaceEntry; tabKey?: string }>;
+  rows: Array<{ entry: WorkspaceEntry; viewKey?: string }>;
   lists: WorkspaceEntry[][];
   removed: string[];
   parked: WorkspaceEntry[];
@@ -27,7 +27,7 @@ function setup(options: { activity?: Record<string, number>; unread?: Record<str
   const registry = createWorkspaceRegistry({ activityStore: store, unreadStore, now: options.now });
   const captured: Captured = { rows: [], lists: [], removed: [], parked: [] };
   registry.setCallbacks({
-    rowChanged: (entry, { tabKey }) => captured.rows.push({ entry: { ...entry }, tabKey }),
+    rowChanged: (entry, { viewKey }) => captured.rows.push({ entry: { ...entry }, viewKey }),
     parkedChanged: (entry) => captured.parked.push({ ...entry }),
     listChanged: (entries) => captured.lists.push(entries.map((entry) => ({ ...entry }))),
     removed: (id) => captured.removed.push(id),
@@ -75,11 +75,11 @@ describe("workspace registry", () => {
     ]);
     captured.lists.length = 0;
 
-    registry.setTabBusy("parked", "agent:1", true);
+    registry.setViewBusy("parked", "agent:1", true);
 
     expect(registry.get("parked")?.parked).toBe(false);
     expect(captured.parked.at(-1)?.id).toBe("parked");
-    expect(captured.rows.map((row) => row.tabKey)).toEqual(["agent:1"]);
+    expect(captured.rows.map((row) => row.viewKey)).toEqual(["agent:1"]);
     expect(captured.lists).toHaveLength(1);
     expect(registry.list().map((entry) => entry.id)).toEqual(["parked", "active"]);
   });
@@ -142,7 +142,7 @@ describe("workspace registry", () => {
     expect(store.saved.at(-1)?.b).toBeGreaterThan(300);
   });
 
-  test("tab busy and workspace unread aggregate with busy taking precedence, never reordering", async () => {
+  test("view busy and workspace unread aggregate with busy taking precedence, never reordering", async () => {
     const { registry, captured } = setup({ activity: { a: 200, b: 100 } });
     await registry.seed([
       { id: "a", title: null },
@@ -151,21 +151,21 @@ describe("workspace registry", () => {
     captured.lists.length = 0;
     captured.rows.length = 0;
 
-    registry.setTabUnread("b", "agent:1", true);
-    registry.setTabUnread("b", "agent:1", true);
+    registry.setViewUnread("b", "agent:1", true);
+    registry.setViewUnread("b", "agent:1", true);
     expect(registry.isWorkspaceUnread("b")).toBe(true);
     expect(registry.workspaceUnreadAt("b")).toBeDefined();
     expect(registry.workspaceState("b")).toBe("unread");
 
-    registry.setTabBusy("b", "terminal:1", true);
+    registry.setViewBusy("b", "terminal:1", true);
     expect(registry.isWorkspaceBusy("b")).toBe(true);
-    expect(registry.isTabBusy("b", "terminal:1")).toBe(true);
+    expect(registry.isViewBusy("b", "terminal:1")).toBe(true);
     expect(registry.workspaceState("b")).toBe("busy");
-    expect(registry.busyTabs("b")).toEqual(["terminal:1"]);
-    expect(captured.rows.map((row) => row.tabKey)).toEqual(["agent:1", "agent:1", "terminal:1"]);
+    expect(registry.busyViews("b")).toEqual(["terminal:1"]);
+    expect(captured.rows.map((row) => row.viewKey)).toEqual(["agent:1", "agent:1", "terminal:1"]);
     expect(captured.lists).toHaveLength(0);
 
-    registry.setTabBusy("b", "terminal:1", false);
+    registry.setViewBusy("b", "terminal:1", false);
     expect(registry.workspaceState("b")).toBe("unread");
     registry.setActiveWorkspace("b");
     expect(registry.isWorkspaceUnread("b")).toBe(false);
@@ -177,8 +177,8 @@ describe("workspace registry", () => {
     await registry.seed([{ id: "a", title: null }, { id: "b", title: null }]);
 
     registry.setActiveWorkspace("a");
-    registry.setTabUnread("a", "agent:1", true);
-    registry.setTabUnread("b", "agent:1", true);
+    registry.setViewUnread("a", "agent:1", true);
+    registry.setViewUnread("b", "agent:1", true);
 
     expect(registry.isWorkspaceUnread("a")).toBe(false);
     expect(registry.isWorkspaceUnread("b")).toBe(true);
@@ -204,8 +204,8 @@ describe("workspace registry", () => {
       { id: "c", title: null },
     ]);
 
-    registry.setTabUnread("b", "agent:1", true);
-    registry.setTabUnread("a", "agent:1", true);
+    registry.setViewUnread("b", "agent:1", true);
+    registry.setViewUnread("a", "agent:1", true);
     expect(registry.oldestUnreadWorkspace()?.id).toBe("b");
 
     registry.setActiveWorkspace("b");

@@ -1,6 +1,6 @@
 import type { WorkspacePresenterDefinition, WorkspacePresenterDeps } from "@atelier/agent/server";
 import { Type } from "typebox";
-import { createWorkspaceBrowserTab, listWorkspaceBrowserTabs, setWorkspaceBrowserTarget } from "./state.ts";
+import { createWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
 
 export function createBrowserPresenter(workspaceId: string, deps: WorkspacePresenterDeps): WorkspacePresenterDefinition<{ kind: "browser"; url: string }> {
   return {
@@ -12,13 +12,12 @@ export function createBrowserPresenter(workspaceId: string, deps: WorkspacePrese
       }),
     },
     execute: async (_toolCallId: string, params: { kind: "browser"; url: string }) => {
-      const browserTab = listWorkspaceBrowserTabs(workspaceId)[0] ?? createWorkspaceBrowserTab(workspaceId);
-      const tab = setWorkspaceBrowserTarget(workspaceId, browserTab.key, params.url) ?? browserTab;
-      await deps.events?.emit("workspace_tabs_changed", { workspaceId });
-      await deps.presentWorkView({ type: "browser", browserId: browserTab.key });
-      const details = { workView: { type: "browser", browserId: browserTab.key }, url: tab.targetUrl };
+      const browserView = listWorkspaceBrowserViews(workspaceId)[0] ?? createWorkspaceBrowserView(workspaceId);
+      const view = setWorkspaceBrowserTarget(workspaceId, browserView.key, params.url) ?? browserView;
+      await deps.presentWorkView({ type: "browser", browserId: browserView.key });
+      const details = { workView: { type: "browser", browserId: browserView.key }, url: view.targetUrl };
       return {
-        content: [{ type: "text" as const, text: `Preview browser opened at ${tab.targetUrl}` }],
+        content: [{ type: "text" as const, text: `Preview browser opened at ${view.targetUrl}` }],
         details,
       };
     },

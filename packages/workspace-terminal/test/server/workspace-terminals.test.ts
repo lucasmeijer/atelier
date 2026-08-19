@@ -17,7 +17,7 @@ afterAll(async () => {
 });
 
 describe("workspace terminals", () => {
-  test("does not turn tmux sessions into terminal tabs", async () => {
+  test("does not turn tmux sessions into Terminal views", async () => {
     const workspace = await createWorkspace();
     await execWorkspaceShell(workspace.id, "tmux new-session -d -s existing-session");
 

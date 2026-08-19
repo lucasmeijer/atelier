@@ -58,14 +58,14 @@ import {
 // ---------------------------------------------------------------------------
 
 type AgentSubscriber = (streamHtml: string, cursor: string) => void;
-type WorkspaceTabBusyListener = (event: { workspaceId: string; tabKey: string; busy: boolean }) => void;
+type WorkspaceViewBusyListener = (event: { workspaceId: string; viewKey: string; busy: boolean }) => void;
 type InitialSessionSettings = Pick<NonNullable<Parameters<typeof createAgentSession>[0]>, "model" | "thinkingLevel"> & { serviceTier?: AgentServiceTier };
 
-const workspaceTabBusyListeners = new Set<WorkspaceTabBusyListener>();
+const workspaceViewBusyListeners = new Set<WorkspaceViewBusyListener>();
 
-export function subscribeWorkspaceTabBusy(listener: WorkspaceTabBusyListener): () => void {
-  workspaceTabBusyListeners.add(listener);
-  return () => workspaceTabBusyListeners.delete(listener);
+export function subscribeWorkspaceViewBusy(listener: WorkspaceViewBusyListener): () => void {
+  workspaceViewBusyListeners.add(listener);
+  return () => workspaceViewBusyListeners.delete(listener);
 }
 
 export type SubmitMode = "send" | "steer";
@@ -242,7 +242,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected setBusy(busy: boolean): void {
     if (this.announcedBusy === busy) return;
     this.announcedBusy = busy;
-    for (const listener of workspaceTabBusyListeners) listener({ workspaceId: this.workspaceId, tabKey: `agent:${this.label}`, busy });
+    for (const listener of workspaceViewBusyListeners) listener({ workspaceId: this.workspaceId, viewKey: `agent:${this.label}`, busy });
     this.stream(turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, busy)));
   }
 

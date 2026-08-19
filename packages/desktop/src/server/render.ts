@@ -1,14 +1,14 @@
 import { escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
-import { desktopAppKey, desktopTabKey } from "./runtime.ts";
+import { desktopAppKey } from "./runtime.ts";
 
 export function renderDesktopWorkView(workspaceId: string): WorkspaceWorkViewPresentation {
   return {
-    sourceKey: desktopTabKey,
+    sourceKey: desktopAppKey,
     label: "Desktop",
     reference: { type: "desktop" },
     kind: "resource",
     availability: { phase: "live" },
-    bodyHtml: `<section class="work-view-pane" data-work-view-source="${desktopTabKey}">${renderDesktopPane(workspaceId)}</section>`,
+    bodyHtml: `<section class="work-view-pane" data-work-view-source="${desktopAppKey}">${renderDesktopPane(workspaceId)}</section>`,
   };
 }
 

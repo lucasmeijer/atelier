@@ -1,57 +1,66 @@
+import { isJsonObject, type JsonValue } from "@atelier/core";
 import { domId } from "@atelier/shared";
+import { createWorkspaceMetadataState } from "@atelier/workspace";
 
-export interface WorkspaceBrowserTab {
+export interface WorkspaceBrowserView {
   key: string;
   label: string;
   targetUrl: string;
 }
 
-const browserTabsByWorkspace = new Map<string, WorkspaceBrowserTab[]>();
+function parseBrowserViews(value: JsonValue): WorkspaceBrowserView[] {
+  if (!Array.isArray(value)) throw new Error("invalid persisted Browser Work views");
+  return value.map((entry) => {
+    if (!isJsonObject(entry) || typeof entry.key !== "string" || !/^browser-\d+$/.test(entry.key) || typeof entry.label !== "string" || typeof entry.targetUrl !== "string") {
+      throw new Error("invalid persisted Browser Work view");
+    }
+    return { key: entry.key, label: entry.label, targetUrl: entry.targetUrl };
+  });
+}
+
+const browserViews = createWorkspaceMetadataState("browser-work-views.json", parseBrowserViews, () => []);
 
 export function browserFrameId(workspaceId: string, appKey: string): string {
   return domId("browser_frame", workspaceId, appKey);
 }
 
-export function listWorkspaceBrowserTabs(workspaceId: string): WorkspaceBrowserTab[] {
-  const existing = browserTabsByWorkspace.get(workspaceId);
-  if (existing) return existing;
-  const tabs: WorkspaceBrowserTab[] = [];
-  browserTabsByWorkspace.set(workspaceId, tabs);
-  return tabs;
+export function listWorkspaceBrowserViews(workspaceId: string): WorkspaceBrowserView[] {
+  return browserViews.read(workspaceId);
 }
 
-export function getWorkspaceBrowserTab(workspaceId: string, appKey: string): WorkspaceBrowserTab | undefined {
-  return browserTabsByWorkspace.get(workspaceId)?.find((tab) => tab.key === appKey);
+export function getWorkspaceBrowserView(workspaceId: string, appKey: string): WorkspaceBrowserView | undefined {
+  return browserViews.read(workspaceId).find((view) => view.key === appKey);
 }
 
-export function createWorkspaceBrowserTab(workspaceId: string): WorkspaceBrowserTab {
-  const existing = listWorkspaceBrowserTabs(workspaceId);
-  const used = new Set(existing.map((tab) => tab.key));
+export function createWorkspaceBrowserView(workspaceId: string): WorkspaceBrowserView {
+  const existing = listWorkspaceBrowserViews(workspaceId);
+  const used = new Set(existing.map((view) => view.key));
   let index = existing.length + 1;
   let key = `browser-${index}`;
   while (used.has(key)) {
     index += 1;
     key = `browser-${index}`;
   }
-  const tab = { key, label: `Browser ${index}`, targetUrl: "" };
-  existing.push(tab);
-  return tab;
+  const view = { key, label: `Browser ${index}`, targetUrl: "" };
+  existing.push(view);
+  browserViews.write(workspaceId, existing);
+  return view;
 }
 
-export function deleteWorkspaceBrowserTab(workspaceId: string, appKey: string): void {
-  const tabs = browserTabsByWorkspace.get(workspaceId);
-  if (tabs) browserTabsByWorkspace.set(workspaceId, tabs.filter((tab) => tab.key !== appKey));
+export function deleteWorkspaceBrowserView(workspaceId: string, appKey: string): void {
+  browserViews.write(workspaceId, browserViews.read(workspaceId).filter((view) => view.key !== appKey));
 }
 
-export function setWorkspaceBrowserTarget(workspaceId: string, appKey: string, input: string): WorkspaceBrowserTab | undefined {
-  const tab = getWorkspaceBrowserTab(workspaceId, appKey);
-  if (!tab) return undefined;
-  tab.targetUrl = normalizeBrowserUrl(input);
-  return tab;
+export function setWorkspaceBrowserTarget(workspaceId: string, appKey: string, input: string): WorkspaceBrowserView | undefined {
+  const view = getWorkspaceBrowserView(workspaceId, appKey);
+  if (!view) return undefined;
+  view.targetUrl = normalizeBrowserUrl(input);
+  browserViews.write(workspaceId, browserViews.read(workspaceId));
+  return view;
 }
 
 export function deleteWorkspaceBrowserState(workspaceId: string): void {
-  browserTabsByWorkspace.delete(workspaceId);
+  browserViews.delete(workspaceId);
 }
 
 export function normalizeBrowserUrl(input: string): string {

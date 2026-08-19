@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AtelierCoreError, getAtelierRuntimeContext, isJsonObject } from "@atelier/core";
+import { AtelierCoreError, getAtelierRuntimeContext, isJsonObject, type JsonValue } from "@atelier/core";
 import type { WorkspaceWorkViewReference } from "@atelier/shared";
 export type { WorkspaceWorkViewReference } from "@atelier/shared";
 
 /** Resource module contribution and type adapter for one Work view kind. */
 export interface WorkspaceWorkViewContribution<Reference extends WorkspaceWorkViewReference = WorkspaceWorkViewReference> {
   type: Reference["type"];
-  parseReference(value: unknown): Reference;
+  parseReference(value: JsonValue): Reference;
   identity(reference: Reference): string;
 }
 
@@ -98,7 +98,7 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
       : new AtelierCoreError("work_view_reference_invalid", `invalid Work view reference for workspace ${workspaceId}: ${message}`);
   }
 
-  function parseReference(workspaceId: string, value: unknown, stored = false): WorkspaceWorkViewReference {
+  function parseReference(workspaceId: string, value: JsonValue, stored = false): WorkspaceWorkViewReference {
     if (!isJsonObject(value)) throw referenceError(workspaceId, "reference must be an object", stored);
     const type = value.type;
     if (typeof type !== "string") throw referenceError(workspaceId, "reference must have a type", stored);
@@ -116,7 +116,7 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
     return `${reference.type}:${adapter.identity(reference)}`;
   }
 
-  function parse(workspaceId: string, value: unknown): StoredPresentation {
+  function parse(workspaceId: string, value: JsonValue): StoredPresentation {
     if (!isJsonObject(value)) throw presentationError(workspaceId, "expected version 1 state");
     const { version, nextAttentionSequence, workViews: storedWorkViews } = value;
     if (version !== 1 || !Number.isSafeInteger(nextAttentionSequence) || Number(nextAttentionSequence) < 1 || !Array.isArray(storedWorkViews)) {

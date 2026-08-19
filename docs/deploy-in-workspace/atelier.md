@@ -5,9 +5,9 @@ Atelier is a self-hosted browser app for working with coding agents in isolated 
 ## 1. What Atelier Is
 
 - A **workspace** is an isolated development environment. Its project files live under `/work` inside the workspace.
-- An **agent** is a coding assistant running inside a workspace. A workspace can have more than one agent.
-- A **repository** is a saved Git URL that Atelier can clone into new workspaces.
-- A **tab** is a tool inside a workspace, such as an Agent, Terminal, Browser preview, VS Code, or Desktop.
+- An **Agent conversation** is a coding-assistant conversation running inside a Workspace. A Workspace can have more than one Agent conversation.
+- A **Project** is a saved Git source and configuration from which Atelier creates Workspaces.
+- A **Work view** is a file, terminal, browser preview, VS Code session, Desktop, or other working surface shown in the Work pane.
 
 ## 2. Getting Set Up
 
@@ -35,17 +35,17 @@ Workspace actions:
 - Park with the sleep icon to keep it but skip it during next/previous workspace navigation.
 - Delete with the trash icon. Atelier warns before deleting uncommitted changes or unpushed commits.
 
-Agents can also fork their current workspace with the `fork_current_workspace` tool. A fork creates a fresh container from the same workspace image and copies the current workspace's entire `/work` folder, including unversioned files. It does not copy live terminals, tab layout, running processes, or agent conversation history. If the tool includes an initial prompt, Atelier runs that prompt in a new fresh agent context in the fork. Repository workspaces share `/persistent`, so the spawning workspace and the fork can use `/persistent` as a communication channel for notes, handoff files, or artifacts that should outlive either workspace.
+Agents can also fork their current workspace with the `fork_current_workspace` tool. A fork creates a fresh container from the same workspace image and copies the current workspace's entire `/work` folder, including unversioned files. It does not copy live terminals, open Work views, running processes, or Agent conversation history. If the tool includes an initial prompt, Atelier runs that prompt in a new fresh agent context in the fork. Repository workspaces share `/persistent`, so the spawning workspace and the fork can use `/persistent` as a communication channel for notes, handoff files, or artifacts that should outlive either workspace.
 
 ## 4. Working With Agents
 
-Use an Agent tab to ask for code changes, explanations, reviews, or debugging help.
+Use an Agent conversation to ask for code changes, explanations, reviews, or debugging help.
 
 - Choose the model and thinking level from the controls below the prompt.
 - Drop files onto the prompt to attach them.
 - Type `@` followed by part of a filename to fuzzy-search files and directories from the agent's working directory. Press **Tab** to request path completion for any other word at the cursor. Relative, absolute, and `~/` paths are supported.
 - While an agent is running, use **Stop**, **Steer**, or **Follow-up**.
-- Use **New Agent** from the tab group menu to add another agent.
+- Use **New Agent** from the Agent pane to add another Agent conversation.
 - Use **Rewind** on an earlier user message to continue from that point in the conversation.
 
 Agents run inside the workspace and can read and edit files under `/work`.
@@ -96,7 +96,7 @@ bun install
 
 Prompt templates are reusable prompts stored in the workspace repository. Add Markdown files under `.atelier/prompts`; `.atelier` is the idiomatic Atelier configuration directory. Atelier also reads `.pi/prompts` for convenience and compatibility, but prefer `.atelier/prompts` for new templates. If both directories contain a template with the same filename, the `.atelier` template is used.
 
-Each `*.md` file becomes a slash command named after the file. For example, `.atelier/prompts/land.md` is available as `/land` in the agent prompt box. Atelier also includes a built-in `/land` template: "Commit and push your work, rebasing when necessary. when succesful, delete this workspace". A repository-provided `/land` template takes precedence over the built-in one. The built-in `/new` command starts a fresh agent session in the current agent tab, preserving the selected model and thinking level. `/name` asks AI to rename the current workspace from the agent conversation, while `/name my-custom-name` applies a name directly. Type `/` to see matching templates and commands, then submit one to run it.
+Each `*.md` file becomes a slash command named after the file. For example, `.atelier/prompts/land.md` is available as `/land` in the agent prompt box. Atelier also includes a built-in `/land` template: "Commit and push your work, rebasing when necessary. when succesful, delete this workspace". A repository-provided `/land` template takes precedence over the built-in one. The built-in `/new` command starts a fresh session in the current Agent conversation, preserving the selected model and thinking level. `/name` asks AI to rename the current workspace from the agent conversation, while `/name my-custom-name` applies a name directly. Type `/` to see matching templates and commands, then submit one to run it.
 
 To add a new prompt template:
 
@@ -123,18 +123,18 @@ Supported placeholders in the body:
 
 ## 5. Workspace Tools
 
-Use the tab group `+` menu to open tools:
+Use the Work pane `+` menu or mobile More sheet to open Work views:
 
 - **Terminal**: shell access inside the workspace.
 - **Browser**: preview web apps running in the workspace.
 - **VS Code**: browser-based VS Code for the workspace.
 - **Desktop**: a graphical desktop when needed.
 
-Tabs can be moved, closed, split into groups, and arranged side by side.
+Work views can be selected, reordered, and closed inside the single contextual Work pane.
 
 ## 6. Previewing Apps and Outputs
 
-Atelier exposes workspace web servers on ports `3000` through `3010`. Start dev servers on one of those ports, then open a Browser tab to preview them.
+Atelier exposes workspace web servers on ports `3000` through `3010`. Start dev servers on one of those ports, then open a Browser view to preview them.
 
 Agents can show generated files inline using:
 

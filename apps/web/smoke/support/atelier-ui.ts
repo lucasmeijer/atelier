@@ -12,7 +12,7 @@ export interface NewWorkspace {
   select(): Promise<void>;
 }
 
-export interface FullscreenTab {
+export interface FullscreenView {
   close(): Promise<void>;
 }
 
@@ -61,20 +61,20 @@ export const atelierUi = {
     return page.locator("#agent_launch_form").getByRole("textbox", { name: "Describe what you want the agent to do… (optional)" });
   },
 
-  currentAgentPrompt(page: Page, tabKey: string): Locator {
-    return this.workspaceTabPane(page, tabKey).locator('[data-agent-pane-target="input"]');
+  currentAgentPrompt(page: Page, sourceKey: string): Locator {
+    return page.locator(`[data-agent-conversation-source=${attributeValue(sourceKey)}]`).locator('[data-agent-pane-target="input"]');
   },
 
-  workspaceTab(page: Page, tabKey: string): Locator {
-    return page.locator(`button[data-atelier-fullscreen-mode-value="tab"][data-atelier-fullscreen-tab-key-value=${attributeValue(tabKey)}]`).first();
+  workspaceView(page: Page, viewKey: string): Locator {
+    return page.locator(`button[data-atelier-fullscreen-mode-value="view"][data-atelier-fullscreen-view-key-value=${attributeValue(viewKey)}]`).first();
   },
 
-  browserTab(page: Page, tabKey: string): Locator {
-    return this.workspaceTab(page, tabKey);
+  browserView(page: Page, viewKey: string): Locator {
+    return this.workspaceView(page, viewKey);
   },
 
-  workspaceTabPane(page: Page, sourceKey: string): Locator {
-    return page.locator(`[data-source-tab-key=${attributeValue(sourceKey)}], [data-work-view-source=${attributeValue(sourceKey)}], [data-tab-pane=${attributeValue(sourceKey)}]`).first();
+  workspaceViewPane(page: Page, sourceKey: string): Locator {
+    return page.locator(`[data-source-work-view-key=${attributeValue(sourceKey)}], [data-work-view-source=${attributeValue(sourceKey)}]`).first();
   },
 
   async waitForNewWorkspace(page: Page, performCreation: () => Promise<void>, options: { timeout?: number } = {}): Promise<NewWorkspace> {
@@ -103,13 +103,13 @@ export const atelierUi = {
     };
   },
 
-  async openTabFullscreen(page: Page, options: { tabKey: string; timeout?: number }): Promise<FullscreenTab> {
-    const tab = this.workspaceTab(page, options.tabKey);
-    await tab.click();
-    await tab.hover();
+  async openViewFullscreen(page: Page, options: { viewKey: string; timeout?: number }): Promise<FullscreenView> {
+    const view = this.workspaceView(page, options.viewKey);
+    await view.click();
+    await view.hover();
     await page.keyboard.press("f");
 
-    const active = page.locator(`[data-atelier-fullscreen-active="true"][data-source-tab-key=${attributeValue(options.tabKey)}]`);
+    const active = page.locator(`[data-atelier-fullscreen-active="true"][data-source-work-view-key=${attributeValue(options.viewKey)}]`);
     await active.waitFor({ state: "visible", timeout: options.timeout });
 
     return {

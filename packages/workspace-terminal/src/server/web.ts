@@ -1,6 +1,7 @@
 import { registerWorkspacePresenter } from "@atelier/agent/server";
+import type { JsonValue } from "@atelier/core";
 import { domId, escapeHtml, turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceWorkViewPresentation, type WorkspaceWorkViewReference } from "@atelier/shared";
-import { terminalTabKey } from "../shared.ts";
+import { terminalViewKey } from "../shared.ts";
 import { createTmuxPresenter } from "./agent-tool.ts";
 import { renderTerminalPane } from "./render.ts";
 import { createTerminalSocketHandler } from "./sockets.ts";
@@ -10,7 +11,7 @@ import { Type } from "typebox";
 
 function renderWorkspaceTerminalWorkViews(workspaceId: string, terminals: WorkspaceTerminal[]): WorkspaceWorkViewPresentation[] {
   return terminals.map((terminal) => ({
-    sourceKey: terminalTabKey(terminal.id),
+    sourceKey: terminalViewKey(terminal.id),
     label: terminal.title,
     bodyHtml: renderTerminalPane(workspaceId, terminal),
     reference: { type: "terminal", terminalId: terminal.id },
@@ -21,7 +22,8 @@ function renderWorkspaceTerminalWorkViews(workspaceId: string, terminals: Worksp
 
 interface TerminalWorkViewReference extends WorkspaceWorkViewReference { type: "terminal"; terminalId: string }
 
-function parseTerminalReference(value: unknown): TerminalWorkViewReference {
+function parseTerminalReference(value: JsonValue): TerminalWorkViewReference {
+  // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
   const reference = value as { type?: unknown; terminalId?: unknown };
   if (reference?.type !== "terminal" || typeof reference.terminalId !== "string" || !reference.terminalId) throw new Error("terminalId is required");
   return { type: "terminal", terminalId: reference.terminalId };
@@ -37,7 +39,7 @@ const terminalWorkspaceCommands: WorkspaceCommandContribution[] = [
   {
     id: "terminal.attach",
     label: "Attach Terminal",
-    description: "Open a terminal tab attached to an existing tmux session",
+    description: "Open a Terminal view attached to an existing tmux session",
     scope: "workspace",
     surfaces: { ui: { placement: "work-launcher" } },
   },
@@ -71,7 +73,7 @@ async function renderAttachDialog(workspaceId: string): Promise<string> {
 
   return `<dialog id="${attachDialogId(workspaceId)}" class="modal terminal-attach-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/terminals/attach" data-turbo="true">
-      <header><h2>Attach terminal</h2><p>Choose an existing tmux session. Multiple terminal tabs can attach to the same session.</p></header>
+      <header><h2>Attach terminal</h2><p>Choose an existing tmux session. Multiple Terminal views can attach to the same session.</p></header>
       <div class="terminal-session-list">${rows || `<div class="terminal-session-empty">No tmux sessions are running yet.</div>`}</div>
       <div class="modal-actions"><button class="btn" type="button" data-action="modal#close">Cancel</button><button class="btn primary" type="submit"${rows ? "" : " disabled"}>Attach</button></div>
     </form>
@@ -89,7 +91,7 @@ export const terminalWorkspaceModule: WorkspaceModule = {
   staticFiles: terminalStaticFiles,
   initialize(context) {
     context.registerSocketHandler(createTerminalSocketHandler({
-      setTabBusy: (workspaceId, tabKey, busy) => context.registry.setTabBusy(workspaceId, tabKey, busy),
+      setViewBusy: (workspaceId, viewKey, busy) => context.registry.setViewBusy(workspaceId, viewKey, busy),
     }));
     registerWorkspacePresenter("tmux", (workspaceId, options) => createTmuxPresenter(workspaceId, {
       events: options.events,
@@ -105,6 +107,7 @@ export const terminalWorkspaceModule: WorkspaceModule = {
         cwd: Type.Optional(Type.String()),
       }),
       async execute({ workspaceId, input }) {
+        // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
         const options = input as { title?: string; command?: string; cwd?: string };
         const terminal = await createWorkspaceTerminal(workspaceId, options);
         return { createdWorkView: { type: "terminal", terminalId: terminal.id } };
@@ -114,7 +117,7 @@ export const terminalWorkspaceModule: WorkspaceModule = {
       id: "terminal.attach",
       async execute({ workspaceId }) {
         const dialogId = attachDialogId(workspaceId);
-        return { streamHtml: `${turboStream("remove", dialogId)}${turboStream("append", domId("workspace_groups", workspaceId), await renderAttachDialog(workspaceId))}` };
+        return { streamHtml: `${turboStream("remove", dialogId)}${turboStream("append", "workspace_command_modal_host", await renderAttachDialog(workspaceId))}` };
       },
     },
   ],

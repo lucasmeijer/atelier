@@ -34,6 +34,7 @@ interface TurboLike {
 }
 
 const visiblePresentationPanes = new WeakSet<HTMLElement>();
+const workspacePaneVisibilityKey = "atelier:workspace-pane-visible";
 
 interface StoredPersonalNavigation {
   activeAgentId?: unknown;
@@ -54,9 +55,13 @@ function storedNavigation(storage: Storage, key: string): StoredPersonalNavigati
 }
 
 function moveNodeBefore(parent: ParentNode, node: Node, reference: Node): void {
+  // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
   const statePreservingParent = parent as ParentNode & { moveBefore?(node: Node, child: Node | null): void };
   if (statePreservingParent.moveBefore) statePreservingParent.moveBefore(node, reference);
-  else (parent as Node).insertBefore(node, reference);
+  else {
+    // SAFETY: ParentNode is implemented by Node for the server-rendered DOM parents used here.
+    (parent as Node).insertBefore(node, reference);
+  }
 }
 
 export function createWorkspacePresentationController(
@@ -86,6 +91,7 @@ export function createWorkspacePresentationController(
       this.workspaceScroll?.addEventListener("scroll", this.workspaceScrolled, { passive: true });
       this.restorePreferences();
       this.normalizeState();
+      this.applyDeepLink();
       this.applyState({ emit: true });
     }
 
@@ -101,6 +107,7 @@ export function createWorkspacePresentationController(
     }
 
     selectWorkspace(event: Event): void {
+      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       const workspaceId = (event.currentTarget as HTMLElement).dataset.workspaceEntryId;
       if (!workspaceId) return;
       sessionStorage.setItem("atelier:active-workspace", workspaceId);
@@ -112,7 +119,8 @@ export function createWorkspacePresentationController(
     }
 
     selectAgent(event: Event): void {
-      const id = (event.currentTarget as HTMLElement).dataset.agentTabId;
+      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
+      const id = (event.currentTarget as HTMLElement).dataset.agentConversationId;
       if (!id) return;
       this.state.activeAgentId = id;
       this.state.phoneDestination = `agent:${id}`;
@@ -120,6 +128,7 @@ export function createWorkspacePresentationController(
     }
 
     selectWorkView(event: Event): void {
+      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       const button = event.currentTarget as HTMLElement;
       const key = button.dataset.workViewKey;
       if (!key) return;
@@ -127,6 +136,7 @@ export function createWorkspacePresentationController(
     }
 
     selectMoreWorkView(event: Event): void {
+      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       const key = (event.currentTarget as HTMLElement).dataset.moreWorkKey;
       if (!key) return;
       this.moreOpen = false;
@@ -139,6 +149,7 @@ export function createWorkspacePresentationController(
     }
 
     selectMobileDestination(event: Event): void {
+      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       const destination = (event.currentTarget as HTMLElement).dataset.mobileDestination as PhoneDestination | undefined;
       if (!destination) return;
       this.state.phoneDestination = destination;
@@ -152,6 +163,7 @@ export function createWorkspacePresentationController(
     }
 
     confirmClose(event: SubmitEvent): void {
+      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       const label = (event.currentTarget as HTMLElement).dataset.closeLabel ?? "this destination";
       if (!window.confirm(`Close ${label}? Its live state will be destroyed.`)) event.preventDefault();
     }
@@ -161,18 +173,13 @@ export function createWorkspacePresentationController(
       this.persistAndApply({ focus: true });
     }
 
-    closeWorkspacePane(): void {
-      if (!this.state.workspacePaneVisible) return;
-      this.state.workspacePaneVisible = false;
-      this.persistAndApply({ focus: true });
-    }
-
     toggleWorkPane(): void {
       this.state.workPaneVisible = !this.state.workPaneVisible && Boolean(this.state.activeWorkViewKey);
       this.persistAndApply({ focus: true });
     }
 
     toggleProject(event: Event): void {
+      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       const button = event.currentTarget as HTMLElement;
       const id = button.dataset.projectId;
       if (!id) return;
@@ -186,6 +193,7 @@ export function createWorkspacePresentationController(
     }
 
     toggleDrawer(event: Event): void {
+      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       const id = (event.currentTarget as HTMLElement).dataset.workspaceDrawerId;
       if (!id) return;
       this.state.drawers = this.state.drawers.includes(id) ? this.state.drawers.filter((candidate) => candidate !== id) : [...this.state.drawers, id];
@@ -193,6 +201,7 @@ export function createWorkspacePresentationController(
     }
 
     beginWorkResize(event: PointerEvent): void {
+      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       const handle = event.currentTarget as HTMLElement;
       this.resize = { startX: event.clientX, startWidth: this.workPane.getBoundingClientRect().width, pointerId: event.pointerId, handle };
       handle.setPointerCapture(event.pointerId);
@@ -201,7 +210,8 @@ export function createWorkspacePresentationController(
     }
 
     beginWorkReorder(event: DragEvent): void {
-      this.draggedWorkKey = (event.currentTarget as HTMLElement).dataset.workTabKey;
+      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
+      this.draggedWorkKey = (event.currentTarget as HTMLElement).dataset.workViewReorderKey;
       if (this.draggedWorkKey) event.dataTransfer?.setData("text/plain", this.draggedWorkKey);
     }
 
@@ -212,9 +222,10 @@ export function createWorkspacePresentationController(
     async finishWorkReorder(event: DragEvent): Promise<void> {
       if (!this.draggedWorkKey) return;
       event.preventDefault();
+      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       const target = event.currentTarget as HTMLElement;
-      const tabs = [...target.parentElement!.querySelectorAll<HTMLElement>("[data-work-tab-key]")];
-      const index = tabs.indexOf(target);
+      const views = [...target.parentElement!.querySelectorAll<HTMLElement>("[data-work-view-reorder-key]")];
+      const index = views.indexOf(target);
       const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/work-views/reorder`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "text/vnd.turbo-stream.html" },
@@ -254,18 +265,21 @@ export function createWorkspacePresentationController(
       if (stored?.workPaneVisible !== undefined && typeof stored.workPaneVisible !== "boolean") throw new Error("invalid personal navigation workPaneVisible");
       if (stored?.phoneDestination !== undefined && typeof stored.phoneDestination !== "string") throw new Error("invalid personal navigation phoneDestination");
       if (stored?.drawers !== undefined && (!Array.isArray(stored.drawers) || stored.drawers.some((item) => typeof item !== "string"))) throw new Error("invalid personal navigation drawers");
+      const sharedWorkspacePaneVisible = sessionStorage.getItem(workspacePaneVisibilityKey);
+      if (sharedWorkspacePaneVisible !== null && sharedWorkspacePaneVisible !== "true" && sharedWorkspacePaneVisible !== "false") throw new Error("invalid shared Workspace pane visibility");
       return {
         activeAgentId: stored?.activeAgentId,
         activeWorkViewKey: stored?.activeWorkViewKey,
-        workspacePaneVisible: stored?.workspacePaneVisible ?? true,
+        workspacePaneVisible: sharedWorkspacePaneVisible === null ? stored?.workspacePaneVisible ?? true : sharedWorkspacePaneVisible === "true",
         workPaneVisible: stored?.workPaneVisible ?? false,
+        // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
         phoneDestination: (stored?.phoneDestination ?? "workspace") as PhoneDestination,
         drawers: stored?.drawers ?? [],
       };
     }
 
     private normalizeState(): void {
-      const agents = [...this.element.querySelectorAll<HTMLElement>("[data-agent-tab-id], [data-workspace-pane-role='agent']")].map((item) => item.dataset.agentTabId ?? item.dataset.workspacePaneId!).filter(Boolean);
+      const agents = [...this.element.querySelectorAll<HTMLElement>("[data-agent-conversation-id], [data-workspace-pane-role='agent']")].map((item) => item.dataset.agentConversationId ?? item.dataset.workspacePaneId!).filter(Boolean);
       const workViews = [...this.element.querySelectorAll<HTMLElement>("[data-work-view-key]")].map((item) => item.dataset.workViewKey!);
       if (!this.state.activeAgentId || !agents.includes(this.state.activeAgentId)) this.state.activeAgentId = agents[0];
       if (!this.state.activeWorkViewKey || !workViews.includes(this.state.activeWorkViewKey)) this.state.activeWorkViewKey = workViews[0];
@@ -275,7 +289,21 @@ export function createWorkspacePresentationController(
       this.persist();
     }
 
-    private persist(): void { sessionStorage.setItem(this.storageKey, JSON.stringify(this.state)); }
+    private applyDeepLink(): void {
+      const url = new URL(window.location.href);
+      if (!url.pathname.endsWith(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}`)) return;
+      const key = url.searchParams.get("workView");
+      if (!key || !this.element.querySelector(`[data-work-view-key="${CSS.escape(key)}"]`)) return;
+      this.state.activeWorkViewKey = key;
+      this.state.workPaneVisible = true;
+      if (this.isPhone) this.state.phoneDestination = `work:${key}`;
+      this.persist();
+    }
+
+    private persist(): void {
+      sessionStorage.setItem(this.storageKey, JSON.stringify(this.state));
+      sessionStorage.setItem(workspacePaneVisibilityKey, String(this.state.workspacePaneVisible));
+    }
     private persistAndApply(options: { focus?: boolean } = {}): void { this.persist(); this.applyState({ emit: true, focus: options.focus }); }
 
     private applyState(options: { emit: boolean; focus?: boolean }): void {
@@ -285,17 +313,17 @@ export function createWorkspacePresentationController(
       this.element.dataset.phoneDestination = this.state.phoneDestination;
       this.element.dataset.navigationReady = "true";
 
-      this.element.querySelectorAll<HTMLElement>("[data-agent-tab-id]").forEach((tab) => {
-        const active = tab.dataset.agentTabId === this.state.activeAgentId;
-        tab.setAttribute("aria-selected", String(active));
-        tab.tabIndex = active ? 0 : -1;
+      this.element.querySelectorAll<HTMLElement>("[data-agent-conversation-id]").forEach((selector) => {
+        const active = selector.dataset.agentConversationId === this.state.activeAgentId;
+        selector.setAttribute("aria-selected", String(active));
+        selector.tabIndex = active ? 0 : -1;
       });
       this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role='agent']").forEach((pane) => pane.classList.toggle("is-active", pane.dataset.workspacePaneId === this.state.activeAgentId));
 
-      this.element.querySelectorAll<HTMLElement>("[data-work-view-key]").forEach((tab) => {
-        const active = tab.dataset.workViewKey === this.state.activeWorkViewKey;
-        tab.setAttribute("aria-selected", String(active));
-        tab.tabIndex = active ? 0 : -1;
+      this.element.querySelectorAll<HTMLElement>("[data-work-view-key]").forEach((selector) => {
+        const active = selector.dataset.workViewKey === this.state.activeWorkViewKey;
+        selector.setAttribute("aria-selected", String(active));
+        selector.tabIndex = active ? 0 : -1;
       });
       this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role='work']").forEach((pane) => pane.classList.toggle("is-active", pane.dataset.workspacePaneId === this.state.activeWorkViewKey));
       this.element.querySelectorAll<HTMLElement>("[data-mobile-destination]").forEach((destination) => {
@@ -309,8 +337,9 @@ export function createWorkspacePresentationController(
       moreButton?.setAttribute("aria-expanded", String(this.moreOpen));
       const moreMenu = this.element.querySelector<HTMLElement>("[data-workspace-presentation-target='moreMenu']");
       if (moreMenu) moreMenu.hidden = !this.moreOpen;
-      const moreScrim = this.element.querySelector<HTMLElement>(".fixed-shell-more-scrim");
-      if (moreScrim) moreScrim.hidden = !this.moreOpen;
+      this.element.querySelectorAll<HTMLElement>("[data-more-close-destination]").forEach((closer) => {
+        closer.hidden = closer.dataset.moreCloseDestination !== this.state.phoneDestination;
+      });
       this.element.querySelectorAll<HTMLElement>("[data-workspace-drawer]").forEach((drawer) => drawer.classList.toggle("is-open", this.state.drawers.includes(drawer.dataset.workspaceDrawer!)));
 
       const after = this.visiblePanes();
@@ -341,6 +370,7 @@ export function createWorkspacePresentationController(
       if (visiblePresentationPanes.has(pane)) return;
       visiblePresentationPanes.add(pane);
       pane.querySelectorAll<HTMLIFrameElement>('[data-controller~="workspace-app-frame"]').forEach((frame) => {
+        // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
         const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame") as { becomeVisible?(): void } | null;
         controller?.becomeVisible?.();
       });
@@ -413,7 +443,11 @@ export function createWorkspacePresentationController(
     };
 
     private viewportChanged = (): void => { this.setWorkWidth(this.workPane.getBoundingClientRect().width || 520, false); this.applyState({ emit: true }); };
-    private residencyVisible = (): void => this.applyState({ emit: true });
+    private residencyVisible = (): void => {
+      this.state.workspacePaneVisible = sessionStorage.getItem(workspacePaneVisibilityKey) !== "false";
+      this.persist();
+      this.applyState({ emit: true });
+    };
     private residencyHidden = (): void => this.emitVisibilityChanges([...this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role]")].filter((pane) => visiblePresentationPanes.has(pane)), []);
     private workspaceScrolled = (): void => {
       if (this.scrollTimer) clearTimeout(this.scrollTimer);
@@ -421,32 +455,52 @@ export function createWorkspacePresentationController(
     };
 
     private keydown = (event: KeyboardEvent): void => {
-      const tab = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[role='tab']") : null;
-      if (!tab || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-      const list = tab.closest("[role='tablist']");
-      const tabs = list ? [...list.querySelectorAll<HTMLElement>("[role='tab']")] : [];
-      if (tabs.length < 2) return;
+      const selector = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[role='tab']") : null;
+      if (!selector || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      const list = selector.closest("[role='tablist']");
+      const selectors = list ? [...list.querySelectorAll<HTMLElement>("[role='tab']")] : [];
+      if (selectors.length < 2) return;
       event.preventDefault();
-      const index = tabs.indexOf(tab);
-      const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
-      tabs[nextIndex]?.click();
-      tabs[nextIndex]?.focus();
+      const index = selectors.indexOf(selector);
+      const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? selectors.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + selectors.length) % selectors.length;
+      selectors[nextIndex]?.click();
+      selectors[nextIndex]?.focus();
     };
   };
 }
 
 export function installWorkspacePresentationTurboStream(Turbo: TurboLike, application: PresentationApplication): void {
+  Turbo.StreamActions["replace-workspace-pane-collections"] = function replaceWorkspacePaneCollections(this: StreamElement): void {
+    for (const target of this.targetElements) {
+      const replacement = this.templateContent.firstElementChild?.cloneNode(true);
+      if (!(replacement instanceof HTMLElement)) throw new Error("Workspace pane collections stream is missing its replacement");
+      const workspaceId = target.closest<HTMLElement>(".fixed-workspace-presentation")?.dataset.workspaceId;
+      if (workspaceId) {
+        const activeWorkspace = replacement.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+        activeWorkspace?.classList.add("active");
+        activeWorkspace?.setAttribute("aria-current", "page");
+        activeWorkspace?.querySelector(".fixed-shell-attention-dot")?.remove();
+      }
+      for (const project of target.querySelectorAll<HTMLElement>(".fixed-shell-project[data-project-id].is-collapsed")) {
+        const id = project.dataset.projectId!;
+        const next = replacement.querySelector<HTMLElement>(`.fixed-shell-project[data-project-id="${CSS.escape(id)}"]`);
+        next?.classList.add("is-collapsed");
+        next?.querySelector<HTMLElement>(".fixed-shell-project-heading")?.setAttribute("aria-expanded", "false");
+      }
+      target.replaceWith(replacement);
+    }
+  };
   Turbo.StreamActions["present-work-view"] = function presentWorkView(this: StreamElement): void {
     const key = this.dataset.workViewKey;
     if (!key) throw new Error("present-work-view requires a Work view key");
     for (const target of this.targetElements) {
+      if (!target.closest(".workspace-detail-resident.visible")) continue;
       target.querySelector<HTMLButtonElement>(`[data-work-view-key="${CSS.escape(key)}"]`)?.click();
-      const workspaceId = target.dataset.workspaceId;
-      if (workspaceId) void fetch(`/workspaces/${encodeURIComponent(workspaceId)}/work-views/${encodeURIComponent(key)}/attention/acknowledge`, { method: "POST" });
     }
   };
   Turbo.StreamActions["replace-workspace-presentation"] = async function replaceWorkspacePresentation(this: StreamElement): Promise<void> {
     for (const target of this.targetElements) {
+      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       const replacement = this.templateContent.firstElementChild?.cloneNode(true) as HTMLElement | null;
       if (!replacement) throw new Error("Workspace presentation stream is missing its replacement");
       const live = new Map([...target.querySelectorAll<HTMLElement>("[data-workspace-live-node]")].map((node) => [node.dataset.workspaceLiveNode!, node]));

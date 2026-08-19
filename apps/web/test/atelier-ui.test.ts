@@ -1,17 +1,20 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium, type Browser } from "@playwright/test";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
-import { renderWorkspacePresentation, workspacePresentationTurboStream, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
+import { renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 
 let browser: Browser;
 let workspaceClient: string;
+let workspaceStyle: string;
 
 beforeAll(async () => {
   const build = Bun.spawn(["bun", "run", "apps/web/scripts/build-assets.ts"], { cwd: new URL("../../..", import.meta.url).pathname, stdout: "pipe", stderr: "pipe" });
   const [exitCode, stdout, stderr] = await Promise.all([build.exited, new Response(build.stdout).text(), new Response(build.stderr).text()]);
   if (exitCode !== 0) throw new Error(`workspace client build failed:\n${stdout}${stderr}`);
+  // SAFETY: The test fixture controls this value and establishes the asserted shape.
   const manifest = await Bun.file(new URL("../public/assets-manifest.json", import.meta.url)).json() as Record<string, string>;
   workspaceClient = await Bun.file(new URL(`../public${manifest["/workspace.js"]}`, import.meta.url)).text();
+  workspaceStyle = await Bun.file(new URL("../public/style.css", import.meta.url)).text();
   const executablePath = process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/local/bin/chromium";
   browser = await chromium.launch({ executablePath, headless: true });
 });
@@ -28,7 +31,7 @@ describe("Atelier Playwright helper", () => {
       <form aria-label="Add project"></form><form aria-label="Repository"></form>
       <div role="table"><form role="row" aria-label="Add secret"></form></div>
       <form id="agent_launch_form"><textarea aria-label="Describe what you want the agent to do… (optional)"></textarea></form>
-      <section data-tab-pane="agent:Agent 1"><textarea data-agent-pane-target="input"></textarea></section>`);
+      <section data-agent-conversation-source="agent:Agent 1"><textarea data-agent-pane-target="input"></textarea></section>`);
 
     expect(await atelierUi.newWorkspaceButton(page).count()).toBe(1);
     expect(await atelierUi.addProjectLink(page).count()).toBe(1);
@@ -48,6 +51,7 @@ describe("Atelier Playwright helper", () => {
     </div><div id="workspace_detail"></div>`);
     await page.locator("#workspaces_table_rows").evaluate((rows) => {
       rows.addEventListener("click", (event) => {
+        // SAFETY: The test fixture controls this value and establishes the asserted shape.
         const link = (event.target as Element).closest("a");
         if (!link) return;
         event.preventDefault();
@@ -98,19 +102,19 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
-  test("opens and closes a live Browser tab with Atelier's fullscreen implementation", async () => {
+  test("opens and closes a live Browser view with Atelier's fullscreen implementation", async () => {
     const page = await browser.newPage();
     await page.setContent(`<div data-workspace-id="demo">
       <section class="fixed-shell-work-pane">
-        <div class="fixed-shell-work-tabs"><button type="button" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="tab" data-atelier-fullscreen-tab-key-value="browser-1" data-atelier-fullscreen-title-value="Browser">Browser</button></div>
-        <section class="fixed-shell-live-node is-active" data-workspace-pane-role="work" data-source-tab-key="browser-1"><button type="button">Preview content</button></section>
+        <div class="fixed-shell-work-view-selectors"><button type="button" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="browser-1" data-atelier-fullscreen-title-value="Browser">Browser</button></div>
+        <section class="fixed-shell-live-node is-active" data-workspace-pane-role="work" data-source-work-view-key="browser-1"><button type="button">Preview content</button></section>
       </section>
     </div>`);
     await page.addScriptTag({ content: workspaceClient, type: "module" });
     await page.waitForFunction(() => Boolean(window.Stimulus));
 
-    const fullscreen = await atelierUi.openTabFullscreen(page, { tabKey: "browser-1" });
-    expect(await atelierUi.workspaceTabPane(page, "browser-1").getAttribute("data-atelier-fullscreen-active")).toBe("true");
+    const fullscreen = await atelierUi.openViewFullscreen(page, { viewKey: "browser-1" });
+    expect(await atelierUi.workspaceViewPane(page, "browser-1").getAttribute("data-atelier-fullscreen-active")).toBe("true");
     await fullscreen.close();
     await page.close();
   });
@@ -143,13 +147,15 @@ describe("Atelier Playwright helper", () => {
       const frame = terminal.querySelector<HTMLIFrameElement>("iframe")!;
       agent.querySelector("textarea")!.value = "unsaved agent draft";
       terminal.querySelector("textarea")!.value = "unsaved command";
+      // SAFETY: The test fixture controls this value and establishes the asserted shape.
       (window as typeof window & { fixedProbe?: unknown }).fixedProbe = { agent, terminal, frame, frameWindow: frame.contentWindow };
     });
     await page.locator('[data-work-view-key="terminal:1"]').click({ force: true });
-    await page.locator('[data-agent-tab-id="agent-2"]').click();
-    await page.locator('[data-agent-tab-id="agent-1"]').click();
+    await page.locator('[data-agent-conversation-id="agent-2"]').click();
+    await page.locator('[data-agent-conversation-id="agent-1"]').click();
 
     expect(await page.evaluate(() => {
+      // SAFETY: The test fixture controls this value and establishes the asserted shape.
       const probe = (window as typeof window & { fixedProbe: { agent: HTMLElement; terminal: HTMLElement; frame: HTMLIFrameElement; frameWindow: Window | null } }).fixedProbe;
       const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
       const terminal = document.querySelector<HTMLElement>('[data-workspace-live-node="work:terminal:1"]')!;
@@ -160,6 +166,135 @@ describe("Atelier Playwright helper", () => {
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
     expect(await page.locator('[data-work-view-key="terminal:1"]').getAttribute("aria-selected")).toBe("true");
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-work-pane-open");
+    await page.close();
+  });
+
+  test("deep links reveal Work only in the visible Workspace and hidden presentations do not acknowledge Attention", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "deep-demo", title: "Deep link" }, projects: [],
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attention: true, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
+    };
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    let acknowledgements = 0;
+    await page.route("http://atelier.test/workspaces/deep-demo?workView=browser%3A1", (route) => route.fulfill({ contentType: "text/html", body: `<div class="workspace-detail-resident visible">${renderWorkspacePresentation(presentation)}</div><script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/attention/acknowledge", (route) => { acknowledgements += 1; return route.fulfill({ status: 204 }); });
+    await page.goto("http://atelier.test/workspaces/deep-demo?workView=browser%3A1");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-work-pane-open");
+    expect(await page.locator('[data-work-view-key="browser:1"]').getAttribute("aria-selected")).toBe("true");
+    await page.waitForTimeout(20);
+    expect(acknowledgements).toBe(1);
+
+    await page.locator(".workspace-detail-resident").evaluate((resident) => resident.classList.remove("visible"));
+    await page.evaluate(() => {
+      const target = document.querySelector<HTMLElement>(".fixed-workspace-presentation")!;
+      window.Turbo!.renderStreamMessage(`<turbo-stream action="present-work-view" target="${target.id}" data-work-view-key="browser:1"></turbo-stream>`);
+    });
+    await page.waitForTimeout(20);
+    expect(acknowledgements).toBe(1);
+    await page.close();
+  });
+
+  test("makes room for the Workspace pane on compact desktop widths", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "compact-demo", title: "Compact" },
+      projects: [{ id: "project-1", title: "Project", workspaces: [
+        { id: "compact-demo", title: "Compact", color: "#3b82f6", active: true },
+        { id: "ready-demo", title: "Ready", color: "#f97316", ready: true },
+        { id: "busy-demo", title: "Busy", color: "#22c55e", busy: true },
+      ] }],
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<button data-agent-content>Agent content</button>' }],
+      workViews: [],
+    };
+    const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    await page.locator("[data-agent-content]").focus();
+    await page.waitForTimeout(250);
+    expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-workspace-pane-open");
+    expect(await page.locator('[data-collapsed-pane-toggle="workspace"]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
+    expect(await page.locator('[data-expanded-pane-toggle="workspace"]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
+    expect(await page.locator('.fixed-shell-workspace-row[aria-current="page"]').count()).toBe(1);
+    expect(await page.locator(".fixed-workspace-presentation").evaluate((element) => {
+      const workspace = element.querySelector(".fixed-shell-workspace-pane")!.getBoundingClientRect();
+      const agent = element.querySelector(".fixed-shell-agent-pane")!.getBoundingClientRect();
+      return workspace.right <= agent.left;
+    })).toBe(true);
+    await page.getByRole("button", { name: "Close Workspace pane" }).click();
+    expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).not.toContain("is-workspace-pane-open");
+    expect(await page.locator('[data-collapsed-pane-toggle="workspace"]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
+    expect(await page.locator('[data-expanded-pane-toggle="workspace"]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
+    expect(await page.locator(".fixed-shell-workspace-pane").evaluate((element) => element.getBoundingClientRect().width)).toBe(50);
+    expect(await page.locator('.fixed-shell-workspace-row[data-workspace-entry-id="ready-demo"] .fixed-shell-attention-dot').isVisible()).toBe(true);
+    expect(await page.locator('.fixed-shell-workspace-row[data-workspace-entry-id="busy-demo"] .fixed-shell-workspace-busy').isVisible()).toBe(true);
+    expect(await page.locator('.fixed-shell-workspace-row[aria-current="page"] .fixed-shell-workspace-color').isVisible()).toBe(true);
+    await page.getByRole("button", { name: "Open Workspace pane" }).click();
+    expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-workspace-pane-open");
+    expect(await page.locator('[data-collapsed-pane-toggle="workspace"]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
+    expect(await page.locator('[data-expanded-pane-toggle="workspace"]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
+    expect(await page.locator("[data-agent-content]").isVisible()).toBe(true);
+    await page.close();
+  });
+
+  test("keeps the Workspace pane open when selecting a cached Workspace", async () => {
+    const makePresentation = (id: string): WorkspacePresentation => ({
+      workspace: { id, title: `Workspace ${id}` },
+      projects: [{ id: "project", title: "Project", workspaces: [
+        { id: "a", title: "Workspace a", active: id === "a" },
+        { id: "b", title: "Workspace b", active: id === "b" },
+      ] }],
+      agentConversations: [{ id: `agent-${id}`, title: "Agent", bodyHtml: `<p>Agent ${id}</p>` }],
+      workViews: [],
+    });
+    const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    await page.route("http://atelier.test/workspaces/a", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>
+      <div id="workspace_detail" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5">
+        <div data-workspace-residency-target="empty" hidden></div><div data-workspace-residency-target="loading" hidden></div>
+        <div class="workspace-detail-resident visible" data-workspace-residency-target="resident" data-workspace-id="a">${renderWorkspacePresentation(makePresentation("a"))}</div>
+        <div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="b">${renderWorkspacePresentation(makePresentation("b"))}</div>
+      </div><script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.goto("http://atelier.test/workspaces/a");
+    await page.waitForFunction(() => document.querySelectorAll('[data-navigation-ready="true"]').length === 2);
+    const residentA = page.locator('.workspace-detail-resident[data-workspace-id="a"]');
+    const residentB = page.locator('.workspace-detail-resident[data-workspace-id="b"]');
+
+    await residentB.locator('button[aria-label="Close Workspace pane"]').evaluate((button: HTMLButtonElement) => button.click());
+    await residentA.locator('button[aria-label="Close Workspace pane"]').evaluate((button: HTMLButtonElement) => button.click());
+    await residentA.locator('button[aria-label="Open Workspace pane"]').evaluate((button: HTMLButtonElement) => button.click());
+    await residentA.locator('[data-workspace-entry-id="b"]').evaluate((button: HTMLButtonElement) => button.click());
+
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="b"]')?.classList.contains("visible"));
+    expect(await residentB.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-workspace-pane-open");
+    await page.close();
+  });
+
+  test("reveals Work immediately without reanimating the Workspace pane", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "motion-demo", title: "Motion" }, projects: [],
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent content</p>" }],
+      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attention: false, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
+    };
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    const workspaceBefore = await page.locator(".fixed-shell-workspace-pane").boundingBox();
+    expect(await page.locator(".fixed-shell-work-pane").evaluate((element) => getComputedStyle(element).transitionDuration)).toBe("0s");
+    expect(await page.locator(".fixed-shell-workspace-pane").evaluate((element) => getComputedStyle(element).transitionDuration)).toBe("0s");
+    expect(await page.locator('[data-collapsed-pane-toggle="work"]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
+    expect(await page.locator('[data-expanded-pane-toggle="work"]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
+    await page.getByRole("button", { name: "Open Work pane" }).click();
+    expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-work-pane-open");
+    expect(await page.locator('[data-collapsed-pane-toggle="work"]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
+    expect(await page.locator('[data-expanded-pane-toggle="work"]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
+    expect(await page.locator(".fixed-shell-work-pane").evaluate((element) => getComputedStyle(element).marginRight)).toBe("0px");
+    expect(await page.locator(".fixed-shell-workspace-pane").boundingBox()).toEqual(workspaceBefore);
     await page.close();
   });
 
@@ -180,11 +315,13 @@ describe("Atelier Playwright helper", () => {
       const work = document.querySelector<HTMLElement>('[data-workspace-live-node="work:browser:1"]')!;
       const frame = work.querySelector<HTMLIFrameElement>("iframe")!;
       agent.querySelector("textarea")!.value = "unsaved";
+      // SAFETY: The test fixture controls this value and establishes the asserted shape.
       (window as typeof window & { streamProbe?: unknown }).streamProbe = { agent, work, frame, frameWindow: frame.contentWindow };
       window.Turbo!.renderStreamMessage(html);
     }, stream);
     await page.waitForFunction(() => document.querySelector(".fixed-shell-workspace-title")?.textContent?.includes("After"));
     expect(await page.evaluate(() => {
+      // SAFETY: The test fixture controls this value and establishes the asserted shape.
       const probe = (window as typeof window & { streamProbe: { agent: HTMLElement; work: HTMLElement; frame: HTMLIFrameElement; frameWindow: Window | null } }).streamProbe;
       const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
       const work = document.querySelector<HTMLElement>('[data-workspace-live-node="work:browser:1"]')!;
@@ -199,29 +336,65 @@ describe("Atelier Playwright helper", () => {
       workspace: { id: "phone-demo", title: "Phone" }, projects: [],
       agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<textarea data-probe="agent">draft</textarea>' }],
       workViews: [
-        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", attention: false, availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea>' },
-        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attention: true, availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
+        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", attention: false, availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea>', close: { action: "/terminal/close", label: "Terminal Work view" } },
+        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attention: true, availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files Work view" } },
       ],
       commands: [{ id: "files.open", label: "Files", scope: "workspace", placement: "work-launcher" }, { id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }],
     };
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    const workspaceUpdate = workspacePaneCollectionsTurboStream({ projects: [], projectlessWorkspaces: [{ id: "phone-demo", title: "Phone" }, { id: "new-mobile-workspace", title: "New mobile workspace" }] });
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspaceUpdate);
+    await page.getByRole("button", { name: "New mobile workspace" }).waitFor();
     expect(await page.locator('[data-mobile-destination="work:files:workspace"]').count()).toBe(0);
     expect(await page.locator("[data-mobile-more] .fixed-shell-attention-dot").count()).toBe(1);
+    await page.locator("[data-mobile-more]").click();
+    expect(await page.getByRole("button", { name: "Close current view" }).count()).toBe(0);
+    await page.getByRole("button", { name: "Close More" }).click();
     expect(await page.locator(".fixed-shell-more-section").first().locator("button", { hasText: "Files" }).count()).toBe(1);
+    for (const action of await page.locator(".fixed-shell-settings").all()) {
+      const box = await action.boundingBox();
+      if (!box) throw new Error("Workspace footer action is not visible");
+      await action.hover({ position: { x: 12, y: box.height / 2 } });
+      const leftBackground = await action.evaluate((element) => getComputedStyle(element).backgroundColor);
+      await action.hover({ position: { x: box.width - 12, y: box.height / 2 } });
+      expect(await action.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(leftBackground);
+      expect(leftBackground).not.toBe("rgba(0, 0, 0, 0)");
+    }
+    expect(await page.locator(".fixed-shell-mobile-fixed, .fixed-shell-mobile-scroll > button").evaluateAll((buttons) => buttons.every((button) => !button.textContent?.trim()))).toBe(true);
+    expect(await page.locator('[data-mobile-destination="work:terminal:1"] svg').count()).toBe(1);
+    await page.locator('[data-mobile-destination="agent:agent-1"]').click();
+    expect(await page.locator(".fixed-shell-agent-pane > header").evaluate((element) => getComputedStyle(element).display)).toBe("none");
+    expect(await page.locator('[data-workspace-live-node="agent:agent-1"]').getAttribute("class")).toContain("is-active");
+    await page.locator("[data-mobile-more]").click();
+    expect(await page.getByRole("button", { name: "Close current view" }).count()).toBe(0);
+    await page.getByRole("button", { name: "Close More" }).click();
     await page.locator('[data-mobile-destination="work:terminal:1"]').click();
     await page.locator("[data-mobile-more]").click();
+    expect(await page.getByRole("button", { name: "Close current view" }).count()).toBe(1);
+    expect(await page.locator(".fixed-shell-more-scrim").count()).toBe(0);
+    expect(await page.getByRole("heading", { name: "Secondary Work views" }).count()).toBe(0);
+    const moreBox = await page.locator(".fixed-shell-more-menu").boundingBox();
+    const closeBox = await page.getByRole("button", { name: "Close More" }).boundingBox();
+    if (!moreBox || !closeBox) throw new Error("More menu close button is not visible");
+    expect(closeBox.x).toBeGreaterThan(moreBox.x + moreBox.width / 2);
+    expect(closeBox.y).toBeLessThan(moreBox.y + 52);
+    expect(closeBox.width).toBeGreaterThanOrEqual(40);
+    expect(await page.getByRole("button", { name: "Close More" }).evaluate((element) => getComputedStyle(element).borderRadius)).toBe("10px");
+    expect(await page.getByRole("button", { name: "Close More" }).locator("svg").count()).toBe(1);
     await page.locator('[data-more-work-key="files:workspace"]').click();
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("data-phone-destination")).toBe("work:files:workspace");
     expect(await page.locator("[data-mobile-more]").getAttribute("class")).toContain("is-active");
     expect(await page.locator('[data-mobile-destination="work:files:workspace"]').count()).toBe(0);
+    // SAFETY: The test fixture controls this value and establishes the asserted shape.
     await page.evaluate(() => (window as typeof window & { filesNode?: Element }).filesNode = document.querySelector('[data-workspace-live-node="work:files:workspace"]')!);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.setViewportSize({ width: 390, height: 844 });
+    // SAFETY: The test fixture controls this value and establishes the asserted shape.
     expect(await page.evaluate(() => (window as typeof window & { filesNode?: Element }).filesNode === document.querySelector('[data-workspace-live-node="work:files:workspace"]'))).toBe(true);
     await page.close();
   });

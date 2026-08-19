@@ -10,7 +10,7 @@ import {
   type ObservableTerminalViewer,
 } from "@atelier/observable-terminal/client";
 import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
-import { terminalTabKey, terminalIdFromTabKey } from "../shared.ts";
+import { terminalViewKey, terminalIdFromViewKey } from "../shared.ts";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
 
@@ -65,11 +65,11 @@ async function startTerminal(workspaceId: string, terminalId: string, options: {
   startingTerminals.add(key);
 
   try {
-    const tabId = terminalTabKey(terminalId);
+    const viewId = terminalViewKey(terminalId);
     const viewer = await createObservableTerminalViewer({
       host,
       mode: "interactive",
-      websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(workspaceId)}/tabs/${encodeURIComponent(tabId)}/ws?cols=80&rows=24`),
+      websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(workspaceId)}/views/${encodeURIComponent(viewId)}/ws?cols=80&rows=24`),
       theme: currentTerminalTheme,
       disconnectedMessage: "\r\n\x1b[31m[terminal disconnected]\x1b[0m\r\n",
       errorMessage: "\r\n\x1b[31m[terminal websocket error]\x1b[0m\r\n",
@@ -127,15 +127,15 @@ export const workspaceTerminalClientModule: WorkspaceClientModule = {
     initializeTerminalTheme();
     application.register("terminal-pane", createTerminalPaneController(Controller));
     hooks.onBecomeVisible(({ workspaceId, surfaceKey }) => {
-      const terminalId = terminalIdFromTabKey(surfaceKey);
+      const terminalId = terminalIdFromViewKey(surfaceKey);
       if (terminalId) void startTerminal(workspaceId, terminalId);
     });
     hooks.onNoLongerVisible(({ workspaceId, surfaceKey }) => {
-      const terminalId = terminalIdFromTabKey(surfaceKey);
+      const terminalId = terminalIdFromViewKey(surfaceKey);
       if (terminalId) stopTerminal(workspaceId, terminalId);
     });
     hooks.onFocusGroup(({ workspaceId, surfaceKey }) => {
-      const terminalId = surfaceKey ? terminalIdFromTabKey(surfaceKey) : undefined;
+      const terminalId = surfaceKey ? terminalIdFromViewKey(surfaceKey) : undefined;
       if (!workspaceId || !terminalId) return false;
       void startTerminal(workspaceId, terminalId, { focus: true });
       return true;

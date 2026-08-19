@@ -1,5 +1,6 @@
+import type { JsonValue } from "@atelier/core";
 import type { WorkspaceCommandContribution, WorkspaceModule } from "@atelier/shared";
-import { desktopAppKey, desktopTabKey, ensureWorkspaceDesktop, isWorkspaceDesktopEnabled } from "./runtime.ts";
+import { desktopAppKey, ensureWorkspaceDesktop, isWorkspaceDesktopEnabled } from "./runtime.ts";
 import { renderDesktopWorkView } from "./render.ts";
 import { resolveDesktopWorkspaceAppTarget } from "./proxy.ts";
 
@@ -18,7 +19,8 @@ export const desktopWorkspaceModule: WorkspaceModule = {
   id: "desktop",
   workViews: [{
     type: "desktop",
-    parseReference(value: unknown) {
+    parseReference(value: JsonValue) {
+      // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
       const reference = value as { type?: unknown };
       if (reference?.type !== "desktop" || Object.keys(reference).length !== 1) throw new Error("desktop reference has no identity fields");
       return { type: "desktop" };

@@ -18,8 +18,8 @@ export interface WorkspaceEntry {
 export type WorkspaceState = "busy" | "unread" | "idle";
 
 export interface WorkspaceRegistryCallbacks {
-  /** A single workspace changed (phase, title, busy, unread). tabKey is set when a tab status change triggered it. */
-  rowChanged?(entry: WorkspaceEntry, context: { tabKey?: string; unread?: boolean }): void;
+  /** A single workspace changed (phase, title, busy, unread). viewKey is set when a view status change triggered it. */
+  rowChanged?(entry: WorkspaceEntry, context: { viewKey?: string; unread?: boolean }): void;
   /** A workspace's parked state changed and should be persisted. */
   parkedChanged?(entry: WorkspaceEntry): void;
   /** List membership or ordering changed. */
@@ -113,15 +113,15 @@ export interface WorkspaceRegistry {
   setActiveWorkspace(id: string | undefined): void;
   touch(id: string): void;
   remove(id: string): void;
-  setTabBusy(id: string, tabKey: string, busy: boolean): void;
-  setTabUnread(id: string, tabKey: string, unread: boolean): void;
-  isTabBusy(id: string, tabKey: string): boolean;
+  setViewBusy(id: string, viewKey: string, busy: boolean): void;
+  setViewUnread(id: string, viewKey: string, unread: boolean): void;
+  isViewBusy(id: string, viewKey: string): boolean;
   isWorkspaceBusy(id: string): boolean;
   isWorkspaceUnread(id: string): boolean;
   workspaceUnreadAt(id: string): number | undefined;
   workspaceState(id: string): WorkspaceState;
   oldestUnreadWorkspace(): WorkspaceEntry | undefined;
-  busyTabs(id: string): string[];
+  busyViews(id: string): string[];
 }
 
 export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}): WorkspaceRegistry {
@@ -129,7 +129,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
   const store = options.activityStore;
   const unreadStore = options.unreadStore;
   const entries = new Map<string, WorkspaceEntry>();
-  const tabBusy = new Map<string, Map<string, boolean>>();
+  const busyViewsByWorkspace = new Map<string, Set<string>>();
   let workspaceUnread: Record<string, number> = {};
   let activity: Record<string, number> = {};
   let activeWorkspaceId: string | undefined;
@@ -253,7 +253,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
     remove(id) {
       if (!entries.delete(id)) return;
       if (activeWorkspaceId === id) activeWorkspaceId = undefined;
-      tabBusy.delete(id);
+      busyViewsByWorkspace.delete(id);
       if (activity[id] !== undefined) {
         delete activity[id];
         persistActivity();
@@ -266,29 +266,29 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       callbacks.listChanged?.(sorted());
     },
 
-    setTabBusy(id, tabKey, busy) {
-      let tabs = tabBusy.get(id);
-      if (!tabs) {
-        tabs = new Map();
-        tabBusy.set(id, tabs);
+    setViewBusy(id, viewKey, busy) {
+      const views = busyViewsByWorkspace.get(id);
+      if ((views?.has(viewKey) ?? false) === busy) return;
+      if (busy) {
+        if (views) views.add(viewKey);
+        else busyViewsByWorkspace.set(id, new Set([viewKey]));
+      } else {
+        views!.delete(viewKey);
+        if (views!.size === 0) busyViewsByWorkspace.delete(id);
       }
-      if ((tabs.get(tabKey) ?? false) === busy) return;
-      if (busy) tabs.set(tabKey, true);
-      else tabs.delete(tabKey);
-      if (tabs.size === 0) tabBusy.delete(id);
       const entry = entries.get(id);
       if (!entry) return;
       if (busy && entry.parked) {
         entry.parked = false;
         callbacks.parkedChanged?.(entry);
-        callbacks.rowChanged?.(entry, { tabKey });
+        callbacks.rowChanged?.(entry, { viewKey });
         callbacks.listChanged?.(sorted());
         return;
       }
-      callbacks.rowChanged?.(entry, { tabKey });
+      callbacks.rowChanged?.(entry, { viewKey });
     },
 
-    setTabUnread(id, tabKey, unread) {
+    setViewUnread(id, viewKey, unread) {
       const entry = entries.get(id);
       if (!entry) return;
       const wasUnread = workspaceUnread[id] !== undefined;
@@ -297,15 +297,15 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       } else delete workspaceUnread[id];
       const isUnread = workspaceUnread[id] !== undefined;
       if (isUnread !== wasUnread) persistUnread();
-      if (unread || isUnread !== wasUnread) callbacks.rowChanged?.(entry, { tabKey, unread });
+      if (unread || isUnread !== wasUnread) callbacks.rowChanged?.(entry, { viewKey, unread });
     },
 
-    isTabBusy(id, tabKey) {
-      return tabBusy.get(id)?.get(tabKey) ?? false;
+    isViewBusy(id, viewKey) {
+      return busyViewsByWorkspace.get(id)?.has(viewKey) ?? false;
     },
 
     isWorkspaceBusy(id) {
-      return [...(tabBusy.get(id)?.values() ?? [])].some(Boolean);
+      return (busyViewsByWorkspace.get(id)?.size ?? 0) > 0;
     },
 
     isWorkspaceUnread(id) {
@@ -328,8 +328,8 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
         .sort((a, b) => (this.workspaceUnreadAt(a.id)! - this.workspaceUnreadAt(b.id)!) || a.id.localeCompare(b.id))[0];
     },
 
-    busyTabs(id) {
-      return [...(tabBusy.get(id)?.keys() ?? [])];
+    busyViews(id) {
+      return [...(busyViewsByWorkspace.get(id) ?? [])];
     },
   };
 }

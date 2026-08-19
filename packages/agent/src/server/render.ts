@@ -6,6 +6,7 @@ import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDispla
 import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded-code.ts";
 import { highlightCodeHtmlForPath, renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdown";
 import { domId, escapeHtml } from "./html.ts";
+import type { WorkspaceAgentInfo } from "./session-store.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
 import {
   formatCost,
@@ -23,7 +24,7 @@ export interface AgentRenderContext {
   model?: ModelRef;
 }
 
-export function agentTabKey(label: string): string {
+export function agentConversationKey(label: string): string {
   return `agent:${label}`;
 }
 
@@ -144,8 +145,8 @@ function agentAttachmentDropAttrs(uploadUrl: string): string {
   return `data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}" data-action="${agentAttachmentDropAction}"`;
 }
 
-export async function renderAgentPane(ctx: AgentRenderContext, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
-  return await renderAgentPaneFrame(ctx, state, options);
+export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
+  return await renderAgentPaneFrame(ctx, agent, state, options);
 }
 
 const pendingAgentStats: AgentStatsView = {
@@ -160,20 +161,20 @@ const pendingAgentStats: AgentStatsView = {
   models: [],
 };
 
-export async function renderPendingAgentPane(ctx: AgentRenderContext, options: { visible?: boolean } = {}): Promise<string> {
-  return await renderAgentPaneFrame(ctx, {
+export async function renderPendingAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, options: { visible?: boolean } = {}): Promise<string> {
+  return await renderAgentPaneFrame(ctx, agent, {
     transcriptHtml: `<div class="agent-starting"><span class="agent-starting-spinner" aria-hidden="true"></span><div><b>Starting ${escapeHtml(ctx.label)}…</b><span>Loading model settings and workspace instructions.</span></div></div>`,
     busy: false,
     stats: pendingAgentStats,
   }, options);
 }
 
-async function renderAgentPaneFrame(ctx: AgentRenderContext, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
-  const key = agentTabKey(ctx.label);
+async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
+  const key = agentConversationKey(agent.label);
   const draftId = randomUUID();
   const attachRowId = ids.attachRow(ctx);
   const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
-  return `<section id="${domId("agent_pane", ctx.workspaceId, ctx.label)}" class="tab-pane agent-tab-pane ${options.visible ? "visible" : ""}" data-tab-pane="${escapeHtml(key)}">
+  return `<section id="${domId("agent_pane", ctx.workspaceId, agent.label)}" class="agent-conversation-pane ${options.visible ? "visible" : ""}" data-agent-conversation-source="${escapeHtml(key)}">
     <div class="agent-pane" id="${ids.pane(ctx)}"
       data-controller="agent-pane agent-attachments"
       data-agent-pane-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
@@ -212,7 +213,6 @@ interface AgentComposerRenderOptions {
   submitShortcut?: string;
   formId?: string;
   rows?: number;
-  formControllers?: string[];
   formActions?: string;
   formTurbo?: boolean;
   launchSettings?: { frameId: string; url: string };
@@ -240,7 +240,6 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
     ? `<span id="${ids.actions(options.ctx)}">${renderPromptActions(options.ctx, Boolean(options.busy))}</span>`
     : `<button class="agent-btn primary" type="submit" name="mode" value="send">${escapeHtml(options.submitLabel ?? "Send")}${shortcut}</button>`;
   const formId = options.formId ?? `agent_composer_${draftId}`;
-  const formControllerAttrs = options.formControllers?.length ? ` data-controller="${escapeHtml(options.formControllers.join(" "))}"` : "";
   const statbar = options.stats && options.ctx
     ? `<div class="agent-statbar" id="${ids.stats(options.ctx)}">${renderStatsBar(options.ctx, options.stats)}</div>`
     : `<div class="agent-statbar">${await renderAgentLaunchSettings({ ...options.launchSettings!, formId })}</div>`;
@@ -259,7 +258,7 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
   return `<div class="agent-promptwrap"${promptAttrs ? ` ${promptAttrs}` : ""}>
         ${composerOverlays ? `<div class="agent-composer-overlays">${composerOverlays}</div>` : ""}
         <div class="agent-promptbox">
-          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${formControllerAttrs}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
+          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
             <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row"></div>
             <textarea class="agent-input" name="text" rows="${options.rows ?? 2}" placeholder="${escapeHtml(options.placeholder)}" aria-label="${escapeHtml(options.placeholder)}"${inputTarget ? ` ${inputTarget}` : ""}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>
@@ -553,11 +552,11 @@ function textWindow(text: string, mode: "first" | "last", count: number): TextWi
   return mode === "first" ? { text: lines.slice(0, count).join("\n"), hidden: lines.length - count } : { text: lines.slice(-count).join("\n"), hidden: lines.length - count };
 }
 
-function moreLink(ctx: AgentRenderContext, key: string, count: number, hidden: number): string {
+function moreLink(ctx: AgentRenderContext, key: string, count: number, hidden: number, direction: "first" | "last"): string {
   if (!hidden) return "";
   const increment = Math.min(500, hidden);
   const next = count + increment;
-  return `<div class="agent-more-lines"><a href="${escapeHtml(transcriptItemPath(ctx, key, `?count=${next}`))}" data-turbo-frame="${ids.detailFrame(ctx, key)}" data-action="click->agent-tail-frame#prepare">show ${increment} more ${increment === 1 ? "line" : "lines"}</a></div>`;
+  return `<div class="agent-more-lines"><a href="${escapeHtml(transcriptItemPath(ctx, key, `?count=${next}`))}" data-turbo-frame="${ids.detailFrame(ctx, key)}" data-action="click->agent-tail-frame#prepare" data-direction="${direction}">show ${increment} more ${increment === 1 ? "line" : "lines"}</a></div>`;
 }
 
 function tailOutput(content: string, pagination: string, direction: "first" | "last"): string {
@@ -593,8 +592,8 @@ export function renderObservedBashCompletion(ctx: AgentRenderContext, key: strin
   const views = bashViews(tool, count);
   const result = views.display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(views.resultWindow.text)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(views.resultWindow.text)}</pre>`;
   const fullResult = views.display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(views.display)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(views.model || "(no output)")}</pre>`;
-  const resultWindow = tailOutput(result, moreLink(ctx, key, count, views.resultWindow.hidden), "last");
-  const modelWindow = tailOutput(`<pre class="agent-tool-result">${escapeHtml(views.modelWindow.text)}</pre>`, moreLink(ctx, key, count, views.modelWindow.hidden), "last");
+  const resultWindow = tailOutput(result, moreLink(ctx, key, count, views.resultWindow.hidden, "last"), "last");
+  const modelWindow = tailOutput(`<pre class="agent-tool-result">${escapeHtml(views.modelWindow.text)}</pre>`, moreLink(ctx, key, count, views.modelWindow.hidden, "last"), "last");
   return `<div class="agent-observed-result">${fullscreenSourceRegion("RESULT", resultWindow, fullResult)}</div>${views.same ? "" : `<div class="agent-observed-model">${fullscreenSourceRegion("AS SEEN BY MODEL", modelWindow, `<pre class="agent-tool-result">${escapeHtml(views.model || "(no output)")}</pre>`)}</div>`}`;
 }
 
@@ -605,11 +604,11 @@ function comparisonTabs(group: string, primaryLabel: string, trailingHtml = ""):
 function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
   const { display, model, same, resultWindow, modelWindow } = bashViews(tool, count);
   const result = display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(resultWindow.text)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(resultWindow.text)}</pre>`;
-  const resultHtml = tailOutput(result, moreLink(ctx, key, count, resultWindow.hidden), "last");
+  const resultHtml = tailOutput(result, moreLink(ctx, key, count, resultWindow.hidden, "last"), "last");
   const fullResult = display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(display)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(model || "(no output)")}</pre>`;
   if (same) return fullscreenSourceRegion("RESULT", `<section class="agent-bash-output"><div class="agent-region-title">RESULT${bashCopyButton()}</div>${resultHtml}</section>`, fullResult);
   const group = `bash-view-${domIdFragment(key)}`;
-  const modelHtml = tailOutput(`<pre class="agent-tool-result">${escapeHtml(modelWindow.text)}</pre>`, moreLink(ctx, key, count, modelWindow.hidden), "last");
+  const modelHtml = tailOutput(`<pre class="agent-tool-result">${escapeHtml(modelWindow.text)}</pre>`, moreLink(ctx, key, count, modelWindow.hidden, "last"), "last");
   return `<section class="agent-bash-output">${comparisonTabs(group, "RESULT", bashCopyButton())}<div class="agent-region-pane region-primary-pane result-pane">${fullscreenSourceRegion("RESULT", resultHtml, fullResult)}</div><div class="agent-region-pane region-model-pane model-pane">${fullscreenSourceRegion("AS SEEN BY MODEL", modelHtml, `<pre class="agent-tool-result">${escapeHtml(model || "(no output)")}</pre>`)}</div></section>`;
 }
 
@@ -644,7 +643,7 @@ function renderReadDetail(ctx: AgentRenderContext, key: string, tool: ToolView, 
   if (images) return `<div class="agent-tool-detail">${detailFullscreen("READ RESULT", `${images}${result ? `<pre class="agent-tool-note">${escapeHtml(result)}</pre>` : ""}`)}</div>`;
   const window = textWindow(result, "first", count);
   const path = stringArg(toolArgs(tool), "path", "file_path");
-  const shown = tailOutput(codeBlockHtml(window.text, path), moreLink(ctx, key, count, window.hidden), "first");
+  const shown = tailOutput(codeBlockHtml(window.text, path), moreLink(ctx, key, count, window.hidden, "first"), "first");
   return `<div class="agent-tool-detail">${fullscreenSourceRegion("READ RESULT", shown, codeBlockHtml(result, path))}</div>`;
 }
 
@@ -653,7 +652,7 @@ function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView,
   const content = stringArg(args, "content") ?? "";
   const path = stringArg(args, "path", "file_path");
   const shown = tool.status === "streaming" || tool.status === "running" ? { text: content, hidden: 0 } : textWindow(content, "first", count);
-  const preview = tailOutput(codeBlockHtml(shown.text, path), moreLink(ctx, key, count, shown.hidden), "first");
+  const preview = tailOutput(codeBlockHtml(shown.text, path), moreLink(ctx, key, count, shown.hidden, "first"), "first");
   const error = tool.status === "error" && tool.resultText ? `<pre class="agent-tool-error-output">${escapeHtml(trimResult(tool))}</pre>` : "";
   return `<div class="agent-tool-detail">${fullscreenSourceRegion(path || "WRITE", preview, codeBlockHtml(content, path))}${error}</div>`;
 }
@@ -993,12 +992,11 @@ function partialStringField(stream: string, key: string): string | undefined {
   }
   if (raw.endsWith("\\\\")) raw = raw.slice(0, -1);
   try {
-    const decoded: unknown = JSON.parse(`"${raw}"`);
-    if (typeof decoded === "string") return decoded;
+    // SAFETY: Wrapping raw in JSON string quotes makes a successful parse a string.
+    return JSON.parse(`"${raw}"`) as string;
   } catch {
-    // The streamed field may end mid-escape, so retain the best-effort fallback.
+    return raw.replaceAll("\\n", "\n").replaceAll('\\"', '"');
   }
-  return raw.replaceAll("\\n", "\n").replaceAll('\\"', '"');
 }
 
 type StreamedToolArgs = JsonValue | { command: string } | { path?: string; content?: string };

@@ -1,45 +1,49 @@
-import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
+import { isJsonObject, type JsonValue } from "@atelier/core";
+import { createWorkspaceMetadataState, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 
-export interface WorkspaceVSCodeTab {
+export interface WorkspaceVSCodeView {
   title: string;
 }
 
-const tabs = new Map<string, WorkspaceVSCodeTab[]>();
-
-function defaultTabs(): WorkspaceVSCodeTab[] {
+function defaultViews(): WorkspaceVSCodeView[] {
   return [{ title: "VS Code" }];
 }
 
-export function listWorkspaceVSCodeTabs(workspaceId: string): WorkspaceVSCodeTab[] {
-  const existing = tabs.get(workspaceId);
-  if (existing) return existing;
-  const seeded = defaultTabs();
-  tabs.set(workspaceId, seeded);
-  return seeded;
+function parseVSCodeViews(value: JsonValue): WorkspaceVSCodeView[] {
+  if (!Array.isArray(value)) throw new Error("invalid persisted VS Code Work views");
+  return value.map((entry) => {
+    if (!isJsonObject(entry) || typeof entry.title !== "string" || !entry.title.trim()) throw new Error("invalid persisted VS Code Work view");
+    return { title: entry.title };
+  });
 }
 
-export function createWorkspaceVSCodeTab(workspaceId: string): WorkspaceVSCodeTab {
-  const existing = listWorkspaceVSCodeTabs(workspaceId);
+const vscodeViews = createWorkspaceMetadataState("vscode-work-views.json", parseVSCodeViews, defaultViews);
+
+export function listWorkspaceVSCodeViews(workspaceId: string): WorkspaceVSCodeView[] {
+  return vscodeViews.read(workspaceId);
+}
+
+export function createWorkspaceVSCodeView(workspaceId: string): WorkspaceVSCodeView {
+  const existing = listWorkspaceVSCodeViews(workspaceId);
   let index = existing.length + 1;
   let title = `VS Code ${index}`;
-  const used = new Set(existing.map((tab) => tab.title));
+  const used = new Set(existing.map((view) => view.title));
   while (used.has(title)) {
     index += 1;
     title = `VS Code ${index}`;
   }
-  const tab = { title };
-  existing.push(tab);
-  tabs.set(workspaceId, existing);
-  return tab;
+  const view = { title };
+  existing.push(view);
+  vscodeViews.write(workspaceId, existing);
+  return view;
 }
 
-export function deleteWorkspaceVSCodeTab(workspaceId: string, title: string): void {
-  const existing = tabs.get(workspaceId);
-  if (existing) tabs.set(workspaceId, existing.filter((tab) => tab.title !== title));
+export function deleteWorkspaceVSCodeView(workspaceId: string, title: string): void {
+  vscodeViews.write(workspaceId, vscodeViews.read(workspaceId).filter((view) => view.title !== title));
 }
 
 export function deleteWorkspaceVSCodeState(workspaceId: string): void {
-  tabs.delete(workspaceId);
+  vscodeViews.delete(workspaceId);
 }
 
 export async function ensureWorkspaceVSCodeServer(workspaceId: string): Promise<void> {

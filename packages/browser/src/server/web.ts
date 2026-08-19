@@ -1,9 +1,9 @@
 import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceModuleCommandHandler, WorkspaceWorkViewPresentation, WorkspaceWorkViewReference } from "@atelier/shared";
 import { renderBrowserFrame, renderBrowserWorkView } from "./render.ts";
-import { createWorkspaceBrowserTab, deleteWorkspaceBrowserState, deleteWorkspaceBrowserTab, listWorkspaceBrowserTabs, setWorkspaceBrowserTarget } from "./state.ts";
+import { createWorkspaceBrowserView, deleteWorkspaceBrowserState, deleteWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
 import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppRequestHeaders, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "./proxy.ts";
-import { invalidArguments, readJsonObject, requestAcceptsJson } from "@atelier/core";
+import { invalidArguments, readJsonObject, requestAcceptsJson, type JsonValue } from "@atelier/core";
 import { createBrowserPresenter } from "./agent-tool.ts";
 import { registerWorkspacePresenter } from "@atelier/agent/server";
 import { Type, type Static } from "typebox";
@@ -15,7 +15,7 @@ const browserCreateCommand: WorkspaceModuleCommandHandler<Static<typeof browserC
   id: browserCreateCommandId,
   inputSchema: browserCreateInputSchema,
   execute({ workspaceId, input }) {
-    const browser = createWorkspaceBrowserTab(workspaceId);
+    const browser = createWorkspaceBrowserView(workspaceId);
     if (input.url) setWorkspaceBrowserTarget(workspaceId, browser.key, input.url);
     return { createdWorkView: { type: "browser", browserId: browser.key } };
   },
@@ -23,14 +23,15 @@ const browserCreateCommand: WorkspaceModuleCommandHandler<Static<typeof browserC
 
 interface BrowserWorkViewReference extends WorkspaceWorkViewReference { type: "browser"; browserId: string }
 
-function parseBrowserReference(value: unknown): BrowserWorkViewReference {
+function parseBrowserReference(value: JsonValue): BrowserWorkViewReference {
+  // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
   const reference = value as { type?: unknown; browserId?: unknown };
   if (reference?.type !== "browser" || typeof reference.browserId !== "string" || !/^browser-\d+$/.test(reference.browserId)) throw new Error("browserId is invalid");
   return { type: "browser", browserId: reference.browserId };
 }
 
 function renderWorkspaceBrowserWorkViews(workspaceId: string): WorkspaceWorkViewPresentation[] {
-  return listWorkspaceBrowserTabs(workspaceId).map((view) => renderBrowserWorkView(workspaceId, view));
+  return listWorkspaceBrowserViews(workspaceId).map((view) => renderBrowserWorkView(workspaceId, view));
 }
 
 const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
@@ -48,7 +49,7 @@ export const browserWorkspaceModule: WorkspaceModule = {
     type: "browser",
     parseReference: parseBrowserReference,
     identity: (reference: { type: "browser"; browserId: string }) => reference.browserId,
-    close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "browser"; browserId: string } }) => deleteWorkspaceBrowserTab(workspaceId, reference.browserId),
+    close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "browser"; browserId: string } }) => deleteWorkspaceBrowserView(workspaceId, reference.browserId),
   }],
   staticFiles: browserStaticFiles,
   commands: [browserCreateCommand],
@@ -86,11 +87,11 @@ async function browserNavigateEndpoint(workspaceId: string, appKey: string, requ
   if (wantsJson && typeof value !== "string") throw invalidArguments("url is required");
   const url = String(value ?? "");
 
-  const tab = setWorkspaceBrowserTarget(workspaceId, appKey, url);
-  if (!tab) return wantsJson
-    ? Response.json({ error: { code: "tab_not_found", message: `browser tab not found: ${appKey}` } }, { status: 404 })
-    : new Response("browser tab not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
+  const view = setWorkspaceBrowserTarget(workspaceId, appKey, url);
+  if (!view) return wantsJson
+    ? Response.json({ error: { code: "view_not_found", message: `browser view not found: ${appKey}` } }, { status: 404 })
+    : new Response("browser view not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
   return wantsJson
-    ? Response.json({ tab: { key: tab.key, label: tab.label, url: tab.targetUrl } })
-    : new Response(renderBrowserFrame(workspaceId, tab), { headers: { "content-type": "text/html; charset=utf-8" } });
+    ? Response.json({ view: { key: view.key, label: view.label, url: view.targetUrl } })
+    : new Response(renderBrowserFrame(workspaceId, view), { headers: { "content-type": "text/html; charset=utf-8" } });
 }

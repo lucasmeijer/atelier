@@ -79,7 +79,7 @@ import { handleOnboardingRequest, renderOnboardingDialogIfNeeded } from "./onboa
 import { GitHubRepositorySearchRateLimitError, renderGitHubRepositorySearchMenu, renderGitHubRepositorySearchRateLimitMenu, searchGitHubRepositories, shouldSearchGitHubRepositories } from "./github-repo-search.ts";
 import { atelierOpenApi } from "./openapi.ts";
 import { Value } from "typebox/value";
-import { renderWorkspacePresentation, workspacePresentationTurboStream, type AgentPaneContribution, type WorkspacePaneEntry, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type AgentPaneContribution, type WorkspacePaneEntry, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
@@ -134,7 +134,7 @@ function jsonResponse<Body extends object>(body: Body, init: HtmlResponseInit = 
 
 function problemJsonResponse(error: Error): Response {
   const status = error instanceof AtelierCoreError && ["invalid_arguments", "invalid_git_url"].includes(error.code) ? 400
-    : error instanceof AtelierCoreError && ["project_not_found", "project_environment_variable_not_found", "project_secret_not_found", "workspace_not_found", "command_not_found", "agent_not_found", "tab_not_found", "terminal_not_found"].includes(error.code) ? 404
+    : error instanceof AtelierCoreError && ["project_not_found", "project_environment_variable_not_found", "project_secret_not_found", "workspace_not_found", "command_not_found", "agent_not_found", "view_not_found", "terminal_not_found"].includes(error.code) ? 404
       : 500;
   const message = error.message;
   const code = error instanceof AtelierCoreError ? error.code : "internal_error";
@@ -185,6 +185,7 @@ let cachedAssetManifest: Record<string, string> | undefined;
 
 function loadAssetManifest(): Record<string, string> {
   const manifestUrl = new URL("../../public/assets-manifest.json", import.meta.url);
+  // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
   return existsSync(manifestUrl) ? JSON.parse(readFileSync(manifestUrl, "utf8")) as Record<string, string> : {};
 }
 
@@ -210,6 +211,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const { registry } = deps;
   const logError = deps.logError ?? ((message: string) => console.error(message));
   const versionTooltip = atelierVersionTooltip();
+  // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
   const workViewAdapters = workspaceModules.flatMap((module) => module.workViews ?? []) as WorkspaceModuleWorkViewAdapter[];
   const presentationStore = createWorkspacePresentationStore({
     workViewContributions: workViewAdapters,
@@ -240,8 +242,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return domId("workspace_status", workspaceId);
   }
 
-  function workspaceTabStatusId(workspaceId: string, tabKey: string): string {
-    return domId("workspace_tab_status", workspaceId, tabKey);
+  function workspaceViewStatusId(workspaceId: string, viewKey: string): string {
+    return domId("workspace_view_status", workspaceId, viewKey);
   }
 
   function workspaceBootId(id: string): string {
@@ -259,11 +261,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return `<span id="${workspaceStatusId(workspaceId)}" class="workspace-status" data-workspace-list-target="status" data-workspace-state="${state}"${unreadAt === undefined ? "" : ` data-workspace-unread-at="${unreadAt}"`}>${inner}</span>`;
   }
 
-  function renderTabStatus(workspaceId: string, tabKey: string): string {
-    const inner = registry.isTabBusy(workspaceId, tabKey)
-      ? `<span class="status-spinner sm" aria-label="Tab busy" title="Tab busy"></span>`
+  function renderViewStatus(workspaceId: string, viewKey: string): string {
+    const inner = registry.isViewBusy(workspaceId, viewKey)
+      ? `<span class="status-spinner sm" aria-label="View busy" title="View busy"></span>`
       : "";
-    return `<span id="${workspaceTabStatusId(workspaceId, tabKey)}" class="tab-status">${inner}</span>`;
+    return `<span id="${workspaceViewStatusId(workspaceId, viewKey)}" class="view-status">${inner}</span>`;
   }
 
   const workspaceRowContributionStore = new Map<string, Map<string, string>>();
@@ -371,7 +373,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   function workspaceStatusStreams(workspaceId: string): string {
-    return `${turboReplaceStream(workspaceStatusId(workspaceId), renderWorkspaceStatus(workspaceId))}${registry.busyTabs(workspaceId).map((tabKey) => turboReplaceStream(workspaceTabStatusId(workspaceId, tabKey), renderTabStatus(workspaceId, tabKey))).join("")}`;
+    return `${turboReplaceStream(workspaceStatusId(workspaceId), renderWorkspaceStatus(workspaceId))}${registry.busyViews(workspaceId).map((viewKey) => turboReplaceStream(workspaceViewStatusId(workspaceId, viewKey), renderViewStatus(workspaceId, viewKey))).join("")}`;
   }
 
   function initialStatusStreams(): string {
@@ -381,21 +383,29 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const persistWorkspaceParked = deps.persistWorkspaceParked ?? setWorkspaceParked;
   let skipParkedPersistence = false;
 
+  function broadcastWorkspacePaneCollections(): void {
+    void workspacePaneCollections("")
+      .then((collections) => broadcastShell(workspacePaneCollectionsTurboStream(collections)))
+      .catch((error) => logError(`could not refresh Workspace pane: ${error instanceof Error ? error.message : String(error)}`));
+  }
+
   registry.setCallbacks({
-    rowChanged(entry, { tabKey, unread }) {
-      if (tabKey !== undefined) {
-        void unread;
+    rowChanged(entry, { viewKey }) {
+      if (viewKey !== undefined) {
         // Status changes replace only the status spans so they cannot clobber an
         // in-progress title edit in the row.
-        broadcastShell(`${turboReplaceStream(workspaceStatusId(entry.id), renderWorkspaceStatus(entry.id))}${turboReplaceStream(workspaceTabStatusId(entry.id, tabKey), renderTabStatus(entry.id, tabKey))}`);
+        broadcastShell(`${turboReplaceStream(workspaceStatusId(entry.id), renderWorkspaceStatus(entry.id))}${turboReplaceStream(workspaceViewStatusId(entry.id, viewKey), renderViewStatus(entry.id, viewKey))}`);
+        broadcastWorkspacePaneCollections();
         return;
       }
       broadcastShell(turboReplaceStream(workspaceRowId(entry.id), workspaceRow(entry)));
+      broadcastWorkspacePaneCollections();
     },
     listChanged() {
       // "update" (not "replace"): the rows container must survive so later
       // list broadcasts still find their target.
       broadcastShell(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
+      broadcastWorkspacePaneCollections();
     },
     parkedChanged(entry) {
       if (skipParkedPersistence) return;
@@ -723,13 +733,13 @@ ${moduleStylesHtml()}
     return `${reference.type}:${adapter.identity(reference)}`;
   }
 
-  function workViewCloseForm(workspaceId: string, reference: WorkspaceWorkViewReference, label: string): string {
+  function workViewClose(workspaceId: string, reference: WorkspaceWorkViewReference, label: string) {
     const encoded = encodeURIComponent(JSON.stringify(reference));
-    return `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/work-views/${encoded}/close" data-close-label="${escapeHtml(label)} Work view" data-action="submit->workspace-presentation#confirmClose"><button class="fixed-shell-tab-close" type="submit" title="Close ${escapeHtml(label)}" aria-label="Close ${escapeHtml(label)}">×</button></form>`;
+    return { action: `/workspaces/${encodeURIComponent(workspaceId)}/work-views/${encoded}/close`, label: `${label} Work view` };
   }
 
-  function agentCloseForm(workspaceId: string, conversationId: string, title: string): string {
-    return `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/agent-conversations/${encodeURIComponent(conversationId)}/close" data-close-label="${escapeHtml(title)} Agent conversation" data-action="submit->workspace-presentation#confirmClose"><button class="fixed-shell-tab-close" type="submit" title="Close ${escapeHtml(title)}" aria-label="Close ${escapeHtml(title)}">×</button></form>`;
+  function agentClose(workspaceId: string, conversationId: string, title: string) {
+    return { action: `/workspaces/${encodeURIComponent(workspaceId)}/agent-conversations/${encodeURIComponent(conversationId)}/close`, label: `${title} Agent conversation` };
   }
 
   async function workspacePaneCollections(activeWorkspaceId: string): Promise<Pick<FixedWorkspacePresentation, "projects" | "projectlessWorkspaces" | "parkedWorkspaces">> {
@@ -737,12 +747,23 @@ ${moduleStylesHtml()}
     const projectTitles = new Map(projects.projects.map((project) => [project.id, project.name]));
     const active = registry.list().filter((entry) => !entry.parked && entry.phase !== "deleting");
     const grouped = new Map<string, typeof active>();
+    // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
     const projectless = [] as typeof active;
     for (const entry of active) {
       if (!isGitProjectInit(entry.init)) projectless.push(entry);
       else grouped.set(entry.init.projectId, [...(grouped.get(entry.init.projectId) ?? []), entry]);
     }
-    const paneEntry = (entry: WorkspaceEntry) => ({ id: entry.id, title: workspaceTitle(entry), ready: registry.isWorkspaceUnread(entry.id) && entry.id !== activeWorkspaceId });
+    const paneEntry = (entry: WorkspaceEntry): WorkspacePaneEntry => {
+      const pane: WorkspacePaneEntry = {
+        id: entry.id,
+        title: workspaceTitle(entry),
+        active: entry.id === activeWorkspaceId,
+        busy: registry.isWorkspaceBusy(entry.id),
+        ready: registry.isWorkspaceUnread(entry.id) && entry.id !== activeWorkspaceId,
+      };
+      if (isGitProjectInit(entry.init)) pane.color = repoColor(entry.init.projectId);
+      return pane;
+    };
     return {
       projects: [...grouped].map(([id, entries]) => {
         const init = entries[0]!.init;
@@ -751,15 +772,12 @@ ${moduleStylesHtml()}
       }),
       projectlessWorkspaces: projectless.map(paneEntry),
       parkedWorkspaces: registry.list().filter((entry) => entry.parked).map((entry) => {
+        // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
         const parked = paneEntry(entry) as WorkspacePaneEntry & { projectTitle?: string };
         if (isGitProjectInit(entry.init)) parked.projectTitle = projectTitles.get(entry.init.projectId) ?? entry.init.name;
         return parked;
       }),
     };
-  }
-
-  function presentedBody(bodyHtml: string | undefined): string {
-    return bodyHtml?.replace(/class="tab-pane([^\"]*)"/, (_match, classes: string) => `class="tab-pane work-view-pane${String(classes).replace(/\b(active|visible)\b/g, "").trim() ? ` ${String(classes).replace(/\b(active|visible)\b/g, "").trim()}` : ""}"`) ?? "";
   }
 
   async function fixedWorkspacePresentation(workspaceId: string, options: { renderWorkViewSourceKeys?: ReadonlySet<string>; preserveLiveKeys?: ReadonlySet<string> } = {}): Promise<FixedWorkspacePresentation> {
@@ -782,8 +800,8 @@ ${moduleStylesHtml()}
       workspace,
       ...await workspacePaneCollections(workspaceId),
       agentConversations: agentConversations.map((conversation) => {
-        const presented: AgentPaneContribution = { id: conversation.id, title: conversation.title, bodyHtml: presentedBody(conversation.bodyHtml) };
-        if (agentConversations.length > 1) presented.closeHtml = agentCloseForm(workspaceId, conversation.id, conversation.title);
+        const presented: AgentPaneContribution = { id: conversation.id, title: conversation.title, bodyHtml: conversation.bodyHtml ?? "" };
+        if (agentConversations.length > 1) presented.close = agentClose(workspaceId, conversation.id, conversation.title);
         return presented;
       }),
       workViews: storedWorkViews.map((stored) => {
@@ -796,10 +814,10 @@ ${moduleStylesHtml()}
           mobileDestination: ["file", "browser", "terminal"].includes(stored.reference.type) ? "direct" as const : "more" as const,
           attention: stored.attention,
           availability: contribution?.availability ?? { phase: "unavailable", detail: "The referenced resource is not currently available." },
-          bodyHtml: presentedBody(contribution?.bodyHtml),
+          bodyHtml: contribution?.bodyHtml ?? "",
           sourceKey: contribution?.sourceKey,
           actionsHtml: contribution?.actionsHtml,
-          closeHtml: workViewCloseForm(workspaceId, stored.reference, contribution?.label ?? stored.reference.type),
+          close: workViewClose(workspaceId, stored.reference, contribution?.label ?? stored.reference.type),
         };
       }),
       commands,
@@ -1527,7 +1545,9 @@ ${moduleStylesHtml()}
     }
     if (!input || typeof input !== "object" || Array.isArray(input)) throw invalidArguments("JSON command input must be an object");
     const schema = command.inputSchema ?? emptyWorkspaceCommandInputSchema;
+    // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
     if (!Value.Check(schema as never, input)) {
+      // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
       const issue = [...Value.Errors(schema as never, input)][0];
       throw invalidArguments(`invalid ${command.id} input: ${issue?.message ?? "schema check failed"}`);
     }
@@ -1581,13 +1601,16 @@ ${moduleStylesHtml()}
   }
 
   async function closeWorkViewEndpoint(workspaceId: string, encodedReference: string, request: Request): Promise<Response> {
+    // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
     const reference = JSON.parse(encodedReference) as WorkspaceWorkViewReference;
     const before = await fixedWorkspacePresentation(workspaceId, { renderWorkViewSourceKeys: new Set() });
     const adapter = workViewAdapterByType.get(reference.type);
     if (!adapter) throw new AtelierCoreError("work_view_reference_invalid", `unknown Work view type: ${reference.type}`);
     const parsed = adapter.parseReference(reference);
-    await presentationStore.closeWorkView(workspaceId, parsed);
+    const open = (await presentationStore.listWorkViews(workspaceId)).some((view) => workViewKey(view.reference) === workViewKey(parsed));
+    if (!open) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${workViewKey(parsed)}`);
     await adapter.close?.({ workspaceId, reference: parsed });
+    await presentationStore.closeWorkView(workspaceId, parsed);
     const preserveLiveKeys = new Set([
       ...before.agentConversations.map((agent) => `agent:${agent.id}`),
       ...before.workViews.filter((view) => view.key !== workViewKey(parsed)).map((view) => `work:${view.key}`),

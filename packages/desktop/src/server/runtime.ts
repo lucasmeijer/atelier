@@ -2,7 +2,6 @@ import { execWorkspaceCommand, workspaceDesktopPort } from "@atelier/workspace";
 
 export const desktopAppKey = "desktop";
 export const desktopDisplay = ":99";
-export const desktopTabKey = desktopAppKey;
 
 export async function isWorkspaceDesktopEnabled(workspaceId: string): Promise<boolean> {
   try {

@@ -3,13 +3,14 @@ import { renderAgentComposer, renderAgentPane, renderStatsBar, renderTranscript,
 import type { ToolView, TranscriptItem } from "../../src/server/transcript.ts";
 
 const ctx: AgentRenderContext = { workspaceId: "ws", label: "agent" };
+const agent = { workspaceId: "ws", conversationId: "00000000-0000-4000-8000-000000000001", label: "agent", title: "Agent", path: "/tmp/agent.jsonl" };
 const tool = (overrides: Partial<ToolView>): ToolView => ({ callId: "call", name: "read", args: {}, status: "ok", ...overrides });
 const renderBash = (command: string, overrides: Partial<ToolView> = {}): string => renderTranscriptItemDetailFrame(ctx, { type: "tool", key: "bash", tool: tool({ name: "bash", args: { command }, ...overrides }) });
 
 describe("flat transcript rendering", () => {
   test("server-rendered panes expose their snapshot cursor", async () => {
     const stats = { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] };
-    const html = await renderAgentPane(ctx, { transcriptHtml: "ready", busy: false, stats, snapshotCursor: "generation:4" });
+    const html = await renderAgentPane(ctx, agent, { transcriptHtml: "ready", busy: false, stats, snapshotCursor: "generation:4" });
     expect(html).toContain('data-agent-pane-snapshot-cursor-value="generation:4"');
   });
 

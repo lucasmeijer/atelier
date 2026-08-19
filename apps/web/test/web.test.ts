@@ -282,6 +282,8 @@ describe("web app contracts", () => {
     // Must be "update" (innerHTML), not "replace": replace would destroy the
     // rows container and break every subsequent list broadcast.
     expect(listBroadcast).toContain('<turbo-stream action="update" target="workspaces_table_rows">');
+    await Bun.sleep(10);
+    expect(broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"') && html.includes(`data-workspace-entry-id="${id}"`))).toBe(true);
 
     broadcasts.length = 0;
     provision.resolve();
@@ -569,8 +571,7 @@ describe("web app contracts", () => {
       const secondDraft = second.match(/name="attachmentDraft" value="([^"]+)"/)?.[1];
 
       expect(first).toContain('<turbo-frame id="agent_launch_modal">');
-      expect(first).toContain('data-controller="agent-launch-dialog"');
-      expect(first).toContain('data-controller="submit-shortcut"');
+      expect(first).toContain('data-controller="agent-launch-dialog submit-shortcut"');
       expect(first).toContain('<turbo-frame id="agent_launch_settings">');
       expect(first).toContain(`action="/project-agent-workspaces/${project.id}"`);
       expect(first).toContain('aria-label="Describe what you want the agent to do… (optional)"');
@@ -809,14 +810,17 @@ describe("web app contracts", () => {
     expect(readyBroadcast.indexOf('id="workspace_status_abc"')).toBeLessThan(readyBroadcast.indexOf('class="workspace-row-delete"'));
 
     broadcasts.length = 0;
-    registry.setTabBusy("abc", "agent:Agent 1", true);
+    registry.setViewBusy("abc", "agent:Agent 1", true);
     const busyBroadcast = broadcasts.find((item) => item.includes('target="workspace_status_abc"')) ?? "";
     expect(busyBroadcast).toContain('class="status-spinner sm"');
     expect(busyBroadcast).toContain('Workspace busy');
+    while (!broadcasts.some((item) => item.includes('action="replace-workspace-pane-collections"'))) await Bun.sleep(1);
+    const paneBusyBroadcast = broadcasts.find((item) => item.includes('action="replace-workspace-pane-collections"')) ?? "";
+    expect(paneBusyBroadcast).toContain("fixed-shell-workspace-busy");
 
     broadcasts.length = 0;
-    registry.setTabBusy("abc", "agent:Agent 1", false);
-    registry.setTabUnread("abc", "agent:Agent 1", true);
+    registry.setViewBusy("abc", "agent:Agent 1", false);
+    registry.setViewUnread("abc", "agent:Agent 1", true);
     const unreadBroadcast = broadcasts.findLast((item) => item.includes('target="workspace_status_abc"')) ?? "";
     expect(unreadBroadcast).toContain('data-workspace-state="unread"');
     expect(unreadBroadcast).toMatch(/data-workspace-unread-at="\d+"/);
@@ -834,7 +838,7 @@ describe("web app contracts", () => {
     await app.fetch(post("/workspaces/abc/delete"));
     destroy.resolve();
     await Bun.sleep(20);
-    registry.setTabBusy("abc", "agent:1", true);
+    registry.setViewBusy("abc", "agent:1", true);
     registry.setTitle("abc", "Renamed");
 
     expect(broadcasts.length).toBeGreaterThan(0);

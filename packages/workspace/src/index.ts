@@ -17,10 +17,11 @@ export type {
   WorkspaceDeleteInspectEvent,
   WorkspacePlanPrepareEvent,
   WorkspaceSourcePrepareEvent,
-  WorkspaceTabsChangedEvent,
   WorkspaceTitleChangedEvent,
   WorkspaceUserActivityEvent,
 } from "./events.ts";
+
+export { createWorkspaceMetadataState, type WorkspaceMetadataState } from "./metadata-state.ts";
 
 export {
   createWorkspacePresentationStore,

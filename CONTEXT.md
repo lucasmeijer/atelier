@@ -37,7 +37,7 @@ The contextual region that slides in when needed to show files, changes, termina
 _Avoid_: Right tab, preview tab
 
 **Work view**:
-A closable, reorderable tab inside the Work pane, such as a terminal, browser, File view, or Changes view. Only one Work view is active and visible at a time; Work views are not split into additional layout groups.
+A closable, reorderable destination inside the Work pane, such as a Terminal, Browser, File, or Changes view. Only one Work view is active and visible at a time; Work views are not split into additional layout groups.
 _Avoid_: Workspace group, preview group
 
 **Resource Work view**:

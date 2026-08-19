@@ -1,10 +1,9 @@
-.workspace-panes:has(.vscode-pane.visible) {
+.fixed-shell-live-body:has(> .vscode-work-view) {
   padding: 0;
   overflow: hidden;
 }
 
-.vscode-pane,
-.vscode-pane.visible {
+.vscode-work-view {
   position: relative;
   width: 100%;
   height: 100%;

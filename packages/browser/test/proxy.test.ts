@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { patchBrowserWorkspaceAppRequestHeaders, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "../src/server/proxy.ts";
 import { renderBrowserFrame } from "../src/server/render.ts";
-import { createWorkspaceBrowserTab, listWorkspaceBrowserTabs, normalizeBrowserUrl, setWorkspaceBrowserTarget } from "../src/server/state.ts";
+import { createWorkspaceBrowserView, listWorkspaceBrowserViews, normalizeBrowserUrl, setWorkspaceBrowserTarget } from "../src/server/state.ts";
 
 interface BrowserApp {
   appKey: string;
@@ -9,9 +9,9 @@ interface BrowserApp {
 }
 
 function browserApp(workspaceId: string): BrowserApp {
-  const tab = createWorkspaceBrowserTab(workspaceId);
-  setWorkspaceBrowserTarget(workspaceId, tab.key, "http://localhost:3000/");
-  return { appKey: tab.key, workspaceId };
+  const view = createWorkspaceBrowserView(workspaceId);
+  setWorkspaceBrowserTarget(workspaceId, view.key, "http://localhost:3000/");
+  return { appKey: view.key, workspaceId };
 }
 
 describe("browser proxy response patching", () => {
@@ -55,12 +55,12 @@ describe("browser proxy response patching", () => {
   });
 
   test("external browser targets use the target host header", async () => {
-    const tab = createWorkspaceBrowserTab("external_host_work");
-    setWorkspaceBrowserTarget("external_host_work", tab.key, "https://example.com/path");
+    const view = createWorkspaceBrowserView("external_host_work");
+    setWorkspaceBrowserTarget("external_host_work", view.key, "https://example.com/path");
     const headers = new Headers({ host: "127.0.0.1:43000" });
 
     const patched = await patchBrowserWorkspaceAppRequestHeaders(
-      { appKey: tab.key, workspaceId: "external_host_work" },
+      { appKey: view.key, workspaceId: "external_host_work" },
       headers,
       new URL("https://example.com/path"),
       new Request("https://browser--external.localhost/path"),
@@ -70,28 +70,28 @@ describe("browser proxy response patching", () => {
   });
 
   test("browser state and iframe source preserve hash fragments", () => {
-    expect(listWorkspaceBrowserTabs("empty_work")).toEqual([]);
+    expect(listWorkspaceBrowserViews("empty_work")).toEqual([]);
     expect(normalizeBrowserUrl("")).toBe("");
     expect(normalizeBrowserUrl("localhost:3000/page#section")).toBe("http://localhost:3000/page#section");
-    const tab = createWorkspaceBrowserTab("hash_work");
-    expect(renderBrowserFrame("hash_work", tab)).not.toContain("data-controller=\"workspace-app-frame\"");
-    setWorkspaceBrowserTarget("hash_work", tab.key, "http://localhost:3000/page?x=1#section");
-    expect(renderBrowserFrame("hash_work", tab)).toContain(`data-workspace-app-frame-initial-path-value="/page?x=1#section"`);
+    const view = createWorkspaceBrowserView("hash_work");
+    expect(renderBrowserFrame("hash_work", view)).not.toContain("data-controller=\"workspace-app-frame\"");
+    setWorkspaceBrowserTarget("hash_work", view.key, "http://localhost:3000/page?x=1#section");
+    expect(renderBrowserFrame("hash_work", view)).toContain(`data-workspace-app-frame-initial-path-value="/page?x=1#section"`);
   });
 
   test("does not forward Atelier theme params to the browser target", async () => {
-    const tab = createWorkspaceBrowserTab("strip_theme_work");
-    setWorkspaceBrowserTarget("strip_theme_work", tab.key, "https://example.com/root");
+    const view = createWorkspaceBrowserView("strip_theme_work");
+    setWorkspaceBrowserTarget("strip_theme_work", view.key, "https://example.com/root");
 
     const target = await resolveBrowserWorkspaceAppTarget(
-      { appKey: tab.key, workspaceId: "strip_theme_work" },
+      { appKey: view.key, workspaceId: "strip_theme_work" },
       new URL("/page?x=1&atelierColorScheme=dark#top", "https://browser.localhost"),
     );
 
     expect(target.toString()).toBe("https://example.com/page?x=1");
   });
 
-  test("rejects browser app keys that do not belong to a workspace tab", async () => {
+  test("rejects browser app keys that do not belong to a Workspace view", async () => {
     await expect(resolveBrowserWorkspaceAppTarget(
       { appKey: "browser-999", workspaceId: "unknown_browser_work" },
       new URL("/", "https://browser.localhost"),

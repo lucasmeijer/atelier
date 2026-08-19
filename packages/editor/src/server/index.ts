@@ -1,13 +1,13 @@
-import type { AtelierEventBus } from "@atelier/core";
+import type { AtelierEventBus, JsonValue } from "@atelier/core";
 import { turboStream, turboStreamResponse, type WorkspaceModule } from "@atelier/shared";
 import { renderMarkdown } from "@atelier/markdown";
 import { EditorFileError, maxEditableFileBytes, readEditableFile, writeEditableFile } from "./file.ts";
 import {
-  closeWorkspaceFileEditorTab,
+  closeWorkspaceFileEditorView,
   deleteWorkspaceFileEditorState,
-  fileEditorTabLabels,
-  listWorkspaceFileEditorTabs,
-  openWorkspaceFileEditorTab,
+  fileEditorViewLabels,
+  listWorkspaceFileEditorViews,
+  openWorkspaceFileEditorView,
 } from "./state.ts";
 import { fileEditorSignalId, renderFileEditorSignal, renderFileWorkView } from "./render.ts";
 
@@ -29,8 +29,8 @@ async function openEditorEndpoint(workspaceId: string, url: URL, openWorkView: (
   const file = await readEditableFile(workspaceId, url.searchParams.get("path"));
   const line = positiveInteger(url.searchParams.get("line"));
   const column = positiveInteger(url.searchParams.get("column"));
-  const { tab } = openWorkspaceFileEditorTab(workspaceId, file.path, { line, column });
-  return await openWorkView(workspaceId, { type: "file", path: tab.path });
+  const { view } = openWorkspaceFileEditorView(workspaceId, file.path, { line, column });
+  return await openWorkView(workspaceId, { type: "file", path: view.path });
 }
 
 async function markdownPreviewEndpoint(workspaceId: string, request: Request): Promise<Response> {
@@ -44,6 +44,7 @@ async function editorContentEndpoint(workspaceId: string, request: Request, url:
   const path = url.searchParams.get("path");
   if (request.method === "GET") return jsonResponse(await readEditableFile(workspaceId, path));
   if (request.method !== "PUT") return textResponse("Method not allowed", 405);
+  // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
   const body = await request.json() as { content?: unknown; revision?: unknown; force?: unknown };
   if (typeof body.content !== "string" || typeof body.revision !== "string") return textResponse("Invalid editor save", 422);
   try {
@@ -58,13 +59,14 @@ const editorWorkspaceModule: WorkspaceModule = {
   id: "editor",
   workViews: [{
     type: "file",
-    parseReference(value: unknown) {
+    parseReference(value: JsonValue) {
+      // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
       const reference = value as { type?: unknown; path?: unknown };
       if (reference?.type !== "file" || typeof reference.path !== "string" || !reference.path.startsWith("/")) throw new Error("path must be absolute");
       return { type: "file", path: reference.path };
     },
     identity: (reference: { type: "file"; path: string }) => reference.path,
-    close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "file"; path: string } }) => closeWorkspaceFileEditorTab(workspaceId, `file-editor:${Buffer.from(reference.path).toString("base64url")}`),
+    close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "file"; path: string } }) => closeWorkspaceFileEditorView(workspaceId, `file-editor:${Buffer.from(reference.path).toString("base64url")}`),
   }],
   staticFiles: {
     "/editor.css": { url: new URL("../client/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
@@ -85,18 +87,19 @@ const editorWorkspaceModule: WorkspaceModule = {
     },
   }],
   initialize(context) {
+    // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
     const events = context.events as AtelierEventBus;
     events.on("workspace_agent_turn_finished", ({ workspaceId }) => {
-      if (listWorkspaceFileEditorTabs(workspaceId).length === 0) return;
+      if (listWorkspaceFileEditorViews(workspaceId).length === 0) return;
       context.broadcastWorkspace(workspaceId, turboStream("replace", fileEditorSignalId(workspaceId), renderFileEditorSignal(workspaceId)));
     });
     context.onWorkspaceRemoved((workspaceId) => deleteWorkspaceFileEditorState(workspaceId));
   },
   attachToWorkspace({ workspaceId }) {
-    const editorTabs = listWorkspaceFileEditorTabs(workspaceId);
-    const labels = fileEditorTabLabels(editorTabs);
+    const editorViews = listWorkspaceFileEditorViews(workspaceId);
+    const labels = fileEditorViewLabels(editorViews);
     return {
-      workViews: editorTabs.map((tab) => renderFileWorkView(workspaceId, tab, labels.get(tab.key)!)),
+      workViews: editorViews.map((view) => renderFileWorkView(workspaceId, view, labels.get(view.key)!)),
       workspaceChromeHtml: [renderFileEditorSignal(workspaceId)],
     };
   },
