@@ -1,5 +1,6 @@
 export {
   createWorkspaceForProject,
+  createWorkspaceForProjectSpec,
   type CreateWorkspaceForProjectOptions,
 } from "./create-workspace.ts";
 

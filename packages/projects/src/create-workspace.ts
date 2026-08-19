@@ -5,13 +5,13 @@ export interface CreateWorkspaceForProjectOptions extends Omit<CreateWorkspaceOp
   init?: never;
 }
 
-export async function createWorkspaceForProject(project: string | ProjectSummary, options: CreateWorkspaceForProjectOptions = {}): Promise<WorkspaceNewResult> {
-  const summary = typeof project === "string"
-    ? (() => {
-        const spec = parseProjectSpec(project);
-        const name = projectNameFromGitUrl(spec.gitUrl);
-        return { id: crypto.randomUUID(), name, gitUrl: spec.gitUrl, branch: spec.branch, sessionShareKey: name };
-      })()
-    : project;
-  return await createWorkspace({ ...options, init: projectWorkspaceInit(summary) });
+export async function createWorkspaceForProject(project: ProjectSummary, options: CreateWorkspaceForProjectOptions = {}): Promise<WorkspaceNewResult> {
+  return await createWorkspace({ ...options, init: projectWorkspaceInit(project) });
+}
+
+export async function createWorkspaceForProjectSpec(spec: string, options: CreateWorkspaceForProjectOptions = {}): Promise<WorkspaceNewResult> {
+  const { gitUrl, branch } = parseProjectSpec(spec);
+  const name = projectNameFromGitUrl(gitUrl);
+  const project = { id: crypto.randomUUID(), name, gitUrl, branch, sessionShareKey: name };
+  return await createWorkspaceForProject(project, options);
 }
