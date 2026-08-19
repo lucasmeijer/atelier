@@ -66,6 +66,22 @@ interface AgentPaneControllerInstance {
   stop(): void;
 }
 
+interface AgentTermControllerInstance {
+  start(): void;
+  disconnect(): void;
+}
+
+function isAgentTermController(controller: WorkspaceClientController): controller is WorkspaceClientController & AgentTermControllerInstance {
+  return "start" in controller && typeof controller.start === "function" && "disconnect" in controller && typeof controller.disconnect === "function";
+}
+
+function agentTermController(application: StimulusApplication, terminal: HTMLElement): AgentTermControllerInstance | null {
+  const controller = application.getControllerForElementAndIdentifier(terminal, "agent-term");
+  if (!controller) return null;
+  if (!isAgentTermController(controller)) throw new Error("agent-term element is connected to an incompatible controller");
+  return controller;
+}
+
 // ---------------------------------------------------------------------------
 // agent-pane: cable subscription lifecycle, scroll anchoring, prompt behavior, rewind dialog
 // ---------------------------------------------------------------------------
@@ -225,8 +241,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     private startAgentTerminals(): void {
       this.element.querySelectorAll<HTMLElement>('[data-controller~="agent-term"]').forEach((terminal) => {
-        const controller = this.application.getControllerForElementAndIdentifier(terminal, "agent-term") as { start?(): void } | null;
-        controller?.start?.();
+        agentTermController(this.application, terminal)?.start();
       });
     }
 
@@ -240,8 +255,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     private disposeAgentTerminals(): void {
       this.element.querySelectorAll<HTMLElement>('[data-controller~="agent-term"]').forEach((terminal) => {
-        const controller = this.application.getControllerForElementAndIdentifier(terminal, "agent-term") as { disconnect?(): void } | null;
-        controller?.disconnect?.();
+        agentTermController(this.application, terminal)?.disconnect();
         terminal.remove();
       });
     }
