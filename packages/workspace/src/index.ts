@@ -329,12 +329,11 @@ export const workspaceSetupProvisioningHook: WorkspaceServerProvisioningHook = {
   id: workspaceSetupStep,
   label: "Run project setup",
   async run({ workspaceId, creationContext, events }) {
-    const eventBus = events as AtelierEventBus | undefined;
     if (creationContext?.fork) {
-      await eventBus?.emit("workspace_provision_step", { workspaceId, id: workspaceSetupStep, detail: "Skipped for copied workspace" });
+      await events?.emit("workspace_provision_step", { workspaceId, id: workspaceSetupStep, detail: "Skipped for copied workspace" });
       return;
     }
-    await runWorkspaceSetupScript(workspaceId, { events: eventBus });
+    await runWorkspaceSetupScript(workspaceId, { events });
   },
 };
 
