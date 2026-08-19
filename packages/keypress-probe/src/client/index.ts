@@ -15,6 +15,12 @@ export type KeypressProbeDetail = {
   time: string;
 };
 
+declare global {
+  interface DocumentEventMap {
+    "atelier:keypress-probe": CustomEvent<KeypressProbeDetail>;
+  }
+}
+
 function describeKeyTarget(target: EventTarget | null): string {
   if (!(target instanceof HTMLElement)) return String(target?.constructor?.name ?? "unknown");
   const tag = target.tagName.toLowerCase();
@@ -83,11 +89,11 @@ function createKeypressProbeController(Controller: WorkspaceClientControllerCons
     connect(): void {
       activeProbeControllers += 1;
       installKeypressProbe();
-      document.addEventListener("atelier:keypress-probe", this.record as EventListener);
+      document.addEventListener("atelier:keypress-probe", this.record);
     }
 
     disconnect(): void {
-      document.removeEventListener("atelier:keypress-probe", this.record as EventListener);
+      document.removeEventListener("atelier:keypress-probe", this.record);
       activeProbeControllers -= 1;
       if (activeProbeControllers === 0) uninstallKeypressProbe();
     }
