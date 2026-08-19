@@ -1505,14 +1505,20 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
           };
           selectResult();
         },
-      }).then((viewer) => {
-        if (this.disposed) viewer.dispose();
-        else this.viewer = viewer;
-      }).catch((error: unknown) => {
-        this.element.textContent = `[terminal attach failed: ${error instanceof Error ? error.message : String(error)}]`;
-      }).finally(() => {
-        this.starting = false;
-      });
+      })
+        .then((viewer) => {
+          if (this.disposed) viewer.dispose();
+          else this.viewer = viewer;
+        })
+        // Terminal startup crosses browser and extension APIs that may reject with
+        // arbitrary values. This final UI boundary converts the reason to inert text.
+        // oxlint-disable-next-line anti-slop/no-unknown-parameters -- No Error shape is assumed.
+        .catch((error: unknown) => {
+          this.element.textContent = `[terminal attach failed: ${error instanceof Error ? error.message : String(error)}]`;
+        })
+        .finally(() => {
+          this.starting = false;
+        });
     }
 
     disconnect(): void {

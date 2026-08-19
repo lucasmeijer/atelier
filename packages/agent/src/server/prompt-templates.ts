@@ -123,6 +123,9 @@ export async function loadPromptTemplatesFromRoot(root: string): Promise<PromptT
   const byName = new Map<string, PromptTemplate>();
   for (const dir of promptDirs) {
     const path = join(root, dir);
+    // Promise rejection reasons may be arbitrary JavaScript values. This I/O
+    // boundary proves the only recoverable case and rethrows all other values.
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- ENOENT is validated before use.
     const entries = await readdir(path, { withFileTypes: true }).catch((error: unknown) => {
       if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
       throw error;

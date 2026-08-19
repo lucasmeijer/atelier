@@ -942,6 +942,9 @@ class RealAgentRuntime extends BaseAgentRuntime {
     this.setBusy(true);
     void this.session
       .prompt(fullText, images.length > 0 ? { images } : undefined)
+      // Pi extensions can reject with arbitrary JavaScript values. This final
+      // boundary renders the reason safely, then restores agent lifecycle state.
+      // oxlint-disable-next-line anti-slop/no-unknown-parameters -- The rejection is normalized here.
       .catch(async (error: unknown) => {
         this.notice("error", error instanceof Error ? error.message : String(error));
         await this.liveEnd();
@@ -1059,6 +1062,9 @@ class RealAgentRuntime extends BaseAgentRuntime {
       this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, truncated, this.modelContext())));
       void this.session
         .navigateTree(target, { summarize: true, customInstructions: customInstructions?.trim() || undefined })
+        // The summarizer may reject with any JavaScript value. This detached task
+        // owns that boundary: catch renders the reason and finally performs cleanup.
+        // oxlint-disable-next-line anti-slop/no-unknown-parameters -- The rejection is normalized here.
         .catch((error: unknown) => this.notice("error", error instanceof Error ? error.message : String(error)))
         .finally(async () => {
           this.summarizing = false;
