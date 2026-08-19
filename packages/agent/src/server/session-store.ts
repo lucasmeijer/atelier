@@ -49,7 +49,7 @@ export function sessionShareKeySlug(value: string): string {
 
 export function sessionShareKeyForInit(init: WorkspaceInitInstruction | undefined): string {
   if (!isGitProjectInit(init)) return projectlessSessionShareKey;
-  const key = typeof init.sessionShareKey === "string" && init.sessionShareKey.trim()
+  const key = init.sessionShareKey.trim()
     ? init.sessionShareKey
     : init.name;
   return sessionShareKeySlug(key);
