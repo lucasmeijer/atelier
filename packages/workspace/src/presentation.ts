@@ -3,6 +3,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AtelierCoreError, getAtelierRuntimeContext, isJsonObject, type JsonValue } from "@atelier/core";
 import type { WorkspaceWorkViewReference } from "@atelier/shared";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 export type { WorkspaceWorkViewReference } from "@atelier/shared";
 
 /** Resource module contribution and type adapter for one Work view kind. */
@@ -57,6 +59,7 @@ interface StoredPresentation {
 }
 
 const presentationFilename = "presentation.json";
+const workViewTypeSchema = Type.String();
 
 function presentationError(workspaceId: string, message: string): AtelierCoreError {
   return new AtelierCoreError("workspace_presentation_invalid", `invalid presentation state for workspace ${workspaceId}: ${message}`);
@@ -101,7 +104,7 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
   function parseReference(workspaceId: string, value: JsonValue, stored = false): WorkspaceWorkViewReference {
     if (!isJsonObject(value)) throw referenceError(workspaceId, "reference must be an object", stored);
     const type = value.type;
-    if (typeof type !== "string") throw referenceError(workspaceId, "reference must have a type", stored);
+    if (!Value.Check(workViewTypeSchema, type)) throw referenceError(workspaceId, "reference must have a type", stored);
     const adapter = adapters.get(type);
     if (!adapter) throw referenceError(workspaceId, `unknown Work view type: ${type}`, stored);
     try {
@@ -146,7 +149,7 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
     try {
       return parse(workspaceId, JSON.parse(await readFile(pathFor(workspaceId), "utf8")));
     } catch (error) {
-      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
       if (error instanceof SyntaxError) throw presentationError(workspaceId, error.message);
       throw error;
     }
