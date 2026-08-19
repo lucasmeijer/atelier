@@ -1,11 +1,15 @@
 /// <reference lib="dom" />
 
 import type { WorkspaceClientControllerConstructor, WorkspaceClientModule } from "@atelier/shared";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
-type BrowserBridgeLocationMessage = {
-  type: "atelier:browser-location";
-  href: string;
-};
+const browserBridgeLocationMessageSchema = Type.Object({
+  type: Type.Literal("atelier:browser-location"),
+  href: Type.String(),
+});
+
+type BrowserBridgeLocationMessage = Static<typeof browserBridgeLocationMessageSchema>;
 
 function createBrowserAddressController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class BrowserAddressController extends Controller {
@@ -142,10 +146,7 @@ function stripAtelierBrowserParams(url: URL): void {
 }
 
 function isBrowserBridgeLocationMessage(value: unknown): value is BrowserBridgeLocationMessage {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  // SAFETY: BrowserBridgeLocationMessage only requires the two properties checked below.
-  const message = value as { type?: unknown; href?: unknown };
-  return message.type === "atelier:browser-location" && typeof message.href === "string";
+  return Value.Check(browserBridgeLocationMessageSchema, value);
 }
 
 function addAtelierThemeParams(url: URL): void {
