@@ -30,8 +30,15 @@ import { workspaceClientModules } from "./workspace-client-modules.generated.ts"
 import { createAtelierCableClient } from "./cable.ts";
 
 type TurboSubmitEndEvent = CustomEvent<{ success?: boolean }>;
+type TurboBeforeStreamRenderEvent = CustomEvent<{
+  render(element: Element): void | Promise<void>;
+}>;
 
 declare global {
+  interface DocumentEventMap {
+    "turbo:before-stream-render": TurboBeforeStreamRenderEvent;
+  }
+
   interface Window {
     Stimulus: {
       Application: { start(): { start(): Promise<void>; stop(): void; register(identifier: string, controllerConstructor: WorkspaceClientControllerConstructor): void; getControllerForElementAndIdentifier(element: Element, identifier: string): { element: Element } | null } };
@@ -1706,19 +1713,14 @@ function workspaceListController(): WorkspaceListController | null {
 class WorkspaceListController extends Controller {
   static targets = ["status"];
   declare readonly element: HTMLElement;
-  private readonly onStreamRender = (event: Event): void => {
+  private readonly onStreamRender = (event: TurboBeforeStreamRenderEvent): void => {
     // Turbo applies stream renders after the next repaint, so wrap the render
     // callback to re-sync only after the DOM change actually happened.
-    const detail = (event as CustomEvent).detail as { render?: (element: Element) => Promise<void> } | undefined;
-    const original = detail?.render;
-    if (detail && original) {
-      detail.render = async (element: Element) => {
-        await original(element);
-        this.sync();
-      };
-      return;
-    }
-    queueMicrotask(() => this.sync());
+    const original = event.detail.render;
+    event.detail.render = async (element: Element) => {
+      await original(element);
+      this.sync();
+    };
   };
 
   connect(): void {
