@@ -179,8 +179,22 @@ export async function detectSelfUpdateRuntime(exec: DockerExec = dockerExec): Pr
 
 export interface PullProgress { kind: "progress"; percent?: number; message?: string }
 
-type DockerPullEvent = { id?: string; status?: string; progressDetail?: { current?: number; total?: number }; error?: string };
+const dockerPullEventSchema = Type.Object({
+  id: Type.Optional(Type.String()),
+  status: Type.Optional(Type.String()),
+  progressDetail: Type.Optional(Type.Object({
+    current: Type.Optional(Type.Number()),
+    total: Type.Optional(Type.Number()),
+  })),
+  error: Type.Optional(Type.String()),
+});
+
+export type DockerPullEvent = Static<typeof dockerPullEventSchema>;
 type PullLayer = { current: number; total: number };
+
+export function parseDockerPullEventLine(line: string): DockerPullEvent {
+  return Value.Parse(dockerPullEventSchema, JSON.parse(line));
+}
 
 function dockerApiImageCreatePath(channel: ReleaseChannel): string {
   return `/images/create?${new URLSearchParams({ fromImage: `ghcr.io/${repository}`, tag: channel }).toString()}`;
@@ -197,7 +211,7 @@ function pullPercent(layers: Map<string, PullLayer>): number | undefined {
 }
 
 function recordPullEvent(line: string, layers: Map<string, PullLayer>): PullProgress {
-  const event = JSON.parse(line) as DockerPullEvent;
+  const event = parseDockerPullEventLine(line);
   if (event.error) throw new Error(event.error);
   if (event.id && event.progressDetail?.total) layers.set(event.id, { current: event.progressDetail.current ?? 0, total: event.progressDetail.total });
   if (event.id && (event.status === "Pull complete" || event.status === "Already exists") && layers.has(event.id)) {

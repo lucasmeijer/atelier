@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
-import { dockerContainerInspect, dockerImageInspect, parseContainerIdFromCgroup, parseContainerIdFromMountInfo, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
+import { dockerContainerInspect, dockerImageInspect, parseContainerIdFromCgroup, parseContainerIdFromMountInfo, parseDockerPullEventLine, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
 import { createUpdateRouteHandler, UpdateManager } from "../../src/server/index.ts";
 import { parseWwwAuthenticate, selectManifestFromIndex, fetchChannelImageMetadata } from "../../src/server/registry.ts";
 import { fetchReleaseNotes, releaseNoteFilenames, renderMarkdown } from "../../src/server/release-notes.ts";
@@ -527,6 +527,27 @@ describe("update routes", () => {
     expect(await state!.json()).toMatchObject({ state: "available", selfUpdatable: true });
     const sse = await route(new Request("http://test/update/events"), new URL("http://test/update/events"));
     expect(sse).toBeUndefined();
+  });
+});
+
+describe("Docker pull event parsing", () => {
+  test("parses streamed layer progress", () => {
+    expect(parseDockerPullEventLine(JSON.stringify({
+      id: "layer-id",
+      status: "Downloading",
+      progressDetail: { current: 40, total: 100 },
+    }))).toEqual({
+      id: "layer-id",
+      status: "Downloading",
+      progressDetail: { current: 40, total: 100 },
+    });
+  });
+
+  test("rejects malformed progress fields", () => {
+    expect(() => parseDockerPullEventLine(JSON.stringify({
+      id: "layer-id",
+      progressDetail: { current: "40", total: 100 },
+    }))).toThrow();
   });
 });
 
