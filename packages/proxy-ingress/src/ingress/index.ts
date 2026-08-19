@@ -370,21 +370,15 @@ function openWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocket
   upstream.addEventListener("open", () => {
     for (const message of pending.splice(0)) upstream.send(message);
   });
-  upstream.addEventListener("message", (event) => {
-    if (typeof event.data === "string") {
-      ws.send(event.data);
-    } else if (event.data instanceof ArrayBuffer) {
-      ws.send(event.data);
-    } else if (event.data instanceof Blob) {
-      void event.data.arrayBuffer().then((buffer) => ws.send(buffer)).catch(() => ws.close());
-    }
+  upstream.addEventListener("message", (event: MessageEvent<string | ArrayBuffer>) => {
+    ws.send(event.data);
   });
   upstream.addEventListener("close", () => ws.close());
   upstream.addEventListener("error", () => ws.close());
 }
 
 function handleWorkspaceAppProxySocketMessage(ws: ServerWebSocket<WorkspaceAppProxySocketData>, message: string | Buffer): void {
-  const payload = typeof message === "string" ? message : new Uint8Array(message).slice().buffer;
+  const payload = Buffer.isBuffer(message) ? new Uint8Array(message).slice().buffer : message;
   if (ws.data.upstream?.readyState === WebSocket.OPEN) ws.data.upstream.send(payload);
   else ws.data.pending?.push(payload);
 }
