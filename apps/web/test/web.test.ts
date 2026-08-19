@@ -40,7 +40,7 @@ const projectSummarySchema = Type.Object({
   id: Type.String(),
   name: Type.String(),
 });
-const projectCreatedResponseSchema = Type.Object({ project: projectSummarySchema });
+const projectResponseSchema = Type.Object({ project: projectSummarySchema });
 const projectListResponseSchema = Type.Object({ projects: Type.Array(projectSummarySchema) });
 
 interface TestAppOptions {
@@ -333,9 +333,9 @@ describe("web app contracts", () => {
       const specification = "https://github.com/org/json-project.git#main";
 
       const createdResponse = await app.fetch(postJson("/projects", { gitUrl: specification }));
-      const created = Value.Parse(projectCreatedResponseSchema, await createdResponse.json());
+      const created = Value.Parse(projectResponseSchema, await createdResponse.json());
       const repeatedResponse = await app.fetch(postJson("/projects", { gitUrl: specification }));
-      const repeated = Value.Parse(projectCreatedResponseSchema, await repeatedResponse.json());
+      const repeated = Value.Parse(projectResponseSchema, await repeatedResponse.json());
       expect(createdResponse.status).toBe(200);
       expect(repeatedResponse.status).toBe(200);
       expect(repeated.project.id).toBe(created.project.id);
@@ -344,7 +344,8 @@ describe("web app contracts", () => {
       const listed = Value.Parse(projectListResponseSchema, await listedResponse.json());
       expect(listed.projects.map((project) => project.id)).toEqual([created.project.id]);
 
-      const updated = await (await app.fetch(postJson(`/projects/${created.project.id}`, { name: "JSON Project", gitUrl: specification }))).json() as { project: { name: string } };
+      const updatedResponse = await app.fetch(postJson(`/projects/${created.project.id}`, { name: "JSON Project", gitUrl: specification }));
+      const updated = Value.Parse(projectResponseSchema, await updatedResponse.json());
       expect(updated.project.name).toBe("JSON Project");
 
       const environmentCreated = await (await app.fetch(postJson(`/projects/${created.project.id}/environment`, { name: "EMPTY_OK", value: "" }))).json() as { environmentVariable: { id: string; value: string } };
