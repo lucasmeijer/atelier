@@ -164,8 +164,8 @@ export function handleAgentTreeMenuEvent(event: Event, input: TextInput): boolea
   if (action && (event.type === "click" || event.type === "pointerdown")) return true;
   if (event.type === "input" && event.target.classList.contains("agent-tree-search")) scheduleRefresh(event.target, input);
   if (event.type === "change" && event.target.classList.contains("agent-tree-filter")) scheduleRefresh(event.target, input);
-  if (event.type !== "keydown" || !event.target.matches(".agent-tree-label-editor input")) return;
-  const key = (event as KeyboardEvent).key;
+  if (!(event instanceof KeyboardEvent) || event.type !== "keydown" || !event.target.matches(".agent-tree-label-editor input")) return;
+  const key = event.key;
   if (key === "Enter") event.target.closest<HTMLElement>(".agent-tree-label-editor")!.querySelector<HTMLButtonElement>("[data-tree-action='label-save']")!.click();
   else if (key === "Escape") event.target.closest<HTMLElement>(".agent-tree-label-editor")!.querySelector<HTMLButtonElement>("[data-tree-action='label-cancel']")!.click();
 }
