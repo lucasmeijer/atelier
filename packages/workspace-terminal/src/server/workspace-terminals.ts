@@ -78,7 +78,7 @@ export async function listWorkspaceTerminals(workspaceId: string): Promise<Works
   try {
     return Value.Parse(workspaceTerminalsSchema, JSON.parse(await readFile(statePath(workspaceId), "utf8")));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     await writeTerminals(workspaceId, []);
     return [];
   }
