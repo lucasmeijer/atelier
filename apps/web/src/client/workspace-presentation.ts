@@ -22,6 +22,9 @@ const storedPersonalNavigationSchema = Type.Object({
 });
 type StoredPersonalNavigation = Static<typeof storedPersonalNavigationSchema>;
 
+const projectDisclosuresSchema = Type.Record(Type.String(), Type.Boolean());
+type ProjectDisclosures = Static<typeof projectDisclosuresSchema>;
+
 interface PersonalNavigationState {
   activeAgentId?: string;
   activeWorkViewKey?: string;
@@ -412,13 +415,12 @@ export function createWorkspacePresentationController(
       });
     }
 
-    private projectDisclosures(): Record<string, boolean> {
+    private projectDisclosures(): ProjectDisclosures {
       const text = localStorage.getItem("atelier:workspace-project-disclosures");
       if (!text) return {};
       const parsed: unknown = JSON.parse(text);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.values(parsed).some((disclosed) => typeof disclosed !== "boolean")) throw new Error("invalid Workspace Project disclosure preference");
-      // SAFETY: every own value was validated as boolean above.
-      return parsed as Record<string, boolean>;
+      if (!Value.Check(projectDisclosuresSchema, parsed)) throw new Error("invalid Workspace Project disclosure preference");
+      return parsed;
     }
 
     private setWorkWidth(width: number, persist: boolean): void {
