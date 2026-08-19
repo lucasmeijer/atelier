@@ -1,3 +1,4 @@
+import type { JsonObject } from "@atelier/core";
 import type { WorkspaceCreationContext, WorkspaceDockerPlan, WorkspaceInitInstruction } from "./types.ts";
 
 export interface WorkspaceCreatedEvent {
@@ -12,7 +13,7 @@ export interface WorkspaceDeletedEvent {
 
 export interface WorkspaceDeleteInspectEvent {
   workspaceId: string;
-  issues: unknown[];
+  issues: JsonObject[];
 }
 
 export interface WorkspaceUserActivityEvent {

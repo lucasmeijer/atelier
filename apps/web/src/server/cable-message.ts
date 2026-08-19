@@ -12,7 +12,6 @@ const cableIdentifierSchema = Type.Union([
 const cableClientMessageSchema = Type.Union([
   Type.Object({ command: Type.Literal("subscribe"), identifier: cableIdentifierSchema, upTo: Type.Optional(Type.String()) }),
   Type.Object({ command: Type.Literal("unsubscribe"), identifier: cableIdentifierSchema }),
-  Type.Object({ command: Type.Literal("message"), identifier: cableIdentifierSchema, data: Type.Unknown() }),
   Type.Object({ command: Type.Literal("pong"), time: Type.Optional(Type.Number()) }),
 ]);
 

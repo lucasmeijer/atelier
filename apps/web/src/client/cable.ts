@@ -120,10 +120,6 @@ export function createAtelierCableClient(): AtelierCableClient {
       desired.delete(key);
       sendRaw({ command: "unsubscribe", identifier });
     },
-    send(identifier, data) {
-      serializeCableIdentifier(identifier);
-      sendRaw({ command: "message", identifier, data });
-    },
     connected() {
       return socket?.readyState === WebSocket.OPEN;
     },

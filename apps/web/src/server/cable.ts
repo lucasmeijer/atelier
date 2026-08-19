@@ -180,8 +180,6 @@ export function createCableServer(options: CableServerOptions): CableServer {
           message = decodeCableClientMessage(textMessage(raw));
           if (message.command === "subscribe") await subscribe(ws, message.identifier, message.upTo);
           else if (message.command === "unsubscribe") unsubscribe(ws, message.identifier);
-          else if (message.command === "pong") return;
-          else send(ws, { type: "error", message: "channel messages are not supported yet" });
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
           if (message?.command === "subscribe") {

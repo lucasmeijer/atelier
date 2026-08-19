@@ -55,7 +55,7 @@ async function configuredWorkspaceCgroupParent(): Promise<string | undefined> {
   const parent = inspected.stdout.trim();
   return parent && parent !== "<no value>" ? parent : undefined;
 }
-function formatDeleteBlockedMessage(id: string, issues: unknown[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
+function formatDeleteBlockedMessage(id: string, issues: JsonObject[]): string { return `workspace ${id} has delete blockers:\n${issues.map((issue) => `- ${JSON.stringify(issue)}`).join("\n")}\nuse --force to delete anyway`; }
 async function provisionStep<T>(events: AtelierEventBus | undefined, workspaceId: string, id: string, label: string, fn: () => Promise<T>, options: { parentId?: string; output?: (result: T) => string | Promise<string> } = {}): Promise<T> {
   await events?.emit("workspace_provision_step", { workspaceId, id, label, status: "running", parentId: options.parentId });
   try {
@@ -322,7 +322,7 @@ export const workspaceSetupProvisioningHook: WorkspaceServerProvisioningHook = {
   label: "Run project setup",
   async run({ workspaceId, creationContext, events }) {
     const eventBus = events as AtelierEventBus | undefined;
-    if ((creationContext as WorkspaceCreationContext | undefined)?.fork) {
+    if (creationContext?.fork) {
       await eventBus?.emit("workspace_provision_step", { workspaceId, id: workspaceSetupStep, detail: "Skipped for copied workspace" });
       return;
     }
@@ -608,7 +608,7 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
     containerExists = labels !== undefined;
   } else {
     await resolveWorkspace(id);
-    const issues: unknown[] = [];
+    const issues: JsonObject[] = [];
     await options.events?.emit("workspace_delete_inspect", { workspaceId: id, issues });
     if (issues.length > 0) throw new AtelierCoreError("workspace_delete_blocked", formatDeleteBlockedMessage(id, issues), { workspaceId: id, issues });
   }

@@ -25,9 +25,12 @@ export {
   isJsonObject,
   readJsonObject,
   requestAcceptsJson,
+} from "./json-request.ts";
+
+export {
   type JsonObject,
   type JsonValue,
-} from "./json-request.ts";
+} from "./json.ts";
 
 export {
   defaultDataDir,

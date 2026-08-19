@@ -13,12 +13,10 @@ import { addProject, getGitIdentity, isGitProjectInit, listProjectEnvironmentVar
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
+  const promise = new Promise<T>((res) => {
     resolve = res;
-    reject = rej;
   });
-  return { promise, resolve, reject };
+  return { promise, resolve };
 }
 
 type ProvisionWorkspace = Parameters<typeof createWebApp>[0]["provisionWorkspace"];
@@ -892,7 +890,7 @@ describe("web app contracts", () => {
       try {
         const fetchMock = Object.assign(async (input: Parameters<typeof fetch>[0]) => {
           const url = input instanceof Request ? input.url : String(input);
-          if (url === "https://api.github.com/user") return Response.json({ login: "octocat", name: "Mona Lisa", email: "octocat@github.com" });
+          if (url === "https://api.github.com/user") return Response.json({ id: 583231, login: "octocat", name: "Mona Lisa", email: "octocat@github.com" });
           if (url === "https://api.github.com/user/emails") return Response.json([]);
           throw new Error(`unexpected fetch ${url}`);
         }, { preconnect: originalFetch.preconnect }) satisfies typeof fetch;

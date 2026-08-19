@@ -59,14 +59,6 @@ const projectAgentWorkspaceCommand: WorkspaceCommandContribution = {
   surfaces: { shortcut: { defaultBinding: "Meta+Alt+Quote" } },
 };
 
-function agentTopicFromCreationContext(value: unknown): string | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const agent = (value as { agent?: unknown }).agent;
-  if (!agent || typeof agent !== "object") return undefined;
-  const prompt = (agent as { initialPrompt?: unknown }).initialPrompt;
-  return typeof prompt === "string" ? prompt : undefined;
-}
-
 type WorkspacePlanEvents = {
   on(eventName: "workspace_plan_prepare", handler: (event: { init?: WorkspaceInitInstruction; plan: { mounts: WorkspaceDockerMount[] } }) => void | Promise<void>): void;
 };
@@ -128,7 +120,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
       id: "workspace.agent",
       label: "Prepare default agent",
       async run({ workspaceId, creationContext }) {
-        await ensureDefaultWorkspaceAgent(workspaceId, { topic: agentTopicFromCreationContext(creationContext) });
+        await ensureDefaultWorkspaceAgent(workspaceId, { topic: creationContext?.agent?.initialPrompt });
       },
     });
     context.registerSocketHandler(createAgentTermSocketSession);

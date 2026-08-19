@@ -1,14 +1,16 @@
+import type { JsonObject } from "./json.ts";
+
 export interface AtelierError {
   code: string;
   message: string;
-  details?: unknown;
+  details?: JsonObject;
 }
 
 export class AtelierCoreError extends Error {
   readonly code: string;
-  readonly details?: unknown;
+  readonly details?: JsonObject;
 
-  constructor(code: string, message: string, details?: unknown) {
+  constructor(code: string, message: string, details?: JsonObject) {
     super(message);
     this.code = code;
     this.details = details;

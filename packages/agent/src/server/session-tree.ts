@@ -1,4 +1,5 @@
 import { AtelierCoreError } from "@atelier/core";
+import { contentText } from "@earendil-works/pi-ai";
 import type { SessionEntry, SessionManager, SessionTreeNode } from "@earendil-works/pi-coding-agent";
 import { escapeHtml } from "./html.ts";
 
@@ -40,37 +41,17 @@ interface FlatTreeEntry {
   onActivePath: boolean;
 }
 
-interface ContentPartCandidate {
-  type?: unknown;
-  text?: unknown;
-}
-
 interface SessionEntryView {
   kind: string;
   text: string;
 }
 
-function contentText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content.map((part) => {
-    if (!part || typeof part !== "object" || Array.isArray(part)) return "";
-    // SAFETY: ContentPartCandidate only names optional properties with unknown values.
-    const record = part as ContentPartCandidate;
-    return record.type === "text" && typeof record.text === "string" ? record.text : "";
-  }).filter(Boolean).join("\n");
-}
-
-function hasText(content: unknown): boolean {
-  return Boolean(contentText(content).trim());
-}
-
 function visibleEntry(node: SessionTreeNode, current: boolean, filter: TreeFilterMode, query: string): boolean {
   const entry = node.entry;
   if (entry.type === "message" && entry.message.role === "assistant" && !current) {
-    const message = entry.message as { content?: unknown; stopReason?: string };
+    const message = entry.message;
     const abnormal = Boolean(message.stopReason && message.stopReason !== "stop" && message.stopReason !== "toolUse");
-    if (!hasText(message.content) && !abnormal) return false;
+    if (!contentText(message.content).trim() && !abnormal) return false;
   }
   const settings = entry.type === "label" || entry.type === "custom" || entry.type === "model_change" || entry.type === "thinking_level_change" || entry.type === "session_info";
   if (current && filter === "default" && !query) return true;
@@ -91,9 +72,9 @@ function entryView(entry: SessionEntry): SessionEntryView {
   if (entry.type === "message") {
     const message = entry.message;
     if (message.role === "user") return { kind: "You", text: contentText(message.content) };
-    if (message.role === "assistant") return { kind: "Assistant", text: contentText(message.content) || String((message as { stopReason?: string }).stopReason ?? "Response") };
+    if (message.role === "assistant") return { kind: "Assistant", text: contentText(message.content) || message.stopReason };
     if (message.role === "toolResult") return { kind: "Tool result", text: contentText(message.content) };
-    if (message.role === "bashExecution") return { kind: "Shell", text: String((message as { command?: string }).command ?? "") };
+    if (message.role === "bashExecution") return { kind: "Shell", text: message.command };
     return { kind: message.role, text: contentText("content" in message ? message.content : "") };
   }
   if (entry.type === "compaction") return { kind: "Compaction", text: entry.summary };

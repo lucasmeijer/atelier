@@ -10,10 +10,12 @@ import {
   AtelierCoreError,
   gitHubCredentialHelperCommand,
   invalidArguments,
+  isJsonObject,
   readJsonObject,
   requestAcceptsJson,
   type AtelierEventBus,
   type JsonObject,
+  type JsonValue,
 } from "@atelier/core";
 import { discoverHostGitHubToken, hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
@@ -128,14 +130,14 @@ function jsonResponse<Body extends object>(body: Body, init: HtmlResponseInit = 
   return new Response(JSON.stringify(body), { ...init, headers });
 }
 
-function problemJsonResponse(error: unknown): Response {
+function problemJsonResponse(error: Error): Response {
   const status = error instanceof AtelierCoreError && ["invalid_arguments", "invalid_git_url"].includes(error.code) ? 400
     : error instanceof AtelierCoreError && ["project_not_found", "project_environment_variable_not_found", "project_secret_not_found", "workspace_not_found", "command_not_found", "agent_not_found", "tab_not_found", "terminal_not_found"].includes(error.code) ? 404
       : 500;
-  const message = error instanceof Error ? error.message : String(error);
+  const message = error.message;
   const code = error instanceof AtelierCoreError ? error.code : "internal_error";
   const details = error instanceof AtelierCoreError ? error.details : undefined;
-  return jsonResponse({ error: { code, message, ...(details && typeof details === "object" ? details : details === undefined ? {} : { details }) } }, { status });
+  return jsonResponse({ error: { code, message, ...(details ?? {}) } }, { status });
 }
 
 function turboReplaceStream(target: string, html: string): string {
@@ -1070,19 +1072,20 @@ ${moduleStylesHtml()}
   }
 
   type WorkspaceCreateJsonBody = {
-    source?: { type?: unknown; project?: unknown };
-    title?: unknown;
-    agent?: { initialPrompt?: unknown; model?: unknown; thinkingLevel?: unknown; serviceTier?: unknown; attachmentDraft?: unknown };
+    source?: JsonObject;
+    title?: JsonValue;
+    agent?: JsonObject;
   };
 
   async function readWorkspaceCreateJson(request: Request): Promise<WorkspaceCreateJsonBody> {
     const record = await readJsonObject(request);
-    if (record.source !== undefined && (!record.source || typeof record.source !== "object" || Array.isArray(record.source))) throw invalidArguments("source must be an object");
-    if (record.agent !== undefined && (!record.agent || typeof record.agent !== "object" || Array.isArray(record.agent))) throw invalidArguments("agent must be an object");
-    return record as WorkspaceCreateJsonBody;
+    const { source, title, agent } = record;
+    if (source !== undefined && !isJsonObject(source)) throw invalidArguments("source must be an object");
+    if (agent !== undefined && !isJsonObject(agent)) throw invalidArguments("agent must be an object");
+    return { source, title, agent };
   }
 
-  function stringField(value: unknown, name: string): string | undefined {
+  function stringField(value: JsonValue | undefined, name: string): string | undefined {
     if (value === undefined || value === null) return undefined;
     if (typeof value !== "string") throw invalidArguments(`${name} must be a string`);
     return value.trim();
@@ -1730,9 +1733,9 @@ ${moduleStylesHtml()}
   // Errors + routing
   // ---------------------------------------------------------------------------
 
-  function errorPage(error: unknown): Response {
+  function errorPage(error: Error): Response {
     const status = error instanceof AtelierCoreError && ["workspace_not_found", "project_not_found", "repo_not_found", "terminal_not_found", "agent_not_found"].includes(error.code) ? 404 : 500;
-    const message = error instanceof Error ? error.message : String(error);
+    const message = error.message;
     return response(layout("Error", `<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p><a class="btn" href="/">Back home</a></p></div></div></div>`), { status });
   }
 
@@ -1829,7 +1832,8 @@ ${moduleStylesHtml()}
     async fetch(request) {
       try {
         return await route(request);
-      } catch (error) {
+      } catch (thrown) {
+        const error = thrown instanceof Error ? thrown : new Error(String(thrown));
         return requestAcceptsJson(request) ? problemJsonResponse(error) : errorPage(error);
       }
     },

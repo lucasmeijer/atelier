@@ -78,6 +78,7 @@ describe("cable server", () => {
   for (const [name, raw, reason] of [
     ["empty workspace identifiers", JSON.stringify({ command: "subscribe", identifier: { channel: "workspace", workspaceId: "" } }), "unsupported cable message"],
     ["unknown commands", JSON.stringify({ command: "mystery", identifier: { channel: "shell" } }), "unsupported cable message"],
+    ["unsupported channel messages", JSON.stringify({ command: "message", identifier: { channel: "shell" }, data: { event: "run" } }), "unsupported cable message"],
     ["invalid subscription cursors", JSON.stringify({ command: "subscribe", identifier: { channel: "shell" }, upTo: 42 }), "unsupported cable message"],
     ["invalid pong timestamps", JSON.stringify({ command: "pong", time: "now" }), "unsupported cable message"],
     ["malformed JSON", "not JSON", "cable message must be valid JSON"],

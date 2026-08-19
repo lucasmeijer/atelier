@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildTranscript, formatDuration, formatTokens, toolDetailsIndicateError, type TranscriptRecord } from "../../src/server/transcript.ts";
+import { buildTranscript, formatDuration, formatTokens, isToolViewDetails, toolDetailsIndicateError, type TranscriptRecord } from "../../src/server/transcript.ts";
 
 describe("flat transcript", () => {
   test("preserves record order and joins tool results", () => {
@@ -25,6 +25,10 @@ describe("flat transcript", () => {
   });
 
   test("errors derive from result details", () => {
+    expect(isToolViewDetails({ exitCode: 1, providerMetadata: { trace: "abc" } })).toBe(true);
+    expect(isToolViewDetails({ exitCode: 1, optionalProducerField: undefined })).toBe(true);
+    expect(isToolViewDetails({ exitCode: "1" })).toBe(false);
+    expect(isToolViewDetails({ extensionCallback() {} })).toBe(false);
     expect(toolDetailsIndicateError({ exitCode: 1 })).toBe(true);
     expect(toolDetailsIndicateError({ timedOut: true })).toBe(true);
     expect(toolDetailsIndicateError({ exitCode: 0 })).toBe(false);

@@ -97,10 +97,14 @@ async function stopAtelierWorkspaceProxy(): Promise<void> {
 
 async function startAtelierWorkspaceProxy(): Promise<AtelierWorkspaceProxy> {
   const ca = await ensureMitmCa();
-  const server = createServer((req, res) => void handleProxyHttpRequest(req, res).catch((error) => writeError(res, error)));
-  server.on("connect", (req, socket, head) => void handleConnect(ca, req, socket as net.Socket, head).catch((error) => {
+  const server = createServer((req, res) => void handleProxyHttpRequest(req, res).catch((thrown) => {
+    const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+    writeError(res, proxyFailure(error));
+  }));
+  server.on("connect", (req, socket, head) => void handleConnect(ca, req, socket as net.Socket, head).catch((thrown) => {
+    const error = thrown instanceof Error ? thrown : new Error(String(thrown));
     const netSocket = socket as net.Socket;
-    netSocket.write(connectErrorResponse(error));
+    netSocket.write(connectErrorResponse(proxyFailure(error)));
     netSocket.destroy();
   }));
   await new Promise<void>((resolve, reject) => {
@@ -201,12 +205,15 @@ async function startMitmTargetServer(ca: MitmCa, hostname: string): Promise<Mitm
     const remotePort = (mitmReq.socket as net.Socket).remotePort;
     const context = remotePort ? connections.get(remotePort) : undefined;
     if (!context) {
-      writeError(mitmRes, new HttpRequestBlockedError("unknown MITM connection"));
+      writeError(mitmRes, proxyFailure(new HttpRequestBlockedError("unknown MITM connection")));
       return;
     }
     const path = mitmReq.url || "/";
     mitmReq.url = `https://${context.hostname}${path.startsWith("/") ? path : `/${path}`}`;
-    void handleProxyHttp(context.workspaceId, mitmReq, mitmRes).catch((error) => writeError(mitmRes, error));
+    void handleProxyHttp(context.workspaceId, mitmReq, mitmRes).catch((thrown) => {
+      const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+      writeError(mitmRes, proxyFailure(error));
+    });
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -328,31 +335,33 @@ async function writeFetchResponse(res: ServerResponse, response: Response): Prom
   });
 }
 
-function writeError(res: ServerResponse, error: unknown): void {
-  const status = error instanceof HttpRequestBlockedError ? error.status : 502;
-  const statusText = error instanceof HttpRequestBlockedError ? error.statusText : "Bad Gateway";
+interface ProxyFailure {
+  status: number;
+  statusText: string;
+  message: string;
+}
+
+function proxyFailure(error: Error): ProxyFailure {
+  if (error instanceof HttpRequestBlockedError) return { status: error.status, statusText: error.statusText, message: error.message };
+  return { status: 502, statusText: "Bad Gateway", message: error.message };
+}
+
+function writeError(res: ServerResponse, failure: ProxyFailure): void {
   interface ErrorResponseHeaders {
     [name: string]: string;
   }
   const headers: ErrorResponseHeaders = { "content-type": "text/plain" };
-  if (status === 407) headers["proxy-authenticate"] = "Basic realm=\"Atelier Workspace Proxy\"";
-  res.writeHead(status, statusText, headers);
-  res.end(`${safeErrorMessage(error)}\n`);
+  if (failure.status === 407) headers["proxy-authenticate"] = "Basic realm=\"Atelier Workspace Proxy\"";
+  res.writeHead(failure.status, failure.statusText, headers);
+  res.end(`${failure.message}\n`);
 }
 
-function connectErrorResponse(error: unknown): string {
-  const status = error instanceof HttpRequestBlockedError ? error.status : 502;
-  const statusText = error instanceof HttpRequestBlockedError ? error.statusText : "Bad Gateway";
+function connectErrorResponse(failure: ProxyFailure): string {
   const headers = [
-    `HTTP/1.1 ${status} ${statusText}`,
+    `HTTP/1.1 ${failure.status} ${failure.statusText}`,
     "Connection: close",
     "Content-Type: text/plain",
   ];
-  if (status === 407) headers.push("Proxy-Authenticate: Basic realm=\"Atelier Workspace Proxy\"");
-  return `${headers.join("\r\n")}\r\n\r\n${safeErrorMessage(error)}\n`;
-}
-
-function safeErrorMessage(error: unknown): string {
-  if (error instanceof HttpRequestBlockedError) return error.message;
-  return error instanceof Error ? error.message : String(error);
+  if (failure.status === 407) headers.push("Proxy-Authenticate: Basic realm=\"Atelier Workspace Proxy\"");
+  return `${headers.join("\r\n")}\r\n\r\n${failure.message}\n`;
 }

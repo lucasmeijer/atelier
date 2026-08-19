@@ -1,4 +1,4 @@
-import { isJsonObject, type JsonObject } from "@atelier/core";
+import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import type { AgentServiceTier } from "@atelier/shared";
 import type { ModelRuntime, SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
 import { getLastProviderServiceTier, setLastProviderServiceTier } from "./pi-config-models.ts";
@@ -7,12 +7,13 @@ export type { AgentServiceTier } from "@atelier/shared";
 
 const fastModeProvider = "openai-codex";
 const serviceTierEntryType = "atelier.service-tier";
+type AgentServiceTierSource = JsonValue | FormDataEntryValue | undefined;
 
 export function supportsFastMode(provider: string | undefined): boolean {
   return provider === fastModeProvider;
 }
 
-export function parseAgentServiceTier(value: unknown): AgentServiceTier {
+export function parseAgentServiceTier(value: AgentServiceTierSource): AgentServiceTier {
   return value === "priority" ? "priority" : "default";
 }
 
@@ -52,7 +53,7 @@ export class AgentServiceTierState {
 
 type RecordProviderServiceTier = (provider: string, serviceTier: AgentServiceTier) => Promise<void>;
 
-export function modelRuntimeWithServiceTiers(runtime: ModelRuntime, state: Pick<AgentServiceTierState, "get">, recordProviderServiceTier: RecordProviderServiceTier = setLastProviderServiceTier): ModelRuntime {
+export function modelRuntimeWithServiceTiers<Runtime extends Pick<ModelRuntime, "streamSimple">>(runtime: Runtime, state: Pick<AgentServiceTierState, "get">, recordProviderServiceTier: RecordProviderServiceTier = setLastProviderServiceTier): Runtime {
   const streamSimple: ModelRuntime["streamSimple"] = (model, context, options) => runtime.streamSimple(model, context, {
     ...options,
     onPayload: async (payload, requestModel) => {
@@ -67,8 +68,8 @@ export function modelRuntimeWithServiceTiers(runtime: ModelRuntime, state: Pick<
   return new Proxy(runtime, {
     get(target, property) {
       if (property === "streamSimple") return streamSimple;
-      // SAFETY: Proxy property keys are resolved against the wrapped ModelRuntime instance.
-      return target[property as keyof ModelRuntime];
+      // SAFETY: Proxy property keys are resolved against the wrapped runtime instance.
+      return target[property as keyof Runtime];
     },
   });
 }

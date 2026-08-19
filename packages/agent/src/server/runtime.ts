@@ -12,6 +12,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import { contentText } from "@earendil-works/pi-ai";
 import { escapeHtml, turboStream } from "./html.ts";
 import {
   ids,
@@ -41,10 +42,12 @@ import { AgentServiceTierState, modelRuntimeWithServiceTiers, supportsFastMode, 
 import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
 import {
   buildTranscript,
+  isToolViewDetails,
   toolDetailsIndicateError,
   type ImageRef,
   type SessionImageRef,
   type TranscriptItem,
+  type ToolViewDetails,
   type ToolView,
   type TranscriptRecord,
 } from "./transcript.ts";
@@ -446,7 +449,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (!live.toolIndexByCallId.has(call.callId)) this.liveToolCallComplete(call);
   }
 
-  protected liveToolUpdate(callId: string, update: { tmuxSession?: string; outputText?: string; details?: unknown }): void {
+  protected liveToolUpdate(callId: string, update: { tmuxSession?: string; outputText?: string; details?: ToolViewDetails }): void {
     const live = this.live;
     const index = live?.toolIndexByCallId.get(callId);
     if (!live || index === undefined) return;
@@ -467,7 +470,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (update.details !== undefined) item.tool.details = update.details;
   }
 
-  protected liveToolEnd(callId: string, resultText: string, isError: boolean, details?: unknown): void {
+  protected liveToolEnd(callId: string, resultText: string, isError: boolean, details?: ToolViewDetails): void {
     const live = this.live;
     const index = live?.toolIndexByCallId.get(callId);
     if (!live || index === undefined) return;
@@ -597,15 +600,6 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 // Real runtime (pi agent SDK)
 // ---------------------------------------------------------------------------
 
-function contentToText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter((part): part is { type: "text"; text: string } => Boolean(part) && (part as { type?: string }).type === "text")
-    .map((part) => part.text)
-    .join("\n");
-}
-
 interface ImageDimensions {
   width: number;
   height: number;
@@ -664,7 +658,7 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
       const message = entry.message;
       if (!message) continue;
       if (message.role === "user") {
-        records.push({ kind: "user", id: entry.id, text: contentToText(message.content), images: sessionContentImages(entry), timestamp: entryTimestamp(entry, message), rewindable: entry.parentId !== null && entry.parentId !== undefined });
+        records.push({ kind: "user", id: entry.id, text: contentText(message.content), images: sessionContentImages(entry), timestamp: entryTimestamp(entry, message), rewindable: entry.parentId !== null && entry.parentId !== undefined });
       } else if (message.role === "assistant") {
         const parts: any[] = [];
         for (const part of message.content ?? []) {
@@ -685,11 +679,12 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
           records.push({ kind: "note", text: notice, tone: "warning", timestamp: entryTimestamp(entry, message) });
         }
       } else if (message.role === "toolResult") {
-        records.push({ kind: "toolResult", callId: message.toolCallId, text: contentToText(message.content), images: sessionContentImages(entry), isError: Boolean(message.isError), timestamp: entryTimestamp(entry, message), details: message.details });
+        const details = isToolViewDetails(message.details) ? message.details : undefined;
+        records.push({ kind: "toolResult", callId: message.toolCallId, text: contentText(message.content), images: sessionContentImages(entry), isError: Boolean(message.isError), timestamp: entryTimestamp(entry, message), details });
       } else if (message.role === "bashExecution") {
         records.push({ kind: "note", id: entry.id, text: `\`$ ${message.command}\`\n\n\`\`\`\n${message.output ?? ""}\n\`\`\``, tone: "system", timestamp: entryTimestamp(entry, message) });
       } else if (message.role === "custom" && message.display) {
-        records.push({ kind: "note", id: entry.id, text: contentToText(message.content), tone: "summary", timestamp: entryTimestamp(entry, message) });
+        records.push({ kind: "note", id: entry.id, text: contentText(message.content), tone: "summary", timestamp: entryTimestamp(entry, message) });
       } else if (message.role === "branchSummary") {
         records.push({ kind: "note", id: entry.id, text: `**Rewound** — summary of the abandoned branch:\n\n${message.summary ?? ""}`, tone: "summary", timestamp: entryTimestamp(entry, message) });
       }
@@ -704,7 +699,7 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
       continue;
     }
     if (entry.type === "custom_message" && entry.display) {
-      records.push({ kind: "note", id: entry.id, text: contentToText(entry.content), tone: "summary", timestamp: entryTimestamp(entry) });
+      records.push({ kind: "note", id: entry.id, text: contentText(entry.content), tone: "summary", timestamp: entryTimestamp(entry) });
       continue;
     }
     if (entry.type === "model_change") {
@@ -869,14 +864,15 @@ class RealAgentRuntime extends BaseAgentRuntime {
         break;
       }
       case "tool_execution_update": {
-        const details = event.partialResult?.details;
-        const text = contentToText(event.partialResult?.content);
+        const details = isToolViewDetails(event.partialResult?.details) ? event.partialResult.details : undefined;
+        const text = contentText(event.partialResult?.content ?? []);
         this.liveToolUpdate(event.toolCallId, { tmuxSession: details?.tmuxSession, outputText: text || undefined, details });
         break;
       }
       case "tool_execution_end": {
-        const text = contentToText(event.result?.content);
-        this.liveToolEnd(event.toolCallId, text, Boolean(event.isError), event.result?.details);
+        const text = contentText(event.result?.content ?? []);
+        const details = isToolViewDetails(event.result?.details) ? event.result.details : undefined;
+        this.liveToolEnd(event.toolCallId, text, Boolean(event.isError), details);
         break;
       }
       case "message_end": {
@@ -887,7 +883,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
         if (message?.role === "user") setTimeout(() => this.syncLiveUserEntry(), 0);
         if (message?.role === "toolResult") setTimeout(() => this.syncLiveToolResult(message.toolCallId), 0);
         if (message?.role === "assistant") {
-          const text = contentToText(message.content);
+          const text = contentText(message.content);
           const hasToolCalls = Array.isArray(message.content) && message.content.some((part: any) => part?.type === "toolCall");
           if (text && !hasToolCalls && message.stopReason !== "aborted" && message.stopReason !== "error") {
             this.liveFinal(text);

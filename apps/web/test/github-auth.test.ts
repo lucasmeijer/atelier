@@ -53,4 +53,10 @@ describe("GitHub auth", () => {
 
     expect(await validateGitHubToken("bad-token")).toEqual({ ok: false, message: "GitHub rejected that token. Check that it is active and has repository read access." });
   });
+
+  test("rejects malformed GitHub user responses", async () => {
+    globalThis.fetch = fetchStub(() => Promise.resolve(Response.json({ id: "583231", login: "octocat" })));
+
+    expect(await validateGitHubToken("token")).toEqual({ ok: false, message: "GitHub returned an invalid user response. Try again." });
+  });
 });

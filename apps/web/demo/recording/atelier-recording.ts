@@ -76,7 +76,7 @@ export interface AtelierRecording {
 	humanType(locator: Locator, text: string, options?: TypeTimingOptions): Promise<void>;
 	pauseAfterAction(milliseconds?: number): Promise<void>;
 	finish(outputPath?: string): Promise<VideoReport>;
-	fail(error: unknown): Promise<never>;
+	captureFailureArtifacts(): Promise<void>;
 }
 
 export function normalizeTimings(overrides: Partial<HumanTimingOptions> = {}): HumanTimingOptions {
@@ -190,8 +190,8 @@ export async function createAtelierRecording(options: AtelierRecordingOptions): 
 			await runProcess(FFMPEG_PATH, buildFfmpegArgs(paths.rawVideoPath, outputPath, frameRate));
 			return inspectVideo(outputPath, paths.rawVideoPath);
 		},
-		async fail(error) {
-			if (finalized) throw error;
+		async captureFailureArtifacts() {
+			if (finalized) return;
 			try {
 				await page.screenshot({ path: paths.failureScreenshotPath, fullPage: true });
 			} catch (diagnosticError) {
@@ -202,7 +202,6 @@ export async function createAtelierRecording(options: AtelierRecordingOptions): 
 			} catch (diagnosticError) {
 				console.warn(`Could not finalize failure recording: ${String(diagnosticError)}`);
 			}
-			throw error;
 		},
 	};
 }
@@ -218,7 +217,8 @@ export async function recordAtelierDemo(
 		await scenario(recording);
 		return await recording.finish(options.outputPath);
 	} catch (error) {
-		return recording.fail(error);
+		await recording.captureFailureArtifacts();
+		throw error;
 	}
 }
 

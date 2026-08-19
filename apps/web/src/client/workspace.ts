@@ -1465,7 +1465,7 @@ class WorkspaceResidencyController extends Controller {
       resident = await this.ensureResident(workspaceId);
     } catch (error) {
       if (seq !== this.selectionSeq) return;
-      this.showLoadError(error);
+      this.showLoadError(error instanceof Error ? error.message : String(error));
       return;
     }
     // Only show it if no newer selection happened while we were fetching;
@@ -1524,8 +1524,7 @@ class WorkspaceResidencyController extends Controller {
     });
   }
 
-  private showLoadError(error: unknown): void {
-    const message = error instanceof Error ? error.message : String(error);
+  private showLoadError(message: string): void {
     this.hideResidents();
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
     this.loadingTargets.forEach((loading) => {

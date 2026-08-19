@@ -30,35 +30,9 @@ interface AgentRouteOptions {
   events?: AtelierEventBus;
 }
 
-interface AgentWorkspaceCreationInput {
-  initialPrompt?: unknown;
-  model?: unknown;
-  thinkingLevel?: unknown;
-  serviceTier?: unknown;
-  attachmentDraft?: unknown;
-}
-
-function parseAgentWorkspaceCreationContext(value: unknown): AgentWorkspaceParameters | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  // SAFETY: AgentWorkspaceCreationInput only names optional properties with unknown values.
-  const record = value as AgentWorkspaceCreationInput;
-  const initialPrompt = typeof record.initialPrompt === "string" ? record.initialPrompt : undefined;
-  const model = typeof record.model === "string" ? record.model : undefined;
-  const thinkingLevel = typeof record.thinkingLevel === "string" ? record.thinkingLevel : undefined;
-  const serviceTier = typeof record.serviceTier === "string" ? parseAgentServiceTier(record.serviceTier) : undefined;
-  if (!initialPrompt?.trim() && !model && !thinkingLevel && !serviceTier) return undefined;
-  return {
-    initialPrompt,
-    model,
-    thinkingLevel,
-    serviceTier,
-    attachmentDraft: typeof record.attachmentDraft === "string" ? record.attachmentDraft : undefined,
-  };
-}
-
 export function registerAgentEvents(events: AtelierEventBus): void {
   events.on("workspace_created", async ({ workspaceId, context }) => {
-    const agentContext = parseAgentWorkspaceCreationContext(context?.agent);
+    const agentContext = context?.agent;
     if (!agentContext) return;
     const hasPrompt = Boolean(agentContext.initialPrompt?.trim());
     if (hasPrompt) await events.emit("workspace_provision_step", { workspaceId, id: "agent.initial_prompt", label: "Start initial agent task", parentId: "workspace.integrations", status: "running" });

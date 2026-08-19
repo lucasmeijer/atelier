@@ -1,5 +1,9 @@
 /** Flat, renderer-friendly transcript model for the pi-backed runtime. */
 
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
+import { isJsonObject, type JsonValue } from "@atelier/core";
+
 export interface ImageRef {
   mimeType: string;
   data: string;
@@ -21,17 +25,26 @@ type AssistantPart =
 export type TranscriptRecord =
   | { kind: "user"; id: string; text: string; images: SessionImageRef[]; timestamp: number; rewindable?: boolean }
   | { kind: "assistant"; id: string; parts: AssistantPart[]; stopReason: string; errorMessage?: string; timestamp: number }
-  | { kind: "toolResult"; callId: string; text: string; images: SessionImageRef[]; isError: boolean; timestamp: number; details?: unknown }
+  | { kind: "toolResult"; callId: string; text: string; images: SessionImageRef[]; isError: boolean; timestamp: number; details?: ToolViewDetails }
   | { kind: "note"; id?: string; text: string; tone: NoteTone; timestamp?: number };
 
 export type NoteTone = "system" | "summary" | "warning" | "error";
 
-export interface ToolViewDetails {
-  aborted?: unknown;
-  timedOut?: unknown;
-  exitCode?: unknown;
-  patch?: unknown;
-  displayAnsi?: unknown;
+const toolViewDetailsSchema = Type.Object({
+  aborted: Type.Optional(Type.Boolean()),
+  timedOut: Type.Optional(Type.Boolean()),
+  exitCode: Type.Optional(Type.Number()),
+  patch: Type.Optional(Type.String()),
+  displayAnsi: Type.Optional(Type.String()),
+  tmuxSession: Type.Optional(Type.String()),
+});
+
+export type ToolViewDetails = Static<typeof toolViewDetailsSchema> & { [key: string]: JsonValue | undefined };
+
+export function isToolViewDetails(value: unknown): value is ToolViewDetails {
+  if (!Value.Check(toolViewDetailsSchema, value)) return false;
+  const definedEntries = Object.entries(value).filter(([, entry]) => entry !== undefined);
+  return isJsonObject(Object.fromEntries(definedEntries));
 }
 
 export interface ToolView {
@@ -48,7 +61,7 @@ export interface ToolView {
   timeoutSeconds?: number;
   durationMs?: number;
   tokenCount?: number;
-  details?: unknown;
+  details?: ToolViewDetails;
   /** Timestamp of the assistant entry that issued this call. */
   issuedAt?: number;
 }
@@ -130,11 +143,8 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
   return items;
 }
 
-export function toolDetailsIndicateError(details: unknown): boolean {
-  if (!details || typeof details !== "object" || Array.isArray(details)) return false;
-  // SAFETY: ToolViewDetails only names optional properties with unknown values.
-  const entry = details as ToolViewDetails;
-  return entry.aborted === true || entry.timedOut === true || (typeof entry.exitCode === "number" && entry.exitCode !== 0);
+export function toolDetailsIndicateError(details: ToolViewDetails | undefined): boolean {
+  return details?.aborted === true || details?.timedOut === true || (details?.exitCode !== undefined && details.exitCode !== 0);
 }
 
 export function formatTokens(count: number): string {

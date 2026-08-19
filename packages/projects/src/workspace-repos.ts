@@ -1,9 +1,9 @@
-import { AtelierCoreError, shellQuote, type AtelierEventBus } from "@atelier/core";
+import { AtelierCoreError, shellQuote, type AtelierEventBus, type JsonObject } from "@atelier/core";
 import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import { registerGitIdentityWorkspaceEvents } from "./git-identity.ts";
 import { registerProjectWorkspaceInitEvents } from "./workspace-source.ts";
 
-export interface WorkspaceDeleteSafetyIssue { repo: string; uncommittedPaths: string[]; outgoingCommits: Array<{ hash: string; subject: string }> }
+export interface WorkspaceDeleteSafetyIssue extends JsonObject { repo: string; uncommittedPaths: string[]; outgoingCommits: Array<{ hash: string; subject: string }> }
 export interface WorkspaceDeleteBlockedDetails { workspaceId: string; issues: WorkspaceDeleteSafetyIssue[] }
 const workspaceRepoName = "work";
 

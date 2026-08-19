@@ -1,13 +1,4 @@
-import type { AgentWorkspaceParameters } from "@atelier/shared";
-
-export interface WorkspaceCreationForkContext {
-  sourceWorkspaceId: string;
-}
-
-export interface WorkspaceCreationContext extends Record<string, unknown> {
-  agent?: AgentWorkspaceParameters;
-  fork?: WorkspaceCreationForkContext;
-}
+export type { WorkspaceCreationContext } from "@atelier/shared";
 
 export interface WorkspaceInitInstructionMap {}
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SimpleStreamOptions } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, type Model, type SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { modelRuntimeWithServiceTiers, parseAgentServiceTier, serviceTierFromBranch, supportsFastMode } from "../../src/server/service-tier.ts";
 
@@ -18,20 +18,29 @@ describe("agent service tiers", () => {
 
   test("the coding-agent stream path injects and records the tier at request dispatch", async () => {
     let transform: NonNullable<SimpleStreamOptions["onPayload"]> | undefined;
-    const runtime = {
-      streamSimple: (_model: unknown, _context: unknown, options: SimpleStreamOptions | undefined) => {
+    const runtime: Pick<ModelRuntime, "streamSimple"> = {
+      streamSimple(_model, _context, options) {
         transform = options?.onPayload;
-        return {};
+        return createAssistantMessageEventStream();
       },
     };
     const recorded: Array<[string, string]> = [];
-    // SAFETY: this test double exercises only the streamSimple method intercepted by modelRuntimeWithServiceTiers.
-    const wrapped = modelRuntimeWithServiceTiers(runtime as ModelRuntime, { get: async () => "priority" }, async (provider, serviceTier) => { recorded.push([provider, serviceTier]); });
-    const model = { provider: "openai-codex", id: "gpt", api: "openai-codex-responses" };
-    // SAFETY: the stream wrapper only reads provider metadata from this focused model fixture.
-    wrapped.streamSimple(model as never, { messages: [] });
+    const wrapped = modelRuntimeWithServiceTiers(runtime, { get: async () => "priority" }, async (provider, serviceTier) => { recorded.push([provider, serviceTier]); });
+    const model = {
+      provider: "openai-codex",
+      id: "gpt",
+      name: "GPT",
+      api: "openai-codex-responses",
+      baseUrl: "https://api.openai.com",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128_000,
+      maxTokens: 16_384,
+    } satisfies Model<"openai-codex-responses">;
+    wrapped.streamSimple(model, { messages: [] });
 
-    expect(await transform?.({ model: "gpt", input: [] }, model as never)).toEqual({ model: "gpt", input: [], service_tier: "priority" });
+    expect(await transform?.({ model: "gpt", input: [] }, model)).toEqual({ model: "gpt", input: [], service_tier: "priority" });
     expect(recorded).toEqual([["openai-codex", "priority"]]);
   });
 

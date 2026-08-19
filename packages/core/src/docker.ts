@@ -21,7 +21,7 @@ function spawnDocker(args: string[], options: CommandOptions): Bun.Subprocess<"p
       stderr: "pipe",
     });
   } catch (error) {
-    throw dockerUnavailable(error);
+    throw dockerUnavailable(error instanceof Error ? error.message : String(error));
   }
 
   if (options.stdin !== undefined) {
@@ -65,7 +65,6 @@ export async function requireDocker(args: string[], options: CommandOptions = {}
   return result;
 }
 
-function dockerUnavailable(error: unknown): AtelierCoreError {
-  const message = error instanceof Error ? error.message : String(error);
+function dockerUnavailable(message: string): AtelierCoreError {
   return new AtelierCoreError("docker_unavailable", message);
 }

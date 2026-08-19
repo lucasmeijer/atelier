@@ -12,7 +12,6 @@ export interface CableSubscriptionOptions {
 export type CableClientMessage =
   | ({ command: "subscribe"; identifier: CableIdentifier } & CableSubscriptionOptions)
   | { command: "unsubscribe"; identifier: CableIdentifier }
-  | { command: "message"; identifier: CableIdentifier; data: unknown }
   | { command: "pong"; time?: number };
 
 export type CableServerMessage =
@@ -26,7 +25,6 @@ export type CableServerMessage =
 export interface AtelierCableClient {
   subscribe(identifier: CableIdentifier, options?: CableSubscriptionOptions): void;
   unsubscribe(identifier: CableIdentifier): void;
-  send(identifier: CableIdentifier, data: unknown): void;
   connected(): boolean;
 }
 

@@ -454,7 +454,7 @@ function bashSummary(tool: ToolView): string {
   const timeout = tool.timeoutSeconds ?? numberArg(toolArgs(tool), "timeout") ?? 600;
   if (tool.status === "running") return "";
   const duration = tool.durationMs === undefined ? "" : `${formatDuration(tool.durationMs)} / ${formatDuration(timeout * 1000)}`;
-  const outcome = details?.timedOut === true ? "timed out" : details?.aborted === true ? "aborted" : typeof details?.exitCode === "number" ? `exitcode ${details.exitCode}` : "";
+  const outcome = details?.timedOut === true ? "timed out" : details?.aborted === true ? "aborted" : details?.exitCode !== undefined ? `exitcode ${details.exitCode}` : "";
   return [summaryHtml([duration, outcome]), tokenSummary(tool, "up")].filter(Boolean).join(" · ");
 }
 
@@ -573,7 +573,7 @@ interface BashViews {
 
 function bashViews(tool: ToolView, count: number): BashViews {
   const details = toolDetails(tool);
-  const display = typeof details?.displayAnsi === "string" ? details.displayAnsi.trimEnd() : "";
+  const display = details?.displayAnsi?.trimEnd() ?? "";
   const model = trimResult(tool);
   return { display, model, same: !display || display === model, resultWindow: textWindow(display || model || "(no output)", "last", count), modelWindow: textWindow(model || "(no output)", "last", count) };
 }
@@ -659,7 +659,7 @@ function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView,
 
 function editHunksForDisplay(tool: ToolView, contextual: boolean): DiffDisplayLine[][] {
   const details = toolDetails(tool);
-  const patch = typeof details?.patch === "string" ? parseUnifiedPatchHunks(details.patch) : [];
+  const patch = details?.patch ? parseUnifiedPatchHunks(details.patch) : [];
   if (patch.length) return patch;
   const contextLines = contextual ? 3 : Number.POSITIVE_INFINITY;
   return getEditOperations(toolArgs(tool)).map((operation) => contextualDiffLines(operation, contextLines));
@@ -912,9 +912,7 @@ function ansiToHtml(text: string): string {
 }
 
 function toolDetails(tool: ToolView): ToolViewDetails | undefined {
-  if (!tool.details || typeof tool.details !== "object" || Array.isArray(tool.details)) return undefined;
-  // SAFETY: ToolViewDetails only names optional properties with unknown values.
-  return tool.details as ToolViewDetails;
+  return tool.details;
 }
 
 function hasAnsiSgr(text: string): boolean {

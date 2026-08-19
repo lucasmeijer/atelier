@@ -204,7 +204,7 @@ export interface WorkspaceServerProvisioningHook {
   id: string;
   label: string;
   parentId?: string;
-  run(context: { workspaceId: string; creationContext?: unknown; events?: unknown }): Promise<void> | void;
+  run(context: { workspaceId: string; creationContext?: WorkspaceCreationContext; events?: unknown }): Promise<void> | void;
 }
 
 export interface WorkspaceRowContributionRegistry {
@@ -245,6 +245,11 @@ export interface AgentWorkspaceParameters {
   thinkingLevel?: string;
   serviceTier?: AgentServiceTier;
   attachmentDraft?: string;
+}
+
+export interface WorkspaceCreationContext extends Record<string, unknown> {
+  agent?: AgentWorkspaceParameters;
+  fork?: { sourceWorkspaceId: string };
 }
 
 export interface AgentWorkspaceCreateRequest extends AgentWorkspaceParameters {

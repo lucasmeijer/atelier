@@ -52,7 +52,7 @@ export class UpdateManager {
     this.updateSidebar();
     if (!this.runtime) return;
     await this.checkNow();
-    const checkForUpdate = () => void this.checkNow().catch((error) => this.fail(error));
+    const checkForUpdate = () => void this.checkNow().catch((error) => this.fail(error instanceof Error ? error.message : String(error)));
     if (this.deps.setInterval) {
       this.deps.setInterval(checkForUpdate, pollIntervalMs);
     } else {
@@ -98,8 +98,8 @@ export class UpdateManager {
     this.updateSidebar();
   }
 
-  private fail(error: unknown): void {
-    this.setState("failed", { error: error instanceof Error ? error.message : String(error) });
+  private fail(message: string): void {
+    this.setState("failed", { error: message });
   }
 
   private hasCompatibilityMismatch(): boolean {
@@ -150,7 +150,7 @@ export class UpdateManager {
     this.pullPromise = pull.then(() => {
       this.setState("ready_to_restart", { percent: 100 });
     }).catch((error) => {
-      this.fail(error);
+      this.fail(error instanceof Error ? error.message : String(error));
     }).finally(() => {
       this.pullPromise = undefined;
     });
@@ -194,7 +194,7 @@ export class UpdateManager {
       return Response.redirect(updaterUrl.toString(), 303);
     } catch (error) {
       this.restarting = false;
-      this.fail(error);
+      this.fail(error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -336,8 +336,7 @@ function renderRestartModal(): string {
 </dialog>`;
 }
 
-function renderRestartErrorModal(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
+function renderRestartErrorModal(message: string): string {
   return `<dialog id="restart-update-error-modal" class="modal update-restart-modal" data-controller="modal" data-modal-auto-show-value="true">
   <form method="dialog">
     <h2>Could not restart Atelier</h2>
@@ -397,7 +396,7 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
         const location = response.headers.get("location");
         return location ? turboStreamResponse("", { headers: { location } }) : turboStreamResponse("");
       } catch (error) {
-        return modalStream(renderRestartErrorModal(error));
+        return modalStream(renderRestartErrorModal(error instanceof Error ? error.message : String(error)));
       }
     }
     if (url.pathname === "/update/state" && request.method === "GET") return new Response(JSON.stringify(updateManager.snapshot()), { headers: { "content-type": "application/json", "cache-control": "no-store" } });

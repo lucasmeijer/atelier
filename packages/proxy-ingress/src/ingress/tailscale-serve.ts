@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { request as httpRequest } from "node:http";
-import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext, isJsonObject, type JsonObject } from "@atelier/core";
+import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext, isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import { defaultPublicProxyPortRange, type PublicProxyPortRange } from "./route-state.ts";
 
 export const defaultTailscaleLocalApiSocketPath = "/var/run/tailscale/tailscaled.sock";
@@ -233,7 +233,7 @@ function pruneManagedPort(config: TailscaleServeConfig, port: number, options: {
   return changed;
 }
 
-function removeOwnedRootHandler(value: unknown, target: string): boolean {
+function removeOwnedRootHandler(value: JsonValue | undefined, target: string): boolean {
   if (!isJsonObject(value) || !isJsonObject(value.Handlers)) return false;
   if (!isProxyHandler(value.Handlers["/"], target)) return false;
   delete value.Handlers["/"];
@@ -241,7 +241,7 @@ function removeOwnedRootHandler(value: unknown, target: string): boolean {
   return true;
 }
 
-function isEmptyWebEntry(value: unknown): boolean {
+function isEmptyWebEntry(value: JsonValue | undefined): boolean {
   return isJsonObject(value) && (!isJsonObject(value.Handlers) || Object.keys(value.Handlers).length === 0) && Object.keys(value).every((key) => key === "Handlers");
 }
 
@@ -249,11 +249,11 @@ function hasWebEntryForPort(config: TailscaleServeConfig, port: number): boolean
   return isJsonObject(config.Web) && Object.keys(config.Web).some((key) => webKeyPort(key) === port);
 }
 
-function isCompatibleTcpHttpsEntry(value: unknown): boolean {
+function isCompatibleTcpHttpsEntry(value: JsonValue | undefined): boolean {
   return value === undefined || (isJsonObject(value) && value.HTTPS === true);
 }
 
-function isProxyHandler(value: unknown, target: string): boolean {
+function isProxyHandler(value: JsonValue | undefined, target: string): boolean {
   return isJsonObject(value) && value.Proxy === target;
 }
 

@@ -1,13 +1,8 @@
 import { invalidArguments } from "./errors.ts";
+import type { JsonObject, JsonValue } from "./json.ts";
 
 export function requestAcceptsJson(request: Request): boolean {
   return request.headers.get("accept")?.includes("application/json") ?? false;
-}
-
-export type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
-
-export interface JsonObject {
-  [key: string]: JsonValue;
 }
 
 function isJsonValue(value: unknown): value is JsonValue {
