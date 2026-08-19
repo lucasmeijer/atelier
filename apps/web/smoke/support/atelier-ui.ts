@@ -78,7 +78,7 @@ export const atelierUi = {
   },
 
   async waitForNewWorkspace(page: Page, performCreation: () => Promise<void>, options: { timeout?: number } = {}): Promise<NewWorkspace> {
-    const before = await this.workspaceRows(page).evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.workspaceId!));
+    const before = await this.workspaceRows(page).evaluateAll<string[], HTMLElement>((rows) => rows.map((row) => row.dataset.workspaceId!));
     await performCreation();
 
     const id = await page.waitForFunction(({ selector, previousIds }) => {
