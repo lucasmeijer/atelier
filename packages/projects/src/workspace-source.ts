@@ -17,6 +17,8 @@ import {
   type CommandResult,
 } from "@atelier/core";
 import { runHostObservableCommand, tailTerminalText } from "@atelier/observable-terminal/server";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 import { projectEnvironment } from "./environment.ts";
 import { isGitProjectInit } from "./project.ts";
 
@@ -34,6 +36,17 @@ export interface GitWorkspaceSourceRequest {
   gitUrl: string;
   branch: string | null;
 }
+
+const workspaceSourceMetadataSchema = Type.Object({
+  workspaceId: Type.String(),
+  gitUrl: Type.String(),
+  branch: Type.Union([Type.String(), Type.Null()]),
+  effectiveBranch: Type.Union([Type.String(), Type.Null()]),
+  templateKey: Type.String(),
+  resolvedCommit: Type.String(),
+  createdAt: Type.String(),
+});
+type WorkspaceSourceMetadata = Static<typeof workspaceSourceMetadataSchema>;
 
 const templateLocks = new Map<string, Promise<void>>();
 const reflinkSupportByDir = new Map<string, Promise<boolean>>();
@@ -341,7 +354,7 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
       await rm(worktreePath, { recursive: true, force: true });
       await rename(tmpWorkPath, worktreePath);
 
-      const metadata = {
+      const metadata: WorkspaceSourceMetadata = {
         workspaceId: options.workspaceId,
         gitUrl,
         branch,
@@ -384,7 +397,7 @@ export function registerProjectWorkspaceInitEvents(events: AtelierEventBus): voi
 
     const metadataPath = join(workspaceSourceDir(workspaceId), "metadata.json");
     if (!existsSync(metadataPath)) return;
-    const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as PreparedWorkspaceSource;
+    const metadata = Value.Parse(workspaceSourceMetadataSchema, JSON.parse(await readFile(metadataPath, "utf8")));
     plan.labels["com.atelier.source-commit"] = metadata.resolvedCommit;
     plan.labels["com.atelier.source-template"] = metadata.templateKey;
   });

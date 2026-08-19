@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { chmod, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { clearWorkspaceGitHubToken, createAtelierEventBus, setWorkspaceGitHubToken } from "@atelier/core";
@@ -171,6 +171,28 @@ describe("workspace source preparation", () => {
     expect(other.mounts[0]!.source).not.toBe(projectAPath);
     expect((await stat(projectAPath)).isDirectory()).toBe(true);
     expect(first.initScripts).toEqual([]);
+  });
+
+  test("rejects malformed persisted workspace source metadata", async () => {
+    const workspaceId = "malformed-source";
+    const metadataDir = join(dataDir, "workspaces", workspaceId);
+    await mkdir(metadataDir, { recursive: true });
+    await writeFile(join(metadataDir, "metadata.json"), JSON.stringify({
+      workspaceId,
+      gitUrl: "https://example.test/project.git",
+      branch: null,
+      effectiveBranch: "main",
+      templateKey: "template",
+      resolvedCommit: 42,
+      createdAt: new Date().toISOString(),
+    }));
+
+    const events = createAtelierEventBus();
+    registerProjectWorkspaceInitEvents(events);
+    const init: GitProjectInitInstruction = { type: "project.git", projectId: "project", name: "Project", gitUrl: "https://example.test/project.git", branch: null, sessionShareKey: "project" };
+    const plan: WorkspaceDockerPlan = { labels: {}, env: {}, mounts: [], publishes: [], extraArgs: [], initScripts: [], containerFiles: [], cleanup: [] };
+
+    await expect(events.emit("workspace_plan_prepare", { workspaceId, init, workHostPath: join(metadataDir, "work"), workContainerPath: "/work", plan })).rejects.toThrow();
   });
 
 });
