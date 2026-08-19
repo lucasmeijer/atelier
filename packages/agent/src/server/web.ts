@@ -15,6 +15,7 @@ import { dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, 
 import { agentStaticFiles } from "./static.ts";
 import { mkdir } from "node:fs/promises";
 import type { WorkspaceDockerMount, WorkspaceInitInstruction } from "@atelier/workspace";
+import { isGitProjectInit } from "@atelier/projects";
 
 async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgentInfo[]> {
   try {
@@ -132,7 +133,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
     // registerWorkspaceAgentTool("fork_current_workspace", (workspaceId) => createForkCurrentWorkspaceTool((request) => context.forkCurrentWorkspaceFromAgent(workspaceId, request)));
   },
   async attachToWorkspace({ workspaceId, init, events }) {
-    const hasProject = typeof init === "object" && init !== null && "type" in init && init.type === "project.git";
+    const hasProject = isGitProjectInit(init);
     try {
       const agents = await listOrCreateWorkspaceAgents(workspaceId);
       return {
