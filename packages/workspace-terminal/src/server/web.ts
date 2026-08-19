@@ -1,4 +1,4 @@
-import { registerWorkspacePresenter, type WorkspacePresenterDeps } from "@atelier/agent/server";
+import { registerWorkspacePresenter } from "@atelier/agent/server";
 import { domId, escapeHtml, turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceTabContribution } from "@atelier/shared";
 import { terminalIdFromTabKey, terminalTabKey } from "../shared.ts";
 import { createTmuxPresenter } from "./agent-tool.ts";
@@ -77,7 +77,7 @@ export const terminalWorkspaceModule: WorkspaceModule = {
     registerWorkspacePresenter("tmux", (workspaceId, options) => createTmuxPresenter(workspaceId, {
       events: options.events,
       getTabKeys: () => context.getTabKeys(workspaceId),
-      layouts: context.layouts as WorkspacePresenterDeps["layouts"],
+      layouts: context.layouts,
     }));
   },
   commands: [

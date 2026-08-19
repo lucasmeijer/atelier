@@ -5,7 +5,7 @@ import { browserStaticFiles } from "./static.ts";
 import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppRequestHeaders, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "./proxy.ts";
 import { invalidArguments, readJsonObject, requestAcceptsJson } from "@atelier/core";
 import { createBrowserPresenter } from "./agent-tool.ts";
-import { registerWorkspacePresenter, type WorkspacePresenterDeps } from "@atelier/agent/server";
+import { registerWorkspacePresenter } from "@atelier/agent/server";
 import { Type, type Static } from "typebox";
 
 const browserCreateCommandId = "browser.create";
@@ -56,7 +56,7 @@ export const browserWorkspaceModule: WorkspaceModule = {
     registerWorkspacePresenter("browser", (workspaceId, options) => createBrowserPresenter(workspaceId, {
       events: options.events,
       getTabKeys: () => context.getTabKeys(workspaceId),
-      layouts: context.layouts as WorkspacePresenterDeps["layouts"],
+      layouts: context.layouts,
     }));
   },
   tabs: [{

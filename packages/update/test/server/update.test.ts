@@ -70,7 +70,7 @@ function context() {
       registry: { setTabBusy: () => {}, setTabUnread: () => {} },
       workspaceRowContributions: { set: () => {} },
       globalSidebarContributions: { set: (_id: string, html?: string) => sidebar.push(html ?? "") },
-      layouts: {},
+      layouts: { ensureTabInPreviewGroup: () => undefined },
       getTabKeys: async () => [],
       broadcastWorkspace: () => {},
       deleteCurrentWorkspace: async () => ({ deleted: false, blocked: false }),

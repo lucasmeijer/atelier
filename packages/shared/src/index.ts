@@ -277,7 +277,7 @@ export interface WorkspaceServerModuleContext {
   };
   workspaceRowContributions: WorkspaceRowContributionRegistry;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
-  layouts: unknown;
+  layouts: WorkspaceLayoutPlacementController;
   getTabKeys(workspaceId: string): Promise<string[]>;
   broadcastWorkspace(workspaceId: string, html: string): void;
   deleteCurrentWorkspace(workspaceId: string, force: boolean): Promise<DeleteCurrentWorkspaceResult>;
