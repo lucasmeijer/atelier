@@ -14,6 +14,13 @@ test("nested Docker serializes registry uploads", () => {
   expect(nestedDockerDaemonInitScript()).toContain("--max-concurrent-uploads=1");
 });
 
+test("Docker image preload specs must contain an image reference", async () => {
+  await expect(resolveDockerImagePreload({
+    specs: ["  "],
+    workspaceResolution: { image: "unused", defaultImage: "unused" },
+  })).rejects.toThrow("Docker image preload specs must be non-empty strings");
+});
+
 carrierIntegrationTest("native Linux carriers are reusable and give workspaces isolated writable stores", async () => {
   const platform = await nativeLinuxDockerPlatform();
   if (!platform) throw new Error("ATELIER_RUN_CARRIER_INTEGRATION requires a native Linux Docker Engine");

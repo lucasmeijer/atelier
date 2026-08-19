@@ -309,8 +309,9 @@ async function ensureOuterImage(ref: string): Promise<void> {
 
 export async function resolveDockerImagePreload(options: { specs: string[]; workspaceResolution: WorkspaceImageResolution }): Promise<ResolvedDockerImagePreload> {
   const specs = uniqueStrings(options.specs.map((spec) => {
-    if (typeof spec !== "string" || !spec.trim()) throw new Error("Docker image preload specs must be non-empty strings");
-    return spec.trim();
+    const trimmed = spec.trim();
+    if (!trimmed) throw new Error("Docker image preload specs must be non-empty strings");
+    return trimmed;
   }));
   const images: ResolvedDockerImagePreload["images"] = [];
   for (const spec of specs) {
