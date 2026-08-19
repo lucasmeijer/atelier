@@ -857,7 +857,8 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
     };
 
     private readonly blur = (event: Event): void => {
-      const relatedTarget = (event as FocusEvent).relatedTarget;
+      if (!(event instanceof FocusEvent)) throw new Error("Autocomplete blur handler received a non-focus event");
+      const relatedTarget = event.relatedTarget;
       if (relatedTarget instanceof Node && this.menuTarget.contains(relatedTarget)) return;
       this.close();
     };
