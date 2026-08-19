@@ -1,9 +1,26 @@
 /// <reference lib="dom" />
 
 import type { WorkspaceClientApplication, WorkspaceClientControllerConstructor, WorkspaceClientSurfaceVisibilityContext } from "@atelier/shared";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
 type PresentationPane = HTMLElement & { dataset: DOMStringMap & { workspaceLiveNode?: string; workspacePaneRole?: string; workspacePaneId?: string } };
-type PhoneDestination = "workspace" | `agent:${string}` | `work:${string}`;
+const phoneDestinationSchema = Type.Union([
+  Type.Literal("workspace"),
+  Type.TemplateLiteral("agent:${string}"),
+  Type.TemplateLiteral("work:${string}"),
+]);
+type PhoneDestination = Static<typeof phoneDestinationSchema>;
+
+const storedPersonalNavigationSchema = Type.Object({
+  activeAgentId: Type.Optional(Type.String()),
+  activeWorkViewKey: Type.Optional(Type.String()),
+  workspacePaneVisible: Type.Optional(Type.Boolean()),
+  workPaneVisible: Type.Optional(Type.Boolean()),
+  phoneDestination: Type.Optional(phoneDestinationSchema),
+  drawers: Type.Optional(Type.Array(Type.String())),
+});
+type StoredPersonalNavigation = Static<typeof storedPersonalNavigationSchema>;
 
 interface PersonalNavigationState {
   activeAgentId?: string;
@@ -36,22 +53,12 @@ interface TurboLike {
 const visiblePresentationPanes = new WeakSet<HTMLElement>();
 const workspacePaneVisibilityKey = "atelier:workspace-pane-visible";
 
-interface StoredPersonalNavigation {
-  activeAgentId?: unknown;
-  activeWorkViewKey?: unknown;
-  workspacePaneVisible?: unknown;
-  workPaneVisible?: unknown;
-  phoneDestination?: unknown;
-  drawers?: unknown;
-}
-
 function storedNavigation(storage: Storage, key: string): StoredPersonalNavigation | undefined {
   const value = storage.getItem(key);
   if (!value) return undefined;
   const parsed: unknown = JSON.parse(value);
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`invalid personal navigation state at ${key}`);
-  // SAFETY: every field remains unknown and is parsed by restoreState before use.
-  return parsed as StoredPersonalNavigation;
+  if (!Value.Check(storedPersonalNavigationSchema, parsed)) throw new Error(`invalid personal navigation state at ${key}`);
+  return parsed;
 }
 
 function moveNodeBefore(parent: ParentNode, node: Node, reference: Node): void {
@@ -259,12 +266,6 @@ export function createWorkspacePresentationController(
 
     private restoreState(): PersonalNavigationState {
       const stored = storedNavigation(sessionStorage, this.storageKey);
-      if (stored?.activeAgentId !== undefined && typeof stored.activeAgentId !== "string") throw new Error("invalid personal navigation activeAgentId");
-      if (stored?.activeWorkViewKey !== undefined && typeof stored.activeWorkViewKey !== "string") throw new Error("invalid personal navigation activeWorkViewKey");
-      if (stored?.workspacePaneVisible !== undefined && typeof stored.workspacePaneVisible !== "boolean") throw new Error("invalid personal navigation workspacePaneVisible");
-      if (stored?.workPaneVisible !== undefined && typeof stored.workPaneVisible !== "boolean") throw new Error("invalid personal navigation workPaneVisible");
-      if (stored?.phoneDestination !== undefined && typeof stored.phoneDestination !== "string") throw new Error("invalid personal navigation phoneDestination");
-      if (stored?.drawers !== undefined && (!Array.isArray(stored.drawers) || stored.drawers.some((item) => typeof item !== "string"))) throw new Error("invalid personal navigation drawers");
       const sharedWorkspacePaneVisible = sessionStorage.getItem(workspacePaneVisibilityKey);
       if (sharedWorkspacePaneVisible !== null && sharedWorkspacePaneVisible !== "true" && sharedWorkspacePaneVisible !== "false") throw new Error("invalid shared Workspace pane visibility");
       return {
@@ -272,8 +273,7 @@ export function createWorkspacePresentationController(
         activeWorkViewKey: stored?.activeWorkViewKey,
         workspacePaneVisible: sharedWorkspacePaneVisible === null ? stored?.workspacePaneVisible ?? true : sharedWorkspacePaneVisible === "true",
         workPaneVisible: stored?.workPaneVisible ?? false,
-        // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-        phoneDestination: (stored?.phoneDestination ?? "workspace") as PhoneDestination,
+        phoneDestination: stored?.phoneDestination ?? "workspace",
         drawers: stored?.drawers ?? [],
       };
     }
