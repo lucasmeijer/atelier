@@ -1667,7 +1667,7 @@ ${moduleStylesHtml()}
   }
 
   async function moveWorkspaceTabEndpoint(workspaceId: string, request: Request): Promise<Response> {
-    const body = await readJsonObject(request) as { tab?: unknown; toGroup?: unknown; toIndex?: unknown; newGroup?: unknown };
+    const body = await readJsonObject(request);
     if (typeof body.tab !== "string" || !body.tab) throw invalidArguments("tab is required");
     const presentation = await workspacePresentation(workspaceId);
     const tabKeys = presentation.tabs.map((tab) => tab.key);
