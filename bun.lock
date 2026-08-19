@@ -68,6 +68,9 @@
     },
     "packages/core": {
       "name": "@atelier/core",
+      "dependencies": {
+        "typebox": "^1.0.57",
+      },
     },
     "packages/desktop": {
       "name": "@atelier/desktop",

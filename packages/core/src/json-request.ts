@@ -1,20 +1,27 @@
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+
 import { invalidArguments } from "./errors.ts";
-import type { JsonObject, JsonValue } from "./json.ts";
+import type { JsonObject } from "./json.ts";
+
+const jsonObjectSchema = Type.Cyclic({
+  JsonValue: Type.Union([
+    Type.Null(),
+    Type.Boolean(),
+    Type.Number(),
+    Type.String(),
+    Type.Array(Type.Ref("JsonValue")),
+    Type.Ref("JsonObject"),
+  ]),
+  JsonObject: Type.Record(Type.String(), Type.Ref("JsonValue")),
+}, "JsonObject");
 
 export function requestAcceptsJson(request: Request): boolean {
   return request.headers.get("accept")?.includes("application/json") ?? false;
 }
 
-function isJsonValue(value: unknown): value is JsonValue {
-  return value === null
-    || typeof value === "boolean"
-    || (typeof value === "number" && Number.isFinite(value))
-    || typeof value === "string"
-    || (Array.isArray(value) ? value.every(isJsonValue) : isJsonObject(value));
-}
-
 export function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.values(value).every(isJsonValue);
+  return Value.Check(jsonObjectSchema, value);
 }
 
 export async function readJsonObject(request: Request): Promise<JsonObject> {
