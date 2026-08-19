@@ -307,7 +307,7 @@ describe("web app contracts", () => {
         source: { type: "project", project: "sample-project" },
         agent: { initialPrompt: "Add tests", model: "openai::gpt", thinkingLevel: "medium" },
       }));
-      const body = await response.json() as { workspace: { id: string } };
+      const body = Value.Parse(workspaceCreatedResponseSchema, await response.json());
       const entry = registry.get(body.workspace.id)!;
 
       expect(response.status).toBe(202);
