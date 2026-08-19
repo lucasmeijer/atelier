@@ -1,13 +1,18 @@
 import { posix } from "node:path";
-import { isJsonObject, type JsonValue } from "@atelier/core";
+import type { JsonValue } from "@atelier/core";
 import { createWorkspaceMetadataState } from "@atelier/workspace";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
-export interface WorkspaceFileEditorView {
-  key: string;
-  path: string;
-  line?: number;
-  column?: number;
-}
+const workspaceFileEditorViewSchema = Type.Object({
+  key: Type.String(),
+  path: Type.String({ pattern: "^/" }),
+  line: Type.Optional(Type.Number()),
+  column: Type.Optional(Type.Number()),
+});
+const workspaceFileEditorViewsSchema = Type.Array(workspaceFileEditorViewSchema);
+
+export type WorkspaceFileEditorView = Static<typeof workspaceFileEditorViewSchema>;
 
 export interface OpenWorkspaceFileEditorViewResult {
   view: WorkspaceFileEditorView;
@@ -15,17 +20,8 @@ export interface OpenWorkspaceFileEditorViewResult {
 }
 
 function parseFileViews(value: JsonValue): WorkspaceFileEditorView[] {
-  if (!Array.isArray(value)) throw new Error("invalid persisted File Work views");
-  return value.map((entry) => {
-    if (!isJsonObject(entry) || typeof entry.key !== "string" || typeof entry.path !== "string" || !entry.path.startsWith("/")
-      || (entry.line !== undefined && typeof entry.line !== "number") || (entry.column !== undefined && typeof entry.column !== "number")) {
-      throw new Error("invalid persisted File Work view");
-    }
-    const view: WorkspaceFileEditorView = { key: entry.key, path: entry.path };
-    if (entry.line !== undefined) view.line = entry.line;
-    if (entry.column !== undefined) view.column = entry.column;
-    return view;
-  });
+  if (!Value.Check(workspaceFileEditorViewsSchema, value)) throw new Error("invalid persisted File Work views");
+  return value;
 }
 
 const fileViews = createWorkspaceMetadataState("file-work-views.json", parseFileViews, () => []);
