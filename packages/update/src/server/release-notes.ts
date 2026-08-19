@@ -1,5 +1,6 @@
 import { escapeHtml } from "@atelier/shared";
 import { repository } from "./constants.ts";
+import type { HttpFetcher } from "./http.ts";
 
 export interface CompareFile { filename: string; status: string }
 export interface ReleaseNoteEntry { filename: string; html: string }
@@ -91,7 +92,7 @@ export function renderMarkdown(markdown: string, markdownFilename: string, sha: 
   return html;
 }
 
-export async function fetchReleaseNotes(currentSha: string | undefined, stableSha: string | undefined, fetcher: typeof fetch = fetch): Promise<string> {
+export async function fetchReleaseNotes(currentSha: string | undefined, stableSha: string | undefined, fetcher: HttpFetcher = fetch): Promise<string> {
   if (!currentSha || !stableSha) return `<p>What’s new is unavailable for this update because the current image does not include revision metadata.</p>`;
   const compare = await fetcher(`https://api.github.com/repos/${repository}/compare/${encodeURIComponent(currentSha)}...${encodeURIComponent(stableSha)}`, { headers: { accept: "application/vnd.github+json" } });
   if (!compare.ok) throw new Error(`GitHub compare request failed: ${compare.status}`);

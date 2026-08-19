@@ -105,7 +105,7 @@ describe("registry helpers", () => {
 
   test("fetches config labels through public GHCR token auth flow", async () => {
     const calls: string[] = [];
-    const fetcher = (async (input: URL | RequestInfo) => {
+    const fetcher = async (input: URL | RequestInfo) => {
       const url = String(input);
       calls.push(url);
       if (url.endsWith("/manifests/stable") && calls.filter((call) => call === url).length === 1) {
@@ -115,7 +115,7 @@ describe("registry helpers", () => {
       if (url.endsWith("/manifests/stable")) return Response.json({ config: { digest: "sha256:config" } }, { headers: { "docker-content-digest": "sha256:manifest" } });
       if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { "org.opencontainers.image.revision": "new", "com.atelier.self-update-compatibility": "contract-v1" } } });
       throw new Error(`unexpected fetch ${url}`);
-    }) as typeof fetch;
+    };
     await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({ digest: "sha256:manifest", platformDigest: undefined, revision: "new", selfUpdateCompatibility: "contract-v1" });
   });
 
@@ -139,7 +139,7 @@ describe("release notes", () => {
   });
 
   test("fetches added release notes from compare API and raw GitHub", async () => {
-    const fetcher = (async (input: URL | RequestInfo) => {
+    const fetcher = async (input: URL | RequestInfo) => {
       const url = String(input);
       if (url.includes("/compare/old...new")) return Response.json({ files: [
         { filename: "release_notes/002.md", status: "added" },
@@ -150,7 +150,7 @@ describe("release notes", () => {
       if (url.endsWith("/release_notes/001.md")) return new Response("# One");
       if (url.endsWith("/release_notes/002.md")) return new Response("# Two");
       throw new Error(`unexpected fetch ${url}`);
-    }) as typeof fetch;
+    };
     const html = await fetchReleaseNotes("old", "new", fetcher);
     expect(html.indexOf("<h1>One</h1>")).toBeLessThan(html.indexOf("<h1>Two</h1>"));
     expect(html).not.toContain("changed");

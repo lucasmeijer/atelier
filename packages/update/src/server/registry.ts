@@ -1,5 +1,6 @@
 import { type ReleaseChannel } from "./channels.ts";
 import { repository } from "./constants.ts";
+import type { HttpFetcher } from "./http.ts";
 
 export interface ImageMetadata { digest: string; revision?: string; platformDigest?: string; selfUpdateCompatibility?: string }
 
@@ -17,7 +18,7 @@ export function parseWwwAuthenticate(header: string): RegistryAuth | undefined {
   return out.realm ? out : undefined;
 }
 
-async function authFetch(url: string, init: RequestInit = {}, fetcher: typeof fetch = fetch): Promise<Response> {
+async function authFetch(url: string, init: RequestInit = {}, fetcher: HttpFetcher = fetch): Promise<Response> {
   const response = await fetcher(url, init);
   if (response.status !== 401) return response;
   const auth = parseWwwAuthenticate(response.headers.get("www-authenticate") ?? "");
@@ -45,7 +46,7 @@ export function selectManifestFromIndex(index: { manifests?: Array<{ digest: str
   return manifest.digest;
 }
 
-export async function fetchChannelImageMetadata(channel: ReleaseChannel, fetcher: typeof fetch = fetch): Promise<ImageMetadata> {
+export async function fetchChannelImageMetadata(channel: ReleaseChannel, fetcher: HttpFetcher = fetch): Promise<ImageMetadata> {
   const manifestUrl = `https://ghcr.io/v2/${repository}/manifests/${channel}`;
   const accept = [
     "application/vnd.oci.image.index.v1+json",
