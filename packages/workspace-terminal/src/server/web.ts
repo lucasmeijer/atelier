@@ -1,12 +1,12 @@
 import { registerWorkspacePresenter } from "@atelier/agent/server";
-import { domId, escapeHtml, turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceTabContribution } from "@atelier/shared";
+import { domId, escapeHtml, turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceModuleCommandHandler, type WorkspaceTabContribution } from "@atelier/shared";
 import { terminalIdFromTabKey, terminalTabKey } from "../shared.ts";
 import { createTmuxPresenter } from "./agent-tool.ts";
 import { renderTerminalPane } from "./render.ts";
 import { createTerminalSocketHandler } from "./sockets.ts";
 import { terminalStaticFiles } from "./static.ts";
 import { attachWorkspaceTerminal, createWorkspaceTerminal, deleteWorkspaceTerminal, listTmuxSessions, listWorkspaceTerminals, type WorkspaceTerminal } from "./workspace-terminals.ts";
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
 
 function renderWorkspaceTerminalTabs(workspaceId: string, terminals: WorkspaceTerminal[]): WorkspaceTabContribution[] {
   return terminals.map((terminal) => ({
@@ -16,9 +16,11 @@ function renderWorkspaceTerminalTabs(workspaceId: string, terminals: WorkspaceTe
   }));
 }
 
+const terminalCreateCommandId = "terminal.create";
+
 const terminalWorkspaceCommands: WorkspaceCommandContribution[] = [
   {
-    id: "terminal.create",
+    id: terminalCreateCommandId,
     label: "New Terminal",
     scope: "workspace",
     surfaces: { ui: { placement: "group-menu" }, shortcut: { defaultBinding: "Meta+Alt+KeyT" } },
@@ -31,6 +33,21 @@ const terminalWorkspaceCommands: WorkspaceCommandContribution[] = [
     surfaces: { ui: { placement: "group-menu" } },
   },
 ];
+
+const terminalCreateInputSchema = Type.Object({
+  title: Type.Optional(Type.String()),
+  command: Type.Optional(Type.String()),
+  cwd: Type.Optional(Type.String()),
+});
+
+const terminalCreateCommand: WorkspaceModuleCommandHandler<Static<typeof terminalCreateInputSchema>> = {
+  id: terminalCreateCommandId,
+  inputSchema: terminalCreateInputSchema,
+  async execute({ workspaceId, input }) {
+    const terminal = await createWorkspaceTerminal(workspaceId, input);
+    return { createdTabKey: terminalTabKey(terminal.id) };
+  },
+};
 
 function relativeAge(timestamp: number): string {
   const seconds = Math.max(0, Math.round(Date.now() / 1000 - timestamp));
@@ -81,19 +98,7 @@ export const terminalWorkspaceModule: WorkspaceModule = {
     }));
   },
   commands: [
-    {
-      id: "terminal.create",
-      inputSchema: Type.Object({
-        title: Type.Optional(Type.String()),
-        command: Type.Optional(Type.String()),
-        cwd: Type.Optional(Type.String()),
-      }),
-      async execute({ workspaceId, input }) {
-        const options = input as { title?: string; command?: string; cwd?: string };
-        const terminal = await createWorkspaceTerminal(workspaceId, options);
-        return { createdTabKey: terminalTabKey(terminal.id) };
-      },
-    },
+    terminalCreateCommand,
     {
       id: "terminal.attach",
       async execute({ workspaceId }) {
