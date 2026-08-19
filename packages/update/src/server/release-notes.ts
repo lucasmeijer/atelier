@@ -1,17 +1,18 @@
 import { escapeHtml } from "@atelier/shared";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 import { repository } from "./constants.ts";
 import type { HttpFetcher } from "./http.ts";
 
-export interface CompareFile { filename: string; status: string }
-export interface ReleaseNoteEntry { filename: string; html: string }
+const compareResponseSchema = Type.Object({
+  files: Type.Array(Type.Object({
+    filename: Type.String(),
+    status: Type.String(),
+  })),
+});
 
-function isCompareFile(value: unknown): value is CompareFile {
-  return value instanceof Object
-    && "filename" in value
-    && typeof value.filename === "string"
-    && "status" in value
-    && typeof value.status === "string";
-}
+export type CompareFile = Static<typeof compareResponseSchema>["files"][number];
+export interface ReleaseNoteEntry { filename: string; html: string }
 
 export function releaseNoteFilenames(files: CompareFile[]): string[] {
   return files
@@ -96,11 +97,8 @@ export async function fetchReleaseNotes(currentSha: string | undefined, stableSh
   if (!currentSha || !stableSha) return `<p>What’s new is unavailable for this update because the current image does not include revision metadata.</p>`;
   const compare = await fetcher(`https://api.github.com/repos/${repository}/compare/${encodeURIComponent(currentSha)}...${encodeURIComponent(stableSha)}`, { headers: { accept: "application/vnd.github+json" } });
   if (!compare.ok) throw new Error(`GitHub compare request failed: ${compare.status}`);
-  const json: unknown = await compare.json();
-  if (!(json instanceof Object) || !("files" in json) || !Array.isArray(json.files) || !json.files.every(isCompareFile)) {
-    throw new Error("GitHub compare response did not contain a valid files array");
-  }
-  const filenames = releaseNoteFilenames(json.files);
+  const { files } = Value.Parse(compareResponseSchema, await compare.json());
+  const filenames = releaseNoteFilenames(files);
   if (filenames.length === 0) return `<p>No release notes were published for this update.</p>`;
   const entries: ReleaseNoteEntry[] = [];
   for (const filename of filenames) {
