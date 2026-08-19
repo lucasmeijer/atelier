@@ -203,6 +203,7 @@
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@atelier/observable-terminal": "workspace:*",
+        "typebox": "^1.0.57",
       },
     },
     "packages/workspace-terminal": {

@@ -5,12 +5,19 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand } from "@atelier/observable-terminal/server";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 import { buildWorkspaceImageCarrier, defaultAtelierWorkspaceImageSpecifier, nestedDockerDaemonInitScript, type ResolvedDockerImagePreload } from "./carrier.ts";
 import { pruneSupersededWorkspaceImages, workspaceImageKindLabel, type WorkspaceImageKind } from "./prune.ts";
 
 export * from "./carrier.ts";
 
-interface WorkspaceImageMetadata { tag: string; modules: string[] }
+const workspaceImageMetadataSchema = Type.Object({
+  tag: Type.String(),
+  modules: Type.Array(Type.String()),
+});
+
+type WorkspaceImageMetadata = Static<typeof workspaceImageMetadataSchema>;
 type BuiltWorkspaceImageKind = Exclude<WorkspaceImageKind, "carrier">;
 
 interface WorkspaceImageBuildTask {
@@ -61,7 +68,8 @@ function defaultContextDir(): string {
 }
 
 async function contextMetadata(contextDir: string): Promise<WorkspaceImageMetadata> {
-  return JSON.parse(await readFile(join(contextDir, "metadata.json"), "utf8")) as WorkspaceImageMetadata;
+  const path = join(contextDir, "metadata.json");
+  return Value.Parse(workspaceImageMetadataSchema, JSON.parse(await readFile(path, "utf8")));
 }
 
 async function imageExists(tag: string): Promise<boolean> {
