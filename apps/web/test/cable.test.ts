@@ -44,7 +44,7 @@ describe("cable server", () => {
     const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
 
     cable.open(ws);
-    cable.message(ws as never, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
     await Bun.sleep(0);
 
     expect(ws.sent).toContainEqual({ type: "welcome", connectionId: "conn-1" });
