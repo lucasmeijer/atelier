@@ -6,6 +6,7 @@ import { agentTreeOwnsMenu, handleAgentTreeKeydown, handleAgentTreeMenuEvent, se
 import { notifyInputListeners, setTextInputValue } from "./text-input.ts";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
+type TurboSubmitEndEvent = CustomEvent<{ success: boolean }>;
 
 interface ScrollTranscript {
   scrollTop: number;
@@ -421,9 +422,8 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       button.setAttribute("aria-label", button.title);
     }
 
-    submitted(event: Event): void {
-      const detail = (event as CustomEvent).detail as { success?: boolean } | undefined;
-      if (detail?.success === false) return;
+    submitted(event: TurboSubmitEndEvent): void {
+      if (!event.detail.success) return;
       this.setInputValue("");
       // Attachments were delivered with the message; clear the chips.
       this.formTarget.querySelectorAll(".agent-chip").forEach((chip) => chip.remove());
