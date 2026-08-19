@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@atelier/core": "workspace:*",
-    "@atelier/shared": "workspace:*"
+    "@atelier/shared": "workspace:*",
+    "typebox": "^1.0.57"
   }
 }

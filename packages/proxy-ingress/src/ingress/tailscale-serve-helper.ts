@@ -1,4 +1,5 @@
-import { isJsonObject } from "@atelier/core";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { defaultPublicProxyPortRange } from "./route-state.ts";
 import {
   defaultTailscaleLocalApiSocketPath,
@@ -12,6 +13,10 @@ import {
 } from "./tailscale-serve.ts";
 
 const targetHost = "127.0.0.1";
+
+const tailscaleStatusSchema = Type.Object({
+  Self: Type.Object({ DNSName: Type.String() }),
+});
 
 async function main(args: string[]): Promise<void> {
   if (process.getuid?.() !== 0) throw new Error("atelier-tailscale-serve-helper must run as root");
@@ -58,7 +63,7 @@ function parsePort(value: string): number {
 async function requireLocalTailscaleHost(host: string): Promise<void> {
   const body = await tailscaleLocalApiRequest(defaultTailscaleLocalApiSocketPath, "GET", "/localapi/v0/status");
   const parsed: unknown = JSON.parse(body);
-  if (!isJsonObject(parsed) || !isJsonObject(parsed.Self) || typeof parsed.Self.DNSName !== "string") {
+  if (!Value.Check(tailscaleStatusSchema, parsed)) {
     throw new Error("Tailscale status response does not contain this node's DNS name");
   }
   const dnsName = normalizeServeHost(parsed.Self.DNSName);
