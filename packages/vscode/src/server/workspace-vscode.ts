@@ -1,20 +1,22 @@
-import { isJsonObject, type JsonValue } from "@atelier/core";
+import type { JsonValue } from "@atelier/core";
 import { createWorkspaceMetadataState, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
-export interface WorkspaceVSCodeView {
-  title: string;
-}
+const workspaceVSCodeViewSchema = Type.Object({
+  title: Type.String({ pattern: "\\S" }),
+});
+const workspaceVSCodeViewsSchema = Type.Array(workspaceVSCodeViewSchema);
+
+export type WorkspaceVSCodeView = Static<typeof workspaceVSCodeViewSchema>;
 
 function defaultViews(): WorkspaceVSCodeView[] {
   return [{ title: "VS Code" }];
 }
 
 function parseVSCodeViews(value: JsonValue): WorkspaceVSCodeView[] {
-  if (!Array.isArray(value)) throw new Error("invalid persisted VS Code Work views");
-  return value.map((entry) => {
-    if (!isJsonObject(entry) || typeof entry.title !== "string" || !entry.title.trim()) throw new Error("invalid persisted VS Code Work view");
-    return { title: entry.title };
-  });
+  if (!Value.Check(workspaceVSCodeViewsSchema, value)) throw new Error("invalid persisted VS Code Work views");
+  return value.map(({ title }) => ({ title }));
 }
 
 const vscodeViews = createWorkspaceMetadataState("vscode-work-views.json", parseVSCodeViews, defaultViews);
