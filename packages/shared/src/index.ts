@@ -5,6 +5,7 @@ import { escapeHtml } from "./html.ts";
 export { providerBrandColor, providerBrandIconHtml } from "./brand-icons.ts";
 export { escapeHtml } from "./html.ts";
 export { hopByHopHeaderNames, isHopByHopHeader, stripHopByHopHeaders } from "./proxy-headers.ts";
+export { parseSerializedWorkspaceCommands, type SerializedWorkspaceCommand } from "./workspace-commands.ts";
 
 export const atelierName = "Atelier" as const;
 

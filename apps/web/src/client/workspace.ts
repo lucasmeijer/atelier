@@ -11,6 +11,7 @@ import {
   escapeHtml,
   looksLikeProjectSpec,
   isWorkspacePaneVisible,
+  parseSerializedWorkspaceCommands,
   providerBrandIconHtml,
   workspaceProxyUrl,
   type AtelierCableClient,
@@ -22,6 +23,7 @@ import {
   type WorkspacePaletteItem,
   type WorkspacePaletteProvider,
   type WorkspacePaletteSearchContext,
+  type SerializedWorkspaceCommand,
 } from "@atelier/shared";
 import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
@@ -791,8 +793,6 @@ type CommandRegistration = {
   binding?: string;
   run: () => void | Promise<void>;
 };
-type WorkspaceCommandRegistration = Omit<CommandRegistration, "run">;
-
 class AtelierShortcutsController extends Controller {
   declare readonly element: HTMLElement;
   private readonly commands = new Map<string, CommandRegistration>();
@@ -961,10 +961,11 @@ class AtelierShortcutsController extends Controller {
     if (form) submitFormWithFirstButton(form);
   }
 
-  private workspaceCommands(): WorkspaceCommandRegistration[] {
+  private workspaceCommands(): SerializedWorkspaceCommand[] {
     const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
     const groups = resident?.querySelector<HTMLElement>(".workspace-groups[data-workspace-commands]");
-    return groups ? JSON.parse(groups.dataset.workspaceCommands!) as WorkspaceCommandRegistration[] : [];
+    const serializedCommands = groups?.dataset.workspaceCommands;
+    return serializedCommands === undefined ? [] : parseSerializedWorkspaceCommands(serializedCommands);
   }
 
   private scheduleShortcutOverlay(): void {

@@ -53,6 +53,7 @@ import {
   escapeHtml,
   providerBrandColor,
   providerBrandIconHtml,
+  type SerializedWorkspaceCommand,
   turboStream,
   turboStreamResponse,
   type AgentWorkspaceCreateRequest,
@@ -753,7 +754,7 @@ ${moduleStylesHtml()}
     const tabByKey = new Map(tabs.map((tab) => [tab.key, tab]));
     const allCommands = attachments.flatMap((attachment) => attachment.commands ?? []);
     const commands = allCommands.filter((command) => command.surfaces?.ui?.placement === "group-menu");
-    const serializedCommands = allCommands.map((command) => ({
+    const serializedCommands: SerializedWorkspaceCommand[] = allCommands.map((command) => ({
       id: command.id,
       label: command.label,
       description: command.description,
