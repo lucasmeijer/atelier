@@ -42,12 +42,23 @@ const projectSummarySchema = Type.Object({
 });
 const projectResponseSchema = Type.Object({ project: projectSummarySchema });
 const projectListResponseSchema = Type.Object({ projects: Type.Array(projectSummarySchema) });
+const publicProjectProperties = {
+  id: Type.String(),
+  name: Type.String(),
+  gitUrl: Type.String(),
+  branch: Type.Union([Type.String(), Type.Null()]),
+  sessionShareKey: Type.String(),
+};
 const environmentVariableSchema = Type.Object({
   id: Type.String(),
   name: Type.String(),
   value: Type.String(),
 });
 const environmentVariableResponseSchema = Type.Object({ environmentVariable: environmentVariableSchema });
+const deletedProjectEnvironmentVariableResponseSchema = Type.Object({
+  deleted: Type.Literal(true),
+  environmentVariable: environmentVariableSchema,
+}, { additionalProperties: false });
 const projectSecretSummarySchema = Type.Object({
   id: Type.String(),
   projectId: Type.String(),
@@ -64,11 +75,7 @@ const deletedProjectSecretResponseSchema = Type.Object({
 }, { additionalProperties: false });
 const projectDetailResponseSchema = Type.Object({
   project: Type.Object({
-    id: Type.String(),
-    name: Type.String(),
-    gitUrl: Type.String(),
-    branch: Type.Union([Type.String(), Type.Null()]),
-    sessionShareKey: Type.String(),
+    ...publicProjectProperties,
     environment: Type.Array(environmentVariableSchema),
     secrets: Type.Array(projectSecretSummarySchema),
   }, { additionalProperties: false }),
@@ -80,6 +87,11 @@ const projectDeletionBlockedResponseSchema = Type.Object({
     workspaceId: Type.String(),
     title: Type.String(),
   }, { additionalProperties: false })),
+}, { additionalProperties: false });
+const projectDeletionSuccessResponseSchema = Type.Object({
+  deleted: Type.Literal(true),
+  blocked: Type.Literal(false),
+  project: Type.Object(publicProjectProperties, { additionalProperties: false }),
 }, { additionalProperties: false });
 
 interface TestAppOptions {
@@ -420,7 +432,8 @@ describe("web app contracts", () => {
 
       const deletedSecretResponse = await app.fetch(postJson(`/projects/${created.project.id}/secrets/${secretCreated.secret.id}/delete`, {}));
       const deletedSecret = Value.Parse(deletedProjectSecretResponseSchema, await deletedSecretResponse.json());
-      const deletedEnvironment = await (await app.fetch(postJson(`/projects/${created.project.id}/environment/${environmentCreated.environmentVariable.id}/delete`, {}))).json() as { deleted: boolean };
+      const deletedEnvironmentResponse = await app.fetch(postJson(`/projects/${created.project.id}/environment/${environmentCreated.environmentVariable.id}/delete`, {}));
+      const deletedEnvironment = Value.Parse(deletedProjectEnvironmentVariableResponseSchema, await deletedEnvironmentResponse.json());
       expect(deletedSecret.deleted).toBe(true);
       expect(deletedEnvironment.deleted).toBe(true);
     });
@@ -451,10 +464,11 @@ describe("web app contracts", () => {
 
       const blockedResponse = await app.fetch(postJson(`/projects/${first.id}/delete`, {}));
       const blocked = Value.Parse(projectDeletionBlockedResponseSchema, await blockedResponse.json());
-      const deleted = await (await app.fetch(postJson(`/projects/${second.id}/delete`, {}))).json() as { deleted: boolean; blocked: boolean };
+      const deletedResponse = await app.fetch(postJson(`/projects/${second.id}/delete`, {}));
+      const deleted = Value.Parse(projectDeletionSuccessResponseSchema, await deletedResponse.json());
 
       expect(blocked).toEqual({ deleted: false, blocked: true, references: [{ workspaceId: "1585eff7", title: "poetry-slideshow" }] });
-      expect(deleted).toMatchObject({ deleted: true, blocked: false });
+      expect(deleted).toEqual({ deleted: true, blocked: false, project: second });
       expect((await listProjects()).projects).toEqual([first]);
     });
   });
