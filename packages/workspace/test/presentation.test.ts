@@ -7,35 +7,38 @@ import {
   type WorkspaceWorkViewContribution,
   type WorkspacePresentationStore,
 } from "@atelier/workspace";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
-type TestWorkViewReference =
-  | { type: "terminal"; terminalId: string; ownership: "owned" | "attached" }
-  | { type: "file"; path: string };
+const terminalWorkViewReferenceSchema = Type.Object({
+  type: Type.Literal("terminal"),
+  terminalId: Type.String(),
+  ownership: Type.Union([Type.Literal("owned"), Type.Literal("attached")]),
+});
+
+const fileWorkViewReferenceSchema = Type.Object({
+  type: Type.Literal("file"),
+  path: Type.String(),
+});
+
+type TestWorkViewReference = Static<typeof terminalWorkViewReferenceSchema> | Static<typeof fileWorkViewReferenceSchema>;
 
 const terminalWorkViewAdapter: WorkspaceWorkViewContribution<Extract<TestWorkViewReference, { type: "terminal" }>> = {
-    type: "terminal",
-    parseReference(value) {
-      // SAFETY: The test fixture controls this value and establishes the asserted shape.
-      const reference = value as Partial<TestWorkViewReference>;
-      // SAFETY: The test fixture controls this value and establishes the asserted shape.
-      if (reference.type !== "terminal" || typeof (reference as { terminalId?: unknown }).terminalId !== "string") throw new Error("invalid terminal reference");
-      // SAFETY: The test fixture controls this value and establishes the asserted shape.
-      return value as Extract<TestWorkViewReference, { type: "terminal" }>;
-    },
-    identity: (reference) => reference.terminalId,
-  };
+  type: "terminal",
+  parseReference(value) {
+    if (!Value.Check(terminalWorkViewReferenceSchema, value)) throw new Error("invalid terminal reference");
+    return value;
+  },
+  identity: (reference) => reference.terminalId,
+};
 const fileWorkViewAdapter: WorkspaceWorkViewContribution<Extract<TestWorkViewReference, { type: "file" }>> = {
-    type: "file",
-    parseReference(value) {
-      // SAFETY: The test fixture controls this value and establishes the asserted shape.
-      const reference = value as Partial<TestWorkViewReference>;
-      // SAFETY: The test fixture controls this value and establishes the asserted shape.
-      if (reference.type !== "file" || typeof (reference as { path?: unknown }).path !== "string") throw new Error("invalid file reference");
-      // SAFETY: The test fixture controls this value and establishes the asserted shape.
-      return value as Extract<TestWorkViewReference, { type: "file" }>;
-    },
-    identity: (reference) => reference.path,
-  };
+  type: "file",
+  parseReference(value) {
+    if (!Value.Check(fileWorkViewReferenceSchema, value)) throw new Error("invalid file reference");
+    return value;
+  },
+  identity: (reference) => reference.path,
+};
 const workViewContributions: WorkspaceWorkViewContribution[] = [terminalWorkViewAdapter, fileWorkViewAdapter];
 
 describe("Workspace presentation", () => {
