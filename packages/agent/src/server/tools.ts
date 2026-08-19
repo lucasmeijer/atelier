@@ -192,6 +192,24 @@ function createPresentTool(workspaceId: string, options: WorkspaceAgentToolOptio
   });
 }
 
+export async function executeDeleteCurrentWorkspace(
+  workspaceId: string,
+  deleteCurrentWorkspace: (force: boolean) => Promise<DeleteCurrentWorkspaceResult>,
+  force: boolean,
+) {
+  const result = await deleteCurrentWorkspace(force);
+  if (result.blocked) {
+    return {
+      content: [{ type: "text" as const, text: "Current workspace was not deleted because the delete safety checks found outstanding local changes or unpushed commits." }],
+      details: { workspaceId, ...result },
+    };
+  }
+  return {
+    content: [{ type: "text" as const, text: `Current workspace ${workspaceId} deletion has been scheduled. The agent execution context is now being torn down.` }],
+    details: { workspaceId, ...result },
+  };
+}
+
 export function createDeleteCurrentWorkspaceTool(workspaceId: string, deleteCurrentWorkspace: (force: boolean) => Promise<DeleteCurrentWorkspaceResult>): ToolDefinition<any, any> {
   return defineTool({
     name: "delete_current_workspace",
@@ -202,19 +220,7 @@ export function createDeleteCurrentWorkspaceTool(workspaceId: string, deleteCurr
         description: "Set to false to run the existing workspace delete safety checks and report outstanding local changes instead of deleting when they are present. Set to true only when the user explicitly requested force deletion.",
       }),
     }),
-    execute: async (_toolCallId: string, params: { force: boolean }) => {
-      const result = await deleteCurrentWorkspace(params.force);
-      if (result.blocked) {
-        return {
-          content: [{ type: "text" as const, text: "Current workspace was not deleted because the delete safety checks found outstanding local changes or unpushed commits." }],
-          details: { workspaceId, ...result },
-        };
-      }
-      return {
-        content: [{ type: "text" as const, text: `Current workspace ${workspaceId} deletion has been scheduled. The agent execution context is now being torn down.` }],
-        details: { workspaceId, ...result },
-      };
-    },
+    execute: (_toolCallId: string, params: { force: boolean }) => executeDeleteCurrentWorkspace(workspaceId, deleteCurrentWorkspace, params.force),
   });
 }
 

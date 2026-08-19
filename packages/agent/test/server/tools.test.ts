@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
 import {
   applyExactEdits,
-  createDeleteCurrentWorkspaceTool,
   createWorkspaceAgentTools,
+  executeDeleteCurrentWorkspace,
   normalizeWorkspacePath,
   registerWorkspacePresenter,
 } from "../../src/server/tools.ts";
@@ -61,13 +61,11 @@ describe("workspace agent tools", () => {
   });
 
   test("delete current workspace tool reports blocked safety checks", async () => {
-    const tool = createDeleteCurrentWorkspaceTool("abc", async (force) => ({
+    const result = await executeDeleteCurrentWorkspace("abc", async (force) => ({
       deleted: false,
       blocked: !force,
       details: { workspaceId: "abc", issues: [{ repo: "demo", uncommittedPaths: ["wip.txt"], outgoingCommits: [] }] },
-    }));
-
-    const result = await tool.execute("call-1", { force: false }, undefined, undefined, {} as never);
+    }), false);
 
     const content = result.content[0];
     expect(content?.type).toBe("text");
