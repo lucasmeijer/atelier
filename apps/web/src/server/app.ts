@@ -1696,7 +1696,7 @@ ${moduleStylesHtml()}
   }
 
   async function updateWorkspaceViewStateEndpoint(id: string, request: Request): Promise<Response> {
-    const body = await readJsonObject(request) as { visibleTab?: unknown; groupId?: unknown };
+    const body = await readJsonObject(request);
     if (typeof body.visibleTab !== "string" || typeof body.groupId !== "string") throw invalidArguments("groupId and visibleTab are required");
     if (!layouts.current(id)) {
       const presentation = await workspacePresentation(id);
