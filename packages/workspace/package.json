@@ -12,6 +12,7 @@
     "@atelier/core": "workspace:*",
     "@atelier/observable-terminal": "workspace:*",
     "@atelier/shared": "workspace:*",
-    "@atelier/workspace-image": "workspace:*"
+    "@atelier/workspace-image": "workspace:*",
+    "typebox": "^1.0.57"
   }
 }

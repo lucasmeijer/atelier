@@ -5,6 +5,8 @@ import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelie
 import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
 import type { WorkspaceServerProvisioningHook } from "@atelier/shared";
 import { dockerImageId, ensureDefaultWorkspaceImage, nativeLinuxDockerPlatform, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction } from "./types.ts";
 export type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction, WorkspaceInitInstructionMap } from "./types.ts";
 
@@ -29,6 +31,7 @@ const parkedPath = "parked";
 const initPath = "init.json";
 const workspaceManifestPath = ".atelier/workspace.json";
 const workspaceStartupTimeoutMs = 5 * 60_000;
+const dockerLabelsSchema = Type.Record(Type.String(), Type.String());
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
 export const workspaceDesktopPort = 6080;
@@ -93,7 +96,7 @@ async function inspectLabels(id: string): Promise<Record<string, string>> {
   const inspected = await runDocker(["inspect", "--format", "{{json .Config.Labels}}", workspaceContainerName(id)]);
   if (inspected.exitCode !== 0) throw new AtelierCoreError("workspace_not_found", `workspace not found: ${id}`);
   const trimmed = inspected.stdout.trim();
-  return trimmed && trimmed !== "null" ? JSON.parse(trimmed) as Record<string, string> : {};
+  return trimmed && trimmed !== "null" ? Value.Parse(dockerLabelsSchema, JSON.parse(trimmed)) : {};
 }
 
 async function ensureWorkspaceFilesystem(id: string): Promise<void> {
