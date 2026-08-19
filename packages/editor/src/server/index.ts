@@ -92,7 +92,7 @@ const editorWorkspaceModule: WorkspaceModule = {
   }],
   initialize(context) {
     initializeEditorWorkspaceIntegration({
-      events: context.events as AtelierEventBus,
+      events: context.events,
       broadcastWorkspace: context.broadcastWorkspace,
       onWorkspaceRemoved: context.onWorkspaceRemoved,
     });
