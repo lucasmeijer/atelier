@@ -81,8 +81,16 @@ export interface ObservableTerminalViewerOptions {
   disconnectedMessage?: string;
   errorMessage?: string;
   onProgress?: (progress: { state: number; value?: number }) => void;
-  onOutput?: (data: string | Uint8Array) => void;
+  onOutput?: (text: string) => void;
   onClose?: () => void;
+}
+
+function observableTerminalOutput(data: string | ArrayBuffer, decoder: TextDecoder) {
+  if (data instanceof ArrayBuffer) {
+    const bytes = new Uint8Array(data);
+    return { terminalData: bytes, text: decoder.decode(bytes, { stream: true }) };
+  }
+  return { terminalData: data, text: data };
 }
 
 export function applyObservableTerminalChromeTheme(theme: ObservableTerminalTheme = DEFAULT_OBSERVABLE_TERMINAL_THEME): void {
@@ -146,6 +154,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
 
   const ws = new WebSocket(options.websocketUrl);
   ws.binaryType = "arraybuffer";
+  const outputDecoder = new TextDecoder();
 
   if (options.mode === "interactive") {
     if (progress) {
@@ -167,9 +176,9 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
     if (options.mode === "interactive") ws.send(encodeObservableTerminalMessage({ type: "resize", cols: term.cols, rows: term.rows }));
   };
   ws.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
-    const data = event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : event.data;
-    options.onOutput?.(data);
-    term.write(data);
+    const output = observableTerminalOutput(event.data, outputDecoder);
+    options.onOutput?.(output.text);
+    term.write(output.terminalData);
   };
   ws.onclose = () => {
     options.onClose?.();

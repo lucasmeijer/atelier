@@ -1496,7 +1496,6 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
       if (this.viewer || this.starting) return;
       this.disposed = false;
       this.starting = true;
-      const decoder = new TextDecoder();
       let hasVisibleOutput = false;
       void createObservableTerminalViewer({
         host: this.element,
@@ -1506,9 +1505,8 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
         websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agent-term/${encodeURIComponent(this.sessionValue)}/ws?cols=120&rows=30`),
         fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
         theme: this.theme(),
-        onOutput: (data) => {
+        onOutput: (text) => {
           if (hasVisibleOutput) return;
-          const text = typeof data === "string" ? data : decoder.decode(data, { stream: true });
           const printable = text.replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g, "").replace(/[\x00-\x1f\x7f]/g, "").trim();
           if (!printable) return;
           hasVisibleOutput = true;
