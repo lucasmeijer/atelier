@@ -92,7 +92,7 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
     }
 
     openDirectory(event: StimulusActionEvent<MouseEvent, HTMLElement>): void {
-      if ((event.target as Element).closest("a, .files-actions-toggle, .files-actions-menu")) return;
+      if (event.target instanceof Element && event.target.closest("a, .files-actions-toggle, .files-actions-menu")) return;
       event.preventDefault();
       event.currentTarget.querySelector<HTMLAnchorElement>(".files-row-name > a")!.click();
     }
