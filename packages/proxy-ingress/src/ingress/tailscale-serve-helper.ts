@@ -1,3 +1,4 @@
+import { isJsonObject } from "@atelier/core";
 import { defaultPublicProxyPortRange } from "./route-state.ts";
 import {
   defaultTailscaleLocalApiSocketPath,
@@ -56,8 +57,11 @@ function parsePort(value: string): number {
 
 async function requireLocalTailscaleHost(host: string): Promise<void> {
   const body = await tailscaleLocalApiRequest(defaultTailscaleLocalApiSocketPath, "GET", "/localapi/v0/status");
-  const parsed = JSON.parse(body) as { Self?: { DNSName?: unknown } };
-  const dnsName = typeof parsed.Self?.DNSName === "string" ? normalizeServeHost(parsed.Self.DNSName) : "";
+  const parsed: unknown = JSON.parse(body);
+  if (!isJsonObject(parsed) || !isJsonObject(parsed.Self) || typeof parsed.Self.DNSName !== "string") {
+    throw new Error("Tailscale status response does not contain this node's DNS name");
+  }
+  const dnsName = normalizeServeHost(parsed.Self.DNSName);
   if (host !== dnsName) throw new Error(`Tailscale Serve host ${host} does not match this node (${dnsName})`);
 }
 
