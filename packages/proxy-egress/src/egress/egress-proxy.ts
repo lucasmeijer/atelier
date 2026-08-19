@@ -201,7 +201,7 @@ async function startMitmTargetServer(ca: MitmCa, hostname: string): Promise<Mitm
     key: readFileSync(leaf.keyPath),
     ALPNProtocols: ["http/1.1"],
   }, (mitmReq, mitmRes) => {
-    const remotePort = (mitmReq.socket as net.Socket).remotePort;
+    const remotePort = mitmReq.socket.remotePort;
     const context = remotePort ? connections.get(remotePort) : undefined;
     if (!context) {
       writeError(mitmRes, proxyFailure(new HttpRequestBlockedError("unknown MITM connection")));
