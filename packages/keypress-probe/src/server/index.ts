@@ -1,12 +1,8 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { defaultDataDir } from "@atelier/core";
+import { defaultDataDir, isJsonObject } from "@atelier/core";
 import { turboStream, turboStreamResponse, type SettingsContribution, type WorkspaceModule } from "@atelier/shared";
-
-interface KeypressProbeSettings {
-  enabled: boolean;
-}
 
 const settingsPath = "/settings/keypress-probe";
 const settingsSectionId = "settings-sec-keypress-probe";
@@ -17,7 +13,11 @@ function keypressProbeSettingsFile(dataDir = defaultDataDir()): string {
 
 async function isKeypressProbeEnabled(file = keypressProbeSettingsFile()): Promise<boolean> {
   if (!existsSync(file)) return false;
-  return (JSON.parse(await readFile(file, "utf8")) as KeypressProbeSettings).enabled;
+  const settings: unknown = JSON.parse(await readFile(file, "utf8"));
+  if (!isJsonObject(settings) || (settings.enabled !== true && settings.enabled !== false)) {
+    throw new Error(`Invalid keypress probe settings in ${file}`);
+  }
+  return settings.enabled;
 }
 
 async function setKeypressProbeEnabled(enabled: boolean, file = keypressProbeSettingsFile()): Promise<void> {
