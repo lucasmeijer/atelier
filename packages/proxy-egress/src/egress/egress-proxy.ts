@@ -2,7 +2,7 @@ import dns from "node:dns/promises";
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
-import net from "node:net";
+import net, { type AddressInfo } from "node:net";
 import { Readable, type Duplex } from "node:stream";
 import tls from "node:tls";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext, shellQuote } from "@atelier/core";
@@ -219,9 +219,10 @@ async function startMitmTargetServer(ca: MitmCa, hostname: string): Promise<Mitm
     server.listen(0, "127.0.0.1", () => { server.off("error", reject); resolve(); });
   });
   server.unref();
-  const address = server.address();
-  const serverPort = typeof address === "object" && address ? address.port : 0;
-  return { server, port: serverPort, connections, renewAt: leaf.renewAt };
+  // SAFETY: This server listens with a TCP host and port, so Node returns an
+  // AddressInfo rather than the string address used by Unix-domain sockets.
+  const address = server.address() as AddressInfo;
+  return { server, port: address.port, connections, renewAt: leaf.renewAt };
 }
 
 async function closeMitmTargetServers(): Promise<void> {
