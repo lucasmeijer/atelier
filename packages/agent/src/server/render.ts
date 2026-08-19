@@ -882,7 +882,7 @@ function ansiToHtml(text: string): string {
             c += 2;
           } else if ((code === 38 || code === 48) && codes[c + 1] === 2) {
             const r = codes[c + 2], g = codes[c + 3], b = codes[c + 4];
-            if ([r, g, b].every((v) => typeof v === "number" && v >= 0 && v <= 255)) {
+            if ([r, g, b].every((v) => Number.isFinite(v) && v >= 0 && v <= 255)) {
               const color = `rgb(${r},${g},${b})`;
               if (code === 38) next.fg = color;
               else next.bg = color;
