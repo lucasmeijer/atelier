@@ -362,6 +362,8 @@ interface ProvisionTermSocketData {
   pty?: IPty;
 }
 
+type ProvisionTermSocket = Pick<ServerWebSocket<undefined>, "send" | "close">;
+
 type WorkspaceModuleSocketData = WorkspaceServerSocketSession & { kind: "workspace-module" };
 type SocketData = WorkspaceModuleSocketData | ProvisionTermSocketData | CableSocketData;
 
@@ -456,13 +458,13 @@ async function validateSocket(request: Request, url: URL): Promise<SocketData | 
   return undefined;
 }
 
-function openProvisionTermSocket(ws: ServerWebSocket<ProvisionTermSocketData>): void {
+function openProvisionTermSocket(ws: ProvisionTermSocket, data: ProvisionTermSocketData): void {
   void (async () => {
     let lastError: unknown;
     for (let attempt = 0; attempt < 30; attempt += 1) {
       try {
-        const pty = attachHostObservableTerminal({ session: ws.data.session, cols: observableTerminalCols, rows: observableTerminalRows, readonly: true, fixedSize: true });
-        ws.data.pty = pty;
+        const pty = attachHostObservableTerminal({ session: data.session, cols: observableTerminalCols, rows: observableTerminalRows, readonly: true, fixedSize: true });
+        data.pty = pty;
         pty.onData((chunk) => {
           try { ws.send(chunk); } catch { /* closed */ }
         });
@@ -478,8 +480,8 @@ function openProvisionTermSocket(ws: ServerWebSocket<ProvisionTermSocketData>): 
   })();
 }
 
-function closeProvisionTermSocket(ws: ServerWebSocket<ProvisionTermSocketData>): void {
-  ws.data.pty?.kill();
+function closeProvisionTermSocket(data: ProvisionTermSocketData): void {
+  data.pty?.kill();
 }
 
 await publicWorkspaceAppProxy.startPersistedRoutes();
@@ -527,7 +529,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       websocket: {
         open(ws) {
           if (ws.data.kind === "cable") cableServer.open(ws, ws.data);
-          else if (ws.data.kind === "provision-term") openProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
+          else if (ws.data.kind === "provision-term") openProvisionTermSocket(ws, ws.data);
           else ws.data.open?.(ws);
         },
         message(ws, message) {
@@ -536,7 +538,7 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
         },
         close(ws) {
           if (ws.data.kind === "cable") cableServer.close(ws);
-          else if (ws.data.kind === "provision-term") closeProvisionTermSocket(ws as ServerWebSocket<ProvisionTermSocketData>);
+          else if (ws.data.kind === "provision-term") closeProvisionTermSocket(ws.data);
           else ws.data.close?.(ws);
         },
       },
