@@ -53,6 +53,8 @@ declare global {
 }
 
 window.Stimulus = {
+  // SAFETY: The directly imported Stimulus Application implements this narrower
+  // Atelier facade; shared module types intentionally erase Stimulus internals.
   Application: StimulusApplication as typeof window.Stimulus.Application,
   Controller: StimulusController,
 };
