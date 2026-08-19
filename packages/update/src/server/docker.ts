@@ -277,7 +277,7 @@ export function replacementCreateArgs(inspect: DockerInspect, targetImage = insp
     if (mount.Type === "volume" && mount.Source && mount.Destination) args.push("--mount", `type=volume,src=${mount.Source},dst=${mount.Destination}${mount.RW === false ? ",readonly" : ""}`);
   }
   const networkMode = inspect.HostConfig?.NetworkMode;
-  if (typeof networkMode === "string" && networkMode) args.push("--network", networkMode);
+  if (networkMode) args.push("--network", networkMode);
   if (inspect.HostConfig?.Init) args.push("--init");
   if (inspect.HostConfig?.CpuShares) args.push("--cpu-shares", String(inspect.HostConfig.CpuShares));
   if (inspect.HostConfig?.MemoryReservation) args.push("--memory-reservation", String(inspect.HostConfig.MemoryReservation));
