@@ -1,4 +1,3 @@
-import type { ServerWebSocket } from "bun";
 import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { getWorkspaceAgentRuntime, listWorkspaceAgents } from "@atelier/agent/server";
 import {
@@ -15,7 +14,10 @@ export interface CableSocketData {
   connectionId: string;
 }
 
-type CableSocket = ServerWebSocket<CableSocketData>;
+export interface CableSocket {
+  data: CableSocketData;
+  send(message: string): number;
+}
 
 type UpstreamSubscription = {
   refCount: number;

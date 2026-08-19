@@ -43,7 +43,7 @@ describe("cable server", () => {
     const cable = createCableServer({ registry, events: createAtelierEventBus(), shellSnapshot: () => '<turbo-stream action="replace" target="initial"><template>ok</template></turbo-stream>' });
     const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
 
-    cable.open(ws as never);
+    cable.open(ws);
     cable.message(ws as never, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
     await Bun.sleep(0);
 
