@@ -103,7 +103,7 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
 
     selectOrOpen(event: StimulusActionEvent<MouseEvent, HTMLElement>): void {
       const row = event.currentTarget;
-      if ((event.target as Element).closest(".files-actions-toggle, .files-actions-menu")) return;
+      if (event.target instanceof Element && event.target.closest(".files-actions-toggle, .files-actions-menu")) return;
       const openLink = row.querySelector<HTMLAnchorElement>(".files-row-name > a");
       if (event.detail === 0 && event.target === openLink) return;
       if (document.activeElement !== row) {
