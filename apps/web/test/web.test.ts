@@ -58,6 +58,10 @@ const projectSecretSummarySchema = Type.Object({
   updatedAt: Type.String(),
 }, { additionalProperties: false });
 const projectSecretResponseSchema = Type.Object({ secret: projectSecretSummarySchema }, { additionalProperties: false });
+const deletedProjectSecretResponseSchema = Type.Object({
+  deleted: Type.Literal(true),
+  secret: projectSecretSummarySchema,
+}, { additionalProperties: false });
 const projectDetailResponseSchema = Type.Object({
   project: Type.Object({
     id: Type.String(),
@@ -68,6 +72,14 @@ const projectDetailResponseSchema = Type.Object({
     environment: Type.Array(environmentVariableSchema),
     secrets: Type.Array(projectSecretSummarySchema),
   }, { additionalProperties: false }),
+}, { additionalProperties: false });
+const projectDeletionBlockedResponseSchema = Type.Object({
+  deleted: Type.Literal(false),
+  blocked: Type.Literal(true),
+  references: Type.Array(Type.Object({
+    workspaceId: Type.String(),
+    title: Type.String(),
+  }, { additionalProperties: false })),
 }, { additionalProperties: false });
 
 interface TestAppOptions {
@@ -406,7 +418,8 @@ describe("web app contracts", () => {
       expect(detailText).not.toContain(sensitive);
       expect(detailText).not.toContain("encryptedSecret");
 
-      const deletedSecret = await (await app.fetch(postJson(`/projects/${created.project.id}/secrets/${secretCreated.secret.id}/delete`, {}))).json() as { deleted: boolean };
+      const deletedSecretResponse = await app.fetch(postJson(`/projects/${created.project.id}/secrets/${secretCreated.secret.id}/delete`, {}));
+      const deletedSecret = Value.Parse(deletedProjectSecretResponseSchema, await deletedSecretResponse.json());
       const deletedEnvironment = await (await app.fetch(postJson(`/projects/${created.project.id}/environment/${environmentCreated.environmentVariable.id}/delete`, {}))).json() as { deleted: boolean };
       expect(deletedSecret.deleted).toBe(true);
       expect(deletedEnvironment.deleted).toBe(true);
@@ -436,7 +449,8 @@ describe("web app contracts", () => {
       const { app, registry } = createTestApp();
       await registry.seed([{ id: "1585eff7", title: "poetry-slideshow", init: projectWorkspaceInit(first) }]);
 
-      const blocked = await (await app.fetch(postJson(`/projects/${first.id}/delete`, {}))).json() as { deleted: boolean; blocked: boolean; references: unknown[] };
+      const blockedResponse = await app.fetch(postJson(`/projects/${first.id}/delete`, {}));
+      const blocked = Value.Parse(projectDeletionBlockedResponseSchema, await blockedResponse.json());
       const deleted = await (await app.fetch(postJson(`/projects/${second.id}/delete`, {}))).json() as { deleted: boolean; blocked: boolean };
 
       expect(blocked).toEqual({ deleted: false, blocked: true, references: [{ workspaceId: "1585eff7", title: "poetry-slideshow" }] });
