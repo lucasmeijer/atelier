@@ -74,8 +74,7 @@ export async function findStagedAttachment(draftId: string, attachmentId: string
   try {
     names = await readdir(dir);
   } catch (error) {
-    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
-    if (code === "ENOENT") return undefined;
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
     throw error;
   }
   const [name] = names;
@@ -91,8 +90,7 @@ export async function listStagedAttachments(draftId: string): Promise<StagedAtta
   try {
     entries = await readdir(attachmentDraftDir(draftId));
   } catch (error) {
-    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
-    if (code === "ENOENT") return [];
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
     throw error;
   }
   const attachments: StagedAttachment[] = [];
