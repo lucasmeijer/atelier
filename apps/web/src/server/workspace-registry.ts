@@ -1,6 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { WorkspaceInitInstruction } from "@atelier/workspace";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
 export type WorkspacePhase = "starting" | "ready" | "checking_delete" | "deleting" | "failed";
 
@@ -57,6 +59,8 @@ const allowedTransitions: WorkspacePhaseTransitions = {
   failed: ["deleting"],
 };
 
+const workspaceTimestampsSchema = Type.Record(Type.String(), Type.Number());
+
 function createFileTimestampStore(path: string): WorkspaceActivityStore {
   let saveChain = Promise.resolve();
   let tempCounter = 0;
@@ -71,14 +75,7 @@ function createFileTimestampStore(path: string): WorkspaceActivityStore {
   return {
     async load() {
       try {
-        const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`${path} must contain a JSON object`);
-        const timestamps: Record<string, number> = {};
-        for (const [workspaceId, timestamp] of Object.entries(parsed)) {
-          if (typeof timestamp !== "number") throw new Error(`${path} contains a non-numeric timestamp for ${workspaceId}`);
-          timestamps[workspaceId] = timestamp;
-        }
-        return timestamps;
+        return Value.Parse(workspaceTimestampsSchema, JSON.parse(await readFile(path, "utf8")));
       } catch (error) {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return {};
         throw error;
