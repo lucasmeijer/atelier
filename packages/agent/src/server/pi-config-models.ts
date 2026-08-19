@@ -59,7 +59,7 @@ async function getAgentModelsSettings(path = piModelsJsonPath()): Promise<AgentM
       providerPreferences,
     };
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return { providers: {} };
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return { providers: {} };
     throw error;
   }
 }
