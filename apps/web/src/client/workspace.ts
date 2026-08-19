@@ -1,6 +1,8 @@
 /// <reference lib="dom" />
 
 import { Application as StimulusApplication, Controller as StimulusController } from "@hotwired/stimulus";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 // Turbo does not publish TypeScript declarations, but Bun resolves and bundles its browser module.
 // @ts-expect-error No declaration file is included in @hotwired/turbo.
 import * as Turbo from "@hotwired/turbo";
@@ -2119,6 +2121,8 @@ class CableShellController extends Controller {
   }
 }
 
+const devReloadResponseSchema = Type.Object({ revision: Type.Integer({ minimum: 0 }) });
+
 class DevReloadController extends Controller {
   static values = { url: String };
 
@@ -2142,15 +2146,13 @@ class DevReloadController extends Controller {
     try {
       const response = await fetch(this.urlValue, { cache: "no-store" });
       if (response.ok) {
-        // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-        const value = await response.json() as { revision?: unknown };
-        if (typeof value.revision === "number") {
-          if (this.revision !== undefined && value.revision !== this.revision) {
-            window.location.reload();
-            return;
-          }
-          this.revision = value.revision;
+        const value: unknown = await response.json();
+        if (!Value.Check(devReloadResponseSchema, value)) throw new Error("invalid dev reload response");
+        if (this.revision !== undefined && value.revision !== this.revision) {
+          window.location.reload();
+          return;
         }
+        this.revision = value.revision;
       }
     } catch {
       // Server restarts temporarily make the development endpoint unavailable.
