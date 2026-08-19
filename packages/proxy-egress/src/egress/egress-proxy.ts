@@ -328,9 +328,10 @@ async function writeFetchResponse(res: ServerResponse, response: Response): Prom
     if (isHopByHopHeader(key) || key.toLowerCase() === "content-encoding") return;
     res.setHeader(key, value);
   });
-  if (!response.body) { res.end(); return; }
+  const body = response.body;
+  if (!body) { res.end(); return; }
   await new Promise<void>((resolve, reject) => {
-    Readable.fromWeb(response.body as any).on("error", reject).pipe(res).on("finish", resolve).on("error", reject);
+    Readable.from(body).on("error", reject).pipe(res).on("finish", resolve).on("error", reject);
   });
 }
 
