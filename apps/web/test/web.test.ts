@@ -23,6 +23,13 @@ type ProvisionWorkspace = Parameters<typeof createWebApp>[0]["provisionWorkspace
 type ProvisionWorkspaceOptions = Parameters<ProvisionWorkspace>[1];
 
 const openApiDocumentSchema = Type.Object({ paths: Type.Object({}) });
+const workspaceCreatedResponseSchema = Type.Object({
+  workspace: Type.Object({
+    id: Type.String(),
+    url: Type.String(),
+    phase: Type.Literal("starting"),
+  }),
+});
 
 interface TestAppOptions {
   provision?: (id: string, options?: ProvisionWorkspaceOptions) => Promise<void>;
@@ -268,7 +275,7 @@ describe("web app contracts", () => {
     await registry.seed([]);
 
     const response = await app.fetch(postJson("/workspaces", { title: "Evaluation" }));
-    const body = await response.json() as { workspace: { id: string; url: string; phase: string } };
+    const body = Value.Parse(workspaceCreatedResponseSchema, await response.json());
     const status = await app.fetch(new Request(`http://test.local/workspaces/${body.workspace.id}`, { headers: { accept: "application/json" } }));
     const statusBody = await status.json() as { workspace: { title: string; phase: string } };
 
