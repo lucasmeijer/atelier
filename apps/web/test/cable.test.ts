@@ -95,7 +95,7 @@ describe("cable server", () => {
       const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
       cable.open(ws, ws.data);
 
-      cable.message(ws as never, raw);
+      cable.message(ws, raw);
       await Bun.sleep(0);
 
       expect(ws.sent).toEqual([
@@ -112,7 +112,7 @@ describe("cable server", () => {
     const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
     cable.open(ws, ws.data);
 
-    cable.message(ws as never, JSON.stringify({ command: "subscribe", identifier: { channel: "shell", extra: true }, extra: true }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell", extra: true }, extra: true }));
     await Bun.sleep(0);
 
     expect(ws.sent).toContainEqual({ type: "confirm_subscription", identifier: { channel: "shell" } });
