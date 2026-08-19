@@ -3,6 +3,8 @@ import { spawn } from "node:child_process";
 import { copyFile, mkdir, rename, rm, stat } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
 export const DEFAULT_VIEWPORT = { width: 1440, height: 900 } as const;
 export const DEFAULT_FRAME_RATE = 25;
@@ -67,6 +69,15 @@ export interface VideoReport {
 	frameRate: number;
 	fileSizeBytes: number;
 }
+
+const ffprobeReportSchema = Type.Object({
+	streams: Type.Array(Type.Object({
+		width: Type.Number(),
+		height: Type.Number(),
+		avg_frame_rate: Type.String(),
+	})),
+	format: Type.Object({ duration: Type.String() }),
+});
 
 export interface AtelierRecording {
 	readonly page: Page;
@@ -234,10 +245,8 @@ async function inspectVideo(outputPath: string, rawVideoPath: string): Promise<V
 		"json",
 		outputPath,
 	]);
-	const data = JSON.parse(stdout) as {
-		streams: Array<{ width: number; height: number; avg_frame_rate: string }>;
-		format: { duration: string };
-	};
+	const encoded: unknown = JSON.parse(stdout);
+	const data = Value.Parse(ffprobeReportSchema, encoded);
 	const stream = data.streams[0];
 	if (!stream) throw new Error(`No video stream found in ${outputPath}`);
 	const [numerator, denominator] = stream.avg_frame_rate.split("/").map(Number);
