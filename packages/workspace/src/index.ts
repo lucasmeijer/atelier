@@ -173,6 +173,8 @@ export async function getWorkspaceInit(id: string): Promise<WorkspaceInitInstruc
 async function readWorkspaceInit(context: Awaited<ReturnType<typeof getAtelierRuntimeContext>>, id: string): Promise<WorkspaceInitInstruction | undefined> {
   const file = Bun.file(workspaceMetadataPath(context, id, initPath));
   if (!(await file.exists())) return undefined;
+  // SAFETY: This internal file serializes the open, declaration-merged
+  // WorkspaceInitInstruction union; feature consumers validate concrete variants.
   return JSON.parse(await file.text()) as WorkspaceInitInstruction;
 }
 
