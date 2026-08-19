@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { JsonValue } from "@atelier/core";
+import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import { composerServiceTier, composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel, type ModelRef } from "./model-state.ts";
 import type { AgentServiceTier } from "./service-tier.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
@@ -108,18 +108,7 @@ export interface AgentToolDefinitionView {
   parameters: unknown;
 }
 
-interface ToolArguments {
-  command?: unknown;
-  path?: unknown;
-  file_path?: unknown;
-  content?: unknown;
-  offset?: unknown;
-  limit?: unknown;
-  timeout?: unknown;
-  edits?: unknown;
-  oldText?: unknown;
-  newText?: unknown;
-}
+type ToolArgumentKey = "command" | "path" | "file_path" | "content" | "offset" | "limit" | "timeout" | "edits" | "oldText" | "newText";
 
 interface EditOperationCandidate {
   oldText?: unknown;
@@ -717,13 +706,11 @@ function fullscreenAttributes(title: string, mode: "template" | "media" = "templ
   return ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="${mode}" data-atelier-fullscreen-title-value="${escapeHtml(title)}"`;
 }
 
-function toolArgs(tool: ToolView): ToolArguments | undefined {
-  if (!tool.args || typeof tool.args !== "object" || Array.isArray(tool.args)) return undefined;
-  // SAFETY: ToolArguments only names optional properties with unknown values.
-  return tool.args as ToolArguments;
+function toolArgs(tool: ToolView): JsonObject | undefined {
+  return isJsonObject(tool.args) ? tool.args : undefined;
 }
 
-function stringArg(args: ToolArguments | undefined, ...keys: Array<keyof ToolArguments>): string | undefined {
+function stringArg(args: JsonObject | undefined, ...keys: ToolArgumentKey[]): string | undefined {
   for (const key of keys) {
     const value = args?.[key];
     if (typeof value === "string") return value;
@@ -731,12 +718,12 @@ function stringArg(args: ToolArguments | undefined, ...keys: Array<keyof ToolArg
   return undefined;
 }
 
-function numberArg(args: ToolArguments | undefined, key: keyof ToolArguments): number | undefined {
+function numberArg(args: JsonObject | undefined, key: ToolArgumentKey): number | undefined {
   const value = args?.[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function formatReadRange(args: ToolArguments | undefined): string {
+function formatReadRange(args: JsonObject | undefined): string {
   const offset = numberArg(args, "offset");
   const limit = numberArg(args, "limit");
   if (offset === undefined && limit === undefined) return "";
@@ -940,7 +927,7 @@ function bashOutputHtml(text: string): string {
   return colorizePlainBuildOutput(text);
 }
 
-function getEditOperations(args: ToolArguments | undefined): DiffOperation[] {
+function getEditOperations(args: JsonObject | undefined): DiffOperation[] {
   if (!args) return [];
   if (Array.isArray(args.edits)) {
     return args.edits.flatMap((edit) => {
