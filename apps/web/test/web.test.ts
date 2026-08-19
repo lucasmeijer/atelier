@@ -42,22 +42,31 @@ const projectSummarySchema = Type.Object({
 });
 const projectResponseSchema = Type.Object({ project: projectSummarySchema });
 const projectListResponseSchema = Type.Object({ projects: Type.Array(projectSummarySchema) });
-const environmentVariableResponseSchema = Type.Object({
-  environmentVariable: Type.Object({
+const environmentVariableSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  value: Type.String(),
+});
+const environmentVariableResponseSchema = Type.Object({ environmentVariable: environmentVariableSchema });
+const projectSecretSummarySchema = Type.Object({
+  id: Type.String(),
+  projectId: Type.String(),
+  envName: Type.String(),
+  hostPattern: Type.String(),
+  placeholder: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+}, { additionalProperties: false });
+const projectSecretResponseSchema = Type.Object({ secret: projectSecretSummarySchema }, { additionalProperties: false });
+const projectDetailResponseSchema = Type.Object({
+  project: Type.Object({
     id: Type.String(),
     name: Type.String(),
-    value: Type.String(),
-  }),
-});
-const projectSecretResponseSchema = Type.Object({
-  secret: Type.Object({
-    id: Type.String(),
-    projectId: Type.String(),
-    envName: Type.String(),
-    hostPattern: Type.String(),
-    placeholder: Type.Optional(Type.String()),
-    createdAt: Type.String(),
-    updatedAt: Type.String(),
+    gitUrl: Type.String(),
+    branch: Type.Union([Type.String(), Type.Null()]),
+    sessionShareKey: Type.String(),
+    environment: Type.Array(environmentVariableSchema),
+    secrets: Type.Array(projectSecretSummarySchema),
   }, { additionalProperties: false }),
 }, { additionalProperties: false });
 
@@ -391,7 +400,7 @@ describe("web app contracts", () => {
 
       const detailResponse = await app.fetch(new Request(`http://test.local/projects/${created.project.id}`, { headers: { accept: "application/json" } }));
       const detailText = await detailResponse.text();
-      const detail = JSON.parse(detailText) as { project: { environment: unknown[]; secrets: unknown[] } };
+      const detail = Value.Parse(projectDetailResponseSchema, JSON.parse(detailText));
       expect(detail.project.environment).toHaveLength(1);
       expect(detail.project.secrets).toHaveLength(1);
       expect(detailText).not.toContain(sensitive);
