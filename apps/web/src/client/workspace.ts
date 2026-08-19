@@ -1694,7 +1694,9 @@ function residencyController(): WorkspaceResidencyController | null {
 
 function workspaceListController(): WorkspaceListController | null {
   const list = document.querySelector<HTMLElement>('[data-controller~="workspace-list"]');
-  return list ? application.getControllerForElementAndIdentifier(list, "workspace-list") as WorkspaceListController | null : null;
+  if (!list) return null;
+  const controller = application.getControllerForElementAndIdentifier(list, "workspace-list");
+  return controller instanceof WorkspaceListController ? controller : null;
 }
 
 /**
