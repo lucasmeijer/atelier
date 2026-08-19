@@ -1,4 +1,4 @@
-import { workspacePreviewPortUrl, workspacePreviewPorts } from "@atelier/workspace";
+import { isWorkspacePreviewPort, workspacePreviewPortUrl, workspacePreviewPorts } from "@atelier/workspace";
 import { publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/proxy-ingress/server";
 import { getWorkspaceBrowserTab } from "./state.ts";
 
@@ -49,7 +49,7 @@ export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, re
   if (!isLoopbackHost(target.hostname)) return target;
 
   const containerPort = Number(target.port || defaultPortForProtocol(target.protocol));
-  if (!Number.isInteger(containerPort) || !(workspacePreviewPorts as readonly number[]).includes(containerPort)) {
+  if (!isWorkspacePreviewPort(containerPort)) {
     throw new Error(`Port ${target.port || defaultPortForProtocol(target.protocol)} is not published for browser previews. Use one of: ${workspacePreviewPorts.join(", ")}`);
   }
 
@@ -79,7 +79,7 @@ function rewriteContainerLocalUrl(raw: string, publicOrigin: string): string {
   }
   if (!isLoopbackHost(url.hostname)) return raw;
   const port = Number(url.port || defaultPortForProtocol(url.protocol));
-  if (!Number.isInteger(port) || !(workspacePreviewPorts as readonly number[]).includes(port)) return raw;
+  if (!isWorkspacePreviewPort(port)) return raw;
   return new URL(`${url.pathname}${url.search}${url.hash}`, publicOrigin).toString();
 }
 

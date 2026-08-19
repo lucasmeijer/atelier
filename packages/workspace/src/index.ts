@@ -33,6 +33,11 @@ export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
 export const workspaceDesktopPort = 6080;
 export const workspacePreviewPorts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010] as const;
+export type WorkspacePreviewPort = (typeof workspacePreviewPorts)[number];
+
+export function isWorkspacePreviewPort(port: number): port is WorkspacePreviewPort {
+  return workspacePreviewPorts.some((previewPort) => previewPort === port);
+}
 
 export interface WorkspaceNewResult { id: string }
 export interface WorkspaceListResult { workspaces: Array<{ id: string; title: string | null; parked?: boolean; init?: WorkspaceInitInstruction; imageOutdated?: boolean }> }
@@ -558,7 +563,7 @@ export async function workspacePortUrl(id: string, containerPort: number, pathAn
 }
 
 export async function workspacePreviewPortUrl(id: string, containerPort: number, pathAndSearch: string, protocol = "http:"): Promise<URL> {
-  if (!(workspacePreviewPorts as readonly number[]).includes(containerPort)) throw invalidArguments(`unsupported workspace preview port: ${containerPort}. Supported ports: ${workspacePreviewPorts.join(", ")}`);
+  if (!isWorkspacePreviewPort(containerPort)) throw invalidArguments(`unsupported workspace preview port: ${containerPort}. Supported ports: ${workspacePreviewPorts.join(", ")}`);
   return await workspacePortUrl(id, containerPort, pathAndSearch, protocol);
 }
 
