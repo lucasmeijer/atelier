@@ -49,6 +49,7 @@ interface TurboLike {
 }
 
 const visiblePresentationPanes = new WeakSet<HTMLElement>();
+const attentionActivatedResidents = new WeakSet<HTMLElement>();
 
 function storedNavigation(storage: Storage, key: string): StoredPersonalNavigation | undefined {
   const value = storage.getItem(key);
@@ -104,8 +105,8 @@ export function createWorkspacePresentationController(
       this.element.addEventListener("atelier:workspace-residency-hidden", this.residencyHidden);
       this.restorePreferences();
       this.normalizeState();
-      this.applyDeepLink();
-      this.applyState({ emit: true });
+      const focusAttendedWorkView = !this.applyDeepLink() && this.activateNewestAttendedWorkView();
+      this.applyState({ emit: true, focus: focusAttendedWorkView });
     }
 
     disconnect(): void {
@@ -225,11 +226,15 @@ export function createWorkspacePresentationController(
     }
 
     private activateWorkView(key: string, contextual: boolean): void {
+      this.selectWorkViewState(key, contextual);
+      this.persistAndApply({ focus: true });
+    }
+
+    private selectWorkViewState(key: string, contextual: boolean): void {
       this.state.activeWorkViewKey = key;
       this.state.workPaneVisible = true;
       if (this.isPhone) this.state.phoneDestination = `work:${key}`;
       if (contextual) this.element.dataset.activeContextualWork = key;
-      this.persistAndApply({ focus: true });
     }
 
     private get isPhone(): boolean { return this.media?.matches ?? window.matchMedia("(max-width: 700px)").matches; }
@@ -258,15 +263,27 @@ export function createWorkspacePresentationController(
       this.persist();
     }
 
-    private applyDeepLink(): void {
+    private activateNewestAttendedWorkView(): boolean {
+      const resident = this.element.closest<HTMLElement>(".workspace-detail-resident.visible");
+      if (!resident || attentionActivatedResidents.has(resident)) return false;
+      attentionActivatedResidents.add(resident);
+      const selector = [...this.element.querySelectorAll<HTMLElement>("[data-work-view-key][data-attention-sequence]")]
+        .sort((left, right) => Number(right.dataset.attentionSequence) - Number(left.dataset.attentionSequence))[0];
+      if (!selector) return false;
+      this.selectWorkViewState(selector.dataset.workViewKey!, selector.dataset.workViewKind === "contextual");
+      return true;
+    }
+
+    private applyDeepLink(): boolean {
       const url = new URL(window.location.href);
-      if (!url.pathname.endsWith(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}`)) return;
+      if (!url.pathname.endsWith(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}`)) return false;
       const key = url.searchParams.get("workView");
-      if (!key || !this.element.querySelector(`[data-work-view-key="${CSS.escape(key)}"]`)) return;
-      this.state.activeWorkViewKey = key;
-      this.state.workPaneVisible = true;
-      if (this.isPhone) this.state.phoneDestination = `work:${key}`;
+      if (!key) return false;
+      const selector = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(key)}"]`);
+      if (!selector) return false;
+      this.selectWorkViewState(key, selector.dataset.workViewKind === "contextual");
       this.persist();
+      return true;
     }
 
     private persist(): void {
@@ -392,7 +409,12 @@ export function createWorkspacePresentationController(
     };
 
     private viewportChanged = (): void => { this.setWorkWidth(this.workPane.getBoundingClientRect().width || 520, false); this.applyState({ emit: true }); };
-    private residencyVisible = (): void => this.applyState({ emit: true });
+    private residencyVisible = (): void => {
+      attentionActivatedResidents.delete(this.element.closest<HTMLElement>(".workspace-detail-resident")!);
+      const focusAttendedWorkView = this.activateNewestAttendedWorkView();
+      this.persist();
+      this.applyState({ emit: true, focus: focusAttendedWorkView });
+    };
     private residencyHidden = (): void => this.emitVisibilityChanges([...this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role]")].filter((pane) => visiblePresentationPanes.has(pane)), []);
 
     private keydown = (event: KeyboardEvent): void => {

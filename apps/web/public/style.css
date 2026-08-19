@@ -430,6 +430,7 @@ a.btn { text-decoration: none; }
 .fixed-shell-agent-conversations > button:hover, .fixed-shell-agent-conversation > button[role="tab"]:hover, .fixed-shell-work-view-selector > button:hover { background: var(--fixed-shell-hover); color: var(--fixed-shell-text); }
 .fixed-shell-agent-bodies, .fixed-shell-work-bodies { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .fixed-shell-live-node { position: absolute; inset: 0; display: none; min-width: 0; min-height: 0; overflow: auto; }
+.fixed-shell-live-node:focus { outline: none; }
 .fixed-shell-live-node.is-active { display: block; }
 .fixed-shell-live-body { min-width: 0; min-height: 100%; }
 

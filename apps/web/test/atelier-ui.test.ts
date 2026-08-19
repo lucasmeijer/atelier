@@ -133,8 +133,8 @@ describe("Atelier Playwright helper", () => {
         { id: "agent-2", title: "Build", bodyHtml: "<p>Second transcript</p>" },
       ],
       workViews: [
-        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", attention: false, availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea><iframe srcdoc="<p>live</p>"></iframe>' },
-        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attention: true, availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
+        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea><iframe srcdoc="<p>live</p>"></iframe>' },
+        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
       ],
     };
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -177,7 +177,7 @@ describe("Atelier Playwright helper", () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "deep-demo", title: "Deep link" },
       agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent</p>" }],
-      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attention: true, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
+      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
     };
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     let acknowledgements = 0;
@@ -197,6 +197,67 @@ describe("Atelier Playwright helper", () => {
       window.Turbo!.renderStreamMessage(`<turbo-stream action="present-work-view" target="${target.id}" data-work-view-key="browser:1"></turbo-stream>`);
     });
     await page.waitForTimeout(20);
+    expect(acknowledgements).toBe(1);
+    await page.close();
+  });
+
+  test("reveals and focuses an agent-presented Work view when its cached Workspace becomes visible", async () => {
+    const pane: WorkspacePanePresentation = { projects: [{ id: "project", title: "Project", workspaces: [
+      { id: "visible-demo", title: "Visible", active: true },
+      { id: "present-demo", title: "Presented" },
+    ] }] };
+    const visible: WorkspacePresentation = {
+      workspace: { id: "visible-demo", title: "Visible" },
+      agentConversations: [{ id: "agent-visible", title: "Agent", bodyHtml: "<p>Visible Agent</p>" }],
+      workViews: [],
+    };
+    const cached: WorkspacePresentation = {
+      workspace: { id: "present-demo", title: "Presented" },
+      agentConversations: [{ id: "agent-present", title: "Agent", bodyHtml: "<p>Presented Agent</p>" }],
+      workViews: [],
+    };
+    const presented: WorkspacePresentation = {
+      ...cached,
+      workViews: [
+        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
+        { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 2, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" },
+      ],
+      preserveLiveKeys: new Set(["agent:agent-present"]),
+    };
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.route("http://atelier.test/workspaces/visible-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(visible, pane, [cached])}<script type="module" src="/workspace-test.js"></script>` }));
+    let acknowledgements = 0;
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/attention/acknowledge", (route) => { acknowledgements += 1; return route.fulfill({ status: 204 }); });
+    await page.goto("http://atelier.test/workspaces/visible-demo");
+    await page.waitForFunction(() => document.querySelectorAll('[data-navigation-ready="true"]').length === 2);
+
+    const stream = workspacePresentationTurboStream("present-demo", presented);
+    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), stream);
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="present-demo"] [data-navigation-ready="true"]'));
+    const cachedResident = page.locator('.workspace-detail-resident[data-workspace-id="present-demo"]');
+    expect(await cachedResident.locator("[data-work-view-key] .fixed-shell-attention-dot").count()).toBe(2);
+    await page.locator('.fixed-shell-workspace-pane [data-workspace-entry-id="present-demo"]').evaluate((button: HTMLButtonElement) => button.click());
+    const resident = page.locator('.workspace-detail-resident[data-workspace-id="present-demo"]');
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="present-demo"]')?.classList.contains("visible"));
+
+    expect(await resident.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-work-pane-open");
+    const browserPane = resident.locator('[data-workspace-pane-role="work"][data-workspace-pane-id="browser:1"]');
+    expect(await browserPane.evaluate((pane) => document.activeElement === pane)).toBe(true);
+    expect(await browserPane.evaluate((pane) => getComputedStyle(pane).outlineStyle)).toBe("none");
+    await page.waitForTimeout(20);
+    expect(acknowledgements).toBe(1);
+
+    const acknowledgedBrowser = { ...presented.workViews[1]! };
+    delete acknowledgedBrowser.attentionSequence;
+    const acknowledged = workspacePresentationTurboStream("present-demo", {
+      ...presented,
+      workViews: [presented.workViews[0]!, acknowledgedBrowser],
+      preserveLiveKeys: new Set(["agent:agent-present", "work:files:workspace", "work:browser:1"]),
+    });
+    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), acknowledged);
+    await page.waitForTimeout(20);
+    expect(await resident.locator('[data-work-view-key="browser:1"]').getAttribute("aria-selected")).toBe("true");
     expect(acknowledgements).toBe(1);
     await page.close();
   });
@@ -276,7 +337,7 @@ describe("Atelier Playwright helper", () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "motion-demo", title: "Motion" },
       agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent content</p>" }],
-      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attention: false, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
+      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
     };
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="/workspace-test.js"></script>` }));
@@ -301,7 +362,7 @@ describe("Atelier Playwright helper", () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "stream-demo", title: "Before" },
       agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<textarea data-probe="draft">draft</textarea>' }],
-      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attention: false, availability: { phase: "live" }, bodyHtml: '<iframe srcdoc="<p>live</p>"></iframe>' }],
+      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<iframe srcdoc="<p>live</p>"></iframe>' }],
     };
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
@@ -335,8 +396,8 @@ describe("Atelier Playwright helper", () => {
       workspace: { id: "phone-demo", title: "Phone" },
       agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<textarea data-probe="agent">draft</textarea>' }],
       workViews: [
-        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", attention: false, availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea>', close: { action: "/terminal/close", label: "Terminal Work view" } },
-        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attention: true, availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files Work view" } },
+        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea>', close: { action: "/terminal/close", label: "Terminal Work view" } },
+        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files Work view" } },
       ],
       commands: [{ id: "files.open", label: "Files", scope: "workspace", placement: "work-launcher" }, { id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }],
     };
@@ -352,7 +413,7 @@ describe("Atelier Playwright helper", () => {
     expect(await page.locator('[data-mobile-destination="work:files:workspace"]').count()).toBe(0);
     expect(await page.locator("[data-mobile-more] .fixed-shell-attention-dot").count()).toBe(1);
     await page.locator("[data-mobile-more]").evaluate((button: HTMLButtonElement) => button.click());
-    expect(await page.getByRole("button", { name: "Close current view" }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: "Close current view" }).count()).toBe(1);
     await page.getByRole("button", { name: "Close More" }).evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.locator(".fixed-shell-more-section").first().locator("button", { hasText: "Files" }).count()).toBe(1);
     expect(await page.locator(".fixed-shell-mobile-fixed, .fixed-shell-mobile-scroll > button").evaluateAll((buttons) => buttons.every((button) => !button.textContent?.trim()))).toBe(true);

@@ -81,7 +81,7 @@ import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type AgentPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 
 const jsonStringSchema = Type.String();
 
@@ -805,18 +805,19 @@ ${moduleStylesHtml()}
       workViews: storedWorkViews.map((stored) => {
         const key = workViewKey(stored.reference);
         const contribution = currentByKey.get(key);
-        return {
+        const view: WorkPaneContribution = {
           key,
           label: contribution?.label ?? `${stored.reference.type} unavailable`,
           kind: contribution?.kind ?? "resource",
-          mobileDestination: ["file", "browser", "terminal"].includes(stored.reference.type) ? "direct" as const : "more" as const,
-          attention: stored.attention,
+          mobileDestination: ["file", "browser", "terminal"].includes(stored.reference.type) ? "direct" : "more",
           availability: contribution?.availability ?? { phase: "unavailable", detail: "The referenced resource is not currently available." },
           bodyHtml: contribution?.bodyHtml ?? "",
-          sourceKey: contribution?.sourceKey,
-          actionsHtml: contribution?.actionsHtml,
           close: workViewClose(workspaceId, stored.reference, contribution?.label ?? stored.reference.type),
         };
+        if (contribution?.sourceKey !== undefined) view.sourceKey = contribution.sourceKey;
+        if (contribution?.actionsHtml !== undefined) view.actionsHtml = contribution.actionsHtml;
+        if (stored.attentionSequence !== undefined) view.attentionSequence = stored.attentionSequence;
+        return view;
       }),
       commands,
       overlayHtml: attachments.flatMap((attachment) => attachment.overlayHtml ?? []),

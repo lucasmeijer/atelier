@@ -9,9 +9,9 @@ function fixture(overrides: Partial<WorkspacePresentation> = {}): WorkspacePrese
       { id: "agent-b", title: "Second", bodyHtml: '<div data-probe="agent-b">Transcript</div>' },
     ],
     workViews: [
-      { key: "terminal:one", label: "Terminal", kind: "resource", mobileDestination: "direct", attention: false, availability: { phase: "live" }, bodyHtml: '<div data-probe="terminal">Terminal</div>' },
-      { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attention: true, availability: { phase: "reconnecting", detail: "Reconnecting without replacing the listing." }, bodyHtml: '<div data-probe="files">Listing</div>' },
-      { key: "browser:preview", label: "Preview", kind: "resource", mobileDestination: "direct", attention: false, availability: { phase: "unavailable", detail: "Preview exited.", recoveryHtml: "<button>Retry</button>" }, bodyHtml: "<iframe></iframe>" },
+      { key: "terminal:one", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<div data-probe="terminal">Terminal</div>' },
+      { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 7, availability: { phase: "reconnecting", detail: "Reconnecting without replacing the listing." }, bodyHtml: '<div data-probe="files">Listing</div>' },
+      { key: "browser:preview", label: "Preview", kind: "resource", mobileDestination: "direct", availability: { phase: "unavailable", detail: "Preview exited.", recoveryHtml: "<button>Retry</button>" }, bodyHtml: "<iframe></iframe>" },
     ],
     ...overrides,
   };
@@ -75,6 +75,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain("Preview exited.");
     expect(html).toContain("<button>Retry</button>");
     expect(html).toContain('aria-label="Attention"');
+    expect(html).toContain('data-attention-sequence="7"');
   });
 
   test("renders phone Resource destinations and discovers Contextual views through More", () => {
