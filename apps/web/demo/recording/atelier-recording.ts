@@ -298,7 +298,7 @@ function assertOutputPath(path: string): void {
 }
 
 function assertAbsoluteFile(path: string, extension: string, label: string): void {
-	if (typeof path !== "string" || !isAbsolute(path) || extname(path).toLowerCase() !== extension) {
+	if (!isAbsolute(path) || extname(path).toLowerCase() !== extension) {
 		throw new Error(`${label} must be an absolute ${extension} path: ${String(path)}`);
 	}
 }
