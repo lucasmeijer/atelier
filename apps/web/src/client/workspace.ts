@@ -909,7 +909,7 @@ class AtelierShortcutsController extends Controller {
       label: "New workspace",
       scope: "global",
       binding: "Meta+Alt+Semicolon",
-      run: () => this.openDialogPrompt("project-picker-modal"),
+      run: () => this.openProjectPickerDialog(),
     });
     this.registerCommand({
       id: "atelier.open-palette",
@@ -1239,8 +1239,8 @@ class AtelierShortcutsController extends Controller {
     if (html) window.Turbo?.renderStreamMessage(html);
   }
 
-  private openDialogPrompt(id: string): void {
-    const dialog = document.getElementById(id) as HTMLDialogElement | null;
+  private openProjectPickerDialog(): void {
+    const dialog = document.querySelector<HTMLDialogElement>("dialog#project-picker-modal");
     if (!dialog) return;
     if (!dialog.open) dialog.showModal();
     focusDialogPromptEnd(dialog);
