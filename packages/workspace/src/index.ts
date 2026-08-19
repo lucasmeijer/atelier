@@ -44,6 +44,7 @@ const initPath = "init.json";
 const workspaceManifestPath = ".atelier/workspace.json";
 const workspaceStartupTimeoutMs = 5 * 60_000;
 const dockerLabelsSchema = Type.Record(Type.String(), Type.String());
+const nonBlankStringSchema = Type.String({ pattern: "\\S" });
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
 export const workspaceDesktopPort = 6080;
@@ -206,7 +207,7 @@ export interface RepoWorkspaceManifest {
 function optionalString(record: JsonObject, key: string, path: string, label = key): string | undefined {
   const value = record[key];
   if (value === undefined) return undefined;
-  if (typeof value !== "string" || !value.trim()) throw invalidArguments(`invalid ${path}: ${label} must be a non-empty string`);
+  if (!Value.Check(nonBlankStringSchema, value)) throw invalidArguments(`invalid ${path}: ${label} must be a non-empty string`);
   return value;
 }
 
