@@ -925,6 +925,13 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
 
 const filePathDelimiters = new Set([" ", "\t", "\n", "\r", '"', "'", "="]);
 
+export interface AgentCompletionInput {
+  value: string;
+  selectionStart: number | null;
+  selectionEnd: number | null;
+  setSelectionRange(start: number, end: number): void;
+}
+
 function unclosedDoubleQuoteStart(text: string): number | undefined {
   let start: number | undefined;
   for (let index = 0; index < text.length; index++) {
@@ -934,7 +941,7 @@ function unclosedDoubleQuoteStart(text: string): number | undefined {
   return start;
 }
 
-export function fileCompletionPrefix(input: HTMLInputElement | HTMLTextAreaElement): string {
+export function fileCompletionPrefix(input: AgentCompletionInput): string {
   const cursor = input.selectionStart ?? 0;
   const lineStart = input.value.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
   const before = input.value.slice(lineStart, cursor);
@@ -964,7 +971,7 @@ export interface AgentCompletionRequest {
   mode?: "direct" | "fuzzy";
 }
 
-export function agentCompletionRequest(input: HTMLInputElement | HTMLTextAreaElement, force = false): AgentCompletionRequest | undefined {
+export function agentCompletionRequest(input: AgentCompletionInput, force = false): AgentCompletionRequest | undefined {
   if (force) {
     const prefix = fileCompletionPrefix(input);
     return { kind: "file", query: rawFileCompletionQuery(prefix), mode: prefix.startsWith("@") ? "fuzzy" : "direct" };
@@ -981,7 +988,7 @@ export function agentCompletionRequest(input: HTMLInputElement | HTMLTextAreaEle
   return prefix.startsWith("@") ? { kind: "file", query: rawFileCompletionQuery(prefix), mode: "fuzzy" } : undefined;
 }
 
-export function insertSlashCommand(option: Pick<HTMLElement, "dataset">, input: HTMLInputElement | HTMLTextAreaElement): void {
+export function insertSlashCommand(option: Pick<HTMLElement, "dataset">, input: AgentCompletionInput): void {
   const trigger = option.dataset.commandTrigger;
   if (!trigger) return;
   const end = input.selectionEnd ?? 0;
@@ -990,7 +997,7 @@ export function insertSlashCommand(option: Pick<HTMLElement, "dataset">, input: 
   input.setSelectionRange(trigger.length + 1, trigger.length + 1);
 }
 
-function insertFileCompletion(option: HTMLElement, input: HTMLInputElement | HTMLTextAreaElement): void {
+function insertFileCompletion(option: HTMLElement, input: AgentCompletionInput): void {
   const path = option.dataset.filePath;
   const prefix = fileCompletionPrefix(input);
   if (!path) return;

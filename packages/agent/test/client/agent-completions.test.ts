@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
-import { agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, scrollMessageToTop, transcriptFollowingAfterScroll } from "../../src/client/agent-controllers.ts";
+import { type AgentCompletionInput, agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, scrollMessageToTop, transcriptFollowingAfterScroll } from "../../src/client/agent-controllers.ts";
 
-function input(value: string, cursor = value.length): HTMLTextAreaElement {
+function input(value: string, cursor = value.length): AgentCompletionInput {
   return {
     value,
     selectionStart: cursor,
@@ -10,7 +10,7 @@ function input(value: string, cursor = value.length): HTMLTextAreaElement {
       this.selectionStart = start ?? 0;
       this.selectionEnd = end ?? 0;
     },
-  } as HTMLTextAreaElement;
+  };
 }
 
 describe("agent prompt focus", () => {
