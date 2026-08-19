@@ -32,6 +32,14 @@ describe("workspace manifest config seeding", () => {
   });
 });
 
+describe("workspace manifest init scripts", () => {
+  test("accepts only arrays of strings", () => {
+    expect(parse({ version: 1, initScripts: ["bun install", "bun test"] }).initScripts).toEqual(["bun install", "bun test"]);
+    expectInvalid({ version: 1, initScripts: "bun install" }, "initScripts must be an array of strings");
+    expectInvalid({ version: 1, initScripts: ["bun install", 42] }, "initScripts must be an array of strings");
+  });
+});
+
 describe("workspace manifest Docker image preload", () => {
   test("is optional and accepts an empty array", () => {
     expect(parse({ version: 1 })).toEqual({ version: 1 });

@@ -46,6 +46,8 @@ const workspaceStartupTimeoutMs = 5 * 60_000;
 const dockerLabelsSchema = Type.Record(Type.String(), Type.String());
 const booleanSchema = Type.Boolean();
 const nonBlankStringSchema = Type.String({ pattern: "\\S" });
+const stringArraySchema = Type.Array(Type.String());
+const nonBlankStringArraySchema = Type.Array(nonBlankStringSchema);
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
 export const workspaceDesktopPort = 6080;
@@ -241,7 +243,7 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
   const dockerRecord = optionalRecord(record, "docker", path);
   const privileged = dockerRecord ? optionalBoolean(dockerRecord, "privileged", path, "docker.privileged") : undefined;
   const preloadImagesValue = dockerRecord?.preloadImages;
-  if (preloadImagesValue !== undefined && (!Array.isArray(preloadImagesValue) || !preloadImagesValue.every((spec): spec is string => typeof spec === "string" && Boolean(spec.trim())))) {
+  if (preloadImagesValue !== undefined && !Value.Check(nonBlankStringArraySchema, preloadImagesValue)) {
     throw invalidArguments(`invalid ${path}: docker.preloadImages must be an array of non-empty strings`);
   }
   const preloadImages = preloadImagesValue?.map((spec) => spec.trim());
@@ -250,7 +252,7 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
   if (docker && privileged !== undefined) docker.privileged = privileged;
   if (docker && preloadImages) docker.preloadImages = preloadImages;
   const initScripts = record.initScripts;
-  if (initScripts !== undefined && (!Array.isArray(initScripts) || !initScripts.every((script) => typeof script === "string"))) throw invalidArguments(`invalid ${path}: initScripts must be an array of strings`);
+  if (initScripts !== undefined && !Value.Check(stringArraySchema, initScripts)) throw invalidArguments(`invalid ${path}: initScripts must be an array of strings`);
   const seedPiConfigRecord = optionalRecord(record, "seedPiConfig", path);
   const authJson = seedPiConfigRecord ? optionalString(seedPiConfigRecord, "authJson", path, "seedPiConfig.authJson") : undefined;
   const modelsJson = seedPiConfigRecord ? optionalString(seedPiConfigRecord, "modelsJson", path, "seedPiConfig.modelsJson") : undefined;
