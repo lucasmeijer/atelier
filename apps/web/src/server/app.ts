@@ -1682,7 +1682,7 @@ ${moduleStylesHtml()}
   }
 
   async function resizeWorkspaceGroupsEndpoint(workspaceId: string, request: Request): Promise<Response> {
-    const body = await readJsonObject(request) as { sizes?: unknown };
+    const body = await readJsonObject(request);
     const sizes = Array.isArray(body.sizes) ? body.sizes.map(Number).filter((size) => Number.isFinite(size) && size > 0) : [];
     if (!sizes.length) throw invalidArguments("sizes must contain positive numbers");
     let current = layouts.current(workspaceId);
