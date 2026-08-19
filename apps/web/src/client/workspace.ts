@@ -1687,7 +1687,9 @@ class WorkspaceResidencyController extends Controller {
 
 function residencyController(): WorkspaceResidencyController | null {
   const residency = document.querySelector<HTMLElement>('[data-controller~="workspace-residency"]');
-  return residency ? application.getControllerForElementAndIdentifier(residency, "workspace-residency") as WorkspaceResidencyController | null : null;
+  if (!residency) return null;
+  const controller = application.getControllerForElementAndIdentifier(residency, "workspace-residency");
+  return controller instanceof WorkspaceResidencyController ? controller : null;
 }
 
 function workspaceListController(): WorkspaceListController | null {
