@@ -59,6 +59,17 @@ describe("workspace agent session store", () => {
     expect(await Bun.file(agent.path).exists()).toBe(true);
   });
 
+  test("ignores incomplete persisted project metadata", async () => {
+    const root = await dataDir();
+    const path = join(root, "workspaces", "ws1", "metadata");
+    await mkdir(path, { recursive: true });
+    await writeFile(join(path, "init.json"), JSON.stringify({ type: "project.git", sessionShareKey: "unvalidated-share" }));
+
+    const agent = await ensureDefaultWorkspaceAgent("ws1");
+
+    expect(agent.path).toStartWith(join(root, "session-shares", "projectless"));
+  });
+
   test("workspaces with the same session share key share storage while tabs stay workspace-local", async () => {
     await dataDir();
     await writeProjectInit("front", "frontend", "suite");

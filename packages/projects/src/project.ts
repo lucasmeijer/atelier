@@ -3,17 +3,19 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { AtelierCoreError, getAtelierRuntimeContext } from "@atelier/core";
 import type { WorkspaceInitInstruction } from "@atelier/workspace";
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
-export interface GitProjectInitInstruction {
-  type: "project.git";
-  projectId: string;
-  name: string;
-  gitUrl: string;
-  branch: string | null;
-  sessionShareKey: string;
-}
+const gitProjectInitSchema = Type.Object({
+  type: Type.Literal("project.git"),
+  projectId: Type.String(),
+  name: Type.String(),
+  gitUrl: Type.String(),
+  branch: Type.Union([Type.String(), Type.Null()]),
+  sessionShareKey: Type.String(),
+});
+
+export type GitProjectInitInstruction = Static<typeof gitProjectInitSchema>;
 
 declare module "@atelier/workspace" {
   interface WorkspaceInitInstructionMap {
@@ -225,6 +227,6 @@ export function projectWorkspaceInit(project: ProjectSummary): WorkspaceInitInst
   return { type: "project.git", projectId: project.id, name: project.name, gitUrl: project.gitUrl, branch: project.branch, sessionShareKey: project.sessionShareKey };
 }
 
-export function isGitProjectInit(init: WorkspaceInitInstruction | undefined): init is GitProjectInitInstruction {
-  return init?.type === "project.git";
+export function isGitProjectInit(init: unknown): init is GitProjectInitInstruction {
+  return Value.Check(gitProjectInitSchema, init);
 }

@@ -27,7 +27,7 @@ function workspaceMetadataInitPath(workspaceId: string, dataDir = getAtelierRunt
 async function workspaceProjectInit(workspaceId: string, dataDir = getAtelierRuntimeContext().atelierDataDir): Promise<GitProjectInitInstruction | undefined> {
   const file = Bun.file(workspaceMetadataInitPath(workspaceId, dataDir));
   if (!(await file.exists())) return undefined;
-  const init = JSON.parse(await file.text()) as Parameters<typeof isGitProjectInit>[0];
+  const init: unknown = JSON.parse(await file.text());
   return isGitProjectInit(init) ? init : undefined;
 }
 
