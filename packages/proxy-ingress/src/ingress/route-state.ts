@@ -86,7 +86,7 @@ async function listWorkspaceDirs(): Promise<string[]> {
     const entries = await readdir(atelierDataPath(getAtelierRuntimeContext(), "workspaces"), { withFileTypes: true });
     return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
     throw error;
   }
 }
