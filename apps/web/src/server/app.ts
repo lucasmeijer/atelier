@@ -758,7 +758,7 @@ ${moduleStylesHtml()}
         id: entry.id,
         title: workspaceTitle(entry),
         active: entry.id === activeWorkspaceId,
-        busy: registry.isWorkspaceBusy(entry.id),
+        busy: entry.phase === "starting" || registry.isWorkspaceBusy(entry.id),
         ready: registry.isWorkspaceUnread(entry.id) && entry.id !== activeWorkspaceId,
       };
       if (isGitProjectInit(entry.init)) pane.color = repoColor(entry.init.projectId);

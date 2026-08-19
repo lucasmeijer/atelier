@@ -283,7 +283,8 @@ describe("web app contracts", () => {
     // rows container and break every subsequent list broadcast.
     expect(listBroadcast).toContain('<turbo-stream action="update" target="workspaces_table_rows">');
     await Bun.sleep(10);
-    expect(broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"') && html.includes(`data-workspace-entry-id="${id}"`))).toBe(true);
+    const startingPaneBroadcast = broadcasts.find((html) => html.includes('action="replace-workspace-pane-collections"') && html.includes(`data-workspace-entry-id="${id}"`));
+    expect(startingPaneBroadcast).toContain('class="status-spinner sm fixed-shell-workspace-busy"');
 
     broadcasts.length = 0;
     provision.resolve();
