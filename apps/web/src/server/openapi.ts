@@ -1,5 +1,6 @@
 import { emptyWorkspaceCommandInputSchema, type WorkspaceModuleCommandHandler } from "@atelier/shared";
 import type { TSchema } from "typebox";
+import { closeWorkViewRequestSchema, reorderWorkViewRequestSchema, workViewReferenceSchema } from "./work-view-api.ts";
 
 const errorResponse = {
   description: "Request failed",
@@ -53,10 +54,10 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[]) {
       "/workspaces/{id}/sidebar-title": { post: { summary: "Rename a workspace", parameters: [workspaceId], requestBody: jsonBody({ type: "object", required: ["title"], properties: { title: { type: "string" } }, additionalProperties: false }), responses: jsonResponse("Workspace renamed", { $ref: "#/components/schemas/WorkspaceEnvelope" }) } },
       "/workspaces/{id}/commands/{commandId}": { post: { summary: "Execute a workspace command", parameters: [workspaceId, { name: "commandId", in: "path", required: true, schema: { type: "string", enum: Object.keys(commandSchemas) } }], requestBody: jsonBody({ anyOf: Object.values(commandSchemas) }), responses: jsonResponse("Command executed", { $ref: "#/components/schemas/CommandResult" }), "x-atelier-command-schemas": commandSchemas } },
       "/workspaces/{id}/browser/{browserId}/navigate": { post: { summary: "Navigate a Browser Work view", parameters: [workspaceId, { name: "browserId", in: "path", required: true, schema: { type: "string" } }], requestBody: jsonBody({ type: "object", required: ["url"], properties: { url: { type: "string" } }, additionalProperties: false }), responses: jsonResponse("Browser navigated", { type: "object" }) } },
-      "/workspaces/{id}/work-views/reorder": { post: { summary: "Reorder a typed Work view", parameters: [workspaceId], requestBody: jsonBody({ type: "object", required: ["key", "index"], properties: { key: { type: "string" }, index: { type: "integer", minimum: 0 } }, additionalProperties: false }), responses: jsonResponse("Work views reordered", { $ref: "#/components/schemas/WorkViewsEnvelope" }) } },
+      "/workspaces/{id}/work-views/reorder": { post: { summary: "Reorder a typed Work view", parameters: [workspaceId], requestBody: jsonBody(reorderWorkViewRequestSchema), responses: jsonResponse("Work views reordered", { $ref: "#/components/schemas/WorkViewsEnvelope" }) } },
       "/workspaces/{id}/work-views/{key}/attention/request": { post: { summary: "Present a Work view and request Attention", parameters: [workspaceId, { name: "key", in: "path", required: true, schema: { type: "string" } }], responses: jsonResponse("Attention requested", { type: "object" }) } },
       "/workspaces/{id}/work-views/{key}/attention/acknowledge": { post: { summary: "Acknowledge Work-view Attention", parameters: [workspaceId, { name: "key", in: "path", required: true, schema: { type: "string" } }], responses: jsonResponse("Attention acknowledged", { type: "object" }) } },
-      "/workspaces/{id}/work-views/close": { post: { summary: "Close a typed Work view", parameters: [workspaceId], requestBody: jsonBody({ type: "object", required: ["reference"], properties: { reference: { $ref: "#/components/schemas/WorkViewReference" } }, additionalProperties: false }), responses: jsonResponse("Work view closed", { $ref: "#/components/schemas/WorkViewsEnvelope" }) } },
+      "/workspaces/{id}/work-views/close": { post: { summary: "Close a typed Work view", parameters: [workspaceId], requestBody: jsonBody(closeWorkViewRequestSchema), responses: jsonResponse("Work view closed", { $ref: "#/components/schemas/WorkViewsEnvelope" }) } },
       "/workspaces/{id}/agent-conversations/{conversationId}/close": { post: { summary: "Archive an Agent conversation", parameters: [workspaceId, { name: "conversationId", in: "path", required: true, schema: { type: "string", format: "uuid" } }], responses: jsonResponse("Agent conversation archived", { type: "object" }) } },
       "/workspaces/{id}/park": { post: { summary: "Park a workspace", parameters: [workspaceId], responses: jsonResponse("Workspace parked", { type: "object" }) } },
       "/workspaces/{id}/unpark": { post: { summary: "Unpark a workspace", parameters: [workspaceId], responses: jsonResponse("Workspace unparked", { type: "object" }) } },
@@ -131,7 +132,7 @@ export function atelierOpenApi(commands: WorkspaceModuleCommandHandler[]) {
             commands: { type: "array", items: { type: "object" } },
           } } },
         },
-        WorkViewReference: { type: "object", required: ["type"], properties: { type: { type: "string" } }, additionalProperties: true },
+        WorkViewReference: workViewReferenceSchema,
         WorkView: { type: "object", required: ["reference", "attention"], properties: { reference: { $ref: "#/components/schemas/WorkViewReference" }, attention: { type: "boolean" }, attentionSequence: { type: "integer" } }, additionalProperties: false },
         WorkViewsEnvelope: { type: "object", required: ["workViews"], properties: { workViews: { type: "array", items: { $ref: "#/components/schemas/WorkView" } } } },
         CommandResult: { type: "object", required: ["command", "workViews"], properties: { command: { type: "object" }, workViews: { type: "array", items: { $ref: "#/components/schemas/WorkView" } } } },

@@ -78,6 +78,7 @@ import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.t
 import { handleOnboardingRequest, renderOnboardingDialogIfNeeded } from "./onboarding/routes.ts";
 import { GitHubRepositorySearchRateLimitError, renderGitHubRepositorySearchMenu, renderGitHubRepositorySearchRateLimitMenu, searchGitHubRepositories, shouldSearchGitHubRepositories } from "./github-repo-search.ts";
 import { atelierOpenApi } from "./openapi.ts";
+import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type AgentPaneContribution, type WorkspacePaneEntry, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
@@ -1622,8 +1623,7 @@ ${moduleStylesHtml()}
   }
 
   async function reorderWorkViewEndpoint(workspaceId: string, request: Request): Promise<Response> {
-    const body = await readJsonObject(request);
-    if (typeof body.key !== "string" || typeof body.index !== "number") throw invalidArguments("key and index are required");
+    const body = parseReorderWorkViewRequest(await readJsonObject(request));
     const before = await fixedWorkspacePresentation(workspaceId, { renderWorkViewSourceKeys: new Set() });
     const stored = (await presentationStore.listWorkViews(workspaceId)).find((view) => workViewKey(view.reference) === body.key);
     if (!stored) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${body.key}`);
@@ -1634,8 +1634,7 @@ ${moduleStylesHtml()}
   }
 
   async function closeWorkViewJsonEndpoint(workspaceId: string, request: Request): Promise<Response> {
-    const body = await readJsonObject(request);
-    if (!body.reference || typeof body.reference !== "object" || Array.isArray(body.reference)) throw invalidArguments("reference is required");
+    const body = parseCloseWorkViewRequest(await readJsonObject(request));
     return await closeWorkViewEndpoint(workspaceId, JSON.stringify(body.reference), request);
   }
 
