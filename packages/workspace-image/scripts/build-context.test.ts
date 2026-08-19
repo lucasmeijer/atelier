@@ -3,6 +3,7 @@ import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseWorkspaceImageMetadata } from "../src/metadata.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const temporaryRoots: string[] = [];
@@ -19,6 +20,15 @@ async function generateInCheckout(prefix: string): Promise<{ metadata: string; d
 }
 
 describe("workspace image content identity", () => {
+  test("validates generated metadata before consumers use it", () => {
+    expect(parseWorkspaceImageMetadata({ tag: "atelier-workspace:abc", modules: ["base"] })).toEqual({
+      tag: "atelier-workspace:abc",
+      modules: ["base"],
+    });
+    expect(() => parseWorkspaceImageMetadata({ tag: 42, modules: ["base"] })).toThrow();
+    expect(() => parseWorkspaceImageMetadata({ tag: "atelier-workspace:abc" })).toThrow();
+  });
+
   test("equivalent checkouts at different absolute paths produce identical output", async () => {
     const [left, right] = await Promise.all([generateInCheckout("atelier-context-a-"), generateInCheckout("atelier-context-b-")]);
     expect(left.metadata).toBe(right.metadata);

@@ -30,6 +30,7 @@
     "demo:recording": "bun apps/web/demo/recording/example.ts"
   },
   "devDependencies": {
+    "@atelier/workspace-image": "workspace:*",
     "@oxlint/plugins": "1.78.0",
     "@playwright/test": "1.61.0",
     "bun-types": "1.3.14",

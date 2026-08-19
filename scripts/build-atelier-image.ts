@@ -3,6 +3,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { arch, tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseWorkspaceImageMetadata } from "@atelier/workspace-image/metadata";
 
 const usage = `Build the Atelier Docker image.
 
@@ -40,8 +41,6 @@ interface Options {
   progress?: string;
   buildArgs: string[];
 }
-
-interface WorkspaceImageMetadata { tag: string }
 
 function fail(message: string): never {
   console.error(`error: ${message}`);
@@ -239,7 +238,7 @@ const uniqueTags = [...new Set(tags)];
 const imageRefs = uniqueTags.map((tag) => `${options.image}:${tag}`);
 
 run(["bun", "packages/workspace-image/scripts/build-context.mjs", workspaceContextDir]);
-const workspaceMetadata = JSON.parse(await Bun.file(`${workspaceContextDir}/metadata.json`).text()) as WorkspaceImageMetadata;
+const workspaceMetadata = parseWorkspaceImageMetadata(JSON.parse(await Bun.file(`${workspaceContextDir}/metadata.json`).text()));
 const workspaceTag = workspaceHashTag(workspaceMetadata.tag);
 const workspaceRepo = workspaceImageRepository(options.image);
 const defaultWorkspaceImageRef = `${workspaceRepo}:${workspaceTag}`;
