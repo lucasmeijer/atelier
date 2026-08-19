@@ -288,7 +288,7 @@ async function moveFile(from: string, to: string): Promise<void> {
 }
 
 function assertRecordingName(name: string): void {
-	if (typeof name !== "string" || !/^[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$/.test(name)) {
+	if (!/^[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$/.test(name)) {
 		throw new Error("recording name must use lowercase letters, numbers, hyphens, or underscores without path separators");
 	}
 }
