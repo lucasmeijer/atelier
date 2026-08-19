@@ -32,7 +32,7 @@ type HtmlAutocompleteOptions = {
   keydown?(event: KeyboardEvent, input: HTMLInputElement | HTMLTextAreaElement, url: string, actions: HtmlAutocompleteActions): boolean;
   loadingHtml?: string;
   triggerKeysWhenClosed?: string[];
-  fullscreenShortcut?: boolean | ((option: HTMLElement) => boolean);
+  fullscreenShortcut?(option: HTMLElement): boolean;
   /** Return true when an event inside the menu has been handled. */
   menuEvent?(event: Event, input: HTMLInputElement | HTMLTextAreaElement): boolean | void;
 };
@@ -779,7 +779,7 @@ export function createHtmlAutocompleteController(Controller: StimulusControllerC
       }
       if (event.key.toLowerCase() === "f" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
         const active = this.activeOption();
-        const fullscreen = active && (typeof autocomplete.fullscreenShortcut === "function" ? autocomplete.fullscreenShortcut(active) : autocomplete.fullscreenShortcut);
+        const fullscreen = active && autocomplete.fullscreenShortcut?.(active);
         if (!fullscreen) return;
         event.preventDefault();
         event.stopImmediatePropagation();
