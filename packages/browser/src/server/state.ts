@@ -1,21 +1,21 @@
-import { isJsonObject, type JsonValue } from "@atelier/core";
+import type { JsonValue } from "@atelier/core";
 import { domId } from "@atelier/shared";
 import { createWorkspaceMetadataState } from "@atelier/workspace";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
-export interface WorkspaceBrowserView {
-  key: string;
-  label: string;
-  targetUrl: string;
-}
+const workspaceBrowserViewSchema = Type.Object({
+  key: Type.String({ pattern: "^browser-\\d+$" }),
+  label: Type.String(),
+  targetUrl: Type.String(),
+});
+
+const workspaceBrowserViewsSchema = Type.Array(workspaceBrowserViewSchema);
+
+export type WorkspaceBrowserView = Static<typeof workspaceBrowserViewSchema>;
 
 function parseBrowserViews(value: JsonValue): WorkspaceBrowserView[] {
-  if (!Array.isArray(value)) throw new Error("invalid persisted Browser Work views");
-  return value.map((entry) => {
-    if (!isJsonObject(entry) || typeof entry.key !== "string" || !/^browser-\d+$/.test(entry.key) || typeof entry.label !== "string" || typeof entry.targetUrl !== "string") {
-      throw new Error("invalid persisted Browser Work view");
-    }
-    return { key: entry.key, label: entry.label, targetUrl: entry.targetUrl };
-  });
+  return Value.Parse(workspaceBrowserViewsSchema, Value.Clean(workspaceBrowserViewsSchema, value));
 }
 
 const browserViews = createWorkspaceMetadataState("browser-work-views.json", parseBrowserViews, () => []);
