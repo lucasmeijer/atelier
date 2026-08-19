@@ -1,13 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { renderWorkspacePresentation, workspacePresentationTurboStream, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
+import { renderWorkspacePane, renderWorkspacePresentation, workspacePresentationTurboStream, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 
 function fixture(overrides: Partial<WorkspacePresentation> = {}): WorkspacePresentation {
   return {
-    workspace: { id: "workspace-1", title: "Typed shell", projectTitle: "Atelier" },
-    projects: [{ id: "project-1", title: "Atelier", workspaces: [
-      { id: "workspace-1", title: "Typed shell", color: "#3b82f6", active: true, ready: true },
-      { id: "workspace-2", title: "Working", color: "#3b82f6", busy: true },
-    ] }],
+    workspace: { id: "workspace-1", title: "Typed shell" },
     agentConversations: [
       { id: "agent-a", title: "First", bodyHtml: '<textarea data-probe="agent-a">draft</textarea>' },
       { id: "agent-b", title: "Second", bodyHtml: '<div data-probe="agent-b">Transcript</div>' },
@@ -26,7 +22,7 @@ describe("role-fixed Workspace presentation", () => {
     const html = renderWorkspacePresentation(fixture());
 
     expect(html).toContain('data-controller="workspace-presentation"');
-    expect(html).toContain('class="fixed-shell-workspace-pane"');
+    expect(html).not.toContain('class="fixed-shell-workspace-pane"');
     expect(html).toContain('class="fixed-shell-agent-pane"');
     expect(html).toContain('class="fixed-shell-work-pane"');
     expect(html).not.toContain("workspace-group");
@@ -34,9 +30,19 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).not.toContain('aria-selected="true"');
     expect(html.match(/data-workspace-pane-role="agent"/g)).toHaveLength(2);
     expect(html.match(/data-workspace-pane-role="work"/g)).toHaveLength(3);
+  });
+
+  test("server-renders the Workspace pane once at the shell seam", () => {
+    const html = renderWorkspacePane({ projects: [{ id: "project-1", title: "Atelier", workspaces: [
+      { id: "workspace-1", title: "Typed shell", color: "#3b82f6", active: true, ready: true },
+      { id: "workspace-2", title: "Working", color: "#3b82f6", busy: true },
+    ] }] });
+
+    expect(html).toContain('class="fixed-shell-workspace-pane"');
+    expect(html).toContain('data-controller="modal-opener"');
+    expect(html).toContain('data-action="click->workspace-navigation#selectWorkspace"');
     expect(html).toContain('class="fixed-shell-workspace-row active"');
     expect(html).toContain('aria-current="page"');
-    expect(html).toContain('class="fixed-shell-workspace-color"');
     expect(html).toContain('class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy"');
   });
 

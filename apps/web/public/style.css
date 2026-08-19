@@ -340,15 +340,6 @@ a.btn { text-decoration: none; }
 
 /* workspace shell */
 .fixed-workspace-presentation {
-  --fixed-workspace-width: 275px;
-  --fixed-work-width: 520px;
-  --fixed-shell-bg: var(--bg);
-  --fixed-shell-raised: var(--panel);
-  --fixed-shell-hover: var(--accent-soft);
-  --fixed-shell-border: var(--line);
-  --fixed-shell-text: var(--text);
-  --fixed-shell-muted: var(--muted);
-  --fixed-shell-attention: var(--amber);
   position: relative;
   display: flex;
   width: 100%;
@@ -360,8 +351,8 @@ a.btn { text-decoration: none; }
   font-size: 13px;
 }
 .fixed-shell-app, .fixed-shell-app-main, .workspace-detail-host, .workspace-detail-resident { width: 100%; height: 100dvh; min-width: 0; min-height: 0; overflow: hidden; }
-.fixed-shell-app { display: block; }
-.fixed-shell-app-main { display: block; }
+.fixed-shell-app { --fixed-workspace-width: 275px; --fixed-work-width: 520px; --fixed-shell-bg: var(--bg); --fixed-shell-raised: var(--panel); --fixed-shell-hover: var(--accent-soft); --fixed-shell-border: var(--line); --fixed-shell-text: var(--text); --fixed-shell-muted: var(--muted); --fixed-shell-attention: var(--amber); position: relative; display: flex; }
+.fixed-shell-app-main { min-width: 0; flex: 1; display: block; }
 .workspace-detail-resident:not(.visible) { display: none; }
 .workspace-detail-resident.visible { display: block; }
 .fixed-shell-live-body, .fixed-shell-live-body > * { width: 100%; height: 100%; min-width: 0; min-height: 0; }
@@ -375,10 +366,10 @@ a.btn { text-decoration: none; }
 .fixed-shell-add-menu button { border: 0; border-radius: 6px; padding: 7px 9px; text-align: left; background: transparent; color: inherit; cursor: pointer; }
 .fixed-shell-add-menu button:hover { background: var(--fixed-shell-hover); }
 
-.fixed-workspace-presentation *, .fixed-workspace-presentation *::before, .fixed-workspace-presentation *::after { box-sizing: border-box; }
-.fixed-workspace-presentation button { color: inherit; font: inherit; }
-.fixed-workspace-presentation button:focus-visible, .fixed-workspace-presentation [tabindex="0"]:focus-visible { outline: 2px solid var(--fixed-shell-attention); outline-offset: -2px; }
-.fixed-workspace-presentation svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.fixed-shell-app *, .fixed-shell-app *::before, .fixed-shell-app *::after { box-sizing: border-box; }
+.fixed-shell-app button { color: inherit; font: inherit; }
+.fixed-shell-app button:focus-visible, .fixed-shell-app [tabindex="0"]:focus-visible { outline: 2px solid var(--fixed-shell-attention); outline-offset: -2px; }
+.fixed-shell-app svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
 .fixed-shell-workspace-pane {
   flex: 0 0 var(--fixed-workspace-width);
@@ -403,9 +394,9 @@ a.btn { text-decoration: none; }
 .fixed-shell-workspace-pane > header { justify-content: space-between; padding-left: 14px; }
 .fixed-shell-icon-button { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--fixed-shell-muted); cursor: pointer; }
 .fixed-shell-icon-button:hover, .fixed-shell-icon-button:active { background: var(--fixed-shell-hover); color: var(--fixed-shell-text); }
-.fixed-workspace-presentation.is-workspace-pane-open [data-collapsed-pane-toggle="workspace"],
+.fixed-shell-app.is-workspace-pane-open [data-collapsed-pane-toggle="workspace"],
 .fixed-workspace-presentation.is-work-pane-open [data-collapsed-pane-toggle="work"],
-.fixed-workspace-presentation:not(.is-workspace-pane-open) [data-expanded-pane-toggle="workspace"],
+.fixed-shell-app:not(.is-workspace-pane-open) [data-expanded-pane-toggle="workspace"],
 .fixed-workspace-presentation:not(.is-work-pane-open) [data-expanded-pane-toggle="work"] { display: none; }
 .fixed-shell-workspace-scroll { min-height: 0; flex: 1; overflow: auto; padding: 10px 8px; scrollbar-gutter: stable; }
 .fixed-shell-project { margin-bottom: 10px; }
@@ -467,31 +458,33 @@ a.btn { text-decoration: none; }
 .fixed-shell-mobile-nav { display: none; }
 
 @media (min-width: 701px) {
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-workspace-pane { flex-basis: 50px; width: 50px; }
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-workspace-pane > header { justify-content: center; padding: 0; }
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-workspace-pane > header strong,
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-project-heading,
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-project > h3,
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-workspace-row > span,
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-parked small,
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-settings > span:last-child { display: none; }
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-workspace-scroll { padding: 8px 6px; scrollbar-gutter: auto; }
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-project { margin-bottom: 3px; }
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-project.is-collapsed .fixed-shell-project-workspaces { display: block; }
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-workspace-row { width: 36px; height: 34px; min-height: 34px; justify-content: center; padding: 0; }
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-workspace-color { width: 16px; height: 16px; border-radius: 5px; }
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-workspace-row.active .fixed-shell-workspace-color { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--fixed-shell-text); }
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-workspace-row .fixed-shell-attention-dot,
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-workspace-row .fixed-shell-workspace-busy { position: absolute; top: 4px; right: 4px; box-shadow: 0 0 0 2px var(--panel); }
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-workspace-pane > footer { padding: 6px; }
-  .fixed-workspace-presentation:not(.is-workspace-pane-open) .fixed-shell-settings { width: 36px; height: 36px; min-height: 36px; justify-content: center; padding: 0; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane { flex-basis: 50px; width: 50px; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane > header { justify-content: center; padding: 0; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane > header strong,
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-project-heading,
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-project > h3,
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-workspace-row > span,
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-parked small,
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-settings > span:last-child { display: none; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-workspace-scroll { padding: 8px 6px; scrollbar-gutter: auto; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-project { margin-bottom: 3px; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-project.is-collapsed .fixed-shell-project-workspaces { display: block; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-workspace-row { width: 36px; height: 34px; min-height: 34px; justify-content: center; padding: 0; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-workspace-color { width: 16px; height: 16px; border-radius: 5px; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-workspace-row.active .fixed-shell-workspace-color { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--fixed-shell-text); }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-workspace-row .fixed-shell-attention-dot,
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-workspace-row .fixed-shell-workspace-busy { position: absolute; top: 4px; right: 4px; box-shadow: 0 0 0 2px var(--panel); }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane > footer { padding: 6px; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-settings { width: 36px; height: 36px; min-height: 36px; justify-content: center; padding: 0; }
 }
 
 @media (max-width: 700px) {
   .fixed-workspace-presentation { display: block; padding-bottom: 58px; }
   .fixed-shell-main { display: block; height: 100%; }
   .fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane { position: absolute; inset: 0 0 58px; width: 100%; max-width: none; min-width: 0; margin: 0 !important; border: 0; opacity: 0; pointer-events: none; transform: none; transition: opacity 150ms ease; }
-  .fixed-workspace-presentation[data-phone-destination="workspace"] .fixed-shell-workspace-pane,
+  .fixed-shell-app > .fixed-shell-workspace-pane { z-index: 20; }
+  .fixed-shell-app.is-switching-workspace > .fixed-shell-workspace-pane,
+  .fixed-shell-app:has(.workspace-detail-resident.visible .fixed-workspace-presentation[data-phone-destination="workspace"]) > .fixed-shell-workspace-pane,
   .fixed-workspace-presentation[data-phone-destination^="agent:"] .fixed-shell-agent-pane,
   .fixed-workspace-presentation[data-phone-destination^="work:"] .fixed-shell-work-pane { opacity: 1; pointer-events: auto; }
   .fixed-shell-workspace-pane > header .fixed-shell-icon-button { display: none; }

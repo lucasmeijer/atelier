@@ -81,7 +81,7 @@ import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type AgentPaneContribution, type WorkspacePaneEntry, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type AgentPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 
 const jsonStringSchema = Type.String();
 
@@ -746,7 +746,7 @@ ${moduleStylesHtml()}
     return { action: `/workspaces/${encodeURIComponent(workspaceId)}/agent-conversations/${encodeURIComponent(conversationId)}/close`, label: `${title} Agent conversation` };
   }
 
-  async function workspacePaneCollections(activeWorkspaceId: string): Promise<Pick<FixedWorkspacePresentation, "projects" | "projectlessWorkspaces" | "parkedWorkspaces">> {
+  async function workspacePaneCollections(activeWorkspaceId: string): Promise<WorkspacePanePresentation> {
     const projects = await listProjects();
     const projectTitles = new Map(projects.projects.map((project) => [project.id, project.name]));
     const active = registry.list().filter((entry) => !entry.parked && entry.phase !== "deleting");
@@ -795,13 +795,8 @@ ${moduleStylesHtml()}
     const commands = attachments.flatMap((attachment) => attachment.commands ?? []).map((command) => ({
       id: command.id, label: command.label, description: command.description, scope: command.scope, placement: command.surfaces?.ui?.placement, binding: command.surfaces?.shortcut?.defaultBinding,
     }));
-    const init = entry.init;
-    const projectTitle = isGitProjectInit(init) ? (await listProjects()).projects.find((project) => project.id === init.projectId)?.name ?? init.name : undefined;
-    const workspace: WorkspacePaneEntry & { projectTitle?: string } = { id: entry.id, title: workspaceTitle(entry) };
-    if (projectTitle) workspace.projectTitle = projectTitle;
     return {
-      workspace,
-      ...await workspacePaneCollections(workspaceId),
+      workspace: { id: entry.id, title: workspaceTitle(entry) },
       agentConversations: agentConversations.map((conversation) => {
         const presented: AgentPaneContribution = { id: conversation.id, title: conversation.title, bodyHtml: conversation.bodyHtml ?? "" };
         if (agentConversations.length > 1) presented.close = agentClose(workspaceId, conversation.id, conversation.title);
@@ -882,7 +877,8 @@ ${moduleStylesHtml()}
   }
 
   async function renderWorkspaceShell(selectedId?: string, options: { mainHtml?: string; showWhatsNew?: boolean } = {}): Promise<string> {
-    return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts">
+    return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts workspace-navigation">
+    ${renderWorkspacePane(await workspacePaneCollections(selectedId ?? ""))}
     <main class="fixed-shell-app-main">${options.mainHtml ?? await workspaceDetailHostHtml(selectedId)}</main>
   </div>
   ${await projectPickerModal()}

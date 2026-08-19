@@ -47,11 +47,14 @@ export interface WorkPaneContribution {
   close?: ViewCloseAction;
 }
 
-export interface WorkspacePresentation {
-  workspace: WorkspacePaneEntry & { projectTitle?: string };
+export interface WorkspacePanePresentation {
   projects: readonly WorkspacePaneProject[];
   projectlessWorkspaces?: readonly WorkspacePaneEntry[];
   parkedWorkspaces?: readonly (WorkspacePaneEntry & { projectTitle?: string })[];
+}
+
+export interface WorkspacePresentation {
+  workspace: Pick<WorkspacePaneEntry, "id" | "title">;
   agentConversations: readonly AgentPaneContribution[];
   workViews: readonly WorkPaneContribution[];
   commands?: readonly { id: string; label: string; description?: string; scope: string; placement?: "work-launcher" | "agent-action"; binding?: string }[];
@@ -92,14 +95,14 @@ function selectorCloseForm(close: ViewCloseAction): string {
 
 function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string): string {
   const color = workspace.color ? ` style="--workspace-color:${escapeHtml(workspace.color)}"` : "";
-  return `<button type="button" class="fixed-shell-workspace-row${workspace.active ? " active" : ""}" title="${escapeHtml(workspace.title)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}" ${projectId ? `data-project-id="${escapeHtml(projectId)}"` : ""}${color} data-action="click->workspace-presentation#selectWorkspace">
+  return `<button type="button" class="fixed-shell-workspace-row${workspace.active ? " active" : ""}" title="${escapeHtml(workspace.title)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}" ${projectId ? `data-project-id="${escapeHtml(projectId)}"` : ""}${color} data-action="click->workspace-navigation#selectWorkspace">
     <i class="fixed-shell-workspace-color" aria-hidden="true"></i><span>${escapeHtml(workspace.title)}</span>${workspace.busy ? '<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy" title="Workspace busy"></i>' : workspace.ready ? '<i class="fixed-shell-attention-dot" aria-label="Agent ready"></i>' : ""}
   </button>`;
 }
 
-export function renderWorkspacePaneCollections(presentation: Pick<WorkspacePresentation, "projects" | "projectlessWorkspaces" | "parkedWorkspaces">): string {
+export function renderWorkspacePaneCollections(presentation: WorkspacePanePresentation): string {
   const projects = presentation.projects.map((project) => `<section class="fixed-shell-project" data-project-id="${escapeHtml(project.id)}">
-    <button type="button" class="fixed-shell-project-heading" aria-expanded="true" data-action="click->workspace-presentation#toggleProject" data-project-id="${escapeHtml(project.id)}"><span>${escapeHtml(project.title)}</span><span aria-hidden="true">⌄</span></button>
+    <button type="button" class="fixed-shell-project-heading" aria-expanded="true" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(project.id)}"><span>${escapeHtml(project.title)}</span><span aria-hidden="true">⌄</span></button>
     <div class="fixed-shell-project-workspaces">${project.workspaces.map((workspace) => renderWorkspaceRow(workspace, project.id)).join("")}</div>
   </section>`).join("");
   const projectless = presentation.projectlessWorkspaces?.length
@@ -111,10 +114,10 @@ export function renderWorkspacePaneCollections(presentation: Pick<WorkspacePrese
   return `${projects}${projectless}${parked}`;
 }
 
-function renderWorkspacePane(presentation: WorkspacePresentation): string {
-  return `<aside class="fixed-shell-workspace-pane" data-workspace-presentation-target="workspacePane" aria-label="Workspaces">
-    <header><strong>Atelier</strong>${button("Close Workspace pane", "click->workspace-presentation#toggleWorkspacePane", "sidebar", 'data-expanded-pane-toggle="workspace"')}${button("Open Workspace pane", "click->workspace-presentation#toggleWorkspacePane", "sidebar", 'data-collapsed-pane-toggle="workspace"')}</header>
-    <div class="fixed-shell-workspace-scroll" data-workspace-presentation-target="workspaceScroll"><div data-workspace-pane-collections>${renderWorkspacePaneCollections(presentation)}</div></div>
+export function renderWorkspacePane(presentation: WorkspacePanePresentation): string {
+  return `<aside class="fixed-shell-workspace-pane" aria-label="Workspaces">
+    <header><strong>Atelier</strong>${button("Close Workspace pane", "click->workspace-navigation#togglePane", "sidebar", 'data-expanded-pane-toggle="workspace"')}${button("Open Workspace pane", "click->workspace-navigation#togglePane", "sidebar", 'data-collapsed-pane-toggle="workspace"')}</header>
+    <div class="fixed-shell-workspace-scroll" data-workspace-navigation-target="scroll"><div data-workspace-pane-collections>${renderWorkspacePaneCollections(presentation)}</div></div>
     <footer><button type="button" class="fixed-shell-settings" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="project-picker-modal"><span aria-hidden="true">＋</span><span>New workspace</span></button><a class="fixed-shell-settings" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">${icon("settings")}<span>Settings</span></a></footer>
   </aside>`;
 }
@@ -202,7 +205,6 @@ export function renderWorkspacePresentation(presentation: WorkspacePresentation)
   if (presentation.agentConversations.length === 0) throw new Error("Workspace presentation requires an Agent conversation");
   const id = domId("fixed_workspace", presentation.workspace.id);
   return `<div id="${id}" class="fixed-workspace-presentation" data-controller="workspace-presentation" data-workspace-presentation-workspace-id-value="${escapeHtml(presentation.workspace.id)}" data-workspace-id="${escapeHtml(presentation.workspace.id)}" data-workspace-commands="${escapeHtml(JSON.stringify(presentation.commands ?? []))}">
-    ${renderWorkspacePane(presentation)}
     <div class="fixed-shell-main">${renderAgentPane(presentation)}${renderWorkPane(presentation)}</div>
     ${renderMobileNavigation(presentation)}
     ${(presentation.overlayHtml ?? []).join("")}
@@ -213,6 +215,6 @@ export function workspacePresentationTurboStream(workspaceId: string, presentati
   return `<turbo-stream action="replace-workspace-presentation" target="${escapeHtml(domId("fixed_workspace", workspaceId))}"><template>${renderWorkspacePresentation(presentation)}</template></turbo-stream>`;
 }
 
-export function workspacePaneCollectionsTurboStream(presentation: Pick<WorkspacePresentation, "projects" | "projectlessWorkspaces" | "parkedWorkspaces">): string {
+export function workspacePaneCollectionsTurboStream(presentation: WorkspacePanePresentation): string {
   return `<turbo-stream action="replace-workspace-pane-collections" targets="[data-workspace-pane-collections]"><template><div data-workspace-pane-collections>${renderWorkspacePaneCollections(presentation)}</div></template></turbo-stream>`;
 }

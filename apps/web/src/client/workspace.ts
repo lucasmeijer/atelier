@@ -28,7 +28,7 @@ import {
 import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
 import { createAtelierCableClient } from "./cable.ts";
-import { createWorkspacePresentationController, installWorkspacePresentationTurboStream } from "./workspace-presentation.ts";
+import { createWorkspacePresentationController, installWorkspacePresentationTurboStream, markActiveWorkspaceRow } from "./workspace-presentation.ts";
 
 declare global {
   interface Window {
@@ -1053,6 +1053,88 @@ class ModalOpenerController extends Controller {
   }
 }
 
+const workspacePaneVisibilitySchema = Type.Boolean();
+const projectDisclosuresSchema = Type.Record(Type.String(), Type.Boolean());
+
+class WorkspaceNavigationController extends Controller {
+  static targets = ["scroll"];
+  declare readonly element: HTMLElement;
+  declare readonly scrollTarget: HTMLElement;
+  private scrollTimer?: ReturnType<typeof setTimeout>;
+
+  connect(): void {
+    const stored = sessionStorage.getItem("atelier:workspace-pane-visible");
+    const visible = stored === null ? true : Value.Parse(workspacePaneVisibilitySchema, JSON.parse(stored));
+    this.element.classList.toggle("is-workspace-pane-open", visible);
+    this.scrollTarget.addEventListener("scroll", this.scrolled, { passive: true });
+    const scroll = Number(localStorage.getItem("atelier:workspace-pane-scroll"));
+    if (Number.isFinite(scroll)) this.scrollTarget.scrollTop = scroll;
+    this.restoreProjectDisclosures();
+  }
+
+  disconnect(): void {
+    this.scrollTarget.removeEventListener("scroll", this.scrolled);
+    if (this.scrollTimer) clearTimeout(this.scrollTimer);
+  }
+
+  togglePane(): void {
+    const open = !this.element.classList.contains("is-workspace-pane-open");
+    this.element.classList.toggle("is-workspace-pane-open", open);
+    sessionStorage.setItem("atelier:workspace-pane-visible", String(open));
+    window.dispatchEvent(new Event("resize"));
+  }
+
+  async selectWorkspace(event: Event): Promise<void> {
+    // SAFETY: This action is attached only to server-rendered Workspace entry elements.
+    const workspaceId = (event.currentTarget as HTMLElement).dataset.workspaceEntryId;
+    if (!workspaceId) return;
+    this.setActiveWorkspace(workspaceId);
+    await residencyController()?.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`);
+    if (window.matchMedia("(max-width: 700px)").matches) {
+      const visible = document.querySelector<HTMLElement>(`.workspace-detail-resident.visible[data-workspace-id="${CSS.escape(workspaceId)}"]`);
+      visible?.querySelector<HTMLButtonElement>("[data-mobile-destination^='agent:']")?.click();
+    }
+  }
+
+  toggleProject(event: Event): void {
+    // SAFETY: This action is attached only to server-rendered Project disclosure buttons.
+    const button = event.currentTarget as HTMLElement;
+    const id = button.dataset.projectId;
+    if (!id) return;
+    const project = this.element.querySelector<HTMLElement>(`.fixed-shell-project[data-project-id="${CSS.escape(id)}"]`)!;
+    const expanded = project.classList.contains("is-collapsed");
+    project.classList.toggle("is-collapsed", !expanded);
+    button.setAttribute("aria-expanded", String(expanded));
+    const disclosures = this.projectDisclosures();
+    disclosures[id] = expanded;
+    localStorage.setItem("atelier:workspace-project-disclosures", JSON.stringify(disclosures));
+  }
+
+  setActiveWorkspace(workspaceId: string): void {
+    markActiveWorkspaceRow(this.element, workspaceId);
+  }
+
+  private restoreProjectDisclosures(): void {
+    const disclosures = this.projectDisclosures();
+    this.element.querySelectorAll<HTMLElement>(".fixed-shell-project[data-project-id]").forEach((project) => {
+      const id = project.dataset.projectId!;
+      if (!(id in disclosures)) return;
+      project.classList.toggle("is-collapsed", !disclosures[id]);
+      project.querySelector<HTMLElement>(".fixed-shell-project-heading")?.setAttribute("aria-expanded", String(disclosures[id]));
+    });
+  }
+
+  private projectDisclosures(): Record<string, boolean> {
+    const text = localStorage.getItem("atelier:workspace-project-disclosures");
+    return text ? Value.Parse(projectDisclosuresSchema, JSON.parse(text)) : {};
+  }
+
+  private scrolled = (): void => {
+    if (this.scrollTimer) clearTimeout(this.scrollTimer);
+    this.scrollTimer = setTimeout(() => localStorage.setItem("atelier:workspace-pane-scroll", String(this.scrollTarget.scrollTop)), 80);
+  };
+}
+
 class WorkspaceResidencyController extends Controller {
   static targets = ["resident", "empty", "loading"];
   static values = { maxResident: Number };
@@ -1066,8 +1148,6 @@ class WorkspaceResidencyController extends Controller {
 
   connect(): void {
     document.addEventListener("visibilitychange", this.visibilityChanged);
-    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-    document.addEventListener("atelier:workspace-selected", this.workspaceSelected as EventListener);
     window.addEventListener("pagehide", this.pageHidden);
     const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
     const visibleResident = this.residentTargets.find((resident) => resident.classList.contains("visible"))
@@ -1078,16 +1158,8 @@ class WorkspaceResidencyController extends Controller {
 
   disconnect(): void {
     document.removeEventListener("visibilitychange", this.visibilityChanged);
-    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-    document.removeEventListener("atelier:workspace-selected", this.workspaceSelected as EventListener);
     window.removeEventListener("pagehide", this.pageHidden);
   }
-
-  private readonly workspaceSelected = (event: CustomEvent<{ workspaceId?: string }>): void => {
-    const workspaceId = event.detail?.workspaceId;
-    if (!workspaceId || workspaceId === this.visibleWorkspaceId()) return;
-    void this.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`);
-  };
 
   async selectWorkspace(workspaceId: string, href: string): Promise<void> {
     // Update the URL first: selection state is derived from it, and stream
@@ -1154,12 +1226,14 @@ class WorkspaceResidencyController extends Controller {
   }
 
   private showEmpty(): void {
+    this.setSwitchingWorkspace(false);
     this.hideResidents();
     this.loadingTargets.forEach((loading) => { loading.hidden = true; });
     this.emptyTargets.forEach((empty) => { empty.hidden = false; });
   }
 
   private showLoading(): void {
+    this.setSwitchingWorkspace(true);
     this.hideResidents();
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
     this.loadingTargets.forEach((loading) => {
@@ -1170,6 +1244,7 @@ class WorkspaceResidencyController extends Controller {
   }
 
   private showLoadError(message: string): void {
+    this.setSwitchingWorkspace(false);
     this.hideResidents();
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
     this.loadingTargets.forEach((loading) => {
@@ -1248,6 +1323,7 @@ class WorkspaceResidencyController extends Controller {
   }
 
   private showResident(resident: HTMLElement): void {
+    this.setSwitchingWorkspace(false);
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
     this.loadingTargets.forEach((loading) => { loading.hidden = true; });
     resident.dataset.lastActivatedAt = String(Date.now());
@@ -1257,7 +1333,14 @@ class WorkspaceResidencyController extends Controller {
     });
     resident.querySelector<HTMLElement>(".fixed-workspace-presentation")?.dispatchEvent(new CustomEvent("atelier:workspace-residency-visible"));
     const workspaceId = resident.dataset.workspaceId;
-    if (workspaceId) void this.markActiveWorkspace(workspaceId);
+    if (workspaceId) {
+      workspaceNavigationController()?.setActiveWorkspace(workspaceId);
+      void this.markActiveWorkspace(workspaceId);
+    }
+  }
+
+  private setSwitchingWorkspace(switching: boolean): void {
+    this.element.closest(".fixed-shell-app")?.classList.toggle("is-switching-workspace", switching);
   }
 
   private async markActiveWorkspace(workspaceId: string): Promise<void> {
@@ -1302,6 +1385,12 @@ class WorkspaceResidencyController extends Controller {
       .slice(this.maxResidentValue)
       .forEach((resident) => resident.remove());
   }
+}
+
+function workspaceNavigationController(): WorkspaceNavigationController | null {
+  const navigation = document.querySelector<HTMLElement>('[data-controller~="workspace-navigation"]');
+  // SAFETY: The server-rendered shell and registered controller establish this element shape.
+  return navigation ? application.getControllerForElementAndIdentifier(navigation, "workspace-navigation") as WorkspaceNavigationController | null : null;
 }
 
 function residencyController(): WorkspaceResidencyController | null {
@@ -2168,6 +2257,7 @@ application.register("cable-shell", CableShellController);
 application.register("dev-reload", DevReloadController);
 application.register("workspace-presentation", createWorkspacePresentationController(Controller, application, clientHooks));
 application.register("workspace-command-form", WorkspaceCommandFormController);
+application.register("workspace-navigation", WorkspaceNavigationController);
 application.register("workspace-residency", WorkspaceResidencyController);
 application.register("atelier-shortcuts", AtelierShortcutsController);
 application.register("atelier-fullscreen", AtelierFullscreenController);

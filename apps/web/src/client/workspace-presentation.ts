@@ -15,20 +15,15 @@ type PhoneDestination = Static<typeof phoneDestinationSchema>;
 const storedPersonalNavigationSchema = Type.Object({
   activeAgentId: Type.Optional(Type.String()),
   activeWorkViewKey: Type.Optional(Type.String()),
-  workspacePaneVisible: Type.Optional(Type.Boolean()),
   workPaneVisible: Type.Optional(Type.Boolean()),
   phoneDestination: Type.Optional(phoneDestinationSchema),
   drawers: Type.Optional(Type.Array(Type.String())),
 });
 type StoredPersonalNavigation = Static<typeof storedPersonalNavigationSchema>;
 
-const projectDisclosuresSchema = Type.Record(Type.String(), Type.Boolean());
-type ProjectDisclosures = Static<typeof projectDisclosuresSchema>;
-
 interface PersonalNavigationState {
   activeAgentId?: string;
   activeWorkViewKey?: string;
-  workspacePaneVisible: boolean;
   workPaneVisible: boolean;
   phoneDestination: PhoneDestination;
   drawers: string[];
@@ -54,7 +49,6 @@ interface TurboLike {
 }
 
 const visiblePresentationPanes = new WeakSet<HTMLElement>();
-const workspacePaneVisibilityKey = "atelier:workspace-pane-visible";
 
 function storedNavigation(storage: Storage, key: string): StoredPersonalNavigation | undefined {
   const value = storage.getItem(key);
@@ -62,6 +56,17 @@ function storedNavigation(storage: Storage, key: string): StoredPersonalNavigati
   const parsed: unknown = JSON.parse(value);
   if (!Value.Check(storedPersonalNavigationSchema, parsed)) throw new Error(`invalid personal navigation state at ${key}`);
   return parsed;
+}
+
+export function markActiveWorkspaceRow(root: ParentNode, workspaceId: string): void {
+  root.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row.active").forEach((row) => {
+    row.classList.remove("active");
+    row.removeAttribute("aria-current");
+  });
+  const active = root.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+  active?.classList.add("active");
+  active?.setAttribute("aria-current", "page");
+  active?.querySelector(".fixed-shell-attention-dot")?.remove();
 }
 
 function moveNodeBefore(parent: ParentNode, node: Node, reference: Node): void {
@@ -86,7 +91,6 @@ export function createWorkspacePresentationController(
     private state!: PersonalNavigationState;
     private media?: MediaQueryList;
     private resize?: { startX: number; startWidth: number; pointerId: number; handle: HTMLElement };
-    private scrollTimer?: ReturnType<typeof setTimeout>;
     private moreOpen = false;
     private draggedWorkKey?: string;
 
@@ -98,7 +102,6 @@ export function createWorkspacePresentationController(
       this.element.addEventListener("keydown", this.keydown);
       this.element.addEventListener("atelier:workspace-residency-visible", this.residencyVisible);
       this.element.addEventListener("atelier:workspace-residency-hidden", this.residencyHidden);
-      this.workspaceScroll?.addEventListener("scroll", this.workspaceScrolled, { passive: true });
       this.restorePreferences();
       this.normalizeState();
       this.applyDeepLink();
@@ -111,21 +114,7 @@ export function createWorkspacePresentationController(
       this.element.removeEventListener("keydown", this.keydown);
       this.element.removeEventListener("atelier:workspace-residency-visible", this.residencyVisible);
       this.element.removeEventListener("atelier:workspace-residency-hidden", this.residencyHidden);
-      this.workspaceScroll?.removeEventListener("scroll", this.workspaceScrolled);
-      if (this.scrollTimer) clearTimeout(this.scrollTimer);
       this.visiblePanes().forEach((pane) => this.emitHidden(pane));
-    }
-
-    selectWorkspace(event: Event): void {
-      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-      const workspaceId = (event.currentTarget as HTMLElement).dataset.workspaceEntryId;
-      if (!workspaceId) return;
-      sessionStorage.setItem("atelier:active-workspace", workspaceId);
-      this.element.dispatchEvent(new CustomEvent("atelier:workspace-selected", { bubbles: true, detail: { workspaceId } }));
-      if (this.isPhone) {
-        this.state.phoneDestination = `agent:${this.state.activeAgentId!}`;
-        this.persistAndApply();
-      }
     }
 
     selectAgent(event: Event): void {
@@ -178,28 +167,9 @@ export function createWorkspacePresentationController(
       if (!window.confirm(`Close ${label}? Its live state will be destroyed.`)) event.preventDefault();
     }
 
-    toggleWorkspacePane(): void {
-      this.state.workspacePaneVisible = !this.state.workspacePaneVisible;
-      this.persistAndApply({ focus: true });
-    }
-
     toggleWorkPane(): void {
       this.state.workPaneVisible = !this.state.workPaneVisible && Boolean(this.state.activeWorkViewKey);
       this.persistAndApply({ focus: true });
-    }
-
-    toggleProject(event: Event): void {
-      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-      const button = event.currentTarget as HTMLElement;
-      const id = button.dataset.projectId;
-      if (!id) return;
-      const project = this.element.querySelector<HTMLElement>(`.fixed-shell-project[data-project-id="${CSS.escape(id)}"]`)!;
-      const collapsed = !project.classList.contains("is-collapsed");
-      project.classList.toggle("is-collapsed", collapsed);
-      button.setAttribute("aria-expanded", String(!collapsed));
-      const disclosures = this.projectDisclosures();
-      disclosures[id] = !collapsed;
-      localStorage.setItem("atelier:workspace-project-disclosures", JSON.stringify(disclosures));
     }
 
     toggleDrawer(event: Event): void {
@@ -264,17 +234,13 @@ export function createWorkspacePresentationController(
 
     private get isPhone(): boolean { return this.media?.matches ?? window.matchMedia("(max-width: 700px)").matches; }
     private get workPane(): HTMLElement { return this.element.querySelector<HTMLElement>("[data-workspace-presentation-target='workPane']")!; }
-    private get workspaceScroll(): HTMLElement | null { return this.element.querySelector<HTMLElement>("[data-workspace-presentation-target='workspaceScroll']"); }
     private get storageKey(): string { return `atelier:workspace-navigation:${this.workspaceIdValue}`; }
 
     private restoreState(): PersonalNavigationState {
       const stored = storedNavigation(sessionStorage, this.storageKey);
-      const sharedWorkspacePaneVisible = sessionStorage.getItem(workspacePaneVisibilityKey);
-      if (sharedWorkspacePaneVisible !== null && sharedWorkspacePaneVisible !== "true" && sharedWorkspacePaneVisible !== "false") throw new Error("invalid shared Workspace pane visibility");
       return {
         activeAgentId: stored?.activeAgentId,
         activeWorkViewKey: stored?.activeWorkViewKey,
-        workspacePaneVisible: sharedWorkspacePaneVisible === null ? stored?.workspacePaneVisible ?? true : sharedWorkspacePaneVisible === "true",
         workPaneVisible: stored?.workPaneVisible ?? false,
         phoneDestination: stored?.phoneDestination ?? "workspace",
         drawers: stored?.drawers ?? [],
@@ -305,13 +271,11 @@ export function createWorkspacePresentationController(
 
     private persist(): void {
       sessionStorage.setItem(this.storageKey, JSON.stringify(this.state));
-      sessionStorage.setItem(workspacePaneVisibilityKey, String(this.state.workspacePaneVisible));
     }
     private persistAndApply(options: { focus?: boolean } = {}): void { this.persist(); this.applyState({ emit: true, focus: options.focus }); }
 
     private applyState(options: { emit: boolean; focus?: boolean }): void {
       const before = [...this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role]")].filter((pane) => visiblePresentationPanes.has(pane));
-      this.element.classList.toggle("is-workspace-pane-open", this.state.workspacePaneVisible);
       this.element.classList.toggle("is-work-pane-open", this.state.workPaneVisible);
       this.element.dataset.phoneDestination = this.state.phoneDestination;
       this.element.dataset.navigationReady = "true";
@@ -404,27 +368,10 @@ export function createWorkspacePresentationController(
     private restorePreferences(): void {
       const width = Number(localStorage.getItem("atelier:work-pane-width"));
       this.setWorkWidth(Number.isFinite(width) && width > 0 ? width : 520, false);
-      const scroll = Number(localStorage.getItem("atelier:workspace-pane-scroll"));
-      if (this.workspaceScroll && Number.isFinite(scroll)) this.workspaceScroll.scrollTop = scroll;
-      const disclosures = this.projectDisclosures();
-      this.element.querySelectorAll<HTMLElement>(".fixed-shell-project[data-project-id]").forEach((project) => {
-        const id = project.dataset.projectId!;
-        if (!(id in disclosures)) return;
-        project.classList.toggle("is-collapsed", !disclosures[id]);
-        project.querySelector<HTMLElement>(".fixed-shell-project-heading")?.setAttribute("aria-expanded", String(disclosures[id]));
-      });
-    }
-
-    private projectDisclosures(): ProjectDisclosures {
-      const text = localStorage.getItem("atelier:workspace-project-disclosures");
-      if (!text) return {};
-      const parsed: unknown = JSON.parse(text);
-      if (!Value.Check(projectDisclosuresSchema, parsed)) throw new Error("invalid Workspace Project disclosure preference");
-      return parsed;
     }
 
     private setWorkWidth(width: number, persist: boolean): void {
-      const workspaceWidth = this.state?.workspacePaneVisible && window.innerWidth >= 1180 ? 275 : 0;
+      const workspaceWidth = this.element.closest(".fixed-shell-app.is-workspace-pane-open") && window.innerWidth >= 1180 ? 275 : 0;
       const agentMinimum = workspaceWidth ? 420 : 380;
       const maximum = Math.min(760, window.innerWidth - workspaceWidth - agentMinimum);
       const bounded = Math.max(360, Math.min(width, maximum));
@@ -445,16 +392,8 @@ export function createWorkspacePresentationController(
     };
 
     private viewportChanged = (): void => { this.setWorkWidth(this.workPane.getBoundingClientRect().width || 520, false); this.applyState({ emit: true }); };
-    private residencyVisible = (): void => {
-      this.state.workspacePaneVisible = sessionStorage.getItem(workspacePaneVisibilityKey) !== "false";
-      this.persist();
-      this.applyState({ emit: true });
-    };
+    private residencyVisible = (): void => this.applyState({ emit: true });
     private residencyHidden = (): void => this.emitVisibilityChanges([...this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role]")].filter((pane) => visiblePresentationPanes.has(pane)), []);
-    private workspaceScrolled = (): void => {
-      if (this.scrollTimer) clearTimeout(this.scrollTimer);
-      this.scrollTimer = setTimeout(() => localStorage.setItem("atelier:workspace-pane-scroll", String(this.workspaceScroll?.scrollTop ?? 0)), 80);
-    };
 
     private keydown = (event: KeyboardEvent): void => {
       const selector = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[role='tab']") : null;
@@ -476,13 +415,10 @@ export function installWorkspacePresentationTurboStream(Turbo: TurboLike, applic
     for (const target of this.targetElements) {
       const replacement = this.templateContent.firstElementChild?.cloneNode(true);
       if (!(replacement instanceof HTMLElement)) throw new Error("Workspace pane collections stream is missing its replacement");
-      const workspaceId = target.closest<HTMLElement>(".fixed-workspace-presentation")?.dataset.workspaceId;
-      if (workspaceId) {
-        const activeWorkspace = replacement.querySelector<HTMLElement>(`[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
-        activeWorkspace?.classList.add("active");
-        activeWorkspace?.setAttribute("aria-current", "page");
-        activeWorkspace?.querySelector(".fixed-shell-attention-dot")?.remove();
-      }
+      const visibleWorkspaceId = document.querySelector<HTMLElement>(".workspace-detail-resident.visible[data-workspace-id]")?.dataset.workspaceId;
+      const pathWorkspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
+      const workspaceId = visibleWorkspaceId ?? (pathWorkspaceId ? decodeURIComponent(pathWorkspaceId) : undefined);
+      if (workspaceId) markActiveWorkspaceRow(replacement, workspaceId);
       for (const project of target.querySelectorAll<HTMLElement>(".fixed-shell-project[data-project-id].is-collapsed")) {
         const id = project.dataset.projectId!;
         const next = replacement.querySelector<HTMLElement>(`.fixed-shell-project[data-project-id="${CSS.escape(id)}"]`);

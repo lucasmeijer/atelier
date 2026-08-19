@@ -486,13 +486,14 @@ describe("web app contracts", () => {
     expect(browser.headers.get("location")).toBe("http://test.local/");
   });
 
-  test("the role-fixed shell removes the legacy global sidebar", async () => {
+  test("the role-fixed shell owns one Workspace pane outside resident Workspaces", async () => {
     const { app, registry } = createTestApp();
     await registry.seed([]);
 
     const home = await (await app.fetch(new Request("http://test.local/"))).text();
 
     expect(home).toContain('class="app fixed-shell-app"');
+    expect(home.match(/class="fixed-shell-workspace-pane"/g)).toHaveLength(1);
     expect(home).toContain("Create or select a workspace");
     expect(home).not.toContain("workspace-shell-sidebar");
     expect(home).not.toContain("workspace-shell#toggle");
