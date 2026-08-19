@@ -70,7 +70,7 @@ describe("cable server", () => {
     const cable = createCableServer({ registry, events: createAtelierEventBus() });
     const ws = fakeSocket({ kind: "cable", connectionId: "conn-1" });
     cable.open(ws);
-    cable.message(ws as never, JSON.stringify({ command: "subscribe", identifier: { channel: "workspace", workspaceId: "missing" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "workspace", workspaceId: "missing" } }));
     await Bun.sleep(0);
     expect(ws.sent).toContainEqual({ type: "reject_subscription", identifier: { channel: "workspace", workspaceId: "missing" }, reason: "workspace not found: missing" });
   });
