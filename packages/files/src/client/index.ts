@@ -117,7 +117,9 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
 
     toggleMenu(event: StimulusActionEvent<Event, HTMLButtonElement>): void {
       const button = event.currentTarget;
-      const menu = document.getElementById(button.getAttribute("aria-controls")!) as HTMLElement & { hidePopover(): void; showPopover(): void };
+      const menuId = button.getAttribute("aria-controls");
+      const menu = menuId ? document.getElementById(menuId) : null;
+      if (!menu) throw new Error("Files action button does not control a menu");
       if (menu.matches(":popover-open")) {
         menu.hidePopover();
         return;
