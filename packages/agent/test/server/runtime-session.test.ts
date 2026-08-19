@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "bun:test";
-import { discardBootstrapOnlySession } from "../../src/server/runtime.ts";
+import { contextUsagePercent, discardBootstrapOnlySession } from "../../src/server/runtime.ts";
 
 let dir: string | undefined;
 
@@ -14,6 +14,14 @@ async function sessionFile(): Promise<string> {
 afterEach(async () => {
   if (dir) await rm(dir, { recursive: true, force: true });
   dir = undefined;
+});
+
+describe("contextUsagePercent", () => {
+  test("uses a compaction estimate until measured usage is available", () => {
+    expect(contextUsagePercent(null, 8_000, 128_000)).toBe(6.25);
+    expect(contextUsagePercent(undefined, undefined, 128_000)).toBeNull();
+    expect(contextUsagePercent(12.5, 8_000, 128_000)).toBe(12.5);
+  });
 });
 
 describe("runtime session persistence", () => {

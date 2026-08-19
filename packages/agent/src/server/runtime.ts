@@ -11,6 +11,7 @@ import {
   createAgentSession,
   SessionManager,
   SettingsManager,
+  type CompactionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { contentText } from "@earendil-works/pi-ai";
 import { escapeHtml, turboStream } from "./html.ts";
@@ -178,6 +179,10 @@ const assistantTextCharactersPerFlush = 24;
 // Atelier sessions. Keep enough recent context while allowing an explicit
 // /compact to summarize medium-length conversations.
 const compactionKeepRecentTokens = 6000;
+
+export function contextUsagePercent(measured: number | null | undefined, estimatedTokens: number | undefined, contextWindow: number | undefined): number | null {
+  return measured ?? (estimatedTokens !== undefined && contextWindow ? estimatedTokens / contextWindow * 100 : null);
+}
 
 abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   workspaceId: string;
@@ -713,6 +718,7 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
 class RealAgentRuntime extends BaseAgentRuntime {
   private summarizing = false;
   private unsubscribeSession?: () => void;
+  private postCompactionEstimate?: { entryId: string; tokens: number };
 
   constructor(agent: WorkspaceAgentInfo, private session: any, private toolsForModel: AgentToolDefinitionView[], private serviceTiers: AgentServiceTierState, options: WorkspaceAgentRuntimeOptions = {}) {
     super(agent, options);
@@ -777,11 +783,19 @@ class RealAgentRuntime extends BaseAgentRuntime {
     return buildTranscript(recordsFromSessionEntries(entries, cacheMisses));
   }
 
+  private latestCompactionEntry(): CompactionEntry | undefined {
+    return this.session.sessionManager.getBranch().findLast((entry: any) => entry.type === "compaction");
+  }
+
   protected async statsView(): Promise<AgentStatsView> {
+    const configuredModels = await this.configuredModelOptions();
     const stats = this.session.getSessionStats?.();
     const context = this.session.getContextUsage?.();
     const model = this.session.model;
-    const models = (await this.configuredModelOptions()).map((option) => ({
+    const estimate = this.postCompactionEstimate;
+    const estimatedTokens = this.latestCompactionEntry()?.id === estimate?.entryId ? estimate?.tokens : undefined;
+    const contextPercent = contextUsagePercent(context?.percent, estimatedTokens, model?.contextWindow);
+    const models = configuredModels.map((option) => ({
       provider: option.provider,
       id: option.id,
       name: option.name,
@@ -796,7 +810,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       models.unshift({ provider: model.provider, id: model.id, name: model.name ?? model.id, selected: true, available: false, unavailableReason: "Not in favorite models" });
     }
     return {
-      contextPercent: context?.percent ?? null,
+      contextPercent,
       inputTokens: stats?.tokens?.input ?? 0,
       outputTokens: stats?.tokens?.output ?? 0,
       cost: stats?.cost ?? 0,
@@ -907,7 +921,9 @@ class RealAgentRuntime extends BaseAgentRuntime {
         this.setBusy(true);
         this.notice("info", event.reason === "manual" ? "Compacting context…" : "Auto-compacting context…");
         break;
-      case "compaction_end":
+      case "compaction_end": {
+        const entry = event.result && this.latestCompactionEntry();
+        if (entry) this.postCompactionEstimate = { entryId: entry.id, tokens: event.result.estimatedTokensAfter };
         await this.refreshTranscript();
         await this.refreshStats();
         this.notice(
@@ -917,6 +933,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
         if (!event.willRetry) this.setBusy(false);
         if (event.reason === "manual") await this.emitTurnFinished();
         break;
+      }
       case "auto_retry_start":
         this.notice("info", `Provider error, retrying (attempt ${event.attempt}/${event.maxAttempts})…`);
         break;
