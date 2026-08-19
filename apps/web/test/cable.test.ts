@@ -58,7 +58,7 @@ describe("cable server", () => {
     cable.broadcast({ channel: "shell" }, '<turbo-stream action="replace" target="x"><template>2</template></turbo-stream>');
     expect(ws.sent).not.toContainEqual({ type: "turbo_stream", identifier: { channel: "shell" }, html: '<turbo-stream action="replace" target="x"><template>2</template></turbo-stream>' });
 
-    cable.message(ws as never, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
+    cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
     await Bun.sleep(0);
     cable.close(ws as never);
     expect(cable.stats().sockets).toBe(0);
