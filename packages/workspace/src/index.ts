@@ -44,6 +44,7 @@ const initPath = "init.json";
 const workspaceManifestPath = ".atelier/workspace.json";
 const workspaceStartupTimeoutMs = 5 * 60_000;
 const dockerLabelsSchema = Type.Record(Type.String(), Type.String());
+const booleanSchema = Type.Boolean();
 const nonBlankStringSchema = Type.String({ pattern: "\\S" });
 export const workspaceRoot = "/work";
 export const workspaceVSCodePort = 8000;
@@ -211,6 +212,13 @@ function optionalString(record: JsonObject, key: string, path: string, label = k
   return value;
 }
 
+function optionalBoolean(record: JsonObject, key: string, path: string, label = key): boolean | undefined {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (!Value.Check(booleanSchema, value)) throw invalidArguments(`invalid ${path}: ${label} must be a boolean`);
+  return value;
+}
+
 function optionalRecord(record: JsonObject, key: string, path: string): JsonObject | undefined {
   const value = record[key];
   if (value === undefined) return undefined;
@@ -231,15 +239,15 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
   if (record.privileged !== undefined) throw invalidArguments(`invalid ${path}: privileged is no longer supported; use docker.privileged`);
   if (record.isAtelier !== undefined) throw invalidArguments(`invalid ${path}: isAtelier is no longer supported; use docker.preloadImages`);
   const dockerRecord = optionalRecord(record, "docker", path);
-  if (dockerRecord?.privileged !== undefined && typeof dockerRecord.privileged !== "boolean") throw invalidArguments(`invalid ${path}: docker.privileged must be a boolean`);
+  const privileged = dockerRecord ? optionalBoolean(dockerRecord, "privileged", path, "docker.privileged") : undefined;
   const preloadImagesValue = dockerRecord?.preloadImages;
   if (preloadImagesValue !== undefined && (!Array.isArray(preloadImagesValue) || !preloadImagesValue.every((spec): spec is string => typeof spec === "string" && Boolean(spec.trim())))) {
     throw invalidArguments(`invalid ${path}: docker.preloadImages must be an array of non-empty strings`);
   }
   const preloadImages = preloadImagesValue?.map((spec) => spec.trim());
-  if (preloadImages && preloadImages.length > 0 && dockerRecord?.privileged !== true) throw invalidArguments(`invalid ${path}: docker.preloadImages requires docker.privileged to be true`);
+  if (preloadImages && preloadImages.length > 0 && privileged !== true) throw invalidArguments(`invalid ${path}: docker.preloadImages requires docker.privileged to be true`);
   const docker: RepoWorkspaceManifest["docker"] | undefined = dockerRecord ? {} : undefined;
-  if (docker && dockerRecord?.privileged !== undefined) docker.privileged = dockerRecord.privileged;
+  if (docker && privileged !== undefined) docker.privileged = privileged;
   if (docker && preloadImages) docker.preloadImages = preloadImages;
   const initScripts = record.initScripts;
   if (initScripts !== undefined && (!Array.isArray(initScripts) || !initScripts.every((script) => typeof script === "string"))) throw invalidArguments(`invalid ${path}: initScripts must be an array of strings`);

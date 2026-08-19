@@ -53,6 +53,10 @@ describe("workspace manifest Docker image preload", () => {
     expectInvalid({ version: 1, docker: { preloadImages: ["ubuntu:24.04"] } }, "requires docker.privileged");
   });
 
+  test("rejects a non-boolean Docker privilege", () => {
+    expectInvalid({ version: 1, docker: { privileged: "true" } }, "docker.privileged must be a boolean");
+  });
+
   test("rejects removed special-purpose fields", () => {
     expectInvalid({ version: 1, isAtelier: true }, "isAtelier is no longer supported");
     expectInvalid({ version: 1, privileged: true }, "privileged is no longer supported");
