@@ -62,11 +62,11 @@ async function readStatePath(path: string): Promise<WorkspacePublicProxyState> {
     for (const [appKey, route] of Object.entries(parsed.routes)) {
       if (!isJsonObject(route)) continue;
       const publicPort = Number(route.publicPort);
-      if (isValidAppKey(appKey) && Number.isInteger(publicPort)) routes[appKey] = { publicPort };
+      if (route.publicPort === publicPort && isValidAppKey(appKey) && Number.isInteger(publicPort)) routes[appKey] = { publicPort };
     }
     return { version: 1, routes };
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyState();
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return emptyState();
     throw error;
   }
 }

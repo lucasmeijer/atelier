@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { gzipSync } from "node:zlib";
@@ -151,6 +151,24 @@ describe("workspace public proxy route state", () => {
     expect(await listWorkspacePublicProxyRoutes(["ws1"])).toEqual([
       { workspaceId: "ws1", appKey: "vscode", publicPort: 43100 },
       { workspaceId: "ws1", appKey: "port-3000", publicPort: 43101 },
+    ]);
+  });
+
+  test("ignores malformed persisted routes instead of coercing their ports", async () => {
+    const workspaceDir = join(dataDir, "workspaces", "ws1");
+    await mkdir(workspaceDir, { recursive: true });
+    await writeFile(join(workspaceDir, "proxy-routes.json"), JSON.stringify({
+      version: 1,
+      routes: {
+        "string-port": { publicPort: "43100" },
+        "boolean-port": { publicPort: true },
+        "missing-port": {},
+        "valid-port": { publicPort: 43101 },
+      },
+    }));
+
+    expect(await listWorkspacePublicProxyRoutes(["ws1"])).toEqual([
+      { workspaceId: "ws1", appKey: "valid-port", publicPort: 43101 },
     ]);
   });
 
