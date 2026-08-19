@@ -1242,7 +1242,7 @@ class AtelierShortcutsController extends Controller {
   }
 
   private openProjectPickerDialog(): void {
-    const dialog = document.querySelector<HTMLDialogElement>("dialog#project-picker-modal");
+    const dialog = dialogById("project-picker-modal");
     if (!dialog) return;
     if (!dialog.open) dialog.showModal();
     focusDialogPromptEnd(dialog);
@@ -1314,6 +1314,11 @@ function focusDialogPromptEnd(dialog: ParentNode): void {
     input.focus();
     input.setSelectionRange(input.value.length, input.value.length);
   });
+}
+
+function dialogById(id: string): HTMLDialogElement | null {
+  const element = document.getElementById(id);
+  return element instanceof HTMLDialogElement ? element : null;
 }
 
 function submitFormWithFirstButton(form: HTMLFormElement): void {
@@ -1430,7 +1435,7 @@ class ModalOpenerController extends Controller {
     const target = event?.target instanceof HTMLElement ? event.target : null;
     const interactive = target?.closest("a, button, input, textarea, select, form");
     if (interactive && interactive !== this.element) return;
-    const dialog = document.getElementById(this.targetIdValue) as HTMLDialogElement | null;
+    const dialog = dialogById(this.targetIdValue);
     if (!dialog || dialog.open) return;
     dialog.showModal();
     this.element.blur();
