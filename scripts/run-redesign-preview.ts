@@ -2,6 +2,8 @@
 
 import { resolve } from "node:path";
 import type { JsonObject } from "@atelier/core";
+import { Type, type Static, type TSchema } from "typebox";
+import { Value } from "typebox/value";
 
 const previewNamespace = "atelier-redesign-preview";
 const previewTitle = "Atelier redesign preview";
@@ -10,37 +12,50 @@ const previewTerminalTitle = "Changes · 2 files";
 const baseUrl = "http://127.0.0.1:3000";
 const repoRoot = resolve(new URL("..", import.meta.url).pathname);
 
-interface Project {
-  id: string;
-  name: string;
-  gitUrl: string;
-}
+const projectSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  gitUrl: Type.String(),
+});
 
-interface WorkspaceSummary {
-  id: string;
-  title: string;
-  phase: string;
-}
+const workspaceSummarySchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  phase: Type.String(),
+});
 
-interface WorkspaceTab {
-  key: string;
-  label: string;
-}
+const workspaceStateSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  phase: Type.String(),
+  url: Type.String(),
+  tabs: Type.Array(Type.Object({
+    key: Type.String(),
+    label: Type.String(),
+  })),
+  layout: Type.Object({
+    groups: Type.Array(Type.Object({
+      id: Type.String(),
+      tabs: Type.Array(Type.String()),
+      visibleTab: Type.Optional(Type.String()),
+    })),
+  }),
+});
 
-interface WorkspaceGroup {
-  id: string;
-  tabs: string[];
-  visibleTab?: string;
-}
-
-interface WorkspaceState {
-  id: string;
-  title: string;
-  phase: string;
-  url: string;
-  tabs: WorkspaceTab[];
-  layout: { groups: WorkspaceGroup[] };
-}
+const projectsResponseSchema = Type.Object({ projects: Type.Array(projectSchema) });
+const workspaceCreatedResponseSchema = Type.Object({ workspace: Type.Object({ id: Type.String() }) });
+const workspaceResponseSchema = Type.Object({ workspace: workspaceStateSchema });
+const workspaceStatusResponseSchema = Type.Object({
+  workspace: Type.Object({
+    id: Type.String(),
+    title: Type.String(),
+    phase: Type.String(),
+    url: Type.String(),
+  }),
+});
+const workspacesResponseSchema = Type.Object({ workspaces: Type.Array(workspaceSummarySchema) });
+type Project = Static<typeof projectSchema>;
+type WorkspaceState = Static<typeof workspaceStateSchema>;
 
 const fixture = `# Atelier workspace redesign preview
 
@@ -66,7 +81,7 @@ function gitRemote(): string {
   return result.stdout.toString().trim();
 }
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
+async function api<const Schema extends TSchema>(path: string, schema: Schema, init?: RequestInit): Promise<Static<Schema>> {
   const headers = new Headers();
   headers.set("Accept", "application/json");
   if (init?.body) headers.set("Content-Type", "application/json");
@@ -76,13 +91,17 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     headers,
   });
   if (!response.ok) throw new Error(`${init?.method ?? "GET"} ${path} failed (${response.status}): ${await response.text()}`);
-  return await response.json() as T;
+  return Value.Parse(schema, await response.json());
 }
 
-async function post<T>(path: string, body?: JsonObject): Promise<T> {
+async function postJson<const Schema extends TSchema>(path: string, schema: Schema, body?: JsonObject): Promise<Static<Schema>> {
   const init: RequestInit = { method: "POST" };
   if (body !== undefined) init.body = JSON.stringify(body);
-  return await api<T>(path, init);
+  return await api(path, schema, init);
+}
+
+async function post(path: string, body?: JsonObject): Promise<void> {
+  await postJson(path, Type.Unknown(), body);
 }
 
 async function waitForServer(server?: ReturnType<typeof Bun.spawn>): Promise<void> {
@@ -98,26 +117,26 @@ async function waitForServer(server?: ReturnType<typeof Bun.spawn>): Promise<voi
 
 async function project(): Promise<Project> {
   const packageJson = await Bun.file(resolve(repoRoot, "package.json")).json() as { name: string };
-  const projects = (await api<{ projects: Project[] }>("/projects")).projects;
+  const projects = (await api("/projects", projectsResponseSchema)).projects;
   const existing = projects.find((candidate) => candidate.name === packageJson.name);
   if (existing) return existing;
-  return (await post<{ project: Project }>("/projects", { gitUrl: gitRemote() })).project;
+  return (await postJson("/projects", Type.Object({ project: projectSchema }), { gitUrl: gitRemote() })).project;
 }
 
 async function workspace(projectId: string): Promise<WorkspaceState> {
-  const summaries = (await api<{ workspaces: WorkspaceSummary[] }>("/workspaces")).workspaces;
-  let summary = summaries.find((candidate) => candidate.title === previewTitle);
-  if (!summary) {
-    summary = (await post<{ workspace: WorkspaceState }>("/workspaces", {
+  const summaries = (await api("/workspaces", workspacesResponseSchema)).workspaces;
+  let workspaceId = summaries.find((candidate) => candidate.title === previewTitle)?.id;
+  if (!workspaceId) {
+    workspaceId = (await postJson("/workspaces", workspaceCreatedResponseSchema, {
       source: { type: "project", project: projectId },
       title: previewTitle,
-    })).workspace;
+    })).workspace.id;
   }
 
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
-    const state = (await api<{ workspace: WorkspaceState }>(`/workspaces/${summary.id}`)).workspace;
-    if (state.phase === "ready") return state;
+    const state = (await api(`/workspaces/${workspaceId}`, workspaceStatusResponseSchema)).workspace;
+    if (state.phase === "ready") return Value.Parse(workspaceStateSchema, state);
     if (state.phase === "failed") throw new Error(`preview workspace failed to start`);
     await Bun.sleep(500);
   }
@@ -125,7 +144,7 @@ async function workspace(projectId: string): Promise<WorkspaceState> {
 }
 
 async function state(workspaceId: string): Promise<WorkspaceState> {
-  return (await api<{ workspace: WorkspaceState }>(`/workspaces/${workspaceId}`)).workspace;
+  return (await api(`/workspaces/${workspaceId}`, workspaceResponseSchema)).workspace;
 }
 
 async function createBrowser(workspaceId: string): Promise<void> {
