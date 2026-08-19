@@ -141,10 +141,9 @@ describe("Atelier Playwright helper", () => {
     await page.waitForFunction(() => Boolean(window.Stimulus && window.Turbo));
     await page.waitForFunction(() => document.querySelector("iframe")?.contentDocument?.readyState === "complete");
 
-    await page.evaluate(() => {
+    const layoutProbe = await page.evaluateHandle(() => {
       const pane = document.querySelector<HTMLElement>('[data-tab-pane="browser-1"]')!;
       const frame = pane.querySelector<HTMLIFrameElement>("iframe")!;
-      (window as typeof window & { layoutProbe?: unknown }).layoutProbe = { pane, frame, frameWindow: frame.contentWindow };
       pane.querySelector("textarea")!.value = "unsaved draft";
       window.Turbo!.renderStreamMessage(`<turbo-stream action="replace-workspace-layout" target="workspace_groups_demo"><template>
         <div id="workspace_groups_demo" class="workspace-groups" data-controller="workspace-groups" data-workspace-groups-workspace-id-value="demo">
@@ -156,11 +155,11 @@ describe("Atelier Playwright helper", () => {
             <div class="workspace-panes"><span hidden data-workspace-pane-slot="browser-1" data-visible="true"></span><section class="tab-pane" data-tab-pane="new">New pane</section></div>
           </section>
         </div></template></turbo-stream><turbo-stream action="update" target="side_effect"><template>rendered too</template></turbo-stream>`);
+      return { pane, frame, frameWindow: frame.contentWindow };
     });
 
     await page.waitForFunction(() => document.querySelector(".workspace-group")?.getAttribute("data-group-id") === "right" && document.querySelector("#side_effect")?.textContent === "rendered too");
-    const preserved = await page.evaluate(() => {
-      const probe = (window as typeof window & { layoutProbe: { pane: HTMLElement; frame: HTMLIFrameElement; frameWindow: Window | null } }).layoutProbe;
+    const preserved = await layoutProbe.evaluate((probe) => {
       const pane = document.querySelector<HTMLElement>('[data-tab-pane="browser-1"]')!;
       const frame = pane.querySelector<HTMLIFrameElement>("iframe")!;
       return {
