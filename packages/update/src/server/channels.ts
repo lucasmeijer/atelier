@@ -1,9 +1,13 @@
 import { repository } from "./constants.ts";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
-export type ReleaseChannel = "stable" | "latest";
+export const releaseChannelSchema = Type.Union([Type.Literal("stable"), Type.Literal("latest")]);
+
+export type ReleaseChannel = Static<typeof releaseChannelSchema>;
 
 export function isReleaseChannel(value: string | undefined): value is ReleaseChannel {
-  return value === "stable" || value === "latest";
+  return Value.Check(releaseChannelSchema, value);
 }
 
 export function targetImageForChannel(channel: ReleaseChannel): string {

@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { defaultDataDir } from "@atelier/core";
-import { isReleaseChannel, type ReleaseChannel } from "./channels.ts";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+import { releaseChannelSchema, type ReleaseChannel } from "./channels.ts";
+
+const updateSettingsSchema = Type.Object({
+  releaseChannel: Type.Optional(releaseChannelSchema),
+});
 
 function settingsPath(): string {
   return join(process.env.ATELIER_DATA_DIR?.trim() || defaultDataDir(), "update.json");
@@ -15,10 +21,8 @@ export async function readStoredReleaseChannel(): Promise<ReleaseChannel | undef
   });
   if (!text) return undefined;
   const parsed: unknown = JSON.parse(text);
-  if (!(parsed instanceof Object) || !("releaseChannel" in parsed) || parsed.releaseChannel === undefined) return undefined;
-  const releaseChannel = parsed.releaseChannel;
-  if (typeof releaseChannel !== "string" || !isReleaseChannel(releaseChannel)) throw new Error(`unsupported release channel in update settings: ${releaseChannel}`);
-  return releaseChannel;
+  if (!Value.Check(updateSettingsSchema, parsed)) throw new Error("invalid update settings");
+  return parsed.releaseChannel;
 }
 
 export async function writeStoredReleaseChannel(channel: ReleaseChannel): Promise<void> {
