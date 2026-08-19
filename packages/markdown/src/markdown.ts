@@ -26,7 +26,7 @@ markdown.renderer.rules.fence = (tokens, index) => {
     highlighted.language ? `class="language-${escapeHtml(highlighted.language)}"` : "",
   ].filter(Boolean).join(" ");
   const label = rawLang ? `Copy ${escapeHtml(rawLang)} code to clipboard` : "Copy code to clipboard";
-  return `<div class="agent-code-block" data-controller="agent-code-copy"><button type="button" class="agent-code-copy" data-action="agent-code-copy#copy" aria-label="${label}" title="Copy code"><span class="agent-code-copy-icon" aria-hidden="true">⧉</span></button><pre${attrs ? ` ${attrs}` : ""}><code data-agent-code-copy-target="code">${highlighted.html}</code></pre></div>`;
+  return `<div class="agent-code-block" data-controller="agent-code-copy"><button type="button" class="agent-code-copy" data-agent-code-copy-target="button" data-action="agent-code-copy#copy" aria-label="${label}" title="Copy code"><span class="agent-code-copy-icon" aria-hidden="true">⧉</span></button><pre${attrs ? ` ${attrs}` : ""}><code data-agent-code-copy-target="code">${highlighted.html}</code></pre></div>`;
 };
 
 const defaultLinkOpen = markdown.renderer.rules.link_open ?? ((tokens, index, options, _environment, renderer) => renderer.renderToken(tokens, index, options));

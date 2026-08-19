@@ -51,6 +51,7 @@ describe("flat transcript rendering", () => {
   test("streaming fences preserve code-copy markup", () => {
     const html = renderTranscriptItem(ctx, { type: "text", key: "code-stream", text: "```ts\nconst x = 1;", final: false, live: true });
     expect(html).toContain('data-controller="agent-code-copy"');
+    expect(html).toContain('data-agent-code-copy-target="button"');
     expect(html).toContain('data-agent-code-copy-target="code"');
   });
 

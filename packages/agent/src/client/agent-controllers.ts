@@ -586,8 +586,8 @@ function createAgentCopyController(Controller: StimulusControllerConstructor) {
 
 function createAgentCodeCopyController(Controller: StimulusControllerConstructor) {
   return class AgentCodeCopyController extends Controller {
-    static targets = ["code"];
-    declare readonly element: HTMLElement;
+    static targets = ["button", "code"];
+    declare readonly buttonTarget: HTMLButtonElement;
     declare readonly codeTarget: HTMLElement;
     private timer?: ReturnType<typeof setTimeout>;
 
@@ -595,9 +595,8 @@ function createAgentCodeCopyController(Controller: StimulusControllerConstructor
       if (this.timer) clearTimeout(this.timer);
     }
 
-    async copy(event: Event): Promise<void> {
-      event.preventDefault();
-      const button = event.currentTarget as HTMLButtonElement;
+    async copy(): Promise<void> {
+      const button = this.buttonTarget;
       const text = this.codeTarget.textContent ?? "";
       if (!text) return;
       await copyTextToClipboard(text);
