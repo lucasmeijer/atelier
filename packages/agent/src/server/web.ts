@@ -90,8 +90,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
       const sourceAgent = sourceLabel ? (await listWorkspaceAgents(workspaceId)).find((candidate) => candidate.label === sourceLabel) : undefined;
       const agent = await createNextWorkspaceAgent(workspaceId);
       const applySettingsTimer = setTimeout(() => {
-        // SAFETY: Workspace commands receive the web server's AtelierEventBus.
-        void applyNewAgentSettings(agent, sourceAgent, events as AtelierEventBus | undefined).catch((error) => console.error("Could not apply settings to new agent", error));
+        void applyNewAgentSettings(agent, sourceAgent, events).catch((error) => console.error("Could not apply settings to new agent", error));
       }, 0);
       applySettingsTimer.unref?.();
       return { createdTabKey: agentTabKey(agent.label) };
@@ -99,14 +98,14 @@ export const agentWorkspaceModule: WorkspaceModule = {
   }],
   routes: [{
     handle(request, url, context) {
-      return handleAgentRequest(request, url, { events: context.events as AtelierEventBus | undefined });
+      return handleAgentRequest(request, url, { events: context.events });
     },
   }],
   tabs: [{
     owns: (tabKey) => tabKey.startsWith("agent:"),
   }],
   initialize(context) {
-    const events = context.events as AtelierEventBus;
+    const events = context.events;
     registerAgentEvents(events);
     registerSessionShareMountEvents(events);
     events.on("workspace_agent_turn_finished", ({ workspaceId, agentLabel }) => {
@@ -139,7 +138,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
     try {
       const agents = await listOrCreateWorkspaceAgents(workspaceId);
       return {
-        tabs: await renderWorkspaceAgentTabs(workspaceId, agents, events as AtelierEventBus | undefined, renderPaneKeys),
+        tabs: await renderWorkspaceAgentTabs(workspaceId, agents, events, renderPaneKeys),
         commands: hasProject ? [...agentWorkspaceCommands, projectAgentWorkspaceCommand] : agentWorkspaceCommands,
       };
     } catch (error) {

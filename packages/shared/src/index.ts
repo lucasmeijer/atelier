@@ -72,7 +72,7 @@ export function turboStreamResponse(body: string, init: ResponseInit = {}): Resp
 export interface WorkspaceAttachContext {
   workspaceId: string;
   init?: unknown;
-  events?: unknown;
+  events?: AtelierEventBus;
   /** When present, pane HTML is only needed for these tabs; other tabs may return metadata only. */
   renderPaneKeys?: ReadonlySet<string>;
 }
@@ -149,7 +149,7 @@ export interface WorkspaceModuleCommandResult {
 
 export interface WorkspaceModuleCommandContext<Input = unknown> {
   workspaceId: string;
-  events?: unknown;
+  events?: AtelierEventBus;
   activeTabKey?: string;
   input: Input;
   tabKeys(): Promise<string[]>;
@@ -166,7 +166,7 @@ export interface WorkspaceModuleCommandHandler<Input = unknown> {
 }
 
 export interface WorkspaceModuleRouteContext {
-  events?: unknown;
+  events?: AtelierEventBus;
   openTab(workspaceId: string, tabKey: string, placement?: WorkspaceTabPlacement): Promise<Response>;
 }
 
@@ -206,7 +206,7 @@ export interface WorkspaceServerProvisioningHook {
   id: string;
   label: string;
   parentId?: string;
-  run(context: { workspaceId: string; creationContext?: WorkspaceCreationContext; events?: unknown }): Promise<void> | void;
+  run(context: { workspaceId: string; creationContext?: WorkspaceCreationContext; events?: AtelierEventBus }): Promise<void> | void;
 }
 
 export interface WorkspaceRowContributionRegistry {
