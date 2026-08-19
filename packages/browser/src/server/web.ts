@@ -1,4 +1,4 @@
-import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceModuleCommandHandler, WorkspaceWorkViewPresentation, WorkspaceWorkViewReference } from "@atelier/shared";
+import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceModuleCommandHandler, WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { renderBrowserFrame, renderBrowserWorkView } from "./render.ts";
 import { createWorkspaceBrowserView, deleteWorkspaceBrowserState, deleteWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
@@ -23,13 +23,16 @@ const browserCreateCommand: WorkspaceModuleCommandHandler<Static<typeof browserC
   },
 };
 
-interface BrowserWorkViewReference extends WorkspaceWorkViewReference { type: "browser"; browserId: string }
+const browserWorkViewReferenceSchema = Type.Object({
+  type: Type.Literal("browser"),
+  browserId: Type.String({ pattern: "^browser-\\d+$" }),
+});
+
+type BrowserWorkViewReference = Static<typeof browserWorkViewReferenceSchema>;
 
 function parseBrowserReference(value: JsonValue): BrowserWorkViewReference {
-  // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
-  const reference = value as { type?: unknown; browserId?: unknown };
-  if (reference?.type !== "browser" || typeof reference.browserId !== "string" || !/^browser-\d+$/.test(reference.browserId)) throw new Error("browserId is invalid");
-  return { type: "browser", browserId: reference.browserId };
+  if (!Value.Check(browserWorkViewReferenceSchema, value)) throw new Error("browserId is invalid");
+  return { type: "browser", browserId: value.browserId };
 }
 
 function renderWorkspaceBrowserWorkViews(workspaceId: string): WorkspaceWorkViewPresentation[] {
