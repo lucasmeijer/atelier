@@ -29,6 +29,8 @@ import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
 import { createAtelierCableClient } from "./cable.ts";
 
+type TurboSubmitEndEvent = CustomEvent<{ success?: boolean }>;
+
 declare global {
   interface Window {
     Stimulus: {
@@ -1390,9 +1392,8 @@ class ModalController extends Controller {
     this.element.close();
   }
 
-  submitted(event: Event): void {
-    const detail = (event as CustomEvent).detail as { success?: boolean } | undefined;
-    if (detail?.success === false) return;
+  submitted(event: TurboSubmitEndEvent): void {
+    if (event.detail.success !== true) return;
     this.element.close();
   }
 }
