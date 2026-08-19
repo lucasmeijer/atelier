@@ -170,7 +170,7 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
         const entry = item.webkitGetAsEntry?.();
         return entry?.isDirectory;
       });
-      if (hasDirectory || files.some((file) => Boolean((file as File & { webkitRelativePath?: string }).webkitRelativePath))) {
+      if (hasDirectory || files.some((file) => file.webkitRelativePath.length > 0)) {
         window.alert("Folder uploads are not supported yet. Drop files instead.");
         return;
       }
