@@ -40,7 +40,7 @@ declare global {
 
 window.Stimulus = {
   Application: StimulusApplication as typeof window.Stimulus.Application,
-  Controller: StimulusController as typeof window.Stimulus.Controller,
+  Controller: StimulusController,
 };
 window.Turbo = Turbo;
 
@@ -158,8 +158,8 @@ function emitBecomeVisible(pane: HTMLElement): void {
   if (!context) return;
   visiblePaneState.add(pane);
   pane.querySelectorAll<HTMLIFrameElement>('[data-controller~="workspace-app-frame"]').forEach((frame) => {
-    const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame") as { becomeVisible?(): void } | null;
-    controller?.becomeVisible?.();
+    const controller = application.getControllerForElementAndIdentifier(frame, "workspace-app-frame");
+    if (controller instanceof WorkspaceAppFrameController) controller.becomeVisible();
   });
   clientHooks.becomeVisible(context);
 }
@@ -185,9 +185,8 @@ type WorkspaceLayoutStreamElement = HTMLElement & {
 };
 
 function movePaneBefore(parent: ParentNode, pane: HTMLElement, reference: Node): void {
-  const statePreservingParent = parent as ParentNode & { moveBefore?(node: Node, child: Node | null): void };
-  if (statePreservingParent.moveBefore) statePreservingParent.moveBefore(pane, reference);
-  else (parent as Node).insertBefore(pane, reference);
+  if (parent.moveBefore) parent.moveBefore(pane, reference);
+  else parent.insertBefore(pane, reference);
 }
 
 async function performWorkspaceLayoutReplacement(stream: WorkspaceLayoutStreamElement): Promise<void> {
