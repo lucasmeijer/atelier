@@ -36,12 +36,12 @@ const workspaceStatusResponseSchema = Type.Object({
     phase: Type.String(),
   }),
 });
-const projectCreatedResponseSchema = Type.Object({
-  project: Type.Object({
-    id: Type.String(),
-    name: Type.String(),
-  }),
+const projectSummarySchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
 });
+const projectCreatedResponseSchema = Type.Object({ project: projectSummarySchema });
+const projectListResponseSchema = Type.Object({ projects: Type.Array(projectSummarySchema) });
 
 interface TestAppOptions {
   provision?: (id: string, options?: ProvisionWorkspaceOptions) => Promise<void>;
@@ -340,7 +340,8 @@ describe("web app contracts", () => {
       expect(repeatedResponse.status).toBe(200);
       expect(repeated.project.id).toBe(created.project.id);
 
-      const listed = await (await app.fetch(new Request("http://test.local/projects", { headers: { accept: "application/json" } }))).json() as { projects: Array<{ id: string }> };
+      const listedResponse = await app.fetch(new Request("http://test.local/projects", { headers: { accept: "application/json" } }));
+      const listed = Value.Parse(projectListResponseSchema, await listedResponse.json());
       expect(listed.projects.map((project) => project.id)).toEqual([created.project.id]);
 
       const updated = await (await app.fetch(postJson(`/projects/${created.project.id}`, { name: "JSON Project", gitUrl: specification }))).json() as { project: { name: string } };
