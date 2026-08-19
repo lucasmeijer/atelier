@@ -639,21 +639,29 @@ function imageDimensions(data: Uint8Array, mimeType: string): ImageDimensions | 
   return undefined;
 }
 
+const sessionImagePartSchema = Type.Object({
+  type: Type.Literal("image"),
+  mimeType: Type.Optional(Type.Unknown()),
+  data: Type.Optional(Type.Unknown()),
+});
+const sessionImageStringSchema = Type.String();
+const sessionTimestampSchema = Type.Number();
+
 function sessionContentImages(entry: { id: string; message?: { content?: unknown } }): SessionImageRef[] {
   if (!Array.isArray(entry.message?.content)) return [];
   const images: SessionImageRef[] = [];
   entry.message.content.forEach((part, contentIndex) => {
-    if (!part || typeof part !== "object" || !("type" in part) || part.type !== "image") return;
-    const mimeType = "mimeType" in part && typeof part.mimeType === "string" ? part.mimeType : undefined;
-    const data = "data" in part && typeof part.data === "string" ? part.data : undefined;
+    if (!Value.Check(sessionImagePartSchema, part)) return;
+    const mimeType = Value.Check(sessionImageStringSchema, part.mimeType) ? part.mimeType : undefined;
+    const data = Value.Check(sessionImageStringSchema, part.data) ? part.data : undefined;
     const dimensions = data && mimeType ? imageDimensions(Buffer.from(data.slice(0, 87_384), "base64"), mimeType) : undefined;
     images.push({ entryId: entry.id, contentIndex, mimeType, ...dimensions });
   });
   return images;
 }
 
-function entryTimestamp(entry: { timestamp?: string }, message?: { timestamp?: number }): number {
-  if (typeof message?.timestamp === "number") {
+function entryTimestamp(entry: { timestamp?: string }, message?: { timestamp?: unknown }): number {
+  if (Value.Check(sessionTimestampSchema, message?.timestamp)) {
     // pi stores seconds or ms depending on producer; normalize to ms.
     return message.timestamp > 10_000_000_000 ? message.timestamp : message.timestamp * 1000;
   }
