@@ -2,8 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { gzipSync } from "node:zlib";
-import { Type, type Static } from "typebox";
-import { Value } from "typebox/value";
+import { parseAssetManifest, type AssetManifest } from "../src/server/asset-manifest.ts";
 import type { StaticFileEntry } from "../src/server/static-files.ts";
 
 await import("./generate-workspace-modules.ts");
@@ -16,11 +15,9 @@ const manifestTempUrl = new URL(`../.assets-manifest-${process.pid}.json`, impor
 const maxCssManifestPasses = 10;
 const clientOnly = process.argv.includes("--client-only") && await Bun.file(manifestUrl).exists();
 
-const manifestSchema = Type.Record(Type.String(), Type.String());
-type Manifest = Static<typeof manifestSchema>;
 type StaticFileRecord = [logicalPath: string, entry: StaticFileEntry];
 
-const manifest: Manifest = {};
+const manifest: AssetManifest = {};
 
 function contentHash(content: string | Uint8Array): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 12);
@@ -36,7 +33,7 @@ function isCss(entry: StaticFileEntry): boolean {
   return entry.contentType.toLowerCase().startsWith("text/css");
 }
 
-function rewriteAssetReferences(content: string, assetManifest: Manifest): string {
+function rewriteAssetReferences(content: string, assetManifest: AssetManifest): string {
   let next = content;
   for (const [logicalPath, publicPath] of Object.entries(assetManifest).sort((a, b) => b[0].length - a[0].length)) {
     next = next
@@ -134,13 +131,12 @@ await mkdir(stagingDir, { recursive: true });
 
 try {
   if (clientOnly) {
-    const encodedManifest: unknown = await Bun.file(manifestUrl).json();
-    Object.assign(manifest, Value.Parse(manifestSchema, encodedManifest));
+    Object.assign(manifest, parseAssetManifest(await Bun.file(manifestUrl).text()));
   }
   await buildClientEntrypoints();
 
   if (!clientOnly) {
-    const staticFiles = Object.entries(fingerprintedStaticFiles).sort(([a], [b]) => a.localeCompare(b)) as StaticFileRecord[];
+    const staticFiles = Object.entries(fingerprintedStaticFiles).sort(([a], [b]) => a.localeCompare(b));
     const cssFiles = staticFiles.filter(([, entry]) => isCss(entry));
     const nonCssFiles = staticFiles.filter(([, entry]) => !isCss(entry));
 

@@ -15,7 +15,7 @@ export const clientEntrypoints = {
   "/workspace.js": { url: new URL("../client/workspace.ts", import.meta.url), contentType: "text/javascript; charset=utf-8" },
 } satisfies Record<string, StaticFileEntry>;
 
-export const fingerprintedStaticFiles = {
+export const fingerprintedStaticFiles: StaticFileRegistry = {
   "/favicon.ico": { url: new URL("../../public/favicon.ico", import.meta.url), contentType: "image/x-icon" },
   "/favicon-32x32.png": { url: new URL("../../public/favicon-32x32.png", import.meta.url), contentType: "image/png" },
   "/favicon-16x16.png": { url: new URL("../../public/favicon-16x16.png", import.meta.url), contentType: "image/png" },
@@ -27,7 +27,7 @@ export const fingerprintedStaticFiles = {
   "/style.css": { url: new URL("../../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   ...workspaceProvisioningStaticFiles,
   ...workspaceModuleStaticFiles(),
-} satisfies Record<string, StaticFileEntry>;
+};
 
 export const legacyStaticFiles: StaticFileRegistry = {
   "/workspace.js": { url: new URL("../../public/workspace.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium, type Browser } from "@playwright/test";
+import { parseAssetManifest } from "../src/server/asset-manifest.ts";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
 
 let browser: Browser;
@@ -9,7 +10,7 @@ beforeAll(async () => {
   const build = Bun.spawn(["bun", "run", "apps/web/scripts/build-assets.ts"], { cwd: new URL("../../..", import.meta.url).pathname, stdout: "pipe", stderr: "pipe" });
   const [exitCode, stdout, stderr] = await Promise.all([build.exited, new Response(build.stdout).text(), new Response(build.stderr).text()]);
   if (exitCode !== 0) throw new Error(`workspace client build failed:\n${stdout}${stderr}`);
-  const manifest = await Bun.file(new URL("../public/assets-manifest.json", import.meta.url)).json() as Record<string, string>;
+  const manifest = parseAssetManifest(await Bun.file(new URL("../public/assets-manifest.json", import.meta.url)).text());
   workspaceClient = await Bun.file(new URL(`../public${manifest["/workspace.js"]}`, import.meta.url)).text();
   const executablePath = process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/local/bin/chromium";
   browser = await chromium.launch({ executablePath, headless: true });

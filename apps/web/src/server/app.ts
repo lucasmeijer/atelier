@@ -78,6 +78,7 @@ import { handleOnboardingRequest, renderOnboardingDialogIfNeeded } from "./onboa
 import { GitHubRepositorySearchRateLimitError, renderGitHubRepositorySearchMenu, renderGitHubRepositorySearchRateLimitMenu, searchGitHubRepositories, shouldSearchGitHubRepositories } from "./github-repo-search.ts";
 import { atelierOpenApi } from "./openapi.ts";
 import { Value } from "typebox/value";
+import { parseAssetManifest, type AssetManifest } from "./asset-manifest.ts";
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
@@ -181,11 +182,11 @@ function atelierVersionTooltip(): string {
   return "Version information unavailable";
 }
 
-let cachedAssetManifest: Record<string, string> | undefined;
+let cachedAssetManifest: AssetManifest | undefined;
 
-function loadAssetManifest(): Record<string, string> {
+function loadAssetManifest(): AssetManifest {
   const manifestUrl = new URL("../../public/assets-manifest.json", import.meta.url);
-  return existsSync(manifestUrl) ? JSON.parse(readFileSync(manifestUrl, "utf8")) as Record<string, string> : {};
+  return existsSync(manifestUrl) ? parseAssetManifest(readFileSync(manifestUrl, "utf8")) : {};
 }
 
 function publicAssetExists(path: string): boolean {
