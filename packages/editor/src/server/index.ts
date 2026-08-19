@@ -1,7 +1,11 @@
 import type { AtelierEventBus, JsonValue } from "@atelier/core";
-import { turboStream, turboStreamResponse, type WorkspaceModule } from "@atelier/shared";
 import { renderMarkdown } from "@atelier/markdown";
+import { turboStream, turboStreamResponse, type WorkspaceModule } from "@atelier/shared";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
+import { isEditorSaveRequest } from "../protocol.ts";
 import { EditorFileError, maxEditableFileBytes, readEditableFile, writeEditableFile } from "./file.ts";
+import { fileEditorSignalId, renderFileEditorSignal, renderFileWorkView } from "./render.ts";
 import {
   closeWorkspaceFileEditorView,
   deleteWorkspaceFileEditorState,
@@ -9,7 +13,13 @@ import {
   listWorkspaceFileEditorViews,
   openWorkspaceFileEditorView,
 } from "./state.ts";
-import { fileEditorSignalId, renderFileEditorSignal, renderFileWorkView } from "./render.ts";
+
+const fileWorkViewReferenceSchema = Type.Object({
+  type: Type.Literal("file"),
+  path: Type.String({ pattern: "^/" }),
+});
+
+type FileWorkViewReference = Static<typeof fileWorkViewReferenceSchema>;
 
 function textResponse(message: string, status: number): Response {
   return new Response(message, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
@@ -25,7 +35,7 @@ function positiveInteger(value: string | null): number | undefined {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-async function openEditorEndpoint(workspaceId: string, url: URL, openWorkView: (workspaceId: string, reference: { type: "file"; path: string }) => Promise<Response>): Promise<Response> {
+async function openEditorEndpoint(workspaceId: string, url: URL, openWorkView: (workspaceId: string, reference: FileWorkViewReference) => Promise<Response>): Promise<Response> {
   const file = await readEditableFile(workspaceId, url.searchParams.get("path"));
   const line = positiveInteger(url.searchParams.get("line"));
   const column = positiveInteger(url.searchParams.get("column"));
@@ -44,9 +54,8 @@ async function editorContentEndpoint(workspaceId: string, request: Request, url:
   const path = url.searchParams.get("path");
   if (request.method === "GET") return jsonResponse(await readEditableFile(workspaceId, path));
   if (request.method !== "PUT") return textResponse("Method not allowed", 405);
-  // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
-  const body = await request.json() as { content?: unknown; revision?: unknown; force?: unknown };
-  if (typeof body.content !== "string" || typeof body.revision !== "string") return textResponse("Invalid editor save", 422);
+  const body = await request.json();
+  if (!isEditorSaveRequest(body)) return textResponse("Invalid editor save", 422);
   try {
     return jsonResponse({ revision: await writeEditableFile(workspaceId, path, body.content, body.revision, body.force === true) });
   } catch (error) {
@@ -60,13 +69,11 @@ const editorWorkspaceModule: WorkspaceModule = {
   workViews: [{
     type: "file",
     parseReference(value: JsonValue) {
-      // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
-      const reference = value as { type?: unknown; path?: unknown };
-      if (reference?.type !== "file" || typeof reference.path !== "string" || !reference.path.startsWith("/")) throw new Error("path must be absolute");
-      return { type: "file", path: reference.path };
+      if (!Value.Check(fileWorkViewReferenceSchema, value)) throw new Error("path must be absolute");
+      return { type: value.type, path: value.path };
     },
-    identity: (reference: { type: "file"; path: string }) => reference.path,
-    close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "file"; path: string } }) => closeWorkspaceFileEditorView(workspaceId, `file-editor:${Buffer.from(reference.path).toString("base64url")}`),
+    identity: (reference: FileWorkViewReference) => reference.path,
+    close: ({ workspaceId, reference }: { workspaceId: string; reference: FileWorkViewReference }) => closeWorkspaceFileEditorView(workspaceId, `file-editor:${Buffer.from(reference.path).toString("base64url")}`),
   }],
   staticFiles: {
     "/editor.css": { url: new URL("../client/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
