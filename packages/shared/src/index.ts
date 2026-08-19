@@ -1,3 +1,4 @@
+import type { AtelierEventBus } from "@atelier/core";
 import { escapeHtml } from "./html.ts";
 
 export { providerBrandColor, providerBrandIconHtml } from "./brand-icons.ts";
@@ -268,7 +269,7 @@ export interface AgentWorkspaceCreateResult {
 }
 
 export interface WorkspaceServerModuleContext {
-  events: unknown;
+  events: AtelierEventBus;
   registry: {
     setTabBusy(workspaceId: string, tabKey: string, busy: boolean): void;
     setTabUnread(workspaceId: string, tabKey: string, unread: boolean): void;

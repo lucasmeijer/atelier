@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
+import { createAtelierEventBus } from "@atelier/core";
 import { dockerInspect, parseContainerIdFromCgroup, parseContainerIdFromMountInfo, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
 import { createUpdateRouteHandler, UpdateManager } from "../../src/server/index.ts";
 import { parseWwwAuthenticate, selectManifestFromIndex, fetchChannelImageMetadata } from "../../src/server/registry.ts";
@@ -65,7 +66,7 @@ function context() {
   return {
     sidebar,
     ctx: {
-      events: {},
+      events: createAtelierEventBus(),
       registry: { setTabBusy: () => {}, setTabUnread: () => {} },
       workspaceRowContributions: { set: () => {} },
       globalSidebarContributions: { set: (_id: string, html?: string) => sidebar.push(html ?? "") },

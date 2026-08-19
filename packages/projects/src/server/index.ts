@@ -1,5 +1,4 @@
 import type { WorkspaceModule } from "@atelier/shared";
-import type { AtelierEventBus } from "@atelier/core";
 import { listWorkspaces } from "@atelier/workspace";
 import { isGitProjectInit } from "../project.ts";
 import { registerProjectSshAgentWorkspaceEvents, restoreProjectSshAgents } from "../ssh-agent.ts";
@@ -10,7 +9,7 @@ const persistentSystemPromptLine = "The /persistent directory is shared by all w
 export const atelierServerModule: WorkspaceModule = {
   id: "projects",
   async initialize(context) {
-    const events = context.events as AtelierEventBus;
+    const { events } = context;
     registerProjectWorkspaceEvents(events);
     registerProjectSshAgentWorkspaceEvents(events);
     await restoreProjectSshAgents();

@@ -167,6 +167,9 @@
     },
     "packages/shared": {
       "name": "@atelier/shared",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+      },
     },
     "packages/update": {
       "name": "@atelier/update",
