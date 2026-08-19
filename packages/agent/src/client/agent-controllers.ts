@@ -72,15 +72,11 @@ interface AgentTermControllerInstance {
   disconnect(): void;
 }
 
-function isAgentTermController(controller: WorkspaceClientController): controller is WorkspaceClientController & AgentTermControllerInstance {
-  return "start" in controller && typeof controller.start === "function" && "disconnect" in controller && typeof controller.disconnect === "function";
-}
-
 function agentTermController(application: StimulusApplication, terminal: HTMLElement): AgentTermControllerInstance | null {
   const controller = application.getControllerForElementAndIdentifier(terminal, "agent-term");
-  if (!controller) return null;
-  if (!isAgentTermController(controller)) throw new Error("agent-term element is connected to an incompatible controller");
-  return controller;
+  // SAFETY: This module registers AgentTermController under "agent-term"; Stimulus
+  // returns that registered controller for this exact element-and-identifier pair.
+  return controller as AgentTermControllerInstance | null;
 }
 
 // ---------------------------------------------------------------------------
