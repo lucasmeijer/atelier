@@ -51,4 +51,13 @@ describe("runtime session persistence", () => {
 
     expect(await readFile(path, "utf8")).toBe(content);
   });
+
+  test("rejects malformed persisted session entry types", async () => {
+    const path = await sessionFile();
+    const content = `${JSON.stringify({ type: 42 })}\n`;
+    await writeFile(path, content);
+
+    await expect(discardBootstrapOnlySession(path)).rejects.toThrow();
+    expect(await readFile(path, "utf8")).toBe(content);
+  });
 });

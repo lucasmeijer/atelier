@@ -1110,12 +1110,13 @@ async function loadWorkspaceAgentsFiles(workspaceId: string): Promise<Array<{ pa
 }
 
 const bootstrapOnlySessionEntryTypes = new Set(["model_change", "thinking_level_change"]);
+const sessionEntryTypeSchema = Type.Object({ type: Type.String() });
 
 export async function discardBootstrapOnlySession(path: string): Promise<void> {
   const content = await readFile(path, "utf8");
   const lines = content.split("\n").filter((line) => line.trim().length > 0);
   if (lines.length === 0) return;
-  const entries = lines.map((line) => JSON.parse(line) as { type: string });
+  const entries = lines.map((line) => Value.Parse(sessionEntryTypeSchema, JSON.parse(line)));
   if (entries.every((entry) => bootstrapOnlySessionEntryTypes.has(entry.type))) await writeFile(path, "");
 }
 
