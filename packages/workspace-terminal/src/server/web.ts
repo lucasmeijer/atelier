@@ -7,7 +7,8 @@ import { renderTerminalPane } from "./render.ts";
 import { createTerminalSocketHandler } from "./sockets.ts";
 import { terminalStaticFiles } from "./static.ts";
 import { attachWorkspaceTerminal, createWorkspaceTerminal, deleteWorkspaceTerminal, listTmuxSessions, listWorkspaceTerminals, type WorkspaceTerminal } from "./workspace-terminals.ts";
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
 function renderWorkspaceTerminalWorkViews(workspaceId: string, terminals: WorkspaceTerminal[]): WorkspaceWorkViewPresentation[] {
   return terminals.map((terminal) => ({
@@ -20,13 +21,16 @@ function renderWorkspaceTerminalWorkViews(workspaceId: string, terminals: Worksp
   }));
 }
 
-interface TerminalWorkViewReference extends WorkspaceWorkViewReference { type: "terminal"; terminalId: string }
+const terminalWorkViewReferenceSchema = Type.Object({
+  type: Type.Literal("terminal"),
+  terminalId: Type.String({ minLength: 1 }),
+});
+
+type TerminalWorkViewReference = Static<typeof terminalWorkViewReferenceSchema> & WorkspaceWorkViewReference;
 
 function parseTerminalReference(value: JsonValue): TerminalWorkViewReference {
-  // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
-  const reference = value as { type?: unknown; terminalId?: unknown };
-  if (reference?.type !== "terminal" || typeof reference.terminalId !== "string" || !reference.terminalId) throw new Error("terminalId is required");
-  return { type: "terminal", terminalId: reference.terminalId };
+  if (!Value.Check(terminalWorkViewReferenceSchema, value)) throw new Error("terminalId is required");
+  return { type: "terminal", terminalId: value.terminalId };
 }
 
 const terminalWorkspaceCommands: WorkspaceCommandContribution[] = [
