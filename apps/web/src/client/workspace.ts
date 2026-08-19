@@ -2152,6 +2152,7 @@ class ModelAddMenuController extends Controller {
 
 class OnboardingController extends Controller {
   static targets = ["pane", "dot", "continue", "back"];
+  declare readonly element: HTMLDialogElement;
   declare readonly paneTargets: HTMLElement[];
   declare readonly dotTargets: HTMLElement[];
   declare readonly continueTarget: HTMLButtonElement;
@@ -2173,7 +2174,7 @@ class OnboardingController extends Controller {
 
   next(): void {
     if (this.index >= this.paneTargets.length - 1) {
-      (this.element as HTMLDialogElement).close?.();
+      this.element.close();
       return;
     }
     this.show(this.index + 1);
