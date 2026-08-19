@@ -160,7 +160,7 @@ export function agentTreeOwnsMenu(menu: HTMLElement): boolean {
 export function handleAgentTreeMenuEvent(event: Event, input: TextInput): boolean | void {
   if (!(event.target instanceof HTMLElement)) return;
   const action = event.target.closest<HTMLElement>("[data-tree-action]");
-  if (action && (event.type === "click" || (event.type === "pointerdown" && (event as PointerEvent).pointerType === "touch"))) nodeAction(action, input);
+  if (action && (event.type === "click" || (event instanceof PointerEvent && event.type === "pointerdown" && event.pointerType === "touch"))) nodeAction(action, input);
   if (action && (event.type === "click" || event.type === "pointerdown")) return true;
   if (event.type === "input" && event.target.classList.contains("agent-tree-search")) scheduleRefresh(event.target, input);
   if (event.type === "change" && event.target.classList.contains("agent-tree-filter")) scheduleRefresh(event.target, input);
