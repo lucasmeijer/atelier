@@ -6,7 +6,6 @@ import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDispla
 import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded-code.ts";
 import { highlightCodeHtmlForPath, renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdown";
 import { domId, escapeHtml } from "./html.ts";
-import type { WorkspaceAgentInfo } from "./session-store.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
 import {
   formatCost,
@@ -145,8 +144,8 @@ function agentAttachmentDropAttrs(uploadUrl: string): string {
   return `data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}" data-action="${agentAttachmentDropAction}"`;
 }
 
-export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
-  return await renderAgentPaneFrame(ctx, agent, state, options);
+export async function renderAgentPane(ctx: AgentRenderContext, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
+  return await renderAgentPaneFrame(ctx, state, options);
 }
 
 const pendingAgentStats: AgentStatsView = {
@@ -161,20 +160,20 @@ const pendingAgentStats: AgentStatsView = {
   models: [],
 };
 
-export async function renderPendingAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, options: { visible?: boolean } = {}): Promise<string> {
-  return await renderAgentPaneFrame(ctx, agent, {
+export async function renderPendingAgentPane(ctx: AgentRenderContext, options: { visible?: boolean } = {}): Promise<string> {
+  return await renderAgentPaneFrame(ctx, {
     transcriptHtml: `<div class="agent-starting"><span class="agent-starting-spinner" aria-hidden="true"></span><div><b>Starting ${escapeHtml(ctx.label)}…</b><span>Loading model settings and workspace instructions.</span></div></div>`,
     busy: false,
     stats: pendingAgentStats,
   }, options);
 }
 
-async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
-  const key = agentTabKey(agent.label);
+async function renderAgentPaneFrame(ctx: AgentRenderContext, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
+  const key = agentTabKey(ctx.label);
   const draftId = randomUUID();
   const attachRowId = ids.attachRow(ctx);
   const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
-  return `<section id="${domId("agent_pane", ctx.workspaceId, agent.label)}" class="tab-pane agent-tab-pane ${options.visible ? "visible" : ""}" data-tab-pane="${escapeHtml(key)}">
+  return `<section id="${domId("agent_pane", ctx.workspaceId, ctx.label)}" class="tab-pane agent-tab-pane ${options.visible ? "visible" : ""}" data-tab-pane="${escapeHtml(key)}">
     <div class="agent-pane" id="${ids.pane(ctx)}"
       data-controller="agent-pane agent-attachments"
       data-agent-pane-workspace-id-value="${escapeHtml(ctx.workspaceId)}"

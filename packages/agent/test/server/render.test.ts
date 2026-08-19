@@ -9,7 +9,7 @@ const renderBash = (command: string, overrides: Partial<ToolView> = {}): string 
 describe("flat transcript rendering", () => {
   test("server-rendered panes expose their snapshot cursor", async () => {
     const stats = { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] };
-    const html = await renderAgentPane(ctx, { label: "agent" } as never, { transcriptHtml: "ready", busy: false, stats, snapshotCursor: "generation:4" });
+    const html = await renderAgentPane(ctx, { transcriptHtml: "ready", busy: false, stats, snapshotCursor: "generation:4" });
     expect(html).toContain('data-agent-pane-snapshot-cursor-value="generation:4"');
   });
 

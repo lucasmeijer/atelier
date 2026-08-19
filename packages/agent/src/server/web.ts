@@ -32,8 +32,8 @@ async function renderWorkspaceAgentTabs(workspaceId: string, agents: WorkspaceAg
     const key = agentTabKey(agent.label);
     if (renderPaneKeys && !renderPaneKeys.has(key)) return { key, label: agent.label };
     const paneHtml = isWorkspaceAgentRuntimeReady(agent)
-      ? await renderAgentPane(ctx, agent, await (await getWorkspaceAgentRuntime(agent, { events })).paneState(), { visible: index === 0 })
-      : await renderPendingAgentPane(ctx, agent, { visible: index === 0 });
+      ? await renderAgentPane(ctx, await (await getWorkspaceAgentRuntime(agent, { events })).paneState(), { visible: index === 0 })
+      : await renderPendingAgentPane(ctx, { visible: index === 0 });
     return {
       key,
       label: agent.label,
