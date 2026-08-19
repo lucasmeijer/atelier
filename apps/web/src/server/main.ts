@@ -546,8 +546,8 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
     serverPort = server.port ?? port;
     break;
   } catch (error) {
-    const code = (error as { code?: string }).code;
-    if (code !== "EADDRINUSE" || requestedPort === 0 || !allowPortFallback) throw error;
+    const addressInUse = error instanceof Error && "code" in error && error.code === "EADDRINUSE";
+    if (!addressInUse || requestedPort === 0 || !allowPortFallback) throw error;
   }
 }
 
