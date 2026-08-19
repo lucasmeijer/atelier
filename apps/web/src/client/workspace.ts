@@ -1,6 +1,8 @@
 /// <reference lib="dom" />
 
 import { Application as StimulusApplication, Controller as StimulusController } from "@hotwired/stimulus";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 // Turbo does not publish TypeScript declarations, but Bun resolves and bundles its browser module.
 // @ts-expect-error No declaration file is included in @hotwired/turbo.
 import * as Turbo from "@hotwired/turbo";
@@ -33,6 +35,7 @@ type TurboSubmitEndEvent = CustomEvent<{ success?: boolean }>;
 type TurboBeforeStreamRenderEvent = CustomEvent<{
   render(element: Element): void | Promise<void>;
 }>;
+const devReloadResponseSchema = Type.Object({ revision: Type.Number() });
 
 declare global {
   interface DocumentEventMap {
@@ -2526,14 +2529,12 @@ class DevReloadController extends Controller {
     try {
       const response = await fetch(this.urlValue, { cache: "no-store" });
       if (response.ok) {
-        const value = await response.json() as { revision?: unknown };
-        if (typeof value.revision === "number") {
-          if (this.revision !== undefined && value.revision !== this.revision) {
-            window.location.reload();
-            return;
-          }
-          this.revision = value.revision;
+        const { revision } = Value.Parse(devReloadResponseSchema, await response.json());
+        if (this.revision !== undefined && revision !== this.revision) {
+          window.location.reload();
+          return;
         }
+        this.revision = revision;
       }
     } catch {
       // Server restarts temporarily make the development endpoint unavailable.
