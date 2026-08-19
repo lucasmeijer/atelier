@@ -119,6 +119,41 @@ describe("registry helpers", () => {
     await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({ digest: "sha256:manifest", platformDigest: undefined, revision: "new", selfUpdateCompatibility: "contract-v1" });
   });
 
+  test("accepts null optional config label fields", async () => {
+    for (const config of [null, { Labels: null }]) {
+      const fetcher = async (input: URL | RequestInfo) => {
+        const url = String(input);
+        if (url.endsWith("/manifests/stable")) return Response.json({ config: { digest: "sha256:config" } }, { headers: { "docker-content-digest": "sha256:manifest" } });
+        if (url.endsWith("/blobs/sha256:config")) return Response.json({ config });
+        throw new Error(`unexpected fetch ${url}`);
+      };
+      await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({
+        digest: "sha256:manifest",
+        platformDigest: undefined,
+        revision: undefined,
+        selfUpdateCompatibility: undefined,
+      });
+    }
+  });
+
+  test("selects and fetches an image manifest from a registry index", async () => {
+    const architecture = process.arch === "arm64" ? "arm64" : "amd64";
+    const fetcher = async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith("/manifests/stable")) return Response.json({ manifests: [{ digest: "sha256:platform", platform: { os: "linux", architecture } }] });
+      if (url.endsWith("/manifests/sha256:platform")) return Response.json({ config: { digest: "sha256:config" } });
+      if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { "org.opencontainers.image.revision": "indexed" } } });
+      throw new Error(`unexpected fetch ${url}`);
+    };
+
+    await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({
+      digest: "sha256:platform",
+      platformDigest: "sha256:platform",
+      revision: "indexed",
+      selfUpdateCompatibility: undefined,
+    });
+  });
+
   test("rejects malformed registry token responses", async () => {
     const fetcher = async (input: URL | RequestInfo) => {
       const url = String(input);
@@ -128,6 +163,24 @@ describe("registry helpers", () => {
     };
 
     await expect(fetchChannelImageMetadata("stable", fetcher)).rejects.toThrow();
+  });
+
+  test("rejects malformed registry manifests and config labels", async () => {
+    const malformedManifest = async () => Response.json({ config: { digest: 42 } });
+    await expect(fetchChannelImageMetadata("stable", malformedManifest)).rejects.toThrow();
+
+    const malformedIndex = async () => Response.json({
+      manifests: [{ digest: 42, platform: { os: "linux", architecture: "amd64" } }],
+    });
+    await expect(fetchChannelImageMetadata("stable", malformedIndex)).rejects.toThrow();
+
+    const malformedConfig = async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith("/manifests/stable")) return Response.json({ config: { digest: "sha256:config" } });
+      if (url.endsWith("/blobs/sha256:config")) return Response.json({ config: { Labels: { revision: 42 } } });
+      throw new Error(`unexpected fetch ${url}`);
+    };
+    await expect(fetchChannelImageMetadata("stable", malformedConfig)).rejects.toThrow();
   });
 
   test("selects current linux platform manifest", () => {
