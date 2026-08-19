@@ -14,7 +14,7 @@ import { preferredNewWorkspaceAgentModel } from "./model-state.ts";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
 import { mkdir } from "node:fs/promises";
-import type { WorkspaceDockerMount, WorkspaceInitInstruction } from "@atelier/workspace";
+import type { WorkspacePlanPrepareEvent } from "@atelier/workspace";
 
 async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgentInfo[]> {
   try {
@@ -59,16 +59,12 @@ const projectAgentWorkspaceCommand: WorkspaceCommandContribution = {
   surfaces: { shortcut: { defaultBinding: "Meta+Alt+Quote" } },
 };
 
-type WorkspacePlanEvents = {
-  on(eventName: "workspace_plan_prepare", handler: (event: { init?: WorkspaceInitInstruction; plan: { mounts: WorkspaceDockerMount[] } }) => void | Promise<void>): void;
-};
-
 function dockerHostSessionShareDir(shareKey: string): string {
   return dockerHostAtelierDataPath(getAtelierRuntimeContext(), "session-shares", shareKey);
 }
 
 function registerSessionShareMountEvents(events: AtelierEventBus): void {
-  (events as WorkspacePlanEvents).on("workspace_plan_prepare", async ({ init, plan }) => {
+  events.on("workspace_plan_prepare", async ({ init, plan }: WorkspacePlanPrepareEvent) => {
     const shareKey = sessionShareKeyForInit(init);
     await mkdir(sessionShareDir(shareKey), { recursive: true });
     plan.mounts.push({ type: "bind", source: dockerHostSessionShareDir(shareKey), target: sessionShareMountPath, readonly: true });
