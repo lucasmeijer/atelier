@@ -1315,7 +1315,7 @@ ${moduleStylesHtml()}
 
   function jsonString(body: JsonObject, field: string): string {
     const value = body[field];
-    if (typeof value !== "string") throw invalidArguments(`${field} is required`);
+    if (!Value.Check(jsonStringSchema, value)) throw invalidArguments(`${field} is required`);
     return value;
   }
 
