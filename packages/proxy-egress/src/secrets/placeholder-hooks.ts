@@ -7,7 +7,7 @@ import { isInternalAddress } from "./ip.ts";
 import { matchesAnyHost, normalizeHostnamePattern } from "./patterns.ts";
 import { ON_REQUEST_EARLY_POLICY_SAFE, type HttpHooks } from "./types.ts";
 
-export type SecretDefinition = { hosts: string[]; value: string; placeholder?: string | (() => string) };
+export type SecretDefinition = { hosts: string[]; value: string; placeholder?: string };
 export type CreateHttpHooksOptions = {
   allowedHosts?: string[];
   allowedInternalHosts?: string[];
@@ -39,7 +39,8 @@ export function createHttpHooks(options: CreateHttpHooksOptions = {}): CreateHtt
   const secretEntries = new Map<string, SecretEntry>();
 
   for (const [name, secret] of Object.entries(options.secrets ?? {})) {
-    const placeholder = resolveSecretPlaceholder(name, secret);
+    const placeholder = secret.placeholder ?? makeDefaultSecretPlaceholder();
+    if (!placeholder) throw new Error(`invalid placeholder for secret: ${name}`);
     assertSecretPlaceholderIsSafe(name, placeholder, secretEntries.values());
     env[name] = placeholder;
     secretEntries.set(name, { name, placeholder, value: secret.value, hosts: uniqueHosts(secret.hosts) });
@@ -87,12 +88,6 @@ export function createHttpHooks(options: CreateHttpHooksOptions = {}): CreateHtt
       onResponse: options.onResponse,
     },
   };
-}
-
-function resolveSecretPlaceholder(name: string, secret: SecretDefinition): string {
-  const placeholder = secret.placeholder === undefined ? makeDefaultSecretPlaceholder() : typeof secret.placeholder === "function" ? secret.placeholder() : secret.placeholder;
-  if (!placeholder) throw new Error(`invalid placeholder for secret: ${name}`);
-  return placeholder;
 }
 
 export function makeDefaultSecretPlaceholder(): string {
