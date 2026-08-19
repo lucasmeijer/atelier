@@ -3,12 +3,17 @@ import { dirname } from "node:path";
 import { AtelierCoreError, atelierDataPath, getAtelierRuntimeContext, shellQuote } from "@atelier/core";
 import { buildListSessionsCommand, buildObservableSessionCommand } from "@atelier/observable-terminal/server";
 import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
-export interface WorkspaceTerminal {
-  id: string;
-  title: string;
-  tmuxSession: string;
-}
+const workspaceTerminalSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  tmuxSession: Type.String(),
+});
+const workspaceTerminalsSchema = Type.Array(workspaceTerminalSchema);
+
+export type WorkspaceTerminal = Static<typeof workspaceTerminalSchema>;
 
 interface TmuxSessionMetadata {
   name: string;
@@ -71,7 +76,7 @@ export async function tmuxSessionExists(workspaceId: string, name: string): Prom
 
 export async function listWorkspaceTerminals(workspaceId: string): Promise<WorkspaceTerminal[]> {
   try {
-    return JSON.parse(await readFile(statePath(workspaceId), "utf8")) as WorkspaceTerminal[];
+    return Value.Parse(workspaceTerminalsSchema, JSON.parse(await readFile(statePath(workspaceId), "utf8")));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     await writeTerminals(workspaceId, []);
