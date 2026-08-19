@@ -1,10 +1,17 @@
 import { type ReleaseChannel } from "./channels.ts";
 import { repository } from "./constants.ts";
 import type { HttpFetcher } from "./http.ts";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
 export interface ImageMetadata { digest: string; revision?: string; platformDigest?: string; selfUpdateCompatibility?: string }
 
 interface RegistryAuth { realm: string; service?: string; scope?: string }
+
+const registryTokenResponseSchema = Type.Object({
+  token: Type.Optional(Type.String()),
+  access_token: Type.Optional(Type.String()),
+});
 
 export function parseWwwAuthenticate(header: string): RegistryAuth | undefined {
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -28,7 +35,7 @@ async function authFetch(url: string, init: RequestInit = {}, fetcher: HttpFetch
   if (auth.scope) tokenUrl.searchParams.set("scope", auth.scope);
   const tokenResponse = await fetcher(tokenUrl, { headers: { accept: "application/json" } });
   if (!tokenResponse.ok) throw new Error(`registry token request failed: ${tokenResponse.status}`);
-  const tokenJson = await tokenResponse.json() as { token?: string; access_token?: string };
+  const tokenJson = Value.Parse(registryTokenResponseSchema, await tokenResponse.json());
   const token = tokenJson.token ?? tokenJson.access_token;
   if (!token) throw new Error("registry token response did not include a token");
   const headers = new Headers(init.headers);

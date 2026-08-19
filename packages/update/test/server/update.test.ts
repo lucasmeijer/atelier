@@ -119,6 +119,17 @@ describe("registry helpers", () => {
     await expect(fetchChannelImageMetadata("stable", fetcher)).resolves.toEqual({ digest: "sha256:manifest", platformDigest: undefined, revision: "new", selfUpdateCompatibility: "contract-v1" });
   });
 
+  test("rejects malformed registry token responses", async () => {
+    const fetcher = async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith("/manifests/stable")) return new Response("", { status: 401, headers: { "www-authenticate": 'Bearer realm="https://ghcr.io/token"' } });
+      if (url === "https://ghcr.io/token") return Response.json({ token: 42 });
+      throw new Error(`unexpected fetch ${url}`);
+    };
+
+    await expect(fetchChannelImageMetadata("stable", fetcher)).rejects.toThrow();
+  });
+
   test("selects current linux platform manifest", () => {
     expect(selectManifestFromIndex({ manifests: [
       { digest: "sha256:arm", platform: { os: "linux", architecture: "arm64" } },
