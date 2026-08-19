@@ -89,7 +89,7 @@
 .agent-md th { background: var(--panel); font-weight: 600; }
 .agent-md tbody tr:nth-child(even) { background: color-mix(in srgb, var(--panel) 45%, transparent); }
 .agent-md li { margin-bottom: 2px; }
-.agent-md code { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 12px; background: rgba(19, 26, 38, .055); border-radius: 4px; padding: 0 4px; }
+.agent-md code { font-family: var(--mono, ui-monospace, Menlo, monospace); }
 .agent-code-block { position: relative; margin: 6px 0 8px; }
 .agent-md pre, .agent-code-block pre { background: #161a22; color: #d3dae5; border-radius: 8px; padding: 9px 11px; overflow-x: auto; margin: 6px 0 8px; }
 .agent-code-block pre { margin: 0; }
@@ -355,7 +355,14 @@
 /* Agent pane layout */
 .agent-row + .agent-row { margin-top: 8px; }
 
-.agent-md code { font-family: var(--mono); font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+.agent-md :not(pre) > code {
+  padding: .04em .2em;
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
+  border-radius: 2px;
+  font-family: "Courier New", Courier, monospace;
+  font-size: .88em;
+}
 .agent-md pre, .agent-code-block pre, .agent-tool-ansi, .agent-tool-code, .agent-tool-term, .agent-tool-livestream { background: color-mix(in srgb, var(--bg) 45%, #000 14%); color: var(--text); }
 .agent-md pre, .agent-code-block pre { border: 1px solid var(--line); border-radius: 9px; }
 .agent-md pre code, .agent-code-block pre code { display: block; background: transparent; border: 0; border-radius: 0; padding: 0; }
