@@ -498,6 +498,20 @@ describe("web app contracts", () => {
     expect(home).not.toContain("workspace-shell#toggle");
   });
 
+  test("project workspaces advertise the prompt-first workspace shortcut", async () => {
+    await withTempDataDir(async () => {
+      const project = (await addProject("https://github.com/org/sample-project.git")).project;
+      const { app, registry } = createTestApp();
+      await registry.seed([{ id: "abc", title: "A", init: projectWorkspaceInit(project) }]);
+
+      const workspace = await (await app.fetch(new Request("http://test.local/workspaces/abc"))).text();
+
+      expect(workspace).toContain("agent.launch-project-workspace");
+      expect(workspace).toContain("New Workspace From Project");
+      expect(workspace).toContain("Meta+Alt+Quote");
+    });
+  });
+
   test("the removed REST workspace endpoint is not found and OpenAPI advertises UI JSON operations", async () => {
     const { app, registry } = createTestApp();
     await registry.seed([]);

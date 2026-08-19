@@ -788,8 +788,7 @@ ${moduleStylesHtml()}
     await presentationStore.initialize(workspaceId, currentWorkViews.map((view) => view.reference));
     const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
     const currentByKey = new Map(currentWorkViews.map((view) => [workViewKey(view.reference), view]));
-    const handledCommandIds = new Set(workspaceModuleCommands().map((command) => command.id));
-    const commands = attachments.flatMap((attachment) => attachment.commands ?? []).filter((command) => handledCommandIds.has(command.id)).map((command) => ({
+    const commands = attachments.flatMap((attachment) => attachment.commands ?? []).map((command) => ({
       id: command.id, label: command.label, description: command.description, scope: command.scope, placement: command.surfaces?.ui?.placement, binding: command.surfaces?.shortcut?.defaultBinding,
     }));
     const init = entry.init;
