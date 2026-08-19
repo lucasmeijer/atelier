@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionTreeNode } from "@earendil-works/pi-coding-agent";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { parseTreeFilterMode, parseTreeLabels, renderAgentTreeMenu, renderAgentTreeSummaryMenu, serializeTreeLabels } from "../../src/server/session-tree.ts";
 
 function message(id: string, parentId: string | null, role: "user" | "assistant", text: string, children: SessionTreeNode[] = []): SessionTreeNode {
+  const sessionMessage = role === "user" ? { role, content: text, timestamp: 0 } : fauxAssistantMessage(text, { timestamp: 0 });
   return {
-    entry: { type: "message", id, parentId, timestamp: "2026-01-01T00:00:00Z", message: { role, content: [{ type: "text", text }], timestamp: 0 } } as never,
+    entry: { type: "message", id, parentId, timestamp: "2026-01-01T00:00:00Z", message: sessionMessage },
     children,
   };
 }
@@ -70,7 +72,7 @@ describe("agent session tree", () => {
     const html = renderAgentTreeMenu([{
       entry: { type: "model_change", id: "model", parentId: null, timestamp: "", provider: "x", modelId: "y" },
       children: [{
-        entry: { type: "message", id: "tools", parentId: "model", timestamp: "", message: { role: "assistant", content: [{ type: "toolCall", id: "call", name: "read", arguments: {} }] } } as never,
+        entry: { type: "message", id: "tools", parentId: "model", timestamp: "", message: fauxAssistantMessage([fauxToolCall("read", {}, { id: "call" })]) },
         children: [message("answer", "tools", "assistant", "Readable answer")],
       }],
     }], "answer");
