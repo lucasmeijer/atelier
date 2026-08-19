@@ -26,7 +26,11 @@ describe("editor workspace integration", () => {
       method: "POST",
       body: "# Preview\n\n**Rendered**",
     });
-    const response = await atelierServerModule.routes![0]!.handle(request, new URL(request.url), {} as never);
+    const response = await atelierServerModule.routes![0]!.handle(request, new URL(request.url), {
+      openTab: () => {
+        throw new Error("Markdown previews must not open a workspace tab");
+      },
+    });
     expect(response?.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(await response?.text()).toBe("<h1>Preview</h1>\n<p><strong>Rendered</strong></p>");
   });
