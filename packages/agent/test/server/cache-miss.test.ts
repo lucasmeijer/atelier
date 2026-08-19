@@ -21,7 +21,7 @@ function assistant(options: { cacheRead?: number; cacheWrite?: number; model?: s
     },
     stopReason: "stop",
     timestamp: options.timestamp ?? 0,
-  } as AssistantMessage;
+  };
 }
 
 const entry = (message: AssistantMessage) => ({ type: "message", message });
