@@ -42,6 +42,13 @@ const projectSummarySchema = Type.Object({
 });
 const projectResponseSchema = Type.Object({ project: projectSummarySchema });
 const projectListResponseSchema = Type.Object({ projects: Type.Array(projectSummarySchema) });
+const environmentVariableResponseSchema = Type.Object({
+  environmentVariable: Type.Object({
+    id: Type.String(),
+    name: Type.String(),
+    value: Type.String(),
+  }),
+});
 
 interface TestAppOptions {
   provision?: (id: string, options?: ProvisionWorkspaceOptions) => Promise<void>;
@@ -348,7 +355,8 @@ describe("web app contracts", () => {
       const updated = Value.Parse(projectResponseSchema, await updatedResponse.json());
       expect(updated.project.name).toBe("JSON Project");
 
-      const environmentCreated = await (await app.fetch(postJson(`/projects/${created.project.id}/environment`, { name: "EMPTY_OK", value: "" }))).json() as { environmentVariable: { id: string; value: string } };
+      const environmentCreatedResponse = await app.fetch(postJson(`/projects/${created.project.id}/environment`, { name: "EMPTY_OK", value: "" }));
+      const environmentCreated = Value.Parse(environmentVariableResponseSchema, await environmentCreatedResponse.json());
       expect(environmentCreated.environmentVariable.value).toBe("");
       const environmentUpdated = await (await app.fetch(postJson(`/projects/${created.project.id}/environment/${environmentCreated.environmentVariable.id}`, { name: "API_URL", value: "https://api.example" }))).json() as { environmentVariable: { name: string } };
       expect(environmentUpdated.environmentVariable.name).toBe("API_URL");
