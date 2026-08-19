@@ -114,11 +114,10 @@ type ToolArgumentKey = "command" | "path" | "file_path" | "content" | "offset" |
 
 const toolStringArgumentSchema = Type.String();
 const toolNumberArgumentSchema = Type.Number();
-
-interface EditOperationCandidate {
-  oldText?: unknown;
-  newText?: unknown;
-}
+const diffOperationSchema = Type.Object({
+  oldText: Type.String(),
+  newText: Type.String(),
+});
 
 export interface AgentModelContextView {
   systemPrompt: string;
@@ -936,16 +935,12 @@ function bashOutputHtml(text: string): string {
 }
 
 function getEditOperations(args: JsonObject | undefined): DiffOperation[] {
-  if (!args) return [];
-  if (Array.isArray(args.edits)) {
-    return args.edits.flatMap((edit) => {
-      if (!edit || typeof edit !== "object") return [];
-      // SAFETY: EditOperationCandidate only names optional properties with unknown values.
-      const entry = edit as EditOperationCandidate;
-      return typeof entry.oldText === "string" && typeof entry.newText === "string" ? [{ oldText: entry.oldText, newText: entry.newText }] : [];
-    });
+  if (Array.isArray(args?.edits)) {
+    return args.edits.flatMap((edit) => Value.Check(diffOperationSchema, edit) ? [edit] : []);
   }
-  return typeof args.oldText === "string" && typeof args.newText === "string" ? [{ oldText: args.oldText, newText: args.newText }] : [];
+  const oldText = stringArg(args, "oldText");
+  const newText = stringArg(args, "newText");
+  return oldText !== undefined && newText !== undefined ? [{ oldText, newText }] : [];
 }
 
 function genericToolSummary(tool: ToolView): string {
