@@ -957,7 +957,7 @@ function genericParamsHtml(tool: ToolView): string {
   if (!args) return "";
   const values = Object.values(args);
   if (values.length === 0) return "";
-  if (values.length === 1 && typeof values[0] === "string" && genericToolSummary(tool) === values[0]) return "";
+  if (values.length === 1 && genericToolSummary(tool) === values[0]) return "";
   return codeBlockHtml(JSON.stringify(args, null, 2), "arguments.json", "agent-tool-code");
 }
 
