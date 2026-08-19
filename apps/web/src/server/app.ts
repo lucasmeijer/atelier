@@ -78,8 +78,11 @@ import { handleSettingsRequest, renderSettingsDialog } from "./settings/routes.t
 import { handleOnboardingRequest, renderOnboardingDialogIfNeeded } from "./onboarding/routes.ts";
 import { GitHubRepositorySearchRateLimitError, renderGitHubRepositorySearchMenu, renderGitHubRepositorySearchRateLimitMenu, searchGitHubRepositories, shouldSearchGitHubRepositories } from "./github-repo-search.ts";
 import { atelierOpenApi } from "./openapi.ts";
+import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type AgentPaneContribution, type WorkspacePaneEntry, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+
+const jsonStringSchema = Type.String();
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
@@ -1104,7 +1107,7 @@ ${moduleStylesHtml()}
 
   function stringField(value: JsonValue | undefined, name: string): string | undefined {
     if (value === undefined || value === null) return undefined;
-    if (typeof value !== "string") throw invalidArguments(`${name} must be a string`);
+    if (!Value.Check(jsonStringSchema, value)) throw invalidArguments(`${name} must be a string`);
     return value.trim();
   }
 
