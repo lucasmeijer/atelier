@@ -1559,6 +1559,8 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
 
 function agentPaneController(application: StimulusApplication, pane: HTMLElement): AgentPaneControllerInstance | null {
   const agentPane = pane.querySelector<HTMLElement>('[data-controller~="agent-pane"]');
+  // SAFETY: This module registers AgentPaneController under "agent-pane"; Stimulus
+  // returns that registered controller for this exact element-and-identifier pair.
   return agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
 }
 
