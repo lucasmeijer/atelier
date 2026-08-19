@@ -24,7 +24,7 @@ export function createWorkspaceMetadataState<State extends object>(filename: str
       try {
         state = parse(JSON.parse(readFileSync(path, "utf8")));
       } catch (error) {
-        if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         state = initial();
       }
       loaded.set(workspaceId, state);
