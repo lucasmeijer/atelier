@@ -124,7 +124,7 @@ export async function listWorkspaceAgents(workspaceId: string): Promise<Workspac
   try {
     entries = await readdir(store.dir);
   } catch (error) {
-    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
     if (code === "ENOENT") return [];
     throw error;
   }
