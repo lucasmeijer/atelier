@@ -169,6 +169,7 @@
       "name": "@atelier/shared",
       "dependencies": {
         "@atelier/core": "workspace:*",
+        "typebox": "^1.0.57",
       },
     },
     "packages/update": {

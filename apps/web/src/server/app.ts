@@ -1580,8 +1580,8 @@ ${moduleStylesHtml()}
     }
     if (!input || typeof input !== "object" || Array.isArray(input)) throw invalidArguments("JSON command input must be an object");
     const schema = command.inputSchema ?? emptyWorkspaceCommandInputSchema;
-    if (!Value.Check(schema as never, input)) {
-      const issue = [...Value.Errors(schema as never, input)][0];
+    if (!Value.Check(schema, input)) {
+      const issue = [...Value.Errors(schema, input)][0];
       throw invalidArguments(`invalid ${command.id} input: ${issue?.message ?? "schema check failed"}`);
     }
     // SAFETY: the command-owned schema validated input against the handler's Input contract.

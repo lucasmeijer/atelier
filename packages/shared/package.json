@@ -6,6 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@atelier/core": "workspace:*"
+    "@atelier/core": "workspace:*",
+    "typebox": "^1.0.57"
   }
 }

@@ -1,4 +1,5 @@
 import type { AtelierEventBus } from "@atelier/core";
+import type { TSchema } from "typebox";
 import { escapeHtml } from "./html.ts";
 
 export { providerBrandColor, providerBrandIconHtml } from "./brand-icons.ts";
@@ -105,8 +106,8 @@ export interface WorkspaceCommandContribution<Input = Record<string, never>> {
   label: string;
   description?: string;
   scope: WorkspaceCommandScope;
-  /** Runtime schema placeholder for future typed form/palette generation. */
-  inputSchema?: unknown;
+  /** Runtime schema for validation and future typed form/palette generation. */
+  inputSchema?: TSchema;
   surfaces?: WorkspaceCommandSurfaces;
   /** Type carrier only; command metadata stays serializable. */
   readonly __input?: Input;
@@ -160,7 +161,7 @@ export const emptyWorkspaceCommandInputSchema = { type: "object", additionalProp
 export interface WorkspaceModuleCommandHandler<Input = unknown> {
   id: string;
   /** JSON Schema used to validate automation input and advertise the command in OpenAPI. */
-  inputSchema?: unknown;
+  inputSchema?: TSchema;
   execute(context: WorkspaceModuleCommandContext<Input>): Promise<WorkspaceModuleCommandResult> | WorkspaceModuleCommandResult;
 }
 
