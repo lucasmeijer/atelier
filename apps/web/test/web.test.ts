@@ -358,8 +358,9 @@ describe("web app contracts", () => {
       const environmentCreatedResponse = await app.fetch(postJson(`/projects/${created.project.id}/environment`, { name: "EMPTY_OK", value: "" }));
       const environmentCreated = Value.Parse(environmentVariableResponseSchema, await environmentCreatedResponse.json());
       expect(environmentCreated.environmentVariable.value).toBe("");
-      const environmentUpdated = await (await app.fetch(postJson(`/projects/${created.project.id}/environment/${environmentCreated.environmentVariable.id}`, { name: "API_URL", value: "https://api.example" }))).json() as { environmentVariable: { name: string } };
-      expect(environmentUpdated.environmentVariable.name).toBe("API_URL");
+      const environmentUpdatedResponse = await app.fetch(postJson(`/projects/${created.project.id}/environment/${environmentCreated.environmentVariable.id}`, { name: "API_URL", value: "https://api.example" }));
+      const environmentUpdated = Value.Parse(environmentVariableResponseSchema, await environmentUpdatedResponse.json());
+      expect(environmentUpdated.environmentVariable).toMatchObject({ name: "API_URL", value: "https://api.example" });
 
       const sensitive = "sensitive-value-never-return";
       const secretResponse = await app.fetch(postJson(`/projects/${created.project.id}/secrets`, {
