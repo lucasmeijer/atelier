@@ -48,7 +48,8 @@ describe("Atelier Playwright helper", () => {
     </div><div id="workspace_detail"></div>`);
     await page.locator("#workspaces_table_rows").evaluate((rows) => {
       rows.addEventListener("click", (event) => {
-        const link = (event.target as Element).closest("a");
+        if (!(event.target instanceof Element)) return;
+        const link = event.target.closest("a");
         if (!link) return;
         event.preventDefault();
         const id = link.closest<HTMLElement>("[data-workspace-id]")!.dataset.workspaceId!;
