@@ -1,3 +1,4 @@
+import type { JsonValue } from "@atelier/core";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
@@ -19,11 +20,11 @@ const editorSaveRequestSchema = Type.Object({
 export type EditorFileResponse = Static<typeof editorFileResponseSchema>;
 export type EditorSaveRequest = Static<typeof editorSaveRequestSchema>;
 
-export function parseEditorFileResponse(value: unknown): EditorFileResponse {
+export function parseEditorFileResponse(value: JsonValue): EditorFileResponse {
   return Value.Parse(editorFileResponseSchema, value);
 }
 
-export function parseEditorSaveResponse(value: unknown): Static<typeof editorSaveResponseSchema> {
+export function parseEditorSaveResponse(value: JsonValue): Static<typeof editorSaveResponseSchema> {
   return Value.Parse(editorSaveResponseSchema, value);
 }
 

@@ -254,7 +254,7 @@ async function performWorkspaceLayoutReplacement(stream: WorkspaceLayoutStreamEl
 
 let workspaceLayoutRenderQueue = Promise.resolve();
 
-function replaceWorkspaceLayout(this: unknown): Promise<void> {
+function replaceWorkspaceLayout(this: Element): Promise<void> {
   if (!isWorkspaceLayoutStreamElement(this)) throw new TypeError("Turbo workspace layout action requires a stream element");
   const render = workspaceLayoutRenderQueue.then(
     () => performWorkspaceLayoutReplacement(this),
