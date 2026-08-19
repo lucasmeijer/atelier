@@ -70,7 +70,7 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
     folderDragLeave(event: StimulusActionEvent<DragEvent, HTMLElement>): void {
       event.stopPropagation();
       const row = event.currentTarget;
-      if (!event.relatedTarget || !row.contains(event.relatedTarget as Node)) row.classList.remove("is-drop-target");
+      if (!(event.relatedTarget instanceof Node) || !row.contains(event.relatedTarget)) row.classList.remove("is-drop-target");
     }
 
     folderDrop(event: StimulusActionEvent<DragEvent, HTMLElement>): void {
