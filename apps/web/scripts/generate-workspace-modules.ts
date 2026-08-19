@@ -1,12 +1,16 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
-interface PackageJson {
-  name?: string;
-  exports?: {
-    "./client"?: unknown;
-    "./server"?: unknown;
-  };
-}
+const packageJsonSchema = Type.Object({
+  name: Type.Optional(Type.String()),
+  exports: Type.Optional(Type.Object({
+    "./client": Type.Optional(Type.Unknown()),
+    "./server": Type.Optional(Type.Unknown()),
+  })),
+});
+
+type PackageJson = Static<typeof packageJsonSchema>;
 
 interface DiscoveredModule {
   packageName: string;
@@ -28,17 +32,7 @@ function disabledPackageNames(): Set<string> {
 }
 
 async function readPackageJson(url: URL): Promise<PackageJson> {
-  const value: unknown = JSON.parse(await readFile(url, "utf8"));
-  if (!(value instanceof Object)) throw new Error(`${url.pathname} must contain a JSON object`);
-  const name = "name" in value && typeof value.name === "string" ? value.name : undefined;
-  const packageExports = "exports" in value && value.exports instanceof Object ? value.exports : undefined;
-  return {
-    name,
-    exports: packageExports ? {
-      "./client": "./client" in packageExports ? packageExports["./client"] : undefined,
-      "./server": "./server" in packageExports ? packageExports["./server"] : undefined,
-    } : undefined,
-  };
+  return Value.Parse(packageJsonSchema, JSON.parse(await readFile(url, "utf8")));
 }
 
 async function fileText(url: URL): Promise<string | undefined> {
