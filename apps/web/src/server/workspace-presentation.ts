@@ -63,7 +63,7 @@ export interface WorkspacePresentation {
   preserveLiveKeys?: ReadonlySet<string>;
 }
 
-type IconName = "agent" | "browser" | "chevron" | "close" | "file" | "more" | "panel" | "settings" | "sidebar" | "terminal" | "trash" | "workspace";
+type IconName = "agent" | "browser" | "chevron" | "close" | "file" | "more" | "panel" | "plus" | "settings" | "sidebar" | "terminal" | "trash" | "workspace";
 
 function icon(name: IconName): string {
   const paths = {
@@ -74,6 +74,7 @@ function icon(name: IconName): string {
     file: '<path d="M7 3h7l4 4v14H7zM14 3v5h4"/>',
     panel: '<path d="M4 4h16v16H4zM15 4v16"/>',
     more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>',
     sidebar: '<path d="M4 4h16v16H4zM9 4v16"/>',
     terminal: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
@@ -102,13 +103,23 @@ function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string): 
   </button>`;
 }
 
+const projectlessWorkspaceGroupId = "__no_project__";
+
+function renderWorkspaceGroupHeading(id: string, title: string, launchHref: string): string {
+  const launchLabel = `New workspace: ${title}`;
+  return `<div class="fixed-shell-project-heading-row"><button type="button" class="fixed-shell-project-heading" aria-expanded="true" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(id)}">${icon("chevron")}<span>${escapeHtml(title)}</span></button><a class="fixed-shell-project-add" href="${escapeHtml(launchHref)}" data-turbo-frame="agent_launch_modal" aria-label="${escapeHtml(launchLabel)}" title="${escapeHtml(launchLabel)}">${icon("plus")}</a></div>`;
+}
+
 export function renderWorkspacePaneCollections(presentation: WorkspacePanePresentation): string {
   const projects = presentation.projects.map((project) => `<section class="fixed-shell-project" data-project-id="${escapeHtml(project.id)}">
-    <button type="button" class="fixed-shell-project-heading" aria-expanded="true" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(project.id)}"><span>${escapeHtml(project.title)}</span>${icon("chevron")}</button>
+    ${renderWorkspaceGroupHeading(project.id, project.title, `/projects/${encodeURIComponent(project.id)}/agent-launch`)}
     <div class="fixed-shell-project-workspaces">${project.workspaces.map((workspace) => renderWorkspaceRow(workspace, project.id)).join("")}</div>
   </section>`).join("");
   const projectless = presentation.projectlessWorkspaces?.length
-    ? `<section class="fixed-shell-project"><h3>No project</h3>${presentation.projectlessWorkspaces.map((workspace) => renderWorkspaceRow(workspace)).join("")}</section>`
+    ? `<section class="fixed-shell-project" data-project-id="${projectlessWorkspaceGroupId}">
+    ${renderWorkspaceGroupHeading(projectlessWorkspaceGroupId, "No project", "/agent-launch")}
+    <div class="fixed-shell-project-workspaces">${presentation.projectlessWorkspaces.map((workspace) => renderWorkspaceRow(workspace)).join("")}</div>
+  </section>`
     : "";
   const parked = presentation.parkedWorkspaces?.length
     ? `<section class="fixed-shell-project fixed-shell-parked"><h3>Parked</h3>${presentation.parkedWorkspaces.map((workspace) => `${renderWorkspaceRow(workspace)}${workspace.projectTitle ? `<small>${escapeHtml(workspace.projectTitle)}</small>` : ""}`).join("")}</section>`

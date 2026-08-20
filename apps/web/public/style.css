@@ -400,10 +400,17 @@ a.btn { text-decoration: none; }
 .fixed-workspace-presentation:not(.is-work-pane-open) [data-expanded-pane-toggle="work"] { display: none; }
 .fixed-shell-workspace-scroll { min-height: 0; flex: 1; overflow: auto; padding: 10px 8px; scrollbar-gutter: stable; }
 .fixed-shell-project { margin-bottom: 10px; }
-.fixed-shell-project h3, .fixed-shell-project-heading { width: 100%; margin: 0; padding: 7px 8px; border: 0; display: flex; align-items: center; justify-content: space-between; color: var(--fixed-shell-muted); background: transparent; font-size: 11px; font-weight: 650; letter-spacing: .02em; text-align: left; }
-.fixed-shell-project-heading { cursor: pointer; border-radius: 5px; }
-.fixed-shell-project-heading:hover { color: var(--fixed-shell-text); background: var(--fixed-shell-hover); }
+.fixed-shell-project-heading-row { display: flex; align-items: center; border-radius: 5px; }
+.fixed-shell-project-heading-row:hover, .fixed-shell-project-heading-row:has(:focus-visible) { color: var(--fixed-shell-text); background: var(--fixed-shell-hover); }
+.fixed-shell-project-heading-row:hover .fixed-shell-project-heading, .fixed-shell-project-heading-row:has(:focus-visible) .fixed-shell-project-heading { color: inherit; }
+.fixed-shell-project h3 { width: 100%; margin: 0; padding: 7px 8px; color: var(--fixed-shell-muted); font-size: 11px; font-weight: 650; letter-spacing: .02em; }
+.fixed-shell-project-heading { min-width: 0; flex: 1; display: flex; align-items: center; gap: 5px; margin: 0; padding: 7px 8px; border: 0; color: var(--fixed-shell-muted); background: transparent; font-size: 11px; font-weight: 650; letter-spacing: .02em; text-align: left; cursor: pointer; }
+.fixed-shell-project-heading > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fixed-shell-project-heading > svg { width: 12px; height: 12px; flex: 0 0 auto; transition: transform 150ms ease; }
+.fixed-shell-project-add { width: 26px; height: 26px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 5px; color: var(--fixed-shell-muted); }
+.fixed-shell-project-add:focus-visible { outline: 2px solid var(--fixed-shell-attention); outline-offset: -2px; }
+.fixed-shell-project-add:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 26%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent); }
+.fixed-shell-project-add > svg { width: 14px; height: 14px; stroke-width: 2; }
 .fixed-shell-project.is-collapsed .fixed-shell-project-heading > svg { transform: rotate(-90deg); }
 .fixed-shell-project.is-collapsed .fixed-shell-project-workspaces { display: none; }
 .fixed-shell-workspace-row { position: relative; width: 100%; min-height: 32px; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 6px; padding: 6px 8px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
@@ -467,6 +474,7 @@ a.btn { text-decoration: none; }
   .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane > header { justify-content: center; padding: 0; }
   .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane > header strong,
   .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-project-heading,
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-project-add,
   .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-project > h3,
   .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-workspace-row > span,
   .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-parked small,

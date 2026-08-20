@@ -36,11 +36,17 @@ describe("role-fixed Workspace presentation", () => {
     const html = renderWorkspacePane({ projects: [{ id: "project-1", title: "Atelier", workspaces: [
       { id: "workspace-1", title: "Typed shell", color: "#3b82f6", active: true, ready: true },
       { id: "workspace-2", title: "Working", color: "#3b82f6", busy: true },
-    ] }] }, '<button data-update-probe>Restart to update</button>');
+    ] }], projectlessWorkspaces: [{ id: "workspace-3", title: "Scratch" }] }, '<button data-update-probe>Restart to update</button>');
 
     expect(html).toContain('class="fixed-shell-workspace-pane"');
     expect(html).toContain('data-controller="modal-opener"');
     expect(html).toContain('data-action="click->workspace-navigation#selectWorkspace"');
+    expect(html).toContain('href="/projects/project-1/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New workspace: Atelier"');
+    const projectHeading = html.slice(html.indexOf('class="fixed-shell-project-heading-row"'), html.indexOf('class="fixed-shell-project-workspaces"'));
+    expect(projectHeading.indexOf("<svg")).toBeLessThan(projectHeading.indexOf("Atelier"));
+    expect(projectHeading.indexOf("Atelier")).toBeLessThan(projectHeading.indexOf('class="fixed-shell-project-add"'));
+    expect(html).toContain('data-project-id="__no_project__"><svg');
+    expect(html).toContain('<span>No project</span></button><a class="fixed-shell-project-add" href="/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New workspace: No project"');
     expect(html).toContain('class="fixed-shell-workspace-row active"');
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy"');
