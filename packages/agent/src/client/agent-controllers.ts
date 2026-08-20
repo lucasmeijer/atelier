@@ -652,12 +652,31 @@ function createAgentProxyController(Controller: StimulusControllerConstructor) {
 // agent-html-preview: expand same-origin HTML previews to their content height
 // ---------------------------------------------------------------------------
 
+const htmlPreviewBaselineHeight = 420;
+const htmlPreviewResourceGraceMs = 2_000;
+const htmlPreviewResourceDebounceMs = 100;
+
+type HtmlPreviewFrame = { style: { height: string } };
+type HtmlPreviewDocument = { body: Pick<HTMLElement, "scrollHeight">; documentElement: Pick<HTMLElement, "scrollHeight"> };
+
+export function fitHtmlPreview(frame: HtmlPreviewFrame, doc: HtmlPreviewDocument): void {
+  frame.style.height = `${htmlPreviewBaselineHeight}px`;
+  frame.style.height = `${Math.max(htmlPreviewBaselineHeight, doc.documentElement.scrollHeight, doc.body.scrollHeight)}px`;
+}
+
 function createAgentHtmlPreviewController(Controller: StimulusControllerConstructor) {
   return class AgentHtmlPreviewController extends Controller {
     declare readonly element: HTMLIFrameElement;
-    private resizeObserver?: ResizeObserver;
-    private mutationObserver?: MutationObserver;
+    private document?: Document;
+    private resourceGraceTimer?: ReturnType<typeof setTimeout>;
+    private resourceFitTimer?: ReturnType<typeof setTimeout>;
     private readonly loaded = (): void => this.attach();
+    private readonly resourceLoaded = (event: Event): void => {
+      const view = this.document?.defaultView;
+      if (!view || !(event.target instanceof view.HTMLImageElement)) return;
+      clearTimeout(this.resourceFitTimer);
+      this.resourceFitTimer = setTimeout(() => this.fit(), htmlPreviewResourceDebounceMs);
+    };
 
     connect(): void {
       this.element.addEventListener("load", this.loaded);
@@ -666,36 +685,30 @@ function createAgentHtmlPreviewController(Controller: StimulusControllerConstruc
 
     disconnect(): void {
       this.element.removeEventListener("load", this.loaded);
-      this.resizeObserver?.disconnect();
-      this.mutationObserver?.disconnect();
+      this.detach();
+    }
+
+    private detach(): void {
+      this.document?.removeEventListener("load", this.resourceLoaded, true);
+      clearTimeout(this.resourceGraceTimer);
+      clearTimeout(this.resourceFitTimer);
+      this.document = undefined;
+    }
+
+    private fit(): void {
+      if (this.document) fitHtmlPreview(this.element, this.document);
     }
 
     private attach(): void {
-      this.resizeObserver?.disconnect();
-      this.mutationObserver?.disconnect();
-
+      this.detach();
       const doc = this.element.contentDocument!;
-      const html = doc.documentElement;
-      const body = doc.body;
-      const resize = (): void => {
-        this.element.style.height = `${Math.max(
-          420,
-          html.scrollHeight,
-          html.offsetHeight,
-          html.clientHeight,
-          body.scrollHeight,
-          body.offsetHeight,
-          body.clientHeight,
-        )}px`;
-      };
-
-      resize();
-      this.resizeObserver = new ResizeObserver(resize);
-      this.resizeObserver.observe(html);
-      this.resizeObserver.observe(body);
-      this.mutationObserver = new MutationObserver(resize);
-      this.mutationObserver.observe(html, { attributes: true, childList: true, characterData: true, subtree: true });
-      void doc.fonts.ready.then(resize);
+      this.document = doc;
+      doc.addEventListener("load", this.resourceLoaded, true);
+      this.resourceGraceTimer = setTimeout(() => doc.removeEventListener("load", this.resourceLoaded, true), htmlPreviewResourceGraceMs);
+      this.fit();
+      void doc.fonts.ready.then(() => {
+        if (this.document === doc) this.fit();
+      });
     }
   };
 }
