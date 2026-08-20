@@ -492,7 +492,7 @@ a.btn { text-decoration: none; }
   .fixed-workspace-presentation[data-phone-destination^="work:"] .fixed-shell-work-pane { opacity: 1; pointer-events: auto; }
   .fixed-shell-workspace-pane > header .fixed-shell-icon-button { display: none; }
   .fixed-shell-agent-pane > header, .fixed-shell-work-pane > header, .fixed-shell-work-resizer { display: none; }
-  .fixed-shell-mobile-nav { position: absolute; z-index: 30; inset: auto 0 0; height: 58px; display: flex; align-items: stretch; padding: 4px 5px env(safe-area-inset-bottom); border-top: 1px solid var(--fixed-shell-border); background: var(--panel); }
+  .fixed-shell-mobile-nav { position: absolute; z-index: 30; inset: auto 0 0; height: 58px; display: flex; align-items: stretch; padding: 4px 5px; border-top: 1px solid var(--fixed-shell-border); background: var(--panel); }
   .fixed-shell-mobile-scroll { min-width: 0; flex: 1; display: flex; overflow-x: auto; scrollbar-width: none; }
   .fixed-shell-mobile-scroll::-webkit-scrollbar { display: none; }
   .fixed-shell-mobile-nav button[data-mobile-destination], .fixed-shell-mobile-fixed { position: relative; min-width: 56px; flex: 0 1 76px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--fixed-shell-muted); }
