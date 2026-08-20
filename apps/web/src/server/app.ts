@@ -612,7 +612,7 @@ ${moduleStylesHtml()}
   async function projectPickerListFrame(): Promise<string> {
     const { projects } = await listProjects();
     const rows = projects.map((project) => `<div class="project-picker-option" style="${repoColorStyle(project.id)}">
-      <a class="project-picker-select" href="/projects/${encodeURIComponent(project.id)}/agent-launch" data-turbo-frame="${agentLaunchModalFrameId}" data-action="modal#close">
+      <a class="project-picker-select" href="/projects/${encodeURIComponent(project.id)}/agent-launch" data-turbo-frame="${agentLaunchModalFrameId}">
         <span class="project-picker-swatch">${repoSwatch(project.id)}</span><span class="project-picker-copy"><b>${escapeHtml(project.name)}</b><small>${escapeHtml(formatProjectSpec(project))}</small></span>
       </a>
       <a class="project-picker-edit" href="/projects/${encodeURIComponent(project.id)}/picker" data-turbo-frame="project_picker_frame" aria-label="Edit ${escapeHtml(project.name)}" title="Edit project">✎</a>
@@ -621,7 +621,7 @@ ${moduleStylesHtml()}
       <div class="project-picker-page project-picker-list-page">
         <header class="project-picker-head"><div><h2>Which project to start from?</h2><p>Choose a project to clone, or begin with a blank workspace.</p></div><button class="project-picker-close" type="button" aria-label="Close" data-action="modal#close">×</button></header>
         <div class="project-picker-projects">
-          <div class="project-picker-option no-project"><a class="project-picker-select" href="/agent-launch" data-turbo-frame="${agentLaunchModalFrameId}" data-action="modal#close"><span class="project-picker-empty">∅</span><span class="project-picker-copy"><b>No project</b><small>Start with an empty workspace</small></span></a></div>
+          <div class="project-picker-option no-project"><a class="project-picker-select" href="/agent-launch" data-turbo-frame="${agentLaunchModalFrameId}"><span class="project-picker-empty">∅</span><span class="project-picker-copy"><b>No project</b><small>Start with an empty workspace</small></span></a></div>
           ${rows}
         </div>
         <footer class="project-picker-foot"><a href="/projects/new/picker" data-turbo-frame="project_picker_frame">＋ Add a new project</a></footer>
@@ -648,7 +648,7 @@ ${moduleStylesHtml()}
   }
 
   async function projectPickerModal(): Promise<string> {
-    return `<dialog id="project-picker-modal" class="project-picker-modal" data-controller="modal">${await projectPickerListFrame()}</dialog>`;
+    return `<dialog id="project-picker-modal" class="project-picker-modal" data-controller="modal agent-launch-trigger" data-action="click->agent-launch-trigger#select">${await projectPickerListFrame()}<textarea class="agent-launch-focus-bridge" aria-hidden="true" tabindex="-1"></textarea></dialog>`;
   }
 
   function isGitHubRemoteUrl(gitUrl: string): boolean {

@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { type AgentCompletionInput, agentCompletionRequest, fileCompletionPrefix, focusAgentPrompt, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, scrollMessageToTop, transcriptFollowingAfterScroll } from "../../src/client/agent-controllers.ts";
+import { type AgentCompletionInput, agentCompletionRequest, fileCompletionPrefix, focusAgentPromptOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, scrollMessageToTop, transcriptFollowingAfterScroll } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): AgentCompletionInput {
   return {
@@ -14,12 +14,20 @@ function input(value: string, cursor = value.length): AgentCompletionInput {
 }
 
 describe("agent prompt focus", () => {
-  test("focuses without scrolling the Agent pane", () => {
+  test("focuses without scrolling the Agent pane on wider screens", () => {
     const focus = mock(() => {});
     const pane = { querySelector: () => ({ focus }) };
 
-    expect(focusAgentPrompt(pane)).toBe(true);
+    expect(focusAgentPromptOnWideViewport(pane, false)).toBe(true);
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
+  test("leaves the Agent pane unfocused on phones", () => {
+    const focus = mock(() => {});
+    const pane = { querySelector: () => ({ focus }) };
+
+    expect(focusAgentPromptOnWideViewport(pane, true)).toBe(false);
+    expect(focus).not.toHaveBeenCalled();
   });
 });
 

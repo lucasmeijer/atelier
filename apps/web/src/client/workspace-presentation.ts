@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import type { WorkspaceClientApplication, WorkspaceClientControllerConstructor, WorkspaceClientSurfaceVisibilityContext } from "@atelier/shared";
+import { phoneViewportMediaQuery, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor, type WorkspaceClientSurfaceVisibilityContext } from "@atelier/shared";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
@@ -97,7 +97,7 @@ export function createWorkspacePresentationController(
 
     connect(): void {
       this.state = this.restoreState();
-      this.media = window.matchMedia("(max-width: 700px)");
+      this.media = window.matchMedia(phoneViewportMediaQuery);
       this.media.addEventListener("change", this.viewportChanged);
       window.addEventListener("resize", this.viewportChanged);
       this.element.addEventListener("keydown", this.keydown);
@@ -237,7 +237,7 @@ export function createWorkspacePresentationController(
       if (contextual) this.element.dataset.activeContextualWork = key;
     }
 
-    private get isPhone(): boolean { return this.media?.matches ?? window.matchMedia("(max-width: 700px)").matches; }
+    private get isPhone(): boolean { return this.media?.matches ?? window.matchMedia(phoneViewportMediaQuery).matches; }
     private get workPane(): HTMLElement { return this.element.querySelector<HTMLElement>("[data-workspace-presentation-target='workPane']")!; }
     private get storageKey(): string { return `atelier:workspace-navigation:${this.workspaceIdValue}`; }
 

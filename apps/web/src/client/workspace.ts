@@ -13,6 +13,7 @@ import {
   escapeHtml,
   looksLikeProjectSpec,
   isWorkspacePaneVisible,
+  phoneViewportMediaQuery,
   providerBrandIconHtml,
   workspaceProxyUrl,
   type AtelierCableClient,
@@ -924,10 +925,8 @@ class AtelierShortcutsController extends Controller {
 function focusDialogPromptEnd(dialog: ParentNode): void {
   const input = dialog.querySelector<HTMLTextAreaElement>("textarea");
   if (!input) return;
-  requestAnimationFrame(() => {
-    input.focus();
-    input.setSelectionRange(input.value.length, input.value.length);
-  });
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
 }
 
 function submitFormWithFirstButton(form: HTMLFormElement): void {
@@ -987,7 +986,7 @@ class ModalController extends Controller {
   declare readonly autoShowValue: boolean;
   private readonly onClose = (): void => {
     const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    activeElement?.blur();
+    if (activeElement && this.element.contains(activeElement)) activeElement.blur();
   };
 
   connect(): void {
@@ -1014,6 +1013,20 @@ class ModalController extends Controller {
   }
 }
 
+class AgentLaunchTriggerController extends Controller {
+  declare readonly element: HTMLDialogElement;
+
+  select(event: Event): void {
+    const target = event.target instanceof Element ? event.target.closest("a.project-picker-select") : null;
+    if (!target) return;
+    if (window.matchMedia(phoneViewportMediaQuery).matches) {
+      this.element.querySelector<HTMLTextAreaElement>(".agent-launch-focus-bridge")!.focus({ preventScroll: true });
+    } else {
+      this.element.close();
+    }
+  }
+}
+
 class AgentLaunchDialogController extends Controller {
   static values = { discardUrl: String };
   declare readonly element: HTMLDialogElement;
@@ -1023,6 +1036,7 @@ class AgentLaunchDialogController extends Controller {
     this.element.addEventListener("close", this.closed);
     this.element.showModal();
     focusDialogPromptEnd(this.element);
+    document.querySelector<HTMLDialogElement>("#project-picker-modal[open]")?.close();
   }
 
   disconnect(): void {
@@ -1092,7 +1106,7 @@ class WorkspaceNavigationController extends Controller {
     if (!workspaceId) return;
     this.setActiveWorkspace(workspaceId);
     await residencyController()?.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`);
-    if (window.matchMedia("(max-width: 700px)").matches) {
+    if (window.matchMedia(phoneViewportMediaQuery).matches) {
       const visible = document.querySelector<HTMLElement>(`.workspace-detail-resident.visible[data-workspace-id="${CSS.escape(workspaceId)}"]`);
       visible?.querySelector<HTMLButtonElement>("[data-mobile-destination^='agent:']")?.click();
     }
@@ -2277,6 +2291,7 @@ application.register("atelier-fullscreen", AtelierFullscreenController);
 application.register("submit-shortcut", SubmitShortcutController);
 application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);
+application.register("agent-launch-trigger", AgentLaunchTriggerController);
 application.register("agent-launch-dialog", AgentLaunchDialogController);
 application.register("project-github-search", ProjectGithubSearchController);
 application.register("workspace-list", WorkspaceListController);

@@ -107,6 +107,25 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
+  test("keeps mobile keyboard focus alive while the new-workspace composer loads", async () => {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    await page.setContent(`<meta name="viewport" content="width=device-width, initial-scale=1"><dialog id="project-picker-modal" open data-controller="modal agent-launch-trigger" data-action="click->agent-launch-trigger#select">
+      <a href="#launch" class="project-picker-select">No project</a>
+      <textarea class="agent-launch-focus-bridge" tabindex="-1"></textarea>
+    </dialog>`);
+    await page.addScriptTag({ content: workspaceClient, type: "module" });
+    await page.waitForFunction(() => Boolean(window.Stimulus));
+
+    await page.getByRole("link", { name: "No project" }).click();
+    expect(await page.evaluate(() => document.activeElement?.className)).toBe("agent-launch-focus-bridge");
+
+    await page.locator("body").evaluate((body) => body.insertAdjacentHTML("beforeend", `<dialog class="agent-launch-modal" data-controller="agent-launch-dialog" data-agent-launch-dialog-discard-url-value="/discard"><textarea class="agent-input"></textarea></dialog>`));
+    await page.locator("dialog.agent-launch-modal[open]").waitFor();
+    expect(await page.evaluate(() => document.activeElement?.className)).toBe("agent-input");
+    expect(await page.locator("#project-picker-modal").evaluate((dialog: HTMLDialogElement) => dialog.open)).toBe(false);
+    await page.close();
+  });
+
   test("opens and closes a live Browser view with Atelier's fullscreen implementation", async () => {
     const page = await browser.newPage();
     await page.setContent(`<div data-workspace-id="demo">

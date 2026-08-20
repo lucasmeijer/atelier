@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalTheme, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type WorkspaceClientController, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
+import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, phoneViewportMediaQuery, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type WorkspaceClientController, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
 import { agentTreeOwnsMenu, handleAgentTreeKeydown, handleAgentTreeMenuEvent, selectAgentTreeOption } from "./session-tree.ts";
 import { notifyInputListeners, setTextInputValue } from "./text-input.ts";
 
@@ -1558,16 +1558,22 @@ function agentPaneController(application: StimulusApplication, pane: HTMLElement
   return agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
 }
 
-export function focusAgentPrompt(pane?: { querySelector(selectors: string): Pick<HTMLTextAreaElement, "focus"> | null } | null): boolean {
+type AgentPromptContainer = { querySelector(selectors: string): Pick<HTMLTextAreaElement, "focus"> | null };
+
+function focusAgentPrompt(pane?: AgentPromptContainer | null): boolean {
   const input = pane?.querySelector(".agent-input");
   if (!input) return false;
   input.focus({ preventScroll: true });
   return true;
 }
 
+export function focusAgentPromptOnWideViewport(pane?: AgentPromptContainer | null, isPhone = window.matchMedia(phoneViewportMediaQuery).matches): boolean {
+  return !isPhone && focusAgentPrompt(pane);
+}
+
 function agentConversationBecameVisible(application: StimulusApplication, pane: HTMLElement): void {
   agentPaneController(application, pane)?.start();
-  focusAgentPrompt(pane);
+  focusAgentPromptOnWideViewport(pane);
 }
 
 function agentConversationNoLongerVisible(application: StimulusApplication, pane: HTMLElement): void {
@@ -1592,8 +1598,7 @@ async function openAgentConversation(workspaceId: string, conversationId: string
   const resident = await waitForAgentResident(workspaceId);
   resident.querySelector<HTMLButtonElement>(`[data-agent-conversation-id="${CSS.escape(conversationId)}"]`)?.click();
   const pane = resident.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(conversationId)}"]`);
-  const input = pane?.querySelector<HTMLTextAreaElement>(".agent-input");
-  input?.focus();
+  focusAgentPromptOnWideViewport(pane);
 }
 
 function agentPaletteItems(fuzzyScore: (candidate: string) => number): WorkspacePaletteItem[] {

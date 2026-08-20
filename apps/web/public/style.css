@@ -861,6 +861,7 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 /* New workspace project picker */
 .project-picker-modal { width:min(720px,calc(100vw - 32px)); height:min(680px,calc(100vh - 32px)); padding:0; overflow:hidden; border:1px solid var(--line2); border-radius:18px; background:var(--panel); color:var(--text); box-shadow:var(--shadow); margin:auto; }
 .project-picker-modal::backdrop { background:rgba(8,13,23,.62); backdrop-filter:blur(5px); }
+.agent-launch-focus-bridge { position:fixed; bottom:0; left:50%; width:1px; height:1px; padding:0; border:0; opacity:0; pointer-events:none; }
 .project-picker-frame,.project-picker-page { display:flex; flex-direction:column; height:100%; min-height:0; }
 .project-picker-page { animation:project-picker-slide .22s ease-out; }
 @keyframes project-picker-slide { from{opacity:.4;transform:translateX(22px)} to{opacity:1;transform:none} }

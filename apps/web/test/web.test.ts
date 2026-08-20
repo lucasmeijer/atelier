@@ -548,6 +548,8 @@ describe("web app contracts", () => {
       expect(home).toContain('id="project-picker-modal"');
       expect(home).toContain(`href="/projects/${project.id}/picker"`);
       expect(home).toContain(`href="/projects/${project.id}/agent-launch" data-turbo-frame="agent_launch_modal"`);
+      expect(home).toContain('data-controller="modal agent-launch-trigger" data-action="click->agent-launch-trigger#select"');
+      expect(home).toContain('class="agent-launch-focus-bridge"');
       expect(home).toContain('<turbo-frame id="agent_launch_modal"></turbo-frame>');
       expect(home).not.toContain("Describe what you want the agent to do");
       expect(home).not.toContain('class="sidebar-host-repos"');

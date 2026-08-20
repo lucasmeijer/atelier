@@ -330,6 +330,8 @@ export interface WorkspaceClientFocusContext {
   application: WorkspaceClientApplication;
 }
 
+export const phoneViewportMediaQuery = "(max-width: 700px)";
+
 export function isWorkspacePaneVisible(element: Element): boolean {
   const resident = element.closest(".workspace-detail-resident");
   if (resident && !resident.classList.contains("visible")) return false;
@@ -337,7 +339,7 @@ export function isWorkspacePaneVisible(element: Element): boolean {
   if (presentationPane) {
     if (!presentationPane.classList.contains("is-active")) return false;
     const presentation = presentationPane.closest<HTMLElement>(".fixed-workspace-presentation")!;
-    if (window.matchMedia("(max-width: 700px)").matches) {
+    if (window.matchMedia(phoneViewportMediaQuery).matches) {
       return presentation.dataset.phoneDestination === `${presentationPane.dataset.workspacePaneRole}:${presentationPane.dataset.workspacePaneId}`;
     }
     return presentationPane.dataset.workspacePaneRole === "agent" || presentation.classList.contains("is-work-pane-open");
