@@ -479,6 +479,10 @@ a.btn { text-decoration: none; }
   .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-workspace-row .fixed-shell-workspace-busy { position: absolute; top: 4px; right: 4px; box-shadow: 0 0 0 2px var(--panel); }
   .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane > footer { padding: 6px; }
   .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .fixed-shell-settings { width: 36px; height: 36px; min-height: 36px; justify-content: center; padding: 0; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .update-sidebar-section { padding: 6px; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .update-sidebar-row { width: 36px; height: 34px; display: grid; justify-content: center; padding: 0; border-radius: 8px; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .update-sidebar-row::before { content: "↑"; color: var(--accent); font-weight: 800; }
+  .fixed-shell-app:not(.is-workspace-pane-open) > .fixed-shell-workspace-pane .update-sidebar-row > * { display: none; }
 }
 
 @media (max-width: 700px) {

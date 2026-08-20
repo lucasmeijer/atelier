@@ -880,7 +880,7 @@ ${moduleStylesHtml()}
 
   async function renderWorkspaceShell(selectedId?: string, options: { mainHtml?: string; showWhatsNew?: boolean } = {}): Promise<string> {
     return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts workspace-navigation">
-    ${renderWorkspacePane(await workspacePaneCollections(selectedId ?? ""))}
+    ${renderWorkspacePane(await workspacePaneCollections(selectedId ?? ""), renderGlobalSidebarContributions())}
     <main class="fixed-shell-app-main">${options.mainHtml ?? await workspaceDetailHostHtml(selectedId)}</main>
   </div>
   ${await projectPickerModal()}

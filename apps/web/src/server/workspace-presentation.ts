@@ -115,10 +115,11 @@ export function renderWorkspacePaneCollections(presentation: WorkspacePanePresen
   return `${projects}${projectless}${parked}`;
 }
 
-export function renderWorkspacePane(presentation: WorkspacePanePresentation): string {
+export function renderWorkspacePane(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
   return `<aside class="fixed-shell-workspace-pane" aria-label="Workspaces">
     <header><strong>Atelier</strong>${button("Close Workspace pane", "click->workspace-navigation#togglePane", "sidebar", 'data-expanded-pane-toggle="workspace"')}${button("Open Workspace pane", "click->workspace-navigation#togglePane", "sidebar", 'data-collapsed-pane-toggle="workspace"')}</header>
     <div class="fixed-shell-workspace-scroll" data-workspace-navigation-target="scroll"><div data-workspace-pane-collections>${renderWorkspacePaneCollections(presentation)}</div></div>
+    <section id="global_sidebar_contributions">${sidebarContributionsHtml}</section>
     <footer><button type="button" class="fixed-shell-settings" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="project-picker-modal"><span aria-hidden="true">＋</span><span>New workspace</span></button><a class="fixed-shell-settings" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">${icon("settings")}<span>Settings</span></a></footer>
   </aside>`;
 }

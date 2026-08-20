@@ -487,13 +487,16 @@ describe("web app contracts", () => {
   });
 
   test("the role-fixed shell owns one Workspace pane outside resident Workspaces", async () => {
-    const { app, registry } = createTestApp();
+    const { app, registry, broadcasts } = createTestApp();
     await registry.seed([]);
+    app.globalSidebarContributions.set("update", '<button data-update-probe>Restart to update</button>');
 
     const home = await (await app.fetch(new Request("http://test.local/"))).text();
 
     expect(home).toContain('class="app fixed-shell-app"');
     expect(home.match(/class="fixed-shell-workspace-pane"/g)).toHaveLength(1);
+    expect(home).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
+    expect(broadcasts.some((html) => html.includes('<turbo-stream action="update" target="global_sidebar_contributions"'))).toBe(true);
     expect(home).toContain("Create or select a workspace");
     expect(home).not.toContain("workspace-shell-sidebar");
     expect(home).not.toContain("workspace-shell#toggle");

@@ -36,7 +36,7 @@ describe("role-fixed Workspace presentation", () => {
     const html = renderWorkspacePane({ projects: [{ id: "project-1", title: "Atelier", workspaces: [
       { id: "workspace-1", title: "Typed shell", color: "#3b82f6", active: true, ready: true },
       { id: "workspace-2", title: "Working", color: "#3b82f6", busy: true },
-    ] }] });
+    ] }] }, '<button data-update-probe>Restart to update</button>');
 
     expect(html).toContain('class="fixed-shell-workspace-pane"');
     expect(html).toContain('data-controller="modal-opener"');
@@ -44,6 +44,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('class="fixed-shell-workspace-row active"');
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy"');
+    expect(html).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
   });
 
   test("shows the workspace name and delete action in a single-conversation Agent header", () => {
