@@ -63,12 +63,13 @@ export interface WorkspacePresentation {
   preserveLiveKeys?: ReadonlySet<string>;
 }
 
-type IconName = "agent" | "browser" | "close" | "file" | "more" | "panel" | "settings" | "sidebar" | "terminal" | "trash" | "workspace";
+type IconName = "agent" | "browser" | "chevron" | "close" | "file" | "more" | "panel" | "settings" | "sidebar" | "terminal" | "trash" | "workspace";
 
 function icon(name: IconName): string {
   const paths = {
     agent: '<path d="M9 4h6M12 4V2M6 8h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/>',
     browser: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>',
+    chevron: '<path d="m6 9 6 6 6-6"/>',
     close: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
     file: '<path d="M7 3h7l4 4v14H7zM14 3v5h4"/>',
     panel: '<path d="M4 4h16v16H4zM15 4v16"/>',
@@ -103,7 +104,7 @@ function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string): 
 
 export function renderWorkspacePaneCollections(presentation: WorkspacePanePresentation): string {
   const projects = presentation.projects.map((project) => `<section class="fixed-shell-project" data-project-id="${escapeHtml(project.id)}">
-    <button type="button" class="fixed-shell-project-heading" aria-expanded="true" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(project.id)}"><span>${escapeHtml(project.title)}</span><span aria-hidden="true">⌄</span></button>
+    <button type="button" class="fixed-shell-project-heading" aria-expanded="true" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(project.id)}"><span>${escapeHtml(project.title)}</span>${icon("chevron")}</button>
     <div class="fixed-shell-project-workspaces">${project.workspaces.map((workspace) => renderWorkspaceRow(workspace, project.id)).join("")}</div>
   </section>`).join("");
   const projectless = presentation.projectlessWorkspaces?.length

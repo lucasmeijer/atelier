@@ -403,6 +403,8 @@ a.btn { text-decoration: none; }
 .fixed-shell-project h3, .fixed-shell-project-heading { width: 100%; margin: 0; padding: 7px 8px; border: 0; display: flex; align-items: center; justify-content: space-between; color: var(--fixed-shell-muted); background: transparent; font-size: 11px; font-weight: 650; letter-spacing: .02em; text-align: left; }
 .fixed-shell-project-heading { cursor: pointer; border-radius: 5px; }
 .fixed-shell-project-heading:hover { color: var(--fixed-shell-text); background: var(--fixed-shell-hover); }
+.fixed-shell-project-heading > svg { width: 12px; height: 12px; flex: 0 0 auto; transition: transform 150ms ease; }
+.fixed-shell-project.is-collapsed .fixed-shell-project-heading > svg { transform: rotate(-90deg); }
 .fixed-shell-project.is-collapsed .fixed-shell-project-workspaces { display: none; }
 .fixed-shell-workspace-row { position: relative; width: 100%; min-height: 32px; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 6px; padding: 6px 8px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
 .fixed-shell-workspace-row:hover, .fixed-shell-workspace-row:active { background: var(--fixed-shell-hover); color: var(--fixed-shell-text); }
