@@ -166,7 +166,7 @@ function renderWorkPane(presentation: WorkspacePresentation): string {
   const addMenu = workCommands.length ? `<details class="fixed-shell-add-menu"><summary class="fixed-shell-icon-button" aria-label="Open Work view">+</summary><div>${workCommands.map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button type="submit">${escapeHtml(command.label)}</button></form>`).join("")}</div></details>` : "";
   return `<section class="fixed-shell-work-pane" data-workspace-role-region="work" data-workspace-presentation-target="workPane" aria-label="Work">
     <header><div class="fixed-shell-work-view-selectors" role="tablist" aria-label="Work views">${selectors}</div>${addMenu}${button("Close Work pane", "click->workspace-presentation#toggleWorkPane", "panel", 'data-expanded-pane-toggle="work"')}</header>
-    <div class="fixed-shell-work-bodies">${panes || '<div class="fixed-shell-empty-work">Open a file, terminal, browser, or Changes to work alongside the Agent.</div>'}</div>
+    <div class="fixed-shell-work-bodies">${panes || '<div class="fixed-shell-empty-work">Open Files, a file, terminal, or browser to work alongside the Agent.</div>'}</div>
     <div class="fixed-shell-work-resizer" role="separator" aria-label="Resize Work pane" aria-orientation="vertical" tabindex="0" data-action="pointerdown->workspace-presentation#beginWorkResize keydown->workspace-presentation#resizeWorkWithKeyboard"></div>
   </section>`;
 }

@@ -34,7 +34,7 @@ import {
   type AgentStatsView,
   type AgentToolDefinitionView,
 } from "./render.ts";
-import { replaceWorkspaceAgentSession, type WorkspaceAgentInfo } from "./session-store.ts";
+import { replaceWorkspaceAgentSession, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { renderAgentSessionTree, updateAgentSessionTreeLabel, type TreeFilterMode } from "./session-tree.ts";
 import { loadWorkspaceSkills } from "./skills.ts";
 import { atelierSystemPrompt, createAtelierResourceLoader } from "./system-prompt.ts";
@@ -120,7 +120,7 @@ interface WorkspaceAgentRuntimeOptions {
   events?: AtelierEventBus;
 }
 
-export function isWorkspaceAgentRuntimeReady(agent: WorkspaceAgentInfo): boolean {
+export function isWorkspaceAgentRuntimeReady(agent: WorkspaceAgentConversationInfo): boolean {
   return readyRuntimeKeys.has(runtimeKey(agent.workspaceId, agent.label));
 }
 
@@ -135,7 +135,7 @@ export async function removeWorkspaceAgentRuntimes(workspaceId: string): Promise
   await Promise.all(settled.flatMap((result) => result.status === "fulfilled" ? [result.value.abort()] : []));
 }
 
-export function getWorkspaceAgentRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
+export function getWorkspaceAgentRuntime(agent: WorkspaceAgentConversationInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
   if (removedWorkspaceIds.has(agent.workspaceId)) throw new AtelierCoreError("workspace_not_found", `workspace not found: ${agent.workspaceId}`);
   const key = runtimeKey(agent.workspaceId, agent.label);
   let runtime = runtimes.get(key);
@@ -211,7 +211,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   private readonly snapshotGeneration = crypto.randomUUID();
   private snapshotRevision = 0;
 
-  constructor(agent: WorkspaceAgentInfo, protected readonly options: WorkspaceAgentRuntimeOptions = {}) {
+  constructor(agent: WorkspaceAgentConversationInfo, protected readonly options: WorkspaceAgentRuntimeOptions = {}) {
     this.workspaceId = agent.workspaceId;
     this.conversationId = agent.conversationId;
     this.title = agent.title;
@@ -746,7 +746,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
   private unsubscribeSession?: () => void;
   private postCompactionEstimate?: { entryId: string; tokens: number };
 
-  constructor(agent: WorkspaceAgentInfo, private session: any, private toolsForModel: AgentToolDefinitionView[], private serviceTiers: AgentServiceTierState, options: WorkspaceAgentRuntimeOptions = {}) {
+  constructor(agent: WorkspaceAgentConversationInfo, private session: any, private toolsForModel: AgentToolDefinitionView[], private serviceTiers: AgentServiceTierState, options: WorkspaceAgentRuntimeOptions = {}) {
     super(agent, options);
     this.ctx.model = this.currentModel();
     this.subscribeToSession();
@@ -1146,7 +1146,7 @@ export async function discardBootstrapOnlySession(path: string): Promise<void> {
   if (entries.every((entry) => bootstrapOnlySessionEntryTypes.has(entry.type))) await writeFile(path, "");
 }
 
-async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions, initial: InitialSessionSettings = {}): Promise<{ session: any; toolViews: AgentToolDefinitionView[]; serviceTiers: AgentServiceTierState }> {
+async function createPiSession(agent: WorkspaceAgentConversationInfo, options: WorkspaceAgentRuntimeOptions, initial: InitialSessionSettings = {}): Promise<{ session: any; toolViews: AgentToolDefinitionView[]; serviceTiers: AgentServiceTierState }> {
   await ensureSessionFile(agent.path);
   await discardBootstrapOnlySession(agent.path);
   const [modelRuntime, defaultModel] = await Promise.all([
@@ -1193,7 +1193,7 @@ async function createPiSession(agent: WorkspaceAgentInfo, options: WorkspaceAgen
   };
 }
 
-async function createRealRuntime(agent: WorkspaceAgentInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
+async function createRealRuntime(agent: WorkspaceAgentConversationInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
   const created = await createPiSession(agent, options);
   return new RealAgentRuntime(agent, created.session, created.toolViews, created.serviceTiers, options);
 }

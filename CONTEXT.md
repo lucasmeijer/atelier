@@ -24,20 +24,28 @@ _Avoid_: Archived workspace, inactive workspace
 The collapsible navigation region for finding and switching between workspaces.
 _Avoid_: Left sidebar, workspace tab
 
+**Agent**:
+A coding collaborator that acts through an Agent conversation.
+_Avoid_: Agent conversation, Agent session
+
 **Agent pane**:
 The primary region for using the active Agent conversation in a workspace.
 _Avoid_: Left tab, chat tab
 
 **Agent conversation**:
-An independently stateful transcript and composer for collaborating with an agent inside a Workspace. A Workspace may contain one or more Agent conversations, with one active at a time.
-_Avoid_: Agent view, agent tab, chat, thread
+An independently stateful transcript and composer for collaborating with an Agent inside a Workspace. A Workspace may contain one or more Agent conversations, with one active at a time.
+_Avoid_: Agent, Agent view, agent tab, chat, thread
+
+**Agent session**:
+The replaceable interaction history backing an Agent conversation. Replacing an Agent session retains the identity of its Agent conversation.
+_Avoid_: Agent, Agent conversation
 
 **Work pane**:
-The contextual region that slides in when needed to show files, changes, terminals, browsers, editors, and other working views.
+The contextual region that slides in when needed to show files, terminals, browsers, editors, and other working views.
 _Avoid_: Right tab, preview tab
 
 **Work view**:
-A closable, reorderable destination inside the Work pane, such as a Terminal, Browser, File, or Changes view. Only one Work view is active and visible at a time; Work views are not split into additional layout groups.
+A closable, reorderable destination inside the Work pane, such as a Terminal, Browser, File, or Files view. Only one Work view is active and visible at a time; Work views are not split into additional layout groups.
 _Avoid_: Workspace group, preview group
 
 **Resource Work view**:
@@ -45,15 +53,15 @@ A Work view representing an independently open resource or running session, such
 _Avoid_: Document view, permanent view
 
 **Contextual Work view**:
-A workspace-level utility Work view, such as Files or Changes.
+A workspace-level utility Work view, such as Files.
 _Avoid_: Permanent view, special view
 
 **Mobile destination**:
-A top-level phone navigation target for the Workspace pane, an open Agent conversation, or a Work view configured for direct mobile access. Every open Agent conversation is directly reachable. Open File, Browser, and Terminal views are directly reachable; Files, Changes, VS Code, and Desktop views are found through More.
+A top-level phone navigation target for the Workspace pane, an open Agent conversation, or a Work view configured for direct mobile access. Every open Agent conversation is directly reachable. Open File, Browser, and Terminal views are directly reachable; Files, VS Code, and Desktop views are found through More.
 _Avoid_: Mobile tab, mobile Work pane
 
 **More**:
-The user-facing phone destination that opens a bottom sheet with separate sections for Work views not configured for direct mobile access and launchers that create or reveal Work views. Singleton utility launchers such as Files and Changes remain available when their live Work views are closed. Selecting a Work view from More leaves the stable bottom destination bar unchanged, and More remains highlighted while a secondary Work view is visible. “Work” remains domain language and is not exposed as the name of this mobile affordance.
+The user-facing phone destination that opens a bottom sheet with separate sections for Work views not configured for direct mobile access and launchers that create or reveal Work views. Singleton utility launchers such as Files remain available when their live Work views are closed. Selecting a Work view from More leaves the stable bottom destination bar unchanged, and More remains highlighted while a secondary Work view is visible. “Work” remains domain language and is not exposed as the name of this mobile affordance.
 _Avoid_: Work, overflow
 
 **Work view reference**:
@@ -88,17 +96,9 @@ _Avoid_: Agent attention, Agent unread
 A Workspace-level status set when one of its Agent conversations completes while the Workspace is not selected. Selecting the Workspace clears the status; Agent completion does not set it while the Workspace is selected.
 _Avoid_: Workspace attention, Workspace ready
 
-**Changes view**:
-A review-only Work pane view for inspecting files changed in a workspace and reading their diffs. A workspace has at most one open Changes view.
-_Avoid_: Git client, source control panel
-
 **File view**:
-A Work pane view for reading one workspace file. A file has at most one open File view within a workspace.
+A Work pane view for reading and, when writable, editing one Workspace file. A file has at most one open File view within a Workspace.
 _Avoid_: File tab, editor tab
-
-**File navigator drawer**:
-A contextual drawer inside a File view that reveals the workspace file tree. The Changes view reuses this navigation pattern with a Git-status-filtered file list.
-_Avoid_: Directory browser thing, file sidebar
 
 **Persistent Work view state**:
 The server-restorable identity, order, and type-specific resource state of an open Work view. Its durability follows the view type rather than whether the user or agent created it, and remains until the view is explicitly closed.

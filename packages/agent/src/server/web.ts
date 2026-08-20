@@ -8,7 +8,7 @@ import {
 import { createAgentTermSocketSession } from "./bash-tmux.ts";
 import { getWorkspaceAgentRuntime, isWorkspaceAgentRuntimeReady, removeWorkspaceAgentRuntimes, subscribeWorkspaceViewBusy } from "./runtime.ts";
 import { handleAgentRequest, registerAgentEvents, resolveWorkspacePortProxyTarget, workspaceFileEndpoint } from "./routes.ts";
-import { createNextWorkspaceAgent, ensureDefaultWorkspaceAgent, listWorkspaceAgents, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentInfo } from "./session-store.ts";
+import { createNextWorkspaceAgentConversation, ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { agentConversationKey, renderAgentPane, renderPendingAgentPane } from "./render.ts";
 import { preferredNewWorkspaceAgentModel } from "./model-state.ts";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
@@ -17,23 +17,23 @@ import { mkdir } from "node:fs/promises";
 import type { WorkspaceDockerMount, WorkspaceInitInstruction } from "@atelier/workspace";
 import { isGitProjectInit } from "@atelier/projects";
 
-async function listOrCreateWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgentInfo[]> {
+async function listOrCreateWorkspaceAgentConversations(workspaceId: string): Promise<WorkspaceAgentConversationInfo[]> {
   try {
-    const agents = await listWorkspaceAgents(workspaceId);
-    return agents.length > 0 ? agents : [await ensureDefaultWorkspaceAgent(workspaceId)];
+    const conversations = await listWorkspaceAgentConversations(workspaceId);
+    return conversations.length > 0 ? conversations : [await ensureDefaultWorkspaceAgentConversation(workspaceId)];
   } catch (error) {
     if (error instanceof AtelierCoreError && error.code === "workspace_not_found") return [];
     throw error;
   }
 }
 
-async function renderWorkspaceAgentConversations(workspaceId: string, agents: WorkspaceAgentInfo[], events?: AtelierEventBus): Promise<WorkspaceAgentConversationPresentation[]> {
-  return await Promise.all(agents.map(async (agent, index) => {
-    const ctx = { workspaceId, label: agent.label };
-    const bodyHtml = isWorkspaceAgentRuntimeReady(agent)
-      ? await renderAgentPane(ctx, agent, await (await getWorkspaceAgentRuntime(agent, { events })).paneState(), { visible: index === 0 })
-      : await renderPendingAgentPane(ctx, agent, { visible: index === 0 });
-    return { id: agent.conversationId, title: agent.title, sourceKey: agentConversationKey(agent.label), bodyHtml };
+async function renderWorkspaceAgentConversations(workspaceId: string, conversations: WorkspaceAgentConversationInfo[], events?: AtelierEventBus): Promise<WorkspaceAgentConversationPresentation[]> {
+  return await Promise.all(conversations.map(async (conversation, index) => {
+    const ctx = { workspaceId, label: conversation.label };
+    const bodyHtml = isWorkspaceAgentRuntimeReady(conversation)
+      ? await renderAgentPane(ctx, conversation, await (await getWorkspaceAgentRuntime(conversation, { events })).paneState(), { visible: index === 0 })
+      : await renderPendingAgentPane(ctx, conversation, { visible: index === 0 });
+    return { id: conversation.conversationId, title: conversation.title, sourceKey: agentConversationKey(conversation.label), bodyHtml };
   }));
 }
 
@@ -71,7 +71,7 @@ function registerSessionShareMountEvents(events: AtelierEventBus): void {
   });
 }
 
-async function applyNewAgentSettings(agent: WorkspaceAgentInfo, source: WorkspaceAgentInfo | undefined, events?: AtelierEventBus): Promise<void> {
+async function applyNewAgentSettings(agent: WorkspaceAgentConversationInfo, source: WorkspaceAgentConversationInfo | undefined, events?: AtelierEventBus): Promise<void> {
   const runtimeOptions = { events };
   const sourceRuntime = source ? await getWorkspaceAgentRuntime(source, runtimeOptions) : undefined;
   const model = sourceRuntime?.currentModel() ?? await preferredNewWorkspaceAgentModel();
@@ -86,14 +86,14 @@ export const agentWorkspaceModule: WorkspaceModule = {
   commands: [{
     id: "agent.create",
     async execute({ workspaceId, events }) {
-      const sourceAgent = (await listWorkspaceAgents(workspaceId))[0];
-      const agent = await createNextWorkspaceAgent(workspaceId);
+      const sourceConversation = (await listWorkspaceAgentConversations(workspaceId))[0];
+      const conversation = await createNextWorkspaceAgentConversation(workspaceId);
       const applySettingsTimer = setTimeout(() => {
         // SAFETY: Workspace commands receive the web server's AtelierEventBus.
-        void applyNewAgentSettings(agent, sourceAgent, events as AtelierEventBus | undefined).catch((error) => console.error("Could not apply settings to new agent", error));
+        void applyNewAgentSettings(conversation, sourceConversation, events as AtelierEventBus | undefined).catch((error) => console.error("Could not apply settings to new Agent conversation", error));
       }, 0);
       applySettingsTimer.unref?.();
-      return { createdAgentConversationId: agent.conversationId };
+      return { createdAgentConversationId: conversation.conversationId };
     },
   }],
   routes: [{
@@ -114,7 +114,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
       id: "workspace.agent",
       label: "Prepare default agent",
       async run({ workspaceId, creationContext }) {
-        await ensureDefaultWorkspaceAgent(workspaceId, { topic: creationContext?.agent?.initialPrompt });
+        await ensureDefaultWorkspaceAgentConversation(workspaceId, { topic: creationContext?.agent?.initialPrompt });
       },
     });
     context.registerSocketHandler(createAgentTermSocketSession);
@@ -136,7 +136,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
   async attachToWorkspace({ workspaceId, init, events }) {
     const hasProject = isGitProjectInit(init);
     try {
-      const agents = await listOrCreateWorkspaceAgents(workspaceId);
+      const agents = await listOrCreateWorkspaceAgentConversations(workspaceId);
       return {
         // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
         agentConversations: await renderWorkspaceAgentConversations(workspaceId, agents, events as AtelierEventBus | undefined),

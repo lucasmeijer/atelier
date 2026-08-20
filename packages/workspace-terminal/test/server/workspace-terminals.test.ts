@@ -25,6 +25,7 @@ describe("workspace terminals", () => {
 
     const attached = await attachWorkspaceTerminal(workspace.id, "existing-session");
     expect(attached.tmuxSession).toBe("existing-session");
+    expect(attached.sessionRelationship).toBe("attached");
     expect(await listWorkspaceTerminals(workspace.id)).toEqual([attached]);
 
     await deleteWorkspaceTerminal(workspace.id, attached.id);
@@ -38,7 +39,13 @@ describe("workspace terminals", () => {
 
     expect(terminal.title).toBe("Terminal 1");
     expect(terminal.tmuxSession).toBe("Terminal 1");
+    expect(terminal.sessionRelationship).toBe("owned");
     expect(await listWorkspaceTerminals(workspace.id)).toEqual([terminal]);
     expect((await listTmuxSessions(workspace.id)).some((session) => session.name === terminal.tmuxSession)).toBe(true);
+
+    await deleteWorkspaceTerminal(workspace.id, terminal.id);
+
+    expect(await listWorkspaceTerminals(workspace.id)).toEqual([]);
+    expect((await listTmuxSessions(workspace.id)).some((session) => session.name === terminal.tmuxSession)).toBe(false);
   });
 });

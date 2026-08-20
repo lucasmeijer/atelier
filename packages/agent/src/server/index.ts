@@ -1,14 +1,14 @@
 export {
   archiveWorkspaceAgentConversation,
-  createNextWorkspaceAgent,
-  ensureDefaultWorkspaceAgent,
-  listWorkspaceAgents,
+  createNextWorkspaceAgentConversation,
+  ensureDefaultWorkspaceAgentConversation,
+  listWorkspaceAgentConversations,
   parseWorkspaceAgentFilename,
   sessionShareDir,
   sessionShareKeySlug,
   sessionShareMountPath,
   setWorkspaceAgentConversationTitle,
-  type WorkspaceAgentInfo,
+  type WorkspaceAgentConversationInfo,
   workspaceAgentConversationContributions,
 } from "./session-store.ts";
 export {

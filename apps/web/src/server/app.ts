@@ -138,7 +138,7 @@ function jsonResponse<Body extends object>(body: Body, init: HtmlResponseInit = 
 
 function problemJsonResponse(error: Error): Response {
   const status = error instanceof AtelierCoreError && ["invalid_arguments", "invalid_git_url"].includes(error.code) ? 400
-    : error instanceof AtelierCoreError && ["project_not_found", "project_environment_variable_not_found", "project_secret_not_found", "workspace_not_found", "command_not_found", "agent_not_found", "view_not_found", "terminal_not_found"].includes(error.code) ? 404
+    : error instanceof AtelierCoreError && ["project_not_found", "project_environment_variable_not_found", "project_secret_not_found", "workspace_not_found", "command_not_found", "agent_conversation_not_found", "view_not_found", "terminal_not_found"].includes(error.code) ? 404
       : 500;
   const message = error.message;
   const code = error instanceof AtelierCoreError ? error.code : "internal_error";
@@ -1642,6 +1642,7 @@ ${moduleStylesHtml()}
     const contribution = attachments.flatMap((attachment) => attachment.workViews ?? []).find((view) => workViewKey(view.reference) === workViewKey(reference));
     if (!contribution) throw new AtelierCoreError("work_view_not_found", `Work view is not available: ${workViewKey(reference)}`);
     await presentationStore.openWorkView(workspaceId, contribution.reference);
+    registry.setParked(workspaceId, false);
     await presentationStore.requestAttention(workspaceId, contribution.reference);
     const preserveLiveKeys = new Set([...before.agentConversations.map((agent) => `agent:${agent.id}`), ...before.workViews.map((view) => `work:${view.key}`)]);
     const key = workViewKey(contribution.reference);
@@ -1654,7 +1655,10 @@ ${moduleStylesHtml()}
     const stored = (await presentationStore.listWorkViews(workspaceId)).find((view) => workViewKey(view.reference) === key);
     if (!stored) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${key}`);
     if (acknowledge) await presentationStore.acknowledgeAttention(workspaceId, stored.reference);
-    else await presentationStore.requestAttention(workspaceId, stored.reference);
+    else {
+      registry.setParked(workspaceId, false);
+      await presentationStore.requestAttention(workspaceId, stored.reference);
+    }
     const preserveLiveKeys = new Set([
       ...before.agentConversations.map((agent) => `agent:${agent.id}`),
       ...before.workViews.map((view) => `work:${view.key}`),
@@ -1702,7 +1706,7 @@ ${moduleStylesHtml()}
   // ---------------------------------------------------------------------------
 
   function errorPage(error: Error): Response {
-    const status = error instanceof AtelierCoreError && ["workspace_not_found", "project_not_found", "repo_not_found", "terminal_not_found", "agent_not_found"].includes(error.code) ? 404 : 500;
+    const status = error instanceof AtelierCoreError && ["workspace_not_found", "project_not_found", "repo_not_found", "terminal_not_found", "agent_conversation_not_found"].includes(error.code) ? 404 : 500;
     const message = error.message;
     return response(layout("Error", `<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p><a class="btn" href="/">Back home</a></p></div></div></div>`), { status });
   }

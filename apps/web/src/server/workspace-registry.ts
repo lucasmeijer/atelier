@@ -288,6 +288,11 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
     setViewUnread(id, viewKey, unread) {
       const entry = entries.get(id);
       if (!entry) return;
+      const unparked = unread && entry.parked;
+      if (unparked) {
+        entry.parked = false;
+        callbacks.parkedChanged?.(entry);
+      }
       const wasUnread = workspaceUnread[id] !== undefined;
       if (unread && id !== activeWorkspaceId) {
         if (!wasUnread) workspaceUnread[id] = now();
@@ -295,6 +300,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       const isUnread = workspaceUnread[id] !== undefined;
       if (isUnread !== wasUnread) persistUnread();
       if (unread || isUnread !== wasUnread) callbacks.rowChanged?.(entry, { viewKey, unread });
+      if (unparked) callbacks.listChanged?.(sorted());
     },
 
     isViewBusy(id, viewKey) {

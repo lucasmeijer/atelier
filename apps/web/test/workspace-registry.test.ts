@@ -84,6 +84,23 @@ describe("workspace registry", () => {
     expect(registry.list().map((entry) => entry.id)).toEqual(["parked", "active"]);
   });
 
+  test("Agent completion unparks a parked Workspace", async () => {
+    const { registry, captured } = setup({ activity: { parked: 300, active: 100 } });
+    await registry.seed([
+      { id: "parked", title: "Parked", parked: true },
+      { id: "active", title: "Active" },
+    ]);
+    captured.lists.length = 0;
+
+    registry.setViewUnread("parked", "agent:1", true);
+
+    expect(registry.get("parked")?.parked).toBe(false);
+    expect(registry.isWorkspaceUnread("parked")).toBe(true);
+    expect(captured.parked.at(-1)?.id).toBe("parked");
+    expect(captured.rows.map((row) => row.viewKey)).toEqual(["agent:1"]);
+    expect(captured.lists).toHaveLength(1);
+  });
+
   test("add inserts a starting entry at the top and emits a list change", async () => {
     const { registry, captured } = setup({ activity: { a: 100 } });
     await registry.seed([{ id: "a", title: "A" }]);

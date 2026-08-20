@@ -24,7 +24,7 @@ import { loadWorkspaceSkills } from "./skills.ts";
 import { renderSlashCommandCatalog } from "./slash-commands.ts";
 import { getWorkspaceAgentRuntime, type SubmitMode } from "./runtime.ts";
 import { handleAgentTreeRequest } from "./session-tree.ts";
-import { ensureDefaultWorkspaceAgent, listWorkspaceAgents, type WorkspaceAgentInfo } from "./session-store.ts";
+import { ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { maybeNameWorkspaceFromAgentPrompt, renameWorkspaceFromAgentContext } from "./workspace-title-suggestion.ts";
 import { parseAgentServiceTier } from "./service-tier.ts";
 
@@ -67,11 +67,11 @@ function contentTypeFor(path: string): string {
   return mimeByExtension[extensionOf(path)] ?? "application/octet-stream";
 }
 
-async function requireAgent(workspaceId: string, label: string): Promise<WorkspaceAgentInfo> {
-  const agents = await listWorkspaceAgents(workspaceId);
-  const agent = agents.find((candidate) => candidate.label === label);
-  if (!agent) throw new AtelierCoreError("agent_not_found", `agent not found: ${label}`);
-  return agent;
+async function requireAgentConversation(workspaceId: string, label: string): Promise<WorkspaceAgentConversationInfo> {
+  const conversations = await listWorkspaceAgentConversations(workspaceId);
+  const conversation = conversations.find((candidate) => candidate.label === label);
+  if (!conversation) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${label}`);
+  return conversation;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,13 +102,13 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
     return await agentMessagesEndpoint(params[0], params[1], request, options);
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/transcript-items\/([^/]+)$/)) && request.method === "GET") {
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
+    const runtime = await getWorkspaceAgentRuntime(await requireAgentConversation(params[0], params[1]), options);
     const count = Math.max(100, Math.min(100_000, Number(url.searchParams.get("count") ?? 100) || 100));
     const html = await runtime.detailHtml(params[2], count);
     return new Response(html || "not found", { status: html ? 200 : 404, headers: { "content-type": "text/html; charset=utf-8" } });
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/session-images\/([^/]+)\/(\d+)$/)) && request.method === "GET") {
-    const agent = await requireAgent(params[0], params[1]);
+    const agent = await requireAgentConversation(params[0], params[1]);
     return await sessionImageEndpoint(agent.path, params[2], Number(params[3]));
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/completions$/)) && request.method === "GET") {
@@ -119,13 +119,13 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/tree(\/summary|\/label|)$/))) {
     const [workspaceId, label, suffix] = params;
-    return await handleAgentTreeRequest(request, url, suffix, async () => await getWorkspaceAgentRuntime(await requireAgent(workspaceId, label), options));
+    return await handleAgentTreeRequest(request, url, suffix, async () => await getWorkspaceAgentRuntime(await requireAgentConversation(workspaceId, label), options));
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/completions\/prompt-template-expand$/)) && request.method === "POST") {
     return await expandPromptTemplateEndpoint(params[0], request);
   }
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/abort$/)) && request.method === "POST") {
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
+    const runtime = await getWorkspaceAgentRuntime(await requireAgentConversation(params[0], params[1]), options);
     await runtime.abort();
     return requestAcceptsJson(request) ? Response.json({ agent: { label: params[1], state: "idle", aborted: true } }) : turboStreamResponse("");
   }
@@ -137,7 +137,7 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
       if (json) throw new AtelierCoreError("invalid_arguments", "valid model is required");
       return turboStreamResponse("");
     }
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
+    const runtime = await getWorkspaceAgentRuntime(await requireAgentConversation(params[0], params[1]), options);
     await runtime.setModel(model.provider, model.id);
     return json ? Response.json({ agent: { label: params[1], model: `${model.provider}::${model.id}` } }) : turboStreamResponse("");
   }
@@ -145,7 +145,7 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
     const json = requestAcceptsJson(request);
     const value = json ? (await readJsonObject(request)).serviceTier : (await request.formData()).get("serviceTier");
     const serviceTier = parseAgentServiceTier(value);
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
+    const runtime = await getWorkspaceAgentRuntime(await requireAgentConversation(params[0], params[1]), options);
     await runtime.setServiceTier(serviceTier);
     return json ? Response.json({ agent: { label: params[1], serviceTier } }) : turboStreamResponse("");
   }
@@ -157,7 +157,7 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
       if (json) throw new AtelierCoreError("invalid_arguments", "level is required");
       return turboStreamResponse("");
     }
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
+    const runtime = await getWorkspaceAgentRuntime(await requireAgentConversation(params[0], params[1]), options);
     await runtime.setThinkingLevel(level);
     const model = runtime.currentModel();
     if (model) await setModelThinkingLevel(model.provider, model.id, level);
@@ -169,7 +169,7 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
     const requestedMode = String(form.get("rewindMode") ?? "discard");
     const mode = requestedMode === "summary" ? "summary" : "discard";
     const customInstructions = mode === "summary" ? String(form.get("customInstructions") ?? "") : undefined;
-    const runtime = await getWorkspaceAgentRuntime(await requireAgent(params[0], params[1]), options);
+    const runtime = await getWorkspaceAgentRuntime(await requireAgentConversation(params[0], params[1]), options);
     if (entry) await runtime.rewind(entry, mode, customInstructions);
     return turboStreamResponse("");
   }
@@ -200,7 +200,7 @@ async function expandPromptTemplateEndpoint(workspaceId: string, request: Reques
 }
 
 async function agentMessagesEndpoint(workspaceId: string, label: string, request: Request, options: AgentRouteOptions): Promise<Response> {
-  const agent = await requireAgent(workspaceId, label);
+  const agent = await requireAgentConversation(workspaceId, label);
   const runtime = await getWorkspaceAgentRuntime(agent, options);
   const json = requestAcceptsJson(request) ? await readJsonObject(request) : undefined;
   const form = json ? undefined : await request.formData();
@@ -247,7 +247,7 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
 }
 
 async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorkspaceParameters, options: AgentRouteOptions): Promise<void> {
-  const agent = await ensureDefaultWorkspaceAgent(workspaceId);
+  const agent = await ensureDefaultWorkspaceAgentConversation(workspaceId);
   const runtime = await getWorkspaceAgentRuntime(agent, options);
   const modelRef = context.model ? parseModelRef(context.model) : undefined;
   if (modelRef) await runtime.setModel(modelRef.provider, modelRef.id);

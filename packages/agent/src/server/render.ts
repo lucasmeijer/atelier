@@ -8,7 +8,7 @@ import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDispla
 import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded-code.ts";
 import { highlightCodeHtmlForPath, renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdown";
 import { domId, escapeHtml } from "./html.ts";
-import type { WorkspaceAgentInfo } from "./session-store.ts";
+import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
 import {
   formatCost,
@@ -138,7 +138,7 @@ function agentAttachmentDropAttrs(uploadUrl: string): string {
   return `data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}" data-action="${agentAttachmentDropAction}"`;
 }
 
-export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
+export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
   return await renderAgentPaneFrame(ctx, agent, state, options);
 }
 
@@ -154,7 +154,7 @@ const pendingAgentStats: AgentStatsView = {
   models: [],
 };
 
-export async function renderPendingAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, options: { visible?: boolean } = {}): Promise<string> {
+export async function renderPendingAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, options: { visible?: boolean } = {}): Promise<string> {
   return await renderAgentPaneFrame(ctx, agent, {
     transcriptHtml: `<div class="agent-starting"><span class="agent-starting-spinner" aria-hidden="true"></span><div><b>Starting ${escapeHtml(ctx.label)}…</b><span>Loading model settings and workspace instructions.</span></div></div>`,
     busy: false,
@@ -162,7 +162,7 @@ export async function renderPendingAgentPane(ctx: AgentRenderContext, agent: Wor
   }, options);
 }
 
-async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAgentInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
+async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
   const key = agentConversationKey(agent.label);
   const draftId = randomUUID();
   const attachRowId = ids.attachRow(ctx);

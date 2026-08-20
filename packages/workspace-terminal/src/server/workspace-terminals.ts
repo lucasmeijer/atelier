@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { AtelierCoreError, atelierDataPath, getAtelierRuntimeContext, shellQuote } from "@atelier/core";
-import { buildListSessionsCommand, buildObservableSessionCommand } from "@atelier/observable-terminal/server";
+import { buildKillSessionCommand, buildListSessionsCommand, buildObservableSessionCommand } from "@atelier/observable-terminal/server";
 import { execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
@@ -10,6 +10,7 @@ const workspaceTerminalSchema = Type.Object({
   id: Type.String(),
   title: Type.String(),
   tmuxSession: Type.String(),
+  sessionRelationship: Type.Union([Type.Literal("owned"), Type.Literal("attached")]),
 });
 const workspaceTerminalsSchema = Type.Array(workspaceTerminalSchema);
 
@@ -108,8 +109,8 @@ function sessionCommand(command?: string): string {
   return `/bin/bash -lc ${shellQuote(script)}`;
 }
 
-function newTerminal(terminals: WorkspaceTerminal[], title: string, tmuxSession: string): WorkspaceTerminal {
-  const terminal = { id: crypto.randomUUID(), title: availableTitle(terminals.map((item) => item.title), title), tmuxSession };
+function newTerminal(terminals: WorkspaceTerminal[], title: string, tmuxSession: string, sessionRelationship: WorkspaceTerminal["sessionRelationship"]): WorkspaceTerminal {
+  const terminal = { id: crypto.randomUUID(), title: availableTitle(terminals.map((item) => item.title), title), tmuxSession, sessionRelationship };
   terminals.push(terminal);
   return terminal;
 }
@@ -127,7 +128,7 @@ export async function createWorkspaceTerminal(workspaceId: string, options: Work
   }));
   if (result.exitCode !== 0) throw new AtelierCoreError("terminal_create_failed", result.stderr.trim() || `could not create terminal: ${tmuxSession}`);
 
-  const terminal = newTerminal(terminals, options.title?.trim() || "Terminal", tmuxSession);
+  const terminal = newTerminal(terminals, options.title?.trim() || "Terminal", tmuxSession, "owned");
   await writeTerminals(workspaceId, terminals);
   return terminal;
 }
@@ -137,7 +138,7 @@ export async function attachWorkspaceTerminal(workspaceId: string, tmuxSession: 
     throw new AtelierCoreError("terminal_not_found", `tmux session not found: ${tmuxSession}`);
   }
   const terminals = await listWorkspaceTerminals(workspaceId);
-  const terminal = newTerminal(terminals, tmuxSession, tmuxSession);
+  const terminal = newTerminal(terminals, tmuxSession, tmuxSession, "attached");
   await writeTerminals(workspaceId, terminals);
   return terminal;
 }
@@ -146,6 +147,10 @@ export async function deleteWorkspaceTerminal(workspaceId: string, terminalId: s
   const terminals = await listWorkspaceTerminals(workspaceId);
   const index = terminals.findIndex((terminal) => terminal.id === terminalId);
   if (index < 0) throw new AtelierCoreError("terminal_not_found", `terminal not found: ${terminalId}`);
-  terminals.splice(index, 1);
+  const [terminal] = terminals.splice(index, 1);
+  if (terminal!.sessionRelationship === "owned") {
+    const result = await execWorkspaceShell(workspaceId, buildKillSessionCommand(terminal!.tmuxSession));
+    if (result.exitCode !== 0) throw new AtelierCoreError("terminal_close_failed", result.stderr.trim() || `could not close terminal session: ${terminal!.tmuxSession}`);
+  }
   await writeTerminals(workspaceId, terminals);
 }

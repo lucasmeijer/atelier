@@ -1,5 +1,5 @@
 import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
-import { getWorkspaceAgentRuntime, listWorkspaceAgents } from "@atelier/agent/server";
+import { getWorkspaceAgentRuntime, listWorkspaceAgentConversations } from "@atelier/agent/server";
 import {
   decodeCableClientMessage,
   serializeCableIdentifier,
@@ -53,10 +53,10 @@ function send(ws: CableSocket, message: CableServerMessage): void {
   ws.send(JSON.stringify(message));
 }
 
-async function requireAgent(workspaceId: string, label: string) {
-  const agent = (await listWorkspaceAgents(workspaceId)).find((candidate) => candidate.label === label);
-  if (!agent) throw new AtelierCoreError("agent_not_found", `agent not found: ${label}`);
-  return agent;
+async function requireAgentConversation(workspaceId: string, label: string) {
+  const conversation = (await listWorkspaceAgentConversations(workspaceId)).find((candidate) => candidate.label === label);
+  if (!conversation) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${label}`);
+  return conversation;
 }
 
 export function createCableServer(options: CableServerOptions): CableServer {
@@ -77,12 +77,12 @@ export function createCableServer(options: CableServerOptions): CableServer {
       if (!options.registry.get(identifier.workspaceId)) throw new AtelierCoreError("workspace_not_found", `workspace not found: ${identifier.workspaceId}`);
       return;
     }
-    await requireAgent(identifier.workspaceId, identifier.label);
+    await requireAgentConversation(identifier.workspaceId, identifier.label);
   }
 
   async function agentRuntime(identifier: Extract<CableIdentifier, { channel: "agent" }>) {
     // Cable can initialize the runtime first, so it must provide the events used by agent tools.
-    return await getWorkspaceAgentRuntime(await requireAgent(identifier.workspaceId, identifier.label), { events: options.events });
+    return await getWorkspaceAgentRuntime(await requireAgentConversation(identifier.workspaceId, identifier.label), { events: options.events });
   }
 
   async function snapshot(identifier: CableIdentifier, upTo?: string): Promise<{ html: string; cursor?: string }> {
