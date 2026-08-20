@@ -133,7 +133,9 @@ function vscodeBridgeScript(nonce: string | undefined): string {
 }
 
 function patchVSCodeWorkbenchScript(text: string): string {
-  const patched = text.replace(/(var ([A-Za-z_$][\w$]*);\(o=>\{async function a\(e,\.\.\.t\)\{return\(await [A-Za-z_$][\w$]*\.p\)\.commands\.executeCommand\(e,\.\.\.t\)\}o\.executeCommand=a\}\)\(\2\|\|=\{\}\);)/, "$1globalThis.__atelierVSCodeCommands=$2;");
+  const identifier = "([A-Za-z_$][\\w$]*)";
+  const commandApiPattern = new RegExp(`async function ${identifier}\\(${identifier},\\.\\.\\.${identifier}\\)\\{return\\(await [A-Za-z_$][\\w$]*\\.p\\)\\.commands\\.executeCommand\\(\\2,\\.\\.\\.\\3\\)\\}${identifier}\\.executeCommand=\\1`);
+  const patched = text.replace(commandApiPattern, "$&;globalThis.__atelierVSCodeCommands=$4");
   if (patched === text) throw new Error("could not expose VS Code command bridge");
   return patched;
 }
