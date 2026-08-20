@@ -49,6 +49,7 @@ export interface WorkPaneContribution {
 
 export interface WorkspacePanePresentation {
   projects: readonly WorkspacePaneProject[];
+  emptyProjects?: readonly Pick<WorkspacePaneProject, "id" | "title">[];
   projectlessWorkspaces?: readonly WorkspacePaneEntry[];
   parkedWorkspaces?: readonly (WorkspacePaneEntry & { projectTitle?: string })[];
 }
@@ -103,28 +104,51 @@ function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string): 
   </button>`;
 }
 
-const projectlessWorkspaceGroupId = "__no_project__";
+const projectlessWorkspaceGroupId = "__projectless__";
+const emptyProjectsGroupId = "__projects__";
 
-function renderWorkspaceGroupHeading(id: string, title: string, launchHref: string): string {
-  const launchLabel = `New workspace: ${title}`;
-  return `<div class="fixed-shell-project-heading-row"><button type="button" class="fixed-shell-project-heading" aria-expanded="true" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(id)}">${icon("chevron")}<span>${escapeHtml(title)}</span></button><a class="fixed-shell-project-add" href="${escapeHtml(launchHref)}" data-turbo-frame="agent_launch_modal" aria-label="${escapeHtml(launchLabel)}" title="${escapeHtml(launchLabel)}">${icon("plus")}</a></div>`;
+interface WorkspaceGroupAddAction {
+  href: string;
+  frame: "agent_launch_modal" | "project_editor_frame";
+  label: string;
+}
+
+const projectEditorTarget = 'data-turbo-frame="project_editor_frame" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="project-editor-modal"';
+
+function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGroupAddAction, settingsHref?: string, collapsible = true): string {
+  const heading = collapsible
+    ? `<button type="button" class="fixed-shell-project-heading" aria-expanded="true" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(id)}">${icon("chevron")}<span>${escapeHtml(title)}</span></button>`
+    : `<span class="fixed-shell-project-heading fixed-shell-project-heading-static"><span>${escapeHtml(title)}</span></span>`;
+  const settings = settingsHref ? `<a class="fixed-shell-project-action fixed-shell-project-settings" href="${escapeHtml(settingsHref)}" ${projectEditorTarget} aria-label="Project settings: ${escapeHtml(title)}" title="Project settings: ${escapeHtml(title)}">${icon("more")}</a>` : "";
+  const addTarget = add.frame === "project_editor_frame" ? projectEditorTarget : 'data-turbo-frame="agent_launch_modal"';
+  return `<div class="fixed-shell-project-heading-row">${heading}${settings}<a class="fixed-shell-project-action fixed-shell-project-add" href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${icon("plus")}</a></div>`;
+}
+
+function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, collapsible = true): string {
+  const id = encodeURIComponent(project.id);
+  return renderWorkspaceGroupHeading(project.id, project.title, { href: `/projects/${id}/agent-launch`, frame: "agent_launch_modal", label: `New workspace: ${project.title}` }, `/projects/${id}/editor`, collapsible);
 }
 
 export function renderWorkspacePaneCollections(presentation: WorkspacePanePresentation): string {
   const projects = presentation.projects.map((project) => `<section class="fixed-shell-project" data-project-id="${escapeHtml(project.id)}">
-    ${renderWorkspaceGroupHeading(project.id, project.title, `/projects/${encodeURIComponent(project.id)}/agent-launch`)}
+    ${renderProjectHeading(project)}
     <div class="fixed-shell-project-workspaces">${project.workspaces.map((workspace) => renderWorkspaceRow(workspace, project.id)).join("")}</div>
   </section>`).join("");
-  const projectless = presentation.projectlessWorkspaces?.length
-    ? `<section class="fixed-shell-project" data-project-id="${projectlessWorkspaceGroupId}">
-    ${renderWorkspaceGroupHeading(projectlessWorkspaceGroupId, "No project", "/agent-launch")}
-    <div class="fixed-shell-project-workspaces">${presentation.projectlessWorkspaces.map((workspace) => renderWorkspaceRow(workspace)).join("")}</div>
-  </section>`
-    : "";
+  const projectlessWorkspaces = presentation.projectlessWorkspaces ?? [];
+  const projectlessAdd = { href: "/agent-launch", frame: "agent_launch_modal", label: "New projectless workspace" } as const;
+  const emptyProjectless = projectlessWorkspaces.length === 0 ? `<section class="fixed-shell-project" data-project-id="${projectlessWorkspaceGroupId}">${renderWorkspaceGroupHeading(projectlessWorkspaceGroupId, "Projectless", projectlessAdd, undefined, false)}</section>` : "";
+  const emptyProjects = `<section class="fixed-shell-project fixed-shell-empty-projects" data-project-id="${emptyProjectsGroupId}">
+    ${renderWorkspaceGroupHeading(emptyProjectsGroupId, "Projects", { href: "/projects/new/editor", frame: "project_editor_frame", label: "New project" })}
+    <div class="fixed-shell-project-workspaces">${emptyProjectless}${(presentation.emptyProjects ?? []).map((project) => `<section class="fixed-shell-project" data-project-id="${escapeHtml(project.id)}">${renderProjectHeading(project, false)}</section>`).join("")}</div>
+  </section>`;
+  const projectless = projectlessWorkspaces.length > 0 ? `<section class="fixed-shell-project" data-project-id="${projectlessWorkspaceGroupId}">
+    ${renderWorkspaceGroupHeading(projectlessWorkspaceGroupId, "Projectless", projectlessAdd)}
+    <div class="fixed-shell-project-workspaces">${projectlessWorkspaces.map((workspace) => renderWorkspaceRow(workspace)).join("")}</div>
+  </section>` : "";
   const parked = presentation.parkedWorkspaces?.length
     ? `<section class="fixed-shell-project fixed-shell-parked"><h3>Parked</h3>${presentation.parkedWorkspaces.map((workspace) => `${renderWorkspaceRow(workspace)}${workspace.projectTitle ? `<small>${escapeHtml(workspace.projectTitle)}</small>` : ""}`).join("")}</section>`
     : "";
-  return `${projects}${projectless}${parked}`;
+  return `${projects}${projectless}${emptyProjects}${parked}`;
 }
 
 export function renderWorkspacePane(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
@@ -132,7 +156,7 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
     <header><strong>Atelier</strong>${button("Close Workspace pane", "click->workspace-navigation#togglePane", "sidebar", 'data-expanded-pane-toggle="workspace"')}${button("Open Workspace pane", "click->workspace-navigation#togglePane", "sidebar", 'data-collapsed-pane-toggle="workspace"')}</header>
     <div class="fixed-shell-workspace-scroll" data-workspace-navigation-target="scroll"><div data-workspace-pane-collections>${renderWorkspacePaneCollections(presentation)}</div></div>
     <section id="global_sidebar_contributions">${sidebarContributionsHtml}</section>
-    <footer><button type="button" class="fixed-shell-settings" data-controller="modal-opener" data-action="modal-opener#open" data-modal-opener-target-id-value="project-picker-modal"><span aria-hidden="true">＋</span><span>New workspace</span></button><a class="fixed-shell-settings" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">${icon("settings")}<span>Settings</span></a></footer>
+    <footer><a class="fixed-shell-settings" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">${icon("settings")}<span>Settings</span></a></footer>
   </aside>`;
 }
 

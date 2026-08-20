@@ -538,27 +538,33 @@ describe("web app contracts", () => {
     expect(pathNames).not.toContain("/api/workspaces");
   });
 
-  test("the project picker launches workspaces and links to project settings", async () => {
+  test("the Workspace pane links directly to workspace launch and project editors", async () => {
     await withTempDataDir(async () => {
       const project = (await addProject("https://github.com/org/sample-project.git")).project;
       const { app, registry } = createTestApp();
       await registry.seed([]);
 
       const home = await (await app.fetch(new Request("http://test.local/"))).text();
-      const editor = await (await app.fetch(new Request(`http://test.local/projects/${project.id}/picker`))).text();
-      const newProject = await (await app.fetch(new Request("http://test.local/projects/new/picker"))).text();
+      const editor = await (await app.fetch(new Request(`http://test.local/projects/${project.id}/editor`))).text();
+      const newProject = await (await app.fetch(new Request("http://test.local/projects/new/editor"))).text();
+      const removedPicker = await app.fetch(new Request("http://test.local/projects/picker"));
 
-      expect(home).toContain('id="project-picker-modal"');
-      expect(home).toContain(`href="/projects/${project.id}/picker"`);
+      expect(removedPicker.status).toBe(404);
+      expect(home).toContain('<dialog id="project-editor-modal" class="project-editor-modal" data-controller="modal"><turbo-frame id="project_editor_frame"');
       expect(home).toContain(`href="/projects/${project.id}/agent-launch" data-turbo-frame="agent_launch_modal"`);
-      expect(home).toContain('data-controller="modal agent-launch-trigger" data-action="click->agent-launch-trigger#select"');
-      expect(home).toContain('class="agent-launch-focus-bridge"');
+      expect(home).toContain(`href="/projects/${project.id}/editor" data-turbo-frame="project_editor_frame"`);
+      expect(home).toContain('href="/agent-launch" data-turbo-frame="agent_launch_modal"');
+      expect(home).toContain('href="/projects/new/editor" data-turbo-frame="project_editor_frame"');
       expect(home).toContain('<turbo-frame id="agent_launch_modal"></turbo-frame>');
+      expect(home).not.toContain("Which project to start from?");
       expect(home).not.toContain("Describe what you want the agent to do");
       expect(home).not.toContain('class="sidebar-host-repos"');
-      expect(home).toContain('data-modal-opener-target-id-value="project-picker-modal"');
+      expect(home).toContain('data-modal-opener-target-id-value="project-editor-modal"');
       expect(newProject).toContain('aria-label="Add project"');
+      expect(newProject).toContain('data-action="turbo:submit-end->modal#submitted"');
+      expect(newProject).not.toContain('aria-label="Back"');
       expect(editor).toContain('aria-label="Repository"');
+      expect(editor).not.toContain('aria-label="Back"');
       expect(editor).toContain("project-environment");
       expect(editor).toContain(`action="/projects/${project.id}/environment"`);
       expect(editor).toContain("project-secrets");
@@ -631,15 +637,16 @@ describe("web app contracts", () => {
       expect(repeated.status).toBe(200);
       expect(response.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
       expect((await listProjects()).projects).toHaveLength(1);
-      expect(body).toContain('target="project_picker_frame"');
+      expect(body).toContain('target="project_editor_frame"');
       expect(body).toContain('target="project_modals"');
+      expect(body).toContain('action="replace-workspace-pane-collections"');
       expect(body).toContain("sample-project");
-      expect(repeatedBody).toContain('target="project_picker_frame"');
+      expect(repeatedBody).toContain('target="project_editor_frame"');
       expect(repeatedBody).not.toContain("project already exists");
     });
   });
 
-  test("deleting an unreferenced project removes it from the project picker", async () => {
+  test("deleting an unreferenced project removes it from project controls", async () => {
     await withTempDataDir(async () => {
       const project = (await addProject("https://github.com/org/sample-project.git")).project;
       const { app, registry } = createTestApp();
@@ -650,7 +657,7 @@ describe("web app contracts", () => {
 
       expect(response.status).toBe(200);
       expect((await listProjects()).projects).toEqual([]);
-      expect(body).toContain('target="project_picker_frame"');
+      expect(body).toContain('target="project_editor_frame"');
       expect(body).toContain('target="project_modals"');
       expect(body).not.toContain("sample-project");
     });

@@ -509,13 +509,6 @@ class AtelierShortcutsController extends Controller {
       run: () => this.openOldestUnreadWorkspace(),
     });
     this.registerCommand({
-      id: "workspace.new",
-      label: "New workspace",
-      scope: "global",
-      binding: "Meta+Alt+Semicolon",
-      run: () => this.openDialogPrompt("project-picker-modal"),
-    });
-    this.registerCommand({
       id: "atelier.open-palette",
       label: "Open palette",
       scope: "global",
@@ -855,14 +848,6 @@ class AtelierShortcutsController extends Controller {
     if (html) window.Turbo?.renderStreamMessage(html);
   }
 
-  private openDialogPrompt(id: string): void {
-    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-    const dialog = document.getElementById(id) as HTMLDialogElement | null;
-    if (!dialog) return;
-    if (!dialog.open) dialog.showModal();
-    focusDialogPromptEnd(dialog);
-  }
-
   private visibleWorkspaceId(): string | undefined {
     return document.querySelector<HTMLElement>(".workspace-row.visible[data-workspace-id]")?.dataset.workspaceId
       ?? residencyController()?.visibleWorkspaceId();
@@ -1013,20 +998,6 @@ class ModalController extends Controller {
   }
 }
 
-class AgentLaunchTriggerController extends Controller {
-  declare readonly element: HTMLDialogElement;
-
-  select(event: Event): void {
-    const target = event.target instanceof Element ? event.target.closest("a.project-picker-select") : null;
-    if (!target) return;
-    if (window.matchMedia(phoneViewportMediaQuery).matches) {
-      this.element.querySelector<HTMLTextAreaElement>(".agent-launch-focus-bridge")!.focus({ preventScroll: true });
-    } else {
-      this.element.close();
-    }
-  }
-}
-
 class AgentLaunchDialogController extends Controller {
   static values = { discardUrl: String };
   declare readonly element: HTMLDialogElement;
@@ -1036,7 +1007,6 @@ class AgentLaunchDialogController extends Controller {
     this.element.addEventListener("close", this.closed);
     this.element.showModal();
     focusDialogPromptEnd(this.element);
-    document.querySelector<HTMLDialogElement>("#project-picker-modal[open]")?.close();
   }
 
   disconnect(): void {
@@ -2291,7 +2261,6 @@ application.register("atelier-fullscreen", AtelierFullscreenController);
 application.register("submit-shortcut", SubmitShortcutController);
 application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);
-application.register("agent-launch-trigger", AgentLaunchTriggerController);
 application.register("agent-launch-dialog", AgentLaunchDialogController);
 application.register("project-github-search", ProjectGithubSearchController);
 application.register("workspace-list", WorkspaceListController);

@@ -17,22 +17,6 @@ export interface FullscreenView {
 }
 
 export const atelierUi = {
-  newWorkspaceButton(page: Page): Locator {
-    return page.getByRole("button", { name: "New workspace", exact: true });
-  },
-
-  projectPicker(page: Page): Locator {
-    return page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "Which project to start from?" }) });
-  },
-
-  addProjectLink(page: Page): Locator {
-    return this.projectPicker(page).getByRole("link", { name: "Add a new project", exact: true });
-  },
-
-  editProjectLink(page: Page, projectName: string): Locator {
-    return this.projectPicker(page).getByRole("link", { name: `Edit ${projectName}`, exact: true });
-  },
-
   newProjectForm(page: Page): Locator {
     return page.getByRole("form", { name: "Add project", exact: true });
   },

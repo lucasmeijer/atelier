@@ -31,16 +31,11 @@ afterAll(async () => {
 describe("Atelier Playwright helper", () => {
   test("key locators match the server-rendered contracts", async () => {
     const page = await browser.newPage();
-    await page.setContent(`<button type="button">New workspace</button>
-      <dialog open><h2>Which project to start from?</h2><a href="#">Add a new project</a><a href="#" aria-label="Edit Demo">Edit</a></dialog>
-      <form aria-label="Add project"></form><form aria-label="Repository"></form>
+    await page.setContent(`<form aria-label="Add project"></form><form aria-label="Repository"></form>
       <div role="table"><form role="row" aria-label="Add secret"></form></div>
       <form id="agent_launch_form"><textarea aria-label="Describe what you want the agent to do… (optional)"></textarea></form>
       <section data-agent-conversation-source="agent:Agent 1"><textarea data-agent-pane-target="input"></textarea></section>`);
 
-    expect(await atelierUi.newWorkspaceButton(page).count()).toBe(1);
-    expect(await atelierUi.addProjectLink(page).count()).toBe(1);
-    expect(await atelierUi.editProjectLink(page, "Demo").count()).toBe(1);
     expect(await atelierUi.newProjectForm(page).count()).toBe(1);
     expect(await atelierUi.projectRepositoryForm(page).count()).toBe(1);
     expect(await atelierUi.newProjectSecretForm(page).count()).toBe(1);
@@ -104,25 +99,6 @@ describe("Atelier Playwright helper", () => {
 
     expect(await input.inputValue()).toBe("/review ");
     expect(await option.count()).toBe(0);
-    await page.close();
-  });
-
-  test("keeps mobile keyboard focus alive while the new-workspace composer loads", async () => {
-    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-    await page.setContent(`<meta name="viewport" content="width=device-width, initial-scale=1"><dialog id="project-picker-modal" open data-controller="modal agent-launch-trigger" data-action="click->agent-launch-trigger#select">
-      <a href="#launch" class="project-picker-select">No project</a>
-      <textarea class="agent-launch-focus-bridge" tabindex="-1"></textarea>
-    </dialog>`);
-    await page.addScriptTag({ content: workspaceClient, type: "module" });
-    await page.waitForFunction(() => Boolean(window.Stimulus));
-
-    await page.getByRole("link", { name: "No project" }).click();
-    expect(await page.evaluate(() => document.activeElement?.className)).toBe("agent-launch-focus-bridge");
-
-    await page.locator("body").evaluate((body) => body.insertAdjacentHTML("beforeend", `<dialog class="agent-launch-modal" data-controller="agent-launch-dialog" data-agent-launch-dialog-discard-url-value="/discard"><textarea class="agent-input"></textarea></dialog>`));
-    await page.locator("dialog.agent-launch-modal[open]").waitFor();
-    expect(await page.evaluate(() => document.activeElement?.className)).toBe("agent-input");
-    expect(await page.locator("#project-picker-modal").evaluate((dialog: HTMLDialogElement) => dialog.open)).toBe(false);
     await page.close();
   });
 
