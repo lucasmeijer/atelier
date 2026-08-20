@@ -33,7 +33,7 @@
     "@atelier/workspace-image": "workspace:*",
     "@oxlint/plugins": "1.78.0",
     "@playwright/test": "1.61.0",
-    "bun-types": "1.3.14",
+    "bun-types": "1.4.0",
     "oxlint": "1.78.0",
     "typebox": "^1.0.57",
     "typescript": "6.0.3"

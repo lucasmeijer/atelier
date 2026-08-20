@@ -1,5 +1,5 @@
 FROM docker:29-cli AS docker-cli
-FROM oven/bun:1.3.14 AS bun-dist
+FROM oven/bun:1.4.0 AS bun-dist
 
 FROM ubuntu:26.04 AS deps
 ARG DEBIAN_FRONTEND=noninteractive

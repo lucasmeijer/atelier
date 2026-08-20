@@ -85,7 +85,7 @@ for (const { path, dir, name, manifest, hashPath } of manifests) {
 }
 
 const uniqueApt = [...new Set(apt)].sort();
-let dockerfile = `FROM oven/bun:1.3.14 AS bun-dist\n\nFROM ubuntu:26.04\n\nARG DEBIAN_FRONTEND=noninteractive\nLABEL com.atelier.workspace-image.modules=${quote(moduleNames.join(","))}\n\n`;
+let dockerfile = `FROM oven/bun:1.4.0 AS bun-dist\n\nFROM ubuntu:26.04\n\nARG DEBIAN_FRONTEND=noninteractive\nLABEL com.atelier.workspace-image.modules=${quote(moduleNames.join(","))}\n\n`;
 if (uniqueApt.length) {
   const aptPackages = dockerContinuationList(uniqueApt);
   dockerfile += `RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \\\n    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\\n    apt-get update \\\n && apt-get install -y --no-install-recommends \\\n${aptPackages}\n\n`;
