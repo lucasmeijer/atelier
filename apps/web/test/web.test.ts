@@ -490,7 +490,36 @@ describe("web app contracts", () => {
     expect(home.match(/class="fixed-shell-workspace-pane"/g)).toHaveLength(1);
     expect(home).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
     expect(broadcasts.some((html) => html.includes('<turbo-stream action="update" target="global_sidebar_contributions"'))).toBe(true);
-    expect(home).toContain("Create or select a workspace");
+    expect(home).toContain("Welcome to Atelier!");
+    expect(home).toContain('data-controller="empty-workspace-onboarding"');
+    expect(home).toContain('class="workspace-empty-onboarding-arrow"');
+  });
+
+  test("the empty shell asks for a first Project when none exists", async () => {
+    await withTempDataDir(async () => {
+      const { app, registry } = createTestApp();
+      await registry.seed([]);
+
+      const home = await (await app.fetch(new Request("http://test.local/"))).text();
+
+      expect(home).toContain("Create your <strong");
+      expect(home).toContain("first project</strong> to get started!");
+      expect(home).toContain('data-empty-workspace-onboarding-destination-value="first-project"');
+    });
+  });
+
+  test("the empty shell asks for a first Workspace when a Project already exists", async () => {
+    await withTempDataDir(async () => {
+      await addProject("https://github.com/org/sample-project.git");
+      const { app, registry } = createTestApp();
+      await registry.seed([]);
+
+      const home = await (await app.fetch(new Request("http://test.local/"))).text();
+
+      expect(home).toContain("Create your <strong");
+      expect(home).toContain("first workspace</strong> to get started!");
+      expect(home).toContain('data-empty-workspace-onboarding-destination-value="first-workspace"');
+    });
   });
 
   test("project and projectless workspaces advertise the same-project workspace shortcut", async () => {
@@ -721,6 +750,7 @@ describe("web app contracts", () => {
       expect(isGitProjectInit(entry.init) && entry.init.name).toBe("sample-project");
       expect(body).toContain("sample-project");
       expect(body).toContain('action="update" target="agent_launch_modal"');
+      expect(body).toContain(`action="select-workspace" target="workspace_detail" data-workspace-id="${entry.id}"`);
       expect(body).not.toContain("do it");
       expect(body).not.toContain("sample-project.git");
       expect(body).not.toContain(`Workspace ${entry.id}`);
@@ -731,7 +761,7 @@ describe("web app contracts", () => {
     await withTempDataDir(async () => {
       let captured: ProvisionWorkspaceOptions | undefined;
       const { app, registry } = createTestApp({ provision: async (_id, options) => { captured = options; } });
-      await registry.seed([]);
+      await registry.seed([{ id: "existing", title: "Existing" }]);
       const attachmentDraft = crypto.randomUUID();
 
       const response = await app.fetch(postForm("/agent-workspaces", new URLSearchParams({
@@ -743,7 +773,9 @@ describe("web app contracts", () => {
 
       expect(response.status).toBe(200);
       expect(captured?.context).toEqual({ agent: { initialPrompt: "", model: "openai-codex::gpt-5.6-sol", thinkingLevel: "medium", serviceTier: "default", attachmentDraft } });
-      expect(await response.text()).toContain('action="update" target="agent_launch_modal"');
+      const body = await response.text();
+      expect(body).toContain('action="update" target="agent_launch_modal"');
+      expect(body).not.toContain('action="select-workspace"');
     });
   });
 
@@ -838,7 +870,10 @@ describe("web app contracts", () => {
     const home = await app.fetch(new Request("http://test.local/"));
     expect(home.status).toBe(200);
     const homeBody = await home.text();
-    expect(homeBody).toContain("Create or select a workspace");
+    expect(homeBody).toContain("Welcome to Atelier");
+    expect(homeBody).toContain("Select a workspace");
+    expect(homeBody).not.toContain('data-controller="empty-workspace-onboarding"');
+    expect(homeBody).not.toContain('class="workspace-empty-onboarding-arrow"');
     expect(homeBody).not.toContain('href="/workspaces/a"');
     expect(homeBody).not.toContain('href="/workspaces/b"');
   });

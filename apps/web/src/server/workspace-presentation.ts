@@ -56,6 +56,16 @@ export interface WorkspacePanePresentation {
   projectlessParkedWorkspaces?: readonly WorkspacePaneEntry[];
 }
 
+export type WorkspacePaneOnboardingState = "first-project" | "first-workspace" | "workspaces";
+
+export function workspacePaneOnboardingState(presentation: WorkspacePanePresentation): WorkspacePaneOnboardingState {
+  const hasWorkspaces = presentation.projects.some((project) => project.workspaces.length > 0 || (project.parkedWorkspaces?.length ?? 0) > 0)
+    || (presentation.projectlessWorkspaces?.length ?? 0) > 0
+    || (presentation.projectlessParkedWorkspaces?.length ?? 0) > 0;
+  if (hasWorkspaces) return "workspaces";
+  return presentation.projects.length + (presentation.emptyProjects?.length ?? 0) > 0 ? "first-workspace" : "first-project";
+}
+
 export interface WorkspacePresentation {
   workspace: Pick<WorkspacePaneEntry, "id" | "title">;
   agentConversations: readonly AgentPaneContribution[];
@@ -133,6 +143,7 @@ interface WorkspaceGroupHeadingOptions {
   mode?: "disclosure" | "static" | "launcher";
   expanded?: boolean;
   settingsHref?: string;
+  onboardingDestination?: Exclude<WorkspacePaneOnboardingState, "workspaces">;
 }
 
 function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGroupAddAction, options: WorkspaceGroupHeadingOptions = {}): string {
@@ -145,12 +156,14 @@ function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGr
       ? `<a class="fixed-shell-project-heading fixed-shell-project-launch" href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}"><span>${escapedTitle}</span></a>`
       : `<span class="fixed-shell-project-heading fixed-shell-project-heading-static"><span>${escapedTitle}</span></span>`;
   const settings = options.settingsHref ? `<a class="fixed-shell-project-action fixed-shell-project-settings" href="${escapeHtml(options.settingsHref)}" ${projectEditorTarget} aria-label="Project settings: ${escapedTitle}" title="Project settings: ${escapedTitle}">${icon("more")}</a>` : "";
-  return `<div class="fixed-shell-project-heading-row${mode === "launcher" ? " fixed-shell-project-launch-row" : ""}">${heading}${settings}<a class="fixed-shell-project-action fixed-shell-project-add" href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${icon("plus")}</a></div>`;
+  const onboardingClass = options.onboardingDestination ? " is-onboarding-target" : "";
+  const onboardingAttribute = options.onboardingDestination ? ` data-empty-workspace-onboarding-destination="${options.onboardingDestination}"` : "";
+  return `<div class="fixed-shell-project-heading-row${mode === "launcher" ? " fixed-shell-project-launch-row" : ""}">${heading}${settings}<a class="fixed-shell-project-action fixed-shell-project-add${onboardingClass}"${onboardingAttribute} href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${icon("plus")}</a></div>`;
 }
 
-function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, mode: "disclosure" | "launcher" = "disclosure"): string {
+function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, mode: "disclosure" | "launcher" = "disclosure", onboardingDestination?: Exclude<WorkspacePaneOnboardingState, "workspaces">): string {
   const id = encodeURIComponent(project.id);
-  return renderWorkspaceGroupHeading(project.id, project.title, { href: `/projects/${id}/agent-launch`, frame: "agent_launch_modal", label: `New workspace: ${project.title}` }, { mode, settingsHref: `/projects/${id}/editor` });
+  return renderWorkspaceGroupHeading(project.id, project.title, { href: `/projects/${id}/agent-launch`, frame: "agent_launch_modal", label: `New workspace: ${project.title}` }, { mode, settingsHref: `/projects/${id}/editor`, onboardingDestination });
 }
 
 function renderParkedWorkspaceGroup(workspaces: readonly WorkspacePaneEntry[], parentId: string): string {
@@ -175,9 +188,12 @@ export function renderWorkspacePaneCollections(presentation: WorkspacePanePresen
     ${projectlessWorkspaces.length > 0 || projectlessParkedWorkspaces.length > 0 ? `<div class="fixed-shell-project-workspaces">${projectlessWorkspaces.map((workspace) => renderWorkspaceRow(workspace)).join("")}${renderParkedWorkspaceGroup(projectlessParkedWorkspaces, projectlessWorkspaceGroupId)}</div>` : ""}
   </section>`;
   const drawerProjects = [...presentation.projects, ...(presentation.emptyProjects ?? [])].sort((left, right) => left.title.localeCompare(right.title));
-  const projectsDrawer = `<section class="fixed-shell-project fixed-shell-projects-drawer is-collapsed" data-project-id="${projectsDrawerGroupId}">
-    ${renderWorkspaceGroupHeading(projectsDrawerGroupId, "Projects", { href: "/projects/new/editor", frame: "project_editor_frame", label: "New project" }, { expanded: false })}
-    <div class="fixed-shell-project-workspaces">${drawerProjects.map((project) => `<section class="fixed-shell-project">${renderProjectHeading(project, "launcher")}</section>`).join("")}</div>
+  const onboardingState = workspacePaneOnboardingState(presentation);
+  const needsFirstProject = onboardingState === "first-project";
+  const needsFirstWorkspace = onboardingState === "first-workspace";
+  const projectsDrawer = `<section class="fixed-shell-project fixed-shell-projects-drawer${needsFirstWorkspace ? "" : " is-collapsed"}" data-project-id="${projectsDrawerGroupId}">
+    ${renderWorkspaceGroupHeading(projectsDrawerGroupId, "Projects", { href: "/projects/new/editor", frame: "project_editor_frame", label: "New project" }, { expanded: needsFirstWorkspace, onboardingDestination: needsFirstProject ? "first-project" : undefined })}
+    <div class="fixed-shell-project-workspaces">${drawerProjects.map((project, index) => `<section class="fixed-shell-project">${renderProjectHeading(project, "launcher", needsFirstWorkspace && index === 0 ? "first-workspace" : undefined)}</section>`).join("")}</div>
   </section>`;
   return `<div class="fixed-shell-pane-collections" data-workspace-pane-collections>
     <div class="fixed-shell-workspace-scroll" data-workspace-navigation-target="scroll">${projects}${projectless}</div>

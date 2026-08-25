@@ -99,7 +99,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(activeOnlyProject).not.toContain("parked");
   });
 
-  test("keeps the Projectless launcher in Workspaces when it has no Workspaces", () => {
+  test("keeps the Projectless launcher in Workspaces and marks the first Project target", () => {
     const html = renderWorkspacePane({ projects: [], projectlessWorkspaces: [] });
     const workspaceSection = html.slice(html.indexOf('class="fixed-shell-workspace-scroll"'), html.indexOf('class="fixed-shell-project fixed-shell-projects-drawer'));
     const projectsSection = html.slice(html.indexOf('class="fixed-shell-project fixed-shell-projects-drawer'));
@@ -108,6 +108,23 @@ describe("role-fixed Workspace presentation", () => {
     expect(workspaceSection).toContain("Projectless");
     expect(workspaceSection).toContain('href="/agent-launch"');
     expect(projectsSection).not.toContain('data-project-id="__projectless__"');
+    expect(projectsSection).toContain('class="fixed-shell-project-action fixed-shell-project-add is-onboarding-target" data-empty-workspace-onboarding-destination="first-project"');
+    expect(projectsSection).toContain('class="fixed-shell-project fixed-shell-projects-drawer is-collapsed"');
+  });
+
+  test("expands Projects and marks the first Workspace target when no Workspace exists", () => {
+    const html = renderWorkspacePane({
+      projects: [],
+      emptyProjects: [{ id: "project-z", title: "Zulu" }, { id: "project-a", title: "Alpha" }],
+      projectlessWorkspaces: [],
+    });
+    const projectsSection = html.slice(html.indexOf('class="fixed-shell-project fixed-shell-projects-drawer'));
+
+    expect(projectsSection).toContain('class="fixed-shell-project fixed-shell-projects-drawer" data-project-id="__projects_drawer__"');
+    expect(projectsSection).toContain('aria-expanded="true"');
+    expect(projectsSection.match(/is-onboarding-target/g)).toHaveLength(1);
+    expect(projectsSection.indexOf("Alpha")).toBeLessThan(projectsSection.indexOf('data-empty-workspace-onboarding-destination="first-workspace"'));
+    expect(projectsSection.indexOf("Alpha")).toBeLessThan(projectsSection.indexOf("Zulu"));
   });
 
   test("shows the workspace name and delete action in a single-conversation Agent header", () => {

@@ -339,6 +339,14 @@ a.btn { text-decoration: none; }
 .fixed-shell-app { --fixed-workspace-width: 275px; --fixed-work-width: 520px; --fixed-shell-gap: 8px; --fixed-shell-radius: 14px; --fixed-shell-bg: var(--bg); --fixed-shell-raised: var(--panel); --fixed-shell-hover: var(--accent-soft); --fixed-shell-border: var(--line); --fixed-shell-text: var(--text); --fixed-shell-muted: var(--muted); --fixed-shell-attention: var(--amber); position: relative; width: 100%; height: 100dvh; min-width: 0; min-height: 0; display: flex; gap: var(--fixed-shell-gap); overflow: hidden; padding: var(--fixed-shell-gap); box-sizing: border-box; }
 .fixed-shell-app-main, .workspace-detail-host, .workspace-detail-resident { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 .fixed-shell-app-main { min-width: 0; flex: 1; display: block; }
+.workspace-detail-empty:not([hidden]) { width: 100%; height: 100%; display: grid; place-items: center; }
+.workspace-empty-welcome { position: relative; z-index: 21; max-width: 640px; padding: 40px; text-align: center; }
+.workspace-empty-welcome h1 { margin: 0 0 12px; color: var(--fixed-shell-text); font-size: 28px; line-height: 1.15; letter-spacing: -.025em; }
+.workspace-empty-welcome p { margin: 0; color: var(--fixed-shell-muted); font-size: 16px; line-height: 1.5; }
+.workspace-empty-welcome strong { color: var(--fixed-shell-text); font-weight: 650; }
+.fixed-shell-app .workspace-empty-onboarding-arrow { position: fixed; z-index: 20; inset: 0; width: 100vw; height: 100dvh; overflow: visible; pointer-events: none; }
+.workspace-empty-onboarding-arrow path { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; }
+.workspace-empty-onboarding-arrow marker path { fill: var(--accent); stroke: none; }
 .workspace-detail-resident:not(.visible) { display: none; }
 .workspace-detail-resident.visible { display: block; }
 .fixed-shell-live-body, .fixed-shell-live-body > * { width: 100%; height: 100%; min-width: 0; min-height: 0; }
@@ -395,6 +403,7 @@ a.btn { text-decoration: none; }
 .fixed-shell-project-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .fixed-shell-project-action:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .fixed-shell-project-add:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent); }
+.fixed-shell-project-add.is-onboarding-target { color: var(--accent); background: color-mix(in srgb, var(--accent) 26%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
 .fixed-shell-project-action > svg { width: 14px; height: 14px; stroke-width: 2; }
 .fixed-shell-project.is-collapsed .fixed-shell-project-heading > svg { transform: rotate(-90deg); }
 .fixed-shell-parked.is-collapsed > .fixed-shell-project-heading-row .fixed-shell-project-heading { opacity: .5; }

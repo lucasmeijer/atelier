@@ -9,7 +9,7 @@ let workspaceStyle: string;
 
 function renderShellFixture(presentation: WorkspacePresentation, pane: WorkspacePanePresentation, cached: readonly WorkspacePresentation[] = []): string {
   const residents = [presentation, ...cached].map((resident, index) => `<div class="workspace-detail-resident${index === 0 ? " visible" : ""}" data-workspace-residency-target="resident" data-workspace-id="${resident.workspace.id}">${renderWorkspacePresentation(resident)}</div>`).join("");
-  return `<div class="app fixed-shell-app" data-controller="workspace-navigation">${renderWorkspacePane(pane)}<main class="fixed-shell-app-main"><div id="workspace_detail" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5"><div data-workspace-residency-target="empty" hidden></div><div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden></div>${residents}</div></main></div>`;
+  return `<div class="app fixed-shell-app" data-controller="workspace-navigation">${renderWorkspacePane(pane)}<main class="fixed-shell-app-main"><div id="workspace_detail" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5"><div class="workspace-detail-empty" data-workspace-residency-target="empty" hidden></div><div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden></div>${residents}</div></main></div>`;
 }
 
 beforeAll(async () => {
@@ -112,6 +112,36 @@ describe("Atelier Playwright helper", () => {
     await page.waitForFunction(() => Boolean(document.querySelector('.workspace-detail-resident[data-workspace-id="b"]')));
     await unread.locator(".fixed-shell-attention-dot").waitFor({ state: "visible" });
     expect(await unread.getAttribute("data-workspace-preloading")).toBeNull();
+    await page.close();
+  });
+
+  test("selects the Workspace requested by a creation stream", async () => {
+    const first: WorkspacePresentation = {
+      workspace: { id: "first", title: "First" },
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>First Agent</p>" }],
+      workViews: [],
+    };
+    const created: WorkspacePresentation = {
+      workspace: { id: "created", title: "Created" },
+      agentConversations: [{ id: "agent-2", title: "Agent", bodyHtml: "<p>Created Agent</p>" }],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "first", title: "First", active: true },
+      { id: "created", title: "Created" },
+    ] };
+    const page = await browser.newPage();
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(first, pane, [created])}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+
+    await page.evaluate(() => window.Turbo!.renderStreamMessage('<turbo-stream action="select-workspace" target="workspace_detail" data-workspace-id="created"></turbo-stream>'));
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="created"]')?.classList.contains("visible"));
+
+    expect(new URL(page.url()).pathname).toBe("/workspaces/created");
+    expect(await page.locator('[data-workspace-entry-id="created"]').getAttribute("aria-current")).toBe("page");
     await page.close();
   });
 

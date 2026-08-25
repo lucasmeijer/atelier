@@ -81,7 +81,7 @@ import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 
 const jsonStringSchema = Type.String();
 
@@ -151,6 +151,10 @@ function turboReplaceStream(target: string, html: string): string {
 
 function turboRemoveStream(target: string): string {
   return turboStream("remove", target);
+}
+
+function selectWorkspaceTurboStream(workspaceId: string): string {
+  return `<turbo-stream action="select-workspace" target="workspace_detail" data-workspace-id="${escapeHtml(workspaceId)}"></turbo-stream>`;
 }
 
 /** Replaces the children of the target, keeping the container element itself alive. */
@@ -264,7 +268,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   let suppressParkedStateCallbacks = false;
 
   async function refreshWorkspacePaneCollections(): Promise<string> {
-    const stream = workspacePaneCollectionsTurboStream(await workspacePaneCollections(""));
+    const pane = await workspacePaneCollections("");
+    const stream = `${workspacePaneCollectionsTurboStream(pane)}${turboReplaceStream(emptyWorkspaceOnboardingId, emptyWorkspaceOnboardingHtml(pane))}`;
     broadcastShell(stream);
     return stream;
   }
@@ -625,13 +630,16 @@ ${moduleStylesHtml()}
       if (isGitProjectInit(entry.init)) pane.color = repoColor(entry.init.projectId);
       return pane;
     };
+    const workspaceProjectIds = new Set([...grouped.keys(), ...parkedByProject.keys()]);
     return {
-      projects: [...grouped].map(([id, entries]) => {
-        const init = entries[0]!.init;
+      projects: [...workspaceProjectIds].map((id) => {
+        const entries = grouped.get(id) ?? [];
+        const parkedEntries = parkedByProject.get(id) ?? [];
+        const init = (entries[0] ?? parkedEntries[0])!.init;
         if (!isGitProjectInit(init)) throw new Error(`Project ${id} contains a projectless Workspace`);
-        return { id, title: projectTitles.get(id) ?? init.name, workspaces: entries.map(paneEntry), parkedWorkspaces: (parkedByProject.get(id) ?? []).map(paneEntry) };
+        return { id, title: projectTitles.get(id) ?? init.name, workspaces: entries.map(paneEntry), parkedWorkspaces: parkedEntries.map(paneEntry) };
       }),
-      emptyProjects: savedProjects.filter((project) => !grouped.has(project.id)).map((project) => ({ id: project.id, title: project.name })),
+      emptyProjects: savedProjects.filter((project) => !workspaceProjectIds.has(project.id)).map((project) => ({ id: project.id, title: project.name })),
       projectlessWorkspaces: projectless.map(paneEntry),
       projectlessParkedWorkspaces: projectlessParked.map(paneEntry),
     };
@@ -712,11 +720,31 @@ ${moduleStylesHtml()}
     return await workspaceDetailResidentHtml(entry.id, options);
   }
 
-  async function workspaceDetailHostHtml(selectedId?: string): Promise<string> {
+  const emptyWorkspaceOnboardingId = "workspace_empty_onboarding";
+
+  function emptyWorkspaceOnboardingHtml(pane: WorkspacePanePresentation): string {
+    const state = workspacePaneOnboardingState(pane);
+    const copy = state === "first-project"
+      ? '<h1>Welcome to Atelier!</h1><p>Create your <strong data-empty-workspace-onboarding-target="origin">first project</strong> to get started!</p>'
+      : state === "first-workspace"
+        ? '<h1>Welcome to Atelier!</h1><p>Create your <strong data-empty-workspace-onboarding-target="origin">first workspace</strong> to get started!</p>'
+        : '<h1>Welcome to Atelier</h1><p><strong data-empty-workspace-onboarding-target="origin">Select a workspace</strong> to get started.</p>';
+    const welcome = `<section class="workspace-empty-welcome">${copy}</section>`;
+    if (state === "workspaces") return `<div id="${emptyWorkspaceOnboardingId}">${welcome}</div>`;
+    return `<div id="${emptyWorkspaceOnboardingId}" data-controller="empty-workspace-onboarding" data-empty-workspace-onboarding-destination-value="${state}">
+      ${welcome}
+      <svg class="workspace-empty-onboarding-arrow" aria-hidden="true" data-empty-workspace-onboarding-target="svg">
+        <defs><marker id="workspace-empty-arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z"></path></marker></defs>
+        <path data-empty-workspace-onboarding-target="path" marker-end="url(#workspace-empty-arrowhead)"></path>
+      </svg>
+    </div>`;
+  }
+
+  async function workspaceDetailHostHtml(pane: WorkspacePanePresentation, selectedId?: string): Promise<string> {
     const entry = selectedId ? registry.get(selectedId) : undefined;
     const resident = entry ? await workspaceResidentFor(entry, { visible: true }) : "";
     return `<div id="workspace_detail" class="workspace-detail-host" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5">
-      <div class="workspace-detail-empty" data-workspace-residency-target="empty"${resident ? " hidden" : ""}><div class="main"><header class="header"><h1>Atelier</h1></header><div class="body"><div class="panel"><div class="pad">Create or select a workspace to begin.<p><a class="fixed-shell-settings" href="/agent-launch" data-turbo-frame="${agentLaunchModalFrameId}">＋ New empty workspace</a></p></div></div></div></div></div>
+      <div class="workspace-detail-empty" data-workspace-residency-target="empty"${resident ? " hidden" : ""}>${emptyWorkspaceOnboardingHtml(pane)}</div>
       <div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden><div class="main"><div class="body"><div class="panel"><div class="pad workspace-boot-pad"><span class="status-spinner"></span> Loading workspace…</div></div></div></div></div>
       ${resident}
     </div>`;
@@ -735,9 +763,10 @@ ${moduleStylesHtml()}
   }
 
   async function renderWorkspaceShell(selectedId?: string, options: { mainHtml?: string; showWhatsNew?: boolean } = {}): Promise<string> {
+    const pane = await workspacePaneCollections(selectedId ?? "");
     return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts workspace-navigation">
-    ${renderWorkspacePane(await workspacePaneCollections(selectedId ?? ""), renderGlobalSidebarContributions())}
-    <main class="fixed-shell-app-main">${options.mainHtml ?? await workspaceDetailHostHtml(selectedId)}</main>
+    ${renderWorkspacePane(pane, renderGlobalSidebarContributions())}
+    <main class="fixed-shell-app-main">${options.mainHtml ?? await workspaceDetailHostHtml(pane, selectedId)}</main>
   </div>
   ${projectEditorModal()}
   <div id="update_modal_host"></div>
@@ -955,9 +984,10 @@ ${moduleStylesHtml()}
       })();
       agentWorkspaceLaunches.set(attachmentDraft, launch);
     }
-    await launch;
+    const { id } = await launch;
+    const selection = registry.list().length === 1 ? selectWorkspaceTurboStream(id) : "";
 
-    return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboUpdateStream(agentLaunchModalFrameId, "")}`);
+    return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboUpdateStream(agentLaunchModalFrameId, "")}${selection}`);
   }
 
   async function createEmptyAgentWorkspaceEndpoint(request: Request): Promise<Response> {

@@ -1020,6 +1020,43 @@ class ModalOpenerController extends Controller {
 
 const projectDisclosuresSchema = Type.Record(Type.String(), Type.Boolean());
 
+class EmptyWorkspaceOnboardingController extends Controller {
+  static targets = ["origin", "svg", "path"];
+  static values = { destination: String };
+
+  declare readonly element: HTMLElement;
+  declare readonly originTarget: HTMLElement;
+  declare readonly svgTarget: SVGSVGElement;
+  declare readonly pathTarget: SVGPathElement;
+  declare readonly destinationValue: "first-project" | "first-workspace";
+
+  private visibilityObserver: MutationObserver | undefined;
+
+  connect(): void {
+    window.addEventListener("resize", this.draw);
+    const empty = this.element.closest(".workspace-detail-empty")!;
+    this.visibilityObserver = new MutationObserver(this.draw);
+    this.visibilityObserver.observe(empty, { attributes: true, attributeFilter: ["hidden"] });
+    requestAnimationFrame(this.draw);
+  }
+
+  disconnect(): void {
+    window.removeEventListener("resize", this.draw);
+    this.visibilityObserver?.disconnect();
+  }
+
+  private draw = (): void => {
+    const origin = this.originTarget.getBoundingClientRect();
+    if (origin.width === 0) return;
+    const start = { x: origin.left + origin.width / 2, y: origin.bottom + 12 };
+    const destination = document.querySelector<HTMLElement>(`[data-empty-workspace-onboarding-destination="${this.destinationValue}"]`)!.getBoundingClientRect();
+    const end = { x: destination.right + 5, y: destination.top + destination.height / 2 };
+    const lowPoint = Math.min(window.innerHeight - 72, Math.max(start.y, end.y) + 170);
+    this.svgTarget.setAttribute("viewBox", `0 0 ${window.innerWidth} ${window.innerHeight}`);
+    this.pathTarget.setAttribute("d", `M ${start.x} ${start.y} C ${start.x} ${start.y + 130}, ${end.x + 260} ${lowPoint}, ${end.x} ${end.y}`);
+  };
+}
+
 class WorkspaceNavigationController extends Controller {
   static targets = ["scroll"];
   declare readonly element: HTMLElement;
@@ -1104,7 +1141,7 @@ class WorkspaceNavigationController extends Controller {
     const disclosures = this.projectDisclosures();
     this.element.querySelectorAll<HTMLElement>(".fixed-shell-project[data-project-id]").forEach((project) => {
       const id = project.dataset.projectId!;
-      if (!(id in disclosures)) return;
+      if (project.querySelector('[data-empty-workspace-onboarding-destination="first-workspace"]') || !(id in disclosures)) return;
       project.classList.toggle("is-collapsed", !disclosures[id]);
       project.querySelector<HTMLElement>(".fixed-shell-project-heading")?.setAttribute("aria-expanded", String(disclosures[id]));
     });
@@ -2064,11 +2101,17 @@ class DevReloadController extends Controller {
 
 const application = Application.start();
 installWorkspacePresentationTurboStream(Turbo, application);
+Turbo.StreamActions["select-workspace"] = function selectWorkspace(this: HTMLElement): void {
+  const workspaceId = this.dataset.workspaceId;
+  if (!workspaceId) throw new Error("select-workspace requires a Workspace id");
+  void workspaceNavigationController()?.selectWorkspaceById(workspaceId);
+};
 for (const module of workspaceClientModules) await module.install({ application, Controller, hooks: clientHooks });
 application.register("cable-shell", CableShellController);
 application.register("dev-reload", DevReloadController);
 application.register("workspace-presentation", createWorkspacePresentationController(Controller, application, clientHooks));
 application.register("workspace-command-form", WorkspaceCommandFormController);
+application.register("empty-workspace-onboarding", EmptyWorkspaceOnboardingController);
 application.register("workspace-navigation", WorkspaceNavigationController);
 application.register("workspace-residency", WorkspaceResidencyController);
 application.register("atelier-shortcuts", AtelierShortcutsController);
