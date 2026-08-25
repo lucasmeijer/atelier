@@ -211,11 +211,6 @@ export interface WorkspaceServerProvisioningHook {
   run(context: { workspaceId: string; creationContext?: WorkspaceCreationContext; events?: AtelierEventBus }): Promise<void> | void;
 }
 
-export interface WorkspaceRowContributionRegistry {
-  /** Set server-rendered inline HTML for a module contribution; empty/undefined clears it. */
-  set(workspaceId: string, contributionId: string, html?: string): void;
-}
-
 export interface GlobalSidebarContributionRegistry {
   /** Set server-rendered sidebar HTML for a module contribution; empty/undefined clears it. */
   set(contributionId: string, html?: string): void;
@@ -277,7 +272,6 @@ export interface WorkspaceServerModuleContext {
     setViewBusy(workspaceId: string, viewKey: string, busy: boolean): void;
     setViewUnread(workspaceId: string, viewKey: string, unread: boolean): void;
   };
-  workspaceRowContributions: WorkspaceRowContributionRegistry;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
   presentWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
   broadcastWorkspace(workspaceId: string, html: string): void;

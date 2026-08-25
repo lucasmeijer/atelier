@@ -271,17 +271,10 @@ describe("web app contracts", () => {
     expect(registry.get(id)?.phase).toBe("starting");
 
     const body = await response.text();
-    expect(body).toContain('target="workspaces_table_rows"');
-    expect(body).toContain(`data-workspace-id="${id}"`);
-    expect(body).toContain('data-phase="starting"');
+    expect(body).toContain('action="replace-workspace-pane-collections"');
+    expect(body).toContain(`data-workspace-entry-id="${id}"`);
+    expect(body).toContain('class="status-spinner sm fixed-shell-workspace-busy"');
 
-    // The broadcast prepends a starting row for everyone (via the rows container).
-    const listBroadcast = broadcasts.find((html) => html.includes('target="workspaces_table_rows"'));
-    expect(listBroadcast).toBeDefined();
-    expect(listBroadcast).toContain('data-phase="starting"');
-    // Must be "update" (innerHTML), not "replace": replace would destroy the
-    // rows container and break every subsequent list broadcast.
-    expect(listBroadcast).toContain('<turbo-stream action="update" target="workspaces_table_rows">');
     await Bun.sleep(10);
     const startingPaneBroadcast = broadcasts.find((html) => html.includes('action="replace-workspace-pane-collections"') && html.includes(`data-workspace-entry-id="${id}"`));
     expect(startingPaneBroadcast).toContain('class="status-spinner sm fixed-shell-workspace-busy"');
@@ -290,7 +283,7 @@ describe("web app contracts", () => {
     provision.resolve();
     await Bun.sleep(20);
     expect(registry.get(id)?.phase).toBe("ready");
-    expect(broadcasts.some((html) => html.includes(`target="workspace_row_${id}"`) && html.includes('data-phase="ready"'))).toBe(true);
+    expect(broadcasts.some((html) => html.includes(`data-workspace-entry-id="${id}"`) && !html.includes('fixed-shell-workspace-busy'))).toBe(true);
   });
 
   test("failed provisioning marks the workspace failed", async () => {
@@ -317,7 +310,7 @@ describe("web app contracts", () => {
     registry.setPhase("abc", "failed", "docker exploded");
 
     const html = await (await app.fetch(new Request("http://test.local/"))).text();
-    expect(html).toContain('action="/workspaces/abc/delete" data-action="click->workspace-list#deleteClicked submit->workspace-list#deleteStarted"');
+    expect(html).toContain('class="fixed-shell-delete-workspace" method="post" action="/workspaces/abc/delete"');
     expect(html).toContain('aria-label="Delete workspace"');
 
     broadcasts.length = 0;
@@ -328,7 +321,7 @@ describe("web app contracts", () => {
     expect(inspected).toEqual([]);
     expect(destroyed).toEqual(["abc"]);
     expect(registry.get("abc")).toBeUndefined();
-    expect(broadcasts.some((item) => item.includes('<turbo-stream action="remove" target="workspace_row_abc">'))).toBe(true);
+    expect(broadcasts.some((item) => item.includes('action="replace-workspace-pane-collections"') && !item.includes('data-workspace-entry-id="abc"'))).toBe(true);
   });
 
   test("POST /workspaces negotiates asynchronous JSON creation and GET reports readiness", async () => {
@@ -770,9 +763,9 @@ describe("web app contracts", () => {
     expect(body).toContain("/workspaces/abc/delete?force=1");
     expect(registry.get("abc")?.phase).toBe("ready");
 
-    // Other clients saw the pending state come and go via row broadcasts.
-    expect(broadcasts.some((html) => html.includes('data-phase="checking_delete"'))).toBe(true);
-    expect(broadcasts.some((html) => html.includes('data-phase="ready"'))).toBe(true);
+    // Other clients receive current Workspace pane collections for both phase changes.
+    while (broadcasts.filter((html) => html.includes('action="replace-workspace-pane-collections"')).length < 2) await Bun.sleep(1);
+    expect(broadcasts.filter((html) => html.includes('action="replace-workspace-pane-collections"')).length).toBeGreaterThanOrEqual(2);
   });
 
   test("allowed delete walks checking_delete -> deleting -> row removal", async () => {
@@ -784,13 +777,14 @@ describe("web app contracts", () => {
     const response = await app.fetch(post("/workspaces/abc/delete"));
     expect(response.status).toBe(200);
     expect(registry.get("abc")?.phase).toBe("deleting");
-    expect(broadcasts.some((html) => html.includes('data-phase="deleting"'))).toBe(true);
+    while (!broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"') && !html.includes('data-workspace-entry-id="abc"'))) await Bun.sleep(1);
+    expect(broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"') && !html.includes('data-workspace-entry-id="abc"'))).toBe(true);
     expect(broadcasts).toContain('<turbo-stream action="remove-workspace-resident" target="fixed_workspace_abc"></turbo-stream>');
 
     destroy.resolve();
     await Bun.sleep(20);
     expect(registry.get("abc")).toBeUndefined();
-    expect(broadcasts.some((html) => html.includes('<turbo-stream action="remove" target="workspace_row_abc">'))).toBe(true);
+    expect(broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"') && !html.includes('data-workspace-entry-id="abc"'))).toBe(true);
   });
 
   test("park and unpark return the updated Workspace pane", async () => {
@@ -840,9 +834,10 @@ describe("web app contracts", () => {
 
     await registry.seed([{ id: "abc", title: "A", imageOutdated: true }]);
 
-    const row = broadcasts.find((item) => item.includes('id="workspace_row_abc"')) ?? "";
-    expect(row).toContain("has-version-warning");
-    expect(row).toContain("workspace-version-warning");
+    while (!broadcasts.some((item) => item.includes('data-workspace-entry-id="abc"'))) await Bun.sleep(1);
+    const row = broadcasts.find((item) => item.includes('data-workspace-entry-id="abc"')) ?? "";
+    expect(row).toContain("fixed-shell-workspace-warning");
+    expect(row).toContain("Workspace created with an older version of Atelier");
   });
 
   test("ready workspace rows include status and unread preload metadata", async () => {
@@ -851,23 +846,20 @@ describe("web app contracts", () => {
     expect(html).toContain('data-workspace-residency-max-resident-value="5"');
 
     await registry.seed([{ id: "abc", title: "A" }]);
-    const readyBroadcast = broadcasts.find((item) => item.includes('id="workspace_status_abc"')) ?? "";
-    expect(readyBroadcast.indexOf('id="workspace_status_abc"')).toBeLessThan(readyBroadcast.indexOf('class="workspace-row-delete"'));
 
     broadcasts.length = 0;
     registry.setViewBusy("abc", "agent:Agent 1", true);
-    const busyBroadcast = broadcasts.find((item) => item.includes('target="workspace_status_abc"')) ?? "";
-    expect(busyBroadcast).toContain('class="status-spinner sm"');
-    expect(busyBroadcast).toContain('Workspace busy');
     while (!broadcasts.some((item) => item.includes('action="replace-workspace-pane-collections"'))) await Bun.sleep(1);
-    const paneBusyBroadcast = broadcasts.find((item) => item.includes('action="replace-workspace-pane-collections"')) ?? "";
-    expect(paneBusyBroadcast).toContain("fixed-shell-workspace-busy");
+    const busyBroadcast = broadcasts.find((item) => item.includes('action="replace-workspace-pane-collections"')) ?? "";
+    expect(busyBroadcast).toContain("fixed-shell-workspace-busy");
+    expect(busyBroadcast).toContain("Workspace busy");
 
     broadcasts.length = 0;
     registry.setViewBusy("abc", "agent:Agent 1", false);
     registry.setViewUnread("abc", "agent:Agent 1", true);
-    const unreadBroadcast = broadcasts.findLast((item) => item.includes('target="workspace_status_abc"')) ?? "";
-    expect(unreadBroadcast).toContain('data-workspace-state="unread"');
+    while (!broadcasts.some((item) => item.includes("data-workspace-unread-at"))) await Bun.sleep(1);
+    const unreadBroadcast = broadcasts.findLast((item) => item.includes('action="replace-workspace-pane-collections"')) ?? "";
+    expect(unreadBroadcast).toContain("fixed-shell-attention-dot");
     expect(unreadBroadcast).toMatch(/data-workspace-unread-at="\d+"/);
   });
 
@@ -917,11 +909,11 @@ describe("web app contracts", () => {
 
     registry.touch("b");
 
-    const reorder = broadcasts.find((html) => html.includes('target="workspaces_table_rows"'));
+    while (!broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"'))) await Bun.sleep(1);
+    const reorder = broadcasts.find((html) => html.includes('action="replace-workspace-pane-collections"'));
     expect(reorder).toBeDefined();
-    expect(reorder).toContain('action="update"');
     // "b" now renders before "a".
-    expect(reorder!.indexOf('id="workspace_row_b"')).toBeLessThan(reorder!.indexOf('id="workspace_row_a"'));
+    expect(reorder!.indexOf('data-workspace-entry-id="b"')).toBeLessThan(reorder!.indexOf('data-workspace-entry-id="a"'));
   });
 
   test("GitHub connect flow asks for GitHub CLI token output", async () => {

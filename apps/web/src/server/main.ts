@@ -279,7 +279,6 @@ for (const module of workspaceModules) {
   await module.initialize?.({
     events: atelierEvents,
     registry,
-    workspaceRowContributions: app.workspaceRowContributions,
     globalSidebarContributions: app.globalSidebarContributions,
     presentWorkView: (workspaceId, reference) => app.presentWorkViewFromAgent(workspaceId, reference),
     broadcastWorkspace: (workspaceId, html) => cableServer.broadcast(CableTopics.workspace(workspaceId), html),

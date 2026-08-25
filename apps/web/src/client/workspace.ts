@@ -551,8 +551,7 @@ class AtelierShortcutsController extends Controller {
     const workspaceId = this.visibleWorkspaceId();
     if (!workspaceId) return null;
     const action = `/workspaces/${CSS.escape(workspaceId)}/delete`;
-    return document.querySelector<HTMLFormElement>(`.workspace-detail-resident.visible form.fixed-shell-delete-workspace[action="${action}"]`)
-      ?? document.querySelector<HTMLFormElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"] form.workspace-row-delete[action$="/delete"]`);
+    return document.querySelector<HTMLFormElement>(`.workspace-detail-resident.visible form.fixed-shell-delete-workspace[action="${action}"]`);
   }
 
   private deleteVisibleWorkspace(): void {
@@ -1127,6 +1126,7 @@ class WorkspaceResidencyController extends Controller {
   connect(): void {
     document.addEventListener("visibilitychange", this.visibilityChanged);
     document.addEventListener("atelier:workspace-removed", this.workspaceRemoved);
+    document.addEventListener("atelier:workspace-pane-changed", this.workspacePaneChanged);
     window.addEventListener("pagehide", this.pageHidden);
     const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
     const visibleResident = this.residentTargets.find((resident) => resident.classList.contains("visible"))
@@ -1138,6 +1138,7 @@ class WorkspaceResidencyController extends Controller {
   disconnect(): void {
     document.removeEventListener("visibilitychange", this.visibilityChanged);
     document.removeEventListener("atelier:workspace-removed", this.workspaceRemoved);
+    document.removeEventListener("atelier:workspace-pane-changed", this.workspacePaneChanged);
     window.removeEventListener("pagehide", this.pageHidden);
   }
 
@@ -1170,9 +1171,11 @@ class WorkspaceResidencyController extends Controller {
     this.evictIfNeeded();
   }
 
-  reconcileResidents(): void {
+  private reconcileResidents(): void {
     void this.preloadUnreadResidents().catch((error) => console.error("Could not preload unread workspaces", error));
   }
+
+  private readonly workspacePaneChanged = (): void => this.reconcileResidents();
 
   residentTargetConnected(resident: HTMLElement): void {
     // Broadcast residents (e.g. the boot placeholder being replaced by the real
@@ -1290,23 +1293,28 @@ class WorkspaceResidencyController extends Controller {
 
   private async preloadResident(workspaceId: string): Promise<void> {
     if (this.residentTargets.some((resident) => resident.dataset.workspaceId === workspaceId)) return;
-    workspaceListController()?.setWorkspacePreloading(workspaceId, true);
+    this.setWorkspacePreloading(workspaceId, true);
     try {
       await this.ensureResident(workspaceId);
     } finally {
-      workspaceListController()?.setWorkspacePreloading(workspaceId, false);
+      this.setWorkspacePreloading(workspaceId, false);
     }
   }
 
-  isWorkspacePreloading(workspaceId: string): boolean {
-    return this.residentLoads.has(workspaceId);
+  private setWorkspacePreloading(workspaceId: string, preloading: boolean): void {
+    const entry = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    if (!entry) return;
+    entry.toggleAttribute("data-workspace-preloading", preloading);
+    const spinner = entry.querySelector(":scope > .workspace-preload-spinner");
+    if (preloading && !spinner) entry.insertAdjacentHTML("beforeend", `<i class="status-spinner sm workspace-preload-spinner" aria-label="Preloading workspace" title="Preloading workspace"></i>`);
+    if (!preloading) spinner?.remove();
   }
 
   private unreadWorkspaces(): Array<{ workspaceId: string; unreadAt: number }> {
-    return [...document.querySelectorAll<HTMLElement>(".workspace-status[data-workspace-unread-at]")]
-      .map((status) => ({
-        workspaceId: status.closest<HTMLElement>(".workspace-row[data-workspace-id]")!.dataset.workspaceId!,
-        unreadAt: Number(status.dataset.workspaceUnreadAt),
+    return [...document.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row[data-workspace-unread-at]")]
+      .map((entry) => ({
+        workspaceId: entry.dataset.workspaceEntryId!,
+        unreadAt: Number(entry.dataset.workspaceUnreadAt),
       }))
       .sort((a, b) => a.unreadAt - b.unreadAt || a.workspaceId.localeCompare(b.workspaceId));
   }
@@ -1388,187 +1396,6 @@ function residencyController(): WorkspaceResidencyController | null {
   return residency ? application.getControllerForElementAndIdentifier(residency, "workspace-residency") as WorkspaceResidencyController | null : null;
 }
 
-function workspaceListController(): WorkspaceListController | null {
-  const list = document.querySelector<HTMLElement>('[data-controller~="workspace-list"]');
-  // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-  return list ? application.getControllerForElementAndIdentifier(list, "workspace-list") as WorkspaceListController | null : null;
-}
-
-/**
- * Owns all per-client list state: which row is visible and the optimistic
- * pending-delete feedback. Broadcast HTML from the server never carries this.
- */
-class WorkspaceListController extends Controller {
-  static targets = ["status"];
-  declare readonly element: HTMLElement;
-  private readonly onStreamRender = (event: Event): void => {
-    // Turbo applies stream renders after the next repaint, so wrap the render
-    // callback to re-sync only after the DOM change actually happened.
-    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-    const detail = (event as CustomEvent).detail as { render?: (element: Element) => Promise<void> } | undefined;
-    const original = detail?.render;
-    if (detail && original) {
-      detail.render = async (element: Element) => {
-        await original(element);
-        this.sync();
-      };
-      return;
-    }
-    queueMicrotask(() => this.sync());
-  };
-
-  connect(): void {
-    document.addEventListener("turbo:before-stream-render", this.onStreamRender);
-    this.sync();
-  }
-
-  disconnect(): void {
-    document.removeEventListener("turbo:before-stream-render", this.onStreamRender);
-  }
-
-  select(event: Event): void {
-    const link = event.currentTarget instanceof HTMLAnchorElement ? event.currentTarget : null;
-    const row = link?.closest<HTMLElement>(".workspace-row") ?? null;
-    if (!row || !link) return;
-    if (row.classList.contains("pending-delete") || row.dataset.phase === "checking_delete" || row.dataset.phase === "deleting") {
-      event.preventDefault();
-      return;
-    }
-    event.preventDefault();
-    link.blur();
-    const workspaceId = row.dataset.workspaceId;
-    if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href);
-    this.markVisible(workspaceId);
-  }
-
-  async createWorkspace(event: Event): Promise<void> {
-    event.preventDefault();
-    const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
-    if (!form) return;
-    const button = form.querySelector<HTMLButtonElement>("button[type='submit']");
-    button?.setAttribute("disabled", "");
-    try {
-      const response = await fetch(form.action, {
-        method: form.method || "POST",
-        headers: { Accept: "text/vnd.turbo-stream.html" },
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const html = await response.text();
-      if (html) window.Turbo?.renderStreamMessage(html);
-      const location = response.headers.get("location");
-      if (!location) return;
-      const url = new URL(location, window.location.href);
-      const workspaceId = decodeURIComponent(url.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1] ?? "");
-      if (!workspaceId) return;
-      this.markVisible(workspaceId);
-      void residencyController()?.selectWorkspace(workspaceId, url.pathname);
-    } catch (error) {
-      console.error("Could not create workspace", error);
-    } finally {
-      button?.removeAttribute("disabled");
-    }
-  }
-
-  rowClicked(event: Event): void {
-    // Make the whole row clickable, not just the title link.
-    const target = event.target instanceof HTMLElement ? event.target : null;
-    if (target?.closest("a, button, input, textarea, form")) return;
-    const row = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    const link = row?.querySelector<HTMLAnchorElement>("a.row-main");
-    if (!row || !link) return;
-    if (row.classList.contains("pending-delete") || row.dataset.phase === "checking_delete" || row.dataset.phase === "deleting") return;
-    const workspaceId = row.dataset.workspaceId;
-    if (workspaceId) void residencyController()?.selectWorkspace(workspaceId, link.href);
-    this.markVisible(workspaceId);
-  }
-
-  markVisibleWorkspace(workspaceId: string): void {
-    this.markVisible(workspaceId);
-  }
-
-  statusTargetConnected(status: HTMLElement): void {
-    const row = status.closest<HTMLElement>(".workspace-row[data-workspace-id]");
-    const workspaceId = row?.dataset.workspaceId;
-    if (workspaceId) this.setStatusPreloading(status, residencyController()?.isWorkspacePreloading(workspaceId) ?? false);
-    residencyController()?.reconcileResidents();
-  }
-
-  setWorkspacePreloading(workspaceId: string, preloading: boolean): void {
-    const status = this.element.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"] .workspace-status`);
-    if (status) this.setStatusPreloading(status, preloading);
-  }
-
-  private setStatusPreloading(status: HTMLElement, preloading: boolean): void {
-    status.toggleAttribute("data-workspace-preloading", preloading);
-    const spinner = status.querySelector(":scope > .workspace-preload-spinner");
-    if (preloading && !spinner) status.insertAdjacentHTML("beforeend", `<span class="status-spinner sm workspace-preload-spinner" aria-label="Preloading workspace" title="Preloading workspace"></span>`);
-    if (!preloading) spinner?.remove();
-  }
-
-  parkToggled(event: Event): void {
-    // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-    const detail = (event as CustomEvent<{ success?: boolean }>).detail;
-    if (detail && detail.success === false) return;
-    const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
-    if (!form || !new URL(form.action, window.location.href).pathname.endsWith("/unpark")) return;
-    const row = form.closest<HTMLElement>(".workspace-row");
-    const workspaceId = row?.dataset.workspaceId;
-    const href = row?.querySelector<HTMLAnchorElement>("a.row-main")?.href;
-    if (!workspaceId || !href) return;
-    this.markVisible(workspaceId);
-    void residencyController()?.selectWorkspace(workspaceId, href);
-  }
-
-  deleteClicked(event: Event): void {
-    // The row itself is clickable; keep a delete-button click from also
-    // selecting the workspace while allowing the form submission to proceed.
-    event.stopPropagation();
-  }
-
-  deleteStarted(event: Event): void {
-    const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
-    const row = form?.closest<HTMLElement>(".workspace-row");
-    row?.classList.add("pending-delete");
-    const button = form?.querySelector<HTMLButtonElement>("button");
-    if (button) {
-      button.disabled = true;
-      button.innerHTML = `<span class="status-spinner sm" aria-label="Deleting"></span>`;
-    }
-  }
-
-  private currentWorkspaceId(): string | undefined {
-    const fromPath = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
-    if (fromPath) return decodeURIComponent(fromPath);
-    return residencyController()?.visibleWorkspaceId();
-  }
-
-  private markVisible(workspaceId: string | undefined): void {
-    this.element.querySelectorAll<HTMLElement>(".workspace-row.visible").forEach((row) => row.classList.remove("visible"));
-    if (!workspaceId) {
-      return;
-    }
-    this.element.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`)?.classList.add("visible");
-  }
-
-  private sync(): void {
-    const residency = residencyController();
-    const workspaceId = this.currentWorkspaceId();
-    if (!workspaceId) {
-      this.markVisible(undefined);
-      return;
-    }
-    const row = this.element.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`);
-    if (!row) {
-      // The workspace we were looking at disappeared (deleted here or elsewhere).
-      residency?.removeWorkspace(workspaceId);
-      if (location.pathname === `/workspaces/${encodeURIComponent(workspaceId)}`) history.replaceState({}, "", "/");
-      this.markVisible(undefined);
-      return;
-    }
-    this.markVisible(workspaceId);
-  }
-}
-
 class WorkspaceAppFrameController extends Controller {
   static values = { workspaceId: String, appKey: String, initialPath: String };
   declare readonly element: HTMLIFrameElement;
@@ -1606,19 +1433,6 @@ class WorkspaceAppFrameController extends Controller {
   private themeChanged = (): void => {
     clientHooks.workspaceAppFrameRefresh({ appKey: this.appKeyValue, frame: this.element, load: () => this.load() });
   };
-}
-
-class WorkspaceTitleEditController extends Controller {
-  static values = { cancelUrl: String };
-  declare readonly element: HTMLFormElement;
-  declare readonly cancelUrlValue: string;
-
-  keydown(event: KeyboardEvent): void {
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    const frame = this.element.closest("turbo-frame");
-    if (frame) frame.setAttribute("src", this.cancelUrlValue);
-  }
 }
 
 class AutoScrollController extends Controller {
@@ -2255,8 +2069,6 @@ application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);
 application.register("agent-launch-dialog", AgentLaunchDialogController);
 application.register("project-github-search", ProjectGithubSearchController);
-application.register("workspace-list", WorkspaceListController);
-application.register("workspace-title-edit", WorkspaceTitleEditController);
 application.register("provision-terminal", createProvisionTerminalController(Controller));
 application.register("auto-scroll", AutoScrollController);
 application.register("workspace-app-frame", WorkspaceAppFrameController);

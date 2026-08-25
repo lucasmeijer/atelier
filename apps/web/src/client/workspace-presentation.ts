@@ -461,6 +461,7 @@ export function installWorkspacePresentationTurboStream(Turbo: TurboLike, applic
       scroll.replaceChildren(...nextScroll.childNodes);
       target.querySelector<HTMLElement>(".fixed-shell-projects-drawer")!.replaceWith(replacement.querySelector<HTMLElement>(".fixed-shell-projects-drawer")!);
     }
+    document.dispatchEvent(new CustomEvent("atelier:workspace-pane-changed"));
   };
   Turbo.StreamActions["present-work-view"] = function presentWorkView(this: StreamElement): void {
     const key = this.dataset.workViewKey;

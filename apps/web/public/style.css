@@ -92,19 +92,6 @@ a { color: inherit; text-decoration: none; }
 .repo-launch-btn { width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--muted-2); cursor: pointer; font: 700 16px/1 system-ui, sans-serif; }
 .repo-launch-btn:hover { color: var(--accent); background: var(--accent-soft); border-color: rgba(37,99,235,.18); }
 .repo-launch-btn:active { transform: translateY(1px); }
-.workspace-row { grid-template-columns: minmax(0, 1fr) auto; position: relative; }
-.workspace-row-title-frame { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; min-width: 0; }
-.workspace-row-edit { display: inline-flex; align-items: center; justify-content: center; color: var(--muted-2); font-size: 12px; padding: 2px 4px; border-radius: 5px; }
-.workspace-row-edit:hover { background: var(--accent-soft); color: var(--accent); }
-.workspace-sidebar-title-form input { width: 100%; border: 1px solid var(--accent); border-radius: 6px; padding: 4px 6px; font: inherit; font-weight: 600; }
-.workspace-row-actions { display: inline-flex; justify-content: flex-end; align-items: center; gap: 8px; }
-.workspace-row.parked { opacity: .5; }
-.workspace-row-buttons .workspace-row-park, .workspace-row-buttons .workspace-row-delete { display: flex; justify-content: flex-end; }
-.workspace-row > .workspace-row-delete { display: none; justify-content: flex-end; }
-.workspace-row:hover:not(.visible) > .workspace-row-delete { display: flex; }
-.workspace-row-park button, .workspace-row-delete button { border: 0; background: transparent; color: var(--muted-2); cursor: pointer; border-radius: 6px; padding: 4px 6px; }
-.workspace-row-park button:hover { color: var(--accent); background: var(--accent-soft); opacity: 1; }
-.workspace-row-delete button:hover { color: var(--red); background: var(--red-soft); opacity: 1; }
 .header-actions { display: flex; justify-content: flex-end; align-items: center; }
 .dot { width: 9px; height: 9px; border-radius: 50%; }
 .dot.run { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
@@ -424,6 +411,8 @@ a.btn { text-decoration: none; }
 .fixed-shell-workspace-color { width: 12px; height: 12px; flex: 0 0 auto; border-radius: 4px; background: var(--workspace-color, var(--accent)); }
 .fixed-shell-workspace-row > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fixed-shell-attention-dot { display: inline-block; flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--fixed-shell-attention);  }
+.fixed-shell-workspace-warning { flex: 0 0 auto; color: var(--fixed-shell-attention); font-style: normal; }
+.fixed-shell-workspace-row[data-workspace-preloading] > :is(.fixed-shell-attention-dot, .fixed-shell-workspace-busy) { display: none; }
 .fixed-shell-workspace-pane > footer { padding: 8px; border-top: 1px solid var(--fixed-shell-border); }
 .fixed-shell-settings { position: relative; width: 100%; min-height: 38px; display: flex; align-items: center; gap: 9px; padding: 8px; border: 0; border-radius: 6px; color: var(--fixed-shell-muted); background: transparent; cursor: pointer; touch-action: manipulation; }
 .fixed-shell-settings > * { pointer-events: none; }
@@ -550,7 +539,7 @@ button { border: 0; background: none; cursor: pointer; }
 .modal { background: var(--panel); color: var(--text); border-color: var(--line2); box-shadow: var(--shadow); overflow: visible; }
 .modal form { overflow: visible; }
 .modal::backdrop { background: rgba(0,0,0,.5); backdrop-filter: blur(4px); }
-.modal-input, .search, .workspace-sidebar-title-form input { background: var(--bg); border-color: var(--line2); color: var(--text); }
+.modal-input, .search { background: var(--bg); border-color: var(--line2); color: var(--text); }
 
 
 

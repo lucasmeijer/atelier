@@ -67,7 +67,6 @@ import {
   type WorkspaceModuleCommandResult,
   type WorkspaceModuleRouteHandler,
   type WorkspaceModuleWorkViewAdapter,
-  type WorkspaceRowContributionRegistry,
   type WorkspaceServerProvisioningHook,
   type WorkspaceAgentConversationPresentation,
   type WorkspaceWorkViewPresentation,
@@ -106,12 +105,11 @@ export interface WebAppDeps {
 
 export interface WebApp {
   fetch(request: Request): Promise<Response>;
-  shellSnapshot(): string;
+  shellSnapshot(): Promise<string>;
   deleteCurrentWorkspaceFromAgent(workspaceId: string, force: boolean): Promise<{ deleted: boolean; blocked: boolean; details?: WorkspaceDeleteBlockedDetails }>;
   createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult>;
   forkCurrentWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceForkRequest): Promise<AgentWorkspaceCreateResult>;
   presentWorkViewFromAgent(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
-  workspaceRowContributions: WorkspaceRowContributionRegistry;
   globalSidebarContributions: GlobalSidebarContributionRegistry;
 }
 
@@ -235,74 +233,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const agentLaunchSettingsFrameId = "agent_launch_settings";
   const agentLaunchFormId = "agent_launch_form";
 
-  // ---------------------------------------------------------------------------
-  // Workspace sidebar rendering. Broadcast HTML never contains per-client state
-  // (no "visible" classes, no selection inputs); selection is applied client-side
-  // by the workspace-list Stimulus controller.
-  // ---------------------------------------------------------------------------
-
-  function workspaceRowId(id: string): string {
-    return domId("workspace_row", id);
-  }
-
-  function workspaceStatusId(workspaceId: string): string {
-    return domId("workspace_status", workspaceId);
-  }
-
-  function workspaceViewStatusId(workspaceId: string, viewKey: string): string {
-    return domId("workspace_view_status", workspaceId, viewKey);
-  }
-
   function workspaceBootId(id: string): string {
     return domId("workspace_boot", id);
   }
-
-  function renderWorkspaceStatus(workspaceId: string): string {
-    const state = registry.workspaceState(workspaceId);
-    const inner = state === "busy"
-      ? `<span class="status-spinner sm" aria-label="Workspace busy" title="Workspace busy"></span>`
-      : state === "unread"
-        ? `<span class="status-dot" aria-label="Workspace unread" title="Workspace unread"></span>`
-        : "";
-    const unreadAt = registry.workspaceUnreadAt(workspaceId);
-    return `<span id="${workspaceStatusId(workspaceId)}" class="workspace-status" data-workspace-list-target="status" data-workspace-state="${state}"${unreadAt === undefined ? "" : ` data-workspace-unread-at="${unreadAt}"`}>${inner}</span>`;
-  }
-
-  function renderViewStatus(workspaceId: string, viewKey: string): string {
-    const inner = registry.isViewBusy(workspaceId, viewKey)
-      ? `<span class="status-spinner sm" aria-label="View busy" title="View busy"></span>`
-      : "";
-    return `<span id="${workspaceViewStatusId(workspaceId, viewKey)}" class="view-status">${inner}</span>`;
-  }
-
-  const workspaceRowContributionStore = new Map<string, Map<string, string>>();
-
-  function workspaceRowContributionsId(workspaceId: string): string {
-    return domId("workspace_row_contributions", workspaceId);
-  }
-
-  function renderWorkspaceVersionContribution(entry: WorkspaceEntry): string {
-    if (!entry.imageOutdated) return "";
-    return `<span class="workspace-version-warning" aria-label="Workspace created with an older version of Atelier" data-tooltip="This workspace was created with an older version of Atelier. This is usually fine, but some newer features might only work in a new workspace">⚠︎</span>`;
-  }
-
-  function renderWorkspaceRowContributions(entry: WorkspaceEntry): string {
-    const workspaceId = entry.id;
-    const contributions = [renderWorkspaceVersionContribution(entry), ...Array.from(workspaceRowContributionStore.get(workspaceId)?.values() ?? [])].filter(Boolean).join("");
-    return `<span id="${workspaceRowContributionsId(workspaceId)}" class="workspace-row-contributions">${contributions}</span>`;
-  }
-
-  const workspaceRowContributions: WorkspaceRowContributionRegistry = {
-    set(workspaceId: string, contributionId: string, html?: string) {
-      const entry = registry.get(workspaceId);
-      if (!entry) return;
-      let workspaceContributions = workspaceRowContributionStore.get(workspaceId);
-      if (!workspaceContributions) workspaceRowContributionStore.set(workspaceId, workspaceContributions = new Map());
-      if (html) workspaceContributions.set(contributionId, html);
-      else workspaceContributions.delete(contributionId);
-      broadcastShell(turboReplaceStream(workspaceRowContributionsId(workspaceId), renderWorkspaceRowContributions(entry)));
-    },
-  };
 
   const globalSidebarContributionStore = new Map<string, string>();
 
@@ -324,69 +257,6 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     return entry.title || (isGitProjectInit(entry.init) ? entry.init.name : undefined) || `Workspace ${entry.id}`;
   }
 
-  function workspaceSidebarTitleFrame(entry: WorkspaceEntry): string {
-    const id = entry.id;
-    const frameId = domId("workspace_sidebar_title", id);
-    const title = `<div class="r-title">${escapeHtml(workspaceTitle(entry))}</div>`;
-    return `<turbo-frame id="${frameId}" class="workspace-row-title-frame">
-    ${entry.parked ? `<div class="row-main">${title}</div>` : `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select">${title}</a>`}
-  </turbo-frame>`;
-  }
-
-  function workspaceDeleteForm(id: string, buttonTitle = "Delete workspace"): string {
-    return `<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(id)}/delete" data-action="click->workspace-list#deleteClicked submit->workspace-list#deleteStarted"><button type="submit" title="${escapeHtml(buttonTitle)}" aria-label="Delete workspace">🗑</button></form>`;
-  }
-
-  function workspaceRow(entry: WorkspaceEntry): string {
-    const id = entry.id;
-    const title = workspaceTitle(entry);
-    const selectable = !entry.parked && (entry.phase === "starting" || entry.phase === "failed" || entry.phase === "ready");
-    const projectClass = isGitProjectInit(entry.init) ? "repo-tinted-row" : "";
-    const projectStyle = isGitProjectInit(entry.init) ? ` style="${repoColorStyle(entry.init.projectId)}"` : "";
-    const stateClass = registry.workspaceState(id) === "unread" ? "attn-state" : "";
-    const parkedClass = entry.parked ? "parked" : "";
-    const versionWarningClass = entry.imageOutdated ? "has-version-warning" : "";
-    const open = (extraClass: string) => `<div class="row workspace-row ${projectClass} ${stateClass} ${parkedClass} ${versionWarningClass} ${extraClass}" id="${workspaceRowId(id)}" data-workspace-id="${escapeHtml(id)}" data-phase="${entry.phase}" data-parked="${entry.parked ? "true" : "false"}"${projectStyle}${selectable ? ` data-action="click->workspace-list#rowClicked"` : ""}>`;
-    const workspaceLink = (label: string, attrs = "") => `<a class="row-main" href="/workspaces/${encodeURIComponent(id)}" data-turbo="false" data-action="workspace-list#select"${attrs}><div class="r-title">${escapeHtml(label)}</div></a>`;
-    switch (entry.phase) {
-      // All phases render single-line rows (no r-sub) so phase changes never
-      // change row height.
-      case "starting":
-        return `${open("starting")}${workspaceLink(title, ` title="Preparing workspace…"`)}<span class="row-actions"><span class="status-spinner sm" aria-label="Preparing" title="Preparing workspace…"></span></span></div>`;
-      case "checking_delete":
-      case "deleting":
-        return `${open("pending-delete")}<div class="row-main" title="Deleting…"><div class="r-title">${escapeHtml(title)}</div></div><span class="row-actions"><span class="status-spinner sm" aria-label="Deleting" title="Deleting…"></span></span></div>`;
-      case "failed": {
-        const error = entry.error ?? "Workspace failed";
-        return `${open("failed")}${workspaceLink(title, ` title="${escapeHtml(error)}"`)}${workspaceDeleteForm(id, `${error} — delete`)}</div>`;
-      }
-      case "ready": {
-        const parkedAction = entry.parked ? "unpark" : "park";
-        const parkedLabel = entry.parked ? "Unpark workspace" : "Park workspace";
-        const parkForm = `<form class="workspace-row-park" method="post" action="/workspaces/${encodeURIComponent(id)}/${parkedAction}" data-turbo="true" data-action="turbo:submit-end->workspace-list#parkToggled"><button type="submit" title="${parkedLabel}" aria-label="${parkedLabel}">💤</button></form>`;
-        const editAction = entry.parked ? "" : `<a class="workspace-row-edit" href="/workspaces/${encodeURIComponent(id)}/sidebar-title/edit" data-turbo-frame="${domId("workspace_sidebar_title", id)}" title="Rename workspace" aria-label="Rename workspace">✎</a>`;
-        const deleteAction = entry.parked ? "" : workspaceDeleteForm(id);
-        return `${open("")}${workspaceSidebarTitleFrame(entry)}<div class="workspace-row-actions"><span class="workspace-row-notifiers">${renderWorkspaceRowContributions(entry)}${renderWorkspaceStatus(id)}</span><span class="workspace-row-buttons">${editAction}${parkForm}${deleteAction}</span></div></div>`;
-      }
-    }
-  }
-
-  function renderWorkspaceRows(): string {
-    const entries = registry.list();
-    if (entries.length === 0) {
-      return `<div class="row" id="no_workspaces_row"><div><div class="r-title">No workspaces</div><div class="r-sub">Create one below.</div></div><span></span></div>`;
-    }
-    return entries.map((entry) => workspaceRow(entry)).join("");
-  }
-
-  function workspaceStatusStreams(workspaceId: string): string {
-    return `${turboReplaceStream(workspaceStatusId(workspaceId), renderWorkspaceStatus(workspaceId))}${registry.busyViews(workspaceId).map((viewKey) => turboReplaceStream(workspaceViewStatusId(workspaceId, viewKey), renderViewStatus(workspaceId, viewKey))).join("")}`;
-  }
-
-  function initialStatusStreams(): string {
-    return registry.list().map((entry) => workspaceStatusStreams(entry.id)).join("");
-  }
-
   const persistWorkspaceParked = deps.persistWorkspaceParked ?? setWorkspaceParked;
   let suppressParkedStateCallbacks = false;
 
@@ -401,23 +271,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   registry.setCallbacks({
-    rowChanged(entry, { viewKey }) {
+    rowChanged(entry) {
       if (entry.phase === "deleting") broadcastShell(removeWorkspaceResidentTurboStream(entry.id));
-      if (viewKey !== undefined) {
-        // Status changes replace only the status spans so they cannot clobber an
-        // in-progress title edit in the row.
-        broadcastShell(`${turboReplaceStream(workspaceStatusId(entry.id), renderWorkspaceStatus(entry.id))}${turboReplaceStream(workspaceViewStatusId(entry.id, viewKey), renderViewStatus(entry.id, viewKey))}`);
-        broadcastWorkspacePaneCollections();
-        return;
-      }
-      broadcastShell(turboReplaceStream(workspaceRowId(entry.id), workspaceRow(entry)));
       broadcastWorkspacePaneCollections();
     },
     listChanged() {
       if (suppressParkedStateCallbacks) return;
-      // "update" (not "replace"): the rows container must survive so later
-      // list broadcasts still find their target.
-      broadcastShell(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
       broadcastWorkspacePaneCollections();
     },
     parkedChanged(entry) {
@@ -426,9 +285,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     },
     removed(id) {
       provisioning.delete(id);
-      workspaceRowContributionStore.delete(id);
       for (const handler of deps.workspaceRemovedHandlers ?? []) void handler(id);
-      broadcastShell(turboRemoveStream(workspaceRowId(id)));
     },
   });
 
@@ -732,8 +589,10 @@ ${moduleStylesHtml()}
         title: workspaceTitle(entry),
         active: entry.id === activeWorkspaceId,
         busy: entry.phase === "starting" || registry.isWorkspaceBusy(entry.id),
-        ready: registry.isWorkspaceUnread(entry.id) && entry.id !== activeWorkspaceId,
+        outdated: entry.imageOutdated,
       };
+      const unreadAt = registry.workspaceUnreadAt(entry.id);
+      if (unreadAt !== undefined) pane.unreadAt = unreadAt;
       if (isGitProjectInit(entry.init)) pane.color = repoColor(entry.init.projectId);
       return pane;
     };
@@ -805,7 +664,7 @@ ${moduleStylesHtml()}
   }
 
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { visible?: boolean } = {}): string {
-    const deleteAction = entry.phase === "failed" ? `<form class="workspace-row-delete" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete" data-action="click->workspace-list#deleteClicked submit->workspace-list#deleteStarted"><button class="btn danger" type="submit" aria-label="Delete workspace">Delete workspace</button></form>` : "";
+    const deleteAction = entry.phase === "failed" ? `<form class="fixed-shell-delete-workspace" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete"><button class="btn danger" type="submit" aria-label="Delete workspace">Delete workspace</button></form>` : "";
     const inner = `${provisioning.render(entry.id, { failed: entry.phase === "failed", error: entry.error })}${deleteAction}`;
     const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
     return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><header class="header"><h1>${escapeHtml(workspaceTitle(entry))}</h1></header><div class="body"><div class="panel">${inner}</div></div></div></div>`;
@@ -1030,7 +889,7 @@ ${moduleStylesHtml()}
 
     const { id } = createWorkspaceFromCommand({ source: { type: "empty" } });
     const location = new URL(`/workspaces/${encodeURIComponent(id)}`, url).toString();
-    if (wantsTurboStream(request)) return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()), { headers: { location } });
+    if (wantsTurboStream(request)) return turboStreamResponse(workspacePaneCollectionsTurboStream(await workspacePaneCollections("")), { headers: { location } });
     return Response.redirect(location, 303);
   }
 
@@ -1061,7 +920,7 @@ ${moduleStylesHtml()}
     }
     await launch;
 
-    return turboStreamResponse(`${turboUpdateStream("workspaces_table_rows", renderWorkspaceRows())}${turboUpdateStream(agentLaunchModalFrameId, "")}`);
+    return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboUpdateStream(agentLaunchModalFrameId, "")}`);
   }
 
   async function createEmptyAgentWorkspaceEndpoint(request: Request): Promise<Response> {
@@ -1260,29 +1119,14 @@ ${moduleStylesHtml()}
   // Titles
   // ---------------------------------------------------------------------------
 
-  function workspaceSidebarTitleEditFrame(id: string): Response {
-    const entry = requireWorkspace(id);
-    const frameId = domId("workspace_sidebar_title", id);
-    return response(`<turbo-frame id="${frameId}" class="workspace-row-title-frame">
-    <form class="workspace-sidebar-title-form" method="post" action="/workspaces/${encodeURIComponent(id)}/sidebar-title" data-controller="workspace-title-edit" data-workspace-title-edit-cancel-url-value="/workspaces/${encodeURIComponent(id)}/sidebar-title" data-action="keydown->workspace-title-edit#keydown">
-      <input name="title" value="${escapeHtml(workspaceTitle(entry))}" aria-label="Workspace title" autofocus>
-    </form>
-  </turbo-frame>`);
-  }
-
-  function workspaceSidebarTitleShowFrame(id: string): Response {
-    const entry = requireWorkspace(id);
-    return response(workspaceSidebarTitleFrame(entry));
-  }
-
   async function updateWorkspaceSidebarTitle(id: string, request: Request): Promise<Response> {
-    const entry = requireWorkspace(id);
+    requireWorkspace(id);
     const title = requestAcceptsJson(request)
       ? stringField((await readJsonObject(request)).title, "title") ?? ""
       : String((await request.formData()).get("title") ?? "").trim();
     await setWorkspaceTitle(id, title);
     registry.setTitle(id, title || null);
-    return requestAcceptsJson(request) ? await workspaceJson(id) : response(workspaceSidebarTitleFrame(entry));
+    return requestAcceptsJson(request) ? await workspaceJson(id) : turboStreamResponse(workspacePaneCollectionsTurboStream(await workspacePaneCollections(id)));
   }
 
   // ---------------------------------------------------------------------------
@@ -1751,11 +1595,7 @@ ${moduleStylesHtml()}
     if (url.pathname === "/agent-workspaces" && request.method === "POST") return await createEmptyAgentWorkspaceEndpoint(request);
     if ((params = match(/^\/project-agent-workspaces\/([^/]+)$/)) && request.method === "POST") return await createProjectAgentWorkspaceEndpoint(params[0], request);
 
-    if ((params = match(/^\/workspaces\/([^/]+)\/sidebar-title\/edit$/)) && request.method === "GET") return workspaceSidebarTitleEditFrame(params[0]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/sidebar-title$/))) {
-      if (request.method === "GET") return workspaceSidebarTitleShowFrame(params[0]);
-      if (request.method === "POST") return await updateWorkspaceSidebarTitle(params[0], request);
-    }
+    if ((params = match(/^\/workspaces\/([^/]+)\/sidebar-title$/)) && request.method === "POST") return await updateWorkspaceSidebarTitle(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/active$/)) && request.method === "POST") return activeWorkspaceEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/close$/)) && request.method === "POST") return await closeWorkViewJsonEndpoint(params[0], request);
@@ -1773,12 +1613,11 @@ ${moduleStylesHtml()}
   }
 
   return {
-    shellSnapshot: initialStatusStreams,
+    shellSnapshot: async () => workspacePaneCollectionsTurboStream(await workspacePaneCollections("")),
     deleteCurrentWorkspaceFromAgent,
     createWorkspaceFromAgent,
     forkCurrentWorkspaceFromAgent,
     presentWorkViewFromAgent,
-    workspaceRowContributions,
     globalSidebarContributions,
     async fetch(request) {
       try {

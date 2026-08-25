@@ -90,7 +90,6 @@ function context() {
     ctx: {
       events: createAtelierEventBus(),
       registry: { setViewBusy: () => {}, setViewUnread: () => {} },
-      workspaceRowContributions: { set: () => {} },
       globalSidebarContributions: { set: (_id: string, html?: string) => sidebar.push(html ?? "") },
       presentWorkView: async () => {},
       broadcastWorkspace: () => {},

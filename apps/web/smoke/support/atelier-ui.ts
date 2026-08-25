@@ -4,7 +4,7 @@ function attributeValue(value: string): string {
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }
 
-const workspaceRowsSelector = "#workspaces_table_rows > [data-workspace-id]";
+const workspaceRowsSelector = ".fixed-shell-workspace-row[data-workspace-entry-id]";
 
 export interface NewWorkspace {
   id: string;
@@ -34,7 +34,7 @@ export const atelierUi = {
   },
 
   workspaceRow(page: Page, workspaceId: string): Locator {
-    return page.locator(`${workspaceRowsSelector}[data-workspace-id=${attributeValue(workspaceId)}]`);
+    return page.locator(`${workspaceRowsSelector}[data-workspace-entry-id=${attributeValue(workspaceId)}]`);
   },
 
   workspaceDetail(page: Page, workspaceId: string): Locator {
@@ -62,13 +62,13 @@ export const atelierUi = {
   },
 
   async waitForNewWorkspace(page: Page, performCreation: () => Promise<void>, options: { timeout?: number } = {}): Promise<NewWorkspace> {
-    const before = await this.workspaceRows(page).evaluateAll<string[], HTMLElement>((rows) => rows.map((row) => row.dataset.workspaceId!));
+    const before = await this.workspaceRows(page).evaluateAll<string[], HTMLElement>((rows) => rows.map((row) => row.dataset.workspaceEntryId!));
     await performCreation();
 
     const id = await page.waitForFunction(({ selector, previousIds }) => {
       const previous = new Set(previousIds);
       return [...document.querySelectorAll<HTMLElement>(selector)]
-        .map((row) => row.dataset.workspaceId)
+        .map((row) => row.dataset.workspaceEntryId)
         .find((workspaceId): workspaceId is string => Boolean(workspaceId && !previous.has(workspaceId)));
     }, { selector: workspaceRowsSelector, previousIds: before }, { timeout: options.timeout }).then((handle) => handle.jsonValue());
 
@@ -81,7 +81,7 @@ export const atelierUi = {
       id,
       row,
       select: async () => {
-        await row.getByRole("link").first().click();
+        await row.click();
         await this.workspaceDetail(page, id).waitFor({ state: "visible", timeout: options.timeout });
       },
     };

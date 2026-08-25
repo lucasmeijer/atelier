@@ -76,29 +76,67 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
+  test("shows unread only after the workspace resident has preloaded", async () => {
+    const current: WorkspacePresentation = {
+      workspace: { id: "a", title: "Current" },
+      agentConversations: [{ id: "agent-a", title: "Agent", bodyHtml: "<p>Current</p>" }],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = {
+      projects: [],
+      projectlessWorkspaces: [
+        { id: "a", title: "Current", active: true },
+        { id: "b", title: "Unread", unreadAt: 123 },
+      ],
+    };
+    let finishPreload!: () => void;
+    const preloadBlocked = new Promise<void>((resolve) => { finishPreload = resolve; });
+    const page = await browser.newPage();
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<style>${workspaceStyle}</style>${renderShellFixture(current, pane)}<script type="module" src="/workspace-test.js"></script>`,
+    }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/workspaces/a/active", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/workspaces/b?resident=1", async (route) => {
+      await preloadBlocked;
+      await route.fulfill({ contentType: "text/html", body: '<div class="workspace-detail-resident visible" data-workspace-residency-target="resident" data-workspace-id="b">Preloaded unread workspace</div>' });
+    });
+    await page.goto("http://atelier.test/");
+
+    const unread = page.locator('[data-workspace-entry-id="b"]');
+    await unread.locator(".workspace-preload-spinner").waitFor();
+    expect(await unread.locator(".fixed-shell-attention-dot").isVisible()).toBe(false);
+
+    finishPreload();
+    await page.waitForFunction(() => Boolean(document.querySelector('.workspace-detail-resident[data-workspace-id="b"]')));
+    await unread.locator(".fixed-shell-attention-dot").waitFor({ state: "visible" });
+    expect(await unread.getAttribute("data-workspace-preloading")).toBeNull();
+    await page.close();
+  });
+
   test("detects and selects a Turbo-added workspace without URL navigation", async () => {
     const page = await browser.newPage();
-    await page.setContent(`<div id="workspaces_table_rows">
-      <div data-workspace-id="existing"><a href="/workspaces/existing">Existing</a></div>
+    await page.setContent(`<div id="workspace_entries">
+      <button class="fixed-shell-workspace-row" data-workspace-entry-id="existing">Existing</button>
     </div><div id="workspace_detail"></div>`);
-    await page.locator("#workspaces_table_rows").evaluate((rows) => {
+    await page.locator("#workspace_entries").evaluate((rows) => {
       rows.addEventListener("click", (event) => {
         // SAFETY: The test fixture controls this value and establishes the asserted shape.
-        const link = (event.target as Element).closest("a");
-        if (!link) return;
-        event.preventDefault();
-        const id = link.closest<HTMLElement>("[data-workspace-id]")!.dataset.workspaceId!;
+        const entry = (event.target as Element).closest<HTMLElement>("[data-workspace-entry-id]");
+        if (!entry) return;
+        const id = entry.dataset.workspaceEntryId!;
         setTimeout(() => document.querySelector("#workspace_detail")!.insertAdjacentHTML("beforeend", `<div data-workspace-residency-target="resident" data-workspace-id="${id}">Loaded ${id}</div>`), 20);
       });
     });
     const originalUrl = page.url();
 
     const workspace = await atelierUi.waitForNewWorkspace(page, async () => {
-      await page.evaluate(() => setTimeout(() => document.querySelector("#workspaces_table_rows")!.insertAdjacentHTML("beforeend", '<div data-workspace-id="created"><a href="/workspaces/created">Created</a></div>'), 20));
+      await page.evaluate(() => setTimeout(() => document.querySelector("#workspace_entries")!.insertAdjacentHTML("beforeend", '<button class="fixed-shell-workspace-row" data-workspace-entry-id="created">Created</button>'), 20));
     });
 
     expect(workspace.id).toBe("created");
-    expect(await workspace.row.getAttribute("data-workspace-id")).toBe("created");
+    expect(await workspace.row.getAttribute("data-workspace-entry-id")).toBe("created");
     expect(page.url()).toBe(originalUrl);
     await workspace.select();
     expect(await atelierUi.workspaceDetail(page, "created").textContent()).toContain("Loaded created");
@@ -514,12 +552,13 @@ describe("Atelier Playwright helper", () => {
     };
     const pane: WorkspacePanePresentation = { projects: [{ id: "project-1", title: "Project", workspaces: [
       { id: "compact-demo", title: "Compact", color: "#3b82f6", active: true },
-      { id: "ready-demo", title: "Ready", color: "#f97316", ready: true },
+      { id: "ready-demo", title: "Ready", color: "#f97316", unreadAt: 123 },
       { id: "busy-demo", title: "Busy", color: "#22c55e", busy: true },
     ] }] };
     const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/workspaces/ready-demo?resident=1", (route) => route.fulfill({ contentType: "text/html", body: '<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="ready-demo">Ready</div>' }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
 

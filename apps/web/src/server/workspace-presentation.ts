@@ -12,7 +12,8 @@ export interface WorkspacePaneEntry {
   color?: string;
   active?: boolean;
   busy?: boolean;
-  ready?: boolean;
+  unreadAt?: number;
+  outdated?: boolean;
 }
 
 export interface WorkspacePaneProject {
@@ -99,12 +100,13 @@ function selectorCloseForm(close: ViewCloseAction): string {
 }
 
 function renderWorkspaceRowContent(workspace: WorkspacePaneEntry): string {
-  return `<i class="fixed-shell-workspace-color" aria-hidden="true"></i><span>${escapeHtml(workspace.title)}</span>${workspace.busy ? '<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy" title="Workspace busy"></i>' : workspace.ready ? '<i class="fixed-shell-attention-dot" aria-label="Agent ready"></i>' : ""}`;
+  return `<i class="fixed-shell-workspace-color" aria-hidden="true"></i><span>${escapeHtml(workspace.title)}</span>${workspace.outdated ? '<i class="fixed-shell-workspace-warning" aria-label="Workspace created with an older version of Atelier" title="Some newer features may require a new workspace">⚠︎</i>' : ""}${workspace.busy ? '<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy" title="Workspace busy"></i>' : workspace.unreadAt !== undefined && !workspace.active ? '<i class="fixed-shell-attention-dot" aria-label="Agent ready"></i>' : ""}`;
 }
 
 function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string): string {
   const color = workspace.color ? ` style="--workspace-color:${escapeHtml(workspace.color)}"` : "";
-  return `<button type="button" class="fixed-shell-workspace-row${workspace.active ? " active" : ""}" title="${escapeHtml(workspace.title)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}" ${projectId ? `data-project-id="${escapeHtml(projectId)}"` : ""}${color} data-action="click->workspace-navigation#selectWorkspace">${renderWorkspaceRowContent(workspace)}</button>`;
+  const unreadAt = workspace.unreadAt === undefined ? "" : ` data-workspace-unread-at="${workspace.unreadAt}"`;
+  return `<button type="button" class="fixed-shell-workspace-row${workspace.active ? " active" : ""}" title="${escapeHtml(workspace.title)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}"${unreadAt} ${projectId ? `data-project-id="${escapeHtml(projectId)}"` : ""}${color} data-action="click->workspace-navigation#selectWorkspace">${renderWorkspaceRowContent(workspace)}</button>`;
 }
 
 const projectlessWorkspaceGroupId = "__projectless__";
