@@ -418,7 +418,17 @@ a.btn { text-decoration: none; }
 .fixed-shell-workspace-row:hover, .fixed-shell-workspace-row:active { background: var(--fixed-shell-hover); color: var(--fixed-shell-text); }
 .fixed-shell-workspace-row.active { background: var(--fixed-shell-hover); color: var(--fixed-shell-text); font-weight: 650; }
 .fixed-shell-workspace-color { width: 12px; height: 12px; flex: 0 0 auto; border-radius: 4px; background: var(--workspace-color, var(--accent)); }
-.fixed-shell-workspace-row > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fixed-shell-workspace-name { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
+.fixed-shell-workspace-name > span { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.fixed-shell-workspace-row.is-name-scrolling .fixed-shell-workspace-name > span { width: max-content; overflow: visible; text-overflow: clip; animation: fixed-shell-workspace-name-scroll var(--workspace-name-scroll-duration) linear infinite alternate; }
+@keyframes fixed-shell-workspace-name-scroll {
+  0% { transform: translateX(0); }
+  70% { transform: translateX(calc(-1 * var(--workspace-name-scroll-slow-distance))); }
+  85%, 100% { transform: translateX(calc(-1 * var(--workspace-name-scroll-distance))); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fixed-shell-workspace-row.is-name-scrolling .fixed-shell-workspace-name > span { width: 100%; overflow: hidden; text-overflow: ellipsis; animation: none; }
+}
 .fixed-shell-attention-dot { display: inline-block; flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--fixed-shell-attention);  }
 .fixed-shell-workspace-warning { flex: 0 0 auto; color: var(--fixed-shell-attention); font-style: normal; }
 .fixed-shell-workspace-row[data-workspace-preloading] > :is(.fixed-shell-attention-dot, .fixed-shell-workspace-busy) { display: none; }

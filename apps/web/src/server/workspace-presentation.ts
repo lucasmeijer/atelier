@@ -119,13 +119,13 @@ function workViewCloseForm(close: ViewCloseAction): string {
 }
 
 function renderWorkspaceRowContent(workspace: WorkspacePaneEntry): string {
-  return `<i class="fixed-shell-workspace-color" aria-hidden="true"></i><span>${escapeHtml(workspace.title)}</span>${workspace.outdated ? '<i class="fixed-shell-workspace-warning" aria-label="Workspace created with an older version of Atelier" title="Some newer features may require a new workspace">⚠︎</i>' : ""}${workspace.busy ? '<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy" title="Workspace busy"></i>' : workspace.unreadAt !== undefined && !workspace.active ? '<i class="fixed-shell-attention-dot" aria-label="Agent ready"></i>' : ""}`;
+  return `<i class="fixed-shell-workspace-color" aria-hidden="true"></i><span class="fixed-shell-workspace-name"><span>${escapeHtml(workspace.title)}</span></span>${workspace.outdated ? '<i class="fixed-shell-workspace-warning" aria-label="Workspace created with an older version of Atelier" title="Some newer features may require a new workspace">⚠︎</i>' : ""}${workspace.busy ? '<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy" title="Workspace busy"></i>' : workspace.unreadAt !== undefined && !workspace.active ? '<i class="fixed-shell-attention-dot" aria-label="Agent ready"></i>' : ""}`;
 }
 
 function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string): string {
   const color = workspace.color ? ` style="--workspace-color:${escapeHtml(workspace.color)}"` : "";
   const unreadAt = workspace.unreadAt === undefined ? "" : ` data-workspace-unread-at="${workspace.unreadAt}"`;
-  return `<button type="button" class="fixed-shell-workspace-row${workspace.active ? " active" : ""}" title="${escapeHtml(workspace.title)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}"${unreadAt} ${projectId ? `data-project-id="${escapeHtml(projectId)}"` : ""}${color} data-action="click->workspace-navigation#selectWorkspace">${renderWorkspaceRowContent(workspace)}</button>`;
+  return `<button type="button" class="fixed-shell-workspace-row${workspace.active ? " active" : ""}" title="${escapeHtml(workspace.title)}"${workspace.active ? ' aria-current="page"' : ""} data-controller="workspace-name-scroll" data-workspace-entry-id="${escapeHtml(workspace.id)}"${unreadAt} ${projectId ? `data-project-id="${escapeHtml(projectId)}"` : ""}${color} data-action="click->workspace-navigation#selectWorkspace">${renderWorkspaceRowContent(workspace)}</button>`;
 }
 
 const projectlessWorkspaceGroupId = "__projectless__";
@@ -171,7 +171,7 @@ function renderParkedWorkspaceGroup(workspaces: readonly WorkspacePaneEntry[], p
   const groupId = `${parentId}:parked`;
   return `<section class="fixed-shell-project fixed-shell-parked is-collapsed" data-project-id="${escapeHtml(groupId)}">
     <div class="fixed-shell-project-heading-row"><button type="button" class="fixed-shell-project-heading" aria-expanded="false" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(groupId)}">${icon("chevron")}<span>${workspaces.length} parked</span></button></div>
-    <div class="fixed-shell-project-workspaces">${workspaces.map((workspace) => `<form method="post" action="/workspaces/${encodeURIComponent(workspace.id)}/unpark" data-workspace-entry-id="${escapeHtml(workspace.id)}" data-action="submit->workspace-navigation#unparkWorkspace"><button type="submit" class="fixed-shell-workspace-row" title="Unpark and open ${escapeHtml(workspace.title)}" aria-label="Unpark and open ${escapeHtml(workspace.title)}">${renderWorkspaceRowContent(workspace)}</button></form>`).join("")}</div>
+    <div class="fixed-shell-project-workspaces">${workspaces.map((workspace) => `<form method="post" action="/workspaces/${encodeURIComponent(workspace.id)}/unpark" data-workspace-entry-id="${escapeHtml(workspace.id)}" data-action="submit->workspace-navigation#unparkWorkspace"><button type="submit" class="fixed-shell-workspace-row" title="Unpark and open ${escapeHtml(workspace.title)}" aria-label="Unpark and open ${escapeHtml(workspace.title)}" data-controller="workspace-name-scroll">${renderWorkspaceRowContent(workspace)}</button></form>`).join("")}</div>
   </section>`;
 }
 

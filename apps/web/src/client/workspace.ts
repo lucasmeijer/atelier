@@ -29,6 +29,7 @@ import {
 import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
 import { createAtelierCableClient } from "./cable.ts";
+import { WorkspaceNameScrollController } from "./workspace-name-scroll.ts";
 import { createWorkspacePresentationController, installWorkspacePresentationTurboStream, markActiveWorkspaceRow } from "./workspace-presentation.ts";
 
 declare global {
@@ -2112,6 +2113,7 @@ application.register("dev-reload", DevReloadController);
 application.register("workspace-presentation", createWorkspacePresentationController(Controller, application, clientHooks));
 application.register("workspace-command-form", WorkspaceCommandFormController);
 application.register("empty-workspace-onboarding", EmptyWorkspaceOnboardingController);
+application.register("workspace-name-scroll", WorkspaceNameScrollController);
 application.register("workspace-navigation", WorkspaceNavigationController);
 application.register("workspace-residency", WorkspaceResidencyController);
 application.register("atelier-shortcuts", AtelierShortcutsController);

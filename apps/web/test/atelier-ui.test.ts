@@ -76,6 +76,45 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
+  test("scrolls only clipped workspace names while hovered", async () => {
+    const current: WorkspacePresentation = {
+      workspace: { id: "short", title: "Short" },
+      agentConversations: [{ id: "agent-short", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = {
+      projects: [],
+      projectlessWorkspaces: [
+        { id: "short", title: "Short", active: true },
+        { id: "long", title: "A workspace name that is much too long for this narrow sidebar" },
+      ],
+    };
+    const page = await browser.newPage({ reducedMotion: "no-preference" });
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<style>${workspaceStyle}</style><style>.fixed-shell-app { --fixed-workspace-width: 150px; width: 700px; height: 500px; }</style>${renderShellFixture(current, pane)}<script type="module" src="/workspace-test.js"></script>`,
+    }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/workspaces/short/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/");
+
+    const shortRow = page.locator('[data-workspace-entry-id="short"]');
+    await shortRow.hover();
+    expect(await shortRow.evaluate((row) => row.classList.contains("is-name-scrolling"))).toBe(false);
+
+    const longRow = page.locator('[data-workspace-entry-id="long"]');
+    await longRow.hover();
+    expect(await longRow.evaluate((row) => row.classList.contains("is-name-scrolling"))).toBe(true);
+    expect(await longRow.locator(".fixed-shell-workspace-name > span").evaluate((name) => ({
+      name: getComputedStyle(name).animationName,
+      timing: getComputedStyle(name).animationTimingFunction,
+    }))).toEqual({ name: "fixed-shell-workspace-name-scroll", timing: "linear" });
+
+    await page.mouse.move(600, 400);
+    expect(await longRow.evaluate((row) => row.classList.contains("is-name-scrolling"))).toBe(false);
+    await page.close();
+  });
+
   test("shows unread only after the workspace resident has preloaded", async () => {
     const current: WorkspacePresentation = {
       workspace: { id: "a", title: "Current" },
