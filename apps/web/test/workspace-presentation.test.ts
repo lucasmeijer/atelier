@@ -49,12 +49,19 @@ describe("role-fixed Workspace presentation", () => {
     expect(projectHeading.indexOf("fixed-shell-project-settings")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-add"));
     expect(html).toContain('data-project-id="__projectless__"><svg');
     expect(html).toContain('<span>Projectless</span></button><a class="fixed-shell-project-action fixed-shell-project-add" href="/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New projectless workspace"');
-    expect(html.indexOf('data-project-id="__projectless__"')).toBeLessThan(html.indexOf('data-project-id="__projects__"'));
-    const emptyProjects = html.slice(html.indexOf('data-project-id="__projects__"'));
-    expect(emptyProjects).toContain('<span>Projects</span></button><a class="fixed-shell-project-action fixed-shell-project-add" href="/projects/new/editor"');
-    expect(emptyProjects).toContain('data-project-id="project-2"');
-    expect(emptyProjects).toContain("Empty");
-    expect(emptyProjects).not.toContain('fixed-shell-project-settings" href="/projects/new/editor"');
+    expect(html.indexOf('data-project-id="__projectless__"')).toBeLessThan(html.indexOf('data-project-id="__projects_drawer__"'));
+    const drawerProjects = html.slice(html.indexOf('data-project-id="__projects_drawer__"'));
+    expect(html).toContain('class="fixed-shell-project fixed-shell-projects-drawer is-collapsed" data-project-id="__projects_drawer__"');
+    expect(drawerProjects).toContain('aria-expanded="false"');
+    expect(drawerProjects).toContain('<span>Projects</span>');
+    expect(drawerProjects).toContain('<a class="fixed-shell-project-action fixed-shell-project-add" href="/projects/new/editor"');
+    expect(drawerProjects).toContain('<a class="fixed-shell-project-heading fixed-shell-project-launch" href="/projects/project-2/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New workspace: Empty"><span>Empty</span></a>');
+    expect(drawerProjects.match(/href="\/projects\/project-1\/agent-launch"/g)).toHaveLength(2);
+    expect(drawerProjects.match(/href="\/projects\/project-2\/agent-launch"/g)).toHaveLength(2);
+    expect(drawerProjects).not.toContain('data-workspace-entry-id="workspace-1"');
+    expect(drawerProjects).not.toContain('data-project-id="__projectless__"');
+    expect(drawerProjects).not.toContain('fixed-shell-project-settings" href="/projects/new/editor"');
+    expect(html.indexOf('class="fixed-shell-projects-drawer')).toBeLessThan(html.indexOf("<footer>"));
     expect(html).not.toContain("New Project");
     expect(html).toContain('class="fixed-shell-workspace-row active"');
     expect(html).toContain('aria-current="page"');
@@ -62,14 +69,15 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
   });
 
-  test("nests the Projectless launcher under Projects when it has no Workspaces", () => {
+  test("keeps the Projectless launcher in Workspaces when it has no Workspaces", () => {
     const html = renderWorkspacePane({ projects: [], projectlessWorkspaces: [] });
-    const projects = html.slice(html.indexOf('data-project-id="__projects__"'));
+    const workspaceSection = html.slice(html.indexOf('class="fixed-shell-workspace-scroll"'), html.indexOf('class="fixed-shell-project fixed-shell-projects-drawer'));
+    const projectsSection = html.slice(html.indexOf('class="fixed-shell-project fixed-shell-projects-drawer'));
 
-    expect(projects).toContain('data-project-id="__projectless__"');
-    expect(projects).toContain("Projectless");
-    expect(projects).toContain('href="/agent-launch"');
-    expect(html.indexOf('data-project-id="__projects__"')).toBeLessThan(html.indexOf('data-project-id="__projectless__"'));
+    expect(workspaceSection).toContain('data-project-id="__projectless__"');
+    expect(workspaceSection).toContain("Projectless");
+    expect(workspaceSection).toContain('href="/agent-launch"');
+    expect(projectsSection).not.toContain('data-project-id="__projectless__"');
   });
 
   test("shows the workspace name and delete action in a single-conversation Agent header", () => {

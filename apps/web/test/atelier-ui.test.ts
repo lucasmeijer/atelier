@@ -311,6 +311,83 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
+  test("expands the separate Projects section above Settings", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "used-workspace", title: "Used workspace" },
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent content</p>" }],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = {
+      projects: [{ id: "used-1", title: "Used one", workspaces: [{ id: "used-workspace", title: "Used workspace", active: true }] }],
+      projectlessWorkspaces: [],
+      emptyProjects: [
+        { id: "unused-1", title: "Unused one" },
+        { id: "unused-2", title: "Unused two" },
+      ],
+    };
+    const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    await page.addInitScript(() => localStorage.removeItem("atelier:workspace-project-disclosures"));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-shell-app")?.classList.contains("is-workspace-pane-open"));
+
+    const drawer = page.locator(".fixed-shell-projects-drawer");
+    const disclosure = drawer.locator(":scope > .fixed-shell-project-heading-row .fixed-shell-project-heading");
+    const workspaceScroll = page.locator(".fixed-shell-workspace-scroll");
+    const footer = page.locator(".fixed-shell-workspace-pane > footer");
+    const emptyProject = drawer.getByText("Unused one", { exact: true });
+    const usedProject = drawer.getByText("Used one", { exact: true });
+    const drawerLabel = disclosure.getByText("Projects", { exact: true });
+    const workspaceProject = page.locator('[data-project-id="used-1"] > .fixed-shell-project-heading-row .fixed-shell-project-heading > span');
+    const collapsedDrawer = (await drawer.boundingBox())!;
+    const expandedFrom = (await workspaceScroll.boundingBox())!;
+    expect(await disclosure.textContent()).toContain("Projects");
+    expect(await disclosure.locator(":scope > svg").isVisible()).toBe(false);
+    const drawerAdd = drawer.locator(":scope > .fixed-shell-project-heading-row .fixed-shell-project-add");
+    const idleDrawerAddStyle = await drawerAdd.evaluate((element) => ({ background: getComputedStyle(element).backgroundColor, shadow: getComputedStyle(element).boxShadow }));
+    await disclosure.hover();
+    expect(await drawerAdd.evaluate((element) => ({ background: getComputedStyle(element).backgroundColor, shadow: getComputedStyle(element).boxShadow }))).toEqual(idleDrawerAddStyle);
+    expect(await disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(await emptyProject.isVisible()).toBe(false);
+    expect(collapsedDrawer.y + collapsedDrawer.height).toBe((await footer.boundingBox())!.y);
+
+    await disclosure.evaluate((button: HTMLButtonElement) => button.click());
+    const expandedDrawer = (await drawer.boundingBox())!;
+    expect(await disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(await emptyProject.isVisible()).toBe(true);
+    expect(await usedProject.isVisible()).toBe(true);
+    const projectLaunch = drawer.locator('.fixed-shell-project-launch[href="/projects/unused-1/agent-launch"]');
+    const projectRow = projectLaunch.locator("..");
+    const projectSettings = projectRow.locator(".fixed-shell-project-settings");
+    const projectAdd = projectRow.locator(".fixed-shell-project-add");
+    expect(await projectLaunch.getAttribute("href")).toBe(await projectAdd.getAttribute("href"));
+    expect(await projectLaunch.getAttribute("data-turbo-frame")).toBe("agent_launch_modal");
+    await projectLaunch.hover();
+    const rowHoverAddStyle = await projectAdd.evaluate((element) => ({ color: getComputedStyle(element).color, background: getComputedStyle(element).backgroundColor, shadow: getComputedStyle(element).boxShadow }));
+    await projectAdd.hover();
+    expect(rowHoverAddStyle).toEqual(await projectAdd.evaluate((element) => ({ color: getComputedStyle(element).color, background: getComputedStyle(element).backgroundColor, shadow: getComputedStyle(element).boxShadow })));
+    await projectSettings.hover();
+    expect(await projectAdd.evaluate((element) => ({ background: getComputedStyle(element).backgroundColor, shadow: getComputedStyle(element).boxShadow }))).toEqual(idleDrawerAddStyle);
+    expect((await emptyProject.boundingBox())!.x).toBe((await drawerLabel.boundingBox())!.x);
+    expect(await emptyProject.evaluate((element) => getComputedStyle(element).color)).toBe(await workspaceProject.evaluate((element) => getComputedStyle(element).color));
+    expect(await emptyProject.evaluate((element) => getComputedStyle(element).fontSize)).toBe(await workspaceProject.evaluate((element) => getComputedStyle(element).fontSize));
+    expect(await emptyProject.evaluate((element) => getComputedStyle(element).fontWeight)).toBe(await workspaceProject.evaluate((element) => getComputedStyle(element).fontWeight));
+    expect(expandedDrawer.height).toBeGreaterThan(collapsedDrawer.height);
+    expect((await workspaceScroll.boundingBox())!.height).toBeLessThan(expandedFrom.height);
+
+    await workspaceScroll.evaluate((element) => { element.dataset.identityProbe = "kept"; });
+    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), workspacePaneCollectionsTurboStream(pane));
+    expect(await workspaceScroll.getAttribute("data-identity-probe")).toBe("kept");
+    expect(await disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(await usedProject.isVisible()).toBe(true);
+
+    await disclosure.evaluate((button: HTMLButtonElement) => button.click());
+    expect(await disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(await emptyProject.isVisible()).toBe(false);
+    await page.close();
+  });
+
   test("makes room for the Workspace pane on compact desktop widths", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "compact-demo", title: "Compact" },

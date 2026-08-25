@@ -448,13 +448,17 @@ export function installWorkspacePresentationTurboStream(Turbo: TurboLike, applic
       const pathWorkspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
       const workspaceId = visibleWorkspaceId ?? (pathWorkspaceId ? decodeURIComponent(pathWorkspaceId) : undefined);
       if (workspaceId) markActiveWorkspaceRow(replacement, workspaceId);
-      for (const project of target.querySelectorAll<HTMLElement>(".fixed-shell-project[data-project-id].is-collapsed")) {
+      for (const project of target.querySelectorAll<HTMLElement>(".fixed-shell-project[data-project-id]")) {
         const id = project.dataset.projectId!;
         const next = replacement.querySelector<HTMLElement>(`.fixed-shell-project[data-project-id="${CSS.escape(id)}"]`);
-        next?.classList.add("is-collapsed");
-        next?.querySelector<HTMLElement>(".fixed-shell-project-heading")?.setAttribute("aria-expanded", "false");
+        const collapsed = project.classList.contains("is-collapsed");
+        next?.classList.toggle("is-collapsed", collapsed);
+        next?.querySelector<HTMLElement>(".fixed-shell-project-heading")?.setAttribute("aria-expanded", String(!collapsed));
       }
-      target.replaceWith(replacement);
+      const scroll = target.querySelector<HTMLElement>(".fixed-shell-workspace-scroll")!;
+      const nextScroll = replacement.querySelector<HTMLElement>(".fixed-shell-workspace-scroll")!;
+      scroll.replaceChildren(...nextScroll.childNodes);
+      target.querySelector<HTMLElement>(".fixed-shell-projects-drawer")!.replaceWith(replacement.querySelector<HTMLElement>(".fixed-shell-projects-drawer")!);
     }
   };
   Turbo.StreamActions["present-work-view"] = function presentWorkView(this: StreamElement): void {

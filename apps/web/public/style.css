@@ -415,8 +415,12 @@ a.btn { text-decoration: none; }
 .fixed-shell-project-action > svg { width: 14px; height: 14px; stroke-width: 2; }
 .fixed-shell-project.is-collapsed .fixed-shell-project-heading > svg { transform: rotate(-90deg); }
 .fixed-shell-project.is-collapsed .fixed-shell-project-workspaces { display: none; }
-.fixed-shell-empty-projects > .fixed-shell-project-workspaces { padding-left: 12px; }
-.fixed-shell-empty-projects > .fixed-shell-project-workspaces > .fixed-shell-project { margin-bottom: 2px; }
+.fixed-shell-pane-collections { min-height: 0; flex: 1; display: flex; flex-direction: column; }
+.fixed-shell-projects-drawer { flex: 0 0 auto; margin: 0; padding: 5px 8px; border-top: 1px solid var(--fixed-shell-border); }
+.fixed-shell-projects-drawer > .fixed-shell-project-heading-row .fixed-shell-project-heading > svg { display: none; }
+.fixed-shell-projects-drawer > .fixed-shell-project-workspaces > .fixed-shell-project { margin-bottom: 2px; }
+.fixed-shell-projects-drawer .fixed-shell-project-launch { color: inherit; font-size: inherit; font-weight: inherit; }
+.fixed-shell-project-launch-row:hover:not(:has(.fixed-shell-project-settings:hover)) .fixed-shell-project-add { color: var(--accent); background: color-mix(in srgb, var(--accent) 26%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent); }
 .fixed-shell-workspace-row { position: relative; width: 100%; min-height: 32px; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 6px; padding: 6px 8px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
 .fixed-shell-workspace-row:hover, .fixed-shell-workspace-row:active { background: var(--fixed-shell-hover); color: var(--fixed-shell-text); }
 .fixed-shell-workspace-row.active { background: var(--fixed-shell-hover); color: var(--fixed-shell-text); font-weight: 650; }
