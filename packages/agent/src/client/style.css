@@ -6,8 +6,6 @@
 .agent-pane {
   --agent-inline-gutter: 2.5rem;
   --agent-inline-gutter: clamp(.75rem, 4cqi, 2.5rem);
-  --agent-transcript-fade: 3rem;
-  --agent-transcript-fade-gap: .625rem;
   height: 100%; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto;
   background: var(--bg); position: relative; container-type: inline-size;
 }
@@ -20,7 +18,7 @@
 
 .agent-transcript {
   min-height: 0; overflow-y: auto; scroll-behavior: auto;
-  padding-block: 1.875rem var(--agent-transcript-fade-gap);
+  padding-block: 1.875rem;
   padding-inline: var(--agent-inline-gutter);
   display: block; scrollbar-width: none;
 }
@@ -381,11 +379,19 @@
   padding: 0 var(--agent-inline-gutter) calc(1.375rem + env(safe-area-inset-bottom, 0));
   pointer-events: none;
 }
-.agent-promptwrap::before {
-  content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: var(--agent-transcript-fade);
-  background: linear-gradient(to bottom, transparent, var(--bg)); opacity: 1; transition: opacity .12s; pointer-events: none;
+
+/* The in-pane composer is the pane's bottom edge rather than a nested card. */
+.agent-pane > .agent-promptwrap { padding: 0; }
+.agent-pane > .agent-promptwrap > .agent-promptbox {
+  border: 0;
+  border-top: 1px solid var(--line2);
+  border-radius: 0;
+  background: var(--panel);
+  box-shadow: none;
 }
-.agent-pane.agent-transcript-at-end .agent-promptwrap::before { opacity: 0; }
+.agent-pane > .agent-promptwrap > .agent-promptbox:focus-within {
+  border-color: var(--line2);
+}
 .agent-composer-overlays {
   position: absolute; z-index: 20; left: var(--agent-inline-gutter); right: var(--agent-inline-gutter); bottom: calc(100% + 4px);
   display: flex; flex-direction: column; align-items: stretch; gap: 4px; pointer-events: none;
@@ -425,7 +431,7 @@
 .agent-completion-menu-host { position: absolute; z-index: 20; }
 .agent-composer-overlays .agent-completion-menu-host { position: static; width: 100%; pointer-events: auto; }
 .agent-completion-menu-host[hidden] { display: none; }
-.agent-completion-menu { max-height: 260px; overflow: auto; padding: 5px; background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; box-shadow: var(--shadow); }
+.agent-completion-menu { max-height: 260px; overflow: auto; padding: 5px; background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; }
 .agent-completion-menu.empty { padding: 9px 10px; color: var(--muted2); font-size: 12px; }
 .agent-completion-spinner { display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -2px; border-radius: 50%; border: 2px solid var(--line2); border-top-color: var(--accent); animation: agent-spin .75s linear infinite; }
 @keyframes agent-spin { to { transform: rotate(360deg); } }
@@ -492,7 +498,6 @@
 .agent-launch-modal .agent-launch-title { width: 100%; margin: 0; padding: 14px 16px 9px; background: var(--panel); border: 0; border-radius: 0; font-size: 12.5px; color: var(--muted); font-weight: 600; }
 .agent-launch-modal .agent-launch-title b { color: var(--text); font-weight: 700; }
 .agent-launch-modal .agent-promptwrap { padding: 0; }
-.agent-launch-modal .agent-promptwrap::before { display: none; }
 .agent-launch-modal .agent-promptbox { width: 100%; max-width: none; margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; }
 .agent-launch-modal .agent-promptbox:focus-within { border-color: var(--line); }
 .agent-launch-modal .agent-promptbox > form { min-height: 260px; }

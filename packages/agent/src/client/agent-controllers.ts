@@ -160,7 +160,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private updateTranscriptNavigation(): void {
       const latest = this.latestMessage();
       const direction = latest ? messageNavigationDirection(this.transcriptTarget, latest) : undefined;
-      this.element.classList.toggle("agent-transcript-at-end", this.stuck);
       if (direction) this.transcriptNavTarget.dataset.direction = direction;
       this.transcriptNavTarget.disabled = !direction;
       this.transcriptNavTarget.setAttribute("aria-hidden", String(!direction));
