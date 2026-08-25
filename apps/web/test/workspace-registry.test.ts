@@ -50,6 +50,25 @@ describe("workspace registry", () => {
     expect(store.saved.at(-1)).toEqual({ b: 200, a: 100 });
   });
 
+  test("seed restores and prunes persisted workspace deletion state", async () => {
+    const saved: Array<Record<string, import("../src/server/workspace-registry.ts").WorkspaceDeletionState>> = [];
+    const deletionStore = {
+      load: async () => ({
+        blocked: { status: "blocked" as const, issues: [{ repo: "work", uncommittedPaths: ["changed.ts"], outgoingCommits: [] }] },
+        removed: { status: "deleting" as const, forced: true },
+      }),
+      save: async (deletions: Record<string, import("../src/server/workspace-registry.ts").WorkspaceDeletionState>) => { saved.push(structuredClone(deletions)); },
+    };
+    const registry = createWorkspaceRegistry({ deletionStore });
+
+    await registry.seed([{ id: "blocked", title: "Blocked" }, { id: "ready", title: "Ready" }]);
+
+    expect(registry.get("blocked")?.phase).toBe("checking_delete");
+    expect(registry.get("blocked")?.deletion?.status).toBe("blocked");
+    expect(registry.get("ready")?.phase).toBe("ready");
+    expect(saved.at(-1)).toEqual({ blocked: { status: "blocked", issues: [{ repo: "work", uncommittedPaths: ["changed.ts"], outgoingCommits: [] }] } });
+  });
+
   test("parked workspaces sort below unparked workspaces", async () => {
     const { registry, captured } = setup({ activity: { parked: 300, active: 100, older: 50 } });
     await registry.seed([

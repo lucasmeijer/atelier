@@ -241,12 +241,6 @@ a { color: inherit; text-decoration: none; }
 .modal h2 { font-size: 17px; margin-bottom: 4px; }
 .modal p { color: var(--muted); margin-bottom: 12px; }
 .modal textarea { width: 100%; min-height: 130px; resize: vertical; border: 1px solid var(--line-2); border-radius: 10px; padding: 10px; font: inherit; }
-.delete-modal { width: min(720px, calc(100vw - 40px)); }
-.delete-issue { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 10px 0; background: var(--bg); }
-.delete-issue h3 { font-size: 13px; margin-bottom: 6px; }
-.delete-issue h4 { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; margin: 8px 0 4px; }
-.delete-issue ul { margin-left: 18px; color: var(--text); }
-.delete-issue code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
 .modal-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
 .modal-icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex: 0 0 auto; font-weight: 800; }
@@ -438,6 +432,21 @@ a.btn { text-decoration: none; }
 .fixed-shell-settings:hover, .fixed-shell-settings:focus-visible { background: var(--fixed-shell-hover); color: var(--fixed-shell-text); }
 
 .fixed-shell-main { min-width: 0; min-height: 0; flex: 1; display: flex; gap: var(--fixed-shell-gap); }
+.workspace-deletion-presentation { display: grid; place-items: center; overflow: auto; background: var(--fixed-shell-bg); }
+.workspace-deletion-state { width: min(680px, calc(100% - 40px)); margin: auto; padding: 48px 0; text-align: center; }
+.workspace-deletion-state > .status-spinner { display: inline-block; width: 24px; height: 24px; margin-bottom: 18px; }
+.workspace-deletion-state h1 { margin: 0 0 10px; font-size: 24px; }
+.workspace-deletion-state > p { margin: 0 auto; max-width: 560px; color: var(--fixed-shell-muted); line-height: 1.5; }
+.workspace-deletion-issues { max-height: min(48vh, 480px); margin: 28px 0; overflow: auto; border: 1px solid var(--fixed-shell-border); border-radius: var(--fixed-shell-radius); text-align: left; }
+.workspace-deletion-issue { padding: 16px 18px; }
+.workspace-deletion-issue + .workspace-deletion-issue { border-top: 1px solid var(--fixed-shell-border); }
+.workspace-deletion-issue h3, .workspace-deletion-issue h4 { margin: 0 0 8px; }
+.workspace-deletion-issue h4 { margin-top: 14px; color: var(--fixed-shell-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.workspace-deletion-issue ul { margin: 0; padding-left: 22px; }
+.workspace-deletion-issue li { margin: 4px 0; overflow-wrap: anywhere; }
+.workspace-deletion-actions { display: flex; justify-content: center; gap: 10px; margin-top: 28px; }
+.workspace-deletion-actions form { margin: 0; }
+.workspace-deletion-error { padding: 12px 16px; color: var(--red) !important; background: var(--red-soft); border-radius: var(--fixed-shell-radius); overflow-wrap: anywhere; }
 .fixed-shell-agent-pane { min-width: 380px; flex: 1 1 auto; background: var(--fixed-shell-bg); }
 .fixed-shell-agent-pane > header { justify-content: space-between; }
 .fixed-shell-park-workspace, .fixed-shell-delete-workspace { display: flex; margin: 0; }

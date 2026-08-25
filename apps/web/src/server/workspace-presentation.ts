@@ -1,4 +1,5 @@
 import { domId, escapeHtml, turboStream } from "@atelier/shared";
+import type { WorkspaceDeletionState } from "./workspace-registry.ts";
 
 export type WorkViewAvailability =
   | { phase: "opening"; detail?: string }
@@ -313,6 +314,30 @@ function renderMobileNavigation(presentation: WorkspacePresentation): string {
       <div id="${workViewDomId(presentation.workspace.id, "mobile_closers")}" class="fixed-shell-more-section fixed-shell-more-close-section">${closers}</div>
     </section>
   </nav>`;
+}
+
+function renderDeletionIssues(deletion: Extract<WorkspaceDeletionState, { status: "blocked" }>): string {
+  return deletion.issues.map((issue) => `<section class="workspace-deletion-issue"><h3>${escapeHtml(issue.repo)}</h3>
+    ${issue.uncommittedPaths.length > 0 ? `<h4>Uncommitted/staged paths</h4><ul>${issue.uncommittedPaths.map((path) => `<li><code>${escapeHtml(path)}</code></li>`).join("")}</ul>` : ""}
+    ${issue.outgoingCommits.length > 0 ? `<h4>Unpushed commits</h4><ul>${issue.outgoingCommits.map((commit) => `<li><code>${escapeHtml(commit.hash.slice(0, 12))}</code> ${escapeHtml(commit.subject)}</li>`).join("")}</ul>` : ""}
+  </section>`).join("");
+}
+
+export function renderWorkspaceDeletionPresentation(workspaceId: string, deletion: WorkspaceDeletionState): string {
+  const id = encodeURIComponent(workspaceId);
+  let content: string;
+  if (deletion.status === "checking") {
+    content = '<span class="status-spinner" aria-hidden="true"></span><h1>Checking if it’s safe to delete…</h1><p>Atelier is checking for uncommitted changes and unpushed commits.</p>';
+  } else if (deletion.status === "deleting") {
+    const title = deletion.forced ? "Force deleting workspace…" : "Deleting workspace…";
+    const detail = deletion.forced ? "Local changes or unpushed commits may be discarded." : "The safety check passed. Atelier is removing the workspace.";
+    content = `<span class="status-spinner" aria-hidden="true"></span><h1>${title}</h1><p>${detail}</p>`;
+  } else if (deletion.status === "blocked") {
+    content = `<h1>Please confirm it's okay to delete the workspace with these outstanding changes.</h1><div class="workspace-deletion-issues">${renderDeletionIssues(deletion)}</div><div class="workspace-deletion-actions"><form method="post" action="/workspaces/${id}/delete/cancel" data-turbo="true"><button class="btn" type="submit">Cancel deletion</button></form><form method="post" action="/workspaces/${id}/delete?force=1" data-turbo="true"><button class="btn danger" type="submit">Delete anyway</button></form></div>`;
+  } else {
+    content = `<h1>Workspace deletion failed</h1><p class="workspace-deletion-error">${escapeHtml(deletion.error)}</p><div class="workspace-deletion-actions"><form method="post" action="/workspaces/${id}/delete/cancel" data-turbo="true"><button class="btn" type="submit">Cancel deletion</button></form><form method="post" action="/workspaces/${id}/delete/retry" data-turbo="true"><button class="btn danger" type="submit">Retry deletion</button></form></div>`;
+  }
+  return `<div id="${domId("fixed_workspace", workspaceId)}" class="fixed-workspace-presentation workspace-deletion-presentation" data-workspace-id="${escapeHtml(workspaceId)}"><main class="workspace-deletion-state" role="${deletion.status === "failed" ? "alert" : "status"}">${content}</main></div>`;
 }
 
 export function renderWorkspacePresentation(presentation: WorkspacePresentation): string {

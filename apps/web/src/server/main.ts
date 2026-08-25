@@ -23,7 +23,7 @@ import {
 import { createWebApp, type WebApp } from "./app.ts";
 import { createCableServer, type CableSocketData } from "./cable.ts";
 import { legacyStaticFiles } from "./static-files.ts";
-import { createFileWorkspaceActivityStore, createFileWorkspaceUnreadStore, createWorkspaceRegistry } from "./workspace-registry.ts";
+import { createFileWorkspaceActivityStore, createFileWorkspaceDeletionStore, createFileWorkspaceUnreadStore, createWorkspaceRegistry } from "./workspace-registry.ts";
 import { workspaceModules } from "./workspace-modules.ts";
 
 const requestedPort = Number(process.env.PORT ?? 3000);
@@ -225,6 +225,7 @@ const publicPortExposer = createPublicPortExposer();
 const registry = createWorkspaceRegistry({
   activityStore: createFileWorkspaceActivityStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-activity.json")),
   unreadStore: createFileWorkspaceUnreadStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-unread.json")),
+  deletionStore: createFileWorkspaceDeletionStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-deletions.json")),
 });
 let app: WebApp;
 const cableServer = createCableServer({ registry, events: atelierEvents, shellSnapshot: () => app.shellSnapshot() });
@@ -291,6 +292,8 @@ for (const module of workspaceModules) {
     onWorkspaceRemoved: (handler) => workspaceRemovedHandlers.push(handler),
   });
 }
+
+app.resumeWorkspaceDeletions();
 
 function contentTypeForStaticPath(pathname: string): string {
   if (pathname.endsWith(".css")) return "text/css; charset=utf-8";

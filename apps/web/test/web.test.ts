@@ -789,25 +789,24 @@ describe("web app contracts", () => {
     expect(provisionCount).toBe(1);
   });
 
-  test("blocked delete returns the confirmation modal to the requester and restores the row", async () => {
+  test("blocked delete replaces the workspace panes and waits for the user's decision", async () => {
     const { app, registry, broadcasts } = createTestApp({ inspect: async (id) => blockedDetails(id) });
     await registry.seed([{ id: "abc", title: "A" }]);
     broadcasts.length = 0;
 
-    const response = await app.fetch(post("/workspaces/abc/delete"));
-    const body = await response.text();
+    const body = await (await app.fetch(post("/workspaces/abc/delete"))).text();
 
-    expect(body).toContain('id="delete-workspace-modal"');
-    expect(body).toContain('action="append" target="body"');
+    expect(body).toContain("Please confirm it's okay to delete the workspace with these outstanding changes.");
+    expect(body).toContain("/workspaces/abc/delete/cancel");
     expect(body).toContain("/workspaces/abc/delete?force=1");
-    expect(registry.get("abc")?.phase).toBe("ready");
-
-    // Other clients receive current Workspace pane collections for both phase changes.
-    while (broadcasts.filter((html) => html.includes('action="replace-workspace-pane-collections"')).length < 2) await Bun.sleep(1);
-    expect(broadcasts.filter((html) => html.includes('action="replace-workspace-pane-collections"')).length).toBeGreaterThanOrEqual(2);
+    expect(body).toContain("a.txt");
+    expect(registry.get("abc")?.phase).toBe("checking_delete");
+    expect(registry.get("abc")?.deletion).toMatchObject({ status: "blocked" });
+    expect(registry.isWorkspaceUnread("abc")).toBe(true);
+    expect(broadcasts.some((html) => html.includes("Checking if it’s safe to delete"))).toBe(true);
   });
 
-  test("allowed delete walks checking_delete -> deleting -> row removal", async () => {
+  test("allowed delete keeps its row and status page until destruction finishes", async () => {
     const destroy = deferred();
     const { app, registry, broadcasts } = createTestApp({ destroy: () => destroy.promise });
     await registry.seed([{ id: "abc", title: "A" }]);
@@ -816,14 +815,33 @@ describe("web app contracts", () => {
     const response = await app.fetch(post("/workspaces/abc/delete"));
     expect(response.status).toBe(200);
     expect(registry.get("abc")?.phase).toBe("deleting");
-    while (!broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"') && !html.includes('data-workspace-entry-id="abc"'))) await Bun.sleep(1);
-    expect(broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"') && !html.includes('data-workspace-entry-id="abc"'))).toBe(true);
-    expect(broadcasts).toContain('<turbo-stream action="remove-workspace-resident" target="fixed_workspace_abc"></turbo-stream>');
+    expect(registry.get("abc")?.deletion).toEqual({ status: "deleting", forced: false });
+    while (!broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"') && html.includes('data-workspace-entry-id="abc"'))) await Bun.sleep(1);
+    expect(broadcasts.some((html) => html.includes("Deleting workspace…"))).toBe(true);
+    expect(broadcasts).not.toContain('<turbo-stream action="remove-workspace-resident" target="fixed_workspace_abc"></turbo-stream>');
 
     destroy.resolve();
     await Bun.sleep(20);
     expect(registry.get("abc")).toBeUndefined();
+    expect(broadcasts).toContain('<turbo-stream action="remove-workspace-resident" target="fixed_workspace_abc"></turbo-stream>');
     expect(broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"') && !html.includes('data-workspace-entry-id="abc"'))).toBe(true);
+  });
+
+  test("deletion failures remain as an actionable workspace state", async () => {
+    const { app, registry } = createTestApp({ destroy: async () => { throw new Error("docker refused"); } });
+    await registry.seed([{ id: "abc", title: "A" }]);
+
+    await app.fetch(post("/workspaces/abc/delete"));
+    while (registry.get("abc")?.deletion?.status !== "failed") await Bun.sleep(1);
+    const body = await (await app.fetch(new Request("http://test.local/workspaces/abc?resident=1"))).text();
+
+    expect(registry.get("abc")?.phase).toBe("failed");
+    expect(body).toContain("Workspace deletion failed");
+    expect(body).toContain("docker refused");
+    expect(body).toContain("/workspaces/abc/delete/retry");
+    expect(body).toContain("/workspaces/abc/delete/cancel");
+    expect(body).not.toContain("fixed-shell-agent-pane");
+    expect(body).not.toContain("fixed-shell-work-pane");
   });
 
   test("park and unpark return the updated Workspace pane", async () => {
