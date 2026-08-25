@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildTranscript, formatDuration, formatTokens, isFinalAssistantMessage, isToolViewDetails, toolDetailsIndicateError, type TranscriptRecord } from "../../src/server/transcript.ts";
+import { buildTranscript, findTranscriptItem, formatDuration, formatTokens, isFinalAssistantMessage, isToolViewDetails, toolDetailsIndicateError, type TranscriptRecord } from "../../src/server/transcript.ts";
 
 describe("transcript", () => {
   test("preserves record order and joins tool results", () => {
@@ -13,7 +13,7 @@ describe("transcript", () => {
     expect(items.map((item) => item.type)).toEqual(["user", "working", "text"]);
     const working = items.find((item) => item.type === "working");
     expect(working?.type === "working" && working.items.map((item) => item.type)).toEqual(["thinking", "tool"]);
-    const tool = working?.type === "working" ? working.items.find((item) => item.type === "tool") : undefined;
+    const tool = findTranscriptItem(items, "tool:c1");
     expect(tool?.type === "tool" && tool.tool.resultText).toBe("file.txt");
     expect(tool?.type === "tool" && tool.tool.durationMs).toBe(1000);
     expect(working?.type === "working" && working.completedAt).toBe(4000);

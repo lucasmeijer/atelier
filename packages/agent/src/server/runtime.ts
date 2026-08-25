@@ -43,6 +43,7 @@ import { AgentServiceTierState, modelRuntimeWithServiceTiers, supportsFastMode, 
 import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
 import {
   buildTranscript,
+  findTranscriptItem,
   isFinalAssistantMessage,
   isFinalAssistantStopReason,
   isToolViewDetails,
@@ -663,7 +664,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   async detailHtml(key: string, count = 100): Promise<string> {
     if (key === "model-context") return renderModelContextDetailFrame(this.ctx, this.modelContext());
-    const item = (await this.itemsForDisplay()).find((candidate) => candidate.key === key);
+    const item = findTranscriptItem(await this.itemsForDisplay(), key);
     return item ? renderTranscriptItemDetailFrame(this.ctx, item, { count }) : "";
   }
 

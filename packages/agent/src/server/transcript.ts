@@ -91,6 +91,17 @@ export type TranscriptItem =
   | (TranscriptItemBase & { type: "note"; text: string; tone: NoteTone })
   | (TranscriptItemBase & { type: "error"; text: string });
 
+export function findTranscriptItem(items: TranscriptItem[], key: string): TranscriptItem | undefined {
+  for (const item of items) {
+    if (item.key === key) return item;
+    if (item.type === "working") {
+      const nested = findTranscriptItem(item.items, key);
+      if (nested) return nested;
+    }
+  }
+  return undefined;
+}
+
 export function isFinalAssistantStopReason(reason: StopReason): boolean {
   return reason === "stop" || reason === "length" || reason === "deferred";
 }
