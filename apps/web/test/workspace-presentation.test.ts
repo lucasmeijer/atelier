@@ -39,6 +39,9 @@ describe("role-fixed Workspace presentation", () => {
     ] }], emptyProjects: [{ id: "project-2", title: "Empty" }], projectlessWorkspaces: [{ id: "workspace-3", title: "Scratch" }] }, '<button data-update-probe>Restart to update</button>');
 
     expect(html).toContain('class="fixed-shell-workspace-pane"');
+    expect(html).not.toContain("Close Workspace pane");
+    expect(html).not.toContain("Open Workspace pane");
+    expect(html).not.toContain("<strong>Atelier</strong>");
     expect(html).toContain('data-controller="modal-opener"');
     expect(html).toContain('data-action="click->workspace-navigation#selectWorkspace"');
     expect(html).toContain('href="/projects/project-1/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New workspace: Atelier"');
@@ -91,6 +94,8 @@ describe("role-fixed Workspace presentation", () => {
     expect(header).toContain('class="fixed-shell-delete-workspace"');
     expect(header).toContain('action="/workspaces/workspace-1/delete"');
     expect(header).toContain('title="Delete workspace" aria-label="Delete workspace"');
+    expect(header).toContain('aria-label="Show Work pane"');
+    expect(html).toContain('aria-label="Collapse Work pane"');
   });
 
   test("keeps adapter HTML inside stable type-native live nodes", () => {

@@ -2,7 +2,6 @@
 .update-sidebar-left.pulling { width: auto; }
 .update-sidebar-left.pulling .update-sidebar-progress { width: 58px; flex: 0 0 auto; }
 .update-sidebar-percent { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 30px; white-space: nowrap; }
-.workspace-shell-collapsed .update-sidebar-percent { display: none; }
 @keyframes update-progress-indeterminate { 0% { transform: translateX(-120%); } 100% { transform: translateX(260%); } }
 .update-release-notes img, .update-release-notes video { display: block; max-width: 100%; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); }
 .update-release-notes pre { overflow: auto; padding: 10px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }

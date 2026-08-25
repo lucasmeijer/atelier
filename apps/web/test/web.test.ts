@@ -498,8 +498,6 @@ describe("web app contracts", () => {
     expect(home).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
     expect(broadcasts.some((html) => html.includes('<turbo-stream action="update" target="global_sidebar_contributions"'))).toBe(true);
     expect(home).toContain("Create or select a workspace");
-    expect(home).not.toContain("workspace-shell-sidebar");
-    expect(home).not.toContain("workspace-shell#toggle");
   });
 
   test("project workspaces advertise the prompt-first workspace shortcut", async () => {

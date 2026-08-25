@@ -64,7 +64,7 @@ describe("Atelier Playwright helper", () => {
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/active", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/");
-    await page.waitForFunction(() => document.querySelector(".fixed-shell-app")?.classList.contains("is-workspace-pane-open"));
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
 
     const pressShortcut = async (key: string, code: string) => {
       await page.locator("body").dispatchEvent("keydown", { key, code, metaKey: true, altKey: true, bubbles: true, cancelable: true });
@@ -226,7 +226,10 @@ describe("Atelier Playwright helper", () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "deep-demo", title: "Deep link" },
       agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent</p>" }],
-      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
+      workViews: [
+        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
+        { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" },
+      ],
     };
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     let acknowledgements = 0;
@@ -240,13 +243,19 @@ describe("Atelier Playwright helper", () => {
     await page.waitForTimeout(20);
     expect(acknowledgements).toBe(1);
 
+    await page.getByRole("tab", { name: "Files" }).click();
+    expect(new URL(page.url()).searchParams.has("workView")).toBe(false);
+    expect(await page.locator('[data-work-view-key="files:workspace"]').getAttribute("aria-selected")).toBe("true");
+    await page.waitForTimeout(20);
+    const acknowledgementsBeforeHiding = acknowledgements;
+
     await page.locator(".workspace-detail-resident").evaluate((resident) => resident.classList.remove("visible"));
     await page.evaluate(() => {
       const target = document.querySelector<HTMLElement>(".fixed-workspace-presentation")!;
       window.Turbo!.renderStreamMessage(`<turbo-stream action="present-work-view" target="${target.id}" data-work-view-key="browser:1"></turbo-stream>`);
     });
     await page.waitForTimeout(20);
-    expect(acknowledgements).toBe(1);
+    expect(acknowledgements).toBe(acknowledgementsBeforeHiding);
     await page.close();
   });
 
@@ -330,7 +339,7 @@ describe("Atelier Playwright helper", () => {
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.goto("http://atelier.test/");
-    await page.waitForFunction(() => document.querySelector(".fixed-shell-app")?.classList.contains("is-workspace-pane-open"));
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
 
     const drawer = page.locator(".fixed-shell-projects-drawer");
     const disclosure = drawer.locator(":scope > .fixed-shell-project-heading-row .fixed-shell-project-heading");
@@ -388,7 +397,7 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
-  test("makes room for the Workspace pane on compact desktop widths", async () => {
+  test("keeps the Workspace pane permanently open on desktop", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "compact-demo", title: "Compact" },
       agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<button data-agent-content>Agent content</button>' }],
@@ -404,30 +413,17 @@ describe("Atelier Playwright helper", () => {
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
-    await page.locator("[data-agent-content]").focus();
-    await page.waitForTimeout(250);
-    expect(await page.locator(".fixed-shell-app").getAttribute("class")).toContain("is-workspace-pane-open");
-    expect(await page.locator('[data-collapsed-pane-toggle="workspace"]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
-    expect(await page.locator('[data-expanded-pane-toggle="workspace"]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
-    expect(await page.locator('.fixed-shell-workspace-row[aria-current="page"]').count()).toBe(1);
+
+    expect(await page.getByRole("button", { name: /Workspace pane/ }).count()).toBe(0);
+    expect(await page.locator(".fixed-shell-workspace-pane > header").count()).toBe(0);
+    expect(await page.locator(".fixed-shell-workspace-pane").evaluate((element) => element.getBoundingClientRect().width)).toBe(275);
     expect(await page.locator(".fixed-shell-app").evaluate((element) => {
       const workspace = element.querySelector(".fixed-shell-workspace-pane")!.getBoundingClientRect();
       const agent = element.querySelector(".fixed-shell-agent-pane")!.getBoundingClientRect();
-      return workspace.right <= agent.left;
-    })).toBe(true);
-    await page.getByRole("button", { name: "Close Workspace pane" }).evaluate((button: HTMLButtonElement) => button.click());
-    expect(await page.locator(".fixed-shell-app").getAttribute("class")).not.toContain("is-workspace-pane-open");
-    expect(await page.locator('[data-collapsed-pane-toggle="workspace"]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
-    expect(await page.locator('[data-expanded-pane-toggle="workspace"]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
-    expect(await page.locator(".fixed-shell-workspace-pane").evaluate((element) => element.getBoundingClientRect().width)).toBe(50);
+      return { separated: workspace.right < agent.left, radius: getComputedStyle(element.querySelector(".fixed-shell-workspace-pane")!).borderRadius };
+    })).toEqual({ separated: true, radius: "14px" });
     expect(await page.locator('.fixed-shell-workspace-row[data-workspace-entry-id="ready-demo"] .fixed-shell-attention-dot').isVisible()).toBe(true);
     expect(await page.locator('.fixed-shell-workspace-row[data-workspace-entry-id="busy-demo"] .fixed-shell-workspace-busy').isVisible()).toBe(true);
-    expect(await page.locator('.fixed-shell-workspace-row[aria-current="page"] .fixed-shell-workspace-color').isVisible()).toBe(true);
-    await page.getByRole("button", { name: "Open Workspace pane" }).evaluate((button: HTMLButtonElement) => button.click());
-    expect(await page.locator(".fixed-shell-app").getAttribute("class")).toContain("is-workspace-pane-open");
-    expect(await page.locator('[data-collapsed-pane-toggle="workspace"]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
-    expect(await page.locator('[data-expanded-pane-toggle="workspace"]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
-    expect(await page.locator("[data-agent-content]").isVisible()).toBe(true);
     await page.close();
   });
 
@@ -448,12 +444,9 @@ describe("Atelier Playwright helper", () => {
     await page.waitForFunction(() => document.querySelectorAll('[data-navigation-ready="true"]').length === 2);
     const residentB = page.locator('.workspace-detail-resident[data-workspace-id="b"]');
 
-    await page.getByRole("button", { name: "Close Workspace pane" }).evaluate((button: HTMLButtonElement) => button.click());
-    await page.getByRole("button", { name: "Open Workspace pane" }).evaluate((button: HTMLButtonElement) => button.click());
     await page.locator('[data-workspace-entry-id="b"]').evaluate((button: HTMLButtonElement) => button.click());
 
     await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="b"]')?.classList.contains("visible"));
-    expect(await page.locator(".fixed-shell-app").getAttribute("class")).toContain("is-workspace-pane-open");
     expect(await page.locator(".fixed-shell-workspace-pane").count()).toBe(1);
     expect(await residentB.locator(".fixed-shell-workspace-pane").count()).toBe(0);
     await page.close();
@@ -473,14 +466,21 @@ describe("Atelier Playwright helper", () => {
     const workspaceBefore = await page.locator(".fixed-shell-workspace-pane").boundingBox();
     expect(await page.locator(".fixed-shell-work-pane").evaluate((element) => getComputedStyle(element).transitionDuration)).toBe("0s");
     expect(await page.locator(".fixed-shell-workspace-pane").evaluate((element) => getComputedStyle(element).transitionDuration)).toBe("0s");
-    expect(await page.locator('[data-collapsed-pane-toggle="work"]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
-    expect(await page.locator('[data-expanded-pane-toggle="work"]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
-    await page.getByRole("button", { name: "Open Work pane" }).evaluate((button: HTMLButtonElement) => button.click());
+    expect(await page.locator('[data-show-work-pane]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
+    expect(await page.locator('[data-collapse-work-pane]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
+    await page.getByRole("button", { name: "Show Work pane" }).evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-work-pane-open");
-    expect(await page.locator('[data-collapsed-pane-toggle="work"]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
-    expect(await page.locator('[data-expanded-pane-toggle="work"]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
+    expect(await page.locator('[data-show-work-pane]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
+    expect(await page.locator('[data-collapse-work-pane]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
     expect(await page.locator(".fixed-shell-work-pane").evaluate((element) => getComputedStyle(element).marginRight)).toBe("0px");
+    expect(await page.locator(".fixed-shell-main").evaluate((element) => {
+      const agent = element.querySelector(".fixed-shell-agent-pane")!.getBoundingClientRect();
+      const work = element.querySelector(".fixed-shell-work-pane")!.getBoundingClientRect();
+      return { separated: agent.right < work.left, agentBottom: agent.bottom, workBottom: work.bottom, agentRadius: getComputedStyle(element.querySelector(".fixed-shell-agent-pane")!).borderRadius, workRadius: getComputedStyle(element.querySelector(".fixed-shell-work-pane")!).borderRadius };
+    })).toEqual({ separated: true, agentBottom: 892, workBottom: 892, agentRadius: "14px", workRadius: "14px" });
     expect(await page.locator(".fixed-shell-workspace-pane").boundingBox()).toEqual(workspaceBefore);
+    await page.getByRole("button", { name: "Collapse Work pane" }).evaluate((button: HTMLButtonElement) => button.click());
+    expect(await page.getByRole("button", { name: "Show Work pane" }).isVisible()).toBe(true);
     await page.close();
   });
 

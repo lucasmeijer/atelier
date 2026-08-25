@@ -282,6 +282,8 @@ export function createWorkspacePresentationController(
       const selector = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(key)}"]`);
       if (!selector) return false;
       this.selectWorkViewState(key, selector.dataset.workViewKind === "contextual");
+      url.searchParams.delete("workView");
+      window.history.replaceState(window.history.state, "", url);
       this.persist();
       return true;
     }
@@ -388,9 +390,8 @@ export function createWorkspacePresentationController(
     }
 
     private setWorkWidth(width: number, persist: boolean): void {
-      const workspaceWidth = this.element.closest(".fixed-shell-app.is-workspace-pane-open") && window.innerWidth >= 1180 ? 275 : 0;
-      const agentMinimum = workspaceWidth ? 420 : 380;
-      const maximum = window.innerWidth - workspaceWidth - agentMinimum;
+      const gap = Number.parseFloat(getComputedStyle(this.element).getPropertyValue("--fixed-shell-gap"));
+      const maximum = this.element.clientWidth - 420 - gap;
       const bounded = Math.max(360, Math.min(width, maximum));
       this.element.style.setProperty("--fixed-work-width", `${bounded}px`);
       if (persist) localStorage.setItem("atelier:work-pane-width", String(bounded));

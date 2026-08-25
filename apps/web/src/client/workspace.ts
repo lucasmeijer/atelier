@@ -1010,7 +1010,6 @@ class ModalOpenerController extends Controller {
   }
 }
 
-const workspacePaneVisibilitySchema = Type.Boolean();
 const projectDisclosuresSchema = Type.Record(Type.String(), Type.Boolean());
 
 class WorkspaceNavigationController extends Controller {
@@ -1020,9 +1019,6 @@ class WorkspaceNavigationController extends Controller {
   private scrollTimer?: ReturnType<typeof setTimeout>;
 
   connect(): void {
-    const stored = sessionStorage.getItem("atelier:workspace-pane-visible");
-    const visible = stored === null ? true : Value.Parse(workspacePaneVisibilitySchema, JSON.parse(stored));
-    this.element.classList.toggle("is-workspace-pane-open", visible);
     this.scrollTarget.addEventListener("scroll", this.scrolled, { passive: true });
     const scroll = Number(localStorage.getItem("atelier:workspace-pane-scroll"));
     if (Number.isFinite(scroll)) this.scrollTarget.scrollTop = scroll;
@@ -1034,12 +1030,6 @@ class WorkspaceNavigationController extends Controller {
     if (this.scrollTimer) clearTimeout(this.scrollTimer);
   }
 
-  togglePane(): void {
-    const open = !this.element.classList.contains("is-workspace-pane-open");
-    this.element.classList.toggle("is-workspace-pane-open", open);
-    sessionStorage.setItem("atelier:workspace-pane-visible", String(open));
-    window.dispatchEvent(new Event("resize"));
-  }
 
   async selectWorkspace(event: Event): Promise<void> {
     // SAFETY: This action is attached only to server-rendered Workspace entry elements.
