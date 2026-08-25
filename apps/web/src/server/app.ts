@@ -229,6 +229,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId), seedSteps: deps.provisioningHooks });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
   const agentLaunchModalFrameId = "agent_launch_modal";
+  // Every server-rendered launch form has one attachment draft ID. Retried POSTs
+  // therefore join the original launch instead of provisioning another workspace.
+  const agentWorkspaceLaunches = new Map<string, Promise<CreatedWorkspace>>();
   const agentLaunchSettingsFrameId = "agent_launch_settings";
   const agentLaunchFormId = "agent_launch_form";
 
@@ -1034,20 +1037,30 @@ ${moduleStylesHtml()}
 
   async function createAgentWorkspaceFromForm(request: Request, options: { project?: ProjectSummary } = {}): Promise<Response> {
     const form = await request.formData();
-    const model = String(form.get("model") ?? "");
-    const thinkingLevel = String(form.get("level") ?? "");
-    const serviceTier = form.get("serviceTier") === "priority" ? "priority" : "default";
-    await rememberNewWorkspaceAgentSettings(model, thinkingLevel);
-    createWorkspaceFromCommand({
-      source: options.project ? { type: "project", project: options.project } : { type: "empty" },
-      agent: {
-        initialPrompt: String(form.get("text") ?? ""),
-        model,
-        thinkingLevel,
-        serviceTier,
-        attachmentDraft: String(form.get("attachmentDraft") ?? ""),
-      },
-    });
+    const attachmentDraft = String(form.get("attachmentDraft") ?? "");
+    if (!attachmentDraft) throw invalidArguments("attachmentDraft is required");
+
+    let launch = agentWorkspaceLaunches.get(attachmentDraft);
+    if (!launch) {
+      launch = (async () => {
+        const model = String(form.get("model") ?? "");
+        const thinkingLevel = String(form.get("level") ?? "");
+        const serviceTier = form.get("serviceTier") === "priority" ? "priority" : "default";
+        await rememberNewWorkspaceAgentSettings(model, thinkingLevel);
+        return createWorkspaceFromCommand({
+          source: options.project ? { type: "project", project: options.project } : { type: "empty" },
+          agent: {
+            initialPrompt: String(form.get("text") ?? ""),
+            model,
+            thinkingLevel,
+            serviceTier,
+            attachmentDraft,
+          },
+        });
+      })();
+      agentWorkspaceLaunches.set(attachmentDraft, launch);
+    }
+    await launch;
 
     return turboStreamResponse(`${turboUpdateStream("workspaces_table_rows", renderWorkspaceRows())}${turboUpdateStream(agentLaunchModalFrameId, "")}`);
   }

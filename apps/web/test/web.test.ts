@@ -703,7 +703,7 @@ describe("web app contracts", () => {
       const { app, registry } = createTestApp();
       await registry.seed([]);
 
-      const response = await app.fetch(postForm(`/project-agent-workspaces/${encodeURIComponent(project.id)}`, new URLSearchParams({ text: "do it" })));
+      const response = await app.fetch(postForm(`/project-agent-workspaces/${encodeURIComponent(project.id)}`, new URLSearchParams({ text: "do it", attachmentDraft: crypto.randomUUID() })));
       const body = await response.text();
       const entry = registry.list()[0]!;
 
@@ -725,18 +725,36 @@ describe("web app contracts", () => {
       let captured: ProvisionWorkspaceOptions | undefined;
       const { app, registry } = createTestApp({ provision: async (_id, options) => { captured = options; } });
       await registry.seed([]);
+      const attachmentDraft = crypto.randomUUID();
 
       const response = await app.fetch(postForm("/agent-workspaces", new URLSearchParams({
         text: "",
         model: "openai-codex::gpt-5.6-sol",
         level: "medium",
-        attachmentDraft: "",
+        attachmentDraft,
       })));
 
       expect(response.status).toBe(200);
-      expect(captured?.context).toEqual({ agent: { initialPrompt: "", model: "openai-codex::gpt-5.6-sol", thinkingLevel: "medium", serviceTier: "default", attachmentDraft: "" } });
+      expect(captured?.context).toEqual({ agent: { initialPrompt: "", model: "openai-codex::gpt-5.6-sol", thinkingLevel: "medium", serviceTier: "default", attachmentDraft } });
       expect(await response.text()).toContain('action="update" target="agent_launch_modal"');
     });
+  });
+
+  test("repeated agent workspace submissions create and provision only one workspace", async () => {
+    let provisionCount = 0;
+    const { app, registry } = createTestApp({ provision: async () => { provisionCount++; } });
+    await registry.seed([]);
+    const body = new URLSearchParams({ text: "do it once", attachmentDraft: crypto.randomUUID() });
+
+    const [first, retry] = await Promise.all([
+      app.fetch(postForm("/agent-workspaces", body)),
+      app.fetch(postForm("/agent-workspaces", body)),
+    ]);
+
+    expect(first.status).toBe(200);
+    expect(retry.status).toBe(200);
+    expect(registry.list()).toHaveLength(1);
+    expect(provisionCount).toBe(1);
   });
 
   test("blocked delete returns the confirmation modal to the requester and restores the row", async () => {
