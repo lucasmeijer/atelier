@@ -390,7 +390,7 @@ export function createWorkspacePresentationController(
     private setWorkWidth(width: number, persist: boolean): void {
       const workspaceWidth = this.element.closest(".fixed-shell-app.is-workspace-pane-open") && window.innerWidth >= 1180 ? 275 : 0;
       const agentMinimum = workspaceWidth ? 420 : 380;
-      const maximum = Math.min(760, window.innerWidth - workspaceWidth - agentMinimum);
+      const maximum = window.innerWidth - workspaceWidth - agentMinimum;
       const bounded = Math.max(360, Math.min(width, maximum));
       this.element.style.setProperty("--fixed-work-width", `${bounded}px`);
       if (persist) localStorage.setItem("atelier:work-pane-width", String(bounded));
