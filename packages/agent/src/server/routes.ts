@@ -5,7 +5,8 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { getModelThinkingLevel, setModelThinkingLevel } from "./pi-config-models.ts";
 import { parseModelRef } from "./model-state.ts";
-import { setWorkspaceTitle, workspaceContainerName, workspacePreviewPortUrl } from "@atelier/workspace";
+import { getWorkspaceInit, setWorkspaceTitle, workspaceContainerName, workspacePreviewPortUrl } from "@atelier/workspace";
+import { isGitProjectInit, neverOfferProjectPreparation } from "@atelier/projects";
 import {
   deliverAttachmentDraft,
   extensionOf,
@@ -104,9 +105,14 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
     const draft = await acceptInitialPromptDraft(ctx.workspaceId);
     return turboStreamResponse(`${turboStream("replace", ids.input(ctx), renderAgentPanePromptInput(ctx, draft.prompt))}${turboStream("remove", ids.initialPromptSuggestion(ctx), "")}`);
   }
-  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/initial-prompt-draft\/decline$/)) && request.method === "POST") {
+  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/initial-prompt-draft\/(decline|never)$/)) && request.method === "POST") {
     const ctx = { workspaceId: params[0], label: params[1] };
     await requireAgentConversation(ctx.workspaceId, ctx.label);
+    if (params[2] === "never") {
+      const init = await getWorkspaceInit(ctx.workspaceId);
+      if (!isGitProjectInit(init)) throw new AtelierCoreError("invalid_workspace_source", "workspace is not associated with a project");
+      await neverOfferProjectPreparation(init.projectId);
+    }
     await removeInitialPromptDraft(ctx.workspaceId);
     return turboStreamResponse(turboStream("remove", ids.initialPromptSuggestion(ctx), ""));
   }

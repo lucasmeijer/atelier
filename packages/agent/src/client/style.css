@@ -244,7 +244,7 @@
 .agent-project-preparation-notice b, .agent-project-preparation-notice span { display: block; }
 .agent-project-preparation-notice b { color: var(--text); font-size: 13px; margin-bottom: 3px; }
 .agent-project-preparation-notice code { color: var(--text); }
-.agent-project-preparation-actions { display: flex; gap: 7px; justify-content: flex-end; }
+.agent-project-preparation-actions { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
 .agent-project-preparation-actions form { margin: 0; }
 .agent-promptbox { position: relative; background: var(--panel); border: 1.5px solid var(--line2); border-radius: var(--fixed-shell-radius, 14px); box-shadow: var(--shadow); overflow: hidden; padding-bottom: 30px; pointer-events: auto; container-type: inline-size; }
 .agent-promptbox:focus-within { border-color: var(--accent); }

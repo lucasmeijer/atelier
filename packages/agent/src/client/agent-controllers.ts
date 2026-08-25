@@ -151,7 +151,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private subscribed = false;
     private hasSubscribed = false;
     private transcriptMutationObserver?: MutationObserver;
-    private promptObserver?: MutationObserver;
     private transcriptLayoutObserver?: ResizeObserver;
     private transcriptLayoutFrame = 0;
     private transcriptEnd = 0;
@@ -207,8 +206,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
         this.observeTranscriptItems();
       });
       this.transcriptMutationObserver.observe(this.transcriptTarget, { childList: true, subtree: true });
-      this.promptObserver = new MutationObserver(() => this.autosize());
-      this.promptObserver.observe(this.formTarget, { childList: true, subtree: true });
       this.transcriptLayoutObserver.observe(this.element.querySelector<HTMLElement>(".agent-promptwrap")!);
       this.transcriptEnd = scrollEnd(this.transcriptTarget);
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
@@ -222,12 +219,17 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     disconnect(): void {
       this.transcriptMutationObserver?.disconnect();
-      this.promptObserver?.disconnect();
       this.transcriptLayoutObserver?.disconnect();
       cancelAnimationFrame(this.transcriptLayoutFrame);
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
       this.stop();
+    }
+
+    inputTargetConnected(input: HTMLTextAreaElement): void {
+      requestAnimationFrame(() => {
+        if (input.isConnected && this.inputTarget === input) this.autosize();
+      });
     }
 
     start(): void {

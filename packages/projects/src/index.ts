@@ -67,6 +67,7 @@ export {
 } from "./workspace-source.ts";
 
 export {
+  neverOfferProjectPreparation,
   projectPreparationPrompt,
   stageProjectPreparationPrompt,
 } from "./project-preparation.ts";

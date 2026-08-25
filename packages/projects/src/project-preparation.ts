@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { WorkspaceCreationContext } from "@atelier/workspace";
+import { findProjectRecord, projectsFile, readProjectStore, writeProjectStore } from "./project.ts";
 
 const atelierProjectDirectory = ".atelier";
 
@@ -19,8 +20,15 @@ After the project is prepared, continue with the user's original request:
 ${request}` : ""}`;
 }
 
-export function stageProjectPreparationPrompt(workHostPath: string, context: WorkspaceCreationContext): boolean {
-  if (context.projectPreparation || existsSync(join(workHostPath, atelierProjectDirectory))) return false;
+export async function neverOfferProjectPreparation(projectId: string, file = projectsFile()): Promise<void> {
+  const store = await readProjectStore(file);
+  findProjectRecord(store, projectId).neverOfferPreparation = true;
+  await writeProjectStore(file, store);
+}
+
+export async function stageProjectPreparationPrompt(projectId: string, workHostPath: string, context: WorkspaceCreationContext, file = projectsFile()): Promise<boolean> {
+  const project = findProjectRecord(await readProjectStore(file), projectId);
+  if (existsSync(join(workHostPath, atelierProjectDirectory)) || project.neverOfferPreparation) return false;
   const agent = context.agent ?? {};
   context.agent = {
     ...agent,

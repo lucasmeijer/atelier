@@ -70,6 +70,14 @@ function agentPath(ctx: AgentRenderContext, suffix: string): string {
   return `/workspaces/${encodeURIComponent(ctx.workspaceId)}/agents/${encodeURIComponent(ctx.label)}${suffix}`;
 }
 
+function initialPromptDraftAction(ctx: AgentRenderContext, decision: "accept" | "decline" | "never", label: string, primary = false): string {
+  return `<form method="post" action="${agentPath(ctx, `/initial-prompt-draft/${decision}`)}" data-turbo="true"><button class="btn${primary ? " primary" : ""}" type="submit">${label}</button></form>`;
+}
+
+function renderInitialPromptDraftSuggestion(ctx: AgentRenderContext): string {
+  return `<aside class="agent-project-preparation-notice" id="${ids.initialPromptSuggestion(ctx)}"><div><b>This project does not have Atelier configuration yet.</b><span>Shall I craft a prompt you can use to get the project configured for remote development and the Atelier environment? Nothing will be committed or pushed without your approval.</span></div><div class="agent-project-preparation-actions">${initialPromptDraftAction(ctx, "never", "Never ask again for this project")}${initialPromptDraftAction(ctx, "decline", "Not right now")}${initialPromptDraftAction(ctx, "accept", "Yes please", true)}</div></aside>`;
+}
+
 function markdown(ctx: AgentRenderContext, text: string): string {
   return renderMarkdown(ctx.workspaceId, text);
 }
@@ -188,7 +196,7 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
         draftId,
         placeholder: `Message ${ctx.label}… (drop files anywhere)`,
         initialText,
-        suggestionHtml: initialPromptDraft && !initialPromptDraft.accepted ? `<aside class="agent-project-preparation-notice" id="${ids.initialPromptSuggestion(ctx)}"><div><b>It looks like this is the first time you're using Atelier on this project.</b><span>Shall I craft a prompt you can use to get the project configured for remote development and the Atelier environment? Nothing will be committed or pushed without your approval.</span></div><div class="agent-project-preparation-actions"><form method="post" action="${escapeHtml(agentPath(ctx, "/initial-prompt-draft/decline"))}"><button class="agent-btn" type="submit">Not right now</button></form><form method="post" action="${escapeHtml(agentPath(ctx, "/initial-prompt-draft/accept"))}"><button class="agent-btn primary" type="submit">Yes please</button></form></div></aside>` : undefined,
+        suggestionHtml: initialPromptDraft && !initialPromptDraft.accepted ? renderInitialPromptDraftSuggestion(ctx) : undefined,
         formTarget: true,
         includePaneActions: true,
         busy: state.busy,

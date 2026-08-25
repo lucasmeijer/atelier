@@ -62,6 +62,7 @@ export interface ProjectRecord extends ProjectSummary {
   secrets?: StoredProjectSecret[];
   sshKey?: StoredProjectSshKey;
   environment?: ProjectEnvironmentVariable[];
+  neverOfferPreparation?: boolean;
 }
 
 export interface ProjectListResult {
@@ -114,6 +115,7 @@ const projectStoreSchema = Type.Object({
     secrets: Type.Optional(Type.Array(storedProjectSecretSchema)),
     sshKey: Type.Optional(Type.Object({ encryptedPrivateKey: Type.String() })),
     environment: Type.Optional(Type.Array(projectEnvironmentVariableSchema)),
+    neverOfferPreparation: Type.Optional(Type.Boolean()),
   })),
 });
 
@@ -172,8 +174,13 @@ export function findProjectRecord(store: ProjectStore, projectId: string): Proje
 }
 
 function projectSummary(project: ProjectRecord): ProjectSummary {
-  const { secrets: _secrets, sshKey: _sshKey, environment: _environment, ...summary } = project;
-  return summary;
+  return {
+    id: project.id,
+    name: project.name,
+    gitUrl: project.gitUrl,
+    branch: project.branch,
+    sessionShareKey: project.sessionShareKey,
+  };
 }
 
 export async function listProjects(file = projectsFile()): Promise<ProjectListResult> {

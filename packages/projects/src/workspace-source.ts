@@ -388,7 +388,7 @@ export function registerProjectWorkspaceInitEvents(events: AtelierEventBus): voi
   events.on("workspace_source_prepare", async ({ workspaceId, init, context, workHostPath }) => {
     if (!isGitProjectInit(init)) return;
     await prepareWorkspaceSource({ workspaceId, gitUrl: init.gitUrl, branch: init.branch, worktreePath: workHostPath, events });
-    if (context) stageProjectPreparationPrompt(workHostPath, context);
+    if (context) await stageProjectPreparationPrompt(init.projectId, workHostPath, context);
   });
 
   events.on("workspace_plan_prepare", async ({ workspaceId, init, plan }) => {
