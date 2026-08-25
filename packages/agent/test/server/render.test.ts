@@ -34,11 +34,6 @@ describe("transcript rendering", () => {
     expect(html).not.toContain("agent-fast-toggle");
   });
 
-  test("user messages retain their original text for prompt history", () => {
-    const html = renderTranscriptItem(ctx, { type: "user", key: "user-history", text: "**bold** & quoted \"text\"", images: [] });
-    expect(html).toContain('data-agent-user-text="**bold** &amp; quoted &quot;text&quot;"');
-  });
-
   test("new turn activity renders in an expanded working section", () => {
     const html = renderTranscriptItem(ctx, {
       type: "working",

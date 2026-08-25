@@ -188,7 +188,6 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
         stats: state.stats,
         dropTarget: false,
       })}
-      ${renderMessageNavigatorDialog()}
       ${renderRewindDialog(ctx)}
     </div>
   </section>`;
@@ -315,16 +314,7 @@ function renderTranscriptNavigation(): string {
     <button class="agent-transcript-nav" type="button" data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToLatestMessage" title="Jump to beginning of latest message" aria-label="Jump to beginning of latest message" aria-hidden="true" disabled>
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 16h12M10 4v9m-4-4 4 4 4-4"/></svg>
     </button>
-    <button class="agent-transcript-nav" type="button" data-action="agent-pane#openMessageDialog" title="Browse your messages" aria-label="Browse your messages">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h12M4 8.5h8M4 12.5h10"/><path d="M5.5 15.5h8l2.5-2.5v-8.5H4v9.5a1.5 1.5 0 0 0 1.5 1.5Z"/></svg>
-    </button>
   </div>`;
-}
-
-function renderMessageNavigatorDialog(): string {
-  return `<dialog class="agent-message-dialog" data-agent-pane-target="messageDialog" data-action="click->agent-pane#messageDialogClicked keydown->agent-pane#messageDialogKeydown" aria-label="Your messages">
-    <div class="agent-message-list" data-agent-pane-target="messageList"></div>
-  </dialog>`;
 }
 
 export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): string {
@@ -389,7 +379,7 @@ function sessionImageUrl(ctx: AgentRenderContext, image: SessionImageRef): strin
 
 function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images: SessionImageRef[] }): string {
   const images = user.images.length ? `<div class="agent-user-attachments">${user.images.map((image) => `<img${fullscreenAttributes("attachment", "media")} src="${escapeHtml(sessionImageUrl(ctx, image))}" alt="attachment" loading="lazy">`).join("")}</div>` : "";
-  return transcriptRow(`<div class="agent-user" data-agent-user-text="${escapeHtml(user.text)}"><div class="agent-user-bubble">${markdown(ctx, user.text)}${images}</div></div>`);
+  return transcriptRow(`<div class="agent-user"><div class="agent-user-bubble">${markdown(ctx, user.text)}${images}</div></div>`);
 }
 
 function rewindHtml(ctx: AgentRenderContext, item: TranscriptItem): string {

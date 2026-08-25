@@ -115,7 +115,7 @@ export function transcriptFollowingAfterScroll(wasFollowing: boolean, previousEn
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
     static values = { workspaceId: String, label: String, snapshotCursor: String };
-    static targets = ["transcript", "transcriptNav", "messageDialog", "messageList", "input", "form", "rewindDialog", "rewindEntry", "rewindPreview"];
+    static targets = ["transcript", "transcriptNav", "input", "form", "rewindDialog", "rewindEntry", "rewindPreview"];
     declare readonly element: HTMLElement;
     declare readonly application: StimulusApplication;
     declare readonly workspaceIdValue: string;
@@ -124,8 +124,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     declare readonly hasSnapshotCursorValue: boolean;
     declare readonly transcriptTarget: HTMLElement;
     declare readonly transcriptNavTarget: HTMLButtonElement;
-    declare readonly messageDialogTarget: HTMLDialogElement;
-    declare readonly messageListTarget: HTMLElement;
     declare readonly inputTarget: HTMLTextAreaElement;
     declare readonly formTarget: HTMLFormElement;
     declare readonly rewindDialogTarget: HTMLDialogElement;
@@ -141,7 +139,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private transcriptLayoutFrame = 0;
     private transcriptEnd = 0;
     private rewindUserText = "";
-    private messageDialogPopulatesPrompt = false;
     private historicalOpenItemIds = new Set<string>();
     private restoreHistoricalOpenItems(): void {
       for (const id of this.historicalOpenItemIds) this.transcriptTarget.querySelector<HTMLElement>(`#${CSS.escape(id)} details[data-agent-historical-detail]`)?.setAttribute("open", "");
@@ -264,91 +261,9 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       if (latest) scrollMessageToTop(this.transcriptTarget, latest);
     }
 
-    private userMessages(): HTMLElement[] {
-      return [...this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-item:has(.agent-user)")];
-    }
-
-    private messageLinks(): HTMLButtonElement[] {
-      return [...this.messageListTarget.querySelectorAll<HTMLButtonElement>(".agent-message-link")];
-    }
-
-    private showMessageDialog(populatesPrompt: boolean): void {
-      this.messageDialogPopulatesPrompt = populatesPrompt;
-      this.messageListTarget.replaceChildren(...this.userMessages().map((message) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "agent-message-link";
-        button.value = message.id;
-        const preview = document.createElement("span");
-        preview.className = "agent-message-link-text";
-        preview.textContent = message.querySelector<HTMLElement>(".agent-user")?.textContent?.trim() || "Message with attachment";
-        button.append(preview);
-        return button;
-      }));
-      this.messageDialogTarget.showModal();
-      requestAnimationFrame(() => {
-        const messages = this.messageLinks();
-        messages[populatesPrompt ? messages.length - 1 : 0]?.focus();
-      });
-    }
-
-    openMessageDialog(): void {
-      this.showMessageDialog(false);
-    }
-
-    messageDialogKeydown(event: KeyboardEvent): void {
-      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-      const messages = this.messageLinks();
-      if (messages.length === 0) return;
-      event.preventDefault();
-      const activeElement = document.activeElement;
-      const current = messages.findIndex((message) => message === activeElement);
-      const next = event.key === "Home" ? 0
-        : event.key === "End" ? messages.length - 1
-        : event.key === "ArrowDown" ? (current + 1) % messages.length
-        : ((current < 0 ? 0 : current) - 1 + messages.length) % messages.length;
-      messages[next].focus();
-    }
-
-    closeMessageDialog(): void {
-      this.messageDialogTarget.close();
-      this.messageDialogPopulatesPrompt = false;
-    }
-
-    messageDialogClicked(event: MouseEvent): void {
-      if (event.target === this.messageDialogTarget) {
-        this.closeMessageDialog();
-        return;
-      }
-      const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>(".agent-message-link") : null;
-      if (!button) return;
-      const message = this.transcriptTarget.querySelector<HTMLElement>(`#${CSS.escape(button.value)}`)!;
-      const userText = this.messageDialogPopulatesPrompt
-        ? message.querySelector<HTMLElement>(".agent-user")!.dataset.agentUserText!
-        : undefined;
-      this.closeMessageDialog();
-      scrollMessageToTop(this.transcriptTarget, message);
-      message.classList.add("agent-message-highlight");
-      window.setTimeout(() => message.classList.remove("agent-message-highlight"), 1400);
-      if (userText !== undefined) {
-        this.setInputValue(userText);
-        this.inputTarget.focus();
-      }
-    }
-
     // ---- prompt box ----
 
     inputKeydown(event: KeyboardEvent): void {
-      const completionMenuOpen = Boolean(this.element.querySelector(".agent-completion-menu-host:not([hidden])"));
-      const noModifiers = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
-      const atPromptStart = this.inputTarget.selectionStart === 0 && this.inputTarget.selectionEnd === 0;
-      if (event.key === "ArrowUp" && noModifiers && !completionMenuOpen && atPromptStart && this.userMessages().length > 0) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        this.showMessageDialog(true);
-        return;
-      }
-
       // Enter inserts a newline; ⌘/Ctrl+Enter sends (or follow-ups when busy).
       if (isSubmitShortcut(event)) {
         event.preventDefault();
