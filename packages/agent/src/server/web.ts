@@ -16,7 +16,6 @@ import { agentStaticFiles } from "./static.ts";
 import { mkdir } from "node:fs/promises";
 import { removeInitialPromptDraft } from "./initial-prompt-draft.ts";
 import type { WorkspaceDockerMount, WorkspaceInitInstruction } from "@atelier/workspace";
-import { isGitProjectInit } from "@atelier/projects";
 
 async function listOrCreateWorkspaceAgentConversations(workspaceId: string): Promise<WorkspaceAgentConversationInfo[]> {
   try {
@@ -49,8 +48,8 @@ export const agentWorkspaceCommands: WorkspaceCommandContribution[] = [
 
 const projectAgentWorkspaceCommand: WorkspaceCommandContribution = {
   id: "agent.launch-project-workspace",
-  label: "New Workspace From Project",
-  description: "Open the project agent workspace prompt.",
+  label: "New Workspace With Same Project",
+  description: "Open a workspace prompt using the current workspace's project.",
   scope: "global",
   surfaces: { shortcut: { defaultBinding: "Meta+Alt+Quote" } },
 };
@@ -135,17 +134,16 @@ export const agentWorkspaceModule: WorkspaceModule = {
     // Temporarily keep workspace forking unavailable to agents; they invoke it too readily.
     // registerWorkspaceAgentTool("fork_current_workspace", (workspaceId) => createForkCurrentWorkspaceTool((request) => context.forkCurrentWorkspaceFromAgent(workspaceId, request)));
   },
-  async attachToWorkspace({ workspaceId, init, events }) {
-    const hasProject = isGitProjectInit(init);
+  async attachToWorkspace({ workspaceId, events }) {
     try {
       const agents = await listOrCreateWorkspaceAgentConversations(workspaceId);
       return {
         // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
         agentConversations: await renderWorkspaceAgentConversations(workspaceId, agents, events as AtelierEventBus | undefined),
-        commands: hasProject ? [...agentWorkspaceCommands, projectAgentWorkspaceCommand] : agentWorkspaceCommands,
+        commands: [...agentWorkspaceCommands, projectAgentWorkspaceCommand],
       };
     } catch (error) {
-      if (error instanceof AtelierCoreError && error.code === "workspace_not_found") return { agentConversations: [], commands: hasProject ? [...agentWorkspaceCommands, projectAgentWorkspaceCommand] : agentWorkspaceCommands };
+      if (error instanceof AtelierCoreError && error.code === "workspace_not_found") return { agentConversations: [], commands: [...agentWorkspaceCommands, projectAgentWorkspaceCommand] };
       throw error;
     }
   },

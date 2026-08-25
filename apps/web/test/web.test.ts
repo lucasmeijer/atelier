@@ -493,17 +493,23 @@ describe("web app contracts", () => {
     expect(home).toContain("Create or select a workspace");
   });
 
-  test("project workspaces advertise the prompt-first workspace shortcut", async () => {
+  test("project and projectless workspaces advertise the same-project workspace shortcut", async () => {
     await withTempDataDir(async () => {
       const project = (await addProject("https://github.com/org/sample-project.git")).project;
       const { app, registry } = createTestApp();
-      await registry.seed([{ id: "abc", title: "A", init: projectWorkspaceInit(project) }]);
+      await registry.seed([
+        { id: "project", title: "Project", init: projectWorkspaceInit(project) },
+        { id: "projectless", title: "Projectless" },
+      ]);
 
-      const workspace = await (await app.fetch(new Request("http://test.local/workspaces/abc"))).text();
+      const projectWorkspace = await (await app.fetch(new Request("http://test.local/workspaces/project"))).text();
+      const projectlessWorkspace = await (await app.fetch(new Request("http://test.local/workspaces/projectless"))).text();
 
-      expect(workspace).toContain("agent.launch-project-workspace");
-      expect(workspace).toContain("New Workspace From Project");
-      expect(workspace).toContain("Meta+Alt+Quote");
+      for (const workspace of [projectWorkspace, projectlessWorkspace]) {
+        expect(workspace).toContain("agent.launch-project-workspace");
+        expect(workspace).toContain("New Workspace With Same Project");
+        expect(workspace).toContain("Meta+Alt+Quote");
+      }
     });
   });
 

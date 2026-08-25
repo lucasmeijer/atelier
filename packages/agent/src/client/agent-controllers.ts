@@ -1583,11 +1583,10 @@ export const agentClientModule: WorkspaceClientModule = {
       if (commandId !== "agent.launch-project-workspace") return false;
       const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
       const projectId = resident?.dataset.projectId;
-      if (!projectId) return true;
       const frame = document.getElementById("agent_launch_modal")!;
       frame.replaceChildren();
       frame.removeAttribute("src");
-      frame.setAttribute("src", `/projects/${encodeURIComponent(projectId)}/agent-launch`);
+      frame.setAttribute("src", projectId ? `/projects/${encodeURIComponent(projectId)}/agent-launch` : "/agent-launch");
       return true;
     });
   },
