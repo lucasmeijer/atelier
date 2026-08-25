@@ -974,14 +974,23 @@ class AgentLaunchDialogController extends Controller {
   declare readonly discardUrlValue: string;
 
   connect(): void {
+    this.element.addEventListener("click", this.clicked);
     this.element.addEventListener("close", this.closed);
     this.element.showModal();
     focusDialogPromptEnd(this.element);
   }
 
   disconnect(): void {
+    this.element.removeEventListener("click", this.clicked);
     this.element.removeEventListener("close", this.closed);
   }
+
+  private readonly clicked = (event: MouseEvent): void => {
+    if (!window.matchMedia(phoneViewportMediaQuery).matches || event.target !== this.element) return;
+    const bounds = this.element.getBoundingClientRect();
+    const outside = event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom;
+    if (outside) this.element.close();
+  };
 
   private readonly closed = (): void => {
     void fetch(this.discardUrlValue, { method: "POST" }).catch((error) => console.error("Could not discard attachment draft", error));
