@@ -1046,6 +1046,34 @@ class WorkspaceNavigationController extends Controller {
     }
   }
 
+  async parkWorkspace(event: Event): Promise<void> {
+    event.preventDefault();
+    // SAFETY: This action is attached only to the server-rendered Agent-pane park form.
+    const form = event.currentTarget as HTMLFormElement;
+    await this.submitParkedState(form);
+  }
+
+  async unparkWorkspace(event: Event): Promise<void> {
+    event.preventDefault();
+    // SAFETY: This action is attached only to server-rendered unpark forms.
+    const form = event.currentTarget as HTMLFormElement;
+    const workspaceId = form.dataset.workspaceEntryId!;
+    await this.submitParkedState(form);
+    await this.selectWorkspaceById(workspaceId);
+  }
+
+  private async submitParkedState(form: HTMLFormElement): Promise<void> {
+    const button = form.querySelector<HTMLButtonElement>("button[type='submit']")!;
+    button.disabled = true;
+    const response = await fetch(form.action, {
+      method: "POST",
+      headers: { Accept: "text/vnd.turbo-stream.html" },
+    });
+    if (!response.ok) throw new Error(`Could not update parked workspace: HTTP ${response.status}`);
+    const html = await response.text();
+    if (html) window.Turbo?.renderStreamMessage(html);
+  }
+
   toggleProject(event: Event): void {
     // SAFETY: This action is attached only to server-rendered Project disclosure buttons.
     const button = event.currentTarget as HTMLElement;

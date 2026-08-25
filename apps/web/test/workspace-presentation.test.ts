@@ -72,6 +72,32 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
   });
 
+  test("renders a parked disclosure only inside Projects that have parked Workspaces", () => {
+    const html = renderWorkspacePane({
+      projects: [
+        {
+          id: "mixed-project",
+          title: "Mixed",
+          workspaces: [{ id: "active", title: "Active workspace" }],
+          parkedWorkspaces: [{ id: "parked-1", title: "First parked" }, { id: "parked-2", title: "Second parked" }],
+        },
+        { id: "active-only-project", title: "Active only", workspaces: [{ id: "active-2", title: "Another active workspace" }] },
+      ],
+      projectlessWorkspaces: [],
+    });
+    const mixedProject = html.slice(html.indexOf('data-project-id="mixed-project"'), html.indexOf('data-project-id="active-only-project"'));
+    const activeOnlyProject = html.slice(html.indexOf('data-project-id="active-only-project"'), html.indexOf('data-project-id="__projectless__"'));
+
+    expect(mixedProject).toContain("fixed-shell-parked is-collapsed");
+    expect(mixedProject).toContain('aria-expanded="false"');
+    expect(mixedProject).toContain("2 parked");
+    expect(mixedProject).toContain("First parked");
+    expect(mixedProject).toContain('action="/workspaces/parked-1/unpark"');
+    expect(mixedProject).toContain('data-action="submit->workspace-navigation#unparkWorkspace"');
+    expect(activeOnlyProject).not.toContain("fixed-shell-parked");
+    expect(activeOnlyProject).not.toContain("parked");
+  });
+
   test("keeps the Projectless launcher in Workspaces when it has no Workspaces", () => {
     const html = renderWorkspacePane({ projects: [], projectlessWorkspaces: [] });
     const workspaceSection = html.slice(html.indexOf('class="fixed-shell-workspace-scroll"'), html.indexOf('class="fixed-shell-project fixed-shell-projects-drawer'));
@@ -91,6 +117,10 @@ describe("role-fixed Workspace presentation", () => {
 
     expect(header).toContain("Typed shell");
     expect(header).not.toContain("Atelier");
+    expect(header).toContain('class="fixed-shell-park-workspace"');
+    expect(header).toContain('action="/workspaces/workspace-1/park"');
+    expect(header).toContain('title="Park workspace" aria-label="Park workspace"');
+    expect(header.indexOf('class="fixed-shell-park-workspace"')).toBeLessThan(header.indexOf('class="fixed-shell-delete-workspace"'));
     expect(header).toContain('class="fixed-shell-delete-workspace"');
     expect(header).toContain('action="/workspaces/workspace-1/delete"');
     expect(header).toContain('title="Delete workspace" aria-label="Delete workspace"');

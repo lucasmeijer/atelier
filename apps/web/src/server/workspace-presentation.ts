@@ -19,6 +19,7 @@ export interface WorkspacePaneProject {
   id: string;
   title: string;
   workspaces: readonly WorkspacePaneEntry[];
+  parkedWorkspaces?: readonly WorkspacePaneEntry[];
 }
 
 export interface ViewCloseAction {
@@ -51,7 +52,7 @@ export interface WorkspacePanePresentation {
   projects: readonly WorkspacePaneProject[];
   emptyProjects?: readonly Pick<WorkspacePaneProject, "id" | "title">[];
   projectlessWorkspaces?: readonly WorkspacePaneEntry[];
-  parkedWorkspaces?: readonly (WorkspacePaneEntry & { projectTitle?: string })[];
+  projectlessParkedWorkspaces?: readonly WorkspacePaneEntry[];
 }
 
 export interface WorkspacePresentation {
@@ -64,7 +65,7 @@ export interface WorkspacePresentation {
   preserveLiveKeys?: ReadonlySet<string>;
 }
 
-type IconName = "agent" | "browser" | "chevron" | "close" | "file" | "more" | "panel" | "plus" | "settings" | "terminal" | "trash" | "workspace";
+type IconName = "agent" | "browser" | "chevron" | "close" | "file" | "more" | "panel" | "park" | "plus" | "settings" | "terminal" | "trash" | "workspace";
 
 function icon(name: IconName): string {
   const paths = {
@@ -75,6 +76,7 @@ function icon(name: IconName): string {
     file: '<path d="M7 3h7l4 4v14H7zM14 3v5h4"/>',
     panel: '<path d="M4 4h16v16H4zM15 4v16"/>',
     more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+    park: '<path d="M17.5 15.5A7 7 0 0 1 8.5 6.5a7 7 0 1 0 9 9z"/><path d="M16 5h4M18 3v4"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>',
     terminal: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
@@ -96,11 +98,13 @@ function selectorCloseForm(close: ViewCloseAction): string {
   return closeForm(close, `<button class="fixed-shell-view-close" type="submit" title="Close ${escapeHtml(close.label)}" aria-label="Close ${escapeHtml(close.label)}">×</button>`);
 }
 
+function renderWorkspaceRowContent(workspace: WorkspacePaneEntry): string {
+  return `<i class="fixed-shell-workspace-color" aria-hidden="true"></i><span>${escapeHtml(workspace.title)}</span>${workspace.busy ? '<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy" title="Workspace busy"></i>' : workspace.ready ? '<i class="fixed-shell-attention-dot" aria-label="Agent ready"></i>' : ""}`;
+}
+
 function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string): string {
   const color = workspace.color ? ` style="--workspace-color:${escapeHtml(workspace.color)}"` : "";
-  return `<button type="button" class="fixed-shell-workspace-row${workspace.active ? " active" : ""}" title="${escapeHtml(workspace.title)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}" ${projectId ? `data-project-id="${escapeHtml(projectId)}"` : ""}${color} data-action="click->workspace-navigation#selectWorkspace">
-    <i class="fixed-shell-workspace-color" aria-hidden="true"></i><span>${escapeHtml(workspace.title)}</span>${workspace.busy ? '<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy" title="Workspace busy"></i>' : workspace.ready ? '<i class="fixed-shell-attention-dot" aria-label="Agent ready"></i>' : ""}
-  </button>`;
+  return `<button type="button" class="fixed-shell-workspace-row${workspace.active ? " active" : ""}" title="${escapeHtml(workspace.title)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}" ${projectId ? `data-project-id="${escapeHtml(projectId)}"` : ""}${color} data-action="click->workspace-navigation#selectWorkspace">${renderWorkspaceRowContent(workspace)}</button>`;
 }
 
 const projectlessWorkspaceGroupId = "__projectless__";
@@ -138,27 +142,34 @@ function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title"
   return renderWorkspaceGroupHeading(project.id, project.title, { href: `/projects/${id}/agent-launch`, frame: "agent_launch_modal", label: `New workspace: ${project.title}` }, { mode, settingsHref: `/projects/${id}/editor` });
 }
 
+function renderParkedWorkspaceGroup(workspaces: readonly WorkspacePaneEntry[], parentId: string): string {
+  if (workspaces.length === 0) return "";
+  const groupId = `${parentId}:parked`;
+  return `<section class="fixed-shell-project fixed-shell-parked is-collapsed" data-project-id="${escapeHtml(groupId)}">
+    <div class="fixed-shell-project-heading-row"><button type="button" class="fixed-shell-project-heading" aria-expanded="false" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(groupId)}">${icon("chevron")}<span>${workspaces.length} parked</span></button></div>
+    <div class="fixed-shell-project-workspaces">${workspaces.map((workspace) => `<form method="post" action="/workspaces/${encodeURIComponent(workspace.id)}/unpark" data-workspace-entry-id="${escapeHtml(workspace.id)}" data-action="submit->workspace-navigation#unparkWorkspace"><button type="submit" class="fixed-shell-workspace-row" title="Unpark and open ${escapeHtml(workspace.title)}" aria-label="Unpark and open ${escapeHtml(workspace.title)}">${renderWorkspaceRowContent(workspace)}</button></form>`).join("")}</div>
+  </section>`;
+}
+
 export function renderWorkspacePaneCollections(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
   const projects = presentation.projects.map((project) => `<section class="fixed-shell-project" data-project-id="${escapeHtml(project.id)}">
     ${renderProjectHeading(project)}
-    <div class="fixed-shell-project-workspaces">${project.workspaces.map((workspace) => renderWorkspaceRow(workspace, project.id)).join("")}</div>
+    <div class="fixed-shell-project-workspaces">${project.workspaces.map((workspace) => renderWorkspaceRow(workspace, project.id)).join("")}${renderParkedWorkspaceGroup(project.parkedWorkspaces ?? [], project.id)}</div>
   </section>`).join("");
   const projectlessWorkspaces = presentation.projectlessWorkspaces ?? [];
+  const projectlessParkedWorkspaces = presentation.projectlessParkedWorkspaces ?? [];
   const projectlessAdd = { href: "/agent-launch", frame: "agent_launch_modal", label: "New projectless workspace" } as const;
   const projectless = `<section class="fixed-shell-project" data-project-id="${projectlessWorkspaceGroupId}">
-    ${renderWorkspaceGroupHeading(projectlessWorkspaceGroupId, "Projectless", projectlessAdd, { mode: projectlessWorkspaces.length > 0 ? "disclosure" : "static" })}
-    ${projectlessWorkspaces.length > 0 ? `<div class="fixed-shell-project-workspaces">${projectlessWorkspaces.map((workspace) => renderWorkspaceRow(workspace)).join("")}</div>` : ""}
+    ${renderWorkspaceGroupHeading(projectlessWorkspaceGroupId, "Projectless", projectlessAdd, { mode: projectlessWorkspaces.length > 0 || projectlessParkedWorkspaces.length > 0 ? "disclosure" : "static" })}
+    ${projectlessWorkspaces.length > 0 || projectlessParkedWorkspaces.length > 0 ? `<div class="fixed-shell-project-workspaces">${projectlessWorkspaces.map((workspace) => renderWorkspaceRow(workspace)).join("")}${renderParkedWorkspaceGroup(projectlessParkedWorkspaces, projectlessWorkspaceGroupId)}</div>` : ""}
   </section>`;
-  const parked = presentation.parkedWorkspaces?.length
-    ? `<section class="fixed-shell-project fixed-shell-parked"><h3>Parked</h3>${presentation.parkedWorkspaces.map((workspace) => `${renderWorkspaceRow(workspace)}${workspace.projectTitle ? `<small>${escapeHtml(workspace.projectTitle)}</small>` : ""}`).join("")}</section>`
-    : "";
   const drawerProjects = [...presentation.projects, ...(presentation.emptyProjects ?? [])].sort((left, right) => left.title.localeCompare(right.title));
   const projectsDrawer = `<section class="fixed-shell-project fixed-shell-projects-drawer is-collapsed" data-project-id="${projectsDrawerGroupId}">
     ${renderWorkspaceGroupHeading(projectsDrawerGroupId, "Projects", { href: "/projects/new/editor", frame: "project_editor_frame", label: "New project" }, { expanded: false })}
     <div class="fixed-shell-project-workspaces">${drawerProjects.map((project) => `<section class="fixed-shell-project">${renderProjectHeading(project, "launcher")}</section>`).join("")}</div>
   </section>`;
   return `<div class="fixed-shell-pane-collections" data-workspace-pane-collections>
-    <div class="fixed-shell-workspace-scroll" data-workspace-navigation-target="scroll">${projects}${projectless}${parked}</div>
+    <div class="fixed-shell-workspace-scroll" data-workspace-navigation-target="scroll">${projects}${projectless}</div>
     <section id="global_sidebar_contributions">${sidebarContributionsHtml}</section>
     ${projectsDrawer}
   </div>`;
@@ -178,9 +189,10 @@ function renderAgentPane(presentation: WorkspacePresentation): string {
     : `<div class="fixed-shell-workspace-title"><strong>${escapeHtml(presentation.workspace.title)}</strong></div>`;
   const panes = presentation.agentConversations.map((agent) => renderLiveNode(`agent:${agent.id}`, "agent", agent.id, agent.bodyHtml, presentation.preserveLiveKeys)).join("");
   const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button class="fixed-shell-icon-button" type="submit" aria-label="${escapeHtml(command.label)}">＋</button></form>`).join("");
+  const parkWorkspace = `<form class="fixed-shell-park-workspace" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/park" data-action="submit->workspace-navigation#parkWorkspace"><button class="fixed-shell-icon-button" type="submit" title="Park workspace" aria-label="Park workspace">${icon("park")}</button></form>`;
   const deleteWorkspace = `<form class="fixed-shell-delete-workspace" data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/delete"><button class="fixed-shell-icon-button" type="submit" title="Delete workspace" aria-label="Delete workspace">${icon("trash")}</button></form>`;
   return `<section class="fixed-shell-agent-pane" data-workspace-role-region="agent" data-workspace-presentation-target="agentPane" aria-label="Agent">
-    <header>${title}${agentActions}${deleteWorkspace}${button("Show Work pane", "click->workspace-presentation#toggleWorkPane", "panel", "data-show-work-pane")}</header>
+    <header>${title}${agentActions}${parkWorkspace}${deleteWorkspace}${button("Show Work pane", "click->workspace-presentation#toggleWorkPane", "panel", "data-show-work-pane")}</header>
     <div class="fixed-shell-agent-bodies">${panes}</div>
   </section>`;
 }

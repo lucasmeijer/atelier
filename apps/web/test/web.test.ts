@@ -793,7 +793,7 @@ describe("web app contracts", () => {
     expect(broadcasts.some((html) => html.includes('<turbo-stream action="remove" target="workspace_row_abc">'))).toBe(true);
   });
 
-  test("park and unpark toggle workspace rows with zzz icon before the delete button", async () => {
+  test("park and unpark return the updated Workspace pane", async () => {
     const parked: Array<{ id: string; parked: boolean }> = [];
     const { app, registry } = createTestApp({ persistParked: async (id, value) => { parked.push({ id, parked: value }); } });
     await registry.seed([{ id: "a", title: "A", parked: false }, { id: "b", title: "B", parked: true }]);
@@ -810,16 +810,16 @@ describe("web app contracts", () => {
     const parkBody = await parkResponse.text();
     expect(registry.get("a")?.parked).toBe(true);
     expect(parked.at(-1)).toEqual({ id: "a", parked: true });
-    expect(parkBody).toContain("parked");
-    expect(parkBody).toContain('aria-label="Unpark workspace"');
-    expect(parkBody).toContain("💤");
-    expect(parkBody).toContain('data-turbo="true" data-action="turbo:submit-end->workspace-list#parkToggled"');
-    expect(parkBody).not.toContain('class="workspace-row-delete"');
-    expect(parkBody).not.toContain('class="workspace-row-edit"');
+    expect(parkBody).toContain('action="replace-workspace-pane-collections"');
+    expect(parkBody).toContain("2 parked");
+    expect(parkBody).toContain('aria-label="Unpark and open A"');
+    expect(parkBody).toContain('action="remove-workspace-resident" target="fixed_workspace_a"');
+    expect(parkBody).not.toContain('target="workspaces_table_rows"');
 
     const unparkBody = await (await app.fetch(post("/workspaces/a/unpark"))).text();
     expect(registry.get("a")?.parked).toBe(false);
-    expect(unparkBody.indexOf('class="workspace-row-park"')).toBeLessThan(unparkBody.indexOf('class="workspace-row-delete"'));
+    expect(unparkBody).toContain('data-workspace-entry-id="a"');
+    expect(unparkBody).toContain("1 parked");
     expect(parked.at(-1)).toEqual({ id: "a", parked: false });
 
     const fallback = await app.fetch(new Request("http://test.local/workspaces/a/park", { method: "POST", headers: { referer: "http://test.local/" } }));

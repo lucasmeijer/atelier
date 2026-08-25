@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium, type Browser } from "@playwright/test";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
-import { renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
+import { removeWorkspaceResidentTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 
 let browser: Browser;
 let workspaceClient: string;
@@ -174,6 +174,52 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
+  test("parks the current Workspace into the no-selection state without a page navigation", async () => {
+    const current: WorkspacePresentation = {
+      workspace: { id: "park-current", title: "Park current" },
+      agentConversations: [{ id: "agent-current", title: "Agent", bodyHtml: "<p>Current Agent</p>" }],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = {
+      projects: [],
+      projectlessWorkspaces: [{ id: "park-current", title: "Park current", active: true }, { id: "park-next", title: "Park next" }],
+    };
+    const parkedPane: WorkspacePanePresentation = {
+      projects: [],
+      projectlessWorkspaces: [{ id: "park-next", title: "Park next" }],
+      projectlessParkedWorkspaces: [{ id: "park-current", title: "Park current" }],
+    };
+    let parkRequests = 0;
+    let documentRequests = 0;
+    const page = await browser.newPage();
+    page.on("request", (request) => {
+      if (request.isNavigationRequest() && request.resourceType() === "document") documentRequests += 1;
+    });
+    await page.route("http://atelier.test/workspaces/park-current", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(current, pane)}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/workspaces/park-current/park", (route) => {
+      expect(route.request().method()).toBe("POST");
+      parkRequests += 1;
+      return route.fulfill({ contentType: "text/vnd.turbo-stream.html", body: `${workspacePaneCollectionsTurboStream(parkedPane)}${removeWorkspaceResidentTurboStream("park-current")}` });
+    });
+    await page.route("**/workspaces/park-current/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/park-current");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    const requestsBeforeParking = documentRequests;
+
+    await page.locator('.workspace-detail-resident.visible[data-workspace-id="park-current"]').getByRole("button", { name: "Park workspace" }).click();
+    await page.waitForFunction(() => !document.querySelector('.workspace-detail-resident[data-workspace-id="park-current"]'));
+
+    expect(parkRequests).toBe(1);
+    expect(documentRequests).toBe(requestsBeforeParking);
+    expect(new URL(page.url()).pathname).toBe("/");
+    expect(await page.locator('.workspace-detail-resident.visible').count()).toBe(0);
+    expect(await page.locator('[data-workspace-residency-target="empty"]').getAttribute("hidden")).toBeNull();
+    expect(await page.locator('.workspace-detail-resident[data-workspace-id="park-next"]').count()).toBe(0);
+    expect(await page.getByRole("button", { name: "1 parked" }).count()).toBe(1);
+    await page.close();
+  });
+
   test("keeps live Agent and Work nodes mounted while restoring personal navigation", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "fixed-demo", title: "Fixed shell" },
@@ -317,6 +363,69 @@ describe("Atelier Playwright helper", () => {
     await page.waitForTimeout(20);
     expect(await resident.locator('[data-work-view-key="browser:1"]').getAttribute("aria-selected")).toBe("true");
     expect(acknowledgements).toBe(1);
+    await page.close();
+  });
+
+  test("expands and collapses the parked Workspace count", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "active", title: "Active" },
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent content</p>" }],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = {
+      projects: [{
+        id: "active-project",
+        title: "Active project",
+        workspaces: [{ id: "active", title: "Active", active: true }, { id: "normal", title: "Normal workspace" }],
+        parkedWorkspaces: [{ id: "parked-1", title: "First parked" }, { id: "parked-2", title: "Second parked" }],
+      }],
+      projectlessWorkspaces: [],
+    };
+    const parkedPresentation: WorkspacePresentation = {
+      workspace: { id: "parked-1", title: "First parked" },
+      agentConversations: [{ id: "agent-parked", title: "Agent", bodyHtml: "<p>Unparked Agent content</p>" }],
+      workViews: [],
+    };
+    let unparkRequests = 0;
+    const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    await page.addInitScript(() => localStorage.removeItem("atelier:workspace-project-disclosures"));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/workspaces/parked-1/unpark", (route) => {
+      expect(route.request().method()).toBe("POST");
+      unparkRequests += 1;
+      return route.fulfill({ contentType: "text/vnd.turbo-stream.html", body: "" });
+    });
+    await page.route("**/workspaces/parked-1?resident=1", (route) => route.fulfill({ contentType: "text/html", body: `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="parked-1">${renderWorkspacePresentation(parkedPresentation)}</div>` }));
+    await page.route("**/workspaces/parked-1/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+
+    const parked = page.locator(".fixed-shell-parked");
+    const disclosure = parked.getByRole("button", { name: "2 parked" });
+    const parkedWorkspace = parked.getByRole("button", { name: /Unpark and open First parked/ });
+    expect(await disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(await disclosure.evaluate((element) => getComputedStyle(element).opacity)).toBe("0.5");
+    expect(await parkedWorkspace.isVisible()).toBe(false);
+
+    await disclosure.evaluate((button: HTMLButtonElement) => button.click());
+    expect(await disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(await disclosure.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
+    expect(await parkedWorkspace.isVisible()).toBe(true);
+    const workspaceTypography = async (workspace: ReturnType<typeof page.getByRole>) => await workspace.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { fontFamily: style.fontFamily, fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.lineHeight, opacity: style.opacity };
+    });
+    expect(await workspaceTypography(parkedWorkspace)).toEqual(await workspaceTypography(page.getByRole("button", { name: "Normal workspace", exact: true })));
+
+    await parkedWorkspace.evaluate((button: HTMLButtonElement) => button.click());
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident.visible[data-workspace-id="parked-1"]'));
+    expect(unparkRequests).toBe(1);
+    expect(new URL(page.url()).pathname).toBe("/workspaces/parked-1");
+
+    await disclosure.evaluate((button: HTMLButtonElement) => button.click());
+    expect(await disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(await parkedWorkspace.isVisible()).toBe(false);
     await page.close();
   });
 

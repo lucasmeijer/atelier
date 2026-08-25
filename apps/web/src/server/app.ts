@@ -388,7 +388,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   const persistWorkspaceParked = deps.persistWorkspaceParked ?? setWorkspaceParked;
-  let skipParkedPersistence = false;
+  let suppressParkedStateCallbacks = false;
 
   async function refreshWorkspacePaneCollections(): Promise<string> {
     const stream = workspacePaneCollectionsTurboStream(await workspacePaneCollections(""));
@@ -414,13 +414,14 @@ export function createWebApp(deps: WebAppDeps): WebApp {
       broadcastWorkspacePaneCollections();
     },
     listChanged() {
+      if (suppressParkedStateCallbacks) return;
       // "update" (not "replace"): the rows container must survive so later
       // list broadcasts still find their target.
       broadcastShell(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
       broadcastWorkspacePaneCollections();
     },
     parkedChanged(entry) {
-      if (skipParkedPersistence) return;
+      if (suppressParkedStateCallbacks) return;
       void persistWorkspaceParked(entry.id, entry.parked).catch((error) => logError(`could not persist parked state for workspace ${entry.id}: ${error instanceof Error ? error.message : String(error)}`));
     },
     removed(id) {
@@ -712,13 +713,18 @@ ${moduleStylesHtml()}
   async function workspacePaneCollections(activeWorkspaceId: string): Promise<WorkspacePanePresentation> {
     const { projects: savedProjects } = await listProjects();
     const projectTitles = new Map(savedProjects.map((project) => [project.id, project.name]));
-    const active = registry.list().filter((entry) => !entry.parked && entry.phase !== "deleting");
     const grouped = new Map<string, WorkspaceEntry[]>();
-    // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
-    const projectless = [] as typeof active;
-    for (const entry of active) {
-      if (!isGitProjectInit(entry.init)) projectless.push(entry);
-      else grouped.set(entry.init.projectId, [...(grouped.get(entry.init.projectId) ?? []), entry]);
+    const parkedByProject = new Map<string, WorkspaceEntry[]>();
+    const projectless: WorkspaceEntry[] = [];
+    const projectlessParked: WorkspaceEntry[] = [];
+    for (const entry of registry.list()) {
+      if (entry.phase === "deleting") continue;
+      if (!isGitProjectInit(entry.init)) {
+        (entry.parked ? projectlessParked : projectless).push(entry);
+        continue;
+      }
+      const destination = entry.parked ? parkedByProject : grouped;
+      destination.set(entry.init.projectId, [...(destination.get(entry.init.projectId) ?? []), entry]);
     }
     const paneEntry = (entry: WorkspaceEntry): WorkspacePaneEntry => {
       const pane: WorkspacePaneEntry = {
@@ -733,20 +739,13 @@ ${moduleStylesHtml()}
     };
     return {
       projects: [...grouped].map(([id, entries]) => {
-        const savedTitle = projectTitles.get(id);
-        if (savedTitle) return { id, title: savedTitle, workspaces: entries.map(paneEntry) };
         const init = entries[0]!.init;
         if (!isGitProjectInit(init)) throw new Error(`Project ${id} contains a projectless Workspace`);
-        return { id, title: init.name, workspaces: entries.map(paneEntry) };
+        return { id, title: projectTitles.get(id) ?? init.name, workspaces: entries.map(paneEntry), parkedWorkspaces: (parkedByProject.get(id) ?? []).map(paneEntry) };
       }),
       emptyProjects: savedProjects.filter((project) => !grouped.has(project.id)).map((project) => ({ id: project.id, title: project.name })),
       projectlessWorkspaces: projectless.map(paneEntry),
-      parkedWorkspaces: registry.list().filter((entry) => entry.parked).map((entry) => {
-        // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
-        const parked = paneEntry(entry) as WorkspacePaneEntry & { projectTitle?: string };
-        if (isGitProjectInit(entry.init)) parked.projectTitle = projectTitles.get(entry.init.projectId) ?? entry.init.name;
-        return parked;
-      }),
+      projectlessParkedWorkspaces: projectlessParked.map(paneEntry),
     };
   }
 
@@ -1245,12 +1244,15 @@ ${moduleStylesHtml()}
       : wantsTurboStream(request) ? turboStreamResponse("", { status: 409 }) : response("Workspace is not ready", { status: 409 });
     if (entry.parked !== parked) {
       await persistWorkspaceParked(id, parked);
-      skipParkedPersistence = true;
+      suppressParkedStateCallbacks = true;
       registry.setParked(id, parked);
-      skipParkedPersistence = false;
+      suppressParkedStateCallbacks = false;
     }
+    const parkedResident = parked ? removeWorkspaceResidentTurboStream(id) : "";
+    const stateStream = `${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${parkedResident}`;
+    broadcastShell(stateStream);
     if (requestAcceptsJson(request)) return jsonResponse({ workspace: { id, parked } });
-    if (wantsTurboStream(request)) return turboStreamResponse(turboUpdateStream("workspaces_table_rows", renderWorkspaceRows()));
+    if (wantsTurboStream(request)) return turboStreamResponse(stateStream);
     return Response.redirect(request.headers.get("referer") ?? "/", 303);
   }
 
