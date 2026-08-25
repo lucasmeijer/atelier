@@ -266,8 +266,8 @@ describe("Atelier Playwright helper", () => {
         { id: "agent-2", title: "Build", bodyHtml: "<p>Second transcript</p>" },
       ],
       workViews: [
-        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea><iframe srcdoc="<p>live</p>"></iframe>' },
-        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
+        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea><iframe srcdoc="<p>live</p>"></iframe>', close: { action: "/terminal/close", label: "Terminal" } },
+        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files" } },
       ],
     };
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -278,6 +278,10 @@ describe("Atelier Playwright helper", () => {
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
 
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).not.toContain("is-work-pane-open");
+    const terminalClose = page.locator('[data-work-view-key="terminal:1"] + .fixed-shell-work-view-close');
+    const filesClose = page.locator('[data-work-view-key="files:workspace"] + .fixed-shell-work-view-close');
+    expect(await terminalClose.isHidden()).toBe(false);
+    expect(await filesClose.isHidden()).toBe(true);
     await page.evaluate(() => {
       const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
       const terminal = document.querySelector<HTMLElement>('[data-workspace-live-node="work:terminal:1"]')!;
@@ -287,6 +291,9 @@ describe("Atelier Playwright helper", () => {
       // SAFETY: The test fixture controls this value and establishes the asserted shape.
       (window as typeof window & { fixedProbe?: unknown }).fixedProbe = { agent, terminal, frame, frameWindow: frame.contentWindow };
     });
+    await page.locator('[data-work-view-key="files:workspace"]').click({ force: true });
+    expect(await terminalClose.isHidden()).toBe(true);
+    expect(await filesClose.isHidden()).toBe(false);
     await page.locator('[data-work-view-key="terminal:1"]').click({ force: true });
     await page.locator('[data-agent-conversation-id="agent-2"]').click();
     await page.locator('[data-agent-conversation-id="agent-1"]').click();

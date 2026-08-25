@@ -66,7 +66,7 @@ export interface WorkspacePresentation {
   preserveLiveKeys?: ReadonlySet<string>;
 }
 
-type IconName = "agent" | "browser" | "chevron" | "close" | "file" | "more" | "panel" | "park" | "plus" | "settings" | "terminal" | "trash" | "workspace";
+type IconName = "agent" | "browser" | "chevron" | "close" | "file" | "more" | "panel" | "park" | "plus" | "settings" | "terminal" | "trash" | "workspace" | "x";
 
 function icon(name: IconName): string {
   const paths = {
@@ -83,6 +83,7 @@ function icon(name: IconName): string {
     terminal: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
     trash: '<path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/>',
     workspace: '<path d="M4 5h16v14H4zM8 9h8M8 13h5"/>',
+    x: '<path d="M6 6l12 12M18 6L6 18"/>',
   } as const;
   return `<svg aria-hidden="true" viewBox="0 0 24 24">${paths[name]}</svg>`;
 }
@@ -91,12 +92,20 @@ function button(label: string, action: string, iconName: Parameters<typeof icon>
   return `<button type="button" class="fixed-shell-icon-button" aria-label="${escapeHtml(label)}" data-action="${action}" ${attributes}>${icon(iconName)}</button>`;
 }
 
-function closeForm(close: ViewCloseAction, buttonHtml: string, className = ""): string {
-  return `<form class="${className}" data-turbo="true" method="post" action="${escapeHtml(close.action)}" data-close-label="${escapeHtml(close.label)}" data-action="submit->workspace-presentation#confirmClose">${buttonHtml}</form>`;
+function closeForm(close: ViewCloseAction, buttonHtml: string, attributes = ""): string {
+  return `<form${attributes} data-turbo="true" method="post" action="${escapeHtml(close.action)}" data-close-label="${escapeHtml(close.label)}" data-action="submit->workspace-presentation#confirmClose">${buttonHtml}</form>`;
+}
+
+function selectorCloseButton(close: ViewCloseAction, iconName: IconName): string {
+  return `<button class="fixed-shell-view-close" type="submit" title="Close ${escapeHtml(close.label)}" aria-label="Close ${escapeHtml(close.label)}">${icon(iconName)}</button>`;
 }
 
 function selectorCloseForm(close: ViewCloseAction): string {
-  return closeForm(close, `<button class="fixed-shell-view-close" type="submit" title="Close ${escapeHtml(close.label)}" aria-label="Close ${escapeHtml(close.label)}">×</button>`);
+  return closeForm(close, selectorCloseButton(close, "close"));
+}
+
+function workViewCloseForm(close: ViewCloseAction): string {
+  return closeForm(close, selectorCloseButton(close, "x"), ' class="fixed-shell-work-view-close" hidden');
 }
 
 function renderWorkspaceRowContent(workspace: WorkspacePaneEntry): string {
@@ -216,7 +225,7 @@ function renderLiveNode(key: string, role: "agent" | "work", id: string, bodyHtm
 
 function renderWorkViewSelector(view: WorkPaneContribution): string {
   return `<div class="fixed-shell-work-view-selector" draggable="true" data-work-view-reorder-key="${escapeHtml(view.key)}" data-action="dragstart->workspace-presentation#beginWorkReorder dragover->workspace-presentation#allowWorkReorder drop->workspace-presentation#finishWorkReorder">
-    <button type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}"${view.attentionSequence === undefined ? "" : ` data-attention-sequence="${view.attentionSequence}"`} data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(view.sourceKey ?? view.key)}" data-atelier-fullscreen-title-value="${escapeHtml(view.label)}" data-action="click->workspace-presentation#selectWorkView">${escapeHtml(view.label)}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>'}</button>${view.close ? selectorCloseForm(view.close) : ""}
+    <button type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}"${view.attentionSequence === undefined ? "" : ` data-attention-sequence="${view.attentionSequence}"`} data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(view.sourceKey ?? view.key)}" data-atelier-fullscreen-title-value="${escapeHtml(view.label)}" data-action="click->workspace-presentation#selectWorkView">${escapeHtml(view.label)}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>'}</button>${view.close ? workViewCloseForm(view.close) : ""}
   </div>`;
 }
 

@@ -242,7 +242,7 @@
  * ------------------------------------------------------------------------ */
 
 
-.agent-promptbox { position: relative; background: var(--panel); border: 1.5px solid var(--line2); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; padding-bottom: 30px; pointer-events: auto; container-type: inline-size; }
+.agent-promptbox { position: relative; background: var(--panel); border: 1.5px solid var(--line2); border-radius: var(--fixed-shell-radius, 14px); box-shadow: var(--shadow); overflow: hidden; padding-bottom: 30px; pointer-events: auto; container-type: inline-size; }
 .agent-promptbox:focus-within { border-color: var(--accent); }
 
 .agent-attach-row { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 10px; }
