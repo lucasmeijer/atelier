@@ -1,3 +1,4 @@
+import { posix } from "node:path";
 import { escapeHtml, workspaceFileEditorOpenUrl } from "@atelier/shared";
 
 /** Render Atelier-specific links and previews found in parsed Markdown. */
@@ -77,12 +78,20 @@ function renderUrlEmbed(workspaceId: string, rawTarget: string): string {
   return renderFullscreenFrame(rawTarget, `<iframe src="${escapeHtml(src)}" loading="lazy"></iframe>`, `<a href="${escapeHtml(src)}" target="_blank" rel="noopener">in new tab ↗</a>`);
 }
 
-export function atelierFileEditorHref(workspaceId: string, rawHref: string): string | undefined {
+export function atelierFileEditorHref(workspaceId: string, rawHref: string, sourcePath?: string): string | undefined {
   let url: URL;
   try {
     url = new URL(rawHref);
   } catch {
-    return undefined;
+    if (!sourcePath || rawHref.startsWith("#") || rawHref.startsWith("?") || rawHref.startsWith("//")) return undefined;
+    let relativePath: string;
+    try {
+      relativePath = decodeURIComponent(rawHref.split(/[?#]/, 1)[0]!);
+    } catch {
+      return undefined;
+    }
+    if (!relativePath) return undefined;
+    return workspaceFileEditorOpenUrl(workspaceId, posix.resolve(posix.dirname(sourcePath), relativePath));
   }
   if (url.protocol !== "atelier:" || url.hostname !== "file") return undefined;
 

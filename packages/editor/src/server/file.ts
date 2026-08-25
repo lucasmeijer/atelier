@@ -17,8 +17,10 @@ export class EditorFileError extends Error {
   }
 }
 
-function normalizedPath(input: string | null): string {
-  return posix.resolve(workspaceRoot, input || workspaceRoot);
+export function requestedEditableFilePath(input: string | null): string {
+  const path = posix.resolve(workspaceRoot, input || workspaceRoot);
+  if (path === workspaceRoot) throw new EditorFileError("Choose a text file to edit", 422);
+  return path;
 }
 
 function revision(content: Uint8Array): string {
@@ -26,8 +28,7 @@ function revision(content: Uint8Array): string {
 }
 
 async function editableTarget(workspaceId: string, inputPath: string | null): Promise<string> {
-  const requested = normalizedPath(inputPath);
-  if (requested === workspaceRoot) throw new EditorFileError("Choose a text file to edit", 422);
+  const requested = requestedEditableFilePath(inputPath);
   const parent = posix.dirname(requested);
   const result = await execWorkspaceCommandBuffer(workspaceId, ["sh", "-c", "test -d \"$1\" && realpath -ez -- \"$1\"", "sh", parent]);
   if (result.exitCode !== 0) throw new EditorFileError("Folder not found", 404);

@@ -73,8 +73,6 @@ export interface WorkspaceAttachContext {
   workspaceId: string;
   init?: unknown;
   events?: AtelierEventBus;
-  /** When present, body HTML is only needed for these module-native source keys. */
-  renderWorkViewSourceKeys?: ReadonlySet<string>;
 }
 
 export interface WorkspaceAgentConversationPresentation {

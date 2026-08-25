@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { removeWorkspaceResidentTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePresentationTurboStream, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
+import { openWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePresentationTurboStream, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 
 function fixture(overrides: Partial<WorkspacePresentation> = {}): WorkspacePresentation {
   return {
@@ -144,6 +144,18 @@ describe("role-fixed Workspace presentation", () => {
     expect(more).toContain('/commands/files.open');
     expect(more.indexOf('/commands/files.open')).toBeLessThan(more.indexOf("Open or create"));
     expect(more.indexOf('/commands/browser.create')).toBeGreaterThan(more.indexOf("Open or create"));
+  });
+
+  test("inserts one newly opened Work view without replacing the Workspace presentation", () => {
+    const presentation = fixture();
+    const html = openWorkViewTurboStream("workspace-1", presentation.workViews, "browser:preview");
+
+    expect(html).not.toContain('action="replace-workspace-presentation"');
+    expect(html).toContain('action="update" target="fixed_workspace_workspace-1_selectors"');
+    expect(html).toContain('action="append" target="fixed_workspace_workspace-1_bodies"');
+    expect(html).toContain('data-workspace-pane-id="browser:preview"');
+    expect(html).not.toContain('data-probe="terminal"');
+    expect(html).toContain('target="fixed_workspace_workspace-1_mobile_direct"');
   });
 
   test("targets the deleted Workspace's resident presentation", () => {

@@ -62,6 +62,23 @@ describe("renderMarkdown", () => {
     expect(html).toContain("file-editor/open?path=%2Ftmp%2Fplan.md");
   });
 
+  test("opens relative file links from the rendered Markdown file", () => {
+    const html = renderMarkdown(
+      "work 1",
+      "[Guide](../guides/getting%20started.md#setup) [Config](./config.ts)",
+      { sourcePath: "/work/docs/reference/README.md" },
+    );
+    expect(html).toContain("file-editor/open?path=%2Fwork%2Fdocs%2Fguides%2Fgetting+started.md");
+    expect(html).toContain("file-editor/open?path=%2Fwork%2Fdocs%2Freference%2Fconfig.ts");
+    expect(html.match(/data-turbo-stream="true"/g)).toHaveLength(2);
+  });
+
+  test("leaves same-document anchors as preview links", () => {
+    const html = renderMarkdown("work 1", "[Setup](#setup)", { sourcePath: "/work/README.md" });
+    expect(html).toContain('href="#setup"');
+    expect(html).not.toContain("file-editor/open");
+  });
+
   test("does not rewrite Atelier links inside inline code", () => {
     const html = renderMarkdown("work 1", "`[render.ts:55](atelier://file/work/render.ts?line=55&column=1)`");
     expect(html).toContain("<code>[render.ts:55](atelier://file/work/render.ts?line=55&amp;column=1)</code>");

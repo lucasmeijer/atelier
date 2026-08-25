@@ -59,7 +59,7 @@ type EditorRefreshDetail = { workspaceId: string; viewKey?: string; line?: numbe
 function createFileEditorController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FileEditorController extends Controller {
     static values = { workspaceId: String, path: String, contentUrl: String, line: Number, column: Number };
-    static targets = ["host", "status", "conflict", "preview", "previewToggle"];
+    static targets = ["host", "loading", "status", "conflict", "preview", "previewToggle"];
 
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
@@ -68,6 +68,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     declare readonly lineValue: number;
     declare readonly columnValue: number;
     declare readonly hostTarget: HTMLElement;
+    declare readonly loadingTarget: HTMLElement;
     declare readonly statusTarget: HTMLElement;
     declare readonly conflictTarget: HTMLDialogElement;
     declare readonly previewTarget: HTMLElement;
@@ -86,7 +87,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     connect(): void {
       // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       window.addEventListener("atelier:file-editor-refresh", this.refreshRequested as EventListener);
-      void this.load();
+      void this.load().catch((error: Error) => this.showLoadError(error));
     }
 
     disconnect(): void {
@@ -118,6 +119,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       const file = await this.fetchFile();
       this.revision = file.revision;
       this.savedContent = file.content;
+      this.loadingTarget.remove();
       this.view = new EditorView({
         parent: this.hostTarget,
         state: EditorState.create({
@@ -229,7 +231,8 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private async showPreview(): Promise<void> {
       const sequence = ++this.previewSequence;
       this.previewToggleTarget.disabled = true;
-      const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/file-editor/markdown-preview`, {
+      const previewUrl = `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/file-editor/markdown-preview?${new URLSearchParams({ path: this.pathValue })}`;
+      const response = await fetch(previewUrl, {
         method: "POST",
         headers: { "content-type": "text/plain; charset=utf-8", "accept": "text/html" },
         body: this.view!.state.doc.toString(),
@@ -266,6 +269,12 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       const position = Math.min(targetLine.to, targetLine.from + Math.max(0, column - 1));
       this.view.dispatch({ selection: { anchor: position }, effects: EditorView.scrollIntoView(position, { y: "center" }) });
       this.view.focus();
+    }
+
+    private showLoadError(error: Error): void {
+      this.loadingTarget.textContent = error.message;
+      this.loadingTarget.classList.add("is-error");
+      this.setStatus("Unable to open", "error");
     }
 
     private setStatus(text: string, state: "" | "saving" | "saved" | "error" | "conflict"): void {

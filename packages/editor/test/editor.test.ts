@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
+import type { WorkspaceWorkViewReference } from "@atelier/shared";
 import { atelierServerModule } from "../src/server/index.ts";
 import { renderFileWorkView } from "../src/server/render.ts";
 import { deleteWorkspaceFileEditorState, fileEditorViewLabels, openWorkspaceFileEditorView } from "../src/server/state.ts";
@@ -19,18 +20,39 @@ describe("editor workspace integration", () => {
     await events.emit("workspace_agent_turn_finished", { workspaceId: "workspace-1", agentLabel: "Agent 1" });
     expect(broadcasts).toHaveLength(1);
     expect(broadcasts[0]).toContain("file_editor_signal_workspace-1");
+    expect((await atelierServerModule.attachToWorkspace!({ workspaceId: "workspace-1" })).overlayHtml?.[0]).toContain("file_editor_signal_workspace-1");
     deleteWorkspaceFileEditorState("workspace-1");
   });
 
+  test("opens the editor view before loading file content", async () => {
+    const request = new Request("http://test.local/workspaces/workspace-progressive/file-editor/open?path=%2Fwork%2Fnew.ts");
+    let opened: WorkspaceWorkViewReference | undefined;
+    // SAFETY: The test fixture controls this route context.
+    const response = await atelierServerModule.routes![0]!.handle(request, new URL(request.url), {
+      openWorkView: async (_workspaceId: string, reference: WorkspaceWorkViewReference) => {
+        opened = reference;
+        return new Response("opened");
+      },
+    } as never);
+
+    expect(await response?.text()).toBe("opened");
+    expect(opened).toEqual({ type: "file", path: "/work/new.ts" });
+    deleteWorkspaceFileEditorState("workspace-progressive");
+  });
+
   test("renders Markdown previews through the shared renderer", async () => {
-    const request = new Request("http://test.local/workspaces/workspace-md/file-editor/markdown-preview", {
+    const request = new Request("http://test.local/workspaces/workspace-md/file-editor/markdown-preview?path=%2Fwork%2Fdocs%2FREADME.md", {
       method: "POST",
-      body: "# Preview\n\n**Rendered**",
+      body: "# Preview\n\n**Rendered** [Config](../config.ts)",
     });
     // SAFETY: The test fixture controls this value and establishes the asserted shape.
     const response = await atelierServerModule.routes![0]!.handle(request, new URL(request.url), {} as never);
     expect(response?.headers.get("content-type")).toBe("text/html; charset=utf-8");
-    expect(await response?.text()).toBe("<h1>Preview</h1>\n<p><strong>Rendered</strong></p>");
+    const html = await response?.text();
+    expect(html).toContain("<h1>Preview</h1>");
+    expect(html).toContain("<strong>Rendered</strong>");
+    expect(html).toContain("file-editor/open?path=%2Fwork%2Fconfig.ts");
+    expect(html).toContain('data-turbo-stream="true"');
   });
 
   test("adds the rendered Markdown toggle only to Markdown files", () => {
@@ -40,6 +62,8 @@ describe("editor workspace integration", () => {
     const codeHtml = renderFileWorkView("workspace-md", codeTab, "index.ts").bodyHtml!;
     expect(markdownHtml).toContain("file-editor#togglePreview");
     expect(markdownHtml).toContain("file-editor-preview agent-md");
+    expect(markdownHtml).toContain('class="file-editor-loading"');
+    expect(markdownHtml).toContain("Loading file…");
     expect(codeHtml).not.toContain("file-editor#togglePreview");
     deleteWorkspaceFileEditorState("workspace-md");
   });

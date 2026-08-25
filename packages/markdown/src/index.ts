@@ -1,5 +1,5 @@
 export { highlightCodeHtmlForPath, languageFromPath } from "./highlight.ts";
-export { renderMarkdown } from "./markdown.ts";
+export { renderMarkdown, type MarkdownRenderOptions } from "./markdown.ts";
 export {
   StreamingMarkdownRenderer,
   renderStreamingMarkdownSnapshot,

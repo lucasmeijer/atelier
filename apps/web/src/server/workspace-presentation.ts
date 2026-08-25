@@ -1,4 +1,4 @@
-import { domId, escapeHtml } from "@atelier/shared";
+import { domId, escapeHtml, turboStream } from "@atelier/shared";
 
 export type WorkViewAvailability =
   | { phase: "opening"; detail?: string }
@@ -202,16 +202,32 @@ function renderLiveNode(key: string, role: "agent" | "work", id: string, bodyHtm
   return `<section class="fixed-shell-live-node" data-workspace-live-node="${escapeHtml(key)}" data-workspace-pane-role="${role}" data-workspace-pane-id="${escapeHtml(id)}"${workView?.sourceKey ? ` data-source-work-view-key="${escapeHtml(workView.sourceKey)}"` : ""} tabindex="-1">${workView ? renderAvailability(workView) : ""}<div class="fixed-shell-live-body">${bodyHtml}</div></section>`;
 }
 
-function renderWorkPane(presentation: WorkspacePresentation): string {
-  const selectors = presentation.workViews.map((view) => `<div class="fixed-shell-work-view-selector" draggable="true" data-work-view-reorder-key="${escapeHtml(view.key)}" data-action="dragstart->workspace-presentation#beginWorkReorder dragover->workspace-presentation#allowWorkReorder drop->workspace-presentation#finishWorkReorder">
+function renderWorkViewSelector(view: WorkPaneContribution): string {
+  return `<div class="fixed-shell-work-view-selector" draggable="true" data-work-view-reorder-key="${escapeHtml(view.key)}" data-action="dragstart->workspace-presentation#beginWorkReorder dragover->workspace-presentation#allowWorkReorder drop->workspace-presentation#finishWorkReorder">
     <button type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}"${view.attentionSequence === undefined ? "" : ` data-attention-sequence="${view.attentionSequence}"`} data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(view.sourceKey ?? view.key)}" data-atelier-fullscreen-title-value="${escapeHtml(view.label)}" data-action="click->workspace-presentation#selectWorkView">${escapeHtml(view.label)}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>'}</button>${view.close ? selectorCloseForm(view.close) : ""}
-  </div>`).join("");
-  const panes = presentation.workViews.map((view) => renderLiveNode(`work:${view.key}`, "work", view.key, `${view.actionsHtml ? `<div class="fixed-shell-work-actions">${view.actionsHtml}</div>` : ""}${view.bodyHtml}`, presentation.preserveLiveKeys, view)).join("");
+  </div>`;
+}
+
+function renderWorkViewSelectors(views: readonly WorkPaneContribution[]): string {
+  return views.map(renderWorkViewSelector).join("");
+}
+
+function renderWorkViewPane(view: WorkPaneContribution, preserved?: ReadonlySet<string>): string {
+  return renderLiveNode(`work:${view.key}`, "work", view.key, `${view.actionsHtml ? `<div class="fixed-shell-work-actions">${view.actionsHtml}</div>` : ""}${view.bodyHtml}`, preserved, view);
+}
+
+function workViewDomId(workspaceId: string, part: string): string {
+  return domId("fixed_workspace", workspaceId, part);
+}
+
+function renderWorkPane(presentation: WorkspacePresentation): string {
+  const selectors = renderWorkViewSelectors(presentation.workViews);
+  const panes = presentation.workViews.map((view) => renderWorkViewPane(view, presentation.preserveLiveKeys)).join("");
   const workCommands = (presentation.commands ?? []).filter((command) => command.placement === "work-launcher");
   const addMenu = workCommands.length ? `<details class="fixed-shell-add-menu"><summary class="fixed-shell-icon-button" aria-label="Open Work view">+</summary><div>${workCommands.map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button type="submit">${escapeHtml(command.label)}</button></form>`).join("")}</div></details>` : "";
   return `<section class="fixed-shell-work-pane" data-workspace-role-region="work" data-workspace-presentation-target="workPane" aria-label="Work">
-    <header><div class="fixed-shell-work-view-selectors" role="tablist" aria-label="Work views">${selectors}</div>${addMenu}${button("Close Work pane", "click->workspace-presentation#toggleWorkPane", "panel", 'data-expanded-pane-toggle="work"')}</header>
-    <div class="fixed-shell-work-bodies">${panes || '<div class="fixed-shell-empty-work">Open Files, a file, terminal, or browser to work alongside the Agent.</div>'}</div>
+    <header><div id="${workViewDomId(presentation.workspace.id, "selectors")}" class="fixed-shell-work-view-selectors" role="tablist" aria-label="Work views">${selectors}</div>${addMenu}${button("Close Work pane", "click->workspace-presentation#toggleWorkPane", "panel", 'data-expanded-pane-toggle="work"')}</header>
+    <div id="${workViewDomId(presentation.workspace.id, "bodies")}" class="fixed-shell-work-bodies">${panes || `<div id="${workViewDomId(presentation.workspace.id, "empty")}" class="fixed-shell-empty-work">Open Files, a file, terminal, or browser to work alongside the Agent.</div>`}</div>
     <div class="fixed-shell-work-resizer" role="separator" aria-label="Resize Work pane" aria-orientation="vertical" tabindex="0" data-action="pointerdown->workspace-presentation#beginWorkResize keydown->workspace-presentation#resizeWorkWithKeyboard"></div>
   </section>`;
 }
@@ -222,29 +238,42 @@ function mobileWorkIcon(view: WorkPaneContribution): IconName {
   return "file";
 }
 
+function renderMobileDirectWorkViews(views: readonly WorkPaneContribution[]): string {
+  return views.filter((view) => view.mobileDestination === "direct").map((view) => `<button type="button" aria-label="${escapeHtml(view.label)}" title="${escapeHtml(view.label)}" data-mobile-destination="work:${escapeHtml(view.key)}" data-action="click->workspace-presentation#selectMobileDestination">${icon(mobileWorkIcon(view))}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>'}</button>`).join("");
+}
+
+function renderMobileSecondaryWorkViews(views: readonly WorkPaneContribution[]): string {
+  return views.filter((view) => view.mobileDestination === "more").map((view) => `<button type="button" data-more-work-key="${escapeHtml(view.key)}" data-action="click->workspace-presentation#selectMoreWorkView">${escapeHtml(view.label)}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>'}</button>`).join("") || "<p>No secondary views are available.</p>";
+}
+
+function renderMobileCloser(destination: string, close: ViewCloseAction): string {
+  return `<div data-more-close-destination="${escapeHtml(destination)}" hidden>${closeForm(close, '<button class="fixed-shell-more-close-current" type="submit">Close current view</button>')}</div>`;
+}
+
+function renderMobileWorkViewCloser(view: WorkPaneContribution): string {
+  return view.close ? renderMobileCloser(`work:${view.key}`, view.close) : "";
+}
+
 function renderMobileNavigation(presentation: WorkspacePresentation): string {
   const agents = presentation.agentConversations.map((agent) => `<button type="button" aria-label="${escapeHtml(agent.title)}" title="${escapeHtml(agent.title)}" data-mobile-destination="agent:${escapeHtml(agent.id)}" data-action="click->workspace-presentation#selectMobileDestination">${icon("agent")}</button>`).join("");
-  const direct = presentation.workViews.filter((view) => view.mobileDestination === "direct").map((view) => `<button type="button" aria-label="${escapeHtml(view.label)}" title="${escapeHtml(view.label)}" data-mobile-destination="work:${escapeHtml(view.key)}" data-action="click->workspace-presentation#selectMobileDestination">${icon(mobileWorkIcon(view))}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>'}</button>`).join("");
-  const openSecondary = presentation.workViews.filter((view) => view.mobileDestination === "more").map((view) => `<button type="button" data-more-work-key="${escapeHtml(view.key)}" data-action="click->workspace-presentation#selectMoreWorkView">${escapeHtml(view.label)}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>'}</button>`).join("");
+  const direct = renderMobileDirectWorkViews(presentation.workViews);
+  const openSecondary = renderMobileSecondaryWorkViews(presentation.workViews);
   const filesCommand = presentation.workViews.some((view) => view.key.startsWith("files:")) ? undefined : presentation.commands?.find((command) => command.id === "files.open");
   const closedSingletons = filesCommand ? `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(filesCommand.id)}"><button type="submit">${escapeHtml(filesCommand.label)}</button></form>` : "";
-  const secondary = `${openSecondary}${closedSingletons}`;
   const launcherCommands = new Set(["terminal.create", "terminal.attach", "browser.create", "vscode.open", "desktop.open"]);
   const launchers = (presentation.commands ?? []).filter((command) => launcherCommands.has(command.id)).map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button type="submit">${escapeHtml(command.label)}</button></form>`).join("");
-  const closers = [
-    ...presentation.agentConversations.flatMap((agent) => agent.close ? [{ destination: `agent:${agent.id}`, close: agent.close }] : []),
-    ...presentation.workViews.flatMap((view) => view.close ? [{ destination: `work:${view.key}`, close: view.close }] : []),
-  ].map(({ destination, close }) => `<div data-more-close-destination="${escapeHtml(destination)}" hidden>${closeForm(close, '<button class="fixed-shell-more-close-current" type="submit">Close current view</button>')}</div>`).join("");
+  const closers = presentation.agentConversations.map((agent) => agent.close ? renderMobileCloser(`agent:${agent.id}`, agent.close) : "").join("")
+    + presentation.workViews.map(renderMobileWorkViewCloser).join("");
   const hiddenAttention = presentation.workViews.some((view) => view.mobileDestination === "more" && view.attentionSequence !== undefined);
   return `<nav class="fixed-shell-mobile-nav" aria-label="Workspace destinations">
     <button class="fixed-shell-mobile-fixed" type="button" aria-label="Workspace" title="Workspace" data-mobile-destination="workspace" data-action="click->workspace-presentation#selectMobileDestination">${icon("workspace")}</button>
-    <div class="fixed-shell-mobile-scroll">${agents}${direct}</div>
+    <div class="fixed-shell-mobile-scroll">${agents}<span id="${workViewDomId(presentation.workspace.id, "mobile_direct")}" class="fixed-shell-mobile-work-items">${direct}</span></div>
     <button class="fixed-shell-mobile-fixed" type="button" aria-label="More" title="More" data-mobile-more data-action="click->workspace-presentation#toggleMore">${icon("more")}${hiddenAttention ? '<i class="fixed-shell-attention-dot" aria-label="Hidden Attention"></i>' : ""}</button>
     <section class="fixed-shell-more-menu" data-workspace-presentation-target="moreMenu" aria-label="More" hidden>
       <header><button type="button" class="fixed-shell-more-close" aria-label="Close More" data-action="click->workspace-presentation#toggleMore">${icon("close")}</button></header>
-      <div class="fixed-shell-more-section">${secondary || "<p>No secondary views are available.</p>"}</div>
+      <div class="fixed-shell-more-section"><span id="${workViewDomId(presentation.workspace.id, "mobile_secondary")}" class="fixed-shell-mobile-work-items">${openSecondary}</span>${closedSingletons}</div>
       <div class="fixed-shell-more-section"><h2>Open or create</h2>${launchers}</div>
-      <div class="fixed-shell-more-section fixed-shell-more-close-section">${closers}</div>
+      <div id="${workViewDomId(presentation.workspace.id, "mobile_closers")}" class="fixed-shell-more-section fixed-shell-more-close-section">${closers}</div>
     </section>
   </nav>`;
 }
@@ -261,6 +290,23 @@ export function renderWorkspacePresentation(presentation: WorkspacePresentation)
 
 export function workspacePresentationTurboStream(workspaceId: string, presentation: WorkspacePresentation): string {
   return `<turbo-stream action="replace-workspace-presentation" target="${escapeHtml(domId("fixed_workspace", workspaceId))}"><template>${renderWorkspacePresentation(presentation)}</template></turbo-stream>`;
+}
+
+export function presentWorkViewTurboStream(workspaceId: string, key: string): string {
+  return `<turbo-stream action="present-work-view" target="${escapeHtml(domId("fixed_workspace", workspaceId))}" data-work-view-key="${escapeHtml(key)}"></turbo-stream>`;
+}
+
+export function openWorkViewTurboStream(workspaceId: string, workViews: readonly WorkPaneContribution[], openedKey: string): string {
+  const opened = workViews.find((view) => view.key === openedKey);
+  if (!opened) throw new Error(`Opened Work view is missing from the presentation: ${openedKey}`);
+  return [
+    turboStream("update", workViewDomId(workspaceId, "selectors"), renderWorkViewSelectors(workViews)),
+    turboStream("remove", workViewDomId(workspaceId, "empty")),
+    turboStream("append", workViewDomId(workspaceId, "bodies"), renderWorkViewPane(opened)),
+    turboStream("update", workViewDomId(workspaceId, "mobile_direct"), renderMobileDirectWorkViews(workViews)),
+    turboStream("update", workViewDomId(workspaceId, "mobile_secondary"), renderMobileSecondaryWorkViews(workViews)),
+    turboStream("append", workViewDomId(workspaceId, "mobile_closers"), renderMobileWorkViewCloser(opened)),
+  ].join("");
 }
 
 export function removeWorkspaceResidentTurboStream(workspaceId: string): string {

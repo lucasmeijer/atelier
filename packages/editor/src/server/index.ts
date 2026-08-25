@@ -4,7 +4,7 @@ import { turboStream, turboStreamResponse, type WorkspaceModule } from "@atelier
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { isEditorSaveRequest } from "../protocol.ts";
-import { EditorFileError, maxEditableFileBytes, readEditableFile, writeEditableFile } from "./file.ts";
+import { EditorFileError, maxEditableFileBytes, readEditableFile, requestedEditableFilePath, writeEditableFile } from "./file.ts";
 import { fileEditorSignalId, renderFileEditorSignal, renderFileWorkView } from "./render.ts";
 import {
   closeWorkspaceFileEditorView,
@@ -36,16 +36,18 @@ function positiveInteger(value: string | null): number | undefined {
 }
 
 async function openEditorEndpoint(workspaceId: string, url: URL, openWorkView: (workspaceId: string, reference: FileWorkViewReference) => Promise<Response>): Promise<Response> {
-  const file = await readEditableFile(workspaceId, url.searchParams.get("path"));
+  const path = requestedEditableFilePath(url.searchParams.get("path"));
   const line = positiveInteger(url.searchParams.get("line"));
   const column = positiveInteger(url.searchParams.get("column"));
-  const { view } = openWorkspaceFileEditorView(workspaceId, file.path, { line, column });
+  const { view } = openWorkspaceFileEditorView(workspaceId, path, { line, column });
   return await openWorkView(workspaceId, { type: "file", path: view.path });
 }
 
-async function markdownPreviewEndpoint(workspaceId: string, request: Request): Promise<Response> {
+async function markdownPreviewEndpoint(workspaceId: string, request: Request, url: URL): Promise<Response> {
   if (request.method !== "POST") return textResponse("Method not allowed", 405);
-  return new Response(renderMarkdown(workspaceId, await request.text()), {
+  const sourcePath = url.searchParams.get("path");
+  const options = sourcePath?.startsWith("/") ? { sourcePath } : {};
+  return new Response(renderMarkdown(workspaceId, await request.text(), options), {
     headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
   });
 }
@@ -85,7 +87,7 @@ const editorWorkspaceModule: WorkspaceModule = {
         if (!match) return undefined;
         const workspaceId = decodeURIComponent(match[1]!);
         if (match[2] === "open") return request.method === "GET" ? await openEditorEndpoint(workspaceId, url, context.openWorkView) : textResponse("Method not allowed", 405);
-        if (match[2] === "markdown-preview") return await markdownPreviewEndpoint(workspaceId, request);
+        if (match[2] === "markdown-preview") return await markdownPreviewEndpoint(workspaceId, request, url);
         return await editorContentEndpoint(workspaceId, request, url);
       } catch (error) {
         if (error instanceof EditorFileError) return textResponse(error.message, error.status);
@@ -107,7 +109,7 @@ const editorWorkspaceModule: WorkspaceModule = {
     const labels = fileEditorViewLabels(editorViews);
     return {
       workViews: editorViews.map((view) => renderFileWorkView(workspaceId, view, labels.get(view.key)!)),
-      workspaceChromeHtml: [renderFileEditorSignal(workspaceId)],
+      overlayHtml: [renderFileEditorSignal(workspaceId)],
     };
   },
 };

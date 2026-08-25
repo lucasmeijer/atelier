@@ -3,7 +3,11 @@ import { atelierFileEditorHref, renderAtelierEmbed } from "./atelier-markdown.ts
 import { escapeHtml } from "@atelier/shared";
 import { highlightCodeHtml } from "./highlight.ts";
 
-interface MarkdownEnvironment {
+export interface MarkdownRenderOptions {
+  sourcePath?: string;
+}
+
+interface MarkdownEnvironment extends MarkdownRenderOptions {
   workspaceId: string;
 }
 
@@ -33,7 +37,7 @@ const defaultLinkOpen = markdown.renderer.rules.link_open ?? ((tokens, index, op
 markdown.renderer.rules.link_open = (tokens, index, options, environment: MarkdownEnvironment, renderer) => {
   const token = tokens[index]!;
   const href = token.attrGet("href") ?? "";
-  const editorHref = atelierFileEditorHref(environment.workspaceId, href);
+  const editorHref = atelierFileEditorHref(environment.workspaceId, href, environment.sourcePath);
   if (editorHref) {
     token.attrSet("href", editorHref);
     token.attrSet("data-turbo-stream", "true");
@@ -56,6 +60,6 @@ markdown.renderer.rules.image = (tokens, index, options, environment: MarkdownEn
   return defaultImage(tokens, index, options, environment, renderer);
 };
 
-export function renderMarkdown(workspaceId: string, text: string): string {
-  return markdown.render(text, { workspaceId } satisfies MarkdownEnvironment).trim();
+export function renderMarkdown(workspaceId: string, text: string, options: MarkdownRenderOptions = {}): string {
+  return markdown.render(text, { workspaceId, ...options } satisfies MarkdownEnvironment).trim();
 }
