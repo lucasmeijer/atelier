@@ -112,6 +112,23 @@ export function transcriptFollowingAfterScroll(wasFollowing: boolean, previousEn
   return atNextEnd || (wasFollowing && endMovedAway && remainedAtPreviousEnd);
 }
 
+export type PromptHistoryState = { prompts: string[]; draft: string; index: number };
+
+export function navigatePromptHistory(state: PromptHistoryState | undefined, direction: "up" | "down", draft: string, prompts: string[]): { state: PromptHistoryState | undefined; value: string } | undefined {
+  if (!state) {
+    if (direction === "down" || prompts.length === 0) return undefined;
+    const next = { prompts, draft, index: prompts.length - 1 };
+    return { state: next, value: prompts[next.index] };
+  }
+  if (direction === "up") {
+    const next = { ...state, index: Math.max(0, state.index - 1) };
+    return { state: next, value: next.prompts[next.index] };
+  }
+  if (state.index === state.prompts.length - 1) return { state: undefined, value: state.draft };
+  const next = { ...state, index: state.index + 1 };
+  return { state: next, value: next.prompts[next.index] };
+}
+
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
     static values = { workspaceId: String, label: String, snapshotCursor: String };
@@ -139,6 +156,8 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private transcriptLayoutFrame = 0;
     private transcriptEnd = 0;
     private rewindUserText = "";
+    private promptHistoryState?: PromptHistoryState;
+    private applyingPromptHistory = false;
     private historicalOpenItemIds = new Set<string>();
     private restoreHistoricalOpenItems(): void {
       for (const id of this.historicalOpenItemIds) this.transcriptTarget.querySelector<HTMLElement>(`#${CSS.escape(id)} details[data-agent-historical-detail]`)?.setAttribute("open", "");
@@ -262,7 +281,28 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     // ---- prompt box ----
 
+    private userPrompts(): string[] {
+      return [...this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-user[data-agent-user-text]")].map((message) => message.dataset.agentUserText!);
+    }
+
     inputKeydown(event: KeyboardEvent): void {
+      const noModifiers = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+      const completionMenuOpen = Boolean(this.element.querySelector(".agent-completion-menu-host:not([hidden])"));
+      const atPromptStart = this.inputTarget.selectionStart === 0 && this.inputTarget.selectionEnd === 0;
+      const direction = event.key === "ArrowUp" ? "up" : event.key === "ArrowDown" ? "down" : undefined;
+      if (direction && noModifiers && !completionMenuOpen && (this.promptHistoryState || (direction === "up" && atPromptStart))) {
+        const navigation = navigatePromptHistory(this.promptHistoryState, direction, this.inputTarget.value, this.userPrompts());
+        if (navigation) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          this.promptHistoryState = navigation.state;
+          this.applyingPromptHistory = true;
+          this.setInputValue(navigation.value);
+          this.applyingPromptHistory = false;
+          return;
+        }
+      }
+
       // Enter inserts a newline; ⌘/Ctrl+Enter sends (or follow-ups when busy).
       if (isSubmitShortcut(event)) {
         event.preventDefault();
@@ -286,6 +326,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     }
 
     promptChanged(): void {
+      if (!this.applyingPromptHistory) this.promptHistoryState = undefined;
       const value = this.inputTarget.value;
       if (value) sessionStorage.setItem(this.promptDraftStorageKey, value);
       else sessionStorage.removeItem(this.promptDraftStorageKey);

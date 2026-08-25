@@ -20,6 +20,11 @@ describe("transcript rendering", () => {
     expect(html).toContain('data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged"');
   });
 
+  test("user messages retain their original text for keyboard prompt history", () => {
+    const html = renderTranscriptItem(ctx, { type: "user", key: "user-history", text: "**bold** & quoted \"text\"", images: [] });
+    expect(html).toContain('data-agent-user-text="**bold** &amp; quoted &quot;text&quot;"');
+  });
+
   test("active Codex composers render Fast as an icon toggle", () => {
     const html = renderStatsBar(ctx, { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "GPT", provider: "openai-codex", thinkingLevel: "high", thinkingLevels: ["high"], serviceTier: "priority", models: [] });
     expect(html).toContain('action="/workspaces/ws/agents/agent/service-tier"');

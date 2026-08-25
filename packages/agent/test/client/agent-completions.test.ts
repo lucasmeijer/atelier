@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { type AgentCompletionInput, agentCompletionRequest, fileCompletionPrefix, focusAgentPromptOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, scrollMessageToTop, transcriptFollowingAfterScroll } from "../../src/client/agent-controllers.ts";
+import { type AgentCompletionInput, agentCompletionRequest, fileCompletionPrefix, focusAgentPromptOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, scrollMessageToTop, transcriptFollowingAfterScroll } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): AgentCompletionInput {
   return {
@@ -88,6 +88,30 @@ describe("agent transcript navigation", () => {
     expect(transcript.scrollTop).toBe(168);
     expect(preventDefault).toHaveBeenCalledTimes(1);
     expect(stopPropagation).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("agent prompt history", () => {
+  test("cycles backward through prompts and forward to the original draft", () => {
+    const prompts = ["first", "second", "third"];
+    const latest = navigatePromptHistory(undefined, "up", "unfinished draft", prompts)!;
+    expect(latest.value).toBe("third");
+
+    const previous = navigatePromptHistory(latest.state, "up", latest.value, prompts)!;
+    expect(previous.value).toBe("second");
+    const oldest = navigatePromptHistory(previous.state, "up", previous.value, prompts)!;
+    expect(navigatePromptHistory(oldest.state, "up", oldest.value, prompts)!.value).toBe("first");
+
+    const next = navigatePromptHistory(oldest.state, "down", oldest.value, prompts)!;
+    expect(next.value).toBe("second");
+    const newest = navigatePromptHistory(next.state, "down", next.value, prompts)!;
+    expect(newest.value).toBe("third");
+    expect(navigatePromptHistory(newest.state, "down", newest.value, prompts)).toEqual({ state: undefined, value: "unfinished draft" });
+  });
+
+  test("does not start by navigating down or without previous prompts", () => {
+    expect(navigatePromptHistory(undefined, "down", "draft", ["first"])).toBeUndefined();
+    expect(navigatePromptHistory(undefined, "up", "draft", [])).toBeUndefined();
   });
 });
 
