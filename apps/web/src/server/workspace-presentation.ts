@@ -174,17 +174,13 @@ function renderAgentPane(presentation: WorkspacePresentation): string {
   </section>`;
 }
 
-function availabilityLabel(availability: WorkViewAvailability): string {
-  if (availability.phase === "live") return "";
-  return availability.phase === "opening" ? "Opening" : availability.phase === "reconnecting" ? "Reconnecting" : "Unavailable";
-}
-
 function renderAvailability(view: WorkPaneContribution): string {
   const { availability } = view;
   if (availability.phase === "live") return "";
+  const label = availability.phase === "opening" ? "Opening" : availability.phase === "reconnecting" ? "Reconnecting" : "Unavailable";
   const detail = availability.detail ?? (availability.phase === "opening" ? `Opening ${view.label}…` : `Reconnecting ${view.label}…`);
   return `<div class="fixed-shell-availability fixed-shell-availability-${availability.phase}" role="${availability.phase === "unavailable" ? "alert" : "status"}">
-    <span class="fixed-shell-availability-mark" aria-hidden="true"></span><strong>${availabilityLabel(availability)}</strong><p>${escapeHtml(detail)}</p>${availability.phase === "unavailable" ? availability.recoveryHtml ?? "" : ""}
+    <span class="fixed-shell-availability-mark" aria-hidden="true"></span><strong>${label}</strong><p>${escapeHtml(detail)}</p>${availability.phase === "unavailable" ? availability.recoveryHtml ?? "" : ""}
   </div>`;
 }
 
@@ -195,7 +191,7 @@ function renderLiveNode(key: string, role: "agent" | "work", id: string, bodyHtm
 
 function renderWorkPane(presentation: WorkspacePresentation): string {
   const selectors = presentation.workViews.map((view) => `<div class="fixed-shell-work-view-selector" draggable="true" data-work-view-reorder-key="${escapeHtml(view.key)}" data-action="dragstart->workspace-presentation#beginWorkReorder dragover->workspace-presentation#allowWorkReorder drop->workspace-presentation#finishWorkReorder">
-    <button type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}"${view.attentionSequence === undefined ? "" : ` data-attention-sequence="${view.attentionSequence}"`} data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(view.sourceKey ?? view.key)}" data-atelier-fullscreen-title-value="${escapeHtml(view.label)}" data-action="click->workspace-presentation#selectWorkView">${escapeHtml(view.label)}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>'}<span class="fixed-shell-work-status fixed-shell-work-status-${view.availability.phase}" aria-label="${availabilityLabel(view.availability) || "Live"}"></span></button>${view.close ? selectorCloseForm(view.close) : ""}
+    <button type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}"${view.attentionSequence === undefined ? "" : ` data-attention-sequence="${view.attentionSequence}"`} data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(view.sourceKey ?? view.key)}" data-atelier-fullscreen-title-value="${escapeHtml(view.label)}" data-action="click->workspace-presentation#selectWorkView">${escapeHtml(view.label)}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>'}</button>${view.close ? selectorCloseForm(view.close) : ""}
   </div>`).join("");
   const panes = presentation.workViews.map((view) => renderLiveNode(`work:${view.key}`, "work", view.key, `${view.actionsHtml ? `<div class="fixed-shell-work-actions">${view.actionsHtml}</div>` : ""}${view.bodyHtml}`, presentation.preserveLiveKeys, view)).join("");
   const workCommands = (presentation.commands ?? []).filter((command) => command.placement === "work-launcher");

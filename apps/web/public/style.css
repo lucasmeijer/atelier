@@ -455,9 +455,6 @@ a.btn { text-decoration: none; }
 .fixed-shell-work-view-selector { display: flex; position: relative; flex: 1 1 150px; min-width: 84px; max-width: 220px; }
 .fixed-shell-work-view-selector > button { display: flex; flex: 1; min-width: 0; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; }
 .fixed-shell-work-view-selector > form { display: flex; align-items: center; }
-.fixed-shell-work-status { width: 5px; height: 5px; border-radius: 50%; background: var(--muted-2); }
-.fixed-shell-work-status-opening, .fixed-shell-work-status-reconnecting { background: var(--muted); animation: fixed-shell-pulse 1.2s ease-in-out infinite; }
-.fixed-shell-work-status-unavailable { background: var(--red); }
 .fixed-shell-work-resizer { position: absolute; z-index: 3; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; touch-action: none; }
 .fixed-shell-work-resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; }
 .fixed-shell-work-resizer:hover::after, .fixed-shell-work-resizer:focus-visible::after { background: var(--muted); }
@@ -469,7 +466,6 @@ a.btn { text-decoration: none; }
 .fixed-shell-availability-unavailable .fixed-shell-availability-mark { border: 0; border-radius: 3px; background: var(--red); animation: none; transform: rotate(45deg); }
 .fixed-shell-availability-unavailable + .fixed-shell-live-body { visibility: hidden; }
 @keyframes fixed-shell-spin { to { transform: rotate(360deg); } }
-@keyframes fixed-shell-pulse { 50% { opacity: .35; } }
 
 .fixed-shell-mobile-nav { display: none; }
 
@@ -535,7 +531,7 @@ a.btn { text-decoration: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .fixed-shell-workspace-pane, .fixed-shell-work-pane, .fixed-shell-agent-pane { transition-duration: 1ms !important; }
-  .fixed-shell-work-status, .fixed-shell-availability-mark { animation-duration: 1ms !important; animation-iteration-count: 1 !important; }
+  .fixed-shell-availability-mark { animation-duration: 1ms !important; animation-iteration-count: 1 !important; }
 }
 :root {
   --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
