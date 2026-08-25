@@ -51,7 +51,7 @@ export function deleteWorkspaceVSCodeState(workspaceId: string): void {
 export async function ensureWorkspaceVSCodeServer(workspaceId: string): Promise<void> {
   const result = await execWorkspaceShell(workspaceId, `
     set -eu
-    server_pattern='[c]ode serve-web|[c]ode-server'
+    server_pattern='[/]bin/code-server .*--port 8000|out[/]server-main\.js .*--port 8000|[c]ode serve-web .*--port 8000'
     ready_url='http://127.0.0.1:8000/'
 
     is_ready() {
