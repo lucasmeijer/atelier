@@ -44,6 +44,38 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
+  test("opens the next and previous workspace with keyboard shortcuts", async () => {
+    const presentations: WorkspacePresentation[] = ["first", "second", "third"].map((id) => ({
+      workspace: { id, title: id },
+      agentConversations: [{ id: `agent-${id}`, title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      workViews: [],
+    }));
+    const pane: WorkspacePanePresentation = {
+      projects: [],
+      projectlessWorkspaces: presentations.map(({ workspace }, index) => ({ ...workspace, active: index === 0 })),
+    };
+    const shell = renderShellFixture(presentations[0]!, pane, presentations.slice(1))
+      .replace('data-controller="workspace-navigation"', 'data-controller="atelier-shortcuts workspace-navigation"');
+    const page = await browser.newPage();
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${shell}<script type="module" src="/workspace-test.js"></script>`,
+    }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-shell-app")?.classList.contains("is-workspace-pane-open"));
+
+    const pressShortcut = async (key: string, code: string) => {
+      await page.locator("body").dispatchEvent("keydown", { key, code, metaKey: true, altKey: true, bubbles: true, cancelable: true });
+    };
+    await pressShortcut(".", "Period");
+    await page.waitForFunction(() => document.querySelector('[data-workspace-entry-id="second"]')?.classList.contains("active"));
+    await pressShortcut(",", "Comma");
+    await page.waitForFunction(() => document.querySelector('[data-workspace-entry-id="first"]')?.classList.contains("active"));
+    await page.close();
+  });
+
   test("detects and selects a Turbo-added workspace without URL navigation", async () => {
     const page = await browser.newPage();
     await page.setContent(`<div id="workspaces_table_rows">

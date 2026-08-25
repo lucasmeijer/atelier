@@ -774,34 +774,18 @@ class AtelierShortcutsController extends Controller {
   }
 
   private workspacePaletteItems(fuzzyScore: (candidate: string) => number): WorkspacePaletteItem[] {
-    const fixedRows = [...document.querySelectorAll<HTMLElement>(".workspace-detail-resident.visible .fixed-shell-workspace-row[data-workspace-entry-id]")];
-    if (fixedRows.length > 0) return fixedRows.map((row) => {
-      const workspaceId = row.dataset.workspaceEntryId!;
-      const title = row.querySelector("span")?.textContent?.trim() || workspaceId;
-      const visible = workspaceId === residencyController()?.visibleWorkspaceId();
-      return {
-        id: `workspace:${workspaceId}`,
-        title,
-        subtitle: "Workspace",
-        badge: visible ? "open" : undefined,
-        keywords: [workspaceId],
-        score: fuzzyScore(`${title} ${workspaceId}`) + (visible ? 15 : 0),
-        run: () => void residencyController()?.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`),
-      };
-    });
     return this.workspaceRows().map((row) => {
-      const workspaceId = row.dataset.workspaceId!;
-      const title = row.querySelector<HTMLElement>(".r-title")?.textContent?.trim() || workspaceId;
-      const phase = row.dataset.phase ?? "ready";
-      const parked = row.dataset.parked === "true" || row.classList.contains("parked");
-      const visible = row.classList.contains("visible") || residencyController()?.visibleWorkspaceId() === workspaceId;
+      const workspaceId = row.dataset.workspaceEntryId!;
+      const title = row.title || workspaceId;
+      const parked = Boolean(row.closest(".fixed-shell-parked"));
+      const visible = row.classList.contains("active");
       return {
         id: `workspace:${workspaceId}`,
         title,
         subtitle: parked ? "Parked workspace" : "Workspace",
-        badge: visible ? "open" : phase,
-        keywords: [workspaceId, phase, parked ? "parked" : ""],
-        score: fuzzyScore([title, workspaceId, phase, parked ? "parked" : ""].join(" ")) + (visible ? 15 : 0) - (parked ? 8 : 0),
+        badge: visible ? "open" : undefined,
+        keywords: [workspaceId, parked ? "parked" : ""],
+        score: fuzzyScore(`${title} ${workspaceId} ${parked ? "parked" : ""}`) + (visible ? 15 : 0) - (parked ? 8 : 0),
         run: () => this.openWorkspaceRow(row),
       };
     });
@@ -828,18 +812,13 @@ class AtelierShortcutsController extends Controller {
   }
 
   private workspaceRows(): HTMLElement[] {
-    return [...document.querySelectorAll<HTMLElement>(".workspace-row[data-workspace-id]")]
-      .filter((row) => !row.classList.contains("pending-delete") && row.dataset.phase !== "checking_delete" && row.dataset.phase !== "deleting");
+    return [...document.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row[data-workspace-entry-id]")];
   }
 
   private async openWorkspaceRow(row: HTMLElement): Promise<void> {
-    const workspaceId = row.dataset.workspaceId;
-    const href = row.querySelector<HTMLAnchorElement>("a.row-main")?.href;
-    if (!workspaceId || !href) return;
-    workspaceListController()?.markVisibleWorkspace(workspaceId);
-    await residencyController()?.selectWorkspace(workspaceId, href);
+    const workspaceId = row.dataset.workspaceEntryId;
+    if (workspaceId) await workspaceNavigationController()?.selectWorkspaceById(workspaceId);
   }
-
 
   private async openSettingsDialog(): Promise<void> {
     const response = await fetch("/settings", { headers: { "Accept": "text/vnd.turbo-stream.html" } });
@@ -849,7 +828,7 @@ class AtelierShortcutsController extends Controller {
   }
 
   private visibleWorkspaceId(): string | undefined {
-    return document.querySelector<HTMLElement>(".workspace-row.visible[data-workspace-id]")?.dataset.workspaceId
+    return document.querySelector<HTMLElement>(".fixed-shell-workspace-row.active[data-workspace-entry-id]")?.dataset.workspaceEntryId
       ?? residencyController()?.visibleWorkspaceId();
   }
 
@@ -865,27 +844,19 @@ class AtelierShortcutsController extends Controller {
     const url = new URL(location, window.location.href);
     const workspaceId = decodeURIComponent(url.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1] ?? "");
     if (!workspaceId) return;
-    workspaceListController()?.markVisibleWorkspace(workspaceId);
-    void residencyController()?.selectWorkspace(workspaceId, url.pathname);
+    await workspaceNavigationController()?.selectWorkspaceById(workspaceId);
   }
 
   private async openAdjacentWorkspace(direction: -1 | 1): Promise<void> {
-    const rows = this.workspaceRows();
+    const rows = this.workspaceRows().filter((row) => !row.closest(".fixed-shell-parked"));
     if (rows.length === 0) return;
     const currentWorkspaceId = this.visibleWorkspaceId();
-    const currentIndex = currentWorkspaceId ? rows.findIndex((row) => row.dataset.workspaceId === currentWorkspaceId) : -1;
-    const row = this.adjacentUnparkedWorkspaceRow(rows, currentIndex, direction);
-    if (row) await this.openWorkspaceRow(row);
-  }
-
-  private adjacentUnparkedWorkspaceRow(rows: HTMLElement[], currentIndex: number, direction: -1 | 1): HTMLElement | undefined {
-    const selectable = (row: HTMLElement): boolean => row.dataset.parked !== "true" && !row.classList.contains("parked");
-    if (currentIndex < 0) return direction > 0 ? rows.find(selectable) : rows.findLast(selectable);
-    for (let offset = 1; offset < rows.length; offset += 1) {
-      const row = rows[(currentIndex + (direction * offset) + rows.length) % rows.length];
-      if (row && selectable(row)) return row;
-    }
-    return undefined;
+    const currentIndex = rows.findIndex((row) => row.dataset.workspaceEntryId === currentWorkspaceId);
+    const targetIndex = currentIndex < 0
+      ? (direction > 0 ? 0 : rows.length - 1)
+      : (currentIndex + direction + rows.length) % rows.length;
+    const row = rows[targetIndex];
+    if (row && row.dataset.workspaceEntryId !== currentWorkspaceId) await this.openWorkspaceRow(row);
   }
 
   private async executeVisibleWorkspaceCommand(commandId: string): Promise<void> {
@@ -1073,7 +1044,10 @@ class WorkspaceNavigationController extends Controller {
   async selectWorkspace(event: Event): Promise<void> {
     // SAFETY: This action is attached only to server-rendered Workspace entry elements.
     const workspaceId = (event.currentTarget as HTMLElement).dataset.workspaceEntryId;
-    if (!workspaceId) return;
+    if (workspaceId) await this.selectWorkspaceById(workspaceId);
+  }
+
+  async selectWorkspaceById(workspaceId: string): Promise<void> {
     this.setActiveWorkspace(workspaceId);
     await residencyController()?.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`);
     if (window.matchMedia(phoneViewportMediaQuery).matches) {
