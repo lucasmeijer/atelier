@@ -11,7 +11,7 @@ const workspaceVSCodeViewsSchema = Type.Array(workspaceVSCodeViewSchema);
 export type WorkspaceVSCodeView = Static<typeof workspaceVSCodeViewSchema>;
 
 function defaultViews(): WorkspaceVSCodeView[] {
-  return [{ title: "VS Code" }];
+  return [];
 }
 
 function parseVSCodeViews(value: JsonValue): WorkspaceVSCodeView[] {
@@ -27,9 +27,9 @@ export function listWorkspaceVSCodeViews(workspaceId: string): WorkspaceVSCodeVi
 
 export function createWorkspaceVSCodeView(workspaceId: string): WorkspaceVSCodeView {
   const existing = listWorkspaceVSCodeViews(workspaceId);
-  let index = existing.length + 1;
-  let title = `VS Code ${index}`;
   const used = new Set(existing.map((view) => view.title));
+  let index = 1;
+  let title = "VS Code";
   while (used.has(title)) {
     index += 1;
     title = `VS Code ${index}`;

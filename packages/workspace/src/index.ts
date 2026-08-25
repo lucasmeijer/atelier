@@ -455,17 +455,12 @@ function workspaceInitStepScript(id: string, script: string): string {
 startup_log_step ${shellQuote(`${id}.done`)}`;
 }
 
-function workspaceStartVSCodeScript(): string {
-  return `if command -v atelier-start-vscode >/dev/null 2>&1; then su atelier -c 'ATELIER_VSCODE_DEFAULT_FOLDER=${workspaceRoot} nohup atelier-start-vscode > /.atelier/vscode-server.log 2>&1 &' || true; elif command -v code >/dev/null 2>&1; then su atelier -c 'nohup code serve-web --accept-server-license-terms --host 0.0.0.0 --port ${workspaceVSCodePort} --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode-server.log 2>&1 &' || true; fi`;
-}
-
 function workspaceInitScript(plan: WorkspaceDockerPlan): string {
   return [
     workspaceStartupPreambleScript(),
     workspaceInitStepScript("align-user", alignWorkspaceUserScript()),
     workspaceInitStepScript("atelier-dir", `install -d -o atelier -g atelier /.atelier`),
     ...plan.initScripts.map((script, index) => workspaceInitStepScript(`init-${index + 1}`, script)),
-    workspaceInitStepScript("vscode-start", workspaceStartVSCodeScript()),
     "touch /.atelier/ready",
     "startup_log_step ready",
     "trap - EXIT",
