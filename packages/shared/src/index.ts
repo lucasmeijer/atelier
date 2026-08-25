@@ -240,6 +240,7 @@ export type AgentServiceTier = "default" | "priority";
 
 export interface AgentWorkspaceParameters {
   initialPrompt?: string;
+  initialPromptMode?: "send" | "draft";
   model?: string;
   thinkingLevel?: string;
   serviceTier?: AgentServiceTier;
@@ -249,6 +250,7 @@ export interface AgentWorkspaceParameters {
 export interface WorkspaceCreationContext extends Record<string, unknown> {
   agent?: AgentWorkspaceParameters;
   fork?: { sourceWorkspaceId: string };
+  projectPreparation?: "accepted" | "declined";
 }
 
 export interface AgentWorkspaceCreateRequest extends AgentWorkspaceParameters {

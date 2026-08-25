@@ -34,6 +34,7 @@ import {
   hasProjectSshKey,
   listProjects,
   parseProjectSpec,
+  projectPreparationPrompt,
   projectWorkspaceInit,
   updateProject,
   updateProjectEnvironmentVariable,
@@ -232,6 +233,8 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const agentWorkspaceLaunches = new Map<string, Promise<CreatedWorkspace>>();
   const agentLaunchSettingsFrameId = "agent_launch_settings";
   const agentLaunchFormId = "agent_launch_form";
+  const agentLaunchInputId = "agent_launch_input";
+  const agentLaunchPreparationId = "agent_launch_project_preparation";
 
   function workspaceBootId(id: string): string {
     return domId("workspace_boot", id);
@@ -359,7 +362,17 @@ ${moduleStylesHtml()}
     });
   }
 
-  async function launchAgentWorkspaceFrame(options: { titleHtml: string; action: string }): Promise<string> {
+  function projectPreparationSuggestion(project: ProjectSummary): string {
+    const action = `/projects/${encodeURIComponent(project.id)}/agent-launch/preparation`;
+    return `<aside class="agent-project-preparation-notice" id="${agentLaunchPreparationId}"><div><b>It looks like this is the first time you're using Atelier on this project.</b><span>Shall I craft a prompt you can use to get the project configured for remote development and the Atelier environment? Nothing will be committed or pushed without your approval.</span></div><div class="agent-project-preparation-actions"><form method="post" action="${action}"><input type="hidden" name="decision" value="declined"><button class="agent-btn" type="submit">Not right now</button></form><form method="post" action="${action}"><input type="hidden" name="decision" value="accepted"><button class="agent-btn primary" type="submit">Yes please</button></form></div></aside>`;
+  }
+
+  function agentLaunchPromptInput(initialText: string): string {
+    const placeholder = "Describe what you want the agent to do… (optional)";
+    return `<textarea id="${agentLaunchInputId}" class="agent-input" name="text" rows="8" placeholder="${placeholder}" aria-label="${placeholder}">${escapeHtml(initialText)}</textarea>`;
+  }
+
+  async function launchAgentWorkspaceFrame(options: { titleHtml: string; action: string; suggestionHtml?: string }): Promise<string> {
     const draftId = crypto.randomUUID();
     return `<turbo-frame id="${agentLaunchModalFrameId}"><dialog class="agent-launch-modal" data-controller="agent-launch-dialog submit-shortcut" data-agent-launch-dialog-discard-url-value="/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard">
   <div class="agent-launch-title">${options.titleHtml}</div>
@@ -369,6 +382,8 @@ ${moduleStylesHtml()}
     formId: agentLaunchFormId,
     placeholder: "Describe what you want the agent to do… (optional)",
     initialText: "",
+    inputId: agentLaunchInputId,
+    suggestionHtml: options.suggestionHtml,
     submitLabel: "Create workspace",
     submitShortcut: "⌘↩",
     rows: 8,
@@ -390,7 +405,21 @@ ${moduleStylesHtml()}
     return await launchAgentWorkspaceFrame({
       titleHtml: `Create workspace from <b>${escapeHtml(project.name)}</b>, and then…`,
       action: `/project-agent-workspaces/${encodeURIComponent(project.id)}`,
+      suggestionHtml: projectPreparationSuggestion(project),
     });
+  }
+
+  function projectPreparationDecisionInput(decision: "accepted" | "declined"): string {
+    return `<input type="hidden" name="projectPreparation" value="${decision}">`;
+  }
+
+  async function projectPreparationDecisionEndpoint(projectId: string, request: Request): Promise<Response> {
+    await projectById(projectId);
+    const form = await request.formData();
+    const decision = String(form.get("decision") ?? "");
+    if (decision !== "accepted" && decision !== "declined") throw invalidArguments("project preparation decision must be accepted or declined");
+    const prompt = decision === "accepted" ? turboStream("replace", agentLaunchInputId, agentLaunchPromptInput(projectPreparationPrompt())) : "";
+    return turboStreamResponse(`${prompt}${turboStream("append", agentLaunchFormId, projectPreparationDecisionInput(decision))}${turboStream("remove", agentLaunchPreparationId, "")}`);
   }
 
   function deleteProjectModal(project: ProjectSummary): string {
@@ -821,21 +850,25 @@ ${moduleStylesHtml()}
 
   function agentContext(agent: AgentWorkspaceParameters | undefined): AgentWorkspaceParameters | undefined {
     const initialPrompt = agent?.initialPrompt?.trim() ?? "";
+    const initialPromptMode = agent?.initialPromptMode;
     const model = agent?.model ?? "";
     const thinkingLevel = agent?.thinkingLevel ?? "";
     const serviceTier = agent?.serviceTier ?? "";
     const attachmentDraft = agent?.attachmentDraft ?? "";
-    if (!initialPrompt && !model && !thinkingLevel && !serviceTier && !attachmentDraft) return undefined;
-    return { initialPrompt, model, thinkingLevel, serviceTier: serviceTier || undefined, attachmentDraft };
+    if (!initialPrompt && !initialPromptMode && !model && !thinkingLevel && !serviceTier && !attachmentDraft) return undefined;
+    const parameters: AgentWorkspaceParameters = { initialPrompt, model, thinkingLevel, serviceTier: serviceTier || undefined, attachmentDraft };
+    if (initialPromptMode) parameters.initialPromptMode = initialPromptMode;
+    return parameters;
   }
 
-  function creationContext(source: WorkspaceCreateSource, agent: AgentWorkspaceParameters | undefined): WorkspaceCreationContext | undefined {
+  function creationContext(source: WorkspaceCreateSource, agent: AgentWorkspaceParameters | undefined, projectPreparation?: "accepted" | "declined"): WorkspaceCreationContext | undefined {
     const fork = forkForSource(source);
     const agentParameters = agentContext(agent);
-    if (!fork && !agentParameters) return undefined;
+    if (source.type !== "project" && !fork && !agentParameters && !projectPreparation) return undefined;
     const context: WorkspaceCreationContext = {};
     if (fork) context.fork = fork;
     if (agentParameters) context.agent = agentParameters;
+    if (projectPreparation) context.projectPreparation = projectPreparation;
     return context;
   }
 
@@ -843,11 +876,11 @@ ${moduleStylesHtml()}
     id: string;
   }
 
-  function createWorkspaceFromCommand(command: { source: WorkspaceCreateSource; agent?: AgentWorkspaceParameters; title?: string }): CreatedWorkspace {
+  function createWorkspaceFromCommand(command: { source: WorkspaceCreateSource; agent?: AgentWorkspaceParameters; title?: string; projectPreparation?: "accepted" | "declined" }): CreatedWorkspace {
     const id = generateWorkspaceId();
     const init = initForSource(command.source);
     const title = command.title?.trim() ?? "";
-    const context = creationContext(command.source, command.agent);
+    const context = creationContext(command.source, command.agent, command.projectPreparation);
     const fork = forkForSource(command.source);
     registry.add(id, title || null, init);
     const options: Parameters<typeof startWorkspaceProvisioning>[1] = {};
@@ -897,6 +930,9 @@ ${moduleStylesHtml()}
     const form = await request.formData();
     const attachmentDraft = String(form.get("attachmentDraft") ?? "");
     if (!attachmentDraft) throw invalidArguments("attachmentDraft is required");
+    const projectPreparationValue = String(form.get("projectPreparation") ?? "");
+    if (projectPreparationValue && projectPreparationValue !== "accepted" && projectPreparationValue !== "declined") throw invalidArguments("project preparation must be accepted or declined");
+    const projectPreparation = projectPreparationValue === "accepted" || projectPreparationValue === "declined" ? projectPreparationValue : undefined;
 
     let launch = agentWorkspaceLaunches.get(attachmentDraft);
     if (!launch) {
@@ -907,6 +943,7 @@ ${moduleStylesHtml()}
         await rememberNewWorkspaceAgentSettings(model, thinkingLevel);
         return createWorkspaceFromCommand({
           source: options.project ? { type: "project", project: options.project } : { type: "empty" },
+          projectPreparation,
           agent: {
             initialPrompt: String(form.get("text") ?? ""),
             model,
@@ -1580,6 +1617,7 @@ ${moduleStylesHtml()}
 
     if ((params = match(/^\/projects\/([^/]+)\/editor$/)) && request.method === "GET") return response(await projectEditorFrame(await projectById(params[0])));
     if ((params = match(/^\/projects\/([^/]+)\/agent-launch$/)) && request.method === "GET") return response(await launchProjectAgentFrame(await projectById(params[0])));
+    if ((params = match(/^\/projects\/([^/]+)\/agent-launch\/preparation$/)) && request.method === "POST") return await projectPreparationDecisionEndpoint(params[0], request);
     if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "GET" && requestAcceptsJson(request)) return await projectDetailEndpoint(params[0]);
     if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "POST") return await updateProjectEndpoint(params[0], request);
     if ((params = match(/^\/projects\/([^/]+)\/environment$/)) && request.method === "POST") return await createProjectEnvironmentVariableEndpoint(params[0], request);

@@ -16,7 +16,7 @@ import {
   stageAttachment,
   validDraftId,
 } from "./attachment-drafts.ts";
-import { ids, renderAttachmentChip } from "./render.ts";
+import { ids, renderAgentPanePromptInput, renderAttachmentChip } from "./render.ts";
 import { turboStream, turboStreamResponse } from "./html.ts";
 import { expandPromptTemplate, listPromptTemplates, parseCompactCommand, parseWorkspaceNameCommand } from "./prompt-templates.ts";
 import { listFileCompletions, renderFileCompletionMenu } from "./file-completions.ts";
@@ -27,6 +27,7 @@ import { handleAgentTreeRequest } from "./session-tree.ts";
 import { ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations, type WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { maybeNameWorkspaceFromAgentPrompt, renameWorkspaceFromAgentContext } from "./workspace-title-suggestion.ts";
 import { parseAgentServiceTier } from "./service-tier.ts";
+import { acceptInitialPromptDraft, removeInitialPromptDraft, writeInitialPromptDraft } from "./initial-prompt-draft.ts";
 
 interface AgentRouteOptions {
   events?: AtelierEventBus;
@@ -36,7 +37,7 @@ export function registerAgentEvents(events: AtelierEventBus): void {
   events.on("workspace_created", async ({ workspaceId, context }) => {
     const agentContext = context?.agent;
     if (!agentContext) return;
-    const hasPrompt = Boolean(agentContext.initialPrompt?.trim());
+    const hasPrompt = agentContext.initialPromptMode !== "draft" && Boolean(agentContext.initialPrompt?.trim());
     if (hasPrompt) await events.emit("workspace_provision_step", { workspaceId, id: "agent.initial_prompt", label: "Start initial agent task", parentId: "workspace.integrations", status: "running" });
     await initializeWorkspaceAgent(workspaceId, agentContext, { events });
     if (hasPrompt) await events.emit("workspace_provision_step", { workspaceId, id: "agent.initial_prompt", label: "Start initial agent task", parentId: "workspace.integrations", status: "done" });
@@ -96,6 +97,18 @@ export async function handleAgentRequest(request: Request, url: URL, options: Ag
     if (!validDraftId(params[0])) return new Response("invalid attachment draft", { status: 400 });
     await removeAttachmentDraft(params[0]);
     return new Response(null, { status: 204 });
+  }
+  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/initial-prompt-draft\/accept$/)) && request.method === "POST") {
+    const ctx = { workspaceId: params[0], label: params[1] };
+    await requireAgentConversation(ctx.workspaceId, ctx.label);
+    const draft = await acceptInitialPromptDraft(ctx.workspaceId);
+    return turboStreamResponse(`${turboStream("replace", ids.input(ctx), renderAgentPanePromptInput(ctx, draft.prompt))}${turboStream("remove", ids.initialPromptSuggestion(ctx), "")}`);
+  }
+  if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/initial-prompt-draft\/decline$/)) && request.method === "POST") {
+    const ctx = { workspaceId: params[0], label: params[1] };
+    await requireAgentConversation(ctx.workspaceId, ctx.label);
+    await removeInitialPromptDraft(ctx.workspaceId);
+    return turboStreamResponse(turboStream("remove", ids.initialPromptSuggestion(ctx), ""));
   }
 
   if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/messages$/)) && request.method === "POST") {
@@ -208,6 +221,7 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
   const attachmentDraft = String(json?.attachmentDraft ?? form?.get("attachmentDraft") ?? "");
   if (text.trim() === "/new") {
     await runtime.newSession();
+    await removeInitialPromptDraft(workspaceId);
     if (validDraftId(attachmentDraft)) await removeAttachmentDraft(attachmentDraft);
     return json ? Response.json({ agent: { label, state: "idle" } }) : turboStreamResponse("");
   }
@@ -216,6 +230,7 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
     if (validDraftId(attachmentDraft)) await removeAttachmentDraft(attachmentDraft);
     await options.events?.emit("workspace_user_activity", { workspaceId });
     await runtime.compact(compactCommand.customInstructions);
+    await removeInitialPromptDraft(workspaceId);
     return json ? Response.json({ agent: { label, state: "idle", compacted: true } }) : turboStreamResponse("");
   }
   const nameCommand = parseWorkspaceNameCommand(text);
@@ -227,6 +242,7 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
       renameWorkspaceFromAgentContext(workspaceId, runtime.userMessages(), { events: options.events, agentModel: runtime.currentModel() });
     }
     if (validDraftId(attachmentDraft)) await removeAttachmentDraft(attachmentDraft);
+    await removeInitialPromptDraft(workspaceId);
     return json ? Response.json({ agent: { label, state: "idle" } }) : turboStreamResponse("");
   }
 
@@ -243,6 +259,7 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
     maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), trimmed], { events: options.events, agentModel: runtime.currentModel() });
   }
   await runtime.submit(expandedText, { mode, images, attachmentNotes });
+  if (trimmed) await removeInitialPromptDraft(workspaceId);
   return json ? Response.json({ agent: { label, state: "running" } }, { status: 202 }) : turboStreamResponse("");
 }
 
@@ -254,6 +271,11 @@ async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorks
   const thinkingLevel = context.thinkingLevel || (modelRef ? await getModelThinkingLevel(modelRef.provider, modelRef.id) : undefined);
   if (thinkingLevel) await runtime.setThinkingLevel(thinkingLevel);
   if (context.serviceTier) await runtime.setServiceTier(context.serviceTier);
+
+  if (context.initialPromptMode === "draft") {
+    await writeInitialPromptDraft(workspaceId, context.initialPrompt ?? "");
+    return;
+  }
 
   const prompt = await expandPromptTemplate(workspaceId, context.initialPrompt ?? "");
   const draftId = context.attachmentDraft ?? "";

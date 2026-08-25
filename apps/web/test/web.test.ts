@@ -593,6 +593,14 @@ describe("web app contracts", () => {
       expect(first).toContain('<turbo-frame id="agent_launch_settings">');
       expect(first).toContain(`action="/project-agent-workspaces/${project.id}"`);
       expect(first).toContain('aria-label="Describe what you want the agent to do… (optional)"');
+      expect(first).toContain("It looks like this is the first time you're using Atelier on this project.");
+      expect(first).toContain("Nothing will be committed or pushed without your approval.");
+      expect(first).toContain("Yes please");
+      expect(first).toContain("Not right now");
+      const accepted = await (await app.fetch(postForm(`/projects/${project.id}/agent-launch/preparation`, new URLSearchParams({ decision: "accepted" })))).text();
+      expect(accepted).toContain(`target="agent_launch_input"`);
+      expect(accepted).toContain("Prepare this project for efficient use in Atelier");
+      expect(accepted).toContain('name="projectPreparation" value="accepted"');
       expect(firstDraft).toBeTruthy();
       expect(secondDraft).toBeTruthy();
       expect(firstDraft).not.toBe(secondDraft);

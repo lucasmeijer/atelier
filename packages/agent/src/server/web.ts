@@ -14,6 +14,7 @@ import { preferredNewWorkspaceAgentModel } from "./model-state.ts";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
 import { mkdir } from "node:fs/promises";
+import { removeInitialPromptDraft } from "./initial-prompt-draft.ts";
 import type { WorkspaceDockerMount, WorkspaceInitInstruction } from "@atelier/workspace";
 import { isGitProjectInit } from "@atelier/projects";
 
@@ -128,6 +129,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
     });
     subscribeWorkspaceViewBusy(({ workspaceId, viewKey, busy }) => context.registry.setViewBusy(workspaceId, viewKey, busy));
     context.onWorkspaceRemoved(removeWorkspaceAgentRuntimes);
+    context.onWorkspaceRemoved(removeInitialPromptDraft);
     registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force)));
     registerWorkspaceAgentTool("create_workspace", (workspaceId) => createWorkspaceTool((request) => context.createWorkspaceFromAgent(workspaceId, request)));
     // Temporarily keep workspace forking unavailable to agents; they invoke it too readily.

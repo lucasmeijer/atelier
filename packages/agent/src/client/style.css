@@ -242,8 +242,17 @@
  * ------------------------------------------------------------------------ */
 
 
+.agent-project-preparation-notice { display: flex; flex-direction: column; align-items: stretch; gap: 14px; box-sizing: border-box; padding: 16px 17px 14px; background: color-mix(in srgb, var(--accent) 7%, var(--panel)); color: var(--muted); font-size: 12px; line-height: 1.45; }
+.agent-project-preparation-notice b, .agent-project-preparation-notice span { display: block; }
+.agent-project-preparation-notice b { color: var(--text); font-size: 13px; margin-bottom: 3px; }
+.agent-project-preparation-notice code { color: var(--text); }
+.agent-project-preparation-actions { display: flex; gap: 7px; justify-content: flex-end; }
+.agent-project-preparation-actions form { margin: 0; }
 .agent-promptbox { position: relative; background: var(--panel); border: 1.5px solid var(--line2); border-radius: var(--fixed-shell-radius, 14px); box-shadow: var(--shadow); overflow: hidden; padding-bottom: 30px; pointer-events: auto; container-type: inline-size; }
 .agent-promptbox:focus-within { border-color: var(--accent); }
+.agent-promptbox:has(> .agent-project-preparation-notice) { padding-bottom: 0; }
+.agent-promptbox:has(> .agent-project-preparation-notice) > form,
+.agent-promptbox:has(> .agent-project-preparation-notice) > .agent-statbar { display: none; }
 
 .agent-attach-row { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 10px; }
 .agent-attach-row:not(:empty) { padding-top: 8px; }
@@ -486,7 +495,7 @@
 .agent-launch-modal .agent-promptwrap::before { display: none; }
 .agent-launch-modal .agent-promptbox { width: 100%; max-width: none; margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; }
 .agent-launch-modal .agent-promptbox:focus-within { border-color: var(--line); }
-.agent-launch-modal .agent-promptbox form { min-height: 260px; }
+.agent-launch-modal .agent-promptbox > form { min-height: 260px; }
 .agent-launch-modal .agent-input { min-height: 210px; padding-top: 12px; }
 
 /* Transcript + tool-owned renderers */

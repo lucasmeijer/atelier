@@ -21,6 +21,7 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { projectEnvironment } from "./environment.ts";
 import { isGitProjectInit } from "./project.ts";
+import { stageProjectPreparationPrompt } from "./project-preparation.ts";
 
 export interface PreparedWorkspaceSource {
   workspaceId: string;
@@ -384,9 +385,10 @@ export async function prepareWorkspaceSource(options: { workspaceId: string; git
 }
 
 export function registerProjectWorkspaceInitEvents(events: AtelierEventBus): void {
-  events.on("workspace_source_prepare", async ({ workspaceId, init, workHostPath }) => {
+  events.on("workspace_source_prepare", async ({ workspaceId, init, context, workHostPath }) => {
     if (!isGitProjectInit(init)) return;
     await prepareWorkspaceSource({ workspaceId, gitUrl: init.gitUrl, branch: init.branch, worktreePath: workHostPath, events });
+    if (context) stageProjectPreparationPrompt(workHostPath, context);
   });
 
   events.on("workspace_plan_prepare", async ({ workspaceId, init, plan }) => {

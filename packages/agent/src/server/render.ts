@@ -10,6 +10,7 @@ import { highlightCodeHtmlForPath, renderMarkdown, renderStreamingMarkdownSnapsh
 import { domId, escapeHtml } from "./html.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
+import { readInitialPromptDraft } from "./initial-prompt-draft.ts";
 import {
   formatCost,
   formatDuration,
@@ -57,6 +58,8 @@ export const ids = {
   actions: (ctx: AgentRenderContext) => `${prefix(ctx)}_actions`,
   abortForm: (ctx: AgentRenderContext) => `${prefix(ctx)}_abort_form`,
   attachRow: (ctx: AgentRenderContext) => `${prefix(ctx)}_attach`,
+  input: (ctx: AgentRenderContext) => `${prefix(ctx)}_input`,
+  initialPromptSuggestion: (ctx: AgentRenderContext) => `${prefix(ctx)}_initial_prompt_suggestion`,
   chip: (ctx: AgentRenderContext, attachmentId: string) => domId(`${prefix(ctx)}_chip`, attachmentId),
   draftAttachRow: (draftId: string) => domId("agent_draft_attach", draftId),
   draftChip: (draftId: string, attachmentId: string) => domId("agent_draft_chip", draftId, attachmentId),
@@ -167,6 +170,8 @@ export async function renderPendingAgentPane(ctx: AgentRenderContext, agent: Wor
 async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
   const key = agentConversationKey(agent.label);
   const draftId = randomUUID();
+  const initialPromptDraft = await readInitialPromptDraft(ctx.workspaceId);
+  const initialText = initialPromptDraft?.accepted ? initialPromptDraft.prompt : undefined;
   const attachRowId = ids.attachRow(ctx);
   const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
   return `<section id="${domId("agent_pane", ctx.workspaceId, agent.label)}" class="agent-conversation-pane ${options.visible ? "visible" : ""}" data-agent-conversation-source="${escapeHtml(key)}">
@@ -182,6 +187,8 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
         action: agentPath(ctx, "/messages"),
         draftId,
         placeholder: `Message ${ctx.label}… (drop files anywhere)`,
+        initialText,
+        suggestionHtml: initialPromptDraft && !initialPromptDraft.accepted ? `<aside class="agent-project-preparation-notice" id="${ids.initialPromptSuggestion(ctx)}"><div><b>It looks like this is the first time you're using Atelier on this project.</b><span>Shall I craft a prompt you can use to get the project configured for remote development and the Atelier environment? Nothing will be committed or pushed without your approval.</span></div><div class="agent-project-preparation-actions"><form method="post" action="${escapeHtml(agentPath(ctx, "/initial-prompt-draft/decline"))}"><button class="agent-btn" type="submit">Not right now</button></form><form method="post" action="${escapeHtml(agentPath(ctx, "/initial-prompt-draft/accept"))}"><button class="agent-btn primary" type="submit">Yes please</button></form></div></aside>` : undefined,
         formTarget: true,
         includePaneActions: true,
         busy: state.busy,
@@ -193,12 +200,19 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
   </section>`;
 }
 
+export function renderAgentPanePromptInput(ctx: AgentRenderContext, initialText = ""): string {
+  const placeholder = `Message ${ctx.label}… (drop files anywhere)`;
+  return `<textarea id="${ids.input(ctx)}" class="agent-input" name="text" rows="2" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(placeholder)}" data-agent-pane-target="input" data-agent-completions-target="input" data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged">${escapeHtml(initialText)}</textarea>`;
+}
+
 interface AgentComposerRenderOptions {
   ctx?: AgentRenderContext;
   action: string;
   draftId: string;
   placeholder: string;
   initialText?: string;
+  inputId?: string;
+  suggestionHtml?: string;
   formTarget?: boolean;
   includePaneActions?: boolean;
   busy?: boolean;
@@ -249,13 +263,17 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
     completionsEnabled ? `<div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div>` : "",
     options.includePaneActions && options.ctx ? renderTranscriptNavigation() : "",
   ].filter(Boolean).join("");
+  const textarea = options.ctx && options.formTarget
+    ? renderAgentPanePromptInput(options.ctx, options.initialText ?? "")
+    : `<textarea${options.inputId ? ` id="${escapeHtml(options.inputId)}"` : ""} class="agent-input" name="text" rows="${options.rows ?? 2}" placeholder="${escapeHtml(options.placeholder)}" aria-label="${escapeHtml(options.placeholder)}"${inputTarget ? ` ${inputTarget}` : ""}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>`;
   return `<div class="agent-promptwrap"${promptAttrs ? ` ${promptAttrs}` : ""}>
         ${composerOverlays ? `<div class="agent-composer-overlays">${composerOverlays}</div>` : ""}
         <div class="agent-promptbox">
+          ${options.suggestionHtml ?? ""}
           <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
             <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row"></div>
-            <textarea class="agent-input" name="text" rows="${options.rows ?? 2}" placeholder="${escapeHtml(options.placeholder)}" aria-label="${escapeHtml(options.placeholder)}"${inputTarget ? ` ${inputTarget}` : ""}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>
+            ${textarea}
             <div class="agent-prompt-actions">
               <span class="spacer"></span>
               ${actions}

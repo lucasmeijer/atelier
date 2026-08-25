@@ -189,7 +189,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
         this.observeTranscriptItems();
       });
       this.transcriptMutationObserver.observe(this.transcriptTarget, { childList: true, subtree: true });
-      this.promptObserver = new MutationObserver(() => this.updateSendStopButton());
+      this.promptObserver = new MutationObserver(() => this.autosize());
       this.promptObserver.observe(this.formTarget, { childList: true, subtree: true });
       this.transcriptLayoutObserver.observe(this.element.querySelector<HTMLElement>(".agent-promptwrap")!);
       this.transcriptEnd = scrollEnd(this.transcriptTarget);

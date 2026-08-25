@@ -67,6 +67,11 @@ export {
 } from "./workspace-source.ts";
 
 export {
+  projectPreparationPrompt,
+  stageProjectPreparationPrompt,
+} from "./project-preparation.ts";
+
+export {
   registerProjectWorkspaceEvents,
   type WorkspaceDeleteBlockedDetails,
   type WorkspaceDeleteSafetyIssue,
