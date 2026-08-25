@@ -132,7 +132,7 @@ export function navigatePromptHistory(state: PromptHistoryState | undefined, dir
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
     static values = { workspaceId: String, label: String, snapshotCursor: String };
-    static targets = ["transcript", "transcriptNav", "input", "form", "rewindDialog", "rewindEntry", "rewindPreview"];
+    static targets = ["transcript", "transcriptNav", "input", "form", "sendStop", "rewindDialog", "rewindEntry", "rewindPreview"];
     declare readonly element: HTMLElement;
     declare readonly application: StimulusApplication;
     declare readonly workspaceIdValue: string;
@@ -348,6 +348,10 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       const nextHeight = Math.ceil(input.scrollHeight) + 2;
       input.style.height = `${Math.min(nextHeight, maxHeight)}px`;
       input.style.overflowY = nextHeight > maxHeight ? "auto" : "hidden";
+      this.updateSendStopButton();
+    }
+
+    sendStopTargetConnected(): void {
       this.updateSendStopButton();
     }
 

@@ -348,7 +348,7 @@ export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): str
   const label = busy ? "Steer" : "Send";
   const value = busy ? "steer" : "send";
   const title = busy ? "Deliver a steering note while the agent keeps working" : "Send prompt";
-  return `<button class="agent-btn primary agent-sendstop" type="submit" name="mode" value="${value}" title="${title}"${busyAttrs}>${label} <kbd>⌘↩</kbd></button>`;
+  return `<button class="agent-btn primary agent-sendstop" type="submit" name="mode" value="${value}" title="${title}" data-agent-pane-target="sendStop"${busyAttrs}>${label} <kbd>⌘↩</kbd></button>`;
 }
 
 export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): string {
