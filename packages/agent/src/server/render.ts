@@ -404,10 +404,10 @@ function renderStreamingTextBody(ctx: AgentRenderContext, key: string, text: str
 }
 
 export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptItem, options: { live?: boolean; open?: boolean } = {}): string {
+  if (item.type === "working") return renderWorkingSection(ctx, item);
   const id = ids.item(ctx, item.key);
   let body = "";
   if (item.type === "user") body = renderUserMessage(ctx, item);
-  else if (item.type === "working") return renderWorkingSection(ctx, item);
   else if (item.type === "thinking") body = renderThinkingItem(ctx, item);
   else if (item.type === "text") body = item.live
     ? transcriptRow(renderStreamingTextBody(ctx, item.key, item.text))
@@ -419,6 +419,7 @@ export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptIt
 }
 
 function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscriptItem): string {
+  if (section.completedAt !== undefined && section.items.length === 0) return "";
   const label = section.completedAt !== undefined
     ? `Worked for ${formatDuration(section.completedAt - section.startedAt)}`
     : section.stoppedAt !== undefined
