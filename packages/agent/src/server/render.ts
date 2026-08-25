@@ -15,6 +15,7 @@ import {
   formatDuration,
   formatTokens,
   type TranscriptItem,
+  type WorkingTranscriptItem,
   type SessionImageRef,
   type ToolView,
   type ToolViewDetails,
@@ -43,6 +44,7 @@ export const ids = {
   transcript: (ctx: AgentRenderContext) => `${prefix(ctx)}_transcript`,
   systemPrompt: (ctx: AgentRenderContext) => `${prefix(ctx)}_system_prompt`,
   item: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_item`, key),
+  workingItems: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_working_items`, key),
   itemText: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext`, key),
   itemTextStable: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext_stable`, key),
   itemTextTail: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext_tail`, key),
@@ -356,7 +358,7 @@ ${stats.serviceTier ? `<form method="post" action="${escapeHtml(agentPath(ctx, "
 }
 
 // ---------------------------------------------------------------------------
-// Flat transcript
+// Transcript
 // ---------------------------------------------------------------------------
 
 function transcriptItemPath(ctx: AgentRenderContext, key: string, query = ""): string {
@@ -405,6 +407,7 @@ export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptIt
   const id = ids.item(ctx, item.key);
   let body = "";
   if (item.type === "user") body = renderUserMessage(ctx, item);
+  else if (item.type === "working") return renderWorkingSection(ctx, item);
   else if (item.type === "thinking") body = renderThinkingItem(ctx, item);
   else if (item.type === "text") body = item.live
     ? transcriptRow(renderStreamingTextBody(ctx, item.key, item.text))
@@ -413,6 +416,16 @@ export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptIt
   else if (item.type === "note") body = renderMarkdownRow(ctx, item.text, `agent-note ${escapeHtml(item.tone)}`);
   else body = transcriptRow(`<div class="agent-error">${escapeHtml(item.text)}</div>`);
   return `<div class="agent-item" id="${id}">${rewindHtml(ctx, item)}${body}</div>`;
+}
+
+function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscriptItem): string {
+  const label = section.completedAt !== undefined
+    ? `Worked for ${formatDuration(section.completedAt - section.startedAt)}`
+    : section.stoppedAt !== undefined
+      ? `Stopped after ${formatDuration(section.stoppedAt - section.startedAt)}`
+      : "Working";
+  const items = section.items.map((item) => renderTranscriptItem(ctx, item, { live: section.live, open: section.live })).join("");
+  return `<details class="agent-working" id="${ids.item(ctx, section.key)}"${section.completedAt === undefined ? " open" : ""}><summary class="agent-working-summary"><span class="agent-working-chevron" aria-hidden="true"></span>${label}</summary><div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}">${items}</div></details>`;
 }
 
 function renderThinkingItem(ctx: AgentRenderContext, item: Extract<TranscriptItem, { type: "thinking" }>): string {

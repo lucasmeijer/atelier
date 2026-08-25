@@ -43,11 +43,14 @@ import { AgentServiceTierState, modelRuntimeWithServiceTiers, supportsFastMode, 
 import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
 import {
   buildTranscript,
+  isFinalAssistantMessage,
+  isFinalAssistantStopReason,
   isToolViewDetails,
   toolDetailsIndicateError,
   type ImageRef,
   type SessionImageRef,
   type TranscriptItem,
+  type WorkingTranscriptItem,
   type ToolViewDetails,
   type ToolView,
   type TranscriptRecord,
@@ -154,7 +157,7 @@ export function getWorkspaceAgentRuntime(agent: WorkspaceAgentConversationInfo, 
 }
 
 // ---------------------------------------------------------------------------
-// Base runtime: subscriber fanout and flat live-transcript streaming.
+// Base runtime: subscriber fanout and live transcript streaming.
 // ---------------------------------------------------------------------------
 
 interface LiveTextStream {
@@ -166,6 +169,8 @@ interface LiveTextStream {
 interface LiveState {
   id: string;
   items: TranscriptItem[];
+  working: Omit<WorkingTranscriptItem, "items">;
+  finalIndex?: number;
   userEntryId?: string;
   open?: { index: number; kind: "text" | "thinking" | "toolargs" };
   textStream?: LiveTextStream;
@@ -263,7 +268,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.stream(turboStream("append", ids.notices(this.ctx), renderNotice(level, message)));
   }
 
-  // ---- flat live transcript streaming -----------------------------------
+  // ---- live transcript streaming ----------------------------------------
 
   private liveKey(live: LiveState, index: number, kind: string): string {
     return `${live.id}:${index}:${kind}`;
@@ -271,13 +276,22 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
 
   protected liveBegin(user?: { text: string; images: SessionImageRef[] }): void {
     if (this.live) return;
-    const live: LiveState = { id: `live_${Date.now().toString(36)}`, items: [], toolIndexByCallId: new Map(), terminalTimers: new Map() };
+    const now = Date.now();
+    const id = `live_${now.toString(36)}`;
+    const live: LiveState = {
+      id,
+      items: [],
+      working: { type: "working", key: `${id}:working`, startedAt: now, live: true },
+      toolIndexByCallId: new Map(),
+      terminalTimers: new Map(),
+    };
     this.live = live;
     if (user) {
       const item: TranscriptItem = { type: "user", key: `${live.id}:user`, text: user.text, images: user.images };
       live.items.push(item);
       this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, item, { live: true })));
     }
+    this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, this.liveWorkingSection(live))));
   }
 
   protected liveEnsure(): LiveState {
@@ -285,8 +299,22 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     return this.live!;
   }
 
+  private liveWorkingSection(live: LiveState): WorkingTranscriptItem {
+    const userIndex = live.items[0]?.type === "user" ? 1 : 0;
+    const end = live.finalIndex ?? live.items.length;
+    return { ...live.working, items: live.items.slice(userIndex, end) };
+  }
+
+  protected liveItemsForDisplay(live: LiveState): TranscriptItem[] {
+    const user = live.items[0]?.type === "user" ? [live.items[0]] : [];
+    const trailing = live.finalIndex === undefined ? [] : live.items.slice(live.finalIndex);
+    return [...user, this.liveWorkingSection(live), ...trailing];
+  }
+
   private appendLiveItem(item: TranscriptItem, options: { live?: boolean; open?: boolean } = {}): void {
-    this.stream(turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, item, options)));
+    const live = this.live!;
+    const target = live.finalIndex === undefined ? ids.workingItems(this.ctx, live.working.key) : ids.transcript(this.ctx);
+    this.stream(turboStream("append", target, renderTranscriptItem(this.ctx, item, options)));
   }
 
   private openTextItem(): Extract<TranscriptItem, { type: "text" }> | undefined {
@@ -377,12 +405,35 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (this.live) this.live.open = undefined;
   }
 
+  protected liveFinalStart(): void {
+    const live = this.liveEnsure();
+    if (live.working.completedAt !== undefined) return;
+    live.working.completedAt = Date.now();
+    if (live.open?.kind === "thinking") this.finishOpenThinking();
+    if (live.open?.kind === "text") {
+      const index = live.open.index;
+      const item = live.items[index];
+      this.releaseTextStream();
+      if (item?.type === "text") {
+        item.live = false;
+        item.final = true;
+        live.finalIndex = index;
+      }
+      live.open = undefined;
+    }
+    const working = turboStream("replace", ids.item(this.ctx, live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(live)));
+    const final = live.finalIndex === undefined ? "" : turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, live.items[live.finalIndex]!));
+    this.stream(working + final);
+  }
+
   protected liveTextDelta(text: string): void {
     const live = this.liveEnsure();
     if (live.open?.kind === "thinking") this.finishOpenThinking();
     if (!live.open || live.open.kind !== "text") {
       const index = live.items.length;
-      const item: TranscriptItem = { type: "text", key: this.liveKey(live, index, "text"), text: "", final: false, live: true };
+      const final = live.working.completedAt !== undefined;
+      const item: TranscriptItem = { type: "text", key: this.liveKey(live, index, "text"), text: "", final, live: true };
+      if (final) live.finalIndex = index;
       live.items.push(item);
       live.open = { index, kind: "text" };
       live.textStream = { displayedLength: 0, renderer: new StreamingMarkdownRenderer(this.workspaceId) };
@@ -527,13 +578,24 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected liveFinal(text: string): void {
     const live = this.live;
     if (!live) return;
+    if (live.working.completedAt === undefined) this.liveFinalStart();
     if (live.open?.kind === "text") {
       const item = live.items[live.open.index];
       if (item?.type === "text") item.text = text;
       this.finishOpenText(true);
       return;
     }
-    const item: TranscriptItem = { type: "text", key: this.liveKey(live, live.items.length, "final"), text, final: true };
+    const existing = live.finalIndex === undefined ? undefined : live.items[live.finalIndex];
+    if (existing?.type === "text") {
+      existing.text = text;
+      existing.final = true;
+      existing.live = false;
+      this.stream(turboStream("replace", ids.item(this.ctx, existing.key), renderTranscriptItem(this.ctx, existing)));
+      return;
+    }
+    const index = live.items.length;
+    const item: TranscriptItem = { type: "text", key: this.liveKey(live, index, "final"), text, final: true };
+    live.finalIndex = index;
     live.items.push(item);
     this.appendLiveItem(item, { live: true });
   }
@@ -553,7 +615,13 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     // live state (and its renderer session) is discarded.
     this.finishOpenText(false);
     this.releaseTextStream();
-    if (this.live) for (const timer of this.live.terminalTimers.values()) clearTimeout(timer);
+    if (this.live) {
+      for (const timer of this.live.terminalTimers.values()) clearTimeout(timer);
+      if (this.live.working.completedAt === undefined) {
+        this.live.working.stoppedAt = Date.now();
+        this.stream(turboStream("replace", ids.item(this.ctx, this.live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(this.live))));
+      }
+    }
     this.live = undefined;
     await this.refreshStats();
   }
@@ -566,7 +634,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       const index = items.findIndex((item) => item.rewindEntryId === live.userEntryId || item.key === live.userEntryId);
       if (index >= 0) items = items.slice(0, index);
     }
-    return [...items, ...live.items];
+    return [...items, ...this.liveItemsForDisplay(live)];
   }
 
   protected async refreshTranscript(): Promise<void> {
@@ -886,6 +954,8 @@ class RealAgentRuntime extends BaseAgentRuntime {
       case "message_update": {
         const inner = event.assistantMessageEvent;
         if (!inner) break;
+        const stopReason = inner.partial?.stopReason ?? inner.reason;
+        if (isFinalAssistantStopReason(stopReason)) this.liveFinalStart();
         if (inner.type === "text_delta") this.liveTextDelta(inner.delta ?? "");
         else if (inner.type === "thinking_delta") this.liveThinkingDelta(inner.delta ?? "");
         else if (inner.type === "toolcall_start") {
@@ -924,8 +994,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
         if (message?.role === "toolResult") setTimeout(() => this.syncLiveToolResult(message.toolCallId), 0);
         if (message?.role === "assistant") {
           const text = contentText(message.content);
-          const hasToolCalls = Array.isArray(message.content) && message.content.some((part: any) => part?.type === "toolCall");
-          if (text && !hasToolCalls && message.stopReason !== "aborted" && message.stopReason !== "error") {
+          if (isFinalAssistantMessage(message.content, message.stopReason)) {
             this.liveFinal(text);
           } else {
             this.closeOpenItem();
@@ -1101,7 +1170,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
       this.liveBegin();
       this.liveNote("Summarizing the abandoned branch…", "system");
       const truncated = await this.canonicalItems(target);
-      if (this.live) truncated.push(...this.live.items);
+      if (this.live) truncated.push(...this.liveItemsForDisplay(this.live));
       this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, truncated, this.modelContext())));
       void this.session
         .navigateTree(target, { summarize: true, customInstructions: customInstructions?.trim() || undefined })

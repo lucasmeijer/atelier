@@ -7,7 +7,7 @@ const agent = { workspaceId: "ws", conversationId: "00000000-0000-4000-8000-0000
 const tool = (overrides: Partial<ToolView>): ToolView => ({ callId: "call", name: "read", args: {}, status: "ok", ...overrides });
 const renderBash = (command: string, overrides: Partial<ToolView> = {}): string => renderTranscriptItemDetailFrame(ctx, { type: "tool", key: "bash", tool: tool({ name: "bash", args: { command }, ...overrides }) });
 
-describe("flat transcript rendering", () => {
+describe("transcript rendering", () => {
   test("server-rendered panes expose their snapshot cursor", async () => {
     const stats = { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] };
     const html = await renderAgentPane(ctx, agent, { transcriptHtml: "ready", busy: false, stats, snapshotCursor: "generation:4" });
@@ -37,6 +37,29 @@ describe("flat transcript rendering", () => {
   test("user messages retain their original text for prompt history", () => {
     const html = renderTranscriptItem(ctx, { type: "user", key: "user-history", text: "**bold** & quoted \"text\"", images: [] });
     expect(html).toContain('data-agent-user-text="**bold** &amp; quoted &quot;text&quot;"');
+  });
+
+  test("new turn activity renders in an expanded working section", () => {
+    const html = renderTranscriptItem(ctx, {
+      type: "working",
+      key: "turn-working",
+      startedAt: 1000,
+      items: [{ type: "thinking", key: "thought", text: "Checking files" }],
+    });
+    expect(html).toContain('class="agent-working"');
+    expect(html).toContain('id="ag_ws_agent_item_turn-working" open');
+    expect(html).toContain("Working");
+    expect(html).not.toContain("Working for");
+    expect(html).toContain("Checking files");
+  });
+
+  test("completed activity collapses while interrupted activity remains expanded", () => {
+    const worked = renderTranscriptItem(ctx, { type: "working", key: "worked", startedAt: 1000, completedAt: 3500, items: [] });
+    const stopped = renderTranscriptItem(ctx, { type: "working", key: "stopped", startedAt: 1000, stoppedAt: 3500, items: [] });
+    expect(worked).toContain("Worked for 3s");
+    expect(worked).not.toContain('id="ag_ws_agent_item_worked" open');
+    expect(stopped).toContain("Stopped after 3s");
+    expect(stopped).toContain('id="ag_ws_agent_item_stopped" open');
   });
 
   test("live assistant text uses stable and mutable server-rendered Markdown targets", () => {

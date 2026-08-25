@@ -501,17 +501,23 @@
 .agent-message-highlight .agent-user-bubble { animation: agent-message-highlight 1.4s ease-out; }
 @keyframes agent-message-highlight { 0%, 35% { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); } 100% { border-color: var(--line); box-shadow: none; } }
 
-/* Flat transcript + tool-owned renderers */
+/* Transcript + tool-owned renderers */
 .agent-item { position: relative; width: 100%; }
 .agent-item + .agent-item { margin-top: 2px; }
 .agent-item:has(.agent-user) { margin-top: 14px; margin-bottom: 8px; }
 .agent-item:has(.agent-final) { margin-top: .5rem; margin-bottom: .75rem; }
+.agent-working { width: 100%; margin: 2px 0; }
+.agent-working > summary, .agent-tool > summary { list-style: none; cursor: pointer; }
+.agent-working > summary::-webkit-details-marker, .agent-tool > summary::-webkit-details-marker { display: none; }
+.agent-working-summary { min-height: 30px; padding: 5px 7px; display: flex; align-items: center; gap: 8px; border-radius: 7px; color: var(--muted); font: 500 12.5px/1.4 var(--sans); font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+.agent-working-summary:hover { background: color-mix(in srgb, var(--panel) 68%, transparent); color: var(--text); }
+.agent-working-chevron { width: 7px; height: 7px; flex: none; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 120ms ease; }
+.agent-working[open] .agent-working-chevron { transform: rotate(45deg) translate(-1px, -1px); }
+.agent-working-items { margin: 1px 0 5px; }
 .agent-itext-md { color: var(--muted); font-size: 14px; line-height: 1.7; }
 .agent-stream-markdown > div { display: contents; }
 
 .agent-tool { margin: 1px 0; border: 0; border-radius: 0; background: transparent; overflow: visible; }
-.agent-tool > summary { list-style: none; cursor: pointer; }
-.agent-tool > summary::-webkit-details-marker { display: none; }
 .agent-tool-head { min-height: 28px; padding: 4px 7px; display: flex; align-items: center; gap: 8px; border-radius: 7px; background: transparent; color: var(--muted); font: 11px var(--mono); }
 summary > .agent-tool-head { width: 100%; }
 .agent-tool-head:hover { background: color-mix(in srgb, var(--panel) 68%, transparent); }

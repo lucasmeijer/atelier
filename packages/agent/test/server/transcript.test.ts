@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { buildTranscript, formatDuration, formatTokens, isToolViewDetails, toolDetailsIndicateError, type TranscriptRecord } from "../../src/server/transcript.ts";
+import { buildTranscript, formatDuration, formatTokens, isFinalAssistantMessage, isToolViewDetails, toolDetailsIndicateError, type TranscriptRecord } from "../../src/server/transcript.ts";
 
-describe("flat transcript", () => {
+describe("transcript", () => {
   test("preserves record order and joins tool results", () => {
     const records: TranscriptRecord[] = [
       { kind: "user", id: "u1", text: "go", images: [], timestamp: 1000 },
@@ -10,10 +10,13 @@ describe("flat transcript", () => {
       { kind: "assistant", id: "a2", parts: [{ type: "text", text: "Done." }], stopReason: "stop", timestamp: 4000 },
     ];
     const items = buildTranscript(records);
-    expect(items.map((item) => item.type)).toEqual(["user", "thinking", "tool", "text"]);
-    const tool = items.find((item) => item.type === "tool");
+    expect(items.map((item) => item.type)).toEqual(["user", "working", "text"]);
+    const working = items.find((item) => item.type === "working");
+    expect(working?.type === "working" && working.items.map((item) => item.type)).toEqual(["thinking", "tool"]);
+    const tool = working?.type === "working" ? working.items.find((item) => item.type === "tool") : undefined;
     expect(tool?.type === "tool" && tool.tool.resultText).toBe("file.txt");
     expect(tool?.type === "tool" && tool.tool.durationMs).toBe(1000);
+    expect(working?.type === "working" && working.completedAt).toBe(4000);
     const text = items.at(-1);
     expect(text?.type === "text" && text.final).toBe(true);
   });
@@ -22,6 +25,45 @@ describe("flat transcript", () => {
     const items = buildTranscript([{ kind: "assistant", id: "a", parts: [{ type: "thinking", text: "one" }, { type: "text", text: "two" }], stopReason: "stop", timestamp: 1 }]);
     expect(items[0]?.rewindEntryId).toBe("a");
     expect(items[1]?.rewindEntryId).toBeUndefined();
+  });
+
+  test("reconstructs completed and interrupted historical working sections", () => {
+    const items = buildTranscript([
+      { kind: "user", id: "u1", text: "finish", images: [], timestamp: 1000 },
+      { kind: "assistant", id: "a1", parts: [{ type: "thinking", text: "working" }, { type: "text", text: "Done" }], stopReason: "stop", timestamp: 4000 },
+      { kind: "user", id: "u2", text: "cancel", images: [], timestamp: 5000 },
+      { kind: "assistant", id: "a2", parts: [{ type: "text", text: "partial" }], stopReason: "aborted", timestamp: 7000 },
+    ]);
+    const sections = items.filter((item) => item.type === "working");
+    expect(sections).toHaveLength(2);
+    expect(sections[0]?.completedAt).toBe(4000);
+    expect(sections[0]?.items.map((item) => item.type)).toEqual(["thinking"]);
+    expect(sections[1]?.completedAt).toBeUndefined();
+    expect(sections[1]?.stoppedAt).toBe(7000);
+    expect(sections[1]?.items.map((item) => item.type)).toEqual(["text", "error"]);
+  });
+
+  test("classifies final messages from content and pi stop reason", () => {
+    const text = [{ type: "text", text: "done" }];
+    expect(isFinalAssistantMessage(text, "stop")).toBe(true);
+    expect(isFinalAssistantMessage(text, "length")).toBe(true);
+    expect(isFinalAssistantMessage(text, "deferred")).toBe(true);
+    expect(isFinalAssistantMessage(text, "toolUse")).toBe(false);
+    expect(isFinalAssistantMessage(text, "pending")).toBe(false);
+    expect(isFinalAssistantMessage(text, "error")).toBe(false);
+    expect(isFinalAssistantMessage(text, "aborted")).toBe(false);
+    expect(isFinalAssistantMessage([...text, { type: "toolCall" }], "stop")).toBe(false);
+    expect(isFinalAssistantMessage([{ type: "text", text: " " }], "stop")).toBe(false);
+  });
+
+  test("gives id-less notes stable distinct keys inside a working section", () => {
+    const items = buildTranscript([
+      { kind: "user", id: "u", text: "go", images: [], timestamp: 1000 },
+      { kind: "note", text: "one", tone: "system", timestamp: 2000 },
+      { kind: "note", text: "two", tone: "warning", timestamp: 3000 },
+    ]);
+    const working = items.find((item) => item.type === "working");
+    expect(working?.type === "working" && working.items.map((item) => item.key)).toEqual(["note:1", "note:2"]);
   });
 
   test("errors derive from result details", () => {

@@ -1,6 +1,7 @@
-/** Flat, renderer-friendly transcript model for the pi-backed runtime. */
+/** Renderer-friendly transcript model for the pi-backed runtime. */
 
 import { Type, type Static } from "typebox";
+import type { StopReason } from "@earendil-works/pi-ai";
 import { Value } from "typebox/value";
 import { isJsonObject, type JsonValue } from "@atelier/core";
 
@@ -24,7 +25,7 @@ type AssistantPart =
 
 export type TranscriptRecord =
   | { kind: "user"; id: string; text: string; images: SessionImageRef[]; timestamp: number; rewindable?: boolean }
-  | { kind: "assistant"; id: string; parts: AssistantPart[]; stopReason: string; errorMessage?: string; timestamp: number }
+  | { kind: "assistant"; id: string; parts: AssistantPart[]; stopReason: StopReason; errorMessage?: string; timestamp: number }
   | { kind: "toolResult"; callId: string; text: string; images: SessionImageRef[]; isError: boolean; timestamp: number; details?: ToolViewDetails }
   | { kind: "note"; id?: string; text: string; tone: NoteTone; timestamp?: number };
 
@@ -72,21 +73,51 @@ interface TranscriptItemBase {
   rewindEntryId?: string;
 }
 
+export type WorkingTranscriptItem = TranscriptItemBase & {
+  type: "working";
+  startedAt: number;
+  completedAt?: number;
+  stoppedAt?: number;
+  live?: boolean;
+  items: TranscriptItem[];
+};
+
 export type TranscriptItem =
   | (TranscriptItemBase & { type: "user"; text: string; images: SessionImageRef[] })
+  | WorkingTranscriptItem
   | (TranscriptItemBase & { type: "thinking"; text: string; live?: boolean })
   | (TranscriptItemBase & { type: "text"; text: string; final: boolean; live?: boolean })
   | (TranscriptItemBase & { type: "tool"; tool: ToolView })
   | (TranscriptItemBase & { type: "note"; text: string; tone: NoteTone })
   | (TranscriptItemBase & { type: "error"; text: string });
 
-/** Convert persisted records into one ordered stream; there is intentionally no turn/section layer. */
+export function isFinalAssistantStopReason(reason: StopReason): boolean {
+  return reason === "stop" || reason === "length" || reason === "deferred";
+}
+
+export function isFinalAssistantMessage(parts: ReadonlyArray<{ type: string; text?: string }>, stopReason: StopReason): boolean {
+  return isFinalAssistantStopReason(stopReason)
+    && parts.some((part) => part.type === "text" && Boolean(part.text?.trim()))
+    && !parts.some((part) => part.type === "toolCall");
+}
+
+/** Convert persisted records into user turns with synthetic working sections. */
 export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const tools = new Map<string, ToolView>();
+  let working: WorkingTranscriptItem | undefined;
+  let lastTimestamp = 0;
 
-  for (const record of records) {
+  const activityItems = (): TranscriptItem[] => working?.items ?? items;
+  const stopWorking = (timestamp: number): void => {
+    if (working && working.completedAt === undefined) working.stoppedAt = Math.max(working.startedAt, timestamp);
+    working = undefined;
+  };
+
+  for (const [recordIndex, record] of records.entries()) {
+    lastTimestamp = record.timestamp ?? lastTimestamp;
     if (record.kind === "user") {
+      stopWorking(record.timestamp);
       items.push({
         type: "user",
         key: record.id,
@@ -94,29 +125,38 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
         text: record.text,
         images: record.images,
       });
+      working = { type: "working", key: `${record.id}:working`, startedAt: record.timestamp, items: [] };
+      items.push(working);
       continue;
     }
 
     if (record.kind === "assistant") {
-      const hasTools = record.parts.some((part) => part.type === "toolCall");
+      const final = isFinalAssistantMessage(record.parts, record.stopReason);
       let first = true;
       record.parts.forEach((part, index) => {
         const rewindEntryId = first ? record.id : undefined;
         if (part.type === "thinking" && part.text.trim()) {
-          items.push({ type: "thinking", key: `${record.id}:thinking:${index}`, rewindEntryId, text: part.text });
+          activityItems().push({ type: "thinking", key: `${record.id}:thinking:${index}`, rewindEntryId, text: part.text });
           first = false;
         } else if (part.type === "text" && part.text.trim()) {
-          items.push({ type: "text", key: `${record.id}:text:${index}`, rewindEntryId, text: part.text, final: !hasTools && record.stopReason !== "toolUse" });
+          const destination = final ? items : activityItems();
+          destination.push({ type: "text", key: `${record.id}:text:${index}`, rewindEntryId, text: part.text, final });
           first = false;
         } else if (part.type === "toolCall") {
           const tool: ToolView = { callId: part.callId, name: part.name, args: part.args, status: "ok", issuedAt: record.timestamp };
           tools.set(part.callId, tool);
-          items.push({ type: "tool", key: `tool:${part.callId}`, rewindEntryId, tool });
+          activityItems().push({ type: "tool", key: `tool:${part.callId}`, rewindEntryId, tool });
           first = false;
         }
       });
-      if (record.errorMessage) items.push({ type: "error", key: `${record.id}:error`, text: record.errorMessage });
-      else if (record.stopReason === "aborted") items.push({ type: "error", key: `${record.id}:aborted`, text: "Run aborted" });
+      if (final) {
+        if (working) working.completedAt = Math.max(working.startedAt, record.timestamp);
+        working = undefined;
+      } else {
+        if (record.errorMessage) activityItems().push({ type: "error", key: `${record.id}:error`, text: record.errorMessage });
+        else if (record.stopReason === "aborted") activityItems().push({ type: "error", key: `${record.id}:aborted`, text: "Run aborted" });
+        if (record.stopReason === "error" || record.stopReason === "aborted") stopWorking(record.timestamp);
+      }
       continue;
     }
 
@@ -132,14 +172,15 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
       continue;
     }
 
-    items.push({
+    activityItems().push({
       type: "note",
-      key: record.id ?? `note:${items.length}`,
+      key: record.id ?? `note:${recordIndex}`,
       rewindEntryId: record.id,
       text: record.text,
       tone: record.tone,
     });
   }
+  stopWorking(lastTimestamp);
   return items;
 }
 
