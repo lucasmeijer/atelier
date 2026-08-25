@@ -34,6 +34,24 @@ describe("recordsFromSessionEntries", () => {
     expect(records[4]).toMatchObject({ kind: "note", tone: "system", text: "model → anthropic/claude" });
   });
 
+  test("omits initial model changes and collapses consecutive later changes to the last one", () => {
+    const records = recordsFromSessionEntries([
+      { type: "model_change", id: "initial-1", provider: "openai", modelId: "first" },
+      { type: "model_change", id: "initial-2", provider: "openai", modelId: "second" },
+      { type: "message", id: "user", parentId: null, message: { role: "user", content: "hello" } },
+      { type: "model_change", id: "later-1", provider: "anthropic", modelId: "first" },
+      { type: "model_change", id: "later-2", provider: "anthropic", modelId: "second" },
+      { type: "message", id: "assistant", parentId: "user", message: { role: "assistant", content: [{ type: "text", text: "hello" }], stopReason: "stop" } },
+      { type: "model_change", id: "latest", provider: "openai", modelId: "latest" },
+    ]);
+
+    expect(records).toHaveLength(4);
+    expect(records[0]).toMatchObject({ kind: "user", text: "hello" });
+    expect(records[1]).toMatchObject({ kind: "note", id: "later-2", text: "model → anthropic/second" });
+    expect(records[2]).toMatchObject({ kind: "assistant" });
+    expect(records[3]).toMatchObject({ kind: "note", id: "latest", text: "model → openai/latest" });
+  });
+
   test("user entries with a parent are rewindable", () => {
     const records = recordsFromSessionEntries([
       { type: "message", id: "e9", parentId: "e8", timestamp: "2026-06-10T10:00:00Z", message: { role: "user", content: "again", timestamp: 1760000000000 } },

@@ -752,6 +752,7 @@ function entryTimestamp(entry: { timestamp?: string }, message?: { timestamp?: u
 
 export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<any, CacheMiss>()): TranscriptRecord[] {
   const records: TranscriptRecord[] = [];
+  let lastModelChangeRecord: TranscriptRecord | undefined;
   for (const entry of entries) {
     if (entry.type === "message") {
       const message = entry.message;
@@ -802,7 +803,11 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
       continue;
     }
     if (entry.type === "model_change") {
-      records.push({ kind: "note", id: entry.id, text: `model → ${entry.provider}/${entry.modelId}`, tone: "system", timestamp: entryTimestamp(entry) });
+      if (records.length === 0) continue;
+      const record: TranscriptRecord = { kind: "note", id: entry.id, text: `model → ${entry.provider}/${entry.modelId}`, tone: "system", timestamp: entryTimestamp(entry) };
+      if (records.at(-1) === lastModelChangeRecord) records[records.length - 1] = record;
+      else records.push(record);
+      lastModelChangeRecord = record;
       continue;
     }
   }

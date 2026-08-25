@@ -530,6 +530,7 @@ summary > .agent-tool-head { width: 100%; }
 .agent-tool-status.running::before { display: none; }
 .agent-tool-summary-content, .agent-tool-detail-host { display: contents; }
 .agent-tool-name { width: 5.5ch; flex: none; color: var(--muted); font: 650 11px var(--mono); }
+.tool-model-context .agent-tool-name { width: auto; }
 .agent-tool-sep { color: var(--muted2); }
 .agent-tool-args { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted2); font: 11px var(--mono); }
 .agent-tool-args.error { color: var(--red); }
