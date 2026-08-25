@@ -408,7 +408,7 @@
 .agent-transcript-nav svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .agent-transcript-nav[data-direction="up"] svg { transform: rotate(180deg); }
 .agent-promptbox form { min-height: calc(1.5em * 2 + 21px); }
-.agent-input { font: inherit; font-size: 15px; line-height: 1.5; padding: 15px 58px 6px 17px; min-height: calc(1.5em * 2 + 21px); max-height: var(--agent-input-max-height); }
+.agent-input { font: inherit; font-size: 16px; line-height: 1.5; padding: 15px 58px 6px 17px; min-height: calc(1.5em * 2 + 21px); max-height: var(--agent-input-max-height); }
 .agent-input::placeholder { color: var(--muted2); }
 .agent-prompt-actions { position: absolute; left: 10px; right: 10px; bottom: 38px; display: flex; align-items: center; gap: 6px; padding: 0; pointer-events: none; }
 .agent-prompt-actions > * { pointer-events: auto; }
