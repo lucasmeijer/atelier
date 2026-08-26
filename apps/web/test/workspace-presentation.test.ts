@@ -52,7 +52,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(projectHeading.indexOf("Atelier")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-settings"));
     expect(projectHeading.indexOf("fixed-shell-project-settings")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-add"));
     expect(html).toContain('data-project-id="__projectless__"><svg');
-    expect(html).toContain('<span class="action-item__label"><span class="action-item__label-text">Projectless</span></span></button><a class="fixed-shell-project-add action-item__action button secondary icon-only" href="/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New projectless workspace"');
+    expect(html).toContain('<span class="action-item__label"><span class="action-item__label-text">Projectless</span></span></button><span class="fixed-shell-project-actions button-group"><a class="fixed-shell-project-add action-item__action button secondary icon-only" href="/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New projectless workspace"');
     expect(html.indexOf('data-project-id="__projectless__"')).toBeLessThan(html.indexOf('data-project-id="__projects_drawer__"'));
     const drawerProjects = html.slice(html.indexOf('data-project-id="__projects_drawer__"'));
     expect(html).toContain('class="fixed-shell-project fixed-shell-projects-drawer is-collapsed" data-project-id="__projects_drawer__"');

@@ -222,6 +222,24 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
+  test("Button Groups own consistent horizontal and vertical spacing", async () => {
+    const page = await newTestPage();
+    await page.setContent(`<style>${workspaceStyle}</style>
+      <div id="horizontal" class="button-group"><button class="button">First</button><button class="button">Second</button></div>
+      <div id="vertical" class="button-group vertical"><button class="button">First</button><button class="button">Second</button></div>`);
+    const gapBetween = async (selector: string, axis: "x" | "y") => {
+      const buttons = page.locator(`${selector} > .button`);
+      const first = (await buttons.nth(0).boundingBox())!;
+      const second = (await buttons.nth(1).boundingBox())!;
+      return axis === "x" ? second.x - (first.x + first.width) : second.y - (first.y + first.height);
+    };
+
+    expect(await gapBetween("#horizontal", "x")).toBe(8);
+    expect(await gapBetween("#vertical", "y")).toBe(8);
+    expect(await page.locator("#vertical > .button").nth(0).evaluate((button) => getComputedStyle(button).width)).toBe(await page.locator("#vertical").evaluate((group) => getComputedStyle(group).width));
+    await page.close();
+  });
+
   test("Text entry controls share surfaces and keyboard focus treatment", async () => {
     const page = await newTestPage({ reducedMotion: "reduce" });
     await page.setContent(`<style>${workspaceStyle}</style><button id="before">Before</button><input class="text-field" aria-label="Name"><textarea class="textarea" aria-label="Instructions"></textarea>`);
