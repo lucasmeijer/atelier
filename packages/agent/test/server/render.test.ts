@@ -12,6 +12,7 @@ describe("transcript rendering", () => {
     const stats = { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] };
     const html = await renderAgentPane(ctx, agent, { transcriptHtml: "ready", busy: false, stats, snapshotCursor: "generation:4" });
     expect(html).toContain('data-agent-pane-snapshot-cursor-value="generation:4"');
+    expect(html).toContain('placeholder="Write your prompt here" aria-label="Write your prompt here"');
   });
 
   test("composer runs completion shortcuts before prompt submission", async () => {

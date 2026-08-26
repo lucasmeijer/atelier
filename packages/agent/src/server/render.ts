@@ -194,7 +194,7 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
         ctx,
         action: agentPath(ctx, "/messages"),
         draftId,
-        placeholder: `Message ${ctx.label}… (drop files anywhere)`,
+        placeholder: "Write your prompt here",
         initialText,
         suggestionHtml: initialPromptDraft && !initialPromptDraft.accepted ? renderInitialPromptDraftSuggestion(ctx) : undefined,
         formTarget: true,
@@ -209,7 +209,7 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
 }
 
 export function renderAgentPanePromptInput(ctx: AgentRenderContext, initialText = ""): string {
-  const placeholder = `Message ${ctx.label}… (drop files anywhere)`;
+  const placeholder = "Write your prompt here";
   return `<textarea id="${ids.input(ctx)}" class="agent-input" name="text" rows="2" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(placeholder)}" data-agent-pane-target="input" data-agent-completions-target="input" data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged">${escapeHtml(initialText)}</textarea>`;
 }
 

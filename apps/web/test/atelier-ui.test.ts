@@ -757,7 +757,10 @@ describe("Atelier Playwright helper", () => {
   test("uses fixed mobile destinations and keeps secondary Work views behind More across responsive transitions", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "phone-demo", title: "Phone" },
-      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<textarea data-probe="agent">draft</textarea>' }],
+      agentConversations: [
+        { id: "agent-1", title: "First Agent", bodyHtml: '<textarea data-probe="agent">draft</textarea>' },
+        { id: "agent-2", title: "Second Agent", bodyHtml: "<p>Second agent</p>" },
+      ],
       workViews: [
         { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea>', close: { action: "/terminal/close", label: "Terminal Work view" } },
         { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files Work view" } },
@@ -770,6 +773,11 @@ describe("Atelier Playwright helper", () => {
     await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    await page.locator('[data-mobile-destination="workspace"]').evaluate((button: HTMLButtonElement) => button.click());
+    expect(await page.locator(".fixed-workspace-presentation").getAttribute("data-phone-destination")).toBe("workspace");
+    await page.locator('[data-mobile-destination="workspace"]').evaluate((button: HTMLButtonElement) => button.click());
+    expect(await page.locator(".fixed-workspace-presentation").getAttribute("data-phone-destination")).toBe("agent:agent-1");
+    await page.locator('[data-more-work-key="files:workspace"]').evaluate((button: HTMLButtonElement) => button.click());
     const workspaceUpdate = workspacePaneCollectionsTurboStream({ projects: [], projectlessWorkspaces: [{ id: "phone-demo", title: "Phone" }, { id: "new-mobile-workspace", title: "New mobile workspace" }] });
     await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspaceUpdate);
     await page.getByRole("button", { name: "New mobile workspace" }).waitFor();

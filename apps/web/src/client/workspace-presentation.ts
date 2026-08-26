@@ -151,8 +151,12 @@ export function createWorkspacePresentationController(
 
     selectMobileDestination(event: Event): void {
       // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-      const destination = (event.currentTarget as HTMLElement).dataset.mobileDestination as PhoneDestination | undefined;
+      let destination = (event.currentTarget as HTMLElement).dataset.mobileDestination as PhoneDestination | undefined;
       if (!destination) return;
+      if (destination === "workspace" && this.state.phoneDestination === "workspace") {
+        // SAFETY: Every Workspace presentation requires and server-renders at least one Agent destination.
+        destination = this.element.querySelector<HTMLElement>("[data-mobile-destination^='agent:']")!.dataset.mobileDestination as PhoneDestination;
+      }
       this.state.phoneDestination = destination;
       if (destination.startsWith("work:")) {
         this.state.activeWorkViewKey = destination.slice(5);
