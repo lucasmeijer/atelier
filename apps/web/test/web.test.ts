@@ -817,6 +817,8 @@ describe("web app contracts", () => {
     expect(registry.get("abc")?.phase).toBe("deleting");
     expect(registry.get("abc")?.deletion).toEqual({ status: "deleting", forced: false });
     while (!broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"') && html.includes('data-workspace-entry-id="abc"'))) await Bun.sleep(1);
+    const deletingPane = broadcasts.find((html) => html.includes('action="replace-workspace-pane-collections"') && html.includes('data-workspace-entry-id="abc"'))!;
+    expect(deletingPane).toContain("fixed-shell-workspace-busy");
     expect(broadcasts.some((html) => html.includes("Deleting workspace…"))).toBe(true);
     expect(broadcasts).not.toContain('<turbo-stream action="remove-workspace-resident" target="fixed_workspace_abc"></turbo-stream>');
 

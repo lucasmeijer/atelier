@@ -380,7 +380,8 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
     },
 
     isWorkspaceBusy(id) {
-      return (busyViewsByWorkspace.get(id)?.size ?? 0) > 0;
+      const deletion = entries.get(id)?.deletion;
+      return deletion?.status === "checking" || deletion?.status === "deleting" || (busyViewsByWorkspace.get(id)?.size ?? 0) > 0;
     },
 
     isWorkspaceUnread(id) {

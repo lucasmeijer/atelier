@@ -48,11 +48,17 @@ describe("transcript rendering", () => {
       startedAt: 1000,
       items: [{ type: "thinking", key: "thought", text: "Checking files" }],
     });
-    expect(html).toContain('class="agent-working"');
+    expect(html).toContain('class="agent-working active"');
     expect(html).toContain('id="ag_ws_agent_item_turn-working" open');
     expect(html).toContain("Working");
     expect(html).not.toContain("Working for");
     expect(html).toContain("Checking files");
+  });
+
+  test("empty working sections remain active while waiting for activity", () => {
+    const html = renderTranscriptItem(ctx, { type: "working", key: "waiting", startedAt: 1000, items: [] });
+    expect(html).toContain('class="agent-working active"');
+    expect(html).toContain('class="agent-working-items" id="ag_ws_agent_working_items_waiting"></div>');
   });
 
   test("completed activity collapses while interrupted activity remains expanded", () => {
@@ -68,6 +74,8 @@ describe("transcript rendering", () => {
     expect(worked).not.toContain('id="ag_ws_agent_item_worked" open');
     expect(stopped).toContain("Stopped after 3s");
     expect(stopped).toContain('id="ag_ws_agent_item_stopped" open');
+    expect(worked).toContain('class="agent-working"');
+    expect(stopped).toContain('class="agent-working"');
   });
 
   test("completed activity with no items is omitted", () => {

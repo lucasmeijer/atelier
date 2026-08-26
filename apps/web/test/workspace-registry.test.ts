@@ -150,6 +150,23 @@ describe("workspace registry", () => {
     expect(registry.get("w")?.phase).toBe("deleting");
   });
 
+  test("active deletion operations make the workspace busy", async () => {
+    const { registry } = setup();
+    await registry.seed([{ id: "w", title: null }]);
+
+    registry.setDeletion("w", { status: "checking" });
+    expect(registry.workspaceState("w")).toBe("busy");
+
+    registry.setDeletion("w", { status: "blocked", issues: [] });
+    expect(registry.workspaceState("w")).toBe("idle");
+
+    registry.setDeletion("w", { status: "deleting", forced: false });
+    expect(registry.workspaceState("w")).toBe("busy");
+
+    registry.setDeletion("w", { status: "failed", operation: "deleting", forced: false, error: "failed" });
+    expect(registry.workspaceState("w")).toBe("idle");
+  });
+
   test("failed phase records the error and clears it on other transitions", async () => {
     const { registry } = setup();
     await registry.seed([]);
