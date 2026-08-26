@@ -1,11 +1,19 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { chromium, type Browser } from "@playwright/test";
+import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
 import { removeWorkspaceResidentTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 
 let browser: Browser;
+let browserContext: BrowserContext;
 let workspaceClient: string;
 let workspaceStyle: string;
+
+async function newTestPage(options: { viewport?: { width: number; height: number }; reducedMotion?: "reduce" | "no-preference" } = {}): Promise<Page> {
+  const page = await browserContext.newPage();
+  if (options.viewport) await page.setViewportSize(options.viewport);
+  if (options.reducedMotion) await page.emulateMedia({ reducedMotion: options.reducedMotion });
+  return page;
+}
 
 function renderShellFixture(presentation: WorkspacePresentation, pane: WorkspacePanePresentation, cached: readonly WorkspacePresentation[] = []): string {
   const residents = [presentation, ...cached].map((resident, index) => `<div class="workspace-detail-resident${index === 0 ? " visible" : ""}" data-workspace-residency-target="resident" data-workspace-id="${resident.workspace.id}">${renderWorkspacePresentation(resident)}</div>`).join("");
@@ -24,15 +32,17 @@ beforeAll(async () => {
   workspaceStyle = `${designSystemStyle}\n${shellStyle}`;
   const executablePath = process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/local/bin/chromium";
   browser = await chromium.launch({ executablePath, headless: true });
+  browserContext = await browser.newContext();
 });
 
 afterAll(async () => {
+  await browserContext?.close();
   await browser?.close();
 });
 
 describe("Atelier Playwright helper", () => {
   test("key locators match the server-rendered contracts", async () => {
-    const page = await browser.newPage();
+    const page = await newTestPage();
     await page.setContent(`<form aria-label="Add project"></form><form aria-label="Repository"></form>
       <div role="table"><form role="row" aria-label="Add secret"></form></div>
       <form id="agent_launch_form"><textarea aria-label="Describe what you want the agent to do… (optional)"></textarea></form>
@@ -47,7 +57,7 @@ describe("Atelier Playwright helper", () => {
   });
 
   test("keeps the settings dialog styled by the shared design system", async () => {
-    const page = await browser.newPage();
+    const page = await newTestPage();
     await page.setContent(`<style>${workspaceStyle}</style><dialog class="settings-dialog" open><div class="settings-sheet"><main class="settings-main"><h1 class="settings-title">Settings</h1><section class="settings-sec"><h2>Theme</h2></section></main></div></dialog>`);
 
     expect(await page.locator(".settings-dialog").evaluate((dialog) => {
@@ -69,7 +79,7 @@ describe("Atelier Playwright helper", () => {
     };
     const shell = renderShellFixture(presentations[0]!, pane, presentations.slice(1))
       .replace('data-controller="workspace-navigation"', 'data-controller="atelier-shortcuts workspace-navigation"');
-    const page = await browser.newPage();
+    const page = await newTestPage();
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
       body: `${shell}<script type="module" src="/workspace-test.js"></script>`,
@@ -115,7 +125,7 @@ describe("Atelier Playwright helper", () => {
       { id: "selected", title: "Selected", active: true },
       { id: "other", title: "Other" },
     ] };
-    const page = await browser.newPage();
+    const page = await newTestPage();
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
       body: `${renderShellFixture(presentation, pane, [other])}<script type="module" src="/workspace-test.js"></script>`,
@@ -156,7 +166,7 @@ describe("Atelier Playwright helper", () => {
         { id: "long", title: "A workspace name that is much too long for this narrow sidebar" },
       ],
     };
-    const page = await browser.newPage({ reducedMotion: "no-preference" });
+    const page = await newTestPage({ reducedMotion: "no-preference" });
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
       body: `<style>${workspaceStyle}</style><style>.fixed-shell-app { --fixed-workspace-width: 150px; width: 700px; height: 500px; }</style>${renderShellFixture(current, pane)}<script type="module" src="/workspace-test.js"></script>`,
@@ -197,7 +207,7 @@ describe("Atelier Playwright helper", () => {
     };
     let finishPreload!: () => void;
     const preloadBlocked = new Promise<void>((resolve) => { finishPreload = resolve; });
-    const page = await browser.newPage();
+    const page = await newTestPage();
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
       body: `<style>${workspaceStyle}</style>${renderShellFixture(current, pane)}<script type="module" src="/workspace-test.js"></script>`,
@@ -236,7 +246,7 @@ describe("Atelier Playwright helper", () => {
       { id: "first", title: "First", active: true },
       { id: "created", title: "Created" },
     ] };
-    const page = await browser.newPage();
+    const page = await newTestPage();
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(first, pane, [created])}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/active", (route) => route.fulfill({ status: 204 }));
@@ -252,7 +262,7 @@ describe("Atelier Playwright helper", () => {
   });
 
   test("detects and selects a Turbo-added workspace without URL navigation", async () => {
-    const page = await browser.newPage();
+    const page = await newTestPage();
     await page.setContent(`<div id="workspace_entries">
       <button class="fixed-shell-workspace-row" data-workspace-entry-id="existing">Existing</button>
     </div><div id="workspace_detail"></div>`);
@@ -281,7 +291,7 @@ describe("Atelier Playwright helper", () => {
   });
 
   test("selects a touch autocomplete option before iOS WebKit cancels click", async () => {
-    const page = await browser.newPage();
+    const page = await newTestPage();
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
       body: `<div data-controller="agent-completions" data-agent-completions-url-value="/workspaces/demo/agents/Agent%201/completions">
@@ -309,7 +319,7 @@ describe("Atelier Playwright helper", () => {
   });
 
   test("opens and closes a live Browser view with Atelier's fullscreen implementation", async () => {
-    const page = await browser.newPage();
+    const page = await newTestPage();
     await page.setContent(`<div data-workspace-id="demo">
       <section class="fixed-shell-work-pane">
         <div class="fixed-shell-work-view-selectors"><button type="button" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="browser-1" data-atelier-fullscreen-title-value="Browser">Browser</button></div>
@@ -333,7 +343,7 @@ describe("Atelier Playwright helper", () => {
       workViews: [],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "deleted-demo", title: "Delete me" }] };
-    const page = await browser.newPage();
+    const page = await newTestPage();
     await page.route("http://atelier.test/workspaces/deleted-demo", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.goto("http://atelier.test/workspaces/deleted-demo");
@@ -365,7 +375,7 @@ describe("Atelier Playwright helper", () => {
     };
     let parkRequests = 0;
     let documentRequests = 0;
-    const page = await browser.newPage();
+    const page = await newTestPage();
     page.on("request", (request) => {
       if (request.isNavigationRequest() && request.resourceType() === "document") documentRequests += 1;
     });
@@ -406,7 +416,7 @@ describe("Atelier Playwright helper", () => {
         { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files" } },
       ],
     };
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
@@ -458,7 +468,7 @@ describe("Atelier Playwright helper", () => {
         { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" },
       ],
     };
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
     let acknowledgements = 0;
     await page.route("http://atelier.test/workspaces/deep-demo?workView=browser%3A1", (route) => route.fulfill({ contentType: "text/html", body: `<div class="workspace-detail-resident visible">${renderWorkspacePresentation(presentation)}</div><script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
@@ -509,7 +519,7 @@ describe("Atelier Playwright helper", () => {
       ],
       preserveLiveKeys: new Set(["agent:agent-present"]),
     };
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
     await page.route("http://atelier.test/workspaces/visible-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(visible, pane, [cached])}<script type="module" src="/workspace-test.js"></script>` }));
     let acknowledgements = 0;
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
@@ -568,7 +578,7 @@ describe("Atelier Playwright helper", () => {
       workViews: [],
     };
     let unparkRequests = 0;
-    const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    const page = await newTestPage({ viewport: { width: 1000, height: 700 } });
     await page.addInitScript(() => localStorage.removeItem("atelier:workspace-project-disclosures"));
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
@@ -624,7 +634,7 @@ describe("Atelier Playwright helper", () => {
         { id: "unused-2", title: "Unused two" },
       ],
     };
-    const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    const page = await newTestPage({ viewport: { width: 1000, height: 700 } });
     await page.addInitScript(() => localStorage.removeItem("atelier:workspace-project-disclosures"));
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
@@ -698,7 +708,7 @@ describe("Atelier Playwright helper", () => {
       { id: "ready-demo", title: "Ready", unreadAt: 123 },
       { id: "busy-demo", title: "Busy", busy: true },
     ] }] };
-    const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
+    const page = await newTestPage({ viewport: { width: 900, height: 700 } });
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/workspaces/ready-demo?resident=1", (route) => route.fulfill({ contentType: "text/html", body: '<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="ready-demo">Ready</div>' }));
@@ -728,7 +738,7 @@ describe("Atelier Playwright helper", () => {
       { id: "a", title: "Workspace a", active: true },
       { id: "b", title: "Workspace b" },
     ] }] };
-    const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    const page = await newTestPage({ viewport: { width: 1000, height: 700 } });
     await page.route("http://atelier.test/workspaces/a", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(makePresentation("a"), pane, [makePresentation("b")])}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.goto("http://atelier.test/workspaces/a");
@@ -749,7 +759,7 @@ describe("Atelier Playwright helper", () => {
       agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent content</p>" }],
       workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
     };
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.goto("http://atelier.test/");
@@ -781,7 +791,7 @@ describe("Atelier Playwright helper", () => {
       agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<textarea data-probe="draft">draft</textarea>' }],
       workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<iframe srcdoc="<p>live</p>"></iframe>' }],
     };
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.goto("http://atelier.test/");
@@ -821,7 +831,7 @@ describe("Atelier Playwright helper", () => {
       ],
       commands: [{ id: "files.open", label: "Files", scope: "workspace", placement: "work-launcher" }, { id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }],
     };
-    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const page = await newTestPage({ viewport: { width: 390, height: 844 } });
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="/workspace-test.js"></script>` }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));

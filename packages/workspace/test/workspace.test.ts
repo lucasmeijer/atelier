@@ -45,6 +45,10 @@ async function getReusableWorkspaceId(): Promise<string> {
   return reusableWorkspaceId;
 }
 
+async function createDisposableWorkspace(options: Parameters<typeof createWorkspace>[0] = {}): Promise<Awaited<ReturnType<typeof createWorkspace>>> {
+  return await createWorkspace(options);
+}
+
 // oxlint-disable-next-line anti-slop/no-unknown-returns -- The action's fulfillment value is intentionally discarded.
 async function expectCoreError(action: () => Promise<unknown>): Promise<AtelierCoreError> {
   try {
@@ -68,7 +72,6 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (reusableWorkspaceId) await deleteWorkspace(reusableWorkspaceId, { force: true }).catch(() => null);
   await cleanupNamespace(testNamespace);
 });
 
@@ -78,14 +81,14 @@ describe("core workspaces", () => {
   });
 
   test("createWorkspace creates a workspace and listWorkspaces includes it with no title", async () => {
-    const created = await createWorkspace();
+    const created = { id: await getReusableWorkspaceId() };
 
     expect(created.id).toMatch(/^[0-9a-f]{8}$/);
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
   });
 
   test("listWorkspaces marks a workspace when its project now resolves to a different image", async () => {
-    const created = await createWorkspace();
+    const created = { id: await getReusableWorkspaceId() };
     const dockerfile = "FROM atelier-workspace\nENV ATELIER_IMAGE_TEST=" + crypto.randomUUID() + "\n";
     const expectedImage = repositoryWorkspaceImageTag(await resolveWorkspaceImage(), dockerfile);
     expect((await docker(["image", "inspect", expectedImage])).exitCode).not.toBe(0);
@@ -96,25 +99,24 @@ describe("core workspaces", () => {
 
     await execWorkspaceShell(created.id, "rm .atelier/Dockerfile");
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
-    await deleteWorkspace(created.id, { force: true });
   });
 
   test("listWorkspaces does not build a missing carrier image", async () => {
-    const created = await createWorkspace();
+    const created = { id: await getReusableWorkspaceId() };
     const defaultImage = await resolveWorkspaceImage();
     const preloadRef = "atelier-list-preload:" + crypto.randomUUID();
     expect((await docker(["tag", defaultImage, preloadRef])).exitCode).toBe(0);
     try {
       if (!await nativeLinuxDockerPlatform()) return;
       const carriersBefore = (await docker(["image", "ls", "--filter", "label=com.atelier.workspace-image.kind=carrier", "--quiet"])).stdout.trim();
-      const manifest = JSON.stringify({ docker: { privileged: true, preloadImages: [preloadRef] } });
+      const manifest = JSON.stringify({ version: 1, docker: { privileged: true, preloadImages: [preloadRef] } });
       await execWorkspaceCommand(created.id, ["sh", "-c", "mkdir -p .atelier && cat > .atelier/workspace.json"], { stdin: manifest });
 
       expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, imageOutdated: true });
       expect((await docker(["image", "ls", "--filter", "label=com.atelier.workspace-image.kind=carrier", "--quiet"])).stdout.trim()).toBe(carriersBefore);
     } finally {
+      await execWorkspaceShell(created.id, "rm -f .atelier/workspace.json");
       await docker(["image", "rm", preloadRef]);
-      await deleteWorkspace(created.id, { force: true });
     }
   });
 
@@ -126,20 +128,20 @@ describe("core workspaces", () => {
   });
 
   test("setWorkspaceParked persists parked state and stops or starts the container", async () => {
-    const created = await createWorkspace();
+    const created = { id: await getReusableWorkspaceId() };
 
     expect(await setWorkspaceParked(created.id, true)).toBeNull();
-    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, parked: true });
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: "Add dark mode toggle", parked: true });
     expect((await docker(["inspect", "--format", "{{.State.Running}}", workspaceContainerName(created.id)])).stdout.trim()).toBe("false");
 
     expect(await setWorkspaceParked(created.id, false)).toBeNull();
-    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
+    expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: "Add dark mode toggle" });
     expect((await docker(["inspect", "--format", "{{.State.Running}}", workspaceContainerName(created.id)])).stdout.trim()).toBe("true");
   });
 
   test("createWorkspace persists init instructions", async () => {
     const init = { type: "test.init", value: "atelier" } satisfies WorkspaceInitInstruction;
-    const created = await createWorkspace({ init });
+    const created = await createDisposableWorkspace({ init });
 
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, init });
     expect(await getWorkspaceInit(created.id)).toEqual(init);
@@ -157,7 +159,7 @@ describe("core workspaces", () => {
   });
 
   test("execWorkspaceCommandBuffer captures stdout bytes", async () => {
-    const created = await createWorkspace();
+    const created = { id: await getReusableWorkspaceId() };
 
     const exec = await execWorkspaceCommandBuffer(created.id, ["sh", "-c", "printf '\\000\\377'"]);
 
@@ -206,7 +208,7 @@ describe("core workspaces", () => {
   });
 
   test("createWorkspace can fork /work into a new container from the source image", async () => {
-    const source = await createWorkspace();
+    const source = { id: await getReusableWorkspaceId() };
     const init = { type: "test.init", value: "fork" } satisfies WorkspaceInitInstruction;
     const write = await execWorkspaceShell(source.id, "printf forked > /work/copied.txt");
     expect(write.exitCode).toBe(0);
@@ -218,7 +220,7 @@ describe("core workspaces", () => {
     events.on("workspace_source_prepare", () => { sourcePrepareEmitted = true; });
     events.on("workspace_plan_prepare", ({ context }) => { planContextFork = context?.fork?.sourceWorkspaceId; });
 
-    const fork = await createWorkspace({ init, context: { fork: { sourceWorkspaceId: source.id } }, fork: { sourceWorkspaceId: source.id }, events });
+    const fork = await createDisposableWorkspace({ init, context: { fork: { sourceWorkspaceId: source.id } }, fork: { sourceWorkspaceId: source.id }, events });
     const read = await execWorkspaceCommand(fork.id, ["cat", "/work/copied.txt"]);
     const forkImage = (await docker(["inspect", "--format", "{{.Image}}", workspaceContainerName(fork.id)])).stdout.trim();
 
@@ -228,13 +230,14 @@ describe("core workspaces", () => {
     expect(planContextFork).toBe(source.id);
     expect(forkImage).toBe(sourceImage);
     expect(await getWorkspaceInit(fork.id)).toEqual(init);
+    await execWorkspaceShell(source.id, "rm copied.txt");
   });
 
   test("createWorkspace configures saved git identity", async () => {
     await setGitIdentity({ name: "Test User", email: "test@example.com" });
     const events = createAtelierEventBus();
     registerProjectWorkspaceEvents(events);
-    const created = await createWorkspace({ events });
+    const created = await createDisposableWorkspace({ events });
 
     const exec = await execWorkspaceCommand(created.id, ["git", "config", "--global", "--get-regexp", "^user\\."]);
 
@@ -254,24 +257,19 @@ describe("core workspaces", () => {
     expect(exec.durationMs).toBeGreaterThanOrEqual(0);
   });
 
-  test("deleteWorkspace removes the workspace", async () => {
-    const created = await createWorkspace();
-
-    expect(await deleteWorkspace(created.id)).toBeNull();
-    expect((await listWorkspaces()).workspaces.some((workspace) => workspace.id === created.id)).toBe(false);
-  });
-
-  test("workspace user matches the host user configured for the bind mount", async () => {
-    const created = await createWorkspace();
+  test("deleteWorkspace removes the workspace and leaves its id inoperable", async () => {
+    const created = await createDisposableWorkspace();
     const setup = await execWorkspaceCommand(created.id, ["sh", "-lc", "test \"$(id -u)\" = \"$ATELIER_HOST_UID\" && test \"$(id -g)\" = \"$ATELIER_HOST_GID\" && printf hello > owned-by-workspace-user.txt"]);
     expect(setup.exitCode).toBe(0);
 
     expect(await deleteWorkspace(created.id)).toBeNull();
     expect((await listWorkspaces()).workspaces.some((workspace) => workspace.id === created.id)).toBe(false);
+    const error = await expectCoreError(() => execWorkspaceCommand(created.id, ["echo", "hello"]));
+    expect(error.code).toBe("workspace_not_found");
   });
 
   test("deleteWorkspace fails with uncommitted changes unless forced", async () => {
-    const created = await createWorkspace();
+    const created = await createDisposableWorkspace();
     const setup = await execWorkspaceCommand(created.id, ["sh", "-lc", "cd /work && git init && printf hello > changed.txt"]);
     expect(setup.exitCode).toBe(0);
 
@@ -285,7 +283,7 @@ describe("core workspaces", () => {
   });
 
   test("deleteWorkspace reports changes inside initialized submodules", async () => {
-    const created = await createWorkspace();
+    const created = await createDisposableWorkspace();
     const setup = await execWorkspaceShell(created.id, `set -eu
 rm -rf /tmp/atelier-submodule-seed /tmp/atelier-submodule.git
 mkdir /tmp/atelier-submodule-seed
@@ -324,14 +322,6 @@ printf changed > /work/deps/sub/tracked.txt`);
     expect(await deleteWorkspace(created.id, { force: true })).toBeNull();
   });
 
-  test("execWorkspaceCommand on a deleted workspace throws workspace_not_found", async () => {
-    const created = await createWorkspace();
-    await deleteWorkspace(created.id);
-
-    const error = await expectCoreError(() => execWorkspaceCommand(created.id, ["echo", "hello"]));
-    expect(error.code).toBe("workspace_not_found");
-  });
-
   test("workspace ids are scoped to ATELIER_NAMESPACE", async () => {
     const currentNamespace = process.env.ATELIER_NAMESPACE;
     const otherNamespace = `${testNamespace}-other`;
@@ -366,7 +356,7 @@ printf changed > /work/deps/sub/tracked.txt`);
   test("createWorkspace uses the supplied app-generated id for container name and label", async () => {
     const id = generateWorkspaceId();
 
-    const created = await createWorkspace({ id });
+    const created = await createDisposableWorkspace({ id });
     expect(created.id).toBe(id);
 
     const inspected = await docker(["inspect", "--format", `{{.Name}}\t{{index .Config.Labels "com.atelier.workspace-id"}}`, workspaceContainerName(id)]);
