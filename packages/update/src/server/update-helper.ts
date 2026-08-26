@@ -79,13 +79,11 @@ async function run(): Promise<void> {
 
     setStep("wait", "running");
     const healthUrl = serverHealthUrlFromInspect(inspect, options.returnUrl);
-    const deadline = Date.now() + 120_000;
-    while (Date.now() < deadline) {
+    while (true) {
       const up = await fetch(healthUrl).catch(() => undefined);
       if (up?.ok) { setStep("wait", "done"); setStep("redirect", "running"); return; }
       await Bun.sleep(1000);
     }
-    throw new Error("Atelier did not become healthy within 120 seconds");
   } catch (error) {
     failed = true;
     const running = steps.find((step) => step.status === "running");

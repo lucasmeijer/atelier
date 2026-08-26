@@ -39,6 +39,7 @@ export class UpdateManager {
   private target: ImageMetadata | undefined;
   private releaseChannel: ReleaseChannel = "stable";
   private pullPromise: Promise<void> | undefined;
+  private pulledDigest: string | undefined;
   private restarting = false;
   private releaseNotesHtml: string | undefined;
   private readonly subscribers = new Set<(snapshot: StateSnapshot) => void>();
@@ -111,7 +112,6 @@ export class UpdateManager {
     const channel = this.releaseChannel;
     if (this.state === "idle") this.setState("checking");
     const target = await (this.deps.fetchMetadata ?? fetchChannelImageMetadata)(channel);
-    const oldDigest = this.target?.digest;
     this.target = target;
     this.releaseNotesHtml = undefined;
     const current = this.runtime.currentRevision ?? this.runtime.currentDigest;
@@ -121,7 +121,7 @@ export class UpdateManager {
     if (!available) this.setState("idle");
     else if (incompatible) this.setState("incompatible");
     else if (this.state === "idle" || this.state === "checking" || this.state === "incompatible") this.setState("available");
-    else if (this.state === "ready_to_restart" && oldDigest && oldDigest !== target.digest) await this.startPull();
+    else if (this.state === "ready_to_restart" && this.pulledDigest !== target.digest) await this.startPull();
     else this.updateSidebar();
   }
 
@@ -141,20 +141,34 @@ export class UpdateManager {
     if (!this.runtime) throw new Error("Atelier is not running in a self-updatable Docker container");
     if (this.hasCompatibilityMismatch()) throw new Error("This update requires rerunning the Atelier installer");
     if (this.pullPromise) return await this.pullPromise;
-    this.setState("pulling", { percent: undefined });
-    const onProgress = (progress: PullProgress) => {
-      this.percent = progress.percent;
-      this.updateSidebar();
-    };
-    const pull = (this.deps.pullImage ?? pullChannelImage)(this.releaseChannel, onProgress);
-    this.pullPromise = pull.then(() => {
-      this.setState("ready_to_restart", { percent: 100 });
-    }).catch((error) => {
+    this.pullPromise = this.pullNewestTarget().catch((error) => {
       this.fail(error instanceof Error ? error.message : String(error));
     }).finally(() => {
       this.pullPromise = undefined;
     });
     return await this.pullPromise;
+  }
+
+  private async pullNewestTarget(): Promise<void> {
+    const pullImage = this.deps.pullImage ?? pullChannelImage;
+    const reportProgress = (progress: PullProgress) => {
+      this.percent = progress.percent;
+      this.updateSidebar();
+    };
+    while (true) {
+      const digest = this.target!.digest;
+      this.setState("pulling", { percent: undefined });
+      await pullImage(this.releaseChannel, reportProgress);
+      this.pulledDigest = digest;
+      if (this.target!.digest === digest) {
+        this.setState("ready_to_restart", { percent: 100 });
+        return;
+      }
+      if (this.hasCompatibilityMismatch()) {
+        this.setState("incompatible");
+        return;
+      }
+    }
   }
 
   async releaseNotes(): Promise<string> {

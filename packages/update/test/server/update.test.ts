@@ -336,6 +336,29 @@ describe("update state machine", () => {
     expect(manager.snapshot().state).toBe("ready_to_restart");
   });
 
+  test("pulls a newer digest discovered while the previous digest is downloading", async () => {
+    const { ctx } = context();
+    const firstPull = deferred();
+    const metadata = [{ digest: "sha256:new1", revision: "new1" }, { digest: "sha256:new2", revision: "new2" }];
+    let pulls = 0;
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime("old"),
+      fetchMetadata: async () => metadata.shift()!,
+      pullImage: async () => {
+        pulls += 1;
+        if (pulls === 1) await firstPull.promise;
+      },
+      setInterval: noInterval(),
+    });
+    await manager.initialize(ctx);
+    const pulling = manager.startPull();
+    await manager.checkNow();
+    firstPull.resolve();
+    await pulling;
+    expect(pulls).toBe(2);
+    expect(manager.snapshot()).toMatchObject({ state: "ready_to_restart", target: { digest: "sha256:new2" } });
+  });
+
   test("switching release channels invalidates status and persists the selected target", async () => {
     const previousDataDir = process.env.ATELIER_DATA_DIR;
     const dataDir = await mkdtemp(join(tmpdir(), "atelier-update-test-"));
