@@ -17,7 +17,7 @@ async function newTestPage(options: { viewport?: { width: number; height: number
 
 function renderShellFixture(presentation: WorkspacePresentation, pane: WorkspacePanePresentation, cached: readonly WorkspacePresentation[] = []): string {
   const residents = [presentation, ...cached].map((resident, index) => `<div class="workspace-detail-resident${index === 0 ? " visible" : ""}" data-workspace-residency-target="resident" data-workspace-id="${resident.workspace.id}">${renderWorkspacePresentation(resident)}</div>`).join("");
-  return `<div class="app fixed-shell-app" data-controller="workspace-navigation">${renderWorkspacePane(pane)}<main class="fixed-shell-app-main"><div id="workspace_detail" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5"><div class="workspace-detail-empty" data-workspace-residency-target="empty" hidden></div><div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden></div>${residents}</div></main></div>`;
+  return `<div class="app fixed-shell-app" data-controller="action-items workspace-navigation">${renderWorkspacePane(pane)}<main class="fixed-shell-app-main"><div id="workspace_detail" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5"><div class="workspace-detail-empty" data-workspace-residency-target="empty" hidden></div><div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden></div>${residents}</div></main></div>`;
 }
 
 beforeAll(async () => {
@@ -78,7 +78,7 @@ describe("Atelier Playwright helper", () => {
       projectlessWorkspaces: presentations.map(({ workspace }, index) => ({ ...workspace, active: index === 0 })),
     };
     const shell = renderShellFixture(presentations[0]!, pane, presentations.slice(1))
-      .replace('data-controller="workspace-navigation"', 'data-controller="atelier-shortcuts workspace-navigation"');
+      .replace('data-controller="action-items workspace-navigation"', 'data-controller="action-items atelier-shortcuts workspace-navigation"');
     const page = await newTestPage();
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
@@ -153,7 +153,7 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
-  test("scrolls only clipped workspace names while hovered", async () => {
+  test("automatically scrolls only clipped Action Item labels while hovered or focused", async () => {
     const current: WorkspacePresentation = {
       workspace: { id: "short", title: "Short" },
       agentConversations: [{ id: "agent-short", title: "Agent", bodyHtml: "<p>Agent</p>" }],
@@ -177,18 +177,23 @@ describe("Atelier Playwright helper", () => {
 
     const shortRow = page.locator('[data-workspace-entry-id="short"]');
     await shortRow.hover();
-    expect(await shortRow.evaluate((row) => row.classList.contains("is-name-scrolling"))).toBe(false);
+    expect(await shortRow.evaluate((row) => row.classList.contains("is-label-scrolling"))).toBe(false);
 
     const longRow = page.locator('[data-workspace-entry-id="long"]');
     await longRow.hover();
-    expect(await longRow.evaluate((row) => row.classList.contains("is-name-scrolling"))).toBe(true);
-    expect(await longRow.locator(".fixed-shell-workspace-name > span").evaluate((name) => ({
+    expect(await longRow.evaluate((row) => row.classList.contains("is-label-scrolling"))).toBe(true);
+    expect(await longRow.locator(".action-item__label-text").evaluate((name) => ({
       name: getComputedStyle(name).animationName,
       timing: getComputedStyle(name).animationTimingFunction,
-    }))).toEqual({ name: "fixed-shell-workspace-name-scroll", timing: "linear" });
+    }))).toEqual({ name: "action-item-label-scroll", timing: "linear" });
 
     await page.mouse.move(600, 400);
-    expect(await longRow.evaluate((row) => row.classList.contains("is-name-scrolling"))).toBe(false);
+    expect(await longRow.evaluate((row) => row.classList.contains("is-label-scrolling"))).toBe(false);
+
+    await longRow.focus();
+    expect(await longRow.evaluate((row) => row.classList.contains("is-label-scrolling"))).toBe(true);
+    await shortRow.focus();
+    expect(await longRow.evaluate((row) => row.classList.contains("is-label-scrolling"))).toBe(false);
     await page.close();
   });
 

@@ -57,10 +57,10 @@ function renderEntryRow(workspaceId: string, entry: FileEntry, showConcealed: bo
     ? `<span class="files-directory-triangle">${expanded ? "▾" : "▸"}</span><span class="status-spinner sm files-directory-spinner"></span>`
     : entry.kind === "symlink" ? "↗" : "";
   const label = entry.kind === "directory"
-    ? `<a href="${escapeHtml(directoryToggleUrl(workspaceId, entry, showConcealed, !expanded))}" data-turbo-frame="${filesDirectoryFrameId(workspaceId, entry.path)}">${escapeHtml(entry.name)}</a>`
+    ? `<a class="action-item__label-text" href="${escapeHtml(directoryToggleUrl(workspaceId, entry, showConcealed, !expanded))}" data-turbo-frame="${filesDirectoryFrameId(workspaceId, entry.path)}">${escapeHtml(entry.name)}</a>`
     : entry.openable
-      ? `<a href="${escapeHtml(workspaceFileEditorOpenUrl(workspaceId, entry.path))}" data-turbo-stream="true">${escapeHtml(entry.name)}</a>`
-      : `<span>${escapeHtml(entry.name)}</span>`;
+      ? `<a class="action-item__label-text" href="${escapeHtml(workspaceFileEditorOpenUrl(workspaceId, entry.path))}" data-turbo-stream="true">${escapeHtml(entry.name)}</a>`
+      : `<span class="action-item__label-text">${escapeHtml(entry.name)}</span>`;
   const drop = entry.kind === "directory" ? ` data-files-destination="${escapeHtml(entry.path)}"` : "";
   const actions = entry.kind === "directory"
     ? "click->files#openDirectory dragenter->files#folderDragEnter dragover->files#folderDragOver dragleave->files#folderDragLeave drop->files#folderDrop"
@@ -73,11 +73,11 @@ function renderEntryRow(workspaceId: string, entry: FileEntry, showConcealed: bo
   const viewAsRoot = entry.kind === "directory"
     ? `<a href="${escapeHtml(directoryUrl(workspaceId, entry.path, showConcealed))}" data-turbo-frame="${filesFrameId(workspaceId)}" role="menuitem">View as root</a>`
     : "";
-  return `<div class="files-row inner-action-group${concealed}" role="treeitem" tabindex="-1" data-kind="${entry.kind}" data-action="${actions}"${drop}${expandedAttribute}>
+  return `<div class="files-row action-item${concealed}" role="treeitem" tabindex="-1" data-kind="${entry.kind}" data-action="${actions}"${drop}${expandedAttribute}>
     <span class="files-row-icon" aria-hidden="true">${icon}</span>
-    <span class="files-row-name">${label}</span>
+    <span class="files-row-name action-item__label">${label}</span>
     <span class="files-row-size">${entry.kind === "directory" ? "—" : formatSize(entry.size)}</span>
-    <button class="files-actions-toggle inner-action" type="button" aria-label="Actions for ${escapeHtml(entry.name)}" aria-haspopup="menu" aria-controls="${menuId}" data-action="files#toggleMenu"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+    <button class="files-actions-toggle action-item__action" type="button" aria-label="Actions for ${escapeHtml(entry.name)}" aria-haspopup="menu" aria-controls="${menuId}" data-action="files#toggleMenu"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
     <div class="files-actions-menu" id="${menuId}" role="menu" popover="auto">
       ${viewAsRoot}
       <button type="button" role="menuitem" data-files-copy-url="${escapeHtml(contentUrl)}" data-action="files#copyUrl">Copy URL</button>

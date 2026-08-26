@@ -1,0 +1,48 @@
+/// <reference lib="dom" />
+
+import { Controller } from "@hotwired/stimulus";
+
+const actionItemSelector = ".action-item";
+const labelSelector = ".action-item__label";
+const labelTextSelector = ".action-item__label-text";
+
+export class ActionItemsController extends Controller<HTMLElement> {
+
+  connect(): void {
+    this.element.addEventListener("mouseover", this.enter);
+    this.element.addEventListener("mouseout", this.leave);
+    this.element.addEventListener("focusin", this.enter);
+    this.element.addEventListener("focusout", this.leave);
+  }
+
+  disconnect(): void {
+    this.element.removeEventListener("mouseover", this.enter);
+    this.element.removeEventListener("mouseout", this.leave);
+    this.element.removeEventListener("focusin", this.enter);
+    this.element.removeEventListener("focusout", this.leave);
+  }
+
+  private transitionedItem(event: MouseEvent | FocusEvent): HTMLElement | null {
+    const item = event.target instanceof Element ? event.target.closest<HTMLElement>(actionItemSelector) : null;
+    return item && !(event.relatedTarget instanceof Node && item.contains(event.relatedTarget)) ? item : null;
+  }
+
+  private readonly enter = (event: MouseEvent | FocusEvent): void => {
+    const item = this.transitionedItem(event);
+    if (!item) return;
+    const viewport = item.querySelector<HTMLElement>(labelSelector);
+    const text = viewport?.querySelector<HTMLElement>(`:scope > ${labelTextSelector}`);
+    if (!viewport || !text) return;
+    const distance = text.scrollWidth - viewport.clientWidth;
+    if (distance <= 0) return;
+    item.style.setProperty("--action-item-label-scroll-distance", `${distance}px`);
+    item.style.setProperty("--action-item-label-scroll-slow-distance", `${distance * 0.9}px`);
+    item.style.setProperty("--action-item-label-scroll-duration", `${Math.max(2.5, distance / 28 + 1.2)}s`);
+    item.classList.add("is-label-scrolling");
+  };
+
+  private readonly leave = (event: MouseEvent | FocusEvent): void => {
+    const item = this.transitionedItem(event);
+    if (item && !item.matches(":hover, :focus-within")) item.classList.remove("is-label-scrolling");
+  };
+}

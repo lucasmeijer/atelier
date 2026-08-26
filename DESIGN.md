@@ -55,10 +55,13 @@ The legacy aliases `--line-2` and `--muted-2` remain part of the interface while
 Existing shared CSS patterns remain the preferred vocabulary:
 
 - `.btn` with `.primary`, `.danger`, and `.sm` variants for actions
+- `.action-item` for an orientation-independent interactive item, with `.action-item__primary`, `.action-item__label` containing `.action-item__label-text`, optional `.action-item__status`, and optional `.action-item__action` children
 - `.modal` and native `<dialog>` for protected or interruptive tasks
 - `.panel` for a bounded shell region, not as generic page scaffolding
 - `.status-spinner` for indeterminate progress
 - shell-specific `.fixed-shell-*` patterns for workspace navigation and panes
+
+An Action Item may be arranged vertically or horizontally by its containing interface. A simple item can place both `.action-item` and `.action-item__primary` on one button or link. A compound item uses a neutral `.action-item` container so its primary and auxiliary controls remain sibling interactive elements. Selection comes from `aria-current` or `aria-selected`, not a visual modifier class. Labels truncate by default and automatically scroll their overflowing text while the Action Item is hovered or focused; reduced-motion preferences preserve truncation.
 
 Workspace modules should inherit tokens and own only their layout or domain-specific presentation. Server-rendered HTML remains the source of markup; the design system does not introduce client-side rendering.
 

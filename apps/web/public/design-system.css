@@ -140,5 +140,46 @@
   --shadow: 0 22px 56px rgba(0, 0, 0, .45);
 }
 
+/* Orientation-independent primary actions with optional status and auxiliary controls. */
+.action-item { min-width: 0; min-height: 32px; display: flex; align-items: center; border-radius: var(--radius-round); color: var(--text-muted); }
+.action-item__primary { min-width: 0; min-height: 32px; flex: 1; display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) var(--space-md); border: 0; border-radius: var(--radius-round); background: transparent; color: inherit; font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.action-item.action-item__primary { width: 100%; }
+.action-item:hover,
+.action-item:focus-visible,
+.action-item:has(:focus-visible),
+.action-item:has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"])),
+.action-item.action-item__primary:is([aria-current="page"], [aria-selected="true"]) { background: var(--accent-soft); color: var(--text); }
+.action-item:focus-visible,
+.action-item.action-item__primary:focus-visible,
+.action-item .action-item__primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.action-item__label { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
+.action-item__label-text { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.action-item.is-label-scrolling .action-item__label-text { width: max-content; overflow: visible; text-overflow: clip; animation: action-item-label-scroll var(--action-item-label-scroll-duration) linear infinite alternate; }
+@keyframes action-item-label-scroll {
+  0% { transform: translateX(0); }
+  70% { transform: translateX(calc(-1 * var(--action-item-label-scroll-slow-distance))); }
+  85%, 100% { transform: translateX(calc(-1 * var(--action-item-label-scroll-distance))); }
+}
+.action-item__status { flex: 0 0 auto; }
+.action-item__action { width: 26px; height: 26px; flex: 0 0 auto; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-round); background: color-mix(in srgb, var(--panel) 72%, transparent); color: var(--text-muted); cursor: pointer; transition: border-color .12s, background .12s, color .12s, transform .12s; }
+.action-item__action svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.action-item__action svg circle { fill: currentColor; stroke: none; }
+.action-item:is(:hover, :has(:focus-visible)) .action-item__action { border-color: var(--line-strong); background: var(--panel); }
+.action-item .action-item__action:hover,
+.action-item .action-item__action:focus-visible,
+.action-item .action-item__action:active { border-color: var(--accent); outline: none; background: var(--elev); color: var(--accent); }
+.action-item .action-item__action:focus-visible { box-shadow: 0 0 0 2px var(--accent-soft); }
+.action-item .action-item__action:active { transform: translateY(1px); }
+.action-item .action-item__action.danger:hover,
+.action-item .action-item__action.danger:focus-visible,
+.action-item .action-item__action.danger:active { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
+.action-item__primary:disabled,
+.action-item__action:disabled,
+.action-item[aria-disabled="true"] { opacity: .45; cursor: default; }
+@media (prefers-reduced-motion: reduce) {
+  .action-item__action { transition-duration: 1ms; }
+  .action-item.is-label-scrolling .action-item__label-text { width: 100%; overflow: hidden; text-overflow: ellipsis; animation: none; }
+}
+
 ::selection { color: var(--text); background: color-mix(in srgb, var(--accent) 32%, transparent); }
 :focus-visible { outline-color: var(--accent); }

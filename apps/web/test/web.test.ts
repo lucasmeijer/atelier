@@ -273,11 +273,11 @@ describe("web app contracts", () => {
     const body = await response.text();
     expect(body).toContain('action="replace-workspace-pane-collections"');
     expect(body).toContain(`data-workspace-entry-id="${id}"`);
-    expect(body).toContain('class="status-spinner sm fixed-shell-workspace-busy"');
+    expect(body).toContain('class="status-spinner sm fixed-shell-workspace-busy action-item__status"');
 
     await Bun.sleep(10);
     const startingPaneBroadcast = broadcasts.find((html) => html.includes('action="replace-workspace-pane-collections"') && html.includes(`data-workspace-entry-id="${id}"`));
-    expect(startingPaneBroadcast).toContain('class="status-spinner sm fixed-shell-workspace-busy"');
+    expect(startingPaneBroadcast).toContain('class="status-spinner sm fixed-shell-workspace-busy action-item__status"');
 
     broadcasts.length = 0;
     provision.resolve();
@@ -1029,7 +1029,7 @@ describe("web app contracts", () => {
 
     const page = await app.fetch(new Request("http://test.local/"));
     const html = await page.text();
-    expect(html).toContain('data-controller="cable-shell"');
+    expect(html).toContain('data-controller="action-items cable-shell"');
     expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">');
     expect(html).toMatch(/<link rel="stylesheet" href="\/(?:assets\/design-system-[^"]+\.css|design-system\.css)">/);
     const designSystemStylesheetIndex = html.search(/href="\/(?:assets\/design-system-|design-system\.css)/);
@@ -1049,7 +1049,7 @@ describe("web app contracts", () => {
     const developmentHtml = await (await createTestApp({ devReload: true }).app.fetch(new Request("http://test.local/"))).text();
 
     expect(productionHtml).not.toContain("dev-reload");
-    expect(developmentHtml).toContain('data-controller="cable-shell dev-reload"');
+    expect(developmentHtml).toContain('data-controller="action-items cable-shell dev-reload"');
     expect(developmentHtml).toContain('data-dev-reload-url-value="/__atelier_dev_reload"');
   });
 });

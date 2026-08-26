@@ -327,7 +327,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 ${moduleStylesHtml()}
 <script type="module" src="${assetPath("/workspace.js")}"></script>
 </head>
-<body id="body" data-controller="cable-shell${deps.devReload ? " dev-reload" : ""}"${deps.devReload ? ` data-dev-reload-url-value="/__atelier_dev_reload"` : ""}>${body}
+<body id="body" data-controller="action-items cable-shell${deps.devReload ? " dev-reload" : ""}"${deps.devReload ? ` data-dev-reload-url-value="/__atelier_dev_reload"` : ""}>${body}
 </body>
 </html>`;
   }
