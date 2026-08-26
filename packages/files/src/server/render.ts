@@ -111,7 +111,7 @@ export function renderFilesFrame(workspaceId: string, path: string, entries: Fil
         <nav class="files-breadcrumbs" aria-label="Current folder">${breadcrumbs(workspaceId, path, showConcealed)}</nav>
         <div class="files-toolbar-actions">
           <label class="files-hidden-toggle"><input type="checkbox"${showConcealed ? " checked" : ""} data-action="change->files#toggleHidden"> Show hidden &amp; ignored</label>
-          <button class="files-refresh" type="button" title="Refresh files" aria-label="Refresh files" data-action="files#refresh">↻</button>
+          <button class="button secondary icon-only" type="button" title="Refresh files" aria-label="Refresh files" data-action="files#refresh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M6.1 9a7 7 0 0 1 11.5-2.6L20 9M4 15l2.4 2.6A7 7 0 0 0 17.9 15"/></svg></button>
         </div>
       </header>
       <div class="files-columns" aria-hidden="true"><span>Name</span><span>Size</span><span></span></div>

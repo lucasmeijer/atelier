@@ -278,11 +278,11 @@ function renderUpdateSettings(updateManager: UpdateManager): string {
   const options = (["stable", "latest"] as const).map((channel) => `<option value="${channel}"${snapshot.releaseChannel === channel ? " selected" : ""}>${channel === "stable" ? "Stable" : "Latest"}</option>`).join("");
   const checkNow = `<form method="post" action="/update/check-now" data-turbo="true"><button class="settings-link" type="submit"${checkDisabled}>Check now</button></form>`;
   const action = snapshot.state === "available" || snapshot.state === "failed"
-    ? `<form method="post" action="/update/start" data-turbo="true"><button class="settings-btn primary" type="submit">${snapshot.state === "failed" ? "Retry update" : "Update now"}</button></form>`
+    ? `<form method="post" action="/update/start" data-turbo="true"><button class="button primary" type="submit">${snapshot.state === "failed" ? "Retry update" : "Update now"}</button></form>`
     : snapshot.state === "incompatible"
-      ? `<form method="get" action="/update/installer-required" data-turbo="true"><button class="settings-btn primary" type="submit">Show installer command</button></form>`
+      ? `<form method="get" action="/update/installer-required" data-turbo="true"><button class="button primary" type="submit">Show installer command</button></form>`
       : snapshot.state === "ready_to_restart"
-        ? `<form method="get" action="/update/restart-confirm" data-turbo="true"><button class="settings-btn primary" type="submit">Restart to update</button></form>`
+        ? `<form method="get" action="/update/restart-confirm" data-turbo="true"><button class="button primary" type="submit">Restart to update</button></form>`
         : "";
   return `<section class="settings-sec settings-sec-inline update-settings-row" id="settings-sec-update"><div><h2>Updates</h2><p class="settings-sub">${escapeHtml(status.label)} — ${escapeHtml(status.detail)}</p></div><div class="settings-provider-actions">${checkNow}<form method="post" action="/settings/update-channel" data-turbo="true" data-controller="settings-autosave" data-action="change->settings-autosave#save submit->settings-autosave#submit"><select class="settings-select" name="channel"${disabled}>${options}</select></form>${action}</div></section>`;
 }
@@ -321,7 +321,7 @@ export function renderSidebarRow(snapshot: StateSnapshot): string {
 function renderWhatsNewModal(autoShow = true): string {
   return `<dialog id="whats-new-modal" class="settings-dialog update-whats-new-dialog" data-controller="modal"${autoShow ? ` data-modal-auto-show-value="true"` : ""}>
   <div class="settings-sheet"><main class="settings-main">
-    <button class="settings-close" type="button" aria-label="Close" data-action="modal#close">×</button>
+    <button class="settings-close button secondary icon-only" type="button" title="Close what’s new" aria-label="Close what’s new" data-action="modal#close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <div class="settings-title">Changes since your current version</div>
     <section class="settings-sec update-notes-sec">
       <turbo-frame id="update_whats_new_notes" src="/update/whats-new/notes">
@@ -345,7 +345,7 @@ function renderRestartModal(): string {
     <h2>Restart Atelier to finish updating?</h2>
     <p>Active agent sessions and terminal connections will be interrupted. Your projects, workspaces, and containers will remain in place.</p>
     <p data-update-restart-status role="status" aria-live="polite">Atelier should be back in a few seconds.</p>
-    <div class="modal-actions"><button class="btn" type="button" data-update-restart-cancel data-action="modal#close">Cancel</button><button class="btn primary" type="submit" data-update-restart-submit>Restart Atelier</button></div>
+    <div class="modal-actions"><button class="button secondary" type="button" data-update-restart-cancel data-action="modal#close">Cancel</button><button class="button primary" type="submit" data-update-restart-submit>Restart Atelier</button></div>
   </form>
 </dialog>`;
 }
@@ -355,7 +355,7 @@ function renderRestartErrorModal(message: string): string {
   <form method="dialog">
     <h2>Could not restart Atelier</h2>
     <p>${escapeHtml(message)}</p>
-    <div class="modal-actions"><button class="btn primary" value="close">OK</button></div>
+    <div class="modal-actions"><button class="button primary" value="close">OK</button></div>
   </form>
 </dialog>`;
 }
@@ -374,7 +374,7 @@ function renderInstallerRequiredModal(updateManager: UpdateManager): string {
     <p>SSH into the Atelier host and run:</p>
     <pre><code>${escapeHtml(command)}</code></pre>
     <p>Your projects, workspaces, and containers will remain in place.</p>
-    <div class="modal-actions"><button class="btn primary" type="button" data-action="modal#close">Got it</button></div>
+    <div class="modal-actions"><button class="button primary" type="button" data-action="modal#close">Got it</button></div>
   </div>
 </dialog>`;
 }

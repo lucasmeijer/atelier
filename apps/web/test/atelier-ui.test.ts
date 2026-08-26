@@ -809,12 +809,12 @@ describe("Atelier Playwright helper", () => {
     const workspaceBefore = await page.locator(".fixed-shell-workspace-pane").boundingBox();
     expect(await page.locator(".fixed-shell-work-pane").evaluate((element) => getComputedStyle(element).transitionDuration)).toBe("0s");
     expect(await page.locator(".fixed-shell-workspace-pane").evaluate((element) => getComputedStyle(element).transitionDuration)).toBe("0s");
-    expect(await page.locator('[data-show-work-pane]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
+    expect(await page.locator('[data-show-work-pane]').evaluate((element) => getComputedStyle(element).display)).toBe("flex");
     expect(await page.locator('[data-collapse-work-pane]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
     await page.getByRole("button", { name: "Show Work pane" }).evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-work-pane-open");
     expect(await page.locator('[data-show-work-pane]').evaluate((element) => getComputedStyle(element).display)).toBe("none");
-    expect(await page.locator('[data-collapse-work-pane]').evaluate((element) => getComputedStyle(element).display)).toBe("grid");
+    expect(await page.locator('[data-collapse-work-pane]').evaluate((element) => getComputedStyle(element).display)).toBe("flex");
     expect(await page.locator(".fixed-shell-work-pane").evaluate((element) => getComputedStyle(element).marginRight)).toBe("0px");
     expect(await page.locator(".fixed-shell-main").evaluate((element) => {
       const agent = element.querySelector(".fixed-shell-agent-pane")!.getBoundingClientRect();

@@ -149,6 +149,10 @@ describe("role-fixed Workspace presentation", () => {
   test("shows the workspace name and delete action in a single-conversation Agent header", () => {
     const html = renderWorkspacePresentation(fixture({
       agentConversations: [{ id: "agent-a", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      commands: [
+        { id: "agent.create", label: "New Agent", scope: "workspace", placement: "agent-action" },
+        { id: "browser.create", label: "New Browser", scope: "workspace", placement: "work-launcher" },
+      ],
     }));
     const header = html.slice(html.indexOf('<section class="fixed-shell-agent-pane"'), html.indexOf('<div class="fixed-shell-agent-bodies"'));
 
@@ -156,13 +160,16 @@ describe("role-fixed Workspace presentation", () => {
     expect(header).not.toContain("Atelier");
     expect(header).toContain('class="fixed-shell-park-workspace"');
     expect(header).toContain('action="/workspaces/workspace-1/park"');
-    expect(header).toContain('title="Park workspace" aria-label="Park workspace"');
+    expect(header).toContain('class="button secondary icon-only" type="submit" title="New Agent" aria-label="New Agent"');
+    expect(header).toContain('class="button secondary icon-only" type="submit" title="Park workspace" aria-label="Park workspace"');
     expect(header.indexOf('class="fixed-shell-park-workspace"')).toBeLessThan(header.indexOf('class="fixed-shell-delete-workspace"'));
     expect(header).toContain('class="fixed-shell-delete-workspace"');
     expect(header).toContain('action="/workspaces/workspace-1/delete"');
-    expect(header).toContain('title="Delete workspace" aria-label="Delete workspace"');
-    expect(header).toContain('aria-label="Show Work pane"');
-    expect(html).toContain('aria-label="Collapse Work pane"');
+    expect(header).toContain('class="button danger icon-only" type="submit" title="Delete workspace" aria-label="Delete workspace"');
+    expect(header).toContain('class="button secondary icon-only" title="Show Work pane" aria-label="Show Work pane"');
+    expect(html).toContain('class="button primary icon-only" title="Open Work view" aria-label="Open Work view"');
+    expect(html).toContain('class="button secondary icon-only" title="Collapse Work pane" aria-label="Collapse Work pane"');
+    expect(html).not.toContain("fixed-shell-icon-button");
   });
 
   test("uses Action Items for closable Agent and Work tabs", () => {

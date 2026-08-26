@@ -71,7 +71,7 @@ function agentPath(ctx: AgentRenderContext, suffix: string): string {
 }
 
 function initialPromptDraftAction(ctx: AgentRenderContext, decision: "accept" | "decline" | "never", label: string, primary = false): string {
-  return `<form method="post" action="${agentPath(ctx, `/initial-prompt-draft/${decision}`)}" data-turbo="true"><button class="btn${primary ? " primary" : ""}" type="submit">${label}</button></form>`;
+  return `<form method="post" action="${agentPath(ctx, `/initial-prompt-draft/${decision}`)}" data-turbo="true"><button class="button ${primary ? "primary" : "secondary"}" type="submit">${label}</button></form>`;
 }
 
 function renderInitialPromptDraftSuggestion(ctx: AgentRenderContext): string {

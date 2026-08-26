@@ -591,6 +591,9 @@ describe("web app contracts", () => {
       expect(home).not.toContain('class="sidebar-host-repos"');
       expect(home).toContain('data-modal-opener-target-id-value="project-editor-modal"');
       expect(newProject).toContain('aria-label="Add project"');
+      expect(newProject).toContain('class="project-editor-close button secondary icon-only"');
+      expect(newProject).toContain('<button class="button secondary" type="button" data-action="modal#close">Cancel</button>');
+      expect(newProject).toContain('<button class="button primary" type="submit" data-turbo-submits-with="Adding…">Add project</button>');
       expect(newProject).toContain('data-action="turbo:submit-end->modal#submitted"');
       expect(newProject).not.toContain('aria-label="Back"');
       expect(editor).toContain('aria-label="Repository"');

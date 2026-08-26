@@ -49,7 +49,7 @@ export async function renderOnboardingDialog(force = false): Promise<string> {
     <div class="onboarding-card">
       <div class="onboarding-dots">${rendered.map((_, index) => `<span class="${index === 0 ? "active" : ""}" data-onboarding-target="dot"></span>`).join("")}</div>
       <div class="onboarding-body">${steps.join("")}</div>
-      <div class="onboarding-foot"><button class="settings-btn" type="button" data-onboarding-target="back" data-action="onboarding#prev">‹ Back</button><span></span><button class="settings-btn" type="button" data-onboarding-target="continue" data-action="onboarding#next">Continue</button></div>
+      <div class="onboarding-foot"><button class="button secondary" type="button" data-onboarding-target="back" data-action="onboarding#prev">‹ Back</button><span></span><button class="button secondary" type="button" data-onboarding-target="continue" data-action="onboarding#next">Continue</button></div>
     </div>
   </dialog>`;
 }

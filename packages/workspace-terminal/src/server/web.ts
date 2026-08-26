@@ -79,7 +79,7 @@ async function renderAttachDialog(workspaceId: string): Promise<string> {
     <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/terminals/attach" data-turbo="true">
       <header><h2>Attach terminal</h2><p>Choose an existing tmux session. Multiple Terminal views can attach to the same session.</p></header>
       <div class="terminal-session-list">${rows || `<div class="terminal-session-empty">No tmux sessions are running yet.</div>`}</div>
-      <div class="modal-actions"><button class="btn" type="button" data-action="modal#close">Cancel</button><button class="btn primary" type="submit"${rows ? "" : " disabled"}>Attach</button></div>
+      <div class="modal-actions"><button class="button secondary" type="button" data-action="modal#close">Cancel</button><button class="button primary" type="submit"${rows ? "" : " disabled"}>Attach</button></div>
     </form>
   </dialog>`;
 }

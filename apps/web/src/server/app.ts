@@ -394,8 +394,8 @@ ${moduleStylesHtml()}
   <form method="post" action="/projects/${encodeURIComponent(project.id)}/delete" data-action="turbo:submit-end->modal#submitted">
     <h2 class="project-delete-title">Delete ${repoSwatch(project.id)} ${escapeHtml(project.name)}?</h2>
     <div class="modal-actions">
-      <button class="btn" type="button" data-action="modal#close">Cancel</button>
-      <button class="btn danger" type="submit">Delete</button>
+      <button class="button secondary" type="button" data-action="modal#close">Cancel</button>
+      <button class="button danger" type="submit">Delete</button>
     </div>
   </form>
 </dialog>`;
@@ -405,7 +405,7 @@ ${moduleStylesHtml()}
     return `<form class="project-configuration-row project-environment-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}" data-turbo="true" data-controller="settings-autosave" data-action="change->settings-autosave#save">
     <input name="name" value="${escapeHtml(variable.name)}" aria-label="Name" autocomplete="off">
     <input name="value" value="${escapeHtml(variable.value)}" aria-label="Value" autocomplete="off">
-    <span class="project-configuration-actions"><button type="submit" formaction="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete" title="Remove environment variable" aria-label="Remove environment variable">×</button></span>
+    <span class="project-configuration-actions"><button class="button danger icon-only" type="submit" formaction="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete" title="Remove environment variable" aria-label="Remove environment variable"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
   </form>`;
   }
 
@@ -418,7 +418,7 @@ ${moduleStylesHtml()}
         <form class="project-configuration-row project-environment-row new" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment" data-turbo="true">
           <input name="name" placeholder="ENV_VAR" aria-label="Name" autocomplete="off">
           <input name="value" placeholder="Value" aria-label="Value" autocomplete="off">
-          <button type="submit" aria-label="Add">+</button>
+          <button class="button primary icon-only" type="submit" title="Add environment variable" aria-label="Add environment variable"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         </form>
       </div>
     </section>`;
@@ -430,7 +430,7 @@ ${moduleStylesHtml()}
     <input name="hostPattern" value="${escapeHtml(secret.hostPattern)}" aria-label="Host" autocomplete="off">
     <input name="placeholder" value="${escapeHtml(secret.placeholder ?? "")}" placeholder="Automatic" aria-label="Placeholder" autocomplete="off">
     <input name="secretValue" type="password" placeholder="Unchanged" aria-label="Secret" autocomplete="new-password">
-    <span class="project-configuration-actions"><button type="submit" formaction="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}/delete" title="Remove secret" aria-label="Remove secret">×</button></span>
+    <span class="project-configuration-actions"><button class="button danger icon-only" type="submit" formaction="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}/delete" title="Remove secret" aria-label="Remove secret"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
   </form>`;
   }
 
@@ -452,7 +452,7 @@ ${moduleStylesHtml()}
           <input name="hostPattern" placeholder="api.example.com or *.example.com" aria-label="Host" autocomplete="off">
           <input name="placeholder" placeholder="Optional token-like value" aria-label="Placeholder" autocomplete="off">
           <input name="secretValue" type="password" placeholder="Secret" aria-label="Secret" autocomplete="new-password">
-          <button type="submit" aria-label="Add">+</button>
+          <button class="button primary icon-only" type="submit" title="Add secret" aria-label="Add secret"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         </form>
       </div>
     </section>`;
@@ -465,7 +465,7 @@ ${moduleStylesHtml()}
       <form class="project-ssh-key-form" method="post" action="${action}" data-turbo="true">
         <label><span>${configured ? "Replace private key" : "Private key"}</span><textarea name="privateKey" placeholder="${configured ? "Leave blank to keep the current key" : "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA…\n-----END OPENSSH PRIVATE KEY-----"}" autocomplete="off"${configured ? "" : " required"}></textarea></label>
         <div class="project-ssh-key-command"><span>Create an unencrypted Ed25519 key:</span><code>ssh-keygen -t ed25519 -f ~/.ssh/atelier_deploy -N '' -C atelier-deploy</code><span>Paste <code>~/.ssh/atelier_deploy</code> here and add <code>~/.ssh/atelier_deploy.pub</code> to the server’s <code>authorized_keys</code>.</span></div>
-        <div class="project-ssh-key-actions"><small>The private key is encrypted at rest.</small><button class="btn primary" type="submit">${configured ? "Save" : "Add SSH key"}</button>${configured ? `<button class="btn danger" type="submit" formaction="${action}/delete">Remove</button>` : ""}</div>
+        <div class="project-ssh-key-actions"><small>The private key is encrypted at rest.</small><button class="button primary" type="submit">${configured ? "Save" : "Add SSH key"}</button>${configured ? `<button class="button danger" type="submit" formaction="${action}/delete">Remove</button>` : ""}</div>
       </form>
     </section>`;
   }
@@ -474,18 +474,18 @@ ${moduleStylesHtml()}
     const [environment, secrets, hasSshKey] = await Promise.all([listProjectEnvironmentVariables(project.id), listProjectSecrets(project.id), hasProjectSshKey(project.id)]);
     return `<turbo-frame id="project_editor_frame" class="project-editor-frame">
       <div class="project-editor-page project-editor-detail-page">
-        <header class="project-editor-detail-head"><div><small>Project settings</small><h2>${escapeHtml(project.name)}</h2></div><button type="button" aria-label="Close" data-action="modal#close">×</button></header>
+        <header class="project-editor-detail-head"><div><small>Project settings</small><h2>${escapeHtml(project.name)}</h2></div><button class="project-editor-close button secondary icon-only" type="button" title="Close project settings" aria-label="Close project settings" data-action="modal#close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
         <div class="project-editor-detail-body">
           <section class="project-edit-section"><div class="project-edit-section-copy"><h3>Repository</h3><p>How this project appears and where new workspaces are cloned from.</p></div><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="modal-input" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository source</span><input class="modal-input" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
           <div class="project-edit-config"><div class="project-edit-section-copy"><h3>Workspace configuration</h3><p>Applied whenever a workspace is created from this project.</p></div>${projectEnvironmentEditor(project, environment)}${projectSecretEditor(project, secrets)}${projectSshKeyEditor(project, hasSshKey)}</div>
-          <section class="project-edit-danger"><div><h3>Delete project</h3><p>Existing workspaces must be deleted first.</p></div><button class="btn danger" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="${domId("delete_project_modal", project.id)}">Delete project</button></section>
+          <section class="project-edit-danger"><div><h3>Delete project</h3><p>Existing workspaces must be deleted first.</p></div><button class="button danger" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="${domId("delete_project_modal", project.id)}">Delete project</button></section>
         </div>
       </div>
     </turbo-frame>`;
   }
 
   function newProjectEditorFrame(): string {
-    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><header class="project-editor-detail-head"><div><small>Add project</small><h2>New project</h2></div><button type="button" aria-label="Close" data-action="modal#close">×</button></header><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->modal#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="modal-input" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-completion-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer><button class="btn" type="button" data-action="modal#close">Cancel</button><button class="btn primary" type="submit" data-turbo-submits-with="Adding…">Add project</button></footer></form></div></turbo-frame>`;
+    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><header class="project-editor-detail-head"><div><small>Add project</small><h2>New project</h2></div><button class="project-editor-close button secondary icon-only" type="button" title="Close new project" aria-label="Close new project" data-action="modal#close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->modal#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="modal-input" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-completion-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer><button class="button secondary" type="button" data-action="modal#close">Cancel</button><button class="button primary" type="submit" data-turbo-submits-with="Adding…">Add project</button></footer></form></div></turbo-frame>`;
   }
 
   function projectEditorModal(): string {
@@ -528,8 +528,8 @@ ${moduleStylesHtml()}
     <h2 class="modal-brand-title"><span class="settings-provider-icon settings-provider-icon-github" style="--provider-color:${providerBrandColor("github")}">${providerBrandIconHtml("github", "GitHub")}</span>${escapeHtml(title)}</h2>
     ${body}
     <div class="modal-actions">
-      <button class="btn" value="cancel">Cancel</button>
-      <a class="btn primary" href="/settings?section=github" data-turbo-frame="_top" data-turbo-stream="true">Open GitHub settings</a>
+      <button class="button secondary" value="cancel">Cancel</button>
+      <a class="button primary" href="/settings?section=github" data-turbo-frame="_top" data-turbo-stream="true">Open GitHub settings</a>
     </div>
   </form>
 </dialog>`;
@@ -662,7 +662,7 @@ ${moduleStylesHtml()}
   }
 
   function workspaceBootResidentHtml(entry: WorkspaceEntry, options: { visible?: boolean } = {}): string {
-    const deleteAction = entry.phase === "failed" ? `<form class="fixed-shell-delete-workspace" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete"><button class="btn danger" type="submit" aria-label="Delete workspace">Delete workspace</button></form>` : "";
+    const deleteAction = entry.phase === "failed" ? `<form class="fixed-shell-delete-workspace" method="post" action="/workspaces/${encodeURIComponent(entry.id)}/delete"><button class="button danger" type="submit" aria-label="Delete workspace">Delete workspace</button></form>` : "";
     const inner = `${provisioning.render(entry.id, { failed: entry.phase === "failed", error: entry.error })}${deleteAction}`;
     const projectAttr = isGitProjectInit(entry.init) ? ` data-project-id="${escapeHtml(entry.init.projectId)}"` : "";
     return `<div class="workspace-detail-resident workspace-boot ${options.visible ? "visible" : ""}" id="${workspaceBootId(entry.id)}" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(entry.id)}"${projectAttr}><div class="main"><header class="header"><h1>${escapeHtml(workspaceTitle(entry))}</h1></header><div class="body"><div class="panel">${inner}</div></div></div></div>`;
@@ -1376,7 +1376,7 @@ ${moduleStylesHtml()}
       ${references.map((entry) => `<div class="project-delete-workspace">${repoSwatch(project.id)}<span class="project-delete-workspace-title">${escapeHtml(workspaceTitle(entry))}</span><span class="project-delete-workspace-id">${escapeHtml(entry.id)}</span></div>`).join("")}
     </div>
     <p class="project-delete-help">Delete these workspaces first, then try deleting the project again.</p>
-    <div class="modal-actions"><button class="btn primary" value="close">OK</button></div>
+    <div class="modal-actions"><button class="button primary" value="close">OK</button></div>
   </form>
 </dialog>`;
   }
@@ -1591,7 +1591,7 @@ ${moduleStylesHtml()}
   function errorPage(error: Error): Response {
     const status = error instanceof AtelierCoreError && ["workspace_not_found", "project_not_found", "repo_not_found", "terminal_not_found", "agent_conversation_not_found"].includes(error.code) ? 404 : 500;
     const message = error.message;
-    return response(layout("Error", `<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p><a class="btn" href="/">Back home</a></p></div></div></div>`), { status });
+    return response(layout("Error", `<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p><a class="button secondary" href="/">Back home</a></p></div></div></div>`), { status });
   }
 
   async function route(request: Request): Promise<Response> {
