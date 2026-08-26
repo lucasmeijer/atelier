@@ -176,12 +176,13 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   --button-hover-background: color-mix(in srgb, var(--accent) 11%, var(--panel));
 }
 .button.danger {
-  --button-border: var(--line);
-  --button-hover-border: color-mix(in srgb, var(--danger) 55%, #fff);
-  --button-hover-background: color-mix(in srgb, var(--danger) 78%, #000);
-  --button-hover-foreground: #fff;
+  --button-border: color-mix(in srgb, var(--danger) 24%, var(--line));
+  --button-background: color-mix(in srgb, var(--danger) 6%, var(--panel));
+  --button-foreground: var(--text-muted);
+  --button-hover-border: var(--danger);
+  --button-hover-background: var(--danger-soft);
+  --button-hover-foreground: var(--text);
 }
-[data-theme] .button.danger { --button-hover-foreground: var(--text); }
 .button:not(:disabled):not([aria-disabled="true"]):hover,
 .button:not(:disabled):not([aria-disabled="true"]):focus-visible {
   border-color: var(--button-hover-border);
