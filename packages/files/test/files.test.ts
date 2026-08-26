@@ -46,6 +46,7 @@ describe("files rendering", () => {
     expect(html).toContain("data-files-destination");
     expect(html).toContain("click->files#openDirectory");
     expect(html).toContain("mousedown->files#preserveSelection click->files#selectOrOpen");
+    expect(html).toContain('<svg class="disclosure-icon" aria-hidden="true"');
     expect(html).toContain("status-spinner sm files-directory-spinner");
     expect(html).toContain("showHidden=1");
     expect(html).toContain('aria-label="Refresh files" data-action="files#refresh"');

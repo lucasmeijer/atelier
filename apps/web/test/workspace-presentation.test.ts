@@ -47,6 +47,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('href="/projects/project-1/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New workspace: Atelier"');
     expect(html).toContain('href="/projects/project-1/editor" data-turbo-frame="project_editor_frame" data-controller="modal-opener"');
     const projectHeading = html.slice(html.indexOf('class="fixed-shell-project-heading-row fixed-shell-navigation-action action-item"'), html.indexOf('class="fixed-shell-project-workspaces"'));
+    expect(projectHeading).toContain('<svg class="disclosure-icon" aria-hidden="true"');
     expect(projectHeading.indexOf("<svg")).toBeLessThan(projectHeading.indexOf("Atelier"));
     expect(projectHeading.indexOf("Atelier")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-settings"));
     expect(projectHeading.indexOf("fixed-shell-project-settings")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-add"));

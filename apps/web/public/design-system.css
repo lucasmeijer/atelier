@@ -140,6 +140,11 @@
   --shadow: 0 22px 56px rgba(0, 0, 0, .45);
 }
 
+/* Common indicator for controls that disclose and conceal content. */
+.disclosure-icon { display: block; width: 12px; height: 12px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform 150ms ease; }
+:where(button, [role="treeitem"])[aria-expanded="false"] .disclosure-icon,
+details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
+
 /* Orientation-independent primary actions with optional status and auxiliary controls. */
 .action-item { min-width: 0; min-height: 32px; display: flex; align-items: center; border-radius: var(--radius-round); color: var(--text-muted); }
 .action-item__primary { min-width: 0; min-height: 32px; flex: 1; display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) var(--space-md); border: 0; border-radius: var(--radius-round); background: transparent; font: inherit; letter-spacing: inherit; text-align: left; text-decoration: none; cursor: pointer; }
@@ -177,6 +182,7 @@
 .action-item__action:disabled,
 .action-item[aria-disabled="true"] { opacity: .45; cursor: default; }
 @media (prefers-reduced-motion: reduce) {
+  .disclosure-icon,
   .action-item__action { transition-duration: 1ms; }
   .action-item.is-label-scrolling .action-item__label-text { width: 100%; overflow: hidden; text-overflow: ellipsis; animation: none; }
 }

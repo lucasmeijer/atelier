@@ -7,7 +7,7 @@ import type { AgentServiceTier } from "./service-tier.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
 import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded-code.ts";
 import { highlightCodeHtmlForPath, renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdown";
-import { domId, escapeHtml } from "./html.ts";
+import { disclosureIconHtml, domId, escapeHtml } from "./html.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
 import { readInitialPromptDraft } from "./initial-prompt-draft.ts";
@@ -443,7 +443,7 @@ function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscrip
       : "Working";
   const items = section.items.map((item) => renderTranscriptItem(ctx, item, { live: section.live, open: section.live })).join("");
   const active = section.completedAt === undefined && section.stoppedAt === undefined;
-  return `<details class="agent-working${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${section.completedAt === undefined ? " open" : ""}><summary class="agent-working-summary"><span class="agent-working-chevron" aria-hidden="true"></span>${label}</summary><div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}">${items}</div></details>`;
+  return `<details class="agent-working${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${section.completedAt === undefined ? " open" : ""}><summary class="agent-working-summary">${disclosureIconHtml}${label}</summary><div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}">${items}</div></details>`;
 }
 
 function renderThinkingItem(ctx: AgentRenderContext, item: Extract<TranscriptItem, { type: "thinking" }>): string {

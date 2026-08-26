@@ -50,6 +50,7 @@ describe("transcript rendering", () => {
     });
     expect(html).toContain('class="agent-working active"');
     expect(html).toContain('id="ag_ws_agent_item_turn-working" open');
+    expect(html).toContain('<svg class="disclosure-icon" aria-hidden="true"');
     expect(html).toContain("Working");
     expect(html).not.toContain("Working for");
     expect(html).toContain("Checking files");

@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { domId, escapeHtml, workspaceFileEditorOpenUrl, workspaceProxyUrl, type WorkspaceWorkViewPresentation } from "@atelier/shared";
+import { disclosureIconHtml, domId, escapeHtml, workspaceFileEditorOpenUrl, workspaceProxyUrl, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { workspaceRoot } from "@atelier/workspace";
 import type { FileEntry } from "./files.ts";
 
@@ -54,7 +54,7 @@ function entryContentUrl(workspaceId: string, entry: FileEntry): string {
 function renderEntryRow(workspaceId: string, entry: FileEntry, showConcealed: boolean, expanded: boolean): string {
   const concealed = entry.concealed ? " concealed" : "";
   const icon = entry.kind === "directory"
-    ? `<span class="files-directory-triangle">${expanded ? "▾" : "▸"}</span><span class="status-spinner sm files-directory-spinner"></span>`
+    ? `${disclosureIconHtml}<span class="status-spinner sm files-directory-spinner"></span>`
     : entry.kind === "symlink" ? "↗" : "";
   const label = entry.kind === "directory"
     ? `<a class="action-item__label-text" href="${escapeHtml(directoryToggleUrl(workspaceId, entry, showConcealed, !expanded))}" data-turbo-frame="${filesDirectoryFrameId(workspaceId, entry.path)}">${escapeHtml(entry.name)}</a>`
