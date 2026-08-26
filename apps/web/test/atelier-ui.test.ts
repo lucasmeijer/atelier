@@ -89,6 +89,60 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
+  test("positions an Agent transcript that connects late and when its Workspace is reselected", async () => {
+    const agentBody = `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="selected" data-agent-pane-label-value="Agent 1">
+      <div class="agent-transcript" data-agent-pane-target="transcript" style="height: 200px; overflow-y: auto">
+        <div class="agent-item" style="height: 600px">Earlier messages</div>
+        <div class="agent-item" data-latest-message style="height: 200px">Latest message</div>
+        <div class="agent-notices" style="height: 400px"></div>
+      </div>
+      <div class="agent-promptwrap">
+        <button type="button" data-agent-pane-target="transcriptNav"></button>
+        <form data-agent-pane-target="form"><textarea data-agent-pane-target="input"></textarea><button class="agent-sendstop" data-agent-pane-target="sendStop" data-agent-busy="false"></button></form>
+      </div>
+    </div>`;
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "selected", title: "Selected" },
+      agentConversations: [{ id: "agent-selected", title: "Agent", bodyHtml: "<p>Agent is loading…</p>" }],
+      workViews: [],
+    };
+    const other: WorkspacePresentation = {
+      workspace: { id: "other", title: "Other" },
+      agentConversations: [{ id: "agent-other", title: "Agent", bodyHtml: "<p>Other Agent</p>" }],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "selected", title: "Selected", active: true },
+      { id: "other", title: "Other" },
+    ] };
+    const page = await browser.newPage();
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellFixture(presentation, pane, [other])}<script type="module" src="/workspace-test.js"></script>`,
+    }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    await page.locator('.workspace-detail-resident.visible .fixed-shell-live-body').evaluate((body, html) => { body.innerHTML = html; }, agentBody);
+
+    await page.waitForFunction(() => {
+      const transcript = document.querySelector<HTMLElement>(".agent-transcript");
+      const latest = document.querySelector<HTMLElement>("[data-latest-message]");
+      if (!transcript || !latest) return false;
+      return Math.abs(latest.getBoundingClientRect().top - transcript.getBoundingClientRect().top) < 1;
+    }, undefined, { timeout: 2_000 });
+    const transcript = page.locator(".agent-transcript");
+    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(600);
+
+    await transcript.evaluate((element) => { element.scrollTop = 0; });
+    await page.locator('[data-workspace-entry-id="other"]').click();
+    await page.locator('[data-workspace-entry-id="selected"]').click();
+    await page.waitForFunction(() => document.querySelector<HTMLElement>(".agent-transcript")?.scrollTop === 600);
+    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(600);
+    await page.close();
+  });
+
   test("scrolls only clipped workspace names while hovered", async () => {
     const current: WorkspacePresentation = {
       workspace: { id: "short", title: "Short" },

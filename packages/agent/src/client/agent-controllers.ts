@@ -63,7 +63,7 @@ declare global {
 }
 
 interface AgentPaneControllerInstance {
-  start(): void;
+  becomeVisible(): void;
   stop(): void;
 }
 
@@ -163,9 +163,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private promptHistoryState?: PromptHistoryState;
     private applyingPromptHistory = false;
     private historicalOpenItemIds = new Set<string>();
-    private get workspacePresentation(): HTMLElement {
-      return this.element.closest<HTMLElement>(".fixed-workspace-presentation")!;
-    }
     private restoreHistoricalOpenItems(): void {
       for (const id of this.historicalOpenItemIds) this.transcriptTarget.querySelector<HTMLElement>(`#${CSS.escape(id)} details[data-agent-historical-detail]`)?.setAttribute("open", "");
     }
@@ -206,7 +203,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       if (document.visibilityState === "visible" && isWorkspacePaneVisible(this.element)) this.start();
       else this.stop();
     };
-    private readonly onWorkspaceSelected = (): void => {
+    private readonly positionAfterBecomingVisible = (): void => {
       const busy = this.element.querySelector<HTMLElement>(".agent-sendstop")!.dataset.agentBusy === "true";
       this.stuck = busy;
       cancelAnimationFrame(this.transcriptLayoutFrame);
@@ -229,11 +226,12 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       this.updateTranscriptNavigation();
       document.addEventListener("visibilitychange", this.onVisibilityChange);
-      this.workspacePresentation.addEventListener("atelier:workspace-selected", this.onWorkspaceSelected);
       const promptDraft = sessionStorage.getItem(this.promptDraftStorageKey);
       if (promptDraft !== null) this.inputTarget.value = promptDraft;
       this.updateSendStopButton();
-      if (isWorkspacePaneVisible(this.element)) this.start();
+      // The pane may connect after the visibility lifecycle already ran, such
+      // as when a loading frame is replaced with the real transcript.
+      if (isWorkspacePaneVisible(this.element)) this.becomeVisible();
     }
 
     disconnect(): void {
@@ -242,7 +240,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       cancelAnimationFrame(this.transcriptLayoutFrame);
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
-      this.workspacePresentation.removeEventListener("atelier:workspace-selected", this.onWorkspaceSelected);
       this.stop();
     }
 
@@ -252,7 +249,12 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       });
     }
 
-    start(): void {
+    becomeVisible(): void {
+      this.start();
+      this.positionAfterBecomingVisible();
+    }
+
+    private start(): void {
       requestAnimationFrame(() => {
         this.autosize();
         this.updateTranscriptPosition();
@@ -1570,7 +1572,7 @@ export function focusAgentPromptOnWideViewport(
 }
 
 function agentConversationBecameVisible(application: StimulusApplication, pane: HTMLElement): void {
-  agentPaneController(application, pane)?.start();
+  agentPaneController(application, pane)?.becomeVisible();
   focusAgentPromptOnWideViewport(pane);
 }
 
