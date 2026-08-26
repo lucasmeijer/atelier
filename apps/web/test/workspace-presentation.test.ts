@@ -46,28 +46,27 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('data-action="click->workspace-navigation#selectWorkspace"');
     expect(html).toContain('href="/projects/project-1/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New workspace: Atelier"');
     expect(html).toContain('href="/projects/project-1/editor" data-turbo-frame="project_editor_frame" data-controller="modal-opener"');
-    const projectHeading = html.slice(html.indexOf('class="fixed-shell-project-heading-row fixed-shell-navigation-action action-item"'), html.indexOf('class="fixed-shell-project-workspaces"'));
+    const projectHeading = html.slice(html.indexOf('class="fixed-shell-project-heading-row action-item"'), html.indexOf('class="fixed-shell-project-workspaces"'));
     expect(projectHeading).toContain('<svg class="disclosure-icon" aria-hidden="true"');
     expect(projectHeading.indexOf("<svg")).toBeLessThan(projectHeading.indexOf("Atelier"));
     expect(projectHeading.indexOf("Atelier")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-settings"));
     expect(projectHeading.indexOf("fixed-shell-project-settings")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-add"));
     expect(html).toContain('data-project-id="__projectless__"><svg');
-    expect(html).toContain('<span class="action-item__label"><span class="action-item__label-text">Projectless</span></span></button><a class="fixed-shell-project-action fixed-shell-project-add action-item__action button secondary icon-only" href="/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New projectless workspace"');
+    expect(html).toContain('<span class="action-item__label"><span class="action-item__label-text">Projectless</span></span></button><a class="fixed-shell-project-add action-item__action button secondary icon-only" href="/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New projectless workspace"');
     expect(html.indexOf('data-project-id="__projectless__"')).toBeLessThan(html.indexOf('data-project-id="__projects_drawer__"'));
     const drawerProjects = html.slice(html.indexOf('data-project-id="__projects_drawer__"'));
     expect(html).toContain('class="fixed-shell-project fixed-shell-projects-drawer is-collapsed" data-project-id="__projects_drawer__"');
     expect(drawerProjects).toContain('aria-expanded="false"');
     expect(drawerProjects).toContain('<span class="action-item__label"><span class="action-item__label-text">Projects</span></span>');
-    expect(drawerProjects).toContain('<a class="fixed-shell-project-action fixed-shell-project-add action-item__action button secondary icon-only" href="/projects/new/editor"');
-    expect(drawerProjects).toContain('<a class="fixed-shell-project-heading fixed-shell-project-launch action-item__primary" href="/projects/project-2/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New workspace: Empty"><span class="action-item__label"><span class="action-item__label-text">Empty</span></span></a>');
+    expect(drawerProjects).toContain('<a class="fixed-shell-project-add action-item__action button secondary icon-only" href="/projects/new/editor"');
+    expect(drawerProjects).toContain('<a class="fixed-shell-project-heading action-item__primary" href="/projects/project-2/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New workspace: Empty"><span class="action-item__label"><span class="action-item__label-text">Empty</span></span></a>');
     expect(drawerProjects.match(/href="\/projects\/project-1\/agent-launch"/g)).toHaveLength(2);
     expect(drawerProjects.match(/href="\/projects\/project-2\/agent-launch"/g)).toHaveLength(2);
     expect(drawerProjects).not.toContain('data-workspace-entry-id="workspace-1"');
     expect(drawerProjects).not.toContain('data-project-id="__projectless__"');
     expect(drawerProjects).not.toContain('fixed-shell-project-settings" href="/projects/new/editor"');
     expect(html.indexOf('class="fixed-shell-projects-drawer')).toBeLessThan(html.indexOf("<footer>"));
-    expect(html).toContain('<a class="fixed-shell-navigation-action action-item action-item__primary" href="/settings" data-turbo-frame="_top" data-turbo-stream="true"><span class="action-item__label"><span class="action-item__label-text">Settings</span></span></a>');
-    expect(html).not.toContain("fixed-shell-settings");
+    expect(html).toContain('<a class="action-item action-item__primary" href="/settings" data-turbo-frame="_top" data-turbo-stream="true"><span class="action-item__label"><span class="action-item__label-text">Settings</span></span></a>');
     expect(html).not.toContain("New Project");
     expect(html).toContain('class="fixed-shell-workspace-row action-item action-item__primary active"');
     expect(html).not.toContain("fixed-shell-workspace-color");
@@ -127,7 +126,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(workspaceSection).toContain("Projectless");
     expect(workspaceSection).toContain('href="/agent-launch"');
     expect(projectsSection).not.toContain('data-project-id="__projectless__"');
-    expect(projectsSection).toContain('class="fixed-shell-project-action fixed-shell-project-add action-item__action button secondary icon-only is-onboarding-target" data-empty-workspace-onboarding-destination="first-project"');
+    expect(projectsSection).toContain('class="fixed-shell-project-add action-item__action button secondary icon-only is-onboarding-target" data-empty-workspace-onboarding-destination="first-project"');
     expect(projectsSection).toContain('class="fixed-shell-project fixed-shell-projects-drawer is-collapsed"');
   });
 
@@ -169,7 +168,6 @@ describe("role-fixed Workspace presentation", () => {
     expect(header).toContain('class="button secondary icon-only" title="Show Work pane" aria-label="Show Work pane"');
     expect(html).toContain('class="button primary icon-only" title="Open Work view" aria-label="Open Work view"');
     expect(html).toContain('class="button secondary icon-only" title="Collapse Work pane" aria-label="Collapse Work pane"');
-    expect(html).not.toContain("fixed-shell-icon-button");
   });
 
   test("uses Action Items for closable Agent and Work tabs", () => {

@@ -15,6 +15,16 @@ async function newTestPage(options: { viewport?: { width: number; height: number
   return page;
 }
 
+function typography(element: Element) {
+  const style = getComputedStyle(element);
+  return { fontSize: style.fontSize, fontWeight: style.fontWeight, letterSpacing: style.letterSpacing };
+}
+
+function dimensions(element: Element) {
+  const style = getComputedStyle(element);
+  return { width: style.width, height: style.height };
+}
+
 function renderShellFixture(presentation: WorkspacePresentation, pane: WorkspacePanePresentation, cached: readonly WorkspacePresentation[] = []): string {
   const residents = [presentation, ...cached].map((resident, index) => `<div class="workspace-detail-resident${index === 0 ? " visible" : ""}" data-workspace-residency-target="resident" data-workspace-id="${resident.workspace.id}">${renderWorkspacePresentation(resident)}</div>`).join("");
   return `<div class="app fixed-shell-app" data-controller="action-items workspace-navigation">${renderWorkspacePane(pane)}<main class="fixed-shell-app-main"><div id="workspace_detail" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5"><div class="workspace-detail-empty" data-workspace-residency-target="empty" hidden></div><div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden></div>${residents}</div></main></div>`;
@@ -175,27 +185,34 @@ describe("Atelier Playwright helper", () => {
   test("Action Item auxiliary controls use the shared Button interface", async () => {
     const page = await newTestPage({ reducedMotion: "reduce" });
     await page.setContent(`<style>${workspaceStyle}</style>
-      <button id="before">Before</button>
-      <div class="action-item"><button id="auxiliary" class="action-item__action button secondary icon-only" aria-label="More"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/></svg></button></div>
-      <button id="standalone" class="button secondary icon-only" aria-label="More"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/></svg></button>`);
+      <div class="fixed-shell-app" style="position: relative; width: 300px; height: 100px">
+        <button id="before">Before</button>
+        <div class="action-item"><button id="auxiliary" class="action-item__action button secondary icon-only" aria-label="More"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/></svg></button></div>
+        <button id="standalone" class="button secondary icon-only" aria-label="More"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/></svg></button>
+      </div>`);
     const styles = (id: string) => page.locator(id).evaluate((element) => {
       const style = getComputedStyle(element);
       return {
         background: style.backgroundColor,
         border: style.borderColor,
         color: style.color,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
         height: style.height,
+        outline: style.outline,
         radius: style.borderRadius,
         width: style.width,
       };
     });
 
     expect(await styles("#auxiliary")).toEqual(await styles("#standalone"));
+    expect(await page.locator("#auxiliary svg").evaluate(dimensions)).toEqual({ width: "14px", height: "14px" });
+    expect(await page.locator("#auxiliary").evaluate(typography)).toEqual({ fontSize: "12px", fontWeight: "600", letterSpacing: "normal" });
     await page.locator("#auxiliary").hover();
-    await page.waitForTimeout(10);
+    await page.waitForTimeout(150);
     const auxiliaryHover = await styles("#auxiliary");
     await page.locator("#standalone").hover();
-    await page.waitForTimeout(10);
+    await page.waitForTimeout(150);
     expect(auxiliaryHover).toEqual(await styles("#standalone"));
     await page.locator("#before").focus();
     await page.keyboard.press("Tab");
@@ -251,6 +268,13 @@ describe("Atelier Playwright helper", () => {
     await page.keyboard.press("Tab");
     expect(await page.locator(".action-item:focus-visible").count()).toBe(1);
     expect(await styles()).toEqual(hovered);
+    await page.close();
+  });
+
+  test("shell selection state preserves shared Action Item typography", async () => {
+    const page = await newTestPage();
+    await page.setContent(`<style>${workspaceStyle}</style><div class="fixed-shell-app"><div class="fixed-shell-work-view-selector action-item"><button class="action-item__primary" aria-selected="true">Selected</button></div><div class="fixed-shell-work-view-selector action-item"><button class="action-item__primary" aria-selected="false">Unselected</button></div></div>`);
+    expect(await page.locator('[aria-selected="true"]').evaluate(typography)).toEqual(await page.locator('[aria-selected="false"]').evaluate(typography));
     await page.close();
   });
 
@@ -794,6 +818,7 @@ describe("Atelier Playwright helper", () => {
     const expandedFrom = (await workspaceScroll.boundingBox())!;
     expect(await disclosure.textContent()).toContain("Projects");
     expect(await disclosure.locator(":scope > svg").isVisible()).toBe(false);
+    expect(await disclosure.locator(":scope > svg").evaluate(dimensions)).toEqual({ width: "12px", height: "12px" });
     const drawerActionBox = (await drawerAction.boundingBox())!;
     const settingsActionBox = (await settingsAction.boundingBox())!;
     expect({ x: settingsActionBox.x, width: settingsActionBox.width, height: settingsActionBox.height }).toEqual({ x: drawerActionBox.x, width: drawerActionBox.width, height: drawerActionBox.height });
@@ -817,7 +842,7 @@ describe("Atelier Playwright helper", () => {
     expect(await disclosure.getAttribute("aria-expanded")).toBe("true");
     expect(await emptyProject.isVisible()).toBe(true);
     expect(await usedProject.isVisible()).toBe(true);
-    const projectLaunch = drawer.locator('.fixed-shell-project-launch[href="/projects/unused-1/agent-launch"]');
+    const projectLaunch = drawer.locator('.fixed-shell-project-heading[href="/projects/unused-1/agent-launch"]');
     const projectRow = projectLaunch.locator("..");
     const projectSettings = projectRow.locator(".fixed-shell-project-settings");
     const projectAdd = projectRow.locator(".fixed-shell-project-add");
@@ -831,8 +856,8 @@ describe("Atelier Playwright helper", () => {
     expect(await projectAdd.evaluate((element) => ({ background: getComputedStyle(element).backgroundColor, shadow: getComputedStyle(element).boxShadow }))).toEqual(idleDrawerAddStyle);
     expect((await emptyProject.boundingBox())!.x).toBe((await drawerLabel.boundingBox())!.x);
     expect(await emptyProject.evaluate((element) => getComputedStyle(element).color)).toBe(await workspaceProject.evaluate((element) => getComputedStyle(element).color));
-    expect(await emptyProject.evaluate((element) => getComputedStyle(element).fontSize)).toBe(await workspaceProject.evaluate((element) => getComputedStyle(element).fontSize));
-    expect(await emptyProject.evaluate((element) => getComputedStyle(element).fontWeight)).toBe(await workspaceProject.evaluate((element) => getComputedStyle(element).fontWeight));
+    expect(await emptyProject.evaluate(typography)).toEqual(await workspaceProject.evaluate(typography));
+    expect(await page.locator('.fixed-shell-workspace-row[aria-current="page"]').evaluate(typography)).toEqual(await workspaceProject.evaluate(typography));
     expect(expandedDrawer.height).toBeGreaterThan(collapsedDrawer.height);
     expect((await workspaceScroll.boundingBox())!.height).toBeLessThan(expandedFrom.height);
 

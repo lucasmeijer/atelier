@@ -93,7 +93,7 @@ function icon(name: IconName): string {
     workspace: '<path d="M4 5h16v14H4zM8 9h8M8 13h5"/>',
     x: '<path d="M6 6l12 12M18 6L6 18"/>',
   } as const;
-  return `<svg aria-hidden="true" viewBox="0 0 24 24">${paths[name]}</svg>`;
+  return `<svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
 }
 
 function topBarButton(label: string, action: string, iconName: Parameters<typeof icon>[0], attributes = ""): string {
@@ -162,12 +162,12 @@ function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGr
   const heading = mode === "disclosure"
     ? `<button type="button" class="fixed-shell-project-heading action-item__primary" aria-expanded="${options.expanded ?? true}" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(id)}">${disclosureIconHtml}${actionItemLabel(title)}</button>`
     : mode === "launcher"
-      ? `<a class="fixed-shell-project-heading fixed-shell-project-launch action-item__primary" href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}">${actionItemLabel(title)}</a>`
+      ? `<a class="fixed-shell-project-heading action-item__primary" href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}">${actionItemLabel(title)}</a>`
       : `<span class="fixed-shell-project-heading fixed-shell-project-heading-static action-item__primary">${actionItemLabel(title)}</span>`;
-  const settings = options.settingsHref ? `<a class="fixed-shell-project-action fixed-shell-project-settings action-item__action button secondary icon-only" href="${escapeHtml(options.settingsHref)}" ${projectEditorTarget} aria-label="Project settings: ${escapedTitle}" title="Project settings: ${escapedTitle}">${icon("more")}</a>` : "";
+  const settings = options.settingsHref ? `<a class="fixed-shell-project-settings action-item__action button secondary icon-only" href="${escapeHtml(options.settingsHref)}" ${projectEditorTarget} aria-label="Project settings: ${escapedTitle}" title="Project settings: ${escapedTitle}">${icon("more")}</a>` : "";
   const onboardingClass = options.onboardingDestination ? " is-onboarding-target" : "";
   const onboardingAttribute = options.onboardingDestination ? ` data-empty-workspace-onboarding-destination="${options.onboardingDestination}"` : "";
-  return `<div class="fixed-shell-project-heading-row fixed-shell-navigation-action action-item${mode === "launcher" ? " fixed-shell-project-launch-row" : ""}">${heading}${settings}<a class="fixed-shell-project-action fixed-shell-project-add action-item__action button secondary icon-only${onboardingClass}"${onboardingAttribute} href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${icon("plus")}</a></div>`;
+  return `<div class="fixed-shell-project-heading-row action-item">${heading}${settings}<a class="fixed-shell-project-add action-item__action button secondary icon-only${onboardingClass}"${onboardingAttribute} href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${icon("plus")}</a></div>`;
 }
 
 function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, mode: "disclosure" | "launcher" = "disclosure", onboardingDestination?: Exclude<WorkspacePaneOnboardingState, "workspaces">): string {
@@ -179,7 +179,7 @@ function renderParkedWorkspaceGroup(workspaces: readonly WorkspacePaneEntry[], p
   if (workspaces.length === 0) return "";
   const groupId = `${parentId}:parked`;
   return `<section class="fixed-shell-project fixed-shell-parked is-collapsed" data-project-id="${escapeHtml(groupId)}">
-    <div class="fixed-shell-project-heading-row fixed-shell-navigation-action action-item"><button type="button" class="fixed-shell-project-heading action-item__primary" aria-expanded="false" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(groupId)}">${disclosureIconHtml}${actionItemLabel(`${workspaces.length} parked`)}</button></div>
+    <div class="fixed-shell-project-heading-row action-item"><button type="button" class="fixed-shell-project-heading action-item__primary" aria-expanded="false" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(groupId)}">${disclosureIconHtml}${actionItemLabel(`${workspaces.length} parked`)}</button></div>
     <div class="fixed-shell-project-workspaces">${workspaces.map((workspace) => `<form method="post" action="/workspaces/${encodeURIComponent(workspace.id)}/unpark" data-workspace-entry-id="${escapeHtml(workspace.id)}" data-action="submit->workspace-navigation#unparkWorkspace"><button type="submit" class="fixed-shell-workspace-row action-item action-item__primary" title="Unpark and open ${escapeHtml(workspace.title)}" aria-label="Unpark and open ${escapeHtml(workspace.title)}">${renderWorkspaceRowContent(workspace)}</button></form>`).join("")}</div>
   </section>`;
 }
@@ -214,7 +214,7 @@ export function renderWorkspacePaneCollections(presentation: WorkspacePanePresen
 export function renderWorkspacePane(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
   return `<aside class="fixed-shell-workspace-pane" aria-label="Workspaces">
     ${renderWorkspacePaneCollections(presentation, sidebarContributionsHtml)}
-    <footer><a class="fixed-shell-navigation-action action-item action-item__primary" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">${actionItemLabel("Settings")}</a></footer>
+    <footer><a class="action-item action-item__primary" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">${actionItemLabel("Settings")}</a></footer>
   </aside>`;
 }
 
