@@ -99,9 +99,9 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
-  test("positions an Agent transcript that connects late and when its Workspace is reselected", async () => {
+  test("positions an Agent transcript after late connection, Workspace reselection, and snapshot synchronization", async () => {
     const agentBody = `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="selected" data-agent-pane-label-value="Agent 1">
-      <div class="agent-transcript" data-agent-pane-target="transcript" style="height: 200px; overflow-y: auto">
+      <div class="agent-transcript" id="selected_agent_transcript" data-agent-pane-target="transcript" style="height: 200px; overflow-y: auto">
         <div class="agent-item" style="height: 600px">Earlier messages</div>
         <div class="agent-item" data-latest-message style="height: 200px">Latest message</div>
         <div class="agent-notices" style="height: 400px"></div>
@@ -128,7 +128,13 @@ describe("Atelier Playwright helper", () => {
     const page = await newTestPage();
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `${renderShellFixture(presentation, pane, [other])}<script type="module" src="/workspace-test.js"></script>`,
+      body: `${renderShellFixture(presentation, pane, [other])}<script>
+        window.AtelierCable = {
+          subscribe(_identifier, options) { window.agentCableSynchronized = options?.onSynchronized; },
+          unsubscribe() {},
+          connected() { return true; },
+        };
+      </script><script type="module" src="/workspace-test.js"></script>`,
     }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/active", (route) => route.fulfill({ status: 204 }));
@@ -150,6 +156,19 @@ describe("Atelier Playwright helper", () => {
     await page.locator('[data-workspace-entry-id="selected"]').click();
     await page.waitForFunction(() => document.querySelector<HTMLElement>(".agent-transcript")?.scrollTop === 600);
     expect(await transcript.evaluate((element) => element.scrollTop)).toBe(600);
+
+    await page.evaluate(async () => {
+      window.Turbo?.renderStreamMessage(`<turbo-stream action="update" target="selected_agent_transcript"><template>
+        <div class="agent-item" style="height: 800px">Refreshed earlier messages</div>
+        <div class="agent-item" data-latest-message style="height: 200px">Latest message</div>
+        <div class="agent-notices" style="height: 400px"></div>
+      </template></turbo-stream>`);
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      // SAFETY: This fixture installs the synchronization callback before loading the application.
+      (window as typeof window & { agentCableSynchronized?(): void }).agentCableSynchronized?.();
+    });
+    await page.waitForFunction(() => document.querySelector<HTMLElement>(".agent-transcript")?.scrollTop === 800);
+    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(800);
     await page.close();
   });
 

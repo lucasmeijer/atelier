@@ -26,7 +26,7 @@ export function cableCursorIsNewer(current: string | undefined, incoming: string
 }
 
 export function createAtelierCableClient(): AtelierCableClient {
-  const desired = new Map<string, { identifier: CableIdentifier; upTo?: string }>();
+  const desired = new Map<string, { identifier: CableIdentifier; upTo?: string; onSynchronized?: () => void }>();
   const knownCursors = new Map<string, string>();
   const delays = [100, 250, 500, 1000, 2000, 5000];
   let socket: WebSocket | undefined;
@@ -63,6 +63,12 @@ export function createAtelierCableClient(): AtelierCableClient {
     }, delay);
   }
 
+  function renderStream(key: string, html: string | undefined, cursor: string | undefined): void {
+    if (cursor && !cableCursorIsNewer(knownCursors.get(key), cursor)) return;
+    rememberCursor(key, cursor);
+    if (html) window.Turbo?.renderStreamMessage(html);
+  }
+
   function handleMessage(event: MessageEvent): void {
     const message = decodeCableServerMessage(String(event.data));
     switch (message.type) {
@@ -70,16 +76,21 @@ export function createAtelierCableClient(): AtelierCableClient {
         attempts = 0;
         resubscribeAll();
         break;
-      case "confirm_subscription":
+      case "confirm_subscription": {
+        const key = serializeCableIdentifier(message.identifier);
+        renderStream(key, message.html, message.cursor);
+        const subscription = desired.get(key);
+        requestAnimationFrame(() => {
+          if (desired.get(key) === subscription) subscription?.onSynchronized?.();
+        });
         break;
+      }
       case "reject_subscription":
         console.error("Cable subscription rejected", message);
         break;
       case "turbo_stream": {
         const key = serializeCableIdentifier(message.identifier);
-        if (message.cursor && !cableCursorIsNewer(knownCursors.get(key), message.cursor)) break;
-        rememberCursor(key, message.cursor);
-        window.Turbo?.renderStreamMessage(message.html);
+        renderStream(key, message.html, message.cursor);
         break;
       }
       case "ping":
@@ -107,10 +118,11 @@ export function createAtelierCableClient(): AtelierCableClient {
   const client: AtelierCableClient = {
     subscribe(identifier, options) {
       const key = serializeCableIdentifier(identifier);
-      const upTo = options === undefined ? knownCursors.get(key) : options.upTo;
-      if (options !== undefined) knownCursors.delete(key);
+      const suppliedCursor = options !== undefined && Object.hasOwn(options, "upTo");
+      const upTo = suppliedCursor ? options.upTo : knownCursors.get(key);
+      if (suppliedCursor) knownCursors.delete(key);
       rememberCursor(key, upTo);
-      desired.set(key, { identifier, upTo });
+      desired.set(key, { identifier, upTo, onSynchronized: options?.onSynchronized });
       closingForPageHide = false;
       connect();
       sendRaw({ command: "subscribe", identifier, upTo });

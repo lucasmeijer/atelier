@@ -128,12 +128,10 @@ export function createCableServer(options: CableServerOptions): CableServer {
     }
 
     const current = await snapshot(identifier, upTo);
-    send(ws, { type: "confirm_subscription", identifier });
-    if (current.html) {
-      const message: Extract<CableServerMessage, { type: "turbo_stream" }> = { type: "turbo_stream", identifier, html: current.html };
-      if (current.cursor) message.cursor = current.cursor;
-      send(ws, message);
-    }
+    const confirmation: Extract<CableServerMessage, { type: "confirm_subscription" }> = { type: "confirm_subscription", identifier };
+    if (current.html) confirmation.html = current.html;
+    if (current.cursor) confirmation.cursor = current.cursor;
+    send(ws, confirmation);
   }
 
   function unsubscribe(ws: CableSocket, identifier: CableIdentifier): void {

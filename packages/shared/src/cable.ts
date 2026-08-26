@@ -5,6 +5,8 @@ import { Value } from "typebox/value";
 export interface CableSubscriptionOptions {
   /** The latest server snapshot already represented in this client's DOM. */
   upTo?: string;
+  /** Runs after the server's current snapshot has been applied to the DOM. */
+  onSynchronized?: () => void;
 }
 
 const cableIdentifierSchema = Type.Union([
@@ -22,7 +24,7 @@ const cableClientMessageSchema = Type.Union([
 
 const cableServerMessageSchema = Type.Union([
   Type.Object({ type: Type.Literal("welcome"), connectionId: Type.String() }),
-  Type.Object({ type: Type.Literal("confirm_subscription"), identifier: cableIdentifierSchema }),
+  Type.Object({ type: Type.Literal("confirm_subscription"), identifier: cableIdentifierSchema, html: Type.Optional(Type.String()), cursor: Type.Optional(Type.String()) }),
   Type.Object({ type: Type.Literal("reject_subscription"), identifier: cableIdentifierSchema, reason: Type.String() }),
   Type.Object({ type: Type.Literal("turbo_stream"), identifier: cableIdentifierSchema, html: Type.String(), cursor: Type.Optional(Type.String()) }),
   Type.Object({ type: Type.Literal("ping"), time: Type.Number() }),

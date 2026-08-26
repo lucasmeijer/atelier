@@ -53,9 +53,14 @@ describe("cable server", () => {
     cable.message(ws, JSON.stringify({ command: "subscribe", identifier: { channel: "shell" } }));
     await Bun.sleep(0);
 
-    expect(ws.sent).toContainEqual({ type: "welcome", connectionId: "conn-1" });
-    expect(ws.sent).toContainEqual({ type: "confirm_subscription", identifier: { channel: "shell" } });
-    expect(ws.sent).toContainEqual({ type: "turbo_stream", identifier: { channel: "shell" }, html: '<turbo-stream action="replace" target="initial"><template>ok</template></turbo-stream>' });
+    expect(ws.sent).toEqual([
+      { type: "welcome", connectionId: "conn-1" },
+      {
+        type: "confirm_subscription",
+        identifier: { channel: "shell" },
+        html: '<turbo-stream action="replace" target="initial"><template>ok</template></turbo-stream>',
+      },
+    ]);
 
     cable.broadcast({ channel: "shell" }, '<turbo-stream action="replace" target="x"><template>1</template></turbo-stream>');
     expect(ws.sent).toContainEqual({ type: "turbo_stream", identifier: { channel: "shell" }, html: '<turbo-stream action="replace" target="x"><template>1</template></turbo-stream>' });

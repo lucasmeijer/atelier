@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalTheme, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, phoneViewportMediaQuery, recentWorkspaceProjectStorageKey, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type WorkspaceClientController, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
+import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, phoneViewportMediaQuery, recentWorkspaceProjectStorageKey, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientController, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
 import { agentTreeOwnsMenu, handleAgentTreeKeydown, handleAgentTreeMenuEvent, selectAgentTreeOption } from "./session-tree.ts";
 import { notifyInputListeners, setTextInputValue } from "./text-input.ts";
 
@@ -159,6 +159,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private transcriptLayoutObserver?: ResizeObserver;
     private transcriptLayoutFrame = 0;
     private transcriptEnd = 0;
+    private selectionPosition?: { busy: boolean };
     private rewindUserText = "";
     private promptHistoryState?: PromptHistoryState;
     private applyingPromptHistory = false;
@@ -189,7 +190,12 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     }
     private updateTranscriptPosition(): void {
       if (!isWorkspacePaneVisible(this.element)) return;
-      if (this.stuck) this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
+      if (this.selectionPosition) {
+        this.transcriptTarget.scrollTop = workspaceSelectionScrollTop(this.transcriptTarget, this.latestMessage(), this.selectionPosition.busy);
+        this.selectionPosition = undefined;
+      } else if (this.stuck) {
+        this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
+      }
       this.onScroll();
     }
     private observeTranscriptItems(): void {
@@ -203,15 +209,11 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       if (document.visibilityState === "visible" && isWorkspacePaneVisible(this.element)) this.start();
       else this.stop();
     };
-    private readonly positionAfterBecomingVisible = (): void => {
+    private readonly positionForSelection = (): void => {
       const busy = this.element.querySelector<HTMLElement>(".agent-sendstop")!.dataset.agentBusy === "true";
       this.stuck = busy;
-      cancelAnimationFrame(this.transcriptLayoutFrame);
-      this.transcriptLayoutFrame = requestAnimationFrame(() => {
-        if (!isWorkspacePaneVisible(this.element)) return;
-        this.transcriptTarget.scrollTop = workspaceSelectionScrollTop(this.transcriptTarget, this.latestMessage(), busy);
-        this.onScroll();
-      });
+      this.selectionPosition = { busy };
+      this.transcriptLayoutChanged();
     };
     connect(): void {
       this.transcriptLayoutObserver = new ResizeObserver(this.transcriptLayoutChanged);
@@ -251,7 +253,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     becomeVisible(): void {
       this.start();
-      this.positionAfterBecomingVisible();
+      this.positionForSelection();
     }
 
     private start(): void {
@@ -261,7 +263,8 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       });
       if (document.visibilityState !== "visible" || !isWorkspacePaneVisible(this.element) || this.subscribed) return;
       this.startAgentTerminals();
-      const options = this.hasSubscribed ? undefined : { upTo: this.hasSnapshotCursorValue ? this.snapshotCursorValue : undefined };
+      const options: CableSubscriptionOptions = { onSynchronized: this.positionForSelection };
+      if (!this.hasSubscribed) options.upTo = this.hasSnapshotCursorValue ? this.snapshotCursorValue : undefined;
       window.AtelierCable?.subscribe(this.cableIdentifier(), options);
       this.subscribed = true;
       this.hasSubscribed = true;
