@@ -368,14 +368,25 @@ export interface WorkspacePaletteProvider {
   search(context: WorkspacePaletteSearchContext): WorkspacePaletteItem[] | Promise<WorkspacePaletteItem[]>;
 }
 
+export const recentWorkspaceProjectStorageKey = "atelier:recent-workspace-project-id";
+
+export interface WorkspaceClientCommand {
+  id: string;
+  label: string;
+  description?: string;
+  scope: "global" | "workspace" | "agent-conversation" | "work-view";
+  binding?: string;
+  run(): void | Promise<void>;
+}
+
 export interface WorkspaceClientHooks {
   onBecomeVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void;
   onNoLongerVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void;
   onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void;
-  onWorkspaceCommand(handler: (commandId: string) => boolean | void | Promise<boolean | void>): void;
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void;
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void;
   registerPaletteProvider(provider: WorkspacePaletteProvider): void;
+  registerCommand(command: WorkspaceClientCommand): void;
 }
 
 export interface WorkspaceClientModuleContext {

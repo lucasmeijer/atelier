@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalTheme, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, phoneViewportMediaQuery, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type WorkspaceClientController, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
+import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, phoneViewportMediaQuery, recentWorkspaceProjectStorageKey, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type WorkspaceClientController, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
 import { agentTreeOwnsMenu, handleAgentTreeKeydown, handleAgentTreeMenuEvent, selectAgentTreeOption } from "./session-tree.ts";
 import { notifyInputListeners, setTextInputValue } from "./text-input.ts";
 
@@ -1649,15 +1649,21 @@ export const agentClientModule: WorkspaceClientModule = {
     hooks.onBecomeVisible(({ pane }) => agentConversationBecameVisible(application, pane));
     hooks.onNoLongerVisible(({ pane }) => agentConversationNoLongerVisible(application, pane));
     hooks.onFocusGroup(({ pane }) => focusAgentPrompt(pane));
-    hooks.onWorkspaceCommand((commandId) => {
-      if (commandId !== "agent.launch-project-workspace") return false;
+    const launchProjectWorkspace = (): void => {
       const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
-      const projectId = resident?.dataset.projectId;
+      const projectId = resident ? resident.dataset.projectId : localStorage.getItem(recentWorkspaceProjectStorageKey);
       const frame = document.getElementById("agent_launch_modal")!;
       frame.replaceChildren();
       frame.removeAttribute("src");
       frame.setAttribute("src", projectId ? `/projects/${encodeURIComponent(projectId)}/agent-launch` : "/agent-launch");
-      return true;
+    };
+    hooks.registerCommand({
+      id: "agent.launch-project-workspace",
+      label: "New Workspace With Same Project",
+      description: "Open a workspace prompt using the most recently selected workspace's project.",
+      scope: "global",
+      binding: "Meta+Alt+Quote",
+      run: launchProjectWorkspace,
     });
   },
 };

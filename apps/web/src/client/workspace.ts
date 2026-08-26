@@ -15,6 +15,7 @@ import {
   isWorkspacePaneVisible,
   phoneViewportMediaQuery,
   providerBrandIconHtml,
+  recentWorkspaceProjectStorageKey,
   workspaceProxyUrl,
   type AtelierCableClient,
   type WorkspaceClientSurfaceVisibilityContext,
@@ -22,6 +23,7 @@ import {
   type WorkspaceClientHooks,
   type WorkspaceClientControllerConstructor,
   type WorkspaceClientWorkspaceAppFrameContext,
+  type WorkspaceClientCommand,
   type WorkspacePaletteItem,
   type WorkspacePaletteProvider,
   type WorkspacePaletteSearchContext,
@@ -57,18 +59,19 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   private readonly becomeVisibleHandlers: Array<(context: WorkspaceClientSurfaceVisibilityContext) => void> = [];
   private readonly noLongerVisibleHandlers: Array<(context: WorkspaceClientSurfaceVisibilityContext) => void> = [];
   private readonly focusGroupHandlers: Array<(context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>> = [];
-  private readonly workspaceCommandHandlers: Array<(commandId: string) => boolean | void | Promise<boolean | void>> = [];
   private readonly workspaceAppFrameUrlHandlers: Array<(context: WorkspaceClientWorkspaceAppFrameContext) => void> = [];
   private readonly workspaceAppFrameRefreshHandlers: Array<(context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void> = [];
   private readonly paletteProviders = new Map<string, WorkspacePaletteProvider>();
+  private readonly commands = new Map<string, WorkspaceClientCommand>();
 
   onBecomeVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void { this.becomeVisibleHandlers.push(handler); }
   onNoLongerVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void { this.noLongerVisibleHandlers.push(handler); }
   onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void { this.focusGroupHandlers.push(handler); }
-  onWorkspaceCommand(handler: (commandId: string) => boolean | void | Promise<boolean | void>): void { this.workspaceCommandHandlers.push(handler); }
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void { this.workspaceAppFrameUrlHandlers.push(handler); }
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void { this.workspaceAppFrameRefreshHandlers.push(handler); }
   registerPaletteProvider(provider: WorkspacePaletteProvider): void { this.paletteProviders.set(provider.id, provider); }
+  registerCommand(command: WorkspaceClientCommand): void { this.commands.set(command.id, command); }
+  registeredCommands(): WorkspaceClientCommand[] { return [...this.commands.values()]; }
 
   becomeVisible(context: WorkspaceClientSurfaceVisibilityContext): void {
     this.becomeVisibleHandlers.forEach((handler) => handler(context));
@@ -81,13 +84,6 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   async focusGroup(context: WorkspaceClientFocusContext): Promise<boolean> {
     for (const handler of this.focusGroupHandlers) {
       if (await handler(context)) return true;
-    }
-    return false;
-  }
-
-  async handleWorkspaceCommand(commandId: string): Promise<boolean> {
-    for (const handler of this.workspaceCommandHandlers) {
-      if (await handler(commandId)) return true;
     }
     return false;
   }
@@ -388,15 +384,8 @@ class AtelierFullscreenController extends Controller {
   }
 }
 
-type CommandRegistration = {
-  id: string;
-  label: string;
-  description?: string;
-  scope: "global" | "workspace" | "agent-conversation" | "work-view";
-  binding?: string;
-  run: () => void | Promise<void>;
-};
-type WorkspaceCommandRegistration = Omit<CommandRegistration, "run">;
+type CommandRegistration = WorkspaceClientCommand;
+type WorkspaceCommandRegistration = Omit<WorkspaceClientCommand, "run">;
 
 class AtelierShortcutsController extends Controller {
   declare readonly element: HTMLElement;
@@ -526,14 +515,20 @@ class AtelierShortcutsController extends Controller {
 
   private currentCommands(): CommandRegistration[] {
     const deleteCommand = this.visibleWorkspaceDeleteCommand();
-    return [
-      ...this.commands.values(),
-      ...(deleteCommand ? [deleteCommand] : []),
-      ...this.workspaceCommands().map((command) => ({
-        ...command,
-        run: () => this.executeVisibleWorkspaceCommand(command.id),
-      })),
-    ];
+    const commands = new Map<string, CommandRegistration>([
+      ...this.commands,
+      ...clientHooks.registeredCommands().map((command) => [command.id, command] as const),
+    ]);
+    if (deleteCommand) commands.set(deleteCommand.id, deleteCommand);
+    for (const command of this.workspaceCommands()) {
+      if (!commands.has(command.id)) {
+        commands.set(command.id, {
+          ...command,
+          run: () => this.executeVisibleWorkspaceCommand(command.id),
+        });
+      }
+    }
+    return [...commands.values()];
   }
 
   private visibleWorkspaceDeleteCommand(): CommandRegistration | undefined {
@@ -862,7 +857,6 @@ class AtelierShortcutsController extends Controller {
   private async executeVisibleWorkspaceCommand(commandId: string): Promise<void> {
     const workspaceId = this.visibleWorkspaceId();
     if (!workspaceId) return;
-    if (await clientHooks.handleWorkspaceCommand(commandId)) return;
     try {
       const response = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/commands/${encodeURIComponent(commandId)}`, {
         method: "POST",
@@ -1151,6 +1145,8 @@ class WorkspaceNavigationController extends Controller {
 
   setActiveWorkspace(workspaceId: string): void {
     markActiveWorkspaceRow(this.element, workspaceId);
+    const row = this.element.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    localStorage.setItem(recentWorkspaceProjectStorageKey, row?.dataset.projectId ?? "");
   }
 
   private restoreProjectDisclosures(): void {
