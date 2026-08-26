@@ -103,6 +103,8 @@ describe("renderMarkdown", () => {
     expect(html).toContain(`data-agent-proxy-app-key-value="file"`);
     expect(html).toContain(`data-agent-proxy-path-value="/tmp/shot.png"`);
     expect(html).toContain(`<img class="agent-media-img"`);
+    expect(html).not.toContain(`<a class="agent-media-link"`);
+    expect(html).not.toContain(`target="_blank"`);
     expect(html).toContain("before ");
     expect(html).toContain(" after");
   });

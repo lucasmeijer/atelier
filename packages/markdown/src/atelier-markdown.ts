@@ -45,7 +45,7 @@ function renderFileEmbed(workspaceId: string, path: string): string {
   const proxy = workspaceProxyController(workspaceId, "file", path);
 
   if (imageExtensions.has(ext)) {
-    return `<a class="agent-media-link" ${proxy} target="_blank" rel="noopener"><img class="agent-media-img" data-controller="agent-proxy atelier-fullscreen" data-atelier-fullscreen-mode-value="media" data-atelier-fullscreen-title-value="${escapeHtml(name)}" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="file" data-agent-proxy-path-value="${escapeHtml(path)}" alt="${escapeHtml(name)}" loading="lazy"></a>`;
+    return `<img class="agent-media-img" data-controller="agent-proxy atelier-fullscreen" data-atelier-fullscreen-mode-value="media" data-atelier-fullscreen-title-value="${escapeHtml(name)}" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="file" data-agent-proxy-path-value="${escapeHtml(path)}" alt="${escapeHtml(name)}" loading="lazy">`;
   }
   if (videoExtensions.has(ext)) {
     return `<video class="agent-media-video" data-controller="agent-proxy atelier-fullscreen" data-atelier-fullscreen-mode-value="media" data-atelier-fullscreen-title-value="${escapeHtml(name)}" data-agent-proxy-workspace-id-value="${escapeHtml(workspaceId)}" data-agent-proxy-app-key-value="file" data-agent-proxy-path-value="${escapeHtml(path)}" controls preload="metadata"></video>`;
