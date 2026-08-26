@@ -53,15 +53,24 @@ try {
     await delay(250);
   }
 
+  const commandResponse = await fetch(`http://localhost:${port}/workspaces/${workspaceId}/commands/vscode.open`, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: '{}',
+  });
+  if (!commandResponse.ok) throw new Error(`opening VS Code failed: ${commandResponse.status} ${await commandResponse.text()}`);
+  const attentionResponse = await fetch(`http://localhost:${port}/workspaces/${workspaceId}/work-views/${encodeURIComponent('vscode:VS Code')}/attention/request`, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: '{}',
+  });
+  if (!attentionResponse.ok) throw new Error(`presenting VS Code failed: ${attentionResponse.status} ${await attentionResponse.text()}`);
+
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   const consoleMessages = [];
   page.on('console', (message) => consoleMessages.push(message.text()));
   await page.goto(`http://localhost:${port}/workspaces/${workspaceId}`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Open Work pane', exact: true }).click();
-  await page.locator('summary[aria-label="Open Work view"]').click();
-  await page.getByRole('button', { name: 'Open VS Code', exact: true }).click();
-  await page.getByRole('tab', { name: /^VS Code/ }).click();
   const frame = page.locator('iframe.vscode-frame');
   await frame.waitFor({ timeout: 10_000 });
   await page.waitForFunction(() => {
@@ -72,6 +81,8 @@ try {
   const response = await fetch(src);
   const text = await response.text();
   if (!response.ok || !/Visual Studio Code|latest version of the Visual Studio Code Server|workbench/i.test(text)) throw new Error(`unexpected VS Code proxy response ${response.status}: ${text.slice(0, 200)}`);
+  const workspaceIdentity = `${Buffer.from(workspaceId).toString('base64url')}.code-workspace`;
+  if (!text.includes(workspaceIdentity)) throw new Error(`VS Code did not receive its isolated workspace identity: ${workspaceIdentity}`);
   const vscode = page.frameLocator('iframe.vscode-frame');
   await vscode.locator('.monaco-workbench').waitFor({ state: 'visible', timeout: 60_000 });
   await vscode.locator('body').evaluate(async () => {

@@ -1,4 +1,4 @@
-import type { JsonValue } from "@atelier/core";
+import { shellQuote, type JsonValue } from "@atelier/core";
 import { createWorkspaceMetadataState, execWorkspaceShell, workspaceRoot } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
@@ -49,6 +49,8 @@ export function deleteWorkspaceVSCodeState(workspaceId: string): void {
 }
 
 export async function ensureWorkspaceVSCodeServer(workspaceId: string): Promise<void> {
+  const workspaceFile = `/.atelier/vscode/workspaces/${Buffer.from(workspaceId).toString("base64url")}.code-workspace`;
+  const quotedWorkspaceFile = shellQuote(workspaceFile);
   const result = await execWorkspaceShell(workspaceId, `
     set -eu
     server_pattern='[/]bin/code-server .*--port 8000|out[/]server-main\.js .*--port 8000|[c]ode serve-web .*--port 8000'
@@ -63,12 +65,13 @@ export async function ensureWorkspaceVSCodeServer(workspaceId: string): Promise<
     }
 
     start_server() {
-      mkdir -p /.atelier/vscode
+      mkdir -p /.atelier/vscode/workspaces
+      printf '%s\n' '{"folders":[{"path":"${workspaceRoot}"}]}' > ${quotedWorkspaceFile}
       if command -v atelier-start-vscode >/dev/null 2>&1; then
-        nohup atelier-start-vscode > /.atelier/vscode/server.log 2>&1 &
+        ATELIER_VSCODE_DEFAULT_WORKSPACE=${quotedWorkspaceFile} nohup atelier-start-vscode > /.atelier/vscode/server.log 2>&1 &
       else
         code_bin=code
-        nohup "$code_bin" serve-web --accept-server-license-terms --host 0.0.0.0 --port 8000 --without-connection-token --default-folder ${workspaceRoot} > /.atelier/vscode/server.log 2>&1 &
+        nohup "$code_bin" serve-web --accept-server-license-terms --host 0.0.0.0 --port 8000 --without-connection-token --default-workspace ${quotedWorkspaceFile} > /.atelier/vscode/server.log 2>&1 &
       fi
     }
 

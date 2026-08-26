@@ -29,8 +29,13 @@ set -- \
   --host "${ATELIER_VSCODE_HOST:-0.0.0.0}" \
   --port "${ATELIER_VSCODE_PORT:-8000}" \
   --without-connection-token \
-  --default-folder "${ATELIER_VSCODE_DEFAULT_FOLDER:-/work}" \
   --server-data-dir "$server_data_dir"
+
+if [ -n "${ATELIER_VSCODE_DEFAULT_WORKSPACE:-}" ]; then
+  set -- "$@" --default-workspace "$ATELIER_VSCODE_DEFAULT_WORKSPACE"
+else
+  set -- "$@" --default-folder "${ATELIER_VSCODE_DEFAULT_FOLDER:-/work}"
+fi
 
 if [ -n "$server_bin" ]; then
   exec "$server_bin" "$@" --extensions-dir "$extensions_dir"
