@@ -265,7 +265,7 @@ describe("transcript rendering", () => {
     expect(html).toContain("COMMAND");
     expect(html).toContain("RESULT");
     expect(html).toContain("AS SEEN BY MODEL");
-    expect(html).toContain("color:var(--red)");
+    expect(html).toContain("color:var(--danger)");
   });
 
   test("bash command visualization starts a new line after every pipe and exposes the original command", () => {

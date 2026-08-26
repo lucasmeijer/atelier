@@ -151,7 +151,7 @@ function isBrowserBridgeLocationMessage(value: unknown): value is BrowserBridgeL
 
 function addAtelierThemeParams(url: URL): void {
   const theme = document.documentElement.dataset.theme || localStorage.getItem("atelier.theme") || "nord";
-  url.searchParams.set("atelierColorScheme", theme === "daylight" || theme === "solarized-light" ? "light" : "dark");
+  url.searchParams.set("atelierColorScheme", theme === "daylight" ? "light" : "dark");
 }
 
 function isBrowserAppKey(appKey: string): boolean {

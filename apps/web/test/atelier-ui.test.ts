@@ -53,7 +53,7 @@ describe("Atelier Playwright helper", () => {
     expect(await page.locator(".settings-dialog").evaluate((dialog) => {
       const style = getComputedStyle(dialog);
       return { width: style.width, background: style.backgroundColor, borderRadius: style.borderRadius };
-    })).toEqual({ width: "760px", background: "rgb(255, 255, 255)", borderRadius: "18px" });
+    })).toEqual({ width: "760px", background: "rgb(255, 255, 255)", borderRadius: "14px" });
     await page.close();
   });
 

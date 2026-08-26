@@ -107,16 +107,16 @@ function closeForm(close: ViewCloseAction, buttonHtml: string, attributes = ""):
   return `<form${attributes} data-turbo="true" method="post" action="${escapeHtml(close.action)}" data-close-label="${escapeHtml(close.label)}" data-action="submit->workspace-presentation#confirmClose">${buttonHtml}</form>`;
 }
 
-function selectorCloseButton(close: ViewCloseAction, iconName: IconName): string {
-  return `<button class="fixed-shell-view-close" type="submit" title="Close ${escapeHtml(close.label)}" aria-label="Close ${escapeHtml(close.label)}">${icon(iconName)}</button>`;
+function selectorCloseButton(close: ViewCloseAction): string {
+  return `<button class="fixed-shell-view-close inner-action danger" type="submit" title="Close ${escapeHtml(close.label)}" aria-label="Close ${escapeHtml(close.label)}">${icon("x")}</button>`;
 }
 
 function selectorCloseForm(close: ViewCloseAction): string {
-  return closeForm(close, selectorCloseButton(close, "close"));
+  return closeForm(close, selectorCloseButton(close));
 }
 
 function workViewCloseForm(close: ViewCloseAction): string {
-  return closeForm(close, selectorCloseButton(close, "x"), ' class="fixed-shell-work-view-close" hidden');
+  return closeForm(close, selectorCloseButton(close), ' class="fixed-shell-work-view-close" hidden');
 }
 
 function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
@@ -163,10 +163,10 @@ function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGr
     : mode === "launcher"
       ? `<a class="fixed-shell-project-heading fixed-shell-project-launch" href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}"><span>${escapedTitle}</span></a>`
       : `<span class="fixed-shell-project-heading fixed-shell-project-heading-static"><span>${escapedTitle}</span></span>`;
-  const settings = options.settingsHref ? `<a class="fixed-shell-project-action fixed-shell-project-settings" href="${escapeHtml(options.settingsHref)}" ${projectEditorTarget} aria-label="Project settings: ${escapedTitle}" title="Project settings: ${escapedTitle}">${icon("more")}</a>` : "";
+  const settings = options.settingsHref ? `<a class="fixed-shell-project-action fixed-shell-project-settings inner-action" href="${escapeHtml(options.settingsHref)}" ${projectEditorTarget} aria-label="Project settings: ${escapedTitle}" title="Project settings: ${escapedTitle}">${icon("more")}</a>` : "";
   const onboardingClass = options.onboardingDestination ? " is-onboarding-target" : "";
   const onboardingAttribute = options.onboardingDestination ? ` data-empty-workspace-onboarding-destination="${options.onboardingDestination}"` : "";
-  return `<div class="fixed-shell-project-heading-row${mode === "launcher" ? " fixed-shell-project-launch-row" : ""}">${heading}${settings}<a class="fixed-shell-project-action fixed-shell-project-add${onboardingClass}"${onboardingAttribute} href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${icon("plus")}</a></div>`;
+  return `<div class="fixed-shell-project-heading-row inner-action-group${mode === "launcher" ? " fixed-shell-project-launch-row" : ""}">${heading}${settings}<a class="fixed-shell-project-action fixed-shell-project-add inner-action${onboardingClass}"${onboardingAttribute} href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${icon("plus")}</a></div>`;
 }
 
 function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, mode: "disclosure" | "launcher" = "disclosure", onboardingDestination?: Exclude<WorkspacePaneOnboardingState, "workspaces">): string {
@@ -226,7 +226,7 @@ export function renderEmptyWorkspaceMobileNavigation(): string {
 function renderAgentPane(presentation: WorkspacePresentation): string {
   const multiple = presentation.agentConversations.length > 1;
   const title = multiple
-    ? `<div class="fixed-shell-agent-conversations" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => `<div class="fixed-shell-agent-conversation"><button type="button" role="tab" aria-selected="false" tabindex="-1" data-agent-conversation-id="${escapeHtml(agent.id)}" data-action="click->workspace-presentation#selectAgent">${escapeHtml(agent.title)}</button>${agent.close ? selectorCloseForm(agent.close) : ""}</div>`).join("")}</div>`
+    ? `<div class="fixed-shell-agent-conversations" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => `<div class="fixed-shell-agent-conversation inner-action-group"><button type="button" role="tab" aria-selected="false" tabindex="-1" data-agent-conversation-id="${escapeHtml(agent.id)}" data-action="click->workspace-presentation#selectAgent">${escapeHtml(agent.title)}</button>${agent.close ? selectorCloseForm(agent.close) : ""}</div>`).join("")}</div>`
     : `<div class="fixed-shell-workspace-title"><strong>${escapeHtml(presentation.workspace.title)}</strong></div>`;
   const panes = presentation.agentConversations.map((agent) => renderLiveNode(`agent:${agent.id}`, "agent", agent.id, agent.bodyHtml, presentation.preserveLiveKeys)).join("");
   const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button class="fixed-shell-icon-button" type="submit" aria-label="${escapeHtml(command.label)}">＋</button></form>`).join("");
@@ -254,7 +254,7 @@ function renderLiveNode(key: string, role: "agent" | "work", id: string, bodyHtm
 }
 
 function renderWorkViewSelector(view: WorkPaneContribution): string {
-  return `<div class="fixed-shell-work-view-selector" draggable="true" data-work-view-reorder-key="${escapeHtml(view.key)}" data-action="dragstart->workspace-presentation#beginWorkReorder dragover->workspace-presentation#allowWorkReorder drop->workspace-presentation#finishWorkReorder">
+  return `<div class="fixed-shell-work-view-selector inner-action-group" draggable="true" data-work-view-reorder-key="${escapeHtml(view.key)}" data-action="dragstart->workspace-presentation#beginWorkReorder dragover->workspace-presentation#allowWorkReorder drop->workspace-presentation#finishWorkReorder">
     <button type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}"${view.attentionSequence === undefined ? "" : ` data-attention-sequence="${view.attentionSequence}"`} data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(view.sourceKey ?? view.key)}" data-atelier-fullscreen-title-value="${escapeHtml(view.label)}" data-action="click->workspace-presentation#selectWorkView">${escapeHtml(view.label)}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>'}</button>${view.close ? workViewCloseForm(view.close) : ""}
   </div>`;
 }

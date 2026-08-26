@@ -32,10 +32,10 @@ export function atelierObservableTerminalTheme(): ObservableTerminalTheme {
   const background = themeColor("--bg", "background");
   const foreground = themeColor("--text", "foreground");
   const accent = themeColor("--accent", "brightBlue");
-  const red = cssVariable("--red") ?? foreground;
-  const green = cssVariable("--green") ?? foreground;
-  const amber = cssVariable("--amber") ?? foreground;
-  const violet = cssVariable("--violet") ?? accent;
+  const red = cssVariable("--danger") ?? foreground;
+  const green = cssVariable("--success") ?? foreground;
+  const amber = cssVariable("--warning") ?? foreground;
+  const violet = cssVariable("--decorative") ?? accent;
   return {
     background,
     foreground,
@@ -48,7 +48,7 @@ export function atelierObservableTerminalTheme(): ObservableTerminalTheme {
     magenta: violet,
     cyan: accent,
     white: foreground,
-    brightBlack: themeColor("--line-2", "brightBlack"),
+    brightBlack: themeColor("--line-strong", "brightBlack"),
     brightRed: red,
     brightGreen: green,
     brightYellow: amber,

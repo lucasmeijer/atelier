@@ -148,7 +148,7 @@ function showMoreProvidersButton(providers: Array<{ connected: boolean; provider
 }
 
 async function renderThemeSettings(): Promise<string> {
-  const themes = [["daylight", "Daylight"], ["solarized-light", "Solarized Light"], ["cappuccino", "Cappuccino"], ["tokyo-night", "Tokyo Night"], ["midnight", "Midnight"], ["nord", "Nord"]];
+  const themes = [["daylight", "Daylight"], ["cappuccino", "Cappuccino"], ["tokyo-night", "Tokyo Night"], ["midnight", "Midnight"], ["nord", "Nord"]];
   return `<section class="settings-sec settings-sec-inline" id="settings-sec-theme"><h2>Theme</h2><select class="settings-select" data-controller="theme-select">${themes.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></section>`;
 }
 
@@ -302,7 +302,7 @@ function forceDeleteAllWorkspacesModal(error = ""): string {
 
 function forceDeleteAllWorkspacesResultModal(deleted: number, errors: string[]): string {
   return `<dialog id="settings_dev_force_delete_workspaces_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
-    <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${errors.length ? "var(--red)" : "var(--green)"}">${errors.length ? "!" : "✓"}</div><div><b>Workspace cleanup complete</b><p>Development tool</p></div></div>
+    <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${errors.length ? "var(--danger)" : "var(--success)"}">${errors.length ? "!" : "✓"}</div><div><b>Workspace cleanup complete</b><p>Development tool</p></div></div>
     <div class="settings-flow-body"><p>Deleted ${escapeHtml(deleted)} workspace${deleted === 1 ? "" : "s"}.</p>${errors.length ? `<p class="settings-error">${escapeHtml(errors.join("\n"))}</p>` : ""}</div>
     <div class="settings-flow-actions"><form method="dialog"><button class="settings-btn primary">Done</button></form></div>
   </dialog>`;

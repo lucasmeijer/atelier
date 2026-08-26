@@ -41,14 +41,14 @@ describe("files rendering", () => {
     ], true);
     expect(html).toContain(workspaceRoot);
     expect(html).toContain("1.2 KB");
-    expect(html).toContain("files-row concealed");
+    expect(html).toContain("files-row inner-action-group concealed");
     expect(html).toContain("data-files-destination");
     expect(html).toContain("click->files#openDirectory");
     expect(html).toContain("mousedown->files#preserveSelection click->files#selectOrOpen");
     expect(html).toContain("status-spinner sm files-directory-spinner");
     expect(html).toContain("showHidden=1");
     expect(html).toContain('aria-label="Refresh files" data-action="files#refresh"');
-    expect(html.match(/class="files-actions-toggle"/g)).toHaveLength(2);
+    expect(html.match(/class="files-actions-toggle inner-action"/g)).toHaveLength(2);
     expect(html).toContain('data-turbo-stream="true">.secret</a>');
     expect(html).not.toContain('class="files-open"');
     expect(html).toContain(">Copy URL</button>");

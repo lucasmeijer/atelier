@@ -38,7 +38,7 @@
   z-index: 2;
   display: grid;
   place-items: center;
-  padding: var(--space-7);
+  padding: var(--space-2xl);
   color: var(--text);
   background:
     radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 34%),
@@ -55,11 +55,11 @@
 .vscode-starting-card {
   display: flex;
   align-items: center;
-  gap: var(--space-3-5);
+  gap: var(--space-lg);
   min-width: min(360px, 100%);
-  padding: var(--space-4-5) var(--space-5);
+  padding: var(--space-xl) var(--space-xl);
   border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
-  border-radius: var(--radius-dialog);
+  border-radius: var(--radius-overlay);
   background: color-mix(in srgb, var(--panel) 88%, transparent);
   box-shadow: 0 18px 60px rgba(0, 0, 0, .24);
   backdrop-filter: blur(12px);
@@ -68,18 +68,18 @@
 .vscode-starting-spinner {
   width: 22px;
   height: 22px;
-  border-color: color-mix(in srgb, var(--muted) 26%, transparent);
+  border-color: color-mix(in srgb, var(--text-muted) 26%, transparent);
   border-top-color: var(--accent);
 }
 
 .vscode-starting-title {
   font-size: var(--text-body);
-  font-weight: 760;
+  font-weight: var(--weight-bold);
   letter-spacing: .01em;
 }
 
 .vscode-starting-subtitle {
-  margin-top: var(--space-0-5);
-  font-size: var(--text-sm);
-  color: var(--muted);
+  margin-top: var(--space-2xs);
+  font-size: var(--text-small);
+  color: var(--text-muted);
 }

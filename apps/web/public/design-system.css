@@ -2,104 +2,143 @@
  * Atelier design system
  *
  * This file is the shared visual interface for the shell and every workspace
- * module. Prefer semantic tokens here over local one-off values. Theme blocks
- * only assign color tokens; layout and typography remain stable across themes.
+ * module. Tokens describe visual roles rather than accumulated measurements.
+ * Theme blocks assign only fundamental colors; derived states are shared.
  */
 
 :root {
   /* Typography */
   --font-sans: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
-  --sans: var(--font-sans);
-  --mono: var(--font-mono);
 
-  --text-2xs: 10px;
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-ui: 13px;
+  --text-caption: 11px;
+  --text-small: 12px;
   --text-body: 14px;
-  --text-input: 16px;
-  --text-title: 17px;
-  --text-heading: 21px;
+  --text-title: 16px;
+  --text-heading: 20px;
   --text-display: 28px;
 
   --leading-none: 1;
   --leading-tight: 1.2;
-  --leading-compact: 1.4;
-  --leading-ui: 1.55;
+  --leading-standard: 1.5;
   --leading-copy: 1.7;
 
-  --weight-medium: 550;
-  --weight-semibold: 650;
-  --weight-bold: 750;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
 
-  /* Space: compact by design, with a predictable 2px/4px rhythm. */
-  --space-0-5: 2px;
-  --space-1: 4px;
-  --space-1-5: 6px;
-  --space-2: 8px;
-  --space-2-5: 10px;
-  --space-3: 12px;
-  --space-3-5: 14px;
-  --space-4: 16px;
-  --space-4-5: 18px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-7: 28px;
-  --space-8: 32px;
+  /* Spacing: compact internal spacing and clear separation between regions. */
+  --space-2xs: 2px;
+  --space-xs: 4px;
+  --space-sm: 6px;
+  --space-md: 8px;
+  --space-lg: 12px;
+  --space-xl: 16px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
 
-  /* Shape and motion */
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
-  --radius-xl: 12px;
-  --radius-shell: 14px;
-  --radius-dialog: 18px;
+  /* Shape roles */
+  --radius-indicator: 4px;
+  --radius-control: 6px;
+  --radius-surface: 10px;
+  --radius-overlay: 14px;
   --radius-round: 999px;
-  --duration-fast: 120ms;
-  --duration-normal: 150ms;
-  --ease-standard: ease-out;
 
-  /* Default (daylight) semantic palette. */
+  /* Daylight is the unthemed default. */
   --bg: #f3f5f9;
   --panel: #ffffff;
   --elev: #ffffff;
   --line: #e9edf3;
-  --line2: #dde3ec;
-  --line-2: var(--line2);
+  --line-strong: #dde3ec;
   --text: #1b2433;
-  --muted: #737e92;
-  --muted2: #a9b2c2;
-  --muted-2: var(--muted2);
+  --text-muted: #737e92;
+  --text-faint: #a9b2c2;
   --accent: #2563eb;
-  --accent-soft: #e7efff;
-  --green: #138a52;
-  --amber: #a9760a;
-  --red: #d23b3b;
-  --violet: #7c3aed;
-  --green-soft: #e2f4ea;
-  --amber-soft: #f7efd8;
-  --red-soft: #fbe8e8;
-  --add: var(--green);
-  --del: var(--red);
-  --addbg: color-mix(in srgb, var(--green) 10%, transparent);
-  --delbg: color-mix(in srgb, var(--red) 10%, transparent);
+  --accent-contrast: #ffffff;
+  --success: #138a52;
+  --warning: #a9760a;
+  --danger: #d23b3b;
+  --decorative: #7c3aed;
   --shadow: 0 14px 44px rgba(20, 30, 60, .13);
-  --spin: var(--muted2);
 
-  /* Shared content styles */
-  --assistant-copy-font-size: var(--text-body);
-  --assistant-copy-line-height: var(--leading-copy);
-  --assistant-copy-font-weight: 400;
+  /* State colors are derived consistently for every theme. */
+  --accent-soft: color-mix(in srgb, var(--accent) 15%, var(--panel));
+  --success-soft: color-mix(in srgb, var(--success) 15%, var(--panel));
+  --warning-soft: color-mix(in srgb, var(--warning) 15%, var(--panel));
+  --danger-soft: color-mix(in srgb, var(--danger) 15%, var(--panel));
 }
 
-[data-theme="cappuccino"] { --bg:#2b2018; --panel:#312619; --elev:#3a2e21; --line:#46382a; --line2:#574536; --line-2:var(--line2); --text:#f3e8db; --muted:#c2a98f; --muted2:#8e745c; --muted-2:var(--muted2); --accent:#d8a373; --accent-soft:rgba(216,163,115,.16); --green:#b5c98f; --amber:#e0b07a; --red:#d98b76; --violet:#c9a0dc; --green-soft:rgba(181,201,143,.16); --amber-soft:rgba(224,176,122,.16); --red-soft:rgba(217,139,118,.18); --add:#b5c98f; --del:#d98b76; --addbg:rgba(181,201,143,.10); --delbg:rgba(217,139,118,.10); --shadow:0 22px 56px rgba(0,0,0,.45); --spin:#8a7560; }
-[data-theme="daylight"] { --bg:#f3f5f9; --panel:#fff; --elev:#fff; --line:#e9edf3; --line2:#dde3ec; --line-2:var(--line2); --text:#1b2433; --muted:#737e92; --muted2:#a9b2c2; --muted-2:var(--muted2); --accent:#2563eb; --accent-soft:#e7efff; --green:#138a52; --amber:#a9760a; --red:#d23b3b; --violet:#7c3aed; --green-soft:#e2f4ea; --amber-soft:#f7efd8; --red-soft:#fbe8e8; --shadow:0 14px 44px rgba(20,30,60,.13); --spin:#aab2c0; }
-[data-theme="solarized-light"] { --bg:#fdf6e3; --panel:#fbf3df; --elev:#fbf3df; --line:#ece2c6; --line2:#ddd2b2; --line-2:var(--line2); --text:#4a5b60; --muted:#8a9897; --muted2:#aeb6ac; --muted-2:var(--muted2); --accent:#268bd2; --accent-soft:#e3edf4; --green:#728c00; --amber:#b58900; --red:#dc322f; --violet:#6c71c4; --green-soft:#e7ecca; --amber-soft:#f3e7c0; --red-soft:#f7dcd6; --shadow:0 14px 44px rgba(101,123,131,.18); --spin:#b3ab98; }
-[data-theme="tokyo-night"] { --bg:#1a1b26; --panel:#1e1f2e; --elev:#24283b; --line:#2a2e42; --line2:#3b4261; --line-2:var(--line2); --text:#c0caf5; --muted:#9aa5ce; --muted2:#565f89; --muted-2:var(--muted2); --accent:#7aa2f7; --accent-soft:rgba(122,162,247,.15); --green:#9ece6a; --amber:#e0af68; --red:#f7768e; --violet:#bb9af7; --green-soft:rgba(158,206,106,.15); --amber-soft:rgba(224,175,104,.15); --red-soft:rgba(247,118,142,.16); --shadow:0 22px 56px rgba(0,0,0,.5); --spin:#4f5d87; }
-[data-theme="midnight"] { --bg:#0d1117; --panel:#12171e; --elev:#1c2128; --line:#222a33; --line2:#363c46; --line-2:var(--line2); --text:#e6edf3; --muted:#8b949e; --muted2:#6e7681; --muted-2:var(--muted2); --accent:#58a6ff; --accent-soft:rgba(88,166,255,.14); --green:#3fb950; --amber:#d29922; --red:#f85149; --violet:#bc8cff; --green-soft:rgba(63,185,80,.15); --amber-soft:rgba(210,153,34,.15); --red-soft:rgba(248,81,73,.15); --shadow:0 22px 56px rgba(0,0,0,.6); --spin:#6e7681; }
-[data-theme="nord"] { --bg:#2e3440; --panel:#333a47; --elev:#3b4252; --line:#414a5b; --line2:#4c566a; --line-2:var(--line2); --text:#eceff4; --muted:#c4ccd9; --muted2:#7b889e; --muted-2:var(--muted2); --accent:#88c0d0; --accent-soft:rgba(136,192,208,.16); --green:#a3be8c; --amber:#ebcb8b; --red:#bf616a; --violet:#b48ead; --green-soft:rgba(163,190,140,.16); --amber-soft:rgba(235,203,139,.16); --red-soft:rgba(191,97,106,.18); --shadow:0 22px 56px rgba(0,0,0,.45); --spin:#7b889e; }
+[data-theme="cappuccino"] {
+  --bg: #2b2018;
+  --panel: #312619;
+  --elev: #3a2e21;
+  --line: #46382a;
+  --line-strong: #574536;
+  --text: #f3e8db;
+  --text-muted: #c2a98f;
+  --text-faint: #8e745c;
+  --accent: #d8a373;
+  --accent-contrast: #2b2018;
+  --success: #b5c98f;
+  --warning: #e0b07a;
+  --danger: #d98b76;
+  --decorative: #c9a0dc;
+  --shadow: 0 22px 56px rgba(0, 0, 0, .45);
+}
+
+[data-theme="tokyo-night"] {
+  --bg: #1a1b26;
+  --panel: #1e1f2e;
+  --elev: #24283b;
+  --line: #2a2e42;
+  --line-strong: #3b4261;
+  --text: #c0caf5;
+  --text-muted: #9aa5ce;
+  --text-faint: #565f89;
+  --accent: #7aa2f7;
+  --accent-contrast: #1a1b26;
+  --success: #9ece6a;
+  --warning: #e0af68;
+  --danger: #f7768e;
+  --decorative: #bb9af7;
+  --shadow: 0 22px 56px rgba(0, 0, 0, .5);
+}
+
+[data-theme="midnight"] {
+  --bg: #0d1117;
+  --panel: #12171e;
+  --elev: #1c2128;
+  --line: #222a33;
+  --line-strong: #363c46;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --text-faint: #6e7681;
+  --accent: #58a6ff;
+  --accent-contrast: #0d1117;
+  --success: #3fb950;
+  --warning: #d29922;
+  --danger: #f85149;
+  --decorative: #bc8cff;
+  --shadow: 0 22px 56px rgba(0, 0, 0, .6);
+}
+
+[data-theme="nord"] {
+  --bg: #2e3440;
+  --panel: #333a47;
+  --elev: #3b4252;
+  --line: #414a5b;
+  --line-strong: #4c566a;
+  --text: #eceff4;
+  --text-muted: #c4ccd9;
+  --text-faint: #7b889e;
+  --accent: #88c0d0;
+  --accent-contrast: #2e3440;
+  --success: #a3be8c;
+  --warning: #ebcb8b;
+  --danger: #bf616a;
+  --decorative: #b48ead;
+  --shadow: 0 22px 56px rgba(0, 0, 0, .45);
+}
 
 ::selection { color: var(--text); background: color-mix(in srgb, var(--accent) 32%, transparent); }
 :focus-visible { outline-color: var(--accent); }
