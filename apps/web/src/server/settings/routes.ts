@@ -156,8 +156,8 @@ async function renderGitIdentityForm(error = ""): Promise<string> {
   const identity = await getGitIdentity();
   return `<form id="settings_git_identity" class="settings-git-identity" method="post" action="/settings/git-identity" data-controller="git-identity" data-action="input->git-identity#queue change->git-identity#save submit->git-identity#submit">
     ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
-    <div class="settings-field"><div><b>Git user name</b><p>Used as <code>user.name</code> in new workspace containers.</p></div><input class="settings-input" name="name" value="${escapeHtml(identity?.name ?? "")}" placeholder="Ada Lovelace" autocomplete="name" required></div>
-    <div class="settings-field"><div><b>Git email</b><p>Used as <code>user.email</code> when commits are created.</p></div><input class="settings-input" type="email" name="email" value="${escapeHtml(identity?.email ?? "")}" placeholder="ada@example.com" autocomplete="email" required></div>
+    <div class="settings-field"><div><b>Git user name</b><p>Used as <code>user.name</code> in new workspace containers.</p></div><input class="settings-input text-field" name="name" value="${escapeHtml(identity?.name ?? "")}" placeholder="Ada Lovelace" autocomplete="name" required></div>
+    <div class="settings-field"><div><b>Git email</b><p>Used as <code>user.email</code> when commits are created.</p></div><input class="settings-input text-field" type="email" name="email" value="${escapeHtml(identity?.email ?? "")}" placeholder="ada@example.com" autocomplete="email" required></div>
   </form>`;
 }
 
@@ -248,7 +248,7 @@ async function renderAddModelDialog(): Promise<string> {
   return `<dialog id="settings_add_model_dialog" class="settings-flow-dialog add-model-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:var(--accent)">＋</div><div><b>Add favorite model</b><p>Models from connected providers</p></div></div>
     <div class="settings-flow-body" data-controller="model-add-menu">
-      <input class="settings-input settings-model-filter" type="search" placeholder="Filter models…" data-model-add-menu-target="filter" data-action="input->model-add-menu#filter" autocomplete="off" autofocus>
+      <input class="settings-input text-field settings-model-filter" type="search" placeholder="Filter models…" data-model-add-menu-target="filter" data-action="input->model-add-menu#filter" autocomplete="off" autofocus>
       <div class="settings-add-model-options grouped" data-model-add-menu-target="options">
         ${groups.length ? groups.map(([provider, models]) => `<section class="settings-add-model-group"><h3>${providerIcon(provider, provider, "settings-add-model-provider-icon", "span")}${escapeHtml(provider)}</h3>${models.map((model) => `<form method="post" action="/settings/models/add" data-turbo="true" data-model-add-menu-target="option" data-search-text="${escapeHtml(`${model.label} ${model.provider} ${model.id}`.toLowerCase())}"><input type="hidden" name="model" value="${escapeHtml(modelKey(model))}"><button class="settings-add-model-option" type="submit"><span>${escapeHtml(model.label)}</span><small>${escapeHtml(model.id)}</small></button></form>`).join("")}</section>`).join("") : `<div class="settings-empty">No more models available from connected providers.</div>`}
       </div>
@@ -319,7 +319,7 @@ function githubTokenModal(error = "", surface: "settings" | "onboarding" = "sett
 gh auth token</pre>
         <p>Paste the token output below. Atelier stores it locally and injects it into workspace GitHub requests as <code>GH_TOKEN</code>.</p>
         ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
-        <input class="settings-input settings-token-input" type="password" name="token" placeholder="Paste output from gh auth token" autocomplete="off" required autofocus>
+        <input class="settings-input text-field settings-token-input" type="password" name="token" placeholder="Paste output from gh auth token" autocomplete="off" required autofocus>
       </div>
       <div class="settings-flow-actions"><button class="button secondary" type="button" data-action="modal#close">Cancel</button><button class="button primary" type="submit">Connect</button></div>
     </form>
@@ -332,7 +332,7 @@ function apiKeyModal(id: string, label: string, action: string, error = ""): str
       <div class="settings-flow-head">${providerIcon(id, label)}<div><b>${escapeHtml(label)}</b><p>API key</p></div></div>
       <div class="settings-flow-body"><div class="settings-oauth-card">
         ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
-        <div class="settings-oauth-input-row"><input class="settings-input" type="password" name="secret" placeholder="${escapeHtml(getProviderApiKeyExample(id) ?? "API key")}" autocomplete="off" required autofocus><button class="button primary" type="submit">Connect</button></div>
+        <div class="settings-oauth-input-row"><input class="settings-input text-field" type="password" name="secret" placeholder="${escapeHtml(getProviderApiKeyExample(id) ?? "API key")}" autocomplete="off" required autofocus><button class="button primary" type="submit">Connect</button></div>
       </div></div>
       <div class="settings-flow-actions"><button class="button secondary" formmethod="dialog">Cancel</button></div>
     </form>
@@ -450,7 +450,7 @@ function oauthDeviceCodeBody(flow: PendingOAuthFlow, pollMs: number): string {
 function oauthBrowserRedirectBody(flow: PendingOAuthFlow, pollMs: number): string {
   const authUrl = escapeHtml(flow.authUrl ?? "#");
   const prompt = flow.prompt;
-  const promptForm = prompt ? `<form class="settings-oauth-input-row" method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true" data-oauth-progress-reveal-target="prompt" hidden><input class="settings-input" name="value" placeholder="http://localhost:1455/callback?code=abc123...&state=..." required><button class="button primary" type="submit">Submit URL</button></form>` : "";
+  const promptForm = prompt ? `<form class="settings-oauth-input-row" method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/prompt" data-turbo="true" data-oauth-progress-reveal-target="prompt" hidden><input class="settings-input text-field" name="value" placeholder="http://localhost:1455/callback?code=abc123...&state=..." required><button class="button primary" type="submit">Submit URL</button></form>` : "";
   return `<div class="settings-oauth-card" data-controller="oauth-progress-reveal">
     <div class="settings-oauth-callout"><b>Before you start</b>${escapeHtml(flow.label)} assumes you will sign in on your local machine, but that’s not how Atelier works.<br><br>${escapeHtml(flow.label)} will redirect you to a localhost URL after you sign in. That URL will fail to load. You need to copy the long URL from the address bar, and paste it here.</div>
     <div class="settings-oauth-action"><div class="settings-oauth-action-row"><div><small>Sign in, approve access, then copy the final localhost URL.</small></div><a class="button primary" href="${authUrl}" target="_blank" rel="noreferrer" data-action="oauth-progress-reveal#showPrompt">Authenticate at ${escapeHtml(flow.label)}</a></div></div>

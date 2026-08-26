@@ -4,10 +4,8 @@
 .agent-tree-heading b { font-size: var(--text-small); color: var(--text); }
 .agent-tree-heading span { color: var(--text-faint); font-size: var(--text-caption); font-weight: var(--weight-medium); }
 .agent-tree-controls { display: grid; grid-template-columns: minmax(100px, 1fr) auto; gap: var(--space-sm); }
-.agent-tree-search, .agent-tree-filter { min-width: 0; height: 30px; border: 1px solid var(--line-strong); border-radius: var(--radius-control); outline: none; background: var(--bg); color: var(--text); font: var(--text-caption) var(--font-sans); }
-.agent-tree-search { padding: 0 var(--space-md); }
+.agent-tree-search, .agent-tree-filter { min-width: 0; height: 30px; background: var(--bg); font: var(--text-caption) var(--font-sans); }
 .agent-tree-filter { padding: 0 var(--space-sm); }
-.agent-tree-search:focus, .agent-tree-filter:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .agent-tree-row { position: relative; border-radius: var(--radius-control); }
 .agent-tree-option { grid-template-columns: calc((var(--tree-lane) + 1) * 18px) minmax(0, 1fr); gap: var(--space-md); min-height: 48px; padding-block: var(--space-sm); }
 .agent-tree-ribbon { align-self: stretch; height: calc(100% + 12px); margin-block: -var(--space-sm); overflow: visible; color: color-mix(in srgb, var(--text-faint) 72%, transparent); }
@@ -29,9 +27,8 @@
 .agent-tree-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: var(--text-small); line-height: var(--leading-standard); }
 .agent-tree-label-editor { display: grid; grid-template-columns: 1fr auto auto; gap: var(--space-sm); padding: var(--space-sm) var(--space-md) var(--space-md) calc((var(--tree-lane) + 1) * var(--space-xl) + var(--space-xl)); }
 .agent-tree-label-editor[hidden] { display: none; }
-.agent-tree-label-editor input { min-width: 0; height: 29px; padding: 0 var(--space-md); border: 1px solid var(--accent); border-radius: var(--radius-control); outline: none; background: var(--bg); color: var(--text); font: var(--text-caption) var(--font-sans); }
-.agent-tree-label-editor button { padding-inline: var(--space-lg); border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: var(--panel); color: var(--text-muted); font: var(--text-caption) var(--font-sans); cursor: pointer; }
-.agent-tree-label-editor .save { padding-inline: var(--space-lg); border-color: var(--accent); background: var(--accent); color: var(--bg); font-weight: var(--weight-bold); }
+.agent-tree-label-editor .text-field { height: 29px; background: var(--bg); font: var(--text-caption) var(--font-sans); }
+.agent-tree-label-editor .button { font-size: var(--text-caption); }
 .agent-tree-summary-menu { max-height: min(470px, 58vh); }
 .agent-tree-summary-menu .agent-tree-header { gap: var(--space-2xs); }
 .agent-tree-summary-choices { display: grid; gap: var(--space-2xs); padding: var(--space-sm) 0 0; }
@@ -40,11 +37,8 @@
 .agent-tree-summary-option span { color: var(--text-muted); font-size: var(--text-caption); }
 .agent-tree-custom { padding: var(--space-lg) var(--space-md) var(--space-sm); }
 .agent-tree-custom label { display: block; margin-bottom: var(--space-sm); color: var(--text); font-size: var(--text-caption); font-weight: var(--weight-bold); }
-.agent-tree-custom textarea { box-sizing: border-box; width: 100%; resize: vertical; min-height: 76px; padding: var(--space-md) var(--space-md); border: 1px solid var(--line-strong); border-radius: var(--radius-control); outline: none; background: var(--bg); color: var(--text); font: var(--text-small)/var(--leading-standard) var(--font-sans); }
-.agent-tree-custom textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.agent-tree-custom .textarea { min-height: 76px; background: var(--bg); font: var(--text-small)/var(--leading-standard) var(--font-sans); }
 .agent-tree-custom > div { display: flex; justify-content: flex-end; gap: var(--space-sm); padding-top: var(--space-md); }
-.agent-tree-custom .agent-tree-back, .agent-tree-custom .agent-tree-confirm { display: inline-flex; width: auto; padding: var(--space-sm) var(--space-md); border: 1px solid var(--line-strong); }
-.agent-tree-custom .agent-tree-confirm { border-color: var(--accent); background: var(--accent); color: var(--bg); font-weight: var(--weight-bold); }
 @media (max-width: 520px) {
   .agent-tree-controls { grid-template-columns: 1fr; }
 }

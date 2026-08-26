@@ -175,6 +175,7 @@ describe("Atelier Playwright helper", () => {
   test("Action Item auxiliary controls use the shared Button interface", async () => {
     const page = await newTestPage({ reducedMotion: "reduce" });
     await page.setContent(`<style>${workspaceStyle}</style>
+      <button id="before">Before</button>
       <div class="action-item"><button id="auxiliary" class="action-item__action button secondary icon-only" aria-label="More"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/></svg></button></div>
       <button id="standalone" class="button secondary icon-only" aria-label="More"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/></svg></button>`);
     const styles = (id: string) => page.locator(id).evaluate((element) => {
@@ -191,9 +192,98 @@ describe("Atelier Playwright helper", () => {
 
     expect(await styles("#auxiliary")).toEqual(await styles("#standalone"));
     await page.locator("#auxiliary").hover();
+    await page.waitForTimeout(10);
     const auxiliaryHover = await styles("#auxiliary");
     await page.locator("#standalone").hover();
+    await page.waitForTimeout(10);
     expect(auxiliaryHover).toEqual(await styles("#standalone"));
+    await page.locator("#before").focus();
+    await page.keyboard.press("Tab");
+    expect(await page.locator("#auxiliary:focus-visible").count()).toBe(1);
+    await page.waitForTimeout(150);
+    expect(await styles("#auxiliary")).toEqual(auxiliaryHover);
+    await page.close();
+  });
+
+  test("Text entry controls share surfaces and keyboard focus treatment", async () => {
+    const page = await newTestPage({ reducedMotion: "reduce" });
+    await page.setContent(`<style>${workspaceStyle}</style><button id="before">Before</button><input class="text-field" aria-label="Name"><textarea class="textarea" aria-label="Instructions"></textarea>`);
+    const styles = (selector: string) => page.locator(selector).evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        border: style.borderColor,
+        color: style.color,
+        radius: style.borderRadius,
+        shadow: style.boxShadow,
+      };
+    });
+
+    expect(await styles(".text-field")).toEqual(await styles(".textarea"));
+    await page.locator(".text-field").hover();
+    await page.waitForTimeout(150);
+    const hoveredField = await styles(".text-field");
+    await page.locator("#before").focus();
+    await page.keyboard.press("Tab");
+    expect(await page.locator(".text-field:focus-visible").count()).toBe(1);
+    await page.waitForTimeout(150);
+    expect(await styles(".text-field")).toEqual(hoveredField);
+    await page.keyboard.press("Tab");
+    expect(await page.locator(".textarea:focus-visible").count()).toBe(1);
+    await page.waitForTimeout(150);
+    expect(await styles(".textarea")).toEqual(hoveredField);
+    await page.close();
+  });
+
+  test("Action Items use the same hover and keyboard focus treatment", async () => {
+    const page = await newTestPage({ reducedMotion: "reduce" });
+    await page.setContent(`<style>${workspaceStyle}</style><button id="before">Before</button><button class="action-item action-item__primary">Workspace</button>`);
+    const actionItem = page.locator(".action-item");
+    const styles = () => actionItem.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { background: style.backgroundColor, color: style.color, outline: style.outline };
+    });
+
+    await actionItem.hover();
+    const hovered = await styles();
+    await page.mouse.move(1000, 700);
+    await page.locator("#before").focus();
+    await page.keyboard.press("Tab");
+    expect(await page.locator(".action-item:focus-visible").count()).toBe(1);
+    expect(await styles()).toEqual(hovered);
+    await page.close();
+  });
+
+  test("Adjacent Action Items provide their own two-pixel vertical gap", async () => {
+    const page = await newTestPage();
+    await page.setContent(`<style>${workspaceStyle}</style><button class="action-item action-item__primary">First</button><button class="action-item action-item__primary">Second</button>`);
+    const items = page.locator(".action-item");
+    const first = await items.nth(0).boundingBox();
+    const second = await items.nth(1).boundingBox();
+
+    expect(second!.y - (first!.y + first!.height)).toBe(2);
+    await page.close();
+  });
+
+  test("Disabled controls ignore pointer hover", async () => {
+    const page = await newTestPage({ reducedMotion: "reduce" });
+    await page.setContent(`<style>${workspaceStyle}</style>
+      <button class="button secondary" disabled>Button</button>
+      <input class="text-field" disabled>
+      <textarea class="textarea" disabled></textarea>
+      <button class="action-item action-item__primary" disabled>Action item</button>`);
+    const selectors = [".button", ".text-field", ".textarea", ".action-item"];
+    const styles = (selector: string) => page.locator(selector).evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { background: style.backgroundColor, border: style.borderColor, color: style.color, outline: style.outline };
+    });
+
+    for (const selector of selectors) {
+      const resting = await styles(selector);
+      await page.locator(selector).hover();
+      await page.waitForTimeout(10);
+      expect(await styles(selector)).toEqual(resting);
+    }
     await page.close();
   });
 

@@ -174,6 +174,19 @@ describe("web app contracts", () => {
     expect(await up.text()).toBe("");
   });
 
+  test("settings render shared design-system controls without legacy adapters", async () => {
+    await withTempDataDir(async () => {
+      const { app } = createTestApp();
+      const response = await app.fetch(new Request("http://test.local/settings"));
+      const body = await response.text();
+
+      expect(body).toContain('class="button');
+      expect(body).toContain('class="settings-input text-field');
+      expect(body).not.toContain("settings-btn");
+      expect(body).not.toContain("settings-button");
+    });
+  });
+
   test("GET /projects/github-search renders GitHub repository options for non-url queries", async () => {
     await withTempDataDir(async () => {
       const originalFetch = globalThis.fetch;

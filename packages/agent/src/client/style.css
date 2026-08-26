@@ -268,11 +268,6 @@
 .agent-prompt-actions { position: absolute; right: 8px; bottom: 8px; display: flex; align-items: center; gap: var(--space-md); padding: 0; z-index: 1; }
 .agent-prompt-actions .spacer { display: none; }
 
-.agent-btn {
-  font-family: inherit; font-size: var(--text-small); font-weight: var(--weight-semibold); padding: var(--space-xs) var(--space-lg); border-radius: var(--radius-control); cursor: pointer;
-  border: 1px solid var(--line-strong); background: var(--panel); color: var(--text);
-}
-.agent-btn:hover { border-color: var(--text-faint); }
 .agent-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
 .agent-btn.primary:hover { background: var(--accent); color: var(--accent-contrast); filter: brightness(.92); }
 .agent-btn.steer { background: var(--warning-soft); border-color: #eedfb4; color: var(--warning); }
@@ -339,12 +334,8 @@
 .agent-rewind-opt .t { display: block; font-weight: var(--weight-bold); font-size: var(--text-body); }
 .agent-rewind-opt .d { display: block; color: var(--text-muted); font-size: var(--text-small); line-height: var(--leading-standard); margin-top: var(--space-2xs); }
 .agent-rewind-opt > span { flex: 1; }
-.agent-rewind-opt textarea {
-  width: 100%; margin-top: var(--space-md); border: 1px solid var(--line-strong); border-radius: var(--radius-control); font-family: inherit;
-  font-size: var(--text-small); padding: var(--space-md) var(--space-md); resize: vertical; display: none; background: var(--panel); color: var(--text);
-}
-.agent-rewind-opt textarea::placeholder { color: var(--text-faint); }
-.agent-rewind-opt:has(input:checked) textarea { display: block; }
+.agent-rewind-opt .textarea { display: none; min-height: 54px; margin-top: var(--space-md); font-family: inherit; font-size: var(--text-small); }
+.agent-rewind-opt:has(input:checked) .textarea { display: block; }
 .agent-rewind-actions { display: flex; justify-content: flex-end; gap: var(--space-md); margin-top: var(--space-lg); }
 
 /* Agent pane layout */
@@ -424,7 +415,7 @@
 .agent-completion-spinner { display: inline-block; width: 12px; height: 12px; margin-right: var(--space-md); vertical-align: -2px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: agent-spin .75s linear infinite; }
 @keyframes agent-spin { to { transform: rotate(360deg); } }
 .agent-completion-option { width: 100%; display: grid; gap: var(--space-md); align-items: baseline; padding: var(--space-sm) var(--space-md); border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
-.agent-completion-option:hover, .agent-completion-option.active, .agent-template-option.visible { background: var(--bg); color: var(--text); }
+.agent-template-option.visible { background: var(--accent-soft); color: var(--text); }
 .agent-template-option { grid-template-columns: auto auto minmax(0, 1fr); }
 .agent-template-name { font-family: var(--font-mono); font-size: var(--text-small); font-weight: var(--weight-bold); color: var(--accent); }
 .agent-template-args { font-family: var(--font-mono); font-size: var(--text-caption); color: var(--text-faint); white-space: nowrap; }

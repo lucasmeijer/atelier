@@ -403,8 +403,8 @@ ${moduleStylesHtml()}
 
   function projectEnvironmentRow(project: ProjectSummary, variable: ProjectEnvironmentVariable): string {
     return `<form class="project-configuration-row project-environment-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}" data-turbo="true" data-controller="settings-autosave" data-action="change->settings-autosave#save">
-    <input name="name" value="${escapeHtml(variable.name)}" aria-label="Name" autocomplete="off">
-    <input name="value" value="${escapeHtml(variable.value)}" aria-label="Value" autocomplete="off">
+    <input class="text-field" name="name" value="${escapeHtml(variable.name)}" aria-label="Name" autocomplete="off">
+    <input class="text-field" name="value" value="${escapeHtml(variable.value)}" aria-label="Value" autocomplete="off">
     <span class="project-configuration-actions"><button class="button danger icon-only" type="submit" formaction="/projects/${encodeURIComponent(project.id)}/environment/${encodeURIComponent(variable.id)}/delete" title="Remove environment variable" aria-label="Remove environment variable"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
   </form>`;
   }
@@ -416,8 +416,8 @@ ${moduleStylesHtml()}
         <div class="project-configuration-row project-environment-row head" role="row"><span>Name</span><span>Value</span><span></span></div>
         ${environment.map((variable) => projectEnvironmentRow(project, variable)).join("")}
         <form class="project-configuration-row project-environment-row new" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/environment" data-turbo="true">
-          <input name="name" placeholder="ENV_VAR" aria-label="Name" autocomplete="off">
-          <input name="value" placeholder="Value" aria-label="Value" autocomplete="off">
+          <input class="text-field" name="name" placeholder="ENV_VAR" aria-label="Name" autocomplete="off">
+          <input class="text-field" name="value" placeholder="Value" aria-label="Value" autocomplete="off">
           <button class="button primary icon-only" type="submit" title="Add environment variable" aria-label="Add environment variable"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         </form>
       </div>
@@ -426,10 +426,10 @@ ${moduleStylesHtml()}
 
   function projectSecretRow(project: ProjectSummary, secret: ProjectSecretSummary): string {
     return `<form class="project-configuration-row project-secret-row" role="row" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}" data-turbo="true" data-controller="settings-autosave" data-action="change->settings-autosave#save">
-    <input name="envName" value="${escapeHtml(secret.envName)}" aria-label="Env" autocomplete="off">
-    <input name="hostPattern" value="${escapeHtml(secret.hostPattern)}" aria-label="Host" autocomplete="off">
-    <input name="placeholder" value="${escapeHtml(secret.placeholder ?? "")}" placeholder="Automatic" aria-label="Placeholder" autocomplete="off">
-    <input name="secretValue" type="password" placeholder="Unchanged" aria-label="Secret" autocomplete="new-password">
+    <input class="text-field" name="envName" value="${escapeHtml(secret.envName)}" aria-label="Env" autocomplete="off">
+    <input class="text-field" name="hostPattern" value="${escapeHtml(secret.hostPattern)}" aria-label="Host" autocomplete="off">
+    <input class="text-field" name="placeholder" value="${escapeHtml(secret.placeholder ?? "")}" placeholder="Automatic" aria-label="Placeholder" autocomplete="off">
+    <input class="text-field" name="secretValue" type="password" placeholder="Unchanged" aria-label="Secret" autocomplete="new-password">
     <span class="project-configuration-actions"><button class="button danger icon-only" type="submit" formaction="/projects/${encodeURIComponent(project.id)}/secrets/${encodeURIComponent(secret.id)}/delete" title="Remove secret" aria-label="Remove secret"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>
   </form>`;
   }
@@ -448,10 +448,10 @@ ${moduleStylesHtml()}
         </div>
         ${secrets.map((secret) => projectSecretRow(project, secret)).join("")}
         <form class="project-configuration-row project-secret-row new" role="row" aria-label="Add secret" method="post" action="/projects/${encodeURIComponent(project.id)}/secrets" data-turbo="true">
-          <input name="envName" placeholder="ENV_VAR" aria-label="Env" autocomplete="off">
-          <input name="hostPattern" placeholder="api.example.com or *.example.com" aria-label="Host" autocomplete="off">
-          <input name="placeholder" placeholder="Optional token-like value" aria-label="Placeholder" autocomplete="off">
-          <input name="secretValue" type="password" placeholder="Secret" aria-label="Secret" autocomplete="new-password">
+          <input class="text-field" name="envName" placeholder="ENV_VAR" aria-label="Env" autocomplete="off">
+          <input class="text-field" name="hostPattern" placeholder="api.example.com or *.example.com" aria-label="Host" autocomplete="off">
+          <input class="text-field" name="placeholder" placeholder="Optional token-like value" aria-label="Placeholder" autocomplete="off">
+          <input class="text-field" name="secretValue" type="password" placeholder="Secret" aria-label="Secret" autocomplete="new-password">
           <button class="button primary icon-only" type="submit" title="Add secret" aria-label="Add secret"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         </form>
       </div>
@@ -463,7 +463,7 @@ ${moduleStylesHtml()}
     return `<section class="project-configuration-list project-ssh-key" id="${domId("project_ssh_key", project.id)}">
       <div class="project-configuration-head"><h3>SSH key</h3><p>The private key stays on the Atelier host. Workspaces receive only an SSH agent socket, so <code>ssh</code> can authenticate to servers that list the public key in <code>authorized_keys</code> without exposing the private key.</p></div>
       <form class="project-ssh-key-form" method="post" action="${action}" data-turbo="true">
-        <label><span>${configured ? "Replace private key" : "Private key"}</span><textarea name="privateKey" placeholder="${configured ? "Leave blank to keep the current key" : "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA…\n-----END OPENSSH PRIVATE KEY-----"}" autocomplete="off"${configured ? "" : " required"}></textarea></label>
+        <label><span>${configured ? "Replace private key" : "Private key"}</span><textarea class="textarea" name="privateKey" placeholder="${configured ? "Leave blank to keep the current key" : "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA…\n-----END OPENSSH PRIVATE KEY-----"}" autocomplete="off"${configured ? "" : " required"}></textarea></label>
         <div class="project-ssh-key-command"><span>Create an unencrypted Ed25519 key:</span><code>ssh-keygen -t ed25519 -f ~/.ssh/atelier_deploy -N '' -C atelier-deploy</code><span>Paste <code>~/.ssh/atelier_deploy</code> here and add <code>~/.ssh/atelier_deploy.pub</code> to the server’s <code>authorized_keys</code>.</span></div>
         <div class="project-ssh-key-actions"><small>The private key is encrypted at rest.</small><button class="button primary" type="submit">${configured ? "Save" : "Add SSH key"}</button>${configured ? `<button class="button danger" type="submit" formaction="${action}/delete">Remove</button>` : ""}</div>
       </form>
@@ -476,7 +476,7 @@ ${moduleStylesHtml()}
       <div class="project-editor-page project-editor-detail-page">
         <header class="project-editor-detail-head"><div><small>Project settings</small><h2>${escapeHtml(project.name)}</h2></div><button class="project-editor-close button secondary icon-only" type="button" title="Close project settings" aria-label="Close project settings" data-action="modal#close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
         <div class="project-editor-detail-body">
-          <section class="project-edit-section"><div class="project-edit-section-copy"><h3>Repository</h3><p>How this project appears and where new workspaces are cloned from.</p></div><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="modal-input" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository source</span><input class="modal-input" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
+          <section class="project-edit-section"><div class="project-edit-section-copy"><h3>Repository</h3><p>How this project appears and where new workspaces are cloned from.</p></div><form class="project-edit-form" aria-label="Repository" method="post" action="/projects/${encodeURIComponent(project.id)}" data-controller="settings-autosave" data-action="change->settings-autosave#save"><label class="project-edit-field"><span>Display name</span><input class="text-field" name="name" value="${escapeHtml(project.name)}" required></label><label class="project-edit-field"><span>Repository source</span><input class="text-field" name="gitUrl" value="${escapeHtml(formatProjectSpec(project))}" required></label></form></section>
           <div class="project-edit-config"><div class="project-edit-section-copy"><h3>Workspace configuration</h3><p>Applied whenever a workspace is created from this project.</p></div>${projectEnvironmentEditor(project, environment)}${projectSecretEditor(project, secrets)}${projectSshKeyEditor(project, hasSshKey)}</div>
           <section class="project-edit-danger"><div><h3>Delete project</h3><p>Existing workspaces must be deleted first.</p></div><button class="button danger" type="button" data-controller="modal-opener" data-action="modal#close modal-opener#open" data-modal-opener-target-id-value="${domId("delete_project_modal", project.id)}">Delete project</button></section>
         </div>
@@ -485,7 +485,7 @@ ${moduleStylesHtml()}
   }
 
   function newProjectEditorFrame(): string {
-    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><header class="project-editor-detail-head"><div><small>Add project</small><h2>New project</h2></div><button class="project-editor-close button secondary icon-only" type="button" title="Close new project" aria-label="Close new project" data-action="modal#close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->modal#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="modal-input" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-completion-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer><button class="button secondary" type="button" data-action="modal#close">Cancel</button><button class="button primary" type="submit" data-turbo-submits-with="Adding…">Add project</button></footer></form></div></turbo-frame>`;
+    return `<turbo-frame id="project_editor_frame" class="project-editor-frame"><div class="project-editor-page project-editor-detail-page"><header class="project-editor-detail-head"><div><small>Add project</small><h2>New project</h2></div><button class="project-editor-close button secondary icon-only" type="button" title="Close new project" aria-label="Close new project" data-action="modal#close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header><form class="project-editor-new-form" aria-label="Add project" method="post" action="/projects" data-turbo="true" data-action="turbo:submit-end->modal#submitted"><div><h3>Repository source</h3><p>Save a remote URL, local path, or search for a GitHub repository.</p><div class="project-github-search" data-controller="project-github-search" data-project-github-search-url-value="/projects/github-search"><input class="text-field" name="gitUrl" placeholder="github.com/org/repo, or /path/to/repo#branch" required autofocus data-project-github-search-target="input" data-action="keydown->project-github-search#keydown input->project-github-search#input"><div class="agent-completion-menu-host project-github-search-menu" data-project-github-search-target="menu" hidden></div></div></div><footer><button class="button secondary" type="button" data-action="modal#close">Cancel</button><button class="button primary" type="submit" data-turbo-submits-with="Adding…">Add project</button></footer></form></div></turbo-frame>`;
   }
 
   function projectEditorModal(): string {

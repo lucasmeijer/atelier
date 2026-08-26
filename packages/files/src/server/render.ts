@@ -71,7 +71,7 @@ function renderEntryRow(workspaceId: string, entry: FileEntry, showConcealed: bo
   const kindLabel = entry.kind === "directory" ? "folder" : "file";
   const expandedAttribute = entry.kind === "directory" ? ` aria-expanded="${expanded}"` : "";
   const viewAsRoot = entry.kind === "directory"
-    ? `<a href="${escapeHtml(directoryUrl(workspaceId, entry.path, showConcealed))}" data-turbo-frame="${filesFrameId(workspaceId)}" role="menuitem">View as root</a>`
+    ? `<a class="action-item action-item__primary" href="${escapeHtml(directoryUrl(workspaceId, entry.path, showConcealed))}" data-turbo-frame="${filesFrameId(workspaceId)}" role="menuitem">View as root</a>`
     : "";
   return `<div class="files-row action-item${concealed}" role="treeitem" tabindex="-1" data-kind="${entry.kind}" data-action="${actions}"${drop}${expandedAttribute}>
     <span class="files-row-icon" aria-hidden="true">${icon}</span>
@@ -80,12 +80,12 @@ function renderEntryRow(workspaceId: string, entry: FileEntry, showConcealed: bo
     <button class="files-actions-toggle action-item__action button secondary icon-only" type="button" aria-label="Actions for ${escapeHtml(entry.name)}" aria-haspopup="menu" aria-controls="${menuId}" data-action="files#toggleMenu"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
     <div class="files-actions-menu" id="${menuId}" role="menu" popover="auto">
       ${viewAsRoot}
-      <button type="button" role="menuitem" data-files-copy-url="${escapeHtml(contentUrl)}" data-action="files#copyUrl">Copy URL</button>
-      <a href="${escapeHtml(contentUrl)}" download="${escapeHtml(downloadName)}" role="menuitem" data-turbo="false">Download</a>
+      <button class="action-item action-item__primary" type="button" role="menuitem" data-files-copy-url="${escapeHtml(contentUrl)}" data-action="files#copyUrl">Copy URL</button>
+      <a class="action-item action-item__primary" href="${escapeHtml(contentUrl)}" download="${escapeHtml(downloadName)}" role="menuitem" data-turbo="false">Download</a>
       <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/delete" data-turbo-frame="${filesFrameId(workspaceId)}" data-turbo-confirm="Delete ${escapeHtml(entry.name)}? This cannot be undone.">
         <input type="hidden" name="path" value="${escapeHtml(entry.path)}">
         ${showConcealed ? '<input type="hidden" name="showHidden" value="1">' : ""}
-        <button class="danger" type="submit" role="menuitem">Delete ${kindLabel}</button>
+        <button class="danger action-item action-item__primary" type="submit" role="menuitem">Delete ${kindLabel}</button>
       </form>
     </div>
   </div>`;

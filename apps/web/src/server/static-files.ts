@@ -32,5 +32,6 @@ export const fingerprintedStaticFiles: StaticFileRegistry = {
 
 export const legacyStaticFiles: StaticFileRegistry = {
   "/workspace.js": { url: new URL("../../public/workspace.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
+  "/design-system-catalogue.html": { url: new URL("../../public/design-system-catalogue.html", import.meta.url), contentType: "text/html; charset=utf-8" },
   ...fingerprintedStaticFiles,
 };
