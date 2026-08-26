@@ -63,6 +63,7 @@ export interface ObservableTerminalViewer {
   dispose(): void;
   focus(): void;
   fitToHost(): void;
+  sendInput(data: string): void;
   setTheme(theme: ObservableTerminalTheme): void;
 }
 
@@ -80,6 +81,7 @@ export interface ObservableTerminalViewerOptions {
   loadFont?: boolean;
   disconnectedMessage?: string;
   errorMessage?: string;
+  transformInput?: (data: string) => string;
   onProgress?: (progress: { state: number; value?: number }) => void;
   onOutput?: (text: string) => void;
   onClose?: () => void;
@@ -154,6 +156,9 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
 
   const ws = new WebSocket(options.websocketUrl);
   ws.binaryType = "arraybuffer";
+  const sendInput = (data: string): void => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(data);
+  };
   const outputDecoder = new TextDecoder();
 
   if (options.mode === "interactive") {
@@ -168,7 +173,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
       if (ws.readyState === WebSocket.OPEN) ws.send(encodeObservableTerminalMessage({ type: "resize", cols, rows }));
     });
     term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(data);
+      if (ws.readyState === WebSocket.OPEN) sendInput(options.transformInput?.(data) ?? data);
     });
   }
 
@@ -193,6 +198,7 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
   const viewer: ObservableTerminalViewer = {
     focus: () => term.focus(),
     fitToHost: () => fit?.fit(),
+    sendInput,
     setTheme: (nextTheme) => {
       term.options.theme = nextTheme;
     },
