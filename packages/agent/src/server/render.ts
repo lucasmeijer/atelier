@@ -337,7 +337,7 @@ ${serviceTier ? `<label class="agent-fast-toggle" title="${fastModeTitle(service
 
 function renderTranscriptNavigation(): string {
   return `<div class="agent-transcript-navs">
-    <button class="agent-transcript-nav" type="button" data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToLatestMessage" title="Jump to beginning of latest message" aria-label="Jump to beginning of latest message" aria-hidden="true" disabled>
+    <button class="button icon-only agent-transcript-nav" type="button" data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToLatestMessage" title="Jump to beginning of latest message" aria-label="Jump to beginning of latest message" aria-hidden="true" disabled>
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 16h12M10 4v9m-4-4 4 4 4-4"/></svg>
     </button>
   </div>`;
