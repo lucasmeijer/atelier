@@ -1561,8 +1561,12 @@ function focusAgentPrompt(pane?: AgentPromptContainer | null): boolean {
   return true;
 }
 
-export function focusAgentPromptOnWideViewport(pane?: AgentPromptContainer | null, isPhone = window.matchMedia(phoneViewportMediaQuery).matches): boolean {
-  return !isPhone && focusAgentPrompt(pane);
+export function focusAgentPromptOnWideViewport(
+  pane?: AgentPromptContainer | null,
+  isPhone = window.matchMedia(phoneViewportMediaQuery).matches,
+  documentFocused = document.hasFocus(),
+): boolean {
+  return documentFocused && !isPhone && focusAgentPrompt(pane);
 }
 
 function agentConversationBecameVisible(application: StimulusApplication, pane: HTMLElement): void {

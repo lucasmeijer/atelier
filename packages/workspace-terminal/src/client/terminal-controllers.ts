@@ -124,7 +124,7 @@ async function startTerminal(workspaceId: string, terminalId: string, options: {
 
     startingTerminals.delete(key);
     const shouldFocus = pendingTerminalFocus.delete(key) || focus;
-    if (shouldFocus) viewer.focus();
+    if (shouldFocus && document.hasFocus()) viewer.focus();
   } catch (error) {
     startingTerminals.delete(key);
     pendingTerminalFocus.delete(key);
@@ -185,7 +185,7 @@ function createTerminalPaneController(Controller: StimulusControllerConstructor)
       this.element.addEventListener("focusout", this.syncKeyboardAccessory);
       this.viewport.addEventListener("resize", this.syncKeyboardAccessory);
       if (isWorkspacePaneVisible(this.element)) {
-        void startTerminal(this.workspaceIdValue, this.idValue, { focus: true });
+        void startTerminal(this.workspaceIdValue, this.idValue, { focus: document.hasFocus() });
       }
     }
 
@@ -223,7 +223,7 @@ export const workspaceTerminalClientModule: WorkspaceClientModule = {
     application.register("terminal-pane", createTerminalPaneController(Controller));
     hooks.onBecomeVisible(({ workspaceId, surfaceKey }) => {
       const terminalId = terminalIdFromViewKey(surfaceKey);
-      if (terminalId) void startTerminal(workspaceId, terminalId);
+      if (terminalId) void startTerminal(workspaceId, terminalId, { focus: document.hasFocus() });
     });
     hooks.onNoLongerVisible(({ workspaceId, surfaceKey }) => {
       const terminalId = terminalIdFromViewKey(surfaceKey);

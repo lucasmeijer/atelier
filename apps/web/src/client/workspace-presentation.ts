@@ -332,7 +332,7 @@ export function createWorkspacePresentationController(
 
       const after = this.visiblePanes();
       if (options.emit) this.emitVisibilityChanges(before, after);
-      if (options.focus) this.focusActiveSurface();
+      if (options.focus && document.hasFocus()) this.focusActiveSurface();
     }
 
     private visiblePanes(): PresentationPane[] {

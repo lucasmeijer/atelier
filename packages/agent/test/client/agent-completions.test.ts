@@ -18,7 +18,7 @@ describe("agent prompt focus", () => {
     const focus = mock(() => {});
     const pane = { querySelector: () => ({ focus }) };
 
-    expect(focusAgentPromptOnWideViewport(pane, false)).toBe(true);
+    expect(focusAgentPromptOnWideViewport(pane, false, true)).toBe(true);
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
   });
 
@@ -26,7 +26,15 @@ describe("agent prompt focus", () => {
     const focus = mock(() => {});
     const pane = { querySelector: () => ({ focus }) };
 
-    expect(focusAgentPromptOnWideViewport(pane, true)).toBe(false);
+    expect(focusAgentPromptOnWideViewport(pane, true, true)).toBe(false);
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  test("leaves the Agent pane unfocused when its document does not own focus", () => {
+    const focus = mock(() => {});
+    const pane = { querySelector: () => ({ focus }) };
+
+    expect(focusAgentPromptOnWideViewport(pane, false, false)).toBe(false);
     expect(focus).not.toHaveBeenCalled();
   });
 });
