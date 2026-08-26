@@ -119,8 +119,15 @@ function workViewCloseForm(close: ViewCloseAction): string {
   return closeForm(close, selectorCloseButton(close, "x"), ' class="fixed-shell-work-view-close" hidden');
 }
 
+function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
+  if (workspace.busy) return '<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy" title="Workspace busy"></i>';
+  if (workspace.unreadAt !== undefined && !workspace.active) return '<i class="fixed-shell-attention-dot" aria-label="Agent ready"></i>';
+  if (workspace.outdated) return '<i class="fixed-shell-workspace-warning" aria-label="Workspace created with an older version of Atelier" title="Some newer features may require a new workspace">⚠︎</i>';
+  return "";
+}
+
 function renderWorkspaceRowContent(workspace: WorkspacePaneEntry): string {
-  return `<i class="fixed-shell-workspace-color" aria-hidden="true"></i><span class="fixed-shell-workspace-name"><span>${escapeHtml(workspace.title)}</span></span>${workspace.outdated ? '<i class="fixed-shell-workspace-warning" aria-label="Workspace created with an older version of Atelier" title="Some newer features may require a new workspace">⚠︎</i>' : ""}${workspace.busy ? '<i class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy" title="Workspace busy"></i>' : workspace.unreadAt !== undefined && !workspace.active ? '<i class="fixed-shell-attention-dot" aria-label="Agent ready"></i>' : ""}`;
+  return `<i class="fixed-shell-workspace-color" aria-hidden="true"></i><span class="fixed-shell-workspace-name"><span>${escapeHtml(workspace.title)}</span></span>${renderWorkspaceRowStatus(workspace)}`;
 }
 
 function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string): string {

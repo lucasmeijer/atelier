@@ -73,6 +73,21 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
   });
 
+  test("shows the outdated-image warning only when no higher-priority status is present", () => {
+    const row = (status: { busy?: boolean; unreadAt?: number }) => renderWorkspacePane({
+      projects: [],
+      projectlessWorkspaces: [{ id: "workspace", title: "Workspace", outdated: true, ...status }],
+    });
+
+    const busy = row({ busy: true });
+    const unread = row({ unreadAt: 123 });
+    expect(row({})).toContain("fixed-shell-workspace-warning");
+    expect(busy).toContain("fixed-shell-workspace-busy");
+    expect(busy).not.toContain("fixed-shell-workspace-warning");
+    expect(unread).toContain("fixed-shell-attention-dot");
+    expect(unread).not.toContain("fixed-shell-workspace-warning");
+  });
+
   test("renders a parked disclosure only inside Projects that have parked Workspaces", () => {
     const html = renderWorkspacePane({
       projects: [
