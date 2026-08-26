@@ -116,10 +116,6 @@ function selectorCloseForm(close: ViewCloseAction): string {
   return closeForm(close, selectorCloseButton(close));
 }
 
-function workViewCloseForm(close: ViewCloseAction): string {
-  return closeForm(close, selectorCloseButton(close), ' class="fixed-shell-work-view-close" hidden');
-}
-
 function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
   if (workspace.busy) return '<i class="status-spinner sm fixed-shell-workspace-busy action-item__status" aria-label="Workspace busy" title="Workspace busy"></i>';
   if (workspace.unreadAt !== undefined && !workspace.active) return '<i class="fixed-shell-attention-dot action-item__status" aria-label="Agent ready"></i>';
@@ -258,7 +254,7 @@ function renderLiveNode(key: string, role: "agent" | "work", id: string, bodyHtm
 
 function renderWorkViewSelector(view: WorkPaneContribution): string {
   return `<div class="fixed-shell-work-view-selector action-item" draggable="true" data-work-view-reorder-key="${escapeHtml(view.key)}" data-action="dragstart->workspace-presentation#beginWorkReorder dragover->workspace-presentation#allowWorkReorder drop->workspace-presentation#finishWorkReorder">
-    <button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}"${view.attentionSequence === undefined ? "" : ` data-attention-sequence="${view.attentionSequence}"`} data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(view.sourceKey ?? view.key)}" data-atelier-fullscreen-title-value="${escapeHtml(view.label)}" data-action="click->workspace-presentation#selectWorkView">${actionItemLabel(view.label)}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot action-item__status" aria-label="Attention"></i>'}</button>${view.close ? workViewCloseForm(view.close) : ""}
+    <button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}"${view.attentionSequence === undefined ? "" : ` data-attention-sequence="${view.attentionSequence}"`} data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(view.sourceKey ?? view.key)}" data-atelier-fullscreen-title-value="${escapeHtml(view.label)}" data-action="click->workspace-presentation#selectWorkView">${actionItemLabel(view.label)}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot action-item__status" aria-label="Attention"></i>'}</button>${view.close ? selectorCloseForm(view.close) : ""}
   </div>`;
 }
 

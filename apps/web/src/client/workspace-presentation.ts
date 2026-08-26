@@ -314,7 +314,6 @@ export function createWorkspacePresentationController(
         const active = selector.dataset.workViewKey === this.state.activeWorkViewKey;
         selector.setAttribute("aria-selected", String(active));
         selector.tabIndex = active ? 0 : -1;
-        selector.closest(".fixed-shell-work-view-selector")?.querySelector(".fixed-shell-work-view-close")?.toggleAttribute("hidden", !active);
       });
       this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role='work']").forEach((pane) => pane.classList.toggle("is-active", pane.dataset.workspacePaneId === this.state.activeWorkViewKey));
       this.element.querySelectorAll<HTMLElement>("[data-mobile-destination]").forEach((destination) => {

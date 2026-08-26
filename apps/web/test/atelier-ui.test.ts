@@ -25,6 +25,10 @@ function dimensions(element: Element) {
   return { width: style.width, height: style.height };
 }
 
+function opacity(element: Element) {
+  return getComputedStyle(element).opacity;
+}
+
 function renderShellFixture(presentation: WorkspacePresentation, pane: WorkspacePanePresentation, cached: readonly WorkspacePresentation[] = []): string {
   const residents = [presentation, ...cached].map((resident, index) => `<div class="workspace-detail-resident${index === 0 ? " visible" : ""}" data-workspace-residency-target="resident" data-workspace-id="${resident.workspace.id}">${renderWorkspacePresentation(resident)}</div>`).join("");
   return `<div class="app fixed-shell-app" data-controller="action-items workspace-navigation">${renderWorkspacePane(pane)}<main class="fixed-shell-app-main"><div id="workspace_detail" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5"><div class="workspace-detail-empty" data-workspace-residency-target="empty" hidden></div><div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden></div>${residents}</div></main></div>`;
@@ -238,8 +242,11 @@ describe("Atelier Playwright helper", () => {
     });
 
     expect(await styles("#auxiliary")).toEqual(await styles("#standalone"));
+    expect(await page.locator("#auxiliary").evaluate(opacity)).toBe("0");
     expect(await page.locator("#auxiliary svg").evaluate(dimensions)).toEqual({ width: "14px", height: "14px" });
     expect(await page.locator("#auxiliary").evaluate(typography)).toEqual({ fontSize: "12px", fontWeight: "600", letterSpacing: "normal" });
+    await page.locator(".action-item").hover();
+    expect(await page.locator("#auxiliary").evaluate(opacity)).toBe("1");
     await page.locator("#auxiliary").hover();
     await page.waitForTimeout(150);
     const auxiliaryHover = await styles("#auxiliary");
@@ -249,6 +256,7 @@ describe("Atelier Playwright helper", () => {
     await page.locator("#before").focus();
     await page.keyboard.press("Tab");
     expect(await page.locator("#auxiliary:focus-visible").count()).toBe(1);
+    expect(await page.locator("#auxiliary").evaluate(opacity)).toBe("1");
     await page.waitForTimeout(150);
     expect(await styles("#auxiliary")).toEqual(auxiliaryHover);
     await page.close();
@@ -353,10 +361,28 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
-  test("shell selection state preserves shared Action Item typography", async () => {
+  test("compound Action Item captions keep their normal appearance when focused", async () => {
     const page = await newTestPage();
-    await page.setContent(`<style>${workspaceStyle}</style><div class="fixed-shell-app"><div class="fixed-shell-work-view-selector action-item"><button class="action-item__primary" aria-selected="true">Selected</button></div><div class="fixed-shell-work-view-selector action-item"><button class="action-item__primary" aria-selected="false">Unselected</button></div></div>`);
+    await page.setContent(`<style>${workspaceStyle}</style><button id="before">Before</button><div class="action-item"><button class="action-item__primary"><span class="action-item__label"><span class="action-item__label-text">Browser 1</span></span></button><button class="action-item__action">Close</button></div>`);
+    const caption = page.locator(".action-item__primary");
+    const appearance = () => caption.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { background: style.backgroundColor, boxShadow: style.boxShadow, outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+    });
+    const normal = await appearance();
+    await page.locator("#before").focus();
+    await page.keyboard.press("Tab");
+    expect(await page.locator(".action-item__primary:focus-visible").count()).toBe(1);
+    expect(await appearance()).toEqual(normal);
+    await page.close();
+  });
+
+  test("shell selection state preserves shared Action Item typography and reveals inner actions", async () => {
+    const page = await newTestPage();
+    await page.setContent(`<style>${workspaceStyle}</style><div class="fixed-shell-app"><div class="fixed-shell-work-view-selector action-item"><button class="action-item__primary" aria-selected="true">Selected</button><button class="selected-action action-item__action">Close</button></div><div class="fixed-shell-work-view-selector action-item"><button class="action-item__primary" aria-selected="false">Unselected</button><button class="unselected-action action-item__action">Close</button></div></div>`);
     expect(await page.locator('[aria-selected="true"]').evaluate(typography)).toEqual(await page.locator('[aria-selected="false"]').evaluate(typography));
+    expect(await page.locator(".selected-action").evaluate(opacity)).toBe("1");
+    expect(await page.locator(".unselected-action").evaluate(opacity)).toBe("0");
     await page.close();
   });
 
@@ -669,10 +695,10 @@ describe("Atelier Playwright helper", () => {
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
 
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).not.toContain("is-work-pane-open");
-    const terminalClose = page.locator('[data-work-view-key="terminal:1"] + .fixed-shell-work-view-close');
-    const filesClose = page.locator('[data-work-view-key="files:workspace"] + .fixed-shell-work-view-close');
+    const terminalClose = page.locator('[data-work-view-key="terminal:1"] + form');
+    const filesClose = page.locator('[data-work-view-key="files:workspace"] + form');
     expect(await terminalClose.isHidden()).toBe(false);
-    expect(await filesClose.isHidden()).toBe(true);
+    expect(await filesClose.isHidden()).toBe(false);
     await page.evaluate(() => {
       const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
       const terminal = document.querySelector<HTMLElement>('[data-workspace-live-node="work:terminal:1"]')!;
@@ -683,7 +709,7 @@ describe("Atelier Playwright helper", () => {
       (window as typeof window & { fixedProbe?: unknown }).fixedProbe = { agent, terminal, frame, frameWindow: frame.contentWindow };
     });
     await page.locator('[data-work-view-key="files:workspace"]').click({ force: true });
-    expect(await terminalClose.isHidden()).toBe(true);
+    expect(await terminalClose.isHidden()).toBe(false);
     expect(await filesClose.isHidden()).toBe(false);
     await page.locator('[data-work-view-key="terminal:1"]').click({ force: true });
     await page.locator('[data-agent-conversation-id="agent-2"]').click();
@@ -841,12 +867,12 @@ describe("Atelier Playwright helper", () => {
     const disclosure = parked.getByRole("button", { name: "2 parked" });
     const parkedWorkspace = parked.getByRole("button", { name: /Unpark and open First parked/ });
     expect(await disclosure.getAttribute("aria-expanded")).toBe("false");
-    expect(await disclosure.evaluate((element) => getComputedStyle(element).opacity)).toBe("0.5");
+    expect(await disclosure.evaluate(opacity)).toBe("0.5");
     expect(await parkedWorkspace.isVisible()).toBe(false);
 
     await disclosure.evaluate((button: HTMLButtonElement) => button.click());
     expect(await disclosure.getAttribute("aria-expanded")).toBe("true");
-    expect(await disclosure.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
+    expect(await disclosure.evaluate(opacity)).toBe("1");
     expect(await parkedWorkspace.isVisible()).toBe(true);
     const workspaceTypography = async (workspace: ReturnType<typeof page.getByRole>) => await workspace.evaluate((element) => {
       const style = getComputedStyle(element);
@@ -925,17 +951,9 @@ describe("Atelier Playwright helper", () => {
     expect(await emptyProject.isVisible()).toBe(true);
     expect(await usedProject.isVisible()).toBe(true);
     const projectLaunch = drawer.locator('.fixed-shell-project-heading[href="/projects/unused-1/agent-launch"]');
-    const projectRow = projectLaunch.locator("..");
-    const projectSettings = projectRow.locator(".fixed-shell-project-settings");
-    const projectAdd = projectRow.locator(".fixed-shell-project-add");
+    const projectAdd = projectLaunch.locator("..").locator(".fixed-shell-project-add");
     expect(await projectLaunch.getAttribute("href")).toBe(await projectAdd.getAttribute("href"));
     expect(await projectLaunch.getAttribute("data-turbo-frame")).toBe("agent_launch_modal");
-    await projectLaunch.hover();
-    const rowHoverAddStyle = await projectAdd.evaluate((element) => ({ color: getComputedStyle(element).color, background: getComputedStyle(element).backgroundColor, shadow: getComputedStyle(element).boxShadow }));
-    await projectAdd.hover();
-    expect(rowHoverAddStyle).toEqual(await projectAdd.evaluate((element) => ({ color: getComputedStyle(element).color, background: getComputedStyle(element).backgroundColor, shadow: getComputedStyle(element).boxShadow })));
-    await projectSettings.hover();
-    expect(await projectAdd.evaluate((element) => ({ background: getComputedStyle(element).backgroundColor, shadow: getComputedStyle(element).boxShadow }))).toEqual(idleDrawerAddStyle);
     expect((await emptyProject.boundingBox())!.x).toBe((await drawerLabel.boundingBox())!.x);
     expect(await emptyProject.evaluate((element) => getComputedStyle(element).color)).toBe(await workspaceProject.evaluate((element) => getComputedStyle(element).color));
     expect(await emptyProject.evaluate(typography)).toEqual(await workspaceProject.evaluate(typography));

@@ -357,6 +357,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .action-item:not([aria-disabled="true"]):has(:focus-visible),
 .action-item:has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"])),
 .action-item.action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]) { outline: none; background: var(--accent-soft); color: var(--text); }
+.action-item :is(.action-item__primary, .action-item__label-text):focus-visible { outline: none; }
 .action-item__label { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
 .action-item__label-text { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .action-item.is-label-scrolling .action-item__label-text { width: max-content; overflow: visible; text-overflow: clip; animation: action-item-label-scroll var(--action-item-label-scroll-duration) linear infinite alternate; }
@@ -366,7 +367,11 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   85%, 100% { transform: translateX(calc(-1 * var(--action-item-label-scroll-distance))); }
 }
 .action-item__status { flex: 0 0 auto; }
-.action-item__action { flex: 0 0 auto; }
+.action-item__action { flex: 0 0 auto; opacity: 0; pointer-events: none; }
+.action-item:is(:hover, :focus-within, :has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]))) .action-item__action { opacity: 1; pointer-events: auto; }
+@media (hover: none) {
+  .action-item__action { opacity: 1; pointer-events: auto; }
+}
 .action-item__primary:disabled,
 .action-item[aria-disabled="true"] { opacity: .45; cursor: default; }
 @media (prefers-reduced-motion: reduce) {

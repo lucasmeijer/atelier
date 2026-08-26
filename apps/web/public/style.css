@@ -380,11 +380,6 @@ turbo-frame { display: contents; }
   .fixed-workspace-presentation:not(.is-work-pane-open) .fixed-shell-work-pane { display: none; }
 }
 .fixed-shell-work-pane > header { gap: var(--space-sm); padding: var(--space-sm) var(--space-md); }
-.fixed-shell-work-view-selector { min-width: 84px; max-width: 220px; flex: 1 1 130px; }
-.fixed-shell-work-view-selector > .action-item__primary { padding: 0 var(--space-md) 0 var(--space-lg); gap: var(--space-sm); }
-.fixed-shell-work-view-selector > form { align-items: center; }
-.fixed-shell-work-view-selector > form:not([hidden]) { display: flex; }
-.fixed-shell-work-view-close { margin-right: var(--space-2xs); align-self: center; }
 
 .fixed-shell-work-resizer { position: absolute; z-index: 3; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; touch-action: none; }
 .fixed-shell-work-resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; }
