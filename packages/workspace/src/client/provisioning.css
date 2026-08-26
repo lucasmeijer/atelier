@@ -1,20 +1,20 @@
 @import url("/observable-terminal.css");
 
-.provision-heading { display: flex; align-items: center; gap: 10px; }
-.provision-heading b { font-size: 14px; }
-.provision-output-log { max-height: min(52vh, 520px); overflow: auto; white-space: pre-wrap; word-break: break-word; background: #0f172a; color: #dbeafe; border-radius: 10px; padding: 12px; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
-.workspace-provision { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
-.provision-list, .provision-children { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.provision-children { margin: 10px 0 0 26px; }
-.provision-step { border-left: 2px solid var(--line); padding-left: 10px; }
+.provision-heading { display: flex; align-items: center; gap: var(--space-2-5); }
+.provision-heading b { font-size: var(--text-body); }
+.provision-output-log { max-height: min(52vh, 520px); overflow: auto; white-space: pre-wrap; word-break: break-word; background: #0f172a; color: #dbeafe; border-radius: var(--radius-lg); padding: var(--space-3); font: var(--text-xs)/var(--leading-compact) ui-monospace, SFMono-Regular, Menlo, monospace; }
+.workspace-provision { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3-5); }
+.provision-list, .provision-children { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2-5); }
+.provision-children { margin: var(--space-2-5) 0 0 var(--space-6); }
+.provision-step { border-left: 2px solid var(--line); padding-left: var(--space-2-5); }
 .provision-step.done { border-left-color: var(--green); }
 .provision-step.running { border-left-color: var(--blue); }
 .provision-step.failed { border-left-color: var(--red); }
-.provision-step-row { display: flex; align-items: flex-start; gap: 10px; }
+.provision-step-row { display: flex; align-items: flex-start; gap: var(--space-2-5); }
 .provision-step-icon { width: 16px; text-align: center; color: var(--muted); }
 .provision-step.done .provision-step-icon { color: var(--green); }
 .provision-step.running .provision-step-icon { color: var(--blue); }
 .provision-step.failed .provision-step-icon, .provision-error { color: var(--red); }
-.provision-terminal { height: 300px; margin: 10px 0 0 26px; border-radius: 10px; overflow: hidden; border: 1px solid var(--terminal-border, var(--line)); }
-.provision-output { margin: 10px 0 0 26px; }
-.provision-error { margin: 8px 0 0 26px; white-space: pre-wrap; }
+.provision-terminal { height: 300px; margin: var(--space-2-5) 0 0 var(--space-6); border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--terminal-border, var(--line)); }
+.provision-output { margin: var(--space-2-5) 0 0 var(--space-6); }
+.provision-error { margin: var(--space-2) 0 0 var(--space-6); white-space: pre-wrap; }

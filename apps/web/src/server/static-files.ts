@@ -24,6 +24,7 @@ export const fingerprintedStaticFiles: StaticFileRegistry = {
   "/icon-512.png": { url: new URL("../../public/icon-512.png", import.meta.url), contentType: "image/png" },
   "/manifest.webmanifest": { url: new URL("../../public/manifest.webmanifest", import.meta.url), contentType: "application/manifest+json; charset=utf-8" },
   "/service-worker.js": { url: new URL("../client/service-worker.js", import.meta.url), contentType: "text/javascript; charset=utf-8" },
+  "/design-system.css": { url: new URL("../../public/design-system.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/style.css": { url: new URL("../../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   ...workspaceProvisioningStaticFiles,
   ...workspaceModuleStaticFiles(),

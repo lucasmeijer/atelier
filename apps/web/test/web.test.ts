@@ -1025,6 +1025,10 @@ describe("web app contracts", () => {
     const html = await page.text();
     expect(html).toContain('data-controller="cable-shell"');
     expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">');
+    expect(html).toMatch(/<link rel="stylesheet" href="\/(?:assets\/design-system-[^"]+\.css|design-system\.css)">/);
+    const designSystemStylesheetIndex = html.search(/href="\/(?:assets\/design-system-|design-system\.css)/);
+    const shellStylesheetIndex = html.search(/href="\/(?:assets\/style-|style\.css)/);
+    expect(designSystemStylesheetIndex).toBeLessThan(shellStylesheetIndex);
     expect(html).toMatch(/<script type="module" src="\/(?:assets\/)?workspace-[^"]+\.js"><\/script>|<script type="module" src="\/workspace\.js"><\/script>/);
     expect(html).not.toContain("cdn.jsdelivr.net");
     expect(html).not.toContain("turbo-stream-source");

@@ -19,7 +19,9 @@ beforeAll(async () => {
   // SAFETY: The test fixture controls this value and establishes the asserted shape.
   const manifest = await Bun.file(new URL("../public/assets-manifest.json", import.meta.url)).json() as Record<string, string>;
   workspaceClient = await Bun.file(new URL(`../public${manifest["/workspace.js"]}`, import.meta.url)).text();
-  workspaceStyle = await Bun.file(new URL("../public/style.css", import.meta.url)).text();
+  const designSystemStyle = await Bun.file(new URL("../public/design-system.css", import.meta.url)).text();
+  const shellStyle = await Bun.file(new URL("../public/style.css", import.meta.url)).text();
+  workspaceStyle = `${designSystemStyle}\n${shellStyle}`;
   const executablePath = process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/local/bin/chromium";
   browser = await chromium.launch({ executablePath, headless: true });
 });
@@ -41,6 +43,17 @@ describe("Atelier Playwright helper", () => {
     expect(await atelierUi.newProjectSecretForm(page).count()).toBe(1);
     expect(await atelierUi.agentLaunchPrompt(page).count()).toBe(1);
     expect(await atelierUi.currentAgentPrompt(page, "agent:Agent 1").count()).toBe(1);
+    await page.close();
+  });
+
+  test("keeps the settings dialog styled by the shared design system", async () => {
+    const page = await browser.newPage();
+    await page.setContent(`<style>${workspaceStyle}</style><dialog class="settings-dialog" open><div class="settings-sheet"><main class="settings-main"><h1 class="settings-title">Settings</h1><section class="settings-sec"><h2>Theme</h2></section></main></div></dialog>`);
+
+    expect(await page.locator(".settings-dialog").evaluate((dialog) => {
+      const style = getComputedStyle(dialog);
+      return { width: style.width, background: style.backgroundColor, borderRadius: style.borderRadius };
+    })).toEqual({ width: "760px", background: "rgb(255, 255, 255)", borderRadius: "18px" });
     await page.close();
   });
 

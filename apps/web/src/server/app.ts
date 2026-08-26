@@ -321,6 +321,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#172033">
+<link rel="stylesheet" href="${assetPath("/design-system.css")}">
 <link rel="stylesheet" href="${assetPath("/style.css")}">
 <link rel="stylesheet" href="${assetPath("/provisioning.css")}">
 ${moduleStylesHtml()}
