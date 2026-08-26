@@ -11,7 +11,6 @@ export interface CableSubscriptionOptions {
 
 const cableIdentifierSchema = Type.Union([
   Type.Object({ channel: Type.Literal("shell") }),
-  Type.Object({ channel: Type.Literal("update") }),
   Type.Object({ channel: Type.Literal("workspace"), workspaceId: Type.String({ minLength: 1 }) }),
   Type.Object({ channel: Type.Literal("agent"), workspaceId: Type.String({ minLength: 1 }), label: Type.String({ minLength: 1 }) }),
 ]);
@@ -76,7 +75,6 @@ function requireNonEmpty(value: string, message: string): string {
 
 export const CableTopics = {
   shell(): CableIdentifier { return { channel: "shell" }; },
-  update(): CableIdentifier { return { channel: "update" }; },
   workspace(workspaceId: string): CableIdentifier {
     return { channel: "workspace", workspaceId: requireNonEmpty(workspaceId, "workspace identifier must not be empty") };
   },
@@ -92,7 +90,6 @@ export const CableTopics = {
 export function serializeCableIdentifier(identifier: CableIdentifier): string {
   switch (identifier.channel) {
     case "shell": return JSON.stringify(["shell"]);
-    case "update": return JSON.stringify(["update"]);
     case "workspace": return JSON.stringify(["workspace", requireNonEmpty(identifier.workspaceId, "workspace identifier must not be empty")]);
     case "agent": return JSON.stringify([
       "agent",

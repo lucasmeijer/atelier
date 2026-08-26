@@ -72,7 +72,7 @@ export function createCableServer(options: CableServerOptions): CableServer {
   heartbeat.unref?.();
 
   async function authorize(identifier: CableIdentifier): Promise<void> {
-    if (identifier.channel === "shell" || identifier.channel === "update") return;
+    if (identifier.channel === "shell") return;
     if (identifier.channel === "workspace") {
       if (!options.registry.get(identifier.workspaceId)) throw new AtelierCoreError("workspace_not_found", `workspace not found: ${identifier.workspaceId}`);
       return;

@@ -85,12 +85,17 @@ function runtime(currentRevision = "old", selfUpdateCompatibility?: string): Sel
 
 function context() {
   const sidebar: string[] = [];
+  const broadcasts: string[] = [];
   return {
     sidebar,
+    broadcasts,
     ctx: {
       events: createAtelierEventBus(),
       registry: { setViewBusy: () => {}, setViewUnread: () => {} },
-      globalSidebarContributions: { set: (_id: string, html?: string) => sidebar.push(html ?? "") },
+      globalSidebarContributions: { set: (_id: string, html?: string, options?: { broadcastHtml?: string }) => {
+        sidebar.push(html ?? "");
+        broadcasts.push(options?.broadcastHtml ?? "");
+      } },
       presentWorkView: async () => {},
       broadcastWorkspace: () => {},
       deleteCurrentWorkspace: async () => ({ deleted: false, blocked: false }),
@@ -302,7 +307,7 @@ describe("update state machine", () => {
   });
 
   test("concurrent pull requests attach to the same task", async () => {
-    const { ctx } = context();
+    const { ctx, sidebar, broadcasts } = context();
     const gate = deferred();
     let pulls = 0;
     const manager = new UpdateManager({
@@ -314,6 +319,13 @@ describe("update state machine", () => {
     await manager.initialize(ctx);
     const first = manager.startPull();
     const second = manager.startPull();
+    expect(manager.snapshot().state).toBe("pulling");
+    expect(sidebar.at(-1)).toContain('class="button primary progress-button"');
+    expect(sidebar.at(-1)).toContain('data-progress-state="in-progress"');
+    expect(sidebar.at(-1)).toContain('style="--button-progress:1"');
+    expect(sidebar.at(-1)).not.toContain("update-sidebar-progress");
+    expect(broadcasts.at(-1)).toContain('target="settings-sec-update"');
+    expect(broadcasts.at(-1)).toContain('data-progress-state="in-progress"');
     gate.resolve();
     await Promise.all([first, second]);
     expect(pulls).toBe(1);
@@ -455,7 +467,9 @@ describe("update routes", () => {
     expect(text).toContain("Restart Atelier to finish updating?");
     expect(text).toContain("Active agent sessions and terminal connections will be interrupted");
     expect(text).toContain("data-update-restart-status");
-    expect(text).toContain("data-update-restart-submit");
+    expect(text).toContain('id="update_restart_submit"');
+    expect(text).toContain('data-progress-content="initial">Restart Atelier');
+    expect(text).toContain('data-progress-content="in-progress"><i class="activity-spinner"');
     expect(text).not.toContain("<section>notes</section>");
   });
 
@@ -531,24 +545,14 @@ describe("update routes", () => {
     const route = createUpdateRouteHandler(manager);
     const response = await route(new Request("http://test/update/check-now", { method: "POST" }), new URL("http://test/update/check-now"));
     expect(response!.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
-    expect(await response!.text()).toContain("Update available");
+    const html = await response!.text();
+    expect(html).toContain("Update available");
+    expect(html).toContain('class="settings-select" data-controller="popup-select"');
+    expect(html).toContain('class="button secondary progress-button"');
+    expect(html).toContain('class="button primary progress-button"');
     expect(manager.snapshot().state).toBe("available");
   });
 
-  test("state endpoint exposes shared update state and old update event route is removed", async () => {
-    const { ctx } = context();
-    const manager = new UpdateManager({
-      detectRuntime: async () => runtime("old"),
-      fetchMetadata: async () => ({ digest: "sha256:new", revision: "new" }),
-      setInterval: noInterval(),
-    });
-    await manager.initialize(ctx);
-    const route = createUpdateRouteHandler(manager);
-    const state = await route(new Request("http://test/update/state"), new URL("http://test/update/state"));
-    expect(await state!.json()).toMatchObject({ state: "available", selfUpdatable: true });
-    const sse = await route(new Request("http://test/update/events"), new URL("http://test/update/events"));
-    expect(sse).toBeUndefined();
-  });
 });
 
 describe("Docker pull event parsing", () => {

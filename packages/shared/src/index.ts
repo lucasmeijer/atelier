@@ -3,7 +3,7 @@ import type { TSchema } from "typebox";
 import { escapeHtml } from "./html.ts";
 
 export { providerBrandColor, providerBrandIconHtml } from "./brand-icons.ts";
-export { disclosureIconHtml, escapeHtml } from "./html.ts";
+export { disclosureIconHtml, escapeHtml, progressButtonHtml } from "./html.ts";
 export { hopByHopHeaderNames, isHopByHopHeader, stripHopByHopHeaders } from "./proxy-headers.ts";
 
 export const atelierName = "Atelier" as const;
@@ -213,7 +213,7 @@ export interface WorkspaceServerProvisioningHook {
 
 export interface GlobalSidebarContributionRegistry {
   /** Set server-rendered sidebar HTML for a module contribution; empty/undefined clears it. */
-  set(contributionId: string, html?: string): void;
+  set(contributionId: string, html?: string, options?: { broadcastHtml?: string }): void;
 }
 
 export interface SettingsActionContext {

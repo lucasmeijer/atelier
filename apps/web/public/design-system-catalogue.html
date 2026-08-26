@@ -81,6 +81,8 @@
     .button-layout { min-width: 0; display: flex; gap: var(--space-md); align-items: flex-start; }
     .button-layout.vertical { flex-direction: column; }
     .button-layout-label { display: block; margin-bottom: var(--space-md); color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
+    .progress-button-demo { display: grid; justify-items: center; gap: var(--space-lg); }
+    .progress-button-demo__status { color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
 
     .field-stack { display: grid; gap: var(--space-xl); }
     .field-specimen { display: grid; gap: var(--space-sm); }
@@ -89,8 +91,6 @@
 
     .action-stack { display: grid; max-width: 360px; }
     .action-icon { width: 16px; height: 16px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-    .demo-status { width: 8px; height: 8px; border-radius: var(--radius-round); background: var(--success); box-shadow: 0 0 0 3px var(--success-soft); }
-    .demo-status.warning { background: var(--warning); box-shadow: 0 0 0 3px var(--warning-soft); }
     .catalogue-demo .action-item { width: 100%; }
     .catalogue-demo .action-item__primary { color: inherit; }
     .catalogue-demo .action-item__label-text { line-height: var(--leading-standard); }
@@ -247,6 +247,44 @@
               <p class="catalogue-note">Disabled state preserves variant recognition and ignores pointer hover.</p>
             </article>
             <article class="catalogue-card wide">
+              <div class="catalogue-card-title"><span>Long-running action</span><code>.progress-button</code></div>
+              <div class="catalogue-demo progress-button-demo">
+                <button class="button primary progress-button" id="progress-button-demo" type="button" data-progress-state="initial" style="--button-progress:0">
+                  <svg class="progress-button__perimeter" aria-hidden="true"><rect pathLength="100"/></svg>
+                  <span class="progress-button__content" data-progress-content="initial"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download files</span>
+                  <span class="progress-button__content" data-progress-content="in-progress"><i class="activity-spinner" aria-hidden="true"></i>Downloading workspace…</span>
+                  <span class="progress-button__content" data-progress-content="finish"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>Download complete</span>
+                </button>
+                <span class="progress-button-demo__status" id="progress-button-demo-status" aria-live="polite">Click to run · width remains fixed across every caption</span>
+              </div>
+              <p class="catalogue-note">All state contents occupy the same grid cell, so the widest supplied caption establishes a stable width. Finished state keeps the normal button colors.</p>
+            </article>
+            <article class="catalogue-card wide">
+              <div class="catalogue-card-title"><span>Long-running interface</span><code>initial + in-progress required; finish optional</code></div>
+              <pre class="button-code">&lt;button class="button primary progress-button"
+  data-progress-state="initial"
+  style="--button-progress: 0"&gt;
+  &lt;svg class="progress-button__perimeter" aria-hidden="true"&gt;
+    &lt;rect pathLength="100"/&gt;
+  &lt;/svg&gt;
+
+  &lt;!-- Required states: arbitrary caption or content. --&gt;
+  &lt;span class="progress-button__content" data-progress-content="initial"&gt;
+    Download
+  &lt;/span&gt;
+  &lt;span class="progress-button__content" data-progress-content="in-progress"&gt;
+    &lt;i class="activity-spinner" aria-hidden="true"&gt;&lt;/i&gt;
+    Downloading…
+  &lt;/span&gt;
+
+  &lt;!-- Optional. Omit when replacing the button immediately at completion. --&gt;
+  &lt;span class="progress-button__content" data-progress-content="finish"&gt;
+    Downloaded
+  &lt;/span&gt;
+&lt;/button&gt;</pre>
+              <p class="catalogue-note">The owner sets <code>data-progress-state</code> to <code>initial</code>, <code>in-progress</code>, or <code>finish</code>, disables the button and sets <code>aria-busy</code> while it runs, and supplies a numeric <code>--button-progress</code> from 0–100. If finish content is omitted, replace the button instead of entering <code>finish</code>.</p>
+            </article>
+            <article class="catalogue-card wide">
               <div class="catalogue-card-title"><span>Groups</span><code>.button-group + optional .vertical</code></div>
               <div class="catalogue-demo button-group-demo">
                 <div class="button-group-specimen"><span>horizontal</span><div class="button-group"><button class="button primary" type="button">Save</button><button class="button secondary" type="button">Cancel</button></div></div>
@@ -367,23 +405,30 @@
         <section class="catalogue-section" id="action-items">
           <div class="catalogue-section-head"><h2>Action items</h2><p>The shared interactive row adapts to navigation, lists, and tabs. Selection is semantic through <code>aria-current</code> or <code>aria-selected</code>.</p></div>
           <div class="catalogue-grid">
+            <article class="catalogue-card"><div class="catalogue-card-title"><span>Status</span><code>.activity-spinner + .status-indicator</code></div><div class="catalogue-demo button-anatomy"><div class="button-group">
+              <i class="activity-spinner" aria-label="In progress"></i>
+              <i class="status-indicator" aria-label="Pending"></i>
+              <i class="status-indicator success" aria-label="Complete"></i>
+              <i class="status-indicator warning" aria-label="Needs attention"></i>
+              <i class="status-indicator danger" aria-label="Failed"></i>
+            </div></div><p class="catalogue-note">Compact process indicators can accompany server-rendered status content without introducing flow-specific visual implementations.</p></article>
             <article class="catalogue-card"><div class="catalogue-card-title"><span>Vertical list</span><code>adjacent .action-item</code></div><div class="catalogue-demo"><nav aria-label="Example destinations">
               <a class="action-item action-item__primary" href="#action-items"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg><span class="action-item__label"><span class="action-item__label-text">Overview</span></span></a>
-              <a class="action-item action-item__primary" href="#action-items" aria-current="page"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6v10H4zM14 4h6v16h-6z"/></svg><span class="action-item__label"><span class="action-item__label-text">Workspaces</span></span><i class="demo-status action-item__status" aria-label="Ready"></i></a>
+              <a class="action-item action-item__primary" href="#action-items" aria-current="page"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6v10H4zM14 4h6v16h-6z"/></svg><span class="action-item__label"><span class="action-item__label-text">Workspaces</span></span><i class="status-indicator success action-item__status" aria-label="Ready"></i></a>
               <a class="action-item action-item__primary" href="#action-items"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/></svg><span class="action-item__label"><span class="action-item__label-text">Projects</span></span></a>
               <button class="action-item action-item__primary" type="button" disabled><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/></svg><span class="action-item__label"><span class="action-item__label-text">Activity unavailable</span></span></button>
             </nav></div><p class="catalogue-note">Adjacent action items create their own 2px separation; the parent only establishes layout.</p></article>
             <article class="catalogue-card"><div class="catalogue-card-title"><span>Simple &amp; selected</span><code>.action-item</code></div><div class="catalogue-demo"><div class="action-stack">
               <button class="action-item action-item__primary" type="button"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span class="action-item__label"><span class="action-item__label-text">Browse project files</span></span></button>
               <button class="action-item action-item__primary preview-focus" type="button"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span class="action-item__label"><span class="action-item__label-text">Keyboard focus</span></span></button>
-              <button class="action-item action-item__primary" type="button" aria-current="page"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h5"/></svg><span class="action-item__label"><span class="action-item__label-text">Current workspace</span></span><i class="demo-status action-item__status" aria-label="Ready"></i></button>
+              <button class="action-item action-item__primary" type="button" aria-current="page"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h5"/></svg><span class="action-item__label"><span class="action-item__label-text">Current workspace</span></span><i class="status-indicator success action-item__status" aria-label="Ready"></i></button>
               <button class="action-item action-item__primary" type="button" disabled><span class="action-item__label"><span class="action-item__label-text">Unavailable destination</span></span></button>
             </div></div><p class="catalogue-note">Keyboard focus intentionally matches the action item’s hover treatment.</p></article>
             <article class="catalogue-card"><div class="catalogue-card-title"><span>Compound</span><code>primary + auxiliary</code></div><div class="catalogue-demo"><div class="action-stack">
-              <div class="action-item preview-focus-within"><button class="action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">Focused compound item</span></span><i class="demo-status warning action-item__status" aria-label="Needs attention"></i></button><button class="action-item__action button secondary icon-only" type="button" aria-label="More actions"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div>
+              <div class="action-item preview-focus-within"><button class="action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">Focused compound item</span></span><i class="status-indicator warning action-item__status" aria-label="Needs attention"></i></button><button class="action-item__action button secondary icon-only" type="button" aria-label="More actions"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div>
               <div class="action-item"><button class="action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">Temporary browser preview</span></span></button><button class="action-item__action button danger icon-only" type="button" aria-label="Close preview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
             </div></div><p class="catalogue-note">Auxiliary controls remain siblings—never nested interactive elements.</p></article>
-            <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Overflow label</span><code>.action-item__label-text</code></div><div class="catalogue-demo"><div class="action-stack truncate-demo"><button class="action-item action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">A deliberately long workspace name truncates inside a constrained action item</span></span><i class="demo-status action-item__status"></i></button></div></div><p class="catalogue-note">Labels truncate by default. The application’s Action Items controller adds measured scrolling when text overflows.</p></article>
+            <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Overflow label</span><code>.action-item__label-text</code></div><div class="catalogue-demo"><div class="action-stack truncate-demo"><button class="action-item action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">A deliberately long workspace name truncates inside a constrained action item</span></span><i class="status-indicator success action-item__status"></i></button></div></div><p class="catalogue-note">Labels truncate by default. The application’s Action Items controller adds measured scrolling when text overflows.</p></article>
           </div>
         </section>
 
@@ -453,6 +498,33 @@
           closePopup(simplePopupTrigger, simplePopup);
         }
       });
+    });
+
+    const progressButtonDemo = document.querySelector("#progress-button-demo");
+    const progressButtonDemoStatus = document.querySelector("#progress-button-demo-status");
+    let progressButtonDemoTimer;
+    progressButtonDemo.addEventListener("click", () => {
+      if (progressButtonDemo.dataset.progressState === "in-progress") return;
+      clearInterval(progressButtonDemoTimer);
+      progressButtonDemo.dataset.progressState = "in-progress";
+      progressButtonDemo.disabled = true;
+      progressButtonDemo.setAttribute("aria-busy", "true");
+      progressButtonDemo.style.setProperty("--button-progress", "1");
+      progressButtonDemoStatus.textContent = "Connecting · 1%";
+      const started = performance.now();
+      progressButtonDemoTimer = setInterval(() => {
+        const elapsed = performance.now() - started;
+        const progress = elapsed < 1800 ? 1 : Math.min(100, Math.round(1 + ((elapsed - 1800) / 4200) * 99));
+        progressButtonDemo.style.setProperty("--button-progress", String(progress));
+        progressButtonDemoStatus.textContent = `Downloading · ${progress}%`;
+        if (progress === 100) {
+          clearInterval(progressButtonDemoTimer);
+          progressButtonDemo.removeAttribute("aria-busy");
+          progressButtonDemo.disabled = false;
+          progressButtonDemo.dataset.progressState = "finish";
+          progressButtonDemoStatus.textContent = "Finished · click to run again";
+        }
+      }, 100);
     });
   </script>
 </body>

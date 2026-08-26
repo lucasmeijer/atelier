@@ -1,8 +1,7 @@
-import { CableTopics, type AtelierCableClient, type CableIdentifier, type WorkspaceClientModule } from "@atelier/shared";
+import { type WorkspaceClientModule } from "@atelier/shared";
 
 declare global {
   interface Window {
-    AtelierCable?: AtelierCableClient;
     Turbo?: { renderStreamMessage(html: string): void };
   }
 }
@@ -17,13 +16,14 @@ export const atelierClientModule: WorkspaceClientModule = {
         const theme = document.documentElement.dataset.theme ?? localStorage.getItem("atelier.theme") ?? "";
         const action = new URL(this.element.action, window.location.href);
         if (theme) action.searchParams.set("theme", theme);
-        const submit = this.element.querySelector<HTMLButtonElement>("[data-update-restart-submit]")!;
+        const submit = this.element.querySelector<HTMLButtonElement>("#update_restart_submit")!;
         const cancel = this.element.querySelector<HTMLButtonElement>("[data-update-restart-cancel]")!;
         const status = this.element.querySelector<HTMLElement>("[data-update-restart-status]")!;
+        submit.dataset.progressState = "in-progress";
+        submit.style.setProperty("--button-progress", "1");
+        submit.setAttribute("aria-busy", "true");
         submit.disabled = true;
         cancel.disabled = true;
-        submit.setAttribute("aria-busy", "true");
-        submit.innerHTML = `<span class="status-spinner sm" aria-hidden="true"></span><span>Preparing restart…</span>`;
         status.textContent = "Starting the update helper. This can take a few seconds…";
 
         try {
@@ -35,31 +35,16 @@ export const atelierClientModule: WorkspaceClientModule = {
           }
           window.Turbo!.renderStreamMessage(await response.text());
         } catch {
+          submit.dataset.progressState = "initial";
+          submit.style.setProperty("--button-progress", "0");
+          submit.removeAttribute("aria-busy");
           submit.disabled = false;
           cancel.disabled = false;
-          submit.removeAttribute("aria-busy");
-          submit.innerHTML = "Retry restart";
-          status.textContent = "The connection was interrupted. Atelier may still be restarting; wait a few seconds, then refresh this page.";
+          status.textContent = "The connection was interrupted. Atelier may still be restarting; wait a few seconds, then try restarting again or refresh this page.";
         }
       }
     }
 
-    class UpdateProgressController extends Controller {
-      private subscribed = false;
-      private readonly identifier: CableIdentifier = CableTopics.update();
-      connect(): void {
-        if (this.element.getAttribute("data-update-state") !== "pulling") return;
-        window.AtelierCable?.subscribe(this.identifier);
-        this.subscribed = true;
-      }
-      disconnect(): void {
-        if (!this.subscribed) return;
-        window.AtelierCable?.unsubscribe(this.identifier);
-        this.subscribed = false;
-      }
-    }
-
     application.register("update-restart", UpdateRestartController);
-    application.register("update-progress", UpdateProgressController);
   },
 };

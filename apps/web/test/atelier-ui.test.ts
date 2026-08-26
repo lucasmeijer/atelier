@@ -77,6 +77,38 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
+  test("keeps long-running button dimensions and colors stable across caller-supplied states", async () => {
+    const page = await newTestPage();
+    await page.setContent(`<style>${workspaceStyle}</style>
+      <button id="progress" class="button primary progress-button" data-progress-state="initial" style="--button-progress: 1">
+        <svg class="progress-button__perimeter" aria-hidden="true"><rect pathLength="100"/></svg>
+        <span class="progress-button__content" data-progress-content="initial">Download</span>
+        <span class="progress-button__content" data-progress-content="in-progress"><i class="progress-button__spinner"></i>Downloading workspace…</span>
+        <span class="progress-button__content" data-progress-content="finish">Downloaded</span>
+      </button>`);
+    const button = page.locator("#progress");
+    const initial = await button.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { width: style.width, height: style.height, color: style.color };
+    });
+
+    await button.evaluate((element) => { element.setAttribute("data-progress-state", "in-progress"); });
+    const inProgress = await button.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { width: style.width, height: style.height, color: style.color };
+    });
+    await button.evaluate((element) => { element.setAttribute("data-progress-state", "finish"); });
+    const finish = await button.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { width: style.width, height: style.height, color: style.color };
+    });
+
+    expect(inProgress).toEqual(initial);
+    expect(finish).toEqual(initial);
+    expect(await button.locator("[data-progress-content]").evaluateAll((contents) => contents.map((content) => getComputedStyle(content).visibility))).toEqual(["hidden", "hidden", "visible"]);
+    await page.close();
+  });
+
   test("opens the next and previous workspace with keyboard shortcuts", async () => {
     const presentations: WorkspacePresentation[] = ["first", "second", "third"].map((id) => ({
       workspace: { id, title: id },

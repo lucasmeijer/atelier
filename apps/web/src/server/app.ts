@@ -245,12 +245,11 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   const globalSidebarContributions: GlobalSidebarContributionRegistry = {
-    set(contributionId: string, html?: string) {
+    set(contributionId: string, html?: string, options = {}) {
       if (html) globalSidebarContributionStore.set(contributionId, html);
       else globalSidebarContributionStore.delete(contributionId);
-      const streamHtml = turboUpdateStream("global_sidebar_contributions", renderGlobalSidebarContributions());
+      const streamHtml = `${turboUpdateStream("global_sidebar_contributions", renderGlobalSidebarContributions())}${options.broadcastHtml ?? ""}`;
       broadcastShell(streamHtml);
-      deps.cable?.broadcast(CableTopics.update(), streamHtml);
     },
   };
 
