@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="nord">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -31,7 +31,7 @@
     .catalogue-hero p { max-width: 640px; margin: 0; color: var(--text-muted); font-size: var(--text-title); line-height: var(--leading-copy); }
     .catalogue-toolbar { display: flex; align-items: center; gap: var(--space-lg); margin-top: var(--space-2xl); }
     .catalogue-field { display: flex; align-items: center; gap: var(--space-md); color: var(--text-muted); font-size: var(--text-small); font-weight: var(--weight-semibold); }
-    .catalogue-select { min-height: 34px; padding: var(--space-sm) 34px var(--space-sm) var(--space-lg); border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: var(--panel); color: var(--text); }
+    .catalogue-theme-popup { width: 184px; }
     .catalogue-theme-dot { width: 9px; height: 9px; border-radius: var(--radius-round); background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
     .catalogue-content { width: min(1060px, calc(100% - 48px)); margin: 0 auto; padding: 48px 0 96px; }
@@ -77,6 +77,10 @@
     .button-group-demo { display: flex; align-items: flex-start; justify-content: space-around; gap: var(--space-2xl); }
     .button-group-specimen { display: grid; gap: var(--space-sm); color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
     .button-code { margin: var(--space-lg) 0 0; padding: var(--space-lg); overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--bg); color: var(--text-muted); font: var(--text-caption)/var(--leading-copy) var(--font-mono); white-space: pre; }
+    .button-layouts { min-height: 160px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2xl); }
+    .button-layout { min-width: 0; display: flex; gap: var(--space-md); align-items: flex-start; }
+    .button-layout.vertical { flex-direction: column; }
+    .button-layout-label { display: block; margin-bottom: var(--space-md); color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
 
     .field-stack { display: grid; gap: var(--space-xl); }
     .field-specimen { display: grid; gap: var(--space-sm); }
@@ -95,6 +99,16 @@
     .detail-copy { margin: var(--space-sm) var(--space-xl) var(--space-md) 28px; color: var(--text-muted); font-size: var(--text-small); }
     .truncate-demo { width: 230px; }
 
+    .popup-demo { min-height: 388px; display: flex; align-items: flex-end; justify-content: flex-end; }
+    .popup-demo .popup-menu { width: min(310px, calc(100% - 32px)); }
+    .popup-trigger[aria-expanded="true"] { border-color: var(--accent); color: var(--text); background: var(--elev); }
+    .popup-configure { width: 100%; justify-content: flex-start; }
+    .popup-brand-mark { width: 16px; height: 16px; display: grid; place-items: center; border-radius: var(--radius-indicator); background: var(--accent-soft); color: var(--accent); font-size: 9px; font-weight: var(--weight-bold); }
+    .popup-state-grid .popup-menu { position: static; width: 100%; box-shadow: none; }
+    .simple-popup-demo { min-height: 260px; display: flex; align-items: center; justify-content: center; }
+    .simple-popup-stack { width: 240px; min-height: 210px; display: flex; align-items: flex-end; justify-content: flex-end; }
+    .simple-popup-demo .popup-menu { width: 240px; }
+
     @media (max-width: 820px) {
       .catalogue-shell { display: block; }
       .catalogue-nav { position: static; width: 100%; height: auto; padding: var(--space-lg); border-right: 0; border-bottom: 1px solid var(--line); }
@@ -111,6 +125,7 @@
       .type-row { grid-template-columns: 1fr; gap: var(--space-xs); }
       .radius-list { display: grid; grid-template-columns: repeat(2, 1fr); }
       .spacing-row { grid-template-columns: 92px 1fr 34px; gap: var(--space-md); }
+      .button-layouts { grid-template-columns: 1fr; }
     }
     @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
   </style>
@@ -126,6 +141,7 @@
         <div class="catalogue-kicker">Components</div>
         <a href="#buttons">Buttons</a>
         <a href="#text-entry">Text entry</a>
+        <a href="#popup-menu">Popup menu</a>
         <div class="catalogue-kicker">Patterns</div>
         <a href="#action-items">Action items</a>
         <a href="#disclosure">Disclosure</a>
@@ -139,15 +155,16 @@
         <h1>A compact interface for operating software.</h1>
         <p>Shipped foundations, components, and patterns from <code>design-system.css</code>. Change the theme to inspect every example against the same semantic contract.</p>
         <div class="catalogue-toolbar">
-          <label class="catalogue-field" for="theme-select"><span class="catalogue-theme-dot"></span> Theme
-            <select class="catalogue-select" id="theme-select">
-              <option value="">Daylight</option>
-              <option value="cappuccino">Cappuccino</option>
-              <option value="tokyo-night">Tokyo Night</option>
-              <option value="midnight">Midnight</option>
-              <option value="nord">Nord</option>
-            </select>
-          </label>
+          <div class="catalogue-field popup-menu-anchor"><span class="catalogue-theme-dot"></span><span>Theme</span>
+            <button class="button secondary catalogue-theme-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="catalogue-theme-popup"><span data-catalogue-theme-value>Nord</span><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button>
+            <div class="popup-menu popup-menu-anchored catalogue-theme-popup" id="catalogue-theme-popup" role="menu" aria-label="Catalogue theme" hidden>
+              <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value=""><span class="action-item__label"><span class="action-item__label-text">Daylight</span></span></button>
+              <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value="cappuccino"><span class="action-item__label"><span class="action-item__label-text">Cappuccino</span></span></button>
+              <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value="tokyo-night"><span class="action-item__label"><span class="action-item__label-text">Tokyo Night</span></span></button>
+              <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value="midnight"><span class="action-item__label"><span class="action-item__label-text">Midnight</span></span></button>
+              <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="true" data-theme-value="nord"><span class="action-item__label"><span class="action-item__label-text">Nord</span></span></button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -245,6 +262,7 @@
 &lt;/div&gt;
 
 &lt;div class="button-group vertical"&gt;…&lt;/div&gt;</pre>
+
             </article>
           </div>
         </section>
@@ -267,6 +285,82 @@
 
 &lt;label for="instructions"&gt;Instructions&lt;/label&gt;
 &lt;textarea class="textarea" id="instructions"&gt;&lt;/textarea&gt;</pre></article>
+          </div>
+        </section>
+
+        <section class="catalogue-section" id="popup-menu">
+          <div class="catalogue-section-head">
+            <h2>Popup menu</h2>
+            <p>A compact elevated list for contextual actions and single-choice selection. It supports leading icons, secondary descriptions, trailing metadata, selection, disabled choices, separators, and semantic emphasis.</p>
+          </div>
+          <div class="catalogue-grid">
+            <article class="catalogue-card wide">
+              <div class="catalogue-card-title"><span>Composer model selection</span><code>.popup-menu</code></div>
+              <div class="catalogue-demo popup-demo popup-menu-anchor">
+                <div class="popup-menu popup-menu-anchored opens-above" id="catalogue-popup" role="menu" aria-label="Choose a model">
+                  <button class="button secondary popup-configure" type="button" role="menuitem">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6l-.04.08V21h-4v-.92L9.9 20a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1H3v-4h1a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.44-1.88l-.06-.06L6.96 4.2l.06.06A1.7 1.7 0 0 0 8.9 4.6a1.7 1.7 0 0 0 1-.6l.06-.08V3h4v.92L14 4a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 9c.08.38.3.73.6 1h1v4h-1c-.3.27-.52.62-.6 1Z"/></svg>
+                    Configure favorite models
+                  </button>
+                  <hr class="popup-menu__separator">
+                  <div class="popup-menu__heading">Favorites</div>
+                  <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false">
+                    <span class="popup-menu__icon"><span class="popup-brand-mark">A</span></span>
+                    <span class="action-item__label"><span class="action-item__label-text">Claude Sonnet 4</span><span class="popup-menu__description">Anthropic</span></span>
+                    <span class="popup-menu__meta">200k</span>
+                  </button>
+                  <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="true">
+                    <span class="popup-menu__icon"><span class="popup-brand-mark">O</span></span>
+                    <span class="action-item__label"><span class="action-item__label-text">GPT-5.2 Codex</span><span class="popup-menu__description">OpenAI</span></span>
+                    <span class="popup-menu__meta">400k</span>
+                  </button>
+                  <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" disabled>
+                    <span class="popup-menu__icon"><span class="popup-brand-mark">G</span></span>
+                    <span class="action-item__label"><span class="action-item__label-text">Gemini 2.5 Pro</span><span class="popup-menu__description">Authentication required</span></span>
+                  </button>
+                </div>
+                <button class="button secondary popup-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="true" aria-controls="catalogue-popup"><span class="popup-brand-mark" aria-hidden="true">O</span> GPT-5.2 Codex <svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button>
+              </div>
+              <p class="catalogue-note">This menu prefers to open upward like the composer, then flips horizontally or vertically whenever the preferred placement would cross a viewport edge.</p>
+            </article>
+            <article class="catalogue-card">
+              <div class="catalogue-card-title"><span>Simple theme picker</span><code>3 action items</code></div>
+              <div class="catalogue-demo simple-popup-demo">
+                <div class="simple-popup-stack popup-menu-anchor">
+                  <div class="popup-menu popup-menu-anchored opens-above" id="simple-theme-popup" role="menu" aria-label="Choose a theme">
+                    <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value=""><span class="action-item__label"><span class="action-item__label-text">Daylight</span></span></button>
+                    <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value="tokyo-night"><span class="action-item__label"><span class="action-item__label-text">Tokyo Night</span></span></button>
+                    <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="true" data-theme-value="nord"><span class="action-item__label"><span class="action-item__label-text">Nord</span></span></button>
+                  </div>
+                  <button class="button secondary simple-popup-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="true" aria-controls="simple-theme-popup">Theme: <span data-simple-popup-value>Nord</span><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button>
+                </div>
+              </div>
+              <p class="catalogue-note">For short, familiar choices, the popup can be nothing more than a list of Action Items.</p>
+            </article>
+            <article class="catalogue-card">
+              <div class="catalogue-card-title"><span>Action states</span><code>semantic attributes</code></div>
+              <div class="popup-state-grid">
+                <div class="popup-menu" role="menu" aria-label="Popup action states">
+                  <button class="action-item action-item__primary" type="button" role="menuitem"><span class="action-item__label"><span class="action-item__label-text">Default action</span></span><span class="popup-menu__meta">⌘D</span></button>
+                  <button class="action-item action-item__primary" type="button" role="menuitem" disabled><span class="action-item__label"><span class="action-item__label-text">Unavailable action</span><span class="popup-menu__description">Requires a running workspace</span></span></button>
+                  <hr class="popup-menu__separator">
+                  <button class="action-item action-item__primary is-danger" type="button" role="menuitem"><span class="action-item__label"><span class="action-item__label-text">Delete workspace</span></span></button>
+                </div>
+              </div>
+            </article>
+            <article class="catalogue-card">
+              <div class="catalogue-card-title"><span>Interface</span><code>roles + composable slots</code></div>
+              <pre class="button-code">&lt;div class="popup-menu-anchor"&gt;
+  &lt;button class="button popup-menu-trigger"
+    aria-haspopup="menu" aria-controls="model-menu"&gt;…&lt;/button&gt;
+  &lt;div class="popup-menu popup-menu-anchored opens-above"
+    id="model-menu" role="menu"&gt;
+    &lt;button class="action-item action-item__primary"
+      role="menuitemradio" aria-checked="true"&gt;…&lt;/button&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</pre>
+              <p class="catalogue-note"><code>.opens-above</code> sets a preference, not a rigid position. Anchored menus automatically flip to remain visible. Use <code>menuitemradio</code> with <code>aria-checked</code> for a single-choice list.</p>
+            </article>
           </div>
         </section>
 
@@ -306,15 +400,59 @@
   </div>
 
   <script>
-    const themeSelect = document.querySelector("#theme-select");
-    const requestedTheme = new URLSearchParams(location.search).get("theme");
-    if (requestedTheme && themeSelect.querySelector(`option[value="${CSS.escape(requestedTheme)}"]`)) {
-      themeSelect.value = requestedTheme;
-      document.documentElement.dataset.theme = requestedTheme;
+    const themePopupTrigger = document.querySelector(".catalogue-theme-trigger");
+    const themePopup = document.querySelector("#catalogue-theme-popup");
+    const popupTrigger = document.querySelector(".popup-trigger");
+    const popup = document.querySelector("#catalogue-popup");
+    const simplePopupTrigger = document.querySelector(".simple-popup-trigger");
+    const simplePopup = document.querySelector("#simple-theme-popup");
+
+    function togglePopup(trigger, menu) {
+      const open = trigger.getAttribute("aria-expanded") !== "true";
+      trigger.setAttribute("aria-expanded", String(open));
+      menu.hidden = !open;
     }
-    themeSelect.addEventListener("change", () => {
-      if (themeSelect.value) document.documentElement.dataset.theme = themeSelect.value;
+
+    function closePopup(trigger, menu) {
+      trigger.setAttribute("aria-expanded", "false");
+      menu.hidden = true;
+    }
+
+    function applyCatalogueTheme(value, label) {
+      if (value) document.documentElement.dataset.theme = value;
       else delete document.documentElement.dataset.theme;
+      themePopupTrigger.querySelector("[data-catalogue-theme-value]").textContent = label;
+      themePopup.querySelectorAll('[role="menuitemradio"]').forEach((item) => {
+        item.setAttribute("aria-checked", String(item.dataset.themeValue === value));
+      });
+    }
+
+    const requestedTheme = new URLSearchParams(location.search).get("theme");
+    const requestedChoice = requestedTheme === null ? null : themePopup.querySelector(`[data-theme-value="${CSS.escape(requestedTheme)}"]`);
+    if (requestedChoice) applyCatalogueTheme(requestedTheme, requestedChoice.textContent.trim());
+
+    themePopupTrigger.addEventListener("click", () => togglePopup(themePopupTrigger, themePopup));
+    popupTrigger.addEventListener("click", () => togglePopup(popupTrigger, popup));
+    simplePopupTrigger.addEventListener("click", () => togglePopup(simplePopupTrigger, simplePopup));
+
+    document.querySelectorAll(".popup-menu").forEach((menu) => {
+      menu.addEventListener("click", (event) => {
+        const choice = event.target.closest('[role="menuitemradio"]:not(:disabled)');
+        if (!choice) return;
+        menu.querySelectorAll('[role="menuitemradio"]').forEach((item) => {
+          item.setAttribute("aria-checked", String(item === choice));
+        });
+        if (menu === themePopup) {
+          applyCatalogueTheme(choice.dataset.themeValue, choice.textContent.trim());
+          closePopup(themePopupTrigger, themePopup);
+        }
+        if (menu === simplePopup) {
+          const label = choice.textContent.trim();
+          simplePopupTrigger.querySelector("[data-simple-popup-value]").textContent = label;
+          applyCatalogueTheme(choice.dataset.themeValue, label);
+          closePopup(simplePopupTrigger, simplePopup);
+        }
+      });
     });
   </script>
 </body>

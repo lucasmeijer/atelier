@@ -19,7 +19,7 @@ function fixture(overrides: Partial<WorkspacePresentation> = {}): WorkspacePrese
 
 describe("role-fixed Workspace presentation", () => {
   test("server-renders fixed roles without selecting personal navigation", () => {
-    const html = renderWorkspacePresentation(fixture());
+    const html = renderWorkspacePresentation(fixture({ commands: [{ id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }] }));
 
     expect(html).toContain('data-controller="workspace-presentation"');
     expect(html).not.toContain('class="fixed-shell-workspace-pane"');
@@ -30,6 +30,9 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).not.toContain('aria-selected="true"');
     expect(html.match(/data-workspace-pane-role="agent"/g)).toHaveLength(2);
     expect(html.match(/data-workspace-pane-role="work"/g)).toHaveLength(3);
+    expect(html).toContain('class="popup-menu-anchor"><button class="button primary icon-only popup-menu-trigger"');
+    expect(html).toContain('class="popup-menu popup-menu-anchored" id="fixed_workspace_workspace-1_add_menu" role="menu" aria-label="Open Work view" popover="auto"');
+    expect(html).toContain('class="action-item action-item__primary" type="submit" role="menuitem"');
   });
 
   test("server-renders the Workspace pane once at the shell seam", () => {
@@ -166,7 +169,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(header).toContain('action="/workspaces/workspace-1/delete"');
     expect(header).toContain('class="button danger icon-only" type="submit" title="Delete workspace" aria-label="Delete workspace"');
     expect(header).toContain('class="button secondary icon-only" title="Show Work pane" aria-label="Show Work pane"');
-    expect(html).toContain('class="button primary icon-only" title="Open Work view" aria-label="Open Work view"');
+    expect(html).toContain('class="button primary icon-only popup-menu-trigger" type="button" title="Open Work view" aria-label="Open Work view" aria-haspopup="menu"');
     expect(html).toContain('class="button secondary icon-only" title="Collapse Work pane" aria-label="Collapse Work pane"');
   });
 

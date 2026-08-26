@@ -50,7 +50,9 @@ describe("files rendering", () => {
     expect(html).toContain("status-spinner sm files-directory-spinner");
     expect(html).toContain("showHidden=1");
     expect(html).toContain('aria-label="Refresh files" data-action="files#refresh"');
-    expect(html.match(/class="files-actions-toggle action-item__action button secondary icon-only"/g)).toHaveLength(2);
+    expect(html.match(/class="files-actions-toggle action-item__action button secondary icon-only popup-menu-trigger"/g)).toHaveLength(2);
+    expect(html.match(/class="files-actions-menu popup-menu popup-menu-anchored"/g)).toHaveLength(2);
+    expect(html).toContain('popovertarget="files_actions_');
     expect(html).toContain('data-turbo-stream="true">.secret</a>');
     expect(html).not.toContain('class="files-open"');
     expect(html).toContain(">Copy URL</button>");

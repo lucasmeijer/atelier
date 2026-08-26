@@ -182,6 +182,7 @@ describe("web app contracts", () => {
 
       expect(body).toContain('class="button');
       expect(body).toContain('class="settings-input text-field');
+      expect(body).toContain('data-controller="theme-select popup-select"');
       expect(body).not.toContain("settings-btn");
       expect(body).not.toContain("settings-button");
     });

@@ -301,14 +301,6 @@ turbo-frame { display: contents; }
 .workspace-detail-resident:not(.visible) { display: none; }
 .workspace-detail-resident.visible { display: block; }
 .fixed-shell-live-body, .fixed-shell-live-body > * { width: 100%; height: 100%; min-width: 0; min-height: 0; }
-.fixed-shell-add-menu { position: relative; }
-.fixed-shell-add-menu > summary { list-style: none; }
-.fixed-shell-add-menu > summary::-webkit-details-marker { display: none; }
-.fixed-shell-add-menu > div { position: absolute; z-index: 20; right: 0; top: calc(100% + 6px); min-width: 180px; padding: var(--space-sm); border: 1px solid var(--fixed-shell-border); border-radius: var(--radius-control); background: var(--fixed-shell-raised); box-shadow: 0 12px 30px #0008; }
-.fixed-shell-add-menu form, .fixed-shell-add-menu button { width: 100%; }
-.fixed-shell-add-menu button { border: 0; border-radius: var(--radius-control); padding: var(--space-sm) var(--space-md); text-align: left; background: transparent; color: inherit; cursor: pointer; }
-.fixed-shell-add-menu button:hover { background: var(--fixed-shell-hover); }
-
 .fixed-shell-app *, .fixed-shell-app *::before, .fixed-shell-app *::after { box-sizing: border-box; }
 
 .fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane {

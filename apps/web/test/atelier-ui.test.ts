@@ -240,6 +240,38 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
+  test("enhances native selects with anchored design-system popup menus", async () => {
+    const page = await newTestPage({ viewport: { width: 360, height: 300 } });
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<style>${workspaceStyle}</style><form style="position:fixed;right:4px;bottom:4px"><select data-controller="popup-select" data-popup-select-opens-above="true" aria-label="Thinking level"><option>low</option><option selected>medium</option><option>high</option></select></form><script type="module" src="/workspace-test.js"></script>`,
+    }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.goto("http://atelier.test/");
+
+    const trigger = page.locator(".popup-select-trigger");
+    await trigger.waitFor();
+    const before = (await trigger.boundingBox())!;
+    await trigger.click();
+    const menu = page.locator(".popup-menu[data-popup-select-menu]");
+    expect(await menu.isVisible()).toBe(true);
+    expect(await menu.locator(".action-item").count()).toBe(3);
+    expect(await menu.locator('[aria-checked="true"]').textContent()).toBe("medium");
+    const menuBox = (await menu.boundingBox())!;
+    expect(menuBox.x).toBeGreaterThanOrEqual(0);
+    expect(menuBox.y).toBeGreaterThanOrEqual(0);
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(360);
+    expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(300);
+    expect(await trigger.boundingBox()).toEqual(before);
+
+    await menu.getByText("high", { exact: true }).click();
+    expect(await page.locator("select").inputValue()).toBe("high");
+    expect(await trigger.textContent()).toContain("high");
+    expect(await menu.isHidden()).toBe(true);
+
+    await page.close();
+  });
+
   test("Text entry controls share surfaces and keyboard focus treatment", async () => {
     const page = await newTestPage({ reducedMotion: "reduce" });
     await page.setContent(`<style>${workspaceStyle}</style><button id="before">Before</button><input class="text-field" aria-label="Name"><textarea class="textarea" aria-label="Instructions"></textarea>`);

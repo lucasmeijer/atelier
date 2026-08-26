@@ -314,7 +314,7 @@ async function composerSettingsState(selectedModel?: string): Promise<{ selected
 
 function thinkingSelectHtml(formId: string, thinkingLevels: string[], selectedThinkingLevel: string | undefined): string {
   return thinkingLevels.length > 0
-    ? `<select class="agent-sel" data-controller="agent-select-menu" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select>`
+    ? `<select class="agent-sel" data-controller="popup-select" data-popup-select-trigger-class="agent-sel-button" data-popup-select-opens-above="true" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select>`
     : "";
 }
 
@@ -368,7 +368,7 @@ export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): 
 <span class="agent-stat" title="Session cost"><b>${formatCost(stats.cost)}</b></span>
 <span class="agent-stat-right">
 <form method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-model-menu" name="model" data-action="change->agent-autosubmit#submit" title="Model">${modelOptions || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`}</select></form>
-${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-select-menu" name="level" data-action="change->agent-autosubmit#submit" title="Thinking level">${thinkingOptions}</select></form>` : ""}
+${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="popup-select" data-popup-select-trigger-class="agent-sel-button" data-popup-select-opens-above="true" name="level" data-action="change->agent-autosubmit#submit" title="Thinking level">${thinkingOptions}</select></form>` : ""}
 ${stats.serviceTier ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/service-tier"))}"><button class="agent-fast-toggle${stats.serviceTier === "priority" ? " active" : ""}" type="submit" name="serviceTier" value="${stats.serviceTier === "priority" ? "default" : "priority"}" aria-label="Fast mode" aria-pressed="${stats.serviceTier === "priority"}" title="${fastModeTitle(stats.serviceTier)}"><span aria-hidden="true">⚡</span></button></form>` : ""}
 </span>`;
 }

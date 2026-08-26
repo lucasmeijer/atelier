@@ -32,6 +32,7 @@ import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
 import { createAtelierCableClient } from "./cable.ts";
 import { ActionItemsController } from "./action-items.ts";
+import { PopupSelectController, SelectPopupController } from "./popup-select.ts";
 import { createWorkspacePresentationController, installWorkspacePresentationTurboStream, markActiveWorkspaceRow } from "./workspace-presentation.ts";
 
 declare global {
@@ -1802,90 +1803,58 @@ function agentModelLabelHtml(provider: string, label: string): string {
   return `${providerBrandIconHtml(provider, label, "brand-icon agent-model-provider-icon")}<span>${escapeHtml(label)}</span>`;
 }
 
-class AgentModelMenuController extends Controller {
-  declare readonly element: HTMLSelectElement;
-  private button?: HTMLButtonElement;
-  private menu?: HTMLDivElement;
-  private observer?: MutationObserver;
+class AgentModelMenuController extends SelectPopupController {
   private form?: HTMLFormElement | null;
 
-  connect(): void {
-    if (this.element.dataset.agentModelEnhanced === "true") return;
-    this.element.dataset.agentModelEnhanced = "true";
-    this.element.classList.add("agent-sel-native");
-    this.button = document.createElement("button");
-    this.button.type = "button";
-    this.button.className = "agent-sel-button agent-model-button";
-    this.button.addEventListener("click", this.toggle);
-    this.menu = document.createElement("div");
-    this.menu.className = "agent-sel-menu agent-model-menu hidden";
-    this.element.after(this.button, this.menu);
-    this.element.addEventListener("change", this.sync);
+  protected override get triggerClass(): string { return "agent-sel-button agent-model-button"; }
+  protected override get menuClass(): string { return " opens-above agent-model-menu"; }
+  protected override get accessibleName(): string { return "Model"; }
+
+  override connect(): void {
+    super.connect();
     this.form = this.element.form;
     this.form?.addEventListener("submit", this.submit, true);
-    document.addEventListener("click", this.closeFromOutside);
-    this.observer = new MutationObserver(this.sync);
-    this.observer.observe(this.element, { childList: true, subtree: true, attributes: true, attributeFilter: ["selected", "disabled"] });
-    this.sync();
   }
 
-  disconnect(): void {
-    this.button?.removeEventListener("click", this.toggle);
-    this.element.removeEventListener("change", this.sync);
+  override disconnect(): void {
     this.form?.removeEventListener("submit", this.submit, true);
-    document.removeEventListener("click", this.closeFromOutside);
-    this.observer?.disconnect();
-    this.button?.remove();
-    this.menu?.remove();
-    this.element.classList.remove("agent-sel-native");
-    delete this.element.dataset.agentModelEnhanced;
+    super.disconnect();
   }
 
   private hasAvailableModel(): boolean {
     return Array.from(this.element.options).some((option) => !option.disabled && option.value);
   }
 
-  private sync = (): void => {
-    if (!this.button || !this.menu) return;
-    const selected = this.element.selectedOptions[0];
-    const selectedLabel = selected?.textContent?.trim() || "Select model";
+  protected override renderTrigger(selected: HTMLOptionElement | undefined, label: string): void {
     this.button.innerHTML = this.hasAvailableModel()
-      ? agentModelLabelHtml(selected?.dataset.provider ?? "", selectedLabel)
+      ? agentModelLabelHtml(selected?.dataset.provider ?? "", label || "Select model")
       : "Configure favorite models";
-    this.menu.innerHTML = "";
+  }
+
+  protected override renderMenu(): Node[] {
     const configure = document.createElement("button");
     configure.type = "button";
-    configure.className = "agent-sel-option configure";
+    configure.className = "button secondary agent-model-configure";
     configure.textContent = "Configure favorite models";
     configure.addEventListener("click", () => { this.close(); void this.openSetup(); });
-    this.menu.appendChild(configure);
-    Array.from(this.element.options).forEach((option) => {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = `agent-sel-option${option.selected ? " selected" : ""}${option.disabled ? " disabled" : ""}`;
-      item.disabled = option.disabled;
-      const label = document.createElement("span");
-      label.className = "agent-model-option-label";
-      label.innerHTML = agentModelLabelHtml(option.dataset.provider ?? "", option.textContent ?? option.value);
-      item.appendChild(label);
-      if (option.disabled) {
-        const reason = document.createElement("small");
-        reason.textContent = option.dataset.unavailableReason ?? "Unavailable";
-        item.appendChild(reason);
-      } else if (option.selected) {
-        const check = document.createElement("b");
-        check.textContent = "✓";
-        item.appendChild(check);
-      }
-      item.addEventListener("click", () => {
-        if (option.disabled) return;
-        this.element.value = option.value;
-        this.element.dispatchEvent(new Event("change", { bubbles: true }));
-        this.close();
-      });
-      this.menu?.appendChild(item);
-    });
-  };
+    const separator = document.createElement("hr");
+    separator.className = "popup-menu__separator";
+    return [configure, separator, ...super.renderMenu()];
+  }
+
+  protected override renderOptionLabel(option: HTMLOptionElement): HTMLElement {
+    const label = document.createElement("span");
+    label.className = "action-item__label agent-model-option-label";
+    label.innerHTML = agentModelLabelHtml(option.dataset.provider ?? "", option.textContent ?? option.value);
+    if (option.disabled) label.appendChild(this.description(option.dataset.unavailableReason ?? "Unavailable"));
+    return label;
+  }
+
+  protected override canOpen(): boolean {
+    if (this.hasAvailableModel()) return true;
+    void this.openSetup();
+    return false;
+  }
 
   private submit = (event: Event): void => {
     if (this.hasAvailableModel()) return;
@@ -1895,42 +1864,8 @@ class AgentModelMenuController extends Controller {
   };
 
   private async openSetup(): Promise<void> {
-    const html = await fetch("/settings/models/dialog", { headers: { Accept: "text/vnd.turbo-stream.html" } }).then((response) => response.text()).catch(() => "");
-    if (html) window.Turbo?.renderStreamMessage(html);
-  }
-
-  private toggle = (event: MouseEvent): void => {
-    event.stopPropagation();
-    if (!this.hasAvailableModel()) {
-      void this.openSetup();
-      return;
-    }
-    document.querySelectorAll(".agent-sel-menu").forEach((menu) => {
-      if (menu !== this.menu) menu.classList.add("hidden");
-    });
-    if (!this.menu || !this.button) return;
-    const opening = this.menu.classList.contains("hidden");
-    this.menu.classList.toggle("hidden", !opening);
-    if (opening) this.positionMenu();
-  };
-
-  private positionMenu(): void {
-    if (!this.menu || !this.button) return;
-    const rect = this.button.getBoundingClientRect();
-    const width = Math.max(220, Math.min(340, rect.width + 160));
-    this.menu.style.width = `${width}px`;
-    this.menu.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, rect.right - width))}px`;
-    this.menu.style.top = `${Math.max(8, rect.top - this.menu.getBoundingClientRect().height - 8)}px`;
-  }
-
-  private closeFromOutside = (event: MouseEvent): void => {
-    const target = event.target instanceof Node ? event.target : null;
-    if (target && (this.menu?.contains(target) || this.button?.contains(target))) return;
-    this.close();
-  };
-
-  private close(): void {
-    this.menu?.classList.add("hidden");
+    const response = await fetch("/settings/models/dialog", { headers: { Accept: "text/vnd.turbo-stream.html" } });
+    window.Turbo!.renderStreamMessage(await response.text());
   }
 }
 
@@ -1952,98 +1887,6 @@ class ClipboardController extends Controller {
       button.textContent = button.classList.contains("icon") ? "✓" : "Copied ✓";
       if (button.dataset.oauthCopyButton !== "true") window.setTimeout(() => { button.textContent = original; }, 3000);
     }
-  }
-}
-
-class AgentSelectMenuController extends Controller {
-  declare readonly element: HTMLSelectElement;
-  private button?: HTMLButtonElement;
-  private menu?: HTMLDivElement;
-  private observer?: MutationObserver;
-
-  connect(): void {
-    if (this.element.dataset.agentSelectEnhanced === "true") return;
-    this.element.dataset.agentSelectEnhanced = "true";
-    this.element.classList.add("agent-sel-native");
-    this.button = document.createElement("button");
-    this.button.type = "button";
-    this.button.className = "agent-sel-button";
-    this.button.addEventListener("click", this.toggle);
-    this.menu = document.createElement("div");
-    this.menu.className = "agent-sel-menu hidden";
-    this.element.after(this.button, this.menu);
-    this.element.addEventListener("change", this.sync);
-    document.addEventListener("click", this.closeFromOutside);
-    this.observer = new MutationObserver(this.sync);
-    this.observer.observe(this.element, { childList: true, subtree: true, attributes: true, attributeFilter: ["selected"] });
-    this.sync();
-  }
-
-  disconnect(): void {
-    this.button?.removeEventListener("click", this.toggle);
-    this.element.removeEventListener("change", this.sync);
-    document.removeEventListener("click", this.closeFromOutside);
-    this.observer?.disconnect();
-    this.button?.remove();
-    this.menu?.remove();
-    this.element.classList.remove("agent-sel-native");
-    delete this.element.dataset.agentSelectEnhanced;
-  }
-
-  private sync = (): void => {
-    if (!this.button || !this.menu) return;
-    const selected = this.element.selectedOptions[0]?.textContent?.trim() || this.element.value;
-    this.button.textContent = selected;
-    this.menu.innerHTML = "";
-    Array.from(this.element.options).forEach((option) => {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = `agent-sel-option${option.selected ? " selected" : ""}`;
-      const label = document.createElement("span");
-      label.textContent = option.textContent ?? option.value;
-      item.appendChild(label);
-      if (option.selected) {
-        const check = document.createElement("b");
-        check.textContent = "✓";
-        item.appendChild(check);
-      }
-      item.addEventListener("click", () => {
-        this.element.value = option.value;
-        this.element.dispatchEvent(new Event("change", { bubbles: true }));
-        this.close();
-      });
-      this.menu?.appendChild(item);
-    });
-  };
-
-  private toggle = (event: MouseEvent): void => {
-    event.stopPropagation();
-    document.querySelectorAll(".agent-sel-menu").forEach((menu) => {
-      if (menu !== this.menu) menu.classList.add("hidden");
-    });
-    if (!this.menu || !this.button) return;
-    const opening = this.menu.classList.contains("hidden");
-    this.menu.classList.toggle("hidden", !opening);
-    if (opening) this.positionMenu();
-  };
-
-  private positionMenu(): void {
-    if (!this.menu || !this.button) return;
-    const rect = this.button.getBoundingClientRect();
-    const width = Math.max(184, Math.min(262, rect.width + 120));
-    this.menu.style.width = `${width}px`;
-    this.menu.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, rect.right - width))}px`;
-    this.menu.style.top = `${Math.max(8, rect.top - this.menu.getBoundingClientRect().height - 8)}px`;
-  }
-
-  private closeFromOutside = (event: MouseEvent): void => {
-    const target = event.target instanceof Node ? event.target : null;
-    if (target && (this.menu?.contains(target) || this.button?.contains(target))) return;
-    this.close();
-  };
-
-  private close(): void {
-    this.menu?.classList.add("hidden");
   }
 }
 
@@ -2147,7 +1990,7 @@ application.register("provider-list", ProviderListController);
 application.register("model-add-menu", ModelAddMenuController);
 application.register("onboarding", OnboardingController);
 application.register("clipboard", ClipboardController);
-application.register("agent-select-menu", AgentSelectMenuController);
+application.register("popup-select", PopupSelectController);
 application.register("agent-model-menu", AgentModelMenuController);
 
 if ("serviceWorker" in navigator) {

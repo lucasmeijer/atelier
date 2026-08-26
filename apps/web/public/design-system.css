@@ -191,7 +191,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 }
 .button:active { transform: translateY(1px); }
 .button:disabled,
-.button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; transform: none; }
+.button[aria-disabled="true"] { opacity: .45; cursor: default; transform: none; }
 .button.icon-only { width: 26px; flex: 0 0 auto; padding: 0; }
 .button svg { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .button svg circle { fill: currentColor; stroke: none; }
@@ -203,6 +203,54 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .button-group.vertical > form,
 .button-group.vertical > .button,
 .button-group.vertical > form > .button { width: 100%; }
+.popup-select-native { display: none; }
+.popup-select-trigger::after { content: "▾"; color: var(--text-faint); font-size: var(--text-caption); }
+
+/* Floating menus present compact choices near a disclosure control. Anchored menus choose
+ * an alternate side when their preferred placement would cross the viewport edge. */
+.popup-menu-anchor { anchor-scope: --popup-menu-anchor; }
+.popup-menu-trigger { anchor-name: --popup-menu-anchor; }
+.popup-menu.popup-menu-anchored {
+  position-anchor: --popup-menu-anchor;
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  margin-block-start: var(--space-md);
+}
+.popup-menu.popup-menu-anchored.opens-above {
+  position-area: block-start span-inline-end;
+  margin-block: 0 var(--space-md);
+}
+
+.popup-menu {
+  position: fixed;
+  z-index: 1000;
+  inset: auto;
+  box-sizing: border-box;
+  min-width: 184px;
+  max-width: min(340px, calc(100vw - 16px));
+  max-height: min(420px, calc(100vh - 16px));
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-sm);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-surface);
+  background: var(--elev);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font: var(--text-small)/var(--leading-standard) var(--font-sans);
+}
+.popup-menu[hidden] { display: none; }
+.popup-menu .action-item { border-radius: var(--radius-round); font-weight: var(--weight-semibold); }
+.popup-menu .action-item.is-danger { color: var(--danger); }
+.popup-menu .action-item.is-danger:not(:disabled):not([aria-disabled="true"]):hover,
+.popup-menu .action-item.is-danger:not(:disabled):not([aria-disabled="true"]):focus-visible { background: var(--danger-soft); color: var(--danger); }
+.popup-menu__icon { width: 16px; height: 16px; flex: 0 0 auto; display: grid; place-items: center; color: var(--text-muted); }
+.popup-menu__icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.popup-menu__description { display: block; overflow: hidden; color: var(--text-faint); font-size: var(--text-caption); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
+.popup-menu__meta { flex: 0 0 auto; color: var(--text-faint); font-size: var(--text-caption); font-weight: var(--weight-medium); white-space: nowrap; }
+.popup-menu__separator { height: 1px; margin: var(--space-xs) var(--space-md); border: 0; background: var(--line); }
+.popup-menu__heading { margin: var(--space-md) var(--space-md) var(--space-xs); color: var(--text-faint); font-size: var(--text-caption); font-weight: var(--weight-bold); letter-spacing: .06em; text-transform: uppercase; }
+
 
 /* Text entry controls share one visual contract across single- and multi-line input. */
 .text-field,
@@ -234,7 +282,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .text-field:not(:disabled):focus-visible,
 .textarea:not(:disabled):focus-visible { border-color: var(--text-entry-hover-border); }
 .text-field:disabled,
-.textarea:disabled { opacity: .45; cursor: not-allowed; }
+.textarea:disabled { opacity: .45; cursor: default; }
 
 /* Orientation-independent primary actions with optional status and auxiliary controls. */
 .action-item { min-width: 0; min-height: 32px; display: flex; align-items: center; padding-inline: var(--space-md); border-radius: var(--radius-round); color: var(--text-muted); }
@@ -245,8 +293,8 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .action-item:not(:disabled):not([aria-disabled="true"]):hover,
 .action-item:not(:disabled):not([aria-disabled="true"]):focus-visible,
 .action-item:not([aria-disabled="true"]):has(:focus-visible),
-.action-item:has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"])),
-.action-item.action-item__primary:is([aria-current="page"], [aria-selected="true"]) { outline: none; background: var(--accent-soft); color: var(--text); }
+.action-item:has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"])),
+.action-item.action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]) { outline: none; background: var(--accent-soft); color: var(--text); }
 .action-item__label { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
 .action-item__label-text { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .action-item.is-label-scrolling .action-item__label-text { width: max-content; overflow: visible; text-overflow: clip; animation: action-item-label-scroll var(--action-item-label-scroll-duration) linear infinite alternate; }

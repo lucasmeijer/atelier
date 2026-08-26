@@ -115,26 +115,6 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
       }
     }
 
-    toggleMenu(event: StimulusActionEvent<Event, HTMLButtonElement>): void {
-      const button = event.currentTarget;
-      const menuId = button.getAttribute("aria-controls");
-      const menu = menuId ? document.getElementById(menuId) : null;
-      if (!menu) throw new Error("Files action button does not control a menu");
-      if (menu.matches(":popover-open")) {
-        menu.hidePopover();
-        return;
-      }
-      menu.showPopover();
-      const buttonRect = button.getBoundingClientRect();
-      const menuRect = menu.getBoundingClientRect();
-      const left = Math.max(8, Math.min(buttonRect.right - menuRect.width, window.innerWidth - menuRect.width - 8));
-      const top = buttonRect.bottom + menuRect.height + 8 <= window.innerHeight
-        ? buttonRect.bottom + 4
-        : Math.max(8, buttonRect.top - menuRect.height - 4);
-      menu.style.left = `${left}px`;
-      menu.style.top = `${top}px`;
-    }
-
     async copyUrl(event: StimulusActionEvent<Event, HTMLButtonElement>): Promise<void> {
       const button = event.currentTarget;
       await copyTextToClipboard(new URL(button.dataset.filesCopyUrl!, location.href).href);

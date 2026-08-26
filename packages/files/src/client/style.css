@@ -28,10 +28,6 @@
 .files-row-name a { color: inherit; text-decoration: none; }
 .files-row-size { color: var(--text-faint); text-align: right; font-size: var(--text-caption); font-variant-numeric: tabular-nums; }
 .files-actions-toggle { margin-left: var(--space-sm); }
-.files-actions-menu { position: fixed; z-index: 20; inset: unset; width: 150px; margin: 0; border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); border-radius: var(--radius-control); padding: var(--space-xs); color: var(--text); background: var(--panel, var(--bg)); box-shadow: 0 9px 28px color-mix(in srgb, #000 30%, transparent); font: var(--text-small) var(--font-sans); }
-.files-actions-menu .action-item { min-height: 29px; border-radius: var(--radius-indicator); color: inherit; font: inherit; }
-.files-actions-menu .danger { color: var(--danger); }
-.files-actions-menu .danger:not(:disabled):hover, .files-actions-menu .danger:not(:disabled):focus-visible { background: var(--danger-soft); }
 .files-empty { margin: var(--space-3xl); color: var(--text-faint); text-align: center; font-size: var(--text-small); }
 .files-directory-children > .files-empty { margin: var(--space-sm) var(--space-md) var(--space-sm) var(--space-xl); text-align: left; font-style: italic; }
 .files-drop-overlay { position: absolute; z-index: 5; inset: 8px; display: none; place-content: center; gap: var(--space-sm); border: 2px dashed var(--accent); border-radius: var(--radius-control); color: var(--text); background: color-mix(in srgb, var(--bg) 88%, var(--accent) 12%); text-align: center; pointer-events: none; }
