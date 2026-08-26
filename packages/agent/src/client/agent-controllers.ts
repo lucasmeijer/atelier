@@ -95,6 +95,11 @@ function messageScrollTarget(transcript: ScrollTranscript, message: TranscriptMe
   return Math.min(messageScrollTop(transcript, message), scrollEnd(transcript));
 }
 
+export function workspaceSelectionScrollTop(transcript: ScrollTranscript, message: TranscriptMessage | null, busy: boolean): number {
+  if (busy) return scrollEnd(transcript);
+  return message ? messageScrollTarget(transcript, message) : 0;
+}
+
 export function scrollMessageToTop(transcript: ScrollTranscript & Pick<HTMLElement, "scrollTo">, message: TranscriptMessage): void {
   transcript.scrollTo({ top: messageScrollTarget(transcript, message), behavior: "smooth" });
 }
@@ -158,6 +163,9 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private promptHistoryState?: PromptHistoryState;
     private applyingPromptHistory = false;
     private historicalOpenItemIds = new Set<string>();
+    private get workspacePresentation(): HTMLElement {
+      return this.element.closest<HTMLElement>(".fixed-workspace-presentation")!;
+    }
     private restoreHistoricalOpenItems(): void {
       for (const id of this.historicalOpenItemIds) this.transcriptTarget.querySelector<HTMLElement>(`#${CSS.escape(id)} details[data-agent-historical-detail]`)?.setAttribute("open", "");
     }
@@ -198,6 +206,16 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       if (document.visibilityState === "visible" && isWorkspacePaneVisible(this.element)) this.start();
       else this.stop();
     };
+    private readonly onWorkspaceSelected = (): void => {
+      const busy = this.element.querySelector<HTMLElement>(".agent-sendstop")!.dataset.agentBusy === "true";
+      this.stuck = busy;
+      cancelAnimationFrame(this.transcriptLayoutFrame);
+      this.transcriptLayoutFrame = requestAnimationFrame(() => {
+        if (!isWorkspacePaneVisible(this.element)) return;
+        this.transcriptTarget.scrollTop = workspaceSelectionScrollTop(this.transcriptTarget, this.latestMessage(), busy);
+        this.onScroll();
+      });
+    };
     connect(): void {
       this.transcriptLayoutObserver = new ResizeObserver(this.transcriptLayoutChanged);
       this.observeTranscriptItems();
@@ -211,6 +229,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       this.updateTranscriptNavigation();
       document.addEventListener("visibilitychange", this.onVisibilityChange);
+      this.workspacePresentation.addEventListener("atelier:workspace-selected", this.onWorkspaceSelected);
       const promptDraft = sessionStorage.getItem(this.promptDraftStorageKey);
       if (promptDraft !== null) this.inputTarget.value = promptDraft;
       this.updateSendStopButton();
@@ -223,6 +242,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       cancelAnimationFrame(this.transcriptLayoutFrame);
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
+      this.workspacePresentation.removeEventListener("atelier:workspace-selected", this.onWorkspaceSelected);
       this.stop();
     }
 

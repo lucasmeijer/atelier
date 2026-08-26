@@ -107,6 +107,7 @@ export function createWorkspacePresentationController(
       this.normalizeState();
       const focusAttendedWorkView = !this.applyDeepLink() && this.activateNewestAttendedWorkView();
       this.applyState({ emit: true, focus: focusAttendedWorkView });
+      if (this.element.closest(".workspace-detail-resident.visible")) this.notifyWorkspaceSelected();
     }
 
     disconnect(): void {
@@ -411,11 +412,15 @@ export function createWorkspacePresentationController(
     };
 
     private viewportChanged = (): void => { this.setWorkWidth(this.workPane.getBoundingClientRect().width || 520, false); this.applyState({ emit: true }); };
+    private notifyWorkspaceSelected(): void {
+      this.element.dispatchEvent(new CustomEvent("atelier:workspace-selected"));
+    }
     private residencyVisible = (): void => {
       attentionActivatedResidents.delete(this.element.closest<HTMLElement>(".workspace-detail-resident")!);
       const focusAttendedWorkView = this.activateNewestAttendedWorkView();
       this.persist();
       this.applyState({ emit: true, focus: focusAttendedWorkView });
+      this.notifyWorkspaceSelected();
     };
     private residencyHidden = (): void => this.emitVisibilityChanges([...this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role]")].filter((pane) => visiblePresentationPanes.has(pane)), []);
 

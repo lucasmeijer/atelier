@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { type AgentCompletionInput, agentCompletionRequest, fileCompletionPrefix, focusAgentPromptOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, scrollMessageToTop, transcriptFollowingAfterScroll } from "../../src/client/agent-controllers.ts";
+import { type AgentCompletionInput, agentCompletionRequest, fileCompletionPrefix, focusAgentPromptOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, scrollMessageToTop, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): AgentCompletionInput {
   return {
@@ -62,6 +62,20 @@ describe("agent transcript navigation", () => {
     expect(messageNavigationDirection(transcript, message)).toBeUndefined();
     transcript.scrollTop = 400;
     expect(messageNavigationDirection(transcript, message)).toBe("up");
+  });
+
+  test("positions a selected workspace at the latest message when idle and at the tail when busy", () => {
+    const transcript = {
+      scrollTop: 100,
+      scrollHeight: 1_000,
+      clientHeight: 300,
+      getBoundingClientRect: () => ({ top: 100 }),
+    };
+    const latest = { getBoundingClientRect: () => ({ top: 340 }) };
+
+    expect(workspaceSelectionScrollTop(transcript, latest, false)).toBe(340);
+    expect(workspaceSelectionScrollTop(transcript, latest, true)).toBe(700);
+    expect(workspaceSelectionScrollTop(transcript, null, false)).toBe(0);
   });
 
   test("preserves following when a delayed scroll event observes newly streamed content", () => {
