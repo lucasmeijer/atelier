@@ -1031,30 +1031,40 @@ class EmptyWorkspaceOnboardingController extends Controller {
   declare readonly pathTarget: SVGPathElement;
   declare readonly destinationValue: "first-project" | "first-workspace";
 
-  private visibilityObserver: MutationObserver | undefined;
+  private observer: MutationObserver | undefined;
 
   connect(): void {
     window.addEventListener("resize", this.draw);
     const empty = this.element.closest(".workspace-detail-empty")!;
-    this.visibilityObserver = new MutationObserver(this.draw);
-    this.visibilityObserver.observe(empty, { attributes: true, attributeFilter: ["hidden"] });
+    this.observer = new MutationObserver(this.draw);
+    this.observer.observe(empty, { attributes: true, attributeFilter: ["hidden"] });
+    this.observer.observe(this.element.closest(".fixed-shell-app")!, { attributes: true, attributeFilter: ["class"] });
     requestAnimationFrame(this.draw);
   }
 
   disconnect(): void {
     window.removeEventListener("resize", this.draw);
-    this.visibilityObserver?.disconnect();
+    this.observer?.disconnect();
   }
 
   private draw = (): void => {
     const origin = this.originTarget.getBoundingClientRect();
     if (origin.width === 0) return;
     const start = { x: origin.left + origin.width / 2, y: origin.bottom + 12 };
-    const destination = document.querySelector<HTMLElement>(`[data-empty-workspace-onboarding-destination="${this.destinationValue}"]`)!.getBoundingClientRect();
-    const end = { x: destination.right + 5, y: destination.top + destination.height / 2 };
-    const lowPoint = Math.min(window.innerHeight - 72, Math.max(start.y, end.y) + 170);
+    const app = this.element.closest(".fixed-shell-app")!;
+    const isPhone = window.matchMedia(phoneViewportMediaQuery).matches;
+    const workspacePaneOpen = app.classList.contains("is-empty-workspace-pane-open");
+    const pointToMobileNavigation = isPhone && !workspacePaneOpen;
+    const destinationSelector = pointToMobileNavigation
+      ? "[data-empty-workspace-mobile-destination]"
+      : `[data-empty-workspace-onboarding-destination="${this.destinationValue}"]`;
+    const destination = document.querySelector<HTMLElement>(destinationSelector)!.getBoundingClientRect();
+    const end = { x: isPhone && workspacePaneOpen ? destination.left - 5 : destination.right + 5, y: destination.top + destination.height / 2 };
+    const horizontalDirection = end.x >= start.x ? 1 : -1;
+    const horizontalBend = Math.min(180, Math.max(40, Math.abs(end.x - start.x) * 0.7));
+    const verticalBend = Math.min(150, Math.max(70, Math.abs(end.y - start.y) * 0.45));
     this.svgTarget.setAttribute("viewBox", `0 0 ${window.innerWidth} ${window.innerHeight}`);
-    this.pathTarget.setAttribute("d", `M ${start.x} ${start.y} C ${start.x} ${start.y + 130}, ${end.x + 260} ${lowPoint}, ${end.x} ${end.y}`);
+    this.pathTarget.setAttribute("d", `M ${start.x} ${start.y} C ${start.x} ${start.y + verticalBend}, ${end.x - horizontalDirection * horizontalBend} ${end.y}, ${end.x} ${end.y}`);
   };
 }
 
@@ -1077,6 +1087,10 @@ class WorkspaceNavigationController extends Controller {
   }
 
 
+  showWorkspacePane(): void {
+    this.element.classList.add("is-empty-workspace-pane-open");
+  }
+
   async selectWorkspace(event: Event): Promise<void> {
     // SAFETY: This action is attached only to server-rendered Workspace entry elements.
     const workspaceId = (event.currentTarget as HTMLElement).dataset.workspaceEntryId;
@@ -1084,6 +1098,7 @@ class WorkspaceNavigationController extends Controller {
   }
 
   async selectWorkspaceById(workspaceId: string): Promise<void> {
+    this.element.classList.remove("is-empty-workspace-pane-open");
     this.setActiveWorkspace(workspaceId);
     await residencyController()?.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`);
     if (window.matchMedia(phoneViewportMediaQuery).matches) {

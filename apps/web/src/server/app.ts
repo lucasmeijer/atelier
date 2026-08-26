@@ -80,7 +80,7 @@ import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderEmptyWorkspaceMobileNavigation, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 
 const jsonStringSchema = Type.String();
 
@@ -736,6 +736,7 @@ ${moduleStylesHtml()}
     return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts workspace-navigation">
     ${renderWorkspacePane(pane, renderGlobalSidebarContributions())}
     <main class="fixed-shell-app-main">${options.mainHtml ?? await workspaceDetailHostHtml(pane, selectedId)}</main>
+    ${selectedId ? "" : renderEmptyWorkspaceMobileNavigation()}
   </div>
   ${projectEditorModal()}
   <div id="update_modal_host"></div>

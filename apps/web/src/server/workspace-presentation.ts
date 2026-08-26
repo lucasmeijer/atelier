@@ -217,6 +217,12 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
   </aside>`;
 }
 
+export function renderEmptyWorkspaceMobileNavigation(): string {
+  return `<nav class="fixed-shell-mobile-nav fixed-shell-empty-mobile-nav" aria-label="Workspace destinations">
+    <button class="fixed-shell-mobile-fixed" type="button" aria-label="Workspace" title="Workspace" data-empty-workspace-mobile-destination data-action="click->workspace-navigation#showWorkspacePane">${icon("workspace")}</button>
+  </nav>`;
+}
+
 function renderAgentPane(presentation: WorkspacePresentation): string {
   const multiple = presentation.agentConversations.length > 1;
   const title = multiple
