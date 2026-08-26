@@ -142,7 +142,7 @@
 
 /* Orientation-independent primary actions with optional status and auxiliary controls. */
 .action-item { min-width: 0; min-height: 32px; display: flex; align-items: center; border-radius: var(--radius-round); color: var(--text-muted); }
-.action-item__primary { min-width: 0; min-height: 32px; flex: 1; display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) var(--space-md); border: 0; border-radius: var(--radius-round); background: transparent; color: inherit; font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.action-item__primary { min-width: 0; min-height: 32px; flex: 1; display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) var(--space-md); border: 0; border-radius: var(--radius-round); background: transparent; font: inherit; letter-spacing: inherit; text-align: left; text-decoration: none; cursor: pointer; }
 .action-item.action-item__primary { width: 100%; }
 .action-item:hover,
 .action-item:focus-visible,

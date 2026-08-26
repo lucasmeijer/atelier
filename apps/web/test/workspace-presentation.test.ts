@@ -46,7 +46,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('data-action="click->workspace-navigation#selectWorkspace"');
     expect(html).toContain('href="/projects/project-1/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New workspace: Atelier"');
     expect(html).toContain('href="/projects/project-1/editor" data-turbo-frame="project_editor_frame" data-controller="modal-opener"');
-    const projectHeading = html.slice(html.indexOf('class="fixed-shell-project-heading-row action-item"'), html.indexOf('class="fixed-shell-project-workspaces"'));
+    const projectHeading = html.slice(html.indexOf('class="fixed-shell-project-heading-row fixed-shell-navigation-action action-item"'), html.indexOf('class="fixed-shell-project-workspaces"'));
     expect(projectHeading.indexOf("<svg")).toBeLessThan(projectHeading.indexOf("Atelier"));
     expect(projectHeading.indexOf("Atelier")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-settings"));
     expect(projectHeading.indexOf("fixed-shell-project-settings")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-add"));
@@ -65,7 +65,8 @@ describe("role-fixed Workspace presentation", () => {
     expect(drawerProjects).not.toContain('data-project-id="__projectless__"');
     expect(drawerProjects).not.toContain('fixed-shell-project-settings" href="/projects/new/editor"');
     expect(html.indexOf('class="fixed-shell-projects-drawer')).toBeLessThan(html.indexOf("<footer>"));
-    expect(html).toContain('<a class="fixed-shell-settings action-item action-item__primary" href="/settings" data-turbo-frame="_top" data-turbo-stream="true"><span class="action-item__label"><span class="action-item__label-text">Settings</span></span></a>');
+    expect(html).toContain('<a class="fixed-shell-navigation-action action-item action-item__primary" href="/settings" data-turbo-frame="_top" data-turbo-stream="true"><span class="action-item__label"><span class="action-item__label-text">Settings</span></span></a>');
+    expect(html).not.toContain("fixed-shell-settings");
     expect(html).not.toContain("New Project");
     expect(html).toContain('class="fixed-shell-workspace-row action-item action-item__primary active"');
     expect(html).not.toContain("fixed-shell-workspace-color");

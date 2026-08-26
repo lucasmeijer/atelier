@@ -168,7 +168,7 @@ function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGr
   const settings = options.settingsHref ? `<a class="fixed-shell-project-action fixed-shell-project-settings action-item__action" href="${escapeHtml(options.settingsHref)}" ${projectEditorTarget} aria-label="Project settings: ${escapedTitle}" title="Project settings: ${escapedTitle}">${icon("more")}</a>` : "";
   const onboardingClass = options.onboardingDestination ? " is-onboarding-target" : "";
   const onboardingAttribute = options.onboardingDestination ? ` data-empty-workspace-onboarding-destination="${options.onboardingDestination}"` : "";
-  return `<div class="fixed-shell-project-heading-row action-item${mode === "launcher" ? " fixed-shell-project-launch-row" : ""}">${heading}${settings}<a class="fixed-shell-project-action fixed-shell-project-add action-item__action${onboardingClass}"${onboardingAttribute} href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${icon("plus")}</a></div>`;
+  return `<div class="fixed-shell-project-heading-row fixed-shell-navigation-action action-item${mode === "launcher" ? " fixed-shell-project-launch-row" : ""}">${heading}${settings}<a class="fixed-shell-project-action fixed-shell-project-add action-item__action${onboardingClass}"${onboardingAttribute} href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${icon("plus")}</a></div>`;
 }
 
 function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, mode: "disclosure" | "launcher" = "disclosure", onboardingDestination?: Exclude<WorkspacePaneOnboardingState, "workspaces">): string {
@@ -180,7 +180,7 @@ function renderParkedWorkspaceGroup(workspaces: readonly WorkspacePaneEntry[], p
   if (workspaces.length === 0) return "";
   const groupId = `${parentId}:parked`;
   return `<section class="fixed-shell-project fixed-shell-parked is-collapsed" data-project-id="${escapeHtml(groupId)}">
-    <div class="fixed-shell-project-heading-row action-item"><button type="button" class="fixed-shell-project-heading action-item__primary" aria-expanded="false" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(groupId)}">${icon("chevron")}${actionItemLabel(`${workspaces.length} parked`)}</button></div>
+    <div class="fixed-shell-project-heading-row fixed-shell-navigation-action action-item"><button type="button" class="fixed-shell-project-heading action-item__primary" aria-expanded="false" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(groupId)}">${icon("chevron")}${actionItemLabel(`${workspaces.length} parked`)}</button></div>
     <div class="fixed-shell-project-workspaces">${workspaces.map((workspace) => `<form method="post" action="/workspaces/${encodeURIComponent(workspace.id)}/unpark" data-workspace-entry-id="${escapeHtml(workspace.id)}" data-action="submit->workspace-navigation#unparkWorkspace"><button type="submit" class="fixed-shell-workspace-row action-item action-item__primary" title="Unpark and open ${escapeHtml(workspace.title)}" aria-label="Unpark and open ${escapeHtml(workspace.title)}">${renderWorkspaceRowContent(workspace)}</button></form>`).join("")}</div>
   </section>`;
 }
@@ -215,7 +215,7 @@ export function renderWorkspacePaneCollections(presentation: WorkspacePanePresen
 export function renderWorkspacePane(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
   return `<aside class="fixed-shell-workspace-pane" aria-label="Workspaces">
     ${renderWorkspacePaneCollections(presentation, sidebarContributionsHtml)}
-    <footer><a class="fixed-shell-settings action-item action-item__primary" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">${actionItemLabel("Settings")}</a></footer>
+    <footer><a class="fixed-shell-navigation-action action-item action-item__primary" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">${actionItemLabel("Settings")}</a></footer>
   </aside>`;
 }
 
