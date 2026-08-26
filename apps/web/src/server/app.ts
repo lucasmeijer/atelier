@@ -339,18 +339,11 @@ ${moduleStylesHtml()}
     "#22d3ee", "#38bdf8", "#60a5fa", "#818cf8", "#a78bfa", "#c084fc", "#e879f9", "#f472b6",
   ];
 
-  function repoColor(repoName: string): string {
-    let sum = 0;
-    for (let i = 0; i < repoName.length; i++) sum += repoName.charCodeAt(i);
-    return repoColorPalette[sum % repoColorPalette.length]!;
-  }
-
-  function repoColorStyle(repoName: string): string {
-    return `--repo-color:${repoColor(repoName)}`;
-  }
-
   function repoSwatch(projectId: string): string {
-    return `<span class="repo-swatch" style="${repoColorStyle(projectId)}" aria-hidden="true"></span>`;
+    let sum = 0;
+    for (let i = 0; i < projectId.length; i++) sum += projectId.charCodeAt(i);
+    const color = repoColorPalette[sum % repoColorPalette.length]!;
+    return `<span class="repo-swatch" style="--repo-color:${color}" aria-hidden="true"></span>`;
   }
 
   async function agentLaunchSettingsFrame(selectedModel?: string): Promise<string> {
@@ -595,7 +588,6 @@ ${moduleStylesHtml()}
       };
       const unreadAt = registry.workspaceUnreadAt(entry.id);
       if (unreadAt !== undefined) pane.unreadAt = unreadAt;
-      if (isGitProjectInit(entry.init)) pane.color = repoColor(entry.init.projectId);
       return pane;
     };
     const workspaceProjectIds = new Set([...grouped.keys(), ...parkedByProject.keys()]);

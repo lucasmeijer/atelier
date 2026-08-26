@@ -640,9 +640,9 @@ describe("Atelier Playwright helper", () => {
       workViews: [],
     };
     const pane: WorkspacePanePresentation = { projects: [{ id: "project-1", title: "Project", workspaces: [
-      { id: "compact-demo", title: "Compact", color: "#3b82f6", active: true },
-      { id: "ready-demo", title: "Ready", color: "#f97316", unreadAt: 123 },
-      { id: "busy-demo", title: "Busy", color: "#22c55e", busy: true },
+      { id: "compact-demo", title: "Compact", active: true },
+      { id: "ready-demo", title: "Ready", unreadAt: 123 },
+      { id: "busy-demo", title: "Busy", busy: true },
     ] }] };
     const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));

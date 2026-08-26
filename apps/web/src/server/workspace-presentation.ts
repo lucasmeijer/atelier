@@ -10,7 +10,6 @@ export type WorkViewAvailability =
 export interface WorkspacePaneEntry {
   id: string;
   title: string;
-  color?: string;
   active?: boolean;
   busy?: boolean;
   unreadAt?: number;
@@ -127,13 +126,13 @@ function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
 }
 
 function renderWorkspaceRowContent(workspace: WorkspacePaneEntry): string {
-  return `<i class="fixed-shell-workspace-color" aria-hidden="true"></i><span class="fixed-shell-workspace-name"><span>${escapeHtml(workspace.title)}</span></span>${renderWorkspaceRowStatus(workspace)}`;
+  return `<span class="fixed-shell-workspace-name"><span>${escapeHtml(workspace.title)}</span></span>${renderWorkspaceRowStatus(workspace)}`;
 }
 
 function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string): string {
-  const color = workspace.color ? ` style="--workspace-color:${escapeHtml(workspace.color)}"` : "";
   const unreadAt = workspace.unreadAt === undefined ? "" : ` data-workspace-unread-at="${workspace.unreadAt}"`;
-  return `<button type="button" class="fixed-shell-workspace-row${workspace.active ? " active" : ""}" title="${escapeHtml(workspace.title)}"${workspace.active ? ' aria-current="page"' : ""} data-controller="workspace-name-scroll" data-workspace-entry-id="${escapeHtml(workspace.id)}"${unreadAt} ${projectId ? `data-project-id="${escapeHtml(projectId)}"` : ""}${color} data-action="click->workspace-navigation#selectWorkspace">${renderWorkspaceRowContent(workspace)}</button>`;
+  const project = projectId ? ` data-project-id="${escapeHtml(projectId)}"` : "";
+  return `<button type="button" class="fixed-shell-workspace-row${workspace.active ? " active" : ""}" title="${escapeHtml(workspace.title)}"${workspace.active ? ' aria-current="page"' : ""} data-controller="workspace-name-scroll" data-workspace-entry-id="${escapeHtml(workspace.id)}"${unreadAt}${project} data-action="click->workspace-navigation#selectWorkspace">${renderWorkspaceRowContent(workspace)}</button>`;
 }
 
 const projectlessWorkspaceGroupId = "__projectless__";

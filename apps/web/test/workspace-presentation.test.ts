@@ -34,8 +34,8 @@ describe("role-fixed Workspace presentation", () => {
 
   test("server-renders the Workspace pane once at the shell seam", () => {
     const html = renderWorkspacePane({ projects: [{ id: "project-1", title: "Atelier", workspaces: [
-      { id: "workspace-1", title: "Typed shell", color: "#3b82f6", active: true, unreadAt: 123 },
-      { id: "workspace-2", title: "Working", color: "#3b82f6", busy: true },
+      { id: "workspace-1", title: "Typed shell", active: true, unreadAt: 123 },
+      { id: "workspace-2", title: "Working", busy: true },
     ] }], emptyProjects: [{ id: "project-2", title: "Empty" }], projectlessWorkspaces: [{ id: "workspace-3", title: "Scratch" }] }, '<button data-update-probe>Restart to update</button>');
 
     expect(html).toContain('class="fixed-shell-workspace-pane"');
@@ -67,6 +67,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(html.indexOf('class="fixed-shell-projects-drawer')).toBeLessThan(html.indexOf("<footer>"));
     expect(html).not.toContain("New Project");
     expect(html).toContain('class="fixed-shell-workspace-row active"');
+    expect(html).not.toContain("fixed-shell-workspace-color");
     expect(html).toContain('data-workspace-unread-at="123"');
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('class="status-spinner sm fixed-shell-workspace-busy" aria-label="Workspace busy"');
