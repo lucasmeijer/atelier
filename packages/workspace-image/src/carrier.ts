@@ -31,6 +31,12 @@ interface CarrierLabels {
   [name: string]: string;
 }
 
+interface WorkspaceImageCarrierIdentity {
+  image: string;
+  key: string;
+  labels: CarrierLabels;
+}
+
 const carrierTasks = new Map<string, Promise<WorkspaceImageCarrierResult>>();
 
 function sortedUnique(values: string[]): string[] { return [...new Set(values)].sort(); }
@@ -79,12 +85,29 @@ function carrierLabels(key: string, baseIdentity: string, platform: string, prel
   };
 }
 
+function carrierIdentity(options: { baseIdentity: string; platform: string; preload: ResolvedDockerImagePreload }): WorkspaceImageCarrierIdentity {
+  const key = workspaceCarrierKey(options.baseIdentity, options.platform, options.preload);
+  return {
+    image: `atelier-workspace-carrier:${key}`,
+    key,
+    labels: carrierLabels(key, options.baseIdentity, options.platform, options.preload),
+  };
+}
+
 async function validCarrier(ref: string, labels: Record<string, string>): Promise<boolean> {
   const result = await runDocker(["image", "inspect", "--format", "{{json .Config.Labels}}", ref]);
   if (result.exitCode !== 0) return false;
   const actual: unknown = JSON.parse(result.stdout.trim() || "{}");
   if (!isJsonObject(actual)) return false;
   return Object.entries(labels).every(([key, value]) => actual[key] === value);
+}
+
+async function findCarrier(identity: WorkspaceImageCarrierIdentity): Promise<string | undefined> {
+  return await validCarrier(identity.image, identity.labels) ? identity.image : undefined;
+}
+
+export async function findWorkspaceImageCarrier(options: { baseIdentity: string; platform: string; preload: ResolvedDockerImagePreload }): Promise<string | undefined> {
+  return await findCarrier(carrierIdentity(options));
 }
 
 export function nestedDockerDaemonInitScript(options: { logPath?: string; pidPath?: string } = {}): string {
@@ -132,11 +155,9 @@ async function assertCarrierBase(baseImage: string, preload: ResolvedDockerImage
 
 export async function buildWorkspaceImageCarrier(options: { baseImage: string; baseIdentity: string; platform: string; preload: ResolvedDockerImagePreload }): Promise<WorkspaceImageCarrierResult> {
   const { platform } = options;
-  const key = workspaceCarrierKey(options.baseIdentity, platform, options.preload);
-  const labels = carrierLabels(key, options.baseIdentity, platform, options.preload);
-
-  const tag = `atelier-workspace-carrier:${key}`;
-  if (await validCarrier(tag, labels)) return { image: tag, key, kind: "local hit" };
+  const identity = carrierIdentity(options);
+  const { image: tag, key, labels } = identity;
+  if (await findCarrier(identity)) return { image: tag, key, kind: "local hit" };
   const existing = carrierTasks.get(key);
   if (existing) return await existing;
 

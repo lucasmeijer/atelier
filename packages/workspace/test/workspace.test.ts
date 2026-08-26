@@ -16,7 +16,7 @@ import {
   type WorkspaceExecResult,
   type WorkspaceInitInstruction,
 } from "@atelier/workspace";
-import { resolveWorkspaceImage } from "@atelier/workspace-image";
+import { nativeLinuxDockerPlatform, repositoryWorkspaceImageTag, resolveWorkspaceImage } from "@atelier/workspace-image";
 import { registerProjectWorkspaceEvents, setGitIdentity } from "@atelier/projects";
 import { cleanupNamespace, createTestNamespace, docker } from "./helpers.ts";
 
@@ -86,13 +86,36 @@ describe("core workspaces", () => {
 
   test("listWorkspaces marks a workspace when its project now resolves to a different image", async () => {
     const created = await createWorkspace();
-    await execWorkspaceShell(created.id, "mkdir -p .atelier && printf '%s\\n' 'FROM atelier-workspace' 'ENV ATELIER_IMAGE_TEST=changed' > .atelier/Dockerfile");
+    const dockerfile = "FROM atelier-workspace\nENV ATELIER_IMAGE_TEST=" + crypto.randomUUID() + "\n";
+    const expectedImage = repositoryWorkspaceImageTag(await resolveWorkspaceImage(), dockerfile);
+    expect((await docker(["image", "inspect", expectedImage])).exitCode).not.toBe(0);
+    await execWorkspaceCommand(created.id, ["sh", "-c", "mkdir -p .atelier && cat > .atelier/Dockerfile"], { stdin: dockerfile });
 
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, imageOutdated: true });
+    expect((await docker(["image", "inspect", expectedImage])).exitCode).not.toBe(0);
 
     await execWorkspaceShell(created.id, "rm .atelier/Dockerfile");
     expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null });
     await deleteWorkspace(created.id, { force: true });
+  });
+
+  test("listWorkspaces does not build a missing carrier image", async () => {
+    const created = await createWorkspace();
+    const defaultImage = await resolveWorkspaceImage();
+    const preloadRef = "atelier-list-preload:" + crypto.randomUUID();
+    expect((await docker(["tag", defaultImage, preloadRef])).exitCode).toBe(0);
+    try {
+      if (!await nativeLinuxDockerPlatform()) return;
+      const carriersBefore = (await docker(["image", "ls", "--filter", "label=com.atelier.workspace-image.kind=carrier", "--quiet"])).stdout.trim();
+      const manifest = JSON.stringify({ docker: { privileged: true, preloadImages: [preloadRef] } });
+      await execWorkspaceCommand(created.id, ["sh", "-c", "mkdir -p .atelier && cat > .atelier/workspace.json"], { stdin: manifest });
+
+      expect((await listWorkspaces()).workspaces).toContainEqual({ id: created.id, title: null, imageOutdated: true });
+      expect((await docker(["image", "ls", "--filter", "label=com.atelier.workspace-image.kind=carrier", "--quiet"])).stdout.trim()).toBe(carriersBefore);
+    } finally {
+      await docker(["image", "rm", preloadRef]);
+      await deleteWorkspace(created.id, { force: true });
+    }
   });
 
   test("setWorkspaceTitle sets the workspace title and listWorkspaces reflects it", async () => {

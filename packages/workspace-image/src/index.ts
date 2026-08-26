@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireDocker, runDocker, shellQuote, type AtelierEventBus } from "@atelier/core";
 import { runHostObservableCommand } from "@atelier/observable-terminal/server";
-import { buildWorkspaceImageCarrier, defaultAtelierWorkspaceImageSpecifier, nestedDockerDaemonInitScript, type ResolvedDockerImagePreload } from "./carrier.ts";
+import { buildWorkspaceImageCarrier, defaultAtelierWorkspaceImageSpecifier, findWorkspaceImageCarrier, nativeLinuxDockerPlatform, nestedDockerDaemonInitScript, type ResolvedDockerImagePreload } from "./carrier.ts";
 import { parseWorkspaceImageMetadata, type WorkspaceImageMetadata } from "./metadata.ts";
 import { pruneSupersededWorkspaceImages, workspaceImageKindLabel, type WorkspaceImageKind } from "./prune.ts";
 import { createSerializedImageTagger } from "./tag-queue.ts";
@@ -20,6 +20,11 @@ interface WorkspaceImageBuildTask {
   output: string;
   session?: string;
   promise: Promise<void>;
+}
+
+interface DefaultWorkspaceImageDescriptor {
+  image: string;
+  build?: { contextDir: string; metadata: WorkspaceImageMetadata };
 }
 
 export interface ResolveWorkspaceImageOptions {
@@ -181,6 +186,31 @@ async function bakedDefaultWorkspaceImageRef(): Promise<string | undefined> {
   return ref || undefined;
 }
 
+let defaultWorkspaceImageDescriptorPromise: Promise<DefaultWorkspaceImageDescriptor> | undefined;
+
+async function describeDefaultWorkspaceImage(): Promise<DefaultWorkspaceImageDescriptor> {
+  const baked = await bakedDefaultWorkspaceImageRef();
+  if (baked) return { image: baked };
+
+  const contextDir = defaultContextDir();
+  await generateContext(contextDir);
+  const metadata = await contextMetadata(contextDir);
+  return { image: metadata.tag, build: { contextDir, metadata } };
+}
+
+function defaultWorkspaceImageDescriptor(): Promise<DefaultWorkspaceImageDescriptor> {
+  defaultWorkspaceImageDescriptorPromise ??= describeDefaultWorkspaceImage().catch((error) => {
+    defaultWorkspaceImageDescriptorPromise = undefined;
+    throw error;
+  });
+  return defaultWorkspaceImageDescriptorPromise;
+}
+
+async function inspectDefaultWorkspaceImage(): Promise<string | undefined> {
+  const { image } = await defaultWorkspaceImageDescriptor();
+  return await imageExists(image) ? image : undefined;
+}
+
 async function ensureBuiltImage(contextDir: string, dockerfile: string, metadata: WorkspaceImageMetadata, kind: BuiltWorkspaceImageKind, options: ResolveWorkspaceImageOptions = {}): Promise<string> {
   if (await imageExists(metadata.tag)) return metadata.tag;
   const task = startBuildTask(metadata.tag, metadata.modules, kind, dockerfile, contextDir, options);
@@ -191,16 +221,12 @@ async function ensureBuiltImage(contextDir: string, dockerfile: string, metadata
 let defaultWorkspaceImagePromise: Promise<string> | undefined;
 
 async function resolveDefaultWorkspaceImage(options: ResolveWorkspaceImageOptions): Promise<string> {
-  const baked = await bakedDefaultWorkspaceImageRef();
-  if (baked) {
-    await pullImage(baked);
-    return baked;
+  const descriptor = await defaultWorkspaceImageDescriptor();
+  if (!descriptor.build) {
+    await pullImage(descriptor.image);
+    return descriptor.image;
   }
-
-  const contextDir = defaultContextDir();
-  await generateContext(contextDir);
-  const metadata = await contextMetadata(contextDir);
-  return await ensureBuiltImage(contextDir, join(contextDir, "Dockerfile"), metadata, "default", options);
+  return await ensureBuiltImage(descriptor.build.contextDir, join(descriptor.build.contextDir, "Dockerfile"), descriptor.build.metadata, "default", options);
 }
 
 export function ensureDefaultWorkspaceImage(options: ResolveWorkspaceImageOptions = {}): Promise<string> {
@@ -286,6 +312,29 @@ const tagAtelierWorkspaceBase = createSerializedImageTagger(async (baseImage) =>
 
 function uniqueStrings(values: string[]): string[] { return [...new Set(values)]; }
 
+function normalizedPreloadSpecs(specs: string[]): string[] {
+  return uniqueStrings(specs.map((spec) => {
+    const trimmed = spec.trim();
+    if (!trimmed) throw new Error("Docker image preload specs must be non-empty strings");
+    return trimmed;
+  }));
+}
+
+function mergeResolvedPreloadImages(images: ResolvedDockerImagePreload["images"]): ResolvedDockerImagePreload {
+  const merged = new Map<string, ResolvedDockerImagePreload["images"][number]>();
+  for (const image of images) {
+    const key = `${image.sourceRef}\0${image.imageId}`;
+    const existing = merged.get(key);
+    if (!existing) merged.set(key, image);
+    else {
+      existing.aliases = uniqueStrings([...existing.aliases, ...image.aliases]);
+      if (image.spec === defaultAtelierWorkspaceImageSpecifier) existing.spec = image.spec;
+    }
+  }
+  const resolvedImages = [...merged.values()];
+  return { refs: uniqueStrings(resolvedImages.flatMap((image) => [image.sourceRef, ...image.aliases])), images: resolvedImages };
+}
+
 export async function dockerImageId(ref: string): Promise<string> {
   const inspected = await requireDocker(["image", "inspect", "--format", "{{.Id}}", ref]);
   return inspected.stdout.trim();
@@ -308,38 +357,36 @@ async function ensureOuterImage(ref: string): Promise<void> {
   if (pulled.exitCode !== 0) throw new Error(pulled.stderr.trim() || `docker pull ${ref} failed`);
 }
 
-export async function resolveDockerImagePreload(options: { specs: string[]; workspaceResolution: WorkspaceImageResolution }): Promise<ResolvedDockerImagePreload> {
-  const specs = uniqueStrings(options.specs.map((spec) => {
-    const trimmed = spec.trim();
-    if (!trimmed) throw new Error("Docker image preload specs must be non-empty strings");
-    return trimmed;
-  }));
+interface DockerImagePreloadOptions { specs: string[]; workspaceResolution: WorkspaceImageResolution }
+
+async function dockerImagePreload(options: DockerImagePreloadOptions, mode: "materialize"): Promise<ResolvedDockerImagePreload>;
+async function dockerImagePreload(options: DockerImagePreloadOptions, mode: "inspect"): Promise<ResolvedDockerImagePreload | undefined>;
+async function dockerImagePreload(options: DockerImagePreloadOptions, mode: "materialize" | "inspect"): Promise<ResolvedDockerImagePreload | undefined> {
+  const specs = normalizedPreloadSpecs(options.specs);
   const images: ResolvedDockerImagePreload["images"] = [];
   for (const spec of specs) {
     const sourceRef = spec === defaultAtelierWorkspaceImageSpecifier ? options.workspaceResolution.defaultImage : spec;
-    await ensureOuterImage(sourceRef);
+    if (mode === "materialize") await ensureOuterImage(sourceRef);
+    else if (!await imageExists(sourceRef)) return undefined;
     const aliases: string[] = [];
     if (spec === defaultAtelierWorkspaceImageSpecifier) {
       const alias = defaultWorkspaceImageLocalAlias(sourceRef);
       if (alias && alias !== sourceRef) {
-        await requireDocker(["tag", sourceRef, alias]);
+        if (mode === "materialize") await requireDocker(["tag", sourceRef, alias]);
         aliases.push(alias);
       }
     }
     images.push({ spec, sourceRef, imageId: await dockerImageId(sourceRef), aliases });
   }
-  const merged = new Map<string, ResolvedDockerImagePreload["images"][number]>();
-  for (const image of images) {
-    const key = `${image.sourceRef}\0${image.imageId}`;
-    const existing = merged.get(key);
-    if (!existing) merged.set(key, image);
-    else {
-      existing.aliases = uniqueStrings([...existing.aliases, ...image.aliases]);
-      if (image.spec === defaultAtelierWorkspaceImageSpecifier) existing.spec = image.spec;
-    }
-  }
-  const resolvedImages = [...merged.values()];
-  return { refs: uniqueStrings(resolvedImages.flatMap((image) => [image.sourceRef, ...image.aliases])), images: resolvedImages };
+  return mergeResolvedPreloadImages(images);
+}
+
+export async function resolveDockerImagePreload(options: DockerImagePreloadOptions): Promise<ResolvedDockerImagePreload> {
+  return await dockerImagePreload(options, "materialize");
+}
+
+async function inspectDockerImagePreload(options: DockerImagePreloadOptions): Promise<ResolvedDockerImagePreload | undefined> {
+  return await dockerImagePreload(options, "inspect");
 }
 
 export function dockerImagePreloadVerificationInitScript(refs: string[]): string {
@@ -354,6 +401,31 @@ function carrierInitScripts(preload: ResolvedDockerImagePreload): string[] {
 export async function prepareWorkspaceImageCarrier(options: { resolution: WorkspaceImageResolution; platform: string; preload: ResolvedDockerImagePreload }): Promise<WorkspaceImageCarrierResolution> {
   const carrier = await buildWorkspaceImageCarrier({ baseImage: options.resolution.image, baseIdentity: await dockerImageId(options.resolution.image), platform: options.platform, preload: options.preload });
   return { image: carrier.image, key: carrier.key, path: carrier.kind, initScripts: carrierInitScripts(options.preload) };
+}
+
+async function inspectWorkspaceImageResolution(options: Pick<ResolveWorkspaceImageOptions, "sourcePath"> = {}): Promise<WorkspaceImageResolution | undefined> {
+  const baseImage = await inspectDefaultWorkspaceImage();
+  if (!baseImage) return undefined;
+  if (!options.sourcePath) return { image: baseImage, defaultImage: baseImage };
+
+  const dockerfile = join(options.sourcePath, ".atelier", "Dockerfile");
+  if (!(await Bun.file(dockerfile).exists())) return { image: baseImage, defaultImage: baseImage };
+
+  const metadata = await repoWorkspaceImageMetadata(dockerfile, baseImage);
+  return await imageExists(metadata.tag) ? { image: metadata.tag, defaultImage: baseImage } : undefined;
+}
+
+export async function inspectWorkspaceImage(options: { sourcePath?: string; preloadImages?: string[] } = {}): Promise<string | undefined> {
+  const resolution = await inspectWorkspaceImageResolution({ sourcePath: options.sourcePath });
+  if (!resolution) return undefined;
+  if (!options.preloadImages?.length) return await dockerImageId(resolution.image);
+
+  const platform = await nativeLinuxDockerPlatform();
+  if (!platform) return await dockerImageId(resolution.image);
+  const preload = await inspectDockerImagePreload({ specs: options.preloadImages, workspaceResolution: resolution });
+  if (!preload) return undefined;
+  const carrier = await findWorkspaceImageCarrier({ baseIdentity: await dockerImageId(resolution.image), platform, preload });
+  return carrier ? await dockerImageId(carrier) : undefined;
 }
 
 export async function resolveWorkspaceImageResolution(options: ResolveWorkspaceImageOptions = {}): Promise<WorkspaceImageResolution> {

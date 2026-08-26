@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, gitHubCredentialHelperShellBody, invalidArguments, isJsonObject, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput, type JsonObject } from "@atelier/core";
 import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
 import type { WorkspaceServerProvisioningHook } from "@atelier/shared";
-import { dockerImageId, ensureDefaultWorkspaceImage, nativeLinuxDockerPlatform, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
+import { ensureDefaultWorkspaceImage, inspectWorkspaceImage, nativeLinuxDockerPlatform, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction } from "./types.ts";
@@ -589,15 +589,8 @@ export async function workspacePreviewPortUrl(id: string, containerPort: number,
   return await workspacePortUrl(id, containerPort, pathAndSearch, protocol);
 }
 
-async function currentWorkspaceImage(sourcePath: string): Promise<string> {
-  const resolution = await resolveWorkspaceImageResolution({ sourcePath });
-  const preloadSpecs = (await readRepoWorkspaceManifest(sourcePath))?.docker?.preloadImages;
-  if (!preloadSpecs?.length) return resolution.image;
-
-  const platform = await nativeLinuxDockerPlatform();
-  if (!platform) return resolution.image;
-  const preload = await resolveDockerImagePreload({ specs: preloadSpecs, workspaceResolution: resolution });
-  return (await prepareWorkspaceImageCarrier({ resolution, platform, preload })).image;
+async function currentWorkspaceImageId(sourcePath: string): Promise<string | undefined> {
+  return await inspectWorkspaceImage({ sourcePath, preloadImages: (await readRepoWorkspaceManifest(sourcePath))?.docker?.preloadImages });
 }
 
 export async function listWorkspaces(): Promise<WorkspaceListResult> {
@@ -610,10 +603,10 @@ export async function listWorkspaces(): Promise<WorkspaceListResult> {
       readParked(context, id),
       readWorkspaceInit(context, id),
       readTitle(context, id),
-      currentWorkspaceImage(workspaceWorkHostPath(id)).then(dockerImageId),
+      currentWorkspaceImageId(workspaceWorkHostPath(id)),
       requireDocker(["inspect", "--format", "{{.Image}}", containerId!]),
     ]);
-    const imageOutdated = actualImage.stdout.trim() !== expectedImageId;
+    const imageOutdated = expectedImageId === undefined || actualImage.stdout.trim() !== expectedImageId;
     const workspace: WorkspaceListResult["workspaces"][number] = { id, title };
     if (parked) workspace.parked = parked;
     if (init !== undefined) workspace.init = init;
