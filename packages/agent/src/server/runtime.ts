@@ -170,6 +170,7 @@ interface LiveTextStream {
 interface LiveState {
   id: string;
   items: TranscriptItem[];
+  cacheMissNotices: TranscriptItem[];
   working: Omit<WorkingTranscriptItem, "items">;
   finalIndex?: number;
   userEntryId?: string;
@@ -282,6 +283,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const live: LiveState = {
       id,
       items: [],
+      cacheMissNotices: [],
       working: { type: "working", key: `${id}:working`, startedAt: now, live: true },
       toolIndexByCallId: new Map(),
       terminalTimers: new Map(),
@@ -303,7 +305,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   private liveWorkingSection(live: LiveState): WorkingTranscriptItem {
     const userIndex = live.items[0]?.type === "user" ? 1 : 0;
     const end = live.finalIndex ?? live.items.length;
-    return { ...live.working, items: live.items.slice(userIndex, end) };
+    return { ...live.working, items: [...live.cacheMissNotices, ...live.items.slice(userIndex, end)] };
   }
 
   protected liveItemsForDisplay(live: LiveState): TranscriptItem[] {
@@ -605,9 +607,9 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const text = significantCacheMissNotice(miss);
     if (!text) return;
     const live = this.liveEnsure();
-    const item: TranscriptItem = { type: "note", key: this.liveKey(live, live.items.length, "cache-miss"), text, tone: "warning" };
-    live.items.push(item);
-    this.appendLiveItem(item, { live: true });
+    const item: TranscriptItem = { type: "note", key: `${live.id}:cache-miss:${live.cacheMissNotices.length}`, text, tone: "warning" };
+    live.cacheMissNotices.push(item);
+    this.stream(turboStream("replace", ids.item(this.ctx, live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(live))));
   }
 
   /** End the live model; observed tool calls stay open. */
@@ -754,12 +756,14 @@ function entryTimestamp(entry: { timestamp?: string }, message?: { timestamp?: u
 export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<any, CacheMiss>()): TranscriptRecord[] {
   const records: TranscriptRecord[] = [];
   let lastModelChangeRecord: TranscriptRecord | undefined;
+  let cacheNoticeInsertIndex: number | undefined;
   for (const entry of entries) {
     if (entry.type === "message") {
       const message = entry.message;
       if (!message) continue;
       if (message.role === "user") {
         records.push({ kind: "user", id: entry.id, text: contentText(message.content), images: sessionContentImages(entry), timestamp: entryTimestamp(entry, message), rewindable: entry.parentId !== null && entry.parentId !== undefined });
+        cacheNoticeInsertIndex = records.length;
       } else if (message.role === "assistant") {
         const parts: any[] = [];
         for (const part of message.content ?? []) {
@@ -777,7 +781,9 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
         });
         const notice = significantCacheMissNotice(cacheMisses.get(message));
         if (notice && message.stopReason !== "aborted" && message.stopReason !== "error") {
-          records.push({ kind: "note", text: notice, tone: "warning", timestamp: entryTimestamp(entry, message) });
+          const record: TranscriptRecord = { kind: "note", text: notice, tone: "warning", timestamp: entryTimestamp(entry, message) };
+          if (cacheNoticeInsertIndex === undefined) records.push(record);
+          else records.splice(cacheNoticeInsertIndex++, 0, record);
         }
       } else if (message.role === "toolResult") {
         const details = isToolViewDetails(message.details) ? message.details : undefined;

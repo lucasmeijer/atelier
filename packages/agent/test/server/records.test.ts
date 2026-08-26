@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { recordsFromSessionEntries } from "../../src/server/runtime.ts";
+import { buildTranscript } from "../../src/server/transcript.ts";
 
 describe("recordsFromSessionEntries", () => {
   test("maps pi session message entries to transcript records", () => {
@@ -32,6 +33,24 @@ describe("recordsFromSessionEntries", () => {
     expect(records[2]).toMatchObject({ kind: "toolResult", callId: "c1", text: "out", images: [{ entryId: "e3", contentIndex: 1 }], details: { displayAnsi: "\x1b[31mout\x1b[0m" } });
     expect(records[3]).toMatchObject({ kind: "note", tone: "summary" });
     expect(records[4]).toMatchObject({ kind: "note", tone: "system", text: "model → anthropic/claude" });
+  });
+
+  test("places cache miss notices directly below the prompt that caused them", () => {
+    const assistant = {
+      role: "assistant",
+      content: [{ type: "toolCall", id: "c1", name: "read", arguments: { path: "README.md" } }],
+      stopReason: "toolUse",
+      timestamp: 2_000,
+    };
+    const records = recordsFromSessionEntries([
+      { type: "message", id: "user", parentId: null, message: { role: "user", content: "inspect it", timestamp: 1_000 } },
+      { type: "message", id: "assistant", parentId: "user", message: assistant },
+    ], new Map([[assistant, { missedTokens: 100_000, missedCost: 0.35, idleMs: 60 * 60 * 1000, modelChanged: false }]]));
+
+    expect(records.map((record) => record.kind)).toEqual(["user", "note", "assistant"]);
+    expect(records[1]).toMatchObject({ kind: "note", tone: "warning", text: "⚠ Cache miss after 60m idle · 100k tokens re-billed · ~$0.35" });
+    const working = buildTranscript(records).find((item) => item.type === "working");
+    expect(working?.type === "working" && working.items.map((item) => item.type)).toEqual(["note", "tool"]);
   });
 
   test("omits initial model changes and collapses consecutive later changes to the last one", () => {
