@@ -145,9 +145,67 @@
 :where(button, [role="treeitem"])[aria-expanded="false"] .disclosure-icon,
 details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 
+/* Compact actions. Variants set state roles; the shared implementation owns every visual value. */
+.button {
+  --button-border: color-mix(in srgb, var(--accent) 20%, var(--line));
+  --button-background: color-mix(in srgb, var(--panel) 72%, transparent);
+  --button-foreground: var(--text-muted);
+  --button-hover-border: color-mix(in srgb, var(--accent) 65%, var(--text));
+  --button-hover-background: var(--elev);
+  --button-hover-foreground: var(--text);
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: 0 var(--space-lg);
+  border: 1px solid var(--button-border);
+  border-radius: var(--radius-round);
+  background: var(--button-background);
+  color: var(--button-foreground);
+  font: inherit;
+  font-size: var(--text-small);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-standard);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 80ms ease;
+}
+.button.primary {
+  --button-border: color-mix(in srgb, var(--accent) 44%, var(--line));
+  --button-background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  --button-hover-background: color-mix(in srgb, var(--accent) 11%, var(--panel));
+}
+.button.secondary {
+  --button-border: color-mix(in srgb, var(--accent) 20%, var(--line));
+}
+.button.danger {
+  --button-border: var(--line);
+  --button-hover-border: color-mix(in srgb, var(--danger) 55%, #fff);
+  --button-hover-background: color-mix(in srgb, var(--danger) 78%, #000);
+  --button-hover-foreground: #fff;
+}
+[data-theme] .button.danger { --button-hover-foreground: var(--text); }
+.button:hover,
+.button:focus-visible {
+  border-color: var(--button-hover-border);
+  outline: none;
+  background: var(--button-hover-background);
+  color: var(--button-hover-foreground);
+}
+.button:focus-visible { box-shadow: 0 0 0 2px var(--accent-soft); }
+.button:active { transform: translateY(1px); }
+.button:disabled,
+.button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; transform: none; }
+.button.icon-only { width: 26px; flex: 0 0 auto; padding: 0; }
+.button svg { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.button svg circle { fill: currentColor; stroke: none; }
+
 /* Orientation-independent primary actions with optional status and auxiliary controls. */
-.action-item { min-width: 0; min-height: 32px; display: flex; align-items: center; border-radius: var(--radius-round); color: var(--text-muted); }
-.action-item__primary { min-width: 0; min-height: 32px; flex: 1; display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) var(--space-md); border: 0; border-radius: var(--radius-round); background: transparent; font: inherit; letter-spacing: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.action-item { min-width: 0; min-height: 32px; display: flex; align-items: center; padding-inline: var(--space-md); border-radius: var(--radius-round); color: var(--text-muted); }
+.action-item:not(.action-item__primary) > .action-item__primary { padding-right: var(--space-md); }
+.action-item__primary { min-width: 0; min-height: 32px; flex: 1; display: flex; align-items: center; gap: var(--space-md); padding-block: var(--space-sm); border: 0; border-radius: var(--radius-round); background: transparent; font: inherit; letter-spacing: inherit; text-align: left; text-decoration: none; cursor: pointer; }
 .action-item.action-item__primary { width: 100%; }
 .action-item:hover,
 .action-item:focus-visible,
@@ -166,24 +224,12 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   85%, 100% { transform: translateX(calc(-1 * var(--action-item-label-scroll-distance))); }
 }
 .action-item__status { flex: 0 0 auto; }
-.action-item__action { width: 26px; height: 26px; flex: 0 0 auto; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-round); background: color-mix(in srgb, var(--panel) 72%, transparent); color: var(--text-muted); cursor: pointer; transition: border-color .12s, background .12s, color .12s, transform .12s; }
-.action-item__action svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.action-item__action svg circle { fill: currentColor; stroke: none; }
-.action-item:is(:hover, :has(:focus-visible)) .action-item__action { border-color: var(--line-strong); background: var(--panel); }
-.action-item .action-item__action:hover,
-.action-item .action-item__action:focus-visible,
-.action-item .action-item__action:active { border-color: var(--accent); outline: none; background: var(--elev); color: var(--accent); }
-.action-item .action-item__action:focus-visible { box-shadow: 0 0 0 2px var(--accent-soft); }
-.action-item .action-item__action:active { transform: translateY(1px); }
-.action-item .action-item__action.danger:hover,
-.action-item .action-item__action.danger:focus-visible,
-.action-item .action-item__action.danger:active { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
+.action-item__action { flex: 0 0 auto; }
 .action-item__primary:disabled,
-.action-item__action:disabled,
 .action-item[aria-disabled="true"] { opacity: .45; cursor: default; }
 @media (prefers-reduced-motion: reduce) {
-  .disclosure-icon,
-  .action-item__action { transition-duration: 1ms; }
+  .button,
+  .disclosure-icon { transition-duration: 1ms; }
   .action-item.is-label-scrolling .action-item__label-text { width: 100%; overflow: hidden; text-overflow: ellipsis; animation: none; }
 }
 

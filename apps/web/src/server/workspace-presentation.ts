@@ -109,7 +109,7 @@ function actionItemLabel(text: string): string {
 }
 
 function selectorCloseButton(close: ViewCloseAction): string {
-  return `<button class="fixed-shell-view-close action-item__action danger" type="submit" title="Close ${escapeHtml(close.label)}" aria-label="Close ${escapeHtml(close.label)}">${icon("x")}</button>`;
+  return `<button class="fixed-shell-view-close action-item__action button danger icon-only" type="submit" title="Close ${escapeHtml(close.label)}" aria-label="Close ${escapeHtml(close.label)}">${icon("x")}</button>`;
 }
 
 function selectorCloseForm(close: ViewCloseAction): string {
@@ -164,10 +164,10 @@ function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGr
     : mode === "launcher"
       ? `<a class="fixed-shell-project-heading fixed-shell-project-launch action-item__primary" href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}">${actionItemLabel(title)}</a>`
       : `<span class="fixed-shell-project-heading fixed-shell-project-heading-static action-item__primary">${actionItemLabel(title)}</span>`;
-  const settings = options.settingsHref ? `<a class="fixed-shell-project-action fixed-shell-project-settings action-item__action" href="${escapeHtml(options.settingsHref)}" ${projectEditorTarget} aria-label="Project settings: ${escapedTitle}" title="Project settings: ${escapedTitle}">${icon("more")}</a>` : "";
+  const settings = options.settingsHref ? `<a class="fixed-shell-project-action fixed-shell-project-settings action-item__action button secondary icon-only" href="${escapeHtml(options.settingsHref)}" ${projectEditorTarget} aria-label="Project settings: ${escapedTitle}" title="Project settings: ${escapedTitle}">${icon("more")}</a>` : "";
   const onboardingClass = options.onboardingDestination ? " is-onboarding-target" : "";
   const onboardingAttribute = options.onboardingDestination ? ` data-empty-workspace-onboarding-destination="${options.onboardingDestination}"` : "";
-  return `<div class="fixed-shell-project-heading-row fixed-shell-navigation-action action-item${mode === "launcher" ? " fixed-shell-project-launch-row" : ""}">${heading}${settings}<a class="fixed-shell-project-action fixed-shell-project-add action-item__action${onboardingClass}"${onboardingAttribute} href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${icon("plus")}</a></div>`;
+  return `<div class="fixed-shell-project-heading-row fixed-shell-navigation-action action-item${mode === "launcher" ? " fixed-shell-project-launch-row" : ""}">${heading}${settings}<a class="fixed-shell-project-action fixed-shell-project-add action-item__action button secondary icon-only${onboardingClass}"${onboardingAttribute} href="${escapeHtml(add.href)}" ${addTarget} aria-label="${escapeHtml(add.label)}" title="${escapeHtml(add.label)}">${icon("plus")}</a></div>`;
 }
 
 function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, mode: "disclosure" | "launcher" = "disclosure", onboardingDestination?: Exclude<WorkspacePaneOnboardingState, "workspaces">): string {

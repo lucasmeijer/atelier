@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atelier design system catalogue</title>
+  <link rel="stylesheet" href="./design-system.css">
+  <style>
+    /* Catalogue-only composition. Component and token styles come from design-system.css. */
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: var(--text-body)/var(--leading-standard) var(--font-sans); }
+    button, select { color: inherit; font: inherit; }
+    button { letter-spacing: inherit; }
+    code { font-family: var(--font-mono); font-size: .88em; }
+    a { color: inherit; }
+
+    .catalogue-shell { display: grid; grid-template-columns: 228px minmax(0, 1fr); min-height: 100vh; }
+    .catalogue-nav { position: sticky; top: 0; height: 100vh; padding: var(--space-2xl) var(--space-xl); border-right: 1px solid var(--line); background: var(--panel); }
+    .catalogue-brand { display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-2xl); font-weight: var(--weight-semibold); }
+    .catalogue-mark { width: 20px; height: 20px; border-radius: var(--radius-control); background: linear-gradient(135deg, var(--accent), var(--decorative)); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .catalogue-kicker { margin: var(--space-xl) var(--space-md) var(--space-sm); color: var(--text-faint); font-size: var(--text-caption); font-weight: var(--weight-bold); letter-spacing: .08em; text-transform: uppercase; }
+    .catalogue-nav a { display: block; padding: var(--space-sm) var(--space-md); border-radius: var(--radius-control); color: var(--text-muted); text-decoration: none; }
+    .catalogue-nav a:hover { color: var(--text); background: var(--accent-soft); }
+    .catalogue-nav-footer { position: absolute; right: var(--space-xl); bottom: var(--space-2xl); left: var(--space-xl); color: var(--text-faint); font-size: var(--text-caption); }
+
+    .catalogue-main { min-width: 0; }
+    .catalogue-hero { padding: 72px clamp(24px, 6vw, 88px) 56px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 72%, var(--bg)); }
+    .catalogue-eyebrow { color: var(--accent); font-size: var(--text-small); font-weight: var(--weight-bold); letter-spacing: .08em; text-transform: uppercase; }
+    .catalogue-hero h1 { max-width: 680px; margin: var(--space-lg) 0; font-size: clamp(var(--text-heading), 4vw, 42px); line-height: var(--leading-tight); letter-spacing: -.04em; }
+    .catalogue-hero p { max-width: 640px; margin: 0; color: var(--text-muted); font-size: var(--text-title); line-height: var(--leading-copy); }
+    .catalogue-toolbar { display: flex; align-items: center; gap: var(--space-lg); margin-top: var(--space-2xl); }
+    .catalogue-field { display: flex; align-items: center; gap: var(--space-md); color: var(--text-muted); font-size: var(--text-small); font-weight: var(--weight-semibold); }
+    .catalogue-select { min-height: 34px; padding: var(--space-sm) 34px var(--space-sm) var(--space-lg); border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: var(--panel); color: var(--text); }
+    .catalogue-theme-dot { width: 9px; height: 9px; border-radius: var(--radius-round); background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+    .catalogue-content { width: min(1060px, calc(100% - 48px)); margin: 0 auto; padding: 48px 0 96px; }
+    .catalogue-section { padding: var(--space-3xl) 0 48px; scroll-margin-top: var(--space-xl); }
+    .catalogue-section + .catalogue-section { border-top: 1px solid var(--line); }
+    .catalogue-section-head { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(280px, 2fr); gap: var(--space-2xl); margin-bottom: var(--space-2xl); }
+    .catalogue-section h2 { margin: 0; font-size: var(--text-heading); line-height: var(--leading-tight); }
+    .catalogue-section-head p { margin: 0; color: var(--text-muted); line-height: var(--leading-copy); }
+    .catalogue-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-lg); }
+    .catalogue-card { min-width: 0; padding: var(--space-xl); border: 1px solid var(--line); border-radius: var(--radius-surface); background: var(--panel); }
+    .catalogue-card.wide { grid-column: 1 / -1; }
+    .catalogue-card-title { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); margin-bottom: var(--space-xl); color: var(--text-muted); font-size: var(--text-small); font-weight: var(--weight-semibold); }
+    .catalogue-card-title code { color: var(--text-faint); font-weight: var(--weight-medium); }
+    .catalogue-demo { min-height: 112px; padding: var(--space-xl); border: 1px dashed var(--line-strong); border-radius: var(--radius-control); background: var(--bg); }
+    .catalogue-note { margin-top: var(--space-lg); color: var(--text-faint); font-size: var(--text-caption); }
+
+    .token-colors { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-md); }
+    .token-color { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--panel); }
+    .token-color-swatch { height: 68px; background: var(--swatch); border-bottom: 1px solid var(--line); }
+    .token-color-label { padding: var(--space-md); }
+    .token-color-label code { display: block; overflow: hidden; color: var(--text); text-overflow: ellipsis; }
+    .token-color-value { display: block; margin-top: var(--space-2xs); color: var(--text-faint); font: var(--text-caption)/var(--leading-tight) var(--font-mono); }
+
+    .type-list { display: grid; gap: var(--space-xl); }
+    .type-row { display: grid; grid-template-columns: 112px 1fr; align-items: baseline; gap: var(--space-xl); }
+    .type-meta { color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
+    .type-sample { font-size: var(--sample-size); line-height: var(--leading-tight); }
+    .type-sample.mono { font-family: var(--font-mono); }
+
+    .spacing-list { display: grid; gap: var(--space-lg); }
+    .spacing-row { display: grid; grid-template-columns: 100px 1fr 40px; align-items: center; gap: var(--space-lg); }
+    .spacing-row code { color: var(--text-muted); }
+    .spacing-bar { width: var(--token-space); height: 8px; min-width: 2px; border-radius: var(--radius-round); background: var(--accent); }
+    .spacing-value { color: var(--text-faint); font: var(--text-caption)/1 var(--font-mono); text-align: right; }
+    .radius-list { display: flex; align-items: end; justify-content: space-between; gap: var(--space-xl); min-height: 150px; }
+    .radius-token { display: grid; justify-items: center; gap: var(--space-md); color: var(--text-faint); font-size: var(--text-caption); }
+    .radius-shape { width: 62px; height: 62px; border: 2px solid var(--accent); border-radius: var(--token-radius); background: var(--accent-soft); }
+
+    /* Catalogue-only forced state; all button values remain owned by design-system.css. */
+    .button.preview-hover { border-color: var(--button-hover-border); background: var(--button-hover-background); color: var(--button-hover-foreground); }
+    .button-specimen { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-md); }
+    .button-specimen + .button-specimen { margin-top: var(--space-xl); }
+    .button-specimen-label { width: 72px; flex: 0 0 auto; color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
+    .button-anatomy { display: flex; align-items: center; justify-content: center; gap: var(--space-md); min-height: 112px; }
+    .button-code { margin: var(--space-lg) 0 0; padding: var(--space-lg); overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--bg); color: var(--text-muted); font: var(--text-caption)/var(--leading-copy) var(--font-mono); white-space: pre; }
+
+    .action-stack { display: grid; gap: var(--space-md); max-width: 360px; }
+    .action-icon { width: 16px; height: 16px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .demo-status { width: 8px; height: 8px; border-radius: var(--radius-round); background: var(--success); box-shadow: 0 0 0 3px var(--success-soft); }
+    .demo-status.warning { background: var(--warning); box-shadow: 0 0 0 3px var(--warning-soft); }
+    .catalogue-demo .action-item { width: 100%; }
+    .catalogue-demo .action-item__primary { color: inherit; }
+    .catalogue-demo button.action-item__primary { border: 0; background: transparent; }
+    .catalogue-demo .action-item__label-text { line-height: var(--leading-standard); }
+    .catalogue-demo details summary { list-style: none; }
+    .catalogue-demo details summary::-webkit-details-marker { display: none; }
+    .detail-copy { margin: var(--space-sm) var(--space-xl) var(--space-md) 28px; color: var(--text-muted); font-size: var(--text-small); }
+    .truncate-demo { width: 230px; }
+
+    .state-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-md); }
+    .state-chip { padding: var(--space-lg); border-radius: var(--radius-control); background: var(--state-soft); color: var(--state); font-weight: var(--weight-semibold); text-align: center; }
+    .state-chip small { display: block; margin-top: var(--space-xs); color: var(--text-muted); font-weight: var(--weight-medium); }
+    .surface-stack { position: relative; height: 190px; }
+    .surface { position: absolute; width: 76%; height: 110px; padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-surface); color: var(--text-muted); font: var(--text-small)/1 var(--font-mono); }
+    .surface.bg { top: 0; left: 0; background: var(--bg); }
+    .surface.panel { top: 36px; left: 12%; background: var(--panel); }
+    .surface.elev { top: 72px; left: 24%; background: var(--elev); box-shadow: var(--shadow); }
+
+    .theme-strip { display: grid; grid-template-columns: repeat(5, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-surface); }
+    .theme-sample { min-height: 150px; padding: var(--space-lg); background: var(--bg); color: var(--text); }
+    .theme-sample + .theme-sample { border-left: 1px solid var(--line); }
+    .theme-sample strong { display: block; font-size: var(--text-small); }
+    .theme-sample span { display: block; margin-top: var(--space-xs); color: var(--text-muted); font-size: var(--text-caption); }
+    .theme-dots { display: flex; gap: var(--space-sm); margin-top: 54px; }
+    .theme-dots i { width: 14px; height: 14px; border-radius: var(--radius-round); background: var(--dot); }
+
+    @media (max-width: 820px) {
+      .catalogue-shell { display: block; }
+      .catalogue-nav { position: static; width: 100%; height: auto; padding: var(--space-lg); border-right: 0; border-bottom: 1px solid var(--line); }
+      .catalogue-brand { margin: 0; }
+      .catalogue-nav nav, .catalogue-nav-footer { display: none; }
+      .catalogue-hero { padding: 48px 24px 40px; }
+      .catalogue-section-head { grid-template-columns: 1fr; gap: var(--space-md); }
+      .catalogue-grid { grid-template-columns: 1fr; }
+      .catalogue-card.wide { grid-column: auto; }
+      .token-colors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .theme-strip { grid-template-columns: 1fr; }
+      .theme-sample + .theme-sample { border-top: 1px solid var(--line); border-left: 0; }
+      .state-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 500px) {
+      .catalogue-content { width: min(100% - 24px, 1060px); }
+      .catalogue-toolbar { align-items: flex-start; flex-direction: column; }
+      .type-row { grid-template-columns: 1fr; gap: var(--space-xs); }
+      .radius-list { display: grid; grid-template-columns: repeat(2, 1fr); }
+      .spacing-row { grid-template-columns: 92px 1fr 34px; gap: var(--space-md); }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  </style>
+</head>
+<body>
+  <div class="catalogue-shell">
+    <aside class="catalogue-nav">
+      <div class="catalogue-brand"><span class="catalogue-mark"></span> Atelier UI</div>
+      <nav aria-label="Catalogue sections">
+        <div class="catalogue-kicker">Foundations</div>
+        <a href="#themes">Themes</a>
+        <a href="#color">Color</a>
+        <a href="#typography">Typography</a>
+        <a href="#spacing-shape">Spacing &amp; shape</a>
+        <div class="catalogue-kicker">Components</div>
+        <a href="#buttons">Buttons</a>
+        <div class="catalogue-kicker">Patterns</div>
+        <a href="#action-items">Action items</a>
+        <a href="#disclosure">Disclosure</a>
+        <a href="#states">Semantic states</a>
+      </nav>
+      <div class="catalogue-nav-footer">Source: <code>design-system.css</code></div>
+    </aside>
+
+    <main class="catalogue-main">
+      <header class="catalogue-hero">
+        <div class="catalogue-eyebrow">Design system · live catalogue</div>
+        <h1>A compact interface for operating software.</h1>
+        <p>Shipped foundations, components, and patterns from <code>design-system.css</code>. Change the theme to inspect every example against the same semantic contract.</p>
+        <div class="catalogue-toolbar">
+          <label class="catalogue-field" for="theme-select"><span class="catalogue-theme-dot"></span> Theme
+            <select class="catalogue-select" id="theme-select">
+              <option value="">Daylight</option>
+              <option value="cappuccino">Cappuccino</option>
+              <option value="tokyo-night">Tokyo Night</option>
+              <option value="midnight">Midnight</option>
+              <option value="nord">Nord</option>
+            </select>
+          </label>
+        </div>
+      </header>
+
+      <div class="catalogue-content">
+        <section class="catalogue-section" id="themes">
+          <div class="catalogue-section-head">
+            <h2>Themes</h2>
+            <p>Five palettes share identical semantic roles. Components consume roles such as <code>--panel</code> and <code>--accent</code>, never theme-specific values.</p>
+          </div>
+          <div class="theme-strip">
+            <div class="theme-sample"><strong>Daylight</strong><span>Default</span><div class="theme-dots"><i style="--dot:var(--accent)"></i><i style="--dot:var(--success)"></i><i style="--dot:var(--warning)"></i><i style="--dot:var(--danger)"></i></div></div>
+            <div class="theme-sample" data-theme="cappuccino"><strong>Cappuccino</strong><span>Warm dark</span><div class="theme-dots"><i style="--dot:var(--accent)"></i><i style="--dot:var(--success)"></i><i style="--dot:var(--warning)"></i><i style="--dot:var(--danger)"></i></div></div>
+            <div class="theme-sample" data-theme="tokyo-night"><strong>Tokyo Night</strong><span>Cool dark</span><div class="theme-dots"><i style="--dot:var(--accent)"></i><i style="--dot:var(--success)"></i><i style="--dot:var(--warning)"></i><i style="--dot:var(--danger)"></i></div></div>
+            <div class="theme-sample" data-theme="midnight"><strong>Midnight</strong><span>Neutral dark</span><div class="theme-dots"><i style="--dot:var(--accent)"></i><i style="--dot:var(--success)"></i><i style="--dot:var(--warning)"></i><i style="--dot:var(--danger)"></i></div></div>
+            <div class="theme-sample" data-theme="nord"><strong>Nord</strong><span>Soft dark</span><div class="theme-dots"><i style="--dot:var(--accent)"></i><i style="--dot:var(--success)"></i><i style="--dot:var(--warning)"></i><i style="--dot:var(--danger)"></i></div></div>
+          </div>
+        </section>
+
+        <section class="catalogue-section" id="color">
+          <div class="catalogue-section-head"><h2>Color</h2><p>Surface, content, action, and status tokens describe intent. Soft status colors are derived consistently with <code>color-mix()</code>.</p></div>
+          <div class="catalogue-grid">
+            <article class="catalogue-card wide">
+              <div class="catalogue-card-title"><span>Semantic palette</span><code>16 tokens</code></div>
+              <div class="token-colors">
+                <div class="token-color"><div class="token-color-swatch" style="--swatch:var(--bg)"></div><div class="token-color-label"><code>--bg</code><span class="token-color-value" data-token="--bg"></span></div></div>
+                <div class="token-color"><div class="token-color-swatch" style="--swatch:var(--panel)"></div><div class="token-color-label"><code>--panel</code><span class="token-color-value" data-token="--panel"></span></div></div>
+                <div class="token-color"><div class="token-color-swatch" style="--swatch:var(--elev)"></div><div class="token-color-label"><code>--elev</code><span class="token-color-value" data-token="--elev"></span></div></div>
+                <div class="token-color"><div class="token-color-swatch" style="--swatch:var(--line-strong)"></div><div class="token-color-label"><code>--line-strong</code><span class="token-color-value" data-token="--line-strong"></span></div></div>
+                <div class="token-color"><div class="token-color-swatch" style="--swatch:var(--text)"></div><div class="token-color-label"><code>--text</code><span class="token-color-value" data-token="--text"></span></div></div>
+                <div class="token-color"><div class="token-color-swatch" style="--swatch:var(--text-muted)"></div><div class="token-color-label"><code>--text-muted</code><span class="token-color-value" data-token="--text-muted"></span></div></div>
+                <div class="token-color"><div class="token-color-swatch" style="--swatch:var(--accent)"></div><div class="token-color-label"><code>--accent</code><span class="token-color-value" data-token="--accent"></span></div></div>
+                <div class="token-color"><div class="token-color-swatch" style="--swatch:var(--decorative)"></div><div class="token-color-label"><code>--decorative</code><span class="token-color-value" data-token="--decorative"></span></div></div>
+                <div class="token-color"><div class="token-color-swatch" style="--swatch:var(--success)"></div><div class="token-color-label"><code>--success</code><span class="token-color-value" data-token="--success"></span></div></div>
+                <div class="token-color"><div class="token-color-swatch" style="--swatch:var(--warning)"></div><div class="token-color-label"><code>--warning</code><span class="token-color-value" data-token="--warning"></span></div></div>
+                <div class="token-color"><div class="token-color-swatch" style="--swatch:var(--danger)"></div><div class="token-color-label"><code>--danger</code><span class="token-color-value" data-token="--danger"></span></div></div>
+                <div class="token-color"><div class="token-color-swatch" style="--swatch:var(--accent-soft)"></div><div class="token-color-label"><code>--accent-soft</code><span class="token-color-value">derived</span></div></div>
+              </div>
+            </article>
+            <article class="catalogue-card"><div class="catalogue-card-title"><span>Surface hierarchy</span><code>bg → panel → elev</code></div><div class="surface-stack"><div class="surface bg">--bg</div><div class="surface panel">--panel</div><div class="surface elev">--elev</div></div></article>
+            <article class="catalogue-card"><div class="catalogue-card-title"><span>Text hierarchy</span><code>content roles</code></div><div class="catalogue-demo"><p style="margin:0;color:var(--text);font-weight:var(--weight-semibold)">Primary text carries the task.</p><p style="margin:var(--space-lg) 0 0;color:var(--text-muted)">Muted text supplies supporting context.</p><p style="margin:var(--space-lg) 0 0;color:var(--text-faint)">Faint text is quiet metadata.</p></div></article>
+          </div>
+        </section>
+
+        <section class="catalogue-section" id="typography">
+          <div class="catalogue-section-head"><h2>Typography</h2><p>A small, deliberate scale keeps operational interfaces dense. Sans is for interface copy; mono is reserved for code, paths, and measured data.</p></div>
+          <article class="catalogue-card">
+            <div class="type-list">
+              <div class="type-row"><span class="type-meta">caption · 11</span><span class="type-sample" style="--sample-size:var(--text-caption)">AGENT READY · 4 FILES CHANGED</span></div>
+              <div class="type-row"><span class="type-meta">small · 12</span><span class="type-sample" style="--sample-size:var(--text-small)">Secondary controls and metadata</span></div>
+              <div class="type-row"><span class="type-meta">body · 14</span><span class="type-sample" style="--sample-size:var(--text-body)">The agent has finished implementing the workspace.</span></div>
+              <div class="type-row"><span class="type-meta">title · 16</span><span class="type-sample" style="--sample-size:var(--text-title)">Workspace settings</span></div>
+              <div class="type-row"><span class="type-meta">heading · 20</span><span class="type-sample" style="--sample-size:var(--text-heading)">Choose a project</span></div>
+              <div class="type-row"><span class="type-meta">display · 28</span><span class="type-sample" style="--sample-size:var(--text-display)">What should we build?</span></div>
+              <div class="type-row"><span class="type-meta">mono · 14</span><span class="type-sample mono" style="--sample-size:var(--text-body)">apps/web/src/server/app.ts:324</span></div>
+            </div>
+          </article>
+        </section>
+
+        <section class="catalogue-section" id="spacing-shape">
+          <div class="catalogue-section-head"><h2>Spacing &amp; shape</h2><p>Spacing follows a compact 2–32px scale. Shape tokens distinguish indicators, controls, surfaces, overlays, and fully round UI.</p></div>
+          <div class="catalogue-grid">
+            <article class="catalogue-card"><div class="catalogue-card-title"><span>Spacing scale</span><code>8 steps</code></div><div class="spacing-list">
+              <div class="spacing-row"><code>--space-2xs</code><i class="spacing-bar" style="--token-space:var(--space-2xs)"></i><span class="spacing-value">2px</span></div>
+              <div class="spacing-row"><code>--space-xs</code><i class="spacing-bar" style="--token-space:var(--space-xs)"></i><span class="spacing-value">4px</span></div>
+              <div class="spacing-row"><code>--space-sm</code><i class="spacing-bar" style="--token-space:var(--space-sm)"></i><span class="spacing-value">6px</span></div>
+              <div class="spacing-row"><code>--space-md</code><i class="spacing-bar" style="--token-space:var(--space-md)"></i><span class="spacing-value">8px</span></div>
+              <div class="spacing-row"><code>--space-lg</code><i class="spacing-bar" style="--token-space:var(--space-lg)"></i><span class="spacing-value">12px</span></div>
+              <div class="spacing-row"><code>--space-xl</code><i class="spacing-bar" style="--token-space:var(--space-xl)"></i><span class="spacing-value">16px</span></div>
+              <div class="spacing-row"><code>--space-2xl</code><i class="spacing-bar" style="--token-space:var(--space-2xl)"></i><span class="spacing-value">24px</span></div>
+              <div class="spacing-row"><code>--space-3xl</code><i class="spacing-bar" style="--token-space:var(--space-3xl)"></i><span class="spacing-value">32px</span></div>
+            </div></article>
+            <article class="catalogue-card"><div class="catalogue-card-title"><span>Radius roles</span><code>5 roles</code></div><div class="radius-list">
+              <div class="radius-token"><i class="radius-shape" style="--token-radius:var(--radius-indicator)"></i><code>indicator</code></div>
+              <div class="radius-token"><i class="radius-shape" style="--token-radius:var(--radius-control)"></i><code>control</code></div>
+              <div class="radius-token"><i class="radius-shape" style="--token-radius:var(--radius-surface)"></i><code>surface</code></div>
+              <div class="radius-token"><i class="radius-shape" style="--token-radius:var(--radius-overlay)"></i><code>overlay</code></div>
+              <div class="radius-token"><i class="radius-shape" style="--token-radius:var(--radius-round)"></i><code>round</code></div>
+            </div></article>
+          </div>
+        </section>
+
+        <section class="catalogue-section" id="buttons">
+          <div class="catalogue-section-head">
+            <h2>Buttons</h2>
+            <p>The shared compact button component. Caption and icon-only forms share three emphasis levels: primary, secondary, and danger.</p>
+          </div>
+          <div class="catalogue-grid">
+            <article class="catalogue-card">
+              <div class="catalogue-card-title"><span>Caption</span><code>.button</code></div>
+              <div class="catalogue-demo">
+                <div class="button-specimen"><span class="button-specimen-label">primary</span><button class="button primary" type="button">Create workspace</button><span aria-hidden="true" style="color:var(--text-faint)">→</span><button class="button primary preview-hover" type="button">Create workspace</button></div>
+                <div class="button-specimen"><span class="button-specimen-label">secondary</span><button class="button secondary" type="button">Cancel</button><span aria-hidden="true" style="color:var(--text-faint)">→</span><button class="button secondary preview-hover" type="button">Cancel</button></div>
+                <div class="button-specimen"><span class="button-specimen-label">danger</span><button class="button danger" type="button">Delete project</button><span aria-hidden="true" style="color:var(--text-faint)">→</span><button class="button danger preview-hover" type="button">Delete project</button></div>
+              </div>
+              <p class="catalogue-note">Danger is neutral at rest, like a normal button. Only its hover surface signals destructive intent.</p>
+            </article>
+            <article class="catalogue-card">
+              <div class="catalogue-card-title"><span>Icon only</span><code>26 × 26</code></div>
+              <div class="catalogue-demo">
+                <div class="button-specimen"><span class="button-specimen-label">primary</span><button class="button primary icon-only" type="button" aria-label="Add workspace" title="Add workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>
+                <div class="button-specimen"><span class="button-specimen-label">secondary</span><button class="button secondary icon-only" type="button" aria-label="More options" title="More options"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/></svg></button></div>
+                <div class="button-specimen"><span class="button-specimen-label">danger</span><button class="button danger icon-only" type="button" aria-label="Delete project" title="Delete project"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></button></div>
+              </div>
+              <p class="catalogue-note">Icon-only buttons require an accessible name and a visible tooltip.</p>
+            </article>
+            <article class="catalogue-card">
+              <div class="catalogue-card-title"><span>Icon + caption</span><code>composable anatomy</code></div>
+              <div class="catalogue-demo button-anatomy">
+                <button class="button primary" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New workspace</button>
+                <button class="button secondary" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg>Open</button>
+              </div>
+              <p class="catalogue-note">Icons reinforce a caption; they do not replace a useful label when space allows.</p>
+            </article>
+            <article class="catalogue-card">
+              <div class="catalogue-card-title"><span>Disabled</span><code>all variants</code></div>
+              <div class="catalogue-demo button-anatomy">
+                <button class="button primary" type="button" disabled>Primary</button>
+                <button class="button secondary" type="button" disabled>Secondary</button>
+                <button class="button danger icon-only" type="button" aria-label="Delete unavailable" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></svg></button>
+              </div>
+              <p class="catalogue-note">Disabled state preserves variant recognition while removing interaction.</p>
+            </article>
+            <article class="catalogue-card wide">
+              <div class="catalogue-card-title"><span>Proposed API</span><code>.button + variant + optional form</code></div>
+              <pre class="button-code">&lt;button class="button primary"&gt;Create workspace&lt;/button&gt;
+&lt;button class="button secondary"&gt;Cancel&lt;/button&gt;
+&lt;button class="button danger icon-only" aria-label="Delete" title="Delete"&gt;…&lt;/button&gt;</pre>
+            </article>
+          </div>
+        </section>
+
+        <section class="catalogue-section" id="action-items">
+          <div class="catalogue-section-head"><h2>Action items</h2><p>The shared interactive row adapts to navigation, lists, and tabs. Selection is semantic through <code>aria-current</code> or <code>aria-selected</code>.</p></div>
+          <div class="catalogue-grid">
+            <article class="catalogue-card"><div class="catalogue-card-title"><span>Simple &amp; selected</span><code>.action-item</code></div><div class="catalogue-demo"><div class="action-stack">
+              <button class="action-item action-item__primary" type="button"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span class="action-item__label"><span class="action-item__label-text">Browse project files</span></span></button>
+              <button class="action-item action-item__primary" type="button" aria-current="page"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h5"/></svg><span class="action-item__label"><span class="action-item__label-text">Current workspace</span></span><i class="demo-status action-item__status" aria-label="Ready"></i></button>
+              <button class="action-item action-item__primary" type="button" disabled><span class="action-item__label"><span class="action-item__label-text">Unavailable destination</span></span></button>
+            </div></div><p class="catalogue-note">Tab to inspect the shared focus-visible treatment.</p></article>
+            <article class="catalogue-card"><div class="catalogue-card-title"><span>Compound</span><code>primary + auxiliary</code></div><div class="catalogue-demo"><div class="action-stack">
+              <div class="action-item"><button class="action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">atelier/design-system</span></span><i class="demo-status warning action-item__status" aria-label="Needs attention"></i></button><button class="action-item__action button secondary icon-only" type="button" aria-label="More actions"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div>
+              <div class="action-item"><button class="action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">Temporary browser preview</span></span></button><button class="action-item__action button danger icon-only" type="button" aria-label="Close preview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+            </div></div><p class="catalogue-note">Auxiliary controls remain siblings—never nested interactive elements.</p></article>
+            <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Overflow label</span><code>.action-item__label-text</code></div><div class="catalogue-demo"><div class="action-stack truncate-demo"><button class="action-item action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">A deliberately long workspace name truncates inside a constrained action item</span></span><i class="demo-status action-item__status"></i></button></div></div><p class="catalogue-note">Labels truncate by default. The application’s Action Items controller adds measured scrolling when text overflows.</p></article>
+          </div>
+        </section>
+
+        <section class="catalogue-section" id="disclosure">
+          <div class="catalogue-section-head"><h2>Disclosure</h2><p>The disclosure icon has one orientation contract across buttons, trees, and native <code>&lt;details&gt;</code>. Closed state rotates the chevron.</p></div>
+          <article class="catalogue-card"><div class="catalogue-demo"><div class="action-stack">
+            <details open><summary class="action-item action-item__primary"><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg><span class="action-item__label"><span class="action-item__label-text">Expanded project</span></span></summary><p class="detail-copy">Three active workspaces</p></details>
+            <details><summary class="action-item action-item__primary"><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg><span class="action-item__label"><span class="action-item__label-text">Collapsed project</span></span></summary><p class="detail-copy">Content revealed.</p></details>
+          </div></div></article>
+        </section>
+
+        <section class="catalogue-section" id="states">
+          <div class="catalogue-section-head"><h2>Semantic states</h2><p>Accent marks selection and action. Success, warning, and danger communicate operational state against automatically derived soft surfaces.</p></div>
+          <article class="catalogue-card"><div class="state-grid">
+            <div class="state-chip" style="--state:var(--accent);--state-soft:var(--accent-soft)">Accent<small>selection / action</small></div>
+            <div class="state-chip" style="--state:var(--success);--state-soft:var(--success-soft)">Success<small>ready / complete</small></div>
+            <div class="state-chip" style="--state:var(--warning);--state-soft:var(--warning-soft)">Warning<small>waiting / attention</small></div>
+            <div class="state-chip" style="--state:var(--danger);--state-soft:var(--danger-soft)">Danger<small>error / destructive</small></div>
+          </div></article>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const themeSelect = document.querySelector("#theme-select");
+    const tokenValues = document.querySelectorAll("[data-token]");
+    const requestedTheme = new URLSearchParams(location.search).get("theme");
+    if (requestedTheme && themeSelect.querySelector(`option[value="${CSS.escape(requestedTheme)}"]`)) {
+      themeSelect.value = requestedTheme;
+      document.documentElement.dataset.theme = requestedTheme;
+    }
+    const refreshTokenValues = () => {
+      const styles = getComputedStyle(document.documentElement);
+      tokenValues.forEach((element) => { element.textContent = styles.getPropertyValue(element.dataset.token).trim(); });
+    };
+    themeSelect.addEventListener("change", () => {
+      if (themeSelect.value) document.documentElement.dataset.theme = themeSelect.value;
+      else delete document.documentElement.dataset.theme;
+      refreshTokenValues();
+    });
+    refreshTokenValues();
+  </script>
+</body>
+</html>

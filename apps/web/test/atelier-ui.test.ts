@@ -153,6 +153,31 @@ describe("Atelier Playwright helper", () => {
     await page.close();
   });
 
+  test("Action Item auxiliary controls use the shared Button interface", async () => {
+    const page = await newTestPage({ reducedMotion: "reduce" });
+    await page.setContent(`<style>${workspaceStyle}</style>
+      <div class="action-item"><button id="auxiliary" class="action-item__action button secondary icon-only" aria-label="More"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/></svg></button></div>
+      <button id="standalone" class="button secondary icon-only" aria-label="More"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/></svg></button>`);
+    const styles = (id: string) => page.locator(id).evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        border: style.borderColor,
+        color: style.color,
+        height: style.height,
+        radius: style.borderRadius,
+        width: style.width,
+      };
+    });
+
+    expect(await styles("#auxiliary")).toEqual(await styles("#standalone"));
+    await page.locator("#auxiliary").hover();
+    const auxiliaryHover = await styles("#auxiliary");
+    await page.locator("#standalone").hover();
+    expect(auxiliaryHover).toEqual(await styles("#standalone"));
+    await page.close();
+  });
+
   test("automatically scrolls only clipped Action Item labels while hovered or focused", async () => {
     const current: WorkspacePresentation = {
       workspace: { id: "short", title: "Short" },

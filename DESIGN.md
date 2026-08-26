@@ -54,8 +54,8 @@ The legacy aliases `--line-2` and `--muted-2` remain part of the interface while
 
 Existing shared CSS patterns remain the preferred vocabulary:
 
-- `.btn` with `.primary`, `.danger`, and `.sm` variants for actions
-- `.action-item` for an orientation-independent interactive item, with `.action-item__primary`, `.action-item__label` containing `.action-item__label-text`, optional `.action-item__status`, and optional `.action-item__action` children
+- `.button` with `.primary`, `.secondary`, `.danger`, and `.icon-only` variants for compact actions
+- `.action-item` for an orientation-independent interactive item, with `.action-item__primary`, `.action-item__label` containing `.action-item__label-text`, optional `.action-item__status`, and optional `.action-item__action` children; auxiliary actions also use the shared `.button` classes
 - `.modal` and native `<dialog>` for protected or interruptive tasks
 - `.panel` for a bounded shell region, not as generic page scaffolding
 - `.status-spinner` for indeterminate progress

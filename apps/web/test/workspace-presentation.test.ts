@@ -52,13 +52,13 @@ describe("role-fixed Workspace presentation", () => {
     expect(projectHeading.indexOf("Atelier")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-settings"));
     expect(projectHeading.indexOf("fixed-shell-project-settings")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-add"));
     expect(html).toContain('data-project-id="__projectless__"><svg');
-    expect(html).toContain('<span class="action-item__label"><span class="action-item__label-text">Projectless</span></span></button><a class="fixed-shell-project-action fixed-shell-project-add action-item__action" href="/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New projectless workspace"');
+    expect(html).toContain('<span class="action-item__label"><span class="action-item__label-text">Projectless</span></span></button><a class="fixed-shell-project-action fixed-shell-project-add action-item__action button secondary icon-only" href="/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New projectless workspace"');
     expect(html.indexOf('data-project-id="__projectless__"')).toBeLessThan(html.indexOf('data-project-id="__projects_drawer__"'));
     const drawerProjects = html.slice(html.indexOf('data-project-id="__projects_drawer__"'));
     expect(html).toContain('class="fixed-shell-project fixed-shell-projects-drawer is-collapsed" data-project-id="__projects_drawer__"');
     expect(drawerProjects).toContain('aria-expanded="false"');
     expect(drawerProjects).toContain('<span class="action-item__label"><span class="action-item__label-text">Projects</span></span>');
-    expect(drawerProjects).toContain('<a class="fixed-shell-project-action fixed-shell-project-add action-item__action" href="/projects/new/editor"');
+    expect(drawerProjects).toContain('<a class="fixed-shell-project-action fixed-shell-project-add action-item__action button secondary icon-only" href="/projects/new/editor"');
     expect(drawerProjects).toContain('<a class="fixed-shell-project-heading fixed-shell-project-launch action-item__primary" href="/projects/project-2/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New workspace: Empty"><span class="action-item__label"><span class="action-item__label-text">Empty</span></span></a>');
     expect(drawerProjects.match(/href="\/projects\/project-1\/agent-launch"/g)).toHaveLength(2);
     expect(drawerProjects.match(/href="\/projects\/project-2\/agent-launch"/g)).toHaveLength(2);
@@ -127,7 +127,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(workspaceSection).toContain("Projectless");
     expect(workspaceSection).toContain('href="/agent-launch"');
     expect(projectsSection).not.toContain('data-project-id="__projectless__"');
-    expect(projectsSection).toContain('class="fixed-shell-project-action fixed-shell-project-add action-item__action is-onboarding-target" data-empty-workspace-onboarding-destination="first-project"');
+    expect(projectsSection).toContain('class="fixed-shell-project-action fixed-shell-project-add action-item__action button secondary icon-only is-onboarding-target" data-empty-workspace-onboarding-destination="first-project"');
     expect(projectsSection).toContain('class="fixed-shell-project fixed-shell-projects-drawer is-collapsed"');
   });
 
@@ -180,7 +180,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(html.match(/fixed-shell-agent-conversation action-item/g)).toHaveLength(2);
     expect(html).toContain('class="fixed-shell-work-view-selector action-item"');
     expect(html.match(/class="action-item__label"><span class="action-item__label-text"/g)).toHaveLength(3);
-    expect(html.match(/class="fixed-shell-view-close action-item__action danger"/g)).toHaveLength(3);
+    expect(html.match(/class="fixed-shell-view-close action-item__action button danger icon-only"/g)).toHaveLength(3);
     expect(html.match(/M6 6l12 12M18 6L6 18/g)).toHaveLength(3);
   });
 
