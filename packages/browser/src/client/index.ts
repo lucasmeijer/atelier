@@ -3,21 +3,19 @@
 import type { WorkspaceClientControllerConstructor, WorkspaceClientModule } from "@atelier/shared";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
+import { browserColorSchemeParam, stripBrowserProxyParams } from "../shared.ts";
 
 const browserBridgeLocationMessageSchema = Type.Object({
   type: Type.Literal("atelier:browser-location"),
   href: Type.String(),
+  targetOrigin: Type.String(),
 });
 
 type BrowserBridgeLocationMessage = Static<typeof browserBridgeLocationMessageSchema>;
 
 function createBrowserAddressController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class BrowserAddressController extends Controller {
-    static values = { targetOrigin: String };
-
     declare readonly element: HTMLFormElement;
-    declare readonly targetOriginValue: string;
-    declare readonly hasTargetOriginValue: boolean;
 
     private readonly onWindowMessage = (event: MessageEvent): void => this.message(event);
     private persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -64,7 +62,7 @@ function createBrowserAddressController(Controller: WorkspaceClientControllerCon
     private setLocationFromFrame(message: BrowserBridgeLocationMessage): void {
       const input = this.input();
       if (!input) return;
-      const mapped = mapProxyUrlToBrowserUrl(message.href, this.targetOrigin());
+      const mapped = mapProxyUrlToBrowserUrl(message.href, message.targetOrigin);
       if (!mapped || input.value === mapped) return;
       input.value = mapped;
       this.updateExternalLink(message.href);
@@ -106,13 +104,6 @@ function createBrowserAddressController(Controller: WorkspaceClientControllerCon
       return this.element.closest(".browser-shell")?.querySelector<HTMLIFrameElement>("iframe") ?? null;
     }
 
-    private targetOrigin(): string | undefined {
-      if (this.hasTargetOriginValue && this.targetOriginValue) return this.targetOriginValue;
-      const current = this.input()?.value;
-      if (!current) return undefined;
-      try { return new URL(current).origin; } catch { return undefined; }
-    }
-
     private isTrustedFrameOrigin(origin: string, iframe: HTMLIFrameElement): boolean {
       return this.frameOrigin(iframe) === origin;
     }
@@ -133,16 +124,12 @@ function mapProxyUrlToBrowserUrl(proxyHref: string, targetOrigin: string | undef
   if (!targetOrigin) return undefined;
   try {
     const proxy = new URL(proxyHref);
-    stripAtelierBrowserParams(proxy);
+    stripBrowserProxyParams(proxy);
     const target = new URL(targetOrigin);
     return new URL(`${proxy.pathname}${proxy.search}${proxy.hash}`, target.origin).toString();
   } catch {
     return undefined;
   }
-}
-
-function stripAtelierBrowserParams(url: URL): void {
-  url.searchParams.delete("atelierColorScheme");
 }
 
 function isBrowserBridgeLocationMessage(value: unknown): value is BrowserBridgeLocationMessage {
@@ -151,7 +138,7 @@ function isBrowserBridgeLocationMessage(value: unknown): value is BrowserBridgeL
 
 function addAtelierThemeParams(url: URL): void {
   const theme = document.documentElement.dataset.theme || localStorage.getItem("atelier.theme") || "nord";
-  url.searchParams.set("atelierColorScheme", theme === "daylight" ? "light" : "dark");
+  url.searchParams.set(browserColorSchemeParam, theme === "daylight" ? "light" : "dark");
 }
 
 function isBrowserAppKey(appKey: string): boolean {

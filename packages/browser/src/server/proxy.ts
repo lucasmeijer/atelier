@@ -1,35 +1,34 @@
 import { isWorkspacePreviewPort, workspacePreviewPortUrl, workspacePreviewPorts } from "@atelier/workspace";
 import { publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/proxy-ingress/server";
-import { getWorkspaceBrowserView } from "./state.ts";
+import { getWorkspaceBrowserView, setWorkspaceBrowserTarget, type WorkspaceBrowserView } from "./state.ts";
+import { browserColorSchemeParam, browserOriginParam, browserProxyUrl, stripBrowserProxyParams } from "../shared.ts";
 
 export function isBrowserWorkspaceApp(workspaceId: string, appKey: string): boolean {
   return Boolean(getWorkspaceBrowserView(workspaceId, appKey));
 }
 
-export async function patchBrowserWorkspaceAppRequestHeaders(app: WorkspaceAppHost, headers: Headers, _target: URL, _request: Request): Promise<Headers> {
-  const browserView = getWorkspaceBrowserView(app.workspaceId, app.appKey);
-  if (!browserView) return headers;
-  const targetBase = new URL(browserView.targetUrl);
-  if (!isLoopbackHost(targetBase.hostname)) headers.set("host", targetBase.host);
+export async function patchBrowserWorkspaceAppRequestHeaders(_app: WorkspaceAppHost, headers: Headers, target: URL, _request: Request): Promise<Headers> {
+  if (!isLoopbackHost(target.hostname)) headers.set("host", target.host);
   return headers;
 }
 
 export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, response: Response, request: Request): Promise<Response> {
-  if (!isBrowserWorkspaceApp(app.workspaceId, app.appKey)) return response;
-
+  const browserView = getWorkspaceBrowserView(app.workspaceId, app.appKey);
+  if (!browserView) return response;
+  const requestUrl = new URL(request.url);
+  const requestTarget = browserRequestTarget(browserView, requestUrl);
   const publicOrigin = publicWorkspaceAppOrigin(request);
   const headers = new Headers(response.headers);
   const location = headers.get("location");
-  const rewrittenLocation = location ? rewriteContainerLocalUrl(location, publicOrigin) : undefined;
-  if (rewrittenLocation && rewrittenLocation !== location) headers.set("location", rewrittenLocation);
+  if (location) headers.set("location", rewriteBrowserRedirect(app, requestUrl, requestTarget, location, publicOrigin));
 
   const isHtml = headers.get("content-type")?.toLowerCase().includes("text/html") ?? false;
   if (!isHtml) {
-    return rewrittenLocation && rewrittenLocation !== location ? new Response(response.body, { status: response.status, statusText: response.statusText, headers }) : response;
+    return location ? new Response(response.body, { status: response.status, statusText: response.statusText, headers }) : response;
   }
 
   const text = await response.text();
-  const rewritten = patchBrowserHtml(rewriteContainerLocalUrlsInHtml(text, publicOrigin), request);
+  const rewritten = patchBrowserHtml(rewriteContainerLocalUrlsInHtml(text, publicOrigin), request, requestTarget.origin);
   headers.delete("content-length");
   headers.delete("content-encoding");
   headers.delete("content-security-policy");
@@ -42,9 +41,7 @@ export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, re
   const browserView = getWorkspaceBrowserView(app.workspaceId, app.appKey);
   if (!browserView) throw new Error(`unknown workspace app: ${app.appKey}`);
   if (!browserView.targetUrl) throw new Error(`Browser view has no target URL: ${app.appKey}`);
-  const targetBase = new URL(browserView.targetUrl);
-  const target = new URL(requestUrl.pathname + requestUrl.search, targetBase);
-  stripAtelierBrowserParams(target);
+  const target = browserRequestTarget(browserView, requestUrl);
 
   if (!isLoopbackHost(target.hostname)) return target;
 
@@ -66,6 +63,41 @@ function isLoopbackHost(hostname: string): boolean {
   return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
 }
 
+function rewriteBrowserRedirect(app: WorkspaceAppHost, requestUrl: URL, requestTarget: URL, location: string, publicOrigin: string): string {
+  let redirectTarget: URL;
+  try {
+    redirectTarget = new URL(location, requestTarget);
+  } catch {
+    return location;
+  }
+  if (redirectTarget.protocol !== "http:" && redirectTarget.protocol !== "https:") return location;
+
+  setWorkspaceBrowserTarget(app.workspaceId, app.appKey, redirectTarget.toString());
+  const proxyTarget = browserProxyUrl(redirectTarget, publicOrigin);
+  const colorScheme = requestUrl.searchParams.get(browserColorSchemeParam);
+  if (colorScheme) proxyTarget.searchParams.set(browserColorSchemeParam, colorScheme);
+  return proxyTarget.toString();
+}
+
+function browserRequestTarget(view: WorkspaceBrowserView, requestUrl: URL): URL {
+  const fallbackOrigin = new URL(view.targetUrl).origin;
+  const targetOrigin = parseBrowserOrigin(requestUrl.searchParams.get(browserOriginParam)) ?? fallbackOrigin;
+  const target = new URL(`${requestUrl.pathname}${requestUrl.search}`, targetOrigin);
+  stripBrowserProxyParams(target);
+  return target;
+}
+
+function parseBrowserOrigin(value: string | null): string | undefined {
+  if (!value) return undefined;
+  try {
+    const origin = new URL(value);
+    if (origin.protocol !== "http:" && origin.protocol !== "https:") return undefined;
+    return origin.origin;
+  } catch {
+    return undefined;
+  }
+}
+
 function rewriteContainerLocalUrlsInHtml(html: string, publicOrigin: string): string {
   return html.replace(/https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::(\d+))?([^\s"'<>)]*)/gi, (raw) => rewriteContainerLocalUrl(raw, publicOrigin));
 }
@@ -83,22 +115,18 @@ function rewriteContainerLocalUrl(raw: string, publicOrigin: string): string {
   return new URL(`${url.pathname}${url.search}${url.hash}`, publicOrigin).toString();
 }
 
-function stripAtelierBrowserParams(url: URL): void {
-  url.searchParams.delete("atelierColorScheme");
+function patchBrowserHtml(html: string, request: Request, targetOrigin: string): string {
+  return injectBrowserThemeStyle(injectBrowserBridgeScript(html, targetOrigin), request);
 }
 
-function patchBrowserHtml(html: string, request: Request): string {
-  return injectBrowserThemeStyle(injectBrowserBridgeScript(html), request);
-}
-
-function injectBrowserBridgeScript(html: string): string {
+function injectBrowserBridgeScript(html: string, targetOrigin: string): string {
   if (html.includes("atelier:browser-location")) return html;
-  return injectIntoHtml(html, `<script>${browserBridgeScript()}</script>`);
+  return injectIntoHtml(html, `<script>${browserBridgeScript(targetOrigin)}</script>`);
 }
 
 function injectBrowserThemeStyle(html: string, request: Request): string {
   if (html.includes("data-atelier-browser-theme")) return html;
-  const scheme = new URL(request.url).searchParams.get("atelierColorScheme") === "light" ? "light" : "dark";
+  const scheme = new URL(request.url).searchParams.get(browserColorSchemeParam) === "light" ? "light" : "dark";
   return injectIntoHtml(html, `<style data-atelier-browser-theme>html{color-scheme:${scheme};}</style>`);
 }
 
@@ -108,12 +136,12 @@ function injectIntoHtml(html: string, addition: string): string {
   return `${html}${addition}`;
 }
 
-function browserBridgeScript(): string {
+function browserBridgeScript(targetOrigin: string): string {
   return `(() => {
   if (window.__atelierBrowserBridgeInstalled) return;
   window.__atelierBrowserBridgeInstalled = true;
   const locationChanged = () => {
-    parent.postMessage({ type: "atelier:browser-location", href: location.href }, "*");
+    parent.postMessage({ type: "atelier:browser-location", href: location.href, targetOrigin: ${JSON.stringify(targetOrigin)} }, "*");
   };
   const pushState = history.pushState;
   history.pushState = function(...args) {

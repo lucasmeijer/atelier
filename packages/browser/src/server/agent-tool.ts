@@ -1,8 +1,12 @@
-import type { WorkspacePresenterDefinition, WorkspacePresenterDeps } from "@atelier/agent/server";
+import type { WorkspacePresenterDefinition } from "@atelier/agent/server";
 import { Type } from "typebox";
-import { createWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
+import { createWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget, type WorkspaceBrowserView } from "./state.ts";
 
-export function createBrowserPresenter(workspaceId: string, deps: WorkspacePresenterDeps): WorkspacePresenterDefinition<{ kind: "browser"; url: string }> {
+interface BrowserPresenterDeps {
+  presentBrowser(view: WorkspaceBrowserView): Promise<void>;
+}
+
+export function createBrowserPresenter(workspaceId: string, deps: BrowserPresenterDeps): WorkspacePresenterDefinition<{ kind: "browser"; url: string }> {
   return {
     kind: "browser",
     description: "Present a URL in Atelier's inline preview browser.",
@@ -13,8 +17,9 @@ export function createBrowserPresenter(workspaceId: string, deps: WorkspacePrese
     },
     execute: async (_toolCallId: string, params: { kind: "browser"; url: string }) => {
       const browserView = listWorkspaceBrowserViews(workspaceId)[0] ?? createWorkspaceBrowserView(workspaceId);
-      const view = setWorkspaceBrowserTarget(workspaceId, browserView.key, params.url) ?? browserView;
-      await deps.presentWorkView({ type: "browser", browserId: browserView.key });
+      const view = setWorkspaceBrowserTarget(workspaceId, browserView.key, params.url);
+      if (!view) throw new Error(`Browser view disappeared while presenting: ${browserView.key}`);
+      await deps.presentBrowser(view);
       const details = { workView: { type: "browser", browserId: browserView.key }, url: view.targetUrl };
       return {
         content: [{ type: "text" as const, text: `Preview browser opened at ${view.targetUrl}` }],

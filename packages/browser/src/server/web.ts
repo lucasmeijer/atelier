@@ -1,6 +1,6 @@
-import type { WorkspaceCommandContribution, WorkspaceModule, WorkspaceModuleCommandHandler, WorkspaceWorkViewPresentation } from "@atelier/shared";
+import { turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceModuleCommandHandler, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { renderBrowserFrame, renderBrowserWorkView } from "./render.ts";
-import { createWorkspaceBrowserView, deleteWorkspaceBrowserState, deleteWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
+import { browserFrameId, createWorkspaceBrowserView, deleteWorkspaceBrowserState, deleteWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
 import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppRequestHeaders, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "./proxy.ts";
 import { invalidArguments, readJsonObject, requestAcceptsJson, type JsonObject, type JsonValue } from "@atelier/core";
@@ -73,9 +73,11 @@ export const browserWorkspaceModule: WorkspaceModule = {
       transformResponse: (app, response, request) => patchBrowserWorkspaceAppResponse(app, response, request),
     });
     context.onWorkspaceRemoved((workspaceId) => deleteWorkspaceBrowserState(workspaceId));
-    registerWorkspacePresenter("browser", (workspaceId, options) => createBrowserPresenter(workspaceId, {
-      events: options.events,
-      presentWorkView: (reference) => context.presentWorkView(workspaceId, reference),
+    registerWorkspacePresenter("browser", (workspaceId) => createBrowserPresenter(workspaceId, {
+      async presentBrowser(view) {
+        await context.presentWorkView(workspaceId, { type: "browser", browserId: view.key });
+        context.broadcastWorkspace(workspaceId, turboStream("replace", browserFrameId(workspaceId, view.key), renderBrowserFrame(workspaceId, view)));
+      },
     }));
   },
   attachToWorkspace({ workspaceId }) {

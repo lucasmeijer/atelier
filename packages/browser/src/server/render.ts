@@ -1,5 +1,6 @@
 import { escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { browserFrameId, type WorkspaceBrowserView } from "./state.ts";
+import { browserProxyUrl } from "../shared.ts";
 
 export function renderBrowserWorkView(workspaceId: string, view: WorkspaceBrowserView): WorkspaceWorkViewPresentation {
   return {
@@ -20,14 +21,14 @@ export function renderBrowserPane(workspaceId: string, view: WorkspaceBrowserVie
 
 export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserView): string {
   const target = view.targetUrl ? new URL(view.targetUrl) : undefined;
-  const initialPath = target ? `${target.pathname}${target.search}${target.hash}` : "";
-  const targetOrigin = target?.origin ?? "";
+  const proxy = target ? browserProxyUrl(target, "http://atelier.browser") : undefined;
+  const initialPath = proxy ? `${proxy.pathname}${proxy.search}${proxy.hash}` : "";
   const appKey = view.key;
   const frameControllerAttributes = target ? ` data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-app-frame-app-key-value="${escapeHtml(appKey)}" data-workspace-app-frame-initial-path-value="${escapeHtml(initialPath)}"` : "";
   const externalLinkAttributes = target ? ` href="#"` : ` aria-disabled="true"`;
   return `<turbo-frame id="${browserFrameId(workspaceId, appKey)}" class="browser-frame">
     <div class="browser-shell">
-      <form class="browser-toolbar" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/browser/${encodeURIComponent(appKey)}/navigate" data-turbo-frame="${browserFrameId(workspaceId, appKey)}" data-controller="browser-address" data-browser-address-target-origin-value="${escapeHtml(targetOrigin)}" data-action="submit->browser-address#submit">
+      <form class="browser-toolbar" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/browser/${encodeURIComponent(appKey)}/navigate" data-turbo-frame="${browserFrameId(workspaceId, appKey)}" data-controller="browser-address" data-action="submit->browser-address#submit">
         <div class="browser-window-controls" aria-hidden="true"><span class="red"></span><span class="amber"></span><span class="green"></span></div>
         <button class="browser-nav-button" type="button" data-action="browser-address#back" title="Back" aria-label="Back">←</button>
         <button class="browser-nav-button" type="button" data-action="browser-address#forward" title="Forward" aria-label="Forward">→</button>
