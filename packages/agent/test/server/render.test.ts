@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderAgentComposer, renderAgentPane, renderStatsBar, renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../src/server/render.ts";
+import { renderAgentComposer, renderAgentPane, renderPromptActions, renderStatsBar, renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../src/server/render.ts";
 import type { ToolView, TranscriptItem } from "../../src/server/transcript.ts";
 
 const ctx: AgentRenderContext = { workspaceId: "ws", label: "agent" };
@@ -26,6 +26,20 @@ describe("transcript rendering", () => {
     expect(html).toContain('class="progress-button__perimeter"');
     expect(html).toContain('aria-label="Dictate with microphone"');
     expect(html).toContain('data-transcription-composer-target="waveform"');
+  });
+
+  test("busy composers expose an actionable indeterminate stop button", () => {
+    const active = renderPromptActions(ctx, true);
+    expect(active).toContain('class="button primary icon-only activity-button agent-sendstop"');
+    expect(active).toContain('data-activity-state="active"');
+    expect(active).toContain('aria-label="Agent is working — click to stop"');
+    expect(active).toContain('aria-busy="true"');
+    expect(active).not.toContain(" disabled");
+
+    const initial = renderPromptActions(ctx, false);
+    expect(initial).toContain('data-activity-state="initial"');
+    expect(initial).toContain('aria-label="Send prompt"');
+    expect(initial).not.toContain('aria-busy="true"');
   });
 
   test("user messages retain their original text for keyboard prompt history", () => {

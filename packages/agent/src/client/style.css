@@ -380,28 +380,24 @@
 .agent-transcript-nav.button:disabled { opacity: 0; visibility: hidden; pointer-events: none; transform: scale(.76) translateY(3px); transition: opacity .12s ease-in, transform .12s ease-in, visibility 0s .12s; }
 .agent-transcript-nav[data-direction="up"] svg { transform: rotate(180deg); }
 .agent-promptbox form { min-height: calc(1.5em * 2 + 21px); }
+.agent-input-area { position: relative; }
 .agent-input { font: 400 var(--text-body)/var(--leading-copy) var(--font-sans); padding: var(--space-lg) 58px var(--space-sm) var(--space-xl); min-height: calc(1.5em * 2 + 21px); max-height: var(--agent-input-max-height); }
+.agent-input-area .transcription-button { position: absolute; right: 10px; bottom: 98px; translate: 0 50%; }
 .agent-input::placeholder { color: var(--text-faint); font: inherit; }
 .agent-pane .agent-input {
   min-height: calc(1.5em * 4 + 21px);
-  padding-bottom: 54px;
+  padding-bottom: var(--space-lg);
 }
 .agent-prompt-actions { position: absolute; left: 10px; right: 10px; bottom: 38px; display: flex; align-items: center; gap: var(--space-sm); padding: 0; pointer-events: none; }
+@media (max-width: 700px) {
+  .agent-prompt-actions { bottom: 44px; }
+}
 .agent-prompt-actions > * { pointer-events: auto; }
 .agent-prompt-actions .spacer { display: block; flex: 1; }
 .agent-btn { height: 30px; display: inline-flex; align-items: center; gap: var(--space-sm); padding: var(--space-xs) var(--space-md); border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text-faint); font: inherit; cursor: pointer; }
 .agent-btn:hover { color: var(--text); background: var(--bg); }
-.agent-prompt-actions .agent-btn.primary { position: absolute; right: 0; bottom: -28px; width: 38px; height: 38px; margin: 0; padding: 0; border-radius: 50%; background: var(--accent); color: transparent; font-size: 0; line-height: 0; display: block; overflow: hidden; }
-.agent-prompt-actions .agent-btn.primary:hover { background: var(--accent); filter: brightness(.92); }
-.agent-prompt-actions .agent-btn.primary kbd { display: none; }
-.agent-prompt-actions .agent-btn.primary::before { content: "↑"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -53%); color: var(--accent-contrast); font-size: var(--text-title); font-weight: var(--weight-bold); line-height: var(--leading-none); font-family: var(--font-sans); }
-.agent-prompt-actions .agent-btn.primary.agent-sendstop { transition: background .15s, box-shadow .15s, transform .15s, filter .15s; }
-.agent-prompt-actions .agent-btn.primary.agent-sendstop:active { transform: translateY(1px); }
-.agent-prompt-actions .agent-btn.primary.agent-sendstop[data-mode="stop"] { background: transparent; overflow: visible; }
-.agent-prompt-actions .agent-btn.primary.agent-sendstop[data-mode="stop"]:hover { background: transparent; filter: none; }
-.agent-prompt-actions .agent-btn.primary.agent-sendstop[data-mode="stop"]::before { content: ""; width: 9px; height: 9px; border-radius: 2.5px; background: var(--accent); transform: translate(-50%, -50%); }
-.agent-prompt-actions .agent-btn.primary.agent-sendstop[data-mode="stop"]::after { content: ""; position: absolute; inset: 0; border: 1.5px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent); border-radius: inherit; pointer-events: none; animation: agent-sendstop-orbit 1.1s linear infinite; }
-@keyframes agent-sendstop-orbit { to { transform: rotate(360deg); } }
+.agent-prompt-actions .agent-sendstop { position: absolute; right: 0; top: 0; translate: 0 calc(-50% + 9px); padding: 0; border-radius: var(--radius-round); overflow: visible; }
+.agent-prompt-actions .agent-sendstop .activity-button__content { padding: 0; }
 .agent-btn.stop { color: var(--danger); background: var(--danger-soft); border: 1px solid var(--line); }
 
 .agent-completion-menu-host { position: absolute; z-index: 20; }

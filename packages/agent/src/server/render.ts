@@ -282,9 +282,11 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
           <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
             <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row"></div>
-            ${textarea}
-            <div class="agent-prompt-actions">
+            <div class="agent-input-area">
+              ${textarea}
               ${renderTranscriptionComposerControl()}
+            </div>
+            <div class="agent-prompt-actions">
               <span class="spacer"></span>
               ${actions}
             </div>
@@ -346,11 +348,11 @@ function renderTranscriptNavigation(): string {
 }
 
 export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): string {
-  const busyAttrs = busy ? ` data-agent-busy="true" data-agent-abort-form-id="${ids.abortForm(ctx)}"` : ` data-agent-busy="false"`;
-  const label = busy ? "Steer" : "Send";
+  const busyAttrs = busy ? ` data-agent-busy="true" data-agent-abort-form-id="${ids.abortForm(ctx)}" aria-busy="true"` : ` data-agent-busy="false"`;
   const value = busy ? "steer" : "send";
-  const title = busy ? "Deliver a steering note while the agent keeps working" : "Send prompt";
-  return `<button class="agent-btn primary agent-sendstop" type="submit" name="mode" value="${value}" title="${title}" data-agent-pane-target="sendStop"${busyAttrs}>${label} <kbd>⌘↩</kbd></button>`;
+  const title = busy ? "Agent is working — click to stop" : "Send prompt";
+  const state = busy ? "active" : "initial";
+  return `<button class="button primary icon-only activity-button agent-sendstop" type="submit" name="mode" value="${value}" title="${title}" aria-label="${title}" data-activity-state="${state}" data-agent-pane-target="sendStop"${busyAttrs}><svg class="activity-button__indicator" aria-hidden="true"><rect pathLength="100"/></svg><span class="activity-button__content" data-activity-content="initial"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4"/></svg></span><span class="activity-button__content" data-activity-content="active"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/></svg></span></button>`;
 }
 
 export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): string {

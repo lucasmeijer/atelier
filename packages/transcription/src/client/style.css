@@ -1,17 +1,11 @@
 .button.transcription-button {
-  position: absolute;
-  left: 0;
-  bottom: -28px;
-  width: 38px;
-  height: 38px;
   padding: 0;
   border-radius: var(--radius-round);
   overflow: hidden;
 }
 .transcription-button .progress-button__content { width: 100%; height: 100%; }
-.transcription-button .transcription-microphone { width: 19px; height: 19px; stroke-width: 1.65; }
+.transcription-button .transcription-microphone { stroke-width: 1.65; }
 .transcription-button canvas { display: none; width: 24px; height: 22px; color: var(--accent); }
-.button.transcription-button .progress-button__perimeter rect { rx: 19px; }
 .transcription-button[data-state="recording"],
 .transcription-button[data-state="finishing"] {
   --button-border: color-mix(in srgb, var(--accent) 50%, var(--line));

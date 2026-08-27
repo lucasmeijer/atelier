@@ -385,20 +385,22 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       const busy = button.dataset.agentBusy === "true";
       const empty = this.inputTarget.value.trim().length === 0;
       if (busy && empty) {
-        button.dataset.mode = "stop";
+        button.dataset.activityState = "active";
         button.type = "submit";
         button.removeAttribute("name");
         button.removeAttribute("value");
         button.setAttribute("form", button.dataset.agentAbortFormId ?? "");
+        button.setAttribute("aria-busy", "true");
         button.title = "Agent is working — click to stop";
         button.setAttribute("aria-label", button.title);
         return;
       }
-      button.dataset.mode = "send";
+      button.dataset.activityState = "initial";
       button.type = "submit";
       button.name = "mode";
       button.value = busy ? "steer" : "send";
       button.removeAttribute("form");
+      button.removeAttribute("aria-busy");
       button.title = busy ? "Deliver a steering note while the agent keeps working" : "Send prompt";
       button.setAttribute("aria-label", button.title);
     }

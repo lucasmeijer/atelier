@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { progressButtonHtml } from "../src/html.ts";
+import { activityButtonHtml, progressButtonHtml } from "../src/html.ts";
 
 describe("progress button HTML", () => {
   test("renders required initial and in-progress content with an optional finish state", () => {
@@ -25,5 +25,24 @@ describe("progress button HTML", () => {
 
   test("renders caller-supplied finish content", () => {
     expect(progressButtonHtml({ initialHtml: "Start", inProgressHtml: "Working", finishHtml: "Done", state: "finish", variant: "primary" })).toContain('data-progress-content="finish">Done');
+  });
+});
+
+describe("activity button HTML", () => {
+  test("renders an actionable indeterminate state", () => {
+    const html = activityButtonHtml({
+      initialHtml: "Start sync",
+      activeHtml: "Stop sync",
+      state: "active",
+      variant: "primary",
+      id: "sync",
+    });
+
+    expect(html).toContain('id="sync" class="button primary activity-button"');
+    expect(html).toContain('data-activity-state="active" aria-busy="true"');
+    expect(html).toContain('class="activity-button__indicator"');
+    expect(html).toContain('data-activity-content="initial">Start sync');
+    expect(html).toContain('data-activity-content="active">Stop sync');
+    expect(html).not.toContain(" disabled");
   });
 });

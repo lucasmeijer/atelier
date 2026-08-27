@@ -289,13 +289,13 @@
               <p class="catalogue-note">Keyboard focus intentionally uses the same treatment as hover for every variant.</p>
             </article>
             <article class="catalogue-card">
-              <div class="catalogue-card-title"><span>Icon only</span><code>26 desktop · 32 mobile</code></div>
+              <div class="catalogue-card-title"><span>Icon only</span><code>26 desktop · 44 mobile</code></div>
               <div class="catalogue-demo">
                 <div class="button-specimen"><span class="button-specimen-label">primary</span><button class="button primary icon-only" type="button" aria-label="Add workspace" title="Add workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>
                 <div class="button-specimen"><span class="button-specimen-label">secondary</span><button class="button secondary icon-only" type="button" aria-label="More options" title="More options"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/></svg></button></div>
                 <div class="button-specimen"><span class="button-specimen-label">danger</span><button class="button danger icon-only" type="button" aria-label="Delete project" title="Delete project"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></button></div>
               </div>
-              <p class="catalogue-note">Icon-only buttons require an accessible name and a visible tooltip.</p>
+              <p class="catalogue-note">Icon-only buttons require an accessible name and a visible tooltip. They automatically use the 44px mobile target.</p>
             </article>
             <article class="catalogue-card">
               <div class="catalogue-card-title"><span>Icon + caption</span><code>composable anatomy</code></div>
@@ -315,7 +315,27 @@
               <p class="catalogue-note">Disabled state preserves variant recognition and ignores pointer hover.</p>
             </article>
             <article class="catalogue-card wide">
-              <div class="catalogue-card-title"><span>Long-running action</span><code>.progress-button</code></div>
+              <div class="catalogue-card-title"><span>Indeterminate action</span><code>.activity-button</code></div>
+              <div class="catalogue-demo progress-button-demo">
+                <button class="button primary activity-button" id="activity-button-demo" type="button" data-activity-state="initial" aria-label="Start background sync">
+                  <svg class="activity-button__indicator" aria-hidden="true"><rect pathLength="100"/></svg>
+                  <span class="activity-button__content" data-activity-content="initial"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg>Start background sync</span>
+                  <span class="activity-button__content" data-activity-content="active"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none"/></svg>Stop sync</span>
+                </button>
+                <span class="progress-button-demo__status" id="activity-button-demo-status" aria-live="polite">Click to start · click again to stop</span>
+              </div>
+              <pre class="button-code">&lt;button class="button primary activity-button"
+  data-activity-state="active" aria-busy="true"&gt;
+  &lt;svg class="activity-button__indicator" aria-hidden="true"&gt;
+    &lt;rect pathLength="100"/&gt;
+  &lt;/svg&gt;
+  &lt;span class="activity-button__content" data-activity-content="initial"&gt;Start&lt;/span&gt;
+  &lt;span class="activity-button__content" data-activity-content="active"&gt;■ Stop&lt;/span&gt;
+&lt;/button&gt;</pre>
+              <p class="catalogue-note">Use this when progress cannot be measured. Unlike a progress button, the active control stays enabled so its second action can stop or cancel the work. Both contents share one grid cell, preserving a stable width.</p>
+            </article>
+            <article class="catalogue-card wide">
+              <div class="catalogue-card-title"><span>Determinate action</span><code>.progress-button</code></div>
               <div class="catalogue-demo progress-button-demo">
                 <button class="button primary progress-button" id="progress-button-demo" type="button" data-progress-state="initial" style="--button-progress:0">
                   <svg class="progress-button__perimeter" aria-hidden="true"><rect pathLength="100"/></svg>
@@ -601,6 +621,17 @@
           option.setAttribute("aria-pressed", String(option === choice));
         });
       });
+    });
+
+    const activityButtonDemo = document.querySelector("#activity-button-demo");
+    const activityButtonDemoStatus = document.querySelector("#activity-button-demo-status");
+    activityButtonDemo.addEventListener("click", () => {
+      const active = activityButtonDemo.dataset.activityState === "active";
+      activityButtonDemo.dataset.activityState = active ? "initial" : "active";
+      if (active) activityButtonDemo.removeAttribute("aria-busy");
+      else activityButtonDemo.setAttribute("aria-busy", "true");
+      activityButtonDemo.setAttribute("aria-label", active ? "Start background sync" : "Stop background sync");
+      activityButtonDemoStatus.textContent = active ? "Stopped · click to start again" : "Syncing · duration unknown · click to stop";
     });
 
     const progressButtonDemo = document.querySelector("#progress-button-demo");
