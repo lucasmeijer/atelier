@@ -524,7 +524,7 @@ ${moduleStylesHtml()}
       : `<p>Atelier has a GitHub token, but GitHub would not allow it to read <b>${escapeHtml(project.name)}</b>.</p><p>Reconnect GitHub with a token that has access to this project, then try again.</p>`;
     return `<dialog id="github-token-required-modal" class="modal" data-controller="modal" data-modal-auto-show-value="true">
   <form method="dialog">
-    <h2 class="modal-brand-title"><span class="settings-provider-icon settings-provider-icon-github" style="--provider-color:${providerBrandColor("github")}">${providerBrandIconHtml("github", "GitHub")}</span>${escapeHtml(title)}</h2>
+    <h2 class="modal-brand-title"><span class="settings-provider-icon" style="--provider-color:${providerBrandColor("github")}">${providerBrandIconHtml("github", "GitHub")}</span>${escapeHtml(title)}</h2>
     ${body}
     <div class="modal-actions">
       <button class="button secondary" value="cancel">Cancel</button>

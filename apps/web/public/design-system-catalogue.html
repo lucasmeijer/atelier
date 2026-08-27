@@ -21,9 +21,21 @@
     .catalogue-platform-selector .button { border-color: transparent; background: transparent; }
     .catalogue-platform-selector .button[aria-pressed="true"] { border-color: var(--button-border); background: var(--elev); color: var(--text); box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 12%, transparent); }
     .catalogue-platform-stage { height: calc(100dvh - 52px); overflow: auto; background: color-mix(in srgb, var(--bg) 86%, var(--text)); }
-    .catalogue-platform-frame { display: block; height: 100%; margin: 0 auto; border: 0; background: var(--bg); box-shadow: 0 0 0 1px var(--line-strong), 0 12px 36px color-mix(in srgb, var(--text) 14%, transparent); }
-    .catalogue-platform-frame[data-platform="mobile"] { width: min(390px, 100%); }
-    .catalogue-platform-frame[data-platform="desktop"] { width: clamp(701px, 100%, 1024px); }
+    .catalogue-preview { min-height: 100%; margin: 0 auto; background: var(--bg); box-shadow: 0 0 0 1px var(--line-strong); }
+    .catalogue-preview[data-platform="mobile"] { width: min(390px, 100%); --text-caption: 13px; --text-small: 14px; --text-body: 16px; --text-title: 18px; }
+    .catalogue-preview[data-platform="desktop"] { width: min(1024px, 100%); }
+
+    .catalogue-preview[data-platform="mobile"] .button { height: 44px; padding-inline: var(--space-xl); }
+    .catalogue-preview[data-platform="mobile"] .button.icon-only { width: 44px; padding: 0; }
+    .catalogue-preview[data-platform="mobile"] .button svg { width: 20px; height: 20px; }
+    .catalogue-preview[data-platform="mobile"] .toggle__option { height: 44px; padding-inline: var(--space-xl); }
+    .catalogue-preview[data-platform="mobile"] .progress-button:not(.icon-only) .progress-button__content,
+    .catalogue-preview[data-platform="mobile"] .activity-button:not(.icon-only) .activity-button__content { padding-inline: var(--space-xl); }
+    .catalogue-preview[data-platform="mobile"] .button :is(.progress-button__perimeter, .activity-button__indicator) rect { rx: 22px; }
+    .catalogue-preview[data-platform="mobile"] .text-field { height: 44px; }
+    .catalogue-preview[data-platform="mobile"] .managed-list__item { min-height: 56px; padding-inline: var(--space-md); }
+    .catalogue-preview[data-platform="mobile"] :is(.action-item, .action-item__primary) { min-height: 48px; }
+    .catalogue-preview[data-platform="mobile"] .disclosure-icon { width: 16px; height: 16px; }
 
     .catalogue-shell { display: grid; grid-template-columns: 228px minmax(0, 1fr); min-height: 100vh; }
     .catalogue-nav { position: sticky; top: 0; height: 100vh; padding: var(--space-2xl) var(--space-xl); border-right: 1px solid var(--line); background: var(--panel); }
@@ -126,28 +138,33 @@
     .simple-popup-stack { width: 240px; min-height: 210px; display: flex; align-items: flex-end; justify-content: flex-end; }
     .simple-popup-demo .popup-menu { width: 240px; }
 
-    @media (max-width: 820px) {
-      .catalogue-shell { display: block; }
-      .catalogue-nav { position: static; width: 100%; height: auto; padding: var(--space-lg); border-right: 0; border-bottom: 1px solid var(--line); }
-      .catalogue-brand { margin: 0; }
-      .catalogue-nav nav, .catalogue-nav-footer { display: none; }
-      .catalogue-hero { padding: 48px 24px 40px; }
-      .catalogue-section-head { grid-template-columns: 1fr; gap: var(--space-md); }
-      .catalogue-grid { grid-template-columns: 1fr; }
-      .catalogue-card.wide { grid-column: auto; }
-    }
-    @media (max-width: 500px) {
-      .catalogue-content { width: min(100% - 24px, 1060px); }
-      .catalogue-toolbar { align-items: flex-start; flex-direction: column; }
-      .type-row { grid-template-columns: 1fr; gap: var(--space-xs); }
-      .radius-list { display: grid; grid-template-columns: repeat(2, 1fr); }
-      .spacing-row { grid-template-columns: 92px 1fr 34px; gap: var(--space-md); }
-      .button-layouts { grid-template-columns: 1fr; }
-    }
+    .catalogue-preview[data-platform="mobile"] .catalogue-shell { display: block; }
+    .catalogue-preview[data-platform="mobile"] .catalogue-nav { position: static; width: 100%; height: auto; padding: var(--space-lg); border-right: 0; border-bottom: 1px solid var(--line); }
+    .catalogue-preview[data-platform="mobile"] .catalogue-brand { margin: 0; }
+    .catalogue-preview[data-platform="mobile"] .catalogue-nav :is(nav, .catalogue-nav-footer) { display: none; }
+    .catalogue-preview[data-platform="mobile"] .catalogue-hero { padding: 48px 24px 40px; }
+    .catalogue-preview[data-platform="mobile"] .catalogue-section-head { grid-template-columns: 1fr; gap: var(--space-md); }
+    .catalogue-preview[data-platform="mobile"] .catalogue-grid { grid-template-columns: 1fr; }
+    .catalogue-preview[data-platform="mobile"] .catalogue-card.wide { grid-column: auto; }
+    .catalogue-preview[data-platform="mobile"] .catalogue-content { width: min(100% - 24px, 1060px); }
+    .catalogue-preview[data-platform="mobile"] .catalogue-toolbar { align-items: flex-start; flex-direction: column; }
+    .catalogue-preview[data-platform="mobile"] .type-row { grid-template-columns: 1fr; gap: var(--space-xs); }
+    .catalogue-preview[data-platform="mobile"] .radius-list { display: grid; grid-template-columns: repeat(2, 1fr); }
+    .catalogue-preview[data-platform="mobile"] .spacing-row { grid-template-columns: 92px 1fr 34px; gap: var(--space-md); }
+    .catalogue-preview[data-platform="mobile"] .button-layouts { grid-template-columns: 1fr; }
     @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
   </style>
 </head>
 <body>
+  <header class="catalogue-platform-bar">
+    <span class="catalogue-platform-label">Preview</span>
+    <div class="catalogue-platform-selector" role="group" aria-label="Preview platform">
+      <button class="button" type="button" data-catalogue-platform="mobile" aria-pressed="false">Mobile</button>
+      <button class="button" type="button" data-catalogue-platform="desktop" aria-pressed="false">Desktop</button>
+    </div>
+  </header>
+  <main class="catalogue-platform-stage">
+  <div class="catalogue-preview" data-catalogue-preview data-platform="desktop">
   <div class="catalogue-shell">
     <aside class="catalogue-nav">
       <div class="catalogue-brand"><span class="catalogue-mark"></span> Atelier UI</div>
@@ -162,6 +179,7 @@
         <a href="#dialog">Dialog</a>
         <a href="#popup-menu">Popup menu</a>
         <div class="catalogue-kicker">Patterns</div>
+        <a href="#status-list">Status list</a>
         <a href="#managed-list">Managed list</a>
         <a href="#action-items">Action items</a>
         <a href="#disclosure">Disclosure</a>
@@ -421,11 +439,16 @@
           <div class="catalogue-section-head"><h2>Dialog</h2><p>A modal task surface with shared header, body, and action regions. Auto-show, initial focus, native Escape dismissal, and focus restoration ship with the element.</p></div>
           <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Task dialog</span><code>.dialog</code></div><div class="catalogue-demo">
             <dialog class="dialog catalogue-dialog" open>
-              <header class="dialog__header"><h3 class="dialog__title">Add favorite model</h3><p class="dialog__description">Models from connected providers</p></header>
-              <div class="dialog__body"><label for="catalogue-dialog-filter">Filter models</label><input class="text-field" id="catalogue-dialog-filter" placeholder="Filter models…"></div>
+              <header class="dialog__header"><h3 class="title">Add favorite model</h3></header>
+              <div class="dialog__body"><label for="catalogue-dialog-filter">Filter models by name or provider</label><input class="text-field" id="catalogue-dialog-filter" placeholder="Filter models by name or provider…"></div>
               <footer class="dialog__actions"><button class="button secondary" type="button">Cancel</button><button class="button primary" type="button">Add</button></footer>
             </dialog>
           </div><p class="catalogue-note">Add <code>data-dialog-auto-show</code> when a newly inserted dialog should open immediately. Prefer native <code>method="dialog"</code> forms for closing actions.</p></article>
+        </section>
+
+        <section class="catalogue-section" id="status-list">
+          <div class="catalogue-section-head"><h2>Status list</h2><p>A concise summary of complete, incomplete, and actively running work. Completed markers use the accent outline; busy markers spin that outline without changing the row layout.</p></div>
+          <article class="catalogue-card"><div class="catalogue-card-title"><span>Task states</span><code>.status-list</code></div><div class="catalogue-demo"><ul class="status-list"><li class="status-list__item" role="checkbox" aria-checked="true"><span class="status-list__marker">✓</span>GitHub connected</li><li class="status-list__item" aria-busy="true"><span class="status-list__marker"></span>Loading models</li><li class="status-list__item" role="checkbox" aria-checked="false"><span class="status-list__marker">○</span>Git identity</li></ul></div></article>
         </section>
 
         <section class="catalogue-section" id="popup-menu">
@@ -574,34 +597,27 @@
       </div>
     </main>
   </div>
+  </div>
+  </main>
 
   <script type="module" src="./design-system.js"></script>
   <script>
     const catalogueParams = new URLSearchParams(location.search);
-    if (!catalogueParams.has("embedded")) {
-      const requestedPlatform = catalogueParams.get("platform");
-      const detectedPlatform = navigator.maxTouchPoints > 0 || matchMedia("(pointer: coarse)").matches || matchMedia("(max-width: 700px)").matches ? "mobile" : "desktop";
-      const initialPlatform = requestedPlatform === "mobile" || requestedPlatform === "desktop" ? requestedPlatform : detectedPlatform;
-      document.body.innerHTML = `<header class="catalogue-platform-bar">
-        <span class="catalogue-platform-label">Preview</span>
-        <div class="catalogue-platform-selector" role="group" aria-label="Preview platform">
-          <button class="button" type="button" data-catalogue-platform="mobile" aria-pressed="false">Mobile</button>
-          <button class="button" type="button" data-catalogue-platform="desktop" aria-pressed="false">Desktop</button>
-        </div>
-      </header><main class="catalogue-platform-stage"><iframe class="catalogue-platform-frame" title="Design system catalogue preview"></iframe></main>`;
-      const platformFrame = document.querySelector(".catalogue-platform-frame");
-      const platformChoices = document.querySelectorAll("[data-catalogue-platform]");
-      function showPlatform(platform) {
-        platformFrame.dataset.platform = platform;
-        platformFrame.src = `${location.pathname}?embedded=1&platform=${platform}`;
-        platformChoices.forEach((choice) => choice.setAttribute("aria-pressed", String(choice.dataset.cataloguePlatform === platform)));
-        const url = new URL(location.href);
-        url.searchParams.set("platform", platform);
-        history.replaceState(null, "", url);
-      }
-      platformChoices.forEach((choice) => choice.addEventListener("click", () => showPlatform(choice.dataset.cataloguePlatform)));
-      showPlatform(initialPlatform);
-    } else {
+    const requestedPlatform = catalogueParams.get("platform");
+    const detectedPlatform = navigator.maxTouchPoints > 0 || matchMedia("(pointer: coarse)").matches || matchMedia("(max-width: 700px)").matches ? "mobile" : "desktop";
+    const initialPlatform = requestedPlatform === "mobile" || requestedPlatform === "desktop" ? requestedPlatform : detectedPlatform;
+    const platformPreview = document.querySelector("[data-catalogue-preview]");
+    const platformChoices = document.querySelectorAll("[data-catalogue-platform]");
+    function showPlatform(platform) {
+      platformPreview.dataset.platform = platform;
+      platformChoices.forEach((choice) => choice.setAttribute("aria-pressed", String(choice.dataset.cataloguePlatform === platform)));
+      const url = new URL(location.href);
+      url.searchParams.set("platform", platform);
+      history.replaceState(null, "", url);
+    }
+    platformChoices.forEach((choice) => choice.addEventListener("click", () => showPlatform(choice.dataset.cataloguePlatform)));
+    showPlatform(initialPlatform);
+
     const themePopupTrigger = document.querySelector(".catalogue-theme-trigger");
     const themePopup = document.querySelector("#catalogue-theme-popup");
     const simplePopupTrigger = document.querySelector(".simple-popup-trigger");
@@ -674,7 +690,6 @@
         }
       }, 100);
     });
-    }
   </script>
 </body>
 </html>

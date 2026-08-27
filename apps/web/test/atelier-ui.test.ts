@@ -59,20 +59,20 @@ describe("Atelier browser behavior", () => {
     };
     const desktopPage = await newTestPage({ viewport: { width: 1280, height: 800 } });
     await serveCatalogue(desktopPage);
-    const frame = desktopPage.locator(".catalogue-platform-frame");
+    const preview = desktopPage.locator("[data-catalogue-preview]");
     expect(await desktopPage.locator('[data-catalogue-platform="desktop"]').getAttribute("aria-pressed")).toBe("true");
-    expect(await frame.getAttribute("data-platform")).toBe("desktop");
+    expect(await preview.getAttribute("data-platform")).toBe("desktop");
 
     await desktopPage.locator('[data-catalogue-platform="mobile"]').click();
     expect(await desktopPage.locator('[data-catalogue-platform="mobile"]').getAttribute("aria-pressed")).toBe("true");
-    expect(await frame.getAttribute("data-platform")).toBe("mobile");
+    expect(await preview.getAttribute("data-platform")).toBe("mobile");
     expect(new URL(desktopPage.url()).searchParams.get("platform")).toBe("mobile");
     await desktopPage.close();
 
     const mobilePage = await newTestPage({ viewport: { width: 390, height: 844 } });
     await serveCatalogue(mobilePage);
     expect(await mobilePage.locator('[data-catalogue-platform="mobile"]').getAttribute("aria-pressed")).toBe("true");
-    expect(await mobilePage.locator(".catalogue-platform-frame").getAttribute("data-platform")).toBe("mobile");
+    expect(await mobilePage.locator("[data-catalogue-preview]").getAttribute("data-platform")).toBe("mobile");
     await mobilePage.close();
   });
 

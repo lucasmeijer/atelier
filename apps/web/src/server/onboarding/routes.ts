@@ -19,18 +19,18 @@ function update(target: string, html: string): string {
 }
 
 async function renderGithubStep(): Promise<string> {
-  return `<div class="onboarding-step"><h2>Connect GitHub</h2><div class="settings-providers">${githubRow("onboarding")}</div></div>`;
+  return `<div class="onboarding-step"><h2 class="title">Connect GitHub</h2>${githubRow("onboarding")}</div>`;
 }
 
 async function renderLlmStep(): Promise<string> {
-  return `<div class="onboarding-step onboarding-step-model-provider">${await renderModelSetup("onboarding")}</div>`;
+  return `<div data-onboarding-wide>${await renderModelSetup("onboarding")}</div>`;
 }
 
 function renderDoneStep(items: Array<{ id: string; label: string; complete: boolean }>): string {
   const completed = items.filter((item) => item.complete).length;
   const allComplete = completed === items.length;
   const title = allComplete ? "You’re all set up and ready to start using Atelier" : `${completed}/${items.length} onboarding steps completed`;
-  return `<div class="onboarding-step onboarding-step-done" data-onboarding-done-complete="${allComplete ? "true" : "false"}"><h2>${escapeHtml(title)}</h2><ul class="onboarding-checklist">${items.map((item) => `<li data-onboarding-check="${escapeHtml(item.id)}" data-onboarding-check-complete="${item.complete ? "true" : "false"}"><span>${item.complete ? "✓" : "○"}</span>${escapeHtml(item.label)}</li>`).join("")}</ul></div>`;
+  return `<div data-onboarding-done-complete="${allComplete ? "true" : "false"}"><h2 class="title">${escapeHtml(title)}</h2><ul class="status-list">${items.map((item) => `<li class="status-list__item" role="checkbox" aria-checked="${item.complete ? "true" : "false"}" data-onboarding-check="${escapeHtml(item.id)}"><span class="status-list__marker">${item.complete ? "✓" : "○"}</span>${escapeHtml(item.label)}</li>`).join("")}</ul></div>`;
 }
 
 registerOnboardingContribution({ id: "github", label: "GitHub", order: 20, isComplete: async () => hasWorkspaceGitHubToken(), render: renderGithubStep });
@@ -40,16 +40,22 @@ export async function renderOnboardingDialog(force = false): Promise<string> {
   if (!force && await isOnboarded()) return "";
   const allContributions = listOnboardingContributions();
   const allCompletions = await Promise.all(allContributions.map((contribution) => contribution.isComplete()));
-  const contributions = allContributions.filter((_, index) => !allCompletions[index]);
+  const contributions = force ? allContributions : allContributions.filter((_, index) => !allCompletions[index]);
   if (!contributions.length) return "";
   const rendered = await Promise.all(contributions.map((contribution) => contribution.render()));
-  rendered.push(renderDoneStep(allContributions.map((contribution, index) => ({ id: contribution.id, label: contribution.label, complete: Boolean(allCompletions[index]) }))));
-  const steps = rendered.map((html, index) => `<section class="onboarding-pane ${index === 0 ? "active" : ""}" data-onboarding-target="pane" data-onboarding-complete="${index === rendered.length - 1 ? "true" : "false"}" data-onboarding-kind="${index === rendered.length - 1 ? "done" : contributions[index]?.id ?? ""}">${html}</section>`);
-  return `<dialog id="onboarding_dialog" class="onboarding-dialog" data-controller="modal onboarding" data-modal-auto-show-value="true">
+  const completionById = new Map(allContributions.map((contribution, index) => [contribution.id, Boolean(allCompletions[index])]));
+  rendered.push(renderDoneStep(allContributions.map((contribution) => ({ id: contribution.id, label: contribution.label, complete: completionById.get(contribution.id) ?? false }))));
+  const steps = rendered.map((html, index) => {
+    const contribution = contributions[index];
+    const isDone = index === rendered.length - 1;
+    const isComplete = isDone || (contribution ? completionById.get(contribution.id) === true : false);
+    return `<section class="onboarding-pane" data-onboarding-target="pane" data-onboarding-complete="${isComplete}" data-onboarding-kind="${isDone ? "done" : contribution?.id ?? ""}"${index === 0 ? "" : " hidden"}>${html}</section>`;
+  });
+  return `<dialog id="onboarding_dialog" class="dialog onboarding-dialog" data-controller="modal onboarding" data-modal-auto-show-value="true" aria-label="Set up Atelier">
     <div class="onboarding-card">
-      <div class="onboarding-dots">${rendered.map((_, index) => `<span class="${index === 0 ? "active" : ""}" data-onboarding-target="dot"></span>`).join("")}</div>
+      <div class="onboarding-progress" aria-label="Onboarding progress">${rendered.map((_, index) => `<span class="onboarding-progress-item" data-onboarding-target="dot"${index === 0 ? ' aria-current="step"' : ""}></span>`).join("")}</div>
       <div class="onboarding-body">${steps.join("")}</div>
-      <div class="onboarding-foot"><button class="button secondary" type="button" data-onboarding-target="back" data-action="onboarding#prev">‹ Back</button><span></span><button class="button secondary" type="button" data-onboarding-target="continue" data-action="onboarding#next">Continue</button></div>
+      <footer class="dialog__actions onboarding-actions"><button class="button secondary" type="button" data-onboarding-target="back" data-action="onboarding#prev">‹ Back</button><button class="button secondary" type="button" data-onboarding-target="continue" data-action="onboarding#next">Continue</button></footer>
     </div>
   </dialog>`;
 }

@@ -1723,15 +1723,18 @@ class OnboardingController extends Controller {
 
   private show(index: number): void {
     this.index = Math.max(0, Math.min(index, this.paneTargets.length - 1));
-    this.paneTargets.forEach((pane, paneIndex) => pane.classList.toggle("visible", paneIndex === this.index));
-    this.dotTargets.forEach((dot, dotIndex) => dot.classList.toggle("visible", dotIndex === this.index));
+    this.paneTargets.forEach((pane, paneIndex) => { pane.hidden = paneIndex !== this.index; });
+    this.dotTargets.forEach((dot, dotIndex) => {
+      if (dotIndex === this.index) dot.setAttribute("aria-current", "step");
+      else dot.removeAttribute("aria-current");
+    });
     const current = this.paneTargets[this.index];
     const kind = current?.dataset.onboardingKind;
     const modelSetup = current?.querySelector<HTMLElement>(".model-setup");
     const workingModel = modelSetup?.dataset.modelSetupWorking === "true";
     const complete = current?.dataset.onboardingComplete === "true" || (kind === "llm" && workingModel);
     if (kind === "done") this.refreshChecklist(current);
-    const doneComplete = kind === "done" && current?.querySelector<HTMLElement>(".onboarding-step-done")?.dataset.onboardingDoneComplete === "true";
+    const doneComplete = kind === "done" && current?.querySelector<HTMLElement>("[data-onboarding-done-complete]")?.dataset.onboardingDoneComplete === "true";
     if (this.hasBackTarget) {
       this.backTarget.hidden = this.index === 0;
       this.backTarget.disabled = this.index === 0;
@@ -1744,21 +1747,21 @@ class OnboardingController extends Controller {
   }
 
   private refreshChecklist(donePane?: HTMLElement): void {
-    const done = donePane?.querySelector<HTMLElement>(".onboarding-step-done");
+    const done = donePane?.querySelector<HTMLElement>("[data-onboarding-done-complete]");
     if (!done) return;
     done.querySelectorAll<HTMLElement>("[data-onboarding-check]").forEach((item) => {
       const id = item.dataset.onboardingCheck;
       const pane = this.paneTargets.find((candidate) => candidate.dataset.onboardingKind === id);
       const modelSetup = pane?.querySelector<HTMLElement>(".model-setup");
-      const complete = pane ? (pane.dataset.onboardingComplete === "true" || (id === "llm" && modelSetup?.dataset.modelSetupWorking === "true")) : item.dataset.onboardingCheckComplete === "true";
+      const complete = pane ? (pane.dataset.onboardingComplete === "true" || (id === "llm" && modelSetup?.dataset.modelSetupWorking === "true")) : item.getAttribute("aria-checked") === "true";
       const completeValue = complete ? "true" : "false";
-      if (item.dataset.onboardingCheckComplete !== completeValue) item.dataset.onboardingCheckComplete = completeValue;
-      const marker = item.querySelector("span");
+      if (item.getAttribute("aria-checked") !== completeValue) item.setAttribute("aria-checked", completeValue);
+      const marker = item.querySelector(".status-list__marker");
       const markerText = complete ? "✓" : "○";
       if (marker && marker.textContent !== markerText) marker.textContent = markerText;
     });
     const checks = Array.from(done.querySelectorAll<HTMLElement>("[data-onboarding-check]"));
-    const completed = checks.filter((item) => item.dataset.onboardingCheckComplete === "true").length;
+    const completed = checks.filter((item) => item.getAttribute("aria-checked") === "true").length;
     const allComplete = completed === checks.length;
     done.dataset.onboardingDoneComplete = allComplete ? "true" : "false";
     const title = done.querySelector("h2");
