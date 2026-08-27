@@ -268,23 +268,39 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   position: relative;
   display: inline-grid;
   grid-template-areas: "content";
+  padding-inline: 0;
+  pointer-events: none;
 }
 .progress-button__content {
   grid-area: content;
+  justify-self: center;
+  height: 100%;
+  padding-inline: var(--space-lg);
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-sm);
   visibility: hidden;
+  pointer-events: none;
 }
 .progress-button[data-progress-state="initial"] .progress-button__content[data-progress-content="initial"],
 .progress-button[data-progress-state="in-progress"] .progress-button__content[data-progress-content="in-progress"],
-.progress-button[data-progress-state="finish"] .progress-button__content[data-progress-content="finish"] { visibility: visible; }
+.progress-button[data-progress-state="finish"] .progress-button__content[data-progress-content="finish"] {
+  visibility: visible;
+  pointer-events: auto;
+}
+.progress-button.icon-only .progress-button__content { padding-inline: 0; }
+@media (max-width: 700px) {
+  .progress-button:not(.icon-only) .progress-button__content { padding-inline: var(--space-xl); }
+}
 .progress-button[data-progress-state="in-progress"],
 .progress-button[data-progress-state="in-progress"]:disabled,
 .progress-button[data-progress-state="in-progress"][aria-disabled="true"] { opacity: 1; cursor: progress; }
 .progress-button[data-progress-state="in-progress"]:disabled,
-.progress-button[data-progress-state="in-progress"][aria-disabled="true"] { pointer-events: none; }
+.progress-button[data-progress-state="in-progress"][aria-disabled="true"],
+.progress-button[data-progress-state="in-progress"]:disabled .progress-button__content,
+.progress-button[data-progress-state="in-progress"][aria-disabled="true"] .progress-button__content { pointer-events: none; }
 .button .progress-button__perimeter {
   position: absolute;
   z-index: 1;
