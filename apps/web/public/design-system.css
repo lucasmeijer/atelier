@@ -259,7 +259,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .toggle__option:not([aria-pressed="true"]):not(:disabled):focus-visible { background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .toggle__option:disabled { opacity: .45; cursor: default; }
 @media (max-width: 700px) {
-  .toggle__option { height: 32px; padding-inline: var(--space-xl); }
+  .toggle__option { height: 44px; padding-inline: var(--space-xl); }
 }
 
 /* A long-running button sizes itself to its widest state and traces determinate progress around its perimeter. */
