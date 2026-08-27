@@ -80,7 +80,7 @@ import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderEmptyWorkspaceMobileNavigation, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 
 const jsonStringSchema = Type.String();
 
@@ -727,7 +727,7 @@ ${moduleStylesHtml()}
     return `<div class="app fixed-shell-app" data-controller="atelier-shortcuts workspace-navigation">
     ${renderWorkspacePane(pane, renderGlobalSidebarContributions())}
     <main class="fixed-shell-app-main">${options.mainHtml ?? await workspaceDetailHostHtml(pane, selectedId)}</main>
-    ${selectedId ? "" : renderEmptyWorkspaceMobileNavigation()}
+    ${renderGlobalMobileNavigation()}
   </div>
   ${projectEditorModal()}
   <div id="update_modal_host"></div>
@@ -940,9 +940,7 @@ ${moduleStylesHtml()}
       agentWorkspaceLaunches.set(attachmentDraft, launch);
     }
     const { id } = await launch;
-    const selection = registry.list().length === 1 ? selectWorkspaceTurboStream(id) : "";
-
-    return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboUpdateStream(agentLaunchModalFrameId, "")}${selection}`);
+    return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboUpdateStream(agentLaunchModalFrameId, "")}${selectWorkspaceTurboStream(id)}`);
   }
 
   async function createEmptyAgentWorkspaceEndpoint(request: Request): Promise<Response> {

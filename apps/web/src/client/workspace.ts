@@ -1048,10 +1048,10 @@ class EmptyWorkspaceOnboardingController extends Controller {
     const start = { x: origin.left + origin.width / 2, y: origin.bottom + 12 };
     const app = this.element.closest(".fixed-shell-app")!;
     const isPhone = window.matchMedia(phoneViewportMediaQuery).matches;
-    const workspacePaneOpen = app.classList.contains("is-empty-workspace-pane-open");
+    const workspacePaneOpen = app.classList.contains("is-mobile-workspace-pane-open");
     const pointToMobileNavigation = isPhone && !workspacePaneOpen;
     const destinationSelector = pointToMobileNavigation
-      ? "[data-empty-workspace-mobile-destination]"
+      ? "[data-mobile-workspace-destination]"
       : `[data-empty-workspace-onboarding-destination="${this.destinationValue}"]`;
     const destination = document.querySelector<HTMLElement>(destinationSelector)!.getBoundingClientRect();
     const end = { x: isPhone && workspacePaneOpen ? destination.left - 5 : destination.right + 5, y: destination.top + destination.height / 2 };
@@ -1071,20 +1071,35 @@ class WorkspaceNavigationController extends Controller {
 
   connect(): void {
     this.scrollTarget.addEventListener("scroll", this.scrolled, { passive: true });
+    this.element.addEventListener("atelier:mobile-resident-destination-selected", this.mobileResidentDestinationSelected);
     const scroll = Number(localStorage.getItem("atelier:workspace-pane-scroll"));
     if (Number.isFinite(scroll)) this.scrollTarget.scrollTop = scroll;
     this.restoreProjectDisclosures();
+    this.setWorkspacePaneOpen(false);
   }
 
   disconnect(): void {
     this.scrollTarget.removeEventListener("scroll", this.scrolled);
+    this.element.removeEventListener("atelier:mobile-resident-destination-selected", this.mobileResidentDestinationSelected);
     if (this.scrollTimer) clearTimeout(this.scrollTimer);
   }
 
+  toggleWorkspacePane(): void {
+    this.setWorkspacePaneOpen(!this.element.classList.contains("is-mobile-workspace-pane-open"));
+  }
 
   showWorkspacePane(): void {
-    this.element.classList.add("is-empty-workspace-pane-open");
+    this.setWorkspacePaneOpen(true);
   }
+
+  private setWorkspacePaneOpen(open: boolean): void {
+    this.element.classList.toggle("is-mobile-workspace-pane-open", open);
+    const destination = this.element.querySelector<HTMLElement>("[data-mobile-workspace-destination]")!;
+    destination.setAttribute("aria-expanded", String(open));
+    destination.setAttribute("aria-current", open ? "page" : "false");
+  }
+
+  private readonly mobileResidentDestinationSelected = (): void => this.setWorkspacePaneOpen(false);
 
   async selectWorkspace(event: Event): Promise<void> {
     // SAFETY: This action is attached only to server-rendered Workspace entry elements.
@@ -1093,7 +1108,7 @@ class WorkspaceNavigationController extends Controller {
   }
 
   async selectWorkspaceById(workspaceId: string): Promise<void> {
-    this.element.classList.remove("is-empty-workspace-pane-open");
+    this.setWorkspacePaneOpen(false);
     this.setActiveWorkspace(workspaceId);
     await residencyController()?.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`);
     if (window.matchMedia(phoneViewportMediaQuery).matches) {
@@ -1254,6 +1269,7 @@ class WorkspaceResidencyController extends Controller {
     if (wasVisible) {
       if (location.pathname === `/workspaces/${encodeURIComponent(workspaceId)}`) history.replaceState({}, "", "/");
       this.showEmpty();
+      workspaceNavigationController()?.showWorkspacePane();
     }
   }
 

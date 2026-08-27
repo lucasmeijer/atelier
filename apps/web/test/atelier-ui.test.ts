@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
-import { removeWorkspaceResidentTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
+import { removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 
 let browser: Browser;
 let browserContext: BrowserContext;
@@ -16,9 +16,13 @@ async function newTestPage(options: { viewport?: { width: number; height: number
   return page;
 }
 
+function renderShellResidents(pane: WorkspacePanePresentation, residentsHtml: string): string {
+  return `<div class="app fixed-shell-app" data-controller="action-items workspace-navigation">${renderWorkspacePane(pane)}<main class="fixed-shell-app-main"><div id="workspace_detail" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5"><div class="workspace-detail-empty" data-workspace-residency-target="empty" hidden></div><div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden></div>${residentsHtml}</div></main>${renderGlobalMobileNavigation()}</div>`;
+}
+
 function renderShellFixture(presentation: WorkspacePresentation, pane: WorkspacePanePresentation, cached: readonly WorkspacePresentation[] = []): string {
   const residents = [presentation, ...cached].map((resident, index) => `<div class="workspace-detail-resident${index === 0 ? " visible" : ""}" data-workspace-residency-target="resident" data-workspace-id="${resident.workspace.id}">${renderWorkspacePresentation(resident)}</div>`).join("");
-  return `<div class="app fixed-shell-app" data-controller="action-items workspace-navigation">${renderWorkspacePane(pane)}<main class="fixed-shell-app-main"><div id="workspace_detail" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5"><div class="workspace-detail-empty" data-workspace-residency-target="empty" hidden></div><div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden></div>${residents}</div></main></div>`;
+  return renderShellResidents(pane, residents);
 }
 
 beforeAll(async () => {
@@ -437,7 +441,25 @@ describe("Atelier browser behavior", () => {
     await page.close();
   });
 
-  test("parks the current Workspace into the no-selection state without a page navigation", async () => {
+  test("keeps global mobile navigation available for a provisioning resident", async () => {
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "starting", title: "Starting", active: true, busy: true }] };
+    const shell = renderShellResidents(pane, '<div class="workspace-detail-resident workspace-boot visible" data-workspace-residency-target="resident" data-workspace-id="starting"><p>Preparing workspace…</p></div>');
+    const page = await newTestPage({ viewport: { width: 390, height: 844 } });
+    await page.route("http://atelier.test/workspaces/starting", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${shell}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/workspaces/starting/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/starting");
+
+    const workspaceDestination = page.locator("[data-mobile-workspace-destination]");
+    expect(await workspaceDestination.isVisible()).toBe(true);
+    expect(await page.locator(".fixed-shell-resident-mobile-nav").count()).toBe(0);
+    await workspaceDestination.click();
+    expect(await page.locator(".fixed-shell-workspace-pane").evaluate((pane) => getComputedStyle(pane).visibility)).toBe("visible");
+    expect(await workspaceDestination.getAttribute("aria-expanded")).toBe("true");
+    await page.close();
+  });
+
+  test("parks the current Workspace on mobile without losing global navigation", async () => {
     const current: WorkspacePresentation = {
       workspace: { id: "park-current", title: "Park current" },
       agentConversations: [{ id: "agent-current", title: "Agent", bodyHtml: "<p>Current Agent</p>" }],
@@ -454,7 +476,7 @@ describe("Atelier browser behavior", () => {
     };
     let parkRequests = 0;
     let documentRequests = 0;
-    const page = await newTestPage();
+    const page = await newTestPage({ viewport: { width: 390, height: 844 } });
     page.on("request", (request) => {
       if (request.isNavigationRequest() && request.resourceType() === "document") documentRequests += 1;
     });
@@ -470,7 +492,7 @@ describe("Atelier browser behavior", () => {
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
     const requestsBeforeParking = documentRequests;
 
-    await page.locator('.workspace-detail-resident.visible[data-workspace-id="park-current"]').getByRole("button", { name: "Park workspace" }).click();
+    await page.locator('.workspace-detail-resident.visible[data-workspace-id="park-current"] .fixed-shell-park-workspace').evaluate((form: HTMLFormElement) => form.requestSubmit());
     await page.waitForFunction(() => !document.querySelector('.workspace-detail-resident[data-workspace-id="park-current"]'));
 
     expect(parkRequests).toBe(1);
@@ -479,6 +501,9 @@ describe("Atelier browser behavior", () => {
     expect(await page.locator('.workspace-detail-resident.visible').count()).toBe(0);
     expect(await page.locator('[data-workspace-residency-target="empty"]').getAttribute("hidden")).toBeNull();
     expect(await page.locator('.workspace-detail-resident[data-workspace-id="park-next"]').count()).toBe(0);
+    expect(await page.locator("[data-mobile-workspace-destination]").isVisible()).toBe(true);
+    expect(await page.locator("[data-mobile-workspace-destination]").getAttribute("aria-expanded")).toBe("true");
+    expect(await page.locator(".fixed-shell-workspace-pane").evaluate((pane) => getComputedStyle(pane).visibility)).toBe("visible");
     expect(await page.getByRole("button", { name: "1 parked" }).count()).toBe(1);
     await page.close();
   });
@@ -849,17 +874,14 @@ describe("Atelier browser behavior", () => {
     expect(await mobileNavigation.locator(".fixed-shell-mobile-scroll").getAttribute("class")).toContain("button-group");
     const mobileDestinationHeights = await mobileDestinations.evaluateAll((destinations) => destinations.map((destination) => destination.getBoundingClientRect().height));
     expect(new Set(mobileDestinationHeights).size).toBe(1);
-    const workspaceDestination = page.locator('[data-mobile-destination="workspace"]');
-    const firstAgentDestination = page.locator('[data-mobile-destination="agent:agent-1"]');
-    await firstAgentDestination.evaluate((button: HTMLButtonElement) => button.click());
+    const workspaceDestination = page.locator("[data-mobile-workspace-destination]");
     await workspaceDestination.evaluate((button: HTMLButtonElement) => button.click());
-    expect(await page.locator(".fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane").evaluateAll((panes) => panes.map((pane) => getComputedStyle(pane).visibility))).toEqual(["visible", "hidden", "hidden"]);
-    expect(await workspaceDestination.getAttribute("aria-current")).toBe("page");
-    expect(await firstAgentDestination.getAttribute("aria-current")).toBe("false");
+    expect(await page.locator(".fixed-shell-app").getAttribute("class")).toContain("is-mobile-workspace-pane-open");
+    expect(await workspaceDestination.getAttribute("aria-expanded")).toBe("true");
+    expect(await page.locator(".fixed-shell-workspace-pane").evaluate((pane) => getComputedStyle(pane).visibility)).toBe("visible");
     await workspaceDestination.evaluate((button: HTMLButtonElement) => button.click());
-    expect(await page.locator(".fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane").evaluateAll((panes) => panes.map((pane) => getComputedStyle(pane).visibility))).toEqual(["hidden", "visible", "hidden"]);
-    expect(await workspaceDestination.getAttribute("aria-current")).toBe("false");
-    expect(await firstAgentDestination.getAttribute("aria-current")).toBe("page");
+    expect(await page.locator(".fixed-shell-app").getAttribute("class")).not.toContain("is-mobile-workspace-pane-open");
+    expect(await workspaceDestination.getAttribute("aria-expanded")).toBe("false");
     await page.locator('[data-more-work-key="files:workspace"]').evaluate((button: HTMLButtonElement) => button.click());
     const workspaceUpdate = workspacePaneCollectionsTurboStream({ projects: [], projectlessWorkspaces: [{ id: "phone-demo", title: "Phone" }, { id: "new-mobile-workspace", title: "New mobile workspace" }] });
     await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspaceUpdate);

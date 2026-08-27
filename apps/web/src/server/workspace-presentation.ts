@@ -217,9 +217,9 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
 
 const mobileActionItemClasses = "action-item action-item__primary";
 
-export function renderEmptyWorkspaceMobileNavigation(): string {
-  return `<nav class="fixed-shell-mobile-nav fixed-shell-empty-mobile-nav button-group" aria-label="Workspace destinations">
-    <button class="fixed-shell-mobile-fixed ${mobileActionItemClasses}" type="button" aria-label="Workspace" title="Workspace" data-empty-workspace-mobile-destination data-action="click->workspace-navigation#showWorkspacePane">${icon("workspace")}</button>
+export function renderGlobalMobileNavigation(): string {
+  return `<nav class="fixed-shell-mobile-nav fixed-shell-global-mobile-nav button-group" aria-label="Application destinations">
+    <button class="fixed-shell-mobile-fixed ${mobileActionItemClasses}" type="button" aria-label="Workspace" title="Workspace" aria-expanded="false" data-mobile-workspace-destination data-action="click->workspace-navigation#toggleWorkspacePane">${icon("workspace")}</button>
   </nav>`;
 }
 
@@ -291,15 +291,14 @@ function mobileWorkIcon(view: WorkPaneContribution): IconName {
   return "file";
 }
 
-function renderMobileDestination(label: string, destination: string, iconName: IconName, options: { fixed?: boolean; attention?: boolean } = {}): string {
+function renderMobileDestination(label: string, destination: string, iconName: IconName, attention = false): string {
   const escapedLabel = escapeHtml(label);
-  const fixedClass = options.fixed ? "fixed-shell-mobile-fixed " : "";
-  const attention = options.attention ? '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>' : "";
-  return `<button class="${fixedClass}${mobileActionItemClasses}" type="button" aria-label="${escapedLabel}" title="${escapedLabel}" data-mobile-destination="${escapeHtml(destination)}" data-action="click->workspace-presentation#selectMobileDestination">${icon(iconName)}${attention}</button>`;
+  const attentionHtml = attention ? '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>' : "";
+  return `<button class="${mobileActionItemClasses}" type="button" aria-label="${escapedLabel}" title="${escapedLabel}" data-mobile-destination="${escapeHtml(destination)}" data-action="click->workspace-presentation#selectMobileDestination">${icon(iconName)}${attentionHtml}</button>`;
 }
 
 function renderMobileDirectWorkViews(views: readonly WorkPaneContribution[]): string {
-  return views.filter((view) => view.mobileDestination === "direct").map((view) => renderMobileDestination(view.label, `work:${view.key}`, mobileWorkIcon(view), { attention: view.attentionSequence !== undefined })).join("");
+  return views.filter((view) => view.mobileDestination === "direct").map((view) => renderMobileDestination(view.label, `work:${view.key}`, mobileWorkIcon(view), view.attentionSequence !== undefined)).join("");
 }
 
 function renderMobileSecondaryWorkViews(views: readonly WorkPaneContribution[]): string {
@@ -325,8 +324,7 @@ function renderMobileNavigation(presentation: WorkspacePresentation): string {
   const closers = presentation.agentConversations.map((agent) => agent.close ? renderMobileCloser(`agent:${agent.id}`, agent.close) : "").join("")
     + presentation.workViews.map(renderMobileWorkViewCloser).join("");
   const hiddenAttention = presentation.workViews.some((view) => view.mobileDestination === "more" && view.attentionSequence !== undefined);
-  return `<nav class="fixed-shell-mobile-nav button-group" aria-label="Workspace destinations">
-    ${renderMobileDestination("Workspace", "workspace", "workspace", { fixed: true })}
+  return `<nav class="fixed-shell-mobile-nav fixed-shell-resident-mobile-nav button-group" aria-label="Current workspace destinations">
     <div class="fixed-shell-mobile-scroll button-group">${agents}<span id="${workViewDomId(presentation.workspace.id, "mobile_direct")}" class="fixed-shell-mobile-work-items button-group">${direct}</span></div>
     <button class="fixed-shell-mobile-fixed ${mobileActionItemClasses}" type="button" aria-label="More" title="More" data-mobile-more data-action="click->workspace-presentation#toggleMore">${icon("more")}${hiddenAttention ? '<i class="fixed-shell-attention-dot" aria-label="Hidden Attention"></i>' : ""}</button>
     <section class="fixed-shell-more-menu" data-workspace-presentation-target="moreMenu" aria-label="More" hidden>

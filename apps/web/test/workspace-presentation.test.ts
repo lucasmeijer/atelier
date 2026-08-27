@@ -217,10 +217,11 @@ describe("role-fixed Workspace presentation", () => {
   test("renders phone Resource destinations and discovers Contextual views through More", () => {
     const html = renderWorkspacePresentation(fixture());
 
-    expect(html).toContain('class="fixed-shell-mobile-nav button-group"');
+    expect(html).toContain('class="fixed-shell-mobile-nav fixed-shell-resident-mobile-nav button-group"');
     expect(html).toContain('class="fixed-shell-mobile-scroll button-group"');
     expect(html).toContain('class="fixed-shell-mobile-work-items button-group"');
     expect(html).toContain('class="fixed-shell-mobile-fixed action-item action-item__primary"');
+    expect(html).not.toContain('data-mobile-destination="workspace"');
     expect(html).toContain('class="action-item action-item__primary" type="button" aria-label="First"');
     expect(html).toContain('class="action-item action-item__primary" type="button" aria-label="Terminal"');
     expect(html).toContain('data-mobile-destination="work:terminal:one"');

@@ -6,7 +6,6 @@ import { Value } from "typebox/value";
 
 type PresentationPane = HTMLElement & { dataset: DOMStringMap & { workspaceLiveNode?: string; workspacePaneRole?: string; workspacePaneId?: string } };
 const phoneDestinationSchema = Type.Union([
-  Type.Literal("workspace"),
   Type.TemplateLiteral("agent:${string}"),
   Type.TemplateLiteral("work:${string}"),
 ]);
@@ -16,7 +15,8 @@ const storedPersonalNavigationSchema = Type.Object({
   activeAgentId: Type.Optional(Type.String()),
   activeWorkViewKey: Type.Optional(Type.String()),
   workPaneVisible: Type.Optional(Type.Boolean()),
-  phoneDestination: Type.Optional(phoneDestinationSchema),
+  // Older sessions stored the now shell-owned Workspace destination here.
+  phoneDestination: Type.Optional(Type.Union([Type.Literal("workspace"), phoneDestinationSchema])),
   drawers: Type.Optional(Type.Array(Type.String())),
 });
 type StoredPersonalNavigation = Static<typeof storedPersonalNavigationSchema>;
@@ -145,17 +145,15 @@ export function createWorkspacePresentationController(
 
     toggleMore(): void {
       this.moreOpen = !this.moreOpen;
+      if (this.moreOpen) this.selectResidentMobileDestination();
       this.applyState({ emit: false, focus: this.moreOpen });
     }
 
     selectMobileDestination(event: Event): void {
       // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-      let destination = (event.currentTarget as HTMLElement).dataset.mobileDestination as PhoneDestination | undefined;
+      const destination = (event.currentTarget as HTMLElement).dataset.mobileDestination as PhoneDestination | undefined;
       if (!destination) return;
-      if (destination === "workspace" && this.state.phoneDestination === "workspace") {
-        // SAFETY: Every Workspace presentation requires and server-renders at least one Agent destination.
-        destination = this.element.querySelector<HTMLElement>("[data-mobile-destination^='agent:']")!.dataset.mobileDestination as PhoneDestination;
-      }
+      this.selectResidentMobileDestination();
       this.state.phoneDestination = destination;
       if (destination.startsWith("work:")) {
         this.state.activeWorkViewKey = destination.slice(5);
@@ -230,8 +228,13 @@ export function createWorkspacePresentationController(
     }
 
     private activateWorkView(key: string, contextual: boolean): void {
+      this.selectResidentMobileDestination();
       this.selectWorkViewState(key, contextual);
       this.persistAndApply({ focus: true });
+    }
+
+    private selectResidentMobileDestination(): void {
+      this.element.dispatchEvent(new CustomEvent("atelier:mobile-resident-destination-selected", { bubbles: true }));
     }
 
     private selectWorkViewState(key: string, contextual: boolean): void {
@@ -247,11 +250,13 @@ export function createWorkspacePresentationController(
 
     private restoreState(): PersonalNavigationState {
       const stored = storedNavigation(sessionStorage, this.storageKey);
+      const firstAgentId = this.element.querySelector<HTMLElement>("[data-workspace-pane-role='agent']")!.dataset.workspacePaneId!;
+      const storedPhoneDestination = stored?.phoneDestination;
       return {
         activeAgentId: stored?.activeAgentId,
         activeWorkViewKey: stored?.activeWorkViewKey,
         workPaneVisible: stored?.workPaneVisible ?? false,
-        phoneDestination: stored?.phoneDestination ?? "workspace",
+        phoneDestination: storedPhoneDestination && storedPhoneDestination !== "workspace" ? storedPhoneDestination : `agent:${stored?.activeAgentId ?? firstAgentId}`,
         drawers: stored?.drawers ?? [],
       };
     }
@@ -339,7 +344,7 @@ export function createWorkspacePresentationController(
     private visiblePanes(): PresentationPane[] {
       if (!this.element.closest(".workspace-detail-resident.visible")) return [];
       const selector = this.isPhone
-        ? this.state.phoneDestination.startsWith("agent:") ? `[data-workspace-pane-role='agent'].is-active` : this.state.phoneDestination.startsWith("work:") ? `[data-workspace-pane-role='work'].is-active` : ".fixed-shell-never"
+        ? this.state.phoneDestination.startsWith("agent:") ? `[data-workspace-pane-role='agent'].is-active` : `[data-workspace-pane-role='work'].is-active`
         : `[data-workspace-pane-role='agent'].is-active${this.state.workPaneVisible ? ", [data-workspace-pane-role='work'].is-active" : ""}`;
       return [...this.element.querySelectorAll<PresentationPane>(selector)];
     }
@@ -376,10 +381,6 @@ export function createWorkspacePresentationController(
     }
 
     private focusActiveSurface(): void {
-      if (this.isPhone && this.state.phoneDestination === "workspace") {
-        this.element.querySelector<HTMLElement>(".fixed-shell-workspace-row")?.focus();
-        return;
-      }
       if (this.isPhone && this.moreOpen) {
         this.element.querySelector<HTMLElement>("[data-more-work-key], .fixed-shell-more-section button")?.focus();
         return;
