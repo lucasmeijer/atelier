@@ -47,7 +47,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).not.toContain("<strong>Atelier</strong>");
     expect(html).toContain('data-controller="modal-opener"');
     expect(html).toContain('data-action="click->workspace-navigation#selectWorkspace"');
-    expect(html).toContain('href="/projects/project-1/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New workspace: Atelier"');
+    expect(html).toContain('href="/projects/project-1/launch-composer" data-turbo-frame="launch_composer" aria-label="New workspace: Atelier"');
     expect(html).toContain('href="/projects/project-1/editor" data-turbo-frame="project_editor_frame" data-controller="modal-opener"');
     const projectHeading = html.slice(html.indexOf('class="fixed-shell-project-heading-row action-item"'), html.indexOf('class="fixed-shell-project-workspaces"'));
     expect(projectHeading).toContain('<svg class="disclosure-icon" aria-hidden="true"');
@@ -55,16 +55,16 @@ describe("role-fixed Workspace presentation", () => {
     expect(projectHeading.indexOf("Atelier")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-settings"));
     expect(projectHeading.indexOf("fixed-shell-project-settings")).toBeLessThan(projectHeading.indexOf("fixed-shell-project-add"));
     expect(html).toContain('data-project-id="__projectless__"><svg');
-    expect(html).toContain('<span class="action-item__label"><span class="action-item__label-text">Projectless</span></span></button><span class="fixed-shell-project-actions button-group"><a class="fixed-shell-project-add action-item__action button secondary icon-only" href="/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New projectless workspace"');
+    expect(html).toContain('<span class="action-item__label"><span class="action-item__label-text">Projectless</span></span></button><span class="fixed-shell-project-actions button-group"><a class="fixed-shell-project-add action-item__action button secondary icon-only" href="/launch-composer" data-turbo-frame="launch_composer" aria-label="New projectless workspace"');
     expect(html.indexOf('data-project-id="__projectless__"')).toBeLessThan(html.indexOf('data-project-id="__projects_drawer__"'));
     const drawerProjects = html.slice(html.indexOf('data-project-id="__projects_drawer__"'));
     expect(html).toContain('class="fixed-shell-project fixed-shell-projects-drawer is-collapsed" data-project-id="__projects_drawer__"');
     expect(drawerProjects).toContain('aria-expanded="false"');
     expect(drawerProjects).toContain('<span class="action-item__label"><span class="action-item__label-text">Projects</span></span>');
     expect(drawerProjects).toContain('<a class="fixed-shell-project-add action-item__action button secondary icon-only" href="/projects/new/editor"');
-    expect(drawerProjects).toContain('<a class="fixed-shell-project-heading action-item__primary" href="/projects/project-2/agent-launch" data-turbo-frame="agent_launch_modal" aria-label="New workspace: Empty"><span class="action-item__label"><span class="action-item__label-text">Empty</span></span></a>');
-    expect(drawerProjects.match(/href="\/projects\/project-1\/agent-launch"/g)).toHaveLength(2);
-    expect(drawerProjects.match(/href="\/projects\/project-2\/agent-launch"/g)).toHaveLength(2);
+    expect(drawerProjects).toContain('<a class="fixed-shell-project-heading action-item__primary" href="/projects/project-2/launch-composer" data-turbo-frame="launch_composer" aria-label="New workspace: Empty"><span class="action-item__label"><span class="action-item__label-text">Empty</span></span></a>');
+    expect(drawerProjects.match(/href="\/projects\/project-1\/launch-composer"/g)).toHaveLength(2);
+    expect(drawerProjects.match(/href="\/projects\/project-2\/launch-composer"/g)).toHaveLength(2);
     expect(drawerProjects).not.toContain('data-workspace-entry-id="workspace-1"');
     expect(drawerProjects).not.toContain('data-project-id="__projectless__"');
     expect(drawerProjects).not.toContain('fixed-shell-project-settings" href="/projects/new/editor"');
@@ -127,7 +127,7 @@ describe("role-fixed Workspace presentation", () => {
 
     expect(workspaceSection).toContain('data-project-id="__projectless__"');
     expect(workspaceSection).toContain("Projectless");
-    expect(workspaceSection).toContain('href="/agent-launch"');
+    expect(workspaceSection).toContain('href="/launch-composer"');
     expect(projectsSection).not.toContain('data-project-id="__projectless__"');
     expect(projectsSection).toContain('class="fixed-shell-project-add action-item__action button secondary icon-only is-onboarding-target" data-empty-workspace-onboarding-destination="first-project"');
     expect(projectsSection).toContain('class="fixed-shell-project fixed-shell-projects-drawer is-collapsed"');

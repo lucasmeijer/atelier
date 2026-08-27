@@ -222,7 +222,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
         this.observeTranscriptItems();
       });
       this.transcriptMutationObserver.observe(this.transcriptTarget, { childList: true, subtree: true });
-      this.transcriptLayoutObserver.observe(this.element.querySelector<HTMLElement>(".agent-promptwrap")!);
+      this.transcriptLayoutObserver.observe(this.element.querySelector<HTMLElement>(".composer")!);
       this.transcriptEnd = scrollEnd(this.transcriptTarget);
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
       this.updateTranscriptNavigation();
@@ -305,7 +305,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       if (latest) scrollMessageToTop(this.transcriptTarget, latest);
     }
 
-    // ---- prompt box ----
+    // ---- AgentPaneComposer ----
 
     private userPrompts(): string[] {
       return [...this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-user[data-agent-user-text]")].map((message) => message.dataset.agentUserText!);
@@ -365,7 +365,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     autosize(): void {
       const input = this.inputTarget;
-      const maxHeight = Number.parseFloat(getComputedStyle(input).getPropertyValue("--agent-input-max-height")) || 260;
+      const maxHeight = Number.parseFloat(getComputedStyle(input).getPropertyValue("--composer-input-max-height")) || 260;
       input.style.height = "auto";
       // Add a small buffer for fractional line-height/browser rounding so a
       // one-pixel overflow doesn't flash a scrollbar before the real limit.
@@ -451,15 +451,16 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 }
 
 // ---------------------------------------------------------------------------
-// agent-autosubmit: submit a small form when its select changes
+// composer-selection-autosubmit: submit the form owned by a Composer selection
 // ---------------------------------------------------------------------------
 
-function createAgentAutosubmitController(Controller: StimulusControllerConstructor) {
-  return class AgentAutosubmitController extends Controller {
-    declare readonly element: HTMLFormElement;
+function createComposerSelectionAutosubmitController(Controller: StimulusControllerConstructor) {
+  return class ComposerSelectionAutosubmitController extends Controller {
+    static values = { formId: String };
+    declare readonly formIdValue: string;
 
     submit(): void {
-      this.element.requestSubmit();
+      document.querySelector<HTMLFormElement>(`#${CSS.escape(this.formIdValue)}`)!.requestSubmit();
     }
   };
 }
@@ -1558,26 +1559,26 @@ function agentPaneController(application: StimulusApplication, pane: HTMLElement
   return agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
 }
 
-type AgentPromptContainer = { querySelector(selectors: string): Pick<HTMLTextAreaElement, "focus"> | null };
+type AgentPaneComposerContainer = { querySelector(selectors: string): Pick<HTMLTextAreaElement, "focus"> | null };
 
-function focusAgentPrompt(pane?: AgentPromptContainer | null): boolean {
-  const input = pane?.querySelector(".agent-input");
+function focusAgentPaneComposer(pane?: AgentPaneComposerContainer | null): boolean {
+  const input = pane?.querySelector(".composer-input");
   if (!input) return false;
   input.focus({ preventScroll: true });
   return true;
 }
 
-export function focusAgentPromptOnWideViewport(
-  pane?: AgentPromptContainer | null,
+export function focusAgentPaneComposerOnWideViewport(
+  pane?: AgentPaneComposerContainer | null,
   isPhone = window.matchMedia(phoneViewportMediaQuery).matches,
   documentFocused = document.hasFocus(),
 ): boolean {
-  return documentFocused && !isPhone && focusAgentPrompt(pane);
+  return documentFocused && !isPhone && focusAgentPaneComposer(pane);
 }
 
 function agentConversationBecameVisible(application: StimulusApplication, pane: HTMLElement): void {
   agentPaneController(application, pane)?.becomeVisible();
-  focusAgentPromptOnWideViewport(pane);
+  focusAgentPaneComposerOnWideViewport(pane);
 }
 
 function agentConversationNoLongerVisible(application: StimulusApplication, pane: HTMLElement): void {
@@ -1602,7 +1603,7 @@ async function openAgentConversation(workspaceId: string, conversationId: string
   const resident = await waitForAgentResident(workspaceId);
   resident.querySelector<HTMLButtonElement>(`[data-agent-conversation-id="${CSS.escape(conversationId)}"]`)?.click();
   const pane = resident.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(conversationId)}"]`);
-  focusAgentPromptOnWideViewport(pane);
+  focusAgentPaneComposerOnWideViewport(pane);
 }
 
 function agentPaletteItems(fuzzyScore: (candidate: string) => number): WorkspacePaletteItem[] {
@@ -1634,7 +1635,7 @@ export const agentClientModule: WorkspaceClientModule = {
   install({ application, Controller, hooks }) {
     application.register("agent-pane", createAgentPaneController(Controller));
     application.register("agent-attachments", createAgentAttachmentsController(Controller));
-    application.register("agent-autosubmit", createAgentAutosubmitController(Controller));
+    application.register("composer-selection-autosubmit", createComposerSelectionAutosubmitController(Controller));
     application.register("agent-code-copy", createAgentCodeCopyController(Controller));
     application.register("agent-copy", createAgentCopyController(Controller));
     application.register("agent-elapsed", createAgentElapsedController(Controller));
@@ -1654,22 +1655,22 @@ export const agentClientModule: WorkspaceClientModule = {
     });
     hooks.onBecomeVisible(({ pane }) => agentConversationBecameVisible(application, pane));
     hooks.onNoLongerVisible(({ pane }) => agentConversationNoLongerVisible(application, pane));
-    hooks.onFocusGroup(({ pane }) => focusAgentPrompt(pane));
-    const launchProjectWorkspace = (): void => {
+    hooks.onFocusGroup(({ pane }) => focusAgentPaneComposer(pane));
+    const openLaunchComposer = (): void => {
       const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
       const projectId = resident ? resident.dataset.projectId : localStorage.getItem(recentWorkspaceProjectStorageKey);
-      const frame = document.getElementById("agent_launch_modal")!;
+      const frame = document.getElementById("launch_composer")!;
       frame.replaceChildren();
       frame.removeAttribute("src");
-      frame.setAttribute("src", projectId ? `/projects/${encodeURIComponent(projectId)}/agent-launch` : "/agent-launch");
+      frame.setAttribute("src", projectId ? `/projects/${encodeURIComponent(projectId)}/launch-composer` : "/launch-composer");
     };
     hooks.registerCommand({
-      id: "agent.launch-project-workspace",
+      id: "agent.open-launch-composer",
       label: "New Workspace With Same Project",
-      description: "Open a workspace prompt using the most recently selected workspace's project.",
+      description: "Open a LaunchComposer using the most recently selected Workspace's Project.",
       scope: "global",
       binding: "Meta+Alt+Quote",
-      run: launchProjectWorkspace,
+      run: openLaunchComposer,
     });
   },
 };

@@ -47,9 +47,9 @@ export const agentWorkspaceCommands: WorkspaceCommandContribution[] = [
 ];
 
 const projectAgentWorkspaceCommand: WorkspaceCommandContribution = {
-  id: "agent.launch-project-workspace",
+  id: "agent.open-launch-composer",
   label: "New Workspace With Same Project",
-  description: "Open a workspace prompt using the current workspace's project.",
+  description: "Open a LaunchComposer using the current Workspace's Project.",
   scope: "global",
   surfaces: { shortcut: { defaultBinding: "Meta+Alt+Quote" } },
 };

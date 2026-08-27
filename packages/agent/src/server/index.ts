@@ -22,7 +22,7 @@ export {
   resolveWorkspacePortProxyTarget,
   workspaceFileEndpoint,
 } from "./routes.ts";
-export { agentConversationKey, renderAgentComposer, renderAgentLaunchSettings, renderAgentPane } from "./render.ts";
+export { agentConversationKey, renderAgentPane, renderAgentPaneComposer, renderLaunchComposer, renderLaunchComposerSettings } from "./render.ts";
 export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule } from "./web.ts";
 export { rememberNewWorkspaceAgentSettings } from "./model-state.ts";
 export {

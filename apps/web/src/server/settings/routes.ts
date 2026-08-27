@@ -175,7 +175,7 @@ async function renderProviderList(surface: "settings" | "onboarding" = "settings
 }
 
 async function renderModelSetupSettings(): Promise<string> {
-  return settingsSection("models", "Models", await renderModelSetup("settings"), "Connect model providers and choose the favorite models shown in prompt boxes.");
+  return settingsSection("models", "Models", await renderModelSetup("settings"), "Connect model providers and choose the favorites shown in model menus.");
 }
 
 async function renderDevelopmentSettings(): Promise<string> {
@@ -218,7 +218,7 @@ export async function renderModelSetup(surface: "settings" | "onboarding" | "dia
       ? `<form method="post" action="/settings/models/add-flow" data-turbo="true" class="model-setup-empty add"><button type="submit"><b>Add your first favorite model</b><span>Choose from models provided by your connected providers.</span></button></form>`
       : `<div class="model-setup-empty"><b>First connect a model provider</b><span>After a provider is connected, you can add favorite models here.</span></div>`
     : "";
-  const head = surface === "settings" ? "" : `<div class="model-setup-head"><h2>Configure favorite models</h2><p>Connect providers, then choose the models that should appear in prompt boxes.</p></div>`;
+  const head = surface === "settings" ? "" : `<div class="model-setup-head"><h2>Configure favorite models</h2><p>Connect providers, then choose the favorites that should appear in model menus.</p></div>`;
   const id = surface === "dialog" ? "model_setup_dialog_content" : `model_setup_${surface}`;
   return `<div class="model-setup model-setup-surface-${surface}" id="${id}" data-model-setup-working="${hasAvailableFavorite ? "true" : "false"}">
     ${head}

@@ -183,7 +183,7 @@ describe("Atelier browser behavior", () => {
         <div class="agent-item" data-latest-message style="height: 200px">Latest message</div>
         <div class="agent-notices" style="height: 400px"></div>
       </div>
-      <div class="agent-promptwrap">
+      <div class="composer agent-pane-composer">
         <button type="button" data-agent-pane-target="transcriptNav"></button>
         <form data-agent-pane-target="form"><textarea data-agent-pane-target="input"></textarea><button class="agent-sendstop" data-agent-pane-target="sendStop" data-agent-busy="false"></button></form>
       </div>
@@ -854,10 +854,10 @@ describe("Atelier browser behavior", () => {
     expect(await disclosure.getAttribute("aria-expanded")).toBe("true");
     expect(await emptyProject.isVisible()).toBe(true);
     expect(await usedProject.isVisible()).toBe(true);
-    const projectLaunch = drawer.locator('.fixed-shell-project-heading[href="/projects/unused-1/agent-launch"]');
+    const projectLaunch = drawer.locator('.fixed-shell-project-heading[href="/projects/unused-1/launch-composer"]');
     const projectAdd = projectLaunch.locator("..").locator(".fixed-shell-project-add");
     expect(await projectLaunch.getAttribute("href")).toBe(await projectAdd.getAttribute("href"));
-    expect(await projectLaunch.getAttribute("data-turbo-frame")).toBe("agent_launch_modal");
+    expect(await projectLaunch.getAttribute("data-turbo-frame")).toBe("launch_composer");
 
     await workspaceScroll.evaluate((element) => { element.dataset.identityProbe = "kept"; });
     await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), workspacePaneCollectionsTurboStream(pane));

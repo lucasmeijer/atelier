@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderAgentComposer, renderAgentPane, renderPromptActions, renderStatsBar, renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../src/server/render.ts";
+import { renderAgentPane, renderAgentPaneComposer, renderAgentPaneComposerFooter, renderPromptActions, renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../src/server/render.ts";
 import type { ToolView, TranscriptItem } from "../../src/server/transcript.ts";
 
 const ctx: AgentRenderContext = { workspaceId: "ws", label: "agent" };
@@ -15,8 +15,8 @@ describe("transcript rendering", () => {
     expect(html).toContain('placeholder="Write your prompt here" aria-label="Write your prompt here"');
   });
 
-  test("composer runs completion shortcuts before prompt submission", async () => {
-    const html = await renderAgentComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, includePaneActions: true, stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
+  test("AgentPaneComposer runs completion shortcuts before prompt submission", async () => {
+    const html = await renderAgentPaneComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, includePaneActions: true, stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
     expect(html).toContain('data-controller="agent-attachments agent-completions transcription-composer"');
     expect(html).toContain('data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged"');
     expect(html).toContain('class="button icon-only agent-transcript-nav"');
@@ -47,20 +47,21 @@ describe("transcript rendering", () => {
     expect(html).toContain('data-agent-user-text="**bold** &amp; quoted &quot;text&quot;"');
   });
 
-  test("active Codex composers render Fast as an icon toggle", () => {
-    const html = renderStatsBar(ctx, { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "GPT", provider: "openai-codex", thinkingLevel: "high", thinkingLevels: ["high"], serviceTier: "priority", models: [] });
+  test("active Codex AgentPaneComposers render Fast as a checked selection", () => {
+    const html = renderAgentPaneComposerFooter(ctx, { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "GPT", provider: "openai-codex", thinkingLevel: "high", thinkingLevels: ["high"], serviceTier: "priority", models: [] });
     expect(html).toContain('action="/workspaces/ws/agents/agent/service-tier"');
-    expect(html).toContain('class="agent-fast-toggle active"');
+    expect(html).toContain('class="composer-service-tier"');
+    expect(html).toContain('name="serviceTier" value="priority"');
+    expect(html).toContain('aria-label="Fast mode" checked');
     expect(html).toContain('name="serviceTier" value="default"');
-    expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('data-controller="popup-select"');
     expect(html).toContain('data-popup-select-opens-above="true"');
     expect(html).not.toContain("⚡ Fast");
   });
 
   test("other providers do not render a Fast toggle", () => {
-    const html = renderStatsBar(ctx, { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "Claude", provider: "anthropic", thinkingLevel: "high", thinkingLevels: ["high"], models: [] });
-    expect(html).not.toContain("agent-fast-toggle");
+    const html = renderAgentPaneComposerFooter(ctx, { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "Claude", provider: "anthropic", thinkingLevel: "high", thinkingLevels: ["high"], models: [] });
+    expect(html).not.toContain("composer-service-tier");
   });
 
   test("new turn activity renders in an expanded working section", () => {

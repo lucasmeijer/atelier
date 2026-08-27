@@ -41,8 +41,8 @@ export const atelierUi = {
     return page.locator(`#workspace_detail > [data-workspace-residency-target="resident"][data-workspace-id=${attributeValue(workspaceId)}]`);
   },
 
-  agentLaunchPrompt(page: Page): Locator {
-    return page.locator("#agent_launch_form").getByRole("textbox", { name: "Describe what you want the agent to do… (optional)" });
+  launchComposerPrompt(page: Page): Locator {
+    return page.locator("#launch_composer_form").getByRole("textbox", { name: "Describe what you want the agent to do… (optional)" });
   },
 
   currentAgentPrompt(page: Page, sourceKey: string): Locator {

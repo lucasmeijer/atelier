@@ -32,8 +32,16 @@ _Avoid_: Agent conversation, Agent session
 The primary region for using the active Agent conversation in a workspace.
 _Avoid_: Left tab, chat tab
 
+**AgentPaneComposer**:
+The composer in an Agent pane for continuing its active Agent conversation and selecting the model, thinking level, and service tier used for subsequent Agent work.
+_Avoid_: Agent composer, in-pane composer, prompt box, chat input
+
+**LaunchComposer**:
+The composer used before a Workspace exists to provide its Agent’s initial prompt and select the model, thinking level, and service tier with which the Workspace starts.
+_Avoid_: Launch form, launch prompt, new-workspace composer
+
 **Agent conversation**:
-An independently stateful transcript and composer for collaborating with an Agent inside a Workspace. A Workspace may contain one or more Agent conversations, with one active at a time.
+An independently stateful transcript and AgentPaneComposer for collaborating with an Agent inside a Workspace. A Workspace may contain one or more Agent conversations, with one active at a time.
 _Avoid_: Agent, Agent view, agent tab, chat, thread
 
 **Agent session**:

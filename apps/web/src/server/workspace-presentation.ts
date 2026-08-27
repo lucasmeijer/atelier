@@ -138,7 +138,7 @@ const projectsDrawerGroupId = "__projects_drawer__";
 
 interface WorkspaceGroupAddAction {
   href: string;
-  frame: "agent_launch_modal" | "project_editor_frame";
+  frame: "launch_composer" | "project_editor_frame";
   label: string;
 }
 
@@ -154,7 +154,7 @@ interface WorkspaceGroupHeadingOptions {
 function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGroupAddAction, options: WorkspaceGroupHeadingOptions = {}): string {
   const mode = options.mode ?? "disclosure";
   const escapedTitle = escapeHtml(title);
-  const addTarget = add.frame === "project_editor_frame" ? projectEditorTarget : 'data-turbo-frame="agent_launch_modal"';
+  const addTarget = add.frame === "project_editor_frame" ? projectEditorTarget : 'data-turbo-frame="launch_composer"';
   const heading = mode === "disclosure"
     ? `<button type="button" class="fixed-shell-project-heading action-item__primary" aria-expanded="${options.expanded ?? true}" data-action="click->workspace-navigation#toggleProject" data-project-id="${escapeHtml(id)}">${disclosureIconHtml}${actionItemLabel(title)}</button>`
     : mode === "launcher"
@@ -169,7 +169,7 @@ function renderWorkspaceGroupHeading(id: string, title: string, add: WorkspaceGr
 
 function renderProjectHeading(project: Pick<WorkspacePaneProject, "id" | "title">, mode: "disclosure" | "launcher" = "disclosure", onboardingDestination?: Exclude<WorkspacePaneOnboardingState, "workspaces">): string {
   const id = encodeURIComponent(project.id);
-  return renderWorkspaceGroupHeading(project.id, project.title, { href: `/projects/${id}/agent-launch`, frame: "agent_launch_modal", label: `New workspace: ${project.title}` }, { mode, settingsHref: `/projects/${id}/editor`, onboardingDestination });
+  return renderWorkspaceGroupHeading(project.id, project.title, { href: `/projects/${id}/launch-composer`, frame: "launch_composer", label: `New workspace: ${project.title}` }, { mode, settingsHref: `/projects/${id}/editor`, onboardingDestination });
 }
 
 function renderParkedWorkspaceGroup(workspaces: readonly WorkspacePaneEntry[], parentId: string): string {
@@ -188,7 +188,7 @@ export function renderWorkspacePaneCollections(presentation: WorkspacePanePresen
   </section>`).join("");
   const projectlessWorkspaces = presentation.projectlessWorkspaces ?? [];
   const projectlessParkedWorkspaces = presentation.projectlessParkedWorkspaces ?? [];
-  const projectlessAdd = { href: "/agent-launch", frame: "agent_launch_modal", label: "New projectless workspace" } as const;
+  const projectlessAdd = { href: "/launch-composer", frame: "launch_composer", label: "New projectless workspace" } as const;
   const projectless = `<section class="fixed-shell-project" data-project-id="${projectlessWorkspaceGroupId}">
     ${renderWorkspaceGroupHeading(projectlessWorkspaceGroupId, "Projectless", projectlessAdd, { mode: projectlessWorkspaces.length > 0 || projectlessParkedWorkspaces.length > 0 ? "disclosure" : "static" })}
     ${projectlessWorkspaces.length > 0 || projectlessParkedWorkspaces.length > 0 ? `<div class="fixed-shell-project-workspaces">${projectlessWorkspaces.map((workspace) => renderWorkspaceRow(workspace)).join("")}${renderParkedWorkspaceGroup(projectlessParkedWorkspaces, projectlessWorkspaceGroupId)}</div>` : ""}

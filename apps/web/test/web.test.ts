@@ -555,7 +555,7 @@ describe("web app contracts", () => {
 
       for (const workspace of [projectWorkspace, projectlessWorkspace]) {
         expect(workspace).toContain('class="fixed-shell-mobile-nav fixed-shell-global-mobile-nav button-group"');
-        expect(workspace).toContain("agent.launch-project-workspace");
+        expect(workspace).toContain("agent.open-launch-composer");
         expect(workspace).toContain("New Workspace With Same Project");
         expect(workspace).toContain("Meta+Alt+Quote");
       }
@@ -597,11 +597,11 @@ describe("web app contracts", () => {
 
       expect(removedPicker.status).toBe(404);
       expect(home).toContain('<dialog id="project-editor-modal" class="project-editor-modal" data-controller="modal"><turbo-frame id="project_editor_frame"');
-      expect(home).toContain(`href="/projects/${project.id}/agent-launch" data-turbo-frame="agent_launch_modal"`);
+      expect(home).toContain(`href="/projects/${project.id}/launch-composer" data-turbo-frame="launch_composer"`);
       expect(home).toContain(`href="/projects/${project.id}/editor" data-turbo-frame="project_editor_frame"`);
-      expect(home).toContain('href="/agent-launch" data-turbo-frame="agent_launch_modal"');
+      expect(home).toContain('href="/launch-composer" data-turbo-frame="launch_composer"');
       expect(home).toContain('href="/projects/new/editor" data-turbo-frame="project_editor_frame"');
-      expect(home).toContain('<turbo-frame id="agent_launch_modal"></turbo-frame>');
+      expect(home).toContain('<turbo-frame id="launch_composer"></turbo-frame>');
       expect(home).not.toContain("Which project to start from?");
       expect(home).not.toContain("Describe what you want the agent to do");
       expect(home).not.toContain('class="sidebar-host-repos"');
@@ -635,20 +635,20 @@ describe("web app contracts", () => {
     });
   });
 
-  test("agent launch dialogs are loaded fresh into one Turbo Frame", async () => {
+  test("LaunchComposers are loaded fresh into one Turbo Frame", async () => {
     await withTempDataDir(async () => {
       const project = (await addProject("https://github.com/org/sample-project.git")).project;
       const { app, registry } = createTestApp();
       await registry.seed([]);
 
-      const first = await (await app.fetch(new Request(`http://test.local/projects/${project.id}/agent-launch`))).text();
-      const second = await (await app.fetch(new Request(`http://test.local/projects/${project.id}/agent-launch`))).text();
+      const first = await (await app.fetch(new Request(`http://test.local/projects/${project.id}/launch-composer`))).text();
+      const second = await (await app.fetch(new Request(`http://test.local/projects/${project.id}/launch-composer`))).text();
       const firstDraft = first.match(/name="attachmentDraft" value="([^"]+)"/)?.[1];
       const secondDraft = second.match(/name="attachmentDraft" value="([^"]+)"/)?.[1];
 
-      expect(first).toContain('<turbo-frame id="agent_launch_modal">');
-      expect(first).toContain('data-controller="agent-launch-dialog submit-shortcut"');
-      expect(first).toContain('<turbo-frame id="agent_launch_settings">');
+      expect(first).toContain('<turbo-frame id="launch_composer">');
+      expect(first).toContain('data-controller="launch-composer-dialog submit-shortcut"');
+      expect(first).toContain('<turbo-frame id="launch_composer_settings">');
       expect(first).toContain(`action="/project-agent-workspaces/${project.id}"`);
       expect(first).toContain('aria-label="Describe what you want the agent to do… (optional)"');
       expect(first).not.toContain("Shall I craft a prompt");
@@ -765,7 +765,7 @@ describe("web app contracts", () => {
       expect(isGitProjectInit(entry.init) && entry.init.projectId).toBe(project.id);
       expect(isGitProjectInit(entry.init) && entry.init.name).toBe("sample-project");
       expect(body).toContain("sample-project");
-      expect(body).toContain('action="update" target="agent_launch_modal"');
+      expect(body).toContain('action="update" target="launch_composer"');
       expect(body).toContain(`action="select-workspace" target="workspace_detail" data-workspace-id="${entry.id}"`);
       expect(body).not.toContain("do it");
       expect(body).not.toContain("sample-project.git");
@@ -790,7 +790,7 @@ describe("web app contracts", () => {
       expect(response.status).toBe(200);
       expect(captured?.context).toEqual({ agent: { initialPrompt: "", model: "openai-codex::gpt-5.6-sol", thinkingLevel: "medium", serviceTier: "default", attachmentDraft } });
       const body = await response.text();
-      expect(body).toContain('action="update" target="agent_launch_modal"');
+      expect(body).toContain('action="update" target="launch_composer"');
       expect(body).not.toContain('action="select-workspace" target="workspace_detail"');
     });
   });

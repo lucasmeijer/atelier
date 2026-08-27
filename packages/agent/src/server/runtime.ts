@@ -23,7 +23,7 @@ import {
   renderObservedBashCompletion,
   renderObservedBashTabs,
   renderPromptActions,
-  renderStatsBar,
+  renderAgentPaneComposerFooter,
   renderToolSummary,
   renderTranscript,
   renderTranscriptItem,
@@ -645,14 +645,14 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   protected async refreshStats(): Promise<void> {
-    this.stream(turboStream("update", ids.stats(this.ctx), renderStatsBar(this.ctx, await this.statsView())));
+    this.stream(turboStream("update", ids.stats(this.ctx), renderAgentPaneComposerFooter(this.ctx, await this.statsView())));
   }
 
   async snapshotStream(upTo?: string): Promise<{ html: string; cursor: string }> {
     const cursor = this.snapshotCursor();
     if (upTo === cursor) return { html: "", cursor };
     const state = await this.paneState();
-    const html = turboStream("update", ids.transcript(this.ctx), state.transcriptHtml) + turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, state.busy)) + turboStream("update", ids.stats(this.ctx), renderStatsBar(this.ctx, state.stats));
+    const html = turboStream("update", ids.transcript(this.ctx), state.transcriptHtml) + turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, state.busy)) + turboStream("update", ids.stats(this.ctx), renderAgentPaneComposerFooter(this.ctx, state.stats));
     return { html, cursor: state.snapshotCursor! };
   }
 

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
-import { composerServiceTier, composerThinkingLevel, composerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedComposerModel, type ModelRef } from "./model-state.ts";
+import { launchComposerServiceTier, launchComposerThinkingLevel, launchComposerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedLaunchComposerModel, type ModelRef } from "./model-state.ts";
 import type { AgentServiceTier } from "./service-tier.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
 import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded-code.ts";
@@ -191,7 +191,7 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
       ${state.snapshotCursor ? `data-agent-pane-snapshot-cursor-value="${escapeHtml(state.snapshotCursor)}"` : ""}
       ${agentAttachmentDropAttrs(uploadUrl)}>
       <div class="agent-transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
-      ${await renderAgentComposer({
+      ${await renderAgentPaneComposer({
         ctx,
         action: agentPath(ctx, "/messages"),
         draftId,
@@ -211,10 +211,11 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
 
 export function renderAgentPanePromptInput(ctx: AgentRenderContext, initialText = ""): string {
   const placeholder = "Write your prompt here";
-  return `<textarea id="${ids.input(ctx)}" class="agent-input" name="text" rows="2" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(placeholder)}" data-agent-pane-target="input" data-agent-completions-target="input" data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged">${escapeHtml(initialText)}</textarea>`;
+  return `<textarea id="${ids.input(ctx)}" class="composer-input" name="text" rows="2" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(placeholder)}" data-agent-pane-target="input" data-agent-completions-target="input" data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged">${escapeHtml(initialText)}</textarea>`;
 }
 
-interface AgentComposerRenderOptions {
+interface SharedComposerRenderOptions {
+  kind: "agent-pane" | "launch";
   ctx?: AgentRenderContext;
   action: string;
   draftId: string;
@@ -232,11 +233,19 @@ interface AgentComposerRenderOptions {
   rows?: number;
   formActions?: string;
   formTurbo?: boolean;
-  launchSettings?: { frameId: string; url: string };
+  launchComposerSettings?: { frameId: string; url: string };
   dropTarget?: boolean;
 }
 
-export async function renderAgentComposer(options: AgentComposerRenderOptions): Promise<string> {
+export async function renderAgentPaneComposer(options: Omit<SharedComposerRenderOptions, "kind">): Promise<string> {
+  return await renderSharedComposer({ ...options, kind: "agent-pane" });
+}
+
+export async function renderLaunchComposer(options: Omit<SharedComposerRenderOptions, "kind">): Promise<string> {
+  return await renderSharedComposer({ ...options, kind: "launch" });
+}
+
+async function renderSharedComposer(options: SharedComposerRenderOptions): Promise<string> {
   const draftId = options.draftId;
   const attachRowId = options.ctx ? ids.attachRow(options.ctx) : ids.draftAttachRow(draftId);
   const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
@@ -256,10 +265,10 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
   const actions = options.includePaneActions && options.ctx
     ? `<span id="${ids.actions(options.ctx)}">${renderPromptActions(options.ctx, Boolean(options.busy))}</span>`
     : `<button class="agent-btn primary" type="submit" name="mode" value="send">${escapeHtml(options.submitLabel ?? "Send")}${shortcut}</button>`;
-  const formId = options.formId ?? `agent_composer_${draftId}`;
-  const statbar = options.stats && options.ctx
-    ? `<div class="agent-statbar" id="${ids.stats(options.ctx)}">${renderStatsBar(options.ctx, options.stats)}</div>`
-    : `<div class="agent-statbar">${await renderAgentLaunchSettings({ ...options.launchSettings!, formId })}</div>`;
+  const formId = options.formId ?? `agent_pane_composer_${draftId}`;
+  const footer = options.stats && options.ctx
+    ? `<div class="composer-footer" id="${ids.stats(options.ctx)}">${renderAgentPaneComposerFooter(options.ctx, options.stats)}</div>`
+    : `<div class="composer-footer">${await renderLaunchComposerSettings({ ...options.launchComposerSettings!, formId })}</div>`;
   const turboAttr = options.formTurbo === undefined ? "" : ` data-turbo="${options.formTurbo ? "true" : "false"}"`;
   const dropTarget = options.dropTarget ?? true;
   const promptControllers = [dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : "", transcriptionComposerController].filter(Boolean).join(" ");
@@ -274,31 +283,31 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
   ].filter(Boolean).join("");
   const textarea = options.ctx && options.formTarget
     ? renderAgentPanePromptInput(options.ctx, options.initialText ?? "")
-    : `<textarea${options.inputId ? ` id="${escapeHtml(options.inputId)}"` : ""} class="agent-input" name="text" rows="${options.rows ?? 2}" placeholder="${escapeHtml(options.placeholder)}" aria-label="${escapeHtml(options.placeholder)}"${inputTarget ? ` ${inputTarget}` : ""}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>`;
-  return `<div class="agent-promptwrap"${promptAttrs ? ` ${promptAttrs}` : ""}>
-        ${composerOverlays ? `<div class="agent-composer-overlays">${composerOverlays}</div>` : ""}
-        <div class="agent-promptbox">
+    : `<textarea${options.inputId ? ` id="${escapeHtml(options.inputId)}"` : ""} class="composer-input" name="text" rows="${options.rows ?? 2}" placeholder="${escapeHtml(options.placeholder)}" aria-label="${escapeHtml(options.placeholder)}"${inputTarget ? ` ${inputTarget}` : ""}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>`;
+  return `<div class="composer ${options.kind === "agent-pane" ? "agent-pane-composer" : "launch-composer"}"${promptAttrs ? ` ${promptAttrs}` : ""}>
+        ${composerOverlays ? `<div class="agent-pane-composer-overlays">${composerOverlays}</div>` : ""}
+        <div class="composer-surface">
           ${options.suggestionHtml ?? ""}
           <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
             <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row"></div>
-            <div class="agent-input-area">
+            <div class="composer-input-area">
               ${textarea}
               ${renderTranscriptionComposerControl()}
             </div>
-            <div class="agent-prompt-actions">
+            <div class="composer-actions">
               <span class="spacer"></span>
               ${actions}
             </div>
           </form>
           ${options.includePaneActions && options.ctx ? `<form id="${ids.abortForm(options.ctx)}" method="post" action="${escapeHtml(agentPath(options.ctx, "/abort"))}" hidden></form>` : ""}
-          ${statbar}
+          ${footer}
         </div>
       </div>`;
 }
 
-async function renderAgentModelOptions(selectedModel?: string): Promise<string> {
-  const selected = await selectedComposerModel(selectedModel);
+async function renderLaunchComposerModelOptions(selectedModel?: string): Promise<string> {
+  const selected = await selectedLaunchComposerModel(selectedModel);
   const models = await configuredModelOptionViews(selected);
   return models.map((model, index) => {
     const value = modelRefValue(model);
@@ -306,37 +315,71 @@ async function renderAgentModelOptions(selectedModel?: string): Promise<string> 
   }).join("");
 }
 
-async function composerSettingsState(selectedModel?: string): Promise<{ selected: ModelRef | undefined; selectedThinkingLevel: string | undefined; thinkingLevels: string[]; serviceTier?: AgentServiceTier }> {
-  const selected = await selectedComposerModel(selectedModel);
+async function launchComposerSettingsState(selectedModel?: string): Promise<{ selected: ModelRef | undefined; selectedThinkingLevel: string | undefined; thinkingLevels: string[]; serviceTier?: AgentServiceTier }> {
+  const selected = await selectedLaunchComposerModel(selectedModel);
   return {
     selected,
-    selectedThinkingLevel: await composerThinkingLevel(selected),
-    thinkingLevels: await composerThinkingLevels(selected),
-    serviceTier: await composerServiceTier(selected),
+    selectedThinkingLevel: await launchComposerThinkingLevel(selected),
+    thinkingLevels: await launchComposerThinkingLevels(selected),
+    serviceTier: await launchComposerServiceTier(selected),
   };
 }
 
-function thinkingSelectHtml(formId: string, thinkingLevels: string[], selectedThinkingLevel: string | undefined): string {
-  return thinkingLevels.length > 0
-    ? `<select class="agent-sel" data-controller="popup-select" data-popup-select-trigger-class="agent-sel-button" data-popup-select-opens-above="true" name="level" form="${escapeHtml(formId)}" title="Thinking level">${thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select>`
+interface SharedComposerSelectionsOptions {
+  modelFormId: string;
+  thinkingFormId: string;
+  serviceTierFormId: string;
+  modelOptions: string;
+  thinkingLevels: string[];
+  selectedThinkingLevel: string;
+  serviceTier?: AgentServiceTier;
+  autosubmitModel?: boolean;
+  autosubmitThinking?: boolean;
+  autosubmitServiceTier?: boolean;
+}
+
+function composerSelectionField(formId: string, autosubmit: boolean | undefined, control: string): string {
+  const autosubmitAttrs = autosubmit
+    ? ` data-controller="composer-selection-autosubmit" data-composer-selection-autosubmit-form-id-value="${escapeHtml(formId)}" data-action="change->composer-selection-autosubmit#submit"`
     : "";
+  return `<span class="composer-selection-field"${autosubmitAttrs}>${control}</span>`;
+}
+
+function renderSharedComposerSelections(options: SharedComposerSelectionsOptions): string {
+  const thinkingSelection = options.thinkingLevels.length > 0
+    ? composerSelectionField(options.thinkingFormId, options.autosubmitThinking, `<select class="composer-selection" data-controller="popup-select" data-popup-select-trigger-class="composer-selection-button" data-popup-select-opens-above="true" name="level" form="${escapeHtml(options.thinkingFormId)}" title="Thinking level">${options.thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === options.selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select>`)
+    : "";
+  const serviceTierSelection = options.serviceTier
+    ? composerSelectionField(options.serviceTierFormId, options.autosubmitServiceTier, `<label class="composer-service-tier" title="${fastModeTitle(options.serviceTier)}"><input type="checkbox" name="serviceTier" value="priority" form="${escapeHtml(options.serviceTierFormId)}" aria-label="Fast mode"${options.serviceTier === "priority" ? " checked" : ""}><input type="hidden" name="serviceTier" value="default" form="${escapeHtml(options.serviceTierFormId)}"><span aria-hidden="true">⚡</span></label>`)
+    : "";
+  const modelSelection = composerSelectionField(options.modelFormId, options.autosubmitModel, `<select class="composer-selection" data-controller="agent-model-menu" name="model" form="${escapeHtml(options.modelFormId)}" title="Model">${options.modelOptions}</select>`);
+  return `<span class="composer-selections">
+${modelSelection}
+${thinkingSelection}
+${serviceTierSelection}
+</span>`;
 }
 
 function fastModeTitle(serviceTier: AgentServiceTier): string {
   return serviceTier === "priority" ? "Fast is on. Switch to Standard for the next model call." : "Switch to Fast for the next model call; uses plan limits faster.";
 }
 
-export async function renderAgentLaunchSettings(options: { frameId: string; formId: string; url: string; selectedModel?: string }): Promise<string> {
-  const { selected, selectedThinkingLevel, thinkingLevels, serviceTier } = await composerSettingsState(options.selectedModel);
+export async function renderLaunchComposerSettings(options: { frameId: string; formId: string; url: string; selectedModel?: string }): Promise<string> {
+  const { selected, selectedThinkingLevel, thinkingLevels, serviceTier } = await launchComposerSettingsState(options.selectedModel);
   const selectedValue = selected ? modelRefValue(selected) : "";
-  return `<turbo-frame id="${escapeHtml(options.frameId)}"><span class="agent-stat-right">
-<form method="get" action="${escapeHtml(options.url)}" data-controller="agent-autosubmit" data-turbo-frame="${escapeHtml(options.frameId)}">
-<select class="agent-sel" data-controller="agent-model-menu" name="model" data-action="change->agent-autosubmit#submit" title="Model">${await renderAgentModelOptions(selectedValue || undefined)}</select>
-</form>
+  const modelFormId = `${options.frameId}_model_form`;
+  return `<turbo-frame id="${escapeHtml(options.frameId)}"><form id="${escapeHtml(modelFormId)}" method="get" action="${escapeHtml(options.url)}" data-turbo-frame="${escapeHtml(options.frameId)}" hidden></form>
 <input type="hidden" name="model" value="${escapeHtml(selectedValue)}" form="${escapeHtml(options.formId)}">
-${thinkingSelectHtml(options.formId, thinkingLevels, selectedThinkingLevel)}
-${serviceTier ? `<label class="agent-fast-toggle" title="${fastModeTitle(serviceTier)}"><input type="checkbox" name="serviceTier" value="priority" form="${escapeHtml(options.formId)}" aria-label="Fast mode"${serviceTier === "priority" ? " checked" : ""}><span aria-hidden="true">⚡</span></label>` : ""}
-</span></turbo-frame>`;
+${renderSharedComposerSelections({
+    modelFormId,
+    thinkingFormId: options.formId,
+    serviceTierFormId: options.formId,
+    modelOptions: await renderLaunchComposerModelOptions(selectedValue || undefined),
+    thinkingLevels,
+    selectedThinkingLevel: selectedThinkingLevel ?? "",
+    serviceTier,
+    autosubmitModel: true,
+  })}</turbo-frame>`;
 }
 
 function renderTranscriptNavigation(): string {
@@ -355,7 +398,7 @@ export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): str
   return `<button class="button primary icon-only activity-button agent-sendstop" type="submit" name="mode" value="${value}" title="${title}" aria-label="${title}" data-activity-state="${state}" data-agent-pane-target="sendStop"${busyAttrs}><svg class="activity-button__indicator" aria-hidden="true"><rect pathLength="100"/></svg><span class="activity-button__content" data-activity-content="initial"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4"/></svg></span><span class="activity-button__content" data-activity-content="active"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/></svg></span></button>`;
 }
 
-export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): string {
+export function renderAgentPaneComposerFooter(ctx: AgentRenderContext, stats: AgentStatsView): string {
   const percent = stats.contextPercent;
   const meter = percent === null
     ? ""
@@ -363,18 +406,31 @@ export function renderStatsBar(ctx: AgentRenderContext, stats: AgentStatsView): 
   const modelOptions = stats.models.map((model) => {
     const available = model.available !== false;
     return `<option value="${escapeHtml(`${model.provider}::${model.id}`)}" data-provider="${escapeHtml(model.provider)}"${model.selected ? " selected" : ""}${available ? "" : ` disabled data-unavailable-reason="${escapeHtml(model.unavailableReason ?? "Unavailable")}"`}>${escapeHtml(model.name)}</option>`;
-  }).join("");
-  const thinkingOptions = stats.thinkingLevels.map((level) =>
-    `<option value="${escapeHtml(level)}"${level === stats.thinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("");
+  }).join("") || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`;
+  const formPrefix = `${ids.stats(ctx)}_selection`;
+  const modelFormId = `${formPrefix}_model`;
+  const thinkingFormId = `${formPrefix}_thinking`;
+  const serviceTierFormId = `${formPrefix}_service_tier`;
+  const selectionForms = `<form id="${modelFormId}" method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" hidden></form>
+${stats.thinkingLevels.length > 0 ? `<form id="${thinkingFormId}" method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" hidden></form>` : ""}
+${stats.serviceTier ? `<form id="${serviceTierFormId}" method="post" action="${escapeHtml(agentPath(ctx, "/service-tier"))}" hidden></form>` : ""}`;
   return `${meter}
 <span class="agent-stat" title="Tokens up (input)">↑ <b>${formatTokens(stats.inputTokens)}</b></span>
 <span class="agent-stat" title="Tokens down (output)">↓ <b>${formatTokens(stats.outputTokens)}</b></span>
 <span class="agent-stat" title="Session cost"><b>${formatCost(stats.cost)}</b></span>
-<span class="agent-stat-right">
-<form method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="agent-model-menu" name="model" data-action="change->agent-autosubmit#submit" title="Model">${modelOptions || `<option>${escapeHtml(stats.modelName ?? "no model")}</option>`}</select></form>
-${stats.thinkingLevels.length > 0 ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" data-controller="agent-autosubmit"><select class="agent-sel" data-controller="popup-select" data-popup-select-trigger-class="agent-sel-button" data-popup-select-opens-above="true" name="level" data-action="change->agent-autosubmit#submit" title="Thinking level">${thinkingOptions}</select></form>` : ""}
-${stats.serviceTier ? `<form method="post" action="${escapeHtml(agentPath(ctx, "/service-tier"))}"><button class="agent-fast-toggle${stats.serviceTier === "priority" ? " active" : ""}" type="submit" name="serviceTier" value="${stats.serviceTier === "priority" ? "default" : "priority"}" aria-label="Fast mode" aria-pressed="${stats.serviceTier === "priority"}" title="${fastModeTitle(stats.serviceTier)}"><span aria-hidden="true">⚡</span></button></form>` : ""}
-</span>`;
+${selectionForms}
+${renderSharedComposerSelections({
+    modelFormId,
+    thinkingFormId,
+    serviceTierFormId,
+    modelOptions,
+    thinkingLevels: stats.thinkingLevels,
+    selectedThinkingLevel: stats.thinkingLevel,
+    serviceTier: stats.serviceTier,
+    autosubmitModel: true,
+    autosubmitThinking: true,
+    autosubmitServiceTier: true,
+  })}`;
 }
 
 // ---------------------------------------------------------------------------

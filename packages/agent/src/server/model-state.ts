@@ -38,7 +38,7 @@ export async function preferredNewWorkspaceAgentModel(): Promise<ModelRef | unde
   return active ? { provider: active.provider, id: active.id } : undefined;
 }
 
-export async function selectedComposerModel(selectedModel?: string): Promise<ModelRef | undefined> {
+export async function selectedLaunchComposerModel(selectedModel?: string): Promise<ModelRef | undefined> {
   const configuredModels = await getConfiguredAgentModels();
   const selected = selectedModel ? parseModelRef(selectedModel) : undefined;
   if (selected && configuredModels.some((model) => model.provider === selected.provider && model.id === selected.id)) return selected;
@@ -64,18 +64,18 @@ function modelOptionView(model: ConfiguredAgentModel, available: Set<string>, cu
   };
 }
 
-export async function composerThinkingLevel(model: ModelRef | undefined): Promise<string | undefined> {
+export async function launchComposerThinkingLevel(model: ModelRef | undefined): Promise<string | undefined> {
   return model ? await getModelThinkingLevel(model.provider, model.id) : undefined;
 }
 
-export async function composerThinkingLevels(model: ModelRef | undefined): Promise<string[]> {
+export async function launchComposerThinkingLevels(model: ModelRef | undefined): Promise<string[]> {
   if (!model) return [];
   const runtime = await createPiModelRuntime();
   const piModel = runtime.getModel(model.provider, model.id);
   return piModel ? getSupportedThinkingLevels(piModel) : [];
 }
 
-export async function composerServiceTier(model: ModelRef | undefined): Promise<AgentServiceTier | undefined> {
+export async function launchComposerServiceTier(model: ModelRef | undefined): Promise<AgentServiceTier | undefined> {
   return model && supportsFastMode(model.provider)
     ? await getLastProviderServiceTier(model.provider) ?? "default"
     : undefined;

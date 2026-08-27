@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import {
   workspaceAgentConversationContributions,
-  renderAgentComposer,
-  renderAgentLaunchSettings,
+  renderLaunchComposer,
+  renderLaunchComposerSettings,
   rememberNewWorkspaceAgentSettings,
 } from "@atelier/agent/server";
 import {
@@ -227,12 +227,12 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId), seedSteps: deps.provisioningHooks });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
-  const agentLaunchModalFrameId = "agent_launch_modal";
-  // Every server-rendered launch form has one attachment draft ID. Retried POSTs
-  // therefore join the original launch instead of provisioning another workspace.
-  const agentWorkspaceLaunches = new Map<string, Promise<CreatedWorkspace>>();
-  const agentLaunchSettingsFrameId = "agent_launch_settings";
-  const agentLaunchFormId = "agent_launch_form";
+  const launchComposerFrameId = "launch_composer";
+  // Every server-rendered LaunchComposer has one attachment draft ID. Retried POSTs
+  // therefore join the original launch instead of provisioning another Workspace.
+  const launchComposerSubmissions = new Map<string, Promise<CreatedWorkspace>>();
+  const launchComposerSettingsFrameId = "launch_composer_settings";
+  const launchComposerFormId = "launch_composer_form";
 
   function workspaceBootId(id: string): string {
     return domId("workspace_boot", id);
@@ -345,23 +345,23 @@ ${moduleStylesHtml()}
     return `<span class="repo-swatch" style="--repo-color:${color}" aria-hidden="true"></span>`;
   }
 
-  async function agentLaunchSettingsFrame(selectedModel?: string): Promise<string> {
-    return await renderAgentLaunchSettings({
-      frameId: agentLaunchSettingsFrameId,
-      formId: agentLaunchFormId,
-      url: "/agent-launch/settings",
+  async function launchComposerSettingsFrame(selectedModel?: string): Promise<string> {
+    return await renderLaunchComposerSettings({
+      frameId: launchComposerSettingsFrameId,
+      formId: launchComposerFormId,
+      url: "/launch-composer/settings",
       selectedModel,
     });
   }
 
-  async function launchAgentWorkspaceFrame(options: { titleHtml: string; action: string }): Promise<string> {
+  async function renderLaunchComposerFrame(options: { titleHtml: string; action: string }): Promise<string> {
     const draftId = crypto.randomUUID();
-    return `<turbo-frame id="${agentLaunchModalFrameId}"><dialog class="agent-launch-modal" data-controller="agent-launch-dialog submit-shortcut" data-agent-launch-dialog-discard-url-value="/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard">
-  <div class="agent-launch-title">${options.titleHtml}</div>
-  ${await renderAgentComposer({
+    return `<turbo-frame id="${launchComposerFrameId}"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog submit-shortcut" data-launch-composer-dialog-discard-url-value="/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard">
+  <div class="launch-composer-title">${options.titleHtml}</div>
+  ${await renderLaunchComposer({
     action: options.action,
     draftId,
-    formId: agentLaunchFormId,
+    formId: launchComposerFormId,
     placeholder: "Describe what you want the agent to do… (optional)",
     initialText: "",
     submitLabel: "Create workspace",
@@ -369,20 +369,20 @@ ${moduleStylesHtml()}
     rows: 8,
     formActions: "keydown->submit-shortcut#keydown submit->submit-shortcut#submit turbo:submit-end->submit-shortcut#submitted",
     formTurbo: true,
-    launchSettings: { frameId: agentLaunchSettingsFrameId, url: "/agent-launch/settings" },
+    launchComposerSettings: { frameId: launchComposerSettingsFrameId, url: "/launch-composer/settings" },
   })}
 </dialog></turbo-frame>`;
   }
 
-  async function launchEmptyAgentFrame(): Promise<string> {
-    return await launchAgentWorkspaceFrame({
+  async function renderProjectlessLaunchComposerFrame(): Promise<string> {
+    return await renderLaunchComposerFrame({
       titleHtml: "Create empty workspace, and then…",
       action: "/agent-workspaces",
     });
   }
 
-  async function launchProjectAgentFrame(project: ProjectSummary): Promise<string> {
-    return await launchAgentWorkspaceFrame({
+  async function renderProjectLaunchComposerFrame(project: ProjectSummary): Promise<string> {
+    return await renderLaunchComposerFrame({
       titleHtml: `Create workspace from <b>${escapeHtml(project.name)}</b>, and then…`,
       action: `/project-agent-workspaces/${encodeURIComponent(project.id)}`,
     });
@@ -734,7 +734,7 @@ ${moduleStylesHtml()}
   <div id="settings_modal_host"></div>
   <div id="onboarding_modal_host">${await renderOnboardingDialogIfNeeded()}</div>
   <div id="${workspaceCommandModalHostId}"></div>
-  <turbo-frame id="${agentLaunchModalFrameId}"></turbo-frame>
+  <turbo-frame id="${launchComposerFrameId}"></turbo-frame>
   <div id="project_modals">${await renderProjectModals()}</div>`;
   }
 
@@ -921,7 +921,7 @@ ${moduleStylesHtml()}
     const form = await request.formData();
     const attachmentDraft = String(form.get("attachmentDraft") ?? "");
     if (!attachmentDraft) throw invalidArguments("attachmentDraft is required");
-    let launch = agentWorkspaceLaunches.get(attachmentDraft);
+    let launch = launchComposerSubmissions.get(attachmentDraft);
     if (!launch) {
       launch = (async () => {
         const model = String(form.get("model") ?? "");
@@ -939,10 +939,10 @@ ${moduleStylesHtml()}
           },
         });
       })();
-      agentWorkspaceLaunches.set(attachmentDraft, launch);
+      launchComposerSubmissions.set(attachmentDraft, launch);
     }
     const { id, isFirstWorkspace } = await launch;
-    return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboUpdateStream(agentLaunchModalFrameId, "")}${isFirstWorkspace ? selectWorkspaceTurboStream(id) : ""}`);
+    return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboUpdateStream(launchComposerFrameId, "")}${isFirstWorkspace ? selectWorkspaceTurboStream(id) : ""}`);
   }
 
   async function createEmptyAgentWorkspaceEndpoint(request: Request): Promise<Response> {
@@ -1604,8 +1604,8 @@ ${moduleStylesHtml()}
       return request.method === "HEAD" ? new Response(null, { status: page.status, statusText: page.statusText, headers: page.headers }) : page;
     }
     if (url.pathname === "/openapi.json" && request.method === "GET") return jsonResponse(atelierOpenApi(workspaceModuleCommands()));
-    if (url.pathname === "/agent-launch" && request.method === "GET") return response(await launchEmptyAgentFrame());
-    if (url.pathname === "/agent-launch/settings" && request.method === "GET") return response(await agentLaunchSettingsFrame(url.searchParams.get("model") ?? undefined));
+    if (url.pathname === "/launch-composer" && request.method === "GET") return response(await renderProjectlessLaunchComposerFrame());
+    if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await launchComposerSettingsFrame(url.searchParams.get("model") ?? undefined));
     if (url.pathname === "/workspaces" && request.method === "GET") return workspaceListEndpoint(request, url);
     if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestUnreadWorkspaceEndpoint();
@@ -1634,7 +1634,7 @@ ${moduleStylesHtml()}
     let params: string[] | undefined;
 
     if ((params = match(/^\/projects\/([^/]+)\/editor$/)) && request.method === "GET") return response(await projectEditorFrame(await projectById(params[0])));
-    if ((params = match(/^\/projects\/([^/]+)\/agent-launch$/)) && request.method === "GET") return response(await launchProjectAgentFrame(await projectById(params[0])));
+    if ((params = match(/^\/projects\/([^/]+)\/launch-composer$/)) && request.method === "GET") return response(await renderProjectLaunchComposerFrame(await projectById(params[0])));
     if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "GET" && requestAcceptsJson(request)) return await projectDetailEndpoint(params[0]);
     if ((params = match(/^\/projects\/([^/]+)$/)) && request.method === "POST") return await updateProjectEndpoint(params[0], request);
     if ((params = match(/^\/projects\/([^/]+)\/environment$/)) && request.method === "POST") return await createProjectEnvironmentVariableEndpoint(params[0], request);

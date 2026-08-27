@@ -961,7 +961,7 @@ class ModalController extends Controller {
   }
 }
 
-class AgentLaunchDialogController extends Controller {
+class LaunchComposerDialogController extends Controller {
   static values = { discardUrl: String };
   declare readonly element: HTMLDialogElement;
   declare readonly discardUrlValue: string;
@@ -1819,7 +1819,7 @@ function agentModelLabelHtml(provider: string, label: string): string {
 class AgentModelMenuController extends SelectPopupController {
   private form?: HTMLFormElement | null;
 
-  protected override get triggerClass(): string { return "agent-sel-button agent-model-button"; }
+  protected override get triggerClass(): string { return "composer-selection-button agent-model-button"; }
   protected override get menuClass(): string { return " opens-above agent-model-menu"; }
   protected override get accessibleName(): string { return "Model"; }
 
@@ -1988,7 +1988,7 @@ application.register("atelier-fullscreen", AtelierFullscreenController);
 application.register("submit-shortcut", SubmitShortcutController);
 application.register("modal", ModalController);
 application.register("modal-opener", ModalOpenerController);
-application.register("agent-launch-dialog", AgentLaunchDialogController);
+application.register("launch-composer-dialog", LaunchComposerDialogController);
 application.register("project-github-search", ProjectGithubSearchController);
 application.register("provision-terminal", createProvisionTerminalController(Controller));
 application.register("auto-scroll", AutoScrollController);

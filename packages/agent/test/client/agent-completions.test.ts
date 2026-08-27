@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { type AgentCompletionInput, agentCompletionRequest, fileCompletionPrefix, focusAgentPromptOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, scrollMessageToTop, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
+import { type AgentCompletionInput, agentCompletionRequest, fileCompletionPrefix, focusAgentPaneComposerOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, scrollMessageToTop, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): AgentCompletionInput {
   return {
@@ -13,12 +13,12 @@ function input(value: string, cursor = value.length): AgentCompletionInput {
   };
 }
 
-describe("agent prompt focus", () => {
+describe("AgentPaneComposer focus", () => {
   test("focuses without scrolling the Agent pane on wider screens", () => {
     const focus = mock(() => {});
     const pane = { querySelector: () => ({ focus }) };
 
-    expect(focusAgentPromptOnWideViewport(pane, false, true)).toBe(true);
+    expect(focusAgentPaneComposerOnWideViewport(pane, false, true)).toBe(true);
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
   });
 
@@ -26,7 +26,7 @@ describe("agent prompt focus", () => {
     const focus = mock(() => {});
     const pane = { querySelector: () => ({ focus }) };
 
-    expect(focusAgentPromptOnWideViewport(pane, true, true)).toBe(false);
+    expect(focusAgentPaneComposerOnWideViewport(pane, true, true)).toBe(false);
     expect(focus).not.toHaveBeenCalled();
   });
 
@@ -34,7 +34,7 @@ describe("agent prompt focus", () => {
     const focus = mock(() => {});
     const pane = { querySelector: () => ({ focus }) };
 
-    expect(focusAgentPromptOnWideViewport(pane, false, false)).toBe(false);
+    expect(focusAgentPaneComposerOnWideViewport(pane, false, false)).toBe(false);
     expect(focus).not.toHaveBeenCalled();
   });
 });
