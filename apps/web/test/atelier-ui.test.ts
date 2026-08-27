@@ -451,6 +451,30 @@ describe("Atelier browser behavior", () => {
     await page.close();
   });
 
+  test("hides an inactive Work view close action after the pointer leaves its tab", async () => {
+    const page = await newTestPage({ viewport: { width: 1280, height: 800 } });
+    await page.setContent(`<style>${workspaceStyle}</style><button type="button">Agent surface</button><div class="fixed-shell-work-view-selector action-item">
+      <button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="server" data-atelier-fullscreen-title-value="Server">Server</button>
+      <button class="action-item__action" type="button">Close Server</button>
+    </div>`);
+    await page.addScriptTag({ content: workspaceClient, type: "module" });
+    await page.waitForFunction(() => Boolean(window.Stimulus));
+
+    const agentSurface = page.getByRole("button", { name: "Agent surface" });
+    const tab = page.getByRole("tab", { name: "Server" });
+    const close = page.getByRole("button", { name: "Close Server" });
+    await agentSurface.focus();
+    expect(await close.evaluate((button) => getComputedStyle(button).pointerEvents)).toBe("none");
+
+    await tab.hover();
+    expect(await close.evaluate((button) => getComputedStyle(button).pointerEvents)).toBe("auto");
+    await page.mouse.move(640, 400);
+
+    expect(await agentSurface.evaluate((button) => button.matches(":focus"))).toBe(true);
+    expect(await close.evaluate((button) => getComputedStyle(button).pointerEvents)).toBe("none");
+    await page.close();
+  });
+
   test("opens and closes a live Browser view with Atelier's fullscreen implementation", async () => {
     const page = await newTestPage();
     await page.setContent(`<div data-workspace-id="demo">

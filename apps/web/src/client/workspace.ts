@@ -190,10 +190,7 @@ class AtelierFullscreenController extends Controller {
   declare readonly viewKeyValue: string;
   declare readonly titleValue: string;
   private iframeLoadTargets: HTMLIFrameElement[] = [];
-  private readonly pointerenter = (): void => {
-    if (this.modeValue === "view") this.element.focus({ preventScroll: true });
-    pushFullscreenHover(this);
-  };
+  private readonly pointerenter = (): void => pushFullscreenHover(this);
   private readonly pointerleave = (): void => removeFullscreenHover(this);
   private readonly iframeLoaded = (event: Event): void => {
     // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.

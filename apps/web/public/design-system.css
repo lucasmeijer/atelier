@@ -460,7 +460,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 }
 .action-item__status { flex: 0 0 auto; }
 .action-item__action { flex: 0 0 auto; opacity: 0; pointer-events: none; }
-.action-item:is(:hover, :focus-within, :has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]))) .action-item__action { opacity: 1; pointer-events: auto; }
+.action-item:is(:hover, :has(:focus-visible), :has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]))) .action-item__action { opacity: 1; pointer-events: auto; }
 @media (hover: none) {
   .action-item__action { opacity: 1; pointer-events: auto; }
 }

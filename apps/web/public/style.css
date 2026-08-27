@@ -370,6 +370,7 @@ turbo-frame { display: contents; }
 .fixed-shell-agent-conversations, .fixed-shell-work-view-selectors { min-width: 0; flex: 1; display: flex; align-self: stretch; align-items: center; gap: var(--space-xs); overflow-x: auto; scrollbar-width: none; }
 .fixed-shell-agent-conversations::-webkit-scrollbar, .fixed-shell-work-view-selectors::-webkit-scrollbar { display: none; }
 .fixed-shell-agent-conversation { flex: 0 0 auto; }
+.fixed-shell-work-view-selector { flex: 1 1 128px; max-width: 180px; }
 .fixed-shell-agent-conversation > .action-item__primary { align-self: stretch; padding: 0 var(--space-lg); }
 .fixed-shell-agent-bodies, .fixed-shell-work-bodies { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .fixed-shell-live-node { position: absolute; inset: 0; display: none; min-width: 0; min-height: 0; overflow: auto; }
