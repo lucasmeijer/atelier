@@ -1,4 +1,5 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
+html { touch-action: manipulation; }
 body { background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: var(--text-body); line-height: var(--leading-standard); }
 a { color: inherit; text-decoration: none; }
 
