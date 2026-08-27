@@ -4,6 +4,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
 import { readTranscriptionModel, transcriptionModel, type TranscriptionModelId } from "./models.ts";
+import { captureProcessStderr, processExitMessage } from "./process-diagnostics.ts";
 
 const transcriptionPort = 8098;
 const transcriptionReadyUrl = `http://127.0.0.1:${transcriptionPort}/ready`;
@@ -56,13 +57,14 @@ async function startTranscriptionServer(model: TranscriptionModelId): Promise<vo
   ], {
     env: { ...process.env, XDG_CACHE_HOME: cacheDir },
     stdout: "inherit",
-    stderr: "inherit",
+    stderr: "pipe",
   });
   transcriptionProcess = child;
+  const stderr = captureProcessStderr(child.stderr);
 
   for (let attempt = 0; attempt < 1_200; attempt += 1) {
     if (await isTranscriptionServerReady()) return;
-    if (child.exitCode !== null) throw new Error(`NeMo Speech exited with code ${child.exitCode}`);
+    if (child.exitCode !== null) throw new Error(processExitMessage("NeMo Speech", child.exitCode, await stderr));
     await Bun.sleep(500);
   }
   child.kill();
