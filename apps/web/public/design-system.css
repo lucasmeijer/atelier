@@ -76,6 +76,17 @@
   }
 }
 
+/* A reusable visual title. Semantic heading level remains the owner's choice. */
+.title {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-title);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: -.03em;
+}
+
 [data-theme="cappuccino"] {
   --bg: #2b2018;
   --panel: #312619;
