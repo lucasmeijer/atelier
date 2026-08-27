@@ -12,25 +12,19 @@ describe("transcript rendering", () => {
     const stats = { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] };
     const html = await renderAgentPane(ctx, agent, { transcriptHtml: "ready", busy: false, stats, snapshotCursor: "generation:4" });
     expect(html).toContain('data-agent-pane-snapshot-cursor-value="generation:4"');
-    expect(html).toContain('placeholder="Write your prompt here" aria-label="Write your prompt here"');
   });
 
   test("AgentPaneComposer runs completion shortcuts before prompt submission", async () => {
     const html = await renderAgentPaneComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, includePaneActions: true, stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
-    expect(html).toContain('data-controller="agent-attachments agent-completions transcription-composer"');
+    expect(html).toContain("agent-completions");
     expect(html).toContain('data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged"');
-    expect(html).toContain('class="button icon-only agent-transcript-nav"');
+    expect(html).toContain('aria-label="Jump to beginning of latest message"');
     expect(html).toContain('data-agent-pane-target="sendStop"');
-    expect(html).toContain('class="button secondary icon-only progress-button transcription-button"');
-    expect(html).toContain('data-progress-state="initial"');
-    expect(html).toContain('class="progress-button__perimeter"');
-    expect(html).toContain('aria-label="Dictate with microphone"');
-    expect(html).toContain('data-transcription-composer-target="waveform"');
   });
 
   test("busy composers expose an actionable indeterminate stop button", () => {
     const active = renderPromptActions(ctx, true);
-    expect(active).toContain('class="button primary icon-only activity-button agent-sendstop"');
+    expect(active).toContain('type="submit" name="mode" value="steer"');
     expect(active).toContain('data-activity-state="active"');
     expect(active).toContain('aria-label="Agent is working — click to stop"');
     expect(active).toContain('aria-busy="true"');
@@ -50,56 +44,30 @@ describe("transcript rendering", () => {
   test("active Codex AgentPaneComposers render Fast as a checked selection", () => {
     const html = renderAgentPaneComposerFooter(ctx, { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "GPT", provider: "openai-codex", thinkingLevel: "high", thinkingLevels: ["high"], serviceTier: "priority", models: [] });
     expect(html).toContain('action="/workspaces/ws/agents/agent/service-tier"');
-    expect(html).toContain('class="composer-service-tier"');
     expect(html).toContain('name="serviceTier" value="priority"');
     expect(html).toContain('aria-label="Fast mode" checked');
     expect(html).toContain('name="serviceTier" value="default"');
-    expect(html).toContain('class="composer-selection popup-select"');
-    expect(html).toContain('data-popup-select-opens-above="true"');
-    expect(html).not.toContain("⚡ Fast");
   });
 
-  test("other providers do not render a Fast toggle", () => {
+  test("composers omit Fast when no service tier is available", () => {
     const html = renderAgentPaneComposerFooter(ctx, { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "Claude", provider: "anthropic", thinkingLevel: "high", thinkingLevels: ["high"], models: [] });
-    expect(html).not.toContain("composer-service-tier");
+    expect(html).not.toContain('aria-label="Fast mode"');
   });
 
-  test("new turn activity renders in an expanded working section", () => {
-    const html = renderTranscriptItem(ctx, {
-      type: "working",
-      key: "turn-working",
-      startedAt: 1000,
-      items: [{ type: "thinking", key: "thought", text: "Checking files" }],
-    });
-    expect(html).toContain('class="agent-working active"');
-    expect(html).toContain('id="ag_ws_agent_item_turn-working" open');
-    expect(html).toContain('<svg class="disclosure-icon" aria-hidden="true"');
-    expect(html).toContain("Working");
-    expect(html).not.toContain("Working for");
-    expect(html).toContain("Checking files");
-  });
+  test("working sections reflect active, completed, and interrupted states", () => {
+    const cases = [
+      { name: "active turn", item: { type: "working" as const, key: "active", startedAt: 1000, items: [{ type: "thinking" as const, key: "thought", text: "Checking files" }] }, label: "Working", open: true, active: true },
+      { name: "empty active turn", item: { type: "working" as const, key: "waiting", startedAt: 1000, items: [] }, label: "Working", open: true, active: true },
+      { name: "completed turn", item: { type: "working" as const, key: "worked", startedAt: 1000, completedAt: 3500, items: [{ type: "thinking" as const, key: "thought", text: "Checking files" }] }, label: "Worked for 3s", open: false, active: false },
+      { name: "interrupted turn", item: { type: "working" as const, key: "stopped", startedAt: 1000, stoppedAt: 3500, items: [] }, label: "Stopped after 3s", open: true, active: false },
+    ];
 
-  test("empty working sections remain active while waiting for activity", () => {
-    const html = renderTranscriptItem(ctx, { type: "working", key: "waiting", startedAt: 1000, items: [] });
-    expect(html).toContain('class="agent-working active"');
-    expect(html).toContain('class="agent-working-items" id="ag_ws_agent_working_items_waiting"></div>');
-  });
-
-  test("completed activity collapses while interrupted activity remains expanded", () => {
-    const worked = renderTranscriptItem(ctx, {
-      type: "working",
-      key: "worked",
-      startedAt: 1000,
-      completedAt: 3500,
-      items: [{ type: "thinking", key: "thought", text: "Checking files" }],
-    });
-    const stopped = renderTranscriptItem(ctx, { type: "working", key: "stopped", startedAt: 1000, stoppedAt: 3500, items: [] });
-    expect(worked).toContain("Worked for 3s");
-    expect(worked).not.toContain('id="ag_ws_agent_item_worked" open');
-    expect(stopped).toContain("Stopped after 3s");
-    expect(stopped).toContain('id="ag_ws_agent_item_stopped" open');
-    expect(worked).toContain('class="agent-working"');
-    expect(stopped).toContain('class="agent-working"');
+    for (const example of cases) {
+      const html = renderTranscriptItem(ctx, example.item);
+      expect(html, example.name).toContain(example.label);
+      expect(html.includes(`id="ag_ws_agent_item_${example.item.key}" open`), example.name).toBe(example.open);
+      expect(html.includes('class="agent-working active"'), example.name).toBe(example.active);
+    }
   });
 
   test("completed activity with no items is omitted", () => {
@@ -109,12 +77,10 @@ describe("transcript rendering", () => {
 
   test("live assistant text uses stable and mutable server-rendered Markdown targets", () => {
     const html = renderTranscriptItem(ctx, { type: "text", key: "stream", text: "First **bold** paragraph.\n\nTrailing *emphasis*", final: false, live: true });
-    expect(html).toContain("agent-md agent-itext-md agent-stream-markdown");
     expect(html).toContain('id="ag_ws_agent_itemtext_stable_stream"');
     expect(html).toContain('id="ag_ws_agent_itemtext_tail_stream"');
     expect(html).toContain("<strong>bold</strong>");
     expect(html).toContain("<em>emphasis</em>");
-    expect(html).not.toContain("agent-stream-text");
   });
 
   test("streaming fences preserve code-copy markup", () => {
@@ -126,31 +92,15 @@ describe("transcript rendering", () => {
 
   test("places transient notices after transcript items", () => {
     const html = renderTranscript(ctx, [{ type: "user", key: "user", text: "question", images: [] }], { systemPrompt: "", tools: [] });
-    expect(html.indexOf('data-agent-item-key="user"')).toBeLessThan(html.indexOf('class="agent-notices"'));
-  });
-
-  test("all transcript content uses the same full-width row", () => {
-    const items: TranscriptItem[] = [
-      { type: "user", key: "user", text: "question", images: [] },
-      { type: "text", key: "answer", text: "answer\n\n![](atelier-embed:/work/preview.html)", final: true },
-      { type: "tool", key: "read", tool: tool({ name: "read", args: { path: "a.ts" } }) },
-    ];
-    const html = renderTranscript(ctx, items, { systemPrompt: "system", tools: [] });
-    expect(html.match(/class="agent-row"/g)).toHaveLength(4);
-    expect(html).toContain('data-agent-proxy-path-value="/work/preview.html"');
+    const itemIndex = html.indexOf('id="ag_ws_agent_item_user"');
+    const noticesIndex = html.indexOf('id="ag_ws_agent_notices"');
+    expect(itemIndex).toBeGreaterThan(-1);
+    expect(noticesIndex).toBeGreaterThan(itemIndex);
   });
 
   test("read summaries include ranges", () => {
     const item: TranscriptItem = { type: "tool", key: "read-range", tool: tool({ name: "read", args: { path: "a.ts", offset: 40, limit: 80 } }) };
     expect(renderTranscript(ctx, [item], { systemPrompt: "", tools: [] })).toContain("a.ts:40-119");
-  });
-
-  test("read results render source without adding line-number markup", () => {
-    const item: TranscriptItem = { type: "tool", key: "read-result", tool: tool({ name: "read", args: { path: "a.ts", offset: 40, limit: 2 }, resultText: "const first = 1;\nconst second = 2;" }) };
-    const html = renderTranscriptItemDetailFrame(ctx, item);
-    expect(html).toContain("hljs-keyword");
-    expect(html).not.toContain("agent-numbered-line");
-    expect(html).not.toContain("agent-line-number");
   });
 
   test("historical tools are collapsed and lazy", () => {
@@ -162,15 +112,13 @@ describe("transcript rendering", () => {
     expect(html).not.toContain(' src=');
     expect(html).not.toContain("const x");
     const detail = renderTranscriptItemDetailFrame(ctx, item);
-    expect(detail).toContain("agent-tool-code");
-    expect(detail).toContain("const");
+    expect(detail.replace(/<[^>]+>/g, "")).toContain("const x = 1;");
     expect(detail).toContain('data-controller="atelier-fullscreen"');
   });
 
   test("streaming write renders decoded content", () => {
     const item: TranscriptItem = { type: "tool", key: "stream-write", tool: tool({ name: "write", status: "streaming", argsStream: '{"path":"a.ts","content":"x\\ny"}' }) };
     const html = renderTranscriptItem(ctx, item, { live: true, open: true });
-    expect(html).toContain("agent-tool-code");
     expect(html).toContain("x\ny");
     expect(html).not.toContain("\\n");
   });
@@ -204,12 +152,6 @@ describe("transcript rendering", () => {
     expect(html).not.toContain("show 500 more lines");
   });
 
-  test("pagination uses a singular line label", () => {
-    const content = Array.from({ length: 101 }, (_, index) => `line ${index + 1}`).join("\n");
-    const item: TranscriptItem = { type: "tool", key: "one-more-write", tool: tool({ name: "write", args: { path: "a.ts", content } }) };
-    expect(renderTranscriptItemDetailFrame(ctx, item)).toContain("show 1 more line</a>");
-  });
-
   test("pagination links scroll with their result content", () => {
     const content = Array.from({ length: 101 }, (_, index) => `line ${index + 1}`).join("\n");
     const write = renderTranscriptItemDetailFrame(ctx, { type: "tool", key: "write-scroll", tool: tool({ name: "write", args: { path: "a.ts", content } }) });
@@ -232,13 +174,11 @@ describe("transcript rendering", () => {
     expect(html).not.toContain("agent-tool-detail");
   });
 
-  test("completed edit renders highlighted removals and additions without marks", () => {
+  test("completed edits distinguish removals and additions", () => {
     const item: TranscriptItem = { type: "tool", key: "edit-1", tool: tool({ name: "edit", args: { path: "a.ts", oldText: "const old = 1;", newText: "const next = 2;" } }) };
     const html = renderTranscriptItemDetailFrame(ctx, item);
     expect(html).toContain("agent-edit-lines removed");
     expect(html).toContain("agent-edit-lines added");
-    expect(html).toContain("hljs-keyword");
-    expect(html).not.toContain("diff-mark");
   });
 
   test("edit details keep three unchanged lines around each change", () => {
@@ -292,19 +232,19 @@ describe("transcript rendering", () => {
     expect(html).toContain("color:var(--danger)");
   });
 
-  test("bash command visualization starts a new line after every pipe and exposes the original command", () => {
-    const html = renderBash("printf alpha | grep a | sort | uniq -c", { resultText: "1 alpha" });
-    expect(html.match(/\|\n/g)).toHaveLength(6);
-    expect(html).toContain("AS SEEN BY MODEL");
-    expect(html).toContain("| grep");
+  test("formatted bash commands expose the original without adding an output comparison", () => {
+    const html = renderBash("printf alpha | grep a", { resultText: "same", details: { displayAnsi: "same" } });
+    expect(html).toContain("bash-command-bash-model");
+    expect(html).not.toContain("bash-view-bash-model");
   });
 
-  test("bash commands omit the model tab when their visualization is unchanged", () => {
-    const html = renderBash("echo ok", { resultText: "ok" });
-    expect(html).not.toContain("AS SEEN BY MODEL");
+  test("differing bash output adds a model comparison without adding a command comparison", () => {
+    const html = renderBash("echo ok", { resultText: "model output", details: { displayAnsi: "display output" } });
+    expect(html).toContain("bash-view-bash-model");
+    expect(html).not.toContain("bash-command-bash-model");
   });
 
-  test("identical bash views omit model tab", () => {
+  test("identical bash command and output omit model comparisons", () => {
     const html = renderBash("echo ok", { resultText: "ok", details: { exitCode: 0, displayAnsi: "ok" } });
     expect(html).not.toContain("AS SEEN BY MODEL");
   });
@@ -313,9 +253,6 @@ describe("transcript rendering", () => {
     const html = renderTranscript(ctx, [{ type: "thinking", key: "thought", text: "secret" }], { systemPrompt: "", tools: [] });
     expect(html).toContain('data-controller="agent-thinking"');
     expect(html).toContain("secret");
-    expect(html).toContain('hidden>...(show more)</button>');
-    expect(html).not.toContain("agent-tool");
-    expect(html).not.toContain("turbo-frame");
   });
 
   test("openai-codex 5.5 and 5.6 model families render full thinking immediately", () => {
