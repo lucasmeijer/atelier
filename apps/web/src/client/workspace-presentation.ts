@@ -50,6 +50,7 @@ interface TurboLike {
 
 const visiblePresentationPanes = new WeakSet<HTMLElement>();
 const attentionActivatedResidents = new WeakSet<HTMLElement>();
+const agentPaneWidthStorageKey = "atelier:agent-pane-width";
 
 function storedNavigation(storage: Storage, key: string): StoredPersonalNavigation | undefined {
   const value = storage.getItem(key);
@@ -91,7 +92,7 @@ export function createWorkspacePresentationController(
     declare readonly workspaceIdValue: string;
     private state!: PersonalNavigationState;
     private media?: MediaQueryList;
-    private resize?: { startX: number; startWidth: number; pointerId: number; handle: HTMLElement };
+    private resize?: { startX: number; startAgentWidth: number };
     private moreOpen = false;
     private draggedWorkKey?: string;
 
@@ -99,7 +100,6 @@ export function createWorkspacePresentationController(
       this.state = this.restoreState();
       this.media = window.matchMedia(phoneViewportMediaQuery);
       this.media.addEventListener("change", this.viewportChanged);
-      window.addEventListener("resize", this.viewportChanged);
       this.element.addEventListener("keydown", this.keydown);
       this.element.addEventListener("atelier:workspace-residency-visible", this.residencyVisible);
       this.element.addEventListener("atelier:workspace-residency-hidden", this.residencyHidden);
@@ -111,7 +111,6 @@ export function createWorkspacePresentationController(
 
     disconnect(): void {
       this.media?.removeEventListener("change", this.viewportChanged);
-      window.removeEventListener("resize", this.viewportChanged);
       this.element.removeEventListener("keydown", this.keydown);
       this.element.removeEventListener("atelier:workspace-residency-visible", this.residencyVisible);
       this.element.removeEventListener("atelier:workspace-residency-hidden", this.residencyHidden);
@@ -185,7 +184,7 @@ export function createWorkspacePresentationController(
     beginWorkResize(event: PointerEvent): void {
       // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       const handle = event.currentTarget as HTMLElement;
-      this.resize = { startX: event.clientX, startWidth: this.workPane.getBoundingClientRect().width, pointerId: event.pointerId, handle };
+      this.resize = { startX: event.clientX, startAgentWidth: this.agentPane.getBoundingClientRect().width };
       handle.setPointerCapture(event.pointerId);
       window.addEventListener("pointermove", this.resizeWork);
       window.addEventListener("pointerup", this.finishWorkResize, { once: true });
@@ -222,8 +221,8 @@ export function createWorkspacePresentationController(
     resizeWorkWithKeyboard(event: KeyboardEvent): void {
       if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
       event.preventDefault();
-      const direction = event.key === "ArrowLeft" ? 1 : -1;
-      this.setWorkWidth(this.workPane.getBoundingClientRect().width + direction * (event.shiftKey ? 80 : 24), true);
+      const direction = event.key === "ArrowLeft" ? -1 : 1;
+      this.setAgentWidth(this.agentPane.getBoundingClientRect().width + direction * (event.shiftKey ? 80 : 24), true);
     }
 
     private activateWorkView(key: string, contextual: boolean): void {
@@ -244,7 +243,7 @@ export function createWorkspacePresentationController(
     }
 
     private get isPhone(): boolean { return this.media?.matches ?? window.matchMedia(phoneViewportMediaQuery).matches; }
-    private get workPane(): HTMLElement { return this.element.querySelector<HTMLElement>("[data-workspace-presentation-target='workPane']")!; }
+    private get agentPane(): HTMLElement { return this.element.querySelector<HTMLElement>("[data-workspace-presentation-target='agentPane']")!; }
     private get storageKey(): string { return `atelier:workspace-navigation:${this.workspaceIdValue}`; }
 
     private restoreState(): PersonalNavigationState {
@@ -388,31 +387,31 @@ export function createWorkspacePresentationController(
     }
 
     private restorePreferences(): void {
-      const width = Number(localStorage.getItem("atelier:work-pane-width"));
-      this.setWorkWidth(Number.isFinite(width) && width > 0 ? width : 520, false);
+      const width = Number(localStorage.getItem(agentPaneWidthStorageKey));
+      if (Number.isFinite(width) && width > 0) this.setAgentWidth(width);
     }
 
-    private setWorkWidth(width: number, persist: boolean): void {
+    private setAgentWidth(width: number, persist = false): void {
       const gap = Number.parseFloat(getComputedStyle(this.element).getPropertyValue("--fixed-shell-gap"));
-      const maximum = this.element.clientWidth - 420 - gap;
-      const bounded = Math.max(360, Math.min(width, maximum));
-      this.element.style.setProperty("--fixed-work-width", `${bounded}px`);
-      if (persist) localStorage.setItem("atelier:work-pane-width", String(bounded));
+      const maximum = this.element.clientWidth - 360 - gap;
+      const bounded = Math.max(380, Math.min(width, maximum));
+      this.element.style.setProperty("--fixed-agent-width", `${bounded}px`);
+      if (persist) localStorage.setItem(agentPaneWidthStorageKey, String(bounded));
     }
 
     private resizeWork = (event: PointerEvent): void => {
       if (!this.resize) return;
-      this.setWorkWidth(this.resize.startWidth - (event.clientX - this.resize.startX), false);
+      this.setAgentWidth(this.resize.startAgentWidth + event.clientX - this.resize.startX);
     };
 
     private finishWorkResize = (): void => {
       if (!this.resize) return;
       window.removeEventListener("pointermove", this.resizeWork);
-      localStorage.setItem("atelier:work-pane-width", String(this.workPane.getBoundingClientRect().width));
+      localStorage.setItem(agentPaneWidthStorageKey, String(this.agentPane.getBoundingClientRect().width));
       this.resize = undefined;
     };
 
-    private viewportChanged = (): void => { this.setWorkWidth(this.workPane.getBoundingClientRect().width || 520, false); this.applyState({ emit: true }); };
+    private viewportChanged = (): void => { this.applyState({ emit: true }); };
     private residencyVisible = (): void => {
       attentionActivatedResidents.delete(this.element.closest<HTMLElement>(".workspace-detail-resident")!);
       const focusAttendedWorkView = this.activateNewestAttendedWorkView();

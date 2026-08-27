@@ -637,6 +637,37 @@ describe("Atelier browser behavior", () => {
     await page.close();
   });
 
+  test("gives viewport width changes to Work when it is open and Agent when it is closed", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "width-demo", title: "Pane widths" },
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      workViews: [{ key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>" }],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "width-demo", title: "Pane widths", active: true }] };
+    const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+
+    const widths = () => page.locator(".fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane").evaluateAll((panes) => panes.map((pane) => pane.getBoundingClientRect().width));
+    const openBefore = await widths();
+    await page.setViewportSize({ width: 1600, height: 900 });
+    const openAfter = await widths();
+    expect(openAfter[0]).toBeCloseTo(openBefore[0]!, 0);
+    expect(openAfter[1]).toBeCloseTo(openBefore[1]!, 0);
+    expect(openAfter[2]! - openBefore[2]!).toBeCloseTo(160, 0);
+
+    await page.getByRole("button", { name: "Collapse Work pane" }).evaluate((button: HTMLButtonElement) => button.click());
+    const closedBefore = (await widths()).slice(0, 2);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    const closedAfter = (await widths()).slice(0, 2);
+    expect(closedAfter[0]).toBeCloseTo(closedBefore[0]!, 0);
+    expect(closedAfter[1]! - closedBefore[1]!).toBeCloseTo(-200, 0);
+    await page.close();
+  });
+
   test("deep links reveal Work only in the visible Workspace and hidden presentations do not acknowledge Attention", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "deep-demo", title: "Deep link" },
