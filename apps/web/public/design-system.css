@@ -364,11 +364,13 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .action-item:not(.action-item__primary) > .action-item__primary { padding-right: var(--space-md); }
 .action-item__primary { min-width: 0; min-height: 32px; flex: 1; display: flex; align-items: center; gap: var(--space-md); padding-block: var(--space-sm); border: 0; border-radius: var(--radius-round); background: transparent; font: inherit; letter-spacing: inherit; text-align: left; text-decoration: none; cursor: pointer; }
 .action-item.action-item__primary { width: 100%; }
-.action-item:not(:disabled):not([aria-disabled="true"]):hover,
 .action-item:not(:disabled):not([aria-disabled="true"]):focus-visible,
 .action-item:not([aria-disabled="true"]):has(:focus-visible),
 .action-item:has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"])),
 .action-item.action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]) { outline: none; background: var(--accent-soft); color: var(--text); }
+@media (hover: hover) {
+  .action-item:not(:disabled):not([aria-disabled="true"]):hover { background: var(--accent-soft); color: var(--text); }
+}
 .action-item :is(.action-item__primary, .action-item__label-text):focus-visible { outline: none; }
 .action-item__label { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
 .action-item__label-text { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; }
