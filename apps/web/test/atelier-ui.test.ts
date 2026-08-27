@@ -856,7 +856,7 @@ describe("Atelier browser behavior", () => {
     await page.locator('[data-more-work-key="files:workspace"]').evaluate((button: HTMLButtonElement) => button.click());
     const workspaceUpdate = workspacePaneCollectionsTurboStream({ projects: [], projectlessWorkspaces: [{ id: "phone-demo", title: "Phone" }, { id: "new-mobile-workspace", title: "New mobile workspace" }] });
     await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspaceUpdate);
-    await page.getByRole("button", { name: "New mobile workspace" }).waitFor();
+    await page.getByRole("button", { name: "New mobile workspace", includeHidden: true }).waitFor({ state: "attached" });
     expect(await page.locator('[data-mobile-destination="work:files:workspace"]').count()).toBe(0);
     expect(await page.locator("[data-mobile-more] .fixed-shell-attention-dot").count()).toBe(1);
     await page.locator("[data-mobile-more]").evaluate((button: HTMLButtonElement) => button.click());
@@ -868,10 +868,12 @@ describe("Atelier browser behavior", () => {
     await page.locator('[data-mobile-destination="agent:agent-1"]').evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.locator(".fixed-shell-agent-pane > header").isHidden()).toBe(true);
     expect(await page.locator('[data-workspace-live-node="agent:agent-1"]').getAttribute("class")).toContain("is-active");
+    expect(await page.locator(".fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane").evaluateAll((panes) => panes.map((pane) => getComputedStyle(pane).visibility))).toEqual(["hidden", "visible", "hidden"]);
     await page.locator("[data-mobile-more]").evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.getByRole("button", { name: "Close current view" }).count()).toBe(0);
     await page.getByRole("button", { name: "Close More" }).evaluate((button: HTMLButtonElement) => button.click());
     await page.locator('[data-mobile-destination="work:terminal:1"]').evaluate((button: HTMLButtonElement) => button.click());
+    expect(await page.locator(".fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane").evaluateAll((panes) => panes.map((pane) => getComputedStyle(pane).visibility))).toEqual(["hidden", "hidden", "visible"]);
     await page.locator("[data-mobile-more]").evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.getByRole("button", { name: "Close current view" }).count()).toBe(1);
     expect(await page.locator(".fixed-shell-more-scrim").count()).toBe(0);
