@@ -216,15 +216,16 @@ describe("Atelier browser behavior", () => {
     await page.close();
   });
 
-  test("positions an Agent transcript after late connection, Workspace reselection, and snapshot synchronization", async () => {
+  test("positions a selected Agent transcript at the latest user message while its navigation button still targets the latest message", async () => {
     const agentBody = `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="selected" data-agent-pane-label-value="Agent 1">
       <div class="agent-transcript" id="selected_agent_transcript" data-agent-pane-target="transcript" style="height: 200px; overflow-y: auto">
         <div class="agent-item" style="height: 600px">Earlier messages</div>
-        <div class="agent-item" data-latest-message style="height: 200px">Latest message</div>
+        <div class="agent-item" data-latest-user-message style="height: 200px"><div class="agent-user">Latest user message</div></div>
+        <div class="agent-item" data-latest-message style="height: 200px">Latest assistant message</div>
         <div class="agent-notices" style="height: 400px"></div>
       </div>
       <div class="composer agent-pane-composer">
-        <button type="button" data-agent-pane-target="transcriptNav"></button>
+        <button type="button" data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToLatestMessage"></button>
         <form data-agent-pane-target="form"><textarea data-agent-pane-target="input"></textarea><button class="agent-sendstop" data-agent-pane-target="sendStop" data-agent-busy="false"></button></form>
       </div>
     </div>`;
@@ -261,12 +262,15 @@ describe("Atelier browser behavior", () => {
 
     await page.waitForFunction(() => {
       const transcript = document.querySelector<HTMLElement>(".agent-transcript");
-      const latest = document.querySelector<HTMLElement>("[data-latest-message]");
-      if (!transcript || !latest) return false;
-      return Math.abs(latest.getBoundingClientRect().top - transcript.getBoundingClientRect().top) < 1;
+      const latestUser = document.querySelector<HTMLElement>("[data-latest-user-message]");
+      if (!transcript || !latestUser) return false;
+      return Math.abs(latestUser.getBoundingClientRect().top - transcript.getBoundingClientRect().top) < 1;
     }, undefined, { timeout: 2_000 });
     const transcript = page.locator(".agent-transcript");
     expect(await transcript.evaluate((element) => element.scrollTop)).toBe(600);
+
+    await page.locator('[data-agent-pane-target="transcriptNav"]').click();
+    await page.waitForFunction(() => document.querySelector<HTMLElement>(".agent-transcript")?.scrollTop === 800);
 
     await transcript.evaluate((element) => { element.scrollTop = 0; });
     await page.locator('[data-workspace-entry-id="other"]').click();
@@ -277,7 +281,8 @@ describe("Atelier browser behavior", () => {
     await page.evaluate(async () => {
       window.Turbo?.renderStreamMessage(`<turbo-stream action="update" target="selected_agent_transcript"><template>
         <div class="agent-item" style="height: 800px">Refreshed earlier messages</div>
-        <div class="agent-item" data-latest-message style="height: 200px">Latest message</div>
+        <div class="agent-item" data-latest-user-message style="height: 200px"><div class="agent-user">Latest user message</div></div>
+        <div class="agent-item" data-latest-message style="height: 200px">Latest assistant message</div>
         <div class="agent-notices" style="height: 400px"></div>
       </template></turbo-stream>`);
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));

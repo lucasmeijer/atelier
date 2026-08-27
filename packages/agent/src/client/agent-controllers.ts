@@ -94,9 +94,9 @@ function messageScrollTarget(transcript: ScrollTranscript, message: TranscriptMe
   return Math.min(messageScrollTop(transcript, message), scrollEnd(transcript));
 }
 
-export function workspaceSelectionScrollTop(transcript: ScrollTranscript, message: TranscriptMessage | null, busy: boolean): number {
+export function workspaceSelectionScrollTop(transcript: ScrollTranscript, target: TranscriptMessage | null, busy: boolean): number {
   if (busy) return scrollEnd(transcript);
-  return message ? messageScrollTarget(transcript, message) : 0;
+  return target ? messageScrollTarget(transcript, target) : 0;
 }
 
 export function scrollMessageToTop(transcript: ScrollTranscript & Pick<HTMLElement, "scrollTo">, message: TranscriptMessage): void {
@@ -176,12 +176,12 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptEnd = nextEnd;
       this.updateTranscriptNavigation();
     };
-    private latestMessage(): HTMLElement | null {
-      const messages = this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-item");
-      return messages.item(messages.length - 1);
+    private latestTranscriptItem(selector = ".agent-item"): HTMLElement | null {
+      const matches = this.transcriptTarget.querySelectorAll<HTMLElement>(selector);
+      return matches.item(matches.length - 1)?.closest<HTMLElement>(".agent-item") ?? null;
     }
     private updateTranscriptNavigation(): void {
-      const latest = this.latestMessage();
+      const latest = this.latestTranscriptItem();
       const direction = latest ? messageNavigationDirection(this.transcriptTarget, latest) : undefined;
       if (direction) this.transcriptNavTarget.dataset.direction = direction;
       this.transcriptNavTarget.disabled = !direction;
@@ -190,7 +190,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private updateTranscriptPosition(): void {
       if (!isWorkspacePaneVisible(this.element)) return;
       if (this.selectionPosition) {
-        this.transcriptTarget.scrollTop = workspaceSelectionScrollTop(this.transcriptTarget, this.latestMessage(), this.selectionPosition.busy);
+        this.transcriptTarget.scrollTop = workspaceSelectionScrollTop(this.transcriptTarget, this.latestTranscriptItem(".agent-user"), this.selectionPosition.busy);
         this.selectionPosition = undefined;
       } else if (this.stuck) {
         this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
@@ -301,7 +301,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     // ---- transcript navigation ----
 
     jumpToLatestMessage(): void {
-      const latest = this.latestMessage();
+      const latest = this.latestTranscriptItem();
       if (latest) scrollMessageToTop(this.transcriptTarget, latest);
     }
 

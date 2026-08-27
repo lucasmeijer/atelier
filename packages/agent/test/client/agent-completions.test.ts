@@ -72,17 +72,17 @@ describe("agent transcript navigation", () => {
     expect(messageNavigationDirection(transcript, message)).toBe("up");
   });
 
-  test("positions a selected workspace at the latest message when idle and at the tail when busy", () => {
+  test("positions a selected workspace at its target when idle and at the tail when busy", () => {
     const transcript = {
       scrollTop: 100,
       scrollHeight: 1_000,
       clientHeight: 300,
       getBoundingClientRect: () => ({ top: 100 }),
     };
-    const latest = { getBoundingClientRect: () => ({ top: 340 }) };
+    const target = { getBoundingClientRect: () => ({ top: 340 }) };
 
-    expect(workspaceSelectionScrollTop(transcript, latest, false)).toBe(340);
-    expect(workspaceSelectionScrollTop(transcript, latest, true)).toBe(700);
+    expect(workspaceSelectionScrollTop(transcript, target, false)).toBe(340);
+    expect(workspaceSelectionScrollTop(transcript, target, true)).toBe(700);
     expect(workspaceSelectionScrollTop(transcript, null, false)).toBe(0);
   });
 
