@@ -35,7 +35,9 @@ describe("transcription settings", () => {
 
   test("renders and updates the selected server model", async () => {
     await useTemporaryDataDirectory();
-    expect(await transcriptionSettingsContribution.render()).toContain('<option value="nemotron-3.5" selected>');
+    const html = await transcriptionSettingsContribution.render();
+    expect(html).toContain('class="settings-select popup-select"');
+    expect(html).toContain('<option value="nemotron-3.5" selected>');
     const form = new FormData();
     form.set("model", "nemotron-en");
     const response = await transcriptionSettingsContribution.handleAction!({

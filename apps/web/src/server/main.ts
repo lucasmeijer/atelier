@@ -21,6 +21,7 @@ import {
   type WorkspaceAppTargetResolver,
 } from "@atelier/proxy-ingress/server";
 import { createWebApp, type WebApp } from "./app.ts";
+import { parseAssetManifest } from "./asset-manifest.ts";
 import { createCableServer, type CableSocketData } from "./cable.ts";
 import { legacyStaticFiles } from "./static-files.ts";
 import { createFileWorkspaceActivityStore, createFileWorkspaceDeletionStore, createFileWorkspaceUnreadStore, createWorkspaceRegistry } from "./workspace-registry.ts";
@@ -312,6 +313,10 @@ function requestAcceptsGzip(request: Request): boolean {
 }
 
 async function serveStatic(pathname: string, request: Request): Promise<Response | undefined> {
+  if (pathname === "/design-system.js") {
+    const manifest = parseAssetManifest(await Bun.file(new URL("../../public/assets-manifest.json", import.meta.url)).text());
+    return Response.redirect(new URL(manifest[pathname]!, request.url), 302);
+  }
   if (pathname.startsWith("/assets/")) {
     const file = Bun.file(new URL(`../../public${pathname}`, import.meta.url));
     if (!(await file.exists())) return new Response("not found", { status: 404, headers: { "content-type": "text/plain" } });

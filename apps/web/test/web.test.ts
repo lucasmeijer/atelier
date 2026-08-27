@@ -7,6 +7,7 @@ import { Value } from "typebox/value";
 import type { JsonObject } from "@atelier/core";
 import { createWebApp } from "../src/server/app.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
+import { setPickerAgentModels } from "@atelier/agent/server";
 import { setWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { addProject, getGitIdentity, isGitProjectInit, listProjectEnvironmentVariables, listProjects, projectWorkspaceInit, revealProjectSecrets, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
 
@@ -176,15 +177,33 @@ describe("web app contracts", () => {
 
   test("settings render shared design-system controls without legacy adapters", async () => {
     await withTempDataDir(async () => {
+      await setPickerAgentModels([{ provider: "anthropic", id: "claude-test", label: "Claude Test" }]);
       const { app } = createTestApp();
       const response = await app.fetch(new Request("http://test.local/settings"));
       const body = await response.text();
 
       expect(body).toContain('class="button');
       expect(body).toContain('class="settings-input text-field');
-      expect(body).toContain('data-controller="theme-select popup-select"');
+      expect(body).toContain('class="settings-select popup-select" data-controller="theme-select"');
+      expect(body).toContain('class="settings-select popup-select" name="model"');
+      expect(body).toContain('aria-label="Filter inference providers"');
+      expect(body).not.toContain("managed-list-filter");
+      expect(body.match(/class="managed-list"/g)).toHaveLength(2);
+      expect(body).toContain('class="managed-list__item');
+      expect(body).toContain('class="managed-list__content"');
+      expect(body).toContain('class="managed-list__actions"');
       expect(body).not.toContain("settings-btn");
       expect(body).not.toContain("settings-button");
+
+      const addModelResponse = await app.fetch(post("/settings/models/add-flow"));
+      const addModelBody = await addModelResponse.text();
+      expect(addModelBody).toContain('id="settings_add_model_dialog"');
+      expect(addModelBody).toContain('class="dialog" data-dialog-auto-show');
+      expect(addModelBody).toContain('class="dialog__header"');
+      expect(addModelBody).toContain('class="managed-list__filter"');
+      expect(addModelBody).toContain('class="text-field"');
+      expect(addModelBody).not.toContain("settings-add-model-option");
+      expect(addModelBody).not.toContain("settings-flow-");
     });
   });
 
@@ -1048,7 +1067,7 @@ describe("web app contracts", () => {
 
     const page = await app.fetch(new Request("http://test.local/"));
     const html = await page.text();
-    expect(html).toContain('data-controller="action-items cable-shell"');
+    expect(html).toContain('data-controller="cable-shell"');
     expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">');
     expect(html).toMatch(/<link rel="stylesheet" href="\/(?:assets\/design-system-[^"]+\.css|design-system\.css)">/);
     const designSystemStylesheetIndex = html.search(/href="\/(?:assets\/design-system-|design-system\.css)/);
@@ -1068,7 +1087,7 @@ describe("web app contracts", () => {
     const developmentHtml = await (await createTestApp({ devReload: true }).app.fetch(new Request("http://test.local/"))).text();
 
     expect(productionHtml).not.toContain("dev-reload");
-    expect(developmentHtml).toContain('data-controller="action-items cable-shell dev-reload"');
+    expect(developmentHtml).toContain('data-controller="cable-shell dev-reload"');
     expect(developmentHtml).toContain('data-dev-reload-url-value="/__atelier_dev_reload"');
   });
 });

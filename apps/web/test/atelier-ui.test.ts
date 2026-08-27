@@ -7,6 +7,7 @@ import { removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, rende
 let browser: Browser;
 let browserContext: BrowserContext;
 let workspaceClient: string;
+let designSystemClient: string;
 let workspaceStyle: string;
 let catalogueHtml: string;
 
@@ -18,7 +19,7 @@ async function newTestPage(options: { viewport?: { width: number; height: number
 }
 
 function renderShellResidents(pane: WorkspacePanePresentation, residentsHtml: string): string {
-  return `<div class="app fixed-shell-app" data-controller="action-items workspace-navigation">${renderWorkspacePane(pane)}<main class="fixed-shell-app-main"><div id="workspace_detail" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5"><div class="workspace-detail-empty" data-workspace-residency-target="empty" hidden></div><div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden></div>${residentsHtml}</div></main>${renderGlobalMobileNavigation()}</div>`;
+  return `<div class="app fixed-shell-app" data-controller="workspace-navigation">${renderWorkspacePane(pane)}<main class="fixed-shell-app-main"><div id="workspace_detail" data-controller="workspace-residency" data-workspace-residency-max-resident-value="5"><div class="workspace-detail-empty" data-workspace-residency-target="empty" hidden></div><div class="workspace-detail-loading" data-workspace-residency-target="loading" hidden></div>${residentsHtml}</div></main>${renderGlobalMobileNavigation()}</div>`;
 }
 
 function renderShellFixture(presentation: WorkspacePresentation, pane: WorkspacePanePresentation, cached: readonly WorkspacePresentation[] = []): string {
@@ -33,6 +34,7 @@ beforeAll(async () => {
   // SAFETY: The test fixture controls this value and establishes the asserted shape.
   const manifest = await Bun.file(new URL("../public/assets-manifest.json", import.meta.url)).json() as Record<string, string>;
   workspaceClient = await Bun.file(new URL(`../public${manifest["/workspace.js"]}`, import.meta.url)).text();
+  designSystemClient = await Bun.file(new URL(`../public${manifest["/design-system.js"]}`, import.meta.url)).text();
   const designSystemStyle = await Bun.file(new URL("../public/design-system.css", import.meta.url)).text();
   const shellStyle = await Bun.file(new URL("../public/style.css", import.meta.url)).text();
   workspaceStyle = `${designSystemStyle}\n${shellStyle}`;
@@ -52,6 +54,7 @@ describe("Atelier browser behavior", () => {
     const serveCatalogue = async (page: Page) => {
       await page.route("http://catalogue.test/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
       await page.route("http://catalogue.test/design-system.css", (route) => route.fulfill({ contentType: "text/css", body: workspaceStyle }));
+      await page.route("http://catalogue.test/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
       await page.goto("http://catalogue.test/design-system-catalogue.html");
     };
     const desktopPage = await newTestPage({ viewport: { width: 1280, height: 800 } });
@@ -77,6 +80,7 @@ describe("Atelier browser behavior", () => {
     const page = await newTestPage();
     await page.route("http://catalogue.test/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
     await page.route("http://catalogue.test/design-system.css", (route) => route.fulfill({ contentType: "text/css", body: workspaceStyle }));
+    await page.route("http://catalogue.test/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
     await page.goto("http://catalogue.test/design-system-catalogue.html?embedded=1");
 
     const toggle = page.locator("[data-catalogue-toggle]");
@@ -88,6 +92,42 @@ describe("Atelier browser behavior", () => {
     await preview.click();
     expect(await edit.getAttribute("aria-pressed")).toBe("false");
     expect(await preview.getAttribute("aria-pressed")).toBe("true");
+    await page.close();
+  });
+
+  test("design-system managed lists filter without caller wiring", async () => {
+    const page = await newTestPage();
+    await page.route("http://catalogue.test/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
+    await page.route("http://catalogue.test/design-system.css", (route) => route.fulfill({ contentType: "text/css", body: workspaceStyle }));
+    await page.route("http://catalogue.test/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
+    await page.goto("http://catalogue.test/design-system-catalogue.html?embedded=1");
+
+    const list = page.locator("[data-catalogue-managed-list]");
+    await list.getByRole("searchbox").fill("openrouter");
+    expect(await list.locator(".managed-list__item:visible").count()).toBe(1);
+    await list.getByRole("searchbox").fill("missing");
+    expect(await list.locator(".managed-list__empty").isVisible()).toBe(true);
+
+    const theme = page.locator(".catalogue-field.popup-menu-anchor");
+    await theme.locator(".popup-menu-trigger").click();
+    expect(await theme.locator(".popup-menu").isVisible()).toBe(true);
+    await page.keyboard.press("Escape");
+    expect(await theme.locator(".popup-menu").isHidden()).toBe(true);
+    await page.close();
+  });
+
+  test("design-system dialogs auto-show and restore focus", async () => {
+    const page = await newTestPage();
+    await page.route("http://design-system.test/", (route) => route.fulfill({ contentType: "text/html", body: `<button id="opener">Open</button><script type="module" src="/design-system.js"></script>` }));
+    await page.route("http://design-system.test/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
+    await page.goto("http://design-system.test/");
+    await page.locator("#opener").focus();
+    await page.evaluate(() => document.body.insertAdjacentHTML("beforeend", `<dialog class="dialog" data-dialog-auto-show><input aria-label="Filter" autofocus><form method="dialog"><button>Close</button></form></dialog>`));
+    const dialog = page.locator("dialog");
+    await dialog.waitFor({ state: "visible" });
+    expect(await page.getByRole("textbox", { name: "Filter" }).evaluate((element) => element === document.activeElement)).toBe(true);
+    await dialog.getByRole("button", { name: "Close" }).click();
+    expect(await page.locator("#opener").evaluate((element) => element === document.activeElement)).toBe(true);
     await page.close();
   });
 
@@ -155,7 +195,7 @@ describe("Atelier browser behavior", () => {
       projectlessWorkspaces: presentations.map(({ workspace }, index) => ({ ...workspace, active: index === 0 })),
     };
     const shell = renderShellFixture(presentations[0]!, pane, presentations.slice(1))
-      .replace('data-controller="action-items workspace-navigation"', 'data-controller="action-items atelier-shortcuts workspace-navigation"');
+      .replace('data-controller="workspace-navigation"', 'data-controller="atelier-shortcuts workspace-navigation"');
     const page = await newTestPage();
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
@@ -253,7 +293,7 @@ describe("Atelier browser behavior", () => {
     const page = await newTestPage({ viewport: { width: 360, height: 300 } });
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<style>${workspaceStyle}</style><form style="position:fixed;right:4px;bottom:4px"><select data-controller="popup-select" data-popup-select-opens-above="true" aria-label="Thinking level"><option>low</option><option selected>medium</option><option>high</option></select></form><script type="module" src="/workspace-test.js"></script>`,
+      body: `<style>${workspaceStyle}</style><form style="position:fixed;right:4px;bottom:4px"><select class="popup-select" data-popup-select-opens-above="true" aria-label="Thinking level"><option>low</option><option selected>medium</option><option>high</option></select></form><script type="module" src="/workspace-test.js"></script>`,
     }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.goto("http://atelier.test/");

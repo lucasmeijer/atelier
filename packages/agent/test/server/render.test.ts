@@ -54,7 +54,7 @@ describe("transcript rendering", () => {
     expect(html).toContain('name="serviceTier" value="priority"');
     expect(html).toContain('aria-label="Fast mode" checked');
     expect(html).toContain('name="serviceTier" value="default"');
-    expect(html).toContain('data-controller="popup-select"');
+    expect(html).toContain('class="composer-selection popup-select"');
     expect(html).toContain('data-popup-select-opens-above="true"');
     expect(html).not.toContain("⚡ Fast");
   });

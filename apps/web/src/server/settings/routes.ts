@@ -66,8 +66,8 @@ export async function isOnboarded(): Promise<boolean> {
   return hasWorkspaceGitHubToken() && await hasAvailableFavoriteModel();
 }
 
-function badge(connected: boolean, label = connected ? "Connected" : "Not connected"): string {
-  return `<span class="settings-badge ${connected ? "on" : "off"}"><span></span>${escapeHtml(label)}</span>`;
+function connectedBadge(label = "Connected"): string {
+  return `<span class="settings-badge"><span></span>${escapeHtml(label)}</span>`;
 }
 
 function providerIcon(provider: string, label = provider, className = "settings-provider-icon", tag: "div" | "span" = "div"): string {
@@ -79,13 +79,22 @@ function settingsSection(id: string, title: string, body: string, subtitle = "")
   return `<section class="settings-sec" id="settings-sec-${escapeHtml(id)}"><h2>${escapeHtml(title)}</h2>${subtitle ? `<p class="settings-sub">${escapeHtml(subtitle)}</p>` : ""}${body}</section>`;
 }
 
+function managedList(items: string, filter?: { label: string; placeholder: string; emptyMessage: string; autofocus?: boolean }): string {
+  if (!filter) return `<div class="managed-list">${items}</div>`;
+  return `<div class="managed-list"><div class="managed-list__filter"><input class="text-field" type="search" placeholder="${escapeHtml(filter.placeholder)}" aria-label="${escapeHtml(filter.label)}" autocomplete="off"${filter.autofocus ? " autofocus" : ""}></div><div class="managed-list__items">${items}</div><div class="managed-list__empty"${items ? " hidden" : ""}>${escapeHtml(filter.emptyMessage)}</div></div>`;
+}
+
+function dialogHeader(title: string, description: string, visual = ""): string {
+  return `<header class="dialog__header">${visual}<div><h2 class="dialog__title">${escapeHtml(title)}</h2><p class="dialog__description">${escapeHtml(description)}</p></div></header>`;
+}
+
 function githubRow(surface: "settings" | "onboarding" = "settings"): string {
   const connected = hasWorkspaceGitHubToken();
   const flowAction = surface === "onboarding" ? "/settings/github/flow?surface=onboarding" : "/settings/github/flow";
   const disconnectAction = surface === "onboarding" ? "/settings/github/disconnect?surface=onboarding" : "/settings/github/disconnect";
   return `<div class="settings-provider settings-provider-github" id="${domId(surface, "provider", "github")}">
     ${providerIcon("github", "GitHub")}
-    <div class="settings-provider-main"><div class="settings-provider-title">GitHub${connected ? ` ${badge(true)}` : ""}</div><div class="settings-provider-desc">Atelier injects your GitHub auth token outside of the workspace container your agent runs in, so it is not visible to your coding agent, but it can still push and pull from your private repos.</div></div>
+    <div class="settings-provider-main"><div class="settings-provider-title">GitHub${connected ? ` ${connectedBadge()}` : ""}</div><div class="settings-provider-desc">Atelier injects your GitHub auth token outside of the workspace container your agent runs in, so it is not visible to your coding agent, but it can still push and pull from your private repos.</div></div>
     <div class="settings-provider-actions">${connected
       ? `<form method="post" action="${disconnectAction}" data-turbo="true"><button class="button danger" type="submit">Disconnect</button></form>`
       : `<form method="post" action="${flowAction}" data-turbo="true"><button class="button primary" type="submit">Connect</button></form>`}</div>
@@ -119,14 +128,9 @@ async function providerSummaries(): Promise<ProviderSummary[]> {
   }).sort((a, b) => Number(b.connected) - Number(a.connected) || a.label.localeCompare(b.label));
 }
 
-function isHighlightedProvider(provider: string): boolean {
-  return provider === "anthropic" || provider === "openai-codex";
-}
-
 function providerRow(provider: ProviderSummary, surface: "settings" | "onboarding" = "settings"): string {
   const id = domId(surface, "provider", provider.provider);
   const methods = provider.methods;
-  const hidden = !provider.connected && !isHighlightedProvider(provider.provider);
   const modelCount = `${provider.modelCount} model${provider.modelCount === 1 ? "" : "s"}`;
   const surfaceParam = surface === "onboarding" ? "&surface=onboarding" : "";
   const disconnectSurfaceParam = surface === "onboarding" ? "?surface=onboarding" : "";
@@ -135,21 +139,16 @@ function providerRow(provider: ProviderSummary, surface: "settings" | "onboardin
     : provider.connected
       ? `<span class="settings-provider-desc">Managed outside Atelier</span>`
       : methods.map((method) => `<form method="post" action="/settings/providers/${encodeURIComponent(provider.provider)}/flow?method=${encodeURIComponent(method)}${surfaceParam}" data-turbo="true"><button class="button ${surface === "onboarding" ? "primary" : "secondary"}" type="submit">${method === "oauth" ? "Sign in" : "Add API key"}</button></form>`).join("");
-  return `<div class="settings-provider${hidden ? " provider-extra hidden" : ""}" id="${id}" data-provider-extra="${hidden ? "true" : "false"}">
-    ${providerIcon(provider.provider, provider.label)}
-    <div class="settings-provider-main"><div class="settings-provider-title">${escapeHtml(provider.label)} <span class="settings-provider-count">${escapeHtml(modelCount)}</span>${provider.connected ? ` ${badge(true, provider.authLabel)}` : ""}</div></div>
-    <div class="settings-provider-actions">${actions}</div>
+  return `<div class="managed-list__item" id="${id}" data-search-text="${escapeHtml(`${provider.label} ${provider.provider}`.toLowerCase())}">
+    ${providerIcon(provider.provider, provider.label, "settings-model-provider-icon managed-list__visual")}
+    <div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">${escapeHtml(provider.label)}</span>${provider.connected ? connectedBadge(provider.authLabel) : ""}</div><div class="managed-list__description">${escapeHtml(modelCount)}</div></div>
+    <div class="managed-list__actions">${actions}</div>
   </div>`;
-}
-
-function showMoreProvidersButton(providers: Array<{ connected: boolean; provider: string }>): string {
-  const extraCount = providers.filter((provider) => !provider.connected && !isHighlightedProvider(provider.provider)).length;
-  return extraCount > 0 ? `<button class="button secondary show-more-providers" type="button" data-controller="provider-list" data-action="provider-list#toggle" data-provider-list-label-value="Show ${extraCount} more providers" data-provider-list-open-label-value="Show fewer providers">Show ${extraCount} more providers</button>` : "";
 }
 
 async function renderThemeSettings(): Promise<string> {
   const themes = [["daylight", "Daylight"], ["cappuccino", "Cappuccino"], ["tokyo-night", "Tokyo Night"], ["midnight", "Midnight"], ["nord", "Nord"]];
-  return `<section class="settings-sec settings-sec-inline" id="settings-sec-theme"><h2>Theme</h2><select class="settings-select" data-controller="theme-select popup-select" aria-label="Theme">${themes.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></section>`;
+  return `<section class="settings-sec settings-sec-inline" id="settings-sec-theme"><h2>Theme</h2><select class="settings-select popup-select" data-controller="theme-select" aria-label="Theme">${themes.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></section>`;
 }
 
 async function renderGitIdentityForm(error = ""): Promise<string> {
@@ -171,7 +170,7 @@ async function renderGitHubSettings(): Promise<string> {
 
 async function renderProviderList(surface: "settings" | "onboarding" = "settings"): Promise<string> {
   const providers = await providerSummaries();
-  return `<div class="settings-providers" data-provider-list-scope>${providers.map((provider) => providerRow(provider, surface)).join("")}${showMoreProvidersButton(providers)}</div>`;
+  return managedList(providers.map((provider) => providerRow(provider, surface)).join(""), { label: "Filter inference providers", placeholder: "Filter providers…", emptyMessage: "No matching providers." });
 }
 
 async function renderModelSetupSettings(): Promise<string> {
@@ -187,6 +186,11 @@ async function renderDevelopmentSettings(): Promise<string> {
 
 function modelKey(model: { provider: string; id: string }): string {
   return `${model.provider}::${model.id}`;
+}
+
+function modelManagedListContent(model: ConfiguredAgentModel, description: string): string {
+  return `${providerIcon(model.provider, model.provider, "settings-model-provider-icon managed-list__visual")}
+    <div class="managed-list__content"><div class="managed-list__label"><code class="settings-model-label managed-list__label-text">${escapeHtml(model.label)}</code></div><div class="managed-list__description">${escapeHtml(description)}</div></div>`;
 }
 
 async function availableModelOptions(): Promise<ConfiguredAgentModel[]> {
@@ -224,43 +228,41 @@ export async function renderModelSetup(surface: "settings" | "onboarding" | "dia
     ${head}
     <section class="model-setup-section"><h3>Model providers</h3>${await renderProviderList(surface === "onboarding" ? "onboarding" : "settings")}</section>
     <section class="model-setup-section model-setup-favorites"><div class="model-setup-section-title"><h3>Favorite models</h3>${connectedProviderCount > 0 ? `<form method="post" action="/settings/models/add-flow" data-turbo="true"><button class="button secondary" type="submit">＋ Add favorite model</button></form>` : ""}</div>
-      <div class="settings-models">${favorites.length ? favorites.map(modelFavoriteRow).join("") : empty}</div>
+      ${favorites.length ? managedList(favorites.map(modelFavoriteRow).join("")) : empty}
     </section>
   </div>`;
 }
 
 function modelFavoriteRow(model: FavoriteModelView): string {
   const value = `${model.provider}::${model.id}`;
-  return `<div class="settings-model-row${model.available ? "" : " unavailable"}" id="${domId("settings_model", model.provider, model.id)}">
-    ${providerIcon(model.provider, model.provider, "settings-model-dot settings-model-provider-icon")}
-    <div class="settings-model-main"><code>${escapeHtml(model.label)}</code><small>${escapeHtml(model.provider)}${model.available ? "" : ` · ${escapeHtml(model.reason ?? "Unavailable")}`}</small></div>
-    <div class="settings-provider-actions"><form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(value)}"><button class="button danger icon-only" type="submit" title="Remove favorite model" aria-label="Remove favorite model"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></button></form></div>
+  return `<div class="managed-list__item" id="${domId("settings_model", model.provider, model.id)}"${model.available ? "" : ' aria-disabled="true"'}>
+    ${modelManagedListContent(model, `${model.provider}${model.available ? "" : ` · ${model.reason ?? "Unavailable"}`}`)}
+    <div class="managed-list__actions"><form method="post" action="/settings/models/remove" data-turbo="true"><input type="hidden" name="model" value="${escapeHtml(value)}"><button class="button danger icon-only" type="submit" title="Remove favorite model" aria-label="Remove favorite model"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></button></form></div>
   </div>`;
 }
 
 async function renderAddModelDialog(): Promise<string> {
   const configured = await getConfiguredAgentModels();
   const have = new Set(configured.map(modelKey));
-  const available = (await availableModelOptions()).filter((model) => !have.has(modelKey(model)));
-  const byProvider = new Map<string, ConfiguredAgentModel[]>();
-  for (const model of available) byProvider.set(model.provider, [...(byProvider.get(model.provider) ?? []), model]);
-  const groups = [...byProvider.entries()].sort(([a], [b]) => a.localeCompare(b));
-  return `<dialog id="settings_add_model_dialog" class="settings-flow-dialog add-model-dialog" data-controller="modal" data-modal-auto-show-value="true">
-    <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:var(--accent)">＋</div><div><b>Add favorite model</b><p>Models from connected providers</p></div></div>
-    <div class="settings-flow-body" data-controller="model-add-menu">
-      <input class="settings-input text-field settings-model-filter" type="search" placeholder="Filter models…" data-model-add-menu-target="filter" data-action="input->model-add-menu#filter" autocomplete="off" autofocus>
-      <div class="settings-add-model-options grouped" data-model-add-menu-target="options">
-        ${groups.length ? groups.map(([provider, models]) => `<section class="settings-add-model-group"><h3>${providerIcon(provider, provider, "settings-add-model-provider-icon", "span")}${escapeHtml(provider)}</h3>${models.map((model) => `<form method="post" action="/settings/models/add" data-turbo="true" data-model-add-menu-target="option" data-search-text="${escapeHtml(`${model.label} ${model.provider} ${model.id}`.toLowerCase())}"><input type="hidden" name="model" value="${escapeHtml(modelKey(model))}"><button class="settings-add-model-option" type="submit"><span>${escapeHtml(model.label)}</span><small>${escapeHtml(model.id)}</small></button></form>`).join("")}</section>`).join("") : `<div class="settings-empty">No more models available from connected providers.</div>`}
-      </div>
+  const available = (await availableModelOptions()).filter((model) => !have.has(modelKey(model))).sort((a, b) => a.provider.localeCompare(b.provider) || a.label.localeCompare(b.label));
+  const options = available.map((model) => `<form class="managed-list__item" method="post" action="/settings/models/add" data-turbo="true" data-search-text="${escapeHtml(`${model.label} ${model.provider} ${model.id}`.toLowerCase())}">
+    <input type="hidden" name="model" value="${escapeHtml(modelKey(model))}">
+    ${modelManagedListContent(model, `${model.provider} · ${model.id}`)}
+    <div class="managed-list__actions"><button class="button primary" type="submit">Add</button></div>
+  </form>`).join("");
+  return `<dialog id="settings_add_model_dialog" class="dialog" data-dialog-auto-show>
+    ${dialogHeader("Add favorite model", "Models from connected providers")}
+    <div class="dialog__body">
+      ${managedList(options, { label: "Filter models", placeholder: "Filter models…", emptyMessage: available.length ? "No matching models." : "No more models available from connected providers.", autofocus: true })}
     </div>
-    <div class="settings-flow-actions"><button class="button secondary" type="button" data-action="modal#close">Close</button></div>
+    <footer class="dialog__actions"><form method="dialog"><button class="button secondary" type="submit">Close</button></form></footer>
   </dialog>`;
 }
 
 export async function renderModelSetupDialog(): Promise<string> {
   const hasWorking = await hasAvailableFavoriteModel();
   return `<dialog id="model_setup_dialog" class="settings-dialog model-setup-dialog" data-controller="modal" data-modal-auto-show-value="true">
-    <div class="settings-sheet"><main class="settings-main">${await renderModelSetup("dialog")}<div class="settings-flow-actions model-setup-ok"><form method="dialog"><button class="button ${hasWorking ? "secondary" : "warning"}">${hasWorking ? "OK" : "No model configured yet"}</button></form></div></main></div>
+    <div class="settings-sheet"><main class="settings-main">${await renderModelSetup("dialog")}<div class="dialog__actions model-setup-ok"><form method="dialog"><button class="button ${hasWorking ? "secondary" : "warning"}">${hasWorking ? "OK" : "No model configured yet"}</button></form></div></main></div>
   </dialog>`;
 }
 
@@ -291,29 +293,29 @@ export async function renderDevelopmentSettingsDialog(): Promise<string> {
 }
 
 function forceDeleteAllWorkspacesModal(error = ""): string {
-  return `<dialog id="settings_dev_force_delete_workspaces_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
+  return `<dialog id="settings_dev_force_delete_workspaces_dialog" class="dialog" data-dialog-auto-show>
     <form method="post" action="/settings/workspaces/force-delete" data-turbo="true">
-      <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${providerBrandColor("github")}">!</div><div><b>Force delete all workspaces?</b><p>Development tool</p></div></div>
-      <div class="settings-flow-body"><p>This force-removes every Atelier workspace container in this namespace and deletes its local workspace data. Uncommitted work will be lost.</p>${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}</div>
-      <div class="settings-flow-actions"><button class="button secondary" formmethod="dialog">Cancel</button><button class="button danger" type="submit">Force delete all workspaces</button></div>
+      ${dialogHeader("Force delete all workspaces?", "Development tool", `<div class="settings-provider-icon" style="--provider-color:${providerBrandColor("github")}">!</div>`)}
+      <div class="dialog__body"><p>This force-removes every Atelier workspace container in this namespace and deletes its local workspace data. Uncommitted work will be lost.</p>${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}</div>
+      <div class="dialog__actions"><button class="button secondary" formmethod="dialog">Cancel</button><button class="button danger" type="submit">Force delete all workspaces</button></div>
     </form>
   </dialog>`;
 }
 
 function forceDeleteAllWorkspacesResultModal(deleted: number, errors: string[]): string {
-  return `<dialog id="settings_dev_force_delete_workspaces_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
-    <div class="settings-flow-head"><div class="settings-provider-icon" style="--provider-color:${errors.length ? "var(--danger)" : "var(--success)"}">${errors.length ? "!" : "✓"}</div><div><b>Workspace cleanup complete</b><p>Development tool</p></div></div>
-    <div class="settings-flow-body"><p>Deleted ${escapeHtml(deleted)} workspace${deleted === 1 ? "" : "s"}.</p>${errors.length ? `<p class="settings-error">${escapeHtml(errors.join("\n"))}</p>` : ""}</div>
-    <div class="settings-flow-actions"><form method="dialog"><button class="button primary">Done</button></form></div>
+  return `<dialog id="settings_dev_force_delete_workspaces_dialog" class="dialog" data-dialog-auto-show>
+    ${dialogHeader("Workspace cleanup complete", "Development tool", `<div class="settings-provider-icon" style="--provider-color:${errors.length ? "var(--danger)" : "var(--success)"}">${errors.length ? "!" : "✓"}</div>`)}
+    <div class="dialog__body"><p>Deleted ${escapeHtml(deleted)} workspace${deleted === 1 ? "" : "s"}.</p>${errors.length ? `<p class="settings-error">${escapeHtml(errors.join("\n"))}</p>` : ""}</div>
+    <div class="dialog__actions"><form method="dialog"><button class="button primary">Done</button></form></div>
   </dialog>`;
 }
 
 function githubTokenModal(error = "", surface: "settings" | "onboarding" = "settings"): string {
   const action = surface === "onboarding" ? "/settings/github/connect?surface=onboarding" : "/settings/github/connect";
-  return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
+  return `<dialog id="settings_flow_dialog" class="dialog" data-dialog-auto-show>
     <form method="post" action="${action}" data-turbo="true">
-      <div class="settings-flow-head">${providerIcon("github", "GitHub")}<div><b>GitHub</b><p>GitHub CLI token</p></div></div>
-      <div class="settings-flow-body">
+      ${dialogHeader("GitHub", "GitHub CLI token", providerIcon("github", "GitHub"))}
+      <div class="dialog__body">
         <p>On your machine, sign in with GitHub CLI if needed, then print your token:</p>
         <pre class="settings-command">gh auth login
 gh auth token</pre>
@@ -321,20 +323,20 @@ gh auth token</pre>
         ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
         <input class="settings-input text-field settings-token-input" type="password" name="token" placeholder="Paste output from gh auth token" autocomplete="off" required autofocus>
       </div>
-      <div class="settings-flow-actions"><button class="button secondary" type="button" data-action="modal#close">Cancel</button><button class="button primary" type="submit">Connect</button></div>
+      <div class="dialog__actions"><button class="button secondary" formmethod="dialog">Cancel</button><button class="button primary" type="submit">Connect</button></div>
     </form>
   </dialog>`;
 }
 
 function apiKeyModal(id: string, label: string, action: string, error = ""): string {
-  return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal" data-modal-auto-show-value="true">
+  return `<dialog id="settings_flow_dialog" class="dialog" data-dialog-auto-show>
     <form method="post" action="${escapeHtml(action)}" data-turbo="true">
-      <div class="settings-flow-head">${providerIcon(id, label)}<div><b>${escapeHtml(label)}</b><p>API key</p></div></div>
-      <div class="settings-flow-body"><div class="settings-oauth-card">
+      ${dialogHeader(label, "API key", providerIcon(id, label))}
+      <div class="dialog__body"><div class="settings-oauth-card">
         ${error ? `<p class="settings-error">${escapeHtml(error)}</p>` : ""}
         <div class="settings-oauth-input-row"><input class="settings-input text-field" type="password" name="secret" placeholder="${escapeHtml(getProviderApiKeyExample(id) ?? "API key")}" autocomplete="off" required autofocus><button class="button primary" type="submit">Connect</button></div>
       </div></div>
-      <div class="settings-flow-actions"><button class="button secondary" formmethod="dialog">Cancel</button></div>
+      <div class="dialog__actions"><button class="button secondary" formmethod="dialog">Cancel</button></div>
     </form>
   </dialog>`;
 }
@@ -474,10 +476,10 @@ function oauthFlowModal(flow: PendingOAuthFlow): string {
         : flow.authUrl
           ? oauthBrowserRedirectBody(flow, pollMs)
           : `<div class="settings-oauth-card"><div class="settings-oauth-progress">${oauthProgressItem("pending", "Starting OAuth flow", "Waiting for the provider to respond.", `every ${Math.round(pollMs / 1000)}s`)}</div></div>`;
-  return `<dialog id="settings_flow_dialog" class="settings-flow-dialog" data-controller="modal oauth-flow" data-modal-auto-show-value="true" data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" ? "true" : "false"}" data-oauth-flow-poll-ms-value="${pollMs}">
-    <div class="settings-flow-head">${providerIcon(flow.provider, flow.label)}<div><b>Sign in with ${escapeHtml(flow.label)}</b><p>${flow.verificationUri ? "Device code" : "Browser redirect"}</p></div></div>
-    <div class="settings-flow-body">${body}</div>
-    <div class="settings-flow-actions settings-oauth-actions">
+  return `<dialog id="settings_flow_dialog" class="dialog" data-controller="oauth-flow" data-dialog-auto-show data-oauth-flow-status-url-value="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/status" data-oauth-flow-active-value="${flow.status === "pending" ? "true" : "false"}" data-oauth-flow-poll-ms-value="${pollMs}">
+    ${dialogHeader(`Sign in with ${flow.label}`, flow.verificationUri ? "Device code" : "Browser redirect", providerIcon(flow.provider, flow.label))}
+    <div class="dialog__body">${body}</div>
+    <div class="dialog__actions settings-oauth-actions">
       ${flow.status === "complete" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="button primary" type="submit">Done</button></form>` : ""}
       ${flow.status === "pending" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/cancel" data-turbo="true"><button class="button danger" type="submit">Cancel</button></form>` : ""}
       ${flow.status === "error" ? `<form method="post" action="/settings/providers/${encodeURIComponent(flow.provider)}/oauth/${encodeURIComponent(flow.id)}/finish" data-turbo="true"><button class="button secondary" type="submit">Close</button></form>` : ""}

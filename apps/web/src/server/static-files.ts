@@ -13,6 +13,7 @@ function workspaceModuleStaticFiles(): Record<string, StaticFileEntry> {
 
 export const clientEntrypoints = {
   "/workspace.js": { url: new URL("../client/workspace.ts", import.meta.url), contentType: "text/javascript; charset=utf-8" },
+  "/design-system.js": { url: new URL("../client/design-system-catalogue.ts", import.meta.url), contentType: "text/javascript; charset=utf-8" },
 } satisfies Record<string, StaticFileEntry>;
 
 export const fingerprintedStaticFiles: StaticFileRegistry = {

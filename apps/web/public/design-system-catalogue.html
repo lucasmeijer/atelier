@@ -114,6 +114,7 @@
     .catalogue-demo details summary::-webkit-details-marker { display: none; }
     .detail-copy { margin: var(--space-sm) var(--space-xl) var(--space-md) 28px; color: var(--text-muted); font-size: var(--text-small); }
     .truncate-demo { width: 230px; }
+    .catalogue-dialog { position: static; width: min(520px, 100%); }
 
     .popup-demo { min-height: 388px; display: flex; align-items: flex-end; justify-content: flex-end; }
     .popup-demo .popup-menu { width: min(310px, calc(100% - 32px)); }
@@ -158,8 +159,10 @@
         <a href="#toggle">Two-option toggle</a>
         <a href="#buttons">Buttons</a>
         <a href="#text-entry">Text entry</a>
+        <a href="#dialog">Dialog</a>
         <a href="#popup-menu">Popup menu</a>
         <div class="catalogue-kicker">Patterns</div>
+        <a href="#managed-list">Managed list</a>
         <a href="#action-items">Action items</a>
         <a href="#disclosure">Disclosure</a>
       </nav>
@@ -268,7 +271,7 @@
     Preview
   &lt;/button&gt;
 &lt;/div&gt;</pre>
-              <p class="catalogue-note">Keep exactly one option pressed and provide a name for the group. The owner updates both states after a client-side change or server response; form buttons can submit their own name and value.</p>
+              <p class="catalogue-note">Keep exactly one option pressed and provide a name for the group. Click and arrow-key behavior ships with the element; form buttons can still submit their own name and value.</p>
             </article>
           </div>
         </section>
@@ -414,6 +417,17 @@
           </div>
         </section>
 
+        <section class="catalogue-section" id="dialog">
+          <div class="catalogue-section-head"><h2>Dialog</h2><p>A modal task surface with shared header, body, and action regions. Auto-show, initial focus, native Escape dismissal, and focus restoration ship with the element.</p></div>
+          <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Task dialog</span><code>.dialog</code></div><div class="catalogue-demo">
+            <dialog class="dialog catalogue-dialog" open>
+              <header class="dialog__header"><h3 class="dialog__title">Add favorite model</h3><p class="dialog__description">Models from connected providers</p></header>
+              <div class="dialog__body"><label for="catalogue-dialog-filter">Filter models</label><input class="text-field" id="catalogue-dialog-filter" placeholder="Filter models…"></div>
+              <footer class="dialog__actions"><button class="button secondary" type="button">Cancel</button><button class="button primary" type="button">Add</button></footer>
+            </dialog>
+          </div><p class="catalogue-note">Add <code>data-dialog-auto-show</code> when a newly inserted dialog should open immediately. Prefer native <code>method="dialog"</code> forms for closing actions.</p></article>
+        </section>
+
         <section class="catalogue-section" id="popup-menu">
           <div class="catalogue-section-head">
             <h2>Popup menu</h2>
@@ -490,6 +504,35 @@
           </div>
         </section>
 
+        <section class="catalogue-section" id="managed-list">
+          <div class="catalogue-section-head"><h2>Managed list</h2><p>A bounded collection of records that are not destinations or choices. Items can show supporting detail, stable metadata, and explicit actions without implying row selection.</p></div>
+          <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Providers</span><code>.managed-list</code></div><div class="catalogue-demo">
+            <div class="managed-list" data-catalogue-managed-list>
+              <div class="managed-list__filter"><input class="text-field" type="search" placeholder="Filter providers…" aria-label="Filter example providers"></div>
+              <div class="managed-list__items">
+              <div class="managed-list__item" data-search-text="anthropic connected">
+                <i class="status-indicator success managed-list__visual" aria-label="Connected"></i>
+                <div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">Anthropic</span></div><div class="managed-list__description">13 models available</div></div>
+                <span class="managed-list__meta">Connected</span>
+                <div class="managed-list__actions"><button class="button danger" type="button">Disconnect</button></div>
+              </div>
+              <div class="managed-list__item" data-search-text="openrouter authentication required not connected">
+                <i class="status-indicator managed-list__visual" aria-label="Not connected"></i>
+                <div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">OpenRouter</span></div><div class="managed-list__description">Authentication required</div></div>
+                <span class="managed-list__meta">Not connected</span>
+                <div class="managed-list__actions"><button class="button primary" type="button">Connect</button></div>
+              </div>
+              <div class="managed-list__item" aria-disabled="true" data-search-text="radius unavailable no models">
+                <i class="status-indicator warning managed-list__visual" aria-label="Unavailable"></i>
+                <div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">Radius</span></div><div class="managed-list__description">No models available</div></div>
+                <span class="managed-list__meta">Unavailable</span>
+              </div>
+              </div>
+              <div class="managed-list__empty" hidden>No matching providers.</div>
+            </div>
+          </div><p class="catalogue-note">The optional filter is part of the collection boundary. Actions remain visible because the row itself has no primary interaction; selection and reordering are not defined.</p></article>
+        </section>
+
         <section class="catalogue-section" id="action-items">
           <div class="catalogue-section-head"><h2>Action items</h2><p>The shared interactive row adapts to navigation, lists, and tabs. Selection is semantic through <code>aria-current</code> or <code>aria-selected</code>.</p></div>
           <div class="catalogue-grid">
@@ -532,6 +575,7 @@
     </main>
   </div>
 
+  <script type="module" src="./design-system.js"></script>
   <script>
     const catalogueParams = new URLSearchParams(location.search);
     if (!catalogueParams.has("embedded")) {
@@ -560,21 +604,8 @@
     } else {
     const themePopupTrigger = document.querySelector(".catalogue-theme-trigger");
     const themePopup = document.querySelector("#catalogue-theme-popup");
-    const popupTrigger = document.querySelector(".popup-trigger");
-    const popup = document.querySelector("#catalogue-popup");
     const simplePopupTrigger = document.querySelector(".simple-popup-trigger");
     const simplePopup = document.querySelector("#simple-theme-popup");
-
-    function togglePopup(trigger, menu) {
-      const open = trigger.getAttribute("aria-expanded") !== "true";
-      trigger.setAttribute("aria-expanded", String(open));
-      menu.hidden = !open;
-    }
-
-    function closePopup(trigger, menu) {
-      trigger.setAttribute("aria-expanded", "false");
-      menu.hidden = true;
-    }
 
     function applyCatalogueTheme(value, label) {
       if (value) document.documentElement.dataset.theme = value;
@@ -589,10 +620,6 @@
     const requestedChoice = requestedTheme === null ? null : themePopup.querySelector(`[data-theme-value="${CSS.escape(requestedTheme)}"]`);
     if (requestedChoice) applyCatalogueTheme(requestedTheme, requestedChoice.textContent.trim());
 
-    themePopupTrigger.addEventListener("click", () => togglePopup(themePopupTrigger, themePopup));
-    popupTrigger.addEventListener("click", () => togglePopup(popupTrigger, popup));
-    simplePopupTrigger.addEventListener("click", () => togglePopup(simplePopupTrigger, simplePopup));
-
     document.querySelectorAll(".popup-menu").forEach((menu) => {
       menu.addEventListener("click", (event) => {
         const choice = event.target.closest('[role="menuitemradio"]:not(:disabled)');
@@ -602,24 +629,12 @@
         });
         if (menu === themePopup) {
           applyCatalogueTheme(choice.dataset.themeValue, choice.textContent.trim());
-          closePopup(themePopupTrigger, themePopup);
         }
         if (menu === simplePopup) {
           const label = choice.textContent.trim();
           simplePopupTrigger.querySelector("[data-simple-popup-value]").textContent = label;
           applyCatalogueTheme(choice.dataset.themeValue, label);
-          closePopup(simplePopupTrigger, simplePopup);
         }
-      });
-    });
-
-    document.querySelectorAll("[data-catalogue-toggle]").forEach((toggle) => {
-      toggle.addEventListener("click", (event) => {
-        const choice = event.target.closest(".toggle__option:not(:disabled)");
-        if (!choice || choice.getAttribute("aria-pressed") === "true") return;
-        toggle.querySelectorAll(".toggle__option").forEach((option) => {
-          option.setAttribute("aria-pressed", String(option === choice));
-        });
       });
     });
 
@@ -633,7 +648,6 @@
       activityButtonDemo.setAttribute("aria-label", active ? "Start background sync" : "Stop background sync");
       activityButtonDemoStatus.textContent = active ? "Stopped · click to start again" : "Syncing · duration unknown · click to stop";
     });
-
     const progressButtonDemo = document.querySelector("#progress-button-demo");
     const progressButtonDemoStatus = document.querySelector("#progress-button-demo-status");
     let progressButtonDemoTimer;

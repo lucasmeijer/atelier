@@ -31,8 +31,8 @@ import {
 import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
 import { createAtelierCableClient } from "./cable.ts";
-import { ActionItemsController } from "./action-items.ts";
-import { PopupSelectController, SelectPopupController } from "./popup-select.ts";
+import { registerDesignSystemControllers } from "./design-system.ts";
+import { SelectPopupController } from "./popup-select.ts";
 import { createWorkspacePresentationController, installWorkspacePresentationTurboStream, markActiveWorkspaceRow } from "./workspace-presentation.ts";
 
 declare global {
@@ -1687,51 +1687,6 @@ class GitIdentityController extends Controller {
   }
 }
 
-class ProviderListController extends Controller {
-  static values = { label: String, openLabel: String };
-  declare readonly element: HTMLButtonElement;
-  declare readonly labelValue: string;
-  declare readonly openLabelValue: string;
-  private open = false;
-
-  connect(): void {
-    this.sync();
-  }
-
-  toggle(): void {
-    this.open = !this.open;
-    this.sync();
-  }
-
-  private sync(): void {
-    const scope = this.element.closest<HTMLElement>("[data-provider-list-scope]") ?? document.body;
-    scope.querySelectorAll<HTMLElement>('[data-provider-extra="true"]').forEach((row) => row.classList.toggle("hidden", !this.open));
-    this.element.textContent = this.open ? (this.openLabelValue || "Show fewer providers") : (this.labelValue || "Show more providers");
-  }
-}
-
-class ModelAddMenuController extends Controller {
-  static targets = ["filter", "option"];
-  declare readonly filterTarget: HTMLInputElement;
-  declare readonly optionTargets: HTMLElement[];
-  declare readonly hasFilterTarget: boolean;
-
-  connect(): void {
-    if (this.hasFilterTarget) requestAnimationFrame(() => this.filterTarget.focus());
-  }
-
-  filter(): void {
-    const query = (this.hasFilterTarget ? this.filterTarget.value : "").trim().toLowerCase();
-    this.optionTargets.forEach((option) => {
-      option.hidden = query.length > 0 && !(option.dataset.searchText ?? "").includes(query);
-    });
-    this.element.querySelectorAll<HTMLElement>(".settings-add-model-group").forEach((group) => {
-      const options = Array.from(group.querySelectorAll<HTMLElement>("[data-model-add-menu-target~='option']"));
-      group.hidden = options.length > 0 && options.every((option) => option.hidden);
-    });
-  }
-}
-
 class OnboardingController extends Controller {
   static targets = ["pane", "dot", "continue", "back"];
   declare readonly paneTargets: HTMLElement[];
@@ -1980,7 +1935,7 @@ application.register("dev-reload", DevReloadController);
 application.register("workspace-presentation", createWorkspacePresentationController(Controller, application, clientHooks));
 application.register("workspace-command-form", WorkspaceCommandFormController);
 application.register("empty-workspace-onboarding", EmptyWorkspaceOnboardingController);
-application.register("action-items", ActionItemsController);
+registerDesignSystemControllers(application);
 application.register("workspace-navigation", WorkspaceNavigationController);
 application.register("workspace-residency", WorkspaceResidencyController);
 application.register("atelier-shortcuts", AtelierShortcutsController);
@@ -1998,11 +1953,8 @@ application.register("oauth-flow", OAuthFlowController);
 application.register("oauth-progress-reveal", OAuthProgressRevealController);
 application.register("git-identity", GitIdentityController);
 application.register("settings-autosave", SettingsAutosaveController);
-application.register("provider-list", ProviderListController);
-application.register("model-add-menu", ModelAddMenuController);
 application.register("onboarding", OnboardingController);
 application.register("clipboard", ClipboardController);
-application.register("popup-select", PopupSelectController);
 application.register("agent-model-menu", AgentModelMenuController);
 
 if ("serviceWorker" in navigator) {

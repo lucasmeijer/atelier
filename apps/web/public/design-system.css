@@ -499,6 +499,39 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .text-field:disabled,
 .textarea:disabled { opacity: .45; cursor: default; }
 
+/* Modal tasks share a stable surface, anatomy, and native dialog behavior. */
+.dialog { width: min(760px, 94vw); max-height: min(92vh, 720px); margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius-overlay); background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+.dialog::backdrop { background: color-mix(in srgb, #000 50%, transparent); backdrop-filter: blur(4px); }
+.dialog:focus { outline: none; }
+.dialog__header { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-xl); border-bottom: 1px solid var(--line); }
+.dialog__title { margin: 0; color: var(--text); font-size: var(--text-title); font-weight: var(--weight-bold); }
+.dialog__description { margin: var(--space-2xs) 0 0; color: var(--text-muted); font-size: var(--text-caption); }
+.dialog__body { max-height: calc(92vh - 128px); padding: var(--space-xl); overflow: auto; color: var(--text-muted); }
+.dialog__actions { display: flex; justify-content: flex-end; gap: var(--space-md); padding: 0 var(--space-xl) var(--space-xl); }
+.dialog__actions > form { display: flex; margin: 0; }
+
+/* A bounded collection of non-selectable records with optional metadata and actions. */
+.managed-list { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-surface); background: var(--bg); }
+.managed-list__filter { padding: var(--space-md); border-bottom: 1px solid var(--line); background: var(--panel); }
+.managed-list__items { max-height: min(360px, 48vh); overflow-y: auto; }
+.managed-list__item { min-width: 0; min-height: 52px; display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) var(--space-lg); color: var(--text-muted); }
+.managed-list__item + .managed-list__item { border-top: 1px solid var(--line); }
+.managed-list__item[hidden] { display: none; }
+.managed-list__empty { padding: var(--space-2xl); color: var(--text-muted); font-size: var(--text-small); text-align: center; }
+.managed-list__item:focus-within { background: var(--accent-soft); }
+.managed-list__visual { flex: 0 0 auto; }
+.managed-list__content { min-width: 0; flex: 1; }
+.managed-list__label { display: flex; align-items: center; gap: var(--space-md); overflow: hidden; color: var(--text); font-weight: var(--weight-semibold); }
+.managed-list__label-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.managed-list__description { overflow: hidden; color: var(--text-muted); font-size: var(--text-small); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
+.managed-list__meta { flex: 0 0 auto; color: var(--text-muted); font-size: var(--text-small); white-space: nowrap; }
+.managed-list__actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-md); }
+.managed-list__actions > form { display: flex; margin: 0; }
+.managed-list__item[aria-disabled="true"] { opacity: .68; }
+@media (max-width: 700px) {
+  .managed-list__item { min-height: 56px; padding-inline: var(--space-md); }
+}
+
 /* Orientation-independent primary actions with optional status and auxiliary controls. */
 .action-item { min-width: 0; min-height: 32px; display: flex; align-items: center; padding-inline: var(--space-md); border-radius: var(--radius-round); color: var(--text-muted); }
 .action-item + .action-item { margin-block-start: 2px; }
