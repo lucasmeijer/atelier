@@ -60,6 +60,7 @@ interface WorkspaceAppProxySocketData {
 
 interface HostedWorkspaceApp extends WorkspaceAppHost {
   parentOrigin?: string;
+  persisted: boolean;
 }
 
 const nestedPublicProxyPortRange: PublicProxyPortRange = { start: 3001, end: 3010 };
@@ -80,27 +81,29 @@ export * from "./tailscale-serve.ts";
 
 export function createWorkspaceIngressProxy(options: WorkspaceIngressProxyOptions): WorkspaceIngressProxyService {
   const publicPortRange = options.publicPortRange ?? publicProxyPortRangeFromEnv();
-  const publicProxyServers = new Map<number, ReturnType<typeof Bun.serve<WorkspaceAppProxySocketData>>>();
-  const publicProxyRoutes = new Map<number, HostedWorkspaceApp>();
+  const proxyServers = new Map<number, ReturnType<typeof Bun.serve<WorkspaceAppProxySocketData>>>();
+  const hostedAppsByPort = new Map<number, HostedWorkspaceApp>();
 
-  async function retireUnknownAppRoute(publicPort: number, app: WorkspaceAppHost): Promise<Response> {
-    await releaseWorkspacePublicProxyRoute(app.workspaceId, app.appKey);
-    await options.publicPortExposer?.releasePort(publicPort);
-    publicProxyRoutes.delete(publicPort);
-    const staleServer = publicProxyServers.get(publicPort);
-    publicProxyServers.delete(publicPort);
+  async function retireUnknownAppRoute(publicPort: number, app: HostedWorkspaceApp): Promise<Response> {
+    if (app.persisted) {
+      await releaseWorkspacePublicProxyRoute(app.workspaceId, app.appKey);
+      await options.publicPortExposer?.releasePort(publicPort);
+    }
+    hostedAppsByPort.delete(publicPort);
+    const staleServer = proxyServers.get(publicPort);
+    proxyServers.delete(publicPort);
     setTimeout(() => staleServer?.stop(true), 0);
     return textResponse(`Workspace app is gone: ${app.appKey}`, 410);
   }
 
-  async function ensurePublicProxyListener(route: WorkspaceAppHost & { publicPort: number }): Promise<void> {
-    const existing = publicProxyRoutes.get(route.publicPort);
+  function ensureProxyListener(route: HostedWorkspaceApp & { publicPort: number }): void {
+    const existing = hostedAppsByPort.get(route.publicPort);
     if (existing) {
-      if (existing.workspaceId === route.workspaceId && existing.appKey === route.appKey && publicProxyServers.has(route.publicPort)) return;
+      if (existing.workspaceId === route.workspaceId && existing.appKey === route.appKey && proxyServers.has(route.publicPort)) return;
       throw new Error(`public proxy port ${route.publicPort} is already assigned`);
     }
-    if (publicProxyServers.has(route.publicPort)) throw new Error(`public proxy port ${route.publicPort} is already listening`);
-    publicProxyRoutes.set(route.publicPort, { workspaceId: route.workspaceId, appKey: route.appKey });
+    if (proxyServers.has(route.publicPort)) throw new Error(`public proxy port ${route.publicPort} is already listening`);
+    hostedAppsByPort.set(route.publicPort, { workspaceId: route.workspaceId, appKey: route.appKey, persisted: route.persisted });
     try {
       const server = Bun.serve<WorkspaceAppProxySocketData>({
         hostname: options.hostname,
@@ -110,7 +113,7 @@ export function createWorkspaceIngressProxy(options: WorkspaceIngressProxyOption
           const auth = await options.authResponse?.(request);
           if (auth) return auth;
           const url = new URL(request.url);
-          const app = publicProxyRoutes.get(route.publicPort);
+          const app = hostedAppsByPort.get(route.publicPort);
           if (!app) return textResponse("not found", 404);
           if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
             try {
@@ -131,50 +134,57 @@ export function createWorkspaceIngressProxy(options: WorkspaceIngressProxyOption
           close: closeWorkspaceAppProxySocket,
         },
       });
-      publicProxyServers.set(route.publicPort, server);
+      proxyServers.set(route.publicPort, server);
     } catch (error) {
-      publicProxyRoutes.delete(route.publicPort);
+      hostedAppsByPort.delete(route.publicPort);
       throw error;
     }
   }
 
-  async function releasePublicPorts(ports: Iterable<number>): Promise<void> {
+  async function releaseExposedPorts(ports: Iterable<number>): Promise<void> {
     await Promise.all([...ports].filter((port) => portInRange(port, publicPortRange)).map((port) => options.publicPortExposer?.releasePort(port)));
   }
 
-  function stopPublicProxyListeners(predicate: (route: WorkspaceAppHost, port: number) => boolean): number[] {
+  function stopProxyListeners(predicate: (route: HostedWorkspaceApp, port: number) => boolean): number[] {
     const ports: number[] = [];
-    for (const [port, route] of [...publicProxyRoutes]) {
+    for (const [port, route] of [...hostedAppsByPort]) {
       if (!predicate(route, port)) continue;
-      publicProxyServers.get(port)?.stop(true);
-      publicProxyServers.delete(port);
-      publicProxyRoutes.delete(port);
+      proxyServers.get(port)?.stop(true);
+      proxyServers.delete(port);
+      hostedAppsByPort.delete(port);
       ports.push(port);
     }
     return ports;
   }
 
-  async function ensureRouteInRange(workspaceId: string, appKey: string, range: PublicProxyPortRange): Promise<WorkspaceAppHost & WorkspacePublicProxyRoute> {
-    const replacedPorts = stopPublicProxyListeners((route, port) => route.workspaceId === workspaceId && route.appKey === appKey && !portInRange(port, range));
-    await releasePublicPorts(replacedPorts);
-    const unavailable = new Set<number>();
-    for (;;) {
-      const route = await ensureWorkspacePublicProxyRoute(workspaceId, appKey, { range, reservedPorts: unavailable });
-      try {
-        await ensurePublicProxyListener({ workspaceId, appKey, publicPort: route.publicPort });
-      } catch {
-        unavailable.add(route.publicPort);
-        await releaseWorkspacePublicProxyRoute(workspaceId, appKey);
-        if (unavailable.size > range.end - range.start + 1) throw new Error(`no public proxy ports available in range ${range.start}-${range.end}`);
-        continue;
-      }
-      if (portInRange(route.publicPort, publicPortRange)) await options.publicPortExposer?.ensurePort(route.publicPort);
-      return { workspaceId, appKey, publicPort: route.publicPort };
+  function ensureNestedPort(workspaceId: string, appKey: string): number {
+    for (const [port, app] of hostedAppsByPort) {
+      if (!app.persisted && app.workspaceId === workspaceId && app.appKey === appKey) return port;
     }
+    for (let port = nestedPublicProxyPortRange.start; port <= nestedPublicProxyPortRange.end; port++) {
+      try {
+        ensureProxyListener({ workspaceId, appKey, publicPort: port, persisted: false });
+        return port;
+      } catch { /* occupied preview ports are tried in order */ }
+    }
+    throw new Error(`no nested proxy ports available in range ${nestedPublicProxyPortRange.start}-${nestedPublicProxyPortRange.end}`);
   }
 
   async function ensureRoute(workspaceId: string, appKey: string): Promise<WorkspaceAppHost & WorkspacePublicProxyRoute> {
-    return await ensureRouteInRange(workspaceId, appKey, publicPortRange);
+    const unavailable = new Set<number>();
+    for (;;) {
+      const route = await ensureWorkspacePublicProxyRoute(workspaceId, appKey, { range: publicPortRange, reservedPorts: unavailable });
+      try {
+        ensureProxyListener({ workspaceId, appKey, publicPort: route.publicPort, persisted: true });
+      } catch {
+        unavailable.add(route.publicPort);
+        await releaseWorkspacePublicProxyRoute(workspaceId, appKey);
+        if (unavailable.size > publicPortRange.end - publicPortRange.start + 1) throw new Error(`no public proxy ports available in range ${publicPortRange.start}-${publicPortRange.end}`);
+        continue;
+      }
+      await options.publicPortExposer?.ensurePort(route.publicPort);
+      return { workspaceId, appKey, publicPort: route.publicPort };
+    }
   }
 
   return {
@@ -182,34 +192,35 @@ export function createWorkspaceIngressProxy(options: WorkspaceIngressProxyOption
       const ids = await options.listWorkspaceIds();
       const startedPorts: number[] = [];
       for (const route of await listWorkspacePublicProxyRoutes(ids)) {
+        if (!portInRange(route.publicPort, publicPortRange)) continue;
         try {
-          await ensurePublicProxyListener(route);
+          ensureProxyListener({ ...route, persisted: true });
           startedPorts.push(route.publicPort);
         } catch { /* stale/unavailable route will be reallocated on next canonical request */ }
       }
-      await options.publicPortExposer?.syncPorts(startedPorts.filter((port) => portInRange(port, publicPortRange)));
+      await options.publicPortExposer?.syncPorts(startedPorts);
     },
     async redirectToRoute(workspaceId, appKey, path, request) {
       await options.resolveWorkspace(workspaceId);
       const normalizedPath = path.startsWith("/") ? path : `/${path}`;
       const parent = parentAtelier(request);
       if (parent) {
-        const route = await ensureRouteInRange(workspaceId, appKey, nestedPublicProxyPortRange);
-        return Response.redirect(`${parent.origin}${workspaceProxyUrl(parent.workspaceId, `port-${route.publicPort}`, normalizedPath)}`, 302);
+        const port = ensureNestedPort(workspaceId, appKey);
+        return Response.redirect(`${parent.origin}${workspaceProxyUrl(parent.workspaceId, `port-${port}`, normalizedPath)}`, 302);
       }
       const route = await ensureRoute(workspaceId, appKey);
-      publicProxyRoutes.get(route.publicPort)!.parentOrigin = publicWorkspaceAppOrigin(request);
+      hostedAppsByPort.get(route.publicPort)!.parentOrigin = publicWorkspaceAppOrigin(request);
       return Response.redirect(`${publicProxyOrigin(request, route.publicPort)}${normalizedPath}`, 302);
     },
     ensureRoute,
     async stopWorkspace(workspaceId) {
-      const ports = stopPublicProxyListeners((route) => route.workspaceId === workspaceId);
-      await releasePublicPorts(ports);
+      const ports = stopProxyListeners((route) => route.workspaceId === workspaceId);
+      await releaseExposedPorts(ports);
       return ports;
     },
     async stopAll() {
-      const ports = stopPublicProxyListeners(() => true);
-      await releasePublicPorts(ports);
+      const ports = stopProxyListeners(() => true);
+      await releaseExposedPorts(ports);
       return ports;
     },
   };

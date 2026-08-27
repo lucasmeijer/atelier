@@ -95,7 +95,7 @@ describe("decoded upstream response normalization", () => {
 });
 
 describe("workspace public proxy route state", () => {
-  test("exposes nested routes through the outer Atelier workspace", async () => {
+  test("keeps direct and nested routes alive at the same time", async () => {
     const exposedPorts = new Set<number>();
     const proxy = createWorkspaceIngressProxy({
       hostname: "127.0.0.1",
@@ -127,13 +127,25 @@ describe("workspace public proxy route state", () => {
     const response = await proxy.redirectToRoute("inner", "browser-1", "/demo?x=1", nestedRequest);
 
     expect(response.status).toBe(302);
-    const routes = await listWorkspacePublicProxyRoutes(["inner"]);
-    expect(routes).toHaveLength(1);
-    expect(routes[0]).toMatchObject({ workspaceId: "inner", appKey: "browser-1" });
-    expect(routes[0]!.publicPort).toBeGreaterThanOrEqual(3001);
-    expect(routes[0]!.publicPort).toBeLessThanOrEqual(3010);
-    expect(response.headers.get("location")).toBe(`https://outer.example/workspaces/outer-workspace/ports/${routes[0]!.publicPort}/demo?x=1`);
-    expect(exposedPorts).toEqual(new Set());
+    const nestedLocation = new URL(response.headers.get("location")!);
+    const nestedPort = Number(nestedLocation.pathname.match(/\/ports\/(\d+)/)?.[1]);
+    expect(nestedPort).toBeGreaterThanOrEqual(3001);
+    expect(nestedPort).toBeLessThanOrEqual(3010);
+    expect(nestedLocation.toString()).toBe(`https://outer.example/workspaces/outer-workspace/ports/${nestedPort}/demo?x=1`);
+
+    expect(await listWorkspacePublicProxyRoutes(["inner"])).toEqual([
+      { workspaceId: "inner", appKey: "browser-1", publicPort: 43100 },
+    ]);
+    expect(exposedPorts).toEqual(new Set([43100]));
+    const repeatedStandardResponse = await proxy.redirectToRoute(
+      "inner",
+      "browser-1",
+      "/after-nested",
+      new Request("http://127.0.0.1:3000/workspaces/inner/apps/browser-1/"),
+    );
+    expect(repeatedStandardResponse.headers.get("location")).toBe("http://127.0.0.1:43100/after-nested");
+    const repeatedNestedResponse = await proxy.redirectToRoute("inner", "browser-1", "/after-standard", nestedRequest);
+    expect(repeatedNestedResponse.headers.get("location")).toBe(`https://outer.example/workspaces/outer-workspace/ports/${nestedPort}/after-standard`);
     await proxy.stopAll();
   });
 
