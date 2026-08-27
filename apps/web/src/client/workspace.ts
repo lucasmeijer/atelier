@@ -1687,6 +1687,37 @@ class GitIdentityController extends Controller {
   }
 }
 
+class ModelCatalogueController extends Controller {
+  private observer?: MutationObserver;
+
+  connect(): void {
+    this.observer = new MutationObserver(() => this.sortProviderGroups());
+    this.observer.observe(this.element, { childList: true, subtree: true });
+    this.sortProviderGroups();
+  }
+
+  disconnect(): void {
+    this.observer?.disconnect();
+  }
+
+  private sortProviderGroups(): void {
+    const items = this.element.querySelector<HTMLElement>(".managed-list__items");
+    if (!items) return;
+    const current = Array.from(items.querySelectorAll<HTMLElement>(":scope > .model-provider-group"));
+    const sorted = [...current].sort((a, b) => {
+      const aConnected = a.querySelector<HTMLElement>(":scope > .model-provider-state")?.dataset.connected === "true";
+      const bConnected = b.querySelector<HTMLElement>(":scope > .model-provider-state")?.dataset.connected === "true";
+      return Number(bConnected) - Number(aConnected) || (a.dataset.providerLabel ?? "").localeCompare(b.dataset.providerLabel ?? "");
+    });
+    if (current.every((group, index) => group === sorted[index])) return;
+    for (const group of sorted) items.append(group);
+  }
+}
+
+function hasWorkingModelSetup(root: ParentNode | undefined): boolean {
+  return root?.querySelector<HTMLElement>(".model-setup-working-state")?.dataset.working === "true";
+}
+
 class OnboardingController extends Controller {
   static targets = ["pane", "dot", "continue", "back"];
   declare readonly paneTargets: HTMLElement[];
@@ -1700,7 +1731,7 @@ class OnboardingController extends Controller {
 
   connect(): void {
     this.observer = new MutationObserver(() => this.show(this.index));
-    this.observer.observe(this.element, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-model-setup-working", "data-onboarding-complete"] });
+    this.observer.observe(this.element, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-onboarding-complete"] });
     this.show(0);
   }
 
@@ -1730,8 +1761,7 @@ class OnboardingController extends Controller {
     });
     const current = this.paneTargets[this.index];
     const kind = current?.dataset.onboardingKind;
-    const modelSetup = current?.querySelector<HTMLElement>(".model-setup");
-    const workingModel = modelSetup?.dataset.modelSetupWorking === "true";
+    const workingModel = hasWorkingModelSetup(current);
     const complete = current?.dataset.onboardingComplete === "true" || (kind === "llm" && workingModel);
     if (kind === "done") this.refreshChecklist(current);
     const doneComplete = kind === "done" && current?.querySelector<HTMLElement>("[data-onboarding-done-complete]")?.dataset.onboardingDoneComplete === "true";
@@ -1752,8 +1782,8 @@ class OnboardingController extends Controller {
     done.querySelectorAll<HTMLElement>("[data-onboarding-check]").forEach((item) => {
       const id = item.dataset.onboardingCheck;
       const pane = this.paneTargets.find((candidate) => candidate.dataset.onboardingKind === id);
-      const modelSetup = pane?.querySelector<HTMLElement>(".model-setup");
-      const complete = pane ? (pane.dataset.onboardingComplete === "true" || (id === "llm" && modelSetup?.dataset.modelSetupWorking === "true")) : item.getAttribute("aria-checked") === "true";
+      const workingModel = hasWorkingModelSetup(pane);
+      const complete = pane ? (pane.dataset.onboardingComplete === "true" || (id === "llm" && workingModel)) : item.getAttribute("aria-checked") === "true";
       const completeValue = complete ? "true" : "false";
       if (item.getAttribute("aria-checked") !== completeValue) item.setAttribute("aria-checked", completeValue);
       const marker = item.querySelector(".status-list__marker");
@@ -1799,14 +1829,14 @@ class AgentModelMenuController extends SelectPopupController {
   protected override renderTrigger(selected: HTMLOptionElement | undefined, label: string): void {
     this.button.innerHTML = this.hasAvailableModel()
       ? agentModelLabelHtml(selected?.dataset.provider ?? "", label || "Select model")
-      : "Configure favorite models";
+      : "Configure models";
   }
 
   protected override renderMenu(): Node[] {
     const configure = document.createElement("button");
     configure.type = "button";
     configure.className = "button secondary agent-model-configure";
-    configure.textContent = "Configure favorite models";
+    configure.textContent = "Configure models";
     configure.addEventListener("click", () => { this.close(); void this.openSetup(); });
     const separator = document.createElement("hr");
     separator.className = "popup-menu__separator";
@@ -1956,6 +1986,7 @@ application.register("oauth-flow", OAuthFlowController);
 application.register("oauth-progress-reveal", OAuthProgressRevealController);
 application.register("git-identity", GitIdentityController);
 application.register("settings-autosave", SettingsAutosaveController);
+application.register("model-catalogue", ModelCatalogueController);
 application.register("onboarding", OnboardingController);
 application.register("clipboard", ClipboardController);
 application.register("agent-model-menu", AgentModelMenuController);

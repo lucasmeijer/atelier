@@ -489,9 +489,9 @@ bun test</pre></div>
           <div class="catalogue-section-head"><h2>Dialog</h2><p>A modal task surface with shared header, body, and action regions. Auto-show, initial focus, native Escape dismissal, and focus restoration ship with the element.</p></div>
           <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Task dialog</span><code>.dialog</code></div><div class="catalogue-demo">
             <dialog class="dialog catalogue-dialog" open>
-              <header class="dialog__header"><h3 class="title">Add favorite model</h3></header>
-              <div class="dialog__body"><label for="catalogue-dialog-filter">Filter models by name or provider</label><input class="text-field" id="catalogue-dialog-filter" placeholder="Filter models by name or provider…"></div>
-              <footer class="dialog__actions"><button class="button secondary" type="button">Cancel</button><button class="button primary" type="button">Add</button></footer>
+              <header class="dialog__header"><h3 class="title">Connect Anthropic</h3></header>
+              <div class="dialog__body"><label for="catalogue-dialog-filter">API key</label><input class="text-field" id="catalogue-dialog-filter" placeholder="sk-ant-…"></div>
+              <footer class="dialog__actions"><button class="button secondary" type="button">Cancel</button><button class="button primary" type="button">Connect</button></footer>
             </dialog>
           </div><p class="catalogue-note">Add <code>data-dialog-auto-show</code> when a newly inserted dialog should open immediately. Prefer native <code>method="dialog"</code> forms for closing actions.</p></article>
         </section>
@@ -513,10 +513,10 @@ bun test</pre></div>
                 <div class="popup-menu popup-menu-anchored opens-above" id="catalogue-popup" role="menu" aria-label="Choose a model">
                   <button class="button secondary popup-configure" type="button" role="menuitem">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6l-.04.08V21h-4v-.92L9.9 20a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1H3v-4h1a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.44-1.88l-.06-.06L6.96 4.2l.06.06A1.7 1.7 0 0 0 8.9 4.6a1.7 1.7 0 0 0 1-.6l.06-.08V3h4v.92L14 4a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 9c.08.38.3.73.6 1h1v4h-1c-.3.27-.52.62-.6 1Z"/></svg>
-                    Configure favorite models
+                    Configure models
                   </button>
                   <hr class="popup-menu__separator">
-                  <div class="popup-menu__heading">Favorites</div>
+                  <div class="popup-menu__heading">Configured models</div>
                   <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false">
                     <span class="popup-menu__icon"><span class="popup-brand-mark">A</span></span>
                     <span class="action-item__label"><span class="action-item__label-text">Claude Sonnet 4</span><span class="popup-menu__description">Anthropic</span></span>

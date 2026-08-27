@@ -912,8 +912,8 @@ class RealAgentRuntime extends BaseAgentRuntime {
     // Current model outside the configured list: show it as a selected extra entry.
     if (model && !models.some((option) => option.selected)) {
       // Show the current session model for accuracy, but do not offer it as a
-      // selectable choice unless it is also in the user's favorites list.
-      models.unshift({ provider: model.provider, id: model.id, name: model.name ?? model.id, selected: true, available: false, unavailableReason: "Not in favorite models" });
+      // selectable choice unless it is also in the user's configured models list.
+      models.unshift({ provider: model.provider, id: model.id, name: model.name ?? model.id, selected: true, available: false, unavailableReason: "Model is not configured" });
     }
     return {
       contextPercent,

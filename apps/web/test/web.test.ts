@@ -7,7 +7,7 @@ import { Value } from "typebox/value";
 import type { JsonObject } from "@atelier/core";
 import { createWebApp } from "../src/server/app.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
-import { setPickerAgentModels } from "@atelier/agent/server";
+import { createPiModelRuntime, getConfiguredAgentModels, setPickerAgentModels } from "@atelier/agent/server";
 import { setWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import { addProject, getGitIdentity, isGitProjectInit, listProjectEnvironmentVariables, listProjects, projectWorkspaceInit, revealProjectSecrets, type WorkspaceDeleteBlockedDetails } from "@atelier/projects";
 
@@ -144,6 +144,7 @@ function postJson(path: string, body: JsonObject): Request {
 async function withTempDataDir<T>(fn: () => Promise<T>): Promise<T> {
   const previousDataDir = process.env.ATELIER_DATA_DIR;
   const previousGitHubToken = process.env.GH_TOKEN;
+  const previousAgentModels = await getConfiguredAgentModels();
   const dataDir = await mkdtemp(join(tmpdir(), "atelier-web-test-"));
   process.env.ATELIER_DATA_DIR = dataDir;
   delete process.env.GH_TOKEN;
@@ -154,6 +155,7 @@ async function withTempDataDir<T>(fn: () => Promise<T>): Promise<T> {
     else process.env.ATELIER_DATA_DIR = previousDataDir;
     if (previousGitHubToken === undefined) delete process.env.GH_TOKEN;
     else process.env.GH_TOKEN = previousGitHubToken;
+    await setPickerAgentModels(previousAgentModels, previousAgentModels.find((model) => model.active));
     await rm(dataDir, { recursive: true, force: true });
   }
 }
@@ -177,7 +179,8 @@ describe("web app contracts", () => {
 
   test("settings render shared design-system controls without legacy adapters", async () => {
     await withTempDataDir(async () => {
-      await setPickerAgentModels([{ provider: "anthropic", id: "claude-test", label: "Claude Test" }]);
+      const catalogueModel = (await createPiModelRuntime()).getModels("anthropic")[0]!;
+      await setPickerAgentModels([{ provider: catalogueModel.provider, id: catalogueModel.id, label: catalogueModel.name ?? catalogueModel.id }]);
       const { app } = createTestApp();
       const response = await app.fetch(new Request("http://test.local/settings"));
       const body = await response.text();
@@ -186,24 +189,46 @@ describe("web app contracts", () => {
       expect(body).toContain('class="settings-input text-field');
       expect(body).toContain('class="settings-select popup-select" data-controller="theme-select"');
       expect(body).toContain('class="settings-select popup-select" name="model"');
-      expect(body).toContain('aria-label="Filter inference providers"');
+      expect(body).toContain('aria-label="Filter available models"');
+      expect(body).toContain("<h2>Configured models</h2>");
+      expect(body).toContain("<h2>Available models</h2>");
+      expect(body).not.toContain("<h2>Model providers</h2>");
+      expect(body).not.toContain("Favorite models");
       expect(body).not.toContain("managed-list-filter");
       expect(body.match(/class="managed-list"/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
       expect(body).toContain('class="managed-list__item');
       expect(body).toContain('class="managed-list__content"');
-      expect(body).toContain('class="managed-list__actions"');
+      expect(body).toContain('class="managed-list__actions ');
+      expect(body).toContain('action="/settings/models/add"');
+      expect(body).toContain('action="/settings/models/remove"');
+      expect(body).toContain("Already added");
+      expect(body).toContain("Disconnect provider");
+      expect(body).toContain("Add API key");
       expect(body).not.toContain("settings-btn");
       expect(body).not.toContain("settings-button");
 
-      const addModelResponse = await app.fetch(post("/settings/models/add-flow"));
-      const addModelBody = await addModelResponse.text();
-      expect(addModelBody).toContain('id="settings_add_model_dialog"');
-      expect(addModelBody).toContain('class="dialog" data-dialog-auto-show');
-      expect(addModelBody).toContain('class="dialog__header"');
-      expect(addModelBody).toContain('class="managed-list__filter"');
-      expect(addModelBody).toContain('class="text-field"');
-      expect(addModelBody).not.toContain("settings-add-model-option");
-      expect(addModelBody).not.toContain("settings-flow-");
+      const apiKeyDialogResponse = await app.fetch(post(`/settings/providers/${catalogueModel.provider}/flow?method=api_key`));
+      const apiKeyDialogBody = await apiKeyDialogResponse.text();
+      expect(apiKeyDialogBody).toContain('type="button" data-action="modal#close">Cancel</button><button class="button primary" type="submit">Connect</button>');
+
+      const removedDialogResponse = await app.fetch(post("/settings/models/add-flow"));
+      expect(removedDialogResponse.status).toBe(404);
+
+      const disconnectResponse = await app.fetch(post(`/settings/providers/${catalogueModel.provider}/disconnect`));
+      const disconnectBody = await disconnectResponse.text();
+      expect(disconnectBody).toContain(`targets=".model_provider_state_${catalogueModel.provider}"`);
+      expect(disconnectBody).not.toContain('targets=".model-catalogue"');
+      expect((await getConfiguredAgentModels()).some((model) => model.provider === catalogueModel.provider && model.id === catalogueModel.id)).toBe(true);
+
+      const removeResponse = await app.fetch(postForm("/settings/models/remove", new URLSearchParams({ model: `${catalogueModel.provider}::${catalogueModel.id}` })));
+      const removeBody = await removeResponse.text();
+      expect(removeBody).toContain('targets=".configured-model-section-settings"');
+      expect(removeBody).toContain('targets=".model_catalogue_action_settings_');
+      expect(removeBody).not.toContain('targets=".model-catalogue"');
+
+      await setPickerAgentModels([]);
+      const emptyResponse = await app.fetch(new Request("http://test.local/settings"));
+      expect(await emptyResponse.text()).not.toContain("<h2>Configured models</h2>");
     });
   });
 

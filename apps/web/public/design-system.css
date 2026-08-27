@@ -605,7 +605,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 /* A bounded collection of non-selectable records with optional metadata and actions. */
 .managed-list { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-surface); background: var(--bg); }
 .managed-list__filter { padding: var(--space-md); border-bottom: 1px solid var(--line); background: var(--panel); }
-.managed-list__items { max-height: min(360px, 48vh); overflow-y: auto; }
+.managed-list__items { max-height: min(360px, 48vh); overflow-y: auto; overflow-y: overlay; }
 .managed-list__item { min-width: 0; min-height: 52px; display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) var(--space-lg); color: var(--text-muted); }
 .managed-list__item + .managed-list__item { border-top: 1px solid var(--line); }
 .managed-list__item[hidden] { display: none; }

@@ -159,6 +159,21 @@ describe("Atelier browser behavior", () => {
     await page.close();
   });
 
+  test("cancels an API key dialog without validating its required input", async () => {
+    const page = await newTestPage();
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<dialog class="dialog" data-controller="modal" data-dialog-auto-show><form><input required><div class="dialog__actions"><button type="button" data-action="modal#close">Cancel</button><button type="submit">Connect</button></div></form></dialog><script type="module" src="/workspace-test.js"></script>`,
+    }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.goto("http://atelier.test/");
+    const dialog = page.locator("dialog");
+    await dialog.waitFor({ state: "visible" });
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    expect(await dialog.isHidden()).toBe(true);
+    await page.close();
+  });
+
   test("switches a Markdown file between Edit and Preview", async () => {
     const page = await newTestPage();
     const editor = renderFileWorkView("workspace", { key: "file-editor:readme", path: "/work/README.md", line: 1 }, "README.md").bodyHtml!;

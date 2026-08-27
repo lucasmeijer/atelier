@@ -1,7 +1,8 @@
 import { listOnboardingContributions, registerOnboardingContribution } from "./registry.ts";
 import { escapeHtml, turboStream, turboStreamResponse } from "@atelier/shared";
 import { hasWorkspaceGitHubToken } from "@atelier/proxy-egress";
-import { githubRow, hasAvailableFavoriteModel, isOnboarded, renderModelSetup } from "../settings/routes.ts";
+import { hasAvailableConfiguredAgentModel } from "@atelier/agent/server";
+import { githubRow, isOnboarded, renderModelSetup } from "../settings/routes.ts";
 
 function response(body: string, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -34,7 +35,7 @@ function renderDoneStep(items: Array<{ id: string; label: string; complete: bool
 }
 
 registerOnboardingContribution({ id: "github", label: "GitHub", order: 20, isComplete: async () => hasWorkspaceGitHubToken(), render: renderGithubStep });
-registerOnboardingContribution({ id: "llm", label: "Models", order: 30, isComplete: hasAvailableFavoriteModel, render: renderLlmStep });
+registerOnboardingContribution({ id: "llm", label: "Models", order: 30, isComplete: hasAvailableConfiguredAgentModel, render: renderLlmStep });
 
 export async function renderOnboardingDialog(force = false): Promise<string> {
   if (!force && await isOnboarded()) return "";
