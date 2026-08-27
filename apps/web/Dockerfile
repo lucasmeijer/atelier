@@ -36,6 +36,7 @@ COPY packages/keypress-probe/package.json packages/keypress-probe/package.json
 COPY packages/vscode/package.json packages/vscode/package.json
 COPY packages/proxy-egress/package.json packages/proxy-egress/package.json
 COPY packages/proxy-ingress/package.json packages/proxy-ingress/package.json
+COPY packages/transcription/package.json packages/transcription/package.json
 COPY packages/update/package.json packages/update/package.json
 
 RUN --mount=type=cache,target=/root/.bun/install/cache \
