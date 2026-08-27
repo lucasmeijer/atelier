@@ -60,11 +60,14 @@ describe("editor workspace integration", () => {
     const codeTab = openWorkspaceFileEditorView("workspace-md", "/work/index.ts").view;
     const markdownHtml = renderFileWorkView("workspace-md", markdownTab, "README.md").bodyHtml!;
     const codeHtml = renderFileWorkView("workspace-md", codeTab, "index.ts").bodyHtml!;
-    expect(markdownHtml).toContain("file-editor#togglePreview");
+    expect(markdownHtml).toContain('role="group" aria-label="Markdown display"');
+    expect(markdownHtml).toContain('data-action="file-editor#selectPreviewMode"');
+    expect(markdownHtml).toContain('aria-pressed="true">Edit</button>');
+    expect(markdownHtml).toContain('aria-pressed="false">Preview</button>');
     expect(markdownHtml).toContain("file-editor-preview agent-md");
     expect(markdownHtml).toContain('class="file-editor-loading"');
     expect(markdownHtml).toContain("Loading file…");
-    expect(codeHtml).not.toContain("file-editor#togglePreview");
+    expect(codeHtml).not.toContain('aria-label="Markdown display"');
     deleteWorkspaceFileEditorState("workspace-md");
   });
 

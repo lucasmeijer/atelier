@@ -49,6 +49,9 @@ describe("files rendering", () => {
     expect(html).toContain('<svg class="disclosure-icon" aria-hidden="true"');
     expect(html).toContain("status-spinner sm files-directory-spinner");
     expect(html).toContain("showHidden=1");
+    expect(html).toContain('role="group" aria-label="File visibility"');
+    expect(html).toContain('name="showHidden" value="0" aria-pressed="false">Visible</button>');
+    expect(html).toContain('name="showHidden" value="1" aria-pressed="true">All files</button>');
     expect(html).toContain('aria-label="Refresh files" data-action="files#refresh"');
     expect(html.match(/class="files-actions-toggle action-item__action button secondary icon-only popup-menu-trigger"/g)).toHaveLength(2);
     expect(html.match(/class="files-actions-menu popup-menu popup-menu-anchored"/g)).toHaveLength(2);

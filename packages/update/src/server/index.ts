@@ -264,7 +264,7 @@ function renderUpdateSettings(updateManager: UpdateManager): string {
   const snapshot = updateManager.snapshot();
   const status = updateStatusText(snapshot);
   const controlsDisabled = !snapshot.selfUpdatable || snapshot.state === "pulling" || snapshot.state === "restarting";
-  const options = (["stable", "latest"] as const).map((channel) => `<option value="${channel}"${snapshot.releaseChannel === channel ? " selected" : ""}>${channel === "stable" ? "Stable" : "Latest"}</option>`).join("");
+  const channelToggle = `<form class="toggle" role="group" aria-label="Update channel" method="post" action="/settings/update-channel" data-turbo="true">${(["stable", "latest"] as const).map((channel) => `<button class="toggle__option" type="submit" name="channel" value="${channel}" aria-pressed="${snapshot.releaseChannel === channel}"${controlsDisabled ? " disabled" : ""}>${channel === "stable" ? "Stable" : "Latest"}</button>`).join("")}</form>`;
   const checkButton = progressButtonHtml({
     initialHtml: "Check now",
     inProgressHtml: `${updateSpinnerHtml}Checking…`,
@@ -282,7 +282,7 @@ function renderUpdateSettings(updateManager: UpdateManager): string {
       : snapshot.state === "ready_to_restart"
         ? `<form method="get" action="/update/restart-confirm" data-turbo="true"><button class="button primary" type="submit">Restart to update</button></form>`
         : "";
-  return `<section class="settings-sec settings-sec-inline update-settings-row" id="settings-sec-update"><div><h2>Updates</h2><p class="settings-sub">${escapeHtml(status.label)} — ${escapeHtml(status.detail)}</p></div><div class="settings-provider-actions">${checkNow}<form method="post" action="/settings/update-channel" data-turbo="true" data-controller="settings-autosave" data-action="change->settings-autosave#save submit->settings-autosave#submit"><select class="settings-select" data-controller="popup-select" aria-label="Update channel" name="channel"${controlsDisabled ? " disabled" : ""}>${options}</select></form>${updateAction}</div></section>`;
+  return `<section class="settings-sec settings-sec-inline update-settings-row" id="settings-sec-update"><div><h2>Updates</h2><p class="settings-sub">${escapeHtml(status.label)} — ${escapeHtml(status.detail)}</p></div><div class="settings-provider-actions">${checkNow}${channelToggle}${updateAction}</div></section>`;
 }
 
 const updateSettingsContribution: SettingsContribution = {

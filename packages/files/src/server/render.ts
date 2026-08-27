@@ -106,11 +106,11 @@ export function renderFilesDirectoryFrame(workspaceId: string, entry: FileEntry,
 
 export function renderFilesFrame(workspaceId: string, path: string, entries: FileEntry[], showConcealed: boolean): string {
   return `<turbo-frame id="${filesFrameId(workspaceId)}" class="files-frame">
-    <div class="files-browser" data-controller="files" data-files-workspace-id-value="${escapeHtml(workspaceId)}" data-files-path-value="${escapeHtml(path)}" data-files-upload-url-value="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/upload" data-action="dragenter->files#dragEnter dragover->files#dragOver dragleave->files#dragLeave drop->files#drop keydown->files#keydown">
+    <div class="files-browser" data-controller="files" data-files-path-value="${escapeHtml(path)}" data-files-upload-url-value="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/upload" data-action="dragenter->files#dragEnter dragover->files#dragOver dragleave->files#dragLeave drop->files#drop keydown->files#keydown">
       <header class="files-toolbar">
         <nav class="files-breadcrumbs" aria-label="Current folder">${breadcrumbs(workspaceId, path, showConcealed)}</nav>
         <div class="files-toolbar-actions">
-          <label class="files-hidden-toggle"><input type="checkbox"${showConcealed ? " checked" : ""} data-action="change->files#toggleHidden"> Show hidden &amp; ignored</label>
+          <form class="toggle" role="group" aria-label="File visibility" method="get" data-files-target="listing" action="/workspaces/${encodeURIComponent(workspaceId)}/files" data-turbo-frame="${filesFrameId(workspaceId)}"><input type="hidden" name="path" value="${escapeHtml(path)}"><button class="toggle__option" type="submit" name="showHidden" value="0" aria-pressed="${!showConcealed}">Visible</button><button class="toggle__option" type="submit" name="showHidden" value="1" aria-pressed="${showConcealed}">All files</button></form>
           <button class="button secondary icon-only" type="button" title="Refresh files" aria-label="Refresh files" data-action="files#refresh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M6.1 9a7 7 0 0 1 11.5-2.6L20 9M4 15l2.4 2.6A7 7 0 0 0 17.9 15"/></svg></button>
         </div>
       </header>

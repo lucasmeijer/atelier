@@ -2001,7 +2001,6 @@ application.register("oauth-flow", OAuthFlowController);
 application.register("oauth-progress-reveal", OAuthProgressRevealController);
 application.register("git-identity", GitIdentityController);
 application.register("settings-autosave", SettingsAutosaveController);
-application.register("settings-checkbox", SettingsAutosaveController);
 application.register("provider-list", ProviderListController);
 application.register("model-add-menu", ModelAddMenuController);
 application.register("onboarding", OnboardingController);

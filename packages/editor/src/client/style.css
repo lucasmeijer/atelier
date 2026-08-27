@@ -6,9 +6,6 @@
 .file-editor-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xl); min-width: 0; padding: 0 var(--space-lg); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 88%, var(--bg)); font: var(--text-caption) var(--font-sans); }
 .file-editor-path { min-width: 0; overflow: hidden; color: var(--text-muted); text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
 .file-editor-toolbar-actions { display: flex; flex: none; align-items: center; gap: var(--space-md); }
-.file-editor-markdown-toggle.button { height: 24px; }
-.file-editor-markdown-toggle[aria-pressed="true"] { border-color: var(--button-hover-border); color: var(--button-hover-foreground); background: var(--button-hover-background); }
-.file-editor-markdown-toggle:disabled { cursor: wait; }
 .file-editor-status { flex: none; color: var(--text-faint); }
 .file-editor-status.is-error, .file-editor-status.is-conflict { color: var(--danger); }
 .file-editor-status.is-saving { color: var(--warning); }

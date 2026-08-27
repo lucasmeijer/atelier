@@ -489,9 +489,6 @@ button { border: 0; background: none; cursor: pointer; }
 .settings-field p { margin: var(--space-2xs) 0 0; color: var(--text-muted); font-size: var(--text-small); }
 .settings-select { padding: var(--space-md); border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: var(--bg); color: var(--text); font: inherit; font-size: var(--text-small); }
 .settings-input.text-field { font-family: var(--font-mono); }
-.settings-checkbox-form { margin: 0; }
-.settings-checkbox-field { cursor: pointer; }
-.settings-checkbox { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--accent); }
 .settings-dev-link { padding: var(--space-xl) 34px var(--space-2xl); text-align: left; }
 .settings-dev-actions { margin-top: auto; padding: var(--space-xl) 34px var(--space-2xl); }
 .settings-dev-link a { color: var(--text-faint); font-size: var(--text-caption); text-decoration: none; }

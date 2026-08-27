@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { renderFileWorkView } from "../../../packages/editor/src/server/render.ts";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
 import { removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 
@@ -70,6 +71,55 @@ describe("Atelier browser behavior", () => {
     expect(await mobilePage.locator('[data-catalogue-platform="mobile"]').getAttribute("aria-pressed")).toBe("true");
     expect(await mobilePage.locator(".catalogue-platform-frame").getAttribute("data-platform")).toBe("mobile");
     await mobilePage.close();
+  });
+
+  test("keeps both toggle choices visible while exposing the selected state", async () => {
+    const page = await newTestPage();
+    await page.route("http://catalogue.test/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
+    await page.route("http://catalogue.test/design-system.css", (route) => route.fulfill({ contentType: "text/css", body: workspaceStyle }));
+    await page.goto("http://catalogue.test/design-system-catalogue.html?embedded=1");
+
+    const toggle = page.locator("[data-catalogue-toggle]");
+    const edit = toggle.getByRole("button", { name: "Edit" });
+    const preview = toggle.getByRole("button", { name: "Preview" });
+    expect(await edit.getAttribute("aria-pressed")).toBe("true");
+    expect(await preview.getAttribute("aria-pressed")).toBe("false");
+
+    await preview.click();
+    expect(await edit.getAttribute("aria-pressed")).toBe("false");
+    expect(await preview.getAttribute("aria-pressed")).toBe("true");
+    await page.close();
+  });
+
+  test("switches a Markdown file between Edit and Preview", async () => {
+    const page = await newTestPage();
+    const editor = renderFileWorkView("workspace", { key: "file-editor:readme", path: "/work/README.md", line: 1 }, "README.md").bodyHtml!;
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<style>${workspaceStyle}</style>${editor}<script type="module" src="/workspace-test.js"></script>`,
+    }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/file-editor/content?**", (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ path: "/work/README.md", content: "# Preview", revision: "one", writable: true }),
+    }));
+    await page.route("**/file-editor/markdown-preview?**", (route) => route.fulfill({ contentType: "text/html", body: "<h1>Preview</h1>" }));
+    await page.goto("http://atelier.test/");
+    await page.locator(".file-editor-loading").waitFor({ state: "detached" });
+
+    const display = page.getByRole("group", { name: "Markdown display" });
+    const edit = display.getByRole("button", { name: "Edit" });
+    const preview = display.getByRole("button", { name: "Preview" });
+    expect(await edit.getAttribute("aria-pressed")).toBe("true");
+    expect(await preview.getAttribute("aria-pressed")).toBe("false");
+
+    await preview.click();
+    await page.getByRole("heading", { name: "Preview" }).waitFor();
+    expect(await preview.getAttribute("aria-pressed")).toBe("true");
+    await edit.click();
+    expect(await page.locator(".file-editor-host").isVisible()).toBe(true);
+    expect(await edit.getAttribute("aria-pressed")).toBe("true");
+    await page.close();
   });
 
   test("does not shift a long-running button while its state changes", async () => {

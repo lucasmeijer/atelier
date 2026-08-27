@@ -547,7 +547,9 @@ describe("update routes", () => {
     expect(response!.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
     const html = await response!.text();
     expect(html).toContain("Update available");
-    expect(html).toContain('class="settings-select" data-controller="popup-select"');
+    expect(html).toContain('role="group" aria-label="Update channel"');
+    expect(html).toContain('name="channel" value="stable" aria-pressed="true"');
+    expect(html).toContain('name="channel" value="latest" aria-pressed="false"');
     expect(html).toContain('class="button secondary progress-button"');
     expect(html).toContain('class="button primary progress-button"');
     expect(manager.snapshot().state).toBe("available");

@@ -95,6 +95,11 @@
     .progress-button-demo { display: grid; justify-items: center; gap: var(--space-lg); }
     .progress-button-demo__status { color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
 
+    .toggle-demo { min-height: 140px; display: grid; place-items: center; gap: var(--space-lg); align-content: center; }
+    .toggle-stack { display: grid; gap: var(--space-xl); }
+    .toggle-specimen { display: grid; justify-items: start; gap: var(--space-sm); }
+    .toggle-specimen-label { color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
+
     .field-stack { display: grid; gap: var(--space-xl); }
     .field-specimen { display: grid; gap: var(--space-sm); }
     .field-specimen label { color: var(--text-muted); font-size: var(--text-small); font-weight: var(--weight-semibold); }
@@ -150,6 +155,7 @@
         <a href="#typography">Typography</a>
         <a href="#spacing-shape">Spacing &amp; shape</a>
         <div class="catalogue-kicker">Components</div>
+        <a href="#toggle">Two-option toggle</a>
         <a href="#buttons">Buttons</a>
         <a href="#text-entry">Text entry</a>
         <a href="#popup-menu">Popup menu</a>
@@ -213,6 +219,57 @@
               <div class="radius-token"><i class="radius-shape" style="--token-radius:var(--radius-overlay)"></i><code>overlay</code></div>
               <div class="radius-token"><i class="radius-shape" style="--token-radius:var(--radius-round)"></i><code>round</code></div>
             </div></article>
+          </div>
+        </section>
+
+        <section class="catalogue-section" id="toggle">
+          <div class="catalogue-section-head">
+            <h2>Two-option toggle</h2>
+            <p>A compact choice between two mutually exclusive states. Both options remain visible, while a tinted surface and defined border make the current state unmistakable.</p>
+          </div>
+          <div class="catalogue-grid">
+            <article class="catalogue-card wide">
+              <div class="catalogue-card-title"><span>Interactive</span><code>.toggle + .toggle__option</code></div>
+              <div class="catalogue-demo toggle-demo">
+                <div class="toggle" role="group" aria-label="Editor display" data-catalogue-toggle>
+                  <button class="toggle__option" type="button" aria-pressed="true">Edit</button>
+                  <button class="toggle__option" type="button" aria-pressed="false">Preview</button>
+                </div>
+              </div>
+              <p class="catalogue-note">Labels name the two states—not the action of changing state—so the selected option and the available alternative can be read together.</p>
+            </article>
+            <article class="catalogue-card">
+              <div class="catalogue-card-title"><span>Either state</span><code>aria-pressed</code></div>
+              <div class="catalogue-demo toggle-demo">
+                <div class="toggle-stack">
+                  <div class="toggle-specimen"><span class="toggle-specimen-label">first selected</span><div class="toggle" role="group" aria-label="Workspace visibility example one"><button class="toggle__option" type="button" aria-pressed="true">Private</button><button class="toggle__option" type="button" aria-pressed="false">Shared</button></div></div>
+                  <div class="toggle-specimen"><span class="toggle-specimen-label">second selected</span><div class="toggle" role="group" aria-label="Workspace visibility example two"><button class="toggle__option" type="button" aria-pressed="false">Private</button><button class="toggle__option" type="button" aria-pressed="true">Shared</button></div></div>
+                </div>
+              </div>
+              <p class="catalogue-note">Selection changes only the treatment of each fixed label, so changing state never shifts the control.</p>
+            </article>
+            <article class="catalogue-card">
+              <div class="catalogue-card-title"><span>Disabled</span><code>native disabled state</code></div>
+              <div class="catalogue-demo toggle-demo">
+                <div class="toggle" role="group" aria-label="Connection mode unavailable">
+                  <button class="toggle__option" type="button" aria-pressed="true" disabled>Local</button>
+                  <button class="toggle__option" type="button" aria-pressed="false" disabled>Remote</button>
+                </div>
+              </div>
+              <p class="catalogue-note">Disable both options when the choice is unavailable.</p>
+            </article>
+            <article class="catalogue-card wide">
+              <div class="catalogue-card-title"><span>Interface</span><code>native buttons + semantic state</code></div>
+              <pre class="button-code">&lt;div class="toggle" role="group" aria-label="Editor display"&gt;
+  &lt;button class="toggle__option" type="button" aria-pressed="true"&gt;
+    Edit
+  &lt;/button&gt;
+  &lt;button class="toggle__option" type="button" aria-pressed="false"&gt;
+    Preview
+  &lt;/button&gt;
+&lt;/div&gt;</pre>
+              <p class="catalogue-note">Keep exactly one option pressed and provide a name for the group. The owner updates both states after a client-side change or server response; form buttons can submit their own name and value.</p>
+            </article>
           </div>
         </section>
 
@@ -533,6 +590,16 @@
           applyCatalogueTheme(choice.dataset.themeValue, label);
           closePopup(simplePopupTrigger, simplePopup);
         }
+      });
+    });
+
+    document.querySelectorAll("[data-catalogue-toggle]").forEach((toggle) => {
+      toggle.addEventListener("click", (event) => {
+        const choice = event.target.closest(".toggle__option:not(:disabled)");
+        if (!choice || choice.getAttribute("aria-pressed") === "true") return;
+        toggle.querySelectorAll(".toggle__option").forEach((option) => {
+          option.setAttribute("aria-pressed", String(option === choice));
+        });
       });
     });
 

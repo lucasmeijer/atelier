@@ -214,6 +214,54 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   .button svg { width: 20px; height: 20px; }
 }
 
+/* A two-option toggle keeps the current choice and its alternative visible at once. */
+.toggle {
+  display: inline-flex;
+  max-width: 100%;
+  gap: var(--space-2xs);
+  padding: var(--space-2xs);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-round);
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+}
+.toggle__option {
+  min-width: 0;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-lg);
+  border: 1px solid transparent;
+  border-radius: var(--radius-round);
+  outline: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-small);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-standard);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+.toggle__option[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: var(--accent-soft);
+  color: var(--text);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 12%, transparent);
+}
+.toggle__option:not(:disabled):hover,
+.toggle__option:not(:disabled):focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  color: var(--text);
+}
+.toggle__option:not([aria-pressed="true"]):not(:disabled):hover,
+.toggle__option:not([aria-pressed="true"]):not(:disabled):focus-visible { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.toggle__option:disabled { opacity: .45; cursor: default; }
+@media (max-width: 700px) {
+  .toggle__option { height: 32px; padding-inline: var(--space-xl); }
+}
+
 /* A long-running button sizes itself to its widest state and traces determinate progress around its perimeter. */
 .progress-button {
   --button-progress: 0;
@@ -410,6 +458,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 @media (prefers-reduced-motion: reduce) {
   .button,
   .button .progress-button__perimeter rect,
+  .toggle__option,
   .text-field,
   .textarea,
   .disclosure-icon { transition-duration: 1ms; }

@@ -55,11 +55,12 @@ function languageExtension(path: string): Extension {
 
 type EditorFileResponse = { path: string; content: string; revision: string; writable: boolean };
 type EditorRefreshDetail = { workspaceId: string; viewKey?: string; line?: number; column?: number };
+type PreviewModeEvent = Event & { readonly currentTarget: HTMLButtonElement };
 
 function createFileEditorController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FileEditorController extends Controller {
     static values = { workspaceId: String, path: String, contentUrl: String, line: Number, column: Number };
-    static targets = ["host", "loading", "status", "conflict", "preview", "previewToggle"];
+    static targets = ["host", "loading", "status", "conflict", "preview", "previewOption"];
 
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
@@ -72,7 +73,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     declare readonly statusTarget: HTMLElement;
     declare readonly conflictTarget: HTMLDialogElement;
     declare readonly previewTarget: HTMLElement;
-    declare readonly previewToggleTarget: HTMLButtonElement;
+    declare readonly previewOptionTargets: HTMLButtonElement[];
     declare readonly hasPreviewTarget: boolean;
 
     private view?: EditorView;
@@ -102,9 +103,12 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       await this.save(true);
     }
 
-    async togglePreview(): Promise<void> {
-      if (this.previewTarget.hidden) await this.showPreview();
-      else this.showRaw();
+    async selectPreviewMode(event: PreviewModeEvent): Promise<void> {
+      if (event.currentTarget.dataset.previewMode === "preview") {
+        if (this.previewTarget.hidden) await this.showPreview();
+      } else {
+        this.showRaw();
+      }
     }
 
     useTheirs(): void {
@@ -230,7 +234,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
 
     private async showPreview(): Promise<void> {
       const sequence = ++this.previewSequence;
-      this.previewToggleTarget.disabled = true;
+      this.previewOptionTargets.forEach((option) => { option.disabled = true; });
       const previewUrl = `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/file-editor/markdown-preview?${new URLSearchParams({ path: this.pathValue })}`;
       const response = await fetch(previewUrl, {
         method: "POST",
@@ -253,9 +257,10 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private setPreviewVisible(visible: boolean): void {
       this.previewTarget.hidden = !visible;
       this.hostTarget.hidden = visible;
-      this.previewToggleTarget.disabled = false;
-      this.previewToggleTarget.textContent = visible ? "Raw" : "Preview";
-      this.previewToggleTarget.setAttribute("aria-pressed", String(visible));
+      this.previewOptionTargets.forEach((option) => {
+        option.disabled = false;
+        option.setAttribute("aria-pressed", String(option.dataset.previewMode === (visible ? "preview" : "edit")));
+      });
     }
 
     private refreshVisiblePreview(): void {

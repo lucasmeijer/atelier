@@ -9,13 +9,13 @@ type StimulusActionEvent<EventType extends Event, CurrentTarget extends EventTar
 
 function createFilesController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FilesController extends Controller {
-    static values = { workspaceId: String, path: String, uploadUrl: String };
-    static targets = ["progress", "status"];
+    static values = { path: String, uploadUrl: String };
+    static targets = ["listing", "progress", "status"];
 
     declare readonly element: HTMLElement;
-    declare readonly workspaceIdValue: string;
     declare readonly pathValue: string;
     declare readonly uploadUrlValue: string;
+    declare readonly listingTarget: HTMLFormElement;
     declare readonly progressTarget: HTMLElement;
     declare readonly statusTarget: HTMLElement;
 
@@ -83,12 +83,8 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
       void this.startUpload(event, row.dataset.filesDestination!);
     }
 
-    toggleHidden(event: StimulusActionEvent<Event, HTMLInputElement>): void {
-      this.navigateFrame(this.listingUrl(event.currentTarget.checked));
-    }
-
     refresh(): void {
-      this.navigateFrame(this.listingUrl(this.element.querySelector<HTMLInputElement>(".files-hidden-toggle input")!.checked));
+      this.listingTarget.requestSubmit(this.listingTarget.querySelector<HTMLButtonElement>('[aria-pressed="true"]')!);
     }
 
     openDirectory(event: StimulusActionEvent<MouseEvent, HTMLElement>): void {
@@ -214,19 +210,6 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
     private showProgress(): void {
       this.element.querySelector<HTMLElement>(".files-upload-status")!.hidden = false;
       this.updateProgress();
-    }
-
-    private listingUrl(showHidden: boolean): URL {
-      const url = new URL(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/files`, location.origin);
-      url.searchParams.set("path", this.pathValue);
-      if (showHidden) url.searchParams.set("showHidden", "1");
-      return url;
-    }
-
-    private navigateFrame(url: URL): void {
-      const frame = this.element.closest("turbo-frame");
-      if (!frame) throw new Error("Files controller must be inside a Turbo Frame");
-      frame.setAttribute("src", `${url.pathname}${url.search}`);
     }
 
     private abortUploads(): void {
