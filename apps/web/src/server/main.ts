@@ -313,16 +313,18 @@ function requestAcceptsGzip(request: Request): boolean {
 }
 
 async function serveStatic(pathname: string, request: Request): Promise<Response | undefined> {
+  let assetCacheControl = "public, max-age=31536000, immutable";
   if (pathname === "/design-system.js") {
     const manifest = parseAssetManifest(await Bun.file(new URL("../../public/assets-manifest.json", import.meta.url)).text());
-    return Response.redirect(new URL(manifest[pathname]!, request.url), 302);
+    pathname = manifest[pathname]!;
+    assetCacheControl = "no-store";
   }
   if (pathname.startsWith("/assets/")) {
     const file = Bun.file(new URL(`../../public${pathname}`, import.meta.url));
     if (!(await file.exists())) return new Response("not found", { status: 404, headers: { "content-type": "text/plain" } });
     const headers = new Headers({
       "content-type": contentTypeForStaticPath(pathname),
-      "cache-control": "public, max-age=31536000, immutable",
+      "cache-control": assetCacheControl,
       "vary": "Accept-Encoding",
     });
     if (requestAcceptsGzip(request)) {

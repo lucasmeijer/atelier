@@ -89,27 +89,44 @@ class CopyButtonController extends Controller<HTMLButtonElement> {
 }
 
 class ToggleController extends Controller<HTMLElement> {
+  private resizeObserver?: ResizeObserver;
+  private readyFrame?: number;
+
   connect(): void {
     this.element.addEventListener("click", this.selectFromClick);
     this.element.addEventListener("keydown", this.selectFromKeyboard);
+    if (!this.element.classList.contains("text-toggle")) return;
+    this.positionIndicator();
+    this.resizeObserver = new ResizeObserver(() => this.positionIndicator());
+    this.resizeObserver.observe(this.element);
+    this.readyFrame = requestAnimationFrame(() => this.element.setAttribute("data-text-toggle-ready", ""));
   }
 
   disconnect(): void {
     this.element.removeEventListener("click", this.selectFromClick);
     this.element.removeEventListener("keydown", this.selectFromKeyboard);
+    this.resizeObserver?.disconnect();
+    if (this.readyFrame !== undefined) cancelAnimationFrame(this.readyFrame);
   }
 
   private options(): HTMLButtonElement[] {
-    return Array.from(this.element.querySelectorAll<HTMLButtonElement>(".toggle__option:not(:disabled)"));
+    return Array.from(this.element.querySelectorAll<HTMLButtonElement>("button[aria-pressed]:not(:disabled)"));
   }
 
   private select(option: HTMLButtonElement): void {
     for (const candidate of this.options()) candidate.setAttribute("aria-pressed", String(candidate === option));
+    if (this.resizeObserver) this.positionIndicator(option);
     option.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
+  private readonly positionIndicator = (selected = this.element.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')): void => {
+    if (!selected) return;
+    this.element.style.setProperty("--text-toggle-indicator-left", `${selected.offsetLeft}px`);
+    this.element.style.setProperty("--text-toggle-indicator-width", `${selected.offsetWidth}px`);
+  };
+
   private readonly selectFromClick = (event: MouseEvent): void => {
-    const option = event.target instanceof Element ? event.target.closest<HTMLButtonElement>(".toggle__option:not(:disabled)") : null;
+    const option = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button[aria-pressed]:not(:disabled)") : null;
     if (option && this.element.contains(option)) this.select(option);
   };
 
@@ -205,7 +222,8 @@ const automaticBehaviors = [
   [".managed-list", "managed-list"],
   [".popup-menu-anchor", "popup-menu"],
   [".popup-select", "popup-select"],
-  [".toggle", "toggle"],
+  [".button-toggle", "button-toggle"],
+  [".text-toggle", "text-toggle"],
 ] as const;
 
 function attachAutomaticBehaviors(root: ParentNode): void {
@@ -229,7 +247,8 @@ export function registerDesignSystemControllers(application: Pick<Application, "
   application.register("managed-list", ManagedListController);
   application.register("popup-menu", PopupMenuController);
   application.register("popup-select", PopupSelectController);
-  application.register("toggle", ToggleController);
+  application.register("button-toggle", ToggleController);
+  application.register("text-toggle", ToggleController);
   attachAutomaticBehaviors(document);
   new MutationObserver((records) => {
     for (const record of records) for (const node of record.addedNodes) if (node instanceof Element) attachAutomaticBehaviors(node);

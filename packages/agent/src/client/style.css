@@ -438,7 +438,7 @@ summary > .agent-tool-head { width: 100%; }
 
 .agent-tool-detail { margin: var(--space-2xs) 0 var(--space-md); padding: 0; border: 1px solid var(--line); border-radius: var(--radius-control); overflow: hidden; background: var(--panel); }
 .agent-region-header { min-height: 29px; padding: var(--space-xs) var(--space-md); display: flex; align-items: center; gap: var(--space-md); color: var(--text); background: color-mix(in srgb, var(--bg) 82%, #000 6%); border-bottom: 1px solid color-mix(in srgb, var(--text) 15%, transparent); }
-.agent-region-header > .toggle { margin-left: auto; }
+.agent-region-header > .text-toggle { margin-left: auto; }
 .agent-source-region, .agent-tool-region { margin: 0; padding: 0; }
 .agent-tool-region + .agent-tool-region { border-top: 1px solid color-mix(in srgb, var(--text) 15%, transparent); }
 .agent-bash-detail > :is(.agent-tool-region, .agent-detail-fullscreen) + :is(.agent-tool-region, .agent-detail-fullscreen) { border-top: 1px solid color-mix(in srgb, var(--text) 15%, transparent); }

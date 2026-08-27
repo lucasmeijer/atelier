@@ -666,7 +666,7 @@ function copyableToolBody(body: string, label: string): string {
 
 export function renderObservedBashTabs(_key: string, tool: ToolView): string {
   const hasModel = !bashViews(tool, 100).same;
-  return `<div class="agent-region-header agent-observed-tabs"><span>Result</span><div class="toggle" role="group" aria-label="Result view" data-controller="toggle"><button class="toggle__option" type="button" data-agent-region-view="live" aria-pressed="true">Live</button><button class="toggle__option" type="button" data-agent-region-view="primary" aria-pressed="false">Colored</button>${hasModel ? `<button class="toggle__option" type="button" data-agent-region-view="model" aria-pressed="false">As seen by model</button>` : ""}</div></div>`;
+  return `<div class="agent-region-header agent-observed-tabs"><span>Result</span><div class="text-toggle" role="group" aria-label="Result view"><button class="text-toggle__option" type="button" data-agent-region-view="live" aria-pressed="true">Live</button><button class="text-toggle__option" type="button" data-agent-region-view="primary" aria-pressed="false">Colored</button>${hasModel ? `<button class="text-toggle__option" type="button" data-agent-region-view="model" aria-pressed="false">As seen by model</button>` : ""}</div></div>`;
 }
 
 export function renderObservedBashCompletion(ctx: AgentRenderContext, key: string, tool: ToolView, count = 100): string {
@@ -679,7 +679,7 @@ export function renderObservedBashCompletion(ctx: AgentRenderContext, key: strin
 }
 
 function comparisonHeader(title: string, primaryLabel: string, secondaryLabel = "As seen by model"): string {
-  return `<div class="agent-region-header agent-region-tabs"><span>${title}</span><div class="toggle" role="group" aria-label="${title} view" data-controller="toggle"><button class="toggle__option" type="button" data-agent-region-view="primary" aria-pressed="true">${primaryLabel}</button><button class="toggle__option" type="button" data-agent-region-view="model" aria-pressed="false">${secondaryLabel}</button></div></div>`;
+  return `<div class="agent-region-header agent-region-tabs"><span>${title}</span><div class="text-toggle" role="group" aria-label="${title} view"><button class="text-toggle__option" type="button" data-agent-region-view="primary" aria-pressed="true">${primaryLabel}</button><button class="text-toggle__option" type="button" data-agent-region-view="model" aria-pressed="false">${secondaryLabel}</button></div></div>`;
 }
 
 function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {

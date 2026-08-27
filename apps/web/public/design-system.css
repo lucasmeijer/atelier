@@ -72,6 +72,8 @@
   --success-soft: color-mix(in srgb, var(--success) 15%, var(--panel));
   --warning-soft: color-mix(in srgb, var(--warning) 15%, var(--panel));
   --danger-soft: color-mix(in srgb, var(--danger) 15%, var(--panel));
+  --button-border: color-mix(in srgb, var(--accent) 20%, var(--line));
+  --button-hover-border: color-mix(in srgb, var(--accent) 65%, var(--text));
 }
 
 /* Phone layouts favor legibility and comfortable touch targets over density. */
@@ -181,10 +183,8 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 
 /* Compact actions. Variants set state roles; the shared implementation owns every visual value. */
 .button {
-  --button-border: color-mix(in srgb, var(--accent) 20%, var(--line));
   --button-background: color-mix(in srgb, var(--panel) 72%, transparent);
   --button-foreground: var(--text-muted);
-  --button-hover-border: color-mix(in srgb, var(--accent) 65%, var(--text));
   --button-hover-background: var(--elev);
   --button-hover-foreground: var(--text);
   height: 26px;
@@ -247,8 +247,8 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   .button svg { width: 20px; height: 20px; }
 }
 
-/* A two-option toggle keeps the current choice and its alternative visible at once. */
-.toggle {
+/* A button toggle keeps the current choice and its alternatives visible at once. */
+.button-toggle {
   display: inline-flex;
   max-width: 100%;
   gap: var(--space-2xs);
@@ -257,7 +257,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   border-radius: var(--radius-round);
   background: color-mix(in srgb, var(--panel) 72%, transparent);
 }
-.toggle__option {
+.button-toggle__option {
   min-width: 0;
   height: 26px;
   display: inline-flex;
@@ -277,22 +277,72 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
-.toggle__option[aria-pressed="true"] {
+.button-toggle__option[aria-pressed="true"] {
   border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
   background: var(--accent-soft);
   color: var(--text);
   box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 12%, transparent);
 }
-.toggle__option:not(:disabled):hover,
-.toggle__option:not(:disabled):focus-visible {
+.button-toggle__option:not(:disabled):hover,
+.button-toggle__option:not(:disabled):focus-visible {
   border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
   color: var(--text);
 }
-.toggle__option:not([aria-pressed="true"]):not(:disabled):hover,
-.toggle__option:not([aria-pressed="true"]):not(:disabled):focus-visible { background: color-mix(in srgb, var(--accent) 7%, transparent); }
-.toggle__option:disabled { opacity: .45; cursor: default; }
+.button-toggle__option:not([aria-pressed="true"]):not(:disabled):hover,
+.button-toggle__option:not([aria-pressed="true"]):not(:disabled):focus-visible { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.button-toggle__option:disabled { opacity: .45; cursor: default; }
+
+/* A text toggle marks its selected option with a sliding button-hover border. */
+.text-toggle {
+  --text-toggle-indicator-left: 0px;
+  --text-toggle-indicator-width: 0px;
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: var(--space-xl);
+  font: 400 var(--text-body)/var(--leading-standard) var(--font-sans);
+}
+.text-toggle::after {
+  content: "";
+  position: absolute;
+  top: calc(50% + .6em);
+  left: var(--text-toggle-indicator-left);
+  width: var(--text-toggle-indicator-width);
+  height: 2px;
+  border-radius: var(--radius-round);
+  background: var(--button-hover-border);
+  pointer-events: none;
+}
+.text-toggle[data-text-toggle-ready]::after {
+  transition: left 180ms cubic-bezier(.2, .8, .2, 1), width 180ms cubic-bezier(.2, .8, .2, 1);
+}
+.text-toggle__option {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-indicator);
+  outline: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+.text-toggle__option[aria-pressed="true"],
+.text-toggle__option:not(:disabled):hover { color: var(--text); }
+.text-toggle__option:focus-visible {
+  outline: 2px solid var(--button-border);
+  outline-offset: 2px;
+  color: var(--text);
+}
+.text-toggle__option:disabled { opacity: .45; cursor: default; }
 @media (max-width: 700px) {
-  .toggle__option { height: 44px; padding-inline: var(--space-xl); }
+  .button-toggle__option { height: 44px; padding-inline: var(--space-xl); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .text-toggle[data-text-toggle-ready]::after { transition: none; }
 }
 
 /* A long-running button sizes itself to its widest state and traces determinate progress around its perimeter. */
@@ -612,7 +662,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 @media (prefers-reduced-motion: reduce) {
   .button,
   .button .progress-button__perimeter rect,
-  .toggle__option,
+  .button-toggle__option,
   .text-field,
   .textarea,
   .disclosure-icon { transition-duration: 1ms; }

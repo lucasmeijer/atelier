@@ -76,22 +76,30 @@ describe("Atelier browser behavior", () => {
     await mobilePage.close();
   });
 
-  test("keeps both toggle choices visible while exposing the selected state", async () => {
+  test("toggle variants expose selection and support keyboard navigation", async () => {
     const page = await newTestPage();
     await page.route("http://catalogue.test/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
     await page.route("http://catalogue.test/design-system.css", (route) => route.fulfill({ contentType: "text/css", body: workspaceStyle }));
     await page.route("http://catalogue.test/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
     await page.goto("http://catalogue.test/design-system-catalogue.html?embedded=1");
 
-    const toggle = page.locator("[data-catalogue-toggle]");
-    const edit = toggle.getByRole("button", { name: "Edit" });
-    const preview = toggle.getByRole("button", { name: "Preview" });
+    const buttonToggle = page.locator("[data-catalogue-button-toggle]");
+    const edit = buttonToggle.getByRole("button", { name: "Edit" });
+    const preview = buttonToggle.getByRole("button", { name: "Preview" });
     expect(await edit.getAttribute("aria-pressed")).toBe("true");
-    expect(await preview.getAttribute("aria-pressed")).toBe("false");
-
     await preview.click();
     expect(await edit.getAttribute("aria-pressed")).toBe("false");
     expect(await preview.getAttribute("aria-pressed")).toBe("true");
+
+    const textToggle = page.locator("[data-catalogue-text-toggle]");
+    const overview = textToggle.getByRole("button", { name: "Overview" });
+    const activity = textToggle.getByRole("button", { name: "Recent activity" });
+    await overview.focus();
+    await page.keyboard.press("ArrowRight");
+    expect(await overview.getAttribute("aria-pressed")).toBe("false");
+    expect(await activity.getAttribute("aria-pressed")).toBe("true");
+    expect(await activity.evaluate((element) => element === document.activeElement)).toBe(true);
+    expect(Number.parseFloat(await textToggle.evaluate((element) => element.style.getPropertyValue("--text-toggle-indicator-width")))).toBeGreaterThan(0);
     await page.close();
   });
 

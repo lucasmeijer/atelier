@@ -264,7 +264,7 @@ function renderUpdateSettings(updateManager: UpdateManager): string {
   const snapshot = updateManager.snapshot();
   const status = updateStatusText(snapshot);
   const controlsDisabled = !snapshot.selfUpdatable || snapshot.state === "pulling" || snapshot.state === "restarting";
-  const channelToggle = `<form class="toggle" role="group" aria-label="Update channel" method="post" action="/settings/update-channel" data-turbo="true">${(["stable", "latest"] as const).map((channel) => `<button class="toggle__option" type="submit" name="channel" value="${channel}" aria-pressed="${snapshot.releaseChannel === channel}"${controlsDisabled ? " disabled" : ""}>${channel === "stable" ? "Stable" : "Latest"}</button>`).join("")}</form>`;
+  const channelToggle = `<form class="button-toggle" role="group" aria-label="Update channel" method="post" action="/settings/update-channel" data-turbo="true">${(["stable", "latest"] as const).map((channel) => `<button class="button-toggle__option" type="submit" name="channel" value="${channel}" aria-pressed="${snapshot.releaseChannel === channel}"${controlsDisabled ? " disabled" : ""}>${channel === "stable" ? "Stable" : "Latest"}</button>`).join("")}</form>`;
   const checkButton = progressButtonHtml({
     initialHtml: "Check now",
     inProgressHtml: `${updateSpinnerHtml}Checking…`,
