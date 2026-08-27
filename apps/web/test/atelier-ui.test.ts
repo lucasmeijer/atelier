@@ -7,6 +7,7 @@ let browser: Browser;
 let browserContext: BrowserContext;
 let workspaceClient: string;
 let workspaceStyle: string;
+let catalogueHtml: string;
 
 async function newTestPage(options: { viewport?: { width: number; height: number }; reducedMotion?: "reduce" | "no-preference" } = {}): Promise<Page> {
   const page = await browserContext.newPage();
@@ -44,6 +45,7 @@ beforeAll(async () => {
   const designSystemStyle = await Bun.file(new URL("../public/design-system.css", import.meta.url)).text();
   const shellStyle = await Bun.file(new URL("../public/style.css", import.meta.url)).text();
   workspaceStyle = `${designSystemStyle}\n${shellStyle}`;
+  catalogueHtml = await Bun.file(new URL("../public/design-system-catalogue.html", import.meta.url)).text();
   const executablePath = process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/local/bin/chromium";
   browser = await chromium.launch({ executablePath, headless: true });
   browserContext = await browser.newContext();
@@ -79,6 +81,59 @@ describe("Atelier Playwright helper", () => {
       return { width: style.width, background: style.backgroundColor, borderRadius: style.borderRadius };
     })).toEqual({ width: "760px", background: "rgb(255, 255, 255)", borderRadius: "14px" });
     await page.close();
+  });
+
+  test("lets the design catalogue force mobile and desktop responsive previews", async () => {
+    const serveCatalogue = async (page: Page) => {
+      await page.route("http://catalogue.test/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
+      await page.route("http://catalogue.test/design-system.css", (route) => route.fulfill({ contentType: "text/css", body: workspaceStyle }));
+      await page.goto("http://catalogue.test/design-system-catalogue.html");
+    };
+    const desktopPage = await newTestPage({ viewport: { width: 1280, height: 800 } });
+    await serveCatalogue(desktopPage);
+    const frame = desktopPage.locator(".catalogue-platform-frame");
+    expect(await desktopPage.locator('[data-catalogue-platform="desktop"]').getAttribute("aria-pressed")).toBe("true");
+    expect(await frame.evaluate(dimensions)).toEqual({ width: "1024px", height: "748px" });
+    expect(await desktopPage.frameLocator(".catalogue-platform-frame").locator("#buttons .button").first().evaluate((button) => getComputedStyle(button).height)).toBe("26px");
+
+    await desktopPage.locator('[data-catalogue-platform="mobile"]').click();
+    expect(await desktopPage.locator('[data-catalogue-platform="mobile"]').getAttribute("aria-pressed")).toBe("true");
+    expect(await frame.evaluate(dimensions)).toEqual({ width: "390px", height: "748px" });
+    expect(await desktopPage.frameLocator(".catalogue-platform-frame").locator("#buttons .button").first().evaluate((button) => getComputedStyle(button).height)).toBe("32px");
+    await desktopPage.close();
+
+    const mobilePage = await newTestPage({ viewport: { width: 390, height: 844 } });
+    await serveCatalogue(mobilePage);
+    expect(await mobilePage.locator('[data-catalogue-platform="mobile"]').getAttribute("aria-pressed")).toBe("true");
+    await mobilePage.close();
+  });
+
+  test("makes design-system buttons easier to tap on mobile while preserving desktop density", async () => {
+    const buttonFixture = `<style>${workspaceStyle}</style>
+      <button id="label" class="button">Continue</button>
+      <button id="icon" class="button icon-only" aria-label="Add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>`;
+    const sizes = async (viewport: { width: number; height: number }) => {
+      const page = await newTestPage({ viewport });
+      await page.setContent(buttonFixture);
+      const result = {
+        label: await page.locator("#label").evaluate((element) => {
+          const style = getComputedStyle(element);
+          return { height: style.height, paddingInline: style.paddingInline };
+        }),
+        icon: await page.locator("#icon").evaluate(dimensions),
+      };
+      await page.close();
+      return result;
+    };
+
+    expect(await sizes({ width: 390, height: 844 })).toEqual({
+      label: { height: "32px", paddingInline: "16px" },
+      icon: { width: "32px", height: "32px" },
+    });
+    expect(await sizes({ width: 1024, height: 768 })).toEqual({
+      label: { height: "26px", paddingInline: "12px" },
+      icon: { width: "26px", height: "26px" },
+    });
   });
 
   test("keeps long-running button dimensions and colors stable across caller-supplied states", async () => {

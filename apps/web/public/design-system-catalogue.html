@@ -15,6 +15,16 @@
     code { font-family: var(--font-mono); font-size: .88em; }
     a { color: inherit; }
 
+    .catalogue-platform-bar { position: sticky; z-index: 10; top: 0; min-height: 52px; display: flex; align-items: center; justify-content: center; gap: var(--space-lg); padding: var(--space-md) var(--space-xl); border-bottom: 1px solid var(--line); background: var(--panel); }
+    .catalogue-platform-label { color: var(--text-muted); font-size: var(--text-small); font-weight: var(--weight-semibold); }
+    .catalogue-platform-selector { display: inline-flex; gap: var(--space-xs); padding: var(--space-xs); border: 1px solid var(--line); border-radius: var(--radius-round); background: var(--bg); }
+    .catalogue-platform-selector .button { border-color: transparent; background: transparent; }
+    .catalogue-platform-selector .button[aria-pressed="true"] { border-color: var(--button-border); background: var(--elev); color: var(--text); box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 12%, transparent); }
+    .catalogue-platform-stage { height: calc(100dvh - 52px); overflow: auto; background: color-mix(in srgb, var(--bg) 86%, var(--text)); }
+    .catalogue-platform-frame { display: block; height: 100%; margin: 0 auto; border: 0; background: var(--bg); box-shadow: 0 0 0 1px var(--line-strong), 0 12px 36px color-mix(in srgb, var(--text) 14%, transparent); }
+    .catalogue-platform-frame[data-platform="mobile"] { width: min(390px, 100%); }
+    .catalogue-platform-frame[data-platform="desktop"] { width: clamp(701px, 100%, 1024px); }
+
     .catalogue-shell { display: grid; grid-template-columns: 228px minmax(0, 1fr); min-height: 100vh; }
     .catalogue-nav { position: sticky; top: 0; height: 100vh; padding: var(--space-2xl) var(--space-xl); border-right: 1px solid var(--line); background: var(--panel); }
     .catalogue-brand { display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-2xl); font-weight: var(--weight-semibold); }
@@ -154,7 +164,7 @@
       <header class="catalogue-hero">
         <div class="catalogue-eyebrow">Design system · live catalogue</div>
         <h1>A compact interface for operating software.</h1>
-        <p>Shipped foundations, components, and patterns from <code>design-system.css</code>. Change the theme to inspect every example against the same semantic contract.</p>
+        <p>Shipped foundations, components, and patterns from <code>design-system.css</code>. Change the theme while the preview selector controls the responsive platform.</p>
         <div class="catalogue-toolbar">
           <div class="catalogue-field popup-menu-anchor"><span class="catalogue-theme-dot"></span><span>Theme</span>
             <button class="button secondary catalogue-theme-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="catalogue-theme-popup"><span data-catalogue-theme-value>Nord</span><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button>
@@ -222,7 +232,7 @@
               <p class="catalogue-note">Keyboard focus intentionally uses the same treatment as hover for every variant.</p>
             </article>
             <article class="catalogue-card">
-              <div class="catalogue-card-title"><span>Icon only</span><code>26 × 26</code></div>
+              <div class="catalogue-card-title"><span>Icon only</span><code>26 desktop · 32 mobile</code></div>
               <div class="catalogue-demo">
                 <div class="button-specimen"><span class="button-specimen-label">primary</span><button class="button primary icon-only" type="button" aria-label="Add workspace" title="Add workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>
                 <div class="button-specimen"><span class="button-specimen-label">secondary</span><button class="button secondary icon-only" type="button" aria-label="More options" title="More options"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/></svg></button></div>
@@ -446,6 +456,31 @@
   </div>
 
   <script>
+    const catalogueParams = new URLSearchParams(location.search);
+    if (!catalogueParams.has("embedded")) {
+      const requestedPlatform = catalogueParams.get("platform");
+      const detectedPlatform = navigator.maxTouchPoints > 0 || matchMedia("(pointer: coarse)").matches || matchMedia("(max-width: 700px)").matches ? "mobile" : "desktop";
+      const initialPlatform = requestedPlatform === "mobile" || requestedPlatform === "desktop" ? requestedPlatform : detectedPlatform;
+      document.body.innerHTML = `<header class="catalogue-platform-bar">
+        <span class="catalogue-platform-label">Preview</span>
+        <div class="catalogue-platform-selector" role="group" aria-label="Preview platform">
+          <button class="button" type="button" data-catalogue-platform="mobile" aria-pressed="false">Mobile</button>
+          <button class="button" type="button" data-catalogue-platform="desktop" aria-pressed="false">Desktop</button>
+        </div>
+      </header><main class="catalogue-platform-stage"><iframe class="catalogue-platform-frame" title="Design system catalogue preview"></iframe></main>`;
+      const platformFrame = document.querySelector(".catalogue-platform-frame");
+      const platformChoices = document.querySelectorAll("[data-catalogue-platform]");
+      function showPlatform(platform) {
+        platformFrame.dataset.platform = platform;
+        platformFrame.src = `${location.pathname}?embedded=1&platform=${platform}`;
+        platformChoices.forEach((choice) => choice.setAttribute("aria-pressed", String(choice.dataset.cataloguePlatform === platform)));
+        const url = new URL(location.href);
+        url.searchParams.set("platform", platform);
+        history.replaceState(null, "", url);
+      }
+      platformChoices.forEach((choice) => choice.addEventListener("click", () => showPlatform(choice.dataset.cataloguePlatform)));
+      showPlatform(initialPlatform);
+    } else {
     const themePopupTrigger = document.querySelector(".catalogue-theme-trigger");
     const themePopup = document.querySelector("#catalogue-theme-popup");
     const popupTrigger = document.querySelector(".popup-trigger");
@@ -527,6 +562,7 @@
         }
       }, 100);
     });
+    }
   </script>
 </body>
 </html>

@@ -197,6 +197,12 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .button svg { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .button svg circle { fill: currentColor; stroke: none; }
 
+/* Give compact controls a larger touch target on narrow screens without changing desktop density. */
+@media (max-width: 700px) {
+  .button { height: 32px; padding-inline: var(--space-xl); }
+  .button.icon-only { width: 32px; padding: 0; }
+}
+
 /* A long-running button sizes itself to its widest state and traces determinate progress around its perimeter. */
 .progress-button {
   --button-progress: 0;
@@ -242,6 +248,9 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
   transition: stroke-dasharray 150ms linear;
+}
+@media (max-width: 700px) {
+  .button .progress-button__perimeter rect { rx: 16px; }
 }
 .activity-spinner {
   width: 14px;
