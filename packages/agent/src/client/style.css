@@ -382,7 +382,7 @@
 .agent-promptbox form { min-height: calc(1.5em * 2 + 21px); }
 .agent-input-area { position: relative; }
 .agent-input { font: 400 var(--text-body)/var(--leading-copy) var(--font-sans); padding: var(--space-lg) 58px var(--space-sm) var(--space-xl); min-height: calc(1.5em * 2 + 21px); max-height: var(--agent-input-max-height); }
-.agent-input-area .transcription-button { position: absolute; right: 10px; bottom: 98px; translate: 0 50%; }
+.agent-input-area .transcription-button { position: absolute; top: 10px; right: 10px; }
 .agent-input::placeholder { color: var(--text-faint); font: inherit; }
 .agent-pane .agent-input {
   min-height: calc(1.5em * 4 + 21px);
