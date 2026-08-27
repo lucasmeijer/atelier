@@ -215,9 +215,11 @@ export function renderWorkspacePane(presentation: WorkspacePanePresentation, sid
   </aside>`;
 }
 
+const mobileActionItemClasses = "action-item action-item__primary";
+
 export function renderEmptyWorkspaceMobileNavigation(): string {
-  return `<nav class="fixed-shell-mobile-nav fixed-shell-empty-mobile-nav" aria-label="Workspace destinations">
-    <button class="fixed-shell-mobile-fixed" type="button" aria-label="Workspace" title="Workspace" data-empty-workspace-mobile-destination data-action="click->workspace-navigation#showWorkspacePane">${icon("workspace")}</button>
+  return `<nav class="fixed-shell-mobile-nav fixed-shell-empty-mobile-nav button-group" aria-label="Workspace destinations">
+    <button class="fixed-shell-mobile-fixed ${mobileActionItemClasses}" type="button" aria-label="Workspace" title="Workspace" data-empty-workspace-mobile-destination data-action="click->workspace-navigation#showWorkspacePane">${icon("workspace")}</button>
   </nav>`;
 }
 
@@ -289,8 +291,15 @@ function mobileWorkIcon(view: WorkPaneContribution): IconName {
   return "file";
 }
 
+function renderMobileDestination(label: string, destination: string, iconName: IconName, options: { fixed?: boolean; attention?: boolean } = {}): string {
+  const escapedLabel = escapeHtml(label);
+  const fixedClass = options.fixed ? "fixed-shell-mobile-fixed " : "";
+  const attention = options.attention ? '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>' : "";
+  return `<button class="${fixedClass}${mobileActionItemClasses}" type="button" aria-label="${escapedLabel}" title="${escapedLabel}" data-mobile-destination="${escapeHtml(destination)}" data-action="click->workspace-presentation#selectMobileDestination">${icon(iconName)}${attention}</button>`;
+}
+
 function renderMobileDirectWorkViews(views: readonly WorkPaneContribution[]): string {
-  return views.filter((view) => view.mobileDestination === "direct").map((view) => `<button type="button" aria-label="${escapeHtml(view.label)}" title="${escapeHtml(view.label)}" data-mobile-destination="work:${escapeHtml(view.key)}" data-action="click->workspace-presentation#selectMobileDestination">${icon(mobileWorkIcon(view))}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>'}</button>`).join("");
+  return views.filter((view) => view.mobileDestination === "direct").map((view) => renderMobileDestination(view.label, `work:${view.key}`, mobileWorkIcon(view), { attention: view.attentionSequence !== undefined })).join("");
 }
 
 function renderMobileSecondaryWorkViews(views: readonly WorkPaneContribution[]): string {
@@ -306,7 +315,7 @@ function renderMobileWorkViewCloser(view: WorkPaneContribution): string {
 }
 
 function renderMobileNavigation(presentation: WorkspacePresentation): string {
-  const agents = presentation.agentConversations.map((agent) => `<button type="button" aria-label="${escapeHtml(agent.title)}" title="${escapeHtml(agent.title)}" data-mobile-destination="agent:${escapeHtml(agent.id)}" data-action="click->workspace-presentation#selectMobileDestination">${icon("agent")}</button>`).join("");
+  const agents = presentation.agentConversations.map((agent) => renderMobileDestination(agent.title, `agent:${agent.id}`, "agent")).join("");
   const direct = renderMobileDirectWorkViews(presentation.workViews);
   const openSecondary = renderMobileSecondaryWorkViews(presentation.workViews);
   const filesCommand = presentation.workViews.some((view) => view.key.startsWith("files:")) ? undefined : presentation.commands?.find((command) => command.id === "files.open");
@@ -316,10 +325,10 @@ function renderMobileNavigation(presentation: WorkspacePresentation): string {
   const closers = presentation.agentConversations.map((agent) => agent.close ? renderMobileCloser(`agent:${agent.id}`, agent.close) : "").join("")
     + presentation.workViews.map(renderMobileWorkViewCloser).join("");
   const hiddenAttention = presentation.workViews.some((view) => view.mobileDestination === "more" && view.attentionSequence !== undefined);
-  return `<nav class="fixed-shell-mobile-nav" aria-label="Workspace destinations">
-    <button class="fixed-shell-mobile-fixed" type="button" aria-label="Workspace" title="Workspace" data-mobile-destination="workspace" data-action="click->workspace-presentation#selectMobileDestination">${icon("workspace")}</button>
-    <div class="fixed-shell-mobile-scroll">${agents}<span id="${workViewDomId(presentation.workspace.id, "mobile_direct")}" class="fixed-shell-mobile-work-items">${direct}</span></div>
-    <button class="fixed-shell-mobile-fixed" type="button" aria-label="More" title="More" data-mobile-more data-action="click->workspace-presentation#toggleMore">${icon("more")}${hiddenAttention ? '<i class="fixed-shell-attention-dot" aria-label="Hidden Attention"></i>' : ""}</button>
+  return `<nav class="fixed-shell-mobile-nav button-group" aria-label="Workspace destinations">
+    ${renderMobileDestination("Workspace", "workspace", "workspace", { fixed: true })}
+    <div class="fixed-shell-mobile-scroll button-group">${agents}<span id="${workViewDomId(presentation.workspace.id, "mobile_direct")}" class="fixed-shell-mobile-work-items button-group">${direct}</span></div>
+    <button class="fixed-shell-mobile-fixed ${mobileActionItemClasses}" type="button" aria-label="More" title="More" data-mobile-more data-action="click->workspace-presentation#toggleMore">${icon("more")}${hiddenAttention ? '<i class="fixed-shell-attention-dot" aria-label="Hidden Attention"></i>' : ""}</button>
     <section class="fixed-shell-more-menu" data-workspace-presentation-target="moreMenu" aria-label="More" hidden>
       <header><button type="button" class="fixed-shell-more-close" aria-label="Close More" data-action="click->workspace-presentation#toggleMore">${icon("close")}</button></header>
       <div class="fixed-shell-more-section"><span id="${workViewDomId(presentation.workspace.id, "mobile_secondary")}" class="fixed-shell-mobile-work-items">${openSecondary}</span>${closedSingletons}</div>

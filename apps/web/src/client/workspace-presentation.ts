@@ -318,12 +318,11 @@ export function createWorkspacePresentationController(
       this.element.querySelectorAll<PresentationPane>("[data-workspace-pane-role='work']").forEach((pane) => pane.classList.toggle("is-active", pane.dataset.workspacePaneId === this.state.activeWorkViewKey));
       this.element.querySelectorAll<HTMLElement>("[data-mobile-destination]").forEach((destination) => {
         const selected = destination.dataset.mobileDestination === this.state.phoneDestination;
-        destination.classList.toggle("is-active", selected);
         destination.setAttribute("aria-current", selected ? "page" : "false");
       });
       const secondarySelected = this.state.phoneDestination.startsWith("work:") && !this.element.querySelector(`[data-mobile-destination="${CSS.escape(this.state.phoneDestination)}"]`);
       const moreButton = this.element.querySelector<HTMLElement>("[data-mobile-more]");
-      moreButton?.classList.toggle("is-active", this.moreOpen || secondarySelected);
+      moreButton?.setAttribute("aria-current", secondarySelected ? "page" : "false");
       moreButton?.setAttribute("aria-expanded", String(this.moreOpen));
       const moreMenu = this.element.querySelector<HTMLElement>("[data-workspace-presentation-target='moreMenu']");
       if (moreMenu) moreMenu.hidden = !this.moreOpen;

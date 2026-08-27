@@ -410,13 +410,12 @@ turbo-frame { display: contents; }
   .fixed-shell-mobile-nav { position: absolute; z-index: 30; inset: auto 0 0; height: 58px; display: flex; align-items: stretch; padding: var(--space-xs); border-top: 1px solid var(--fixed-shell-border); background: var(--panel); }
   .fixed-shell-app .workspace-empty-onboarding-arrow { z-index: 31; }
   .fixed-shell-app:has(.workspace-detail-resident.visible) > .fixed-shell-empty-mobile-nav { display: none; }
-  .fixed-shell-mobile-scroll { min-width: 0; flex: 1; display: flex; overflow-x: auto; scrollbar-width: none; }
+  .fixed-shell-mobile-scroll { min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: none; }
   .fixed-shell-mobile-work-items { display: contents; }
   .fixed-shell-mobile-scroll::-webkit-scrollbar { display: none; }
-  .fixed-shell-mobile-nav button[data-mobile-destination], .fixed-shell-mobile-fixed { position: relative; min-width: 56px; flex: 0 1 76px; display: grid; place-items: center; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--fixed-shell-muted); }
-  .fixed-shell-mobile-scroll button { min-width: 56px; }
-  .fixed-shell-mobile-fixed { flex: 0 0 64px; }
-  .fixed-shell-mobile-nav button.is-active, .fixed-shell-app.is-empty-workspace-pane-open > .fixed-shell-empty-mobile-nav button { color: var(--fixed-shell-text); background: var(--fixed-shell-hover); }
+  .fixed-shell-mobile-nav .action-item { position: relative; min-width: 56px; flex: 0 1 76px; align-self: stretch; justify-content: center; padding: 0; }
+  .fixed-shell-mobile-nav .fixed-shell-mobile-fixed { flex: 0 0 64px; }
+  .fixed-shell-app.is-empty-workspace-pane-open > .fixed-shell-empty-mobile-nav .action-item { color: var(--text); background: var(--accent-soft); }
   .fixed-shell-mobile-nav button > svg { width: 21px; height: 21px; }
   .fixed-shell-mobile-nav .fixed-shell-attention-dot { position: absolute; top: 7px; right: calc(50% - 15px); }
   .fixed-shell-more-menu { position: fixed; z-index: 35; left: 10px; right: 10px; bottom: 64px; max-height: 55vh; overflow: auto; padding: var(--space-sm); border: 1px solid var(--fixed-shell-border); border-radius: var(--radius-overlay); background: var(--elev); box-shadow: 0 14px 45px #0009; }

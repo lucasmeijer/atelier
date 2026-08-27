@@ -519,8 +519,9 @@ describe("web app contracts", () => {
       expect(home).toContain("Create your <strong");
       expect(home).toContain("first project</strong> to get started!");
       expect(home).toContain('data-empty-workspace-onboarding-destination-value="first-project"');
-      const mobileNavigationStart = home.indexOf('class="fixed-shell-mobile-nav fixed-shell-empty-mobile-nav"');
+      const mobileNavigationStart = home.indexOf('class="fixed-shell-mobile-nav fixed-shell-empty-mobile-nav button-group"');
       const mobileNavigation = home.slice(mobileNavigationStart, home.indexOf("</nav>", mobileNavigationStart));
+      expect(mobileNavigation).toContain('class="fixed-shell-mobile-fixed action-item action-item__primary"');
       expect(mobileNavigation).toContain('data-empty-workspace-mobile-destination data-action="click->workspace-navigation#showWorkspacePane"');
       expect(mobileNavigation.match(/<button/g)).toHaveLength(1);
     });

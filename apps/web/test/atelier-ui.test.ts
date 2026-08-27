@@ -146,16 +146,20 @@ describe("Atelier Playwright helper", () => {
         <span class="progress-button__content" data-progress-content="finish">Downloaded</span>
       </button>`);
     const button = page.locator("#progress");
+    const perimeter = button.locator(".progress-button__perimeter");
     const initial = await button.evaluate((element) => {
       const style = getComputedStyle(element);
       return { width: style.width, height: style.height, color: style.color };
     });
+    expect(await perimeter.evaluate((element) => getComputedStyle(element).opacity)).toBe("0");
 
     await button.evaluate((element) => { element.setAttribute("data-progress-state", "in-progress"); });
     const inProgress = await button.evaluate((element) => {
       const style = getComputedStyle(element);
       return { width: style.width, height: style.height, color: style.color };
     });
+    expect(await perimeter.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
+
     await button.evaluate((element) => { element.setAttribute("data-progress-state", "finish"); });
     const finish = await button.evaluate((element) => {
       const style = getComputedStyle(element);
@@ -1168,6 +1172,14 @@ describe("Atelier Playwright helper", () => {
     await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    const mobileNavigation = page.locator(".fixed-workspace-presentation .fixed-shell-mobile-nav");
+    expect(await mobileNavigation.getAttribute("class")).toContain("button-group");
+    expect(await mobileNavigation.evaluate((element) => getComputedStyle(element).gap)).toBe("8px");
+    const mobileDestinations = mobileNavigation.locator("[data-mobile-destination], [data-mobile-more]");
+    expect(await mobileDestinations.evaluateAll((destinations) => destinations.every((destination) => destination.classList.contains("action-item") && destination.classList.contains("action-item__primary")))).toBe(true);
+    expect(await mobileNavigation.locator(".fixed-shell-mobile-scroll").getAttribute("class")).toContain("button-group");
+    const mobileDestinationHeights = await mobileDestinations.evaluateAll((destinations) => destinations.map((destination) => destination.getBoundingClientRect().height));
+    expect(new Set(mobileDestinationHeights).size).toBe(1);
     await page.locator('[data-mobile-destination="workspace"]').evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("data-phone-destination")).toBe("workspace");
     await page.locator('[data-mobile-destination="workspace"]').evaluate((button: HTMLButtonElement) => button.click());
@@ -1205,7 +1217,7 @@ describe("Atelier Playwright helper", () => {
     expect(await page.getByRole("button", { name: "Close More" }).locator("svg").count()).toBe(1);
     await page.locator('[data-more-work-key="files:workspace"]').evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("data-phone-destination")).toBe("work:files:workspace");
-    expect(await page.locator("[data-mobile-more]").getAttribute("class")).toContain("is-active");
+    expect(await page.locator("[data-mobile-more]").getAttribute("aria-current")).toBe("page");
     expect(await page.locator('[data-mobile-destination="work:files:workspace"]').count()).toBe(0);
     // SAFETY: The test fixture controls this value and establishes the asserted shape.
     await page.evaluate(() => (window as typeof window & { filesNode?: Element }).filesNode = document.querySelector('[data-workspace-live-node="work:files:workspace"]')!);

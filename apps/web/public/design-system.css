@@ -235,6 +235,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   overflow: visible;
   pointer-events: none;
 }
+.progress-button[data-progress-state="initial"] .progress-button__perimeter { opacity: 0; }
 .button .progress-button__perimeter rect {
   x: 1px;
   y: 1px;
@@ -270,6 +271,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 
 /* Spacing belongs to the group, while each button owns only its internal anatomy. */
 .button-group { display: inline-flex; align-items: center; gap: var(--space-md); }
+.button-group > .action-item + .action-item { margin-block-start: 0; }
 .button-group.vertical { flex-direction: column; align-items: stretch; }
 .button-group > form { display: flex; }
 .button-group.vertical > form,
