@@ -44,14 +44,19 @@ function setStep(id: string, status: Step["status"], log?: string): void {
   if (log) step.log = log;
 }
 
+const stepPresentation = {
+  pending: { marker: "○", rowAttributes: ' role="checkbox" aria-checked="false"', markerAttributes: "" },
+  running: { marker: "", rowAttributes: ' aria-busy="true"', markerAttributes: "" },
+  done: { marker: "✓", rowAttributes: ' role="checkbox" aria-checked="true"', markerAttributes: "" },
+  failed: { marker: "✕", rowAttributes: ' data-status="failed"', markerAttributes: ' role="img" aria-label="Failed"' },
+} satisfies Record<Step["status"], { marker: string; rowAttributes: string; markerAttributes: string }>;
+
 function page(theme: string): string {
   const stepHtml = steps.map((step) => {
-    const indicator = step.status === "running"
-      ? `<i class="activity-spinner" aria-label="In progress"></i>`
-      : `<i class="status-indicator${step.status === "done" ? " success" : step.status === "failed" ? " danger" : ""}" aria-label="${step.status}"></i>`;
-    return `<li><span class="update-step-indicator">${indicator}</span><div><b>${step.label}</b>${step.log ? `<pre>${escapeHtml(step.log)}</pre>` : ""}</div></li>`;
+    const presentation = stepPresentation[step.status];
+    return `<li class="status-list__item"${presentation.rowAttributes}><span class="status-list__marker"${presentation.markerAttributes}>${presentation.marker}</span><div class="update-helper__step"><b>${step.label}</b>${step.log ? `<pre>${escapeHtml(step.log)}</pre>` : ""}</div></li>`;
   }).join("");
-  return `<!DOCTYPE html><html data-theme="${escapeHtml(theme || "nord")}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Updating Atelier</title><link rel="stylesheet" href="/design-system.css"><link rel="stylesheet" href="/style.css"><style>body{min-height:100vh;display:grid;place-items:center;background:var(--bg)}.update-helper{width:min(620px,calc(100vw - 32px));background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-overlay);padding:var(--space-2xl);box-shadow:var(--shadow)}.update-helper h1{margin:0 0 var(--space-md)}.update-helper p{color:var(--text-muted)}.update-helper ol{list-style:none;margin:var(--space-2xl) 0 0;padding:0;display:grid;gap:var(--space-lg)}.update-helper li{display:flex;gap:var(--space-lg);align-items:flex-start}.update-step-indicator{width:14px;height:14px;display:grid;place-items:center;margin-top:3px}pre{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:var(--radius-surface);padding:var(--space-lg);max-height:220px;overflow:auto}</style><script>setInterval(async()=>{const r=await fetch('/state');const s=await r.json();if(s.redirect) location.href=s.redirect; else location.reload();},1200)</script></head><body><main class="update-helper"><h1>Updating Atelier</h1><p>${failed ? "The update needs attention. The logs below should help you recover over SSH." : "Atelier is restarting. This usually takes a few seconds."}</p><ol>${stepHtml}</ol></main></body></html>`;
+  return `<!DOCTYPE html><html data-theme="${escapeHtml(theme || "nord")}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Updating Atelier</title><link rel="stylesheet" href="/design-system.css"><style>*{box-sizing:border-box}body{min-height:100vh;display:grid;place-items:center;margin:0;padding:var(--space-xl);background:var(--bg);color:var(--text);font:var(--text-body)/var(--leading-standard) var(--font-sans)}.update-helper{width:min(620px,100%)}.update-helper .dialog__header{padding-bottom:0}.update-helper__step{min-width:0;flex:1}.update-helper pre{max-height:220px;margin:var(--space-md) 0 0;padding:var(--space-lg);overflow:auto;border:1px solid var(--line);border-radius:var(--radius-surface);background:var(--bg);color:var(--text);font:var(--text-small)/var(--leading-standard) var(--font-mono);white-space:pre-wrap}</style><script>setInterval(async()=>{const r=await fetch('/state');const s=await r.json();if(s.redirect) location.href=s.redirect; else location.reload();},1200)</script></head><body><main class="dialog update-helper"><header class="dialog__header"><h1 class="title">Updating Atelier</h1></header><div class="dialog__body"><p>${failed ? "The update needs attention. The logs below should help you recover over SSH." : "Atelier is restarting. This usually takes a few seconds."}</p><ol class="status-list">${stepHtml}</ol></div></main></body></html>`;
 }
 
 function startUpdate(): void {
@@ -105,7 +110,7 @@ Bun.serve({
     if (url.pathname === "/up") return new Response("ok", { headers: { "cache-control": "no-store" } });
     if (url.pathname === "/state") return Response.json({ failed, redirect: steps.find((s) => s.id === "redirect")?.status === "running" ? options.returnUrl : undefined, steps });
     if (url.pathname === "/design-system.css") return new Response(Bun.file("/app/apps/web/public/design-system.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
-    if (url.pathname === "/style.css") return new Response(Bun.file("/app/apps/web/public/style.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
+    if (url.pathname === "/fonts/jetbrains-mono-latin-400-normal.woff2") return new Response(Bun.file("/app/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2"), { headers: { "content-type": "font/woff2" } });
     if (url.pathname === "/") startUpdate();
     return new Response(page(url.searchParams.get("theme") ?? ""), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   },

@@ -544,9 +544,11 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 /* A concise result summary whose marker follows semantic completion state. */
 .status-list { display: grid; gap: var(--space-md); margin: var(--space-xl) 0 0; padding: 0; list-style: none; }
 .status-list__item { display: flex; align-items: center; gap: var(--space-md); color: var(--text-muted); font-size: var(--text-body); }
-.status-list__item[aria-checked="true"] { color: var(--text); }
+.status-list__item[aria-checked="true"],
+.status-list__item[data-status="failed"] { color: var(--text); }
 .status-list__marker { width: 20px; height: 20px; box-sizing: border-box; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius-round); background: transparent; color: var(--text-faint); font-size: var(--text-small); font-weight: var(--weight-bold); }
 .status-list__item[aria-checked="true"] .status-list__marker { border-color: var(--accent); color: var(--accent); }
+.status-list__item[data-status="failed"] .status-list__marker { border-color: var(--danger); color: var(--danger); }
 .status-list__item[aria-busy="true"] .status-list__marker { border-color: var(--line-strong); border-top-color: var(--accent); color: transparent; animation: status-list-marker-spin 750ms linear infinite; }
 @keyframes status-list-marker-spin { to { transform: rotate(1turn); } }
 
