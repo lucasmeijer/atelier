@@ -66,6 +66,16 @@
   --danger-soft: color-mix(in srgb, var(--danger) 15%, var(--panel));
 }
 
+/* Phone layouts favor legibility and comfortable touch targets over density. */
+@media (max-width: 700px) {
+  :root {
+    --text-caption: 13px;
+    --text-small: 14px;
+    --text-body: 16px;
+    --text-title: 18px;
+  }
+}
+
 [data-theme="cappuccino"] {
   --bg: #2b2018;
   --panel: #312619;
@@ -199,8 +209,9 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 
 /* Give compact controls a larger touch target on narrow screens without changing desktop density. */
 @media (max-width: 700px) {
-  .button { height: 32px; padding-inline: var(--space-xl); }
-  .button.icon-only { width: 32px; padding: 0; }
+  .button { height: 44px; padding-inline: var(--space-xl); }
+  .button.icon-only { width: 44px; padding: 0; }
+  .button svg { width: 20px; height: 20px; }
 }
 
 /* A long-running button sizes itself to its widest state and traces determinate progress around its perimeter. */
@@ -251,7 +262,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   transition: stroke-dasharray 150ms linear;
 }
 @media (max-width: 700px) {
-  .button .progress-button__perimeter rect { rx: 16px; }
+  .button .progress-button__perimeter rect { rx: 22px; }
 }
 .activity-spinner {
   width: 14px;
@@ -343,6 +354,9 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   transition: border-color 120ms ease;
 }
 .text-field { height: 34px; padding: 0 var(--space-lg); }
+@media (max-width: 700px) {
+  .text-field { height: 44px; }
+}
 .textarea {
   min-height: 104px;
   padding: var(--space-md) var(--space-lg);
@@ -388,6 +402,11 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 }
 .action-item__primary:disabled,
 .action-item[aria-disabled="true"] { opacity: .45; cursor: default; }
+@media (max-width: 700px) {
+  .action-item,
+  .action-item__primary { min-height: 48px; }
+  .disclosure-icon { width: 16px; height: 16px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .button,
   .button .progress-button__perimeter rect,
