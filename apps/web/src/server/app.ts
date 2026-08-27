@@ -863,9 +863,11 @@ ${moduleStylesHtml()}
 
   interface CreatedWorkspace {
     id: string;
+    isFirstWorkspace: boolean;
   }
 
   function createWorkspaceFromCommand(command: { source: WorkspaceCreateSource; agent?: AgentWorkspaceParameters; title?: string }): CreatedWorkspace {
+    const isFirstWorkspace = registry.list().length === 0;
     const id = generateWorkspaceId();
     const init = initForSource(command.source);
     const title = command.title?.trim() ?? "";
@@ -878,7 +880,7 @@ ${moduleStylesHtml()}
     if (title) options.title = title;
     if (fork) options.fork = fork;
     startWorkspaceProvisioning(id, options);
-    return { id };
+    return { id, isFirstWorkspace };
   }
 
   async function createWorkspaceEndpoint(url: URL, request: Request): Promise<Response> {
@@ -939,8 +941,8 @@ ${moduleStylesHtml()}
       })();
       agentWorkspaceLaunches.set(attachmentDraft, launch);
     }
-    const { id } = await launch;
-    return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboUpdateStream(agentLaunchModalFrameId, "")}${selectWorkspaceTurboStream(id)}`);
+    const { id, isFirstWorkspace } = await launch;
+    return turboStreamResponse(`${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${turboUpdateStream(agentLaunchModalFrameId, "")}${isFirstWorkspace ? selectWorkspaceTurboStream(id) : ""}`);
   }
 
   async function createEmptyAgentWorkspaceEndpoint(request: Request): Promise<Response> {
