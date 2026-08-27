@@ -388,9 +388,11 @@ describe("Atelier browser behavior", () => {
       timing: getComputedStyle(name).animationTimingFunction,
     }))).toEqual({ name: "action-item-label-scroll", timing: "linear" });
 
+    await longRow.focus();
     await page.mouse.move(600, 400);
     expect(await longRow.evaluate((row) => row.classList.contains("is-label-scrolling"))).toBe(false);
 
+    await shortRow.focus();
     await longRow.focus();
     expect(await longRow.evaluate((row) => row.classList.contains("is-label-scrolling"))).toBe(true);
     await shortRow.focus();

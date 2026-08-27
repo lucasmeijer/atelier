@@ -640,10 +640,10 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .action-item :is(.action-item__primary, .action-item__label-text):focus-visible { outline: none; }
 .action-item__label { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
 .action-item__label-text { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.action-item.is-label-scrolling .action-item__label { mask-image: linear-gradient(to right, transparent, black var(--space-md), black calc(100% - var(--space-sm)), transparent); }
 .action-item.is-label-scrolling .action-item__label-text { width: max-content; overflow: visible; text-overflow: clip; animation: action-item-label-scroll var(--action-item-label-scroll-duration) linear infinite alternate; }
 @keyframes action-item-label-scroll {
   0% { transform: translateX(0); }
-  70% { transform: translateX(calc(-1 * var(--action-item-label-scroll-slow-distance))); }
   85%, 100% { transform: translateX(calc(-1 * var(--action-item-label-scroll-distance))); }
 }
 .action-item__status { flex: 0 0 auto; }
@@ -669,6 +669,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   .activity-button__indicator rect,
   .activity-spinner,
   .status-list__item[aria-busy="true"] .status-list__marker { animation: none !important; }
+  .action-item.is-label-scrolling .action-item__label { mask-image: none; }
   .action-item.is-label-scrolling .action-item__label-text { width: 100%; overflow: hidden; text-overflow: ellipsis; animation: none; }
 }
 
