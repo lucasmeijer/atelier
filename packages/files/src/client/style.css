@@ -9,7 +9,7 @@
 .files-crumb[aria-current="page"] { font-weight: var(--weight-semibold); }
 .files-crumb-separator { margin: 0 var(--space-2xs); color: var(--text-faint); }
 .files-toolbar-actions { flex: none; display: flex; align-items: center; gap: var(--space-md); }
-.files-columns { display: grid; grid-template-columns: minmax(0, 1fr) 82px 34px; padding: var(--space-xs) var(--space-md) var(--space-xs) 35px; color: var(--text-faint); border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent); font-size: var(--text-caption); font-weight: var(--weight-bold); letter-spacing: .06em; text-transform: uppercase; }
+.files-columns { display: grid; grid-template-columns: minmax(0, 1fr) 82px 34px; padding: var(--space-xs) var(--space-md) var(--space-xs) 35px; color: var(--text-faint); border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent); font-size: var(--text-small); font-weight: var(--weight-semibold); }
 .files-columns span:nth-child(2) { text-align: right; }
 .files-tree { min-height: 0; overflow: auto; padding: var(--space-xs) var(--space-sm) var(--space-lg); outline: none; }
 .files-tree:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 65%, transparent); }
@@ -18,7 +18,7 @@
 .files-directory-frame[busy] > .files-row > .files-row-icon > .disclosure-icon { display: none; }
 .files-directory-frame[busy] > .files-row > .files-row-icon > .files-directory-spinner { display: inline-block; }
 .files-directory-children { min-width: 0; padding-left: var(--space-xl); }
-.files-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) 82px 34px; padding: 0 var(--space-xs); border: 1px solid transparent; font: var(--text-small) var(--font-mono); }
+.files-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) 82px 34px; padding: 0 var(--space-xs); border: 1px solid transparent; font: var(--text-small) var(--font-sans); }
 .files-row.is-drop-target { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .files-row.concealed { opacity: .5; }
 .files-row-icon { display: grid; width: 16px; place-items: center; color: var(--text-faint); }
