@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+}
+
 /*
  * Atelier design system
  *
@@ -217,6 +225,13 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .button.icon-only { width: 26px; flex: 0 0 auto; padding: 0; }
 .button svg { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .button svg circle { fill: currentColor; stroke: none; }
+
+/* A copy button owns clipboard behavior and transient confirmation inside a copy region. */
+.copy-region { position: relative; }
+.copy-source { display: contents; }
+.copy-button { position: absolute; z-index: 2; top: var(--space-sm); right: var(--space-sm); }
+.copy-button__icon { display: grid; place-items: center; }
+.copy-button[data-copy-state="copied"] { color: var(--success); }
 
 /* Give compact controls a larger touch target on narrow screens without changing desktop density. */
 @media (max-width: 700px) {

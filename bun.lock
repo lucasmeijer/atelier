@@ -17,6 +17,7 @@
     "apps/web": {
       "name": "@atelier/web",
       "dependencies": {
+        "@fontsource/jetbrains-mono": "5.2.8",
         "@atelier/agent": "workspace:*",
         "@atelier/browser": "workspace:*",
         "@atelier/core": "workspace:*",
@@ -139,7 +140,6 @@
       "name": "@atelier/observable-terminal",
       "dependencies": {
         "@atelier/core": "workspace:*",
-        "@fontsource/jetbrains-mono": "5.2.8",
         "@xterm/addon-fit": "0.11.0",
         "@xterm/addon-progress": "0.2.0",
         "@xterm/addon-unicode11": "0.9.0",

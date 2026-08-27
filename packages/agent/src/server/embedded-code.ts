@@ -170,7 +170,7 @@ function highlightedBashShell(command: string): string {
   return highlightCodeHtmlForPath(command, "command.sh").html;
 }
 
-export function embeddedBashCommandHtml(command: string, formattedCommand?: string): string | undefined {
+export function embeddedBashCommandHtml(command: string, formattedCommand?: string, className = "agent-tool-code"): string | undefined {
   if (!bashHeredocs(command).length) return undefined;
   formattedCommand ??= formatBashCommandForDisplay(command);
   const heredocs = bashHeredocs(formattedCommand);
@@ -187,5 +187,5 @@ export function embeddedBashCommandHtml(command: string, formattedCommand?: stri
     cursor = heredoc.contentEnd;
   }
   html += highlightedBashShell(formattedCommand.slice(cursor));
-  return `<pre class="agent-tool-code language-bash"><code>${html}</code></pre>`;
+  return `<pre class="${className} language-bash"><code>${html}</code></pre>`;
 }

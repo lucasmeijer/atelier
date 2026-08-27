@@ -79,7 +79,7 @@ function agentTermController(application: StimulusApplication, terminal: HTMLEle
 }
 
 // ---------------------------------------------------------------------------
-// agent-pane: cable subscription lifecycle, scroll anchoring, prompt behavior, rewind dialog
+// agent-pane: cable subscription lifecycle, scroll anchoring, and prompt behavior
 // ---------------------------------------------------------------------------
 
 function scrollEnd(element: Pick<ScrollTranscript, "scrollHeight" | "clientHeight">): number {
@@ -136,7 +136,7 @@ export function navigatePromptHistory(state: PromptHistoryState | undefined, dir
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
     static values = { workspaceId: String, label: String, snapshotCursor: String };
-    static targets = ["transcript", "transcriptNav", "input", "form", "sendStop", "rewindDialog", "rewindEntry", "rewindPreview"];
+    static targets = ["transcript", "transcriptNav", "input", "form", "sendStop"];
     declare readonly element: HTMLElement;
     declare readonly application: StimulusApplication;
     declare readonly workspaceIdValue: string;
@@ -147,9 +147,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     declare readonly transcriptNavTarget: HTMLButtonElement;
     declare readonly inputTarget: HTMLTextAreaElement;
     declare readonly formTarget: HTMLFormElement;
-    declare readonly rewindDialogTarget: HTMLDialogElement;
-    declare readonly rewindEntryTarget: HTMLInputElement;
-    declare readonly rewindPreviewTarget: HTMLElement;
 
     private stuck = true;
     private subscribed = false;
@@ -159,7 +156,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private transcriptLayoutFrame = 0;
     private transcriptEnd = 0;
     private selectionPosition?: { busy: boolean };
-    private rewindUserText = "";
     private promptHistoryState?: PromptHistoryState;
     private applyingPromptHistory = false;
     private historicalOpenItemIds = new Set<string>();
@@ -414,39 +410,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
       this.inputTarget.focus();
     }
-
-    // ---- rewind ----
-
-    openRewind(event: Event): void {
-      const button = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-      if (!button) return;
-      this.rewindEntryTarget.value = button.dataset.entryId ?? "";
-      this.rewindUserText = button.dataset.userText ?? "";
-      const preview = this.rewindUserText.length > 80 ? `${this.rewindUserText.slice(0, 80)}…` : this.rewindUserText;
-      this.rewindPreviewTarget.textContent = `“${preview}”`;
-      if (!this.rewindDialogTarget.open) this.rewindDialogTarget.showModal();
-    }
-
-    closeRewind(): void {
-      this.rewindDialogTarget.close();
-    }
-
-    rewindPickOption(event: Event): void {
-      const control = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-      const label = control?.closest(".agent-rewind-opt");
-      const radio = label?.querySelector<HTMLInputElement>("input[type=radio]");
-      if (radio) radio.checked = true;
-    }
-
-    rewindSubmitted(): void {
-      // Close immediately on submit; the rewind itself streams in via cable
-      // (summaries behave like a busy agent with a stop button).
-      this.rewindDialogTarget.close();
-      if (this.rewindUserText && !this.inputTarget.value.trim()) {
-        this.setInputValue(this.rewindUserText);
-        this.inputTarget.focus();
-      }
-    }
   };
 }
 
@@ -524,44 +487,6 @@ function flashCopied(button: HTMLButtonElement, options: CopiedFeedbackOptions):
     button.setAttribute("aria-label", options.resetLabel);
     if (icon) icon.textContent = options.resetIcon;
   }, 1400);
-}
-
-// ---------------------------------------------------------------------------
-// agent-copy: copy rendered bash output to clipboard
-// ---------------------------------------------------------------------------
-
-function createAgentCopyController(Controller: StimulusControllerConstructor) {
-  return class AgentCopyController extends Controller {
-    declare readonly element: HTMLButtonElement;
-    private timer?: ReturnType<typeof setTimeout>;
-
-    disconnect(): void {
-      if (this.timer) clearTimeout(this.timer);
-    }
-
-    async copy(event: Event): Promise<void> {
-      event.preventDefault();
-      event.stopPropagation();
-      const tool = this.element.closest(".agent-tool");
-      const checked = tool?.querySelector<HTMLInputElement>('.agent-region-tabs input:checked, .agent-observed-tabs input:checked');
-      const pane = checked?.id.endsWith("-model")
-        ? tool?.querySelector<HTMLElement>(".model-pane, .agent-observed-model")
-        : checked?.id.endsWith("-live")
-          ? tool?.querySelector<HTMLElement>(".agent-observed-live")
-          : tool?.querySelector<HTMLElement>(".result-pane, .agent-observed-result");
-      const result = pane?.querySelector<HTMLElement>(".agent-tool-result, .xterm-rows") ?? tool?.querySelector<HTMLElement>(".agent-tool-result, .xterm-rows");
-      const text = result?.textContent ?? "";
-      if (!text) return;
-      await copyTextToClipboard(text);
-      this.timer = flashCopied(this.element, {
-        iconSelector: ".agent-tool-copy-icon",
-        copiedLabel: "Copied bash output",
-        resetLabel: "Copy bash output to clipboard",
-        resetIcon: "⧉",
-        timer: this.timer,
-      });
-    }
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1498,13 +1423,15 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
       this.disposed = false;
       this.starting = true;
       let hasVisibleOutput = false;
+      const style = getComputedStyle(this.element);
       void createObservableTerminalViewer({
         host: this.element,
         mode: "fixed-readonly",
         cols: 120,
         rows: 30,
         websocketUrl: observableWebSocketUrl(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agent-term/${encodeURIComponent(this.sessionValue)}/ws?cols=120&rows=30`),
-        fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontFamily: style.getPropertyValue("--font-mono"),
+        fontSize: Number.parseFloat(style.getPropertyValue("--text-body")),
         theme: this.theme(),
         onOutput: (text) => {
           if (hasVisibleOutput) return;
@@ -1637,7 +1564,6 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-attachments", createAgentAttachmentsController(Controller));
     application.register("composer-selection-autosubmit", createComposerSelectionAutosubmitController(Controller));
     application.register("agent-code-copy", createAgentCodeCopyController(Controller));
-    application.register("agent-copy", createAgentCopyController(Controller));
     application.register("agent-elapsed", createAgentElapsedController(Controller));
     application.register("agent-html-preview", createAgentHtmlPreviewController(Controller));
     application.register("agent-thinking", createAgentThinkingController(Controller));

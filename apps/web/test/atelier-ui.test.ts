@@ -95,6 +95,26 @@ describe("Atelier browser behavior", () => {
     await page.close();
   });
 
+  test("design-system copy buttons write nearby content and confirm success", async () => {
+    await browserContext.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://localhost" });
+    const page = await newTestPage();
+    await page.route("http://localhost/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
+    await page.route("http://localhost/design-system.css", (route) => route.fulfill({ contentType: "text/css", body: workspaceStyle }));
+    await page.route("http://localhost/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
+    await page.goto("http://localhost/design-system-catalogue.html?embedded=1");
+
+    const copy = page.locator("[data-catalogue-copy] .copy-button");
+    await copy.click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("bun run check\nbun test");
+    expect(await copy.locator(".copy-button__icon").textContent()).toBe("✓");
+    expect(await copy.getAttribute("aria-label")).toBe("Copied to clipboard");
+    await page.waitForTimeout(1100);
+    expect(await copy.locator(".copy-button__icon").textContent()).toBe("⧉");
+    expect(await copy.getAttribute("aria-label")).toBe("Copy example to clipboard");
+    await page.close();
+    await browserContext.clearPermissions();
+  });
+
   test("design-system managed lists filter without caller wiring", async () => {
     const page = await newTestPage();
     await page.route("http://catalogue.test/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));

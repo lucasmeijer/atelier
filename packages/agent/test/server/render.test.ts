@@ -226,27 +226,33 @@ describe("transcript rendering", () => {
 
   test("bash has separate command and differing model result", () => {
     const html = renderBash("echo one\necho two", { resultText: "plain", details: { exitCode: 0, displayAnsi: "\u001b[31mred\u001b[0m" }, durationMs: 2000 });
-    expect(html).toContain("COMMAND");
-    expect(html).toContain("RESULT");
-    expect(html).toContain("AS SEEN BY MODEL");
+    expect(html).toContain("Command");
+    expect(html).toContain("Result");
+    expect(html).toContain("As seen by model");
+    expect(html).toContain('aria-label="Copy command to clipboard"');
+    expect(html).toContain('aria-label="Copy colored result to clipboard"');
+    expect(html).toContain('aria-label="Copy model result to clipboard"');
     expect(html).toContain("color:var(--danger)");
   });
 
   test("formatted bash commands expose the original without adding an output comparison", () => {
     const html = renderBash("printf alpha | grep a", { resultText: "same", details: { displayAnsi: "same" } });
-    expect(html).toContain("bash-command-bash-model");
-    expect(html).not.toContain("bash-view-bash-model");
+    expect(html).toContain('role="group" aria-label="Command view"');
+    expect(html).toContain("Original");
+    expect(html).not.toContain('aria-label="Result view"');
   });
 
   test("differing bash output adds a model comparison without adding a command comparison", () => {
     const html = renderBash("echo ok", { resultText: "model output", details: { displayAnsi: "display output" } });
-    expect(html).toContain("bash-view-bash-model");
-    expect(html).not.toContain("bash-command-bash-model");
+    expect(html).toContain('role="group" aria-label="Result view"');
+    expect(html).not.toContain('aria-label="Command view"');
   });
 
   test("identical bash command and output omit model comparisons", () => {
     const html = renderBash("echo ok", { resultText: "ok", details: { exitCode: 0, displayAnsi: "ok" } });
-    expect(html).not.toContain("AS SEEN BY MODEL");
+    expect(html).not.toContain('aria-label="Command view"');
+    expect(html).not.toContain('aria-label="Result view"');
+    expect(html).not.toContain("As seen by model");
   });
 
   test("thinking uses the truncated renderer by default", () => {

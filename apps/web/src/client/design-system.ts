@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 
 import { Application, Controller } from "@hotwired/stimulus";
+import { copyTextToClipboard } from "@atelier/shared";
 import { ActionItemsController } from "./action-items.ts";
 import { PopupSelectController } from "./popup-select.ts";
 
@@ -51,6 +52,39 @@ class ManagedListController extends Controller<HTMLElement> {
     }
     const empty = this.element.querySelector<HTMLElement>(".managed-list__empty");
     if (empty) empty.hidden = matches > 0;
+  };
+}
+
+class CopyButtonController extends Controller<HTMLButtonElement> {
+  private timer?: ReturnType<typeof setTimeout>;
+
+  connect(): void {
+    this.element.addEventListener("click", this.copy);
+  }
+
+  disconnect(): void {
+    this.element.removeEventListener("click", this.copy);
+    if (this.timer) clearTimeout(this.timer);
+  }
+
+  private readonly copy = async (event: MouseEvent): Promise<void> => {
+    event.preventDefault();
+    event.stopPropagation();
+    const source = this.element.closest(".copy-region")!.querySelector<HTMLElement>("[data-copy-source]")!;
+    const text = source.innerText;
+    if (!text) return;
+    if (this.timer) clearTimeout(this.timer);
+    const icon = this.element.querySelector<HTMLElement>(".copy-button__icon")!;
+    const label = this.element.dataset.copyLabel!;
+    this.element.dataset.copyState = "copied";
+    this.element.setAttribute("aria-label", "Copied to clipboard");
+    icon.textContent = "✓";
+    this.timer = setTimeout(() => {
+      delete this.element.dataset.copyState;
+      this.element.setAttribute("aria-label", label);
+      icon.textContent = "⧉";
+    }, 1000);
+    await copyTextToClipboard(text);
   };
 }
 
@@ -166,6 +200,7 @@ class PopupMenuController extends Controller<HTMLElement> {
 
 const automaticBehaviors = [
   ["body", "action-items"],
+  [".copy-button", "copy-button"],
   [".dialog", "dialog"],
   [".managed-list", "managed-list"],
   [".popup-menu-anchor", "popup-menu"],
@@ -189,6 +224,7 @@ function attachAutomaticBehaviors(root: ParentNode): void {
 
 export function registerDesignSystemControllers(application: Pick<Application, "register">): void {
   application.register("action-items", ActionItemsController);
+  application.register("copy-button", CopyButtonController);
   application.register("dialog", DialogController);
   application.register("managed-list", ManagedListController);
   application.register("popup-menu", PopupMenuController);

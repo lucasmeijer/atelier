@@ -174,6 +174,7 @@
         <a href="#spacing-shape">Spacing &amp; shape</a>
         <div class="catalogue-kicker">Components</div>
         <a href="#toggle">Two-option toggle</a>
+        <a href="#copy-button">Copy button</a>
         <a href="#buttons">Buttons</a>
         <a href="#text-entry">Text entry</a>
         <a href="#dialog">Dialog</a>
@@ -290,6 +291,39 @@
   &lt;/button&gt;
 &lt;/div&gt;</pre>
               <p class="catalogue-note">Keep exactly one option pressed and provide a name for the group. Click and arrow-key behavior ships with the element; form buttons can still submit their own name and value.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="catalogue-section" id="copy-button">
+          <div class="catalogue-section-head">
+            <h2>Copy button</h2>
+            <p>An icon-only clipboard action positioned inside the content it copies. Successful copies temporarily replace the copy symbol with a checkmark.</p>
+          </div>
+          <div class="catalogue-grid">
+            <article class="catalogue-card wide">
+              <div class="catalogue-card-title"><span>Interactive</span><code>.copy-region + .copy-button</code></div>
+              <div class="catalogue-demo">
+                <div class="copy-region" data-catalogue-copy>
+                  <button class="button secondary icon-only copy-button" type="button" data-copy-label="Copy example to clipboard" title="Copy example to clipboard" aria-label="Copy example to clipboard"><span class="copy-button__icon" aria-hidden="true">⧉</span></button>
+                  <div class="copy-source" data-copy-source><pre class="button-code" style="margin:0">bun run check
+bun test</pre></div>
+                </div>
+              </div>
+              <p class="catalogue-note">The button discovers the nearest <code>data-copy-source</code>, performs the clipboard write, announces success, and restores its original state after a short delay.</p>
+            </article>
+            <article class="catalogue-card wide">
+              <div class="catalogue-card-title"><span>Interface</span><code>automatic clipboard behavior</code></div>
+              <pre class="button-code">&lt;div class="copy-region"&gt;
+  &lt;button class="button secondary icon-only copy-button"
+    type="button"
+    data-copy-label="Copy command to clipboard"
+    aria-label="Copy command to clipboard"&gt;
+    &lt;span class="copy-button__icon" aria-hidden="true"&gt;⧉&lt;/span&gt;
+  &lt;/button&gt;
+  &lt;div class="copy-source" data-copy-source&gt;Content to copy&lt;/div&gt;
+&lt;/div&gt;</pre>
+              <p class="catalogue-note">No caller-owned JavaScript is required. Keep the source and button in the same copy region.</p>
             </article>
           </div>
         </section>

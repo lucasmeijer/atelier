@@ -170,7 +170,7 @@ const pendingAgentStats: AgentStatsView = {
 
 export async function renderPendingAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, options: { visible?: boolean } = {}): Promise<string> {
   return await renderAgentPaneFrame(ctx, agent, {
-    transcriptHtml: `<div class="agent-starting"><span class="agent-starting-spinner" aria-hidden="true"></span><div><b>Starting ${escapeHtml(ctx.label)}…</b><span>Loading model settings and workspace instructions.</span></div></div>`,
+    transcriptHtml: `<div class="agent-starting"><span class="agent-starting-spinner" aria-hidden="true"></span><div><div>Starting ${escapeHtml(ctx.label)}…</div><div>Loading model settings and workspace instructions.</div></div></div>`,
     busy: false,
     stats: pendingAgentStats,
   }, options);
@@ -204,7 +204,6 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
         stats: state.stats,
         dropTarget: false,
       })}
-      ${renderRewindDialog(ctx)}
     </div>
   </section>`;
 }
@@ -450,13 +449,13 @@ function renderModelContextCard(ctx: AgentRenderContext, modelContext: AgentMode
   const tools = modelContext.tools;
   if (!prompt && tools.length === 0) return "";
   const meta = [prompt ? "system-prompt.md" : undefined, tools.length ? `tools.json (${tools.length})` : undefined].filter(Boolean).join(" · ");
-  return transcriptRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load"><summary class="agent-tool-head"><span class="agent-tool-status ok"></span><code class="agent-tool-name">model_context</code><span class="agent-tool-args">${escapeHtml(meta)}</span></summary><turbo-frame id="${ids.detailFrame(ctx, "model-context")}" data-agent-lazy-detail-target="frame" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded" data-src="${escapeHtml(transcriptItemPath(ctx, "model-context"))}"></turbo-frame></details>`);
+  return transcriptRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load"><summary class="agent-tool-head"><span class="agent-tool-status ok"></span><span class="agent-tool-name">model_context</span><span class="agent-tool-args">${escapeHtml(meta)}</span></summary><turbo-frame id="${ids.detailFrame(ctx, "model-context")}" data-agent-lazy-detail-target="frame" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded" data-src="${escapeHtml(transcriptItemPath(ctx, "model-context"))}"></turbo-frame></details>`);
 }
 
 export function renderModelContextDetailFrame(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
   const prompt = modelContext.systemPrompt.trim();
   const blocks = [prompt ? codeBlockHtml(prompt, "system-prompt.md") : "", modelContext.tools.length ? codeBlockHtml(JSON.stringify(modelContext.tools, null, 2), "tools.json") : ""].filter(Boolean).join("");
-  return `<turbo-frame id="${ids.detailFrame(ctx, "model-context")}"><div class="agent-tool-detail">${detailFullscreen("MODEL CONTEXT", blocks)}</div></turbo-frame>`;
+  return `<turbo-frame id="${ids.detailFrame(ctx, "model-context")}"><div class="agent-tool-detail">${detailFullscreen("Model context", blocks)}</div></turbo-frame>`;
 }
 
 function sessionImageUrl(ctx: AgentRenderContext, image: SessionImageRef): string {
@@ -466,12 +465,6 @@ function sessionImageUrl(ctx: AgentRenderContext, image: SessionImageRef): strin
 function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images: SessionImageRef[] }): string {
   const images = user.images.length ? `<div class="agent-user-attachments">${user.images.map((image) => `<img${fullscreenAttributes("attachment", "media")} src="${escapeHtml(sessionImageUrl(ctx, image))}" alt="attachment" loading="lazy">`).join("")}</div>` : "";
   return transcriptRow(`<div class="agent-user" data-agent-user-text="${escapeHtml(user.text)}"><div class="agent-user-bubble">${markdown(ctx, user.text)}${images}</div></div>`);
-}
-
-function rewindHtml(ctx: AgentRenderContext, item: TranscriptItem): string {
-  if (!item.rewindEntryId) return "";
-  const preview = item.type === "user" || item.type === "text" || item.type === "thinking" || item.type === "note" ? item.text : item.type === "tool" ? item.tool.name : "this point";
-  return `<div class="agent-rewind-zone"><button class="agent-rewind-btn" type="button" data-action="agent-pane#openRewind" data-entry-id="${escapeHtml(item.rewindEntryId)}" data-user-text="${escapeHtml(preview)}" title="Rewind to here">⟲ Rewind to here</button></div>`;
 }
 
 function renderStreamingTextBody(ctx: AgentRenderContext, key: string, text: string): string {
@@ -491,7 +484,7 @@ export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptIt
   else if (item.type === "tool") body = transcriptRow(renderToolCard(ctx, item.key, item.tool, options));
   else if (item.type === "note") body = renderMarkdownRow(ctx, item.text, `agent-note ${escapeHtml(item.tone)}`);
   else body = transcriptRow(`<div class="agent-error">${escapeHtml(item.text)}</div>`);
-  return `<div class="agent-item" id="${id}">${rewindHtml(ctx, item)}${body}</div>`;
+  return `<div class="agent-item" id="${id}">${body}</div>`;
 }
 
 function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscriptItem): string {
@@ -573,7 +566,7 @@ function toolForRender(original: ToolView): ToolView {
 
 function toolSummaryContentHtml(tool: ToolView): string {
   const summary = toolSummaryHtml(tool);
-  return `<code class="agent-tool-name">${escapeHtml(tool.name || "tool")}</code>${summary ? `<span class="agent-tool-sep">·</span><span class="agent-tool-args${tool.status === "error" ? " error" : ""}">${summary}</span>` : ""}${tool.status === "running" && tool.name === "bash" ? `<span class="agent-tool-sep">·</span>${runningElapsedHtml(tool)}` : ""}`;
+  return `<span class="agent-tool-name">${escapeHtml(tool.name || "tool")}</span>${summary ? `<span class="agent-tool-sep">·</span><span class="agent-tool-args${tool.status === "error" ? " error" : ""}">${summary}</span>` : ""}${tool.status === "running" && tool.name === "bash" ? `<span class="agent-tool-sep">·</span>${runningElapsedHtml(tool)}` : ""}`;
 }
 
 export interface ActiveToolContent {
@@ -618,7 +611,7 @@ function detailFullscreen(title: string, html: string): string {
 }
 
 function sourceRegionHtml(title: string, body: string, className = "agent-source-region"): string {
-  return detailFullscreen(title, `<section class="${className}"><div class="agent-region-title">${escapeHtml(title)}</div>${body}</section>`);
+  return detailFullscreen(title, `<section class="${className}"><div class="agent-region-header">${escapeHtml(title)}</div>${body}</section>`);
 }
 
 function sourceRegion(title: string, code: string, path: string | undefined, className?: string): string {
@@ -662,48 +655,51 @@ function bashViews(tool: ToolView, count: number): BashViews {
   return { display, model, same: !display || display === model, resultWindow: textWindow(display || model || "(no output)", "last", count), modelWindow: textWindow(model || "(no output)", "last", count) };
 }
 
-function bashCopyButton(): string {
-  return `<button type="button" class="agent-tool-copy" data-controller="agent-copy" data-action="click->agent-copy#copy" title="Copy selected Bash output" aria-label="Copy selected Bash output"><span class="agent-tool-copy-icon" aria-hidden="true">⧉</span></button>`;
+function toolCopyButton(label: string): string {
+  const copyLabel = `Copy ${label} to clipboard`;
+  return `<button type="button" class="button secondary icon-only copy-button" data-copy-label="${escapeHtml(copyLabel)}" title="${escapeHtml(copyLabel)}" aria-label="${escapeHtml(copyLabel)}"><span class="copy-button__icon" aria-hidden="true">⧉</span></button>`;
 }
 
-export function renderObservedBashTabs(key: string, tool: ToolView): string {
-  const group = `bash-observed-${domIdFragment(key)}`;
+function copyableToolBody(body: string, label: string): string {
+  return `<div class="copy-region">${toolCopyButton(label)}<div class="copy-source" data-copy-source>${body}</div></div>`;
+}
+
+export function renderObservedBashTabs(_key: string, tool: ToolView): string {
   const hasModel = !bashViews(tool, 100).same;
-  return `<div class="agent-observed-tabs"><input type="radio" name="${group}" id="${group}-live" checked><label for="${group}-live">LIVE TERMINAL</label><input type="radio" name="${group}" id="${group}-result"><label for="${group}-result">RESULT</label>${hasModel ? `<input type="radio" name="${group}" id="${group}-model"><label for="${group}-model">AS SEEN BY MODEL</label>` : ""}${bashCopyButton()}</div>`;
+  return `<div class="agent-region-header agent-observed-tabs"><span>Result</span><div class="toggle" role="group" aria-label="Result view" data-controller="toggle"><button class="toggle__option" type="button" data-agent-region-view="live" aria-pressed="true">Live</button><button class="toggle__option" type="button" data-agent-region-view="primary" aria-pressed="false">Colored</button>${hasModel ? `<button class="toggle__option" type="button" data-agent-region-view="model" aria-pressed="false">As seen by model</button>` : ""}</div></div>`;
 }
 
 export function renderObservedBashCompletion(ctx: AgentRenderContext, key: string, tool: ToolView, count = 100): string {
   const views = bashViews(tool, count);
-  const result = views.display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(views.resultWindow.text)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(views.resultWindow.text)}</pre>`;
-  const fullResult = views.display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(views.display)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(views.model || "(no output)")}</pre>`;
+  const result = views.display ? `<pre class="agent-tool-result agent-tool-region-body agent-tool-ansi">${bashOutputHtml(views.resultWindow.text)}</pre>` : `<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(views.resultWindow.text)}</pre>`;
+  const fullResult = views.display ? `<pre class="agent-tool-result agent-tool-region-body agent-tool-ansi">${bashOutputHtml(views.display)}</pre>` : `<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(views.model || "(no output)")}</pre>`;
   const resultWindow = tailOutput(result, moreLink(ctx, key, count, views.resultWindow.hidden, "last"), "last");
-  const modelWindow = tailOutput(`<pre class="agent-tool-result">${escapeHtml(views.modelWindow.text)}</pre>`, moreLink(ctx, key, count, views.modelWindow.hidden, "last"), "last");
-  return `<div class="agent-observed-result">${fullscreenSourceRegion("RESULT", resultWindow, fullResult)}</div>${views.same ? "" : `<div class="agent-observed-model">${fullscreenSourceRegion("AS SEEN BY MODEL", modelWindow, `<pre class="agent-tool-result">${escapeHtml(views.model || "(no output)")}</pre>`)}</div>`}`;
+  const modelWindow = tailOutput(`<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(views.modelWindow.text)}</pre>`, moreLink(ctx, key, count, views.modelWindow.hidden, "last"), "last");
+  return `<div class="agent-observed-result">${fullscreenSourceRegion("Result", copyableToolBody(resultWindow, "result"), fullResult)}</div>${views.same ? "" : `<div class="agent-observed-model">${fullscreenSourceRegion("As seen by model", copyableToolBody(modelWindow, "model result"), `<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(views.model || "(no output)")}</pre>`)}</div>`}`;
 }
 
-function comparisonTabs(group: string, primaryLabel: string, trailingHtml = ""): string {
-  return `<div class="agent-region-tabs"><input type="radio" name="${group}" id="${group}-primary" checked><label for="${group}-primary">${primaryLabel}</label><input type="radio" name="${group}" id="${group}-model"><label for="${group}-model">AS SEEN BY MODEL</label>${trailingHtml}</div>`;
+function comparisonHeader(title: string, primaryLabel: string, secondaryLabel = "As seen by model"): string {
+  return `<div class="agent-region-header agent-region-tabs"><span>${title}</span><div class="toggle" role="group" aria-label="${title} view" data-controller="toggle"><button class="toggle__option" type="button" data-agent-region-view="primary" aria-pressed="true">${primaryLabel}</button><button class="toggle__option" type="button" data-agent-region-view="model" aria-pressed="false">${secondaryLabel}</button></div></div>`;
 }
 
 function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
   const { display, model, same, resultWindow, modelWindow } = bashViews(tool, count);
-  const result = display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(resultWindow.text)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(resultWindow.text)}</pre>`;
+  const result = display ? `<pre class="agent-tool-result agent-tool-region-body agent-tool-ansi">${bashOutputHtml(resultWindow.text)}</pre>` : `<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(resultWindow.text)}</pre>`;
   const resultHtml = tailOutput(result, moreLink(ctx, key, count, resultWindow.hidden, "last"), "last");
-  const fullResult = display ? `<pre class="agent-tool-result agent-tool-ansi">${bashOutputHtml(display)}</pre>` : `<pre class="agent-tool-result">${escapeHtml(model || "(no output)")}</pre>`;
-  if (same) return fullscreenSourceRegion("RESULT", `<section class="agent-bash-output"><div class="agent-region-title">RESULT${bashCopyButton()}</div>${resultHtml}</section>`, fullResult);
-  const group = `bash-view-${domIdFragment(key)}`;
-  const modelHtml = tailOutput(`<pre class="agent-tool-result">${escapeHtml(modelWindow.text)}</pre>`, moreLink(ctx, key, count, modelWindow.hidden, "last"), "last");
-  return `<section class="agent-bash-output">${comparisonTabs(group, "RESULT", bashCopyButton())}<div class="agent-region-pane region-primary-pane result-pane">${fullscreenSourceRegion("RESULT", resultHtml, fullResult)}</div><div class="agent-region-pane region-model-pane model-pane">${fullscreenSourceRegion("AS SEEN BY MODEL", modelHtml, `<pre class="agent-tool-result">${escapeHtml(model || "(no output)")}</pre>`)}</div></section>`;
+  const fullResult = display ? `<pre class="agent-tool-result agent-tool-region-body agent-tool-ansi">${bashOutputHtml(display)}</pre>` : `<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(model || "(no output)")}</pre>`;
+  if (same) return fullscreenSourceRegion("Result", `<section class="agent-tool-region agent-bash-output"><div class="agent-region-header">Result</div>${copyableToolBody(resultHtml, "result")}</section>`, fullResult);
+  const modelHtml = tailOutput(`<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(modelWindow.text)}</pre>`, moreLink(ctx, key, count, modelWindow.hidden, "last"), "last");
+  return `<section class="agent-tool-region agent-bash-output">${comparisonHeader("Result", "Colored")}<div class="agent-region-pane region-primary-pane result-pane">${fullscreenSourceRegion("Result", copyableToolBody(resultHtml, "colored result"), fullResult)}</div><div class="agent-region-pane region-model-pane model-pane">${fullscreenSourceRegion("As seen by model", copyableToolBody(modelHtml, "model result"), `<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(model || "(no output)")}</pre>`)}</div></section>`;
 }
 
 function renderBashCommand(key: string, command: string): string {
   const formatted = formatBashCommandForDisplay(command);
-  const commandBody = embeddedBashCommandHtml(command, formatted) ?? codeBlockHtml(formatted, "command.sh", "agent-tool-code");
-  if (formatted === command && !commandBody.includes("data-atelier-display-formatted")) return sourceRegionHtml("COMMAND", commandBody, "agent-bash-command");
+  const bodyClass = "agent-tool-code agent-tool-region-body";
+  const commandBody = embeddedBashCommandHtml(command, formatted, bodyClass) ?? codeBlockHtml(formatted, "command.sh", bodyClass);
+  if (formatted === command && !commandBody.includes("data-atelier-display-formatted")) return sourceRegionHtml("Command", copyableToolBody(commandBody, "command"), "agent-tool-region agent-bash-command");
 
-  const group = `bash-command-${domIdFragment(key)}`;
-  const modelBody = codeBlockHtml(command, "command.sh", "agent-tool-code");
-  return `<section class="agent-bash-command">${comparisonTabs(group, "COMMAND")}<div class="agent-region-pane region-primary-pane">${fullscreenSourceRegion("COMMAND", commandBody, commandBody)}</div><div class="agent-region-pane region-model-pane">${fullscreenSourceRegion("AS SEEN BY MODEL", modelBody, modelBody)}</div></section>`;
+  const modelBody = `<pre class="${bodyClass}"><code>${escapeHtml(command)}</code></pre>`;
+  return `<section class="agent-tool-region agent-bash-command">${comparisonHeader("Command", "Readable", "Original")}<div class="agent-region-pane region-primary-pane">${fullscreenSourceRegion("Command", copyableToolBody(commandBody, "readable command"), commandBody)}</div><div class="agent-region-pane region-model-pane">${fullscreenSourceRegion("Original", copyableToolBody(modelBody, "original command"), modelBody)}</div></section>`;
 }
 
 function renderBashDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
@@ -711,7 +707,7 @@ function renderBashDetail(ctx: AgentRenderContext, key: string, tool: ToolView, 
   const commandHtml = renderBashCommand(key, command);
   if (tool.status === "streaming") return `<div class="agent-tool-detail">${commandHtml}</div>`;
   if (tool.status === "running") {
-    const terminal = tool.tmuxSession && tool.terminalVisible ? `<section class="agent-bash-output agent-observed-bash"><div id="${ids.itemCompletionTabs(ctx, key)}" class="agent-region-title">LIVE TERMINAL</div><div class="agent-terminal-viewport agent-observed-live"><div class="agent-tool-term agent-terminal-awaiting-output observable-terminal-host" data-controller="agent-term" data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}" data-agent-term-label-value="${escapeHtml(ctx.label)}" data-agent-term-session-value="${escapeHtml(tool.tmuxSession)}"></div></div><div id="${ids.itemCompletion(ctx, key)}"></div></section>` : "";
+    const terminal = tool.tmuxSession && tool.terminalVisible ? `<section class="agent-tool-region agent-bash-output agent-observed-bash"><div id="${ids.itemCompletionTabs(ctx, key)}" class="agent-region-header">Live terminal</div><div class="agent-terminal-viewport agent-observed-live"><div class="agent-tool-term agent-terminal-awaiting-output observable-terminal-host" data-controller="agent-term" data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}" data-agent-term-label-value="${escapeHtml(ctx.label)}" data-agent-term-session-value="${escapeHtml(tool.tmuxSession)}"></div></div><div id="${ids.itemCompletion(ctx, key)}"></div></section>` : "";
     return `<div class="agent-tool-detail agent-bash-detail">${commandHtml}${terminal}</div>`;
   }
   return `<div class="agent-tool-detail agent-bash-detail">${commandHtml}${renderBashResultViews(ctx, key, tool, count)}</div>`;
@@ -724,11 +720,16 @@ function fullscreenSourceRegion(title: string, inlineHtml: string, fullHtml: str
 function renderReadDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
   const images = toolResultImagesHtml(ctx, tool);
   const result = trimResult(tool);
-  if (images) return `<div class="agent-tool-detail">${detailFullscreen("READ RESULT", `${images}${result ? `<pre class="agent-tool-note">${escapeHtml(result)}</pre>` : ""}`)}</div>`;
+  if (images) {
+    const text = result ? copyableToolBody(`<pre class="agent-tool-note agent-tool-region-body">${escapeHtml(result)}</pre>`, "read result") : "";
+    const region = `<section class="agent-tool-region agent-read-result">${images}${text}</section>`;
+    return `<div class="agent-tool-detail">${detailFullscreen("Read", region)}</div>`;
+  }
   const window = textWindow(result, "first", count);
   const path = stringArg(toolArgs(tool), "path", "file_path");
-  const shown = tailOutput(codeBlockHtml(window.text, path), moreLink(ctx, key, count, window.hidden, "first"), "first");
-  return `<div class="agent-tool-detail">${fullscreenSourceRegion("READ RESULT", shown, codeBlockHtml(result, path))}</div>`;
+  const bodyClass = "agent-tool-code agent-tool-region-body";
+  const shown = tailOutput(codeBlockHtml(window.text, path, bodyClass), moreLink(ctx, key, count, window.hidden, "first"), "first");
+  return `<div class="agent-tool-detail">${fullscreenSourceRegion("Read", `<section class="agent-tool-region agent-read-result">${copyableToolBody(shown, "read result")}</section>`, codeBlockHtml(result, path, bodyClass))}</div>`;
 }
 
 function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
@@ -736,9 +737,10 @@ function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView,
   const content = stringArg(args, "content") ?? "";
   const path = stringArg(args, "path", "file_path");
   const shown = tool.status === "streaming" || tool.status === "running" ? { text: content, hidden: 0 } : textWindow(content, "first", count);
-  const preview = tailOutput(codeBlockHtml(shown.text, path), moreLink(ctx, key, count, shown.hidden, "first"), "first");
+  const bodyClass = "agent-tool-code agent-tool-region-body";
+  const preview = tailOutput(codeBlockHtml(shown.text, path, bodyClass), moreLink(ctx, key, count, shown.hidden, "first"), "first");
   const error = tool.status === "error" && tool.resultText ? `<pre class="agent-tool-error-output">${escapeHtml(trimResult(tool))}</pre>` : "";
-  return `<div class="agent-tool-detail">${fullscreenSourceRegion(path || "WRITE", preview, codeBlockHtml(content, path))}${error}</div>`;
+  return `<div class="agent-tool-detail">${fullscreenSourceRegion("Write", `<section class="agent-tool-region agent-write-result">${copyableToolBody(preview, "written content")}</section>`, codeBlockHtml(content, path, bodyClass))}${error}</div>`;
 }
 
 function editHunksForDisplay(tool: ToolView, contextual: boolean): DiffDisplayLine[][] {
@@ -769,7 +771,7 @@ function highlightedEditHtml(tool: ToolView, contextual: boolean): string {
 function renderEditDetail(tool: ToolView): string {
   const preview = highlightedEditHtml(tool, true) || genericParamsHtml(tool);
   const full = highlightedEditHtml(tool, false) || genericParamsHtml(tool);
-  const edits = fullscreenSourceRegion("EDIT", `<div class="agent-edit-details">${preview}</div>`, `<div class="agent-edit-details">${full}</div>`);
+  const edits = fullscreenSourceRegion("Edit", `<section class="agent-tool-region agent-edit-result">${copyableToolBody(`<div class="agent-edit-details agent-tool-region-body">${preview}</div>`, "edit")}</section>`, `<div class="agent-edit-details agent-tool-region-body">${full}</div>`);
   const error = tool.status === "error" && tool.resultText ? `<pre class="agent-tool-error-output">${escapeHtml(trimResult(tool))}</pre>` : "";
   return `<div class="agent-tool-detail">${edits}${error}</div>`;
 }
@@ -1102,7 +1104,7 @@ function parseStreamedArgs(argsStream: string): JsonValue | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Attachments / notices / rewind dialog
+// Attachments / notices
 // ---------------------------------------------------------------------------
 
 export function renderAttachmentChip(ctx: AgentRenderContext | undefined, attachment: { id: string; name: string; size: number; isImage: boolean }, options: { draftId?: string } = {}): string {
@@ -1118,22 +1120,6 @@ export function renderAttachmentChip(ctx: AgentRenderContext | undefined, attach
 
 export function renderNotice(level: "info" | "error", message: string): string {
   return `<div class="agent-noticeline ${escapeHtml(level)}" data-controller="agent-notice">${escapeHtml(message)}</div>`;
-}
-
-function renderRewindDialog(ctx: AgentRenderContext): string {
-  return `<dialog class="agent-rewind-dialog" data-agent-pane-target="rewindDialog">
-    <form method="post" action="${escapeHtml(agentPath(ctx, "/rewind"))}" data-action="turbo:submit-start->agent-pane#rewindSubmitted">
-      <h2>⟲ Rewind conversation</h2>
-      <p class="agent-rewind-sub">Everything from <b data-agent-pane-target="rewindPreview"></b> onward is removed from the visible branch. Files in the workspace are not changed.</p>
-      <input type="hidden" name="entry" value="" data-agent-pane-target="rewindEntry">
-      <label class="agent-rewind-opt"><input type="radio" name="rewindMode" value="discard" checked> <span><span class="t">Discard the tail</span><span class="d">Just go back. The branch stays in the session file.</span></span></label>
-      <label class="agent-rewind-opt"><input type="radio" name="rewindMode" value="summary"> <span><span class="t">Replace with an AI summary</span><span class="d">A generated summary of the discarded turns is kept as context.</span><textarea name="customInstructions" rows="2" placeholder="Optional custom summarization instructions go here..." data-action="focus->agent-pane#rewindPickOption"></textarea></span></label>
-      <div class="agent-rewind-actions">
-        <button class="agent-btn" type="button" data-action="agent-pane#closeRewind">Cancel</button>
-        <button class="agent-btn primary" type="submit">Rewind</button>
-      </div>
-    </form>
-  </dialog>`;
 }
 
 function formatBytes(size: number): string {
