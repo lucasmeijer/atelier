@@ -17,10 +17,15 @@ describe("transcript rendering", () => {
 
   test("composer runs completion shortcuts before prompt submission", async () => {
     const html = await renderAgentComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, includePaneActions: true, stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
-    expect(html).toContain('data-controller="agent-attachments agent-completions"');
+    expect(html).toContain('data-controller="agent-attachments agent-completions transcription-composer"');
     expect(html).toContain('data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged"');
     expect(html).toContain('class="button icon-only agent-transcript-nav"');
     expect(html).toContain('data-agent-pane-target="sendStop"');
+    expect(html).toContain('class="button secondary icon-only progress-button transcription-button"');
+    expect(html).toContain('data-progress-state="initial"');
+    expect(html).toContain('class="progress-button__perimeter"');
+    expect(html).toContain('aria-label="Dictate with microphone"');
+    expect(html).toContain('data-transcription-composer-target="waveform"');
   });
 
   test("user messages retain their original text for keyboard prompt history", () => {

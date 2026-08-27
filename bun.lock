@@ -28,6 +28,7 @@
         "@atelier/proxy-egress": "workspace:*",
         "@atelier/proxy-ingress": "workspace:*",
         "@atelier/shared": "workspace:*",
+        "@atelier/transcription": "workspace:*",
         "@atelier/update": "workspace:*",
         "@atelier/vscode": "workspace:*",
         "@atelier/workspace": "workspace:*",
@@ -45,6 +46,7 @@
         "@atelier/observable-terminal": "workspace:*",
         "@atelier/projects": "workspace:*",
         "@atelier/shared": "workspace:*",
+        "@atelier/transcription": "workspace:*",
         "@atelier/workspace": "workspace:*",
         "@earendil-works/pi-ai": "catalog:",
         "@earendil-works/pi-coding-agent": "catalog:",
@@ -179,6 +181,15 @@
         "typebox": "^1.0.57",
       },
     },
+    "packages/transcription": {
+      "name": "@atelier/transcription",
+      "dependencies": {
+        "@atelier/core": "workspace:*",
+        "@atelier/observable-terminal": "workspace:*",
+        "@atelier/shared": "workspace:*",
+        "typebox": "^1.0.57",
+      },
+    },
     "packages/update": {
       "name": "@atelier/update",
       "dependencies": {
@@ -261,6 +272,8 @@
     "@atelier/proxy-ingress": ["@atelier/proxy-ingress@workspace:packages/proxy-ingress"],
 
     "@atelier/shared": ["@atelier/shared@workspace:packages/shared"],
+
+    "@atelier/transcription": ["@atelier/transcription@workspace:packages/transcription"],
 
     "@atelier/update": ["@atelier/update@workspace:packages/update"],
 

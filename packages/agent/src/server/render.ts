@@ -1,3 +1,4 @@
+import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
 import { randomUUID } from "node:crypto";
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import { Type, type Static, type TSchema } from "typebox";
@@ -261,9 +262,9 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
     : `<div class="agent-statbar">${await renderAgentLaunchSettings({ ...options.launchSettings!, formId })}</div>`;
   const turboAttr = options.formTurbo === undefined ? "" : ` data-turbo="${options.formTurbo ? "true" : "false"}"`;
   const dropTarget = options.dropTarget ?? true;
-  const completionControllers = [dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : ""].filter(Boolean).join(" ");
+  const promptControllers = [dropTarget ? "agent-attachments" : "", completionsEnabled ? "agent-completions" : "", transcriptionComposerController].filter(Boolean).join(" ");
   const promptAttrs = [
-    completionControllers ? `data-controller="${completionControllers}"` : "",
+    `data-controller="${promptControllers}"`,
     dropTarget ? agentAttachmentDropAttrs(uploadUrl) : "",
     options.ctx ? `data-agent-completions-url-value="${escapeHtml(agentPath(options.ctx, "/completions"))}"` : "",
   ].filter(Boolean).join(" ");
@@ -283,6 +284,7 @@ export async function renderAgentComposer(options: AgentComposerRenderOptions): 
             <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row"></div>
             ${textarea}
             <div class="agent-prompt-actions">
+              ${renderTranscriptionComposerControl()}
               <span class="spacer"></span>
               ${actions}
             </div>

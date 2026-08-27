@@ -24,6 +24,7 @@
     "@atelier/proxy-ingress": "workspace:*",
     "@atelier/projects": "workspace:*",
     "@atelier/shared": "workspace:*",
+    "@atelier/transcription": "workspace:*",
     "@atelier/update": "workspace:*",
     "@atelier/workspace": "workspace:*",
     "@atelier/workspace-terminal": "workspace:*",

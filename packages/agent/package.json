@@ -17,6 +17,7 @@
     "@atelier/observable-terminal": "workspace:*",
     "@atelier/projects": "workspace:*",
     "@atelier/shared": "workspace:*",
+    "@atelier/transcription": "workspace:*",
     "@earendil-works/pi-ai": "catalog:",
     "@earendil-works/pi-coding-agent": "catalog:",
     "typebox": "^1.0.57",

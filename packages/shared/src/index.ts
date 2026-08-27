@@ -411,3 +411,8 @@ export {
   type CableServerMessage,
   type CableSubscriptionOptions,
 } from "./cable.ts";
+
+export {
+  notifyInputListeners,
+  setTextInputValue,
+} from "./text-input.ts";

@@ -1,9 +1,8 @@
 /// <reference lib="dom" />
 
 import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalTheme, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, phoneViewportMediaQuery, recentWorkspaceProjectStorageKey, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientController, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
+import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, notifyInputListeners, phoneViewportMediaQuery, recentWorkspaceProjectStorageKey, setTextInputValue, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientController, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
 import { agentTreeOwnsMenu, handleAgentTreeKeydown, handleAgentTreeMenuEvent, selectAgentTreeOption } from "./session-tree.ts";
-import { notifyInputListeners, setTextInputValue } from "./text-input.ts";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
 type TurboSubmitEndEvent = CustomEvent<{ success: boolean }>;

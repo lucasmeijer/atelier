@@ -1,0 +1,59 @@
+.button.transcription-button {
+  position: absolute;
+  left: 0;
+  bottom: -28px;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: var(--radius-round);
+  overflow: hidden;
+}
+.transcription-button .progress-button__content { width: 100%; height: 100%; }
+.transcription-button .transcription-microphone { width: 19px; height: 19px; stroke-width: 1.65; }
+.transcription-button canvas { display: none; width: 24px; height: 22px; color: var(--accent); }
+.button.transcription-button .progress-button__perimeter rect { rx: 19px; }
+.transcription-button[data-state="recording"],
+.transcription-button[data-state="finishing"] {
+  --button-border: color-mix(in srgb, var(--accent) 50%, var(--line));
+  --button-background: var(--accent-soft);
+  --button-foreground: var(--accent);
+}
+.transcription-button[data-state="recording"] .transcription-microphone { display: none; }
+.transcription-button[data-state="recording"] canvas { display: block; }
+.transcription-button[data-state="error"] {
+  --button-border: var(--danger);
+  --button-foreground: var(--danger);
+  overflow: visible;
+}
+.transcription-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.transcription-button[data-state="error"] .transcription-status {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + var(--space-sm));
+  width: max-content;
+  max-width: min(280px, calc(100cqw - 20px));
+  height: auto;
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  overflow: visible;
+  clip: auto;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line));
+  border-radius: var(--radius-control);
+  background: var(--elev);
+  box-shadow: var(--shadow);
+  color: var(--danger);
+  font-size: var(--text-caption);
+  line-height: var(--leading-tight);
+  text-align: left;
+  white-space: normal;
+}

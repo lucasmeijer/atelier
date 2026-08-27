@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { setTextInputValue } from "./text-input.ts";
+import { setTextInputValue } from "@atelier/shared";
 
 type TextInput = HTMLInputElement | HTMLTextAreaElement;
 
