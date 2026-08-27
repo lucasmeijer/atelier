@@ -442,12 +442,6 @@ turbo-frame { display: contents; }
   .fixed-shell-availability-mark { animation-duration: 1ms !important; animation-iteration-count: 1 !important; }
 }
 
-* { scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin; }
-*::-webkit-scrollbar { width: 10px; height: 10px; }
-*::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--radius-round); border: 2px solid transparent; background-clip: padding-box; }
-*::-webkit-scrollbar-thumb:hover { background-color: var(--text-faint); }
-
 html, body { height: 100%; overflow: hidden; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { border: 0; background: none; cursor: pointer; }

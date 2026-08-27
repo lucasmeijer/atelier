@@ -167,6 +167,13 @@
   --shadow: 0 22px 56px rgba(0, 0, 0, .45);
 }
 
+/* Scrollable design-system surfaces use the active theme instead of browser chrome. */
+* { scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--radius-round); border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background-color: var(--text-faint); }
+
 /* Common indicator for controls that disclose and conceal content. */
 .disclosure-icon { display: block; width: 12px; height: 12px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform 150ms ease; }
 :where(button, [role="treeitem"])[aria-expanded="false"] .disclosure-icon,
