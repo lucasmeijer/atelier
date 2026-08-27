@@ -1113,7 +1113,7 @@ class WorkspaceNavigationController extends Controller {
     await residencyController()?.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`);
     if (window.matchMedia(phoneViewportMediaQuery).matches) {
       const visible = document.querySelector<HTMLElement>(`.workspace-detail-resident.visible[data-workspace-id="${CSS.escape(workspaceId)}"]`);
-      visible?.querySelector<HTMLButtonElement>("[data-mobile-destination^='agent:']")?.click();
+      visible?.querySelector<HTMLButtonElement>("[data-mobile-destination='agents']")?.click();
     }
   }
 

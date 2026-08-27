@@ -190,6 +190,8 @@ describe("role-fixed Workspace presentation", () => {
     expect(html.match(/class="action-item__label"><span class="action-item__label-text"/g)).toHaveLength(3);
     expect(html.match(/class="fixed-shell-view-close action-item__action button danger icon-only"/g)).toHaveLength(3);
     expect(html.match(/M6 6l12 12M18 6L6 18/g)).toHaveLength(3);
+    const mobileMore = html.slice(html.indexOf('class="fixed-shell-more-menu"'));
+    expect(mobileMore.match(/class="fixed-shell-more-close-current"/g)).toHaveLength(1);
   });
 
   test("keeps adapter HTML inside stable type-native live nodes", () => {
@@ -222,14 +224,16 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('class="fixed-shell-mobile-work-items button-group"');
     expect(html).toContain('class="fixed-shell-mobile-fixed action-item action-item__primary"');
     expect(html).not.toContain('data-mobile-destination="workspace"');
-    expect(html).toContain('class="action-item action-item__primary" type="button" aria-label="First"');
+    expect(html).toContain('class="action-item action-item__primary" type="button" aria-label="Agents"');
     expect(html).toContain('class="action-item action-item__primary" type="button" aria-label="Terminal"');
     expect(html).toContain('data-mobile-destination="work:terminal:one"');
     expect(html).toContain('data-mobile-destination="work:browser:preview"');
     expect(html).not.toContain('data-mobile-destination="work:files:workspace"');
     expect(html).toContain('aria-label="Terminal" title="Terminal" data-mobile-destination="work:terminal:one"');
     expect(html).toContain('aria-label="Preview" title="Preview" data-mobile-destination="work:browser:preview"');
-    expect(html).toContain('aria-label="First" title="First" data-mobile-destination="agent:agent-a"');
+    expect(html).toContain('aria-label="Agents" title="Agents" data-mobile-destination="agents"');
+    expect(html.match(/data-mobile-destination="agents"/g)).toHaveLength(1);
+    expect(html).not.toContain('data-mobile-destination="agent:');
     expect(html).toContain('data-more-work-key="files:workspace"');
     expect(html).toContain('aria-label="Hidden Attention"');
     expect(html).not.toContain("fixed-shell-more-scrim");

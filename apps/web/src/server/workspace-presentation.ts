@@ -314,18 +314,17 @@ function renderMobileWorkViewCloser(view: WorkPaneContribution): string {
 }
 
 function renderMobileNavigation(presentation: WorkspacePresentation): string {
-  const agents = presentation.agentConversations.map((agent) => renderMobileDestination(agent.title, `agent:${agent.id}`, "agent")).join("");
+  const agentsDestination = renderMobileDestination("Agents", "agents", "agent");
   const direct = renderMobileDirectWorkViews(presentation.workViews);
   const openSecondary = renderMobileSecondaryWorkViews(presentation.workViews);
   const filesCommand = presentation.workViews.some((view) => view.key.startsWith("files:")) ? undefined : presentation.commands?.find((command) => command.id === "files.open");
   const closedSingletons = filesCommand ? `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(filesCommand.id)}"><button type="submit">${escapeHtml(filesCommand.label)}</button></form>` : "";
   const launcherCommands = new Set(["terminal.create", "terminal.attach", "browser.create", "vscode.open", "desktop.open"]);
   const launchers = (presentation.commands ?? []).filter((command) => launcherCommands.has(command.id)).map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button type="submit">${escapeHtml(command.label)}</button></form>`).join("");
-  const closers = presentation.agentConversations.map((agent) => agent.close ? renderMobileCloser(`agent:${agent.id}`, agent.close) : "").join("")
-    + presentation.workViews.map(renderMobileWorkViewCloser).join("");
+  const closers = presentation.workViews.map(renderMobileWorkViewCloser).join("");
   const hiddenAttention = presentation.workViews.some((view) => view.mobileDestination === "more" && view.attentionSequence !== undefined);
   return `<nav class="fixed-shell-mobile-nav fixed-shell-resident-mobile-nav button-group" aria-label="Current workspace destinations">
-    <div class="fixed-shell-mobile-scroll button-group">${agents}<span id="${workViewDomId(presentation.workspace.id, "mobile_direct")}" class="fixed-shell-mobile-work-items button-group">${direct}</span></div>
+    <div class="fixed-shell-mobile-scroll button-group">${agentsDestination}<span id="${workViewDomId(presentation.workspace.id, "mobile_direct")}" class="fixed-shell-mobile-work-items button-group">${direct}</span></div>
     <button class="fixed-shell-mobile-fixed ${mobileActionItemClasses}" type="button" aria-label="More" title="More" data-mobile-more data-action="click->workspace-presentation#toggleMore">${icon("more")}${hiddenAttention ? '<i class="fixed-shell-attention-dot" aria-label="Hidden Attention"></i>' : ""}</button>
     <section class="fixed-shell-more-menu" data-workspace-presentation-target="moreMenu" aria-label="More" hidden>
       <header><button type="button" class="fixed-shell-more-close" aria-label="Close More" data-action="click->workspace-presentation#toggleMore">${icon("close")}</button></header>

@@ -369,6 +369,7 @@ turbo-frame { display: contents; }
 .fixed-shell-workspace-title small { color: var(--fixed-shell-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fixed-shell-agent-conversations, .fixed-shell-work-view-selectors { min-width: 0; flex: 1; display: flex; align-self: stretch; align-items: center; gap: var(--space-xs); overflow-x: auto; scrollbar-width: none; }
 .fixed-shell-agent-conversations::-webkit-scrollbar, .fixed-shell-work-view-selectors::-webkit-scrollbar { display: none; }
+.fixed-shell-agent-conversation { flex: 0 0 auto; }
 .fixed-shell-agent-conversation > .action-item__primary { align-self: stretch; padding: 0 var(--space-lg); }
 .fixed-shell-agent-bodies, .fixed-shell-work-bodies { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .fixed-shell-live-node { position: absolute; inset: 0; display: none; min-width: 0; min-height: 0; overflow: auto; }
@@ -404,9 +405,10 @@ turbo-frame { display: contents; }
   .fixed-shell-app > .fixed-shell-workspace-pane { z-index: 20; }
   .fixed-shell-app.is-switching-workspace > .fixed-shell-workspace-pane,
   .fixed-shell-app.is-mobile-workspace-pane-open > .fixed-shell-workspace-pane,
-  .fixed-workspace-presentation[data-phone-destination^="agent:"] .fixed-shell-agent-pane,
+  .fixed-workspace-presentation[data-phone-destination="agents"] .fixed-shell-agent-pane,
   .fixed-workspace-presentation[data-phone-destination^="work:"] .fixed-shell-work-pane { opacity: 1; visibility: visible; pointer-events: auto; }
-  .fixed-shell-agent-pane > header, .fixed-shell-work-pane > header, .fixed-shell-work-resizer { display: none; }
+  .fixed-shell-agent-pane > header { height: calc(45px + var(--space-md)); min-height: calc(45px + var(--space-md)); padding: var(--space-xs) var(--space-lg); }
+  .fixed-shell-work-pane > header, .fixed-shell-work-resizer, [data-show-work-pane] { display: none; }
   .fixed-shell-mobile-nav { position: absolute; z-index: 30; inset: auto 0 0; height: var(--fixed-shell-mobile-nav-height); display: flex; align-items: stretch; padding: var(--space-xs) var(--space-xs) calc(var(--space-xs) + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--fixed-shell-border); background: var(--panel); }
   .fixed-shell-resident-mobile-nav { z-index: 31; left: 72px; border-top: 0; background: transparent; }
   .fixed-shell-app .workspace-empty-onboarding-arrow { z-index: 32; }
