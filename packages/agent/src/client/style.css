@@ -210,7 +210,7 @@
 .agent-project-preparation-notice code { color: var(--text-bright); }
 .agent-project-preparation-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .agent-project-preparation-actions form { margin: 0; }
-.composer-surface { position: relative; background: var(--panel); border: 1.5px solid var(--line-strong); border-radius: var(--radius-overlay); box-shadow: var(--shadow); overflow: hidden; padding-bottom: 24px; pointer-events: auto; container-type: inline-size; font: var(--text-body)/var(--leading-standard) var(--font-sans); }
+.composer-surface { --composer-footer-height: 32px; position: relative; background: var(--panel); border: 1.5px solid var(--line-strong); border-radius: var(--radius-overlay); box-shadow: var(--shadow); overflow: hidden; padding-bottom: var(--composer-footer-height); pointer-events: auto; container-type: inline-size; font: var(--text-body)/var(--leading-standard) var(--font-sans); }
 .composer-surface:focus-within { border-color: var(--accent); }
 .composer-surface:has(> .agent-project-preparation-notice) { padding-bottom: 0; }
 .composer-surface:has(> .agent-project-preparation-notice) > form,
@@ -332,7 +332,7 @@
 .agent-file-icon { color: var(--text-muted); text-align: center; }
 .agent-file-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-weight: var(--weight-semibold); }
 /* Composer footer */
-.composer-footer { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: 32px; display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 0 12px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 72%, transparent); font: inherit; }
+.composer-footer { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: var(--composer-footer-height); display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 0 12px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 72%, transparent); font: inherit; }
 .agent-stat { height: 24px; display: inline-flex; align-items: center; gap: 4px; line-height: 24px; white-space: nowrap; }
 .agent-stat b { color: inherit; font: inherit; }
 .agent-stat[title="Tokens up (input)"], .agent-stat[title="Tokens down (output)"] { display: none; }
