@@ -276,6 +276,44 @@ describe("Atelier browser behavior", () => {
     await page.close();
   });
 
+  test("force deletes the visible workspace with Command-Option-Shift-Backspace", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "force-delete-me", title: "Force delete me" },
+      agentConversations: [{ id: "agent-force-delete", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = {
+      projects: [],
+      projectlessWorkspaces: [{ id: "force-delete-me", title: "Force delete me", active: true }],
+    };
+    const shell = renderShellFixture(presentation, pane)
+      .replace('data-controller="workspace-navigation"', 'data-controller="atelier-shortcuts workspace-navigation"');
+    const page = await newTestPage();
+    await page.route("http://atelier.test/workspaces/force-delete-me", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${shell}<script type="module" src="/workspace-test.js"></script>`,
+    }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/workspaces/force-delete-me/delete?force=1", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/force-delete-me");
+
+    const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === "/workspaces/force-delete-me/delete");
+    await page.locator("body").dispatchEvent("keydown", {
+      key: "Backspace",
+      code: "Backspace",
+      metaKey: true,
+      altKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    const request = await requestPromise;
+
+    expect(request.method()).toBe("POST");
+    expect(new URL(request.url()).searchParams.get("force")).toBe("1");
+    await page.close();
+  });
+
   test("positions a selected Agent transcript at the latest user message while its navigation button still targets the latest message", async () => {
     const agentBody = `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="selected" data-agent-pane-label-value="Agent 1">
       <div class="agent-transcript" id="selected_agent_transcript" data-agent-pane-target="transcript" style="height: 200px; overflow-y: auto">

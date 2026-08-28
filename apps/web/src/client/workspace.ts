@@ -447,7 +447,7 @@ class AtelierShortcutsController extends Controller {
 
   private readonly keydown = (event: KeyboardEvent): void => {
     if (event.repeat || event.isComposing) return;
-    if (!event.metaKey || !event.altKey || event.ctrlKey || event.shiftKey) return;
+    if (!event.metaKey || !event.altKey || event.ctrlKey) return;
 
     if (event.key === "Meta" || event.key === "Alt") {
       this.scheduleShortcutOverlay();
@@ -518,12 +518,11 @@ class AtelierShortcutsController extends Controller {
   }
 
   private currentCommands(): CommandRegistration[] {
-    const deleteCommand = this.visibleWorkspaceDeleteCommand();
     const commands = new Map<string, CommandRegistration>([
       ...this.commands,
       ...clientHooks.registeredCommands().map((command) => [command.id, command] as const),
     ]);
-    if (deleteCommand) commands.set(deleteCommand.id, deleteCommand);
+    for (const command of this.visibleWorkspaceDeleteCommands()) commands.set(command.id, command);
     for (const command of this.workspaceCommands()) {
       if (!commands.has(command.id)) {
         commands.set(command.id, {
@@ -535,16 +534,23 @@ class AtelierShortcutsController extends Controller {
     return [...commands.values()];
   }
 
-  private visibleWorkspaceDeleteCommand(): CommandRegistration | undefined {
-    if (!this.visibleWorkspaceDeleteForm()) return undefined;
-    return {
+  private visibleWorkspaceDeleteCommands(): CommandRegistration[] {
+    if (!this.visibleWorkspaceDeleteForm()) return [];
+    return [{
       id: "workspace.delete",
       label: "Delete workspace",
       description: "Delete the current workspace",
       scope: "workspace",
       binding: "Meta+Alt+Backspace",
       run: () => this.deleteVisibleWorkspace(),
-    };
+    }, {
+      id: "workspace.force-delete",
+      label: "Force delete workspace",
+      description: "Delete the current workspace without checking for outstanding changes",
+      scope: "workspace",
+      binding: "Meta+Alt+Shift+Backspace",
+      run: () => this.forceDeleteVisibleWorkspace(),
+    }];
   }
 
   private visibleWorkspaceDeleteForm(): HTMLFormElement | null {
@@ -557,6 +563,20 @@ class AtelierShortcutsController extends Controller {
   private deleteVisibleWorkspace(): void {
     const form = this.visibleWorkspaceDeleteForm();
     if (form) submitFormWithFirstButton(form);
+  }
+
+  private forceDeleteVisibleWorkspace(): void {
+    const form = this.visibleWorkspaceDeleteForm();
+    if (!form) return;
+    const submitter = document.createElement("button");
+    submitter.type = "submit";
+    submitter.hidden = true;
+    const action = new URL(form.action);
+    action.searchParams.set("force", "1");
+    submitter.formAction = action.href;
+    form.append(submitter);
+    form.requestSubmit(submitter);
+    submitter.remove();
   }
 
   private workspaceCommands(): WorkspaceCommandRegistration[] {
