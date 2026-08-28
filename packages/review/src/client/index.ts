@@ -2,9 +2,8 @@
 
 import type { DiffLineAnnotation, FileDiff, FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
 import { isWorkspacePaneVisible, type WorkspaceClientModule } from "@atelier/shared";
-import type { ReviewCommentModel } from "../model.ts";
-import { reviewDiffOptions, reviewViewKey } from "../pierre.ts";
-import { syncComposerReviewComments } from "./composer-comments.ts";
+import { reviewCommentsPrompt, type ReviewCommentModel } from "../model.ts";
+import { reviewDiffOptions } from "../pierre.ts";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
 
@@ -58,15 +57,6 @@ function closeButton(label: string, action: () => void): HTMLButtonElement {
   return button;
 }
 
-async function eventually<Value>(read: () => Value | undefined): Promise<Value | undefined> {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    const value = read();
-    if (value !== undefined) return value;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  return undefined;
-}
-
 function createReviewController(Controller: StimulusControllerConstructor) {
   return class ReviewController extends Controller {
     static values = { workspaceId: String };
@@ -82,10 +72,6 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private pane!: HTMLElement;
     private resident!: HTMLElement;
     private readonly becameVisible = (): void => { void this.becomeVisible(); };
-    private readonly agentBecameVisible = (event: Event): void => {
-      // SAFETY: Workspace presentation emits this named lifecycle event with a role-bearing detail object.
-      if ((event as CustomEvent<{ role?: string }>).detail?.role === "agent" && this.hydrated) this.syncComposerComments();
-    };
 
     connect(): void {
       this.restoreCollapseState();
@@ -93,13 +79,11 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       this.pane = this.element.closest<HTMLElement>('[data-workspace-pane-role="work"]')!;
       this.resident = this.element.closest<HTMLElement>(".workspace-detail-resident")!;
       this.pane.addEventListener("atelier:workspace-pane-visible", this.becameVisible);
-      this.resident.addEventListener("atelier:workspace-pane-visible", this.agentBecameVisible);
       if (isWorkspacePaneVisible(this.element)) void this.becomeVisible();
     }
 
     disconnect(): void {
       this.pane.removeEventListener("atelier:workspace-pane-visible", this.becameVisible);
-      this.resident.removeEventListener("atelier:workspace-pane-visible", this.agentBecameVisible);
       for (const instance of this.instances) instance.cleanUp();
       this.instances = [];
       this.models.clear();
@@ -115,7 +99,6 @@ function createReviewController(Controller: StimulusControllerConstructor) {
         for (const host of this.diffTargets) this.hydrateDiff(host, FileDiff);
       }
       if (this.draft && !this.models.has(this.draft.path)) this.clearDraft();
-      this.syncComposerComments();
       requestAnimationFrame(() => this.restorePosition());
     }
 
@@ -312,43 +295,20 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       window.Turbo?.renderStreamMessage(await response.text());
     }
 
-    private syncComposerComments(): void {
-      const comments = [...this.models.values()].flatMap((model) => model.comments);
-      this.element.querySelectorAll<HTMLElement>("[data-review-comment]").forEach((item) => {
-        // SAFETY: The server serializes data-review-comment from a ReviewCommentModel.
-        comments.push(JSON.parse(item.dataset.reviewComment!) as ReviewCommentModel);
-      });
-      syncComposerReviewComments(this.resident, comments, {
-        navigate: (comment) => this.navigateToComment(comment),
-        delete: (comment) => this.deleteComment(comment.id),
-      });
+    copyCommentsToComposer(): void {
+      const input = this.resident.querySelector<HTMLTextAreaElement>('.fixed-shell-live-node[data-workspace-pane-role="agent"].is-active textarea[name="text"]')!;
+      const prompt = reviewCommentsPrompt(this.comments);
+      const separator = input.value.length === 0 || input.value.endsWith("\n\n") ? "" : input.value.endsWith("\n") ? "\n" : "\n\n";
+      input.value += `${separator}${prompt}`;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
     }
 
-    private async navigateToComment(comment: ReviewCommentModel): Promise<void> {
-      const resident = this.resident;
-      const viewSelector = `[data-work-view-key="${CSS.escape(reviewViewKey)}"]`;
-      let selector = resident.querySelector<HTMLButtonElement>(viewSelector) ?? undefined;
-      if (!selector) {
-        const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/commands/review.open`, {
-          method: "POST",
-          headers: { Accept: "text/vnd.turbo-stream.html" },
-        });
-        if (!response.ok) throw new Error(await response.text());
-        window.Turbo?.renderStreamMessage(await response.text());
-        selector = await eventually(() => resident.querySelector<HTMLButtonElement>(viewSelector) ?? undefined);
-      }
-      if (!selector) throw new Error("Review command did not open its Work view");
-      selector.click();
-      const commentSelector = `[data-review-comment-id="${CSS.escape(comment.id)}"]`;
-      const anchor = await eventually(() => {
-        const review = resident.querySelector<HTMLElement>("[data-controller~='review']");
-        const file = review?.querySelector<HTMLDetailsElement>(`[data-review-path="${CSS.escape(comment.path)}"]`);
-        if (file) file.open = true;
-        return review?.querySelector<HTMLElement>(commentSelector)
-          ?? file?.querySelector<HTMLElement>("diffs-container")?.shadowRoot?.querySelector<HTMLElement>(commentSelector)
-          ?? undefined;
-      });
-      anchor?.scrollIntoView({ behavior: "smooth", block: "center" });
+    private get comments(): ReviewCommentModel[] {
+      const script = this.element.querySelector<HTMLScriptElement>("script[data-review-comments]")!;
+      // SAFETY: The server emits this private JSON script from ReviewCommentModel values.
+      return JSON.parse(script.textContent ?? "") as ReviewCommentModel[];
     }
 
     rememberPosition(): void {

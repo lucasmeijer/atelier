@@ -3,7 +3,7 @@ import { turboStream, turboStreamResponse, type WorkspaceModule } from "@atelier
 import { workspaceWorkHostPath } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import type { ReviewSide } from "../model.ts";
+import { reviewCommentsPrompt, type ReviewSide } from "../model.ts";
 import { collectReviewSnapshot, reviewSnippet, type ReviewSnapshot } from "./diff.ts";
 import { renderReviewBody, renderReviewWorkView, reviewBodyId, reviewReference } from "./render.ts";
 import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewComments, remapReviewComments, reviewCommentsForPrompt, type ReviewComment } from "./state.ts";
@@ -59,17 +59,6 @@ async function createComment(workspaceId: string, request: Request): Promise<Res
   return turboStreamResponse(await bodyStream(workspaceId, snapshot, listReviewComments(workspaceId)));
 }
 
-function promptSection(comments: ReviewComment[]): string {
-  if (!comments.length) return "";
-  const entries = comments.map((comment, index) => {
-    const side = comment.side === "additions" ? "new" : "old";
-    const range = comment.startLine === comment.endLine ? `${comment.startLine}` : `${comment.startLine}-${comment.endLine}`;
-    const quote = comment.snippet.split("\n").map((line) => `    ${line}`).join("\n");
-    return `${index + 1}. ${comment.path} (${side} lines ${range})\n\n${quote}\n\n   Review comment: ${comment.body}`;
-  });
-  return `Please address these review comments:\n\n${entries.join("\n\n")}`;
-}
-
 export const reviewWorkspaceModule: WorkspaceModule = {
   id: "review",
   workViews: [{
@@ -88,6 +77,14 @@ export const reviewWorkspaceModule: WorkspaceModule = {
       if (match) return request.method === "POST" ? await refreshedResponse(decodeURIComponent(match[1]!)) : textResponse("Method not allowed", 405);
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/comments$/);
       if (match) return request.method === "POST" ? await createComment(decodeURIComponent(match[1]!), request) : textResponse("Method not allowed", 405);
+      match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/comments\/delete$/);
+      if (match) {
+        if (request.method !== "POST") return textResponse("Method not allowed", 405);
+        const workspaceId = decodeURIComponent(match[1]!);
+        const { snapshot, comments } = await current(workspaceId);
+        deleteReviewComments(workspaceId, comments.map((comment) => comment.id));
+        return turboStreamResponse(await bodyStream(workspaceId, snapshot, []));
+      }
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/comments\/([^/]+)\/delete$/);
       if (!match) return undefined;
       if (request.method !== "POST") return textResponse("Method not allowed", 405);
@@ -103,7 +100,7 @@ export const reviewWorkspaceModule: WorkspaceModule = {
       context.broadcastWorkspace(workspaceId, await bodyStream(workspaceId, snapshot, comments));
     });
     context.events.on("workspace_agent_prompt_preparing", (event) => {
-      const section = promptSection(reviewCommentsForPrompt(event.workspaceId, event.reviewCommentIds));
+      const section = reviewCommentsPrompt(reviewCommentsForPrompt(event.workspaceId, event.reviewCommentIds));
       if (section) event.sections.push(section);
     });
     context.events.on("workspace_agent_prompt_submitted", async ({ workspaceId, reviewCommentIds }) => {

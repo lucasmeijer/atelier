@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { reviewCommentsPrompt, type ReviewCommentModel } from "../src/model.ts";
 import { collectReviewSnapshot, type ReviewFile } from "../src/server/diff.ts";
 import { renderReviewBody } from "../src/server/render.ts";
 import { remapReviewComment, type ReviewComment } from "../src/server/state.ts";
@@ -108,6 +109,21 @@ describe("Review comment anchors", () => {
   });
 });
 
+describe("Review comment prompt", () => {
+  test("formats file, line, snippet, and comment context", () => {
+    const comments: ReviewCommentModel[] = [
+      { id: "one", path: "apps/web/web.ts", side: "additions", startLine: 14, endLine: 14, snippet: "the selection the user made gets written here", body: "Why are we doing it like this over here" },
+      { id: "two", path: "apps/web/web.tests.ts", side: "deletions", startLine: 18, endLine: 20, snippet: "the test snippet here\nwith a second line", body: "I don't think we need these tests" },
+    ];
+
+    expect(reviewCommentsPrompt(comments)).toBe(`Context: apps/web/web.ts, line 14, snippet "the selection the user made gets written here"
+Comment: Why are we doing it like this over here
+
+Context: apps/web/web.tests.ts, line 18-20, snippet "the test snippet here\\nwith a second line"
+Comment: I don't think we need these tests`);
+  });
+});
+
 describe("Review presentation", () => {
   test("renders explicit empty and not-git states", async () => {
     const empty = await renderReviewBody("workspace 1", { phase: "ready", files: [], additions: 0, deletions: 0 }, []);
@@ -118,13 +134,26 @@ describe("Review presentation", () => {
     expect(notGit).toContain("Not a git repository");
   });
 
-  test("renders file grouping and review toolbar actions", async () => {
-    const file: ReviewFile = { path: "src/example.ts", kind: "mode", additions: 1, deletions: 0, detail: "File mode changed" };
-    const html = await renderReviewBody("workspace 1", { phase: "ready", files: [file], additions: 1, deletions: 0 }, []);
+  test("renders file grouping and explicit review comment actions", async () => {
+    const comment: ReviewComment = { id: "comment-1", path: "src/example.ts", side: "additions", startLine: 2, endLine: 2, body: "Keep this lazy", snippet: "target" };
+    const file: ReviewFile = { path: "src/example.ts", kind: "binary", additions: 1, deletions: 0, detail: "Binary file changed" };
+    const html = await renderReviewBody("workspace 1", { phase: "ready", files: [file], additions: 1, deletions: 0 }, [comment]);
 
     expect(html).toContain('class="review-files action-list"');
+    expect(html).toContain("Copy into composer");
+    expect(html).toContain('data-action="click->review#copyCommentsToComposer"');
+    expect(html).toContain('class="button secondary icon-only copy-button"');
+    expect(html).toContain('aria-label="Copy review comments to clipboard"');
+    expect(html).toContain('action="/workspaces/workspace%201/review/comments/delete"');
+    expect(html).toContain('aria-label="Delete all review comments"');
+    expect(html).toContain('aria-label="Refresh review"');
     expect(html).toContain('aria-label="Collapse all files"');
     expect(html).toContain('aria-label="Expand all files"');
-    expect(html).toContain('aria-label="Refresh review"');
+    expect(html).toContain('<span class="review-comment-count">1 comment</span>');
+    expect(html.indexOf("Copy into composer")).toBeLessThan(html.indexOf('aria-label="Copy review comments to clipboard"'));
+    expect(html.indexOf('aria-label="Copy review comments to clipboard"')).toBeLessThan(html.indexOf('aria-label="Delete all review comments"'));
+    expect(html.indexOf('aria-label="Delete all review comments"')).toBeLessThan(html.indexOf('aria-label="Refresh review"'));
+    expect(html.indexOf('aria-label="Refresh review"')).toBeLessThan(html.indexOf('<div class="review-summary">'));
+    expect(html).not.toContain('name="reviewComment"');
   });
 });

@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkView } from "../../../packages/files/src/server/render.ts";
+import { renderReviewBody } from "../../../packages/review/src/server/render.ts";
+import type { ReviewComment } from "../../../packages/review/src/server/state.ts";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
 import { removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 
@@ -74,6 +76,43 @@ afterAll(async () => {
 });
 
 describe("Atelier browser behavior", () => {
+  test("copies review comments into the agent composer or clipboard only on request", async () => {
+    await browserContext.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://localhost" });
+    const comments: ReviewComment[] = [
+      { id: "one", path: "apps/web/web.ts", side: "additions", startLine: 14, endLine: 14, snippet: "the selection the user made gets written here", body: "Why are we doing it like this over here" },
+      { id: "two", path: "apps/web/web.tests.ts", side: "additions", startLine: 18, endLine: 18, snippet: "the test snippet here", body: "I don't think we need these tests" },
+    ];
+    const reviewBody = await renderReviewBody("review-copy", { phase: "ready", files: [], additions: 0, deletions: 0 }, comments);
+    const fixture = `<div class="workspace-detail-resident visible"><div class="fixed-workspace-presentation is-work-pane-open">
+      <section class="fixed-shell-live-node is-active" data-workspace-pane-role="agent" data-workspace-pane-id="agent-review"><textarea name="text">Existing prompt</textarea></section>
+      <section class="fixed-shell-live-node is-active" data-workspace-pane-role="work" data-workspace-pane-id="review:workspace"><div class="fixed-shell-live-body">${reviewBody}</div></section>
+    </div></div>`;
+    const page = await newTestPage();
+    await page.route("http://localhost/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route(/http:\/\/localhost\/workspace-[a-z0-9]+\.js$/, async (route) => {
+      const asset = new URL(`../public/assets/${new URL(route.request().url()).pathname.slice(1)}`, import.meta.url);
+      await route.fulfill({ contentType: "text/javascript", body: await Bun.file(asset).text() });
+    });
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.goto("http://localhost/");
+
+    const composer = page.locator('.fixed-shell-live-node[data-workspace-pane-role="agent"].is-active textarea[name="text"]');
+    expect(await composer.inputValue()).toBe("Existing prompt");
+    expect(await page.locator(".review-comment-attachment").count()).toBe(0);
+    await page.getByRole("button", { name: "Copy into composer", exact: true }).click();
+    const generated = `Context: apps/web/web.ts, line 14, snippet "the selection the user made gets written here"
+Comment: Why are we doing it like this over here
+
+Context: apps/web/web.tests.ts, line 18, snippet "the test snippet here"
+Comment: I don't think we need these tests`;
+    expect(await composer.inputValue()).toBe(`Existing prompt\n\n${generated}`);
+
+    await page.getByRole("button", { name: "Copy review comments to clipboard", exact: true }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(generated);
+    await page.close();
+    await browserContext.clearPermissions();
+  });
+
   test("switches the design catalogue between responsive preview platforms", async () => {
     const serveCatalogue = async (page: Page) => {
       await page.route("http://catalogue.test/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
