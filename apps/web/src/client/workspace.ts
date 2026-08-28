@@ -396,6 +396,7 @@ class AtelierShortcutsController extends Controller {
   private readonly commands = new Map<string, CommandRegistration>();
   private shortcutOverlayTimer: ReturnType<typeof setTimeout> | undefined;
   private shortcutOverlay: HTMLElement | undefined;
+  private shortcutOverlayPointerInside = false;
   private paletteDialog: HTMLDialogElement | undefined;
   private paletteInput: HTMLInputElement | undefined;
   private paletteResults: HTMLElement | undefined;
@@ -469,7 +470,7 @@ class AtelierShortcutsController extends Controller {
   };
 
   private readonly keyup = (event: KeyboardEvent): void => {
-    if (!event.metaKey || !event.altKey) this.hideShortcutOverlay();
+    if ((!event.metaKey || !event.altKey) && !this.shortcutOverlayPointerInside) this.hideShortcutOverlay();
   };
 
   private readonly shortcutBlur = (): void => {
@@ -602,6 +603,7 @@ class AtelierShortcutsController extends Controller {
     this.shortcutOverlayTimer = undefined;
     this.shortcutOverlay?.remove();
     this.shortcutOverlay = undefined;
+    this.shortcutOverlayPointerInside = false;
   };
 
   private showShortcutOverlay(): void {
@@ -610,25 +612,48 @@ class AtelierShortcutsController extends Controller {
       .sort((a, b) => a.label.localeCompare(b.label));
 
     const overlay = document.createElement("aside");
-    overlay.className = "shortcut-overlay viewport-overlay";
-    overlay.setAttribute("role", "status");
+    overlay.className = "shortcut-overlay popup-menu viewport-overlay";
+    overlay.setAttribute("role", "region");
+    overlay.setAttribute("aria-labelledby", "shortcut-overlay-title");
     overlay.setAttribute("aria-live", "polite");
+    overlay.addEventListener("pointerenter", () => { this.shortcutOverlayPointerInside = true; });
+    overlay.addEventListener("pointerleave", this.hideShortcutOverlay);
 
-    const title = document.createElement("div");
+    const title = document.createElement("h2");
+    title.id = "shortcut-overlay-title";
     title.className = "shortcut-overlay-title";
     title.textContent = "Keyboard shortcuts";
     overlay.append(title);
 
-    const list = document.createElement("dl");
-    list.className = "shortcut-overlay-list";
+    const separator = document.createElement("hr");
+    separator.className = "popup-menu__separator";
+    overlay.append(separator);
+
+    const actions = document.createElement("div");
+    actions.className = "action-list";
     for (const command of commands) {
-      const label = document.createElement("dt");
-      label.textContent = command.label;
-      const binding = document.createElement("dd");
+      const button = document.createElement("button");
+      button.className = "shortcut-overlay-item action-item action-item__primary";
+      button.type = "button";
+      button.addEventListener("click", () => {
+        this.hideShortcutOverlay();
+        void command.run();
+      });
+
+      const label = document.createElement("span");
+      label.className = "action-item__label";
+      const labelText = document.createElement("span");
+      labelText.className = "action-item__label-text";
+      labelText.textContent = command.label;
+      label.append(labelText);
+
+      const binding = document.createElement("kbd");
+      binding.className = "shortcut-overlay-binding popup-menu__meta";
       binding.textContent = this.formatBinding(command.binding);
-      list.append(label, binding);
+      button.append(label, binding);
+      actions.append(button);
     }
-    overlay.append(list);
+    overlay.append(actions);
 
     document.body.append(overlay);
     this.shortcutOverlay = overlay;

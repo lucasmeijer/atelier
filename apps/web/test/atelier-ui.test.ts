@@ -29,6 +29,27 @@ function renderShellFixture(presentation: WorkspacePresentation, pane: Workspace
   return renderShellResidents(pane, residents);
 }
 
+async function newShortcutTestPage(ids: readonly string[]): Promise<Page> {
+  const presentations: WorkspacePresentation[] = ids.map((id) => ({
+    workspace: { id, title: id },
+    agentConversations: [{ id: `agent-${id}`, title: "Agent", bodyHtml: "<p>Agent</p>" }],
+    workViews: [],
+  }));
+  const pane: WorkspacePanePresentation = {
+    projects: [],
+    projectlessWorkspaces: presentations.map(({ workspace }, index) => ({ ...workspace, active: index === 0 })),
+  };
+  const shell = renderShellFixture(presentations[0]!, pane, presentations.slice(1))
+    .replace('data-controller="workspace-navigation"', 'data-controller="atelier-shortcuts workspace-navigation"');
+  const page = await newTestPage();
+  await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${shell}<script type="module" src="/workspace-test.js"></script>` }));
+  await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+  await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+  await page.goto("http://atelier.test/");
+  await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+  return page;
+}
+
 beforeAll(async () => {
   const build = Bun.spawn(["bun", "run", "apps/web/scripts/build-assets.ts"], { cwd: new URL("../../..", import.meta.url).pathname, stdout: "pipe", stderr: "pipe" });
   const [exitCode, stdout, stderr] = await Promise.all([build.exited, new Response(build.stdout).text(), new Response(build.stderr).text()]);
@@ -302,26 +323,7 @@ describe("Atelier browser behavior", () => {
   });
 
   test("opens the next and previous workspace with keyboard shortcuts", async () => {
-    const presentations: WorkspacePresentation[] = ["first", "second", "third"].map((id) => ({
-      workspace: { id, title: id },
-      agentConversations: [{ id: `agent-${id}`, title: "Agent", bodyHtml: "<p>Agent</p>" }],
-      workViews: [],
-    }));
-    const pane: WorkspacePanePresentation = {
-      projects: [],
-      projectlessWorkspaces: presentations.map(({ workspace }, index) => ({ ...workspace, active: index === 0 })),
-    };
-    const shell = renderShellFixture(presentations[0]!, pane, presentations.slice(1))
-      .replace('data-controller="workspace-navigation"', 'data-controller="atelier-shortcuts workspace-navigation"');
-    const page = await newTestPage();
-    await page.route("http://atelier.test/", (route) => route.fulfill({
-      contentType: "text/html",
-      body: `${shell}<script type="module" src="/workspace-test.js"></script>`,
-    }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
-    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
-    await page.goto("http://atelier.test/");
-    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    const page = await newShortcutTestPage(["first", "second", "third"]);
 
     const pressShortcut = async (key: string, code: string) => {
       await page.locator("body").dispatchEvent("keydown", { key, code, metaKey: true, altKey: true, bubbles: true, cancelable: true });
@@ -330,6 +332,23 @@ describe("Atelier browser behavior", () => {
     await page.waitForFunction(() => document.querySelector('[data-workspace-entry-id="second"]')?.classList.contains("active"));
     await pressShortcut(",", "Comma");
     await page.waitForFunction(() => document.querySelector('[data-workspace-entry-id="first"]')?.classList.contains("active"));
+    await page.close();
+  });
+
+  test("runs a shortcut popup action after the modifier keys are released", async () => {
+    const page = await newShortcutTestPage(["first", "second"]);
+
+    await page.locator("body").dispatchEvent("keydown", {
+      key: "Meta", code: "MetaLeft", metaKey: true, altKey: true, bubbles: true,
+    });
+    const nextAction = page.getByRole("button", { name: /Open next workspace/ });
+    await nextAction.hover();
+    await page.locator("body").dispatchEvent("keyup", { key: "Meta", code: "MetaLeft", bubbles: true });
+    expect(await nextAction.isVisible()).toBe(true);
+    await nextAction.click();
+
+    await page.waitForFunction(() => document.querySelector('[data-workspace-entry-id="second"]')?.classList.contains("active"));
+    expect(await page.locator(".shortcut-overlay").count()).toBe(0);
     await page.close();
   });
 
