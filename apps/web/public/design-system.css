@@ -55,6 +55,7 @@
   --danger: #d23b3b;
   --decorative: #7c3aed;
   --shadow: 0 14px 44px rgba(20, 30, 60, .13);
+  --popup-shadow: 0 14px 44px rgba(20, 30, 60, .039);
 
   /* State colors are derived consistently for every theme. */
   --accent-soft: color-mix(in srgb, var(--accent) 15%, var(--panel));
@@ -100,6 +101,7 @@
   --danger: #d98b76;
   --decorative: #c9a0dc;
   --shadow: 0 22px 56px rgba(0, 0, 0, .45);
+  --popup-shadow: 0 22px 56px rgba(0, 0, 0, .135);
 }
 
 [data-theme="tokyo-night"] {
@@ -118,6 +120,7 @@
   --danger: #f7768e;
   --decorative: #bb9af7;
   --shadow: 0 22px 56px rgba(0, 0, 0, .5);
+  --popup-shadow: 0 22px 56px rgba(0, 0, 0, .15);
 }
 
 [data-theme="midnight"] {
@@ -136,6 +139,7 @@
   --danger: #f85149;
   --decorative: #bc8cff;
   --shadow: 0 22px 56px rgba(0, 0, 0, .6);
+  --popup-shadow: 0 22px 56px rgba(0, 0, 0, .18);
 }
 
 [data-theme="nord"] {
@@ -154,6 +158,7 @@
   --danger: #bf616a;
   --decorative: #b48ead;
   --shadow: 0 22px 56px rgba(0, 0, 0, .45);
+  --popup-shadow: 0 22px 56px rgba(0, 0, 0, .135);
 }
 
 /* Scrollable design-system surfaces use the active theme instead of browser chrome. */
@@ -542,7 +547,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   z-index: 1000;
   inset: auto;
   box-sizing: border-box;
-  min-width: 184px;
+  width: max-content;
   max-width: min(340px, calc(100vw - 16px));
   max-height: min(420px, calc(100vh - 16px));
   overflow-y: auto;
@@ -552,11 +557,11 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   border-radius: var(--radius-surface);
   background: var(--elev);
   color: var(--text-bright);
-  box-shadow: var(--shadow);
+  box-shadow: var(--popup-shadow);
   font: var(--text-body)/var(--leading-standard) var(--font-sans);
 }
 .popup-menu[hidden], .popup-menu[popover]:not(:popover-open) { display: none; }
-.popup-menu .action-item { border-radius: var(--radius-round); font-weight: var(--weight-semibold); }
+.popup-menu .action-item { border-radius: var(--radius-round); font-weight: 400; }
 .popup-menu .action-item.is-danger { color: var(--danger); }
 .popup-menu .action-item.is-danger:not(:disabled):not([aria-disabled="true"]):hover,
 .popup-menu .action-item.is-danger:not(:disabled):not([aria-disabled="true"]):focus-visible { background: var(--danger-soft); color: var(--danger); }

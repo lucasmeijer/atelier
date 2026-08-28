@@ -44,7 +44,7 @@ const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
     id: browserCreateCommandId,
     label: "New Browser",
     scope: "workspace",
-    surfaces: { ui: { placement: "work-launcher" } },
+    surfaces: { ui: { placement: "work-launcher", label: "Browser" } },
   },
 ];
 

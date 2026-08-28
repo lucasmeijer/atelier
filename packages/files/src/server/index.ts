@@ -147,7 +147,7 @@ const filesWorkspaceModule: WorkspaceModule = {
   attachToWorkspace({ workspaceId }) {
     return {
       workViews: listFilesViews(workspaceId).map((view) => renderFilesWorkView(workspaceId, view)),
-      commands: [{ id: "files.create", label: "New Files view", scope: "workspace", surfaces: { ui: { placement: "work-launcher", label: "New Files view" } } }],
+      commands: [{ id: "files.create", label: "New Files view", scope: "workspace", surfaces: { ui: { placement: "work-launcher", label: "Files" } } }],
       overlayHtml: [renderFilesRefreshSignal(workspaceId)],
     };
   },

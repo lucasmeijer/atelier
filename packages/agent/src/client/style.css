@@ -361,10 +361,9 @@
 .agent-model-provider-icon { width: 13px; height: 13px; flex: 0 0 auto; }
 .agent-model-provider-icon.brand-icon-fallback { display: inline-grid; place-items: center; border-radius: var(--radius-indicator); }
 .composer-selection-button:hover { background: var(--bg); color: var(--text-bright); }
-.agent-model-menu { width: min(340px, calc(100vw - 16px)); }
-.agent-model-configure { width: 100%; justify-content: flex-start; }
 .agent-model-option-label { display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 8px; }
-.agent-model-option-label > .agent-model-provider-icon { grid-row: 1 / span 2; align-self: center; }
+.agent-model-option-label > .agent-model-provider-icon { grid-row: 1; align-self: center; }
+.agent-model-option-label:has(> .popup-menu__description) > .agent-model-provider-icon { grid-row: 1 / span 2; }
 .agent-model-option-label > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-model-option-label > .popup-menu__description { grid-column: 2; }
 

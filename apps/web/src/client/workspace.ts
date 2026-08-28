@@ -1873,7 +1873,7 @@ class AgentModelMenuController extends SelectPopupController {
   private form?: HTMLFormElement | null;
 
   protected override get triggerClass(): string { return "composer-selection-button agent-model-button"; }
-  protected override get menuClass(): string { return " opens-above agent-model-menu"; }
+  protected override get menuClass(): string { return " opens-above"; }
   protected override get accessibleName(): string { return "Model"; }
 
   override connect(): void {
@@ -1900,8 +1900,9 @@ class AgentModelMenuController extends SelectPopupController {
   protected override renderMenu(): Node[] {
     const configure = document.createElement("button");
     configure.type = "button";
-    configure.className = "button secondary agent-model-configure";
-    configure.textContent = "Configure models";
+    configure.className = "action-item action-item__primary";
+    configure.setAttribute("role", "menuitem");
+    configure.appendChild(this.actionItemLabel("Configure models"));
     configure.addEventListener("click", () => { this.close(); void this.openSetup(); });
     const separator = document.createElement("hr");
     separator.className = "popup-menu__separator";
@@ -1912,7 +1913,7 @@ class AgentModelMenuController extends SelectPopupController {
     const label = document.createElement("span");
     label.className = "action-item__label agent-model-option-label";
     label.innerHTML = agentModelLabelHtml(option.dataset.provider ?? "", option.textContent ?? option.value);
-    if (option.disabled) label.appendChild(this.description(option.dataset.unavailableReason ?? "Unavailable"));
+    if (option.dataset.unavailableReason && option.dataset.unavailableReason !== "Provider disconnected") label.appendChild(this.description(option.dataset.unavailableReason));
     return label;
   }
 

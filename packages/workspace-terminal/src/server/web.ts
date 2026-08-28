@@ -38,7 +38,7 @@ const terminalWorkspaceCommands: WorkspaceCommandContribution[] = [
     id: "terminal.create",
     label: "New Terminal",
     scope: "workspace",
-    surfaces: { ui: { placement: "work-launcher" }, shortcut: { defaultBinding: "Meta+Alt+KeyT" } },
+    surfaces: { ui: { placement: "work-launcher", label: "Terminal" }, shortcut: { defaultBinding: "Meta+Alt+KeyT" } },
   },
   {
     id: "terminal.attach",

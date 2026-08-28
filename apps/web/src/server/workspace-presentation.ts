@@ -76,14 +76,17 @@ export interface WorkspacePresentation {
   preserveLiveKeys?: ReadonlySet<string>;
 }
 
-type IconName = "agent" | "browser" | "close" | "file" | "more" | "panel" | "park" | "plus" | "terminal" | "trash" | "workspace" | "x";
+type IconName = "agent" | "browser" | "close" | "code" | "desktop" | "file" | "files" | "more" | "panel" | "park" | "plus" | "terminal" | "trash" | "workspace" | "x";
 
 function icon(name: IconName): string {
   const paths = {
     agent: '<path d="M9 4h6M12 4V2M6 8h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/>',
     browser: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>',
     close: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
+    code: '<path d="m9 7-5 5 5 5m6-10 5 5-5 5"/>',
+    desktop: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
     file: '<path d="M7 3h7l4 4v14H7zM14 3v5h4"/>',
+    files: '<path d="M4 5h6l2 2h8v12H4z"/>',
     panel: '<path d="M4 4h16v16H4zM15 4v16"/>',
     more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     park: '<path d="M17.5 15.5A7 7 0 0 1 8.5 6.5a7 7 0 1 0 9 9z"/><path d="M16 5h4M18 3v4"/>',
@@ -272,12 +275,28 @@ function workViewDomId(workspaceId: string, part: string): string {
   return domId("fixed_workspace", workspaceId, part);
 }
 
+function workLauncherIcon(commandId: string): IconName {
+  switch (commandId) {
+    case "browser.create": return "browser";
+    case "desktop.start": return "desktop";
+    case "files.create": return "files";
+    case "terminal.attach":
+    case "terminal.create": return "terminal";
+    case "vscode.open": return "code";
+    default: return "plus";
+  }
+}
+
+function renderWorkLauncherCommand(command: NonNullable<WorkspacePresentation["commands"]>[number], workspaceId: string): string {
+  return `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/commands/${encodeURIComponent(command.id)}"><button class="action-item action-item__primary" type="submit" role="menuitem"><span class="popup-menu__icon">${icon(workLauncherIcon(command.id))}</span>${actionItemLabel(command.label)}</button></form>`;
+}
+
 function renderWorkPane(presentation: WorkspacePresentation): string {
   const selectors = renderWorkViewSelectors(presentation.workViews);
   const panes = presentation.workViews.map((view) => renderWorkViewPane(view, presentation.preserveLiveKeys)).join("");
   const workCommands = (presentation.commands ?? []).filter((command) => command.placement === "work-launcher");
   const addMenuId = workViewDomId(presentation.workspace.id, "add_menu");
-  const addMenu = workCommands.length ? `<span class="popup-menu-anchor"><button class="button primary icon-only popup-menu-trigger" type="button" title="Open Work view" aria-label="Open Work view" aria-haspopup="menu" aria-controls="${addMenuId}" popovertarget="${addMenuId}">${icon("plus")}</button><div class="popup-menu action-list popup-menu-anchored" id="${addMenuId}" role="menu" aria-label="Open Work view" popover="auto">${workCommands.map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button class="action-item action-item__primary" type="submit" role="menuitem">${actionItemLabel(command.label)}</button></form>`).join("")}</div></span>` : "";
+  const addMenu = workCommands.length ? `<span class="popup-menu-anchor"><button class="button primary icon-only popup-menu-trigger" type="button" title="Open Work view" aria-label="Open Work view" aria-haspopup="menu" aria-controls="${addMenuId}" popovertarget="${addMenuId}">${icon("plus")}</button><div class="popup-menu action-list popup-menu-anchored" id="${addMenuId}" role="menu" aria-label="Open Work view" popover="auto">${workCommands.map((command) => renderWorkLauncherCommand(command, presentation.workspace.id)).join("")}</div></span>` : "";
   return `<section class="fixed-shell-work-pane" data-workspace-role-region="work" data-workspace-presentation-target="workPane" aria-label="Work">
     <header class="work-view-toolbar"><div id="${workViewDomId(presentation.workspace.id, "selectors")}" class="fixed-shell-work-view-selectors" role="tablist" aria-label="Work views">${selectors}</div>${addMenu}${topBarButton("Collapse Work pane", "click->workspace-presentation#toggleWorkPane", "panel", "data-collapse-work-pane")}</header>
     <div id="${workViewDomId(presentation.workspace.id, "bodies")}" class="fixed-shell-work-bodies">${panes || `<div id="${workViewDomId(presentation.workspace.id, "empty")}" class="fixed-shell-empty-work empty-state">Open Files, a file, terminal, or browser to work alongside the Agent.</div>`}</div>

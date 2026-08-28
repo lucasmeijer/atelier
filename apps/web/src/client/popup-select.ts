@@ -95,12 +95,16 @@ export abstract class SelectPopupController extends Controller<HTMLSelectElement
   }
 
   protected renderOptionLabel(option: HTMLOptionElement): HTMLElement {
+    return this.actionItemLabel(option.textContent ?? option.value);
+  }
+
+  protected actionItemLabel(text: string): HTMLElement {
     const label = document.createElement("span");
     label.className = "action-item__label";
-    const text = document.createElement("span");
-    text.className = "action-item__label-text";
-    text.textContent = option.textContent ?? option.value;
-    label.appendChild(text);
+    const labelText = document.createElement("span");
+    labelText.className = "action-item__label-text";
+    labelText.textContent = text;
+    label.appendChild(labelText);
     return label;
   }
 

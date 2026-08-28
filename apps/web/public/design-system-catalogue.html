@@ -124,9 +124,7 @@
     .catalogue-dialog { position: static; width: min(520px, 100%); }
 
     .popup-demo { min-height: 388px; display: flex; align-items: flex-end; justify-content: flex-end; }
-    .popup-demo .popup-menu { width: min(310px, calc(100% - 32px)); }
     .popup-trigger[aria-expanded="true"] { border-color: var(--accent); color: var(--text-bright); background: var(--elev); }
-    .popup-configure { width: 100%; justify-content: flex-start; }
     .popup-brand-mark { width: 16px; height: 16px; display: grid; place-items: center; border-radius: var(--radius-indicator); background: var(--accent-soft); color: var(--accent); font-size: 9px; font-weight: var(--weight-bold); }
     .popup-state-grid .popup-menu { position: static; width: 100%; box-shadow: none; }
     .simple-popup-demo { min-height: 260px; display: flex; align-items: center; justify-content: center; }
@@ -520,25 +518,19 @@ bun test</pre></div>
               <div class="catalogue-card-title"><span>Composer model selection</span><code>.popup-menu</code></div>
               <div class="catalogue-demo popup-demo popup-menu-anchor">
                 <div class="popup-menu action-list popup-menu-anchored opens-above" id="catalogue-popup" role="menu" aria-label="Choose a model">
-                  <button class="button secondary popup-configure" type="button" role="menuitem">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6l-.04.08V21h-4v-.92L9.9 20a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1H3v-4h1a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.44-1.88l-.06-.06L6.96 4.2l.06.06A1.7 1.7 0 0 0 8.9 4.6a1.7 1.7 0 0 0 1-.6l.06-.08V3h4v.92L14 4a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 9c.08.38.3.73.6 1h1v4h-1c-.3.27-.52.62-.6 1Z"/></svg>
-                    Configure models
-                  </button>
+                  <button class="action-item action-item__primary" type="button" role="menuitem"><span class="action-item__label"><span class="action-item__label-text">Configure models</span></span></button>
                   <hr class="popup-menu__separator">
-                  <div class="popup-menu__heading">Configured models</div>
                   <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false">
                     <span class="popup-menu__icon"><span class="popup-brand-mark">A</span></span>
-                    <span class="action-item__label"><span class="action-item__label-text">Claude Sonnet 4</span><span class="popup-menu__description">Anthropic</span></span>
-                    <span class="popup-menu__meta">200k</span>
+                    <span class="action-item__label"><span class="action-item__label-text">Claude Sonnet 4</span></span>
                   </button>
                   <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="true">
                     <span class="popup-menu__icon"><span class="popup-brand-mark">O</span></span>
-                    <span class="action-item__label"><span class="action-item__label-text">GPT-5.2 Codex</span><span class="popup-menu__description">OpenAI</span></span>
-                    <span class="popup-menu__meta">400k</span>
+                    <span class="action-item__label"><span class="action-item__label-text">GPT-5.2 Codex</span></span>
                   </button>
                   <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" disabled>
                     <span class="popup-menu__icon"><span class="popup-brand-mark">G</span></span>
-                    <span class="action-item__label"><span class="action-item__label-text">Gemini 2.5 Pro</span><span class="popup-menu__description">Authentication required</span></span>
+                    <span class="action-item__label"><span class="action-item__label-text">Gemini 2.5 Pro</span></span>
                   </button>
                 </div>
                 <button class="button secondary popup-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="true" aria-controls="catalogue-popup"><span class="popup-brand-mark" aria-hidden="true">O</span> GPT-5.2 Codex <svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button>

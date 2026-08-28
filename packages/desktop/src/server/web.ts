@@ -11,7 +11,7 @@ export function desktopWorkspaceCommand(enabled: boolean): WorkspaceCommandContr
     id: "desktop.start",
     label: enabled ? "Open Desktop" : "Turn on Desktop",
     scope: "workspace",
-    surfaces: { ui: { placement: "work-launcher" } },
+    surfaces: { ui: { placement: "work-launcher", label: "Desktop" } },
   };
 }
 
