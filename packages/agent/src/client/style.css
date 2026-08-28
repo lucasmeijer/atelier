@@ -262,8 +262,10 @@
 .launch-composer-dialog { width: min(860px, calc(100vw - 40px)); margin: auto; position: fixed; inset: 0; background: var(--panel); border: 1.5px solid var(--line-strong); border-radius: var(--radius-overlay); box-shadow: var(--shadow); overflow: hidden; padding: 0; color: var(--text); font: var(--text-body)/var(--leading-standard) var(--font-sans); }
 .launch-composer-dialog::backdrop { background: rgba(0,0,0,.5); backdrop-filter: blur(4px); }
 .launch-composer-dialog:focus-within { border-color: var(--accent); }
-.launch-composer-dialog .launch-composer-title { width: 100%; margin: 0; padding: 12px 16px 8px; background: var(--panel); border: 0; border-radius: 0; color: var(--text); }
+.launch-composer-dialog .launch-composer-header { display: flex; align-items: flex-start; gap: 8px; padding: 8px 8px 8px 16px; background: var(--panel); }
+.launch-composer-dialog .launch-composer-title { min-width: 0; flex: 1; margin: 0; padding: 4px 0; border: 0; border-radius: 0; color: var(--text); }
 .launch-composer-dialog .launch-composer-title b { color: var(--text-bright); font-weight: var(--weight-bold); }
+.launch-composer-dialog .launch-composer-close { flex: 0 0 auto; }
 .launch-composer-dialog .composer { padding: 0; }
 .launch-composer-dialog .composer-surface { width: 100%; max-width: none; margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; }
 .launch-composer-dialog .composer-surface:focus-within { border-color: var(--line); }

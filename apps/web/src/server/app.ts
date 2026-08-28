@@ -365,7 +365,10 @@ ${moduleStylesHtml()}
   async function renderLaunchComposerFrame(options: { titleHtml: string; action: string }): Promise<string> {
     const draftId = crypto.randomUUID();
     return `<turbo-frame id="${launchComposerFrameId}"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog submit-shortcut" data-launch-composer-dialog-discard-url-value="/agent-attachment-drafts/${encodeURIComponent(draftId)}/discard">
-  <div class="launch-composer-title">${options.titleHtml}</div>
+  <header class="launch-composer-header">
+    <div class="launch-composer-title">${options.titleHtml}</div>
+    <form method="dialog"><button class="launch-composer-close button secondary icon-only" value="close" title="Close launch composer" aria-label="Close launch composer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form>
+  </header>
   ${await renderLaunchComposer({
     action: options.action,
     draftId,
