@@ -299,7 +299,6 @@ describe("web app contracts", () => {
 
         expect(queries.toSorted()).toEqual(["atelier in:name,description is:private", "atelier in:name,description is:public"]);
         expect(body.indexOf("me/private-atelier")).toBeLessThan(body.indexOf("public/atelier"));
-        expect(body).toContain("🔒");
         expect(body).toContain("Private repository");
       } finally {
         globalThis.fetch = originalFetch;

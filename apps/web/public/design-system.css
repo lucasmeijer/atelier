@@ -579,6 +579,9 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .popup-menu__separator { height: 1px; margin: 4px 8px; border: 0; background: var(--line); }
 .popup-menu__heading { margin: 8px 8px 4px; color: var(--text-muted); font-size: var(--text-body); font-weight: var(--weight-bold); letter-spacing: .06em; text-transform: uppercase; }
 
+/* A popup menu can fill its anchor's width for type-ahead results. */
+.popup-menu.autocomplete-menu { position: static; width: 100%; max-width: none; max-height: min(360px, 48vh); }
+.autocomplete-empty { display: flex; min-height: 58px; align-items: center; justify-content: center; color: var(--text-muted); text-align: center; }
 
 /* Text entry controls share one visual contract across single- and multi-line input. */
 .text-field,

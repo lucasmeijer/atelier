@@ -98,17 +98,17 @@ export async function searchGitHubRepositories(query: string): Promise<GitHubRep
 
 export function renderGitHubRepositorySearchRateLimitMenu(error: GitHubRepositorySearchRateLimitError): string {
   const wait = error.retryAfterSeconds ? ` Try again in ${error.retryAfterSeconds} seconds.` : " Try again in a few minutes.";
-  return `<div class="agent-completion-menu empty">GitHub search is rate limited.${escapeHtml(wait)}</div>`;
+  return `<div class="popup-menu autocomplete-menu autocomplete-empty">GitHub search is rate limited.${escapeHtml(wait)}</div>`;
 }
 
 export function renderGitHubRepositorySearchMenu(repositories: readonly GitHubRepositorySearchResult[], query: string): string {
   if (!shouldSearchGitHubRepositories(query)) return "";
-  if (repositories.length === 0) return `<div class="agent-completion-menu empty">No GitHub repositories</div>`;
-  return `<div class="agent-completion-menu action-list" role="listbox" aria-label="GitHub repositories">${repositories.map((repo, index) => {
-    const visibility = repo.private ? `<span class="agent-template-args" title="Private repository" aria-label="Private repository">🔒</span>` : "";
+  if (repositories.length === 0) return `<div class="popup-menu autocomplete-menu autocomplete-empty">No GitHub repositories</div>`;
+  return `<div class="popup-menu autocomplete-menu action-list" role="listbox" aria-label="GitHub repositories">${repositories.map((repo, index) => {
     const description = repo.description || repo.htmlUrl;
-    return `<button type="button" class="agent-completion-option action-item action-item__primary agent-template-option${index === 0 ? " active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-git-url="${escapeHtml(repo.cloneUrl)}" title="${escapeHtml(repo.htmlUrl)}">
-      <span class="agent-template-name">${escapeHtml(repo.fullName)}</span>${visibility}<span class="agent-template-desc">${escapeHtml(description)}</span>
+    const visibility = repo.private ? " — Private repository" : "";
+    return `<button type="button" class="agent-completion-option action-item action-item__primary${index === 0 ? " active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-git-url="${escapeHtml(repo.cloneUrl)}" title="${escapeHtml(repo.htmlUrl)}">
+      <span class="action-item__label"><span class="action-item__label-text">${escapeHtml(repo.fullName)} — ${escapeHtml(description)}${visibility}</span></span>
     </button>`;
   }).join("")}</div>`;
 }

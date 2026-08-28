@@ -1028,7 +1028,7 @@ function refreshSlashCatalog(completionsUrl: string | URL): Promise<string> {
 function filterSlashCompletionCatalog(html: string, query: string): string {
   const container = document.createElement("template");
   container.innerHTML = html.trim();
-  const menu = container.content.querySelector<HTMLElement>(".agent-completion-menu")!;
+  const menu = container.content.querySelector<HTMLElement>(".autocomplete-menu")!;
   const normalized = query.toLowerCase();
   const options = [...menu.querySelectorAll<HTMLElement>(".agent-completion-option")]
     .filter((option) => option.dataset.commandTrigger!.slice(1).toLowerCase().includes(normalized))
@@ -1039,7 +1039,7 @@ function filterSlashCompletionCatalog(html: string, query: string): string {
     })
     .slice(0, 12);
 
-  if (options.length === 0) return `<div class="agent-completion-menu empty">No slash commands</div>`;
+  if (options.length === 0) return `<div class="popup-menu autocomplete-menu autocomplete-empty">No matching commands</div>`;
   menu.replaceChildren(...options);
   for (const [index, option] of options.entries()) {
     option.classList.toggle("active", index === 0);
@@ -1066,7 +1066,7 @@ async function slashCompletionHtml(url: URL, interaction: HtmlAutocompleteIntera
 function createAgentCompletionsController(Controller: StimulusControllerConstructor) {
   const HtmlAutocompleteController = createHtmlAutocompleteController(Controller, {
     optionSelector: ".agent-completion-option:not([hidden])",
-    loadingHtml: `<div class="agent-completion-menu empty" role="status"><span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…</div>`,
+    loadingHtml: `<div class="popup-menu autocomplete-menu autocomplete-empty" role="status"><span class="agent-completion-spinner" aria-hidden="true"></span>Loading completions…</div>`,
     triggerKeysWhenClosed: ["/", "@"],
     fullscreenShortcut: (option) => option.dataset.completionKind === "prompt-template",
     menuEvent: handleAgentTreeMenuEvent,

@@ -130,6 +130,7 @@
     .simple-popup-demo { min-height: 260px; display: flex; align-items: center; justify-content: center; }
     .simple-popup-stack { width: 240px; min-height: 210px; display: flex; align-items: flex-end; justify-content: flex-end; }
     .simple-popup-demo .popup-menu { width: 240px; }
+    .catalogue-autocomplete { max-width: 620px; margin: 0 auto; }
 
     .catalogue-preview[data-platform="mobile"] .catalogue-shell { display: block; }
     .catalogue-preview[data-platform="mobile"] .catalogue-nav { position: static; width: 100%; height: auto; padding: 12px; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -171,6 +172,7 @@
         <a href="#status-dots">Status dots</a>
         <a href="#text-entry">Text entry</a>
         <a href="#dialog">Dialog</a>
+        <a href="#autocomplete">Autocomplete</a>
         <a href="#popup-menu">Popup menu</a>
         <div class="catalogue-kicker">Patterns</div>
         <a href="#status-list">Status list</a>
@@ -526,6 +528,27 @@ bun test</pre></div>
         <section class="catalogue-section" id="status-list">
           <div class="catalogue-section-head"><h2>Status list</h2><p>A concise summary of complete, incomplete, failed, and actively running work. Completed markers use the accent outline; busy markers spin that outline without changing the row layout.</p></div>
           <article class="catalogue-card"><div class="catalogue-card-title"><span>Task states</span><code>.status-list</code></div><div class="catalogue-demo"><ul class="status-list"><li class="status-list__item" role="checkbox" aria-checked="true"><span class="status-list__marker">✓</span>GitHub connected</li><li class="status-list__item" aria-busy="true"><span class="status-list__marker"></span>Loading models</li><li class="status-list__item" role="checkbox" aria-checked="false"><span class="status-list__marker"></span>Git identity</li><li class="status-list__item" data-status="failed"><span class="status-list__marker" role="img" aria-label="Failed">✕</span>Workspace startup</li></ul></div></article>
+        </section>
+
+        <section class="catalogue-section" id="autocomplete">
+          <div class="catalogue-section-head">
+            <h2>Autocomplete</h2>
+            <p>A full-width anchored result surface for type-ahead choices. Results are standard, single-line Action Items.</p>
+          </div>
+          <article class="catalogue-card wide">
+            <div class="catalogue-card-title"><span>Composer slash commands</span><code>.popup-menu.autocomplete-menu + Action Items</code></div>
+            <div class="catalogue-demo">
+              <div class="popup-menu autocomplete-menu action-list catalogue-autocomplete" role="listbox" aria-label="Slash commands">
+                <button class="action-item action-item__primary" type="button" role="option" aria-selected="true">
+                  <span class="action-item__label"><span class="action-item__label-text">/review [focus] — Review the current changes for correctness and maintainability.</span></span>
+                </button>
+                <button class="action-item action-item__primary" type="button" role="option" aria-selected="false">
+                  <span class="action-item__label"><span class="action-item__label-text">/skill:grilling — Stress-test a plan, decision, or idea through focused questions.</span></span>
+                </button>
+              </div>
+            </div>
+            <p class="catalogue-note">The selected result uses <code>aria-selected</code>; all spacing, shape, hover, focus, and touch sizing comes directly from Action Item.</p>
+          </article>
         </section>
 
         <section class="catalogue-section" id="popup-menu">

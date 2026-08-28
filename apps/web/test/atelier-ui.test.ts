@@ -739,7 +739,7 @@ describe("Atelier browser behavior", () => {
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/workspaces/demo/completion-catalog", (route) => route.fulfill({
       contentType: "text/html",
-      body: '<div class="agent-completion-menu"><button class="agent-completion-option" data-completion-kind="prompt-template" data-command-trigger="/review">Review</button><button class="agent-completion-option" data-completion-kind="prompt-template" data-command-trigger="/simplify">Simplify</button></div>',
+      body: '<div class="autocomplete-menu"><button class="agent-completion-option" data-completion-kind="prompt-template" data-command-trigger="/review">Review</button><button class="agent-completion-option" data-completion-kind="prompt-template" data-command-trigger="/simplify">Simplify</button></div>',
     }));
     await page.goto("http://atelier.test/");
 
