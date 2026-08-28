@@ -169,7 +169,7 @@ export function createWorkspacePresentationController(
     }
 
     toggleWorkPane(): void {
-      this.state.workPaneVisible = !this.state.workPaneVisible && Boolean(this.state.activeWorkViewKey);
+      this.state.workPaneVisible = !this.state.workPaneVisible;
       this.persistAndApply({ focus: true });
     }
 
@@ -265,7 +265,6 @@ export function createWorkspacePresentationController(
       const workViews = [...this.element.querySelectorAll<HTMLElement>("[data-work-view-key]")].map((item) => item.dataset.workViewKey!);
       if (!this.state.activeAgentId || !agents.includes(this.state.activeAgentId)) this.state.activeAgentId = agents[0];
       if (!this.state.activeWorkViewKey || !workViews.includes(this.state.activeWorkViewKey)) this.state.activeWorkViewKey = workViews[0];
-      if (!this.state.activeWorkViewKey) this.state.workPaneVisible = false;
       if (this.state.phoneDestination.startsWith("work:") && !workViews.includes(this.state.phoneDestination.slice(5))) this.state.phoneDestination = "agents";
       this.persist();
     }
