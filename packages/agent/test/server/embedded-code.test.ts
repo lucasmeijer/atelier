@@ -151,6 +151,46 @@ rg ready /tmp/status |
     }
   });
 
+  test("highlights static ripgrep patterns as embedded regular expressions", () => {
+    const samples = [
+      `rg -n 'TODO|FIXME|HACK' packages apps --glob '!*.generated.ts'`,
+      `rg -n 'export\\s+(async\\s+)?function\\s+(?<name>[A-Za-z_]\\w*)' --glob '*.ts'`,
+      `rg -Un '(?s)<dialog\\b[^>]*>.*?</dialog>' apps/web`,
+    ];
+    for (const command of samples) {
+      expect(renderEmbedded(command), command).toContain('class="language-regex"');
+      expect(embeddedBashCommand(command)?.differs, command).toBe(false);
+    }
+
+    const structural = renderEmbedded(samples[1]!);
+    expect(structural).toContain('class="hljs-title"');
+    expect(structural).toContain('class="hljs-variable">name</span>');
+    expect(structural).toContain('class="hljs-built_in">[A-Za-z_]</span>');
+    expect(structural).toContain('class="hljs-keyword">?</span>');
+    expect(renderEmbedded(samples[0]!)).toContain('class="hljs-regex-alternation">|</span>');
+  });
+
+  test("recognizes positional and explicit ripgrep patterns without highlighting option arguments", () => {
+    const html = renderEmbedded(`rg --glob '*.ts' -e 'TODO|FIXME' --regexp '^HACK\\b' packages`);
+    expect(html.match(/class="language-regex"/g)).toHaveLength(2);
+    expect(html).toContain(`<span class="language-regex">TODO`);
+    expect(html).not.toContain(`class="language-regex">*.ts`);
+  });
+
+  test("leaves dynamic or shell-transformed patterns and regex-like arguments to other commands opaque", () => {
+    expect(embeddedBashCommand(`rg "$pattern" packages`)).toBeUndefined();
+    expect(embeddedBashCommand(String.raw`rg "\\s+" packages`)).toBeUndefined();
+    expect(embeddedBashCommand(`grep -E 'TODO|FIXME' packages`)).toBeUndefined();
+    expect(embeddedBashCommand(`printf '%s' 'TODO|FIXME'`)).toBeUndefined();
+  });
+
+  test("escapes regex literals while adding semantic highlighting", () => {
+    const html = renderEmbedded(`rg '^(?<tag><[a-z]+>)$' index.html`);
+    expect(html).toContain("&lt;");
+    expect(html).toContain("&gt;");
+    expect(html).not.toContain("<[a-z]");
+  });
+
   test("recursively formats shell arguments passed to bash and tmux", () => {
     const command = `bash -lc 'cd /work && tmux new-session -d -s demo "cd /tmp && python3 -m http.server 3001"'`;
     const html = renderEmbedded(command);

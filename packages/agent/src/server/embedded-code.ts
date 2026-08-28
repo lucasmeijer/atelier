@@ -220,7 +220,7 @@ interface EmbeddedShellLiteral {
 }
 
 interface EmbeddedRegion extends EmbeddedShellLiteral {
-  literal: boolean;
+  kind: "heredoc" | "shell-literal" | "regex";
 }
 
 interface RenderedEmbedded {
@@ -353,12 +353,52 @@ function embeddedShellLiterals(command: string): EmbeddedShellLiteral[] {
   });
 }
 
+const ripgrepOptionsWithArguments = new Set([
+  "--after-context", "--before-context", "--color", "--colors", "--context", "--dfa-size-limit", "--encoding", "--engine", "--field-context-separator", "--field-match-separator", "--glob", "--iglob", "--max-columns", "--max-count", "--max-depth", "--path-separator", "--pre", "--pre-glob", "--regex-size-limit", "--replace", "--sort", "--sortr", "--threads", "--type", "--type-add", "--type-clear", "--type-not",
+  "-A", "-B", "-C", "-E", "-f", "-g", "-j", "-m", "-r", "-t", "-T",
+]);
+
+function ripgrepPatterns(words: ShellWord[]): ShellWord[] {
+  const executable = words[0]?.value.split("/").at(-1);
+  if (executable !== "rg" && executable !== "ripgrep") return [];
+
+  const explicit: ShellWord[] = [];
+  let positional: ShellWord | undefined;
+  for (let index = 1; index < words.length; index++) {
+    const word = words[index]!;
+    if (word.value === "-e" || word.value === "--regexp") {
+      if (words[index + 1]) explicit.push(words[++index]!);
+    } else if (!positional && word.value === "--") {
+      positional = words[++index];
+    } else if (!positional && ripgrepOptionsWithArguments.has(word.value)) {
+      index++;
+    } else if (!positional && !word.value.startsWith("-")) {
+      positional = word;
+    }
+  }
+  return explicit.length ? explicit : positional ? [positional] : [];
+}
+
+function ripgrepRegexLiterals(command: string): EmbeddedShellLiteral[] {
+  return shellCommandWordGroups(command).flatMap(ripgrepPatterns).flatMap((pattern) => {
+    if (pattern.contentStart === undefined || pattern.contentEnd === undefined) return [];
+    if (command.slice(pattern.contentStart, pattern.contentEnd) !== pattern.value) return [];
+    return [{ path: "pattern.regex", content: pattern.value, contentStart: pattern.contentStart, contentEnd: pattern.contentEnd }];
+  });
+}
+
 function embeddedRegions(command: string, depth: number): EmbeddedRegion[] {
-  const heredocs: EmbeddedRegion[] = bashHeredocs(command).map((heredoc) => ({ ...heredoc, content: command.slice(heredoc.contentStart, heredoc.contentEnd), literal: false }));
-  const literals: EmbeddedRegion[] = depth >= embeddedLanguageDepthLimit ? [] : embeddedShellLiterals(command)
-    .filter((literal) => !heredocs.some((heredoc) => literal.contentStart >= heredoc.contentStart && literal.contentEnd <= heredoc.contentEnd))
-    .map((literal) => ({ ...literal, literal: true }));
-  return [...heredocs, ...literals].sort((left, right) => left.contentStart - right.contentStart);
+  const heredocs: EmbeddedRegion[] = bashHeredocs(command).map((heredoc) => ({
+    ...heredoc,
+    content: command.slice(heredoc.contentStart, heredoc.contentEnd),
+    kind: "heredoc",
+  }));
+  const shellLiterals = depth >= embeddedLanguageDepthLimit ? [] : embeddedShellLiterals(command);
+  const quoted: EmbeddedRegion[] = [
+    ...shellLiterals.map((literal) => ({ ...literal, kind: "shell-literal" as const })),
+    ...ripgrepRegexLiterals(command).map((literal) => ({ ...literal, kind: "regex" as const })),
+  ].filter((literal) => !heredocs.some((heredoc) => literal.contentStart >= heredoc.contentStart && literal.contentEnd <= heredoc.contentEnd));
+  return [...heredocs, ...quoted].sort((left, right) => left.contentStart - right.contentStart);
 }
 
 function renderEmbeddedRegion(region: EmbeddedRegion, depth: number): RenderedEmbeddedRegion {
@@ -367,10 +407,10 @@ function renderEmbeddedRegion(region: EmbeddedRegion, depth: number): RenderedEm
   const formatDiffers = formatted !== undefined && formatted !== region.content;
   if (region.path === "command.sh") {
     const nested = embeddedBashContent(displayed, depth + 1);
-    return { html: nested?.html ?? highlightedBashShell(displayed), language: "bash", differs: region.literal || formatDiffers || (nested?.differs ?? false) };
+    return { html: nested?.html ?? highlightedBashShell(displayed), language: "bash", differs: region.kind === "shell-literal" || formatDiffers || (nested?.differs ?? false) };
   }
   const highlighted = highlightCodeHtmlForPath(displayed, region.path);
-  return { html: highlighted.html, language: highlighted.language, differs: region.literal || formatDiffers };
+  return { html: highlighted.html, language: highlighted.language, differs: region.kind === "shell-literal" || formatDiffers };
 }
 
 function embeddedBashContent(command: string, depth: number): RenderedEmbedded | undefined {
@@ -381,15 +421,16 @@ function embeddedBashContent(command: string, depth: number): RenderedEmbedded |
   let cursor = 0;
   let differs = false;
   for (const region of regions) {
-    const regionStart = region.literal ? region.contentStart - 1 : region.contentStart;
-    const regionEnd = region.literal ? region.contentEnd + 1 : region.contentEnd;
+    const quoted = region.kind !== "heredoc";
+    const regionStart = quoted ? region.contentStart - 1 : region.contentStart;
+    const regionEnd = quoted ? region.contentEnd + 1 : region.contentEnd;
     if (regionStart < cursor) continue;
     html += highlightedBashShell(command.slice(cursor, regionStart));
-    if (region.literal) html += `<span class="hljs-string">${escapeHtml(command[regionStart]!)}</span>`;
+    if (quoted) html += `<span class="hljs-string">${escapeHtml(command[regionStart]!)}</span>`;
     const rendered = renderEmbeddedRegion(region, depth);
     differs ||= rendered.differs;
     html += `<span${rendered.language ? ` class="language-${escapeHtml(rendered.language)}"` : ""}>${rendered.html}</span>`;
-    if (region.literal) html += `<span class="hljs-string">${escapeHtml(command[region.contentEnd]!)}</span>`;
+    if (quoted) html += `<span class="hljs-string">${escapeHtml(command[region.contentEnd]!)}</span>`;
     cursor = regionEnd;
   }
   html += highlightedBashShell(command.slice(cursor));

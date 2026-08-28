@@ -180,8 +180,10 @@
 .agent-tool-code .hljs-attribute { color: var(--agent-syntax-attr); }
 .agent-tool-code .hljs-name,
 .agent-tool-code .hljs-tag { color: var(--agent-syntax-tag); }
-.agent-tool-code .agent-bash-or { color: var(--text); }
+.agent-tool-code .language-regex { color: var(--agent-syntax-string); }
+.agent-tool-code .language-regex .hljs-regex-alternation,
 .agent-tool-code .agent-bash-and { color: var(--warning); }
+.agent-tool-code .agent-bash-or { color: var(--text); }
 .agent-md blockquote { border-left: 1px solid var(--line-strong); padding-left: var(--space-md); color: var(--text); margin: 0 0 var(--space-md); }
 .agent-md a { color: var(--accent); text-decoration: none; }
 .agent-md a:hover { text-decoration: underline; }

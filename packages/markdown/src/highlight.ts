@@ -14,6 +14,7 @@ import rust from "highlight.js/lib/languages/rust";
 import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import { escapeHtml } from "@atelier/shared";
+import { regexLanguage } from "./regex-language.ts";
 
 hljs.registerLanguage("typescript", typescript);
 hljs.registerLanguage("javascript", javascript);
@@ -30,6 +31,7 @@ hljs.registerLanguage("ruby", ruby);
 hljs.registerLanguage("rust", rust);
 hljs.registerLanguage("go", go);
 hljs.registerLanguage("java", java);
+hljs.registerLanguage("regex", regexLanguage);
 
 interface HighlightLanguageDictionary {
   [name: string]: string;
@@ -61,6 +63,7 @@ const extensionLanguages: HighlightLanguageDictionary = {
   rs: "rust",
   go: "go",
   java: "java",
+  regex: "regex",
 };
 
 const languageAliases: HighlightLanguageDictionary = {
