@@ -247,7 +247,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
   const draftId = options.draftId;
   const attachRowId = options.ctx ? ids.attachRow(options.ctx) : ids.draftAttachRow(draftId);
   const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
-  const actionAttrs = ["turbo:submit-end->agent-pane#submitted", "click->agent-pane#focusInput"];
+  const actionAttrs = ["submit->transcription-composer#submit", "turbo:submit-end->agent-pane#submitted", "click->agent-pane#focusInput"];
   const targetAttrs = options.formTarget ? ` data-agent-pane-target="form"` : "";
   const completionsEnabled = Boolean(options.ctx);
   const inputTarget = [
@@ -259,6 +259,9 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
     ...(options.formTarget ? ["keydown->agent-pane#inputKeydown", "input->agent-pane#promptChanged"] : []),
   ];
   const inputActions = inputActionsList.length ? ` data-action="${inputActionsList.join(" ")}"` : "";
+  const formActions = options.formTarget
+    ? actionAttrs.join(" ")
+    : ["submit->transcription-composer#submit", options.formActions].filter(Boolean).join(" ");
   const actions = options.includePaneActions && options.ctx
     ? `<span id="${ids.actions(options.ctx)}">${renderPromptActions(options.ctx, Boolean(options.busy))}</span>`
     : renderPromptActionButton(false);
@@ -285,7 +288,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
         ${composerOverlays ? `<div class="agent-pane-composer-overlays">${composerOverlays}</div>` : ""}
         <div class="composer-surface">
           ${options.suggestionHtml ?? ""}
-          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs}${options.formTarget ? ` data-action="${actionAttrs.join(" ")}"` : options.formActions ? ` data-action="${escapeHtml(options.formActions)}"` : ""}>
+          <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs} data-action="${escapeHtml(formActions)}">
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
             <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row"></div>
             <div class="composer-input-area">

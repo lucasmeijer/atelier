@@ -1,6 +1,17 @@
 FROM atelier-workspace
 
 ARG DEBIAN_FRONTEND=noninteractive
+ARG TARGETARCH
+ARG NEMO_SPEECH_VERSION=0.1.0
+
+# Atelier's transcription service runs in this development workspace when the
+# web server is launched from source. The production server image installs the
+# same runtime in apps/web/Dockerfile.
+COPY packages/transcription/install-runtime.sh /tmp/install-transcription-runtime.sh
+RUN sh /tmp/install-transcription-runtime.sh "$TARGETARCH" "$NEMO_SPEECH_VERSION" \
+ && ln -s /opt/nemo-speech/bin/nemo-speech /usr/local/bin/nemo-speech \
+ && rm -f /tmp/install-transcription-runtime.sh /tmp/nemo-speech-*.tar.gz /tmp/nemo-speech-*.tar.gz.sha256 \
+ && rm -rf /var/lib/apt/lists/*
 
 # Extra host-side tooling needed when this repository is itself used to develop
 # Atelier. The default workspace image already includes Bun, Node, Docker,

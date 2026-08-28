@@ -45,10 +45,24 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     private prefix = "";
     private committed = "";
     private partial = "";
+    private submitPending = false;
+    private pendingSubmitter?: HTMLButtonElement | HTMLInputElement;
 
     disconnect(): void {
       this.stopCapture();
       this.socket?.close();
+    }
+
+    submit(event: SubmitEvent): void {
+      if (this.state === "idle" || this.state === "error") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.submitPending = true;
+      this.pendingSubmitter = event.submitter instanceof HTMLButtonElement || event.submitter instanceof HTMLInputElement
+        ? event.submitter
+        : undefined;
+      if (this.state === "recording") this.finish();
+      else if (this.state === "loading") this.setState("finishing", "Finishing…");
     }
 
     toggle(): void {
@@ -88,7 +102,8 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
         return;
       }
       if (event.type === "session.created") {
-        void this.startCapture();
+        if (this.state === "finishing") this.commitAudio();
+        else void this.startCapture();
       } else if (event.type.endsWith(".delta")) {
         this.partial += event.delta ?? "";
         this.renderTranscript();
@@ -97,8 +112,7 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
         this.committed += `${this.committed && transcript ? " " : ""}${transcript}`;
         this.partial = "";
         this.renderTranscript();
-      } else if (event.type === "input_audio_buffer.committed") {
-        this.socket?.close();
+        if (this.state === "finishing") this.transcriptionFinished();
       } else if (event.type === "error") {
         this.fail(event.error?.message ?? "Transcription failed");
       }
@@ -146,8 +160,23 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     private finish(): void {
       this.setState("finishing", "Finishing…");
       this.stopCapture();
-      if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+      if (this.socket?.readyState === WebSocket.OPEN) this.commitAudio();
       else this.socket?.close();
+    }
+
+    private commitAudio(): void {
+      this.socket!.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+    }
+
+    private transcriptionFinished(): void {
+      this.socket?.close();
+      this.setState("idle", "Dictate");
+      if (!this.submitPending) return;
+      this.submitPending = false;
+      const submitter = this.pendingSubmitter;
+      this.pendingSubmitter = undefined;
+      if (submitter) submitter.form!.requestSubmit(submitter);
+      else this.element.querySelector<HTMLFormElement>("form")!.requestSubmit();
     }
 
     private stopCapture(): void {

@@ -4,8 +4,10 @@ set -eu
 architecture="$1"
 version="$2"
 
-apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl
+if ! command -v curl >/dev/null 2>&1 || [ ! -f /etc/ssl/certs/ca-certificates.crt ]; then
+  apt-get update
+  apt-get install -y --no-install-recommends ca-certificates curl
+fi
 case "$architecture" in
   amd64) release_architecture=x86_64 ;;
   arm64) release_architecture=aarch64 ;;

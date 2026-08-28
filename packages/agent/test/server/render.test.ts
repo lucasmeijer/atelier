@@ -17,6 +17,7 @@ describe("transcript rendering", () => {
   test("AgentPaneComposer runs completion shortcuts before prompt submission", async () => {
     const html = await renderAgentPaneComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, includePaneActions: true, stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
     expect(html).toContain("agent-completions");
+    expect(html).toContain('data-action="submit-&gt;transcription-composer#submit turbo:submit-end-&gt;agent-pane#submitted click-&gt;agent-pane#focusInput"');
     expect(html).toContain('data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged"');
     expect(html).toContain('aria-label="Jump to beginning of latest message"');
     expect(html).toContain('data-agent-pane-target="sendStop"');
