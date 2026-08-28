@@ -306,7 +306,7 @@ const updateSettingsContribution: SettingsContribution = {
 };
 
 export function renderSidebarRow(snapshot: StateSnapshot): string {
-  const whatsNew = `<form method="get" action="/update/whats-new" data-turbo="true"><button class="button secondary" type="submit">What’s new</button></form>`;
+  const whatsNew = `<span title="Release notes are not yet implemented"><button class="button secondary" type="button" disabled>What’s new</button></span>`;
   const left = snapshot.state === "incompatible"
     ? `<form method="get" action="/update/installer-required" data-turbo="true"><button class="button secondary" type="submit">Installer required</button></form>`
     : snapshot.state === "ready_to_restart"

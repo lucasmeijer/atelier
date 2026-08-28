@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
 import { dockerContainerInspect, dockerImageInspect, parseContainerIdFromCgroup, parseContainerIdFromMountInfo, parseDockerPullEventLine, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
-import { createUpdateRouteHandler, UpdateManager } from "../../src/server/index.ts";
+import { createUpdateRouteHandler, renderSidebarRow, UpdateManager } from "../../src/server/index.ts";
 import { parseWwwAuthenticate, selectManifestFromIndex, fetchChannelImageMetadata } from "../../src/server/registry.ts";
 import { fetchReleaseNotes, releaseNoteFilenames, renderMarkdown } from "../../src/server/release-notes.ts";
 
@@ -444,6 +444,13 @@ describe("update state machine", () => {
 });
 
 describe("update routes", () => {
+  test("disables the what's new button until release notes are implemented", () => {
+    const html = renderSidebarRow({ state: "idle", selfUpdatable: true, releaseChannel: "stable", compatibilityMismatch: false });
+
+    expect(html).toContain('<span title="Release notes are not yet implemented">');
+    expect(html).toContain('<button class="button secondary" type="button" disabled>What’s new</button>');
+  });
+
   test("renders what-new and restart modal turbo streams", async () => {
     const { ctx } = context();
     const manager = new UpdateManager({
