@@ -292,7 +292,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .button-toggle__option:not([aria-pressed="true"]):not(:disabled):focus-visible { background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .button-toggle__option:disabled { opacity: .45; cursor: default; }
 
-/* A text toggle marks its selected option with a sliding button-hover border. */
+/* A text toggle marks its selected option with an underline matching the selected text. */
 .text-toggle {
   --text-toggle-indicator-left: 0px;
   --text-toggle-indicator-width: 0px;
@@ -306,12 +306,12 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .text-toggle::after {
   content: "";
   position: absolute;
-  top: calc(50% + .6em);
+  top: calc(50% + .5em);
   left: var(--text-toggle-indicator-left);
   width: var(--text-toggle-indicator-width);
-  height: 2px;
+  height: 1px;
   border-radius: var(--radius-round);
-  background: var(--button-hover-border);
+  background: var(--text);
   pointer-events: none;
 }
 .text-toggle[data-text-toggle-ready]::after {
