@@ -19,7 +19,6 @@
   --font-sans: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
 
-  --text-caption: 11px;
   --text-small: 12px;
   --text-body: 14px;
   --text-title: 16px;
@@ -79,7 +78,6 @@
 /* Phone layouts favor legibility and comfortable touch targets over density. */
 @media (max-width: 700px) {
   :root {
-    --text-caption: 13px;
     --text-small: 14px;
     --text-body: 16px;
     --text-title: 18px;
@@ -499,7 +497,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .button-group.vertical > .button,
 .button-group.vertical > form > .button { width: 100%; }
 .popup-select-native { display: none; }
-.popup-select-trigger::after { content: "▾"; color: var(--text-faint); font-size: var(--text-caption); }
+.popup-select-trigger::after { content: "▾"; color: var(--text-faint); font-size: var(--text-body); }
 
 /* Floating menus present compact choices near a disclosure control. Anchored menus choose
  * an alternate side when their preferred placement would cross the viewport edge. */
@@ -541,10 +539,10 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .popup-menu .action-item.is-danger:not(:disabled):not([aria-disabled="true"]):focus-visible { background: var(--danger-soft); color: var(--danger); }
 .popup-menu__icon { width: 16px; height: 16px; flex: 0 0 auto; display: grid; place-items: center; color: var(--text-muted); }
 .popup-menu__icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.popup-menu__description { display: block; overflow: hidden; color: var(--text-faint); font-size: var(--text-caption); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
-.popup-menu__meta { flex: 0 0 auto; color: var(--text-faint); font-size: var(--text-caption); font-weight: var(--weight-medium); white-space: nowrap; }
+.popup-menu__description { display: block; overflow: hidden; color: var(--text-faint); font-size: var(--text-body); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
+.popup-menu__meta { flex: 0 0 auto; color: var(--text-faint); font-size: var(--text-body); font-weight: var(--weight-medium); white-space: nowrap; }
 .popup-menu__separator { height: 1px; margin: var(--space-xs) var(--space-md); border: 0; background: var(--line); }
-.popup-menu__heading { margin: var(--space-md) var(--space-md) var(--space-xs); color: var(--text-faint); font-size: var(--text-caption); font-weight: var(--weight-bold); letter-spacing: .06em; text-transform: uppercase; }
+.popup-menu__heading { margin: var(--space-md) var(--space-md) var(--space-xs); color: var(--text-faint); font-size: var(--text-body); font-weight: var(--weight-bold); letter-spacing: .06em; text-transform: uppercase; }
 
 
 /* Text entry controls share one visual contract across single- and multi-line input. */

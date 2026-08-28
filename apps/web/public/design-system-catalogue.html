@@ -22,7 +22,7 @@
     .catalogue-platform-selector .button[aria-pressed="true"] { border-color: var(--button-border); background: var(--elev); color: var(--text); box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 12%, transparent); }
     .catalogue-platform-stage { height: calc(100dvh - 52px); overflow: auto; background: color-mix(in srgb, var(--bg) 86%, var(--text)); }
     .catalogue-preview { min-height: 100%; margin: 0 auto; background: var(--bg); box-shadow: 0 0 0 1px var(--line-strong); }
-    .catalogue-preview[data-platform="mobile"] { width: min(390px, 100%); --text-caption: 13px; --text-small: 14px; --text-body: 16px; --text-title: 18px; }
+    .catalogue-preview[data-platform="mobile"] { width: min(390px, 100%); --text-small: 14px; --text-body: 16px; --text-title: 18px; }
     .catalogue-preview[data-platform="desktop"] { width: min(1024px, 100%); }
 
     .catalogue-preview[data-platform="mobile"] .button { height: 44px; padding-inline: var(--space-xl); }
@@ -41,10 +41,10 @@
     .catalogue-nav { position: sticky; top: 0; height: 100vh; padding: var(--space-2xl) var(--space-xl); border-right: 1px solid var(--line); background: var(--panel); }
     .catalogue-brand { display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-2xl); font-weight: var(--weight-semibold); }
     .catalogue-mark { width: 20px; height: 20px; border-radius: var(--radius-control); background: linear-gradient(135deg, var(--accent), var(--decorative)); box-shadow: 0 0 0 3px var(--accent-soft); }
-    .catalogue-kicker { margin: var(--space-xl) var(--space-md) var(--space-sm); color: var(--text-faint); font-size: var(--text-caption); font-weight: var(--weight-bold); letter-spacing: .08em; text-transform: uppercase; }
+    .catalogue-kicker { margin: var(--space-xl) var(--space-md) var(--space-sm); color: var(--text-faint); font-size: var(--text-body); font-weight: var(--weight-bold); letter-spacing: .08em; text-transform: uppercase; }
     .catalogue-nav a { display: block; padding: var(--space-sm) var(--space-md); border-radius: var(--radius-control); color: var(--text-muted); text-decoration: none; }
     .catalogue-nav a:hover { color: var(--text); background: var(--accent-soft); }
-    .catalogue-nav-footer { position: absolute; right: var(--space-xl); bottom: var(--space-2xl); left: var(--space-xl); color: var(--text-faint); font-size: var(--text-caption); }
+    .catalogue-nav-footer { position: absolute; right: var(--space-xl); bottom: var(--space-2xl); left: var(--space-xl); color: var(--text-faint); font-size: var(--text-body); }
 
     .catalogue-main { min-width: 0; }
     .catalogue-hero { padding: 72px clamp(24px, 6vw, 88px) 56px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 72%, var(--bg)); }
@@ -68,11 +68,11 @@
     .catalogue-card-title { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); margin-bottom: var(--space-xl); color: var(--text-muted); font-size: var(--text-small); font-weight: var(--weight-semibold); }
     .catalogue-card-title code { color: var(--text-faint); font-weight: var(--weight-medium); }
     .catalogue-demo { min-height: 112px; padding: var(--space-xl); border: 1px dashed var(--line-strong); border-radius: var(--radius-control); background: var(--bg); }
-    .catalogue-note { margin-top: var(--space-lg); color: var(--text-faint); font-size: var(--text-caption); }
+    .catalogue-note { margin-top: var(--space-lg); color: var(--text-faint); font-size: var(--text-body); }
 
     .type-list { display: grid; gap: var(--space-xl); }
     .type-row { display: grid; grid-template-columns: 112px 1fr; align-items: baseline; gap: var(--space-xl); }
-    .type-meta { color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
+    .type-meta { color: var(--text-faint); font: var(--text-body)/var(--leading-standard) var(--font-mono); }
     .type-sample { font-size: var(--sample-size); line-height: var(--leading-tight); }
     .type-sample.mono { font-family: var(--font-mono); }
 
@@ -80,9 +80,9 @@
     .spacing-row { display: grid; grid-template-columns: 100px 1fr 40px; align-items: center; gap: var(--space-lg); }
     .spacing-row code { color: var(--text-muted); }
     .spacing-bar { width: var(--token-space); height: 8px; min-width: 2px; border-radius: var(--radius-round); background: var(--accent); }
-    .spacing-value { color: var(--text-faint); font: var(--text-caption)/1 var(--font-mono); text-align: right; }
+    .spacing-value { color: var(--text-faint); font: var(--text-body)/1 var(--font-mono); text-align: right; }
     .radius-list { display: flex; align-items: end; justify-content: space-between; gap: var(--space-xl); min-height: 150px; }
-    .radius-token { display: grid; justify-items: center; gap: var(--space-md); color: var(--text-faint); font-size: var(--text-caption); }
+    .radius-token { display: grid; justify-items: center; gap: var(--space-md); color: var(--text-faint); font-size: var(--text-body); }
     .radius-shape { width: 62px; height: 62px; border: 2px solid var(--accent); border-radius: var(--token-radius); background: var(--accent-soft); }
 
     /* Catalogue-only forced states; component values remain owned by design-system.css. */
@@ -95,28 +95,28 @@
     .textarea.preview-focus { border-color: var(--text-entry-hover-border); }
     .button-specimen { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-md); }
     .button-specimen + .button-specimen { margin-top: var(--space-xl); }
-    .button-specimen-label { width: 72px; flex: 0 0 auto; color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
+    .button-specimen-label { width: 72px; flex: 0 0 auto; color: var(--text-faint); font: var(--text-body)/var(--leading-standard) var(--font-mono); }
     .button-anatomy { display: flex; align-items: center; justify-content: center; min-height: 112px; }
     .button-group-demo { display: flex; align-items: flex-start; justify-content: space-around; gap: var(--space-2xl); }
-    .button-group-specimen { display: grid; gap: var(--space-sm); color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
-    .button-code { margin: var(--space-lg) 0 0; padding: var(--space-lg); overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--bg); color: var(--text-muted); font: var(--text-caption)/var(--leading-copy) var(--font-mono); white-space: pre; }
+    .button-group-specimen { display: grid; gap: var(--space-sm); color: var(--text-faint); font: var(--text-body)/var(--leading-standard) var(--font-mono); }
+    .button-code { margin: var(--space-lg) 0 0; padding: var(--space-lg); overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--bg); color: var(--text-muted); font: var(--text-body)/var(--leading-copy) var(--font-mono); white-space: pre; }
     .button-layouts { min-height: 160px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2xl); }
     .button-layout { min-width: 0; display: flex; gap: var(--space-md); align-items: flex-start; }
     .button-layout.vertical { flex-direction: column; }
-    .button-layout-label { display: block; margin-bottom: var(--space-md); color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
+    .button-layout-label { display: block; margin-bottom: var(--space-md); color: var(--text-faint); font: var(--text-body)/var(--leading-standard) var(--font-mono); }
     .progress-button-demo { display: grid; justify-items: center; gap: var(--space-lg); }
-    .progress-button-demo__status { color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
+    .progress-button-demo__status { color: var(--text-faint); font: var(--text-body)/var(--leading-standard) var(--font-mono); }
 
     .toggle-demo { min-height: 140px; display: grid; place-items: center; gap: var(--space-lg); align-content: center; }
     .text-toggle-demo-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-lg); }
     .toggle-stack { display: grid; gap: var(--space-xl); }
     .toggle-specimen { display: grid; justify-items: start; gap: var(--space-sm); }
-    .toggle-specimen-label { color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
+    .toggle-specimen-label { color: var(--text-faint); font: var(--text-body)/var(--leading-standard) var(--font-mono); }
 
     .field-stack { display: grid; gap: var(--space-xl); }
     .field-specimen { display: grid; gap: var(--space-sm); }
     .field-specimen label { color: var(--text-muted); font-size: var(--text-small); font-weight: var(--weight-semibold); }
-    .field-state-label { color: var(--text-faint); font: var(--text-caption)/var(--leading-standard) var(--font-mono); }
+    .field-state-label { color: var(--text-faint); font: var(--text-body)/var(--leading-standard) var(--font-mono); }
 
     .action-stack { display: grid; max-width: 360px; }
     .action-icon { width: 16px; height: 16px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -213,7 +213,6 @@
           <div class="catalogue-section-head"><h2>Typography</h2><p>A small, deliberate scale keeps operational interfaces dense. Sans is for interface copy; mono is reserved for code, paths, and measured data. The reusable title style carries no surrounding space, so its composition controls the gap to adjacent content.</p></div>
           <article class="catalogue-card">
             <div class="type-list">
-              <div class="type-row"><span class="type-meta">caption · 11</span><span class="type-sample" style="--sample-size:var(--text-caption)">AGENT READY · 4 FILES CHANGED</span></div>
               <div class="type-row"><span class="type-meta">small · 12</span><span class="type-sample" style="--sample-size:var(--text-small)">Secondary controls and metadata</span></div>
               <div class="type-row"><span class="type-meta">body · 14</span><span class="type-sample" style="--sample-size:var(--text-body)">The agent has finished implementing the workspace.</span></div>
               <div class="type-row"><span class="type-meta">.title · 16/700</span><span class="title">Workspace settings</span></div>

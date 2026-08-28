@@ -133,7 +133,7 @@ export function renderFilesWorkView(workspaceId: string, view: FilesView): Works
     availability: { phase: "live" },
     bodyHtml: `<section class="work-view-pane files-work-view"><div class="files-workbench${view.path ? "" : " is-files-pane-open"}" data-controller="files-view">
       <div class="files-editor-canvas">${renderFilesEditorFrame(workspaceId, view)}</div>
-      <aside class="files-navigator" aria-label="Files"><header class="files-navigator-header"><span class="files-navigator-path">${escapeHtml(workspaceRoot)}</span>${filesPaneToggle("collapse")}</header>${renderLazyFilesTreeFrame(workspaceId, view)}<footer class="files-navigator-footer">Includes concealed files</footer></aside>
+      <aside class="files-navigator" aria-label="Files"><header class="files-navigator-header"><span class="files-navigator-path">${escapeHtml(workspaceRoot)}</span>${filesPaneToggle("collapse")}</header>${renderLazyFilesTreeFrame(workspaceId, view)}</aside>
     </div></section>`,
   };
 }

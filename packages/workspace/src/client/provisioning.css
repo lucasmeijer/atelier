@@ -2,7 +2,7 @@
 
 .provision-heading { display: flex; align-items: center; gap: var(--space-md); }
 .provision-heading b { font-size: var(--text-body); }
-.provision-output-log { max-height: min(52vh, 520px); overflow: auto; white-space: pre-wrap; word-break: break-word; background: #0f172a; color: #dbeafe; border-radius: var(--radius-surface); padding: var(--space-lg); font: var(--text-caption)/var(--leading-standard) ui-monospace, SFMono-Regular, Menlo, monospace; }
+.provision-output-log { max-height: min(52vh, 520px); overflow: auto; white-space: pre-wrap; word-break: break-word; background: #0f172a; color: #dbeafe; border-radius: var(--radius-surface); padding: var(--space-lg); font: var(--text-body)/var(--leading-standard) ui-monospace, SFMono-Regular, Menlo, monospace; }
 .workspace-provision { padding: var(--space-xl); display: flex; flex-direction: column; gap: var(--space-lg); }
 .provision-list, .provision-children { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-md); }
 .provision-children { margin: var(--space-md) 0 0 var(--space-2xl); }

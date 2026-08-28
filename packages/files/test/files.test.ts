@@ -25,7 +25,7 @@ describe("Files Work view rendering", () => {
     expect(html).toContain("is-files-pane-open");
     expect(html).toContain('aria-label="Collapse Files pane"');
     expect(html).toContain('loading="lazy"');
-    expect(html).toContain("Includes concealed files");
+    expect(html).not.toContain("Includes concealed files");
   });
 
   test("renders a selected file in the editor with the Files pane collapsed", () => {

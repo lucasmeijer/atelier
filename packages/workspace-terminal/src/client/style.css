@@ -29,7 +29,7 @@ html.terminal-mobile-keyboard-visible .fixed-shell-app { height: var(--terminal-
 .terminal-session-main b { font-size: var(--text-body); }
 .terminal-session-main small { overflow: hidden; color: var(--text-muted); text-overflow: ellipsis; white-space: nowrap; }
 .terminal-session-main code { color: var(--text); }
-.terminal-session-meta { display: flex; max-width: 270px; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-xs) var(--space-md); color: var(--text-muted); font-size: var(--text-caption); }
+.terminal-session-meta { display: flex; max-width: 270px; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-xs) var(--space-md); color: var(--text-muted); font-size: var(--text-body); }
 .terminal-session-meta strong { color: var(--accent); font-weight: var(--weight-semibold); }
 .terminal-session-meta .terminal-session-dead { color: var(--danger); }
 .terminal-session-empty { padding: var(--space-2xl); color: var(--text-muted); text-align: center; }

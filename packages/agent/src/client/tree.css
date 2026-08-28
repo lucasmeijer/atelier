@@ -2,9 +2,9 @@
 .agent-tree-header { position: sticky; top: 0; z-index: 3; display: grid; gap: var(--space-md); padding: var(--space-md) var(--space-md) var(--space-md); background: color-mix(in srgb, var(--panel) 96%, transparent); border-bottom: 1px solid var(--line); }
 .agent-tree-heading { display: grid; gap: var(--space-2xs); }
 .agent-tree-heading b { font-size: var(--text-small); color: var(--text); }
-.agent-tree-heading span { color: var(--text-faint); font-size: var(--text-caption); font-weight: var(--weight-medium); }
+.agent-tree-heading span { color: var(--text-faint); font-size: var(--text-body); font-weight: var(--weight-medium); }
 .agent-tree-controls { display: grid; grid-template-columns: minmax(100px, 1fr) auto; gap: var(--space-sm); }
-.agent-tree-search, .agent-tree-filter { min-width: 0; height: 30px; background: var(--bg); font: var(--text-caption) var(--font-sans); }
+.agent-tree-search, .agent-tree-filter { min-width: 0; height: 30px; background: var(--bg); font: var(--text-body) var(--font-sans); }
 .agent-tree-filter { padding: 0 var(--space-sm); }
 .agent-tree-row { position: relative; border-radius: var(--radius-control); }
 .agent-tree-option { grid-template-columns: calc((var(--tree-lane) + 1) * 18px) minmax(0, 1fr); gap: var(--space-md); min-height: 48px; padding-block: var(--space-sm); }
@@ -16,27 +16,27 @@
 .agent-tree-row:hover .agent-tree-ribbon circle, .agent-tree-option.active .agent-tree-ribbon circle { fill: var(--accent); }
 .agent-tree-option.active .agent-tree-ribbon-connection, .agent-tree-option.on-active-path .agent-tree-ribbon-connection { stroke: var(--accent); }
 .agent-tree-copy { display: grid; min-width: 0; gap: var(--space-2xs); }
-.agent-tree-meta { display: flex; align-items: center; gap: var(--space-sm); min-width: 0; color: var(--text-muted); font-size: var(--text-caption); text-transform: uppercase; letter-spacing: .04em; }
+.agent-tree-meta { display: flex; align-items: center; gap: var(--space-sm); min-width: 0; color: var(--text-muted); font-size: var(--text-body); text-transform: uppercase; letter-spacing: .04em; }
 .agent-tree-meta b { color: var(--text-muted); font-size: inherit; }
 .agent-tree-label, .agent-tree-current { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: var(--radius-round); padding: 1px var(--space-xs); background: var(--accent-soft); color: var(--accent); text-transform: none; letter-spacing: 0; }
 .agent-tree-label { display: inline-flex; align-items: center; gap: var(--space-2xs); }
-.agent-tree-label-remove { display: inline-grid; place-items: center; width: 12px; height: 12px; margin-right: -var(--space-2xs); border-radius: 50%; color: var(--text-faint); font-size: var(--text-caption); line-height: var(--leading-none); cursor: pointer; }
+.agent-tree-label-remove { display: inline-grid; place-items: center; width: 12px; height: 12px; margin-right: -var(--space-2xs); border-radius: 50%; color: var(--text-faint); font-size: var(--text-body); line-height: var(--leading-none); cursor: pointer; }
 .agent-tree-label-remove:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
-.agent-tree-label-time { color: var(--text-faint); font-size: var(--text-caption); text-transform: none; letter-spacing: 0; }
+.agent-tree-label-time { color: var(--text-faint); font-size: var(--text-body); text-transform: none; letter-spacing: 0; }
 .agent-tree-current { margin-left: auto; background: var(--bg); color: var(--text-faint); }
 .agent-tree-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: var(--text-small); line-height: var(--leading-standard); }
 .agent-tree-label-editor { display: grid; grid-template-columns: 1fr auto auto; gap: var(--space-sm); padding: var(--space-sm) var(--space-md) var(--space-md) calc((var(--tree-lane) + 1) * var(--space-xl) + var(--space-xl)); }
 .agent-tree-label-editor[hidden] { display: none; }
-.agent-tree-label-editor .text-field { height: 29px; background: var(--bg); font: var(--text-caption) var(--font-sans); }
-.agent-tree-label-editor .button { font-size: var(--text-caption); }
+.agent-tree-label-editor .text-field { height: 29px; background: var(--bg); font: var(--text-body) var(--font-sans); }
+.agent-tree-label-editor .button { font-size: var(--text-body); }
 .agent-tree-summary-menu { max-height: min(470px, 58vh); }
 .agent-tree-summary-menu .agent-tree-header { gap: var(--space-2xs); }
 .agent-tree-summary-choices { display: grid; gap: var(--space-2xs); padding: var(--space-sm) 0 0; }
 .agent-tree-summary-option { grid-template-columns: 1fr; gap: var(--space-2xs); padding: var(--space-md) var(--space-md); }
 .agent-tree-summary-option b { color: var(--text); font-size: var(--text-small); }
-.agent-tree-summary-option span { color: var(--text-muted); font-size: var(--text-caption); }
+.agent-tree-summary-option span { color: var(--text-muted); font-size: var(--text-body); }
 .agent-tree-custom { padding: var(--space-lg) var(--space-md) var(--space-sm); }
-.agent-tree-custom label { display: block; margin-bottom: var(--space-sm); color: var(--text); font-size: var(--text-caption); font-weight: var(--weight-bold); }
+.agent-tree-custom label { display: block; margin-bottom: var(--space-sm); color: var(--text); font-size: var(--text-body); font-weight: var(--weight-bold); }
 .agent-tree-custom .textarea { min-height: 76px; background: var(--bg); font: var(--text-small)/var(--leading-standard) var(--font-sans); }
 .agent-tree-custom > div { display: flex; justify-content: flex-end; gap: var(--space-sm); padding-top: var(--space-md); }
 @media (max-width: 520px) {

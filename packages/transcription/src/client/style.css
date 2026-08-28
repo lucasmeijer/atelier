@@ -46,7 +46,7 @@
   background: var(--elev);
   box-shadow: var(--shadow);
   color: var(--danger);
-  font-size: var(--text-caption);
+  font-size: var(--text-body);
   line-height: var(--leading-tight);
   text-align: left;
   white-space: normal;
