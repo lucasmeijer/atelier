@@ -8,7 +8,11 @@ export interface FileEntry {
   kind: "directory" | "file" | "symlink" | "other";
   size: number;
   openable: boolean;
+  directoryPath?: string;
+  children?: FileEntry[];
 }
+
+type RawFileEntry = Pick<FileEntry, "name" | "path" | "kind" | "size" | "directoryPath">;
 
 export class FilesPathError extends Error {
   constructor(message: string, readonly status: number) {
@@ -31,9 +35,9 @@ export async function resolveFilesDirectory(workspaceId: string, input: string |
   return path;
 }
 
-function parseFindOutput(stdout: Buffer, directory: string): Omit<FileEntry, "openable">[] {
+function parseFindOutput(stdout: Buffer, directory: string): RawFileEntry[] {
   const fields = stdout.toString("utf8").split("\0");
-  const entries: Omit<FileEntry, "openable">[] = [];
+  const entries: RawFileEntry[] = [];
   for (let index = 0; index + 2 < fields.length; index += 3) {
     const type = fields[index];
     const sizeText = fields[index + 1];
@@ -57,18 +61,50 @@ done`;
   return new Set(result.stdout.toString("utf8").split("\0").filter(Boolean));
 }
 
-function fileEntries(rawEntries: Omit<FileEntry, "openable">[], openable: Set<string>): FileEntry[] {
+function fileEntries(rawEntries: RawFileEntry[], openable: Set<string>): FileEntry[] {
   return rawEntries
     .map((entry) => ({ ...entry, openable: openable.has(entry.path) }))
     .sort((left, right) => Number(right.kind === "directory") - Number(left.kind === "directory") || left.name.localeCompare(right.name));
 }
 
-export async function listFiles(workspaceId: string, inputPath: string | null): Promise<{ path: string; entries: FileEntry[] }> {
-  const path = await resolveFilesDirectory(workspaceId, inputPath);
+async function readDirectoryEntries(workspaceId: string, path: string): Promise<RawFileEntry[]> {
   const listing = await execWorkspaceCommandBuffer(workspaceId, ["find", path, "-mindepth", "1", "-maxdepth", "1", "-printf", "%y\\0%s\\0%f\\0"]);
   if (listing.exitCode !== 0) throw new FilesPathError(listing.stderr.trim() || "Unable to read folder", 403);
-  const rawEntries = parseFindOutput(listing.stdout, path);
-  return { path, entries: fileEntries(rawEntries, await openablePaths(workspaceId, rawEntries)) };
+  return parseFindOutput(listing.stdout, path);
+}
+
+export async function compactDirectoryEntry(entry: RawFileEntry, childrenOf: (path: string) => Promise<RawFileEntry[]>): Promise<RawFileEntry> {
+  if (entry.kind !== "directory") return entry;
+  const names = [entry.name];
+  let directoryPath = entry.path;
+  let children = await childrenOf(directoryPath);
+  while (children.length === 1 && children[0]!.kind === "directory") {
+    directoryPath = children[0]!.path;
+    names.push(children[0]!.name);
+    children = await childrenOf(directoryPath);
+  }
+  return names.length === 1 ? entry : { ...entry, name: `${names.join("/")}/`, directoryPath };
+}
+
+export async function getDirectoryEntry(workspaceId: string, inputPath: string | null): Promise<FileEntry> {
+  const path = await resolveFilesDirectory(workspaceId, inputPath);
+  const entry = await compactDirectoryEntry({ name: posix.basename(path), path, kind: "directory", size: 0 }, (directory) => readDirectoryEntries(workspaceId, directory));
+  return { ...entry, openable: false };
+}
+
+export async function listFiles(workspaceId: string, inputPath: string | null, selectedPath?: string): Promise<{ path: string; entries: FileEntry[] }> {
+  const path = await resolveFilesDirectory(workspaceId, inputPath);
+  const rawEntries = await Promise.all((await readDirectoryEntries(workspaceId, path)).map((entry) => compactDirectoryEntry(entry, (directory) => readDirectoryEntries(workspaceId, directory))));
+  const entries = fileEntries(rawEntries, await openablePaths(workspaceId, rawEntries));
+  if (!selectedPath) return { path, entries };
+  return {
+    path,
+    entries: await Promise.all(entries.map(async (entry) => {
+      const directoryPath = entry.directoryPath ?? entry.path;
+      if (entry.kind !== "directory" || !selectedPath.startsWith(`${directoryPath}/`)) return entry;
+      return { ...entry, children: (await listFiles(workspaceId, directoryPath, selectedPath)).entries };
+    })),
+  };
 }
 
 export async function searchFiles(workspaceId: string, query: string): Promise<FileEntry[]> {

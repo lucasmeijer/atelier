@@ -55,7 +55,7 @@
 .files-tree-results[busy] > .files-filter-loading { display: flex; }
 .files-tree { min-height: 0; align-content: start; overflow: auto; padding: 6px; outline: none; }
 .files-tree:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 65%, transparent); }
-.files-directory-frame { display: block; min-width: 0; }
+.files-directory-frame { min-width: 0; }
 .files-row-icon > .files-directory-spinner { display: none; }
 .files-directory-frame[busy] > .files-row > .files-row-icon > .disclosure-icon { display: none; }
 .files-directory-frame[busy] > .files-row > .files-row-icon > .files-directory-spinner { display: inline-block; }

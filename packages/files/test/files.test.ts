@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { workspaceRoot } from "@atelier/workspace";
-import { FilesPathError, normalizeFilesPath } from "../src/server/files.ts";
-import { filesDirectoryFrameId, filesEditorFrameId, filesTreeResultsFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesTreeResultsFrame, renderFilesWorkView } from "../src/server/render.ts";
+import { compactDirectoryEntry, FilesPathError, normalizeFilesPath } from "../src/server/files.ts";
+import { filesDirectoryFrameId, filesTreeResultsFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesTreeResultsFrame, renderFilesWorkView } from "../src/server/render.ts";
 
 describe("files paths", () => {
   test("defaults to the configured workspace root", () => {
@@ -15,6 +15,37 @@ describe("files paths", () => {
   test("rejects absolute paths and traversal outside the workspace root", () => {
     expect(() => normalizeFilesPath("/etc")).toThrow(FilesPathError);
     expect(() => normalizeFilesPath(`${workspaceRoot}/../etc`)).toThrow("outside the workspace");
+  });
+
+  test("compacts chains of sole child directories", async () => {
+    const directory = (name: string, path: string) => ({ name, path, kind: "directory" as const, size: 0 });
+    const children = new Map([
+      [`${workspaceRoot}/modules`, [directory("core", `${workspaceRoot}/modules/core`)]],
+      [`${workspaceRoot}/modules/core`, [directory("src", `${workspaceRoot}/modules/core/src`)]],
+      [`${workspaceRoot}/modules/core/src`, [{ name: "index.ts", path: `${workspaceRoot}/modules/core/src/index.ts`, kind: "file" as const, size: 12 }]],
+    ]);
+
+    const entry = await compactDirectoryEntry(
+      directory("modules", `${workspaceRoot}/modules`),
+      async (path) => children.get(path) ?? [],
+    );
+
+    expect(entry).toEqual({
+      name: "modules/core/src/",
+      path: `${workspaceRoot}/modules`,
+      directoryPath: `${workspaceRoot}/modules/core/src`,
+      kind: "directory",
+      size: 0,
+    });
+  });
+
+  test("stops compacting when a directory has multiple children", async () => {
+    const entry = { name: "modules", path: `${workspaceRoot}/modules`, kind: "directory" as const, size: 0 };
+    const compacted = await compactDirectoryEntry(entry, async () => [
+      { name: "core", path: `${workspaceRoot}/modules/core`, kind: "directory", size: 0 },
+      { name: "README.md", path: `${workspaceRoot}/modules/README.md`, kind: "file", size: 12 },
+    ]);
+    expect(compacted).toEqual(entry);
   });
 });
 
@@ -49,7 +80,7 @@ describe("Files Work view rendering", () => {
     expect(html).toContain("click->files#openDirectory");
     expect(html).toContain('<svg class="disclosure-icon" aria-hidden="true"');
     expect(html).toContain("/files-view/open?path=%2Fwork%2F.secret&amp;filesView=workspace");
-    expect(html).toContain(`data-turbo-frame="${filesEditorFrameId("work 1", "workspace")}"`);
+    expect(html).toContain('data-turbo-stream="true"');
     expect(html).toContain("data-action=\"files-view#selectFile\"");
   });
 
@@ -68,6 +99,32 @@ describe("Files Work view rendering", () => {
     expect(filtered).toContain(`id="${resultsId}"`);
     expect(filtered).toContain('aria-label="Matching files"');
     expect(filtered).toContain("No matching files.");
+  });
+
+  test("expands the selected file's ancestors and selects its row", () => {
+    const selectedPath = `${workspaceRoot}/src/core/example.ts`;
+    const html = renderFilesTreeFrame("workspace", "view-1", [{
+      name: "src/core/",
+      path: `${workspaceRoot}/src`,
+      directoryPath: `${workspaceRoot}/src/core`,
+      kind: "directory",
+      size: 0,
+      openable: false,
+      children: [{ name: "example.ts", path: selectedPath, kind: "file", size: 10, openable: true }],
+    }], selectedPath);
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain('aria-selected="true"');
+    expect(html).toContain("example.ts");
+  });
+
+  test("renders a compact directory chain with one stable Turbo Frame", () => {
+    const folder = { name: "modules/core/", path: `${workspaceRoot}/modules`, directoryPath: `${workspaceRoot}/modules/core`, kind: "directory" as const, size: 0, openable: false };
+    const html = renderFilesDirectoryFrame("workspace", "view-1", folder);
+    expect(html).toStartWith(`<turbo-frame id="${filesDirectoryFrameId("workspace", "view-1", folder.path)}"`);
+    expect(html).toContain('class="files-directory-frame action-list"');
+    expect(html).toContain("modules/core/");
+    expect(html).toContain("path=%2Fwork%2Fmodules");
+    expect(html).toContain(`data-files-destination="${workspaceRoot}/modules/core"`);
   });
 
   test("renders an expanded folder in its own Turbo Frame", () => {

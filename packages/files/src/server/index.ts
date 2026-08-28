@@ -1,4 +1,3 @@
-import { posix } from "node:path";
 import type { JsonValue } from "@atelier/core";
 import { renderMarkdown } from "@atelier/markdown";
 import { turboStream, turboStreamResponse, type WorkspaceModule, type WorkspaceWorkViewReference } from "@atelier/shared";
@@ -7,8 +6,8 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { fileSaveRequestSchema, type FileSaveRequest } from "../protocol.ts";
 import { EditableFileError, readEditableFile, requestedEditableFilePath, writeEditableFile } from "./editable-file.ts";
-import { deleteFile, FilesPathError, listFiles, resolveFilesDirectory, searchFiles, uploadFile } from "./files.ts";
-import { filesEditorFrameId, filesRefreshSignalId, filesTreeFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesRefreshSignal, renderFilesTreeFrame, renderFilesTreeResultsFrame, renderFilesWorkView } from "./render.ts";
+import { deleteFile, FilesPathError, getDirectoryEntry, listFiles, searchFiles, uploadFile } from "./files.ts";
+import { filesEditorFrameId, filesRefreshSignalId, filesTreeFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesRefreshSignal, renderFilesTreeFrame, renderFilesTreeResultsFrame, renderFilesWorkView, renderLazyFilesTreeFrame } from "./render.ts";
 import { closeFilesView, createFilesView, defaultFilesViewId, deleteFilesViewState, filesView, listFilesViews, setFilesViewFile } from "./state.ts";
 
 const filesWorkViewReferenceSchema = Type.Object({ type: Type.Literal("files"), id: Type.String() });
@@ -32,37 +31,35 @@ function positiveInteger(value: string | null): number | undefined {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-async function filesResponse(workspaceId: string, viewId: string): Promise<Response> {
-  const view = filesView(workspaceId, viewId);
-  const listing = await listFiles(workspaceId, workspaceRoot);
-  return htmlResponse(renderFilesTreeFrame(workspaceId, viewId, listing.entries, view.path));
-}
-
 async function filesEndpoint(workspaceId: string, url: URL): Promise<Response> {
   const viewId = url.searchParams.get("filesView") ?? defaultFilesViewId;
+  const filesState = filesView(workspaceId, viewId);
   const query = url.searchParams.get("q");
   if (query !== null) {
     const normalizedQuery = query.trim();
-    const entries = normalizedQuery ? await searchFiles(workspaceId, normalizedQuery) : (await listFiles(workspaceId, workspaceRoot)).entries;
-    return htmlResponse(renderFilesTreeResultsFrame(workspaceId, viewId, entries, filesView(workspaceId, viewId).path, Boolean(normalizedQuery)));
+    const selectedPath = filesState.path;
+    const entries = normalizedQuery ? await searchFiles(workspaceId, normalizedQuery) : (await listFiles(workspaceId, workspaceRoot, selectedPath)).entries;
+    return htmlResponse(renderFilesTreeResultsFrame(workspaceId, viewId, entries, selectedPath, Boolean(normalizedQuery)));
   }
   const view = url.searchParams.get("view");
   if (view === "inline" || view === "collapsed") {
-    const listing = view === "inline" ? await listFiles(workspaceId, url.searchParams.get("path")) : undefined;
-    const path = listing?.path ?? await resolveFilesDirectory(workspaceId, url.searchParams.get("path"));
-    const entry = { name: posix.basename(path), path, kind: "directory" as const, size: 0, openable: false };
-    return htmlResponse(renderFilesDirectoryFrame(workspaceId, viewId, entry, listing?.entries, filesView(workspaceId, viewId).path));
+    const entry = await getDirectoryEntry(workspaceId, url.searchParams.get("path"));
+    const listing = view === "inline" ? await listFiles(workspaceId, entry.directoryPath ?? entry.path) : undefined;
+    return htmlResponse(renderFilesDirectoryFrame(workspaceId, viewId, entry, listing?.entries, filesState.path));
   }
-  return await filesResponse(workspaceId, viewId);
+  const listing = await listFiles(workspaceId, workspaceRoot, filesState.path);
+  return htmlResponse(renderFilesTreeFrame(workspaceId, viewId, listing.entries, filesState.path));
 }
 
 async function openFileEndpoint(workspaceId: string, url: URL, openWorkView: (workspaceId: string, reference: WorkspaceWorkViewReference) => Promise<Response>): Promise<Response> {
   const path = requestedEditableFilePath(url.searchParams.get("path"));
   const viewId = url.searchParams.get("filesView") ?? defaultFilesViewId;
   const view = setFilesViewFile(workspaceId, viewId, path, { line: positiveInteger(url.searchParams.get("line")), column: positiveInteger(url.searchParams.get("column")) });
-  if (url.searchParams.has("filesView")) return htmlResponse(renderFilesEditorFrame(workspaceId, view));
+  const updates = turboStream("replace", filesEditorFrameId(workspaceId, viewId), renderFilesEditorFrame(workspaceId, view))
+    + turboStream("replace", filesTreeFrameId(workspaceId, viewId), renderLazyFilesTreeFrame(workspaceId, view));
+  if (url.searchParams.has("filesView")) return turboStreamResponse(updates);
   const presentation = await openWorkView(workspaceId, { type: "files", id: viewId });
-  return turboStreamResponse(`${await presentation.text()}${turboStream("replace", filesEditorFrameId(workspaceId, viewId), renderFilesEditorFrame(workspaceId, view))}`);
+  return turboStreamResponse(`${await presentation.text()}${updates}`);
 }
 
 async function markdownPreviewEndpoint(workspaceId: string, request: Request, url: URL): Promise<Response> {

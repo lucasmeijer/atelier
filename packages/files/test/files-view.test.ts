@@ -21,6 +21,8 @@ describe("Files Work view integration", () => {
     expect(listFilesViews("workspace-progressive")[0]?.path).toBe("/work/new.ts");
     const html = await response?.text();
     expect(html).toContain("workspace_workspace-progressive_files_workspace_editor");
+    expect(html).toContain("workspace_workspace-progressive_files_workspace_tree");
+    expect(html).toContain('loading="lazy"');
     expect(html).toContain("new.ts");
     deleteFilesViewState("workspace-progressive");
   });

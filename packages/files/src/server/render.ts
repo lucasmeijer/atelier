@@ -66,9 +66,9 @@ function renderEntryRow(workspaceId: string, viewId: string, entry: FileEntry, e
   const label = entry.kind === "directory"
     ? `<a class="action-item__label-text" href="${escapeHtml(directoryToggleUrl(workspaceId, viewId, entry.path, !expanded))}" data-turbo-frame="${filesDirectoryFrameId(workspaceId, viewId, entry.path)}">${escapeHtml(entry.name)}</a>`
     : entry.openable
-      ? `<a class="action-item__label-text" href="${escapeHtml(workspaceFileOpenUrl(workspaceId, entry.path, {}, viewId))}" data-turbo-frame="${filesEditorFrameId(workspaceId, viewId)}" data-action="files-view#selectFile">${escapeHtml(entry.name)}</a>`
+      ? `<a class="action-item__label-text" href="${escapeHtml(workspaceFileOpenUrl(workspaceId, entry.path, {}, viewId))}" data-turbo-stream="true" data-action="files-view#selectFile">${escapeHtml(entry.name)}</a>`
       : `<span class="action-item__label-text">${escapeHtml(entry.name)}</span>`;
-  const drop = entry.kind === "directory" ? ` data-files-destination="${escapeHtml(entry.path)}"` : "";
+  const drop = entry.kind === "directory" ? ` data-files-destination="${escapeHtml(entry.directoryPath ?? entry.path)}"` : "";
   const actions = entry.kind === "directory"
     ? "click->files#openDirectory dragenter->files#folderDragEnter dragover->files#folderDragOver dragleave->files#folderDragLeave drop->files#folderDrop"
     : "click->files#openFileRow";
@@ -82,7 +82,7 @@ function renderEntryRow(workspaceId: string, viewId: string, entry: FileEntry, e
 }
 
 function renderEntry(workspaceId: string, viewId: string, entry: FileEntry, selectedPath?: string): string {
-  if (entry.kind === "directory") return renderFilesDirectoryFrame(workspaceId, viewId, entry, undefined, selectedPath);
+  if (entry.kind === "directory") return renderFilesDirectoryFrame(workspaceId, viewId, entry, entry.children, selectedPath);
   return renderEntryRow(workspaceId, viewId, entry, false, selectedPath);
 }
 
@@ -91,7 +91,7 @@ export function renderFilesDirectoryFrame(workspaceId: string, viewId: string, e
   const children = expanded
     ? `<div class="files-directory-children action-list" role="group">${entries.map((child) => renderEntry(workspaceId, viewId, child, selectedPath)).join("") || '<p class="files-empty empty-state">This folder is empty</p>'}</div>`
     : "";
-  return `<turbo-frame id="${filesDirectoryFrameId(workspaceId, viewId, entry.path)}" class="files-directory-frame">${renderEntryRow(workspaceId, viewId, entry, expanded, selectedPath)}${children}</turbo-frame>`;
+  return `<turbo-frame id="${filesDirectoryFrameId(workspaceId, viewId, entry.path)}" class="files-directory-frame action-list">${renderEntryRow(workspaceId, viewId, entry, expanded, selectedPath)}${children}</turbo-frame>`;
 }
 
 export function renderFilesTreeResultsFrame(workspaceId: string, viewId: string, entries: FileEntry[], selectedPath?: string, filtered = false): string {
@@ -117,7 +117,7 @@ export function renderFilesTreeFrame(workspaceId: string, viewId: string, entrie
   </turbo-frame>`;
 }
 
-function renderLazyFilesTreeFrame(workspaceId: string, view: FilesView): string {
+export function renderLazyFilesTreeFrame(workspaceId: string, view: FilesView): string {
   const query = new URLSearchParams({ filesView: view.id });
   return `<turbo-frame id="${filesTreeFrameId(workspaceId, view.id)}" class="files-frame" src="/workspaces/${encodeURIComponent(workspaceId)}/files?${query}" loading="lazy"><div class="files-loading"><span class="status-spinner"></span> Loading files…</div></turbo-frame>`;
 }
