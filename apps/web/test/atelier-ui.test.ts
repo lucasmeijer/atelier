@@ -737,10 +737,10 @@ describe("Atelier browser behavior", () => {
 
   test("opens and closes a live Browser view with Atelier's fullscreen implementation", async () => {
     const page = await newTestPage();
-    await page.setContent(`<div data-workspace-id="demo">
-      <section class="fixed-shell-work-pane">
-        <div class="fixed-shell-work-view-selectors"><button type="button" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="browser-1" data-atelier-fullscreen-title-value="Browser">Browser</button></div>
-        <section class="fixed-shell-live-node is-active" data-workspace-pane-role="work" data-source-work-view-key="browser-1"><button type="button">Preview content</button></section>
+    await page.setContent(`<style>${workspaceStyle}</style><div data-workspace-id="demo">
+      <section class="fixed-shell-work-pane" style="height: 400px">
+        <header><div class="fixed-shell-work-view-selectors"><button type="button" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="browser-1" data-atelier-fullscreen-title-value="Browser">Browser</button></div></header>
+        <div class="fixed-shell-work-bodies"><section class="fixed-shell-live-node is-active" data-workspace-pane-role="work" data-source-work-view-key="browser-1"><button type="button">Preview content</button></section></div>
       </section>
     </div>`);
     await page.addScriptTag({ content: workspaceClient, type: "module" });
@@ -748,6 +748,11 @@ describe("Atelier browser behavior", () => {
 
     const fullscreen = await atelierUi.openViewFullscreen(page, { viewKey: "browser-1" });
     expect(await atelierUi.workspaceViewPane(page, "browser-1").getAttribute("data-atelier-fullscreen-active")).toBe("true");
+    const controls = page.getByRole("toolbar", { name: "Fullscreen controls" });
+    expect(await controls.getByText("Browser", { exact: true }).isVisible()).toBe(true);
+    const controlsBox = (await controls.boundingBox())!;
+    const viewBox = (await atelierUi.workspaceViewPane(page, "browser-1").boundingBox())!;
+    expect(viewBox.y).toBeGreaterThanOrEqual(controlsBox.y + controlsBox.height - 1);
     await fullscreen.close();
     await page.close();
   });

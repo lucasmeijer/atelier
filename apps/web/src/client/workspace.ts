@@ -31,7 +31,7 @@ import {
 import { createProvisionTerminalController } from "@atelier/workspace/client";
 import { workspaceClientModules } from "./workspace-client-modules.generated.ts";
 import { createAtelierCableClient } from "./cable.ts";
-import { registerDesignSystemControllers } from "./design-system.ts";
+import { createCloseButton, registerDesignSystemControllers } from "./design-system.ts";
 import { SelectPopupController } from "./popup-select.ts";
 import { createWorkspacePresentationController, installWorkspacePresentationTurboStream, markActiveWorkspaceRow } from "./workspace-presentation.ts";
 
@@ -260,9 +260,12 @@ class AtelierFullscreenController extends Controller {
     const viewer = this.createViewer();
     const dialog = document.createElement("dialog");
     dialog.className = "atelier-fullscreen-dialog";
+    const surface = document.createElement("div");
+    surface.className = "atelier-fullscreen-surface";
     let session: FullscreenSession;
     const close = (): void => dialog.close();
-    dialog.append(this.createBar(close), viewer.element);
+    surface.append(this.createBar(close), viewer.element);
+    dialog.append(surface);
     dialog.addEventListener("close", () => {
       this.detachIframeShortcuts();
       viewer.disconnect?.();
@@ -278,19 +281,16 @@ class AtelierFullscreenController extends Controller {
 
   private createBar(closeFullscreen: () => void): HTMLElement {
     const bar = document.createElement("div");
-    bar.className = "atelier-fullscreen-bar";
+    bar.className = "atelier-fullscreen-bar work-view-toolbar";
     bar.setAttribute("role", "toolbar");
     bar.setAttribute("aria-label", "Fullscreen controls");
-    const title = document.createElement("span");
+
+    const title = document.createElement("strong");
+    title.className = "atelier-fullscreen-title";
     title.textContent = this.titleValue;
-    const hint = document.createElement("small");
-    hint.textContent = "Press f or Esc to close";
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "atelier-fullscreen-close";
-    close.textContent = "Close";
+    const close = createCloseButton("Exit full screen");
     close.addEventListener("click", closeFullscreen);
-    bar.append(title, hint, close);
+    bar.append(title, close);
     return bar;
   }
 

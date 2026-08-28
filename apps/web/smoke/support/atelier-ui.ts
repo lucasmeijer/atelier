@@ -98,7 +98,7 @@ export const atelierUi = {
 
     return {
       close: async () => {
-        await page.getByRole("toolbar", { name: "Fullscreen controls", exact: true }).getByRole("button", { name: "Close", exact: true }).click();
+        await page.getByRole("toolbar", { name: "Fullscreen controls", exact: true }).getByRole("button", { name: "Exit full screen", exact: true }).click();
         await active.waitFor({ state: "detached", timeout: options.timeout });
       },
     };

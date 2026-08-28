@@ -5,6 +5,22 @@ import { copyTextToClipboard } from "@atelier/shared";
 import { ActionItemsController } from "./action-items.ts";
 import { PopupSelectController } from "./popup-select.ts";
 
+export function createCloseButton(label: string): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "button secondary icon-only";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("aria-hidden", "true");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M6 6l12 12M18 6L6 18");
+  icon.append(path);
+  button.append(icon);
+  return button;
+}
+
 class DialogController extends Controller<HTMLDialogElement> {
   private opener?: HTMLElement;
 
