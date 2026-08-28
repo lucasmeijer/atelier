@@ -163,9 +163,9 @@ describe("Atelier browser behavior", () => {
     const page = await newTestPage();
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<dialog class="dialog" data-controller="modal" data-dialog-auto-show><form><input required><div class="dialog__actions"><button type="button" data-action="modal#close">Cancel</button><button type="submit">Connect</button></div></form></dialog><script type="module" src="/workspace-test.js"></script>`,
+      body: `<dialog class="dialog" data-dialog-auto-show><form id="api-key"><input required></form><div class="dialog__actions"><form method="dialog"><button>Cancel</button></form><button type="submit" form="api-key">Connect</button></div></dialog><script type="module" src="/design-system.js"></script>`,
     }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
     await page.goto("http://atelier.test/");
     const dialog = page.locator("dialog");
     await dialog.waitFor({ state: "visible" });

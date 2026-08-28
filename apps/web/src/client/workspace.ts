@@ -1591,44 +1591,27 @@ class OAuthFlowController extends Controller {
     }).catch(() => undefined);
     this.polling = false;
     if (!response?.ok) return;
-    const visibleTargets = ["auth", "progress", "prompt"].filter((target) => this.element.querySelector<HTMLElement>(`[data-oauth-progress-reveal-target~="${target}"]:not([hidden])`));
-    if (this.element.dataset.oauthPromptRequested === "true" && !visibleTargets.includes("prompt")) visibleTargets.push("prompt");
     const codeCopied = this.element.dataset.oauthCodeCopied === "true";
     const html = await response.text();
     window.Turbo?.renderStreamMessage(html);
-    if (visibleTargets.length || codeCopied) {
-      window.requestAnimationFrame(() => {
-        const dialog = document.querySelector<HTMLElement>("#settings_flow_dialog");
-        for (const target of visibleTargets) dialog?.querySelectorAll<HTMLElement>(`[data-oauth-progress-reveal-target~="${target}"]`).forEach((item) => { item.hidden = false; });
-        if (visibleTargets.includes("prompt")) dialog?.setAttribute("data-oauth-prompt-requested", "true");
-        if (codeCopied) {
-          dialog?.setAttribute("data-oauth-code-copied", "true");
-          const copyButton = dialog?.querySelector<HTMLButtonElement>('[data-oauth-copy-button="true"]');
-          if (copyButton) copyButton.textContent = "Copied ✓";
-        }
-      });
-    }
-  }
-}
-
-class OAuthProgressRevealController extends Controller {
-  static targets = ["auth", "progress", "prompt"];
-  declare readonly authTargets: HTMLElement[];
-  declare readonly progressTargets: HTMLElement[];
-  declare readonly promptTargets: HTMLElement[];
-
-  showAuth(): void {
-    this.element.closest<HTMLElement>("#settings_flow_dialog")?.setAttribute("data-oauth-code-copied", "true");
-    for (const item of this.authTargets) item.hidden = false;
+    if (codeCopied) window.requestAnimationFrame(() => this.restoreDeviceCodeState());
   }
 
-  showProgress(): void {
-    for (const item of this.progressTargets) item.hidden = false;
+  showDeviceAuth(): void {
+    this.element.dataset.oauthCodeCopied = "true";
+    this.element.querySelector<HTMLElement>("[data-oauth-device-auth]")!.hidden = false;
   }
 
-  showPrompt(): void {
-    this.element.closest<HTMLElement>("#settings_flow_dialog")?.setAttribute("data-oauth-prompt-requested", "true");
-    for (const item of this.promptTargets) item.hidden = false;
+  private restoreDeviceCodeState(): void {
+    const dialog = document.querySelector<HTMLElement>("#settings_flow_dialog")!;
+    const deviceAuth = dialog.querySelector<HTMLElement>("[data-oauth-device-auth]");
+    if (!deviceAuth) return;
+    dialog.dataset.oauthCodeCopied = "true";
+    deviceAuth.hidden = false;
+    const copyButton = dialog.querySelector<HTMLButtonElement>('[data-oauth-copy-button="true"]')!;
+    copyButton.dataset.copyState = "copied";
+    copyButton.setAttribute("aria-label", "Copied to clipboard");
+    copyButton.querySelector<HTMLElement>(".copy-button__icon")!.textContent = "✓";
   }
 }
 
@@ -1983,7 +1966,6 @@ application.register("auto-scroll", AutoScrollController);
 application.register("workspace-app-frame", WorkspaceAppFrameController);
 application.register("theme-select", ThemeSelectController);
 application.register("oauth-flow", OAuthFlowController);
-application.register("oauth-progress-reveal", OAuthProgressRevealController);
 application.register("git-identity", GitIdentityController);
 application.register("settings-autosave", SettingsAutosaveController);
 application.register("model-catalogue", ModelCatalogueController);
