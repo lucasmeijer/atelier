@@ -35,7 +35,7 @@ export abstract class SelectPopupController extends Controller<HTMLSelectElement
     this.button.addEventListener("click", this.toggle);
 
     this.menu = document.createElement("div");
-    this.menu.className = `popup-menu popup-menu-anchored${this.menuClass}`;
+    this.menu.className = `popup-menu action-list popup-menu-anchored${this.menuClass}`;
     this.menu.dataset.popupSelectMenu = "true";
     this.menu.id = `${this.element.id || `popup_select_${++menuSequence}`}_menu`;
     this.menu.setAttribute("role", "menu");

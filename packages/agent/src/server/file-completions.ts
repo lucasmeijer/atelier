@@ -83,7 +83,7 @@ exec fd "$@" --base-directory "$base" --max-results 100 --ignore-case --type f -
 
 export function renderFileCompletionMenu(completions: readonly FileCompletion[]): string {
   if (completions.length === 0) return `<div class="agent-completion-menu empty">No matching files</div>`;
-  return `<div class="agent-completion-menu" role="listbox" aria-label="Files and directories">${completions.map((completion, index) => {
+  return `<div class="agent-completion-menu action-list" role="listbox" aria-label="Files and directories">${completions.map((completion, index) => {
     const path = completion.directory ? `${completion.path}/` : completion.path;
     return `<button type="button" class="agent-completion-option action-item action-item__primary agent-file-option${index === 0 ? " active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="file" data-file-path="${escapeHtml(path)}" data-file-directory="${completion.directory}">
       <span class="agent-file-icon" aria-hidden="true">${completion.directory ? "▸" : "·"}</span><span class="agent-file-path">${escapeHtml(path)}</span>

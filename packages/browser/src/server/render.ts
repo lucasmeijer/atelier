@@ -28,7 +28,7 @@ export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserVi
   const externalLinkAttributes = target ? ` href="#"` : ` aria-disabled="true"`;
   return `<turbo-frame id="${browserFrameId(workspaceId, appKey)}" class="browser-frame">
     <div class="browser-shell">
-      <form class="browser-toolbar" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/browser/${encodeURIComponent(appKey)}/navigate" data-turbo-frame="${browserFrameId(workspaceId, appKey)}" data-controller="browser-address" data-action="submit->browser-address#submit">
+      <form class="browser-toolbar work-view-toolbar" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/browser/${encodeURIComponent(appKey)}/navigate" data-turbo-frame="${browserFrameId(workspaceId, appKey)}" data-controller="browser-address" data-action="submit->browser-address#submit">
         <div class="browser-window-controls" aria-hidden="true"><span class="red"></span><span class="amber"></span><span class="green"></span></div>
         <div class="browser-navigation button-group" role="group" aria-label="Browser navigation">
           <button class="browser-nav-button button secondary icon-only" type="button" data-action="browser-address#back" title="Back" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>

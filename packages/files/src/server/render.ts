@@ -71,7 +71,7 @@ function renderEntryRow(workspaceId: string, viewId: string, entry: FileEntry, e
     <span class="files-row-name action-item__label">${label}</span>
     <span class="files-row-size">${entry.kind === "directory" ? "" : formatSize(entry.size)}</span>
     <button class="files-actions-toggle action-item__action button secondary icon-only popup-menu-trigger" type="button" aria-label="Actions for ${escapeHtml(entry.name)}" aria-haspopup="menu" aria-controls="${menuId}" popovertarget="${menuId}"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
-    <div class="files-actions-menu popup-menu popup-menu-anchored" id="${menuId}" role="menu" popover="auto">
+    <div class="files-actions-menu popup-menu action-list popup-menu-anchored" id="${menuId}" role="menu" popover="auto">
       ${openNew}
       <button class="action-item action-item__primary" type="button" role="menuitem" data-files-copy-url="${escapeHtml(contentUrl)}" data-action="files#copyUrl">Copy URL</button>
       <a class="action-item action-item__primary" href="${escapeHtml(contentUrl)}" download="${escapeHtml(downloadName)}" role="menuitem" data-turbo="false">Download</a>
@@ -91,7 +91,7 @@ function renderEntry(workspaceId: string, viewId: string, entry: FileEntry, sele
 export function renderFilesDirectoryFrame(workspaceId: string, viewId: string, entry: FileEntry, entries?: FileEntry[], selectedPath?: string): string {
   const expanded = entries !== undefined;
   const children = expanded
-    ? `<div class="files-directory-children" role="group">${entries.map((child) => renderEntry(workspaceId, viewId, child, selectedPath)).join("") || '<p class="files-empty">This folder is empty</p>'}</div>`
+    ? `<div class="files-directory-children action-list" role="group">${entries.map((child) => renderEntry(workspaceId, viewId, child, selectedPath)).join("") || '<p class="files-empty empty-state">This folder is empty</p>'}</div>`
     : "";
   return `<turbo-frame id="${filesDirectoryFrameId(workspaceId, viewId, entry.path)}" class="files-directory-frame">${renderEntryRow(workspaceId, viewId, entry, expanded, selectedPath)}${children}</turbo-frame>`;
 }
@@ -99,7 +99,7 @@ export function renderFilesDirectoryFrame(workspaceId: string, viewId: string, e
 export function renderFilesTreeFrame(workspaceId: string, viewId: string, entries: FileEntry[], selectedPath?: string): string {
   return `<turbo-frame id="${filesTreeFrameId(workspaceId, viewId)}" class="files-frame">
     <div class="files-browser" data-controller="files" data-files-path-value="${escapeHtml(workspaceRoot)}" data-files-upload-url-value="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/upload" data-action="dragenter->files#dragEnter dragover->files#dragOver dragleave->files#dragLeave drop->files#drop keydown->files#keydown">
-      <div class="files-tree" role="tree" aria-label="Files in ${escapeHtml(workspaceRoot)}" tabindex="0">${entries.map((entry) => renderEntry(workspaceId, viewId, entry, selectedPath)).join("") || '<p class="files-empty">This folder is empty</p>'}</div>
+      <div class="files-tree action-list" role="tree" aria-label="Files in ${escapeHtml(workspaceRoot)}" tabindex="0">${entries.map((entry) => renderEntry(workspaceId, viewId, entry, selectedPath)).join("") || '<p class="files-empty empty-state">This folder is empty</p>'}</div>
       <div class="files-drop-overlay" aria-hidden="true"><strong>Drop files to upload</strong><span>${escapeHtml(workspaceRoot)}</span></div>
       <footer class="files-upload-status" hidden><div class="files-progress-track"><span data-files-target="progress"></span></div><span data-files-target="status">Uploading…</span><button class="button secondary" type="button" data-action="files#cancel">Cancel</button></footer>
     </div>
@@ -113,14 +113,14 @@ function renderLazyFilesTreeFrame(workspaceId: string, view: FilesView): string 
 
 export function renderFilesEditorFrame(workspaceId: string, view: FilesView): string {
   const frameId = filesEditorFrameId(workspaceId, view.id);
-  if (!view.path) return `<turbo-frame id="${frameId}" class="files-editor-frame"><section class="file-editor-pane files-editor-empty"><header class="file-editor-toolbar"><span class="file-editor-path">Choose a file</span>${filesPaneToggle("expand")}</header><p>Select a file from the Files pane.</p></section></turbo-frame>`;
+  if (!view.path) return `<turbo-frame id="${frameId}" class="files-editor-frame"><section class="file-editor-pane files-editor-empty"><header class="file-editor-toolbar work-view-toolbar"><span class="file-editor-path">Choose a file</span>${filesPaneToggle("expand")}</header><p>Select a file from the Files pane.</p></section></turbo-frame>`;
   const contentUrl = `/workspaces/${encodeURIComponent(workspaceId)}/files-view/content?${new URLSearchParams({ path: view.path })}`;
   const markdown = /\.(?:md|markdown)$/i.test(view.path);
   return `<turbo-frame id="${frameId}" class="files-editor-frame"><section class="file-editor-pane" data-controller="file-editor" data-file-editor-workspace-id-value="${escapeHtml(workspaceId)}" data-file-editor-path-value="${escapeHtml(view.path)}" data-file-editor-content-url-value="${escapeHtml(contentUrl)}" data-file-editor-line-value="${view.line ?? 0}" data-file-editor-column-value="${view.column ?? 0}">
-    <header class="file-editor-toolbar"><span class="file-editor-path" title="${escapeHtml(view.path)}">${escapeHtml(view.path)}</span><span class="file-editor-toolbar-actions">${markdown ? `<span class="button-toggle" role="group" aria-label="Markdown display"><button class="button-toggle__option" type="button" data-file-editor-target="previewOption" data-action="file-editor#selectPreviewMode" data-preview-mode="edit" aria-pressed="true">Edit</button><button class="button-toggle__option" type="button" data-file-editor-target="previewOption" data-action="file-editor#selectPreviewMode" data-preview-mode="preview" aria-pressed="false">Preview</button></span>` : ""}<span class="file-editor-status" data-file-editor-target="status">Loading…</span>${filesPaneToggle("expand")}</span></header>
+    <header class="file-editor-toolbar work-view-toolbar"><span class="file-editor-path" title="${escapeHtml(view.path)}">${escapeHtml(view.path)}</span><span class="file-editor-toolbar-actions">${markdown ? `<span class="button-toggle" role="group" aria-label="Markdown display"><button class="button-toggle__option" type="button" data-file-editor-target="previewOption" data-action="file-editor#selectPreviewMode" data-preview-mode="edit" aria-pressed="true">Edit</button><button class="button-toggle__option" type="button" data-file-editor-target="previewOption" data-action="file-editor#selectPreviewMode" data-preview-mode="preview" aria-pressed="false">Preview</button></span>` : ""}<span class="file-editor-status" data-file-editor-target="status">Loading…</span>${filesPaneToggle("expand")}</span></header>
     <div class="file-editor-host" data-file-editor-target="host"><div class="file-editor-loading" data-file-editor-target="loading" role="status"><i class="status-spinner sm" aria-hidden="true"></i><span>Loading file…</span></div></div>
     ${markdown ? `<div class="file-editor-preview agent-md" data-file-editor-target="preview" hidden></div>` : ""}
-    <dialog class="file-editor-conflict" data-file-editor-target="conflict"><form method="dialog"><strong>File changed on disk</strong><p>Choose which version should remain.</p><div><button class="button secondary" type="button" data-action="file-editor#useTheirs">Use theirs</button><button class="button primary" type="button" data-action="file-editor#useMine">Use mine</button></div></form></dialog>
+    <dialog class="dialog dialog--compact file-editor-conflict" data-file-editor-target="conflict"><form class="dialog__form" method="dialog"><header class="dialog__header"><strong>File changed on disk</strong></header><div class="dialog__body"><p>Choose which version should remain.</p></div><footer class="dialog__actions"><button class="button secondary" type="button" data-action="file-editor#useTheirs">Use theirs</button><button class="button primary" type="button" data-action="file-editor#useMine">Use mine</button></footer></form></dialog>
   </section></turbo-frame>`;
 }
 
@@ -133,7 +133,7 @@ export function renderFilesWorkView(workspaceId: string, view: FilesView): Works
     availability: { phase: "live" },
     bodyHtml: `<section class="work-view-pane files-work-view"><div class="files-workbench${view.path ? "" : " is-files-pane-open"}" data-controller="files-view">
       <div class="files-editor-canvas">${renderFilesEditorFrame(workspaceId, view)}</div>
-      <aside class="files-navigator" aria-label="Files"><header class="files-navigator-header"><span class="files-navigator-path">${escapeHtml(workspaceRoot)}</span>${filesPaneToggle("collapse")}</header>${renderLazyFilesTreeFrame(workspaceId, view)}</aside>
+      <aside class="files-navigator" aria-label="Files"><header class="files-navigator-header work-view-toolbar"><span class="files-navigator-path">${escapeHtml(workspaceRoot)}</span>${filesPaneToggle("collapse")}</header>${renderLazyFilesTreeFrame(workspaceId, view)}</aside>
     </div></section>`,
   };
 }

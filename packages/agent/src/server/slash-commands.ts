@@ -26,7 +26,7 @@ function slashCommands(templates: readonly PromptTemplate[], skills: readonly Pi
 
 export function renderSlashCommandCatalog(templates: readonly PromptTemplate[], skills: readonly Pick<Skill, "name" | "description">[]): string {
   const commands = slashCommands(templates, skills);
-  return `<div class="agent-completion-menu" role="listbox" aria-label="Slash commands">${commands.map((command, index) => {
+  return `<div class="agent-completion-menu action-list" role="listbox" aria-label="Slash commands">${commands.map((command, index) => {
     const template = command.prompt !== undefined;
     return `<button type="button" class="agent-completion-option action-item action-item__primary agent-template-option${index === 0 ? " active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-completion-kind="${command.kind}" data-command-trigger="${escapeHtml(command.trigger)}"${command.trigger === "/tree" ? ` data-command-action="tree"` : ""}${template ? ` data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(command.trigger)}"` : ""}>
       <span class="agent-template-name">${escapeHtml(command.trigger)}</span><span class="agent-template-args">${escapeHtml(command.argumentHint ?? "")}</span><span class="agent-template-desc">${escapeHtml(command.description)}</span>${command.prompt !== undefined ? `<template data-atelier-fullscreen-target="content"><pre class="agent-template-preview">${escapeHtml(command.prompt)}</pre></template>` : ""}

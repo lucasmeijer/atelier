@@ -38,7 +38,7 @@
   z-index: 2;
   display: grid;
   place-items: center;
-  padding: var(--space-2xl);
+  padding: 24px;
   color: var(--text-bright);
   background:
     radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 34%),
@@ -55,9 +55,9 @@
 .vscode-starting-card {
   display: flex;
   align-items: center;
-  gap: var(--space-lg);
+  gap: 12px;
   min-width: min(360px, 100%);
-  padding: var(--space-xl) var(--space-xl);
+  padding: 16px 16px;
   border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
   border-radius: var(--radius-overlay);
   background: color-mix(in srgb, var(--panel) 88%, transparent);
@@ -79,6 +79,6 @@
 }
 
 .vscode-starting-subtitle {
-  margin-top: var(--space-2xs);
+  margin-top: 2px;
   color: var(--text);
 }

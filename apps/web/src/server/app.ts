@@ -387,13 +387,13 @@ ${moduleStylesHtml()}
   }
 
   function deleteProjectModal(project: ProjectSummary): string {
-    return `<dialog id="${domId("delete_project_modal", project.id)}" class="modal project-delete-modal" data-controller="modal">
-  <form method="post" action="/projects/${encodeURIComponent(project.id)}/delete" data-action="turbo:submit-end->modal#submitted">
-    <h2 class="project-delete-title">Delete ${repoSwatch(project.id)} ${escapeHtml(project.name)}?</h2>
-    <div class="modal-actions">
+    return `<dialog id="${domId("delete_project_modal", project.id)}" class="dialog dialog--compact project-delete-modal" data-controller="modal">
+  <form class="dialog__form" method="post" action="/projects/${encodeURIComponent(project.id)}/delete" data-action="turbo:submit-end->modal#submitted">
+    <header class="dialog__header"><h2 class="title project-delete-title">Delete ${repoSwatch(project.id)} ${escapeHtml(project.name)}?</h2></header>
+    <footer class="dialog__actions">
       <button class="button secondary" type="button" data-action="modal#close">Cancel</button>
       <button class="button danger" type="submit">Delete</button>
-    </div>
+    </footer>
   </form>
 </dialog>`;
   }
@@ -459,10 +459,10 @@ ${moduleStylesHtml()}
     const action = `/projects/${encodeURIComponent(project.id)}/ssh-key`;
     return `<section class="project-configuration-list project-ssh-key" id="${domId("project_ssh_key", project.id)}">
       <div class="project-configuration-head"><h3>SSH key</h3><p>The private key stays on the Atelier host. Workspaces receive only an SSH agent socket, so <code>ssh</code> can authenticate to servers that list the public key in <code>authorized_keys</code> without exposing the private key.</p></div>
-      <form class="project-ssh-key-form" method="post" action="${action}" data-turbo="true">
+      <form class="project-ssh-key-form form-section" method="post" action="${action}" data-turbo="true">
         <label><span>${configured ? "Replace private key" : "Private key"}</span><textarea class="textarea" name="privateKey" placeholder="${configured ? "Leave blank to keep the current key" : "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA…\n-----END OPENSSH PRIVATE KEY-----"}" autocomplete="off"${configured ? "" : " required"}></textarea></label>
         <div class="project-ssh-key-command"><span>Create an unencrypted Ed25519 key:</span><code>ssh-keygen -t ed25519 -f ~/.ssh/atelier_deploy -N '' -C atelier-deploy</code><span>Paste <code>~/.ssh/atelier_deploy</code> here and add <code>~/.ssh/atelier_deploy.pub</code> to the server’s <code>authorized_keys</code>.</span></div>
-        <div class="project-ssh-key-actions"><small>The private key is encrypted at rest.</small><button class="button primary" type="submit">${configured ? "Save" : "Add SSH key"}</button>${configured ? `<button class="button danger" type="submit" formaction="${action}/delete">Remove</button>` : ""}</div>
+        <div class="project-ssh-key-actions form-actions"><small>The private key is encrypted at rest.</small><button class="button primary" type="submit">${configured ? "Save" : "Add SSH key"}</button>${configured ? `<button class="button danger" type="submit" formaction="${action}/delete">Remove</button>` : ""}</div>
       </form>
     </section>`;
   }
@@ -486,7 +486,7 @@ ${moduleStylesHtml()}
   }
 
   function projectEditorModal(): string {
-    return `<dialog id="project-editor-modal" class="project-editor-modal" data-controller="modal"><turbo-frame id="project_editor_frame" class="project-editor-frame"></turbo-frame></dialog>`;
+    return `<dialog id="project-editor-modal" class="dialog dialog--sheet project-editor-modal" data-controller="modal"><turbo-frame id="project_editor_frame" class="project-editor-frame"></turbo-frame></dialog>`;
   }
 
   function isGitHubRemoteUrl(gitUrl: string): boolean {
@@ -520,14 +520,14 @@ ${moduleStylesHtml()}
     const body = problem === "missing-token"
       ? `<p><b>${escapeHtml(project.name)}</b> looks private, and Atelier does not have a GitHub token yet.</p><p>Connect GitHub in workspace settings, then try creating this workspace again.</p>`
       : `<p>Atelier has a GitHub token, but GitHub would not allow it to read <b>${escapeHtml(project.name)}</b>.</p><p>Reconnect GitHub with a token that has access to this project, then try again.</p>`;
-    return `<dialog id="github-token-required-modal" class="modal" data-controller="modal" data-modal-auto-show-value="true">
-  <form method="dialog">
-    <h2 class="modal-brand-title"><span class="settings-provider-icon" style="--provider-color:${providerBrandColor("github")}">${providerBrandIconHtml("github", "GitHub")}</span>${escapeHtml(title)}</h2>
-    ${body}
-    <div class="modal-actions">
+    return `<dialog id="github-token-required-modal" class="dialog dialog--compact" data-controller="modal" data-modal-auto-show-value="true">
+  <form class="dialog__form" method="dialog">
+    <header class="dialog__header"><h2 class="title modal-brand-title"><span class="settings-provider-icon" style="--provider-color:${providerBrandColor("github")}">${providerBrandIconHtml("github", "GitHub")}</span>${escapeHtml(title)}</h2></header>
+    <div class="dialog__body">${body}</div>
+    <footer class="dialog__actions">
       <button class="button secondary" value="cancel">Cancel</button>
       <a class="button primary" href="/settings?section=github" data-turbo-frame="_top" data-turbo-stream="true">Open GitHub settings</a>
-    </div>
+    </footer>
   </form>
 </dialog>`;
   }
@@ -1359,20 +1359,20 @@ ${moduleStylesHtml()}
 
   function deleteProjectBlockedModal(project: ProjectSummary, references: WorkspaceEntry[]): string {
     const count = references.length;
-    return `<dialog id="delete-project-blocked-modal" class="modal project-delete-blocked-modal" data-controller="modal" data-modal-auto-show-value="true">
-  <form method="dialog">
-    <div class="modal-header project-delete-header">
+    return `<dialog id="delete-project-blocked-modal" class="dialog dialog--compact project-delete-blocked-modal" data-controller="modal" data-modal-auto-show-value="true">
+  <form class="dialog__form" method="dialog">
+    <header class="dialog__header project-delete-header">
       <div class="modal-icon warning" aria-hidden="true">!</div>
       <div>
-        <h2>Project is in use</h2>
+        <h2 class="title">Project is in use</h2>
         <p><b>${escapeHtml(project.name)}</b> is referenced by ${count === 1 ? "1 workspace" : `${count} workspaces`}.</p>
       </div>
-    </div>
-    <div class="project-delete-workspaces" aria-label="Referencing workspaces">
+    </header>
+    <div class="dialog__body"><div class="project-delete-workspaces" aria-label="Referencing workspaces">
       ${references.map((entry) => `<div class="project-delete-workspace">${repoSwatch(project.id)}<span class="project-delete-workspace-title">${escapeHtml(workspaceTitle(entry))}</span><span class="project-delete-workspace-id">${escapeHtml(entry.id)}</span></div>`).join("")}
     </div>
-    <p class="project-delete-help">Delete these workspaces first, then try deleting the project again.</p>
-    <div class="modal-actions"><button class="button primary" value="close">OK</button></div>
+    <p class="project-delete-help">Delete these workspaces first, then try deleting the project again.</p></div>
+    <footer class="dialog__actions"><button class="button primary" value="close">OK</button></footer>
   </form>
 </dialog>`;
   }

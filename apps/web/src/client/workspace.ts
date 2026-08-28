@@ -590,7 +590,7 @@ class AtelierShortcutsController extends Controller {
       .sort((a, b) => a.label.localeCompare(b.label));
 
     const overlay = document.createElement("aside");
-    overlay.className = "shortcut-overlay";
+    overlay.className = "shortcut-overlay viewport-overlay";
     overlay.setAttribute("role", "status");
     overlay.setAttribute("aria-live", "polite");
 
@@ -676,7 +676,7 @@ class AtelierShortcutsController extends Controller {
   private ensurePalette(): void {
     if (this.paletteDialog) return;
     const dialog = document.createElement("dialog");
-    dialog.className = "palette-dialog";
+    dialog.className = "palette-dialog viewport-overlay";
     dialog.innerHTML = `<div class="palette-panel"><input class="palette-input" type="text" spellcheck="false" autocomplete="off" placeholder="Search your Atelier" aria-label="Search palette"><div class="palette-results" role="listbox"></div></div>`;
     dialog.addEventListener("close", () => this.paletteInput?.blur());
     dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });

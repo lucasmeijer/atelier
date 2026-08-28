@@ -241,7 +241,7 @@ function configuredModelRow(model: ConfiguredAgentModel, provider: ProviderSumma
 function renderConfiguredModelsSection(data: ModelSetupData, surface: ModelSetupSurface): string {
   if (!data.configured.length) return "";
   const models = managedList(data.configured.map((model) => configuredModelRow(model, data.providers.get(model.provider) ?? { provider: model.provider, label: model.provider, connected: false, stored: false, methods: [] }, surface)).join(""));
-  return `<section class="model-setup-section"><h2>Configured models</h2>${models}</section>`;
+  return `<section class="model-setup-section form-section"><h2>Configured models</h2>${models}</section>`;
 }
 
 function catalogueModelAction(model: ModelCatalogueEntry, provider: ProviderSummary, surface: ModelSetupSurface): string {
@@ -273,10 +273,10 @@ function renderModelSetupData(data: ModelSetupData, surface: ModelSetupSurface):
   const working = data.working;
   const head = surface === "onboarding" ? `<div class="model-setup-head"><h2>Configure models</h2><p>Connect providers and choose the models shown in model menus.</p></div>` : "";
   const id = surface === "dialog" ? "model_setup_dialog_content" : `model_setup_${surface}`;
-  return `<div class="model-setup" id="${id}">
+  return `<div class="model-setup form-stack" id="${id}">
     ${head}${modelSetupWorkingState(working)}
     <div class="configured-model-section configured-model-section-${surface}">${renderConfiguredModelsSection(data, surface)}</div>
-    <section class="model-setup-section"><h2>Available models</h2><div class="model-catalogue" data-controller="model-catalogue">${renderModelCatalogue(data, surface)}</div></section>
+    <section class="model-setup-section form-section"><h2>Available models</h2><div class="model-catalogue" data-controller="model-catalogue">${renderModelCatalogue(data, surface)}</div></section>
   </div>`;
 }
 
@@ -304,7 +304,7 @@ for (const module of workspaceModules) {
 export async function renderSettingsDialog(_active = "theme"): Promise<string> {
   const contributions = listSettingsContributions().filter((contribution) => contribution.id !== "keypress-probe");
   const sections = await Promise.all(contributions.map((contribution) => contribution.render()));
-  return `<dialog id="settings_dialog" class="settings-dialog" data-controller="modal" data-modal-auto-show-value="true">
+  return `<dialog id="settings_dialog" class="dialog dialog--sheet settings-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <div class="settings-sheet">
       <main class="settings-main"><form method="dialog"><button class="settings-close button secondary icon-only" value="close" title="Close settings" aria-label="Close settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form><div class="settings-title">Settings</div>${sections.join("")}<div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>
     </div>
@@ -312,7 +312,7 @@ export async function renderSettingsDialog(_active = "theme"): Promise<string> {
 }
 
 export async function renderDevelopmentSettingsDialog(): Promise<string> {
-  return `<dialog id="settings_dialog" class="settings-dialog" data-controller="modal" data-modal-auto-show-value="true">
+  return `<dialog id="settings_dialog" class="dialog dialog--sheet settings-dialog" data-controller="modal" data-modal-auto-show-value="true">
     <div class="settings-sheet">
       <main class="settings-main settings-main-dev"><form method="dialog"><button class="settings-close button secondary icon-only" value="close" title="Close settings" aria-label="Close settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form><div class="settings-title"><a class="settings-back-link" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">Settings</a></div>${await renderDevelopmentSettings()}</main>
     </div>

@@ -33,12 +33,12 @@
 .transcription-button[data-state="error"] .transcription-status {
   position: absolute;
   left: 0;
-  bottom: calc(100% + var(--space-sm));
+  bottom: calc(100% + 6px);
   width: max-content;
   max-width: min(280px, calc(100cqw - 20px));
   height: auto;
   margin: 0;
-  padding: var(--space-sm) var(--space-md);
+  padding: 6px 8px;
   overflow: visible;
   clip: auto;
   border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line));

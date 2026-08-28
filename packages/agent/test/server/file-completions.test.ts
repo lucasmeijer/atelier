@@ -31,7 +31,7 @@ describe("file completions", () => {
       { path: "src/a&b.ts", directory: false },
       { path: "src/widgets", directory: true },
     ]);
-    expect(html).toContain('class="agent-completion-menu"');
+    expect(html).toContain('role="listbox"');
     expect(html).toContain('data-completion-kind="file"');
     expect(html).toContain('data-file-path="src/a&amp;b.ts"');
     expect(html).toContain('data-file-path="src/widgets/"');

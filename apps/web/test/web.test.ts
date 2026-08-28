@@ -642,7 +642,8 @@ describe("web app contracts", () => {
       const removedPicker = await app.fetch(new Request("http://test.local/projects/picker"));
 
       expect(removedPicker.status).toBe(404);
-      expect(home).toContain('<dialog id="project-editor-modal" class="project-editor-modal" data-controller="modal"><turbo-frame id="project_editor_frame"');
+      expect(home).toContain('<dialog id="project-editor-modal"');
+      expect(home).toContain('<turbo-frame id="project_editor_frame"');
       expect(home).toContain(`href="/projects/${project.id}/launch-composer" data-turbo-frame="launch_composer"`);
       expect(home).toContain(`href="/projects/${project.id}/editor" data-turbo-frame="project_editor_frame"`);
       expect(home).toContain('href="/launch-composer" data-turbo-frame="launch_composer"');

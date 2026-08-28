@@ -20,7 +20,7 @@ function update(target: string, html: string): string {
 }
 
 async function renderGithubStep(): Promise<string> {
-  return `<div class="onboarding-step"><h2 class="title">Connect GitHub</h2>${githubRow("onboarding")}</div>`;
+  return `<div class="onboarding-step form-stack"><h2 class="title">Connect GitHub</h2>${githubRow("onboarding")}</div>`;
 }
 
 async function renderLlmStep(): Promise<string> {

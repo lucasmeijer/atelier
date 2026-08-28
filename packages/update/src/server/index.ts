@@ -318,7 +318,7 @@ export function renderSidebarRow(snapshot: StateSnapshot): string {
 }
 
 function renderWhatsNewModal(autoShow = true): string {
-  return `<dialog id="whats-new-modal" class="settings-dialog update-whats-new-dialog" data-controller="modal"${autoShow ? ` data-modal-auto-show-value="true"` : ""}>
+  return `<dialog id="whats-new-modal" class="dialog dialog--sheet settings-dialog update-whats-new-dialog" data-controller="modal"${autoShow ? ` data-modal-auto-show-value="true"` : ""}>
   <div class="settings-sheet"><main class="settings-main">
     <button class="settings-close button secondary icon-only" type="button" title="Close what’s new" aria-label="Close what’s new" data-action="modal#close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <div class="settings-title">Changes since your current version</div>
@@ -339,22 +339,21 @@ async function renderWhatsNewNotes(updateManager: UpdateManager): Promise<string
 }
 
 function renderRestartModal(): string {
-  return `<dialog id="restart-update-modal" class="modal update-restart-modal" data-controller="modal" data-modal-auto-show-value="true">
-  <form method="post" action="/update/restart" data-turbo="false" data-controller="update-restart" data-action="submit->update-restart#submit">
-    <h2>Restart Atelier to finish updating?</h2>
-    <p>Active agent sessions and terminal connections will be interrupted. Your projects, workspaces, and containers will remain in place.</p>
-    <p data-update-restart-status role="status" aria-live="polite">Atelier should be back in a few seconds.</p>
-    <div class="modal-actions button-group"><button class="button secondary" type="button" data-update-restart-cancel data-action="modal#close">Cancel</button>${progressButtonHtml({ initialHtml: "Restart Atelier", inProgressHtml: `${updateSpinnerHtml}Preparing restart…`, state: "initial", variant: "primary", type: "submit", id: "update_restart_submit" })}</div>
+  return `<dialog id="restart-update-modal" class="dialog dialog--compact update-restart-modal" data-controller="modal" data-modal-auto-show-value="true">
+  <form class="dialog__form" method="post" action="/update/restart" data-turbo="false" data-controller="update-restart" data-action="submit->update-restart#submit">
+    <header class="dialog__header"><h2 class="title">Restart Atelier to finish updating?</h2></header>
+    <div class="dialog__body"><p>Active agent sessions and terminal connections will be interrupted. Your projects, workspaces, and containers will remain in place.</p><p data-update-restart-status role="status" aria-live="polite">Atelier should be back in a few seconds.</p></div>
+    <footer class="dialog__actions button-group"><button class="button secondary" type="button" data-update-restart-cancel data-action="modal#close">Cancel</button>${progressButtonHtml({ initialHtml: "Restart Atelier", inProgressHtml: `${updateSpinnerHtml}Preparing restart…`, state: "initial", variant: "primary", type: "submit", id: "update_restart_submit" })}</footer>
   </form>
 </dialog>`;
 }
 
 function renderRestartErrorModal(message: string): string {
-  return `<dialog id="restart-update-error-modal" class="modal update-restart-modal" data-controller="modal" data-modal-auto-show-value="true">
-  <form method="dialog">
-    <h2>Could not restart Atelier</h2>
-    <p>${escapeHtml(message)}</p>
-    <div class="modal-actions button-group"><button class="button primary" value="close">OK</button></div>
+  return `<dialog id="restart-update-error-modal" class="dialog dialog--compact update-restart-modal" data-controller="modal" data-modal-auto-show-value="true">
+  <form class="dialog__form" method="dialog">
+    <header class="dialog__header"><h2 class="title">Could not restart Atelier</h2></header>
+    <div class="dialog__body"><p>${escapeHtml(message)}</p></div>
+    <footer class="dialog__actions button-group"><button class="button primary" value="close">OK</button></footer>
   </form>
 </dialog>`;
 }
@@ -366,15 +365,10 @@ function installerCommand(channel: ReleaseChannel): string {
 function renderInstallerRequiredModal(updateManager: UpdateManager): string {
   const snapshot = updateManager.snapshot();
   const command = installerCommand(snapshot.releaseChannel);
-  return `<dialog id="installer-required-modal" class="modal update-restart-modal" data-controller="modal" data-modal-auto-show-value="true">
-  <div>
-    <h2>Run the installer to update Atelier</h2>
-    <p>This release changes how Atelier is hosted, so the smooth in-app restart cannot safely apply it.</p>
-    <p>SSH into the Atelier host and run:</p>
-    <pre><code>${escapeHtml(command)}</code></pre>
-    <p>Your projects, workspaces, and containers will remain in place.</p>
-    <div class="modal-actions button-group"><button class="button primary" type="button" data-action="modal#close">Got it</button></div>
-  </div>
+  return `<dialog id="installer-required-modal" class="dialog dialog--compact update-restart-modal" data-controller="modal" data-modal-auto-show-value="true">
+  <header class="dialog__header"><h2 class="title">Run the installer to update Atelier</h2></header>
+  <div class="dialog__body"><p>This release changes how Atelier is hosted, so the smooth in-app restart cannot safely apply it.</p><p>SSH into the Atelier host and run:</p><pre><code>${escapeHtml(command)}</code></pre><p>Your projects, workspaces, and containers will remain in place.</p></div>
+  <footer class="dialog__actions button-group"><button class="button primary" type="button" data-action="modal#close">Got it</button></footer>
 </dialog>`;
 }
 

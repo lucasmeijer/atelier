@@ -165,7 +165,7 @@ export function renderAgentTreeMenu(tree: readonly SessionTreeNode[], leafId: st
       <span class="agent-tree-label-editor" hidden><input class="text-field" type="text" value="" placeholder="Add a label" aria-label="New node label"><button class="button" type="button" data-tree-action="label-cancel">Cancel</button><button type="button" class="button primary" data-tree-action="label-save">Add</button></span>
     </div>`;
   }).join("");
-  return `<div class="agent-completion-menu agent-tree-menu" role="listbox" aria-label="Session tree">${controls}${rows}</div>`;
+  return `<div class="agent-completion-menu action-list agent-tree-menu" role="listbox" aria-label="Session tree">${controls}${rows}</div>`;
 }
 
 export function renderAgentSessionTree(manager: SessionManager, options: { filter: TreeFilterMode; query: string }): string {
@@ -185,7 +185,7 @@ export function updateAgentSessionTreeLabel(manager: SessionManager, entryId: st
 export function renderAgentTreeSummaryMenu(entryId: string): string {
   return `<div class="agent-completion-menu agent-tree-summary-menu" role="listbox" aria-label="Branch summary choice" data-tree-entry="${escapeHtml(entryId)}">
     <header class="agent-tree-header"><span class="agent-tree-heading"><b>Continue from this point</b><span>What should happen to the branch you’re leaving?</span></span></header>
-    <div class="agent-tree-summary-choices">
+    <div class="agent-tree-summary-choices action-list">
       <button type="button" class="agent-completion-option action-item action-item__primary agent-tree-summary-option active" role="option" aria-selected="true" data-completion-kind="tree-summary" data-summary-mode="none"><b>No summary</b><span>Switch state without carrying anything forward.</span></button>
       <button type="button" class="agent-completion-option action-item action-item__primary agent-tree-summary-option" role="option" aria-selected="false" data-completion-kind="tree-summary" data-summary-mode="summary"><b>Summarize</b><span>Ask the agent to preserve useful context from the branch.</span></button>
       <button type="button" class="agent-completion-option action-item action-item__primary agent-tree-summary-option" role="option" aria-selected="false" data-completion-kind="tree-summary" data-summary-mode="custom"><b>Summarize with additional instructions</b><span>Add guidance for what the summary should retain.</span></button>

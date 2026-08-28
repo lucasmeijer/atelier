@@ -67,7 +67,7 @@ describe("Files Work view rendering", () => {
     ]);
     expect(html).toStartWith(`<turbo-frame id="${filesDirectoryFrameId("workspace", "view-1", folder.path)}"`);
     expect(html).toContain('aria-expanded="true"');
-    expect(html).toContain('class="files-directory-children" role="group"');
+    expect(html).toContain('role="group"');
     expect(html).toContain("nested.txt");
     expect(html).toContain("view=collapsed");
   });

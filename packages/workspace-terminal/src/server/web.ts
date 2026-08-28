@@ -68,18 +68,18 @@ async function renderAttachDialog(workspaceId: string): Promise<string> {
 
   const rows = sessions.map((session) => {
     const openCount = openCounts.get(session.name) ?? 0;
-    return `<label class="terminal-session-option">
+    return `<label class="terminal-session-option managed-list__item">
       <input type="radio" name="session" value="${escapeHtml(session.name)}" required>
       <span class="terminal-session-main"><b>${escapeHtml(session.name)}</b><small><code>${escapeHtml(session.command)}</code> in <span title="${escapeHtml(session.cwd)}">${escapeHtml(session.cwd)}</span></small></span>
       <span class="terminal-session-meta"><span>${session.windows} ${session.windows === 1 ? "window" : "windows"}</span><span>${session.width}×${session.height}</span><span title="Created ${relativeAge(session.createdAt)}">active ${relativeAge(session.lastActivityAt)}</span>${session.attachedClients ? `<span>${session.attachedClients} tmux ${session.attachedClients === 1 ? "client" : "clients"}</span>` : ""}${openCount ? `<strong>${openCount} open ${openCount === 1 ? "terminal" : "terminals"}</strong>` : ""}${session.dead ? `<strong class="terminal-session-dead">exited</strong>` : ""}</span>
     </label>`;
   }).join("");
 
-  return `<dialog id="${attachDialogId(workspaceId)}" class="modal terminal-attach-dialog" data-controller="modal" data-modal-auto-show-value="true">
-    <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/terminals/attach" data-turbo="true">
-      <header><h2>Attach terminal</h2><p>Choose an existing tmux session. Multiple Terminal views can attach to the same session.</p></header>
-      <div class="terminal-session-list">${rows || `<div class="terminal-session-empty">No tmux sessions are running yet.</div>`}</div>
-      <div class="modal-actions"><button class="button secondary" type="button" data-action="modal#close">Cancel</button><button class="button primary" type="submit"${rows ? "" : " disabled"}>Attach</button></div>
+  return `<dialog id="${attachDialogId(workspaceId)}" class="dialog terminal-attach-dialog" data-controller="modal" data-modal-auto-show-value="true">
+    <form class="dialog__form" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/terminals/attach" data-turbo="true">
+      <header class="dialog__header"><div><h2 class="title">Attach terminal</h2><p>Choose an existing tmux session. Multiple Terminal views can attach to the same session.</p></div></header>
+      <div class="dialog__body"><div class="terminal-session-list managed-list">${rows || `<div class="terminal-session-empty managed-list__empty empty-state">No tmux sessions are running yet.</div>`}</div></div>
+      <footer class="dialog__actions"><button class="button secondary" type="button" data-action="modal#close">Cancel</button><button class="button primary" type="submit"${rows ? "" : " disabled"}>Attach</button></footer>
     </form>
   </dialog>`;
 }
