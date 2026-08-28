@@ -335,7 +335,9 @@ export function isWorkspacePaneVisible(element: Element): boolean {
     if (!presentationPane.classList.contains("is-active")) return false;
     const presentation = presentationPane.closest<HTMLElement>(".fixed-workspace-presentation")!;
     if (window.matchMedia(phoneViewportMediaQuery).matches) {
-      return presentation.dataset.phoneDestination === `${presentationPane.dataset.workspacePaneRole}:${presentationPane.dataset.workspacePaneId}`;
+      return presentationPane.dataset.workspacePaneRole === "agent"
+        ? presentation.dataset.phoneDestination === "agents"
+        : presentation.dataset.phoneDestination === `work:${presentationPane.dataset.workspacePaneId}`;
     }
     return presentationPane.dataset.workspacePaneRole === "agent" || presentation.classList.contains("is-work-pane-open");
   }
