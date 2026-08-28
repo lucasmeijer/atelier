@@ -385,12 +385,10 @@
 .agent-item:has(.agent-user) { margin-top: var(--space-lg); margin-bottom: var(--space-md); }
 .agent-item:has(.agent-final) { margin-top: .5rem; margin-bottom: .75rem; }
 .agent-working { width: 100%; margin: var(--space-2xs) 0; }
+.agent-working > summary.action-item { width: fit-content; max-width: 100%; }
 .agent-working > summary, .agent-tool > summary { list-style: none; cursor: pointer; }
 .agent-working > summary::-webkit-details-marker, .agent-tool > summary::-webkit-details-marker { display: none; }
-.agent-working-summary { min-height: 30px; padding: var(--space-xs) var(--space-sm); display: flex; align-items: center; gap: var(--space-md); border-radius: var(--radius-control); color: var(--text); }
-.agent-working-summary:hover { background: color-mix(in srgb, var(--panel) 68%, transparent); color: var(--text-bright); }
 .agent-working:not(:has(.agent-working-items > .agent-item)) .disclosure-icon { display: none; }
-.agent-working.active > summary::after { content: ""; width: 12px; height: 12px; flex: none; border: 1.5px solid var(--line-strong); border-top-color: var(--text); border-radius: 50%; animation: agent-spin .8s linear infinite; }
 .agent-working-items { margin: var(--space-2xs) 0 var(--space-xs); }
 .agent-working-items > .agent-item + .agent-item { margin-top: var(--space-md); }
 .agent-itext-md { color: var(--text); }

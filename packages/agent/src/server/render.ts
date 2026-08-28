@@ -473,7 +473,8 @@ function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscrip
       : "Working";
   const items = section.items.map((item) => renderTranscriptItem(ctx, item, { live: section.live, open: section.live })).join("");
   const active = section.completedAt === undefined && section.stoppedAt === undefined;
-  return `<details class="agent-working${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${section.completedAt === undefined ? " open" : ""}><summary class="agent-working-summary">${disclosureIconHtml}${label}</summary><div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}">${items}</div></details>`;
+  const status = active ? '<i class="activity-spinner action-item__status" aria-label="In progress"></i>' : "";
+  return `<details class="agent-working${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${section.completedAt === undefined ? " open" : ""}><summary class="action-item action-item__primary">${disclosureIconHtml}<span class="action-item__label"><span class="action-item__label-text">${label}</span></span>${status}</summary><div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}">${items}</div></details>`;
 }
 
 function renderThinkingItem(ctx: AgentRenderContext, item: Extract<TranscriptItem, { type: "thinking" }>): string {
