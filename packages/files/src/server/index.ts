@@ -7,8 +7,8 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { fileSaveRequestSchema, type FileSaveRequest } from "../protocol.ts";
 import { EditableFileError, readEditableFile, requestedEditableFilePath, writeEditableFile } from "./editable-file.ts";
-import { deleteFile, FilesPathError, listFiles, resolveFilesDirectory, uploadFile } from "./files.ts";
-import { filesEditorFrameId, filesRefreshSignalId, filesTreeFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesRefreshSignal, renderFilesTreeFrame, renderFilesWorkView } from "./render.ts";
+import { deleteFile, FilesPathError, listFiles, resolveFilesDirectory, searchFiles, uploadFile } from "./files.ts";
+import { filesEditorFrameId, filesRefreshSignalId, filesTreeFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesRefreshSignal, renderFilesTreeFrame, renderFilesTreeResultsFrame, renderFilesWorkView } from "./render.ts";
 import { closeFilesView, createFilesView, defaultFilesViewId, deleteFilesViewState, filesView, listFilesViews, setFilesViewFile } from "./state.ts";
 
 const filesWorkViewReferenceSchema = Type.Object({ type: Type.Literal("files"), id: Type.String() });
@@ -40,6 +40,12 @@ async function filesResponse(workspaceId: string, viewId: string): Promise<Respo
 
 async function filesEndpoint(workspaceId: string, url: URL): Promise<Response> {
   const viewId = url.searchParams.get("filesView") ?? defaultFilesViewId;
+  const query = url.searchParams.get("q");
+  if (query !== null) {
+    const normalizedQuery = query.trim();
+    const entries = normalizedQuery ? await searchFiles(workspaceId, normalizedQuery) : (await listFiles(workspaceId, workspaceRoot)).entries;
+    return htmlResponse(renderFilesTreeResultsFrame(workspaceId, viewId, entries, filesView(workspaceId, viewId).path, Boolean(normalizedQuery)));
+  }
   const view = url.searchParams.get("view");
   if (view === "inline" || view === "collapsed") {
     const listing = view === "inline" ? await listFiles(workspaceId, url.searchParams.get("path")) : undefined;

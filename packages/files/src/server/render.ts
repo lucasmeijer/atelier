@@ -12,6 +12,10 @@ export function filesEditorFrameId(workspaceId: string, viewId: string): string 
   return domId("workspace", workspaceId, "files", viewId, "editor");
 }
 
+export function filesTreeResultsFrameId(workspaceId: string, viewId: string): string {
+  return domId("workspace", workspaceId, "files", viewId, "tree", "results");
+}
+
 export function filesDirectoryFrameId(workspaceId: string, viewId: string, path: string): string {
   return `files_directory_${Buffer.from(`${workspaceId}\0${viewId}\0${path}`).toString("base64url")}`;
 }
@@ -90,10 +94,23 @@ export function renderFilesDirectoryFrame(workspaceId: string, viewId: string, e
   return `<turbo-frame id="${filesDirectoryFrameId(workspaceId, viewId, entry.path)}" class="files-directory-frame">${renderEntryRow(workspaceId, viewId, entry, expanded, selectedPath)}${children}</turbo-frame>`;
 }
 
+export function renderFilesTreeResultsFrame(workspaceId: string, viewId: string, entries: FileEntry[], selectedPath?: string, filtered = false): string {
+  const empty = filtered ? "No matching files." : "This folder is empty";
+  return `<turbo-frame id="${filesTreeResultsFrameId(workspaceId, viewId)}" class="files-tree-results">
+    <div class="files-filter-loading" role="status"><span class="status-spinner sm" aria-hidden="true"></span>Filtering files…</div>
+    <div class="files-tree action-list" role="tree" aria-label="${filtered ? "Matching files" : `Files in ${escapeHtml(workspaceRoot)}`}" tabindex="0">${entries.map((entry) => renderEntry(workspaceId, viewId, entry, selectedPath)).join("") || `<p class="files-empty empty-state">${empty}</p>`}</div>
+  </turbo-frame>`;
+}
+
 export function renderFilesTreeFrame(workspaceId: string, viewId: string, entries: FileEntry[], selectedPath?: string): string {
+  const resultsFrameId = filesTreeResultsFrameId(workspaceId, viewId);
   return `<turbo-frame id="${filesTreeFrameId(workspaceId, viewId)}" class="files-frame">
     <div class="files-browser" data-controller="files" data-files-path-value="${escapeHtml(workspaceRoot)}" data-files-upload-url-value="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/upload" data-action="dragenter->files#dragEnter dragover->files#dragOver dragleave->files#dragLeave drop->files#drop keydown->files#keydown">
-      <div class="files-tree action-list" role="tree" aria-label="Files in ${escapeHtml(workspaceRoot)}" tabindex="0">${entries.map((entry) => renderEntry(workspaceId, viewId, entry, selectedPath)).join("") || '<p class="files-empty empty-state">This folder is empty</p>'}</div>
+      <form class="managed-list__filter files-filter" method="get" action="/workspaces/${encodeURIComponent(workspaceId)}/files" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${resultsFrameId}">
+        <input type="hidden" name="filesView" value="${escapeHtml(viewId)}">
+        <input class="text-field" type="search" name="q" placeholder="Filter files…" aria-label="Filter files by name" autocomplete="off">
+      </form>
+      ${renderFilesTreeResultsFrame(workspaceId, viewId, entries, selectedPath)}
       <div class="files-drop-overlay" aria-hidden="true"><strong>Drop files to upload</strong><span>${escapeHtml(workspaceRoot)}</span></div>
       <footer class="files-upload-status" hidden><div class="files-progress-track"><span data-files-target="progress"></span></div><span data-files-target="status">Uploading…</span><button class="button secondary" type="button" data-action="files#cancel">Cancel</button></footer>
     </div>

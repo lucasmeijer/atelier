@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { workspaceRoot } from "@atelier/workspace";
 import { FilesPathError, normalizeFilesPath } from "../src/server/files.ts";
-import { filesDirectoryFrameId, filesEditorFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkView } from "../src/server/render.ts";
+import { filesDirectoryFrameId, filesEditorFrameId, filesTreeResultsFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesTreeResultsFrame, renderFilesWorkView } from "../src/server/render.ts";
 
 describe("files paths", () => {
   test("defaults to the configured workspace root", () => {
@@ -51,6 +51,23 @@ describe("Files Work view rendering", () => {
     expect(html).toContain("/files-view/open?path=%2Fwork%2F.secret&amp;filesView=workspace");
     expect(html).toContain(`data-turbo-frame="${filesEditorFrameId("work 1", "workspace")}"`);
     expect(html).toContain("data-action=\"files-view#selectFile\"");
+  });
+
+  test("renders a server-filtered file tree with a debounced Turbo target and busy status", () => {
+    const html = renderFilesTreeFrame("work 1", "view-1", []);
+    const resultsId = filesTreeResultsFrameId("work 1", "view-1");
+    expect(html).toContain('class="managed-list__filter files-filter"');
+    expect(html).toContain('data-controller="server-filter"');
+    expect(html).toContain('data-action="input->server-filter#submit"');
+    expect(html).toContain(`data-turbo-frame="${resultsId}"`);
+    expect(html).toContain('name="q"');
+    expect(html).toContain('aria-label="Filter files by name"');
+    expect(html).toContain('class="files-filter-loading" role="status"');
+
+    const filtered = renderFilesTreeResultsFrame("work 1", "view-1", [], undefined, true);
+    expect(filtered).toContain(`id="${resultsId}"`);
+    expect(filtered).toContain('aria-label="Matching files"');
+    expect(filtered).toContain("No matching files.");
   });
 
   test("renders an expanded folder in its own Turbo Frame", () => {

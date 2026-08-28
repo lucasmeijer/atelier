@@ -1745,7 +1745,7 @@ class ServerFilterController extends Controller {
 
   submit(): void {
     if (this.timer) clearTimeout(this.timer);
-    // SAFETY: The controller is attached only to the server-rendered model catalogue filter form.
+    // SAFETY: The controller is attached only to server-rendered filter forms.
     this.timer = setTimeout(() => (this.element as HTMLFormElement).requestSubmit(), 200);
   }
 }

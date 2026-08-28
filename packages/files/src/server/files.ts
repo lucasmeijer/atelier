@@ -57,16 +57,27 @@ done`;
   return new Set(result.stdout.toString("utf8").split("\0").filter(Boolean));
 }
 
+function fileEntries(rawEntries: Omit<FileEntry, "openable">[], openable: Set<string>): FileEntry[] {
+  return rawEntries
+    .map((entry) => ({ ...entry, openable: openable.has(entry.path) }))
+    .sort((left, right) => Number(right.kind === "directory") - Number(left.kind === "directory") || left.name.localeCompare(right.name));
+}
+
 export async function listFiles(workspaceId: string, inputPath: string | null): Promise<{ path: string; entries: FileEntry[] }> {
   const path = await resolveFilesDirectory(workspaceId, inputPath);
   const listing = await execWorkspaceCommandBuffer(workspaceId, ["find", path, "-mindepth", "1", "-maxdepth", "1", "-printf", "%y\\0%s\\0%f\\0"]);
   if (listing.exitCode !== 0) throw new FilesPathError(listing.stderr.trim() || "Unable to read folder", 403);
   const rawEntries = parseFindOutput(listing.stdout, path);
-  const openable = await openablePaths(workspaceId, rawEntries);
-  const entries = rawEntries
-    .map((entry) => ({ ...entry, openable: openable.has(entry.path) }))
-    .sort((left, right) => Number(right.kind === "directory") - Number(left.kind === "directory") || left.name.localeCompare(right.name));
-  return { path, entries };
+  return { path, entries: fileEntries(rawEntries, await openablePaths(workspaceId, rawEntries)) };
+}
+
+export async function searchFiles(workspaceId: string, query: string): Promise<FileEntry[]> {
+  const literalPattern = query.replace(/[\\*?[\]]/g, "\\$&");
+  const script = `find "$1" -mindepth 1 -iname "$2" -printf '%y\\0%s\\0%P\\0' | head -z -n 600`;
+  const listing = await execWorkspaceCommandBuffer(workspaceId, ["sh", "-c", script, "sh", workspaceRoot, `*${literalPattern}*`]);
+  if (listing.exitCode !== 0) throw new FilesPathError(listing.stderr.trim() || "Unable to search files", 403);
+  const rawEntries = parseFindOutput(listing.stdout, workspaceRoot);
+  return fileEntries(rawEntries, await openablePaths(workspaceId, rawEntries));
 }
 
 export async function deleteFile(workspaceId: string, inputPath: string | null): Promise<void> {
