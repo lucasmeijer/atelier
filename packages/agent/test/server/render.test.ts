@@ -242,6 +242,23 @@ describe("transcript rendering", () => {
     expect(html).not.toContain('aria-label="Result view"');
   });
 
+  test("bash boolean operators have distinct syntax colors outside strings and comments", () => {
+    const html = renderBash(`echo "left && right || fallback" && next || stop # && ||`, { resultText: "ok", details: { displayAnsi: "ok" } });
+    expect(html.match(/class="agent-bash-and"/g)).toHaveLength(2);
+    expect(html.match(/class="agent-bash-or"/g)).toHaveLength(2);
+    expect(html).toContain("left &amp;&amp; right || fallback");
+    expect(html).toContain("# &amp;&amp; ||");
+  });
+
+  test("embedded eval source has separate readable and original views", () => {
+    const command = `node -e "const answer={value:42};console.log(answer);"`;
+    const html = renderBash(command, { resultText: "ok", details: { exitCode: 0, displayAnsi: "ok" } });
+    expect(html).toContain('class="language-javascript"');
+    expect(html).toContain("Original");
+    expect(html).toContain('aria-label="Copy readable command to clipboard"');
+    expect(html).toContain('aria-label="Copy original command to clipboard"');
+  });
+
   test("differing bash output adds a model comparison without adding a command comparison", () => {
     const html = renderBash("echo ok", { resultText: "model output", details: { displayAnsi: "display output" } });
     expect(html).toContain('class="text-toggle" role="group" aria-label="Result view"');

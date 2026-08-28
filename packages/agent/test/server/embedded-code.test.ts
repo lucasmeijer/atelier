@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "../../src/server/embedded-code.ts";
+import { embeddedBashCommand, formatBashCommandForDisplay } from "../../src/server/embedded-code.ts";
 
-const renderEmbedded = (command: string): string => embeddedBashCommandHtml(command)!;
+const renderEmbedded = (command: string): string => embeddedBashCommand(command)!.html;
 
 describe("embedded code literals", () => {
   test("bash heredoc writes preserve the shell while reformatting the nested file for display", () => {
@@ -12,7 +12,6 @@ describe("embedded code literals", () => {
     expect(html).toContain("language-javascript");
     expect(html).toContain("hljs-keyword");
     expect(html).toContain("chromium");
-    expect(html).toContain("data-atelier-display-formatted");
     expect(html).toContain('\n  <span class="hljs-variable language_">console</span>');
     expect(html).not.toContain(compact);
     expect(html).toContain("&gt;/work/tmp-inspect.mjs");
@@ -34,7 +33,7 @@ describe("embedded code literals", () => {
     for (const sample of samples) {
       const html = renderEmbedded(sample.command);
       expect(html, sample.name).toContain(sample.path);
-      expect(html, sample.name).toContain("data-atelier-display-formatted");
+      expect(html, sample.name).not.toContain("x={a:1}");
       expect(html, sample.name).toContain(`language-${"language" in sample ? sample.language : "javascript"}`);
     }
   });
@@ -42,7 +41,7 @@ describe("embedded code literals", () => {
   test("formats and highlights a Python heredoc", () => {
     const compact = "def greet(name):\n  if name: print('hello',name)";
     const html = renderEmbedded(`cat > /tmp/analyze.py <<'PY'\n${compact}\nPY`);
-    expect(html).toContain('class="language-python" data-atelier-display-formatted');
+    expect(html).toContain('class="language-python"');
     expect(html).toContain("hljs-keyword");
     expect(html).toContain('\n    <span class="hljs-keyword">if</span>');
     expect(html).not.toContain(compact);
@@ -51,14 +50,14 @@ describe("embedded code literals", () => {
   test("formats and highlights a JSON heredoc without another formatter dependency", () => {
     const compact = '{"name":"Atelier","languages":["js","ts","py"]}';
     const html = renderEmbedded(`cat > /tmp/demo.json <<'JSON'\n${compact}\nJSON`);
-    expect(html).toContain('class="language-json" data-atelier-display-formatted');
+    expect(html).toContain('class="language-json"');
     expect(html).toContain('&quot;languages&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span>');
     expect(html).not.toContain(compact);
   });
 
   test("does not recognize cat heredoc text inside a quoted shell argument", () => {
     const command = `printf '%s\\n' "cat > /tmp/not-written.js <<'EOF'" "const x={a:1};" "EOF"`;
-    expect(embeddedBashCommandHtml(command)).toBeUndefined();
+    expect(embeddedBashCommand(command)).toBeUndefined();
   });
 
   test("adds line breaks to shell pipes without changing embedded source", () => {
@@ -75,11 +74,17 @@ describe("embedded code literals", () => {
     );
   });
 
-  test("does not add line breaks to escaped pipes, comments, or boolean OR", () => {
+  test("keeps short OR operands inline while preserving escaped pipes, strings, and comments", () => {
     const command = String.raw`printf foo\|bar; echo "left | right"; true || false # not a | pipeline`;
     expect(formatBashCommandForDisplay(command)).toBe(String.raw`printf foo\|bar
 echo "left | right"
 true || false # not a | pipeline`);
+  });
+
+  test("splits OR operands longer than ten characters", () => {
+    expect(formatBashCommandForDisplay("attempt || echo fail")).toBe("attempt || echo fail");
+    expect(formatBashCommandForDisplay("attempt || echo failed")).toBe("attempt ||\n  echo failed");
+    expect(formatBashCommandForDisplay("attempt ||\n  echo fail")).toBe("attempt ||\n  echo fail");
   });
 
   test("formats packed shell control flow without simplifying expressions", () => {
@@ -132,10 +137,59 @@ rg ready /tmp/status |
     }
   });
 
+  test("formats and highlights static interpreter eval arguments", () => {
+    const samples = [
+      { name: "bun", command: `bun -e "const answer={value:42};console.log(answer);"`, language: "typescript", statement: "console" },
+      { name: "node", command: `node --eval 'const answer={value:42};console.log(answer);'`, language: "javascript", statement: "console" },
+      { name: "Python", command: `python3 -c "answer={'value':42}; print(answer)"`, language: "python", statement: "print" },
+    ];
+    for (const sample of samples) {
+      const html = renderEmbedded(sample.command);
+      expect(html, sample.name).toContain(`language-${sample.language}`);
+      expect(html, sample.name).toContain(sample.statement);
+      expect(html, sample.name).toContain("\n");
+    }
+  });
+
+  test("recursively formats shell arguments passed to bash and tmux", () => {
+    const command = `bash -lc 'cd /work && tmux new-session -d -s demo "cd /tmp && python3 -m http.server 3001"'`;
+    const html = renderEmbedded(command);
+    expect(html.match(/<span class="language-bash"/g)).toHaveLength(2);
+    expect(html.match(/class="agent-bash-and"/g)).toHaveLength(2);
+  });
+
+  test("leaves dynamically expanded shell arguments opaque", () => {
+    expect(embeddedBashCommand(`node -e "console.log('$HOME')"`)).toBeUndefined();
+    expect(embeddedBashCommand("python3 -c \"print(`date`)\"")).toBeUndefined();
+  });
+
+  test("formats command-bearing strings sampled from historical agent transcripts", () => {
+    const playwright = `cd /work && (tmux kill-session -t prototype 2>/dev/null || true) && tmux new-session -d -s prototype 'cd /work/apps/web/public && python3 -m http.server 3001' && sleep 1 && curl -I http://127.0.0.1:3001/prototype.html && bun -e "import { chromium } from 'playwright'; const b=await chromium.launch({headless:true}); const p=await b.newPage({viewport:{width:1440,height:900}}); await p.goto('http://127.0.0.1:3001/prototype.html'); await b.close();"`;
+    const formatted = formatBashCommandForDisplay(playwright);
+    expect(formatted).toContain("cd /work &&\n");
+    expect(formatted).toContain("2>/dev/null || true) &&\n");
+    expect(formatted.split("\n").length).toBeGreaterThan(5);
+    const playwrightHtml = renderEmbedded(playwright);
+    expect(playwrightHtml).toContain("language-typescript");
+    expect(playwrightHtml).toContain("language-bash");
+    expect(playwrightHtml.match(/<span class="language-(?:bash|typescript)"/g)).toHaveLength(2);
+    expect(playwrightHtml).toContain("await");
+    expect(playwrightHtml).toContain(`</span><span class="hljs-string">&#39;</span> <span class="agent-bash-and">&amp;&amp;</span>\n`);
+    expect(playwrightHtml).not.toMatch(/<span class="hljs-string">[^<]*(?:sleep 1|curl -I|bun -e)/);
+
+    const docker = `docker exec app sh -lc 'cat startup.log | tail -20 || true' | tee inspection.log`;
+    const dockerHtml = renderEmbedded(docker);
+    expect(dockerHtml).toContain('<span class="language-bash">');
+    expect(dockerHtml).toContain("startup.log |\n");
+    expect(dockerHtml).toContain('-20 <span class="agent-bash-or">||</span> ');
+    expect(dockerHtml).not.toContain('<span class="agent-bash-or">||</span>\n');
+  });
+
   test("formats multiple heredoc writes in one bash call", () => {
     const command = "mkdir -p /tmp/demo; cat > /tmp/one.js <<'JS'\nconst one={n:1};\nJS\ncat > /tmp/two.ts <<'TS'\nconst two={n:2};\nTS\nnode /tmp/one.js";
     const html = renderEmbedded(command);
-    expect(html.match(/data-atelier-display-formatted/g)).toHaveLength(2);
+    expect(html).toContain("one = { ");
+    expect(html).toContain("two = { ");
     expect(html).toContain("language-javascript");
     expect(html).toContain("language-typescript");
     expect(html).toContain("node /tmp/one.js");
@@ -166,6 +220,6 @@ rg ready /tmp/status |
   });
 
   test("returns no override for unknown stdin heredocs", () => {
-    expect(embeddedBashCommandHtml("sed 's/a/b/' <<'EOF'\na\nEOF")).toBeUndefined();
+    expect(embeddedBashCommand("sed 's/a/b/' <<'EOF'\na\nEOF")).toBeUndefined();
   });
 });

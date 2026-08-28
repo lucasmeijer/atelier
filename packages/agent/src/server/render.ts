@@ -6,7 +6,7 @@ import { Value } from "typebox/value";
 import { launchComposerServiceTier, launchComposerThinkingLevel, launchComposerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedLaunchComposerModel, type ModelRef } from "./model-state.ts";
 import type { AgentServiceTier } from "./service-tier.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
-import { embeddedBashCommandHtml, formatBashCommandForDisplay } from "./embedded-code.ts";
+import { embeddedBashCommand, formatBashCommandForDisplay, highlightedBashCommandHtml } from "./embedded-code.ts";
 import { highlightCodeHtmlForPath, renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdown";
 import { disclosureIconHtml, domId, escapeHtml } from "./html.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
@@ -677,8 +677,9 @@ function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolV
 function renderBashCommand(command: string): string {
   const formatted = formatBashCommandForDisplay(command);
   const bodyClass = "agent-tool-code agent-tool-region-body";
-  const commandBody = embeddedBashCommandHtml(command, formatted, bodyClass) ?? codeBlockHtml(formatted, "command.sh", bodyClass);
-  if (formatted === command && !commandBody.includes("data-atelier-display-formatted")) return sourceRegionHtml("Command", copyableToolBody(commandBody, "command"), "agent-tool-region agent-bash-command");
+  const embedded = embeddedBashCommand(command, formatted, bodyClass);
+  const commandBody = embedded?.html ?? highlightedBashCommandHtml(formatted, bodyClass);
+  if (formatted === command && !embedded?.differs) return sourceRegionHtml("Command", copyableToolBody(commandBody, "command"), "agent-tool-region agent-bash-command");
 
   const modelBody = `<pre class="${bodyClass}"><code>${escapeHtml(command)}</code></pre>`;
   return `<section class="agent-tool-region agent-bash-command">${comparisonHeader("Command", "Readable", "Original")}<div class="agent-region-pane region-primary-pane">${fullscreenSourceRegion("Command", copyableToolBody(commandBody, "readable command"), commandBody)}</div><div class="agent-region-pane region-model-pane">${fullscreenSourceRegion("Original", copyableToolBody(modelBody, "original command"), modelBody)}</div></section>`;

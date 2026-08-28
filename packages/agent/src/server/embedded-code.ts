@@ -81,7 +81,15 @@ function displayFormattedFile(content: string, path: string): string | undefined
   }
 }
 
-function splitBashPipelines(command: string): string {
+function shortBooleanRhs(command: string, operatorStart: number): boolean {
+  const rhs = command.slice(operatorStart + 2);
+  if (/^[ \t]*\r?\n/.test(rhs)) return false;
+  const words = shellCommandWordGroups(rhs)[0];
+  if (!words?.length) return false;
+  return words.at(-1)!.end - words[0]!.start <= 10;
+}
+
+function splitBashOperators(command: string): string {
   let formatted = "";
   let quote: "'" | '"' | "`" | undefined;
   let inComment = false;
@@ -119,13 +127,19 @@ function splitBashPipelines(command: string): string {
       formatted += character;
       continue;
     }
-    if (character !== "|" || command[index - 1] === "|" || command[index + 1] === "|") {
+
+    const isPipeline = character === "|" && command[index - 1] !== "|" && command[index + 1] !== "|";
+    const isAnd = character === "&" && command[index + 1] === "&";
+    const isOr = character === "|" && command[index + 1] === "|";
+    if (!isPipeline && !isAnd && !isOr) {
       formatted += character;
       continue;
     }
 
+    const operatorStart = index;
     formatted += character;
-    if (command[index + 1] === "&") formatted += command[++index];
+    if (isAnd || isOr || command[index + 1] === "&") formatted += command[++index];
+    if (isOr && shortBooleanRhs(command, operatorStart)) continue;
     while (command[index + 1] === " " || command[index + 1] === "\t") index++;
     if (command[index + 1] === "\r" && command[index + 2] === "\n") index += 2;
     else if (command[index + 1] === "\n") index++;
@@ -135,23 +149,23 @@ function splitBashPipelines(command: string): string {
   return formatted;
 }
 
-function splitBashPipelinesOutsideHeredocs(command: string): string {
+function splitBashOperatorsOutsideHeredocs(command: string): string {
   const heredocs = bashHeredocs(command);
-  if (!heredocs.length) return splitBashPipelines(command);
+  if (!heredocs.length) return splitBashOperators(command);
   let formatted = "";
   let cursor = 0;
   for (const heredoc of heredocs) {
-    formatted += splitBashPipelines(command.slice(cursor, heredoc.contentStart));
+    formatted += splitBashOperators(command.slice(cursor, heredoc.contentStart));
     formatted += command.slice(heredoc.contentStart, heredoc.contentEnd);
     cursor = heredoc.contentEnd;
   }
-  return formatted + splitBashPipelines(command.slice(cursor));
+  return formatted + splitBashOperators(command.slice(cursor));
 }
 
 export function formatBashCommandForDisplay(command: string): string {
-  const withSplitPipelines = splitBashPipelinesOutsideHeredocs(command);
+  const withSplitOperators = splitBashOperatorsOutsideHeredocs(command);
   try {
-    return formatShell(withSplitPipelines, "command.sh", {
+    return formatShell(withSplitOperators, "command.sh", {
       indent: 2,
       binaryNextLine: false,
       switchCaseIndent: true,
@@ -162,30 +176,229 @@ export function formatBashCommandForDisplay(command: string): string {
       simplify: false,
     }).trimEnd();
   } catch {
-    return withSplitPipelines;
+    return withSplitOperators;
   }
+}
+
+function bashBooleanOperatorHtml(highlighted: string): string {
+  const protectedSpans: boolean[] = [];
+  return highlighted.split(/(<\/?span(?:\s[^>]*)?>)/).map((part) => {
+    if (part.startsWith("<span")) {
+      protectedSpans.push((protectedSpans.at(-1) ?? false) || /hljs-(?:string|comment)/.test(part));
+      return part;
+    }
+    if (part === "</span>") {
+      protectedSpans.pop();
+      return part;
+    }
+    if (protectedSpans.at(-1)) return part;
+    return part.replaceAll("&amp;&amp;", '<span class="agent-bash-and">&amp;&amp;</span>').replaceAll("||", '<span class="agent-bash-or">||</span>');
+  }).join("");
 }
 
 function highlightedBashShell(command: string): string {
-  return highlightCodeHtmlForPath(command, "command.sh").html;
+  return bashBooleanOperatorHtml(highlightCodeHtmlForPath(command, "command.sh").html);
 }
 
-export function embeddedBashCommandHtml(command: string, formattedCommand?: string, className = "agent-tool-code"): string | undefined {
-  if (!bashHeredocs(command).length) return undefined;
-  formattedCommand ??= formatBashCommandForDisplay(command);
-  const heredocs = bashHeredocs(formattedCommand);
+export function highlightedBashCommandHtml(command: string, className = "agent-tool-code"): string {
+  return `<pre class="${className} language-bash"><code>${highlightedBashShell(command)}</code></pre>`;
+}
+
+interface ShellWord {
+  value: string;
+  start: number;
+  end: number;
+  contentStart?: number;
+  contentEnd?: number;
+}
+
+interface EmbeddedShellLiteral {
+  path: string;
+  content: string;
+  contentStart: number;
+  contentEnd: number;
+}
+
+interface EmbeddedRegion extends EmbeddedShellLiteral {
+  literal: boolean;
+}
+
+interface RenderedEmbedded {
+  html: string;
+  differs: boolean;
+}
+
+interface RenderedEmbeddedRegion extends RenderedEmbedded {
+  language?: string;
+}
+
+const embeddedLanguageDepthLimit = 4;
+
+function staticQuotedWord(command: string, start: number, end: number): ShellWord | undefined {
+  const quote = command[start];
+  if ((quote !== "'" && quote !== '"') || command[end - 1] !== quote) return undefined;
+  const raw = command.slice(start + 1, end - 1);
+  if (quote === "'") return { value: raw, start, end, contentStart: start + 1, contentEnd: end - 1 };
+  let value = "";
+  for (let index = 0; index < raw.length; index++) {
+    if (raw[index] === "$" || raw[index] === "`") return undefined;
+    if (raw[index] !== "\\") {
+      value += raw[index];
+      continue;
+    }
+    const next = raw[index + 1];
+    if (next === '"' || next === "\\" || next === "$" || next === "`") {
+      value += next;
+      index++;
+    } else if (next === "\n") {
+      index++;
+    } else {
+      value += "\\";
+    }
+  }
+  return { value, start, end, contentStart: start + 1, contentEnd: end - 1 };
+}
+
+function shellCommandWordGroups(command: string): ShellWord[][] {
+  const groups: ShellWord[][] = [];
+  let words: ShellWord[] = [];
+  const finish = (): void => {
+    if (words.length) groups.push(words);
+    words = [];
+  };
+
+  for (let index = 0; index < command.length;) {
+    if (command[index] === "#") {
+      finish();
+      index = command.indexOf("\n", index);
+      if (index < 0) break;
+      continue;
+    }
+    if (/\s/.test(command[index]!)) {
+      if (command[index] === "\n") finish();
+      index++;
+      continue;
+    }
+    if (/[;&|()]/.test(command[index]!)) {
+      finish();
+      index += command[index + 1] === command[index] ? 2 : 1;
+      continue;
+    }
+    const start = index;
+    let quote: "'" | '"' | undefined;
+    while (index < command.length) {
+      const character = command[index]!;
+      if (quote) {
+        if (character === "\\" && quote === '"' && index + 1 < command.length) index += 2;
+        else {
+          index++;
+          if (character === quote) quote = undefined;
+        }
+        continue;
+      }
+      if (character === "'" || character === '"') {
+        quote = character;
+        index++;
+        continue;
+      }
+      if (character === "\\" && index + 1 < command.length) {
+        index += 2;
+        continue;
+      }
+      if (/\s|[;&|()]/.test(character)) break;
+      index++;
+    }
+    const quoted = staticQuotedWord(command, start, index);
+    words.push(quoted ?? { value: command.slice(start, index), start, end: index });
+  }
+  finish();
+  return groups;
+}
+
+function optionArgument(words: ShellWord[], switches: (word: string) => boolean): ShellWord | undefined {
+  const index = words.findIndex((word, position) => position > 0 && switches(word.value));
+  return index >= 0 ? words[index + 1] : undefined;
+}
+
+function embeddedLiteralInWords(words: ShellWord[]): EmbeddedShellLiteral | undefined {
+  for (let index = 0; index < words.length; index++) {
+    const invocation = words.slice(index);
+    const executable = invocation[0]?.value.split("/").at(-1);
+    let argument: ShellWord | undefined;
+    let path: string | undefined;
+    if (executable === "bun" || executable === "node") {
+      argument = optionArgument(invocation, (word) => word === "-e" || word === "--eval");
+      path = executable === "bun" ? "eval.ts" : "eval.js";
+    } else if (executable === "python" || executable === "python3") {
+      argument = optionArgument(invocation, (word) => word === "-c");
+      path = "eval.py";
+    } else if (executable === "bash" || executable === "sh") {
+      argument = optionArgument(invocation, (word) => /^-[^-]*c/.test(word));
+      path = "command.sh";
+    } else if (executable === "tmux" && (invocation[1]?.value === "new-session" || invocation[1]?.value === "new")) {
+      argument = invocation.at(-1);
+      path = "command.sh";
+    }
+    if (path && argument?.contentStart !== undefined && argument.contentEnd !== undefined) {
+      return { path, content: argument.value, contentStart: argument.contentStart, contentEnd: argument.contentEnd };
+    }
+  }
+  return undefined;
+}
+
+function embeddedShellLiterals(command: string): EmbeddedShellLiteral[] {
+  return shellCommandWordGroups(command).flatMap((words) => {
+    const literal = embeddedLiteralInWords(words);
+    return literal ? [literal] : [];
+  });
+}
+
+function embeddedRegions(command: string, depth: number): EmbeddedRegion[] {
+  const heredocs: EmbeddedRegion[] = bashHeredocs(command).map((heredoc) => ({ ...heredoc, content: command.slice(heredoc.contentStart, heredoc.contentEnd), literal: false }));
+  const literals: EmbeddedRegion[] = depth >= embeddedLanguageDepthLimit ? [] : embeddedShellLiterals(command)
+    .filter((literal) => !heredocs.some((heredoc) => literal.contentStart >= heredoc.contentStart && literal.contentEnd <= heredoc.contentEnd))
+    .map((literal) => ({ ...literal, literal: true }));
+  return [...heredocs, ...literals].sort((left, right) => left.contentStart - right.contentStart);
+}
+
+function renderEmbeddedRegion(region: EmbeddedRegion, depth: number): RenderedEmbeddedRegion {
+  const formatted = region.path === "command.sh" ? formatBashCommandForDisplay(region.content) : displayFormattedFile(region.content, region.path);
+  const displayed = formatted ?? region.content;
+  const formatDiffers = formatted !== undefined && formatted !== region.content;
+  if (region.path === "command.sh") {
+    const nested = embeddedBashContent(displayed, depth + 1);
+    return { html: nested?.html ?? highlightedBashShell(displayed), language: "bash", differs: region.literal || formatDiffers || (nested?.differs ?? false) };
+  }
+  const highlighted = highlightCodeHtmlForPath(displayed, region.path);
+  return { html: highlighted.html, language: highlighted.language, differs: region.literal || formatDiffers };
+}
+
+function embeddedBashContent(command: string, depth: number): RenderedEmbedded | undefined {
+  const regions = embeddedRegions(command, depth);
+  if (!regions.length) return undefined;
+
   let html = "";
   let cursor = 0;
-  for (const heredoc of heredocs) {
-    html += highlightedBashShell(formattedCommand.slice(cursor, heredoc.contentStart));
-    const originalContent = formattedCommand.slice(heredoc.contentStart, heredoc.contentEnd);
-    const formattedContent = displayFormattedFile(originalContent, heredoc.path);
-    const nested = highlightCodeHtmlForPath(formattedContent ?? originalContent, heredoc.path);
-    const languageClass = nested.language ? ` class="language-${escapeHtml(nested.language)}"` : "";
-    const formattedAttribute = formattedContent === undefined ? "" : " data-atelier-display-formatted";
-    html += `<span${languageClass}${formattedAttribute}>${nested.html}</span>`;
-    cursor = heredoc.contentEnd;
+  let differs = false;
+  for (const region of regions) {
+    const regionStart = region.literal ? region.contentStart - 1 : region.contentStart;
+    const regionEnd = region.literal ? region.contentEnd + 1 : region.contentEnd;
+    if (regionStart < cursor) continue;
+    html += highlightedBashShell(command.slice(cursor, regionStart));
+    if (region.literal) html += `<span class="hljs-string">${escapeHtml(command[regionStart]!)}</span>`;
+    const rendered = renderEmbeddedRegion(region, depth);
+    differs ||= rendered.differs;
+    html += `<span${rendered.language ? ` class="language-${escapeHtml(rendered.language)}"` : ""}>${rendered.html}</span>`;
+    if (region.literal) html += `<span class="hljs-string">${escapeHtml(command[region.contentEnd]!)}</span>`;
+    cursor = regionEnd;
   }
-  html += highlightedBashShell(formattedCommand.slice(cursor));
-  return `<pre class="${className} language-bash"><code>${html}</code></pre>`;
+  html += highlightedBashShell(command.slice(cursor));
+  return { html, differs };
+}
+
+export function embeddedBashCommand(command: string, formattedCommand?: string, className = "agent-tool-code"): RenderedEmbedded | undefined {
+  formattedCommand ??= formatBashCommandForDisplay(command);
+  const rendered = embeddedBashContent(formattedCommand, 0);
+  if (!rendered) return undefined;
+  return { html: `<pre class="${className} language-bash"><code>${rendered.html}</code></pre>`, differs: rendered.differs };
 }
