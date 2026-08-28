@@ -187,7 +187,7 @@ describe("role-fixed Workspace presentation", () => {
 
     expect(html.match(/fixed-shell-agent-conversation action-item/g)).toHaveLength(2);
     expect(html).toContain('class="fixed-shell-work-view-selector action-item"');
-    expect(html.match(/class="action-item__label"><span class="action-item__label-text"/g)).toHaveLength(3);
+    expect(html.match(/class="action-item__label-text"/g)).toHaveLength(3);
     expect(html.match(/class="fixed-shell-view-close action-item__action button danger icon-only"/g)).toHaveLength(3);
     expect(html.match(/M6 6l12 12M18 6L6 18/g)).toHaveLength(3);
     const mobileMore = html.slice(html.indexOf('class="fixed-shell-more-menu"'));
@@ -239,11 +239,11 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).not.toContain("fixed-shell-more-scrim");
   });
 
-  test("keeps the closed Files singleton discoverable with secondary Work views", () => {
+  test("keeps the Files launcher available with secondary Work views", () => {
     const html = renderWorkspacePresentation(fixture({
       workViews: fixture().workViews.filter((view) => view.key !== "files:workspace"),
       commands: [
-        { id: "files.open", label: "Files", scope: "workspace", placement: "work-launcher" },
+        { id: "files.create", label: "New Files view", scope: "workspace", placement: "work-launcher" },
         { id: "browser.create", label: "New Browser", scope: "workspace", placement: "work-launcher" },
       ],
     }));
@@ -251,8 +251,8 @@ describe("role-fixed Workspace presentation", () => {
     const more = html.slice(html.indexOf('class="fixed-shell-more-menu"'));
     expect(more).not.toContain("Secondary Work views");
     expect(more).toContain('aria-label="Close More"');
-    expect(more).toContain('/commands/files.open');
-    expect(more.indexOf('/commands/files.open')).toBeLessThan(more.indexOf("Open or create"));
+    expect(more).toContain('/commands/files.create');
+    expect(more.indexOf('/commands/files.create')).toBeGreaterThan(more.indexOf("Open or create"));
     expect(more.indexOf('/commands/browser.create')).toBeGreaterThan(more.indexOf("Open or create"));
   });
 

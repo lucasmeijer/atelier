@@ -317,9 +317,7 @@ function renderMobileNavigation(presentation: WorkspacePresentation): string {
   const agentsDestination = renderMobileDestination("Agents", "agents", "agent");
   const direct = renderMobileDirectWorkViews(presentation.workViews);
   const openSecondary = renderMobileSecondaryWorkViews(presentation.workViews);
-  const filesCommand = presentation.workViews.some((view) => view.key.startsWith("files:")) ? undefined : presentation.commands?.find((command) => command.id === "files.open");
-  const closedSingletons = filesCommand ? `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(filesCommand.id)}"><button type="submit">${escapeHtml(filesCommand.label)}</button></form>` : "";
-  const launcherCommands = new Set(["terminal.create", "terminal.attach", "browser.create", "vscode.open", "desktop.open"]);
+  const launcherCommands = new Set(["files.create", "terminal.create", "terminal.attach", "browser.create", "vscode.open", "desktop.open"]);
   const launchers = (presentation.commands ?? []).filter((command) => launcherCommands.has(command.id)).map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button type="submit">${escapeHtml(command.label)}</button></form>`).join("");
   const closers = presentation.workViews.map(renderMobileWorkViewCloser).join("");
   const hiddenAttention = presentation.workViews.some((view) => view.mobileDestination === "more" && view.attentionSequence !== undefined);
@@ -328,7 +326,7 @@ function renderMobileNavigation(presentation: WorkspacePresentation): string {
     <button class="fixed-shell-mobile-fixed ${mobileActionItemClasses}" type="button" aria-label="More" title="More" data-mobile-more data-action="click->workspace-presentation#toggleMore">${icon("more")}${hiddenAttention ? '<i class="fixed-shell-attention-dot" aria-label="Hidden Attention"></i>' : ""}</button>
     <section class="fixed-shell-more-menu" data-workspace-presentation-target="moreMenu" aria-label="More" hidden>
       <header><button type="button" class="fixed-shell-more-close" aria-label="Close More" data-action="click->workspace-presentation#toggleMore">${icon("close")}</button></header>
-      <div class="fixed-shell-more-section"><span id="${workViewDomId(presentation.workspace.id, "mobile_secondary")}" class="fixed-shell-mobile-work-items">${openSecondary}</span>${closedSingletons}</div>
+      <div class="fixed-shell-more-section"><span id="${workViewDomId(presentation.workspace.id, "mobile_secondary")}" class="fixed-shell-mobile-work-items">${openSecondary}</span></div>
       <div class="fixed-shell-more-section"><h2>Open or create</h2>${launchers}</div>
       <div id="${workViewDomId(presentation.workspace.id, "mobile_closers")}" class="fixed-shell-more-section fixed-shell-more-close-section">${closers}</div>
     </section>

@@ -19,7 +19,8 @@ import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
-import { CableTopics, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
+import { CableTopics, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor } from "@atelier/shared";
+import { parseEditableFileResponse, parseFileSaveResponse, type EditableFileResponse } from "../protocol.ts";
 
 const editorHighlightStyle = HighlightStyle.define([
   { tag: [tags.keyword, tags.operatorKeyword, tags.modifier], color: "var(--editor-keyword)" },
@@ -53,8 +54,7 @@ function languageExtension(path: string): Extension {
   return [];
 }
 
-type EditorFileResponse = { path: string; content: string; revision: string; writable: boolean };
-type EditorRefreshDetail = { workspaceId: string; viewKey?: string; line?: number; column?: number };
+type EditorRefreshDetail = { workspaceId: string };
 type PreviewModeEvent = Event & { readonly currentTarget: HTMLButtonElement };
 
 function createFileEditorController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
@@ -80,20 +80,21 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private previewSequence = 0;
     private revision = "";
     private savedContent = "";
-    private latestDisk?: EditorFileResponse;
+    private latestDisk?: EditableFileResponse;
     private saveTimer?: ReturnType<typeof setTimeout>;
     private applyingDisk = false;
     private saveSequence = 0;
 
     connect(): void {
       // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-      window.addEventListener("atelier:file-editor-refresh", this.refreshRequested as EventListener);
+      window.addEventListener("atelier:files-refresh", this.refreshRequested as EventListener);
+      this.updateWorkViewLabel();
       void this.load().catch((error: Error) => this.showLoadError(error));
     }
 
     disconnect(): void {
       // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-      window.removeEventListener("atelier:file-editor-refresh", this.refreshRequested as EventListener);
+      window.removeEventListener("atelier:files-refresh", this.refreshRequested as EventListener);
       if (this.saveTimer) clearTimeout(this.saveTimer);
       this.view?.destroy();
     }
@@ -117,6 +118,15 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       this.applyDisk(latest);
       this.setStatus("Updated", "");
       this.refreshVisiblePreview();
+    }
+
+    private updateWorkViewLabel(): void {
+      const liveNode = this.element.closest<HTMLElement>("[data-workspace-pane-id]")!;
+      const presentation = liveNode.closest<HTMLElement>(".fixed-workspace-presentation")!;
+      const selector = presentation.querySelector<HTMLElement>(`[data-work-view-reorder-key="${CSS.escape(liveNode.dataset.workspacePaneId!)}"]`)!;
+      const label = this.pathValue.split("/").pop()!;
+      selector.querySelector<HTMLElement>(".action-item__label-text")!.textContent = label;
+      selector.querySelector<HTMLElement>("[data-atelier-fullscreen-title-value]")!.dataset.atelierFullscreenTitleValue = label;
     }
 
     private async load(): Promise<void> {
@@ -158,8 +168,6 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private readonly refreshRequested = (event: CustomEvent<EditorRefreshDetail>): void => {
       const detail = event.detail;
       if (detail.workspaceId !== this.workspaceIdValue) return;
-      if (detail.viewKey && detail.viewKey !== this.element.dataset.workViewSource) return;
-      if (detail.line) this.jumpTo(detail.line, detail.column);
       void this.checkDisk();
     };
 
@@ -194,29 +202,26 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       });
       if (sequence !== this.saveSequence) return;
       if (response.status === 409) {
-        // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-        this.showConflict(await response.json() as EditorFileResponse);
+        this.showConflict(parseEditableFileResponse(await response.json()));
         return;
       }
       if (!response.ok) {
         this.setStatus(await response.text(), "error");
         return;
       }
-      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-      const result = await response.json() as { revision: string };
+      const result = parseFileSaveResponse(await response.json());
       this.revision = result.revision;
       this.savedContent = content;
       this.setStatus("Saved", "saved");
     }
 
-    private async fetchFile(): Promise<EditorFileResponse> {
+    private async fetchFile(): Promise<EditableFileResponse> {
       const response = await fetch(this.contentUrlValue, { headers: { "accept": "application/json" } });
       if (!response.ok) throw new Error(await response.text());
-      // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-      return await response.json() as EditorFileResponse;
+      return parseEditableFileResponse(await response.json());
     }
 
-    private applyDisk(file: EditorFileResponse): void {
+    private applyDisk(file: EditableFileResponse): void {
       const view = this.view!;
       this.applyingDisk = true;
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: file.content } });
@@ -226,7 +231,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       this.latestDisk = undefined;
     }
 
-    private showConflict(file: EditorFileResponse): void {
+    private showConflict(file: EditableFileResponse): void {
       this.latestDisk = file;
       this.setStatus("Conflict", "conflict");
       if (!this.conflictTarget.open) this.conflictTarget.showModal();
@@ -235,7 +240,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     private async showPreview(): Promise<void> {
       const sequence = ++this.previewSequence;
       this.previewOptionTargets.forEach((option) => { option.disabled = true; });
-      const previewUrl = `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/file-editor/markdown-preview?${new URLSearchParams({ path: this.pathValue })}`;
+      const previewUrl = `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/files-view/markdown-preview?${new URLSearchParams({ path: this.pathValue })}`;
       const response = await fetch(previewUrl, {
         method: "POST",
         headers: { "content-type": "text/plain; charset=utf-8", "accept": "text/html" },
@@ -289,31 +294,14 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
   };
 }
 
-function createFileEditorSignalController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
-  return class FileEditorSignalController extends Controller {
-    static values = { workspaceId: String, viewKey: String, line: Number, column: Number };
-    declare readonly element: HTMLElement;
+function createFilesRefreshSignalController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
+  return class FilesRefreshSignalController extends Controller {
+    static values = { workspaceId: String };
     declare readonly workspaceIdValue: string;
-    declare readonly viewKeyValue: string;
-    declare readonly hasViewKeyValue: boolean;
-    declare readonly lineValue: number;
-    declare readonly columnValue: number;
 
     connect(): void {
       window.AtelierCable?.subscribe(CableTopics.workspace(this.workspaceIdValue));
-      queueMicrotask(() => {
-        if (this.hasViewKeyValue) {
-          const resident = this.element.closest<HTMLElement>(`.workspace-detail-resident[data-workspace-id="${CSS.escape(this.workspaceIdValue)}"]`)!;
-          const workPane = resident.querySelector<HTMLElement>(`[data-workspace-pane-role="work"][data-source-work-view-key="${CSS.escape(this.viewKeyValue)}"]`);
-          const workViewKey = workPane?.dataset.workspacePaneId;
-          if (workViewKey) resident.querySelector<HTMLButtonElement>(`[data-work-view-key="${CSS.escape(workViewKey)}"]`)?.click();
-        }
-        const detail: EditorRefreshDetail = {
-          workspaceId: this.workspaceIdValue,
-        };
-        if (this.hasViewKeyValue) Object.assign(detail, { viewKey: this.viewKeyValue, line: this.lineValue, column: this.columnValue });
-        window.dispatchEvent(new CustomEvent<EditorRefreshDetail>("atelier:file-editor-refresh", { detail }));
-      });
+      queueMicrotask(() => window.dispatchEvent(new CustomEvent<EditorRefreshDetail>("atelier:files-refresh", { detail: { workspaceId: this.workspaceIdValue } })));
     }
 
     disconnect(): void {
@@ -322,12 +310,7 @@ function createFileEditorSignalController(Controller: WorkspaceClientControllerC
   };
 }
 
-const editorClientModule: WorkspaceClientModule = {
-  id: "editor",
-  install({ application, Controller }) {
-    application.register("file-editor", createFileEditorController(Controller));
-    application.register("file-editor-signal", createFileEditorSignalController(Controller));
-  },
-};
-
-export { editorClientModule as atelierClientModule };
+export function installFileEditorControllers(application: WorkspaceClientApplication, Controller: WorkspaceClientControllerConstructor): void {
+  application.register("file-editor", createFileEditorController(Controller));
+  application.register("files-refresh-signal", createFilesRefreshSignalController(Controller));
+}

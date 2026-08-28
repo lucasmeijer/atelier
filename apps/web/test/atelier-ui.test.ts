@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { renderFileWorkView } from "../../../packages/editor/src/server/render.ts";
+import { renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkView } from "../../../packages/files/src/server/render.ts";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
 import { removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 
@@ -176,17 +176,17 @@ describe("Atelier browser behavior", () => {
 
   test("switches a Markdown file between Edit and Preview", async () => {
     const page = await newTestPage();
-    const editor = renderFileWorkView("workspace", { key: "file-editor:readme", path: "/work/README.md", line: 1 }, "README.md").bodyHtml!;
+    const editor = renderFilesWorkView("workspace", { id: "workspace", path: "/work/README.md", line: 1 }).bodyHtml!;
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<style>${workspaceStyle}</style>${editor}<script type="module" src="/workspace-test.js"></script>`,
+      body: `<style>${workspaceStyle}</style><div class="fixed-workspace-presentation"><div data-work-view-reorder-key="files:workspace"><button data-atelier-fullscreen-title-value="Files"><span class="action-item__label-text">Files</span></button></div><section data-workspace-pane-id="files:workspace">${editor}</section></div><script type="module" src="/workspace-test.js"></script>`,
     }));
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
-    await page.route("**/file-editor/content?**", (route) => route.fulfill({
+    await page.route("**/files-view/content?**", (route) => route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ path: "/work/README.md", content: "# Preview", revision: "one", writable: true }),
     }));
-    await page.route("**/file-editor/markdown-preview?**", (route) => route.fulfill({ contentType: "text/html", body: "<h1>Preview</h1>" }));
+    await page.route("**/files-view/markdown-preview?**", (route) => route.fulfill({ contentType: "text/html", body: "<h1>Preview</h1>" }));
     await page.goto("http://atelier.test/");
     await page.locator(".file-editor-loading").waitFor({ state: "detached" });
 
@@ -202,6 +202,23 @@ describe("Atelier browser behavior", () => {
     await edit.click();
     expect(await page.locator(".file-editor-host").isVisible()).toBe(true);
     expect(await edit.getAttribute("aria-pressed")).toBe("true");
+    await page.close();
+  });
+
+  test("collapses the Files pane after selecting a file", async () => {
+    const page = await newTestPage();
+    const files = renderFilesWorkView("workspace", { id: "workspace" }).bodyHtml!;
+    const tree = renderFilesTreeFrame("workspace", "workspace", [{ name: "README.md", path: "/work/README.md", kind: "file", size: 20, openable: true }]);
+    const editor = renderFilesEditorFrame("workspace", { id: "workspace", path: "/work/README.md" });
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style><div class="fixed-workspace-presentation"><div data-work-view-reorder-key="files:workspace"><button data-atelier-fullscreen-title-value="Files"><span class="action-item__label-text">Files</span></button></div><section data-workspace-pane-id="files:workspace">${files}</section></div><script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/workspaces/workspace/files?**", (route) => route.fulfill({ contentType: "text/html", body: tree }));
+    await page.route("**/workspaces/workspace/files-view/open?**", (route) => route.fulfill({ contentType: "text/html", body: editor }));
+    await page.route("**/workspaces/workspace/files-view/content?**", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ path: "/work/README.md", content: "# Readme", revision: "one", writable: true }) }));
+    await page.goto("http://atelier.test/");
+    await page.getByRole("treeitem", { name: /README.md/ }).click();
+    expect(await page.locator(".files-workbench").getAttribute("class")).not.toContain("is-files-pane-open");
+    await page.locator('.file-editor-path[title="/work/README.md"]').waitFor();
     await page.close();
   });
 
@@ -1053,7 +1070,7 @@ describe("Atelier browser behavior", () => {
         { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea>', close: { action: "/terminal/close", label: "Terminal Work view" } },
         { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files Work view" } },
       ],
-      commands: [{ id: "files.open", label: "Files", scope: "workspace", placement: "work-launcher" }, { id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }],
+      commands: [{ id: "files.create", label: "New Files view", scope: "workspace", placement: "work-launcher" }, { id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }],
     };
     const page = await newTestPage({ viewport: { width: 390, height: 844 } });
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="/workspace-test.js"></script>` }));

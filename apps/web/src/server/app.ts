@@ -611,7 +611,7 @@ ${moduleStylesHtml()}
         key,
         label: contribution?.label ?? `${stored.reference.type} unavailable`,
         kind: contribution?.kind ?? "resource",
-        mobileDestination: ["file", "browser", "terminal"].includes(stored.reference.type) ? "direct" : "more",
+        mobileDestination: ["files", "browser", "terminal"].includes(stored.reference.type) ? "direct" : "more",
         availability: contribution?.availability ?? { phase: "unavailable", detail: "The referenced resource is not currently available." },
         bodyHtml: contribution?.bodyHtml ?? "",
         close: workViewClose(workspaceId, stored.reference, contribution?.label ?? stored.reference.type),

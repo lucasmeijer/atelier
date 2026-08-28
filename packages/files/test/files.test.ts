@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { workspaceRoot } from "@atelier/workspace";
-import { FilesPathError, isConcealedEntry, normalizeFilesPath } from "../src/server/files.ts";
-import { filesDirectoryFrameId, renderFilesDirectoryFrame, renderFilesFrame, renderLazyFilesFrame } from "../src/server/render.ts";
+import { FilesPathError, normalizeFilesPath } from "../src/server/files.ts";
+import { filesDirectoryFrameId, filesEditorFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkView } from "../src/server/render.ts";
 
 describe("files paths", () => {
   test("defaults to the configured workspace root", () => {
@@ -18,67 +18,64 @@ describe("files paths", () => {
   });
 });
 
-describe("files listing", () => {
-  test("does not conceal folders whose names start with a dot", () => {
-    expect(isConcealedEntry({ name: ".github", kind: "directory" }, false)).toBeFalse();
-    expect(isConcealedEntry({ name: ".cache", kind: "directory" }, true)).toBeFalse();
-    expect(isConcealedEntry({ name: ".env", kind: "file" }, false)).toBeTrue();
-  });
-});
 
-describe("files rendering", () => {
-  test("defers the workspace listing until the Files pane is visible", () => {
-    const html = renderLazyFilesFrame("work 1");
+describe("Files Work view rendering", () => {
+  test("starts with the Files pane expanded when no file is selected", () => {
+    const html = renderFilesWorkView("work 1", { id: "workspace" }).bodyHtml!;
+    expect(html).toContain("is-files-pane-open");
+    expect(html).toContain('aria-label="Collapse Files pane"');
     expect(html).toContain('loading="lazy"');
-    expect(html).toContain('/workspaces/work%201/files?path=%2Fwork');
-    expect(html).toContain("Loading files…");
+    expect(html).toContain("Includes concealed files");
   });
 
-  test("renders folders, sizes, breadcrumbs, and concealed entries", () => {
-    const html = renderFilesFrame("work 1", `${workspaceRoot}/src`, [
-      { name: "folder", path: `${workspaceRoot}/src/folder`, kind: "directory", size: 0, concealed: false, openable: false },
-      { name: ".secret", path: `${workspaceRoot}/src/.secret`, kind: "file", size: 1200, concealed: true, openable: true },
-    ], true);
-    expect(html).toContain(workspaceRoot);
+  test("renders a selected file in the editor with the Files pane collapsed", () => {
+    const html = renderFilesWorkView("work 1", { id: "workspace", path: "/work/src/example.ts", line: 4 }).bodyHtml!;
+    expect(html).not.toContain("is-files-pane-open");
+    expect(html).toContain('aria-label="Expand Files pane"');
+    expect(html).toContain('data-file-editor-line-value="4"');
+    expect(html).toContain("/work/src/example.ts");
+    expect(renderFilesWorkView("work 1", { id: "workspace", path: "/work/src/example.ts" }).label).toBe("example.ts");
+  });
+
+  test("renders all entries with actions and file switching destinations", () => {
+    const html = renderFilesTreeFrame("work 1", "workspace", [
+      { name: "folder", path: `${workspaceRoot}/folder`, kind: "directory", size: 0, openable: false },
+      { name: ".secret", path: `${workspaceRoot}/.secret`, kind: "file", size: 1200, openable: true },
+    ], `${workspaceRoot}/.secret`);
     expect(html).toContain("1.2 KB");
-    expect(html).toContain("files-row action-item concealed");
-    expect(html).toContain('files-row-name action-item__label"><a class="action-item__label-text"');
+    expect(html).not.toContain('class="files-row-icon" aria-hidden="true">·');
+    expect(html).toContain('aria-selected="true"');
     expect(html).toContain("data-files-destination");
     expect(html).toContain("click->files#openDirectory");
-    expect(html).toContain("mousedown->files#preserveSelection click->files#selectOrOpen");
     expect(html).toContain('<svg class="disclosure-icon" aria-hidden="true"');
-    expect(html).toContain("status-spinner sm files-directory-spinner");
-    expect(html).toContain("showHidden=1");
-    expect(html).toContain('role="group" aria-label="File visibility"');
-    expect(html).toContain('name="showHidden" value="0" aria-pressed="false">Visible</button>');
-    expect(html).toContain('name="showHidden" value="1" aria-pressed="true">All files</button>');
-    expect(html).toContain('aria-label="Refresh files" data-action="files#refresh"');
     expect(html.match(/class="files-actions-toggle action-item__action button secondary icon-only popup-menu-trigger"/g)).toHaveLength(2);
-    expect(html.match(/class="files-actions-menu popup-menu popup-menu-anchored"/g)).toHaveLength(2);
-    expect(html).toContain('popovertarget="files_actions_');
-    expect(html).toContain('data-turbo-stream="true">.secret</a>');
-    expect(html).not.toContain('class="files-open"');
+    expect(html).toContain("/files-view/open?path=%2Fwork%2F.secret&amp;filesView=workspace");
+    expect(html).toContain(`data-turbo-frame="${filesEditorFrameId("work 1", "workspace")}"`);
+    expect(html).toContain("data-action=\"files-view#selectFile\"");
+    expect(html).toContain(">Open in new Files view</a>");
     expect(html).toContain(">Copy URL</button>");
     expect(html).toContain(">Download</a>");
     expect(html).toContain("Delete folder</button>");
     expect(html).toContain("Delete file</button>");
     expect(html).toContain("/file-browser/archive?");
-    expect(html).toContain("/workspaces/work%201/files/work/src/.secret");
-    expect(html).toContain('data-turbo-frame="workspace_work_1_files"');
-    expect(html).toContain(">View as root</a>");
-    expect(html).toContain("view=inline");
-    expect(html).toContain(`data-turbo-frame="${filesDirectoryFrameId("work 1", `${workspaceRoot}/src/folder`)}"`);
   });
 
   test("renders an expanded folder in its own Turbo Frame", () => {
-    const folder = { name: "folder", path: `${workspaceRoot}/folder`, kind: "directory" as const, size: 0, concealed: false, openable: false };
-    const html = renderFilesDirectoryFrame("workspace", folder, false, [
-      { name: "nested.txt", path: `${workspaceRoot}/folder/nested.txt`, kind: "file", size: 3, concealed: false, openable: true },
+    const folder = { name: "folder", path: `${workspaceRoot}/folder`, kind: "directory" as const, size: 0, openable: false };
+    const html = renderFilesDirectoryFrame("workspace", "view-1", folder, [
+      { name: "nested.txt", path: `${workspaceRoot}/folder/nested.txt`, kind: "file", size: 3, openable: true },
     ]);
-    expect(html).toStartWith(`<turbo-frame id="${filesDirectoryFrameId("workspace", folder.path)}"`);
+    expect(html).toStartWith(`<turbo-frame id="${filesDirectoryFrameId("workspace", "view-1", folder.path)}"`);
     expect(html).toContain('aria-expanded="true"');
     expect(html).toContain('class="files-directory-children" role="group"');
     expect(html).toContain("nested.txt");
     expect(html).toContain("view=collapsed");
+  });
+
+  test("renders Markdown preview controls inside the Files editor frame", () => {
+    const html = renderFilesEditorFrame("workspace", { id: "workspace", path: "/work/README.md" });
+    expect(html).toContain('role="group" aria-label="Markdown display"');
+    expect(html).toContain('data-action="file-editor#selectPreviewMode"');
+    expect(html).toContain("file-editor-preview agent-md");
   });
 });

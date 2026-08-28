@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { maxEditableFileBytes } from "@atelier/editor/server";
+import { maxEditableFileBytes } from "./editable-file.ts";
 import { execWorkspaceCommand, execWorkspaceCommandBuffer, workspaceRoot } from "@atelier/workspace";
 
 export interface FileEntry {
@@ -7,7 +7,6 @@ export interface FileEntry {
   path: string;
   kind: "directory" | "file" | "symlink" | "other";
   size: number;
-  concealed: boolean;
   openable: boolean;
 }
 
@@ -32,9 +31,9 @@ export async function resolveFilesDirectory(workspaceId: string, input: string |
   return path;
 }
 
-function parseFindOutput(stdout: Buffer, directory: string): Omit<FileEntry, "concealed" | "openable">[] {
+function parseFindOutput(stdout: Buffer, directory: string): Omit<FileEntry, "openable">[] {
   const fields = stdout.toString("utf8").split("\0");
-  const entries: Omit<FileEntry, "concealed" | "openable">[] = [];
+  const entries: Omit<FileEntry, "openable">[] = [];
   for (let index = 0; index + 2 < fields.length; index += 3) {
     const type = fields[index];
     const sizeText = fields[index + 1];
@@ -58,37 +57,19 @@ done`;
   return new Set(result.stdout.toString("utf8").split("\0").filter(Boolean));
 }
 
-export function isConcealedEntry(entry: Pick<FileEntry, "name" | "kind">, ignored: boolean): boolean {
-  if (entry.kind === "directory" && entry.name.startsWith(".")) return false;
-  return ignored || entry.name.startsWith(".");
-}
-
-async function ignoredPaths(workspaceId: string, paths: string[]): Promise<Set<string>> {
-  if (paths.length === 0) return new Set();
-  const result = await execWorkspaceCommand(workspaceId, ["git", "-C", workspaceRoot, "check-ignore", "--no-index", "-z", "--stdin"], {
-    stdin: `${paths.join("\0")}\0`,
-  });
-  if (result.exitCode !== 0 && result.exitCode !== 1 && !result.stderr.includes("not a git repository")) throw new Error(result.stderr.trim());
-  return new Set(result.stdout.split("\0").filter(Boolean).map((path) => posix.resolve(workspaceRoot, path)));
-}
-
-export async function listFiles(workspaceId: string, inputPath: string | null, showConcealed: boolean): Promise<{ path: string; entries: FileEntry[] }> {
+export async function listFiles(workspaceId: string, inputPath: string | null): Promise<{ path: string; entries: FileEntry[] }> {
   const path = await resolveFilesDirectory(workspaceId, inputPath);
   const listing = await execWorkspaceCommandBuffer(workspaceId, ["find", path, "-mindepth", "1", "-maxdepth", "1", "-printf", "%y\\0%s\\0%f\\0"]);
   if (listing.exitCode !== 0) throw new FilesPathError(listing.stderr.trim() || "Unable to read folder", 403);
   const rawEntries = parseFindOutput(listing.stdout, path);
-  const [ignored, openable] = await Promise.all([
-    ignoredPaths(workspaceId, rawEntries.map((entry) => entry.path)),
-    openablePaths(workspaceId, rawEntries),
-  ]);
+  const openable = await openablePaths(workspaceId, rawEntries);
   const entries = rawEntries
-    .map((entry) => ({ ...entry, concealed: isConcealedEntry(entry, ignored.has(entry.path)), openable: openable.has(entry.path) }))
-    .filter((entry) => showConcealed || !entry.concealed)
+    .map((entry) => ({ ...entry, openable: openable.has(entry.path) }))
     .sort((left, right) => Number(right.kind === "directory") - Number(left.kind === "directory") || left.name.localeCompare(right.name));
   return { path, entries };
 }
 
-export async function deleteFile(workspaceId: string, inputPath: string | null): Promise<string> {
+export async function deleteFile(workspaceId: string, inputPath: string | null): Promise<void> {
   const requested = normalizeFilesPath(inputPath);
   if (requested === workspaceRoot) throw new FilesPathError("The workspace root cannot be deleted", 422);
 
@@ -99,7 +80,6 @@ rm -rf -- "$1"`;
   const result = await execWorkspaceCommand(workspaceId, ["sh", "-c", script, "sh", target]);
   if (result.exitCode === 44) throw new FilesPathError("File or folder not found", 404);
   if (result.exitCode !== 0) throw new Error(result.stderr.trim() || "Delete failed");
-  return directory;
 }
 
 export async function uploadFile(workspaceId: string, inputDirectory: string | null, name: string | null, overwrite: boolean, content: Uint8Array): Promise<void> {

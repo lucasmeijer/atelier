@@ -1,5 +1,5 @@
 import MarkdownIt from "markdown-it";
-import { atelierFileEditorHref, renderAtelierEmbed } from "./atelier-markdown.ts";
+import { atelierFileHref, renderAtelierEmbed } from "./atelier-markdown.ts";
 import { escapeHtml } from "@atelier/shared";
 import { highlightCodeHtml } from "./highlight.ts";
 
@@ -37,9 +37,9 @@ const defaultLinkOpen = markdown.renderer.rules.link_open ?? ((tokens, index, op
 markdown.renderer.rules.link_open = (tokens, index, options, environment: MarkdownEnvironment, renderer) => {
   const token = tokens[index]!;
   const href = token.attrGet("href") ?? "";
-  const editorHref = atelierFileEditorHref(environment.workspaceId, href, environment.sourcePath);
-  if (editorHref) {
-    token.attrSet("href", editorHref);
+  const fileHref = atelierFileHref(environment.workspaceId, href, environment.sourcePath);
+  if (fileHref) {
+    token.attrSet("href", fileHref);
     token.attrSet("data-turbo-stream", "true");
     return defaultLinkOpen(tokens, index, options, environment, renderer);
   }

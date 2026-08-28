@@ -1,0 +1,72 @@
+import { describe, expect, test } from "bun:test";
+import { createAtelierEventBus } from "@atelier/core";
+import type { WorkspaceWorkViewReference } from "@atelier/shared";
+import { atelierServerModule } from "../src/server/index.ts";
+import { createFilesView, deleteFilesViewState, listFilesViews, selectFilesViewFile } from "../src/server/state.ts";
+
+describe("Files Work view integration", () => {
+  test("embed-style links select the file in the default Files view", async () => {
+    const request = new Request("http://test.local/workspaces/workspace-progressive/files-view/open?path=%2Fwork%2Fnew.ts");
+    let opened: WorkspaceWorkViewReference | undefined;
+    // SAFETY: The test fixture supplies the route context fields exercised by this endpoint.
+    const response = await atelierServerModule.routes![0]!.handle(request, new URL(request.url), {
+      openWorkView: async (_workspaceId: string, reference: WorkspaceWorkViewReference) => {
+        opened = reference;
+        return new Response("<turbo-stream></turbo-stream>");
+      },
+    } as never);
+
+    expect(response?.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
+    expect(opened).toEqual({ type: "files", id: "workspace" });
+    expect(listFilesViews("workspace-progressive")[0]?.path).toBe("/work/new.ts");
+    const html = await response?.text();
+    expect(html).toContain("workspace_workspace-progressive_files_workspace_editor");
+    expect(html).toContain("new.ts");
+    deleteFilesViewState("workspace-progressive");
+  });
+
+  test("the Files command creates a blank independent view", async () => {
+    const result = await atelierServerModule.commands![0]!.execute({ workspaceId: "workspace-command", input: {}, events: createAtelierEventBus() });
+    const created = listFilesViews("workspace-command").find((view) => view.id === result.createdWorkView?.id);
+    expect(created?.path).toBeUndefined();
+    deleteFilesViewState("workspace-command");
+  });
+
+  test("open in new Files view creates an independent view with the file selected", async () => {
+    const request = new Request("http://test.local/workspaces/workspace-new/files-view/new?path=%2Fwork%2Fnew.ts");
+    let opened: WorkspaceWorkViewReference | undefined;
+    // SAFETY: The test fixture supplies the route context fields exercised by this endpoint.
+    await atelierServerModule.routes![0]!.handle(request, new URL(request.url), {
+      openWorkView: async (_workspaceId: string, reference: WorkspaceWorkViewReference) => {
+        opened = reference;
+        return new Response("opened");
+      },
+    } as never);
+
+    expect(opened?.type).toBe("files");
+    expect(opened).not.toEqual({ type: "files", id: "workspace" });
+    expect(listFilesViews("workspace-new").find((view) => view.id === opened?.id)?.path).toBe("/work/new.ts");
+    deleteFilesViewState("workspace-new");
+  });
+
+  test("asks selected Files editors to check disk after an agent turn", async () => {
+    const events = createAtelierEventBus();
+    const broadcasts: string[] = [];
+    // SAFETY: The test fixture supplies the module initialization fields exercised by this test.
+    await atelierServerModule.initialize!({ events, broadcastWorkspace: (_workspaceId: string, html: string) => broadcasts.push(html), onWorkspaceRemoved: () => {} } as never);
+    selectFilesViewFile("workspace-events", "workspace", "/work/example.ts");
+    await events.emit("workspace_agent_turn_finished", { workspaceId: "workspace-events", agentLabel: "Agent 1" });
+    expect(broadcasts).toHaveLength(1);
+    expect(broadcasts[0]).toContain("files_refresh_signal_workspace-events");
+    deleteFilesViewState("workspace-events");
+  });
+
+  test("attaches the default and additional Files views", async () => {
+    createFilesView("workspace-attach", "/work/README.md");
+    // SAFETY: The test fixture supplies the attachment context field exercised by Files.
+    const attachment = await atelierServerModule.attachToWorkspace!({ workspaceId: "workspace-attach" } as never);
+    expect(attachment.workViews).toHaveLength(2);
+    expect(attachment.workViews?.map((view) => view.reference.type)).toEqual(["files", "files"]);
+    deleteFilesViewState("workspace-attach");
+  });
+});

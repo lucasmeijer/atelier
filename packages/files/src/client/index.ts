@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 
 import { copyTextToClipboard, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
+import { installFileEditorControllers } from "./file-editor.ts";
 type UploadResult = { kind: "ok" | "conflict" | "error" | "cancelled"; message?: string };
 type UploadTask = { file: File; loaded: number; xhr?: XMLHttpRequest };
 type StimulusActionEvent<EventType extends Event, CurrentTarget extends EventTarget> = EventType & {
@@ -10,12 +11,11 @@ type StimulusActionEvent<EventType extends Event, CurrentTarget extends EventTar
 function createFilesController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FilesController extends Controller {
     static values = { path: String, uploadUrl: String };
-    static targets = ["listing", "progress", "status"];
+    static targets = ["progress", "status"];
 
     declare readonly element: HTMLElement;
     declare readonly pathValue: string;
     declare readonly uploadUrlValue: string;
-    declare readonly listingTarget: HTMLFormElement;
     declare readonly progressTarget: HTMLElement;
     declare readonly statusTarget: HTMLElement;
 
@@ -83,8 +83,10 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
       void this.startUpload(event, row.dataset.filesDestination!);
     }
 
-    refresh(): void {
-      this.listingTarget.requestSubmit(this.listingTarget.querySelector<HTMLButtonElement>('[aria-pressed="true"]')!);
+    private refresh(): void {
+      // SAFETY: The server-rendered Files browser is always owned by a Turbo Frame with the Turbo reload interface.
+      const frame = this.element.closest("turbo-frame") as HTMLElement & { reload(): void };
+      frame.reload();
     }
 
     openDirectory(event: StimulusActionEvent<MouseEvent, HTMLElement>): void {
@@ -93,22 +95,11 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
       event.currentTarget.querySelector<HTMLAnchorElement>(".files-row-name > a")!.click();
     }
 
-    preserveSelection(event: MouseEvent): void {
-      if (event.button === 0 && event.target instanceof Element && event.target.closest(".files-row-name > a")) event.preventDefault();
-    }
-
-    selectOrOpen(event: StimulusActionEvent<MouseEvent, HTMLElement>): void {
-      const row = event.currentTarget;
+    openFileRow(event: StimulusActionEvent<MouseEvent, HTMLElement>): void {
       if (event.target instanceof Element && event.target.closest(".files-actions-toggle, .files-actions-menu")) return;
-      const openLink = row.querySelector<HTMLAnchorElement>(".files-row-name > a");
-      if (event.detail === 0 && event.target === openLink) return;
-      if (document.activeElement !== row) {
-        event.preventDefault();
-        row.focus();
-      } else if (openLink && event.target !== openLink) {
-        event.preventDefault();
-        openLink.click();
-      }
+      if (event.target instanceof Element && event.target.closest(".files-row-name > a")) return;
+      event.preventDefault();
+      event.currentTarget.querySelector<HTMLAnchorElement>(".files-row-name > a")?.click();
     }
 
     async copyUrl(event: StimulusActionEvent<Event, HTMLButtonElement>): Promise<void> {
@@ -229,10 +220,30 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
   };
 }
 
+function createFilesViewController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
+  return class FilesViewController extends Controller {
+    declare readonly element: HTMLElement;
+
+    expand(): void {
+      this.element.classList.add("is-files-pane-open");
+    }
+
+    collapse(): void {
+      this.element.classList.remove("is-files-pane-open");
+    }
+
+    selectFile(): void {
+      this.collapse();
+    }
+  };
+}
+
 const filesClientModule: WorkspaceClientModule = {
   id: "files",
   install({ application, Controller }) {
     application.register("files", createFilesController(Controller));
+    application.register("files-view", createFilesViewController(Controller));
+    installFileEditorControllers(application, Controller);
   },
 };
 

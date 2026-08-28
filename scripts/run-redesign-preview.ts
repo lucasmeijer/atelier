@@ -77,7 +77,7 @@ async function preparePreview(): Promise<string> {
 
   if (!has("browser")) await post(`/workspaces/${current.id}/commands/browser.create`, { url: "https://github.com/lucasmeijer/atelier" });
   if (!has("terminal")) await post(`/workspaces/${current.id}/commands/terminal.create`, { title: previewTerminalTitle });
-  if (!has("files")) await post(`/workspaces/${current.id}/commands/files.open`);
+  if (!has("files")) await post(`/workspaces/${current.id}/commands/files.create`);
   if (!has("vscode")) await post(`/workspaces/${current.id}/commands/vscode.open`);
 
   current = await state(current.id);

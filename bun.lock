@@ -22,7 +22,6 @@
         "@atelier/browser": "workspace:*",
         "@atelier/core": "workspace:*",
         "@atelier/desktop": "workspace:*",
-        "@atelier/editor": "workspace:*",
         "@atelier/files": "workspace:*",
         "@atelier/keypress-probe": "workspace:*",
         "@atelier/projects": "workspace:*",
@@ -83,8 +82,8 @@
         "@atelier/workspace": "workspace:*",
       },
     },
-    "packages/editor": {
-      "name": "@atelier/editor",
+    "packages/files": {
+      "name": "@atelier/files",
       "dependencies": {
         "@atelier/core": "workspace:*",
         "@atelier/markdown": "workspace:*",
@@ -108,14 +107,6 @@
         "@codemirror/view": "6.43.6",
         "@lezer/highlight": "1.2.3",
         "typebox": "^1.0.57",
-      },
-    },
-    "packages/files": {
-      "name": "@atelier/files",
-      "dependencies": {
-        "@atelier/editor": "workspace:*",
-        "@atelier/shared": "workspace:*",
-        "@atelier/workspace": "workspace:*",
       },
     },
     "packages/keypress-probe": {
@@ -255,7 +246,6 @@
 
     "@atelier/desktop": ["@atelier/desktop@workspace:packages/desktop"],
 
-    "@atelier/editor": ["@atelier/editor@workspace:packages/editor"],
 
     "@atelier/files": ["@atelier/files@workspace:packages/files"],
 

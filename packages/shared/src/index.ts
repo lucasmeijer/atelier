@@ -8,11 +8,12 @@ export { hopByHopHeaderNames, isHopByHopHeader, stripHopByHopHeaders } from "./p
 
 export const atelierName = "Atelier" as const;
 
-export function workspaceFileEditorOpenUrl(workspaceId: string, path: string, position: { line?: number; column?: number } = {}): string {
+export function workspaceFileOpenUrl(workspaceId: string, path: string, position: { line?: number; column?: number } = {}, filesViewId?: string): string {
   const query = new URLSearchParams({ path });
   if (position.line) query.set("line", String(position.line));
   if (position.column) query.set("column", String(position.column));
-  return `/workspaces/${encodeURIComponent(workspaceId)}/file-editor/open?${query}`;
+  if (filesViewId) query.set("filesView", filesViewId);
+  return `/workspaces/${encodeURIComponent(workspaceId)}/files-view/open?${query}`;
 }
 
 export function domId(...parts: string[]): string {
