@@ -54,6 +54,20 @@
   --warning: #a9760a;
   --danger: #d23b3b;
   --decorative: #7c3aed;
+
+  /* Shared source palette. Shiki and Pierre classify; Atelier owns color. */
+  --syntax-keyword: #cf222e;
+  --syntax-string: #0a3069;
+  --syntax-number: #0550ae;
+  --syntax-comment: #6e7781;
+  --syntax-function: #8250df;
+  --syntax-variable: #953800;
+  --syntax-type: #116329;
+  --syntax-literal: #0550ae;
+  --syntax-attribute: #0550ae;
+  --syntax-tag: #116329;
+  --syntax-constant: #0550ae;
+  --syntax-punctuation: var(--text-bright);
   --shadow: 0 14px 44px rgba(20, 30, 60, .13);
   --popup-shadow: 0 14px 44px rgba(20, 30, 60, .039);
 
@@ -101,6 +115,18 @@
   --warning: #e0b07a;
   --danger: #d98b76;
   --decorative: #c9a0dc;
+  --syntax-keyword: #f0a989;
+  --syntax-string: #d8c06f;
+  --syntax-number: #e0b07a;
+  --syntax-comment: #8e745c;
+  --syntax-function: #c9a0dc;
+  --syntax-variable: #d8a373;
+  --syntax-type: #b5c98f;
+  --syntax-literal: #e0b07a;
+  --syntax-attribute: #d8a373;
+  --syntax-tag: #b5c98f;
+  --syntax-constant: #e0b07a;
+  --syntax-punctuation: var(--text-bright);
   --shadow: 0 22px 56px rgba(0, 0, 0, .45);
   --popup-shadow: 0 22px 56px rgba(0, 0, 0, .135);
 }
@@ -120,6 +146,18 @@
   --warning: #e0af68;
   --danger: #f7768e;
   --decorative: #bb9af7;
+  --syntax-keyword: #bb9af7;
+  --syntax-string: #9ece6a;
+  --syntax-number: #ff9e64;
+  --syntax-comment: #565f89;
+  --syntax-function: #7aa2f7;
+  --syntax-variable: #e0af68;
+  --syntax-type: #2ac3de;
+  --syntax-literal: #ff9e64;
+  --syntax-attribute: #7dcfff;
+  --syntax-tag: #7aa2f7;
+  --syntax-constant: #ff9e64;
+  --syntax-punctuation: var(--text-bright);
   --shadow: 0 22px 56px rgba(0, 0, 0, .5);
   --popup-shadow: 0 22px 56px rgba(0, 0, 0, .15);
 }
@@ -139,6 +177,18 @@
   --warning: #d29922;
   --danger: #f85149;
   --decorative: #bc8cff;
+  --syntax-keyword: #ff7b72;
+  --syntax-string: #a5d6ff;
+  --syntax-number: #79c0ff;
+  --syntax-comment: #8b949e;
+  --syntax-function: #d2a8ff;
+  --syntax-variable: #ffa657;
+  --syntax-type: #7ee787;
+  --syntax-literal: #79c0ff;
+  --syntax-attribute: #79c0ff;
+  --syntax-tag: #7ee787;
+  --syntax-constant: #79c0ff;
+  --syntax-punctuation: var(--text-bright);
   --shadow: 0 22px 56px rgba(0, 0, 0, .6);
   --popup-shadow: 0 22px 56px rgba(0, 0, 0, .18);
 }
@@ -158,8 +208,63 @@
   --warning: #ebcb8b;
   --danger: #bf616a;
   --decorative: #b48ead;
+  --syntax-keyword: #81a1c1;
+  --syntax-string: #a3be8c;
+  --syntax-number: #b48ead;
+  --syntax-comment: #7b889e;
+  --syntax-function: #88c0d0;
+  --syntax-variable: #d08770;
+  --syntax-type: #8fbcbb;
+  --syntax-literal: #b48ead;
+  --syntax-attribute: #88c0d0;
+  --syntax-tag: #81a1c1;
+  --syntax-constant: #b48ead;
+  --syntax-punctuation: var(--text-bright);
   --shadow: 0 22px 56px rgba(0, 0, 0, .45);
   --popup-shadow: 0 22px 56px rgba(0, 0, 0, .135);
+}
+
+/* Shiki fragments emit stable role classes so existing markup recolors instantly. */
+.syntax-keyword { color: var(--syntax-keyword); }
+.syntax-string, .syntax-string-expression { color: var(--syntax-string); }
+.syntax-number { color: var(--syntax-number); }
+.syntax-comment { color: var(--syntax-comment); }
+.syntax-function { color: var(--syntax-function); }
+.syntax-variable, .syntax-parameter { color: var(--syntax-variable); }
+.syntax-type { color: var(--syntax-type); }
+.syntax-literal { color: var(--syntax-literal); }
+.syntax-attribute, .syntax-link { color: var(--syntax-attribute); }
+.syntax-tag { color: var(--syntax-tag); }
+.syntax-constant { color: var(--syntax-constant); }
+.syntax-punctuation { color: var(--syntax-punctuation); }
+
+/* Shared bridge into Pierre's Shadow DOM diff surfaces. */
+.atelier-pierre-host,
+.atelier-pierre-host diffs-container { display: block; min-width: 0; }
+.atelier-pierre-host diffs-container {
+  --diffs-font-family: var(--font-mono);
+  --diffs-font-size: var(--text-body);
+  --diffs-line-height: calc(var(--text-body) * var(--leading-standard));
+  --diffs-light-bg: var(--panel);
+  --diffs-dark-bg: var(--panel);
+  --diffs-light: var(--text-bright);
+  --diffs-dark: var(--text-bright);
+  --diffs-addition-color-override: var(--success);
+  --diffs-deletion-color-override: var(--danger);
+  --diffs-modified-color-override: var(--accent);
+  --diffs-bg-addition-override: var(--success);
+  --diffs-bg-addition-number-override: var(--success);
+  --diffs-bg-addition-emphasis-override: transparent;
+  --diffs-bg-deletion-override: var(--danger);
+  --diffs-bg-deletion-number-override: var(--danger);
+  --diffs-bg-deletion-emphasis-override: transparent;
+  --diffs-bg-context-override: color-mix(in srgb, var(--bg) 72%, #000 8%);
+  --diffs-bg-context-gutter-override: color-mix(in srgb, var(--bg) 72%, #000 8%);
+  --diffs-bg-separator-override: color-mix(in srgb, var(--bg) 82%, #000 6%);
+  --diffs-fg-number-override: var(--text-muted);
+  --diffs-bg-hover-override: var(--accent-soft);
+  --diffs-bg-selection-override: var(--accent-soft);
+  color-scheme: dark;
 }
 
 /* Scrollable design-system surfaces use the active theme instead of browser chrome. */

@@ -1,7 +1,7 @@
 import MarkdownIt from "markdown-it";
 import { atelierFileHref, renderAtelierEmbed } from "./atelier-markdown.ts";
 import { escapeHtml } from "@atelier/shared";
-import { highlightCodeHtml } from "./highlight.ts";
+import { highlightCodeHtml } from "@atelier/syntax";
 
 export interface MarkdownRenderOptions {
   sourcePath?: string;
@@ -24,7 +24,7 @@ markdown.renderer.rules.fence = (tokens, index) => {
   const token = tokens[index]!;
   const rawLang = token.info.trim().split(/\s+/)[0] || undefined;
   const codeText = token.content.replace(/\n$/, "");
-  const highlighted = highlightCodeHtml(codeText, rawLang);
+  const highlighted = highlightCodeHtml({ code: codeText, language: rawLang });
   const attrs = [
     rawLang ? `data-lang="${escapeHtml(rawLang)}"` : "",
     highlighted.language ? `class="language-${escapeHtml(highlighted.language)}"` : "",

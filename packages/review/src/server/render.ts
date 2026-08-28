@@ -24,7 +24,7 @@ async function renderTextFile(file: ReviewFile, comments: ReviewComment[]): Prom
   const pierreAnnotations = annotations.map((comment) => ({ side: comment.side, lineNumber: comment.startLine, metadata: comment }));
   const prerendered = await preloadDiffHTML({ fileDiff: file.diff!, options: reviewDiffOptions, annotations: pierreAnnotations });
   const model = { fileDiff: file.diff, comments: annotations };
-  return `<div class="review-pierre-host" data-review-target="diff" data-review-path="${escapeHtml(file.path)}"><diffs-container>${prerendered}</diffs-container><script type="application/json" data-review-model>${jsonForHtml(model)}</script></div>`;
+  return `<div class="atelier-pierre-host review-pierre-host" data-review-target="diff" data-review-path="${escapeHtml(file.path)}"><diffs-container>${prerendered}</diffs-container><script type="application/json" data-review-model>${jsonForHtml(model)}</script></div>`;
 }
 
 function renderSpecialFile(file: ReviewFile): string {

@@ -7,57 +7,6 @@ function splitLines(text: string): string[] {
   return text.length === 0 ? [] : text.replaceAll("\r\n", "\n").split("\n");
 }
 
-export interface DiffDisplayLine {
-  kind: "context" | "removed" | "added";
-  text: string;
-}
-
-export function parseUnifiedPatchHunks(patch: string): DiffDisplayLine[][] {
-  const hunks: DiffDisplayLine[][] = [];
-  let hunk: DiffDisplayLine[] | undefined;
-  for (const line of patch.replaceAll("\r\n", "\n").split("\n")) {
-    if (line.startsWith("@@")) {
-      if (hunk) hunks.push(hunk);
-      hunk = [];
-    } else if (!hunk || line.startsWith("\\ No newline")) {
-      continue;
-    } else if (line.startsWith(" ")) {
-      hunk.push({ kind: "context", text: line.slice(1) });
-    } else if (line.startsWith("-")) {
-      hunk.push({ kind: "removed", text: line.slice(1) });
-    } else if (line.startsWith("+")) {
-      hunk.push({ kind: "added", text: line.slice(1) });
-    }
-  }
-  if (hunk) hunks.push(hunk);
-  return hunks;
-}
-
-export function contextualDiffLines(operation: DiffOperation, contextLines = 3): DiffDisplayLine[] {
-  const oldLines = splitLines(operation.oldText);
-  const newLines = splitLines(operation.newText);
-  let prefix = 0;
-  while (prefix < oldLines.length && prefix < newLines.length && oldLines[prefix] === newLines[prefix]) prefix++;
-
-  let suffix = 0;
-  while (
-    suffix < oldLines.length - prefix &&
-    suffix < newLines.length - prefix &&
-    oldLines[oldLines.length - suffix - 1] === newLines[newLines.length - suffix - 1]
-  ) suffix++;
-
-  const before = oldLines.slice(Math.max(0, prefix - contextLines), prefix);
-  const removed = oldLines.slice(prefix, oldLines.length - suffix);
-  const added = newLines.slice(prefix, newLines.length - suffix);
-  const after = oldLines.slice(oldLines.length - suffix, Math.min(oldLines.length, oldLines.length - suffix + contextLines));
-  return [
-    ...before.map((text) => ({ kind: "context" as const, text })),
-    ...removed.map((text) => ({ kind: "removed" as const, text })),
-    ...added.map((text) => ({ kind: "added" as const, text })),
-    ...after.map((text) => ({ kind: "context" as const, text })),
-  ];
-}
-
 interface DiffStats {
   added: number;
   deleted: number;

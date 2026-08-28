@@ -1,7 +1,7 @@
 import { format as formatJavaScript } from "@wasm-fmt/biome_fmt";
 import { format as formatPython } from "@wasm-fmt/ruff_fmt";
 import { format as formatShell } from "@wasm-fmt/shfmt";
-import { highlightCodeHtmlForPath, languageFromPath } from "@atelier/markdown";
+import { highlightCodeHtmlForPath, languageFromPath } from "@atelier/syntax";
 import { escapeHtml } from "./html.ts";
 
 interface BashHeredoc {
@@ -184,7 +184,7 @@ function bashBooleanOperatorHtml(highlighted: string): string {
   const protectedSpans: boolean[] = [];
   return highlighted.split(/(<\/?span(?:\s[^>]*)?>)/).map((part) => {
     if (part.startsWith("<span")) {
-      protectedSpans.push((protectedSpans.at(-1) ?? false) || /hljs-(?:string|comment)/.test(part));
+      protectedSpans.push((protectedSpans.at(-1) ?? false) || /syntax-(?:string|comment)/.test(part));
       return part;
     }
     if (part === "</span>") {
@@ -426,11 +426,11 @@ function embeddedBashContent(command: string, depth: number): RenderedEmbedded |
     const regionEnd = quoted ? region.contentEnd + 1 : region.contentEnd;
     if (regionStart < cursor) continue;
     html += highlightedBashShell(command.slice(cursor, regionStart));
-    if (quoted) html += `<span class="hljs-string">${escapeHtml(command[regionStart]!)}</span>`;
+    if (quoted) html += `<span class="syntax-string">${escapeHtml(command[regionStart]!)}</span>`;
     const rendered = renderEmbeddedRegion(region, depth);
     differs ||= rendered.differs;
     html += `<span${rendered.language ? ` class="language-${escapeHtml(rendered.language)}"` : ""}>${rendered.html}</span>`;
-    if (quoted) html += `<span class="hljs-string">${escapeHtml(command[region.contentEnd]!)}</span>`;
+    if (quoted) html += `<span class="syntax-string">${escapeHtml(command[region.contentEnd]!)}</span>`;
     cursor = regionEnd;
   }
   html += highlightedBashShell(command.slice(cursor));

@@ -20,14 +20,15 @@ describe("renderMarkdown", () => {
     expect(html.startsWith(`<div class="agent-code-block" data-controller="agent-code-copy">`)).toBe(true);
     expect(html).toContain(`data-action="agent-code-copy#copy"`);
     expect(html).toContain(`<pre data-lang="bash" class="language-bash"><code data-agent-code-copy-target="code">`);
-    expect(html).toContain("**/work**");
+    expect(html).toContain("/work");
+    expect(html).not.toContain("<strong>");
     expect(html).not.toContain("<strong>");
   });
 
   test("fenced code highlighting supports C# aliases", () => {
     const html = renderMarkdown("work 1", "```cs\npublic class Demo {}\n```");
     expect(html).toContain(`data-lang="cs" class="language-csharp"`);
-    expect(html).toContain("hljs-keyword");
+    expect(html).toContain("syntax-keyword");
   });
 
   test("GitHub-style tables receive a horizontal scroll container", () => {

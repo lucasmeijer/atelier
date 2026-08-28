@@ -10,6 +10,7 @@
   "dependencies": {
     "@atelier/core": "workspace:*",
     "@atelier/shared": "workspace:*",
+    "@atelier/syntax": "workspace:*",
     "@atelier/workspace": "workspace:*",
     "@pierre/diffs": "1.3.6",
     "typebox": "^1.0.57"

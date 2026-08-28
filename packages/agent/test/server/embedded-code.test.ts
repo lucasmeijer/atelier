@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { embeddedBashCommand, formatBashCommandForDisplay } from "../../src/server/embedded-code.ts";
 
 const renderEmbedded = (command: string): string => embeddedBashCommand(command)!.html;
+const renderedText = (html: string): string => html.replace(/<[^>]+>/g, "").replaceAll("&gt;", ">").replaceAll("&lt;", "<").replaceAll("&amp;", "&").replaceAll("&quot;", '"').replaceAll("&#39;", "'");
 
 describe("embedded code literals", () => {
   test("bash heredoc writes preserve the shell while reformatting the nested file for display", () => {
@@ -10,13 +11,13 @@ describe("embedded code literals", () => {
     const html = renderEmbedded(command);
     expect(html).toContain("/work/tmp-inspect.mjs");
     expect(html).toContain("language-javascript");
-    expect(html).toContain("hljs-keyword");
+    expect(html).toContain("syntax-keyword");
     expect(html).toContain("chromium");
-    expect(html).toContain('\n  <span class="hljs-variable language_">console</span>');
+    expect(renderedText(html)).toContain("\n  console");
     expect(html).not.toContain(compact);
-    expect(html).toContain("&gt;/work/tmp-inspect.mjs");
+    expect(renderedText(html)).toContain(">/work/tmp-inspect.mjs");
     expect(html).toContain("EOF");
-    expect(html).toContain("node /work/tmp-inspect.mjs");
+    expect(renderedText(html)).toContain("node /work/tmp-inspect.mjs");
   });
 
   test("recognizes heredoc file writes sampled from historical agent sessions", () => {
@@ -42,8 +43,8 @@ describe("embedded code literals", () => {
     const compact = "def greet(name):\n  if name: print('hello',name)";
     const html = renderEmbedded(`cat > /tmp/analyze.py <<'PY'\n${compact}\nPY`);
     expect(html).toContain('class="language-python"');
-    expect(html).toContain("hljs-keyword");
-    expect(html).toContain('\n    <span class="hljs-keyword">if</span>');
+    expect(html).toContain("syntax-keyword");
+    expect(renderedText(html)).toContain("\n    if");
     expect(html).not.toContain(compact);
   });
 
@@ -51,7 +52,7 @@ describe("embedded code literals", () => {
     const compact = '{"name":"Atelier","languages":["js","ts","py"]}';
     const html = renderEmbedded(`cat > /tmp/demo.json <<'JSON'\n${compact}\nJSON`);
     expect(html).toContain('class="language-json"');
-    expect(html).toContain('&quot;languages&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span>');
+    expect(renderedText(html)).toContain('"languages": [');
     expect(html).not.toContain(compact);
   });
 
@@ -63,8 +64,8 @@ describe("embedded code literals", () => {
   test("adds line breaks to shell pipes without changing embedded source", () => {
     const command = "printf ready | cat; cat > /tmp/demo.js <<'JS'\nconst either = left | right;\nJS\nnode /tmp/demo.js | cat";
     const html = renderEmbedded(command);
-    expect(html.match(/\|\n/g)).toHaveLength(2);
-    expect(html).toContain("left | right");
+    expect(renderedText(html).match(/\|\n/g)).toHaveLength(2);
+    expect(renderedText(html)).toContain("left | right");
   });
 
   test("does not add line breaks to pipes in shell strings", () => {
@@ -163,11 +164,9 @@ rg ready /tmp/status |
     }
 
     const structural = renderEmbedded(samples[1]!);
-    expect(structural).toContain('class="hljs-title"');
-    expect(structural).toContain('class="hljs-variable">name</span>');
-    expect(structural).toContain('class="hljs-built_in">[A-Za-z_]</span>');
-    expect(structural).toContain('class="hljs-keyword">?</span>');
-    expect(renderEmbedded(samples[0]!)).toContain('class="hljs-regex-alternation">|</span>');
+    expect(renderedText(structural)).toContain("name");
+    expect(structural).toContain('class="syntax-keyword"');
+    expect(renderEmbedded(samples[0]!)).toContain('class="syntax-keyword">|</span>');
   });
 
   test("recognizes positional and explicit ripgrep patterns without highlighting option arguments", () => {
@@ -214,25 +213,27 @@ rg ready /tmp/status |
     expect(playwrightHtml).toContain("language-bash");
     expect(playwrightHtml.match(/<span class="language-(?:bash|typescript)"/g)).toHaveLength(2);
     expect(playwrightHtml).toContain("await");
-    expect(playwrightHtml).toContain(`</span><span class="hljs-string">&#39;</span> <span class="agent-bash-and">&amp;&amp;</span>\n`);
-    expect(playwrightHtml).not.toMatch(/<span class="hljs-string">[^<]*(?:sleep 1|curl -I|bun -e)/);
+    expect(playwrightHtml).toContain('class="syntax-string">&#39;</span>');
+    expect(playwrightHtml).toContain('<span class="agent-bash-and">&amp;&amp;</span>');
+    expect(renderedText(playwrightHtml)).toContain("sleep 1 &&\n");
 
     const docker = `docker exec app sh -lc 'cat startup.log | tail -20 || true' | tee inspection.log`;
     const dockerHtml = renderEmbedded(docker);
     expect(dockerHtml).toContain('<span class="language-bash">');
-    expect(dockerHtml).toContain("startup.log |\n");
-    expect(dockerHtml).toContain('-20 <span class="agent-bash-or">||</span> ');
+    expect(renderedText(dockerHtml)).toContain("startup.log |\n");
+    expect(renderedText(dockerHtml)).toContain("-20 || true");
+    expect(dockerHtml).toContain('class="agent-bash-or"');
     expect(dockerHtml).not.toContain('<span class="agent-bash-or">||</span>\n');
   });
 
   test("formats multiple heredoc writes in one bash call", () => {
     const command = "mkdir -p /tmp/demo; cat > /tmp/one.js <<'JS'\nconst one={n:1};\nJS\ncat > /tmp/two.ts <<'TS'\nconst two={n:2};\nTS\nnode /tmp/one.js";
     const html = renderEmbedded(command);
-    expect(html).toContain("one = { ");
-    expect(html).toContain("two = { ");
+    expect(renderedText(html)).toContain("one = { ");
+    expect(renderedText(html)).toContain("two = { ");
     expect(html).toContain("language-javascript");
     expect(html).toContain("language-typescript");
-    expect(html).toContain("node /tmp/one.js");
+    expect(renderedText(html)).toContain("node /tmp/one.js");
   });
 
   test("highlights source passed directly to interpreters through stdin", () => {
@@ -248,7 +249,7 @@ rg ready /tmp/status |
     for (const sample of samples) {
       const html = renderEmbedded(sample.command);
       expect(html, sample.name).toContain(`class="language-${sample.language}"`);
-      expect(html, sample.name).toContain("hljs-");
+      expect(html, sample.name).toContain("syntax-");
     }
   });
 

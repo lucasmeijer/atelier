@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "@atelier/shared": "workspace:*",
-    "highlight.js": "^11.11.1",
+    "@atelier/syntax": "workspace:*",
     "markdown-it": "14.3.0"
   },
   "devDependencies": {

@@ -4,9 +4,11 @@ import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 import { launchComposerThinkingLevel, launchComposerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedLaunchComposerModel, type ModelRef } from "./model-state.ts";
-import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
+import { diffStats, type DiffOperation } from "./diff.ts";
+import { parseDiffFromFile, processPatch, type FileDiffMetadata } from "@pierre/diffs";
 import { embeddedBashCommand, formatBashCommandForDisplay, highlightedBashCommandHtml } from "./embedded-code.ts";
-import { highlightCodeHtmlForPath, renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdown";
+import { renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdown";
+import { highlightCodeHtmlForPath } from "@atelier/syntax";
 import { disclosureIconHtml, domId, escapeHtml } from "./html.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
@@ -714,34 +716,27 @@ function renderWriteDetail(ctx: AgentRenderContext, key: string, tool: ToolView,
   return `<div class="agent-tool-detail">${fullscreenSourceRegion("Write", `<section class="agent-tool-region agent-write-result">${copyableToolBody(preview, "written content")}</section>`, codeBlockHtml(content, path, bodyClass))}${error}</div>`;
 }
 
-function editHunksForDisplay(tool: ToolView, contextual: boolean): DiffDisplayLine[][] {
-  const details = toolDetails(tool);
-  const patch = details?.patch ? parseUnifiedPatchHunks(details.patch) : [];
-  if (patch.length) return patch;
-  const contextLines = contextual ? 3 : Number.POSITIVE_INFINITY;
-  return getEditOperations(toolArgs(tool)).map((operation) => contextualDiffLines(operation, contextLines));
+function editDiffs(tool: ToolView, contextual: boolean): FileDiffMetadata[] {
+  const patch = toolDetails(tool)?.patch;
+  if (patch) return processPatch(patch).files;
+  const path = stringArg(toolArgs(tool), "path", "file_path") ?? "edited-file.txt";
+  return getEditOperations(toolArgs(tool)).map((operation) => parseDiffFromFile(
+    { name: path, contents: operation.oldText },
+    { name: path, contents: operation.newText },
+    { context: contextual ? 3 : 1_000_000 },
+  ));
 }
 
-function highlightedEditHtml(tool: ToolView, contextual: boolean): string {
-  const path = stringArg(toolArgs(tool), "path", "file_path");
-  return editHunksForDisplay(tool, contextual).map((hunk) => {
-    const groups: DiffDisplayLine[][] = [];
-    for (const line of hunk) {
-      const group = groups.at(-1);
-      if (group?.[0]?.kind === line.kind) group.push(line);
-      else groups.push([line]);
-    }
-    const html = groups.map((group) => {
-      const code = group.map((line) => line.text).join("\n");
-      return `<pre class="agent-edit-lines ${group[0]!.kind}"><code>${highlightCodeHtmlForPath(code, path).html}</code></pre>`;
-    }).join("");
-    return `<div class="agent-edit-operation">${html}</div>`;
-  }).join("");
+function editDiffHtml(tool: ToolView, contextual: boolean): string {
+  const diffs = editDiffs(tool, contextual);
+  if (!diffs.length) return "";
+  const model = JSON.stringify(diffs).replaceAll("<", "\\u003c").replaceAll("&", "\\u0026");
+  return `<div class="atelier-pierre-host agent-edit-pierre" data-controller="agent-edit-diff">${diffs.map(() => "<diffs-container></diffs-container>").join("")}<script type="application/json" data-agent-edit-diff-target="model">${model}</script></div>`;
 }
 
 function renderEditDetail(tool: ToolView): string {
-  const preview = highlightedEditHtml(tool, true) || genericParamsHtml(tool);
-  const full = highlightedEditHtml(tool, false) || genericParamsHtml(tool);
+  const preview = editDiffHtml(tool, true) || genericParamsHtml(tool);
+  const full = editDiffHtml(tool, false) || genericParamsHtml(tool);
   const edits = fullscreenSourceRegion("Edit", `<section class="agent-tool-region agent-edit-result">${copyableToolBody(`<div class="agent-edit-details agent-tool-region-body">${preview}</div>`, "edit")}</section>`, `<div class="agent-edit-details agent-tool-region-body">${full}</div>`);
   const error = tool.status === "error" && tool.resultText ? `<pre class="agent-tool-error-output">${escapeHtml(trimResult(tool))}</pre>` : "";
   return `<div class="agent-tool-detail">${edits}${error}</div>`;

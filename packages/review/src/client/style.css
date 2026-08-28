@@ -59,39 +59,6 @@
   background: var(--panel);
 }
 
-.review-pierre-host,
-.review-pierre-host diffs-container { display: block; min-width: 0; }
-.review-pierre-host diffs-container {
-  --review-code-bg: color-mix(in srgb, var(--bg) 72%, #000 8%);
-  --diffs-font-family: var(--font-mono);
-  --diffs-font-size: var(--text-body);
-  --diffs-line-height: calc(var(--text-body) * var(--leading-standard));
-  --diffs-light-bg: var(--panel);
-  --diffs-dark-bg: var(--panel);
-  --diffs-light: var(--text-bright);
-  --diffs-dark: var(--text-bright);
-  --diffs-addition-color-override: var(--success);
-  --diffs-deletion-color-override: var(--danger);
-  --diffs-modified-color-override: var(--accent);
-  --diffs-bg-addition-override: color-mix(in srgb, var(--success) 11%, var(--panel));
-  --diffs-bg-addition-number-override: color-mix(in srgb, var(--success) 11%, var(--panel));
-  --diffs-bg-addition-emphasis-override: color-mix(in srgb, var(--success) 18%, var(--panel));
-  --diffs-bg-deletion-override: color-mix(in srgb, var(--danger) 11%, var(--panel));
-  --diffs-bg-deletion-number-override: color-mix(in srgb, var(--danger) 11%, var(--panel));
-  --diffs-bg-deletion-emphasis-override: color-mix(in srgb, var(--danger) 18%, var(--panel));
-  --diffs-bg-context-override: var(--review-code-bg);
-  --diffs-bg-context-gutter-override: var(--review-code-bg);
-  --diffs-bg-separator-override: color-mix(in srgb, var(--bg) 82%, #000 6%);
-  --diffs-fg-number-override: var(--text-muted);
-  --diffs-bg-hover-override: var(--accent-soft);
-  --diffs-bg-selection-override: var(--accent-soft);
-  color-scheme: light;
-}
-
-:is([data-theme="cappuccino"], [data-theme="tokyo-night"], [data-theme="midnight"], [data-theme="nord"]) .review-pierre-host diffs-container {
-  color-scheme: dark;
-}
-
 .review-special-file { padding: var(--space-xl); color: var(--text-muted); }
 .review-special-file strong { color: var(--text-bright); }
 

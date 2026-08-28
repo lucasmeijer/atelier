@@ -1,0 +1,7 @@
+{
+  "daylight": { "keyword":"#cf222e", "string":"#0a3069", "number":"#0550ae", "comment":"#6e7781", "function":"#8250df", "variable":"#953800", "type":"#116329", "attribute":"#0550ae", "tag":"#116329" },
+  "cappuccino": { "keyword":"#f0a989", "string":"#d8c06f", "number":"#e0b07a", "comment":"#8e745c", "function":"#c9a0dc", "variable":"#d8a373", "type":"#b5c98f", "attribute":"#d8a373", "tag":"#b5c98f" },
+  "tokyo-night": { "keyword":"#bb9af7", "string":"#9ece6a", "number":"#ff9e64", "comment":"#565f89", "function":"#7aa2f7", "variable":"#e0af68", "type":"#2ac3de", "attribute":"#7dcfff", "tag":"#7aa2f7" },
+  "midnight": { "keyword":"#ff7b72", "string":"#a5d6ff", "number":"#79c0ff", "comment":"#8b949e", "function":"#d2a8ff", "variable":"#ffa657", "type":"#7ee787", "attribute":"#79c0ff", "tag":"#7ee787" },
+  "nord": { "keyword":"#81a1c1", "string":"#a3be8c", "number":"#b48ead", "comment":"#7b889e", "function":"#88c0d0", "variable":"#d08770", "type":"#8fbcbb", "attribute":"#88c0d0", "tag":"#81a1c1" }
+}

@@ -6,6 +6,11 @@ const ctx: AgentRenderContext = { workspaceId: "ws", label: "agent" };
 const agent = { workspaceId: "ws", conversationId: "00000000-0000-4000-8000-000000000001", label: "agent", title: "Agent", path: "/tmp/agent.jsonl" };
 const tool = (overrides: Partial<ToolView>): ToolView => ({ callId: "call", name: "read", args: {}, status: "ok", ...overrides });
 const renderBash = (command: string, overrides: Partial<ToolView> = {}): string => renderTranscriptItemDetailFrame(ctx, { type: "tool", key: "bash", tool: tool({ name: "bash", args: { command }, ...overrides }) });
+const renderedText = (html: string): string => html.replace(/<script[^>]*>[\s\S]*?<\/script>/g, "").replace(/<[^>]+>/g, "");
+const firstEditModel = (html: string): Array<{ name: string; hunks: Array<{ collapsedBefore?: number; additionLines: number; deletionLines: number; hunkContent: Array<{ type: string; lines?: number }> }> }> => {
+  const source = html.match(/<script type="application\/json"[^>]*>([\s\S]*?)<\/script>/)![1]!;
+  return JSON.parse(source);
+};
 
 describe("transcript rendering", () => {
   test("server-rendered panes expose their snapshot cursor", async () => {
@@ -120,7 +125,7 @@ describe("transcript rendering", () => {
   test("streaming write renders decoded content", () => {
     const item: TranscriptItem = { type: "tool", key: "stream-write", tool: tool({ name: "write", status: "streaming", argsStream: '{"path":"a.ts","content":"x\\ny"}' }) };
     const html = renderTranscriptItem(ctx, item, { live: true, open: true });
-    expect(html).toContain("x\ny");
+    expect(renderedText(html)).toContain("x\ny");
     expect(html).not.toContain("\\n");
   });
 
@@ -178,8 +183,11 @@ describe("transcript rendering", () => {
   test("completed edits distinguish removals and additions", () => {
     const item: TranscriptItem = { type: "tool", key: "edit-1", tool: tool({ name: "edit", args: { path: "a.ts", oldText: "const old = 1;", newText: "const next = 2;" } }) };
     const html = renderTranscriptItemDetailFrame(ctx, item);
-    expect(html).toContain("agent-edit-lines removed");
-    expect(html).toContain("agent-edit-lines added");
+    expect(html).toContain('data-controller="agent-edit-diff"');
+    expect(html).toContain("<diffs-container></diffs-container>");
+    const hunk = firstEditModel(html)[0]!.hunks[0]!;
+    expect(hunk.deletionLines).toBe(1);
+    expect(hunk.additionLines).toBe(1);
   });
 
   test("edit details keep three unchanged lines around each change", () => {
@@ -187,16 +195,11 @@ describe("transcript rendering", () => {
     const newText = oldText.replace("const old = 1;", "const next = 2;");
     const item: TranscriptItem = { type: "tool", key: "edit-context", tool: tool({ name: "edit", args: { path: "a.ts", oldText, newText } }) };
     const html = renderTranscriptItemDetailFrame(ctx, item);
-    const preview = html.split("<template")[0].replace(/<[^>]+>/g, "");
-    expect(preview).not.toContain("above 1");
-    expect(preview).toContain("above 2");
-    expect(preview).toContain("above 4");
-    expect(preview).toContain("below 1");
-    expect(preview).toContain("below 3");
-    expect(preview).not.toContain("below 4");
-    const fullscreen = html.replace(/<[^>]+>/g, "");
-    expect(fullscreen).toContain("above 1");
-    expect(fullscreen).toContain("below 4");
+    const previewHunk = firstEditModel(html)[0]!.hunks[0]!;
+    expect(previewHunk.collapsedBefore).toBe(1);
+    expect(previewHunk.hunkContent[0]).toMatchObject({ type: "context", lines: 3 });
+    expect(previewHunk.hunkContent.at(-1)).toMatchObject({ type: "context", lines: 3 });
+    expect(html.match(/data-controller="agent-edit-diff"/g)).toHaveLength(2);
   });
 
   test("edit details use persisted patch context when arguments only contain the changed line", () => {
@@ -215,14 +218,11 @@ describe("transcript rendering", () => {
     ].join("\n");
     const item: TranscriptItem = { type: "tool", key: "edit-patch", tool: tool({ name: "edit", args: { path: "src/main.jsx", oldText: "WEBGL EXPERIMENT / 001", newText: "WEBGL EXPERIMENT / 002" }, details: { patch } }) };
     const html = renderTranscriptItemDetailFrame(ctx, item).split("<template")[0];
-    const preview = html.replace(/<[^>]+>/g, "");
-    expect(html).toContain("agent-edit-lines context");
-    expect(html).toContain("agent-edit-lines removed");
-    expect(html).toContain("agent-edit-lines added");
-    expect(preview).toContain("context 1");
-    expect(preview).toContain("context 3");
-    expect(preview).toContain("context 4");
-    expect(preview).toContain("context 6");
+    const hunk = firstEditModel(html)[0]!.hunks[0]!;
+    expect(hunk.deletionLines).toBe(1);
+    expect(hunk.additionLines).toBe(1);
+    expect(hunk.hunkContent[0]).toMatchObject({ type: "context", lines: 3 });
+    expect(hunk.hunkContent.at(-1)).toMatchObject({ type: "context", lines: 3 });
   });
 
   test("bash has separate command and differing model result", () => {

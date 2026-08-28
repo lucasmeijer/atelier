@@ -65,7 +65,7 @@
 .agent-md li { margin-bottom: 2px; }
 .agent-md code { font-family: var(--font-mono); }
 .agent-code-block { position: relative; margin: 6px 0 8px; }
-.agent-md pre, .agent-code-block pre { background: #161a22; color: #d3dae5; border-radius: var(--radius-control); padding: 8px 8px; overflow-x: auto; margin: 6px 0 8px; }
+.agent-md pre, .agent-code-block pre { background: color-mix(in srgb, var(--bg) 72%, #000 8%); color: var(--text-bright); border-radius: var(--radius-control); padding: 8px 8px; overflow-x: auto; margin: 6px 0 8px; }
 .agent-code-block pre { margin: 0; }
 .agent-md pre code, .agent-code-block pre code { background: none; padding: 0; color: inherit; font-size: var(--text-body); line-height: var(--leading-standard); }
 .agent-code-copy {
@@ -77,111 +77,9 @@
 .agent-code-copy:hover { background: rgba(19,26,38,.95); color: #fff; }
 .agent-code-copy.copied { color: var(--success); background: var(--success-soft); border-color: #bfe3c8; }
 .agent-code-copy-icon { transform: translateY(-.5px); }
-.hljs-keyword { color: #ff7b72; }
-.hljs-string { color: #a5d6ff; }
-.hljs-number { color: #79c0ff; }
-.hljs-comment { color: #8b949e; }
-.hljs-title,
-.hljs-function { color: #d2a8ff; }
-.hljs-variable { color: #ffa657; }
-.hljs-type,
-.hljs-built_in { color: #7ee787; }
-.hljs-literal { color: #79c0ff; }
-.hljs-attr,
-.hljs-attribute { color: #79c0ff; }
-.hljs-name,
-.hljs-tag { color: #7ee787; }
-
-/* Read/write tool code previews use theme-aware syntax variables. */
-.agent-tool-code {
-  --agent-syntax-keyword: #ff7b72;
-  --agent-syntax-string: #a5d6ff;
-  --agent-syntax-number: #79c0ff;
-  --agent-syntax-comment: #8b949e;
-  --agent-syntax-title: #d2a8ff;
-  --agent-syntax-variable: #ffa657;
-  --agent-syntax-type: #7ee787;
-  --agent-syntax-literal: #79c0ff;
-  --agent-syntax-attr: #79c0ff;
-  --agent-syntax-tag: #7ee787;
-  font-family: var(--font-mono);
-}
-[data-theme="daylight"] .agent-tool-code {
-  --agent-syntax-keyword: #cf222e;
-  --agent-syntax-string: #0a3069;
-  --agent-syntax-number: #0550ae;
-  --agent-syntax-comment: #6e7781;
-  --agent-syntax-title: #8250df;
-  --agent-syntax-variable: #953800;
-  --agent-syntax-type: #116329;
-  --agent-syntax-literal: #0550ae;
-  --agent-syntax-attr: #0550ae;
-  --agent-syntax-tag: #116329;
-}
-[data-theme="cappuccino"] .agent-tool-code {
-  --agent-syntax-keyword: #f0a989;
-  --agent-syntax-string: #d8c06f;
-  --agent-syntax-number: #e0b07a;
-  --agent-syntax-comment: #8e745c;
-  --agent-syntax-title: #c9a0dc;
-  --agent-syntax-variable: #d8a373;
-  --agent-syntax-type: #b5c98f;
-  --agent-syntax-literal: #e0b07a;
-  --agent-syntax-attr: #d8a373;
-  --agent-syntax-tag: #b5c98f;
-}
-[data-theme="tokyo-night"] .agent-tool-code {
-  --agent-syntax-keyword: #bb9af7;
-  --agent-syntax-string: #9ece6a;
-  --agent-syntax-number: #ff9e64;
-  --agent-syntax-comment: #565f89;
-  --agent-syntax-title: #7aa2f7;
-  --agent-syntax-variable: #e0af68;
-  --agent-syntax-type: #2ac3de;
-  --agent-syntax-literal: #ff9e64;
-  --agent-syntax-attr: #7dcfff;
-  --agent-syntax-tag: #7aa2f7;
-}
-[data-theme="midnight"] .agent-tool-code {
-  --agent-syntax-keyword: #ff7b72;
-  --agent-syntax-string: #a5d6ff;
-  --agent-syntax-number: #79c0ff;
-  --agent-syntax-comment: #8b949e;
-  --agent-syntax-title: #d2a8ff;
-  --agent-syntax-variable: #ffa657;
-  --agent-syntax-type: #7ee787;
-  --agent-syntax-literal: #79c0ff;
-  --agent-syntax-attr: #79c0ff;
-  --agent-syntax-tag: #7ee787;
-}
-[data-theme="nord"] .agent-tool-code {
-  --agent-syntax-keyword: #81a1c1;
-  --agent-syntax-string: #a3be8c;
-  --agent-syntax-number: #b48ead;
-  --agent-syntax-comment: #7b889e;
-  --agent-syntax-title: #88c0d0;
-  --agent-syntax-variable: #d08770;
-  --agent-syntax-type: #8fbcbb;
-  --agent-syntax-literal: #b48ead;
-  --agent-syntax-attr: #88c0d0;
-  --agent-syntax-tag: #81a1c1;
-}
-.agent-tool-code .hljs-keyword { color: var(--agent-syntax-keyword); }
-.agent-tool-code .hljs-string { color: var(--agent-syntax-string); }
-.agent-tool-code .hljs-number { color: var(--agent-syntax-number); }
-.agent-tool-code .hljs-comment { color: var(--agent-syntax-comment); }
-.agent-tool-code .hljs-title,
-.agent-tool-code .hljs-function { color: var(--agent-syntax-title); }
-.agent-tool-code .hljs-variable { color: var(--agent-syntax-variable); }
-.agent-tool-code .hljs-type,
-.agent-tool-code .hljs-built_in { color: var(--agent-syntax-type); }
-.agent-tool-code .hljs-literal { color: var(--agent-syntax-literal); }
-.agent-tool-code .hljs-attr,
-.agent-tool-code .hljs-attribute { color: var(--agent-syntax-attr); }
-.agent-tool-code .hljs-name,
-.agent-tool-code .hljs-tag { color: var(--agent-syntax-tag); }
-.agent-tool-code .language-regex { color: var(--agent-syntax-string); }
-.agent-tool-code .language-regex .hljs-regex-alternation,
+.agent-tool-code { font-family: var(--font-mono); }
+.agent-tool-code .language-regex { color: var(--syntax-string); }
+.agent-tool-code .language-regex .syntax-keyword,
 .agent-tool-code .agent-bash-and { color: var(--warning); }
 .agent-tool-code .agent-bash-or { color: var(--text); }
 .agent-md blockquote { border-left: 1px solid var(--line-strong); padding-left: 8px; color: var(--text); margin: 0 0 8px; }
@@ -442,14 +340,8 @@ summary > .agent-tool-head { width: 100%; }
 .agent-tool-error-output { margin: 0; padding: 8px 8px; color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--bg)); font-family: var(--font-mono); }
 
 .agent-edit-details { background: var(--panel); }
-.agent-edit-operation + .agent-edit-operation { border-top: 7px solid var(--panel); }
-.agent-edit-lines { margin: 0; padding: 0 8px; white-space: pre-wrap; color: var(--text-bright); font-family: var(--font-mono); }
-.agent-edit-lines:first-child { padding-top: 8px; }
-.agent-edit-lines:last-child { padding-bottom: 8px; }
-.agent-edit-lines.context { background: color-mix(in srgb, var(--bg) 72%, #000 8%); }
-.agent-edit-lines.removed { background: color-mix(in srgb, var(--danger) 11%, var(--panel)); }
-.agent-edit-lines.added { background: color-mix(in srgb, var(--success) 11%, var(--panel)); }
-.agent-edit-lines code { font: inherit; }
+.agent-edit-pierre + .agent-edit-pierre { border-top: 7px solid var(--panel); }
+.agent-edit-pierre diffs-container { max-height: 360px; overflow: auto; }
 
 .atelier-fullscreen-html .agent-tool-code, .atelier-fullscreen-html .agent-tool-result { max-height: none; }
 .atelier-fullscreen-html .agent-detail-fullscreen { max-width: 1100px; margin: 0 auto; border: 1px solid var(--line); border-radius: var(--radius-control); overflow: hidden; }
