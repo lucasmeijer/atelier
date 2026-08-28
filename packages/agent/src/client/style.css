@@ -263,6 +263,7 @@
   border-radius: var(--radius-indicator);
   font-family: var(--font-mono);
   font-size: .88em;
+  white-space: nowrap;
 }
 .agent-md pre, .agent-code-block pre, .agent-tool-ansi, .agent-tool-code, .agent-tool-term { background: color-mix(in srgb, var(--bg) 45%, #000 14%); color: var(--text-bright); }
 .agent-md pre, .agent-code-block pre { border: 1px solid var(--line); border-radius: var(--radius-control); }
