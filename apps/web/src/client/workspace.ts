@@ -1230,7 +1230,7 @@ class WorkspaceNavigationController extends Controller {
     const disclosures = this.projectDisclosures();
     this.element.querySelectorAll<HTMLElement>(".fixed-shell-project[data-project-id]").forEach((project) => {
       const id = project.dataset.projectId!;
-      if (project.querySelector('[data-empty-workspace-onboarding-destination="first-workspace"]') || !(id in disclosures)) return;
+      if (!(id in disclosures)) return;
       project.classList.toggle("is-collapsed", !disclosures[id]);
       project.querySelector<HTMLElement>(".fixed-shell-project-heading")?.setAttribute("aria-expanded", String(disclosures[id]));
     });

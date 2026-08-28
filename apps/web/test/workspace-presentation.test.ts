@@ -133,7 +133,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(projectsSection).toContain('class="fixed-shell-project action-list fixed-shell-projects-drawer is-collapsed"');
   });
 
-  test("expands Projects and marks the first Workspace target when no Workspace exists", () => {
+  test("keeps Projects collapsed and marks the first Workspace target when no Workspace exists", () => {
     const html = renderWorkspacePane({
       projects: [],
       emptyProjects: [{ id: "project-z", title: "Zulu" }, { id: "project-a", title: "Alpha" }],
@@ -141,8 +141,8 @@ describe("role-fixed Workspace presentation", () => {
     });
     const projectsSection = html.slice(html.indexOf('class="fixed-shell-project action-list fixed-shell-projects-drawer'));
 
-    expect(projectsSection).toContain('class="fixed-shell-project action-list fixed-shell-projects-drawer" data-project-id="__projects_drawer__"');
-    expect(projectsSection).toContain('aria-expanded="true"');
+    expect(projectsSection).toContain('class="fixed-shell-project action-list fixed-shell-projects-drawer is-collapsed" data-project-id="__projects_drawer__"');
+    expect(projectsSection).toContain('aria-expanded="false"');
     expect(projectsSection.match(/is-onboarding-target/g)).toHaveLength(1);
     expect(projectsSection.indexOf("Alpha")).toBeLessThan(projectsSection.indexOf('data-empty-workspace-onboarding-destination="first-workspace"'));
     expect(projectsSection.indexOf("Alpha")).toBeLessThan(projectsSection.indexOf("Zulu"));

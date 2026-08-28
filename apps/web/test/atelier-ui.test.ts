@@ -1130,16 +1130,17 @@ describe("Atelier browser behavior", () => {
     await page.close();
   });
 
-  test("expands the Projects section and preserves its state across updates", async () => {
+  test("starts the Projects section collapsed and preserves its expanded state across updates", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "used-workspace", title: "Used workspace" },
       agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent content</p>" }],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = {
-      projects: [{ id: "used-1", title: "Used one", workspaces: [{ id: "used-workspace", title: "Used workspace", active: true }] }],
+      projects: [],
       projectlessWorkspaces: [],
       emptyProjects: [
+        { id: "used-1", title: "Used one" },
         { id: "unused-1", title: "Unused one" },
         { id: "unused-2", title: "Unused two" },
       ],
