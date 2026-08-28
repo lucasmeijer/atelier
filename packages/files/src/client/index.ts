@@ -90,23 +90,15 @@ function createFilesController(Controller: WorkspaceClientControllerConstructor)
     }
 
     openDirectory(event: StimulusActionEvent<MouseEvent, HTMLElement>): void {
-      if (event.target instanceof Element && event.target.closest("a, .files-actions-toggle, .files-actions-menu")) return;
+      if (event.target instanceof Element && event.target.closest("a")) return;
       event.preventDefault();
       event.currentTarget.querySelector<HTMLAnchorElement>(".files-row-name > a")!.click();
     }
 
     openFileRow(event: StimulusActionEvent<MouseEvent, HTMLElement>): void {
-      if (event.target instanceof Element && event.target.closest(".files-actions-toggle, .files-actions-menu")) return;
       if (event.target instanceof Element && event.target.closest(".files-row-name > a")) return;
       event.preventDefault();
       event.currentTarget.querySelector<HTMLAnchorElement>(".files-row-name > a")?.click();
-    }
-
-    async copyUrl(event: StimulusActionEvent<Event, HTMLButtonElement>): Promise<void> {
-      const button = event.currentTarget;
-      await copyTextToClipboard(new URL(button.dataset.filesCopyUrl!, location.href).href);
-      button.textContent = "Copied!";
-      window.setTimeout(() => { button.textContent = "Copy URL"; }, 1200);
     }
 
     keydown(event: KeyboardEvent): void {
@@ -234,6 +226,17 @@ function createFilesViewController(Controller: WorkspaceClientControllerConstruc
 
     selectFile(): void {
       this.collapse();
+    }
+
+    async copyUrl(event: StimulusActionEvent<Event, HTMLButtonElement>): Promise<void> {
+      const button = event.currentTarget;
+      await copyTextToClipboard(new URL(button.dataset.filesCopyUrl!, location.href).href);
+      button.title = "Copied!";
+      button.setAttribute("aria-label", "Copied!");
+      window.setTimeout(() => {
+        button.title = "Copy URL";
+        button.setAttribute("aria-label", "Copy URL");
+      }, 1200);
     }
   };
 }

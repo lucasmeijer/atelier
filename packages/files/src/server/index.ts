@@ -2,14 +2,14 @@ import { posix } from "node:path";
 import type { JsonValue } from "@atelier/core";
 import { renderMarkdown } from "@atelier/markdown";
 import { turboStream, turboStreamResponse, type WorkspaceModule, type WorkspaceWorkViewReference } from "@atelier/shared";
-import { workspaceContainerName, workspaceRoot } from "@atelier/workspace";
+import { workspaceRoot } from "@atelier/workspace";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { fileSaveRequestSchema, type FileSaveRequest } from "../protocol.ts";
 import { EditableFileError, readEditableFile, requestedEditableFilePath, writeEditableFile } from "./editable-file.ts";
 import { deleteFile, FilesPathError, listFiles, resolveFilesDirectory, uploadFile } from "./files.ts";
-import { filesEditorFrameId, filesRefreshSignalId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesRefreshSignal, renderFilesTreeFrame, renderFilesWorkView } from "./render.ts";
-import { closeFilesView, createFilesView, defaultFilesViewId, deleteFilesViewState, filesView, listFilesViews, selectFilesViewFile } from "./state.ts";
+import { filesEditorFrameId, filesRefreshSignalId, filesTreeFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesRefreshSignal, renderFilesTreeFrame, renderFilesWorkView } from "./render.ts";
+import { closeFilesView, createFilesView, defaultFilesViewId, deleteFilesViewState, filesView, listFilesViews, setFilesViewFile } from "./state.ts";
 
 const filesWorkViewReferenceSchema = Type.Object({ type: Type.Literal("files"), id: Type.String() });
 type FilesWorkViewReference = Static<typeof filesWorkViewReferenceSchema>;
@@ -53,16 +53,10 @@ async function filesEndpoint(workspaceId: string, url: URL): Promise<Response> {
 async function openFileEndpoint(workspaceId: string, url: URL, openWorkView: (workspaceId: string, reference: WorkspaceWorkViewReference) => Promise<Response>): Promise<Response> {
   const path = requestedEditableFilePath(url.searchParams.get("path"));
   const viewId = url.searchParams.get("filesView") ?? defaultFilesViewId;
-  const view = selectFilesViewFile(workspaceId, viewId, path, { line: positiveInteger(url.searchParams.get("line")), column: positiveInteger(url.searchParams.get("column")) });
+  const view = setFilesViewFile(workspaceId, viewId, path, { line: positiveInteger(url.searchParams.get("line")), column: positiveInteger(url.searchParams.get("column")) });
   if (url.searchParams.has("filesView")) return htmlResponse(renderFilesEditorFrame(workspaceId, view));
   const presentation = await openWorkView(workspaceId, { type: "files", id: viewId });
   return turboStreamResponse(`${await presentation.text()}${turboStream("replace", filesEditorFrameId(workspaceId, viewId), renderFilesEditorFrame(workspaceId, view))}`);
-}
-
-async function newFilesViewEndpoint(workspaceId: string, url: URL, openWorkView: (workspaceId: string, reference: WorkspaceWorkViewReference) => Promise<Response>): Promise<Response> {
-  const path = requestedEditableFilePath(url.searchParams.get("path"));
-  const view = createFilesView(workspaceId, path);
-  return await openWorkView(workspaceId, { type: "files", id: view.id });
 }
 
 async function markdownPreviewEndpoint(workspaceId: string, request: Request, url: URL): Promise<Response> {
@@ -95,21 +89,14 @@ async function uploadEndpoint(workspaceId: string, request: Request, url: URL): 
 
 async function deleteEndpoint(workspaceId: string, request: Request): Promise<Response> {
   const form = await request.formData();
+  const viewId = String(form.get("filesView") ?? defaultFilesViewId);
   await deleteFile(workspaceId, String(form.get("path") ?? ""));
-  return await filesResponse(workspaceId, String(form.get("filesView") ?? defaultFilesViewId));
-}
-
-function encodedFilename(name: string): string {
-  return encodeURIComponent(name).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
-}
-
-async function archiveEndpoint(workspaceId: string, url: URL): Promise<Response> {
-  const path = await resolveFilesDirectory(workspaceId, url.searchParams.get("path"));
-  const name = posix.basename(path);
-  const archiveName = `${name}.tar.gz`;
-  const fallbackName = archiveName.replace(/[^\x20-\x7e]|["\\]/g, "_");
-  const process = Bun.spawn(["docker", "exec", workspaceContainerName(workspaceId), "tar", "-czf", "-", "-C", posix.dirname(path), "--", name], { stdout: "pipe", stderr: "ignore" });
-  return new Response(process.stdout, { headers: { "content-type": "application/gzip", "content-disposition": `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedFilename(archiveName)}`, "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+  const view = setFilesViewFile(workspaceId, viewId);
+  const listing = await listFiles(workspaceId, workspaceRoot);
+  return turboStreamResponse(
+    turboStream("replace", filesTreeFrameId(workspaceId, viewId), renderFilesTreeFrame(workspaceId, viewId, listing.entries))
+    + turboStream("replace", filesEditorFrameId(workspaceId, viewId), renderFilesEditorFrame(workspaceId, view)),
+  );
 }
 
 const filesWorkspaceModule: WorkspaceModule = {
@@ -128,11 +115,10 @@ const filesWorkspaceModule: WorkspaceModule = {
   routes: [{
     async handle(request, url, context) {
       try {
-        let match = url.pathname.match(/^\/workspaces\/([^/]+)\/files-view\/(open|new|content|markdown-preview)$/);
+        let match = url.pathname.match(/^\/workspaces\/([^/]+)\/files-view\/(open|content|markdown-preview)$/);
         if (match) {
           const workspaceId = decodeURIComponent(match[1]!);
           if (match[2] === "open") return request.method === "GET" ? await openFileEndpoint(workspaceId, url, context.openWorkView) : textResponse("Method not allowed", 405);
-          if (match[2] === "new") return request.method === "GET" ? await newFilesViewEndpoint(workspaceId, url, context.openWorkView) : textResponse("Method not allowed", 405);
           if (match[2] === "content") return await fileContentEndpoint(workspaceId, request, url);
           return await markdownPreviewEndpoint(workspaceId, request, url);
         }
@@ -140,12 +126,11 @@ const filesWorkspaceModule: WorkspaceModule = {
         match = url.pathname.match(/^\/workspaces\/([^/]+)\/files$/);
         if (match) return request.method === "GET" ? await filesEndpoint(decodeURIComponent(match[1]!), url) : textResponse("Method not allowed", 405);
 
-        match = url.pathname.match(/^\/workspaces\/([^/]+)\/file-browser\/(upload|delete|archive)$/);
+        match = url.pathname.match(/^\/workspaces\/([^/]+)\/file-browser\/(upload|delete)$/);
         if (!match) return undefined;
         const workspaceId = decodeURIComponent(match[1]!);
         if (match[2] === "upload") return request.method === "POST" ? await uploadEndpoint(workspaceId, request, url) : textResponse("Method not allowed", 405);
-        if (match[2] === "delete") return request.method === "POST" ? await deleteEndpoint(workspaceId, request) : textResponse("Method not allowed", 405);
-        return request.method === "GET" ? await archiveEndpoint(workspaceId, url) : textResponse("Method not allowed", 405);
+        return request.method === "POST" ? await deleteEndpoint(workspaceId, request) : textResponse("Method not allowed", 405);
       } catch (error) {
         if (error instanceof FilesPathError || error instanceof EditableFileError) return textResponse(error.message, error.status);
         throw error;

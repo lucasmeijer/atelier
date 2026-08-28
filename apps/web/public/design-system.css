@@ -301,7 +301,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   display: inline-flex;
   max-width: 100%;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
   font: 400 var(--text-body)/var(--leading-standard) var(--font-sans);
 }
 .text-toggle::after {
@@ -555,7 +555,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   box-shadow: var(--shadow);
   font: var(--text-body)/var(--leading-standard) var(--font-sans);
 }
-.popup-menu[hidden] { display: none; }
+.popup-menu[hidden], .popup-menu[popover]:not(:popover-open) { display: none; }
 .popup-menu .action-item { border-radius: var(--radius-round); font-weight: var(--weight-semibold); }
 .popup-menu .action-item.is-danger { color: var(--danger); }
 .popup-menu .action-item.is-danger:not(:disabled):not([aria-disabled="true"]):hover,

@@ -8,7 +8,9 @@ let browser: Browser;
 let browserContext: BrowserContext;
 let workspaceClient: string;
 let designSystemClient: string;
+let designSystemStyle: string;
 let workspaceStyle: string;
+let filesStyle: string;
 let catalogueHtml: string;
 
 async function newTestPage(options: { viewport?: { width: number; height: number }; reducedMotion?: "reduce" | "no-preference" } = {}): Promise<Page> {
@@ -35,9 +37,10 @@ beforeAll(async () => {
   const manifest = await Bun.file(new URL("../public/assets-manifest.json", import.meta.url)).json() as Record<string, string>;
   workspaceClient = await Bun.file(new URL(`../public${manifest["/workspace.js"]}`, import.meta.url)).text();
   designSystemClient = await Bun.file(new URL(`../public${manifest["/design-system.js"]}`, import.meta.url)).text();
-  const designSystemStyle = await Bun.file(new URL("../public/design-system.css", import.meta.url)).text();
+  designSystemStyle = await Bun.file(new URL("../public/design-system.css", import.meta.url)).text();
   const shellStyle = await Bun.file(new URL("../public/style.css", import.meta.url)).text();
   workspaceStyle = `${designSystemStyle}\n${shellStyle}`;
+  filesStyle = await Bun.file(new URL("../../../packages/files/src/client/style.css", import.meta.url)).text();
   catalogueHtml = await Bun.file(new URL("../public/design-system-catalogue.html", import.meta.url)).text();
   const executablePath = process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/local/bin/chromium";
   browser = await chromium.launch({ executablePath, headless: true });
@@ -144,6 +147,33 @@ describe("Atelier browser behavior", () => {
     await page.close();
   });
 
+  test("dismisses the Work launcher outside and after choosing an item", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "popup", title: "Popup" },
+      agentConversations: [{ id: "agent", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      workViews: [],
+      commands: [{ id: "files.create", label: "New Files view", scope: "workspace", placement: "work-launcher" }],
+    };
+    const page = await newTestPage();
+    await page.route("http://atelier.test/workspaces/popup", (route) => route.fulfill({ contentType: "text/html", body: `<style>${designSystemStyle}</style><button type="button">Outside</button>${renderWorkspacePresentation(presentation)}<script type="module" src="/design-system.js"></script>` }));
+    await page.route("**/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
+    await page.route("**/workspaces/popup/commands/files.create", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/popup");
+
+    const trigger = page.getByRole("button", { name: "Open Work view" });
+    const menu = page.getByRole("menu", { name: "Open Work view" });
+    await trigger.click();
+    expect(await menu.isVisible()).toBe(true);
+    await page.getByRole("button", { name: "Outside" }).click();
+    expect(await menu.isHidden()).toBe(true);
+
+    await trigger.click();
+    await page.getByRole("menuitem", { name: "New Files view" }).click();
+    expect(await menu.isHidden()).toBe(true);
+    expect(await trigger.getAttribute("aria-expanded")).toBe("false");
+    await page.close();
+  });
+
   test("design-system dialogs auto-show and restore focus", async () => {
     const page = await newTestPage();
     await page.route("http://design-system.test/", (route) => route.fulfill({ contentType: "text/html", body: `<button id="opener">Open</button><script type="module" src="/design-system.js"></script>` }));
@@ -174,7 +204,7 @@ describe("Atelier browser behavior", () => {
     await page.close();
   });
 
-  test("switches a Markdown file between Edit and Preview", async () => {
+  test("switches a Markdown file between Edit and Rendered", async () => {
     const page = await newTestPage();
     const editor = renderFilesWorkView("workspace", { id: "workspace", path: "/work/README.md", line: 1 }).bodyHtml!;
     await page.route("http://atelier.test/", (route) => route.fulfill({
@@ -184,21 +214,36 @@ describe("Atelier browser behavior", () => {
     await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/files-view/content?**", (route) => route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ path: "/work/README.md", content: "# Preview", revision: "one", writable: true }),
+      body: JSON.stringify({ path: "/work/README.md", content: "# Rendered", revision: "one", writable: true }),
     }));
-    await page.route("**/files-view/markdown-preview?**", (route) => route.fulfill({ contentType: "text/html", body: "<h1>Preview</h1>" }));
+    let completeRender!: () => void;
+    const renderPending = new Promise<void>((resolve) => { completeRender = resolve; });
+    await page.route("**/files-view/markdown-preview?**", async (route) => {
+      await renderPending;
+      await route.fulfill({ contentType: "text/html", body: "<h1>Rendered</h1>" });
+    });
     await page.goto("http://atelier.test/");
     await page.locator(".file-editor-loading").waitFor({ state: "detached" });
 
     const display = page.getByRole("group", { name: "Markdown display" });
     const edit = display.getByRole("button", { name: "Edit" });
-    const preview = display.getByRole("button", { name: "Preview" });
+    const preview = display.getByRole("button", { name: "Rendered" });
     expect(await edit.getAttribute("aria-pressed")).toBe("true");
     expect(await preview.getAttribute("aria-pressed")).toBe("false");
 
+    const previewNode = await preview.elementHandle();
     await preview.click();
-    await page.getByRole("heading", { name: "Preview" }).waitFor();
+    expect(await display.getAttribute("aria-busy")).toBe("true");
+    expect(await preview.evaluate((node, original) => node === original, previewNode)).toBe(true);
+    await edit.click();
+    expect(await display.getAttribute("aria-busy")).toBe("false");
+    expect(await page.locator(".file-editor-host").isVisible()).toBe(true);
+    completeRender();
+
+    await preview.click();
+    await page.getByRole("heading", { name: "Rendered" }).waitFor();
     expect(await preview.getAttribute("aria-pressed")).toBe("true");
+    expect(await display.getAttribute("aria-busy")).toBe("false");
     await edit.click();
     expect(await page.locator(".file-editor-host").isVisible()).toBe(true);
     expect(await edit.getAttribute("aria-pressed")).toBe("true");
@@ -219,6 +264,18 @@ describe("Atelier browser behavior", () => {
     await page.getByRole("treeitem", { name: /README.md/ }).click();
     expect(await page.locator(".files-workbench").getAttribute("class")).not.toContain("is-files-pane-open");
     await page.locator('.file-editor-path[title="/work/README.md"]').waitFor();
+    await page.close();
+  });
+
+  test("keeps a single file row compact within a tall Files tree", async () => {
+    const page = await newTestPage();
+    const tree = renderFilesTreeFrame("workspace", "workspace", [{ name: "README.md", path: "/work/README.md", kind: "file", size: 20, openable: true }]);
+    await page.setContent(`<style>${workspaceStyle}\n${filesStyle}</style><div style="height: 300px">${tree}</div>`);
+    const treeBox = await page.getByRole("tree").boundingBox();
+    const rowBox = await page.getByRole("treeitem").boundingBox();
+    expect(treeBox).not.toBeNull();
+    expect(rowBox).not.toBeNull();
+    expect(rowBox!.height).toBeLessThan(treeBox!.height / 2);
     await page.close();
   });
 

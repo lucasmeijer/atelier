@@ -39,7 +39,7 @@ export function filesView(workspaceId: string, id: string): FilesView {
   return requireFilesView(listFilesViews(workspaceId), id);
 }
 
-export function selectFilesViewFile(workspaceId: string, id: string, path: string, position: { line?: number; column?: number } = {}): FilesView {
+export function setFilesViewFile(workspaceId: string, id: string, path?: string, position: { line?: number; column?: number } = {}): FilesView {
   const views = listFilesViews(workspaceId);
   const view = requireFilesView(views, id);
   view.path = path;
@@ -49,10 +49,9 @@ export function selectFilesViewFile(workspaceId: string, id: string, path: strin
   return view;
 }
 
-export function createFilesView(workspaceId: string, path?: string): FilesView {
+export function createFilesView(workspaceId: string): FilesView {
   const views = listFilesViews(workspaceId);
   const view: FilesView = { id: crypto.randomUUID() };
-  if (path) view.path = path;
   views.push(view);
   filesViews.write(workspaceId, views);
   return view;

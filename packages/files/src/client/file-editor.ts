@@ -239,31 +239,45 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
 
     private async showPreview(): Promise<void> {
       const sequence = ++this.previewSequence;
-      this.previewOptionTargets.forEach((option) => { option.disabled = true; });
-      const previewUrl = `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/files-view/markdown-preview?${new URLSearchParams({ path: this.pathValue })}`;
-      const response = await fetch(previewUrl, {
-        method: "POST",
-        headers: { "content-type": "text/plain; charset=utf-8", "accept": "text/html" },
-        body: this.view!.state.doc.toString(),
-      });
-      if (!response.ok) throw new Error(await response.text());
-      const html = await response.text();
-      if (sequence !== this.previewSequence) return;
-      this.previewTarget.innerHTML = html;
-      this.setPreviewVisible(true);
+      this.setPreviewBusy(true);
+      try {
+        const previewUrl = `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/files-view/markdown-preview?${new URLSearchParams({ path: this.pathValue })}`;
+        const response = await fetch(previewUrl, {
+          method: "POST",
+          headers: { "content-type": "text/plain; charset=utf-8", "accept": "text/html" },
+          body: this.view!.state.doc.toString(),
+        });
+        if (sequence !== this.previewSequence) return;
+        if (!response.ok) throw new Error(await response.text());
+        const html = await response.text();
+        if (sequence !== this.previewSequence) return;
+        this.previewTarget.innerHTML = html;
+        this.setPreviewVisible(true);
+      } catch (error) {
+        if (sequence !== this.previewSequence) return;
+        this.setPreviewVisible(false);
+        this.setStatus("Unable to render", "error");
+        throw error;
+      } finally {
+        if (sequence === this.previewSequence) this.setPreviewBusy(false);
+      }
     }
 
     private showRaw(): void {
       if (!this.hasPreviewTarget) return;
       this.previewSequence++;
+      this.setPreviewBusy(false);
       this.setPreviewVisible(false);
+    }
+
+    private setPreviewBusy(busy: boolean): void {
+      this.previewOptionTargets[0]!.parentElement!.setAttribute("aria-busy", String(busy));
     }
 
     private setPreviewVisible(visible: boolean): void {
       this.previewTarget.hidden = !visible;
       this.hostTarget.hidden = visible;
       this.previewOptionTargets.forEach((option) => {
-        option.disabled = false;
         option.setAttribute("aria-pressed", String(option.dataset.previewMode === (visible ? "preview" : "edit")));
       });
     }

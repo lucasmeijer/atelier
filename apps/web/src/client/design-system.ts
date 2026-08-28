@@ -91,6 +91,7 @@ class CopyButtonController extends Controller<HTMLButtonElement> {
 
 class ToggleController extends Controller<HTMLElement> {
   private resizeObserver?: ResizeObserver;
+  private selectionObserver?: MutationObserver;
   private readyFrame?: number;
 
   connect(): void {
@@ -100,6 +101,8 @@ class ToggleController extends Controller<HTMLElement> {
     this.positionIndicator();
     this.resizeObserver = new ResizeObserver(() => this.positionIndicator());
     this.resizeObserver.observe(this.element);
+    this.selectionObserver = new MutationObserver(() => this.positionIndicator());
+    this.selectionObserver.observe(this.element, { attributes: true, attributeFilter: ["aria-pressed"], subtree: true });
     this.readyFrame = requestAnimationFrame(() => this.element.setAttribute("data-text-toggle-ready", ""));
   }
 
@@ -107,6 +110,7 @@ class ToggleController extends Controller<HTMLElement> {
     this.element.removeEventListener("click", this.selectFromClick);
     this.element.removeEventListener("keydown", this.selectFromKeyboard);
     this.resizeObserver?.disconnect();
+    this.selectionObserver?.disconnect();
     if (this.readyFrame !== undefined) cancelAnimationFrame(this.readyFrame);
   }
 
@@ -147,23 +151,31 @@ class ToggleController extends Controller<HTMLElement> {
 class PopupMenuController extends Controller<HTMLElement> {
   private trigger!: HTMLButtonElement;
   private menu!: HTMLElement;
-  private ownsBehavior = false;
+  private usesNativePopover = false;
 
   connect(): void {
     this.trigger = this.element.querySelector<HTMLButtonElement>(".popup-menu-trigger")!;
     this.menu = this.element.querySelector<HTMLElement>(".popup-menu")!;
-    this.ownsBehavior = !this.menu.hasAttribute("popover") && !this.menu.dataset.popupSelectMenu;
-    if (!this.ownsBehavior) return;
-    this.trigger.addEventListener("click", this.toggle);
+    this.usesNativePopover = this.menu.hasAttribute("popover");
+    if (this.menu.dataset.popupSelectMenu) return;
     this.menu.addEventListener("click", this.choose);
+    if (this.usesNativePopover) {
+      this.menu.addEventListener("toggle", this.syncNativePopoverState);
+      return;
+    }
+    this.trigger.addEventListener("click", this.toggle);
     this.element.addEventListener("keydown", this.keydown);
     document.addEventListener("click", this.closeFromOutside);
   }
 
   disconnect(): void {
-    if (!this.ownsBehavior) return;
-    this.trigger.removeEventListener("click", this.toggle);
+    if (this.menu.dataset.popupSelectMenu) return;
     this.menu.removeEventListener("click", this.choose);
+    if (this.usesNativePopover) {
+      this.menu.removeEventListener("toggle", this.syncNativePopoverState);
+      return;
+    }
+    this.trigger.removeEventListener("click", this.toggle);
     this.element.removeEventListener("keydown", this.keydown);
     document.removeEventListener("click", this.closeFromOutside);
   }
@@ -175,9 +187,14 @@ class PopupMenuController extends Controller<HTMLElement> {
   }
 
   private close(): void {
-    this.menu.hidden = true;
+    if (this.usesNativePopover) this.menu.hidePopover();
+    else this.menu.hidden = true;
     this.trigger.setAttribute("aria-expanded", "false");
   }
+
+  private readonly syncNativePopoverState = (): void => {
+    this.trigger.setAttribute("aria-expanded", String(this.menu.matches(":popover-open")));
+  };
 
   private readonly toggle = (event: MouseEvent): void => {
     event.stopPropagation();
