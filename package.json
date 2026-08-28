@@ -9,7 +9,8 @@
     ],
     "catalog": {
       "@earendil-works/pi-ai": "^0.84.2",
-      "@earendil-works/pi-coding-agent": "^0.84.2"
+      "@earendil-works/pi-coding-agent": "^0.84.2",
+      "@gespenst/core": "0.1.1"
     }
   },
   "scripts": {

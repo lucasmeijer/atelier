@@ -15,6 +15,6 @@
 .provision-step.done .provision-step-icon { color: var(--success); }
 .provision-step.running .provision-step-icon { color: var(--accent); }
 .provision-step.failed .provision-step-icon, .provision-error { color: var(--danger); }
-.provision-terminal { height: 300px; margin: 8px 0 0 24px; border-radius: var(--radius-surface); overflow: hidden; border: 1px solid var(--terminal-border, var(--line)); }
+.provision-terminal { height: 300px; margin: 8px 0 0 24px; border-radius: var(--radius-surface); overflow: hidden; border: 1px solid var(--line); }
 .provision-output { margin: 8px 0 0 24px; }
 .provision-error { margin: 8px 0 0 24px; white-space: pre-wrap; }

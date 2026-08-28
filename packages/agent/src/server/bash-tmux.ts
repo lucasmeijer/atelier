@@ -30,7 +30,7 @@ import { Type } from "typebox";
 /**
  * Bash tool that runs commands inside the workspace container under a PTY,
  * via a marked tmux session. Display is decoupled from execution: the browser
- * can attach an inline xterm to the tmux session while the command runs; the
+ * can attach an inline terminal to the tmux session while the command runs; the
  * tool result is captured from tmux's rendered scrollback and active screen.
  */
 

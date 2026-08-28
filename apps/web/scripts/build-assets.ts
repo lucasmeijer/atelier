@@ -18,6 +18,9 @@ const clientOnly = process.argv.includes("--client-only") && await Bun.file(mani
 type StaticFileRecord = [logicalPath: string, entry: StaticFileEntry];
 
 const manifest: AssetManifest = {};
+const staticFiles = Object.entries(fingerprintedStaticFiles).sort(([a], [b]) => a.localeCompare(b));
+const cssFiles = staticFiles.filter(([, entry]) => isCss(entry));
+const nonCssFiles = staticFiles.filter(([, entry]) => !isCss(entry));
 
 function contentHash(content: string | Uint8Array): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 12);
@@ -31,6 +34,12 @@ function fingerprintedPath(logicalPath: string, content: string | Uint8Array): s
 
 function isCss(entry: StaticFileEntry): boolean {
   return entry.contentType.toLowerCase().startsWith("text/css");
+}
+
+function requiredAssetPath(logicalPath: string): string {
+  const path = manifest[logicalPath];
+  if (!path) throw new Error(`missing built asset path for ${logicalPath}`);
+  return path;
 }
 
 function rewriteAssetReferences(content: string, assetManifest: AssetManifest): string {
@@ -55,6 +64,10 @@ async function buildClientEntrypoints(): Promise<void> {
       target: "browser",
       splitting: true,
       minify: true,
+      define: {
+        ATELIER_GHOSTTY_WASM_URL: JSON.stringify(requiredAssetPath("/ghostty-vt.wasm")),
+        ATELIER_GHOSTTY_CALLBACKS_WASM_URL: JSON.stringify(requiredAssetPath("/ghostty-callbacks.wasm")),
+      },
       naming: {
         entry: "[name]-[hash].[ext]",
         chunk: "[name]-[hash].[ext]",
@@ -109,6 +122,19 @@ async function fingerprintCssAssets(cssFiles: StaticFileRecord[]): Promise<Map<s
   throw new Error(`CSS asset manifest did not stabilize after ${maxCssManifestPasses} passes`);
 }
 
+async function publishGespenstWorker(): Promise<void> {
+  // Gespenst resolves `assets/terminal-worker-*.js` relative to our `/assets/` client bundle.
+  const packageJson = new URL(import.meta.resolve("@gespenst/core/package.json"));
+  const packageAssets = new URL("./dist/assets/", packageJson);
+  const workers = (await readdir(packageAssets)).filter((name) => /^terminal-worker-[\w-]+\.js$/.test(name));
+  if (workers.length !== 1) throw new Error(`expected exactly one Gespenst terminal worker, got ${workers.length}`);
+  const content = new Uint8Array(await Bun.file(new URL(workers[0]!, packageAssets)).arrayBuffer());
+  const workerDir = new URL("./assets/", assetsDir);
+  await mkdir(workerDir, { recursive: true });
+  await Bun.write(new URL(workers[0]!, workerDir), content);
+  await Bun.write(new URL(`${workers[0]!}.gz`, workerDir), gzipSync(content, { level: 9 }));
+}
+
 async function publishStagedAssets(): Promise<void> {
   await mkdir(assetsDir, { recursive: true });
   for (const entry of await readdir(stagingDir, { withFileTypes: true })) {
@@ -131,18 +157,12 @@ await rm(stagingDir, { recursive: true, force: true });
 await mkdir(stagingDir, { recursive: true });
 
 try {
-  if (clientOnly) {
-    Object.assign(manifest, parseAssetManifest(await Bun.file(manifestUrl).text()));
-  }
+  if (clientOnly) Object.assign(manifest, parseAssetManifest(await Bun.file(manifestUrl).text()));
+  else for (const [logicalPath, entry] of nonCssFiles) await copyBinaryAsset(logicalPath, entry.url);
+
   await buildClientEntrypoints();
 
   if (!clientOnly) {
-    const staticFiles = Object.entries(fingerprintedStaticFiles).sort(([a], [b]) => a.localeCompare(b));
-    const cssFiles = staticFiles.filter(([, entry]) => isCss(entry));
-    const nonCssFiles = staticFiles.filter(([, entry]) => !isCss(entry));
-
-    for (const [logicalPath, entry] of nonCssFiles) await copyBinaryAsset(logicalPath, entry.url);
-
     const cssAssets = await fingerprintCssAssets(cssFiles);
     for (const [logicalPath, content] of cssAssets) {
       await Bun.write(new URL(manifest[logicalPath]!.replace("/assets/", ""), stagingDir), content);
@@ -150,6 +170,7 @@ try {
   }
 
   await compressStagedAssets();
+  await publishGespenstWorker();
   await publishStagedAssets();
 
   for (const [logicalPath, publicPath] of Object.entries(manifest).sort()) {

@@ -1391,7 +1391,7 @@ function createAgentLazyDetailController(Controller: StimulusControllerConstruct
 }
 
 // ---------------------------------------------------------------------------
-// agent-term: inline read-only xterm attached to an agent tmux session
+// agent-term: inline read-only terminal attached to an agent tmux session
 // ---------------------------------------------------------------------------
 
 export function forwardAgentTerminalWheel<T extends Pick<HTMLElement, "scrollTop" | "clientHeight">>(

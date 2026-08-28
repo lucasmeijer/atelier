@@ -838,7 +838,7 @@ function toolResultImagesHtml(ctx: AgentRenderContext, tool: ToolView): string {
   }).join("")}</div>`;
 }
 
-// Keep completed Bash output aligned with the same theme palette as its live xterm.
+// Keep completed Bash output aligned with the same theme palette as its live terminal.
 const ansi16 = [
   "var(--panel)", "var(--danger)", "var(--success)", "var(--warning)", "var(--accent)", "var(--decorative)", "var(--accent)", "var(--text-bright)",
   "var(--line-strong)", "var(--danger)", "var(--success)", "var(--warning)", "var(--accent)", "var(--decorative)", "var(--accent)", "var(--text-bright)",

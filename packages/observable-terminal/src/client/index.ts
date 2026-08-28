@@ -1,16 +1,14 @@
 /// <reference lib="dom" />
 
-import { FitAddon } from "@xterm/addon-fit";
-import { ProgressAddon } from "@xterm/addon-progress";
-import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { Terminal } from "@xterm/xterm";
+import { createTerminal, type TerminalTheme } from "@gespenst/core";
 import { encodeObservableTerminalMessage } from "../shared/index.ts";
 
-export interface ObservableTerminalTheme {
-  [color: string]: string;
-}
+declare const ATELIER_GHOSTTY_WASM_URL: string;
+declare const ATELIER_GHOSTTY_CALLBACKS_WASM_URL: string;
 
-export const DEFAULT_OBSERVABLE_TERMINAL_THEME = {
+export type ObservableTerminalTheme = TerminalTheme;
+
+const DEFAULT_OBSERVABLE_TERMINAL_THEME = {
   background: "#2e3440",
   foreground: "#d8dee9",
   cursor: "#d8dee9",
@@ -27,7 +25,7 @@ function themeColor(name: string, fallbackKey: keyof typeof DEFAULT_OBSERVABLE_T
   return cssVariable(name) ?? DEFAULT_OBSERVABLE_TERMINAL_THEME[fallbackKey];
 }
 
-/** Map Atelier's active UI theme onto xterm's complete 16-color ANSI palette. */
+/** Map Atelier's active UI theme onto Gespenst's complete 16-color ANSI palette. */
 export function atelierObservableTerminalTheme(): ObservableTerminalTheme {
   const background = themeColor("--bg", "background");
   const foreground = themeColor("--text", "foreground");
@@ -73,36 +71,22 @@ export interface ObservableTerminalViewerOptions {
   mode: "interactive" | "fixed-readonly";
   cols?: number;
   rows?: number;
-  focus?: boolean;
   fontSize?: number;
   fontFamily?: string;
-  scrollback?: number;
   theme?: ObservableTerminalTheme;
-  loadFont?: boolean;
   disconnectedMessage?: string;
   errorMessage?: string;
   transformInput?: (data: string) => string;
-  onProgress?: (progress: { state: number; value?: number }) => void;
   onOutput?: (text: string) => void;
-  onClose?: () => void;
 }
 
-function observableTerminalOutput(data: string | ArrayBuffer, decoder: TextDecoder) {
-  if (data instanceof ArrayBuffer) {
-    const bytes = new Uint8Array(data);
-    return { terminalData: bytes, text: decoder.decode(bytes, { stream: true }) };
-  }
-  return { terminalData: data, text: data };
-}
-
-export function applyObservableTerminalChromeTheme(theme: ObservableTerminalTheme = DEFAULT_OBSERVABLE_TERMINAL_THEME): void {
-  document.documentElement.style.setProperty("--terminal-bg", theme.background);
-  document.documentElement.style.setProperty("--terminal-fg", theme.foreground);
-  document.documentElement.style.setProperty("--terminal-cursor", theme.cursor);
-  document.documentElement.style.setProperty("--terminal-bar-bg", theme.black);
-  document.documentElement.style.setProperty("--terminal-bar-fg", theme.brightBlue ?? theme.foreground);
-  document.documentElement.style.setProperty("--terminal-border", theme.brightBlack ?? theme.black);
-}
+const terminalProgressState = {
+  remove: 0,
+  set: 1,
+  error: 2,
+  indeterminate: 3,
+  pause: 4,
+} as const;
 
 export function observableWebSocketUrl(path: string): string {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
@@ -113,46 +97,23 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
   const theme = options.theme ?? DEFAULT_OBSERVABLE_TERMINAL_THEME;
   const fontSize = options.fontSize ?? (options.mode === "fixed-readonly" ? 11 : 13);
   const fontFamily = options.fontFamily ?? "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
-  if (options.loadFont !== false) await document.fonts.load(`${fontSize}px "JetBrains Mono"`);
 
-  const terminalOptions: ConstructorParameters<typeof Terminal>[0] = {
-    allowProposedApi: options.mode === "interactive",
-    cursorBlink: options.mode === "interactive",
-    disableStdin: options.mode === "fixed-readonly",
-    fontSize,
+  const term = await createTerminal({
+    container: options.host,
+    fontSizePx: fontSize,
     fontFamily,
-    logLevel: "error",
-    scrollback: options.scrollback ?? (options.mode === "fixed-readonly" ? 4000 : 10000),
+    scrollbackLines: options.mode === "fixed-readonly" ? 4000 : 10000,
     theme,
-  };
-  if (options.cols !== undefined) terminalOptions.cols = options.cols;
-  if (options.rows !== undefined) terminalOptions.rows = options.rows;
-
-  const term = new Terminal(terminalOptions);
-  if (options.mode === "fixed-readonly") term.attachCustomKeyEventHandler(() => false);
-
-  let fit: FitAddon | undefined;
-  let progress: ProgressAddon | undefined;
-  let progressSubscription: { dispose(): void } | undefined;
-  let resizeObserver: ResizeObserver | undefined;
-
-  if (options.mode === "interactive") {
-    fit = new FitAddon();
-    progress = new ProgressAddon();
-    const unicode11 = new Unicode11Addon();
-    term.loadAddon(fit);
-    term.loadAddon(progress);
-    term.loadAddon(unicode11);
-    term.unicode.activeVersion = "11";
-  }
-
-  term.open(options.host);
-  fit?.fit();
-
-  if (options.mode === "interactive" && fit) {
-    resizeObserver = new ResizeObserver(() => fit?.fit());
-    resizeObserver.observe(options.host);
-  }
+    accessibility: "basic",
+    worker: "dedicated",
+    defaultCursorBlink: options.mode === "interactive",
+    wasm: ATELIER_GHOSTTY_WASM_URL,
+    callbacksWasm: ATELIER_GHOSTTY_CALLBACKS_WASM_URL,
+    cols: options.cols,
+    rows: options.rows,
+  });
+  const terminalInput = term.element.querySelector<HTMLTextAreaElement>(".gespenst__input");
+  if (terminalInput && options.mode === "fixed-readonly") terminalInput.readOnly = true;
 
   const ws = new WebSocket(options.websocketUrl);
   ws.binaryType = "arraybuffer";
@@ -160,33 +121,41 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
     if (ws.readyState === WebSocket.OPEN) ws.send(data);
   };
   const outputDecoder = new TextDecoder();
+  const inputDecoder = new TextDecoder();
+  term.on("error", (error) => console.error("Gespenst terminal error", error));
 
   if (options.mode === "interactive") {
-    if (progress) {
-      progressSubscription = progress.onChange(({ state, value }) => {
-        const event = { state, value };
-        options.onProgress?.(event);
-        if (ws.readyState === WebSocket.OPEN) ws.send(encodeObservableTerminalMessage({ type: "progress", ...event }));
-      });
-    }
-    term.onResize(({ cols, rows }) => {
+    term.on("progress", ({ state, progress }) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(encodeObservableTerminalMessage({ type: "progress", state: terminalProgressState[state], value: progress ?? undefined }));
+      }
+    });
+    term.on("resize", ({ cols, rows }) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(encodeObservableTerminalMessage({ type: "resize", cols, rows }));
     });
-    term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) sendInput(options.transformInput?.(data) ?? data);
+    term.on("input", ({ data }) => {
+      const text = inputDecoder.decode(data, { stream: true });
+      sendInput(options.transformInput?.(text) ?? text);
     });
   }
 
   ws.onopen = () => {
-    if (options.mode === "interactive") ws.send(encodeObservableTerminalMessage({ type: "resize", cols: term.cols, rows: term.rows }));
+    if (options.mode === "interactive") {
+      const { cols, rows } = term.geometry;
+      ws.send(encodeObservableTerminalMessage({ type: "resize", cols, rows }));
+    }
   };
   ws.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
-    const output = observableTerminalOutput(event.data, outputDecoder);
-    options.onOutput?.(output.text);
-    term.write(output.terminalData);
+    if (event.data instanceof ArrayBuffer) {
+      const data = new Uint8Array(event.data);
+      if (options.onOutput) options.onOutput(outputDecoder.decode(data, { stream: true }));
+      term.write(data);
+      return;
+    }
+    options.onOutput?.(event.data);
+    term.write(event.data);
   };
   ws.onclose = () => {
-    options.onClose?.();
     const message = options.disconnectedMessage;
     if (message) term.write(message);
   };
@@ -195,23 +164,16 @@ export async function createObservableTerminalViewer(options: ObservableTerminal
     if (message) term.write(message);
   };
 
-  const viewer: ObservableTerminalViewer = {
+  return {
     focus: () => term.focus(),
-    fitToHost: () => fit?.fit(),
+    fitToHost: () => term.fit(),
     sendInput,
-    setTheme: (nextTheme) => {
-      term.options.theme = nextTheme;
-    },
+    setTheme: (nextTheme) => void term.setTheme(nextTheme),
     dispose: () => {
       ws.onclose = null;
       ws.onerror = null;
       ws.close();
-      progressSubscription?.dispose();
-      resizeObserver?.disconnect();
-      fit?.dispose();
       term.dispose();
     },
   };
-  if (options.focus) term.focus();
-  return viewer;
 }

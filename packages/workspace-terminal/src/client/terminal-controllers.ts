@@ -1,10 +1,8 @@
 /// <reference lib="dom" />
 
 import {
-  applyObservableTerminalChromeTheme,
   atelierObservableTerminalTheme,
   createObservableTerminalViewer,
-  DEFAULT_OBSERVABLE_TERMINAL_THEME,
   observableWebSocketUrl,
   type ObservableTerminalTheme,
   type ObservableTerminalViewer,
@@ -18,8 +16,7 @@ const terminals = new Map<string, ObservableTerminalViewer>();
 const startingTerminals = new Set<string>();
 const pendingTerminalFocus = new Set<string>();
 const pendingTerminalControl = new Set<string>();
-let terminalThemeInitialized = false;
-let currentTerminalTheme: ObservableTerminalTheme = DEFAULT_OBSERVABLE_TERMINAL_THEME;
+let currentTerminalTheme: ObservableTerminalTheme;
 
 const terminalAccessoryInput = new Map([
   ["escape", "\x1b"],
@@ -50,16 +47,12 @@ function terminalKey(workspaceId: string, terminalId: string): string {
 
 function applyTerminalTheme(): void {
   currentTerminalTheme = atelierObservableTerminalTheme();
-  applyObservableTerminalChromeTheme(currentTerminalTheme);
   for (const terminal of terminals.values()) terminal.setTheme(currentTerminalTheme);
 }
 
 function initializeTerminalTheme(): void {
   applyTerminalTheme();
-  if (terminalThemeInitialized) return;
-  terminalThemeInitialized = true;
   document.addEventListener("atelier:theme-change", applyTerminalTheme);
-  new MutationObserver(applyTerminalTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 }
 
 function findTerminalPane(workspaceId: string, terminalId: string): HTMLElement | undefined {
@@ -174,7 +167,7 @@ function createTerminalPaneController(Controller: StimulusControllerConstructor)
     }
 
     private readonly syncKeyboardAccessory = (): void => {
-      const focused = this.element.contains(document.activeElement) && document.activeElement?.classList.contains("xterm-helper-textarea") === true;
+      const focused = this.element.contains(document.activeElement) && document.activeElement?.classList.contains("gespenst__input") === true;
       this.updateKeyboardAccessory(this.keyboardRequested && focused);
       if (!focused) this.keyboardRequested = false;
     };
