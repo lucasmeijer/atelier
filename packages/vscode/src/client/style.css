@@ -80,6 +80,5 @@
 
 .vscode-starting-subtitle {
   margin-top: var(--space-2xs);
-  font-size: var(--text-small);
   color: var(--text);
 }

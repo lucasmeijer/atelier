@@ -16,13 +16,13 @@
     a { color: inherit; }
 
     .catalogue-platform-bar { position: sticky; z-index: 10; top: 0; min-height: 52px; display: flex; align-items: center; justify-content: center; gap: var(--space-lg); padding: var(--space-md) var(--space-xl); border-bottom: 1px solid var(--line); background: var(--panel); }
-    .catalogue-platform-label { color: var(--text); font-size: var(--text-small); font-weight: var(--weight-semibold); }
+    .catalogue-platform-label { color: var(--text); font-weight: var(--weight-semibold); }
     .catalogue-platform-selector { display: inline-flex; gap: var(--space-xs); padding: var(--space-xs); border: 1px solid var(--line); border-radius: var(--radius-round); background: var(--bg); }
     .catalogue-platform-selector .button { border-color: transparent; background: transparent; }
     .catalogue-platform-selector .button[aria-pressed="true"] { border-color: var(--button-border); background: var(--elev); color: var(--text-bright); box-shadow: 0 1px 3px color-mix(in srgb, var(--text-bright) 12%, transparent); }
     .catalogue-platform-stage { height: calc(100dvh - 52px); overflow: auto; background: color-mix(in srgb, var(--bg) 86%, var(--text-bright)); }
-    .catalogue-preview { min-height: 100%; margin: 0 auto; background: var(--bg); box-shadow: 0 0 0 1px var(--line-strong); }
-    .catalogue-preview[data-platform="mobile"] { width: min(390px, 100%); --text-small: 14px; --text-body: 16px; --text-title: 18px; }
+    .catalogue-preview { min-height: 100%; margin: 0 auto; background: var(--bg); box-shadow: 0 0 0 1px var(--line-strong); font-size: var(--text-body); }
+    .catalogue-preview[data-platform="mobile"] { width: min(390px, 100%); --text-body: 16px; --text-title: 18px; }
     .catalogue-preview[data-platform="desktop"] { width: min(1024px, 100%); }
 
     .catalogue-preview[data-platform="mobile"] .button { height: 44px; padding-inline: var(--space-xl); }
@@ -48,11 +48,11 @@
 
     .catalogue-main { min-width: 0; }
     .catalogue-hero { padding: 72px clamp(24px, 6vw, 88px) 56px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 72%, var(--bg)); }
-    .catalogue-eyebrow { color: var(--accent); font-size: var(--text-small); font-weight: var(--weight-bold); letter-spacing: .08em; text-transform: uppercase; }
+    .catalogue-eyebrow { color: var(--accent); font-weight: var(--weight-bold); letter-spacing: .08em; text-transform: uppercase; }
     .catalogue-hero h1 { max-width: 680px; margin: var(--space-lg) 0; font-size: clamp(var(--text-title), 4vw, 42px); line-height: var(--leading-tight); letter-spacing: -.04em; }
     .catalogue-hero p { max-width: 640px; margin: 0; color: var(--text); font-size: var(--text-title); line-height: var(--leading-copy); }
     .catalogue-toolbar { display: flex; align-items: center; gap: var(--space-lg); margin-top: var(--space-2xl); }
-    .catalogue-field { display: flex; align-items: center; gap: var(--space-md); color: var(--text); font-size: var(--text-small); font-weight: var(--weight-semibold); }
+    .catalogue-field { display: flex; align-items: center; gap: var(--space-md); color: var(--text); font-weight: var(--weight-semibold); }
     .catalogue-theme-popup { width: 184px; }
     .catalogue-theme-dot { width: 9px; height: 9px; border-radius: var(--radius-round); background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
@@ -65,7 +65,7 @@
     .catalogue-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-lg); }
     .catalogue-card { min-width: 0; padding: var(--space-xl); border: 1px solid var(--line); border-radius: var(--radius-surface); background: var(--panel); }
     .catalogue-card.wide { grid-column: 1 / -1; }
-    .catalogue-card-title { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); margin-bottom: var(--space-xl); color: var(--text); font-size: var(--text-small); font-weight: var(--weight-semibold); }
+    .catalogue-card-title { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); margin-bottom: var(--space-xl); color: var(--text); font-weight: var(--weight-semibold); }
     .catalogue-card-title code { color: var(--text-muted); font-weight: var(--weight-medium); }
     .catalogue-demo { min-height: 112px; padding: var(--space-xl); border: 1px dashed var(--line-strong); border-radius: var(--radius-control); background: var(--bg); }
     .catalogue-note { margin-top: var(--space-lg); color: var(--text-muted); font-size: var(--text-body); }
@@ -115,7 +115,7 @@
 
     .field-stack { display: grid; gap: var(--space-xl); }
     .field-specimen { display: grid; gap: var(--space-sm); }
-    .field-specimen label { color: var(--text); font-size: var(--text-small); font-weight: var(--weight-semibold); }
+    .field-specimen label { color: var(--text); font-weight: var(--weight-semibold); }
     .field-state-label { color: var(--text-muted); font: var(--text-body)/var(--leading-standard) var(--font-mono); }
 
     .action-stack { display: grid; max-width: 360px; }
@@ -125,7 +125,7 @@
     .catalogue-demo .action-item__label-text { line-height: var(--leading-standard); }
     .catalogue-demo details summary { list-style: none; }
     .catalogue-demo details summary::-webkit-details-marker { display: none; }
-    .detail-copy { margin: var(--space-sm) var(--space-xl) var(--space-md) 28px; color: var(--text); font-size: var(--text-small); }
+    .detail-copy { margin: var(--space-sm) var(--space-xl) var(--space-md) 28px; color: var(--text); }
     .truncate-demo { width: 230px; }
     .catalogue-dialog { position: static; width: min(520px, 100%); }
 
@@ -210,10 +210,9 @@
 
       <div class="catalogue-content">
         <section class="catalogue-section" id="typography">
-          <div class="catalogue-section-head"><h2>Typography</h2><p>A small, deliberate scale keeps operational interfaces dense. Sans is for interface copy; mono is reserved for code, paths, and measured data. The reusable title style carries no surrounding space, so its composition controls the gap to adjacent content.</p></div>
+          <div class="catalogue-section-head"><h2>Typography</h2><p>A deliberate type scale keeps operational interfaces consistent. Sans is for interface copy; mono is reserved for code, paths, and measured data. The reusable title style carries no surrounding space, so its composition controls the gap to adjacent content.</p></div>
           <article class="catalogue-card">
             <div class="type-list">
-              <div class="type-row"><span class="type-meta">small · 12</span><span class="type-sample" style="--sample-size:var(--text-small)">Secondary controls and metadata</span></div>
               <div class="type-row"><span class="type-meta">body · 14</span><span class="type-sample" style="--sample-size:var(--text-body)">The agent has finished implementing the workspace.</span></div>
               <div class="type-row"><span class="type-meta">.title · 16/700</span><span class="title">Workspace settings</span></div>
               <div class="type-row"><span class="type-meta">mono · 14</span><span class="type-sample mono" style="--sample-size:var(--text-body)">apps/web/src/server/app.ts:324</span></div>

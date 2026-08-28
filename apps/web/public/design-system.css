@@ -19,7 +19,6 @@
   --font-sans: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
 
-  --text-small: 12px;
   --text-body: 14px;
   --text-title: 16px;
 
@@ -79,7 +78,6 @@
 /* Phone layouts favor legibility and comfortable touch targets over density. */
 @media (max-width: 700px) {
   :root {
-    --text-small: 14px;
     --text-body: 16px;
     --text-title: 18px;
   }
@@ -196,10 +194,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   border-radius: var(--radius-round);
   background: var(--button-background);
   color: var(--button-foreground);
-  font: inherit;
-  font-size: var(--text-small);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-standard);
+  font: 400 var(--text-body)/var(--leading-standard) var(--font-sans);
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
@@ -268,10 +263,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   outline: none;
   background: transparent;
   color: var(--text);
-  font: inherit;
-  font-size: var(--text-small);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-standard);
+  font: 400 var(--text-body)/var(--leading-standard) var(--font-sans);
   white-space: nowrap;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
@@ -531,7 +523,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   background: var(--elev);
   color: var(--text-bright);
   box-shadow: var(--shadow);
-  font: var(--text-small)/var(--leading-standard) var(--font-sans);
+  font: var(--text-body)/var(--leading-standard) var(--font-sans);
 }
 .popup-menu[hidden] { display: none; }
 .popup-menu .action-item { border-radius: var(--radius-round); font-weight: var(--weight-semibold); }
@@ -595,7 +587,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .status-list__item { display: flex; align-items: center; gap: var(--space-md); color: var(--text); font-size: var(--text-body); }
 .status-list__item[aria-checked="true"],
 .status-list__item[data-status="failed"] { color: var(--text-bright); }
-.status-list__marker { width: 20px; height: 20px; box-sizing: border-box; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius-round); background: transparent; color: var(--text-muted); font-size: var(--text-small); font-weight: var(--weight-bold); }
+.status-list__marker { width: 20px; height: 20px; box-sizing: border-box; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius-round); background: transparent; color: var(--text-muted); font-weight: var(--weight-bold); }
 .status-list__item[aria-checked="true"] .status-list__marker { border-color: var(--accent); color: var(--accent); }
 .status-list__item[data-status="failed"] .status-list__marker { border-color: var(--danger); color: var(--danger); }
 .status-list__item[aria-busy="true"] .status-list__marker { border-color: var(--line-strong); border-top-color: var(--accent); color: transparent; animation: status-list-marker-spin 750ms linear infinite; }
@@ -608,14 +600,14 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .managed-list__item { min-width: 0; min-height: 52px; display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) var(--space-lg); color: var(--text); }
 .managed-list__item + .managed-list__item { border-top: 1px solid var(--line); }
 .managed-list__item[hidden] { display: none; }
-.managed-list__empty { padding: var(--space-2xl); color: var(--text); font-size: var(--text-small); text-align: center; }
+.managed-list__empty { padding: var(--space-2xl); color: var(--text); text-align: center; }
 .managed-list__item:focus-within { background: var(--accent-soft); }
 .managed-list__visual { flex: 0 0 auto; }
 .managed-list__content { min-width: 0; flex: 1; }
 .managed-list__label { display: flex; align-items: center; gap: var(--space-md); overflow: hidden; color: var(--text-bright); font-weight: var(--weight-semibold); }
 .managed-list__label-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.managed-list__description { overflow: hidden; color: var(--text); font-size: var(--text-small); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
-.managed-list__meta { flex: 0 0 auto; color: var(--text); font-size: var(--text-small); white-space: nowrap; }
+.managed-list__description { overflow: hidden; color: var(--text); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
+.managed-list__meta { flex: 0 0 auto; color: var(--text); white-space: nowrap; }
 .managed-list__actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-md); }
 .managed-list__actions > form { display: flex; margin: 0; }
 .managed-list__item[aria-disabled="true"] { opacity: .68; }

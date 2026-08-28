@@ -204,7 +204,7 @@
  * ------------------------------------------------------------------------ */
 
 
-.agent-project-preparation-notice { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-lg); box-sizing: border-box; padding: var(--space-xl) var(--space-xl) var(--space-lg); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); color: var(--text); font-size: var(--text-small); line-height: var(--leading-standard); }
+.agent-project-preparation-notice { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-lg); box-sizing: border-box; padding: var(--space-xl) var(--space-xl) var(--space-lg); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); color: var(--text); line-height: var(--leading-standard); }
 .agent-project-preparation-notice b, .agent-project-preparation-notice span { display: block; }
 .agent-project-preparation-notice b { color: var(--text-bright); font-size: var(--text-body); margin-bottom: var(--space-2xs); }
 .agent-project-preparation-notice code { color: var(--text-bright); }
@@ -316,20 +316,20 @@
 .agent-pane-composer-overlays .agent-completion-menu-host { position: static; width: 100%; pointer-events: auto; }
 .agent-completion-menu-host[hidden] { display: none; }
 .agent-completion-menu { max-height: 260px; overflow: auto; padding: var(--space-xs); background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius-surface); }
-.agent-completion-menu.empty { padding: var(--space-md) var(--space-md); color: var(--text-muted); font-size: var(--text-small); }
+.agent-completion-menu.empty { padding: var(--space-md) var(--space-md); color: var(--text-muted); }
 .agent-completion-spinner { display: inline-block; width: 12px; height: 12px; margin-right: var(--space-md); vertical-align: -2px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: agent-spin .75s linear infinite; }
 @keyframes agent-spin { to { transform: rotate(360deg); } }
 .agent-completion-option { width: 100%; display: grid; gap: var(--space-md); align-items: baseline; padding: var(--space-sm) var(--space-md); border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text-bright); font: inherit; text-align: left; cursor: pointer; }
 .agent-template-option.visible { background: var(--accent-soft); color: var(--text-bright); }
 .agent-template-option { grid-template-columns: auto auto minmax(0, 1fr); }
-.agent-template-name { font-family: var(--font-mono); font-size: var(--text-small); font-weight: var(--weight-bold); color: var(--accent); }
+.agent-template-name { font-family: var(--font-mono); font-weight: var(--weight-bold); color: var(--accent); }
 .agent-template-args { font-family: var(--font-mono); font-size: var(--text-body); color: var(--text-muted); white-space: nowrap; }
-.agent-template-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: var(--text-small); }
-.agent-template-preview { margin: 0; padding: var(--space-lg); white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--text-small); line-height: var(--leading-standard); color: var(--text-bright); background: var(--panel); }
+.agent-template-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.agent-template-preview { margin: 0; padding: var(--space-lg); white-space: pre-wrap; font-family: var(--font-mono); line-height: var(--leading-standard); color: var(--text-bright); background: var(--panel); }
 .atelier-fullscreen-html .agent-template-preview { max-width: 980px; margin: 0 auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-surface); }
 .agent-file-option { grid-template-columns: 14px minmax(0, 1fr); }
 .agent-file-icon { color: var(--text-muted); text-align: center; }
-.agent-file-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: var(--text-small); font-weight: var(--weight-semibold); }
+.agent-file-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-weight: var(--weight-semibold); }
 /* Composer footer */
 .composer-footer { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: 32px; display: flex; align-items: center; gap: var(--space-md); overflow: hidden; padding: 0 var(--space-lg); border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 72%, transparent); font: inherit; }
 .agent-stat { height: 24px; display: inline-flex; align-items: center; gap: var(--space-xs); line-height: 24px; white-space: nowrap; }
