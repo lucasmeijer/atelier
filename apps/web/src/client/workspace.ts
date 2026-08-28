@@ -1705,6 +1705,51 @@ class GitIdentityController extends Controller {
   }
 }
 
+class SettingsPrefetchController extends Controller {
+  private prefetched?: Promise<string>;
+  private expiresAt = 0;
+
+  prefetch(): void {
+    void this.settingsHtml().catch((error) => console.error("Settings prefetch failed", error));
+  }
+
+  async open(event: Event): Promise<void> {
+    event.preventDefault();
+    const html = await this.settingsHtml();
+    this.prefetched = undefined;
+    this.expiresAt = 0;
+    window.Turbo?.renderStreamMessage(html);
+  }
+
+  private settingsHtml(): Promise<string> {
+    if (this.prefetched && this.expiresAt > Date.now()) return this.prefetched;
+    this.expiresAt = Date.now() + 10_000;
+    this.prefetched = fetch("/settings", { headers: { Accept: "text/vnd.turbo-stream.html" } }).then(async (response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.text();
+    }).catch((error) => {
+      this.prefetched = undefined;
+      this.expiresAt = 0;
+      throw error;
+    });
+    return this.prefetched;
+  }
+}
+
+class ServerFilterController extends Controller {
+  private timer?: ReturnType<typeof setTimeout>;
+
+  disconnect(): void {
+    if (this.timer) clearTimeout(this.timer);
+  }
+
+  submit(): void {
+    if (this.timer) clearTimeout(this.timer);
+    // SAFETY: The controller is attached only to the server-rendered model catalogue filter form.
+    this.timer = setTimeout(() => (this.element as HTMLFormElement).requestSubmit(), 200);
+  }
+}
+
 class ModelCatalogueController extends Controller {
   private observer?: MutationObserver;
 
@@ -1729,6 +1774,8 @@ class ModelCatalogueController extends Controller {
     });
     if (current.every((group, index) => group === sorted[index])) return;
     for (const group of sorted) items.append(group);
+    const more = items.querySelector<HTMLElement>(":scope > .model-catalogue-more");
+    if (more) items.append(more);
   }
 }
 
@@ -2003,6 +2050,8 @@ application.register("theme-select", ThemeSelectController);
 application.register("oauth-flow", OAuthFlowController);
 application.register("git-identity", GitIdentityController);
 application.register("settings-autosave", SettingsAutosaveController);
+application.register("settings-prefetch", SettingsPrefetchController);
+application.register("server-filter", ServerFilterController);
 application.register("model-catalogue", ModelCatalogueController);
 application.register("onboarding", OnboardingController);
 application.register("clipboard", ClipboardController);

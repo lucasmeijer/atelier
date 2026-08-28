@@ -69,7 +69,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(drawerProjects).not.toContain('data-project-id="__projectless__"');
     expect(drawerProjects).not.toContain('fixed-shell-project-settings" href="/projects/new/editor"');
     expect(html.indexOf('class="fixed-shell-projects-drawer')).toBeLessThan(html.indexOf("<footer>"));
-    expect(html).toContain('<a class="action-item action-item__primary" href="/settings" data-turbo-frame="_top" data-turbo-stream="true"><span class="action-item__label"><span class="action-item__label-text">Settings</span></span></a>');
+    expect(html).toContain('<a class="action-item action-item__primary" href="/settings" data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open"><span class="action-item__label"><span class="action-item__label-text">Settings</span></span></a>');
     expect(html).not.toContain("New Project");
     expect(html).toContain('class="fixed-shell-workspace-row action-item action-item__primary active"');
     expect(html).not.toContain("fixed-shell-workspace-color");

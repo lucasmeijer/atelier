@@ -201,11 +201,19 @@ describe("web app contracts", () => {
       expect(body).toContain('class="managed-list__actions ');
       expect(body).toContain('action="/settings/models/add"');
       expect(body).toContain('action="/settings/models/remove"');
-      expect(body).toContain("Already added");
       expect(body).toContain("Disconnect provider");
       expect(body).toContain("Add API key");
       expect(body).not.toContain("settings-btn");
       expect(body).not.toContain("settings-button");
+      expect(body.match(/class="managed-list__item" data-search-text=/g)?.length).toBe(50);
+      expect(body).toContain('<div class="managed-list__item model-catalogue-more" role="status" aria-disabled="true">Many results, use the filter box</div>');
+
+      const filteredResponse = await app.fetch(new Request(`http://test.local/settings/models/catalogue?surface=settings&q=${encodeURIComponent(catalogueModel.id)}`));
+      const filteredBody = await filteredResponse.text();
+      expect(filteredBody).toContain(`<turbo-frame id="model_catalogue_results_settings" class="model-catalogue-results">`);
+      expect(filteredBody).toContain('<div class="model-catalogue-loading" role="status"><span class="status-spinner" aria-hidden="true"></span>Filtering models…</div>');
+      expect(filteredBody).toContain(catalogueModel.id);
+      expect(filteredBody.match(/class="managed-list__item" data-search-text=/g)?.length ?? 0).toBeLessThanOrEqual(50);
 
       const apiKeyDialogResponse = await app.fetch(post(`/settings/providers/${catalogueModel.provider}/flow?method=api_key`));
       const apiKeyDialogBody = await apiKeyDialogResponse.text();

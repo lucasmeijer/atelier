@@ -211,7 +211,7 @@ export function renderWorkspacePaneCollections(presentation: WorkspacePanePresen
 export function renderWorkspacePane(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
   return `<aside class="fixed-shell-workspace-pane" aria-label="Workspaces">
     ${renderWorkspacePaneCollections(presentation, sidebarContributionsHtml)}
-    <footer><a class="action-item action-item__primary" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">${actionItemLabel("Settings")}</a></footer>
+    <footer><a class="action-item action-item__primary" href="/settings" data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open">${actionItemLabel("Settings")}</a></footer>
   </aside>`;
 }
 

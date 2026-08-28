@@ -30,6 +30,7 @@ class ManagedListController extends Controller<HTMLElement> {
   private input?: HTMLInputElement;
 
   connect(): void {
+    if (this.element.dataset.managedListServerFilter === "true") return;
     this.input = this.element.querySelector<HTMLInputElement>(".managed-list__filter input") ?? undefined;
     if (!this.input) return;
     this.input.addEventListener("input", this.filter);

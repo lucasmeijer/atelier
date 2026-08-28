@@ -260,13 +260,38 @@ function catalogueModelRow(model: ModelCatalogueEntry, provider: ProviderSummary
   </div>`;
 }
 
-function renderModelCatalogue(data: ModelSetupData, surface: ModelSetupSurface): string {
+const modelCatalogueLimit = 50;
+
+function modelCatalogueFrameId(surface: ModelSetupSurface): string {
+  return domId("model_catalogue_results", surface);
+}
+
+function renderModelCatalogueResults(data: ModelSetupData, surface: ModelSetupSurface, query: string): string {
+  const normalizedQuery = query.trim().toLowerCase();
+  const matchingModels = normalizedQuery
+    ? data.models.filter((model) => `${model.label} ${model.provider} ${model.id} ${data.providers.get(model.provider)?.label ?? ""}`.toLowerCase().includes(normalizedQuery))
+    : data.models;
+  const visibleModels = matchingModels.slice(0, modelCatalogueLimit);
   const groups = [...data.providers.values()].map((provider) => {
-    const models = data.models.filter((model) => model.provider === provider.provider);
+    const models = visibleModels.filter((model) => model.provider === provider.provider);
     if (!models.length) return "";
     return `<div class="model-provider-group" data-provider-label="${escapeHtml(provider.label.toLowerCase())}">${providerState(provider)}${catalogueProviderForms(provider, surface)}${models.map((model) => catalogueModelRow(model, provider, surface)).join("")}</div>`;
   }).join("");
-  return managedList(groups, { label: "Filter available models", placeholder: "Filter models and providers…", emptyMessage: "No matching models." });
+  const remaining = matchingModels.length - visibleModels.length;
+  const more = remaining > 0 ? `<div class="managed-list__item model-catalogue-more" role="status" aria-disabled="true">Many results, use the filter box</div>` : "";
+  const empty = matchingModels.length ? "" : `<div class="managed-list__empty">No matching models.</div>`;
+  return `<turbo-frame id="${modelCatalogueFrameId(surface)}" class="model-catalogue-results"><div class="model-catalogue-loading" role="status"><span class="status-spinner" aria-hidden="true"></span>Filtering models…</div><div class="managed-list__items">${groups}${more}</div>${empty}</turbo-frame>`;
+}
+
+function renderModelCatalogue(data: ModelSetupData, surface: ModelSetupSurface): string {
+  const frameId = modelCatalogueFrameId(surface);
+  return `<div class="managed-list" data-managed-list-server-filter="true">
+    <form class="managed-list__filter" method="get" action="/settings/models/catalogue" data-controller="server-filter" data-action="input->server-filter#submit" data-turbo-frame="${frameId}">
+      <input type="hidden" name="surface" value="${surface}">
+      <input class="text-field" type="search" name="q" placeholder="Filter models and providers…" aria-label="Filter available models" autocomplete="off">
+    </form>
+    ${renderModelCatalogueResults(data, surface, "")}
+  </div>`;
 }
 
 function renderModelSetupData(data: ModelSetupData, surface: ModelSetupSurface): string {
@@ -553,6 +578,12 @@ export async function handleSettingsRequest(request: Request, url: URL, options:
   if (url.pathname === "/settings" && request.method === "GET") {
     const html = await renderSettingsDialog(url.searchParams.get("section") ?? "theme");
     return wantsStream(request) ? stream(update("settings_modal_host", html)) : response(html);
+  }
+  if (url.pathname === "/settings/models/catalogue" && request.method === "GET") {
+    const requestedSurface = url.searchParams.get("surface") ?? "settings";
+    const surface = modelSetupSurfaces.find((candidate) => candidate === requestedSurface);
+    if (!surface) return response("Unknown model catalogue surface", { status: 400 });
+    return response(renderModelCatalogueResults(await modelSetupData(), surface, url.searchParams.get("q") ?? ""));
   }
   if (url.pathname === "/settings/models/dialog" && request.method === "GET") {
     return wantsStream(request) ? stream(update("settings_modal_host", await renderModelSetupDialog())) : response(await renderModelSetupDialog());

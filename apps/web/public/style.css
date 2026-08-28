@@ -506,6 +506,10 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .model-provider-group:has(> .model-provider-state[data-connected="true"]) .model-catalogue-action .model-provider-disconnected-actions { display: none; }
 .configured-model-row .model-provider-actions:has(.model-provider-state[data-disconnectable="false"]) .model-provider-connected-actions { display: none; }
 .model-provider-group + .model-provider-group .managed-list__item:first-of-type { border-top: 1px solid var(--line); }
+.model-catalogue-loading { display: none; align-items: center; justify-content: center; gap: var(--space-sm); padding: var(--space-md); border-bottom: 1px solid var(--line); color: var(--text); }
+.model-catalogue-results[busy] > .model-catalogue-loading { display: flex; }
+.model-catalogue-results[busy] > .managed-list__items { opacity: .55; }
+.model-catalogue-more { justify-content: center; border-top: 1px solid var(--line); text-align: center; }
 .model-setup-dialog { width: min(820px, 96vw); }
 .model-setup-dialog .button.warning { color: var(--warning); background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 28%, var(--line)); }
 .model-provider-group:has(> .model-provider-state[data-connected="false"]) .settings-model-provider-icon,
