@@ -36,6 +36,7 @@ COPY packages/vscode/package.json packages/vscode/package.json
 COPY packages/proxy-egress/package.json packages/proxy-egress/package.json
 COPY packages/proxy-ingress/package.json packages/proxy-ingress/package.json
 COPY packages/review/package.json packages/review/package.json
+COPY packages/syntax/package.json packages/syntax/package.json
 COPY packages/transcription/package.json packages/transcription/package.json
 COPY packages/update/package.json packages/update/package.json
 
