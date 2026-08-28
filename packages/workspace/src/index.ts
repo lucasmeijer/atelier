@@ -11,6 +11,8 @@ import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPla
 export type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction, WorkspaceInitInstructionMap } from "./types.ts";
 
 export type {
+  WorkspaceAgentPromptPreparingEvent,
+  WorkspaceAgentPromptSubmittedEvent,
   WorkspaceAgentTurnFinishedEvent,
   WorkspaceCreatedEvent,
   WorkspaceDeletedEvent,

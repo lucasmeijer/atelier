@@ -257,14 +257,17 @@ async function agentMessagesEndpoint(workspaceId: string, label: string, request
   const { images, attachmentNotes } = attachmentIds.length > 0
     ? await deliverAttachmentDraft(workspaceId, attachmentDraft, attachmentIds)
     : { images: [], attachmentNotes: [] };
-
-  const expandedText = await expandPromptTemplate(workspaceId, text);
+  const reviewCommentIds = (form?.getAll("reviewComment").map(String) ?? []).filter((id) => /^[a-f0-9-]{36}$/.test(id));
+  const sections: string[] = [];
+  if (reviewCommentIds.length) await options.events?.emit("workspace_agent_prompt_preparing", { workspaceId, reviewCommentIds, sections });
+  const expandedText = await expandPromptTemplate(workspaceId, [text, ...sections].filter((section) => section.trim()).join("\n\n"));
   const trimmed = expandedText.trim();
   if (trimmed) {
     await options.events?.emit("workspace_user_activity", { workspaceId });
     maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), trimmed], { events: options.events, agentModel: runtime.currentModel() });
   }
   await runtime.submit(expandedText, { mode, images, attachmentNotes });
+  if (reviewCommentIds.length) await options.events?.emit("workspace_agent_prompt_submitted", { workspaceId, reviewCommentIds });
   if (trimmed) await removeInitialPromptDraft(workspaceId);
   return json ? Response.json({ agent: { label, state: "running" } }, { status: 202 }) : turboStreamResponse("");
 }

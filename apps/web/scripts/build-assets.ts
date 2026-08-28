@@ -53,6 +53,7 @@ async function buildClientEntrypoints(): Promise<void> {
       outdir: stagingDir.pathname,
       format: "esm",
       target: "browser",
+      splitting: true,
       minify: true,
       naming: {
         entry: "[name]-[hash].[ext]",
@@ -67,9 +68,9 @@ async function buildClientEntrypoints(): Promise<void> {
     }
 
     const entryExtension = extname(logicalPath);
-    const outputs = build.outputs.filter((output) => extname(output.path) === entryExtension);
+    const outputs = build.outputs.filter((output) => output.kind === "entry-point" && extname(output.path) === entryExtension);
     if (outputs.length !== 1) {
-      throw new Error(`expected exactly one ${entryExtension} output for ${logicalPath}, got ${outputs.length}`);
+      throw new Error(`expected exactly one ${entryExtension} entry point for ${logicalPath}, got ${outputs.length}`);
     }
     manifest[logicalPath] = `/assets/${basename(outputs[0].path)}`;
   }

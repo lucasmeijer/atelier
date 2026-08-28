@@ -30,6 +30,17 @@ export interface WorkspaceAgentTurnFinishedEvent {
   agentLabel: string;
 }
 
+export interface WorkspaceAgentPromptPreparingEvent {
+  workspaceId: string;
+  reviewCommentIds: string[];
+  sections: string[];
+}
+
+export interface WorkspaceAgentPromptSubmittedEvent {
+  workspaceId: string;
+  reviewCommentIds: string[];
+}
+
 export interface WorkspaceViewUnreadEvent {
   workspaceId: string;
   viewKey: string;
@@ -58,6 +69,8 @@ declare module "@atelier/core" {
     workspace_user_activity: WorkspaceUserActivityEvent;
     workspace_title_changed: WorkspaceTitleChangedEvent;
     workspace_agent_turn_finished: WorkspaceAgentTurnFinishedEvent;
+    workspace_agent_prompt_preparing: WorkspaceAgentPromptPreparingEvent;
+    workspace_agent_prompt_submitted: WorkspaceAgentPromptSubmittedEvent;
     workspace_view_unread: WorkspaceViewUnreadEvent;
   }
 }
