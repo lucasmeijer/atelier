@@ -31,7 +31,7 @@ function renderDoneStep(items: Array<{ id: string; label: string; complete: bool
   const completed = items.filter((item) => item.complete).length;
   const allComplete = completed === items.length;
   const title = allComplete ? "You’re all set up and ready to start using Atelier" : `${completed}/${items.length} onboarding steps completed`;
-  return `<div data-onboarding-done-complete="${allComplete ? "true" : "false"}"><h2 class="title">${escapeHtml(title)}</h2><ul class="status-list">${items.map((item) => `<li class="status-list__item" role="checkbox" aria-checked="${item.complete ? "true" : "false"}" data-onboarding-check="${escapeHtml(item.id)}"><span class="status-list__marker">${item.complete ? "✓" : "○"}</span>${escapeHtml(item.label)}</li>`).join("")}</ul></div>`;
+  return `<div data-onboarding-done-complete="${allComplete ? "true" : "false"}"><h2 class="title">${escapeHtml(title)}</h2><ul class="status-list">${items.map((item) => `<li class="status-list__item" role="checkbox" aria-checked="${item.complete ? "true" : "false"}" data-onboarding-check="${escapeHtml(item.id)}"><span class="status-list__marker">${item.complete ? "✓" : ""}</span>${escapeHtml(item.label)}</li>`).join("")}</ul></div>`;
 }
 
 registerOnboardingContribution({ id: "github", label: "GitHub", order: 20, isComplete: async () => hasWorkspaceGitHubToken(), render: renderGithubStep });

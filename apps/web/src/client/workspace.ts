@@ -1778,7 +1778,7 @@ class OnboardingController extends Controller {
       const completeValue = complete ? "true" : "false";
       if (item.getAttribute("aria-checked") !== completeValue) item.setAttribute("aria-checked", completeValue);
       const marker = item.querySelector(".status-list__marker");
-      const markerText = complete ? "✓" : "○";
+      const markerText = complete ? "✓" : "";
       if (marker && marker.textContent !== markerText) marker.textContent = markerText;
     });
     const checks = Array.from(done.querySelectorAll<HTMLElement>("[data-onboarding-check]"));

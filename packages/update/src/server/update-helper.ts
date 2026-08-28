@@ -45,7 +45,7 @@ function setStep(id: string, status: Step["status"], log?: string): void {
 }
 
 const stepPresentation = {
-  pending: { marker: "○", rowAttributes: ' role="checkbox" aria-checked="false"', markerAttributes: "" },
+  pending: { marker: "", rowAttributes: ' role="checkbox" aria-checked="false"', markerAttributes: "" },
   running: { marker: "", rowAttributes: ' aria-busy="true"', markerAttributes: "" },
   done: { marker: "✓", rowAttributes: ' role="checkbox" aria-checked="true"', markerAttributes: "" },
   failed: { marker: "✕", rowAttributes: ' data-status="failed"', markerAttributes: ' role="img" aria-label="Failed"' },
