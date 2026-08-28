@@ -228,22 +228,37 @@
         <section class="catalogue-section" id="toggles">
           <div class="catalogue-section-head">
             <h2>Toggles</h2>
-            <p>Horizontal choices between mutually exclusive states. Button toggles use compact outlined controls; text toggles use plain sans labels and a smoothly moving underline.</p>
+            <p>Horizontal choices between mutually exclusive states. Button toggles use compact outlined controls; text toggles use plain sans labels and a smoothly moving underline. A subtle text variant lowers both text states for controls that should recede.</p>
           </div>
           <div class="catalogue-grid">
             <article class="catalogue-card wide">
-              <div class="catalogue-card-title"><span>Text toggle · interactive</span><code>.text-toggle + .text-toggle__option</code></div>
+              <div class="catalogue-card-title"><span>Text toggle · interactive</span><code>.text-toggle[.subtle] + .text-toggle__option</code></div>
               <div class="catalogue-demo toggle-demo">
-                <div class="text-toggle-demo-row">
-                  <span>Workspace view</span>
-                  <div class="text-toggle" role="group" aria-label="Workspace view" data-catalogue-text-toggle>
-                    <button class="text-toggle__option" type="button" aria-pressed="true">Overview</button>
-                    <button class="text-toggle__option" type="button" aria-pressed="false">Recent activity</button>
-                    <button class="text-toggle__option" type="button" aria-pressed="false">Settings</button>
+                <div class="toggle-stack">
+                  <div class="toggle-specimen">
+                    <span class="toggle-specimen-label">default</span>
+                    <div class="text-toggle-demo-row">
+                      <span>Workspace view</span>
+                      <div class="text-toggle" role="group" aria-label="Workspace view" data-catalogue-text-toggle>
+                        <button class="text-toggle__option" type="button" aria-pressed="true">Overview</button>
+                        <button class="text-toggle__option" type="button" aria-pressed="false">Recent activity</button>
+                        <button class="text-toggle__option" type="button" aria-pressed="false">Settings</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="toggle-specimen">
+                    <span class="toggle-specimen-label">subtle</span>
+                    <div class="text-toggle-demo-row">
+                      <span>Result view</span>
+                      <div class="text-toggle subtle" role="group" aria-label="Result view">
+                        <button class="text-toggle__option" type="button" aria-pressed="true">Output</button>
+                        <button class="text-toggle__option" type="button" aria-pressed="false">Model</button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-              <p class="catalogue-note">The underline matches the selected label color and glides between labels of different widths. Left and right arrow keys move the selection.</p>
+              <p class="catalogue-note">Both treatments retain the moving underline and arrow-key navigation. Default uses <code>--text-bright</code> for the selection and <code>--text-muted</code> for alternatives. Subtle uses <code>--text-muted</code> for the selection and underline, and <code>--text-faint</code> for alternatives.</p>
             </article>
             <article class="catalogue-card wide">
               <div class="catalogue-card-title"><span>Button toggle · interactive</span><code>.button-toggle + .button-toggle__option</code></div>
@@ -282,11 +297,16 @@
   &lt;button class="text-toggle__option" type="button" aria-pressed="false"&gt;Activity&lt;/button&gt;
 &lt;/div&gt;
 
+&lt;div class="text-toggle subtle" role="group" aria-label="Result view"&gt;
+  &lt;button class="text-toggle__option" type="button" aria-pressed="true"&gt;Output&lt;/button&gt;
+  &lt;button class="text-toggle__option" type="button" aria-pressed="false"&gt;Model&lt;/button&gt;
+&lt;/div&gt;
+
 &lt;div class="button-toggle" role="group" aria-label="Editor display"&gt;
   &lt;button class="button-toggle__option" type="button" aria-pressed="true"&gt;Edit&lt;/button&gt;
   &lt;button class="button-toggle__option" type="button" aria-pressed="false"&gt;Preview&lt;/button&gt;
 &lt;/div&gt;</pre>
-              <p class="catalogue-note">Keep exactly one option pressed and give the group an accessible name. Click and arrow-key behavior is attached automatically; no caller-owned JavaScript is required.</p>
+              <p class="catalogue-note">Keep exactly one option pressed and give the group an accessible name. Add <code>subtle</code> when the toggle should sit below normal body text in the visual hierarchy. Click and arrow-key behavior is attached automatically; no caller-owned JavaScript is required.</p>
             </article>
           </div>
         </section>

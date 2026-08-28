@@ -649,7 +649,7 @@ function copyableToolBody(body: string, label: string): string {
 }
 
 function comparisonHeader(title: string, primaryLabel: string, secondaryLabel = "As seen by model"): string {
-  return `<div class="agent-region-header agent-region-tabs"><span>${title}</span><div class="text-toggle" role="group" aria-label="${title} view"><button class="text-toggle__option" type="button" data-agent-region-view="primary" aria-pressed="true">${primaryLabel}</button><button class="text-toggle__option" type="button" data-agent-region-view="model" aria-pressed="false">${secondaryLabel}</button></div></div>`;
+  return `<div class="agent-region-header agent-region-tabs"><span>${title}</span><div class="text-toggle subtle" role="group" aria-label="${title} view"><button class="text-toggle__option" type="button" data-agent-region-view="primary" aria-pressed="true">${primaryLabel}</button><button class="text-toggle__option" type="button" data-agent-region-view="model" aria-pressed="false">${secondaryLabel}</button></div></div>`;
 }
 
 function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {

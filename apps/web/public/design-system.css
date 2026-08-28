@@ -58,6 +58,7 @@
   --popup-shadow: 0 14px 44px rgba(20, 30, 60, .039);
 
   /* State colors are derived consistently for every theme. */
+  --text-faint: color-mix(in srgb, var(--text-muted) 62%, var(--bg));
   --accent-soft: color-mix(in srgb, var(--accent) 15%, var(--panel));
   --success-soft: color-mix(in srgb, var(--success) 15%, var(--panel));
   --warning-soft: color-mix(in srgb, var(--warning) 15%, var(--panel));
@@ -330,7 +331,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   border-radius: var(--radius-indicator);
   outline: 0;
   background: transparent;
-  color: var(--text);
+  color: var(--text-muted);
   font: inherit;
   white-space: nowrap;
   cursor: pointer;
@@ -343,6 +344,12 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   outline-offset: 2px;
   color: var(--text-bright);
 }
+/* Subtle text toggles retain the indicator while lowering both text states. */
+.text-toggle.subtle::after { background: var(--text-muted); }
+.text-toggle.subtle .text-toggle__option { color: var(--text-faint); }
+.text-toggle.subtle .text-toggle__option[aria-pressed="true"],
+.text-toggle.subtle .text-toggle__option:not(:disabled):hover,
+.text-toggle.subtle .text-toggle__option:focus-visible { color: var(--text-muted); }
 .text-toggle__option:disabled { opacity: .45; cursor: default; }
 @media (max-width: 700px) {
   .button-toggle__option { height: 44px; padding-inline: 16px; }

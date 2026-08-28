@@ -238,7 +238,7 @@ describe("transcript rendering", () => {
 
   test("formatted bash commands expose the original without adding an output comparison", () => {
     const html = renderBash("printf alpha | grep a", { resultText: "same", details: { displayAnsi: "same" } });
-    expect(html).toContain('class="text-toggle" role="group" aria-label="Command view"');
+    expect(html).toContain('class="text-toggle subtle" role="group" aria-label="Command view"');
     expect(html).toContain("Original");
     expect(html).not.toContain('aria-label="Result view"');
   });
@@ -262,7 +262,7 @@ describe("transcript rendering", () => {
 
   test("differing bash output adds a model comparison without adding a command comparison", () => {
     const html = renderBash("echo ok", { resultText: "model output", details: { displayAnsi: "display output" } });
-    expect(html).toContain('class="text-toggle" role="group" aria-label="Result view"');
+    expect(html).toContain('class="text-toggle subtle" role="group" aria-label="Result view"');
     expect(html).not.toContain('aria-label="Command view"');
   });
 
