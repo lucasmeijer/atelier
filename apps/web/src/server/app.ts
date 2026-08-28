@@ -154,8 +154,8 @@ function selectWorkspaceTurboStream(workspaceId: string): string {
 }
 
 /** Replaces the children of the target, keeping the container element itself alive. */
-function turboUpdateStream(target: string, html: string): string {
-  return turboStream("update", target, html);
+function turboUpdateStream(target: string, html: string, options: { method?: "morph" } = {}): string {
+  return turboStream("update", target, html, options);
 }
 
 
@@ -248,7 +248,7 @@ export function createWebApp(deps: WebAppDeps): WebApp {
     set(contributionId: string, html?: string, options = {}) {
       if (html) globalSidebarContributionStore.set(contributionId, html);
       else globalSidebarContributionStore.delete(contributionId);
-      const streamHtml = `${turboUpdateStream("global_sidebar_contributions", renderGlobalSidebarContributions())}${options.broadcastHtml ?? ""}`;
+      const streamHtml = `${turboUpdateStream("global_sidebar_contributions", renderGlobalSidebarContributions(), { method: "morph" })}${options.broadcastHtml ?? ""}`;
       broadcastShell(streamHtml);
     },
   };

@@ -324,7 +324,7 @@ describe("update state machine", () => {
     expect(sidebar.at(-1)).toContain('data-progress-state="in-progress"');
     expect(sidebar.at(-1)).toContain('style="--button-progress:1"');
     expect(sidebar.at(-1)).not.toContain("update-sidebar-progress");
-    expect(broadcasts.at(-1)).toContain('target="settings-sec-update"');
+    expect(broadcasts.at(-1)).toContain('target="settings-sec-update" method="morph"');
     expect(broadcasts.at(-1)).toContain('data-progress-state="in-progress"');
     gate.resolve();
     await Promise.all([first, second]);

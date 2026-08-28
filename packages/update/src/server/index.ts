@@ -71,7 +71,7 @@ export class UpdateManager {
 
   private updateSidebar(): void {
     this.context?.globalSidebarContributions.set(updateSidebarContributionId, this.visible() ? renderSidebarRow(this.snapshot()) : undefined, {
-      broadcastHtml: turboStream("replace", "settings-sec-update", renderUpdateSettings(this)),
+      broadcastHtml: updateSettingsStream(this),
     });
   }
 
@@ -285,6 +285,10 @@ function renderUpdateSettings(updateManager: UpdateManager): string {
   return `<section class="settings-sec settings-sec-inline update-settings-row" id="settings-sec-update"><div><h2>Updates</h2><p class="settings-sub">${escapeHtml(status.label)} — ${escapeHtml(status.detail)}</p></div><div class="settings-provider-actions">${checkNow}${channelToggle}${updateAction}</div></section>`;
 }
 
+function updateSettingsStream(updateManager: UpdateManager): string {
+  return turboStream("replace", "settings-sec-update", renderUpdateSettings(updateManager), { method: "morph" });
+}
+
 const updateSettingsContribution: SettingsContribution = {
   id: "update",
   label: "Updates",
@@ -292,12 +296,12 @@ const updateSettingsContribution: SettingsContribution = {
   render: async () => renderUpdateSettings(manager),
   async handleAction({ request, url }) {
     if (url.pathname !== "/settings/update-channel" || request.method !== "POST") return undefined;
-    if (!manager.snapshot().selfUpdatable) return turboStreamResponse(turboStream("replace", "settings-sec-update", renderUpdateSettings(manager)));
+    if (!manager.snapshot().selfUpdatable) return turboStreamResponse(updateSettingsStream(manager));
     const form = await request.formData();
     const channel = String(form.get("channel") ?? "");
     if (!isReleaseChannel(channel)) throw new Error(`unsupported release channel: ${channel}`);
     await manager.setReleaseChannel(channel);
-    return turboStreamResponse(turboStream("replace", "settings-sec-update", renderUpdateSettings(manager)));
+    return turboStreamResponse(updateSettingsStream(manager));
   },
 };
 
@@ -388,11 +392,11 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
     if (url.pathname === "/update/start" && request.method === "POST") {
       if (updateManager.snapshot().compatibilityMismatch) return modalStream(renderInstallerRequiredModal(updateManager));
       void updateManager.startPull();
-      return turboStreamResponse(turboStream("replace", "settings-sec-update", renderUpdateSettings(updateManager)));
+      return turboStreamResponse(updateSettingsStream(updateManager));
     }
     if (url.pathname === "/update/check-now" && request.method === "POST") {
       await updateManager.checkNow();
-      return turboStreamResponse(turboStream("replace", "settings-sec-update", renderUpdateSettings(updateManager)));
+      return turboStreamResponse(updateSettingsStream(updateManager));
     }
     if (url.pathname === "/update/whats-new" && request.method === "GET") return modalStream(renderWhatsNewModal());
     if (url.pathname === "/update/whats-new/notes" && request.method === "GET") return new Response(await renderWhatsNewNotes(updateManager), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });

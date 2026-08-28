@@ -549,7 +549,7 @@ describe("web app contracts", () => {
     expect(home).toContain('class="app fixed-shell-app"');
     expect(home.match(/class="fixed-shell-workspace-pane"/g)).toHaveLength(1);
     expect(home).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
-    expect(broadcasts.some((html) => html.includes('<turbo-stream action="update" target="global_sidebar_contributions"'))).toBe(true);
+    expect(broadcasts.some((html) => html.includes('<turbo-stream action="update" target="global_sidebar_contributions" method="morph"'))).toBe(true);
     expect(home).toContain("Welcome to Atelier!");
     expect(home).toContain('data-controller="empty-workspace-onboarding"');
     expect(home).toContain('class="workspace-empty-onboarding-arrow"');

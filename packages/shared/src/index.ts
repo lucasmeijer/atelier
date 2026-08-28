@@ -56,11 +56,12 @@ export function looksLikeProjectSpec(value: string): boolean {
 
 export type TurboStreamAction = "append" | "prepend" | "replace" | "update" | "remove";
 
-export function turboStream(action: TurboStreamAction, target: string, html = "", options: { targets?: boolean } = {}): string {
+export function turboStream(action: TurboStreamAction, target: string, html = "", options: { targets?: boolean; method?: "morph" } = {}): string {
   const targetAttribute = options.targets ? "targets" : "target";
   const targetValue = escapeHtml(target);
-  if (action === "remove") return `<turbo-stream action="remove" ${targetAttribute}="${targetValue}"></turbo-stream>`;
-  return `<turbo-stream action="${action}" ${targetAttribute}="${targetValue}"><template>${html}</template></turbo-stream>`;
+  const method = options.method ? ` method="${options.method}"` : "";
+  if (action === "remove") return `<turbo-stream action="remove" ${targetAttribute}="${targetValue}"${method}></turbo-stream>`;
+  return `<turbo-stream action="${action}" ${targetAttribute}="${targetValue}"${method}><template>${html}</template></turbo-stream>`;
 }
 
 export function turboStreamResponse(body: string, init: ResponseInit = {}): Response {
