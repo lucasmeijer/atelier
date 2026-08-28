@@ -352,6 +352,31 @@ describe("Atelier browser behavior", () => {
     await page.close();
   });
 
+  test("command palette supports combobox keyboard navigation and dismissal", async () => {
+    const page = await newShortcutTestPage(["palette-workspace"]);
+
+    await page.locator("body").dispatchEvent("keydown", { key: "k", code: "KeyK", metaKey: true, altKey: true, bubbles: true, cancelable: true });
+    const palette = page.getByRole("dialog", { name: "Command palette" });
+    const search = palette.getByRole("combobox", { name: "Search command palette" });
+    await palette.waitFor({ state: "visible" });
+    expect(await search.evaluate((element) => element === document.activeElement)).toBe(true);
+
+    const options = palette.getByRole("option");
+    expect(await options.count()).toBeGreaterThan(1);
+    const firstId = await options.first().getAttribute("id");
+    expect(await search.getAttribute("aria-activedescendant")).toBe(firstId);
+    await search.press("ArrowDown");
+    expect(await options.nth(1).getAttribute("aria-selected")).toBe("true");
+    expect(await search.getAttribute("aria-activedescendant")).toBe(await options.nth(1).getAttribute("id"));
+
+    await search.fill("no palette result can match this");
+    await palette.getByText("No results found").waitFor({ state: "visible" });
+    expect(await search.getAttribute("aria-activedescendant")).toBeNull();
+    await search.press("Escape");
+    expect(await palette.isHidden()).toBe(true);
+    await page.close();
+  });
+
   test("force deletes the visible workspace with Command-Option-Shift-Backspace", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "force-delete-me", title: "Force delete me" },

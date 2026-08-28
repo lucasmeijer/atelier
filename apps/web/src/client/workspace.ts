@@ -107,7 +107,7 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
     const context: WorkspacePaletteSearchContext = { query, fuzzyScore: (candidate) => fuzzyScore(query, candidate) };
     const providerItems = await Promise.all([...this.paletteProviders.values()].map(async (provider) => {
       const items = await provider.search(context);
-      return items.map((item) => ({ ...item, provider, score: item.score ?? this.paletteItemScore(query, item) }));
+      return items.map((item) => ({ ...item, score: item.score ?? this.paletteItemScore(query, item) }));
     }));
     return providerItems.flat()
       .filter((item) => item.score > 0)
@@ -120,7 +120,7 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   }
 }
 
-type PaletteResult = WorkspacePaletteItem & { provider: WorkspacePaletteProvider; score: number };
+type PaletteResult = WorkspacePaletteItem & { score: number };
 
 const clientHooks = new WorkspaceClientHookRegistry();
 
@@ -409,7 +409,6 @@ class AtelierShortcutsController extends Controller {
     this.registerBuiltinCommands();
     clientHooks.registerPaletteProvider({
       id: "atelier.commands",
-      label: "Command",
       search: () => this.currentCommands()
         .filter((command) => command.id !== "atelier.open-palette")
         .map((command) => ({
@@ -423,12 +422,10 @@ class AtelierShortcutsController extends Controller {
     });
     clientHooks.registerPaletteProvider({
       id: "atelier.workspaces",
-      label: "Workspace",
       search: ({ fuzzyScore }) => this.workspacePaletteItems(fuzzyScore),
     });
     clientHooks.registerPaletteProvider({
       id: "atelier.destinations",
-      label: "Destination",
       search: ({ fuzzyScore }) => this.workspaceDestinationPaletteItems(fuzzyScore),
     });
     // Listen at window capture so we get first chance at shortcuts that focused
@@ -721,8 +718,15 @@ class AtelierShortcutsController extends Controller {
   private ensurePalette(): void {
     if (this.paletteDialog) return;
     const dialog = document.createElement("dialog");
-    dialog.className = "palette-dialog viewport-overlay";
-    dialog.innerHTML = `<div class="palette-panel"><input class="palette-input" type="text" spellcheck="false" autocomplete="off" placeholder="Search your Atelier" aria-label="Search palette"><div class="palette-results" role="listbox"></div></div>`;
+    dialog.className = "dialog palette-dialog";
+    dialog.setAttribute("aria-label", "Command palette");
+    dialog.innerHTML = `<header class="palette-search">
+      <svg class="palette-search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16 16 4 4"></path></svg>
+      <input class="text-field palette-input" id="atelier-palette-input" type="search" role="combobox" spellcheck="false" autocomplete="off" placeholder="Search commands, workspaces, and destinations…" aria-label="Search command palette" aria-autocomplete="list" aria-controls="atelier-palette-results" aria-expanded="true">
+      <kbd class="palette-shortcut" aria-hidden="true">⌘⌥K</kbd>
+      <form class="contents" method="dialog"><button class="button icon-only palette-close" aria-label="Close command palette"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></form>
+    </header>
+    <div class="dialog__body palette-body"><div class="palette-results action-list" id="atelier-palette-results" role="listbox" aria-label="Command palette results"></div></div>`;
     dialog.addEventListener("close", () => this.paletteInput?.blur());
     dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
     const input = dialog.querySelector<HTMLInputElement>(".palette-input")!;
@@ -778,17 +782,17 @@ class AtelierShortcutsController extends Controller {
     const results = this.paletteResults;
     if (!results) return;
     if (this.paletteItems.length === 0) {
-      results.innerHTML = `<div class="palette-empty">No matches</div>`;
+      this.paletteInput!.removeAttribute("aria-activedescendant");
+      results.innerHTML = `<div class="empty-state palette-empty"><strong>No results found</strong><span>Try another command, workspace, or destination.</span></div>`;
       return;
     }
-    results.innerHTML = this.paletteItems.map((item, index) => `<button type="button" class="palette-item${index === this.paletteIndex ? " active" : ""}" data-palette-index="${index}" role="option" aria-selected="${index === this.paletteIndex ? "true" : "false"}">
-        <span class="palette-kind">${escapeHtml(item.provider.label)}</span>
-        <span class="palette-thing">
-          <span class="palette-item-main"><span class="palette-title">${escapeHtml(item.title)}</span>${item.subtitle ? `<span class="palette-subtitle">${escapeHtml(item.subtitle)}</span>` : ""}${item.detail ? `<span class="palette-detail">${escapeHtml(item.detail)}</span>` : ""}</span>
-          ${item.badge ? `<span class="palette-badge">${escapeHtml(item.badge)}</span>` : ""}
-        </span>
+    results.innerHTML = this.paletteItems.map((item, index) => `<button id="atelier-palette-option-${index}" type="button" class="action-item action-item__primary" data-palette-index="${index}" role="option" aria-selected="${index === this.paletteIndex ? "true" : "false"}">
+        <span class="action-item__label"><span class="action-item__label-text">${escapeHtml(item.title)}</span></span>
+        ${item.badge ? `<kbd class="popup-menu__meta">${escapeHtml(item.badge)}</kbd>` : ""}
       </button>`).join("");
-    results.querySelector<HTMLElement>(".palette-item.active")?.scrollIntoView({ block: "nearest" });
+    const activeId = `atelier-palette-option-${this.paletteIndex}`;
+    this.paletteInput!.setAttribute("aria-activedescendant", activeId);
+    results.querySelector<HTMLElement>(`#${activeId}`)?.scrollIntoView({ block: "nearest" });
   }
 
   private palettePointerMove(event: MouseEvent): void {
@@ -805,7 +809,7 @@ class AtelierShortcutsController extends Controller {
   }
 
   private paletteEventIndex(event: Event): number | undefined {
-    const target = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(".palette-item[data-palette-index]") : null;
+    const target = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-palette-index]") : null;
     if (!target) return undefined;
     const index = Number(target.dataset.paletteIndex);
     return Number.isFinite(index) ? index : undefined;
@@ -992,7 +996,8 @@ class ModalController extends Controller {
     this.element.addEventListener("close", this.onClose);
     if (this.autoShowValue && !this.element.open) {
       this.element.showModal();
-      focusDialogPromptEnd(this.element);
+      if (this.element.autofocus) this.element.focus();
+      else focusDialogPromptEnd(this.element);
     }
   }
 

@@ -471,22 +471,26 @@ button.settings-link:disabled { opacity: .45; cursor: default; filter: none; }
 .shortcut-overlay-item { gap: 16px; }
 .shortcut-overlay-binding { font: inherit; }
 
-.palette-dialog { width: min(720px, 100%); margin: 12vh auto auto; padding: 0; border: 0; background: transparent; color: var(--text-bright); }
-.palette-dialog::backdrop { background: rgba(15,23,42,.24); backdrop-filter: blur(3px); }
-.palette-panel { overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius-overlay); background: color-mix(in srgb, var(--panel) 96%, transparent); box-shadow: var(--shadow); backdrop-filter: blur(12px); }
-.palette-input { box-sizing: border-box; width: 100%; border: 0; border-bottom: 1px solid var(--line); outline: 0; padding: 16px 16px; background: transparent; color: var(--text-bright); font: inherit; font-size: var(--text-title); font-weight: var(--weight-medium); }
-.palette-input::placeholder { color: var(--text-muted); }
-.palette-results { max-height: min(520px, calc(80vh - 74px)); overflow: auto; padding: 8px; }
-.palette-item { width: 100%; display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: stretch; gap: 12px; border: 0; border-radius: var(--radius-surface); padding: 0; background: transparent; color: var(--text-bright); text-align: left; cursor: pointer; }
-.palette-item.active, .palette-item:hover { background: var(--accent-soft); }
-.palette-kind { padding: 8px 0 8px 8px; color: var(--text); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.palette-thing { min-width: 0; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 0; }
-.palette-item-main { min-width: 0; display: grid; gap: 2px; flex: 1; }
-.palette-title { font-weight: var(--weight-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.palette-subtitle, .palette-detail { font-size: var(--text-body); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.palette-detail { color: var(--text-muted); }
-.palette-badge { flex: 0 0 auto; padding: 2px 6px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--bg); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: var(--weight-semibold); color: var(--text); }
-.palette-empty { padding: 24px 12px; color: var(--text); text-align: center; font-size: var(--text-body); }
+/* The command palette composes the design-system dialog, text field, button, action list,
+ * action item, and popup metadata primitives into a search-first overlay. */
+.palette-dialog { width: min(680px, calc(100vw - 32px)); margin: 10vh auto auto; }
+.palette-search { min-height: 58px; display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--line); }
+.palette-search-icon { width: 20px; height: 20px; flex: 0 0 auto; fill: none; stroke: var(--text); stroke-width: 1.8; stroke-linecap: round; }
+.palette-input.text-field { height: 42px; padding: 0; border: 0; background: transparent; }
+.palette-input.text-field::-webkit-search-cancel-button { display: none; }
+.palette-shortcut { flex: 0 0 auto; padding: 2px 7px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--bg); color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; font-weight: var(--weight-medium); }
+.palette-close { display: none; }
+.palette-body.dialog__body { max-height: min(52vh, 456px); padding: 6px; background: color-mix(in srgb, var(--bg) 38%, var(--panel)); }
+.palette-empty { min-height: 184px; gap: 3px; }
+.palette-empty strong { color: var(--text-bright); font-size: var(--text-body); }
+@media (max-width: 700px) {
+  .palette-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); margin: 8px auto auto; }
+  .palette-search { min-height: 60px; padding-left: 12px; }
+  .palette-input.text-field { height: 44px; }
+  .palette-shortcut { display: none; }
+  .palette-close { display: inline-flex; }
+  .palette-body.dialog__body { max-height: calc(100dvh - 68px); }
+}
 
 /* Project editor */
 .project-editor-modal { width:min(720px,calc(100vw - 32px)); height:min(680px,calc(100vh - 32px)); padding:0; overflow:hidden; border:1px solid var(--line-strong); border-radius:var(--radius-overlay); background:var(--panel); color:var(--text-bright); box-shadow:var(--shadow); margin:auto; }

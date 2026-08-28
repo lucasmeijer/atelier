@@ -329,7 +329,7 @@ for (const module of workspaceModules) {
 export async function renderSettingsDialog(_active = "theme"): Promise<string> {
   const contributions = listSettingsContributions().filter((contribution) => contribution.id !== "keypress-probe");
   const sections = await Promise.all(contributions.map((contribution) => contribution.render()));
-  return `<dialog id="settings_dialog" class="dialog dialog--sheet settings-dialog" data-controller="modal" data-modal-auto-show-value="true">
+  return `<dialog id="settings_dialog" class="dialog dialog--sheet settings-dialog" tabindex="-1" autofocus data-controller="modal" data-modal-auto-show-value="true">
     <div class="settings-sheet">
       <main class="settings-main"><form method="dialog"><button class="settings-close button secondary icon-only" value="close" title="Close settings" aria-label="Close settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form><div class="settings-title">Settings</div>${sections.join("")}<div class="settings-dev-link"><a href="/settings/development" data-turbo-frame="_top" data-turbo-stream="true">Development settings</a></div></main>
     </div>
@@ -337,7 +337,7 @@ export async function renderSettingsDialog(_active = "theme"): Promise<string> {
 }
 
 export async function renderDevelopmentSettingsDialog(): Promise<string> {
-  return `<dialog id="settings_dialog" class="dialog dialog--sheet settings-dialog" data-controller="modal" data-modal-auto-show-value="true">
+  return `<dialog id="settings_dialog" class="dialog dialog--sheet settings-dialog" tabindex="-1" autofocus data-controller="modal" data-modal-auto-show-value="true">
     <div class="settings-sheet">
       <main class="settings-main settings-main-dev"><form method="dialog"><button class="settings-close button secondary icon-only" value="close" title="Close settings" aria-label="Close settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form><div class="settings-title"><a class="settings-back-link" href="/settings" data-turbo-frame="_top" data-turbo-stream="true">Settings</a></div>${await renderDevelopmentSettings()}</main>
     </div>

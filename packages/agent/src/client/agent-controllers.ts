@@ -1602,7 +1602,6 @@ export const agentClientModule: WorkspaceClientModule = {
 
     hooks.registerPaletteProvider({
       id: "agent.sessions",
-      label: "Agent session",
       search: ({ fuzzyScore }) => agentPaletteItems(fuzzyScore),
     });
     hooks.onBecomeVisible(({ pane }) => agentConversationBecameVisible(application, pane));

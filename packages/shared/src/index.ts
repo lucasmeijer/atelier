@@ -368,7 +368,6 @@ export interface WorkspacePaletteSearchContext {
 
 export interface WorkspacePaletteProvider {
   id: string;
-  label: string;
   search(context: WorkspacePaletteSearchContext): WorkspacePaletteItem[] | Promise<WorkspacePaletteItem[]>;
 }
 
