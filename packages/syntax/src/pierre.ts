@@ -12,7 +12,8 @@ registerCustomCSSVariableTheme(atelierPierreTheme, {
 }, false);
 
 const changedLineCSS = `[data-line-type="change-addition"], [data-line-type="change-deletion"] { --mix-light: 80%; --mix-dark: 80%; }`;
-const annotationCSS = `[data-line-annotation]:has(slot[name^="annotation-additions-"]) { --diffs-annotation-bg: var(--diffs-bg-addition); background: var(--diffs-bg-addition); } [data-line-annotation]:has(slot[name^="annotation-deletions-"]) { --diffs-annotation-bg: var(--diffs-bg-deletion); background: var(--diffs-bg-deletion); } [data-gutter-buffer="annotation"] { --diffs-annotation-bg: var(--diffs-bg-addition-number); background: var(--diffs-bg-addition-number); }`;
+const reviewLayoutCSS = `[data-code] { padding-block: 0; overflow-x: auto; scrollbar-gutter: auto; }`;
+const annotationCSS = `[data-line-annotation]:has(slot[name^="annotation-additions-"]), [data-line-annotation]:has(slot[name^="annotation-deletions-"]) { --diffs-annotation-bg: var(--diffs-bg-context); background: var(--diffs-bg-context); } [data-gutter-buffer="annotation"] { --diffs-annotation-bg: var(--diffs-bg-context-gutter); background: var(--diffs-bg-context-gutter); }`;
 
 function diffOptions(presentation: "review" | "tool") {
   const review = presentation === "review";
@@ -28,7 +29,7 @@ function diffOptions(presentation: "review" | "tool") {
     collapsedContextThreshold: review ? 6 : 0,
     lineDiffType: "word-alt" as const,
     stickyHeader: false,
-    unsafeCSS: review ? `${changedLineCSS} ${annotationCSS}` : changedLineCSS,
+    unsafeCSS: review ? `${changedLineCSS} ${reviewLayoutCSS} ${annotationCSS}` : changedLineCSS,
   };
 }
 

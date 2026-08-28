@@ -44,10 +44,16 @@ function renderOutdatedComment(workspaceId: string, comment: ReviewComment): str
   return `<article class="review-outdated-comment" data-review-comment-id="${escapeHtml(comment.id)}" data-review-comment="${escapeHtml(jsonForHtml(commentModel(comment)))}"><form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/${encodeURIComponent(comment.id)}/delete" data-turbo="true"><button class="button secondary icon-only review-comment-close" type="submit" aria-label="Delete review comment" title="Delete review comment"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></form><div class="review-comment-content"><strong>${escapeHtml(comment.path)}</strong><pre>${escapeHtml(comment.snippet)}</pre><p>${escapeHtml(comment.body)}</p></div></article>`;
 }
 
+function iconButton(label: string, action: string, path: string): string {
+  return `<button class="button secondary icon-only" type="button" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" data-action="${escapeHtml(action)}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="${escapeHtml(path)}"/></svg></button>`;
+}
+
 function summaryBar(workspaceId: string, snapshot: Extract<ReviewSnapshot, { phase: "ready" }>): string {
+  const collapse = iconButton("Collapse all files", "review#collapseAll", "M7 4l5 5 5-5M7 20l5-5 5 5");
+  const expand = iconButton("Expand all files", "review#expandAll", "M7 9l5-5 5 5M7 15l5 5 5-5");
   return `<header class="review-toolbar">
     <div class="review-summary"><span>${snapshot.files.length} file${snapshot.files.length === 1 ? "" : "s"}</span><span class="review-additions">+${snapshot.additions}</span><span class="review-deletions">−${snapshot.deletions}</span></div>
-    <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/refresh" data-turbo="true" data-action="submit->review#rememberPosition"><button class="button secondary" type="submit">Refresh</button></form>
+    <div class="review-toolbar-actions button-group">${collapse}${expand}<form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/refresh" data-turbo="true" data-action="submit->review#rememberPosition"><button class="button secondary icon-only" type="submit" aria-label="Refresh review" title="Refresh review"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg></button></form></div>
   </header>`;
 }
 
@@ -60,7 +66,7 @@ export async function renderReviewBody(workspaceId: string, snapshot: ReviewSnap
   const outdated = comments.filter((comment) => comment.outdated);
   const files = await Promise.all(snapshot.files.map((file) => renderFile(file, currentComments)));
   const content = snapshot.files.length
-    ? `<div class="review-files">${files.join("")}</div>`
+    ? `<div class="review-files action-list">${files.join("")}</div>`
     : `<div class="review-no-changes"><h2>No changes to review</h2><p>The working tree matches HEAD.</p></div>`;
   const outdatedHtml = outdated.length ? `<section class="review-outdated"><h2>Outdated comments</h2><p>These locations are no longer present in the current diff.</p>${outdated.map((comment) => renderOutdatedComment(workspaceId, comment)).join("")}</section>` : "";
   return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}">${summaryBar(workspaceId, snapshot)}${content}${outdatedHtml}</section>`;

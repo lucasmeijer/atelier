@@ -127,6 +127,16 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       file.removeEventListener("toggle", this.saveCollapseState);
     }
 
+    collapseAll(): void {
+      for (const file of this.fileTargets) file.open = false;
+      this.saveCollapseState();
+    }
+
+    expandAll(): void {
+      for (const file of this.fileTargets) file.open = true;
+      this.saveCollapseState();
+    }
+
     private hydrateDiff(host: HTMLElement, FileDiffClass: FileDiffConstructor): void {
       const script = host.querySelector<HTMLScriptElement>("script[data-review-model]")!;
       // SAFETY: The server emits this private JSON script from a DiffModel and no external input can write it.
@@ -239,6 +249,8 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private renderEditor(draft: DraftModel, instance: FileDiff<AnnotationMetadata>): HTMLElement {
       const editor = document.createElement("div");
       editor.className = "review-comment-editor";
+      editor.role = "dialog";
+      editor.setAttribute("aria-label", "Review comment");
       editor.append(closeButton("Cancel review comment", () => this.cancelDraft(draft.path, instance)));
       const body = document.createElement("div");
       body.className = "review-comment-content";
@@ -246,14 +258,20 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       textarea.className = "textarea";
       textarea.placeholder = "Leave a review comment";
       textarea.setAttribute("aria-label", "Review comment");
+      textarea.setAttribute("aria-keyshortcuts", "Meta+Enter");
       textarea.value = draft.body;
       textarea.addEventListener("input", () => {
         draft.body = textarea.value;
         this.persistDraft();
       });
+      textarea.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" || !event.metaKey) return;
+        event.preventDefault();
+        void this.saveDraft(draft, textarea);
+      });
       const actions = document.createElement("footer");
       actions.className = "review-comment-actions";
-      const save = textButton("Save comment", () => void this.saveDraft(draft, textarea));
+      const save = textButton("Comment", () => void this.saveDraft(draft, textarea));
       save.className = "button primary";
       actions.append(save);
       body.append(textarea);

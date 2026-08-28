@@ -117,4 +117,14 @@ describe("Review presentation", () => {
     const notGit = await renderReviewBody("workspace 1", { phase: "not-git" }, []);
     expect(notGit).toContain("Not a git repository");
   });
+
+  test("renders file grouping and review toolbar actions", async () => {
+    const file: ReviewFile = { path: "src/example.ts", kind: "mode", additions: 1, deletions: 0, detail: "File mode changed" };
+    const html = await renderReviewBody("workspace 1", { phase: "ready", files: [file], additions: 1, deletions: 0 }, []);
+
+    expect(html).toContain('class="review-files action-list"');
+    expect(html).toContain('aria-label="Collapse all files"');
+    expect(html).toContain('aria-label="Expand all files"');
+    expect(html).toContain('aria-label="Refresh review"');
+  });
 });
