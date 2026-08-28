@@ -1127,4 +1127,35 @@ describe("Atelier browser behavior", () => {
     expect(await page.evaluate(() => (window as typeof window & { filesNode?: Element }).filesNode === document.querySelector('[data-workspace-live-node="work:files:workspace"]'))).toBe(true);
     await page.close();
   });
+
+  test("closes the LaunchComposer as soon as its prompt is submitted", async () => {
+    const page = await newTestPage({ viewport: { width: 390, height: 844 } });
+    let finishRequest!: () => void;
+    const requestMayFinish = new Promise<void>((resolve) => { finishRequest = resolve; });
+    let discardRequests = 0;
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<turbo-frame id="launch_composer"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog" data-launch-composer-dialog-discard-url-value="/draft/discard"><form method="post" action="/launch" data-action="submit->launch-composer-dialog#submit"><textarea name="text">Mobile prompt</textarea><button type="submit">Send prompt</button></form></dialog></turbo-frame><script type="module" src="/workspace-test.js"></script>`,
+    }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/draft/discard", (route) => {
+      discardRequests += 1;
+      return route.fulfill({ status: 204 });
+    });
+    await page.route("http://atelier.test/launch", async (route) => {
+      await requestMayFinish;
+      await route.fulfill({ contentType: "text/vnd.turbo-stream.html", body: '<turbo-stream action="update" target="launch_composer"><template></template></turbo-stream>' });
+    });
+
+    await page.goto("http://atelier.test/");
+    const dialog = page.locator(".launch-composer-dialog");
+    await dialog.waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "Send prompt" }).click();
+
+    expect(await dialog.evaluate((element: HTMLDialogElement) => element.open)).toBe(false);
+    expect(discardRequests).toBe(0);
+    finishRequest();
+    await dialog.waitFor({ state: "detached" });
+    await page.close();
+  });
 });

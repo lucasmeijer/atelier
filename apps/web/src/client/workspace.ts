@@ -965,6 +965,7 @@ class LaunchComposerDialogController extends Controller {
   static values = { discardUrl: String };
   declare readonly element: HTMLDialogElement;
   declare readonly discardUrlValue: string;
+  private submitted = false;
 
   connect(): void {
     this.element.addEventListener("click", this.clicked);
@@ -985,7 +986,14 @@ class LaunchComposerDialogController extends Controller {
     if (outside) this.element.close();
   };
 
+  submit(): void {
+    // Intentionally only dismiss the LaunchComposer here: do not select or wait for the launched Workspace.
+    this.submitted = true;
+    this.element.close();
+  }
+
   private readonly closed = (): void => {
+    if (this.submitted) return;
     void fetch(this.discardUrlValue, { method: "POST" }).catch((error) => console.error("Could not discard attachment draft", error));
     const frame = this.element.closest("turbo-frame")!;
     frame.removeAttribute("src");

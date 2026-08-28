@@ -364,10 +364,8 @@ ${moduleStylesHtml()}
     formId: launchComposerFormId,
     placeholder: "Describe what you want the agent to do… (optional)",
     initialText: "",
-    submitLabel: "Create workspace",
-    submitShortcut: "⌘↩",
     rows: 8,
-    formActions: "keydown->submit-shortcut#keydown submit->submit-shortcut#submit turbo:submit-end->submit-shortcut#submitted",
+    formActions: "keydown->submit-shortcut#keydown submit->submit-shortcut#submit submit->launch-composer-dialog#submit turbo:submit-end->submit-shortcut#submitted",
     formTurbo: true,
     launchComposerSettings: { frameId: launchComposerSettingsFrameId, url: "/launch-composer/settings" },
   })}

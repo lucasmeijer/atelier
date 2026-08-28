@@ -245,10 +245,6 @@
 .composer-actions { position: absolute; right: 8px; bottom: 8px; display: flex; align-items: center; gap: var(--space-md); padding: 0; z-index: 1; }
 .composer-actions .spacer { display: none; }
 
-.agent-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
-.agent-btn.primary:hover { background: var(--accent); color: var(--accent-contrast); filter: brightness(.92); }
-.agent-btn kbd { font-family: var(--font-mono, ui-monospace, Menlo, monospace); font-size: var(--text-caption); font-weight: var(--weight-medium); opacity: .65; margin-left: var(--space-2xs); }
-
 /* stats: modest gray */
 .composer-footer {
   display: flex; align-items: center; gap: var(--space-lg); border-top: 1px solid var(--line); padding: var(--space-xs) var(--space-lg);
@@ -331,8 +327,6 @@
 }
 .composer-actions > * { pointer-events: auto; }
 .composer-actions .spacer { display: block; flex: 1; }
-.agent-btn { height: 30px; display: inline-flex; align-items: center; gap: var(--space-sm); padding: var(--space-xs) var(--space-md); border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text-faint); font: inherit; cursor: pointer; }
-.agent-btn:hover { color: var(--text); background: var(--bg); }
 .composer-actions .agent-sendstop { position: absolute; right: 0; top: 0; translate: 0 calc(-50% + 9px); padding: 0; border-radius: var(--radius-round); overflow: visible; }
 .composer-actions .agent-sendstop .activity-button__content { padding: 0; }
 

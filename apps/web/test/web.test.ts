@@ -694,9 +694,13 @@ describe("web app contracts", () => {
 
       expect(first).toContain('<turbo-frame id="launch_composer">');
       expect(first).toContain('data-controller="launch-composer-dialog submit-shortcut"');
+      expect(first).toContain('submit-&gt;launch-composer-dialog#submit');
       expect(first).toContain('<turbo-frame id="launch_composer_settings">');
       expect(first).toContain(`action="/project-agent-workspaces/${project.id}"`);
       expect(first).toContain('aria-label="Describe what you want the agent to do… (optional)"');
+      const sendButtonContent = first.match(/<button[^>]+aria-label="Send prompt"[^>]*>([\s\S]*?)<\/button>/)?.[1];
+      expect(sendButtonContent).toBeTruthy();
+      expect(sendButtonContent).not.toContain("Create workspace");
       expect(first).not.toContain("Shall I craft a prompt");
       expect(firstDraft).toBeTruthy();
       expect(secondDraft).toBeTruthy();

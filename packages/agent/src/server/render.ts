@@ -226,8 +226,6 @@ interface SharedComposerRenderOptions {
   includePaneActions?: boolean;
   busy?: boolean;
   stats?: AgentStatsView;
-  submitLabel?: string;
-  submitShortcut?: string;
   formId?: string;
   rows?: number;
   formActions?: string;
@@ -260,10 +258,9 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
     ...(options.formTarget ? ["keydown->agent-pane#inputKeydown", "input->agent-pane#promptChanged"] : []),
   ];
   const inputActions = inputActionsList.length ? ` data-action="${inputActionsList.join(" ")}"` : "";
-  const shortcut = options.submitShortcut ? ` <kbd>${escapeHtml(options.submitShortcut)}</kbd>` : "";
   const actions = options.includePaneActions && options.ctx
     ? `<span id="${ids.actions(options.ctx)}">${renderPromptActions(options.ctx, Boolean(options.busy))}</span>`
-    : `<button class="agent-btn primary" type="submit" name="mode" value="send">${escapeHtml(options.submitLabel ?? "Send")}${shortcut}</button>`;
+    : renderPromptActionButton(false);
   const formId = options.formId ?? `agent_pane_composer_${draftId}`;
   const footer = options.stats && options.ctx
     ? `<div class="composer-footer" id="${ids.stats(options.ctx)}">${renderAgentPaneComposerFooter(options.ctx, options.stats)}</div>`
@@ -389,12 +386,18 @@ function renderTranscriptNavigation(): string {
   </div>`;
 }
 
-export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): string {
-  const busyAttrs = busy ? ` data-agent-busy="true" data-agent-abort-form-id="${ids.abortForm(ctx)}" aria-busy="true"` : ` data-agent-busy="false"`;
+function renderPromptActionButton(busy: boolean, ctx?: AgentRenderContext): string {
   const value = busy ? "steer" : "send";
   const title = busy ? "Agent is working — click to stop" : "Send prompt";
   const state = busy ? "active" : "initial";
-  return `<button class="button primary icon-only activity-button agent-sendstop" type="submit" name="mode" value="${value}" title="${title}" aria-label="${title}" data-activity-state="${state}" data-agent-pane-target="sendStop"${busyAttrs}><svg class="activity-button__indicator" aria-hidden="true"><rect pathLength="100"/></svg><span class="activity-button__content" data-activity-content="initial"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4"/></svg></span><span class="activity-button__content" data-activity-content="active"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/></svg></span></button>`;
+  const paneAttrs = ctx
+    ? ` data-agent-pane-target="sendStop" data-agent-busy="${busy}"${busy ? ` data-agent-abort-form-id="${ids.abortForm(ctx)}" aria-busy="true"` : ""}`
+    : "";
+  return `<button class="button primary icon-only activity-button agent-sendstop" type="submit" name="mode" value="${value}" title="${title}" aria-label="${title}" data-activity-state="${state}"${paneAttrs}><svg class="activity-button__indicator" aria-hidden="true"><rect pathLength="100"/></svg><span class="activity-button__content" data-activity-content="initial"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15V5m-4 4 4-4 4 4"/></svg></span><span class="activity-button__content" data-activity-content="active"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/></svg></span></button>`;
+}
+
+export function renderPromptActions(ctx: AgentRenderContext, busy: boolean): string {
+  return renderPromptActionButton(busy, ctx);
 }
 
 export function renderAgentPaneComposerFooter(ctx: AgentRenderContext, stats: AgentStatsView): string {
