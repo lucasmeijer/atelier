@@ -9,13 +9,13 @@ const renderBash = (command: string, overrides: Partial<ToolView> = {}): string 
 
 describe("transcript rendering", () => {
   test("server-rendered panes expose their snapshot cursor", async () => {
-    const stats = { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] };
+    const stats = { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] };
     const html = await renderAgentPane(ctx, agent, { transcriptHtml: "ready", busy: false, stats, snapshotCursor: "generation:4" });
     expect(html).toContain('data-agent-pane-snapshot-cursor-value="generation:4"');
   });
 
   test("AgentPaneComposer runs completion shortcuts before prompt submission", async () => {
-    const html = await renderAgentPaneComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, includePaneActions: true, stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, provider: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
+    const html = await renderAgentPaneComposer({ action: "/messages", placeholder: "Ask", draftId: "draft", ctx, formTarget: true, includePaneActions: true, stats: { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] } });
     expect(html).toContain("agent-completions");
     expect(html).toContain('data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged"');
     expect(html).toContain('aria-label="Jump to beginning of latest message"');
@@ -41,17 +41,10 @@ describe("transcript rendering", () => {
     expect(html).toContain('data-agent-user-text="**bold** &amp; quoted &quot;text&quot;"');
   });
 
-  test("active Codex AgentPaneComposers render Fast as a checked selection", () => {
-    const html = renderAgentPaneComposerFooter(ctx, { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "GPT", provider: "openai-codex", thinkingLevel: "high", thinkingLevels: ["high"], serviceTier: "priority", models: [] });
-    expect(html).toContain('action="/workspaces/ws/agents/agent/service-tier"');
-    expect(html).toContain('name="serviceTier" value="priority"');
-    expect(html).toContain('aria-label="Fast mode" checked');
-    expect(html).toContain('name="serviceTier" value="default"');
-  });
-
-  test("composers omit Fast when no service tier is available", () => {
-    const html = renderAgentPaneComposerFooter(ctx, { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "Claude", provider: "anthropic", thinkingLevel: "high", thinkingLevels: ["high"], models: [] });
+  test("composers omit Fast mode", () => {
+    const html = renderAgentPaneComposerFooter(ctx, { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: "GPT", thinkingLevel: "high", thinkingLevels: ["high"], models: [] });
     expect(html).not.toContain('aria-label="Fast mode"');
+    expect(html).not.toContain("/service-tier");
   });
 
   test("working sections reflect active, completed, and interrupted states", () => {

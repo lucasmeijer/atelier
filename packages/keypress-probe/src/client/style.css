@@ -1,14 +1,14 @@
-.keypress-probe { position: absolute; right: 10px; bottom: 10px; z-index: 60; width: min(360px, calc(100% - 20px)); max-height: 178px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--line-strong) 80%, transparent); border-radius: var(--radius-surface); background: color-mix(in srgb, var(--panel) 88%, transparent); color: var(--text); box-shadow: 0 10px 30px rgba(0,0,0,.16); backdrop-filter: blur(8px); opacity: .78; pointer-events: auto; font-size: var(--text-body); }
+.keypress-probe { position: absolute; right: 10px; bottom: 10px; z-index: 60; width: min(360px, calc(100% - 20px)); max-height: 178px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--line-strong) 80%, transparent); border-radius: var(--radius-surface); background: color-mix(in srgb, var(--panel) 88%, transparent); color: var(--text-bright); box-shadow: 0 10px 30px rgba(0,0,0,.16); backdrop-filter: blur(8px); opacity: .78; pointer-events: auto; font-size: var(--text-body); }
 .keypress-probe:hover, .keypress-probe:focus-within { opacity: .96; }
 .keypress-probe-head { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-xs) var(--space-sm); border-bottom: 1px solid var(--line); }
 .keypress-probe-head strong { font-size: var(--text-body); letter-spacing: .02em; text-transform: uppercase; }
-.keypress-probe-head span { min-width: 18px; padding: 1px var(--space-xs); border-radius: var(--radius-round); background: var(--bg); color: var(--text-muted); text-align: center; font-weight: var(--weight-bold); }
-.keypress-probe-head button { margin-left: auto; border: 0; background: transparent; color: var(--text-muted); font: inherit; font-weight: var(--weight-semibold); cursor: pointer; pointer-events: auto; }
+.keypress-probe-head span { min-width: 18px; padding: 1px var(--space-xs); border-radius: var(--radius-round); background: var(--bg); color: var(--text); text-align: center; font-weight: var(--weight-bold); }
+.keypress-probe-head button { margin-left: auto; border: 0; background: transparent; color: var(--text); font: inherit; font-weight: var(--weight-semibold); cursor: pointer; pointer-events: auto; }
 .keypress-probe-head button:hover { color: var(--accent); }
 .keypress-probe ol { list-style: none; max-height: 138px; overflow: auto; padding: var(--space-xs) var(--space-sm) var(--space-sm); }
 .keypress-probe li { display: grid; grid-template-columns: minmax(88px, auto) auto 1fr; gap: var(--space-sm); align-items: baseline; padding: var(--space-2xs) 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent); }
-.keypress-probe li.empty { display: block; color: var(--text-muted); border: 0; }
+.keypress-probe li.empty { display: block; color: var(--text); border: 0; }
 .keypress-probe li.prevented b { color: var(--warning); }
 .keypress-probe b { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent); overflow: hidden; text-overflow: ellipsis; }
-.keypress-probe span { color: var(--text-muted); }
-.keypress-probe small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.keypress-probe span { color: var(--text); }
+.keypress-probe small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }

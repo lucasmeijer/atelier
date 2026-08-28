@@ -39,7 +39,7 @@
   display: grid;
   place-items: center;
   padding: var(--space-2xl);
-  color: var(--text);
+  color: var(--text-bright);
   background:
     radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 34%),
     color-mix(in srgb, var(--bg) 88%, transparent);
@@ -68,7 +68,7 @@
 .vscode-starting-spinner {
   width: 22px;
   height: 22px;
-  border-color: color-mix(in srgb, var(--text-muted) 26%, transparent);
+  border-color: color-mix(in srgb, var(--text) 26%, transparent);
   border-top-color: var(--accent);
 }
 
@@ -81,5 +81,5 @@
 .vscode-starting-subtitle {
   margin-top: var(--space-2xs);
   font-size: var(--text-small);
-  color: var(--text-muted);
+  color: var(--text);
 }

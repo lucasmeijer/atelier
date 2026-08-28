@@ -844,8 +844,9 @@ ${moduleStylesHtml()}
     const serviceTier = agent?.serviceTier ?? "";
     const attachmentDraft = agent?.attachmentDraft ?? "";
     if (!initialPrompt && !initialPromptMode && !model && !thinkingLevel && !serviceTier && !attachmentDraft) return undefined;
-    const parameters: AgentWorkspaceParameters = { initialPrompt, model, thinkingLevel, serviceTier: serviceTier || undefined, attachmentDraft };
+    const parameters: AgentWorkspaceParameters = { initialPrompt, model, thinkingLevel, attachmentDraft };
     if (initialPromptMode) parameters.initialPromptMode = initialPromptMode;
+    if (serviceTier) parameters.serviceTier = serviceTier;
     return parameters;
   }
 
@@ -924,7 +925,6 @@ ${moduleStylesHtml()}
       launch = (async () => {
         const model = String(form.get("model") ?? "");
         const thinkingLevel = String(form.get("level") ?? "");
-        const serviceTier = form.get("serviceTier") === "priority" ? "priority" : "default";
         await rememberNewWorkspaceAgentSettings(model, thinkingLevel);
         return createWorkspaceFromCommand({
           source: options.project ? { type: "project", project: options.project } : { type: "empty" },
@@ -932,7 +932,6 @@ ${moduleStylesHtml()}
             initialPrompt: String(form.get("text") ?? ""),
             model,
             thinkingLevel,
-            serviceTier,
             attachmentDraft,
           },
         });

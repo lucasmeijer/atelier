@@ -838,7 +838,7 @@ describe("web app contracts", () => {
       })));
 
       expect(response.status).toBe(200);
-      expect(captured?.context).toEqual({ agent: { initialPrompt: "", model: "openai-codex::gpt-5.6-sol", thinkingLevel: "medium", serviceTier: "default", attachmentDraft } });
+      expect(captured?.context).toEqual({ agent: { initialPrompt: "", model: "openai-codex::gpt-5.6-sol", thinkingLevel: "medium", attachmentDraft } });
       const body = await response.text();
       expect(body).toContain('action="update" target="launch_composer"');
       expect(body).not.toContain('action="select-workspace" target="workspace_detail"');

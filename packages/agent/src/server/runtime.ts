@@ -913,10 +913,8 @@ class RealAgentRuntime extends BaseAgentRuntime {
       outputTokens: stats?.tokens?.output ?? 0,
       cost: stats?.cost ?? 0,
       modelName: model?.name ?? model?.id,
-      provider: model?.provider,
       thinkingLevel: this.currentThinkingLevel(),
       thinkingLevels: this.availableThinkingLevels(),
-      serviceTier: await this.currentServiceTier(),
       models,
     };
   }

@@ -3,8 +3,7 @@ import { randomUUID } from "node:crypto";
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
-import { launchComposerServiceTier, launchComposerThinkingLevel, launchComposerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedLaunchComposerModel, type ModelRef } from "./model-state.ts";
-import type { AgentServiceTier } from "./service-tier.ts";
+import { launchComposerThinkingLevel, launchComposerThinkingLevels, configuredModelOptionViews, modelRefValue, selectedLaunchComposerModel, type ModelRef } from "./model-state.ts";
 import { contextualDiffLines, diffStats, parseUnifiedPatchHunks, type DiffDisplayLine, type DiffOperation } from "./diff.ts";
 import { embeddedBashCommand, formatBashCommandForDisplay, highlightedBashCommandHtml } from "./embedded-code.ts";
 import { highlightCodeHtmlForPath, renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdown";
@@ -108,10 +107,8 @@ export interface AgentStatsView {
   outputTokens: number;
   cost: number;
   modelName: string | undefined;
-  provider: string | undefined;
   thinkingLevel: string;
   thinkingLevels: string[];
-  serviceTier?: AgentServiceTier;
   models: AgentModelOption[];
 }
 
@@ -159,7 +156,6 @@ const pendingAgentStats: AgentStatsView = {
   outputTokens: 0,
   cost: 0,
   modelName: undefined,
-  provider: undefined,
   thinkingLevel: "",
   thinkingLevels: [],
   models: [],
@@ -308,27 +304,23 @@ async function renderLaunchComposerModelOptions(selectedModel?: string): Promise
   }).join("");
 }
 
-async function launchComposerSettingsState(selectedModel?: string): Promise<{ selected: ModelRef | undefined; selectedThinkingLevel: string | undefined; thinkingLevels: string[]; serviceTier?: AgentServiceTier }> {
+async function launchComposerSettingsState(selectedModel?: string): Promise<{ selected: ModelRef | undefined; selectedThinkingLevel: string | undefined; thinkingLevels: string[] }> {
   const selected = await selectedLaunchComposerModel(selectedModel);
   return {
     selected,
     selectedThinkingLevel: await launchComposerThinkingLevel(selected),
     thinkingLevels: await launchComposerThinkingLevels(selected),
-    serviceTier: await launchComposerServiceTier(selected),
   };
 }
 
 interface SharedComposerSelectionsOptions {
   modelFormId: string;
   thinkingFormId: string;
-  serviceTierFormId: string;
   modelOptions: string;
   thinkingLevels: string[];
   selectedThinkingLevel: string;
-  serviceTier?: AgentServiceTier;
   autosubmitModel?: boolean;
   autosubmitThinking?: boolean;
-  autosubmitServiceTier?: boolean;
 }
 
 function composerSelectionField(formId: string, autosubmit: boolean | undefined, control: string): string {
@@ -342,23 +334,15 @@ function renderSharedComposerSelections(options: SharedComposerSelectionsOptions
   const thinkingSelection = options.thinkingLevels.length > 0
     ? composerSelectionField(options.thinkingFormId, options.autosubmitThinking, `<select class="composer-selection popup-select" data-popup-select-trigger-class="composer-selection-button" data-popup-select-opens-above="true" name="level" form="${escapeHtml(options.thinkingFormId)}" title="Thinking level">${options.thinkingLevels.map((level) => `<option value="${escapeHtml(level)}"${level === options.selectedThinkingLevel ? " selected" : ""}>${escapeHtml(level)}</option>`).join("")}</select>`)
     : "";
-  const serviceTierSelection = options.serviceTier
-    ? composerSelectionField(options.serviceTierFormId, options.autosubmitServiceTier, `<label class="composer-service-tier" title="${fastModeTitle(options.serviceTier)}"><input type="checkbox" name="serviceTier" value="priority" form="${escapeHtml(options.serviceTierFormId)}" aria-label="Fast mode"${options.serviceTier === "priority" ? " checked" : ""}><input type="hidden" name="serviceTier" value="default" form="${escapeHtml(options.serviceTierFormId)}"><span aria-hidden="true">⚡</span></label>`)
-    : "";
   const modelSelection = composerSelectionField(options.modelFormId, options.autosubmitModel, `<select class="composer-selection" data-controller="agent-model-menu" name="model" form="${escapeHtml(options.modelFormId)}" title="Model">${options.modelOptions}</select>`);
   return `<span class="composer-selections">
 ${modelSelection}
 ${thinkingSelection}
-${serviceTierSelection}
 </span>`;
 }
 
-function fastModeTitle(serviceTier: AgentServiceTier): string {
-  return serviceTier === "priority" ? "Fast is on. Switch to Standard for the next model call." : "Switch to Fast for the next model call; uses plan limits faster.";
-}
-
 export async function renderLaunchComposerSettings(options: { frameId: string; formId: string; url: string; selectedModel?: string }): Promise<string> {
-  const { selected, selectedThinkingLevel, thinkingLevels, serviceTier } = await launchComposerSettingsState(options.selectedModel);
+  const { selected, selectedThinkingLevel, thinkingLevels } = await launchComposerSettingsState(options.selectedModel);
   const selectedValue = selected ? modelRefValue(selected) : "";
   const modelFormId = `${options.frameId}_model_form`;
   return `<turbo-frame id="${escapeHtml(options.frameId)}"><form id="${escapeHtml(modelFormId)}" method="get" action="${escapeHtml(options.url)}" data-turbo-frame="${escapeHtml(options.frameId)}" hidden></form>
@@ -366,11 +350,9 @@ export async function renderLaunchComposerSettings(options: { frameId: string; f
 ${renderSharedComposerSelections({
     modelFormId,
     thinkingFormId: options.formId,
-    serviceTierFormId: options.formId,
     modelOptions: await renderLaunchComposerModelOptions(selectedValue || undefined),
     thinkingLevels,
     selectedThinkingLevel: selectedThinkingLevel ?? "",
-    serviceTier,
     autosubmitModel: true,
   })}</turbo-frame>`;
 }
@@ -409,10 +391,8 @@ export function renderAgentPaneComposerFooter(ctx: AgentRenderContext, stats: Ag
   const formPrefix = `${ids.stats(ctx)}_selection`;
   const modelFormId = `${formPrefix}_model`;
   const thinkingFormId = `${formPrefix}_thinking`;
-  const serviceTierFormId = `${formPrefix}_service_tier`;
   const selectionForms = `<form id="${modelFormId}" method="post" action="${escapeHtml(agentPath(ctx, "/model"))}" hidden></form>
-${stats.thinkingLevels.length > 0 ? `<form id="${thinkingFormId}" method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" hidden></form>` : ""}
-${stats.serviceTier ? `<form id="${serviceTierFormId}" method="post" action="${escapeHtml(agentPath(ctx, "/service-tier"))}" hidden></form>` : ""}`;
+${stats.thinkingLevels.length > 0 ? `<form id="${thinkingFormId}" method="post" action="${escapeHtml(agentPath(ctx, "/thinking"))}" hidden></form>` : ""}`;
   return `${meter}
 <span class="agent-stat" title="Tokens up (input)">↑ <b>${formatTokens(stats.inputTokens)}</b></span>
 <span class="agent-stat" title="Tokens down (output)">↓ <b>${formatTokens(stats.outputTokens)}</b></span>
@@ -421,14 +401,11 @@ ${selectionForms}
 ${renderSharedComposerSelections({
     modelFormId,
     thinkingFormId,
-    serviceTierFormId,
     modelOptions,
     thinkingLevels: stats.thinkingLevels,
     selectedThinkingLevel: stats.thinkingLevel,
-    serviceTier: stats.serviceTier,
     autosubmitModel: true,
     autosubmitThinking: true,
-    autosubmitServiceTier: true,
   })}`;
 }
 
@@ -852,8 +829,8 @@ function toolResultImagesHtml(ctx: AgentRenderContext, tool: ToolView): string {
 
 // Keep completed Bash output aligned with the same theme palette as its live xterm.
 const ansi16 = [
-  "var(--panel)", "var(--danger)", "var(--success)", "var(--warning)", "var(--accent)", "var(--decorative)", "var(--accent)", "var(--text)",
-  "var(--line-strong)", "var(--danger)", "var(--success)", "var(--warning)", "var(--accent)", "var(--decorative)", "var(--accent)", "var(--text)",
+  "var(--panel)", "var(--danger)", "var(--success)", "var(--warning)", "var(--accent)", "var(--decorative)", "var(--accent)", "var(--text-bright)",
+  "var(--line-strong)", "var(--danger)", "var(--success)", "var(--warning)", "var(--accent)", "var(--decorative)", "var(--accent)", "var(--text-bright)",
 ];
 
 function ansi256(index: number): string | undefined {

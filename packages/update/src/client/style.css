@@ -7,7 +7,7 @@
 .update-release-notes img, .update-release-notes video { display: block; max-width: 100%; border: 1px solid var(--line); border-radius: var(--radius-surface); background: var(--bg); }
 .update-release-notes pre { overflow: auto; padding: var(--space-md) var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-surface); background: var(--bg); }
 .update-note h2 { margin: 0 0 var(--space-md); font-size: var(--text-title); letter-spacing: -.35px; }
-.update-note ul { margin: 0 0 var(--space-lg) var(--space-xl); color: var(--text); }
+.update-note ul { margin: 0 0 var(--space-lg) var(--space-xl); color: var(--text-bright); }
 .update-note li + li { margin-top: var(--space-xs); }
 .update-note + .update-note { padding-top: var(--space-2xl); border-top: 1px solid var(--line); }
 
@@ -15,5 +15,5 @@
 .update-whats-new-dialog .settings-main { padding: 0; }
 .update-whats-new-dialog .settings-close { position: sticky; top: 16px; float: right; margin: var(--space-xl) var(--space-xl) 0 0; }
 .update-whats-new-dialog .update-notes-sec { padding-top: var(--space-md); border-bottom: 0; }
-.update-notes-loading { display: flex; align-items: flex-start; gap: var(--space-lg); padding: var(--space-xl); color: var(--text-muted); }
-.update-notes-loading b { display: block; margin-bottom: var(--space-2xs); color: var(--text); }
+.update-notes-loading { display: flex; align-items: flex-start; gap: var(--space-lg); padding: var(--space-xl); color: var(--text); }
+.update-notes-loading b { display: block; margin-bottom: var(--space-2xs); color: var(--text-bright); }

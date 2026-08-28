@@ -11,7 +11,7 @@
 .provision-step.running { border-left-color: var(--accent); }
 .provision-step.failed { border-left-color: var(--danger); }
 .provision-step-row { display: flex; align-items: flex-start; gap: var(--space-md); }
-.provision-step-icon { width: 16px; text-align: center; color: var(--text-muted); }
+.provision-step-icon { width: 16px; text-align: center; color: var(--text); }
 .provision-step.done .provision-step-icon { color: var(--success); }
 .provision-step.running .provision-step-icon { color: var(--accent); }
 .provision-step.failed .provision-step-icon, .provision-error { color: var(--danger); }
