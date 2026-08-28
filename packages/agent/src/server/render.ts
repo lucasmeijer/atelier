@@ -50,10 +50,7 @@ export const ids = {
   itemText: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext`, key),
   itemTextStable: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext_stable`, key),
   itemTextTail: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_itemtext_tail`, key),
-  itemSummary: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary`, key),
   itemSummaryContent: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_summary_content`, key),
-  itemCompletion: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_completion`, key),
-  itemCompletionTabs: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_completion_tabs`, key),
   detailFrame: (ctx: AgentRenderContext, key: string) => domId(`${prefix(ctx)}_detail`, key),
   stats: (ctx: AgentRenderContext) => `${prefix(ctx)}_stats`,
   actions: (ctx: AgentRenderContext) => `${prefix(ctx)}_actions`,
@@ -586,11 +583,7 @@ export function renderActiveToolContent(ctx: AgentRenderContext, key: string, or
 }
 
 function toolSummaryCardHtml(ctx: AgentRenderContext, key: string, tool: ToolView): string {
-  return `<span id="${ids.itemSummary(ctx, key)}" class="agent-tool-head">${statusHtml(tool.status)}<span id="${ids.itemSummaryContent(ctx, key)}" class="agent-tool-summary-content">${toolSummaryContentHtml(tool)}</span></span>`;
-}
-
-export function renderToolSummary(ctx: AgentRenderContext, key: string, tool: ToolView): string {
-  return toolSummaryCardHtml(ctx, key, toolForRender(tool));
+  return `<span class="agent-tool-head">${statusHtml(tool.status)}<span id="${ids.itemSummaryContent(ctx, key)}" class="agent-tool-summary-content">${toolSummaryContentHtml(tool)}</span></span>`;
 }
 
 function tailFrameAttributes(ctx: AgentRenderContext, key: string): string {
@@ -667,20 +660,6 @@ function copyableToolBody(body: string, label: string): string {
   return `<div class="copy-region">${toolCopyButton(label)}<div class="copy-source" data-copy-source>${body}</div></div>`;
 }
 
-export function renderObservedBashTabs(_key: string, tool: ToolView): string {
-  const hasModel = !bashViews(tool, 100).same;
-  return `<div class="agent-region-header agent-observed-tabs"><span>Result</span><div class="text-toggle" role="group" aria-label="Result view"><button class="text-toggle__option" type="button" data-agent-region-view="live" aria-pressed="true">Live</button><button class="text-toggle__option" type="button" data-agent-region-view="primary" aria-pressed="false">Colored</button>${hasModel ? `<button class="text-toggle__option" type="button" data-agent-region-view="model" aria-pressed="false">As seen by model</button>` : ""}</div></div>`;
-}
-
-export function renderObservedBashCompletion(ctx: AgentRenderContext, key: string, tool: ToolView, count = 100): string {
-  const views = bashViews(tool, count);
-  const result = views.display ? `<pre class="agent-tool-result agent-tool-region-body agent-tool-ansi">${bashOutputHtml(views.resultWindow.text)}</pre>` : `<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(views.resultWindow.text)}</pre>`;
-  const fullResult = views.display ? `<pre class="agent-tool-result agent-tool-region-body agent-tool-ansi">${bashOutputHtml(views.display)}</pre>` : `<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(views.model || "(no output)")}</pre>`;
-  const resultWindow = tailOutput(result, moreLink(ctx, key, count, views.resultWindow.hidden, "last"), "last");
-  const modelWindow = tailOutput(`<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(views.modelWindow.text)}</pre>`, moreLink(ctx, key, count, views.modelWindow.hidden, "last"), "last");
-  return `<div class="agent-observed-result">${fullscreenSourceRegion("Result", copyableToolBody(resultWindow, "result"), fullResult)}</div>${views.same ? "" : `<div class="agent-observed-model">${fullscreenSourceRegion("As seen by model", copyableToolBody(modelWindow, "model result"), `<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(views.model || "(no output)")}</pre>`)}</div>`}`;
-}
-
 function comparisonHeader(title: string, primaryLabel: string, secondaryLabel = "As seen by model"): string {
   return `<div class="agent-region-header agent-region-tabs"><span>${title}</span><div class="text-toggle" role="group" aria-label="${title} view"><button class="text-toggle__option" type="button" data-agent-region-view="primary" aria-pressed="true">${primaryLabel}</button><button class="text-toggle__option" type="button" data-agent-region-view="model" aria-pressed="false">${secondaryLabel}</button></div></div>`;
 }
@@ -692,10 +671,10 @@ function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolV
   const fullResult = display ? `<pre class="agent-tool-result agent-tool-region-body agent-tool-ansi">${bashOutputHtml(display)}</pre>` : `<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(model || "(no output)")}</pre>`;
   if (same) return fullscreenSourceRegion("Result", `<section class="agent-tool-region agent-bash-output"><div class="agent-region-header">Result</div>${copyableToolBody(resultHtml, "result")}</section>`, fullResult);
   const modelHtml = tailOutput(`<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(modelWindow.text)}</pre>`, moreLink(ctx, key, count, modelWindow.hidden, "last"), "last");
-  return `<section class="agent-tool-region agent-bash-output">${comparisonHeader("Result", "Colored")}<div class="agent-region-pane region-primary-pane result-pane">${fullscreenSourceRegion("Result", copyableToolBody(resultHtml, "colored result"), fullResult)}</div><div class="agent-region-pane region-model-pane model-pane">${fullscreenSourceRegion("As seen by model", copyableToolBody(modelHtml, "model result"), `<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(model || "(no output)")}</pre>`)}</div></section>`;
+  return `<section class="agent-tool-region agent-bash-output">${comparisonHeader("Result", "Colored")}<div class="agent-region-pane region-primary-pane">${fullscreenSourceRegion("Result", copyableToolBody(resultHtml, "colored result"), fullResult)}</div><div class="agent-region-pane region-model-pane">${fullscreenSourceRegion("As seen by model", copyableToolBody(modelHtml, "model result"), `<pre class="agent-tool-result agent-tool-region-body">${escapeHtml(model || "(no output)")}</pre>`)}</div></section>`;
 }
 
-function renderBashCommand(key: string, command: string): string {
+function renderBashCommand(command: string): string {
   const formatted = formatBashCommandForDisplay(command);
   const bodyClass = "agent-tool-code agent-tool-region-body";
   const commandBody = embeddedBashCommandHtml(command, formatted, bodyClass) ?? codeBlockHtml(formatted, "command.sh", bodyClass);
@@ -707,10 +686,10 @@ function renderBashCommand(key: string, command: string): string {
 
 function renderBashDetail(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {
   const command = stringArg(toolArgs(tool), "command") ?? "";
-  const commandHtml = renderBashCommand(key, command);
+  const commandHtml = renderBashCommand(command);
   if (tool.status === "streaming") return `<div class="agent-tool-detail">${commandHtml}</div>`;
   if (tool.status === "running") {
-    const terminal = tool.tmuxSession && tool.terminalVisible ? `<section class="agent-tool-region agent-bash-output agent-observed-bash"><div id="${ids.itemCompletionTabs(ctx, key)}" class="agent-region-header">Live terminal</div><div class="agent-terminal-viewport agent-observed-live"><div class="agent-tool-term agent-terminal-awaiting-output observable-terminal-host" data-controller="agent-term" data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}" data-agent-term-label-value="${escapeHtml(ctx.label)}" data-agent-term-session-value="${escapeHtml(tool.tmuxSession)}"></div></div><div id="${ids.itemCompletion(ctx, key)}"></div></section>` : "";
+    const terminal = tool.tmuxSession && tool.terminalVisible ? `<section class="agent-tool-region agent-bash-output"><div class="agent-region-header">Live terminal</div><div class="agent-terminal-viewport"><div class="agent-tool-term agent-terminal-awaiting-output observable-terminal-host" data-controller="agent-term" data-agent-term-workspace-id-value="${escapeHtml(ctx.workspaceId)}" data-agent-term-session-value="${escapeHtml(tool.tmuxSession)}"></div></div></section>` : "";
     return `<div class="agent-tool-detail agent-bash-detail">${commandHtml}${terminal}</div>`;
   }
   return `<div class="agent-tool-detail agent-bash-detail">${commandHtml}${renderBashResultViews(ctx, key, tool, count)}</div>`;

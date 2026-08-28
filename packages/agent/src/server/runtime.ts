@@ -20,11 +20,8 @@ import {
   renderNotice,
   renderModelContextDetailFrame,
   renderActiveToolContent,
-  renderObservedBashCompletion,
-  renderObservedBashTabs,
   renderPromptActions,
   renderAgentPaneComposerFooter,
-  renderToolSummary,
   renderTranscript,
   renderTranscriptItem,
   renderTranscriptItemDetailFrame,
@@ -560,14 +557,9 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     item.tool.status = isError || toolDetailsIndicateError(details) ? "error" : "ok";
     item.tool.resultText = resultText;
     item.tool.details = details;
-    if (item.tool.name === "bash" && item.tool.terminalVisible) {
-      this.stream(turboStream("replace", ids.itemSummary(this.ctx, item.key), renderToolSummary(this.ctx, item.key, item.tool)));
-      this.stream(turboStream("update", ids.itemCompletionTabs(this.ctx, item.key), renderObservedBashTabs(item.key, item.tool)));
-      this.stream(turboStream("update", ids.itemCompletion(this.ctx, item.key), renderObservedBashCompletion(this.ctx, item.key, item.tool)));
-    } else {
-      item.tool.tmuxSession = undefined;
-      this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
-    }
+    item.tool.tmuxSession = undefined;
+    item.tool.terminalVisible = undefined;
+    this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
   }
 
   protected liveNote(text: string, tone: "system" | "summary" | "error"): void {
@@ -612,7 +604,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.stream(turboStream("replace", ids.item(this.ctx, live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(live))));
   }
 
-  /** End the live model; observed tool calls stay open. */
+  /** End the live model. */
   protected async liveEnd(): Promise<void> {
     // Supersede any paced tail with one canonical full-source render before the
     // live state (and its renderer session) is discarded.
@@ -954,7 +946,7 @@ class RealAgentRuntime extends BaseAgentRuntime {
     const entry = this.latestSessionMessage((message) => message?.role === "toolResult" && message.toolCallId === callId);
     if (!entry) return;
     item.tool.resultImages = sessionContentImages(entry);
-    if (!(item.tool.name === "bash" && item.tool.terminalVisible)) this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
+    this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
   }
 
   private async handleEvent(event: any): Promise<void> {

@@ -18,7 +18,7 @@ function textResult(result: any): string {
 async function executeBash(params: { command: string; timeout?: number }) {
   // SAFETY: This concrete callback declares only four parameters and cannot
   // inspect Pi's fifth ExtensionContext; the direct test supplies an ignored placeholder.
-  return await createTmuxBashTool("ws", {}, execWorkspaceShell).execute("call", params, undefined, undefined, undefined as never);
+  return await createTmuxBashTool("ws", execWorkspaceShell).execute("call", params, undefined, undefined, undefined as never);
 }
 
 function mockPaneOutput(stdout: string, exitCode = 0): void {

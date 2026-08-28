@@ -484,10 +484,5 @@ summary > .agent-tool-head { width: 100%; }
 .atelier-fullscreen-html .agent-tool-code, .atelier-fullscreen-html .agent-tool-result { max-height: none; }
 .atelier-fullscreen-html .agent-detail-fullscreen { max-width: 1100px; margin: 0 auto; border: 1px solid var(--line); border-radius: var(--radius-control); overflow: hidden; }
 
-.agent-observed-result, .agent-observed-model { display: none; }
-.agent-observed-bash:has([data-agent-region-view="primary"][aria-pressed="true"]) .agent-observed-live,
-.agent-observed-bash:has([data-agent-region-view="model"][aria-pressed="true"]) .agent-observed-live { display: none; }
-.agent-observed-bash:has([data-agent-region-view="primary"][aria-pressed="true"]) .agent-observed-result { display: block; }
-.agent-observed-bash:has([data-agent-region-view="model"][aria-pressed="true"]) .agent-observed-model { display: block; }
 .agent-tool.tool-write.active .agent-tool-code { max-height: none; overflow: visible; white-space: pre-wrap; }
-.agent-bash-output:has(.agent-terminal-awaiting-output):not(:has(.agent-observed-tabs)) { display: none; }
+.agent-bash-output:has(.agent-terminal-awaiting-output) { display: none; }

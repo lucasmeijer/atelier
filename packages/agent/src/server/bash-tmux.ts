@@ -45,11 +45,6 @@ const maxDisplayAnsiBytes = 200_000;
 const tmuxHistoryLimit = observableTerminalHistoryLimit;
 const pollIntervalMs = 350;
 
-interface TmuxBashHooks {
-  /** Called when the tmux session is up: lets the runtime show a live terminal. */
-  onSessionStarted?: (toolCallId: string, tmuxSession: string) => void;
-}
-
 type ExecWorkspaceShell = typeof execWorkspaceShell;
 
 interface LimitedModelLines {
@@ -81,7 +76,6 @@ export function stripTmuxPaneFraming(text: string): string {
 
 export function createTmuxBashTool(
   workspaceId: string,
-  hooks: TmuxBashHooks = {},
   runWorkspaceShell: ExecWorkspaceShell = execWorkspaceShell,
 ): ToolDefinition<any, any> {
   return defineTool({
@@ -92,7 +86,7 @@ export function createTmuxBashTool(
       command: Type.String({ description: "The bash command to execute" }),
       timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (default 600)" })),
     }),
-    execute: async (toolCallId: string, params: { command: string; timeout?: number }, signal?: AbortSignal, onUpdate?: (partial: any) => void) => {
+    execute: async (_toolCallId: string, params: { command: string; timeout?: number }, signal?: AbortSignal, onUpdate?: (partial: any) => void) => {
       const sessionName = `${agentTmuxPrefix}${crypto.randomUUID().slice(0, 8)}`;
       const exitFile = `/tmp/${sessionName}.exit`;
       const fullOutputPath = `/tmp/${sessionName}.log`;
@@ -135,7 +129,6 @@ printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
       );
       if (create.exitCode !== 0) throw new Error(create.stderr.trim() || `could not start command session`);
 
-      hooks.onSessionStarted?.(toolCallId, sessionName);
       onUpdate?.({ content: [], details: { tmuxSession: sessionName, command: params.command } });
 
       const startedAt = Date.now();
@@ -194,7 +187,6 @@ printf '%s\\n' "$status" > ${shellQuote(exitFile)}`;
         content: [{ type: "text" as const, text: body }],
         details: {
           exitCode,
-          tmuxSession: sessionName,
           displayAnsi,
           aborted,
           timedOut,

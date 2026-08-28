@@ -1303,7 +1303,6 @@ function createAgentTailFrameController(Controller: StimulusControllerConstructo
       height: number;
       top: number;
       tail: boolean;
-      checkedTabs: string[];
       transcript?: { element: HTMLElement; top: number };
     };
     private scrollers(): HTMLElement[] {
@@ -1320,7 +1319,6 @@ function createAgentTailFrameController(Controller: StimulusControllerConstructo
         height: scroller.scrollHeight,
         top: scroller.scrollTop,
         tail: scroller.dataset.agentTailDirection === "last",
-        checkedTabs: [...this.element.querySelectorAll<HTMLInputElement>(".agent-region-tabs input:checked, .agent-observed-tabs input:checked")].map((input) => input.id),
         transcript: transcript ? { element: transcript, top: transcript.scrollTop } : undefined,
       };
     }
@@ -1330,9 +1328,6 @@ function createAgentTailFrameController(Controller: StimulusControllerConstructo
       if (!previous) {
         for (const scroller of this.element.querySelectorAll<HTMLElement>('.agent-tail-output[data-agent-tail-direction="last"]')) scroller.scrollTop = scroller.scrollHeight;
         return;
-      }
-      for (const input of this.element.querySelectorAll<HTMLInputElement>(".agent-region-tabs input, .agent-observed-tabs input")) {
-        if (previous.checkedTabs.includes(input.id)) input.checked = true;
       }
       const scroller = this.scrollers()[previous.scrollerIndex];
       if (!scroller) return;
@@ -1386,7 +1381,7 @@ export function forwardAgentTerminalWheel<T extends Pick<HTMLElement, "scrollTop
 
 function createAgentTermController(Controller: StimulusControllerConstructor) {
   return class AgentTermController extends Controller {
-    static values = { workspaceId: String, label: String, session: String };
+    static values = { workspaceId: String, session: String };
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
     declare readonly sessionValue: string;
@@ -1439,15 +1434,6 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
           if (!printable) return;
           hasVisibleOutput = true;
           this.element.classList.remove("agent-terminal-awaiting-output");
-        },
-        onClose: () => {
-          if (hasVisibleOutput) return;
-          const selectResult = () => {
-            const result = this.element.closest(".agent-observed-bash")?.querySelector<HTMLInputElement>('.agent-observed-tabs input[id$="-result"]');
-            if (result) result.checked = true;
-            else if (this.element.isConnected) setTimeout(selectResult, 25);
-          };
-          selectResult();
         },
       })
         .then((viewer) => {
