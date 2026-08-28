@@ -391,25 +391,24 @@
 .agent-working:not(:has(.agent-working-items > .agent-item)) .disclosure-icon { display: none; }
 .agent-working-items { margin: var(--space-2xs) 0 var(--space-xs); }
 .agent-working-items > .agent-item + .agent-item { margin-top: var(--space-md); }
+.agent-working-items > .agent-item:has(.agent-tool) + .agent-item:has(.agent-tool) { margin-top: var(--space-2xs); }
 .agent-itext-md { color: var(--text); }
 .agent-stream-markdown > div { display: contents; }
 
 .agent-tool { margin: 0; border: 0; border-radius: 0; background: transparent; overflow: visible; }
 .agent-tool-head { display: flex; align-items: center; gap: var(--space-md); }
-summary > .agent-tool-head { width: 100%; }
+.agent-tool > summary.action-item { width: fit-content; max-width: 100%; }
 .agent-tool-status { width: 12px; height: 12px; flex: none; display: grid; place-items: center; }
 .agent-tool-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--success); opacity: .85; }
 .agent-tool-status.error::before { background: var(--danger); }
 .agent-tool-status.running { border: 1.5px solid var(--text-muted); border-top-color: transparent; border-radius: 50%; animation: agent-spin .8s linear infinite; }
 .agent-tool-status.running::before { display: none; }
-.agent-tool-summary-content, .agent-tool-detail-host { display: contents; }
-.agent-tool-sep { color: var(--text-muted); }
-.agent-tool-args { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.agent-tool-detail-host { display: contents; }
+.agent-tool-args, .agent-tool-elapsed { margin-inline-start: var(--space-md); }
+.agent-tool-args { color: var(--text-muted); }
 .agent-tool-args.error { color: var(--danger); }
 .agent-token-arrow { color: var(--text-muted); }
 .agent-duration-slot { white-space: nowrap; }
-.agent-tool-summary-only .agent-tool-head { cursor: default; }
-
 .agent-tool-detail { margin: var(--space-2xs) 0 var(--space-md); padding: 0; border: 1px solid var(--line); border-radius: var(--radius-control); overflow: hidden; background: var(--panel); }
 .agent-region-header { min-height: 29px; padding: var(--space-xs) var(--space-md); display: flex; align-items: center; gap: var(--space-md); color: var(--text-bright); background: color-mix(in srgb, var(--bg) 82%, #000 6%); border-bottom: 1px solid color-mix(in srgb, var(--text-bright) 15%, transparent); }
 .agent-region-header > .text-toggle { margin-left: auto; }

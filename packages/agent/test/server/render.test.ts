@@ -96,6 +96,13 @@ describe("transcript rendering", () => {
     expect(renderTranscript(ctx, [item], { systemPrompt: "", tools: [] })).toContain("a.ts:40-119");
   });
 
+  test("bash summaries only show non-zero exit codes", () => {
+    const successful: TranscriptItem = { type: "tool", key: "bash-ok", tool: tool({ name: "bash", durationMs: 1000, details: { exitCode: 0 } }) };
+    const failed: TranscriptItem = { type: "tool", key: "bash-failed", tool: tool({ name: "bash", durationMs: 1000, details: { exitCode: 2 } }) };
+    expect(renderTranscriptItem(ctx, successful)).not.toContain("exitcode 0");
+    expect(renderTranscriptItem(ctx, failed)).toContain("exitcode 2");
+  });
+
   test("historical tools are collapsed and lazy", () => {
     const item: TranscriptItem = { type: "tool", key: "write-1", tool: tool({ name: "write", args: { path: "a.ts", content: "const x = 1;" } }) };
     const html = renderTranscript(ctx, [item], { systemPrompt: "", tools: [] });
@@ -120,7 +127,7 @@ describe("transcript rendering", () => {
     const item: TranscriptItem = { type: "tool", key: "stream-write", tool: tool({ name: "write", status: "streaming", argsStream: '{"path":"a.ts","content":"x"' }) };
     const html = renderTranscriptItem(ctx, item, { live: true, open: true });
     const status = html.indexOf("agent-tool-status running");
-    const summaryContent = html.indexOf("agent-tool-summary-content");
+    const summaryContent = html.indexOf('id="ag_ws_agent_summary_content_stream-write"');
     expect(status).toBeGreaterThan(-1);
     expect(summaryContent).toBeGreaterThan(status);
     expect(html).toContain("agent-tool-detail-host");
@@ -163,7 +170,7 @@ describe("transcript rendering", () => {
   test("running edit has summary only", () => {
     const item: TranscriptItem = { type: "tool", key: "edit-live", tool: tool({ name: "edit", status: "running", args: { path: "a.ts", oldText: "old", newText: "new" } }) };
     const html = renderTranscriptItem(ctx, item, { live: true });
-    expect(html).toContain("agent-tool-summary-only");
+    expect(html).not.toContain("<details");
     expect(html).not.toContain("agent-tool-detail");
   });
 
