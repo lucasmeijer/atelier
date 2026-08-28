@@ -1003,7 +1003,7 @@ describe("web app contracts", () => {
     registry.setViewUnread("abc", "agent:Agent 1", true);
     while (!broadcasts.some((item) => item.includes("data-workspace-unread-at"))) await Bun.sleep(1);
     const unreadBroadcast = broadcasts.findLast((item) => item.includes('action="replace-workspace-pane-collections"')) ?? "";
-    expect(unreadBroadcast).toContain("fixed-shell-attention-dot");
+    expect(unreadBroadcast).toContain('aria-label="Agent ready"');
     expect(unreadBroadcast).toMatch(/data-workspace-unread-at="\d+"/);
   });
 

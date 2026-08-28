@@ -68,7 +68,7 @@ export function markActiveWorkspaceRow(root: ParentNode, workspaceId: string): v
   const active = root.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
   active?.classList.add("active");
   active?.setAttribute("aria-current", "page");
-  active?.querySelector(".fixed-shell-attention-dot")?.remove();
+  active?.querySelector(".status-dot.attention")?.remove();
 }
 
 function moveNodeBefore(parent: ParentNode, node: Node, reference: Node): void {

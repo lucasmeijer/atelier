@@ -500,11 +500,11 @@ describe("Atelier browser behavior", () => {
 
     const unread = page.locator('[data-workspace-entry-id="b"]');
     await unread.locator(".workspace-preload-spinner").waitFor();
-    expect(await unread.locator(".fixed-shell-attention-dot").isVisible()).toBe(false);
+    expect(await unread.locator('[aria-label="Agent ready"]').isVisible()).toBe(false);
 
     finishPreload();
     await page.waitForFunction(() => Boolean(document.querySelector('.workspace-detail-resident[data-workspace-id="b"]')));
-    await unread.locator(".fixed-shell-attention-dot").waitFor({ state: "visible" });
+    await unread.locator('[aria-label="Agent ready"]').waitFor({ state: "visible" });
     expect(await unread.getAttribute("data-workspace-preloading")).toBeNull();
     await page.close();
   });
@@ -554,7 +554,7 @@ describe("Atelier browser behavior", () => {
     await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspacePaneCollectionsTurboStream(unreadPane));
     const unread = page.locator('[data-workspace-entry-id="b"]');
     await page.waitForFunction(() => document.querySelector('[data-workspace-entry-id="b"]')?.hasAttribute("data-workspace-preloading"));
-    expect(await unread.locator(".fixed-shell-attention-dot").isVisible()).toBe(false);
+    expect(await unread.locator('[aria-label="Agent ready"]').isVisible()).toBe(false);
     expect(await page.locator("#b_agent_transcript").textContent()).toBe("Old transcript");
 
     await page.evaluate(() => {
@@ -562,7 +562,7 @@ describe("Atelier browser behavior", () => {
       (window as typeof window & { finishCachedAgentSync(): void }).finishCachedAgentSync();
     });
     await page.waitForFunction(() => !document.querySelector('[data-workspace-entry-id="b"]')?.hasAttribute("data-workspace-preloading"));
-    expect(await unread.locator(".fixed-shell-attention-dot").count()).toBe(1);
+    expect(await unread.locator('[aria-label="Agent ready"]').count()).toBe(1);
     expect(await page.locator("#b_agent_transcript").textContent()).toBe("New transcript");
     await page.close();
   });
@@ -943,7 +943,7 @@ describe("Atelier browser behavior", () => {
     await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), stream);
     await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="present-demo"] [data-navigation-ready="true"]'));
     const cachedResident = page.locator('.workspace-detail-resident[data-workspace-id="present-demo"]');
-    expect(await cachedResident.locator("[data-work-view-key] .fixed-shell-attention-dot").count()).toBe(2);
+    expect(await cachedResident.locator('[data-work-view-key] [aria-label="Attention"]').count()).toBe(2);
     await page.locator('.fixed-shell-workspace-pane [data-workspace-entry-id="present-demo"]').evaluate((button: HTMLButtonElement) => button.click());
     const resident = page.locator('.workspace-detail-resident[data-workspace-id="present-demo"]');
     await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="present-demo"]')?.classList.contains("visible"));
@@ -1195,7 +1195,7 @@ describe("Atelier browser behavior", () => {
     await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspaceUpdate);
     await page.getByRole("button", { name: "New mobile workspace", includeHidden: true }).waitFor({ state: "attached" });
     expect(await page.locator('[data-mobile-destination="work:files:workspace"]').count()).toBe(0);
-    expect(await page.locator("[data-mobile-more] .fixed-shell-attention-dot").count()).toBe(1);
+    expect(await page.locator('[data-mobile-more] [aria-label="Hidden Attention"]').count()).toBe(1);
     await page.locator("[data-mobile-more]").evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.getByRole("button", { name: "Close current view" }).count()).toBe(1);
     await page.getByRole("button", { name: "Close More" }).evaluate((button: HTMLButtonElement) => button.click());

@@ -486,10 +486,30 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 }
 @keyframes activity-spinner-spin { to { transform: rotate(1turn); } }
 
-.status-indicator { width: 8px; height: 8px; flex: 0 0 auto; border-radius: var(--radius-round); background: var(--text-muted); }
-.status-indicator.success { background: var(--success); box-shadow: 0 0 0 3px var(--success-soft); }
-.status-indicator.warning { background: var(--warning); box-shadow: 0 0 0 3px var(--warning-soft); }
-.status-indicator.danger { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+/* A compact semantic state marker for captions, controls, and standalone status. */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  flex: 0 0 auto;
+  border-radius: var(--radius-round);
+  background: currentColor;
+  color: var(--text-muted);
+}
+.status-dot.attention { color: var(--warning); }
+.status-dot.warning { color: var(--warning); }
+.status-dot.success { color: var(--success); }
+.status-dot.danger { color: var(--danger); }
+.status-dot.attention.at-edge { margin-inline-start: auto; }
+.status-dot.running {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  background: transparent;
+  animation: activity-spinner-spin 750ms linear infinite;
+}
+.status-dot:is(circle) { fill: currentColor; stroke: none; }
 
 /* Composition modules own the space between controls; individual items own only their anatomy. */
 .button-group { display: inline-flex; align-items: center; gap: 8px; }
@@ -647,6 +667,8 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 }
 .action-item :is(.action-item__primary, .action-item__label-text):focus-visible { outline: none; }
 .action-item__label { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
+/* Attention follows its subject by default; at-edge preserves aligned list columns. */
+.action-item__primary:has(> .status-dot.attention:not(.at-edge)) > .action-item__label { flex: 0 1 auto; }
 .action-item__label-text { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .action-item.is-label-scrolling .action-item__label { mask-image: linear-gradient(to right, transparent, black 8px, black calc(100% - 6px), transparent); }
 .action-item.is-label-scrolling .action-item__label-text { width: max-content; overflow: visible; text-overflow: clip; animation: action-item-label-scroll var(--action-item-label-scroll-duration) linear infinite alternate; }
@@ -676,6 +698,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   .disclosure-icon { transition-duration: 1ms; }
   .activity-button__indicator rect,
   .activity-spinner,
+  .status-dot.running,
   .status-list__item[aria-busy="true"] .status-list__marker { animation: none !important; }
   .action-item.is-label-scrolling .action-item__label { mask-image: none; }
   .action-item.is-label-scrolling .action-item__label-text { width: 100%; overflow: hidden; text-overflow: ellipsis; animation: none; }

@@ -118,7 +118,7 @@ function selectorCloseForm(close: ViewCloseAction): string {
 
 function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
   if (workspace.busy) return '<i class="status-spinner sm fixed-shell-workspace-busy action-item__status" aria-label="Workspace busy" title="Workspace busy"></i>';
-  if (workspace.unreadAt !== undefined && !workspace.active) return '<i class="fixed-shell-attention-dot action-item__status" aria-label="Agent ready"></i>';
+  if (workspace.unreadAt !== undefined && !workspace.active) return '<i class="status-dot attention at-edge action-item__status" aria-label="Agent ready"></i>';
   if (workspace.outdated) return '<i class="fixed-shell-workspace-warning action-item__status" aria-label="Workspace created with an older version of Atelier" title="Some newer features may require a new workspace">⚠︎</i>';
   return "";
 }
@@ -256,7 +256,7 @@ function renderLiveNode(key: string, role: "agent" | "work", id: string, bodyHtm
 
 function renderWorkViewSelector(view: WorkPaneContribution): string {
   return `<div class="fixed-shell-work-view-selector action-item" draggable="true" data-work-view-reorder-key="${escapeHtml(view.key)}" data-action="dragstart->workspace-presentation#beginWorkReorder dragover->workspace-presentation#allowWorkReorder drop->workspace-presentation#finishWorkReorder">
-    <button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}"${view.attentionSequence === undefined ? "" : ` data-attention-sequence="${view.attentionSequence}"`} data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(view.sourceKey ?? view.key)}" data-atelier-fullscreen-title-value="${escapeHtml(view.label)}" data-action="click->workspace-presentation#selectWorkView">${actionItemLabel(view.label)}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot action-item__status" aria-label="Attention"></i>'}</button>${view.close ? selectorCloseForm(view.close) : ""}
+    <button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}"${view.attentionSequence === undefined ? "" : ` data-attention-sequence="${view.attentionSequence}"`} data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(view.sourceKey ?? view.key)}" data-atelier-fullscreen-title-value="${escapeHtml(view.label)}" data-action="click->workspace-presentation#selectWorkView">${actionItemLabel(view.label)}${view.attentionSequence === undefined ? "" : '<i class="status-dot attention action-item__status" aria-label="Attention"></i>'}</button>${view.close ? selectorCloseForm(view.close) : ""}
   </div>`;
 }
 
@@ -293,7 +293,7 @@ function mobileWorkIcon(view: WorkPaneContribution): IconName {
 
 function renderMobileDestination(label: string, destination: string, iconName: IconName, attention = false): string {
   const escapedLabel = escapeHtml(label);
-  const attentionHtml = attention ? '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>' : "";
+  const attentionHtml = attention ? '<i class="status-dot attention" aria-label="Attention"></i>' : "";
   return `<button class="${mobileActionItemClasses}" type="button" aria-label="${escapedLabel}" title="${escapedLabel}" data-mobile-destination="${escapeHtml(destination)}" data-action="click->workspace-presentation#selectMobileDestination">${icon(iconName)}${attentionHtml}</button>`;
 }
 
@@ -302,7 +302,7 @@ function renderMobileDirectWorkViews(views: readonly WorkPaneContribution[]): st
 }
 
 function renderMobileSecondaryWorkViews(views: readonly WorkPaneContribution[]): string {
-  return views.filter((view) => view.mobileDestination === "more").map((view) => `<button type="button" data-more-work-key="${escapeHtml(view.key)}" data-action="click->workspace-presentation#selectMoreWorkView">${escapeHtml(view.label)}${view.attentionSequence === undefined ? "" : '<i class="fixed-shell-attention-dot" aria-label="Attention"></i>'}</button>`).join("") || "<p>No secondary views are available.</p>";
+  return views.filter((view) => view.mobileDestination === "more").map((view) => `<button type="button" data-more-work-key="${escapeHtml(view.key)}" data-action="click->workspace-presentation#selectMoreWorkView">${escapeHtml(view.label)}${view.attentionSequence === undefined ? "" : '<i class="status-dot attention at-edge" aria-label="Attention"></i>'}</button>`).join("") || "<p>No secondary views are available.</p>";
 }
 
 function renderMobileCloser(destination: string, close: ViewCloseAction): string {
@@ -323,7 +323,7 @@ function renderMobileNavigation(presentation: WorkspacePresentation): string {
   const hiddenAttention = presentation.workViews.some((view) => view.mobileDestination === "more" && view.attentionSequence !== undefined);
   return `<nav class="fixed-shell-mobile-nav fixed-shell-resident-mobile-nav button-group" aria-label="Current workspace destinations">
     <div class="fixed-shell-mobile-scroll button-group">${agentsDestination}<span id="${workViewDomId(presentation.workspace.id, "mobile_direct")}" class="fixed-shell-mobile-work-items button-group">${direct}</span></div>
-    <button class="fixed-shell-mobile-fixed ${mobileActionItemClasses}" type="button" aria-label="More" title="More" data-mobile-more data-action="click->workspace-presentation#toggleMore">${icon("more")}${hiddenAttention ? '<i class="fixed-shell-attention-dot" aria-label="Hidden Attention"></i>' : ""}</button>
+    <button class="fixed-shell-mobile-fixed ${mobileActionItemClasses}" type="button" aria-label="More" title="More" data-mobile-more data-action="click->workspace-presentation#toggleMore">${icon("more")}${hiddenAttention ? '<i class="status-dot attention" aria-label="Hidden Attention"></i>' : ""}</button>
     <section class="fixed-shell-more-menu" data-workspace-presentation-target="moreMenu" aria-label="More" hidden>
       <header><button type="button" class="fixed-shell-more-close" aria-label="Close More" data-action="click->workspace-presentation#toggleMore">${icon("close")}</button></header>
       <div class="fixed-shell-more-section"><span id="${workViewDomId(presentation.workspace.id, "mobile_secondary")}" class="fixed-shell-mobile-work-items">${openSecondary}</span></div>

@@ -400,11 +400,6 @@
 .agent-tool-head { display: flex; align-items: center; gap: 8px; }
 .agent-tool > summary.action-item { width: fit-content; max-width: 100%; }
 summary > .agent-tool-head { width: 100%; }
-.agent-tool-status { width: 12px; height: 12px; flex: none; display: grid; place-items: center; }
-.agent-tool-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--success); opacity: .85; }
-.agent-tool-status.error::before { background: var(--danger); }
-.agent-tool-status.running { border: 1.5px solid var(--text-muted); border-top-color: transparent; border-radius: 50%; animation: agent-spin .8s linear infinite; }
-.agent-tool-status.running::before { display: none; }
 .agent-tool-detail-host { display: contents; }
 .agent-tool-args, .agent-tool-elapsed { margin-inline-start: 8px; }
 .agent-tool-args { color: var(--text-muted); }

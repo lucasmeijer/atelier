@@ -143,7 +143,7 @@ function renderTreeRibbon(entry: FlatTreeEntry): string {
     ? `<path class="agent-tree-ribbon-connection" d="M ${x} 0 V 24"/>`
     : `<path class="agent-tree-ribbon-connection" d="M ${parentX} 0 C ${parentX} 10, ${x} 10, ${x} 24"/>`;
   const outgoing = entry.hasChildren ? `<path class="agent-tree-ribbon-connection" d="M ${x} 24 V 48"/>` : "";
-  return `<svg class="agent-tree-ribbon" style="width:${width}px" viewBox="0 0 ${width} 48" preserveAspectRatio="none" aria-hidden="true">${continuations}${incoming}${outgoing}<circle cx="${x}" cy="24" r="4"/></svg>`;
+  return `<svg class="agent-tree-ribbon" style="width:${width}px" viewBox="0 0 ${width} 48" preserveAspectRatio="none" aria-hidden="true">${continuations}${incoming}${outgoing}<circle class="status-dot" cx="${x}" cy="24" r="4"/></svg>`;
 }
 
 export function renderAgentTreeMenu(tree: readonly SessionTreeNode[], leafId: string | null, options: { filter?: TreeFilterMode; query?: string } = {}): string {

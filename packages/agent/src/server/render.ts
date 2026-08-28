@@ -485,8 +485,8 @@ function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscrip
       : "Working";
   const items = section.items.map((item) => renderTranscriptItem(ctx, item, { live: section.live, open: section.live })).join("");
   const active = section.completedAt === undefined && section.stoppedAt === undefined;
-  const status = active ? '<i class="activity-spinner action-item__status" aria-label="In progress"></i>' : "";
-  const summary = disclosureActionItemHtml(`${actionItemLabelHtml(label)}${status}`);
+  const status = active ? '<i class="status-dot running action-item__status" aria-label="In progress"></i>' : "";
+  const summary = disclosureActionItemHtml(`${status}${actionItemLabelHtml(label)}`);
   return `<details class="agent-working${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${section.completedAt === undefined ? " open" : ""}>${summary}<div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}">${items}</div></details>`;
 }
 
@@ -505,8 +505,8 @@ export function renderTranscriptItemDetailFrame(ctx: AgentRenderContext, item: T
 }
 
 function statusHtml(status: ToolView["status"]): string {
-  const state = status === "streaming" || status === "running" ? "running" : status === "error" ? "error" : "ok";
-  return `<span class="agent-tool-status ${state}"></span>`;
+  const state = status === "streaming" || status === "running" ? "running" : status === "error" ? "danger" : "success";
+  return `<span class="status-dot ${state}" aria-label="${state === "running" ? "In progress" : state === "danger" ? "Failed" : "Complete"}"></span>`;
 }
 
 function tokenSummary(tool: ToolView, direction: "up" | "down"): string {

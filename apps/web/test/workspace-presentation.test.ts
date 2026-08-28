@@ -90,7 +90,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(row({})).toContain("fixed-shell-workspace-warning");
     expect(busy).toContain("fixed-shell-workspace-busy");
     expect(busy).not.toContain("fixed-shell-workspace-warning");
-    expect(unread).toContain("fixed-shell-attention-dot");
+    expect(unread).toContain('aria-label="Agent ready"');
     expect(unread).not.toContain("fixed-shell-workspace-warning");
   });
 

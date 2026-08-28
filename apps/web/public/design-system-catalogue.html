@@ -54,7 +54,6 @@
     .catalogue-toolbar { display: flex; align-items: center; gap: 12px; margin-top: 24px; }
     .catalogue-field { display: flex; align-items: center; gap: 8px; color: var(--text); font-weight: var(--weight-semibold); }
     .catalogue-theme-popup { width: 184px; }
-    .catalogue-theme-dot { width: 9px; height: 9px; border-radius: var(--radius-round); background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
     .catalogue-content { width: min(1060px, calc(100% - 48px)); margin: 0 auto; padding: 48px 0 96px; }
     .catalogue-section { padding: 32px 0 48px; scroll-margin-top: 16px; }
@@ -171,6 +170,7 @@
         <a href="#toggles">Toggles</a>
         <a href="#copy-button">Copy button</a>
         <a href="#buttons">Buttons</a>
+        <a href="#status-dots">Status dots</a>
         <a href="#text-entry">Text entry</a>
         <a href="#dialog">Dialog</a>
         <a href="#popup-menu">Popup menu</a>
@@ -189,7 +189,7 @@
         <h1>A compact interface for operating software.</h1>
         <p>Shipped foundations, components, and patterns from <code>design-system.css</code>. Change the theme while the preview selector controls the responsive platform.</p>
         <div class="catalogue-toolbar">
-          <div class="catalogue-field popup-menu-anchor"><span class="catalogue-theme-dot"></span><span>Theme</span>
+          <div class="catalogue-field popup-menu-anchor"><span>Theme</span>
             <button class="button secondary catalogue-theme-trigger popup-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="catalogue-theme-popup"><span data-catalogue-theme-value>Nord</span><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button>
             <div class="popup-menu action-list popup-menu-anchored catalogue-theme-popup" id="catalogue-theme-popup" role="menu" aria-label="Catalogue theme" hidden>
               <button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" data-theme-value=""><span class="action-item__label"><span class="action-item__label-text">Daylight</span></span></button>
@@ -446,6 +446,33 @@ bun test</pre></div>
           </div>
         </section>
 
+        <section class="catalogue-section" id="status-dots">
+          <div class="catalogue-section-head"><h2>Status dots</h2><p>Compact, clean markers communicate semantic state. Success, warning, danger, and running describe the caption that follows them. Attention is a separate notification role: it always follows the word or item asking for attention.</p></div>
+          <div class="catalogue-grid">
+            <article class="catalogue-card"><div class="catalogue-card-title"><span>Semantic states</span><code>.status-dot + state</code></div><div class="catalogue-demo button-anatomy"><div class="button-group">
+              <i class="status-dot" aria-label="Neutral"></i>
+              <i class="status-dot attention" aria-label="Attention"></i>
+              <i class="status-dot success" aria-label="Success"></i>
+              <i class="status-dot warning" aria-label="Warning"></i>
+              <i class="status-dot danger" aria-label="Danger"></i>
+              <i class="status-dot running" aria-label="In progress"></i>
+            </div></div><p class="catalogue-note">Attention and warning intentionally share amber but remain distinct semantics and placements. All colors are full strength with no outer ring.</p></article>
+            <article class="catalogue-card"><div class="catalogue-card-title"><span>Status leads</span><code>dot before caption</code></div><div class="catalogue-demo button-anatomy"><div class="button-group vertical">
+              <span class="button-group"><i class="status-dot success" aria-hidden="true"></i>Connected</span>
+              <span class="button-group"><i class="status-dot warning" aria-hidden="true"></i>Needs review</span>
+              <span class="button-group"><i class="status-dot danger" aria-hidden="true"></i>Failed</span>
+              <button class="button secondary" type="button"><i class="status-dot running" aria-hidden="true"></i>Running</button>
+            </div></div><p class="catalogue-note">Static status and running indicators belong immediately in front of the caption they describe.</p></article>
+            <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Attention follows</span><code>default inline; optional .at-edge</code></div><div class="catalogue-demo"><div class="button-layouts">
+              <div><span class="button-layout-label">after its subject</span><button class="action-item action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">Browser</span></span><i class="status-dot attention action-item__status" aria-label="Attention"></i></button></div>
+              <div><span class="button-layout-label">aligned list edge</span><div class="action-stack action-list">
+                <button class="action-item action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">Workspace alpha</span></span><i class="status-dot attention at-edge action-item__status" aria-label="Attention"></i></button>
+                <button class="action-item action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">A longer workspace name</span></span><i class="status-dot attention at-edge action-item__status" aria-label="Attention"></i></button>
+              </div></div>
+            </div></div><p class="catalogue-note">Keep attention immediately after its subject in tabs and compact controls. Add <code>.at-edge</code> only when scanning an aligned vertical list is more important.</p></article>
+          </div>
+        </section>
+
         <section class="catalogue-section" id="text-entry">
           <div class="catalogue-section-head"><h2>Text entry</h2><p>Single-line and multiline controls share typography, surfaces, borders, and the same treatment for hover and keyboard focus. Use a visible <code>&lt;label&gt;</code> whenever possible.</p></div>
           <div class="catalogue-grid">
@@ -566,19 +593,19 @@ bun test</pre></div>
               <div class="managed-list__filter"><input class="text-field" type="search" placeholder="Filter providers…" aria-label="Filter example providers"></div>
               <div class="managed-list__items">
               <div class="managed-list__item" data-search-text="anthropic connected">
-                <i class="status-indicator success managed-list__visual" aria-label="Connected"></i>
+                <i class="status-dot success managed-list__visual" aria-label="Connected"></i>
                 <div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">Anthropic</span></div><div class="managed-list__description">13 models available</div></div>
                 <span class="managed-list__meta">Connected</span>
                 <div class="managed-list__actions"><button class="button danger" type="button">Disconnect</button></div>
               </div>
               <div class="managed-list__item" data-search-text="openrouter authentication required not connected">
-                <i class="status-indicator managed-list__visual" aria-label="Not connected"></i>
+                <i class="status-dot managed-list__visual" aria-label="Not connected"></i>
                 <div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">OpenRouter</span></div><div class="managed-list__description">Authentication required</div></div>
                 <span class="managed-list__meta">Not connected</span>
                 <div class="managed-list__actions"><button class="button primary" type="button">Connect</button></div>
               </div>
               <div class="managed-list__item" aria-disabled="true" data-search-text="radius unavailable no models">
-                <i class="status-indicator warning managed-list__visual" aria-label="Unavailable"></i>
+                <i class="status-dot warning managed-list__visual" aria-label="Unavailable"></i>
                 <div class="managed-list__content"><div class="managed-list__label"><span class="managed-list__label-text">Radius</span></div><div class="managed-list__description">No models available</div></div>
                 <span class="managed-list__meta">Unavailable</span>
               </div>
@@ -591,30 +618,23 @@ bun test</pre></div>
         <section class="catalogue-section" id="action-items">
           <div class="catalogue-section-head"><h2>Action items</h2><p>The shared interactive row adapts to navigation, lists, and tabs. Selection is semantic through <code>aria-current</code> or <code>aria-selected</code>.</p></div>
           <div class="catalogue-grid">
-            <article class="catalogue-card"><div class="catalogue-card-title"><span>Status</span><code>.activity-spinner + .status-indicator</code></div><div class="catalogue-demo button-anatomy"><div class="button-group">
-              <i class="activity-spinner" aria-label="In progress"></i>
-              <i class="status-indicator" aria-label="Pending"></i>
-              <i class="status-indicator success" aria-label="Complete"></i>
-              <i class="status-indicator warning" aria-label="Needs attention"></i>
-              <i class="status-indicator danger" aria-label="Failed"></i>
-            </div></div><p class="catalogue-note">Compact process indicators can accompany server-rendered status content without introducing flow-specific visual implementations.</p></article>
             <article class="catalogue-card"><div class="catalogue-card-title"><span>Vertical list</span><code>adjacent .action-item</code></div><div class="catalogue-demo"><nav aria-label="Example destinations">
               <a class="action-item action-item__primary" href="#action-items"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg><span class="action-item__label"><span class="action-item__label-text">Overview</span></span></a>
-              <a class="action-item action-item__primary" href="#action-items" aria-current="page"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6v10H4zM14 4h6v16h-6z"/></svg><span class="action-item__label"><span class="action-item__label-text">Workspaces</span></span><i class="status-indicator success action-item__status" aria-label="Ready"></i></a>
+              <a class="action-item action-item__primary" href="#action-items" aria-current="page"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6v10H4zM14 4h6v16h-6z"/></svg><i class="status-dot success action-item__status" aria-label="Ready"></i><span class="action-item__label"><span class="action-item__label-text">Workspaces</span></span></a>
               <a class="action-item action-item__primary" href="#action-items"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/></svg><span class="action-item__label"><span class="action-item__label-text">Projects</span></span></a>
               <button class="action-item action-item__primary" type="button" disabled><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/></svg><span class="action-item__label"><span class="action-item__label-text">Activity unavailable</span></span></button>
             </nav></div><p class="catalogue-note">Adjacent action items create their own 2px separation; the parent only establishes layout.</p></article>
             <article class="catalogue-card"><div class="catalogue-card-title"><span>Simple &amp; selected</span><code>.action-item</code></div><div class="catalogue-demo"><div class="action-stack action-list">
               <button class="action-item action-item__primary" type="button"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span class="action-item__label"><span class="action-item__label-text">Browse project files</span></span></button>
               <button class="action-item action-item__primary preview-focus" type="button"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span class="action-item__label"><span class="action-item__label-text">Keyboard focus</span></span></button>
-              <button class="action-item action-item__primary" type="button" aria-current="page"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h5"/></svg><span class="action-item__label"><span class="action-item__label-text">Current workspace</span></span><i class="status-indicator success action-item__status" aria-label="Ready"></i></button>
+              <button class="action-item action-item__primary" type="button" aria-current="page"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h5"/></svg><i class="status-dot success action-item__status" aria-label="Ready"></i><span class="action-item__label"><span class="action-item__label-text">Current workspace</span></span></button>
               <button class="action-item action-item__primary" type="button" disabled><span class="action-item__label"><span class="action-item__label-text">Unavailable destination</span></span></button>
             </div></div><p class="catalogue-note">Keyboard focus intentionally matches the action item’s hover treatment.</p></article>
             <article class="catalogue-card"><div class="catalogue-card-title"><span>Compound</span><code>primary + auxiliary</code></div><div class="catalogue-demo"><div class="action-stack action-list">
-              <div class="action-item preview-focus-within"><button class="action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">Focused compound item</span></span><i class="status-indicator warning action-item__status" aria-label="Needs attention"></i></button><button class="action-item__action button secondary icon-only" type="button" aria-label="More actions"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div>
+              <div class="action-item preview-focus-within"><button class="action-item__primary" type="button"><i class="status-dot warning action-item__status" aria-label="Warning"></i><span class="action-item__label"><span class="action-item__label-text">Focused compound item</span></span></button><button class="action-item__action button secondary icon-only" type="button" aria-label="More actions"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div>
               <div class="action-item"><button class="action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">Temporary browser preview</span></span></button><button class="action-item__action button danger icon-only" type="button" aria-label="Close preview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
             </div></div><p class="catalogue-note">Auxiliary controls remain siblings—never nested interactive elements.</p></article>
-            <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Overflow label</span><code>.action-item__label-text</code></div><div class="catalogue-demo"><div class="action-stack action-list truncate-demo"><button class="action-item action-item__primary" type="button"><span class="action-item__label"><span class="action-item__label-text">A deliberately long workspace name truncates inside a constrained action item</span></span><i class="status-indicator success action-item__status"></i></button></div></div><p class="catalogue-note">Labels truncate by default. The Action Item measures overflow and scrolls its caption while hovered or keyboard-focused.</p></article>
+            <article class="catalogue-card wide"><div class="catalogue-card-title"><span>Overflow label</span><code>.action-item__label-text</code></div><div class="catalogue-demo"><div class="action-stack action-list truncate-demo"><button class="action-item action-item__primary" type="button"><i class="status-dot success action-item__status" aria-hidden="true"></i><span class="action-item__label"><span class="action-item__label-text">A deliberately long workspace name truncates inside a constrained action item</span></span></button></div></div><p class="catalogue-note">Labels truncate by default. The Action Item measures overflow and scrolls its caption while hovered or keyboard-focused.</p></article>
           </div>
         </section>
 

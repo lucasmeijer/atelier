@@ -39,7 +39,7 @@ describe("agent session tree", () => {
   test("stops a ribbon at a leaf node", () => {
     const html = renderAgentTreeMenu([message("only", null, "assistant", "A leaf")], "only");
 
-    expect(html).toContain('<circle cx="9" cy="24" r="4"/>');
+    expect(html).toContain('cx="9" cy="24" r="4"');
     expect(html).not.toContain('d="M 9 24 V 48"');
   });
 

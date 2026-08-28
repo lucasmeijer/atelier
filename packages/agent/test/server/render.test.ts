@@ -127,7 +127,7 @@ describe("transcript rendering", () => {
   test("streaming tools isolate changing content from their status spinner", () => {
     const item: TranscriptItem = { type: "tool", key: "stream-write", tool: tool({ name: "write", status: "streaming", argsStream: '{"path":"a.ts","content":"x"' }) };
     const html = renderTranscriptItem(ctx, item, { live: true, open: true });
-    const status = html.indexOf("agent-tool-status running");
+    const status = html.indexOf('aria-label="In progress"');
     const summaryContent = html.indexOf('id="ag_ws_agent_summary_content_stream-write"');
     expect(status).toBeGreaterThan(-1);
     expect(summaryContent).toBeGreaterThan(status);
