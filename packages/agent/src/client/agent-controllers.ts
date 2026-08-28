@@ -63,6 +63,7 @@ declare global {
 
 interface AgentPaneControllerInstance {
   becomeVisible(): void;
+  synchronize(): Promise<void>;
   stop(): void;
 }
 
@@ -151,6 +152,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private stuck = true;
     private subscribed = false;
     private hasSubscribed = false;
+    private synchronization?: { promise: Promise<void>; resolve(): void; reject(error: Error): void };
     private transcriptMutationObserver?: MutationObserver;
     private transcriptLayoutObserver?: ResizeObserver;
     private transcriptLayoutFrame = 0;
@@ -258,7 +260,35 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       });
       if (document.visibilityState !== "visible" || !isWorkspacePaneVisible(this.element) || this.subscribed) return;
       this.startAgentTerminals();
-      const options: CableSubscriptionOptions = { onSynchronized: this.positionForSelection };
+      this.subscribe(this.positionForSelection);
+    }
+
+    synchronize(): Promise<void> {
+      if (this.synchronization) return this.synchronization.promise;
+      if (this.subscribed) return Promise.resolve();
+      let resolve!: () => void;
+      let reject!: (error: Error) => void;
+      const promise = new Promise<void>((promiseResolve, promiseReject) => {
+        resolve = promiseResolve;
+        reject = promiseReject;
+      });
+      this.synchronization = { promise, resolve, reject };
+      this.subscribe(() => {
+        const synchronization = this.synchronization!;
+        this.synchronization = undefined;
+        synchronization.resolve();
+        if (isWorkspacePaneVisible(this.element)) {
+          this.startAgentTerminals();
+          this.positionForSelection();
+        } else {
+          this.stop();
+        }
+      });
+      return promise;
+    }
+
+    private subscribe(onSynchronized: () => void): void {
+      const options: CableSubscriptionOptions = { onSynchronized };
       if (!this.hasSubscribed) options.upTo = this.hasSnapshotCursorValue ? this.snapshotCursorValue : undefined;
       window.AtelierCable?.subscribe(this.cableIdentifier(), options);
       this.subscribed = true;
@@ -267,6 +297,11 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     stop(): void {
       this.rememberHistoricalOpenItems();
+      if (this.synchronization) {
+        const synchronization = this.synchronization;
+        this.synchronization = undefined;
+        synchronization.reject(new Error("Agent synchronization stopped before completion"));
+      }
       if (!this.subscribed) return;
       window.AtelierCable?.unsubscribe(this.cableIdentifier());
       this.subscribed = false;
@@ -1466,7 +1501,7 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
 // ---------------------------------------------------------------------------
 
 function agentPaneController(application: StimulusApplication, pane: HTMLElement): AgentPaneControllerInstance | null {
-  const agentPane = pane.querySelector<HTMLElement>('[data-controller~="agent-pane"]');
+  const agentPane = pane.matches('[data-controller~="agent-pane"]') ? pane : pane.querySelector<HTMLElement>('[data-controller~="agent-pane"]');
   // SAFETY: This module registers AgentPaneController under "agent-pane"; Stimulus
   // returns that registered controller for this exact element-and-identifier pair.
   return agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
@@ -1496,6 +1531,11 @@ function agentConversationBecameVisible(application: StimulusApplication, pane: 
 
 function agentConversationNoLongerVisible(application: StimulusApplication, pane: HTMLElement): void {
   agentPaneController(application, pane)?.stop();
+}
+
+async function synchronizeAgentResident(application: StimulusApplication, resident: HTMLElement): Promise<void> {
+  const panes = [...resident.querySelectorAll<HTMLElement>('[data-controller~="agent-pane"]')];
+  await Promise.all(panes.map((pane) => agentPaneController(application, pane)?.synchronize()));
 }
 
 async function waitForAgentResident(workspaceId: string): Promise<HTMLElement> {
@@ -1567,6 +1607,7 @@ export const agentClientModule: WorkspaceClientModule = {
     });
     hooks.onBecomeVisible(({ pane }) => agentConversationBecameVisible(application, pane));
     hooks.onNoLongerVisible(({ pane }) => agentConversationNoLongerVisible(application, pane));
+    hooks.onSynchronizeWorkspace((resident) => synchronizeAgentResident(application, resident));
     hooks.onFocusGroup(({ pane }) => focusAgentPaneComposer(pane));
     const openLaunchComposer = (): void => {
       const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");

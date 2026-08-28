@@ -471,6 +471,64 @@ describe("Atelier browser behavior", () => {
     await page.close();
   });
 
+  test("synchronizes a cached unread Agent transcript before showing its unread dot", async () => {
+    const current: WorkspacePresentation = {
+      workspace: { id: "a", title: "Current" },
+      agentConversations: [{ id: "agent-a", title: "Agent", bodyHtml: "<p>Current</p>" }],
+      workViews: [],
+    };
+    const cachedAgent = `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="b" data-agent-pane-label-value="Agent">
+      <div class="agent-transcript" id="b_agent_transcript" data-agent-pane-target="transcript">Old transcript</div>
+      <div class="composer"><button data-agent-pane-target="transcriptNav"></button><form data-agent-pane-target="form"><textarea data-agent-pane-target="input"></textarea><button class="agent-sendstop" data-agent-pane-target="sendStop" data-agent-busy="false"></button></form></div>
+    </div>`;
+    const cached: WorkspacePresentation = {
+      workspace: { id: "b", title: "Cached" },
+      agentConversations: [{ id: "agent-b", title: "Agent", bodyHtml: cachedAgent }],
+      workViews: [],
+    };
+    const initialPane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "a", title: "Current", active: true },
+      { id: "b", title: "Cached" },
+    ] };
+    const unreadPane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "a", title: "Current", active: true },
+      { id: "b", title: "Cached", unreadAt: 123 },
+    ] };
+    const page = await newTestPage();
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellFixture(current, initialPane, [cached])}<script>
+        window.AtelierCable = {
+          subscribe(_identifier, options) { window.finishCachedAgentSync = () => {
+            window.Turbo.renderStreamMessage('<turbo-stream action="update" target="b_agent_transcript"><template>New transcript</template></turbo-stream>');
+            requestAnimationFrame(() => options.onSynchronized());
+          }; },
+          unsubscribe() {},
+          connected() { return true; },
+        };
+      </script><script type="module" src="/workspace-test.js"></script>`,
+    }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspacePaneCollectionsTurboStream(unreadPane));
+    const unread = page.locator('[data-workspace-entry-id="b"]');
+    await page.waitForFunction(() => document.querySelector('[data-workspace-entry-id="b"]')?.hasAttribute("data-workspace-preloading"));
+    expect(await unread.locator(".fixed-shell-attention-dot").isVisible()).toBe(false);
+    expect(await page.locator("#b_agent_transcript").textContent()).toBe("Old transcript");
+
+    await page.evaluate(() => {
+      // SAFETY: This test fixture installs the synchronization callback before the assertion reaches this point.
+      (window as typeof window & { finishCachedAgentSync(): void }).finishCachedAgentSync();
+    });
+    await page.waitForFunction(() => !document.querySelector('[data-workspace-entry-id="b"]')?.hasAttribute("data-workspace-preloading"));
+    expect(await unread.locator(".fixed-shell-attention-dot").count()).toBe(1);
+    expect(await page.locator("#b_agent_transcript").textContent()).toBe("New transcript");
+    await page.close();
+  });
+
   test("selects the Workspace requested by a creation stream", async () => {
     const first: WorkspacePresentation = {
       workspace: { id: "first", title: "First" },

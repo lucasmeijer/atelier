@@ -384,6 +384,7 @@ export interface WorkspaceClientHooks {
   onBecomeVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void;
   onNoLongerVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void;
   onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void;
+  onSynchronizeWorkspace(handler: (resident: HTMLElement) => void | Promise<void>): void;
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void;
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void;
   registerPaletteProvider(provider: WorkspacePaletteProvider): void;

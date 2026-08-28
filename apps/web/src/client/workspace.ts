@@ -60,6 +60,7 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   private readonly becomeVisibleHandlers: Array<(context: WorkspaceClientSurfaceVisibilityContext) => void> = [];
   private readonly noLongerVisibleHandlers: Array<(context: WorkspaceClientSurfaceVisibilityContext) => void> = [];
   private readonly focusGroupHandlers: Array<(context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>> = [];
+  private readonly synchronizeWorkspaceHandlers: Array<(resident: HTMLElement) => void | Promise<void>> = [];
   private readonly workspaceAppFrameUrlHandlers: Array<(context: WorkspaceClientWorkspaceAppFrameContext) => void> = [];
   private readonly workspaceAppFrameRefreshHandlers: Array<(context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void> = [];
   private readonly paletteProviders = new Map<string, WorkspacePaletteProvider>();
@@ -68,6 +69,7 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   onBecomeVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void { this.becomeVisibleHandlers.push(handler); }
   onNoLongerVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void { this.noLongerVisibleHandlers.push(handler); }
   onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void { this.focusGroupHandlers.push(handler); }
+  onSynchronizeWorkspace(handler: (resident: HTMLElement) => void | Promise<void>): void { this.synchronizeWorkspaceHandlers.push(handler); }
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void { this.workspaceAppFrameUrlHandlers.push(handler); }
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void { this.workspaceAppFrameRefreshHandlers.push(handler); }
   registerPaletteProvider(provider: WorkspacePaletteProvider): void { this.paletteProviders.set(provider.id, provider); }
@@ -87,6 +89,10 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
       if (await handler(context)) return true;
     }
     return false;
+  }
+
+  async synchronizeWorkspace(resident: HTMLElement): Promise<void> {
+    await Promise.all(this.synchronizeWorkspaceHandlers.map((handler) => handler(resident)));
   }
 
   workspaceAppFrameUrl(context: WorkspaceClientWorkspaceAppFrameContext): void {
@@ -1372,10 +1378,11 @@ class WorkspaceResidencyController extends Controller {
   }
 
   private async preloadResident(workspaceId: string): Promise<void> {
-    if (this.residentTargets.some((resident) => resident.dataset.workspaceId === workspaceId)) return;
     this.setWorkspacePreloading(workspaceId, true);
     try {
-      await this.ensureResident(workspaceId);
+      const resident = this.residentTargets.find((candidate) => candidate.dataset.workspaceId === workspaceId);
+      if (resident) await clientHooks.synchronizeWorkspace(resident);
+      else await this.ensureResident(workspaceId);
     } finally {
       this.setWorkspacePreloading(workspaceId, false);
     }
