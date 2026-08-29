@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { renderMarkdown } from "../../../packages/markdown/src/index.ts";
 import { renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkView } from "../../../packages/files/src/server/render.ts";
 import { renderReviewBody } from "../../../packages/review/src/server/render.ts";
 import type { ReviewComment } from "../../../packages/review/src/server/state.ts";
@@ -13,6 +14,7 @@ let designSystemClient: string;
 let designSystemStyle: string;
 let workspaceStyle: string;
 let filesStyle: string;
+let agentStyle: string;
 let catalogueHtml: string;
 
 async function newTestPage(options: { viewport?: { width: number; height: number }; reducedMotion?: "reduce" | "no-preference" } = {}): Promise<Page> {
@@ -64,6 +66,7 @@ beforeAll(async () => {
   const shellStyle = await Bun.file(new URL("../public/style.css", import.meta.url)).text();
   workspaceStyle = `${designSystemStyle}\n${shellStyle}`;
   filesStyle = await Bun.file(new URL("../../../packages/files/src/client/style.css", import.meta.url)).text();
+  agentStyle = await Bun.file(new URL("../../../packages/agent/src/client/style.css", import.meta.url)).text();
   catalogueHtml = await Bun.file(new URL("../public/design-system-catalogue.html", import.meta.url)).text();
   const executablePath = process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/local/bin/chromium";
   browser = await chromium.launch({ executablePath, headless: true });
@@ -76,6 +79,26 @@ afterAll(async () => {
 });
 
 describe("Atelier browser behavior", () => {
+  test("wraps long inline Markdown code within the transcript", async () => {
+    const page = await newTestPage({ viewport: { width: 500, height: 300 } });
+    const source = "Before `this_is_a_very_long_inline_identifier_that_cannot_fit_on_one_transcript_line` after.";
+    const transcript = `<main class="agent-md" style="width: 260px">${renderMarkdown("inline-code", source)}</main>`;
+    await page.setContent(`<style>${designSystemStyle}\n${agentStyle}</style>${transcript}`);
+
+    const geometry = await page.locator(".agent-md code").evaluate((code) => {
+      const transcriptRect = code.closest(".agent-md")!.getBoundingClientRect();
+      const fragments = [...code.getClientRects()];
+      return {
+        fragmentCount: fragments.length,
+        maxRight: Math.max(...fragments.map((fragment) => fragment.right)),
+        transcriptRight: transcriptRect.right,
+      };
+    });
+    expect(geometry.fragmentCount).toBeGreaterThan(1);
+    expect(geometry.maxRight).toBeLessThanOrEqual(geometry.transcriptRight);
+    await page.close();
+  });
+
   test("copies review comments into the agent composer or clipboard only on request", async () => {
     await browserContext.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://localhost" });
     const comments: ReviewComment[] = [
