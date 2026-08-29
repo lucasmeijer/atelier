@@ -313,7 +313,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     }
 
     rememberPosition(): void {
-      const scroller = this.element.closest<HTMLElement>(".fixed-shell-live-body")!;
+      const scroller = this.element;
       const scrollerTop = scroller.getBoundingClientRect().top;
       const toolbarBottom = scrollerTop + (this.element.querySelector<HTMLElement>(".review-toolbar")?.offsetHeight ?? 0) + 12;
       const file = this.fileTargets.findLast((candidate) => candidate.getBoundingClientRect().top <= toolbarBottom) ?? this.fileTargets[0];
@@ -340,7 +340,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       const saved = JSON.parse(raw) as SavedReviewPosition;
       const file = this.fileTargets.find((candidate) => candidate.dataset.reviewPath === saved.path);
       if (!file) return;
-      const scroller = this.element.closest<HTMLElement>(".fixed-shell-live-body")!;
+      const scroller = this.element;
       let anchor: HTMLElement = file;
       if (saved.line !== undefined) {
         const root = file.querySelector<HTMLElement>("diffs-container")?.shadowRoot;
