@@ -1322,6 +1322,30 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("collapses the Workspace pane and restores it from the Agent header", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "workspace-pane-demo", title: "Workspace pane" },
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent content</p>" }],
+      workViews: [],
+    };
+    const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.goto("http://atelier.test/");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+
+    const collapse = page.getByRole("button", { name: "Collapse Workspace pane" });
+    await collapse.evaluate((button: HTMLButtonElement) => button.click());
+    expect(await page.locator(".fixed-shell-workspace-pane").isHidden()).toBe(true);
+    const show = page.getByRole("button", { name: "Show Workspace pane" });
+    expect(await show.isVisible()).toBe(true);
+    await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Show Workspace pane");
+
+    await show.evaluate((button: HTMLButtonElement) => button.click());
+    expect(await page.locator(".fixed-shell-workspace-pane").isVisible()).toBe(true);
+    await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Collapse Workspace pane");
+    await page.close();
+  });
+
   test("reveals and collapses the Work pane", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "motion-demo", title: "Motion" },

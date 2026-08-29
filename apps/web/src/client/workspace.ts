@@ -1169,6 +1169,7 @@ class WorkspaceNavigationController extends Controller {
     if (Number.isFinite(scroll)) this.scrollTarget.scrollTop = scroll;
     this.restoreProjectDisclosures();
     this.setWorkspacePaneOpen(false);
+    this.setWorkspacePaneCollapsed(sessionStorage.getItem("atelier:workspace-pane-collapsed") === "true" && Boolean(this.visibleWorkspacePaneToggle()));
   }
 
   disconnect(): void {
@@ -1183,6 +1184,25 @@ class WorkspaceNavigationController extends Controller {
 
   showWorkspacePane(): void {
     this.setWorkspacePaneOpen(true);
+  }
+
+  toggleDesktopWorkspacePane(): void {
+    const collapsed = !this.element.classList.contains("is-workspace-pane-collapsed");
+    const toggle = collapsed
+      ? this.visibleWorkspacePaneToggle()
+      : this.element.querySelector<HTMLButtonElement>("[data-collapse-workspace-pane]");
+    if (!toggle) return;
+    this.setWorkspacePaneCollapsed(collapsed);
+    requestAnimationFrame(() => toggle.focus());
+  }
+
+  private setWorkspacePaneCollapsed(collapsed: boolean): void {
+    this.element.classList.toggle("is-workspace-pane-collapsed", collapsed);
+    sessionStorage.setItem("atelier:workspace-pane-collapsed", String(collapsed));
+  }
+
+  private visibleWorkspacePaneToggle(): HTMLButtonElement | null {
+    return this.element.querySelector<HTMLButtonElement>(".workspace-detail-resident.visible [data-show-workspace-pane]");
   }
 
   private setWorkspacePaneOpen(open: boolean): void {

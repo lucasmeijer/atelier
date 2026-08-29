@@ -78,7 +78,7 @@ export interface WorkspacePresentation {
   preserveLiveKeys?: ReadonlySet<string>;
 }
 
-type IconName = "agent" | "browser" | "close" | "code" | "desktop" | "file" | "files" | "more" | "panel" | "park" | "plus" | "terminal" | "trash" | "workspace" | "x";
+type IconName = "agent" | "browser" | "close" | "code" | "desktop" | "file" | "files" | "more" | "panel" | "park" | "plus" | "settings" | "terminal" | "trash" | "workspace" | "x";
 
 function icon(name: IconName): string {
   const paths = {
@@ -93,6 +93,7 @@ function icon(name: IconName): string {
     more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     park: '<path d="M17.5 15.5A7 7 0 0 1 8.5 6.5a7 7 0 1 0 9 9z"/><path d="M16 5h4M18 3v4"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>',
     terminal: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
     trash: '<path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/>',
     workspace: '<path d="M4 5h16v14H4zM8 9h8M8 13h5"/>',
@@ -214,9 +215,10 @@ export function renderWorkspacePaneCollections(presentation: WorkspacePanePresen
 }
 
 export function renderWorkspacePane(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
+  const settings = `<a class="button secondary icon-only" href="/settings" title="Settings" aria-label="Settings" data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open">${icon("settings")}</a>`;
   return `<aside class="fixed-shell-workspace-pane" aria-label="Workspaces">
+    <header><strong>Atelier</strong><div class="button-group">${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", "panel", "data-collapse-workspace-pane")}</div></header>
     ${renderWorkspacePaneCollections(presentation, sidebarContributionsHtml)}
-    <footer><a class="action-item action-item__primary" href="/settings" data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open">${actionItemLabel("Settings")}</a></footer>
   </aside>`;
 }
 
@@ -239,7 +241,7 @@ function renderAgentPane(presentation: WorkspacePresentation): string {
   const deleteWorkspace = `<form class="fixed-shell-delete-workspace" data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/delete"><button class="button danger icon-only" type="submit" title="Delete workspace" aria-label="Delete workspace">${icon("trash")}</button></form>`;
   const actions = `<div class="fixed-shell-agent-actions button-group">${agentActions}${parkWorkspace}${deleteWorkspace}${topBarButton("Show Work pane", "click->workspace-presentation#toggleWorkPane", "panel", "data-show-work-pane")}</div>`;
   return `<section class="fixed-shell-agent-pane" data-workspace-role-region="agent" data-workspace-presentation-target="agentPane" aria-label="Agent">
-    <header>${title}${actions}</header>
+    <header>${topBarButton("Show Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", "panel", "data-show-workspace-pane")}${title}${actions}</header>
     <div class="fixed-shell-agent-bodies">${panes}</div>
   </section>`;
 }

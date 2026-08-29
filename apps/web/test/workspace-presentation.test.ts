@@ -42,9 +42,11 @@ describe("role-fixed Workspace presentation", () => {
     ] }], emptyProjects: [{ id: "project-2", title: "Empty" }], projectlessWorkspaces: [{ id: "workspace-3", title: "Scratch" }] }, '<button data-update-probe>Restart to update</button>');
 
     expect(html).toContain('class="fixed-shell-workspace-pane"');
-    expect(html).not.toContain("Close Workspace pane");
-    expect(html).not.toContain("Open Workspace pane");
-    expect(html).not.toContain("<strong>Atelier</strong>");
+    const workspaceHeader = html.slice(html.indexOf("<header>"), html.indexOf("</header>"));
+    expect(workspaceHeader).toContain("<strong>Atelier</strong>");
+    expect(workspaceHeader).toContain('href="/settings"');
+    expect(workspaceHeader).toContain('aria-label="Settings"');
+    expect(workspaceHeader).toContain('aria-label="Collapse Workspace pane"');
     expect(html).toContain('data-controller="modal-opener"');
     expect(html).toContain('data-action="click->workspace-navigation#selectWorkspace"');
     expect(html).toContain('href="/projects/project-1/launch-composer" data-turbo-frame="launch_composer" aria-label="New workspace: Atelier"');
@@ -68,8 +70,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(drawerProjects).not.toContain('data-workspace-entry-id="workspace-1"');
     expect(drawerProjects).not.toContain('data-project-id="__projectless__"');
     expect(drawerProjects).not.toContain('fixed-shell-project-settings" href="/projects/new/editor"');
-    expect(html.indexOf('class="fixed-shell-projects-drawer')).toBeLessThan(html.indexOf("<footer>"));
-    expect(html).toContain('<a class="action-item action-item__primary" href="/settings" data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open"><span class="action-item__label"><span class="action-item__label-text">Settings</span></span></a>');
+    expect(html).not.toContain("<footer>");
     expect(html).not.toContain("New Project");
     expect(html).toContain('class="fixed-shell-workspace-row action-item action-item__primary active"');
     expect(html).not.toContain("fixed-shell-workspace-color");
