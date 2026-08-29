@@ -194,8 +194,24 @@ describe("role-fixed Workspace presentation", () => {
     expect(mobileMore.match(/class="fixed-shell-more-close-current"/g)).toHaveLength(1);
   });
 
-  test("keeps adapter HTML inside stable type-native live nodes", () => {
-    const html = renderWorkspacePresentation(fixture());
+  test("renders expensive Work bodies as lazy hydration frames", () => {
+    const html = renderWorkspacePresentation(fixture({ workViews: [{
+      key: "review:workspace",
+      label: "Review",
+      kind: "contextual",
+      mobileDestination: "more",
+      availability: { phase: "live" },
+      bodyUrl: "/workspaces/workspace-1/work-views/review%3Aworkspace/body",
+    }] }));
+
+    expect(html).toContain('src="/workspaces/workspace-1/work-views/review%3Aworkspace/body"');
+    expect(html).toContain('loading="lazy" data-work-view-hydration');
+    expect(html).toContain('class="work-view-hydration-loading" role="status" aria-label="Loading Review"');
+    expect(html).not.toContain("Loading Review…");
+    expect(html).not.toContain("review-body");
+  });
+
+  test("keeps adapter HTML inside stable type-native live nodes", () => {    const html = renderWorkspacePresentation(fixture());
 
     expect(html).toContain('data-workspace-live-node="agent:agent-a"');
     expect(html).toContain('data-workspace-live-node="work:terminal:one"');

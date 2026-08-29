@@ -546,8 +546,22 @@ describe("web app contracts", () => {
     expect(browser.headers.get("location")).toBe("http://test.local/");
   });
 
-  test("the role-fixed shell owns one Workspace pane outside resident Workspaces", async () => {
-    const { app, registry, broadcasts } = createTestApp();
+  test("Workspace shells defer Review rendering to its hydration endpoint", async () => {
+    const { app, registry } = createTestApp();
+    await registry.seed([{ id: "abc", title: "A" }]);
+
+    const shell = await (await app.fetch(new Request("http://test.local/workspaces/abc?resident=1"))).text();
+    expect(shell).toContain('src="/workspaces/abc/work-views/review%3Aworkspace/body"');
+    expect(shell).not.toContain('class="review-body');
+
+    const hydrated = await app.fetch(new Request("http://test.local/workspaces/abc/work-views/review%3Aworkspace/body"));
+    const body = await hydrated.text();
+    expect(hydrated.status).toBe(200);
+    expect(body).toContain('<turbo-frame id="work_view_body_review_workspace"');
+    expect(body).toContain('class="review-body');
+  });
+
+  test("the role-fixed shell owns one Workspace pane outside resident Workspaces", async () => {    const { app, registry, broadcasts } = createTestApp();
     await registry.seed([]);
     app.globalSidebarContributions.set("update", '<button data-update-probe>Restart to update</button>');
 

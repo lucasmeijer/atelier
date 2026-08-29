@@ -1,7 +1,7 @@
 import type { JsonValue } from "@atelier/core";
 import type { WorkspaceCommandContribution, WorkspaceModule } from "@atelier/shared";
 import { desktopAppKey, ensureWorkspaceDesktop, isWorkspaceDesktopEnabled } from "./runtime.ts";
-import { renderDesktopWorkView } from "./render.ts";
+import { desktopWorkViewPresentation, renderDesktopWorkViewBody } from "./render.ts";
 import { resolveDesktopWorkspaceAppTarget } from "./proxy.ts";
 
 const enabledWorkspaces = new Map<string, boolean>();
@@ -26,6 +26,7 @@ export const desktopWorkspaceModule: WorkspaceModule = {
       return { type: "desktop" };
     },
     identity: () => "workspace",
+    render: ({ workspaceId }) => renderDesktopWorkViewBody(workspaceId),
   }],
   initialize(context) {
     context.events.on("workspace_plan_prepare", ({ plan }) => {
@@ -51,7 +52,7 @@ export const desktopWorkspaceModule: WorkspaceModule = {
       enabledWorkspaces.set(workspaceId, enabled);
     }
     return {
-      workViews: enabled ? [renderDesktopWorkView(workspaceId)] : [],
+      workViews: enabled ? [desktopWorkViewPresentation] : [],
       commands: [desktopWorkspaceCommand(enabled)],
     };
   },

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { reviewCommentsPrompt, type ReviewCommentModel } from "../src/model.ts";
 import { collectReviewSnapshot, type ReviewFile } from "../src/server/diff.ts";
-import { renderReviewBody } from "../src/server/render.ts";
+import { renderReviewBody, reviewWorkViewPresentation } from "../src/server/render.ts";
 import { remapReviewComment, type ReviewComment } from "../src/server/state.ts";
 
 const roots: string[] = [];
@@ -125,6 +125,16 @@ Comment: I don't think we need these tests`);
 });
 
 describe("Review presentation", () => {
+  test("describes the Work view without collecting or rendering its diff", () => {
+    expect(reviewWorkViewPresentation).toEqual({
+      reference: { type: "review" },
+      sourceKey: "review:workspace",
+      label: "Review",
+      kind: "contextual",
+      availability: { phase: "live" },
+    });
+  });
+
   test("renders explicit empty and not-git states", async () => {
     const empty = await renderReviewBody("workspace 1", { phase: "ready", files: [], additions: 0, deletions: 0 }, []);
     expect(empty).toContain("No changes to review");

@@ -10,15 +10,14 @@ import { attachWorkspaceTerminal, createWorkspaceTerminal, deleteWorkspaceTermin
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
-function renderWorkspaceTerminalWorkViews(workspaceId: string, terminals: WorkspaceTerminal[]): WorkspaceWorkViewPresentation[] {
-  return terminals.map((terminal) => ({
+function terminalWorkViewPresentation(terminal: WorkspaceTerminal): WorkspaceWorkViewPresentation {
+  return {
     sourceKey: terminalViewKey(terminal.id),
     label: terminal.title,
-    bodyHtml: renderTerminalPane(workspaceId, terminal),
     reference: { type: "terminal", terminalId: terminal.id },
     kind: "resource",
     availability: { phase: "live" },
-  }));
+  };
 }
 
 const terminalWorkViewReferenceSchema = Type.Object({
@@ -90,7 +89,12 @@ export const terminalWorkspaceModule: WorkspaceModule = {
     type: "terminal",
     parseReference: parseTerminalReference,
     identity: (reference: { type: "terminal"; terminalId: string }) => reference.terminalId,
-    close: async ({ workspaceId, reference }: { workspaceId: string; reference: { type: "terminal"; terminalId: string } }) => await deleteWorkspaceTerminal(workspaceId, reference.terminalId),
+    render: async ({ workspaceId, reference }: { workspaceId: string; reference: TerminalWorkViewReference }) => {
+      const terminal = (await listWorkspaceTerminals(workspaceId)).find((candidate) => candidate.id === reference.terminalId);
+      if (!terminal) throw new Error(`Terminal Work view not found: ${reference.terminalId}`);
+      return renderTerminalPane(workspaceId, terminal);
+    },
+    close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "terminal"; terminalId: string } }) => deleteWorkspaceTerminal(workspaceId, reference.terminalId),
   }],
   staticFiles: terminalStaticFiles,
   initialize(context) {
@@ -137,6 +141,6 @@ export const terminalWorkspaceModule: WorkspaceModule = {
   }],
   async attachToWorkspace({ workspaceId }) {
     const terminals = await listWorkspaceTerminals(workspaceId);
-    return { workViews: renderWorkspaceTerminalWorkViews(workspaceId, terminals), commands: terminalWorkspaceCommands };
+    return { workViews: terminals.map(terminalWorkViewPresentation), commands: terminalWorkspaceCommands };
   },
 };

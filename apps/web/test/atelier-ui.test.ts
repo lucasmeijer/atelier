@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { renderMarkdown } from "../../../packages/markdown/src/index.ts";
-import { filesEditorFrameId, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkView } from "../../../packages/files/src/server/render.ts";
+import { filesEditorFrameId, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkViewBody } from "../../../packages/files/src/server/render.ts";
 import { renderReviewBody } from "../../../packages/review/src/server/render.ts";
 import type { ReviewComment } from "../../../packages/review/src/server/state.ts";
 import { turboStream } from "../../../packages/shared/src/index.ts";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
-import { removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
+import { removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, renderWorkViewBodyFrame, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 import { buildWebTestAssets, type WebTestAssets } from "./support/web-test-assets.ts";
 
 let browser: Browser;
@@ -274,7 +274,7 @@ Comment: I don't think we need these tests`;
 
   test("switches a Markdown file between Edit and Rendered", async () => {
     const page = await newTestPage();
-    const editor = renderFilesWorkView("workspace", { id: "workspace", path: "/work/README.md", line: 1 }).bodyHtml!;
+    const editor = renderFilesWorkViewBody("workspace", { id: "workspace", path: "/work/README.md", line: 1 });
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
       body: `<style>${workspaceStyle}</style><div class="fixed-workspace-presentation"><div data-work-view-reorder-key="files:workspace"><button data-atelier-fullscreen-title-value="Files"><span class="action-item__label-text">Files</span></button></div><section data-workspace-pane-id="files:workspace">${editor}</section></div><script type="module" src="${workspaceClientPath}"></script>`,
@@ -319,7 +319,7 @@ Comment: I don't think we need these tests`;
 
   test("collapses the Files pane after selecting a file", async () => {
     const page = await newTestPage();
-    const files = renderFilesWorkView("workspace", { id: "workspace" }).bodyHtml!.replace(' loading="lazy"', "");
+    const files = renderFilesWorkViewBody("workspace", { id: "workspace" });
     const tree = renderFilesTreeFrame("workspace", "workspace", [{ name: "README.md", path: "/work/README.md", kind: "file", size: 20, openable: true }]);
     const editor = renderFilesEditorFrame("workspace", { id: "workspace", path: "/work/README.md" });
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style><div class="fixed-workspace-presentation"><div data-work-view-reorder-key="files:workspace"><button data-atelier-fullscreen-title-value="Files"><span class="action-item__label-text">Files</span></button></div><section data-workspace-pane-id="files:workspace">${files}</section></div><script type="module" src="${workspaceClientPath}"></script>` }));
@@ -650,6 +650,82 @@ Comment: I don't think we need these tests`;
     await page.waitForFunction(() => Boolean(document.querySelector('.workspace-detail-resident[data-workspace-id="b"]')));
     await unread.locator('[aria-label="Agent ready"]').waitFor({ state: "visible" });
     expect(await unread.getAttribute("data-workspace-preloading")).toBeNull();
+    await page.close();
+  });
+
+  test("preloading hydrates every Work view before the Workspace becomes ready to select", async () => {
+    const current: WorkspacePresentation = {
+      workspace: { id: "a", title: "Current" },
+      agentConversations: [{ id: "agent-a", title: "Agent", bodyHtml: "<p>Current</p>" }],
+      workViews: [],
+    };
+    const preloaded: WorkspacePresentation = {
+      workspace: { id: "b", title: "Preloaded" },
+      agentConversations: [{ id: "agent-b", title: "Agent", bodyHtml: "<p>Preloaded</p>" }],
+      workViews: [{ key: "review:workspace", label: "Review", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyUrl: "/workspaces/b/work-views/review%3Aworkspace/body" }],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "a", title: "Current", active: true },
+      { id: "b", title: "Preloaded", unreadAt: 123 },
+    ] };
+    let bodyRequests = 0;
+    const page = await newTestPage();
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellFixture(current, pane)}<script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/a/active", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/workspaces/b/active", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/workspaces/b?resident=1", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="b">${renderWorkspacePresentation(preloaded)}</div>`,
+    }));
+    await page.route("**/workspaces/b/work-views/*/body", async (route) => {
+      bodyRequests += 1;
+      await Bun.sleep(100);
+      await route.fulfill({ contentType: "text/html", body: renderWorkViewBodyFrame("review:workspace", "<p>Hydrated review</p>") });
+    });
+    await page.goto("http://atelier.test/");
+
+    const row = page.locator('[data-workspace-entry-id="b"]');
+    await page.getByText("Hydrated review").waitFor();
+    await page.waitForFunction(() => !document.querySelector('[data-workspace-entry-id="b"]')?.hasAttribute("data-workspace-preloading"));
+    expect(await row.getAttribute("data-workspace-preloading")).toBeNull();
+    expect(bodyRequests).toBe(1);
+    await row.click();
+    await page.getByText("Hydrated review").waitFor({ state: "visible" });
+    expect(bodyRequests).toBe(1);
+    await page.close();
+  });
+
+  test("hydrates the active Work view and each newly selected tab", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "active", title: "Active" },
+      agentConversations: [{ id: "agent", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      workViews: [
+        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyUrl: "/workspaces/active/work-views/files%3Aworkspace/body" },
+        { key: "review:workspace", label: "Review", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyUrl: "/workspaces/active/work-views/review%3Aworkspace/body" },
+      ],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "active", title: "Active", active: true }] };
+    const requests: string[] = [];
+    const page = await newTestPage();
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("**/workspaces/active/active", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/workspaces/active/work-views/*/body", (route) => {
+      const match = new URL(route.request().url()).pathname.match(/work-views\/([^/]+)\/body$/);
+      const key = decodeURIComponent(match![1]!);
+      requests.push(key);
+      return route.fulfill({ contentType: "text/html", body: renderWorkViewBodyFrame(key, `<p>${key} hydrated</p>`) });
+    });
+    await page.goto("http://atelier.test/");
+
+    await page.getByText("files:workspace hydrated").waitFor({ state: "attached" });
+    await page.getByRole("button", { name: "Show Work pane" }).click();
+    await page.locator('[data-work-view-key="review:workspace"]').click();
+    await page.getByText("review:workspace hydrated").waitFor();
+    expect(requests).toEqual(["files:workspace", "review:workspace"]);
     await page.close();
   });
 
@@ -1002,6 +1078,14 @@ Comment: I don't think we need these tests`;
     expect(openAfter[0]).toBeCloseTo(openBefore[0]!, 0);
     expect(openAfter[1]).toBeCloseTo(openBefore[1]!, 0);
     expect(openAfter[2]! - openBefore[2]!).toBeCloseTo(160, 0);
+
+    await page.setViewportSize({ width: 1100, height: 900 });
+    await page.waitForFunction(() => {
+      const presentation = document.querySelector(".fixed-workspace-presentation")!.getBoundingClientRect();
+      const work = document.querySelector(".fixed-shell-work-pane")!.getBoundingClientRect();
+      return work.right - presentation.right <= 1;
+    });
+    await page.setViewportSize({ width: 1600, height: 900 });
 
     await page.getByRole("button", { name: "Collapse Work pane" }).evaluate((button: HTMLButtonElement) => button.click());
     const closedBefore = (await widths()).slice(0, 2);

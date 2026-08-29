@@ -7,7 +7,7 @@ import { Value } from "typebox/value";
 import { fileSaveRequestSchema, type FileSaveRequest } from "../protocol.ts";
 import { EditableFileError, readEditableFile, requestedEditableFilePath, writeEditableFile } from "./editable-file.ts";
 import { deleteFile, FilesPathError, getDirectoryEntry, listFiles, searchFiles, uploadFile } from "./files.ts";
-import { filesEditorFrameId, filesRefreshSignalId, filesTreeFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesRefreshSignal, renderFilesTreeFrame, renderFilesTreeResultsFrame, renderFilesWorkView, renderLazyFilesTreeFrame } from "./render.ts";
+import { filesEditorFrameId, filesRefreshSignalId, filesTreeFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesRefreshSignal, renderFilesTreeFrame, renderFilesTreeResultsFrame, filesWorkViewPresentation, renderFilesWorkViewBody, renderLazyFilesTreeFrame } from "./render.ts";
 import { closeFilesView, createFilesView, defaultFilesViewId, deleteFilesViewState, filesView, listFilesViews, setFilesViewFile } from "./state.ts";
 
 const filesWorkViewReferenceSchema = Type.Object({ type: Type.Literal("files"), id: Type.String() });
@@ -111,6 +111,7 @@ const filesWorkspaceModule: WorkspaceModule = {
       return { type: value.type, id: value.id };
     },
     identity: (reference: FilesWorkViewReference) => reference.id,
+    render: ({ workspaceId, reference }: { workspaceId: string; reference: FilesWorkViewReference }) => renderFilesWorkViewBody(workspaceId, filesView(workspaceId, reference.id)),
     close: ({ workspaceId, reference }: { workspaceId: string; reference: FilesWorkViewReference }) => closeFilesView(workspaceId, reference.id),
   }],
   commands: [{ id: "files.create", execute: ({ workspaceId }) => ({ createdWorkView: { type: "files", id: createFilesView(workspaceId).id } }) }],
@@ -149,7 +150,7 @@ const filesWorkspaceModule: WorkspaceModule = {
   },
   attachToWorkspace({ workspaceId }) {
     return {
-      workViews: listFilesViews(workspaceId).map((view) => renderFilesWorkView(workspaceId, view)),
+      workViews: listFilesViews(workspaceId).map(filesWorkViewPresentation),
       commands: [{ id: "files.create", label: "New Files view", scope: "workspace", surfaces: { ui: { placement: "work-launcher", label: "Files" } } }],
       overlayHtml: [renderFilesRefreshSignal(workspaceId)],
     };

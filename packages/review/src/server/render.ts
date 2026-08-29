@@ -90,13 +90,10 @@ export async function renderReviewBody(workspaceId: string, snapshot: ReviewSnap
   return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}">${summaryBar(workspaceId, snapshot, comments)}${content}${outdatedHtml}<script type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></section>`;
 }
 
-export async function renderReviewWorkView(workspaceId: string, snapshot: ReviewSnapshot, comments: ReviewComment[]): Promise<WorkspaceWorkViewPresentation> {
-  return {
-    reference: reviewReference,
-    sourceKey: reviewViewKey,
-    label: "Review",
-    kind: "contextual",
-    availability: { phase: "live" },
-    bodyHtml: await renderReviewBody(workspaceId, snapshot, comments),
-  };
-}
+export const reviewWorkViewPresentation: WorkspaceWorkViewPresentation = {
+  reference: reviewReference,
+  sourceKey: reviewViewKey,
+  label: "Review",
+  kind: "contextual",
+  availability: { phase: "live" },
+};

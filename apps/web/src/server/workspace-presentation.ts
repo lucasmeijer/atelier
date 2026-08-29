@@ -43,7 +43,9 @@ export interface WorkPaneContribution {
   mobileDestination: "direct" | "more";
   attentionSequence?: number;
   availability: WorkViewAvailability;
-  bodyHtml: string;
+  /** Inline bodies are reserved for shell-level fixtures; module attachments use bodyUrl. */
+  bodyHtml?: string;
+  bodyUrl?: string;
   sourceKey?: string;
   actionsHtml?: string;
   close?: ViewCloseAction;
@@ -268,7 +270,18 @@ function renderWorkViewSelectors(views: readonly WorkPaneContribution[]): string
 }
 
 function renderWorkViewPane(view: WorkPaneContribution, preserved?: ReadonlySet<string>): string {
-  return renderLiveNode(`work:${view.key}`, "work", view.key, `${view.actionsHtml ? `<div class="fixed-shell-work-actions">${view.actionsHtml}</div>` : ""}${view.bodyHtml}`, preserved, view);
+  const body = view.bodyHtml ?? (view.bodyUrl
+    ? `<turbo-frame id="${workViewBodyFrameId(view.key)}" src="${escapeHtml(view.bodyUrl)}" loading="lazy" data-work-view-hydration><div class="work-view-hydration-loading" role="status" aria-label="Loading ${escapeHtml(view.label)}"><span class="status-spinner" aria-hidden="true"></span></div></turbo-frame>`
+    : "");
+  return renderLiveNode(`work:${view.key}`, "work", view.key, `${view.actionsHtml ? `<div class="fixed-shell-work-actions">${view.actionsHtml}</div>` : ""}${body}`, preserved, view);
+}
+
+export function workViewBodyFrameId(key: string): string {
+  return domId("work_view_body", key);
+}
+
+export function renderWorkViewBodyFrame(key: string, bodyHtml: string): string {
+  return `<turbo-frame id="${workViewBodyFrameId(key)}">${bodyHtml}</turbo-frame>`;
 }
 
 function workViewDomId(workspaceId: string, part: string): string {

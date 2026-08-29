@@ -2,18 +2,21 @@ import { escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared"
 import { browserFrameId, type WorkspaceBrowserView } from "./state.ts";
 import { browserProxyUrl } from "../shared.ts";
 
-export function renderBrowserWorkView(workspaceId: string, view: WorkspaceBrowserView): WorkspaceWorkViewPresentation {
+export function browserWorkViewPresentation(view: WorkspaceBrowserView): WorkspaceWorkViewPresentation {
   return {
     sourceKey: view.key,
     label: view.label,
     reference: { type: "browser", browserId: view.key },
     kind: "resource",
     availability: { phase: "live" },
-    bodyHtml: `<section class="work-view-pane" data-work-view-source="${escapeHtml(view.key)}">${renderBrowserPane(workspaceId, view)}</section>`,
   };
 }
 
-export function renderBrowserPane(workspaceId: string, view: WorkspaceBrowserView): string {
+export function renderBrowserWorkViewBody(workspaceId: string, view: WorkspaceBrowserView): string {
+  return `<section class="work-view-pane" data-work-view-source="${escapeHtml(view.key)}">${renderBrowserPane(workspaceId, view)}</section>`;
+}
+
+function renderBrowserPane(workspaceId: string, view: WorkspaceBrowserView): string {
   return `<div class="browser-pane">
     ${renderBrowserFrame(workspaceId, view)}
   </div>`;

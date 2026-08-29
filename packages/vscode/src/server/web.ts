@@ -7,15 +7,14 @@ import { deleteWorkspaceVSCodeProxyState, patchVSCodeWorkspaceAppResponse, resol
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
-export function renderWorkspaceVSCodeWorkViews(workspaceId: string, views: WorkspaceVSCodeView[]): WorkspaceWorkViewPresentation[] {
-  return views.map((view) => ({
+function vscodeWorkViewPresentation(view: WorkspaceVSCodeView): WorkspaceWorkViewPresentation {
+  return {
     sourceKey: vscodeViewKey(view.title),
     label: view.title,
-    bodyHtml: renderVSCodePane(workspaceId, view.title),
     reference: { type: "vscode", title: view.title },
     kind: "resource",
     availability: { phase: "live" },
-  }));
+  };
 }
 
 const vscodeWorkViewReferenceSchema = Type.Object({
@@ -48,6 +47,11 @@ export const vscodeWorkspaceModule: WorkspaceModule = {
     type: "vscode",
     parseReference: parseVSCodeReference,
     identity: (reference: { type: "vscode"; title: string }) => reference.title,
+    render: ({ workspaceId, reference }: { workspaceId: string; reference: VSCodeWorkViewReference }) => {
+      const view = listWorkspaceVSCodeViews(workspaceId).find((candidate) => candidate.title === reference.title);
+      if (!view) throw new Error(`VS Code Work view not found: ${reference.title}`);
+      return renderVSCodePane(workspaceId, view.title);
+    },
     close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "vscode"; title: string } }) => deleteWorkspaceVSCodeView(workspaceId, reference.title),
   }],
   staticFiles: vscodeStaticFiles,
@@ -73,7 +77,7 @@ export const vscodeWorkspaceModule: WorkspaceModule = {
   }],
   attachToWorkspace({ workspaceId }) {
     return {
-      workViews: renderWorkspaceVSCodeWorkViews(workspaceId, listWorkspaceVSCodeViews(workspaceId)),
+      workViews: listWorkspaceVSCodeViews(workspaceId).map(vscodeWorkViewPresentation),
       commands: vscodeWorkspaceCommands,
     };
   },

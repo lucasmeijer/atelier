@@ -5,7 +5,7 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { reviewCommentsPrompt, type ReviewSide } from "../model.ts";
 import { collectReviewSnapshot, reviewSnippet, type ReviewSnapshot } from "./diff.ts";
-import { renderReviewBody, renderReviewWorkView, reviewBodyId, reviewReference } from "./render.ts";
+import { renderReviewBody, reviewBodyId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
 import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewComments, remapReviewComments, reviewCommentsForPrompt, type ReviewComment } from "./state.ts";
 
 const reviewReferenceSchema = Type.Object({ type: Type.Literal("review") });
@@ -68,6 +68,10 @@ export const reviewWorkspaceModule: WorkspaceModule = {
       return { type: value.type };
     },
     identity: (_reference: ReviewReference) => "workspace",
+    async render({ workspaceId }) {
+      const { snapshot, comments } = await current(workspaceId);
+      return renderReviewBody(workspaceId, snapshot, comments);
+    },
   }],
   commands: [{ id: "review.open", execute: () => ({ createdWorkView: reviewReference }) }],
   staticFiles: { "/review.css": { url: new URL("../client/style.css", import.meta.url), contentType: "text/css; charset=utf-8" } },
@@ -113,10 +117,9 @@ export const reviewWorkspaceModule: WorkspaceModule = {
       deleteReviewState(workspaceId);
     });
   },
-  async attachToWorkspace({ workspaceId }) {
-    const { snapshot, comments } = await current(workspaceId);
+  attachToWorkspace() {
     return {
-      workViews: [await renderReviewWorkView(workspaceId, snapshot, comments)],
+      workViews: [reviewWorkViewPresentation],
       commands: [{ id: "review.open", label: "Review", scope: "workspace", surfaces: { ui: { placement: "work-launcher", label: "Review" } } }],
     };
   },

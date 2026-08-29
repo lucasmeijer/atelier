@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { workspaceRoot } from "@atelier/workspace";
 import { compactDirectoryEntry, FilesPathError, normalizeFilesPath } from "../src/server/files.ts";
-import { filesDirectoryFrameId, filesTreeResultsFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesTreeResultsFrame, renderFilesWorkView } from "../src/server/render.ts";
+import { filesDirectoryFrameId, filesTreeResultsFrameId, renderFilesDirectoryFrame, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesTreeResultsFrame, filesWorkViewPresentation, renderFilesWorkViewBody } from "../src/server/render.ts";
 
 describe("files paths", () => {
   test("defaults to the configured workspace root", () => {
@@ -52,7 +52,7 @@ describe("files paths", () => {
 
 describe("Files Work view rendering", () => {
   test("starts with the Files pane expanded when no file is selected", () => {
-    const html = renderFilesWorkView("work 1", { id: "workspace" }).bodyHtml!;
+    const html = renderFilesWorkViewBody("work 1", { id: "workspace" });
     expect(html).toContain("is-files-pane-open");
     expect(html).toContain('aria-label="Collapse Files pane"');
     expect(html).toContain('loading="lazy"');
@@ -60,12 +60,12 @@ describe("Files Work view rendering", () => {
   });
 
   test("renders a selected file in the editor with the Files pane collapsed", () => {
-    const html = renderFilesWorkView("work 1", { id: "workspace", path: "/work/src/example.ts", line: 4 }).bodyHtml!;
+    const html = renderFilesWorkViewBody("work 1", { id: "workspace", path: "/work/src/example.ts", line: 4 });
     expect(html).not.toContain("is-files-pane-open");
     expect(html).toContain('aria-label="Expand Files pane"');
     expect(html).toContain('data-file-editor-line-value="4"');
     expect(html).toContain("/work/src/example.ts");
-    expect(renderFilesWorkView("work 1", { id: "workspace", path: "/work/src/example.ts" }).label).toBe("example.ts");
+    expect(filesWorkViewPresentation({ id: "workspace", path: "/work/src/example.ts" }).label).toBe("example.ts");
   });
 
   test("renders entries with file switching destinations and selected state", () => {

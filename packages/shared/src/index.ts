@@ -85,12 +85,12 @@ export interface WorkspaceAgentConversationPresentation {
 }
 
 export interface WorkspaceWorkViewPresentation {
+  /** Cheap, side-effect-free metadata used to render the Workspace shell. */
   reference: WorkspaceWorkViewReference;
   sourceKey: string;
   label: string;
   kind: "resource" | "contextual";
   availability?: WorkspaceWorkViewAvailability;
-  bodyHtml?: string;
   actionsHtml?: string;
 }
 
@@ -108,6 +108,8 @@ export interface WorkspaceModuleWorkViewAdapter<Reference extends WorkspaceWorkV
   type: Reference["type"];
   parseReference(value: JsonValue): Reference;
   identity(reference: Reference): string;
+  /** Expensive body rendering is called only by the Work-view hydration endpoint. */
+  render(context: { workspaceId: string; reference: Reference }): Promise<string> | string;
   close?(context: { workspaceId: string; reference: Reference }): Promise<void> | void;
 }
 

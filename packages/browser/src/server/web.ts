@@ -1,6 +1,6 @@
-import { turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceModuleCommandHandler, type WorkspaceWorkViewPresentation } from "@atelier/shared";
-import { renderBrowserFrame, renderBrowserWorkView } from "./render.ts";
-import { browserFrameId, createWorkspaceBrowserView, deleteWorkspaceBrowserState, deleteWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
+import { turboStream, type WorkspaceCommandContribution, type WorkspaceModule, type WorkspaceModuleCommandHandler } from "@atelier/shared";
+import { browserWorkViewPresentation, renderBrowserFrame, renderBrowserWorkViewBody } from "./render.ts";
+import { browserFrameId, createWorkspaceBrowserView, deleteWorkspaceBrowserState, deleteWorkspaceBrowserView, getWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
 import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "./proxy.ts";
 import { invalidArguments, readJsonObject, requestAcceptsJson, type JsonObject, type JsonValue } from "@atelier/core";
@@ -35,10 +35,6 @@ function parseBrowserReference(value: JsonValue): BrowserWorkViewReference {
   return { type: "browser", browserId: value.browserId };
 }
 
-function renderWorkspaceBrowserWorkViews(workspaceId: string): WorkspaceWorkViewPresentation[] {
-  return listWorkspaceBrowserViews(workspaceId).map((view) => renderBrowserWorkView(workspaceId, view));
-}
-
 const browserWorkspaceCommands: WorkspaceCommandContribution[] = [
   {
     id: browserCreateCommandId,
@@ -54,6 +50,11 @@ export const browserWorkspaceModule: WorkspaceModule = {
     type: "browser",
     parseReference: parseBrowserReference,
     identity: (reference: { type: "browser"; browserId: string }) => reference.browserId,
+    render: ({ workspaceId, reference }: { workspaceId: string; reference: BrowserWorkViewReference }) => {
+      const view = getWorkspaceBrowserView(workspaceId, reference.browserId);
+      if (!view) throw new Error(`Browser Work view not found: ${reference.browserId}`);
+      return renderBrowserWorkViewBody(workspaceId, view);
+    },
     close: ({ workspaceId, reference }: { workspaceId: string; reference: { type: "browser"; browserId: string } }) => deleteWorkspaceBrowserView(workspaceId, reference.browserId),
   }],
   staticFiles: browserStaticFiles,
@@ -85,7 +86,7 @@ export const browserWorkspaceModule: WorkspaceModule = {
   },
   attachToWorkspace({ workspaceId }) {
     return {
-      workViews: renderWorkspaceBrowserWorkViews(workspaceId),
+      workViews: listWorkspaceBrowserViews(workspaceId).map(browserWorkViewPresentation),
       commands: browserWorkspaceCommands,
     };
   },

@@ -34,6 +34,7 @@ import { createAtelierCableClient } from "./cable.ts";
 import { createCloseButton, registerDesignSystemControllers } from "./design-system.ts";
 import { SelectPopupController } from "./popup-select.ts";
 import { createWorkspacePresentationController, installWorkspacePresentationTurboStream, markActiveWorkspaceRow } from "./workspace-presentation.ts";
+import { hydrateWorkViewFrames } from "./work-view-hydration.ts";
 
 declare global {
   interface Window {
@@ -123,6 +124,8 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
 type PaletteResult = WorkspacePaletteItem & { score: number };
 
 const clientHooks = new WorkspaceClientHookRegistry();
+
+clientHooks.onSynchronizeWorkspace(hydrateWorkViewFrames);
 
 function fuzzyScore(query: string, candidate: string): number {
   const q = query.trim().toLowerCase();
@@ -1459,9 +1462,9 @@ class WorkspaceResidencyController extends Controller {
   private async preloadResident(workspaceId: string): Promise<void> {
     this.setWorkspacePreloading(workspaceId, true);
     try {
-      const resident = this.residentTargets.find((candidate) => candidate.dataset.workspaceId === workspaceId);
-      if (resident) await clientHooks.synchronizeWorkspace(resident);
-      else await this.ensureResident(workspaceId);
+      const resident = this.residentTargets.find((candidate) => candidate.dataset.workspaceId === workspaceId)
+        ?? await this.ensureResident(workspaceId);
+      await clientHooks.synchronizeWorkspace(resident);
     } finally {
       this.setWorkspacePreloading(workspaceId, false);
     }

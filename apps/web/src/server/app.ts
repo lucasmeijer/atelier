@@ -80,7 +80,7 @@ import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
 
 const jsonStringSchema = Type.String();
 
@@ -624,10 +624,10 @@ ${moduleStylesHtml()}
         kind: contribution?.kind ?? "resource",
         mobileDestination: ["files", "browser", "terminal"].includes(stored.reference.type) ? "direct" : "more",
         availability: contribution?.availability ?? { phase: "unavailable", detail: "The referenced resource is not currently available." },
-        bodyHtml: contribution?.bodyHtml ?? "",
         close: workViewClose(workspaceId, stored.reference, contribution?.label ?? stored.reference.type),
       };
       if (contribution?.sourceKey !== undefined) view.sourceKey = contribution.sourceKey;
+      if (contribution) view.bodyUrl = `/workspaces/${encodeURIComponent(workspaceId)}/work-views/${encodeURIComponent(key)}/body`;
       if (contribution?.actionsHtml !== undefined) view.actionsHtml = contribution.actionsHtml;
       if (stored.attentionSequence !== undefined) view.attentionSequence = stored.attentionSequence;
       return view;
@@ -1540,6 +1540,15 @@ ${moduleStylesHtml()}
     broadcastShell(`${workspacePresentationTurboStream(workspaceId, presentation)}${presentWorkViewTurboStream(workspaceId, key)}`);
   }
 
+  async function workViewBodyEndpoint(workspaceId: string, key: string): Promise<Response> {
+    requireWorkspace(workspaceId);
+    const stored = (await presentationStore.listWorkViews(workspaceId)).find((view) => workViewKey(view.reference) === key);
+    if (!stored) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${key}`);
+    const adapter = workViewAdapterByType.get(stored.reference.type)!;
+    const bodyHtml = await adapter.render({ workspaceId, reference: stored.reference });
+    return response(renderWorkViewBodyFrame(key, bodyHtml), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  }
+
   async function workViewAttentionEndpoint(workspaceId: string, key: string, request: Request, acknowledge: boolean): Promise<Response> {
     const before = await fixedWorkspacePresentation(workspaceId);
     const stored = (await presentationStore.listWorkViews(workspaceId)).find((view) => workViewKey(view.reference) === key);
@@ -1662,6 +1671,7 @@ ${moduleStylesHtml()}
     if ((params = match(/^\/workspaces\/([^/]+)\/active$/)) && request.method === "POST") return activeWorkspaceEndpoint(params[0]);
     if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/close$/)) && request.method === "POST") return await closeWorkViewJsonEndpoint(params[0], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/([^/]+)\/body$/)) && request.method === "GET") return await workViewBodyEndpoint(params[0], params[1]);
     if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/attention\/request$/)) && request.method === "POST") return await workViewAttentionEndpoint(params[0], params[1], request, false);
     if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/attention\/acknowledge$/)) && request.method === "POST") return await workViewAttentionEndpoint(params[0], params[1], request, true);
     if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/close$/)) && request.method === "POST") return await closeWorkViewEndpoint(params[0], params[1], request);

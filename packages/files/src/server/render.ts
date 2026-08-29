@@ -135,16 +135,19 @@ export function renderFilesEditorFrame(workspaceId: string, view: FilesView): st
   </section></turbo-frame>`;
 }
 
-export function renderFilesWorkView(workspaceId: string, view: FilesView): WorkspaceWorkViewPresentation {
+export function filesWorkViewPresentation(view: FilesView): WorkspaceWorkViewPresentation {
   return {
     sourceKey: `files:${view.id}`,
     label: view.path ? posix.basename(view.path) : "Files",
     reference: { type: "files", id: view.id },
     kind: "contextual",
     availability: { phase: "live" },
-    bodyHtml: `<section class="work-view-pane files-work-view"><div class="files-workbench${view.path ? "" : " is-files-pane-open"}" data-controller="files-view">
-      <div class="files-editor-canvas">${renderFilesEditorFrame(workspaceId, view)}</div>
-      <aside class="files-navigator" aria-label="Files"><header class="files-navigator-header work-view-toolbar"><span class="files-navigator-path">${escapeHtml(workspaceRoot)}</span>${filesPaneToggle("collapse")}</header>${renderLazyFilesTreeFrame(workspaceId, view)}</aside>
-    </div></section>`,
   };
+}
+
+export function renderFilesWorkViewBody(workspaceId: string, view: FilesView): string {
+  return `<section class="work-view-pane files-work-view"><div class="files-workbench${view.path ? "" : " is-files-pane-open"}" data-controller="files-view">
+    <div class="files-editor-canvas">${renderFilesEditorFrame(workspaceId, view)}</div>
+    <aside class="files-navigator" aria-label="Files"><header class="files-navigator-header work-view-toolbar"><span class="files-navigator-path">${escapeHtml(workspaceRoot)}</span>${filesPaneToggle("collapse")}</header>${renderLazyFilesTreeFrame(workspaceId, view)}</aside>
+  </div></section>`;
 }
