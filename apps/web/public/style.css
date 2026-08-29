@@ -265,21 +265,31 @@ turbo-frame { display: contents; }
 .fixed-shell-workspace-pane > footer { padding: 4px 8px; border-top: 1px solid var(--fixed-shell-border); }
 
 .fixed-shell-main { min-width: 0; min-height: 0; flex: 1; display: flex; gap: var(--fixed-shell-gap); }
-.workspace-deletion-presentation { display: grid; place-items: center; overflow: auto; background: var(--fixed-shell-bg); }
-.workspace-deletion-state { width: min(680px, calc(100% - 40px)); margin: auto; padding: 48px 0; text-align: center; }
-.workspace-deletion-state > .status-spinner { display: inline-block; width: 24px; height: 24px; margin-bottom: 16px; }
-.workspace-deletion-state h1 { margin: 0 0 8px; font-size: var(--text-title); }
-.workspace-deletion-state > p { margin: 0 auto; max-width: 560px; color: var(--text); line-height: var(--leading-standard); }
-.workspace-deletion-issues { max-height: min(48vh, 480px); margin: 24px 0; overflow: auto; border: 1px solid var(--fixed-shell-border); border-radius: var(--radius-surface); text-align: left; }
-.workspace-deletion-issue { padding: 16px 16px; }
-.workspace-deletion-issue + .workspace-deletion-issue { border-top: 1px solid var(--fixed-shell-border); }
-.workspace-deletion-issue h3, .workspace-deletion-issue h4 { margin: 0 0 8px; }
-.workspace-deletion-issue h4 { margin-top: 12px; color: var(--text); font-size: var(--text-body); text-transform: uppercase; letter-spacing: .04em; }
-.workspace-deletion-issue ul { margin: 0; padding-left: 16px; }
-.workspace-deletion-issue li { margin: 4px 0; overflow-wrap: anywhere; }
-.workspace-deletion-actions { display: flex; justify-content: center; gap: 8px; margin-top: 24px; }
-.workspace-deletion-actions form { margin: 0; }
-.workspace-deletion-error { padding: 12px 16px; color: var(--danger) !important; background: var(--danger-soft); border-radius: var(--radius-surface); overflow-wrap: anywhere; }
+.workspace-deletion-presentation { display: grid; place-items: center; overflow: auto; padding: 32px; background: var(--fixed-shell-bg); }
+.workspace-deletion-state { width: min(640px, 100%); margin: auto; }
+.workspace-deletion-state[data-deletion-status="checking"],
+.workspace-deletion-state[data-deletion-status="deleting"] { width: min(480px, 100%); }
+.workspace-deletion-heading { text-align: center; }
+.workspace-deletion-heading > .status-spinner { width: 24px; height: 24px; margin-bottom: 16px; }
+.workspace-deletion-heading h1,
+.workspace-deletion-heading > p { max-width: 520px; margin: 0 auto; color: var(--text); font: inherit; }
+.workspace-deletion-heading > p { margin-top: 8px; }
+.workspace-deletion-issues { max-height: min(48vh, 420px); margin-top: 24px; overflow: auto; text-align: left; }
+.workspace-deletion-issue { padding: 0 0 20px; }
+.workspace-deletion-issue + .workspace-deletion-issue { padding-top: 20px; border-top: 1px solid var(--fixed-shell-border); }
+.workspace-deletion-change-group + .workspace-deletion-change-group { margin-top: 12px; }
+.workspace-deletion-change-group h2 { margin: 0 0 4px; color: var(--text); font: inherit; }
+.workspace-deletion-hash { flex: 0 0 auto; }
+.workspace-deletion-change-group ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.workspace-deletion-change-group li { min-width: 0; display: flex; gap: 8px; color: var(--text); overflow-wrap: anywhere; }
+.workspace-deletion-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 20px; border-top: 1px solid var(--fixed-shell-border); }
+.workspace-deletion-actions form { display: flex; margin: 0; }
+.workspace-deletion-error { max-width: 100%; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .workspace-deletion-presentation { padding: 24px 16px; }
+  .workspace-deletion-change-group li { display: grid; gap: 0; }
+  .workspace-deletion-actions form, .workspace-deletion-actions .button { flex: 1; }
+}
 .fixed-shell-agent-pane { min-width: 380px; flex: 0 0 var(--fixed-agent-width); background: var(--fixed-shell-bg); }
 .fixed-workspace-presentation:not(.is-work-pane-open) .fixed-shell-agent-pane { flex: 1; }
 .fixed-shell-agent-pane > header { justify-content: space-between; }
