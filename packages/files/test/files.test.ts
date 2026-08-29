@@ -150,7 +150,6 @@ describe("Files Work view rendering", () => {
   test("renders selected-file actions as a toolbar button group", () => {
     const html = renderFilesEditorFrame("work 1", { id: "view-1", path: "/work/src/example.ts" });
     expect(html).toContain('role="group" aria-label="Actions for selected file"');
-    expect(html).toContain('aria-label="Copy URL"');
     expect(html).toContain('aria-label="Download file"');
     expect(html).toContain('aria-label="Delete file"');
     expect(html).toContain('name="path" value="/work/src/example.ts"');

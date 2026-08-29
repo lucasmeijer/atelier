@@ -60,7 +60,7 @@ type PreviewModeEvent = Event & { readonly currentTarget: HTMLButtonElement };
 function createFileEditorController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FileEditorController extends Controller {
     static values = { workspaceId: String, path: String, contentUrl: String, line: Number, column: Number };
-    static targets = ["host", "loading", "status", "conflict", "preview", "previewOption"];
+    static targets = ["host", "loading", "status", "conflict", "preview", "previewOption", "copyButton"];
 
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
@@ -74,6 +74,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     declare readonly conflictTarget: HTMLDialogElement;
     declare readonly previewTarget: HTMLElement;
     declare readonly previewOptionTargets: HTMLButtonElement[];
+    declare readonly copyButtonTarget: HTMLButtonElement;
     declare readonly hasPreviewTarget: boolean;
 
     private view?: EditorView;
@@ -151,7 +152,9 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
             EditorState.readOnly.of(!file.writable),
             EditorView.editable.of(file.writable),
             EditorView.updateListener.of((update) => {
-              if (!update.docChanged || this.applyingDisk) return;
+              if (!update.docChanged) return;
+              this.copyButtonTarget.dataset.copyText = update.state.doc.toString();
+              if (this.applyingDisk) return;
               this.setStatus("Saving…", "saving");
               if (this.saveTimer) clearTimeout(this.saveTimer);
               this.saveTimer = setTimeout(() => void this.save(false), 500);
@@ -160,6 +163,8 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
           ],
         }),
       });
+      this.copyButtonTarget.dataset.copyText = file.content;
+      this.copyButtonTarget.disabled = false;
       this.setStatus(file.writable ? "" : "Read only", "");
       this.jumpTo(this.lineValue, this.columnValue);
       if (this.hasPreviewTarget && this.lineValue < 1) await this.showPreview();

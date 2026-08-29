@@ -75,21 +75,16 @@ class ManagedListController extends Controller<HTMLElement> {
 class CopyButtonController extends Controller<HTMLButtonElement> {
   private timer?: ReturnType<typeof setTimeout>;
 
-  connect(): void {
-    this.element.addEventListener("click", this.copy);
-  }
-
   disconnect(): void {
-    this.element.removeEventListener("click", this.copy);
     if (this.timer) clearTimeout(this.timer);
   }
 
-  private readonly copy = async (event: MouseEvent): Promise<void> => {
+  async copy(event: MouseEvent): Promise<void> {
     event.preventDefault();
     event.stopPropagation();
-    const source = this.element.closest(".copy-region")!.querySelector<HTMLElement>("[data-copy-source]")!;
-    const text = source.innerText;
-    if (!text) return;
+    const source = this.element.closest(".copy-region")?.querySelector<HTMLElement>("[data-copy-source]");
+    const text = this.element.hasAttribute("data-copy-text") ? this.element.dataset.copyText! : source?.innerText;
+    if (text === undefined || (source && !text)) return;
     if (this.timer) clearTimeout(this.timer);
     const icon = this.element.querySelector<HTMLElement>(".copy-button__icon")!;
     const label = this.element.dataset.copyLabel!;
@@ -102,7 +97,7 @@ class CopyButtonController extends Controller<HTMLButtonElement> {
       icon.textContent = "⧉";
     }, 1000);
     await copyTextToClipboard(text);
-  };
+  }
 }
 
 class ToggleController extends Controller<HTMLElement> {
@@ -251,7 +246,7 @@ class PopupMenuController extends Controller<HTMLElement> {
 
 const automaticBehaviors = [
   ["body", "action-items"],
-  [".copy-button", "copy-button"],
+  [".copy-button", "copy-button", "click->copy-button#copy"],
   [".dialog", "dialog"],
   [".managed-list", "managed-list"],
   [".popup-menu-anchor", "popup-menu"],
@@ -261,7 +256,7 @@ const automaticBehaviors = [
 ] as const;
 
 function attachAutomaticBehaviors(root: ParentNode): void {
-  for (const [selector, identifier] of automaticBehaviors) {
+  for (const [selector, identifier, action] of automaticBehaviors) {
     const elements = [
       ...(root instanceof Element && root.matches(selector) ? [root] : []),
       ...root.querySelectorAll<HTMLElement>(selector),
@@ -270,6 +265,11 @@ function attachAutomaticBehaviors(root: ParentNode): void {
       const controllers = new Set((element.getAttribute("data-controller") ?? "").split(/\s+/).filter(Boolean));
       controllers.add(identifier);
       element.setAttribute("data-controller", [...controllers].join(" "));
+      if (action) {
+        const actions = new Set((element.getAttribute("data-action") ?? "").split(/\s+/).filter(Boolean));
+        actions.add(action);
+        element.setAttribute("data-action", [...actions].join(" "));
+      }
     }
   }
 }

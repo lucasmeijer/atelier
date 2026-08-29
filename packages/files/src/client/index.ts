@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { copyTextToClipboard, type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
+import { type WorkspaceClientControllerConstructor, type WorkspaceClientModule } from "@atelier/shared";
 import { installFileEditorControllers } from "./file-editor.ts";
 type UploadResult = { kind: "ok" | "conflict" | "error" | "cancelled"; message?: string };
 type UploadTask = { file: File; loaded: number; xhr?: XMLHttpRequest };
@@ -226,17 +226,6 @@ function createFilesViewController(Controller: WorkspaceClientControllerConstruc
 
     selectFile(): void {
       this.collapse();
-    }
-
-    async copyUrl(event: StimulusActionEvent<Event, HTMLButtonElement>): Promise<void> {
-      const button = event.currentTarget;
-      await copyTextToClipboard(new URL(button.dataset.filesCopyUrl!, location.href).href);
-      button.title = "Copied!";
-      button.setAttribute("aria-label", "Copied!");
-      window.setTimeout(() => {
-        button.title = "Copy URL";
-        button.setAttribute("aria-label", "Copy URL");
-      }, 1200);
     }
   };
 }

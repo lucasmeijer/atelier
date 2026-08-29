@@ -50,7 +50,7 @@ function selectedFileActions(workspaceId: string, view: FilesView): string {
   const name = posix.basename(path);
   const contentUrl = workspaceProxyUrl(workspaceId, "file", path);
   return `<span class="button-group" role="group" aria-label="Actions for selected file">
-    <button class="button secondary icon-only" type="button" title="Copy URL" aria-label="Copy URL" data-files-copy-url="${escapeHtml(contentUrl)}" data-action="files-view#copyUrl"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"/></svg></button>
+    <button class="button secondary icon-only copy-button" type="button" title="Copy file contents" aria-label="Copy file contents" data-copy-label="Copy file contents" data-copy-text="" data-file-editor-target="copyButton" disabled><span class="copy-button__icon" aria-hidden="true">⧉</span></button>
     <a class="button secondary icon-only" href="${escapeHtml(contentUrl)}" download="${escapeHtml(name)}" data-turbo="false" title="Download file" aria-label="Download file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></a>
     <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/delete" data-turbo-stream="true" data-turbo-confirm="Delete ${escapeHtml(name)}? This cannot be undone.">
       <input type="hidden" name="path" value="${escapeHtml(path)}"><input type="hidden" name="filesView" value="${escapeHtml(view.id)}">

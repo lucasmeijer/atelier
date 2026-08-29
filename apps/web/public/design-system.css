@@ -351,7 +351,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 /* A copy button owns clipboard behavior and transient confirmation inside a copy region. */
 .copy-region { position: relative; }
 .copy-source { display: contents; }
-.copy-button { position: absolute; z-index: 2; top: 6px; right: 6px; }
+.copy-region > .copy-button { position: absolute; z-index: 2; top: 6px; right: 6px; }
 .copy-button__icon { display: grid; place-items: center; }
 .copy-button[data-copy-state="copied"] { color: var(--success); }
 
