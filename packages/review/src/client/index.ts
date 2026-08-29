@@ -369,7 +369,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     }
 
     copyCommentsToComposer(): void {
-      const input = this.resident.querySelector<HTMLTextAreaElement>('.fixed-shell-live-node[data-workspace-pane-role="agent"].is-active textarea[name="text"]')!;
+      const input = this.resident.querySelector<HTMLTextAreaElement>('.fixed-shell-surface[data-workspace-pane-role="agent"].is-active textarea[name="text"]')!;
       const prompt = reviewCommentsPrompt(this.comments);
       const separator = input.value.length === 0 || input.value.endsWith("\n\n") ? "" : input.value.endsWith("\n") ? "\n" : "\n\n";
       input.value += `${separator}${prompt}`;

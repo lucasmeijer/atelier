@@ -23,6 +23,11 @@
   display: block; scrollbar-width: none;
 }
 .agent-transcript::-webkit-scrollbar { display: none; }
+.agent-reconnecting-status {
+  position: absolute; z-index: 3; top: 10px; left: 50%; translate: -50% 0;
+  padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-round);
+  background: var(--panel); color: var(--text); box-shadow: var(--shadow); font-size: var(--text-body);
+}
 .agent-starting { display: flex; align-items: center; gap: 12px; color: var(--text); border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius-surface); padding: 12px 16px; box-shadow: 0 4px 16px rgba(19,26,38,.04); }
 .agent-starting-spinner { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: agent-spin .75s linear infinite; }
 

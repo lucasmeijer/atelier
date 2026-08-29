@@ -3,6 +3,8 @@ import { hydrateWorkViewFrame } from "../src/client/work-view-hydration.ts";
 
 function workViewFrame(firstLoad: () => Promise<void>, reload: () => Promise<void>): HTMLElement & { loading: string } {
   const frame = Object.assign(Object.create(null), {
+    complete: true,
+    hasAttribute: () => false,
     loaded: Promise.resolve(),
     reload,
   });
@@ -42,5 +44,24 @@ test("failed Work view hydration rejects and remains retryable", async () => {
   await expect(hydrateWorkViewFrame(frame)).resolves.toBeUndefined();
 
   expect(frame.loading).toBe("eager");
+  expect(reloads).toBe(1);
+});
+
+test("an authoritative Work invalidation reloads after an older hydration settles", async () => {
+  let finishInitialLoad!: () => void;
+  const initialLoad = new Promise<void>((resolve) => { finishInitialLoad = resolve; });
+  let reloads = 0;
+  const frame = workViewFrame(() => initialLoad, () => {
+    reloads += 1;
+    return Promise.resolve();
+  });
+
+  const initialHydration = hydrateWorkViewFrame(frame);
+  const authoritativeHydration = hydrateWorkViewFrame(frame, { authoritativeReload: true });
+  expect(reloads).toBe(0);
+  finishInitialLoad();
+
+  await expect(initialHydration).resolves.toBeUndefined();
+  await expect(authoritativeHydration).resolves.toBeUndefined();
   expect(reloads).toBe(1);
 });

@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { ids as agentIds, renderActiveToolContent, renderTranscriptItem, type AgentRenderContext } from "../../../packages/agent/src/server/render.ts";
+import type { ToolView, TranscriptItem } from "../../../packages/agent/src/server/transcript.ts";
 import { renderMarkdown } from "../../../packages/markdown/src/index.ts";
 import { filesEditorFrameId, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkViewBody } from "../../../packages/files/src/server/render.ts";
 import { collectReviewSnapshot } from "../../../packages/review/src/server/diff.ts";
@@ -10,7 +12,7 @@ import type { ReviewComment } from "../../../packages/review/src/server/state.ts
 import { createReviewRepository } from "../../../packages/review/test/support/repository.ts";
 import { turboStream } from "../../../packages/shared/src/index.ts";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
-import { removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, renderWorkViewBodyFrame, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
+import { agentTabsTurboStream, removeWorkspaceResidentTurboStream, renderAgentBodyFrame, renderGlobalMobileNavigation, renderWorkViewBodyFrame, renderWorkspacePane, renderWorkspacePresentation, workViewsTurboStream, workspacePaneCollectionsTurboStream, workspacePreparationInvalidatedTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
 import { buildWebTestAssets, type WebTestAssets } from "./support/web-test-assets.ts";
 
 let browser: Browser;
@@ -26,9 +28,26 @@ let catalogueHtml: string;
 async function newTestPage(options: { viewport?: { width: number; height: number }; reducedMotion?: "reduce" | "no-preference" } = {}): Promise<Page> {
   const page = await browserContext.newPage();
   await testAssets.serve(page);
+  await page.route(/\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/, (route) => {
+    const match = new URL(route.request().url()).pathname.match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/)!;
+    const workspaceId = decodeURIComponent(match[1]!);
+    const conversationId = decodeURIComponent(match[2]!);
+    return route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame(workspaceId, conversationId, `<p>Agent ${conversationId}</p>`) });
+  });
   if (options.viewport) await page.setViewportSize(options.viewport);
   if (options.reducedMotion) await page.emulateMedia({ reducedMotion: options.reducedMotion });
   return page;
+}
+
+function agentConversation(workspaceId: string, id: string, title = "Agent"): WorkspacePresentation["agentConversations"][number] {
+  return { id, title, bodyUrl: `/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(id)}/body` };
+}
+
+function agentPaneBody(workspaceId: string, conversationId: string, transcriptHtml = ""): string {
+  return `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="${workspaceId}" data-agent-pane-conversation-id-value="${conversationId}">
+    <div class="agent-transcript" id="${workspaceId}_${conversationId}_transcript" data-agent-pane-target="transcript">${transcriptHtml}</div>
+    <div class="composer"><div class="agent-pane-composer-overlays"><div class="agent-transcript-navs"><button class="button icon-only agent-transcript-nav" type="button" aria-label="Jump to beginning of latest message" data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToLatestMessage"><span aria-hidden="true">↑</span></button></div></div><div class="composer-surface"><form data-agent-pane-target="form"><textarea class="composer-input" name="text" data-agent-pane-target="input" data-action="input->agent-pane#promptChanged"></textarea><button class="agent-sendstop" data-agent-pane-target="sendStop" data-agent-busy="false"></button></form></div></div>
+  </div>`;
 }
 
 function renderShellResidents(pane: WorkspacePanePresentation, residentsHtml: string): string {
@@ -47,7 +66,7 @@ async function pressCommandOptionShortcut(page: Page, key: string, code: string)
 async function newShortcutTestPage(ids: readonly string[], workViews: WorkspacePresentation["workViews"] = []): Promise<Page> {
   const presentations: WorkspacePresentation[] = ids.map((id) => ({
     workspace: { id, title: id },
-    agentConversations: [{ id: `agent-${id}`, title: "Agent", bodyHtml: "<p>Agent</p>" }],
+    agentConversations: [agentConversation(id, `agent-${id}`)],
     workViews,
   }));
   const pane: WorkspacePanePresentation = {
@@ -57,9 +76,10 @@ async function newShortcutTestPage(ids: readonly string[], workViews: WorkspaceP
   const shell = renderShellFixture(presentations[0]!, pane, presentations.slice(1))
     .replace('data-controller="workspace-navigation"', 'data-controller="atelier-shortcuts workspace-navigation"');
   const page = await newTestPage();
-  await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${shell}<script type="module" src="${workspaceClientPath}"></script>` }));
+  const url = `http://atelier.test/workspaces/${encodeURIComponent(ids[0]!)}`;
+  await page.route(url, (route) => route.fulfill({ contentType: "text/html", body: `${shell}<script type="module" src="${workspaceClientPath}"></script>` }));
   await page.route("**/active", (route) => route.fulfill({ status: 204 }));
-  await page.goto("http://atelier.test/");
+  await page.goto(url);
   await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
   return page;
 }
@@ -81,7 +101,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await browserContext?.close();
   await browser?.close();
-});
+}, 30_000);
 
 describe("Atelier browser behavior", () => {
   test("wraps long inline Markdown code within the transcript", async () => {
@@ -112,14 +132,14 @@ describe("Atelier browser behavior", () => {
     ];
     const reviewBody = await renderReviewBody("review-copy", { phase: "ready", files: [] }, comments);
     const fixture = `<div class="workspace-detail-resident visible"><div class="fixed-workspace-presentation is-work-pane-open">
-      <section class="fixed-shell-live-node is-active" data-workspace-pane-role="agent" data-workspace-pane-id="agent-review"><textarea name="text">Existing prompt</textarea></section>
-      <section class="fixed-shell-live-node is-active" data-workspace-pane-role="work" data-workspace-pane-id="review:workspace"><div class="fixed-shell-live-body">${reviewBody}</div></section>
+      <section class="fixed-shell-surface is-active" data-workspace-pane-role="agent" data-workspace-pane-id="agent-review"><textarea name="text">Existing prompt</textarea></section>
+      <section class="fixed-shell-surface is-active" data-workspace-pane-role="work" data-workspace-pane-id="review:workspace"><div class="fixed-shell-live-body">${reviewBody}</div></section>
     </div></div>`;
     const page = await newTestPage();
     await page.route("http://localhost/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.goto("http://localhost/");
 
-    const composer = page.locator('.fixed-shell-live-node[data-workspace-pane-role="agent"].is-active textarea[name="text"]');
+    const composer = page.locator('.fixed-shell-surface[data-workspace-pane-role="agent"].is-active textarea[name="text"]');
     expect(await composer.inputValue()).toBe("Existing prompt");
     expect(await page.locator(".review-comment-attachment").count()).toBe(0);
     await page.getByRole("button", { name: "Copy into composer", exact: true }).click();
@@ -143,7 +163,7 @@ Comment: I don't think we need these tests`;
       const snapshot = await collectReviewSnapshot(root);
       if (snapshot.phase !== "ready") throw new Error("expected ready review");
       const reviewBody = await renderReviewBody("word-diff", snapshot, []);
-      const fixture = `<div class="workspace-detail-resident visible"><section class="fixed-shell-live-node is-active" data-workspace-pane-role="work">${reviewBody}</section></div>`;
+      const fixture = `<div class="workspace-detail-resident visible"><section class="fixed-shell-surface is-active" data-workspace-pane-role="work">${reviewBody}</section></div>`;
       const page = await newTestPage();
       await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="${workspaceClientPath}"></script>` }));
       await page.goto("http://atelier.test/");
@@ -260,7 +280,7 @@ Comment: I don't think we need these tests`;
   test("dismisses the Work launcher outside and after choosing an item", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "popup", title: "Popup" },
-      agentConversations: [{ id: "agent", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      agentConversations: [agentConversation("popup", "agent")],
       workViews: [],
       commands: [{ id: "files.create", label: "New Files view", scope: "workspace", placement: "work-launcher" }],
     };
@@ -358,7 +378,7 @@ Comment: I don't think we need these tests`;
 
   test("collapses the Files pane after selecting a file", async () => {
     const page = await newTestPage();
-    const files = renderFilesWorkViewBody("workspace", { id: "workspace" });
+    const files = renderFilesWorkViewBody("workspace", { id: "workspace" }).replace('loading="lazy"', 'loading="eager"');
     const tree = renderFilesTreeFrame("workspace", "workspace", [{ name: "README.md", path: "/work/README.md", kind: "file", size: 20, openable: true }]);
     const editor = renderFilesEditorFrame("workspace", { id: "workspace", path: "/work/README.md" });
     await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style><div class="fixed-workspace-presentation"><div data-work-view-reorder-key="files:workspace"><button data-atelier-fullscreen-title-value="Files"><span class="action-item__label-text">Files</span></button></div><section data-workspace-pane-id="files:workspace">${files}</section></div><script type="module" src="${workspaceClientPath}"></script>` }));
@@ -493,7 +513,7 @@ Comment: I don't think we need these tests`;
   test("force deletes the visible workspace with Command-Option-Shift-Backspace", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "force-delete-me", title: "Force delete me" },
-      agentConversations: [{ id: "agent-force-delete", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      agentConversations: [agentConversation("force-delete-me", "agent-force-delete")],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = {
@@ -509,17 +529,24 @@ Comment: I don't think we need these tests`;
     }));
     await page.route("**/workspaces/force-delete-me/delete?force=1", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/workspaces/force-delete-me");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="force-delete-me"]')?.classList.contains("visible"));
 
     const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === "/workspaces/force-delete-me/delete");
-    await page.locator("body").dispatchEvent("keydown", {
-      key: "Backspace",
-      code: "Backspace",
-      metaKey: true,
-      altKey: true,
-      shiftKey: true,
-      bubbles: true,
-      cancelable: true,
+    const handled = await page.locator("body").evaluate((body) => {
+      const event = new KeyboardEvent("keydown", {
+        key: "Backspace",
+        code: "Backspace",
+        metaKey: true,
+        altKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      body.dispatchEvent(event);
+      return event.defaultPrevented;
     });
+    expect(handled).toBe(true);
     const request = await requestPromise;
 
     expect(request.method()).toBe("POST");
@@ -527,8 +554,8 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("positions a selected Agent transcript at the latest user message while its navigation button still targets the latest message", async () => {
-    const agentBody = `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="selected" data-agent-pane-label-value="Agent 1">
+  test("positions and navigates a selected Agent transcript at the latest user message", async () => {
+    const agentBody = `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="selected" data-agent-pane-conversation-id-value="agent-selected">
       <div class="agent-transcript" id="selected_agent_transcript" data-agent-pane-target="transcript" style="height: 200px; overflow-y: auto">
         <div class="agent-item" style="height: 600px">Earlier messages</div>
         <div class="agent-item" data-latest-user-message style="height: 200px"><div class="agent-user">Latest user message</div></div>
@@ -536,18 +563,18 @@ Comment: I don't think we need these tests`;
         <div class="agent-notices" style="height: 400px"></div>
       </div>
       <div class="composer agent-pane-composer">
-        <button type="button" data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToLatestMessage"></button>
-        <form data-agent-pane-target="form"><textarea data-agent-pane-target="input"></textarea><button class="agent-sendstop" data-agent-pane-target="sendStop" data-agent-busy="false"></button></form>
+        <div class="agent-pane-composer-overlays"><div class="agent-transcript-navs"><button class="button icon-only agent-transcript-nav" type="button" aria-label="Jump to beginning of latest message" data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToLatestMessage"><span aria-hidden="true">↑</span></button></div></div>
+        <div class="composer-surface"><form data-agent-pane-target="form"><textarea class="composer-input" name="text" data-agent-pane-target="input" data-action="input->agent-pane#promptChanged"></textarea><button class="agent-sendstop" data-agent-pane-target="sendStop" data-agent-busy="false"></button></form></div>
       </div>
     </div>`;
     const presentation: WorkspacePresentation = {
       workspace: { id: "selected", title: "Selected" },
-      agentConversations: [{ id: "agent-selected", title: "Agent", bodyHtml: "<p>Agent is loading…</p>" }],
+      agentConversations: [agentConversation("selected", "agent-selected")],
       workViews: [],
     };
     const other: WorkspacePresentation = {
       workspace: { id: "other", title: "Other" },
-      agentConversations: [{ id: "agent-other", title: "Agent", bodyHtml: "<p>Other Agent</p>" }],
+      agentConversations: [agentConversation("other", "agent-other")],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
@@ -555,38 +582,63 @@ Comment: I don't think we need these tests`;
       { id: "other", title: "Other" },
     ] };
     const page = await newTestPage();
-    await page.route("http://atelier.test/", (route) => route.fulfill({
+    await page.addInitScript(() => localStorage.removeItem('atelier.agentComposerText:["selected","agent-selected"]'));
+    await page.route("http://atelier.test/workspaces/selected", (route) => route.fulfill({
       contentType: "text/html",
-      body: `${renderShellFixture(presentation, pane, [other])}<script>
+      body: `<style>${workspaceStyle}\n${agentStyle}</style>${renderShellFixture(presentation, pane, [other])}<script>
         window.AtelierCable = {
-          subscribe(_identifier, options) { window.agentCableSynchronized = options?.onSynchronized; },
+          subscribe(_identifier, options) {
+            window.agentCableGeneration = (window.agentCableGeneration || 0) + 1;
+            window.agentCableReady = options?.onReady;
+          },
           unsubscribe() {},
           connected() { return true; },
         };
       </script><script type="module" src="${workspaceClientPath}"></script>`,
     }));
+    await page.route("**/workspaces/selected/agents/agent-selected/body", (route) => route.fulfill({
+      contentType: "text/html",
+      body: renderAgentBodyFrame("selected", "agent-selected", agentBody),
+    }));
     await page.route("**/active", (route) => route.fulfill({ status: 204 }));
-    await page.goto("http://atelier.test/");
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/selected");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
-    await page.locator('.workspace-detail-resident.visible .fixed-shell-live-body').evaluate((body, html) => { body.innerHTML = html; }, agentBody);
+    await page.locator(".agent-pane").waitFor();
+    // SAFETY: The controlled Cable fixture increments this counter when the visible Agent subscribes.
+    await page.waitForFunction(() => (window as typeof window & { agentCableGeneration?: number }).agentCableGeneration === 1);
+    // SAFETY: The page fixture installs this optional Cable-ready callback before the application module loads.
+    await page.evaluate(() => (window as typeof window & { agentCableReady?(): void }).agentCableReady?.());
 
-    await page.waitForFunction(() => {
+    const waitForLatestUserAtTop = () => page.waitForFunction(() => {
       const transcript = document.querySelector<HTMLElement>(".agent-transcript");
       const latestUser = document.querySelector<HTMLElement>("[data-latest-user-message]");
       if (!transcript || !latestUser) return false;
       return Math.abs(latestUser.getBoundingClientRect().top - transcript.getBoundingClientRect().top) < 1;
     }, undefined, { timeout: 2_000 });
+    await waitForLatestUserAtTop();
     const transcript = page.locator(".agent-transcript");
-    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(600);
+    const idlePosition = await transcript.evaluate((element) => element.scrollTop);
+    expect(idlePosition).toBeGreaterThan(0);
 
-    await page.locator('[data-agent-pane-target="transcriptNav"]').click();
-    await page.waitForFunction(() => document.querySelector<HTMLElement>(".agent-transcript")?.scrollTop === 800);
+    const navigationState = await transcript.evaluate((element) => {
+      element.scrollTop = 0;
+      element.dispatchEvent(new Event("scroll"));
+      const button = document.querySelector<HTMLButtonElement>('[data-agent-pane-target="transcriptNav"]');
+      if (!button) throw new Error("expected transcript navigation button");
+      return { direction: button.dataset.direction, disabled: button.disabled };
+    });
+    const transcriptNav = page.locator('[data-agent-pane-target="transcriptNav"]');
+    expect(navigationState).toEqual({ direction: "down", disabled: false });
+    await transcriptNav.evaluate((button: HTMLButtonElement) => button.click());
+    await waitForLatestUserAtTop();
+    expect(await transcriptNav.isDisabled()).toBe(true);
 
     await transcript.evaluate((element) => { element.scrollTop = 0; });
     await page.locator('[data-workspace-entry-id="other"]').click();
     await page.locator('[data-workspace-entry-id="selected"]').click();
-    await page.waitForFunction(() => document.querySelector<HTMLElement>(".agent-transcript")?.scrollTop === 600);
-    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(600);
+    await waitForLatestUserAtTop();
+    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(idlePosition);
 
     await page.evaluate(async () => {
       window.Turbo?.renderStreamMessage(`<turbo-stream action="update" target="selected_agent_transcript"><template>
@@ -596,11 +648,402 @@ Comment: I don't think we need these tests`;
         <div class="agent-notices" style="height: 400px"></div>
       </template></turbo-stream>`);
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      // SAFETY: This fixture installs the synchronization callback before loading the application.
-      (window as typeof window & { agentCableSynchronized?(): void }).agentCableSynchronized?.();
+      // SAFETY: This fixture installs the Cable-ready callback before loading the application.
+      (window as typeof window & { agentCableReady?(): void }).agentCableReady?.();
     });
-    await page.waitForFunction(() => document.querySelector<HTMLElement>(".agent-transcript")?.scrollTop === 800);
-    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(800);
+    await waitForLatestUserAtTop();
+    expect(await transcript.evaluate((element) => element.scrollTop)).toBeGreaterThan(idlePosition);
+
+    const composer = page.locator('[data-workspace-pane-id="agent-selected"] textarea[name="text"]');
+    await composer.fill("Durable prompt across reconstruction");
+    await page.locator('[data-workspace-pane-id="agent-selected"] turbo-frame').evaluate(async (frame) => {
+      // SAFETY: The selector matches the Turbo Frame rendered by renderAgentPaneSlot.
+      await (frame as HTMLElement & { reload(): Promise<void> }).reload();
+    });
+    await page.getByText("Earlier messages", { exact: true }).waitFor();
+    // SAFETY: The controlled Cable fixture initializes and increments this counter for each Agent subscription.
+    await page.waitForFunction(() => (window as typeof window & { agentCableGeneration?: number }).agentCableGeneration === 2);
+    // SAFETY: The controlled Cable fixture installs the latest Agent controller's ready callback.
+    await page.evaluate(() => (window as typeof window & { agentCableReady?(): void }).agentCableReady?.());
+    await waitForLatestUserAtTop();
+    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(idlePosition);
+    expect(await composer.inputValue()).toBe("Durable prompt across reconstruction");
+    await page.evaluate(() => localStorage.removeItem('atelier.agentComposerText:["selected","agent-selected"]'));
+    await page.close();
+  });
+
+  test("keeps accepted prompt and in-flight attachment changes durable through a busy submission", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "composer-audit", title: "Composer audit" },
+      agentConversations: [agentConversation("composer-audit", "agent-audit")],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "composer-audit", title: "Composer audit", active: true }] };
+    const composerBody = `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="composer-audit" data-agent-pane-conversation-id-value="agent-audit">
+      <div class="agent-transcript" data-agent-pane-target="transcript" style="height: 80px; overflow-y: auto"><div style="height: 600px">History</div></div>
+      <div class="composer"><div class="agent-pane-composer-overlays"><button type="button" data-agent-pane-target="transcriptNav" data-action="agent-pane#jumpToLatestMessage"></button></div><div class="composer-surface">
+        <form id="composer_audit_form" method="post" action="/workspaces/composer-audit/agents/agent-audit/messages" data-agent-pane-target="form" data-action="turbo:submit-end->agent-pane#submitted">
+          <div id="composer_audit_attach"><span class="agent-chip" id="submitted_chip"><input type="hidden" name="attachment" value="submitted-attachment"></span></div>
+          <textarea id="composer_audit_input" class="composer-input" name="text" data-agent-pane-target="input" data-action="input->agent-pane#promptChanged"></textarea>
+          <button class="agent-sendstop" type="submit" data-agent-pane-target="sendStop" data-agent-busy="true" data-agent-abort-form-id="composer_audit_abort"></button>
+        </form>
+        <form id="composer_audit_abort" action="/workspaces/composer-audit/agents/agent-audit/abort" hidden></form>
+      </div></div>
+    </div>`;
+    let markFirstRequestStarted!: () => void;
+    const firstRequestStarted = new Promise<void>((resolve) => { markFirstRequestStarted = resolve; });
+    let markSecondRequestStarted!: () => void;
+    const secondRequestStarted = new Promise<void>((resolve) => { markSecondRequestStarted = resolve; });
+    let releaseFirstResponse!: () => void;
+    const firstResponseReleased = new Promise<void>((resolve) => { releaseFirstResponse = resolve; });
+    let releaseSecondResponse!: () => void;
+    const secondResponseReleased = new Promise<void>((resolve) => { releaseSecondResponse = resolve; });
+    const submittedBodies: string[] = [];
+    const page = await newTestPage();
+    await page.addInitScript(() => localStorage.setItem('atelier.agentComposerText:["composer-audit","agent-audit"]', "Existing durable prompt"));
+    await page.route("http://atelier.test/workspaces/composer-audit", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellFixture(presentation, pane)}<script>
+        window.AtelierCable = {
+          subscribe(_identifier, options) { requestAnimationFrame(() => options?.onReady?.()); },
+          unsubscribe() {},
+          connected() { return true; },
+        };
+      </script><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/composer-audit/agents/agent-audit/body", (route) => route.fulfill({
+      contentType: "text/html",
+      body: renderAgentBodyFrame("composer-audit", "agent-audit", composerBody),
+    }));
+    await page.route("**/workspaces/composer-audit/agents/agent-audit/messages", async (route) => {
+      const requestIndex = submittedBodies.push(route.request().postData() ?? "") - 1;
+      if (requestIndex === 0) {
+        markFirstRequestStarted();
+        await firstResponseReleased;
+      } else {
+        markSecondRequestStarted();
+        await secondResponseReleased;
+      }
+      await route.fulfill({
+        status: 202,
+        contentType: "text/vnd.turbo-stream.html",
+        headers: { "x-atelier-attachment-draft-consumed": "true" },
+        body: "",
+      });
+    });
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/composer-audit");
+
+    const input = page.locator("#composer_audit_input");
+    await input.waitFor();
+    expect(await input.inputValue()).toBe("Existing durable prompt");
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), turboStream("replace", "composer_audit_input", `<textarea id="composer_audit_input" class="composer-input" name="text" data-agent-pane-target="input" data-action="input->agent-pane#promptChanged">Accepted replacement prompt</textarea>`));
+    await page.waitForFunction(() => localStorage.getItem('atelier.agentComposerText:["composer-audit","agent-audit"]') === "Accepted replacement prompt");
+    expect(await input.inputValue()).toBe("Accepted replacement prompt");
+
+    await input.fill("");
+    const primaryAction = page.locator(".agent-sendstop");
+    await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".agent-sendstop")?.value === "steer");
+    expect(await primaryAction.getAttribute("form")).toBeNull();
+    await primaryAction.click();
+    await firstRequestStarted;
+    expect(new URLSearchParams(submittedBodies[0]!).getAll("attachment")).toEqual(["submitted-attachment"]);
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), turboStream("append", "composer_audit_attach", `<span class="agent-chip" id="late_chip"><input type="hidden" name="attachment" value="late-attachment"></span>`));
+    await page.locator('#late_chip input[name="attachment"]').waitFor({ state: "attached" });
+    const transcript = page.locator(".agent-transcript");
+    await transcript.evaluate((element) => {
+      element.scrollTop = 120;
+      element.dispatchEvent(new WheelEvent("wheel", { bubbles: true }));
+    });
+    await page.waitForFunction(() => document.querySelector<HTMLElement>(".agent-transcript")?.scrollTop === 120);
+    await input.fill("Typed while send was in flight");
+    await page.waitForFunction(() => localStorage.getItem('atelier.agentComposerText:["composer-audit","agent-audit"]') === "Typed while send was in flight");
+    releaseFirstResponse();
+
+    await page.locator("#submitted_chip").waitFor({ state: "detached" });
+    expect(await page.locator("#late_chip").count()).toBe(1);
+    expect(await primaryAction.getAttribute("value")).toBe("steer");
+    expect(await input.inputValue()).toBe("Typed while send was in flight");
+    expect(await page.evaluate(() => localStorage.getItem('atelier.agentComposerText:["composer-audit","agent-audit"]'))).toBe("Typed while send was in flight");
+    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(120);
+
+    await primaryAction.click();
+    await secondRequestStarted;
+    expect(new URLSearchParams(submittedBodies[1]!).getAll("attachment")).toEqual(["late-attachment"]);
+    await input.fill("Temporary post-submit edit");
+    await input.fill("Typed while send was in flight");
+    releaseSecondResponse();
+
+    await page.locator("#late_chip").waitFor({ state: "detached" });
+    expect(await input.inputValue()).toBe("Typed while send was in flight");
+    expect(await page.evaluate(() => localStorage.getItem('atelier.agentComposerText:["composer-audit","agent-audit"]'))).toBe("Typed while send was in flight");
+    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(120);
+    await page.close();
+  });
+
+  test("restores completed attachments through Agent, Workspace, body, eviction, and refresh lifecycles", async () => {
+    const first: WorkspacePresentation = {
+      workspace: { id: "attachment-a", title: "Attachment A" },
+      agentConversations: [
+        agentConversation("attachment-a", "agent-a1", "Attached Agent"),
+        agentConversation("attachment-a", "agent-a2", "Other Agent"),
+      ],
+      workViews: [],
+    };
+    const second: WorkspacePresentation = {
+      workspace: { id: "attachment-b", title: "Attachment B" },
+      agentConversations: [agentConversation("attachment-b", "agent-b")],
+      workViews: [],
+    };
+    const third: WorkspacePresentation = {
+      workspace: { id: "attachment-c", title: "Attachment C" },
+      agentConversations: [agentConversation("attachment-c", "agent-c")],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "attachment-a", title: "Attachment A", active: true },
+      { id: "attachment-b", title: "Attachment B" },
+      { id: "attachment-c", title: "Attachment C" },
+    ] };
+    const completedAttachmentBody = (workspaceId: string, conversationId: string): string => agentPaneBody(workspaceId, conversationId).replace(
+      '<textarea class="composer-input"',
+      '<div class="agent-attach-row"><span class="agent-chip" data-completed-attachment><input type="hidden" name="attachment" value="completed-attachment"><span>completed-notes.txt</span></span></div><textarea class="composer-input"',
+    );
+    let attachedBodyRequests = 0;
+    const page = await newTestPage();
+    const shell = renderShellFixture(first, pane).replace('data-workspace-residency-max-resident-value="5"', 'data-workspace-residency-max-resident-value="2"');
+    await page.route("http://atelier.test/workspaces/attachment-a", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${shell}<script>
+        document.addEventListener("atelier:workspace-preparation-invalidated", (event) => {
+          if (event.detail.workspaceId !== "attachment-a") return;
+          document.body.dataset.attachmentInvalidations = String(Number(document.body.dataset.attachmentInvalidations || 0) + 1);
+        });
+        window.AtelierCable = { subscribe(_identifier, options) { requestAnimationFrame(() => options?.onReady?.()); }, unsubscribe() {}, connected() { return true; } };
+      </script><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    for (const presentation of [first, second, third]) {
+      await page.route(`**/workspaces/${presentation.workspace.id}?resident=1`, (route) => route.fulfill({
+        contentType: "text/html",
+        body: `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${presentation.workspace.id}">${renderWorkspacePresentation(presentation)}</div>`,
+      }));
+    }
+    await page.route(/\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/, (route) => {
+      const match = new URL(route.request().url()).pathname.match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/);
+      if (!match) throw new Error("expected Agent body route");
+      const workspaceId = decodeURIComponent(match[1]!);
+      const conversationId = decodeURIComponent(match[2]!);
+      if (workspaceId === "attachment-a" && conversationId === "agent-a1") attachedBodyRequests += 1;
+      const body = workspaceId === "attachment-a" && conversationId === "agent-a1"
+        ? completedAttachmentBody(workspaceId, conversationId)
+        : agentPaneBody(workspaceId, conversationId);
+      return route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame(workspaceId, conversationId, body) });
+    });
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/attachment-a");
+
+    const completedAttachment = () => page.locator('[data-workspace-id="attachment-a"] [data-completed-attachment]');
+    await completedAttachment().waitFor();
+    await completedAttachment().evaluate((chip) => { chip.dataset.attachmentProbe = "retained"; });
+    expect(attachedBodyRequests).toBe(1);
+
+    await page.getByRole("tab", { name: "Other Agent" }).evaluate((button: HTMLButtonElement) => button.click());
+    await page.getByRole("tab", { name: "Attached Agent" }).evaluate((button: HTMLButtonElement) => button.click());
+    expect(await completedAttachment().getAttribute("data-attachment-probe")).toBe("retained");
+    expect(attachedBodyRequests).toBe(1);
+
+    await page.locator('[data-workspace-entry-id="attachment-b"]').evaluate((button: HTMLButtonElement) => button.click());
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident.visible')?.getAttribute("data-workspace-id") === "attachment-b");
+    await page.locator('[data-workspace-entry-id="attachment-a"]').evaluate((button: HTMLButtonElement) => button.click());
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident.visible')?.getAttribute("data-workspace-id") === "attachment-a");
+    expect(await completedAttachment().getAttribute("data-attachment-probe")).toBe("retained");
+    expect(attachedBodyRequests).toBe(1);
+
+    await page.getByRole("tab", { name: "Other Agent" }).evaluate((button: HTMLButtonElement) => button.click());
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspacePreparationInvalidatedTurboStream("attachment-a", "agent-a1"));
+    await page.waitForFunction(() => document.body.dataset.attachmentInvalidations === "1");
+    await page.getByRole("tab", { name: "Attached Agent" }).evaluate((button: HTMLButtonElement) => button.click());
+    await page.waitForFunction(() => !document.querySelector<HTMLElement>('[data-workspace-id="attachment-a"] [data-completed-attachment]')?.dataset.attachmentProbe);
+    expect(attachedBodyRequests).toBe(2);
+    expect(await completedAttachment().getAttribute("data-attachment-probe")).toBeNull();
+
+    await page.locator('[data-workspace-entry-id="attachment-b"]').evaluate((button: HTMLButtonElement) => button.click());
+    await page.locator('[data-workspace-entry-id="attachment-c"]').evaluate((button: HTMLButtonElement) => button.click());
+    await page.waitForFunction(() => !document.querySelector('.workspace-detail-resident[data-workspace-id="attachment-a"]'));
+    await page.locator('[data-workspace-entry-id="attachment-a"]').evaluate((button: HTMLButtonElement) => button.click());
+    await completedAttachment().waitFor();
+    expect(attachedBodyRequests).toBe(3);
+    expect(await completedAttachment().locator('input[name="attachment"]').getAttribute("value")).toBe("completed-attachment");
+
+    await page.reload();
+    await completedAttachment().waitFor();
+    expect(attachedBodyRequests).toBe(4);
+    expect(await completedAttachment().getByText("completed-notes.txt").count()).toBe(1);
+    await page.close();
+  }, 15_000);
+
+  test("runs Agent Cable only for the logically visible surface and visible document", async () => {
+    const first: WorkspacePresentation = {
+      workspace: { id: "lifecycle-a", title: "Lifecycle A" },
+      agentConversations: [
+        agentConversation("lifecycle-a", "agent-a1", "A one"),
+        agentConversation("lifecycle-a", "agent-a2", "A two"),
+      ],
+      workViews: [{ key: "terminal:a", label: "Terminal A", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Terminal A</p>" }],
+    };
+    const second: WorkspacePresentation = {
+      workspace: { id: "lifecycle-b", title: "Lifecycle B" },
+      agentConversations: [agentConversation("lifecycle-b", "agent-b1", "B one")],
+      workViews: [{ key: "terminal:b", label: "Terminal B", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Terminal B</p>" }],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "lifecycle-a", title: "Lifecycle A", active: true },
+      { id: "lifecycle-b", title: "Lifecycle B" },
+    ] };
+    const page = await newTestPage({ viewport: { width: 1200, height: 800 } });
+    await page.route("http://atelier.test/workspaces/lifecycle-a", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<style>${workspaceStyle}\n${agentStyle}</style>${renderShellFixture(first, pane, [second])}<script>
+        window.agentCableEvents = [];
+        window.AtelierCable = {
+          subscribe(identifier) { window.agentCableEvents.push("subscribe:" + identifier.workspaceId + ":" + identifier.conversationId); },
+          unsubscribe(identifier) { window.agentCableEvents.push("unsubscribe:" + identifier.workspaceId + ":" + identifier.conversationId); },
+          connected() { return true; },
+        };
+      </script><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route(/\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/, (route) => {
+      const match = new URL(route.request().url()).pathname.match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/);
+      if (!match) throw new Error("expected Agent body route");
+      const workspaceId = decodeURIComponent(match[1]!);
+      const conversationId = decodeURIComponent(match[2]!);
+      return route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame(workspaceId, conversationId, agentPaneBody(workspaceId, conversationId)) });
+    });
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    const waitForCableEvents = (expected: string[]) => page.waitForFunction((events) => {
+      // SAFETY: The page fixture initializes agentCableEvents as a string array before the application module loads.
+      const actual = (window as typeof window & { agentCableEvents: string[] }).agentCableEvents;
+      return JSON.stringify(actual) === JSON.stringify(events);
+    }, expected);
+
+    await page.goto("http://atelier.test/workspaces/lifecycle-a");
+    const events = ["subscribe:lifecycle-a:agent-a1"];
+    await waitForCableEvents(events);
+
+    await page.getByRole("tab", { name: "A two" }).evaluate((button: HTMLButtonElement) => button.click());
+    events.push("unsubscribe:lifecycle-a:agent-a1", "subscribe:lifecycle-a:agent-a2");
+    await waitForCableEvents(events);
+
+    await page.locator('[data-workspace-entry-id="lifecycle-b"]').evaluate((button: HTMLButtonElement) => button.click());
+    events.push("unsubscribe:lifecycle-a:agent-a2", "subscribe:lifecycle-b:agent-b1");
+    await waitForCableEvents(events);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('[data-mobile-destination="work:terminal:b"]').evaluate((button: HTMLButtonElement) => button.click());
+    events.push("unsubscribe:lifecycle-b:agent-b1");
+    await waitForCableEvents(events);
+
+    await page.locator('.workspace-detail-resident.visible [data-mobile-destination="agents"]').evaluate((button: HTMLButtonElement) => button.click());
+    events.push("subscribe:lifecycle-b:agent-b1");
+    await waitForCableEvents(events);
+
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    events.push("unsubscribe:lifecycle-b:agent-b1");
+    await waitForCableEvents(events);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    events.push("subscribe:lifecycle-b:agent-b1");
+    await waitForCableEvents(events);
+
+    expect(await page.locator('[data-workspace-pane-id="agent-b1"]').getAttribute("data-workspace-logically-visible")).toBe("true");
+    await page.close();
+  });
+
+  test("applies a reconnect snapshot and continued stream without losing a working-history position or composer draft", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "reconnect-agent", title: "Reconnect Agent" },
+      agentConversations: [agentConversation("reconnect-agent", "agent-live")],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "reconnect-agent", title: "Reconnect Agent", active: true }] };
+    const transcriptHtml = (label: string): string => `
+      <div class="agent-item" style="height: 500px">${label} history</div>
+      <div class="agent-item" style="height: 180px"><div class="agent-user">Latest user</div></div>
+      <div class="agent-item" style="height: 400px">${label} working tail</div>`;
+    const body = agentPaneBody("reconnect-agent", "agent-live", transcriptHtml("Initial"))
+      .replace('class="agent-transcript"', 'class="agent-transcript" style="height: 200px; overflow-y: auto"')
+      .replace('data-agent-busy="false"', 'data-agent-busy="true"');
+    const page = await newTestPage();
+    await page.addInitScript(() => localStorage.removeItem('atelier.agentComposerText:["reconnect-agent","agent-live"]'));
+    await page.route("http://atelier.test/workspaces/reconnect-agent", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellFixture(presentation, pane)}<script>
+        window.agentSubscriptions = 0;
+        window.AtelierCable = {
+          subscribe(_identifier, options) { window.agentSubscriptions += 1; window.agentCableOptions = options; },
+          unsubscribe() {},
+          connected() { return true; },
+        };
+      </script><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/reconnect-agent/agents/agent-live/body", (route) => route.fulfill({
+      contentType: "text/html",
+      body: renderAgentBodyFrame("reconnect-agent", "agent-live", body),
+    }));
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/reconnect-agent");
+    await page.waitForFunction(() => {
+      // SAFETY: The controlled Cable fixture stores the subscription options on window.
+      return Boolean((window as typeof window & { agentCableOptions?: unknown }).agentCableOptions);
+    });
+    await page.evaluate((snapshot) => {
+      window.Turbo!.renderStreamMessage(snapshot);
+      // SAFETY: The controlled Cable fixture stores this callback before the test invokes it.
+      const options = (window as typeof window & { agentCableOptions: { onReady?(): void } }).agentCableOptions;
+      requestAnimationFrame(() => options.onReady?.());
+    }, turboStream("update", "reconnect-agent_agent-live_transcript", transcriptHtml("Snapshot")));
+
+    const transcript = page.locator("#reconnect-agent_agent-live_transcript");
+    await page.waitForFunction(() => {
+      const element = document.querySelector<HTMLElement>("#reconnect-agent_agent-live_transcript");
+      return element ? Math.abs(element.scrollTop - (element.scrollHeight - element.clientHeight)) < 2 : false;
+    });
+    const input = page.locator('[data-workspace-pane-id="agent-live"] textarea[name="text"]');
+    await input.fill("Draft survives reconnect");
+    await transcript.evaluate((element) => {
+      element.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
+      element.scrollTop = 120;
+      element.dispatchEvent(new Event("scroll"));
+    });
+
+    await page.evaluate(() => {
+      // SAFETY: The controlled Cable fixture stores this callback before the test invokes it.
+      (window as typeof window & { agentCableOptions: { onDisconnected?(): void } }).agentCableOptions.onDisconnected?.();
+    });
+    expect(await transcript.getAttribute("aria-busy")).toBe("true");
+    await page.evaluate((snapshot) => {
+      window.Turbo!.renderStreamMessage(snapshot);
+      // SAFETY: The controlled Cable fixture stores this callback before the test invokes it.
+      const options = (window as typeof window & { agentCableOptions: { onReady?(): void } }).agentCableOptions;
+      requestAnimationFrame(() => options.onReady?.());
+    }, turboStream("update", "reconnect-agent_agent-live_transcript", transcriptHtml("Reconnect snapshot")));
+    await page.waitForFunction(() => document.querySelector(".agent-pane")?.classList.contains("agent-pane-reconnecting") === false);
+    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(120);
+
+    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), turboStream("append", "reconnect-agent_agent-live_transcript", '<div class="agent-item" style="height: 240px">Continued live update</div>'));
+    await page.getByText("Continued live update").waitFor();
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(120);
+    expect(await input.inputValue()).toBe("Draft survives reconnect");
+    expect(await page.evaluate(() => localStorage.getItem('atelier.agentComposerText:["reconnect-agent","agent-live"]'))).toBe("Draft survives reconnect");
+    // SAFETY: The controlled Cable fixture initializes this numeric counter before application startup.
+    expect(await page.evaluate(() => (window as typeof window & { agentSubscriptions: number }).agentSubscriptions)).toBe(1);
     await page.close();
   });
 
@@ -638,7 +1081,7 @@ Comment: I don't think we need these tests`;
   test("automatically scrolls only clipped Action Item labels while hovered or focused", async () => {
     const current: WorkspacePresentation = {
       workspace: { id: "short", title: "Short" },
-      agentConversations: [{ id: "agent-short", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      agentConversations: [agentConversation("short", "agent-short")],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = {
@@ -680,17 +1123,17 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("shows unread only after the workspace resident has preloaded", async () => {
+  test("keeps active preparation feedback across sidebar replacement and restores unread afterward", async () => {
     const current: WorkspacePresentation = {
       workspace: { id: "a", title: "Current" },
-      agentConversations: [{ id: "agent-a", title: "Agent", bodyHtml: "<p>Current</p>" }],
+      agentConversations: [agentConversation("a", "agent-a")],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = {
       projects: [],
       projectlessWorkspaces: [
         { id: "a", title: "Current", active: true },
-        { id: "b", title: "Unread", unreadAt: 123 },
+        { id: "b", title: "Unread", unreadAt: 123, agentReadyAt: 123 },
       ],
     };
     let finishPreload!: () => void;
@@ -711,6 +1154,10 @@ Comment: I don't think we need these tests`;
     await unread.locator(".workspace-preload-spinner").waitFor();
     expect(await unread.locator('[aria-label="Agent ready"]').isVisible()).toBe(false);
 
+    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), workspacePaneCollectionsTurboStream(pane));
+    await unread.locator(".workspace-preload-spinner").waitFor();
+    expect(await unread.locator('[aria-label="Agent ready"]').isVisible()).toBe(false);
+
     finishPreload();
     await page.waitForFunction(() => Boolean(document.querySelector('.workspace-detail-resident[data-workspace-id="b"]')));
     await unread.locator('[aria-label="Agent ready"]').waitFor({ state: "visible" });
@@ -718,26 +1165,707 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("preloading hydrates every Work view before the Workspace becomes ready to select", async () => {
+  test("does not re-mark a retained Workspace prepared when it is invalidated during surface hydration", async () => {
+    const first: WorkspacePresentation = {
+      workspace: { id: "generation-a", title: "Generation A" },
+      agentConversations: [agentConversation("generation-a", "agent-a")],
+      workViews: [{
+        key: "probe:view",
+        label: "Probe",
+        kind: "resource",
+        mobileDestination: "direct",
+        availability: { phase: "live" },
+        bodyHtml: '<iframe data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="generation-a" data-workspace-app-frame-app-key-value="probe" data-workspace-app-frame-initial-path-value="/initial"></iframe>',
+      }],
+    };
+    const second: WorkspacePresentation = {
+      workspace: { id: "generation-b", title: "Generation B" },
+      agentConversations: [agentConversation("generation-b", "agent-b")],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = {
+      projects: [],
+      projectlessWorkspaces: [
+        { id: "generation-a", title: "Generation A", active: true },
+        { id: "generation-b", title: "Generation B" },
+      ],
+    };
+    let releaseBlockedSurface!: () => void;
+    const blockedSurface = new Promise<void>((resolve) => { releaseBlockedSurface = resolve; });
+    let surfaceHydrationStarted!: () => void;
+    const hydrationStarted = new Promise<void>((resolve) => { surfaceHydrationStarted = resolve; });
+    let firstAgentBodyRequests = 0;
+    const page = await newTestPage();
+    await page.addInitScript(() => sessionStorage.setItem("atelier:workspace-navigation:generation-a", JSON.stringify({
+      activeAgentId: "agent-a",
+      activeWorkViewKey: "probe:view",
+      workPaneVisible: true,
+      phoneDestination: "agents",
+      drawers: [],
+    })));
+    await page.route("http://atelier.test/workspaces/generation-a", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<style>${workspaceStyle}</style>${renderShellFixture(first, pane, [second])}<script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/generation-a/agents/agent-a/body", (route) => {
+      firstAgentBodyRequests += 1;
+      return route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("generation-a", "agent-a", "<p>Authoritative Agent A</p>") });
+    });
+    await page.route("**/workspaces/generation-a/apps/probe/initial", (route) => route.fulfill({ contentType: "text/html", body: "<p>Initial surface</p>" }));
+    await page.route("**/workspaces/generation-a/apps/probe/blocked", async (route) => {
+      surfaceHydrationStarted();
+      await blockedSurface;
+      await route.fulfill({ contentType: "text/html", body: "<p>Updated surface</p>" });
+    });
+    await page.route("**/workspaces/*/active", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/generation-a");
+    await page.waitForFunction(() => document.querySelectorAll('[data-navigation-ready="true"]').length === 2);
+    await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('[data-workspace-app-frame-app-key-value="probe"]')?.contentDocument?.body?.textContent?.includes("Initial surface"));
+    expect(firstAgentBodyRequests).toBe(1);
+
+    await page.locator('[data-workspace-app-frame-app-key-value="probe"]').evaluate((frame) => {
+      frame.setAttribute("data-workspace-app-frame-initial-path-value", "/blocked");
+    });
+    await page.locator('[data-workspace-entry-id="generation-b"]').click();
+    await hydrationStarted;
+    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), workspacePreparationInvalidatedTurboStream("generation-a"));
+    releaseBlockedSurface();
+    await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('[data-workspace-app-frame-app-key-value="probe"]')?.contentDocument?.body?.textContent?.includes("Updated surface"));
+    await page.waitForTimeout(20);
+
+    await page.locator('[data-workspace-entry-id="generation-a"]').click();
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="generation-a"]')?.classList.contains("visible"));
+    expect(firstAgentBodyRequests).toBe(2);
+    await page.close();
+  });
+
+  test("reloads a hidden invalidated Agent before selection while keeping a visible Agent connected", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "agent-invalidation", title: "Agent invalidation" },
+      agentConversations: [
+        agentConversation("agent-invalidation", "agent-a", "Agent A"),
+        agentConversation("agent-invalidation", "agent-b", "Agent B"),
+      ],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "agent-invalidation", title: "Agent invalidation", active: true }] };
+    let markSecondBRequestStarted!: () => void;
+    const secondBRequestStarted = new Promise<void>((resolve) => { markSecondBRequestStarted = resolve; });
+    let releaseSecondBRequest!: () => void;
+    const secondBRequestReleased = new Promise<void>((resolve) => { releaseSecondBRequest = resolve; });
+    let bBodyRequests = 0;
+    const page = await newTestPage();
+    await page.route("http://atelier.test/workspaces/agent-invalidation", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellFixture(presentation, pane)}<script>
+        const recordCableEvent = (event) => {
+          document.body.dataset.agentCableEvents = [document.body.dataset.agentCableEvents, event].filter(Boolean).join("|");
+        };
+        document.addEventListener("atelier:workspace-preparation-invalidated", (event) => {
+          if (event.detail.workspaceId !== "agent-invalidation") return;
+          document.body.dataset.agentInvalidations = String(Number(document.body.dataset.agentInvalidations || 0) + 1);
+        });
+        window.AtelierCable = {
+          subscribe(identifier, options) {
+            recordCableEvent("subscribe:" + identifier.conversationId);
+            requestAnimationFrame(() => options?.onReady?.());
+          },
+          unsubscribe(identifier) { recordCableEvent("unsubscribe:" + identifier.conversationId); },
+          connected() { return true; },
+        };
+      </script><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/agent-invalidation/agents/*/body", async (route) => {
+      const conversationId = decodeURIComponent(new URL(route.request().url()).pathname.match(/agents\/([^/]+)\/body$/)![1]!);
+      if (conversationId === "agent-b") {
+        bBodyRequests += 1;
+        if (bBodyRequests === 2) {
+          markSecondBRequestStarted();
+          await secondBRequestReleased;
+        }
+      }
+      const generation = conversationId === "agent-b" ? bBodyRequests : 1;
+      await route.fulfill({
+        contentType: "text/html",
+        body: renderAgentBodyFrame("agent-invalidation", conversationId, agentPaneBody("agent-invalidation", conversationId, `<p>${conversationId} generation ${generation}</p>`)),
+      });
+    });
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/agent-invalidation");
+    await page.waitForFunction(() => document.body.dataset.agentCableEvents === "subscribe:agent-a");
+
+    await page.getByRole("tab", { name: "Agent B" }).evaluate((button: HTMLButtonElement) => button.click());
+    await page.getByText("agent-b generation 1").waitFor();
+    await page.waitForFunction(() => document.body.dataset.agentCableEvents?.endsWith("subscribe:agent-b"));
+    await page.getByRole("tab", { name: "Agent A" }).evaluate((button: HTMLButtonElement) => button.click());
+    await page.waitForFunction(() => document.body.dataset.agentCableEvents?.endsWith("subscribe:agent-a"));
+    await page.evaluate(() => { document.body.dataset.agentCableEvents = ""; });
+
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspacePreparationInvalidatedTurboStream("agent-invalidation", "agent-b"));
+    await page.waitForFunction(() => document.body.dataset.agentInvalidations === "1");
+    expect(await page.locator("body").getAttribute("data-agent-cable-events")).toBe("");
+    expect(await page.locator('[data-workspace-pane-id="agent-b"]').getAttribute("data-workspace-logically-visible")).toBe("false");
+    await page.getByRole("tab", { name: "Agent B" }).evaluate((button: HTMLButtonElement) => button.click());
+    await secondBRequestStarted;
+    expect(await page.locator("body").getAttribute("data-agent-cable-events")).toBe("unsubscribe:agent-a");
+    expect(await page.getByText("agent-b generation 1").count()).toBe(1);
+    releaseSecondBRequest();
+
+    await page.getByText("agent-b generation 2").waitFor();
+    await page.waitForFunction(() => document.body.dataset.agentCableEvents === "unsubscribe:agent-a|subscribe:agent-b");
+    expect(bBodyRequests).toBe(2);
+    expect(await page.getByText("agent-b generation 1").count()).toBe(0);
+
+    await page.evaluate(() => { document.body.dataset.agentCableEvents = ""; });
+    const visibleFrame = page.locator('[data-workspace-pane-id="agent-b"] turbo-frame');
+    await visibleFrame.evaluate((frame) => { frame.dataset.visibleFrameProbe = "retained"; });
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspacePreparationInvalidatedTurboStream("agent-invalidation", "agent-b"));
+    await page.waitForFunction(() => document.body.dataset.agentInvalidations === "2");
+    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), turboStream("update", "agent-invalidation_agent-b_transcript", "<p>Targeted visible Agent update</p>"));
+    await page.getByText("Targeted visible Agent update").waitFor();
+    expect(await page.locator("body").getAttribute("data-agent-cable-events")).toBe("");
+    expect(bBodyRequests).toBe(2);
+    expect(await visibleFrame.getAttribute("data-visible-frame-probe")).toBe("retained");
+    await page.close();
+  }, 10_000);
+
+  test("chains an authoritative Agent reload when invalidated during first body hydration", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "agent-hydration-invalidation", title: "Agent hydration invalidation" },
+      agentConversations: [
+        agentConversation("agent-hydration-invalidation", "agent-a", "Agent A"),
+        agentConversation("agent-hydration-invalidation", "agent-b", "Agent B"),
+      ],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "agent-hydration-invalidation", title: "Agent hydration invalidation", active: true }] };
+    let markFirstBRequestStarted!: () => void;
+    const firstBRequestStarted = new Promise<void>((resolve) => { markFirstBRequestStarted = resolve; });
+    let releaseFirstBRequest!: () => void;
+    const firstBRequestReleased = new Promise<void>((resolve) => { releaseFirstBRequest = resolve; });
+    let markSecondBRequestStarted!: () => void;
+    const secondBRequestStarted = new Promise<void>((resolve) => { markSecondBRequestStarted = resolve; });
+    let releaseSecondBRequest!: () => void;
+    const secondBRequestReleased = new Promise<void>((resolve) => { releaseSecondBRequest = resolve; });
+    let bBodyRequests = 0;
+    const page = await newTestPage();
+    await page.route("http://atelier.test/workspaces/agent-hydration-invalidation", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellFixture(presentation, pane)}<script>
+        const recordCableEvent = (event) => {
+          document.body.dataset.agentCableEvents = [document.body.dataset.agentCableEvents, event].filter(Boolean).join("|");
+        };
+        window.AtelierCable = {
+          subscribe(identifier, options) {
+            recordCableEvent("subscribe:" + identifier.conversationId);
+            requestAnimationFrame(() => options?.onReady?.());
+          },
+          unsubscribe(identifier) { recordCableEvent("unsubscribe:" + identifier.conversationId); },
+          connected() { return true; },
+        };
+      </script><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/agent-hydration-invalidation/agents/*/body", async (route) => {
+      const conversationId = decodeURIComponent(new URL(route.request().url()).pathname.match(/agents\/([^/]+)\/body$/)![1]!);
+      if (conversationId === "agent-b") {
+        bBodyRequests += 1;
+        if (bBodyRequests === 1) {
+          markFirstBRequestStarted();
+          await firstBRequestReleased;
+        } else if (bBodyRequests === 2) {
+          markSecondBRequestStarted();
+          await secondBRequestReleased;
+        }
+      }
+      const body = conversationId === "agent-b"
+        ? bBodyRequests === 1 ? "Stale Agent B body" : "Authoritative Agent B body"
+        : "Agent A body";
+      await route.fulfill({
+        contentType: "text/html",
+        body: renderAgentBodyFrame("agent-hydration-invalidation", conversationId, agentPaneBody("agent-hydration-invalidation", conversationId, `<p>${body}</p>`)),
+      });
+    });
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/agent-hydration-invalidation");
+    await page.waitForFunction(() => document.body.dataset.agentCableEvents === "subscribe:agent-a");
+
+    await page.getByRole("tab", { name: "Agent B" }).evaluate((button: HTMLButtonElement) => button.click());
+    await firstBRequestStarted;
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspacePreparationInvalidatedTurboStream("agent-hydration-invalidation", "agent-b"));
+    releaseFirstBRequest();
+    await secondBRequestStarted;
+    expect(await page.locator("body").getAttribute("data-agent-cable-events")).toBe("subscribe:agent-a|unsubscribe:agent-a");
+    releaseSecondBRequest();
+
+    await page.getByText("Authoritative Agent B body").waitFor();
+    await page.waitForFunction(() => document.body.dataset.agentCableEvents?.endsWith("subscribe:agent-b"));
+    expect(bBodyRequests).toBeGreaterThanOrEqual(2);
+    expect(await page.getByText("Stale Agent B body").count()).toBe(0);
+    await page.close();
+  }, 10_000);
+
+  test("adopts an in-flight preload and keeps the latest foreground selection", async () => {
+    const cPresentation: WorkspacePresentation = {
+      workspace: { id: "c", title: "Slow C" },
+      agentConversations: [agentConversation("c", "agent-c")],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "a", title: "Current A", active: true },
+      { id: "b", title: "Preloading B", unreadAt: 1, agentReadyAt: 1 },
+      { id: "c", title: "Slow C" },
+      { id: "d", title: "Latest D" },
+    ] };
+    let releaseB!: () => void;
+    const bReleased = new Promise<void>((resolve) => { releaseB = resolve; });
+    let markCBodyStarted!: () => void;
+    const cBodyStarted = new Promise<void>((resolve) => { markCBodyStarted = resolve; });
+    let releaseCBody!: () => void;
+    const cBodyReleased = new Promise<void>((resolve) => { releaseCBody = resolve; });
+    let bRequests = 0;
+    const page = await newTestPage();
+    await page.route("http://atelier.test/workspaces/a", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellResidents(pane, '<div class="workspace-detail-resident visible" data-workspace-residency-target="resident" data-workspace-id="a">Current A</div>')}<script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/b?resident=1", async (route) => {
+      bRequests += 1;
+      await bReleased;
+      await route.fulfill({ contentType: "text/html", body: '<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="b">Prepared B</div>' });
+    });
+    await page.route("**/workspaces/c?resident=1", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="c">${renderWorkspacePresentation(cPresentation)}</div>`,
+    }));
+    await page.route("**/workspaces/c/agents/agent-c/body", async (route) => {
+      markCBodyStarted();
+      await cBodyReleased;
+      await route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("c", "agent-c", agentPaneBody("c", "agent-c", "<p>Stale C preparation finished</p>")) });
+    });
+    await page.route("**/workspaces/d?resident=1", (route) => route.fulfill({
+      contentType: "text/html",
+      body: '<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="d">Latest D</div>',
+    }));
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/a");
+
+    await page.waitForFunction(() => document.querySelector('[data-workspace-entry-id="b"]')?.hasAttribute("data-workspace-preloading"));
+    await page.locator('[data-workspace-entry-id="b"]').evaluate((button: HTMLButtonElement) => button.click());
+    expect(new URL(page.url()).pathname).toBe("/workspaces/b");
+    expect(bRequests).toBe(1);
+    releaseB();
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident.visible[data-workspace-id="b"]'));
+    expect(bRequests).toBe(1);
+
+    await page.locator('[data-workspace-entry-id="c"]').evaluate((button: HTMLButtonElement) => button.click());
+    await cBodyStarted;
+    await page.locator('[data-workspace-entry-id="d"]').evaluate((button: HTMLButtonElement) => button.click());
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident.visible[data-workspace-id="d"]'));
+    releaseCBody();
+    await page.getByText("Stale C preparation finished").waitFor({ state: "attached" });
+    expect(new URL(page.url()).pathname).toBe("/workspaces/d");
+    expect(await page.locator(".workspace-detail-resident.visible").getAttribute("data-workspace-id")).toBe("d");
+    await page.close();
+  });
+
+  test("starts a fresh foreground load when an aborted resident fetch is reselected", async () => {
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "abort-a", title: "Workspace A", active: true },
+      { id: "abort-b", title: "Workspace B" },
+      { id: "abort-c", title: "Workspace C" },
+    ] };
+    let markFirstBRequestStarted!: () => void;
+    const firstBRequestStarted = new Promise<void>((resolve) => { markFirstBRequestStarted = resolve; });
+    let releaseFirstBRequest!: () => void;
+    const firstBRequestReleased = new Promise<void>((resolve) => { releaseFirstBRequest = resolve; });
+    let markSecondBRequestStarted!: () => void;
+    const secondBRequestStarted = new Promise<void>((resolve) => { markSecondBRequestStarted = resolve; });
+    let bRequests = 0;
+    const page = await newTestPage();
+    await page.route("http://atelier.test/workspaces/abort-a", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellResidents(pane, '<div class="workspace-detail-resident visible" data-workspace-residency-target="resident" data-workspace-id="abort-a">Workspace A</div>')}<script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/abort-b?resident=1", async (route) => {
+      bRequests += 1;
+      if (bRequests === 1) {
+        markFirstBRequestStarted();
+        await firstBRequestReleased;
+        if (route.request().failure()) return;
+      } else {
+        markSecondBRequestStarted();
+      }
+      await route.fulfill({ contentType: "text/html", body: '<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="abort-b">Fresh Workspace B</div>' });
+    });
+    await page.route("**/workspaces/abort-c?resident=1", (route) => route.fulfill({
+      contentType: "text/html",
+      body: '<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="abort-c">Workspace C</div>',
+    }));
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/abort-a");
+
+    await page.locator('[data-workspace-entry-id="abort-b"]').evaluate((button: HTMLButtonElement) => button.click());
+    await firstBRequestStarted;
+    await page.evaluate(() => {
+      document.querySelector<HTMLButtonElement>('[data-workspace-entry-id="abort-c"]')!.click();
+      document.querySelector<HTMLButtonElement>('[data-workspace-entry-id="abort-b"]')!.click();
+    });
+    await secondBRequestStarted;
+    releaseFirstBRequest();
+
+    await page.getByText("Fresh Workspace B").waitFor({ state: "visible" });
+    expect(bRequests).toBe(2);
+    expect(new URL(page.url()).pathname).toBe("/workspaces/abort-b");
+    expect(await page.locator(".workspace-detail-resident.visible").getAttribute("data-workspace-id")).toBe("abort-b");
+    expect(await page.getByText(/Could not load workspace/).count()).toBe(0);
+    await page.close();
+  }, 10_000);
+
+  test("refetches a resident shell when structural streams arrive during its initial fetch", async () => {
+    const current: WorkspacePresentation = {
+      workspace: { id: "structural-a", title: "Current" },
+      agentConversations: [agentConversation("structural-a", "agent-a")],
+      workViews: [],
+    };
+    const stale: WorkspacePresentation = {
+      workspace: { id: "structural-b", title: "Destination" },
+      agentConversations: [agentConversation("structural-b", "agent-old", "Existing Agent")],
+      workViews: [],
+    };
+    const intendedWork = { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Authoritative Browser</p>" } as const;
+    const authoritative: WorkspacePresentation = {
+      workspace: stale.workspace,
+      agentConversations: [...stale.agentConversations, agentConversation("structural-b", "agent-new", "New Agent")],
+      workViews: [intendedWork],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "structural-a", title: "Current", active: true },
+      { id: "structural-b", title: "Destination" },
+    ] };
+    let markFirstResidentFetchStarted!: () => void;
+    const firstResidentFetchStarted = new Promise<void>((resolve) => { markFirstResidentFetchStarted = resolve; });
+    let releaseFirstResidentFetch!: () => void;
+    const firstResidentFetchReleased = new Promise<void>((resolve) => { releaseFirstResidentFetch = resolve; });
+    let residentFetches = 0;
+    const page = await newTestPage();
+    await page.route("http://atelier.test/workspaces/structural-a", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellFixture(current, pane)}<script>
+        document.addEventListener("atelier:workspace-preparation-invalidated", (event) => {
+          if (event.detail.workspaceId !== "structural-b") return;
+          document.body.dataset.structuralInvalidations = String(Number(document.body.dataset.structuralInvalidations || 0) + 1);
+        });
+      </script><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/structural-b?resident=1", async (route) => {
+      residentFetches += 1;
+      if (residentFetches === 1) {
+        markFirstResidentFetchStarted();
+        await firstResidentFetchReleased;
+      }
+      const presentation = residentFetches === 1 ? stale : authoritative;
+      await route.fulfill({
+        contentType: "text/html",
+        body: `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="structural-b"><span data-shell-generation>${residentFetches === 1 ? "Stale shell" : "Authoritative shell"}</span>${renderWorkspacePresentation(presentation)}</div>`,
+      });
+    });
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/structural-a");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+
+    await page.locator('[data-workspace-entry-id="structural-b"]').evaluate((button: HTMLButtonElement) => button.click());
+    await firstResidentFetchStarted;
+    await page.evaluate(({ agents, work }) => {
+      window.Turbo!.renderStreamMessage(agents);
+      window.Turbo!.renderStreamMessage(work);
+    }, {
+      agents: agentTabsTurboStream(authoritative, { addedConversationId: "agent-new" }),
+      work: workViewsTurboStream("structural-b", [intendedWork], { openedKey: "browser:1", selectKey: "browser:1", intendSelection: true }),
+    });
+    await page.waitForFunction(() => Number(document.body.dataset.structuralInvalidations) === 2);
+    await page.waitForFunction(() => {
+      const stored = sessionStorage.getItem("atelier:workspace-navigation:structural-b");
+      return stored ? JSON.parse(stored).activeWorkViewKey === "browser:1" : false;
+    });
+    releaseFirstResidentFetch();
+
+    await page.getByText("Authoritative shell").waitFor();
+    const resident = page.locator('.workspace-detail-resident[data-workspace-id="structural-b"]');
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="structural-b"]')?.classList.contains("visible"));
+    expect(residentFetches).toBe(2);
+    expect(await page.getByText("Stale shell").count()).toBe(0);
+    expect(await resident.getByRole("tab", { name: "New Agent" }).count()).toBe(1);
+    expect(await resident.getByRole("tab", { name: "Browser" }).getAttribute("aria-selected")).toBe("true");
+    expect(await resident.locator('[data-workspace-pane-id="browser:1"]').getAttribute("data-workspace-logically-visible")).toBe("true");
+    await page.close();
+  });
+
+  test("retains at most five residents while preparing one background Workspace at a time", async () => {
+    const workspaceIds = ["a", "b", "c", "d", "e", "f", "g"];
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: workspaceIds.map((id, index) => ({
+      id,
+      title: `Workspace ${id}`,
+      active: index === 0,
+      unreadAt: index === 0 ? undefined : index,
+      agentReadyAt: index === 0 ? undefined : index,
+    })) };
+    const requested: string[] = [];
+    let activeRequests = 0;
+    let maximumActiveRequests = 0;
+    const page = await newTestPage();
+    await page.route("http://atelier.test/workspaces/a", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellResidents(pane, '<div class="workspace-detail-resident visible" data-workspace-residency-target="resident" data-workspace-id="a">Workspace a</div>')}<script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route(/\/workspaces\/[^/?]+\?resident=1$/, async (route) => {
+      const workspaceId = decodeURIComponent(new URL(route.request().url()).pathname.split("/").at(-1)!);
+      requested.push(workspaceId);
+      activeRequests += 1;
+      maximumActiveRequests = Math.max(maximumActiveRequests, activeRequests);
+      try {
+        await Bun.sleep(50);
+        await route.fulfill({ contentType: "text/html", body: `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${workspaceId}">Workspace ${workspaceId}</div>` });
+      } finally {
+        activeRequests -= 1;
+      }
+    });
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/a");
+
+    await page.waitForFunction(() => document.querySelectorAll(".workspace-detail-resident").length === 5 && !document.querySelector("[data-workspace-preloading]"));
+    expect(requested).toEqual(["b", "c", "d", "e"]);
+    expect(maximumActiveRequests).toBe(1);
+    expect(await page.locator(".workspace-detail-resident").count()).toBe(5);
+    expect(await page.locator(".workspace-detail-resident").evaluateAll((residents) => residents.map((resident) => resident.getAttribute("data-workspace-id")))).toEqual(["a", "b", "c", "d", "e"]);
+    await page.close();
+  });
+
+  test("replays a readiness wakeup that arrives while background preparation is active", async () => {
+    const workspaceB: WorkspacePresentation = {
+      workspace: { id: "pump-b", title: "Workspace B" },
+      agentConversations: [agentConversation("pump-b", "agent-b")],
+      workViews: [],
+    };
+    const initialPane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "pump-a", title: "Workspace A", active: true },
+      { id: "pump-b", title: "Workspace B", unreadAt: 1, agentReadyAt: 1, busyViewKeys: ["agent:agent-b"] },
+      { id: "pump-c", title: "Workspace C", unreadAt: 2, agentReadyAt: 2 },
+    ] };
+    const readyPane: WorkspacePanePresentation = { ...initialPane, projectlessWorkspaces: [
+      { id: "pump-a", title: "Workspace A", active: true },
+      { id: "pump-b", title: "Workspace B", unreadAt: 1, agentReadyAt: 1 },
+      { id: "pump-c", title: "Workspace C", unreadAt: 2, agentReadyAt: 2 },
+    ] };
+    let markCRequestStarted!: () => void;
+    const cRequestStarted = new Promise<void>((resolve) => { markCRequestStarted = resolve; });
+    let releaseCRequest!: () => void;
+    const cRequestReleased = new Promise<void>((resolve) => { releaseCRequest = resolve; });
+    let markSecondBRequest!: () => void;
+    const secondBRequest = new Promise<void>((resolve) => { markSecondBRequest = resolve; });
+    let bResidentRequests = 0;
+    let markBBodyRequest!: () => void;
+    const bBodyRequest = new Promise<void>((resolve) => { markBBodyRequest = resolve; });
+    let activeResidentRequests = 0;
+    let maximumActiveResidentRequests = 0;
+    const page = await newTestPage();
+    await page.route("http://atelier.test/workspaces/pump-a", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellResidents(initialPane, '<div class="workspace-detail-resident visible" data-workspace-residency-target="resident" data-workspace-id="pump-a">Workspace A</div>')}<script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/pump-b?resident=1", async (route) => {
+      bResidentRequests += 1;
+      if (bResidentRequests === 2) markSecondBRequest();
+      activeResidentRequests += 1;
+      maximumActiveResidentRequests = Math.max(maximumActiveResidentRequests, activeResidentRequests);
+      try {
+        await route.fulfill({
+          contentType: "text/html",
+          body: `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="pump-b">${renderWorkspacePresentation(workspaceB)}</div>`,
+        });
+      } finally {
+        activeResidentRequests -= 1;
+      }
+    });
+    await page.route("**/workspaces/pump-c?resident=1", async (route) => {
+      activeResidentRequests += 1;
+      maximumActiveResidentRequests = Math.max(maximumActiveResidentRequests, activeResidentRequests);
+      markCRequestStarted();
+      try {
+        await cRequestReleased;
+        await route.fulfill({
+          contentType: "text/html",
+          body: '<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="pump-c">Workspace C</div>',
+        });
+      } finally {
+        activeResidentRequests -= 1;
+      }
+    });
+    await page.route("**/workspaces/pump-b/agents/agent-b/body", (route) => {
+      markBBodyRequest();
+      return route.fulfill({
+        contentType: "text/html",
+        body: renderAgentBodyFrame("pump-b", "agent-b", agentPaneBody("pump-b", "agent-b", "<p>Prepared Agent B</p>")),
+      });
+    });
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/pump-a");
+
+    await cRequestStarted;
+    expect(bResidentRequests).toBe(1);
+    await page.evaluate((stream) => new Promise<void>((resolve) => {
+      document.addEventListener("atelier:workspace-pane-changed", () => resolve(), { once: true });
+      window.Turbo!.renderStreamMessage(stream);
+    }), workspacePaneCollectionsTurboStream(readyPane));
+    releaseCRequest();
+
+    await secondBRequest;
+    await bBodyRequest;
+    await page.getByText("Prepared Agent B").waitFor();
+    expect(bResidentRequests).toBe(2);
+    expect(maximumActiveResidentRequests).toBe(1);
+    await page.close();
+  }, 10_000);
+
+  test("reprepares a ready Workspace when its prepared resident target is replaced", async () => {
+    const workspaceB: WorkspacePresentation = {
+      workspace: { id: "target-b", title: "Workspace B" },
+      agentConversations: [agentConversation("target-b", "agent-b")],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "target-a", title: "Workspace A", active: true },
+      { id: "target-b", title: "Workspace B", unreadAt: 1, agentReadyAt: 1 },
+    ] };
+    let residentRequests = 0;
+    let agentBodyRequests = 0;
+    const residentHtml = (generation: string): string => `<div id="target_b_resident" class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="target-b"><span data-resident-generation>${generation}</span>${renderWorkspacePresentation(workspaceB)}</div>`;
+    const page = await newTestPage();
+    await page.route("http://atelier.test/workspaces/target-a", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellResidents(pane, '<div class="workspace-detail-resident visible" data-workspace-residency-target="resident" data-workspace-id="target-a">Workspace A</div>')}<script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/target-b?resident=1", (route) => {
+      residentRequests += 1;
+      return route.fulfill({ contentType: "text/html", body: residentHtml("initial") });
+    });
+    await page.route("**/workspaces/target-b/agents/agent-b/body", (route) => {
+      agentBodyRequests += 1;
+      return route.fulfill({
+        contentType: "text/html",
+        body: renderAgentBodyFrame("target-b", "agent-b", agentPaneBody("target-b", "agent-b", `<p>Hydrated body ${agentBodyRequests}</p>`)),
+      });
+    });
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/target-a");
+    await page.getByText("Hydrated body 1").waitFor();
+    await page.waitForFunction(() => !document.querySelector('[data-workspace-entry-id="target-b"]')?.hasAttribute("data-workspace-preloading"));
+
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), turboStream("replace", "target_b_resident", residentHtml("replacement")));
+
+    await page.getByText("Hydrated body 2").waitFor();
+    expect(residentRequests).toBe(1);
+    expect(agentBodyRequests).toBe(2);
+    expect(await page.locator("[data-resident-generation]").textContent()).toBe("replacement");
+    await page.close();
+  });
+
+  test("acknowledges Workspace attention only for the visible foreground resident", async () => {
+    const current: WorkspacePresentation = {
+      workspace: { id: "ack-a", title: "Workspace A" },
+      agentConversations: [agentConversation("ack-a", "agent-a")],
+      workViews: [],
+    };
+    const initialPane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "ack-a", title: "Workspace A", active: true },
+      { id: "ack-b", title: "Workspace B", unreadAt: 2, agentReadyAt: 2, unreadTokens: { workspace: 71 } },
+    ] };
+    const firstAttentionPane: WorkspacePanePresentation = { ...initialPane, projectlessWorkspaces: [
+      { id: "ack-a", title: "Workspace A", active: true, unreadTokens: { workspace: 41 } },
+      initialPane.projectlessWorkspaces![1]!,
+    ] };
+    const secondAttentionPane: WorkspacePanePresentation = { ...initialPane, projectlessWorkspaces: [
+      { id: "ack-a", title: "Workspace A", active: true, unreadTokens: { workspace: 42 } },
+      initialPane.projectlessWorkspaces![1]!,
+    ] };
+    const acknowledgementUrls: string[] = [];
+    const page = await newTestPage();
+    await page.addInitScript(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    });
+    await page.route("http://atelier.test/workspaces/ack-a", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellFixture(current, initialPane)}<script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/ack-b?resident=1", (route) => route.fulfill({
+      contentType: "text/html",
+      body: '<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="ack-b">Workspace B</div>',
+    }));
+    await page.route(/\/workspaces\/[^/]+\/attention\/acknowledge/, (route) => {
+      acknowledgementUrls.push(route.request().url());
+      return route.fulfill({ status: 204 });
+    });
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/ack-a");
+    await page.waitForFunction(() => Boolean(document.querySelector('.workspace-detail-resident[data-workspace-id="ack-b"]')));
+
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspacePaneCollectionsTurboStream(firstAttentionPane));
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    expect(acknowledgementUrls).toEqual([]);
+
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await page.waitForFunction(() => performance.getEntriesByType("resource").some((entry) => entry.name.includes("/workspaces/ack-a/attention/acknowledge?attentionToken=41")));
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspacePaneCollectionsTurboStream(secondAttentionPane));
+    await page.waitForFunction(() => performance.getEntriesByType("resource").some((entry) => entry.name.includes("/workspaces/ack-a/attention/acknowledge?attentionToken=42")));
+
+    expect(acknowledgementUrls.map((url) => new URL(url).pathname)).toEqual([
+      "/workspaces/ack-a/attention/acknowledge",
+      "/workspaces/ack-a/attention/acknowledge",
+    ]);
+    expect(acknowledgementUrls.map((url) => new URL(url).searchParams.get("attentionToken"))).toEqual(["41", "42"]);
+    await page.close();
+  });
+
+  test("preloading hydrates only the intended Agent and visible Work view without making them logically visible", async () => {
     const current: WorkspacePresentation = {
       workspace: { id: "a", title: "Current" },
-      agentConversations: [{ id: "agent-a", title: "Agent", bodyHtml: "<p>Current</p>" }],
+      agentConversations: [agentConversation("a", "agent-a")],
       workViews: [],
     };
     const preloaded: WorkspacePresentation = {
       workspace: { id: "b", title: "Preloaded" },
-      agentConversations: [{ id: "agent-b", title: "Agent", bodyHtml: "<p>Preloaded</p>" }],
-      workViews: [{ key: "review:workspace", label: "Review", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyUrl: "/workspaces/b/work-views/review%3Aworkspace/body" }],
+      agentConversations: [agentConversation("b", "agent-b"), agentConversation("b", "agent-b-inactive", "Inactive")],
+      workViews: [
+        { key: "review:workspace", label: "Review", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyUrl: "/workspaces/b/work-views/review%3Aworkspace/body" },
+        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyUrl: "/workspaces/b/work-views/files%3Aworkspace/body" },
+      ],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
       { id: "a", title: "Current", active: true },
-      { id: "b", title: "Preloaded", unreadAt: 123 },
+      { id: "b", title: "Preloaded", unreadAt: 123, agentReadyAt: 123, unreadTokens: { "agent:agent-b": 7 } },
     ] };
-    let bodyRequests = 0;
+    const agentBodyRequests: string[] = [];
+    const workBodyRequests: string[] = [];
+    const acknowledgementTokens: string[] = [];
     const page = await newTestPage();
-    await page.route("http://atelier.test/", (route) => route.fulfill({
+    await page.addInitScript(() => {
+      sessionStorage.setItem("atelier:workspace-navigation:b", JSON.stringify({ activeAgentId: "agent-b", activeWorkViewKey: "review:workspace", workPaneVisible: true, phoneDestination: "agents", drawers: [] }));
+    });
+    await page.route("http://atelier.test/workspaces/a", (route) => route.fulfill({
       contentType: "text/html",
-      body: `${renderShellFixture(current, pane)}<script type="module" src="${workspaceClientPath}"></script>`,
+      body: `<style>${workspaceStyle}</style>${renderShellFixture(current, pane)}<script>
+        window.AtelierCable = {
+          subscribe(identifier) { window.agentSubscriptions.push(identifier.conversationId); },
+          unsubscribe() {},
+          connected() { return true; },
+        };
+        window.agentSubscriptions = [];
+      </script><script type="module" src="${workspaceClientPath}"></script>`,
     }));
     await page.route("**/workspaces/a/active", (route) => route.fulfill({ status: 204 }));
     await page.route("**/workspaces/b/active", (route) => route.fulfill({ status: 204 }));
@@ -745,28 +1873,53 @@ Comment: I don't think we need these tests`;
       contentType: "text/html",
       body: `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="b">${renderWorkspacePresentation(preloaded)}</div>`,
     }));
-    await page.route("**/workspaces/b/work-views/*/body", async (route) => {
-      bodyRequests += 1;
+    await page.route("**/workspaces/b/agents/*/body", async (route) => {
+      const conversationId = decodeURIComponent(new URL(route.request().url()).pathname.match(/agents\/([^/]+)\/body$/)![1]!);
+      agentBodyRequests.push(conversationId);
       await Bun.sleep(100);
-      await route.fulfill({ contentType: "text/html", body: renderWorkViewBodyFrame("review:workspace", "<p>Hydrated review</p>") });
+      await route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("b", conversationId, agentPaneBody("b", conversationId, `<p>Hydrated ${conversationId}</p>`)) });
     });
-    await page.goto("http://atelier.test/");
+    await page.route("**/workspaces/b/work-views/*/body", async (route) => {
+      const key = decodeURIComponent(new URL(route.request().url()).pathname.match(/work-views\/([^/]+)\/body$/)![1]!);
+      workBodyRequests.push(key);
+      await Bun.sleep(100);
+      await route.fulfill({ contentType: "text/html", body: renderWorkViewBodyFrame("b", key, `<p>Hydrated ${key}</p>`) });
+    });
+    await page.route("**/workspaces/b/agents/*/attention/acknowledge*", (route) => {
+      const token = new URL(route.request().url()).searchParams.get("attentionToken");
+      if (!token) throw new Error("expected Agent attention token");
+      acknowledgementTokens.push(token);
+      return route.fulfill({ status: 204 });
+    });
+    await page.route("**/workspaces/b/work-views/*/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/a");
 
     const row = page.locator('[data-workspace-entry-id="b"]');
-    await page.getByText("Hydrated review").waitFor();
+    await page.getByText("Hydrated agent-b").waitFor({ state: "attached" });
+    await page.getByText("Hydrated review:workspace").waitFor({ state: "attached" });
     await page.waitForFunction(() => !document.querySelector('[data-workspace-entry-id="b"]')?.hasAttribute("data-workspace-preloading"));
     expect(await row.getAttribute("data-workspace-preloading")).toBeNull();
-    expect(bodyRequests).toBe(1);
+    expect(agentBodyRequests).toEqual(["agent-b"]);
+    expect(workBodyRequests).toEqual(["review:workspace"]);
+    // SAFETY: The page fixture initializes agentSubscriptions as an array before the application module loads.
+    expect(await page.evaluate(() => (window as typeof window & { agentSubscriptions: string[] }).agentSubscriptions)).toEqual([]);
+    expect(acknowledgementTokens).toEqual([]);
+    expect(await page.locator('[data-workspace-id="b"] [data-workspace-pane-id="agent-b"]').getAttribute("data-workspace-logically-visible")).toBe("false");
     await row.click();
-    await page.getByText("Hydrated review").waitFor({ state: "visible" });
-    expect(bodyRequests).toBe(1);
+    await page.getByText("Hydrated review:workspace").waitFor({ state: "visible" });
+    // SAFETY: The page fixture initializes agentSubscriptions as an array before the application module loads.
+    await page.waitForFunction(() => (window as typeof window & { agentSubscriptions: string[] }).agentSubscriptions.includes("agent-b"));
+    await page.waitForFunction(() => document.querySelector('[data-workspace-id="b"] [data-workspace-pane-id="agent-b"]')?.getAttribute("data-workspace-logically-visible") === "true");
+    expect(agentBodyRequests).toEqual(["agent-b"]);
+    expect(workBodyRequests).toEqual(["review:workspace"]);
+    expect(acknowledgementTokens).toEqual(["7"]);
     await page.close();
   });
 
-  test("hydrates the active Work view and each newly selected tab", async () => {
+  test("hydrates each selected Work view before emitting its visibility lifecycle", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "active", title: "Active" },
-      agentConversations: [{ id: "agent", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      agentConversations: [agentConversation("active", "agent")],
       workViews: [
         { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyUrl: "/workspaces/active/work-views/files%3Aworkspace/body" },
         { key: "review:workspace", label: "Review", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyUrl: "/workspaces/active/work-views/review%3Aworkspace/body" },
@@ -775,91 +1928,217 @@ Comment: I don't think we need these tests`;
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "active", title: "Active", active: true }] };
     const requests: string[] = [];
     const page = await newTestPage();
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.addInitScript(() => {
+      sessionStorage.setItem("atelier:workspace-navigation:active", JSON.stringify({ activeAgentId: "agent", activeWorkViewKey: "files:workspace", workPaneVisible: true, phoneDestination: "agents", drawers: [] }));
+    });
+    await page.route("http://atelier.test/workspaces/active", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script>
+        document.addEventListener("atelier:workspace-pane-visible", (event) => {
+          const pane = event.target;
+          if (!(pane instanceof HTMLElement) || pane.dataset.workspacePaneRole !== "work") return;
+          const sample = pane.dataset.workspacePaneId + ":" + Boolean(pane.querySelector("[data-hydrated-work]"));
+          document.body.dataset.workVisibilityEvents = [document.body.dataset.workVisibilityEvents, sample].filter(Boolean).join("|");
+        });
+      </script><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
     await page.route("**/workspaces/active/active", (route) => route.fulfill({ status: 204 }));
-    await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
     await page.route("**/workspaces/active/work-views/*/body", (route) => {
       const match = new URL(route.request().url()).pathname.match(/work-views\/([^/]+)\/body$/);
       const key = decodeURIComponent(match![1]!);
       requests.push(key);
-      return route.fulfill({ contentType: "text/html", body: renderWorkViewBodyFrame(key, `<p>${key} hydrated</p>`) });
+      return route.fulfill({ contentType: "text/html", body: renderWorkViewBodyFrame("active", key, `<p data-hydrated-work>${key} hydrated</p>`) });
     });
-    await page.goto("http://atelier.test/");
+    await page.goto("http://atelier.test/workspaces/active");
 
     await page.getByText("files:workspace hydrated").waitFor({ state: "attached" });
-    await page.getByRole("button", { name: "Show Work pane" }).click();
+    await page.waitForFunction(() => document.body.dataset.workVisibilityEvents === "files:workspace:true");
     await page.locator('[data-work-view-key="review:workspace"]').click();
     await page.getByText("review:workspace hydrated").waitFor();
+    await page.waitForFunction(() => document.body.dataset.workVisibilityEvents === "files:workspace:true|review:workspace:true");
     expect(requests).toEqual(["files:workspace", "review:workspace"]);
+    expect(await page.locator("body").getAttribute("data-work-visibility-events")).toBe("files:workspace:true|review:workspace:true");
     await page.close();
   });
 
-  test("synchronizes a cached unread Agent transcript before showing its unread dot", async () => {
-    const current: WorkspacePresentation = {
-      workspace: { id: "a", title: "Current" },
-      agentConversations: [{ id: "agent-a", title: "Agent", bodyHtml: "<p>Current</p>" }],
-      workViews: [],
+  test("adds an Agent through targeted streams without replacing existing Agent or Work surfaces", async () => {
+    const initial: WorkspacePresentation = {
+      workspace: { id: "targeted-agent", title: "Targeted Agent" },
+      agentConversations: [agentConversation("targeted-agent", "agent-1", "Plan")],
+      workViews: [{ key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<textarea data-work-draft>command</textarea>' }],
     };
-    const cachedAgent = `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="b" data-agent-pane-label-value="Agent">
-      <div class="agent-transcript" id="b_agent_transcript" data-agent-pane-target="transcript">Old transcript</div>
-      <div class="composer"><button data-agent-pane-target="transcriptNav"></button><form data-agent-pane-target="form"><textarea data-agent-pane-target="input"></textarea><button class="agent-sendstop" data-agent-pane-target="sendStop" data-agent-busy="false"></button></form></div>
-    </div>`;
-    const cached: WorkspacePresentation = {
-      workspace: { id: "b", title: "Cached" },
-      agentConversations: [{ id: "agent-b", title: "Agent", bodyHtml: cachedAgent }],
-      workViews: [],
+    const updated: WorkspacePresentation = {
+      ...initial,
+      agentConversations: [...initial.agentConversations, agentConversation("targeted-agent", "agent-2", "Build")],
     };
-    const initialPane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
-      { id: "a", title: "Current", active: true },
-      { id: "b", title: "Cached" },
-    ] };
-    const unreadPane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
-      { id: "a", title: "Current", active: true },
-      { id: "b", title: "Cached", unreadAt: 123 },
-    ] };
     const page = await newTestPage();
-    await page.route("http://atelier.test/", (route) => route.fulfill({
+    await page.route("http://atelier.test/workspaces/targeted-agent", (route) => route.fulfill({
       contentType: "text/html",
-      body: `${renderShellFixture(current, initialPane, [cached])}<script>
-        window.AtelierCable = {
-          subscribe(_identifier, options) { window.finishCachedAgentSync = () => {
-            window.Turbo.renderStreamMessage('<turbo-stream action="update" target="b_agent_transcript"><template>New transcript</template></turbo-stream>');
-            requestAnimationFrame(() => options.onSynchronized());
-          }; },
-          unsubscribe() {},
-          connected() { return true; },
-        };
-      </script><script type="module" src="${workspaceClientPath}"></script>`,
+      body: `${renderShellFixture(initial, { projects: [] })}<script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
-    await page.goto("http://atelier.test/");
+    await page.goto("http://atelier.test/workspaces/targeted-agent");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
-
-    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspacePaneCollectionsTurboStream(unreadPane));
-    const unread = page.locator('[data-workspace-entry-id="b"]');
-    await page.waitForFunction(() => document.querySelector('[data-workspace-entry-id="b"]')?.hasAttribute("data-workspace-preloading"));
-    expect(await unread.locator('[aria-label="Agent ready"]').isVisible()).toBe(false);
-    expect(await page.locator("#b_agent_transcript").textContent()).toBe("Old transcript");
-
+    await page.locator('[data-workspace-pane-id="agent-1"] turbo-frame').waitFor();
     await page.evaluate(() => {
-      // SAFETY: This test fixture installs the synchronization callback before the assertion reaches this point.
-      (window as typeof window & { finishCachedAgentSync(): void }).finishCachedAgentSync();
+      const agentFrame = document.querySelector<HTMLElement>('[data-workspace-pane-id="agent-1"] turbo-frame')!;
+      const workPane = document.querySelector<HTMLElement>('[data-workspace-pane-id="terminal:1"]')!;
+      workPane.querySelector<HTMLTextAreaElement>("textarea")!.value = "unsaved command";
+      // SAFETY: The test fixture owns this probe and initializes it before any assertion reads it.
+      (window as typeof window & { targetedAgentProbe?: unknown }).targetedAgentProbe = { agentFrame, workPane };
     });
-    await page.waitForFunction(() => !document.querySelector('[data-workspace-entry-id="b"]')?.hasAttribute("data-workspace-preloading"));
-    expect(await unread.locator('[aria-label="Agent ready"]').count()).toBe(1);
-    expect(await page.locator("#b_agent_transcript").textContent()).toBe("New transcript");
+
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), agentTabsTurboStream(updated, { addedConversationId: "agent-2", selectConversationId: "agent-2" }));
+    await page.waitForFunction(() => document.querySelector('[data-workspace-pane-id="agent-2"]')?.classList.contains("is-active"));
+    expect(await page.getByRole("tab", { name: "Build" }).getAttribute("aria-selected")).toBe("true");
+    expect(await page.evaluate(() => {
+      // SAFETY: The preceding evaluation initializes this controlled probe with the asserted element shape.
+      const probe = (window as typeof window & { targetedAgentProbe: { agentFrame: HTMLElement; workPane: HTMLElement } }).targetedAgentProbe;
+      return {
+        agentFrameKept: probe.agentFrame === document.querySelector('[data-workspace-pane-id="agent-1"] turbo-frame'),
+        workPaneKept: probe.workPane === document.querySelector('[data-workspace-pane-id="terminal:1"]'),
+        workDraft: probe.workPane.querySelector<HTMLTextAreaElement>("textarea")!.value,
+      };
+    })).toEqual({ agentFrameKept: true, workPaneKept: true, workDraft: "unsaved command" });
+    await page.close();
+  });
+
+  test("keeps the visible Agent frame live while targeted actions converge in two browsers", async () => {
+    const initial: WorkspacePresentation = {
+      workspace: { id: "multi-agent", title: "Multi-browser Agent" },
+      agentConversations: [agentConversation("multi-agent", "agent-1", "Plan")],
+      workViews: [],
+    };
+    const updated: WorkspacePresentation = {
+      ...initial,
+      agentConversations: [...initial.agentConversations, agentConversation("multi-agent", "agent-2", "Build")],
+    };
+    const bodyRequests = [0, 0];
+    const pages = [await newTestPage(), await newTestPage()];
+    for (const [index, page] of pages.entries()) {
+      await page.route("http://atelier.test/workspaces/multi-agent", (route) => route.fulfill({
+        contentType: "text/html",
+        body: `${renderShellFixture(initial, { projects: [] })}<script>
+          window.agentCableEvents = [];
+          document.addEventListener("atelier:workspace-preparation-invalidated", () => { document.body.dataset.multiAgentInvalidated = "true"; });
+          window.AtelierCable = {
+            subscribe(identifier, options) { window.agentCableEvents.push("subscribe:" + identifier.conversationId); requestAnimationFrame(() => options?.onReady?.()); },
+            unsubscribe(identifier) { window.agentCableEvents.push("unsubscribe:" + identifier.conversationId); },
+            connected() { return true; },
+          };
+        </script><script type="module" src="${workspaceClientPath}"></script>`,
+      }));
+      await page.route("**/workspaces/multi-agent/agents/agent-1/body", (route) => {
+        bodyRequests[index] += 1;
+        return route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("multi-agent", "agent-1", agentPaneBody("multi-agent", "agent-1", "<p>Initial Agent state</p>")) });
+      });
+      await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+      await page.goto("http://atelier.test/workspaces/multi-agent");
+      await page.waitForFunction(() => document.querySelector('[data-workspace-pane-id="agent-1"] .agent-pane'));
+      await page.waitForFunction(() => {
+        // SAFETY: The controlled Cable fixture initializes this string array before application startup.
+        return (window as typeof window & { agentCableEvents: string[] }).agentCableEvents.includes("subscribe:agent-1");
+      });
+      await page.locator('textarea[name="text"]').fill(`Browser ${index + 1} draft`);
+      await page.evaluate(() => {
+        // SAFETY: This browser fixture owns the retained frame probe for its lifetime.
+        (window as typeof window & { multiAgentFrame?: Element }).multiAgentFrame = document.querySelector('[data-workspace-pane-id="agent-1"] turbo-frame')!;
+        // SAFETY: The controlled Cable fixture initializes this string array before application startup.
+        (window as typeof window & { agentCableEvents: string[] }).agentCableEvents = [];
+      });
+    }
+
+    const broadcast = agentTabsTurboStream(updated, { addedConversationId: "agent-2" })
+      + workspacePreparationInvalidatedTurboStream("multi-agent", "agent-1")
+      + turboStream("update", "multi-agent_agent-1_transcript", "<p>Broadcast visible Agent action</p>");
+    await Promise.all(pages.map(async (page) => await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), broadcast)));
+
+    for (const [index, page] of pages.entries()) {
+      await page.getByText("Broadcast visible Agent action").waitFor();
+      await page.waitForFunction(() => document.body.dataset.multiAgentInvalidated === "true");
+      expect(await page.getByRole("tab", { name: "Build" }).count()).toBe(1);
+      expect(await page.locator('textarea[name="text"]').inputValue()).toBe(`Browser ${index + 1} draft`);
+      expect(bodyRequests[index]).toBe(1);
+      expect(await page.evaluate(() => {
+        // SAFETY: The browser fixture initialized both the retained frame and Cable-event probes above.
+        const fixture = window as typeof window & { multiAgentFrame: Element; agentCableEvents: string[] };
+        return {
+          retained: fixture.multiAgentFrame === document.querySelector('[data-workspace-pane-id="agent-1"] turbo-frame'),
+          cableEvents: fixture.agentCableEvents,
+        };
+      })).toEqual({ retained: true, cableEvents: [] });
+      await page.close();
+    }
+  });
+
+  test("preserves manual active Working and tool disclosure choices until the final answer", async () => {
+    const ctx: AgentRenderContext = { workspaceId: "disclosure", conversationId: "agent-disclosure" };
+    const runningTool: ToolView = { callId: "call-read", name: "read", args: { path: "README.md" }, status: "running", startedAt: 1_000 };
+    const activeWorking: TranscriptItem = {
+      type: "working",
+      key: "working",
+      startedAt: 1_000,
+      live: true,
+      items: [{ type: "tool", key: "tool", tool: runningTool }],
+    };
+    const transcriptId = agentIds.transcript(ctx);
+    const workingId = agentIds.item(ctx, "working");
+    const toolId = agentIds.item(ctx, "tool");
+    const page = await newTestPage();
+    await page.route("http://atelier.test/disclosure", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<div id="${transcriptId}">${renderTranscriptItem(ctx, activeWorking)}</div><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.goto("http://atelier.test/disclosure");
+
+    const working = page.locator(`#${workingId}`);
+    const tool = page.locator(`#${toolId} details.agent-tool`);
+    expect(await working.getAttribute("open")).toBe("");
+    expect(await tool.getAttribute("open")).toBe("");
+
+    await working.locator(":scope > summary").click();
+    expect(await working.getAttribute("open")).toBeNull();
+    const firstUpdate = renderActiveToolContent(ctx, "tool", { ...runningTool, args: { path: "docs/requirements.md" } });
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream),
+      turboStream("update", agentIds.itemSummaryContent(ctx, "tool"), firstUpdate.summary)
+      + turboStream("update", agentIds.detailFrame(ctx, "tool"), firstUpdate.detail ?? ""));
+    expect(await working.getAttribute("open")).toBeNull();
+
+    await working.locator(":scope > summary").click();
+    expect(await tool.getAttribute("open")).toBe("");
+    await tool.locator(":scope > summary").click();
+    expect(await tool.getAttribute("open")).toBeNull();
+    const secondUpdate = renderActiveToolContent(ctx, "tool", { ...runningTool, args: { path: "docs/final.md" } });
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream),
+      turboStream("update", agentIds.itemSummaryContent(ctx, "tool"), secondUpdate.summary)
+      + turboStream("update", agentIds.detailFrame(ctx, "tool"), secondUpdate.detail ?? ""));
+    expect(await working.getAttribute("open")).toBe("");
+    expect(await tool.getAttribute("open")).toBeNull();
+
+    const completedWorking: TranscriptItem = {
+      ...activeWorking,
+      completedAt: 2_500,
+      items: [{ type: "tool", key: "tool", tool: { ...runningTool, status: "ok", resultText: "Final file contents" } }],
+    };
+    const finalAnswer: TranscriptItem = { type: "text", key: "final", text: "Final answer is ready.", final: true };
+    await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream),
+      turboStream("replace", workingId, renderTranscriptItem(ctx, completedWorking))
+      + turboStream("append", transcriptId, renderTranscriptItem(ctx, finalAnswer)));
+    await page.getByText("Final answer is ready.").waitFor();
+    expect(await working.getAttribute("open")).toBeNull();
+    expect(await tool.getAttribute("open")).toBeNull();
     await page.close();
   });
 
   test("selects the Workspace requested by a creation stream", async () => {
     const first: WorkspacePresentation = {
       workspace: { id: "first", title: "First" },
-      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>First Agent</p>" }],
+      agentConversations: [agentConversation("first", "agent-1")],
       workViews: [],
     };
     const created: WorkspacePresentation = {
       workspace: { id: "created", title: "Created" },
-      agentConversations: [{ id: "agent-2", title: "Agent", bodyHtml: "<p>Created Agent</p>" }],
+      agentConversations: [agentConversation("created", "agent-2")],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
@@ -877,6 +2156,45 @@ Comment: I don't think we need these tests`;
 
     expect(new URL(page.url()).pathname).toBe("/workspaces/created");
     expect(await page.locator('[data-workspace-entry-id="created"]').getAttribute("aria-current")).toBe("page");
+    await page.close();
+  });
+
+  test("Back and Forward restore cached Workspace selection", async () => {
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
+      { id: "history-a", title: "History A", active: true },
+      { id: "history-b", title: "History B" },
+    ] };
+    const residents = `<div class="workspace-detail-resident visible" data-workspace-residency-target="resident" data-workspace-id="history-a">Cached A</div>
+      <div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="history-b">Cached B</div>`;
+    let residentRequests = 0;
+    const page = await newTestPage();
+    await page.route("http://atelier.test/workspaces/history-a", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellResidents(pane, residents)}<script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route(/\/workspaces\/history-[ab]\?resident=1$/, (route) => {
+      residentRequests += 1;
+      const workspaceId = new URL(route.request().url()).pathname.split("/").at(-1)!;
+      return route.fulfill({ contentType: "text/html", body: `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${workspaceId}">Fetched ${workspaceId}</div>` });
+    });
+    await page.route("**/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/history-a");
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident.visible[data-workspace-id="history-a"]'));
+
+    await page.locator('[data-workspace-entry-id="history-b"]').evaluate((button: HTMLButtonElement) => button.click());
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident.visible[data-workspace-id="history-b"]'));
+    expect(new URL(page.url()).pathname).toBe("/workspaces/history-b");
+
+    await page.goBack();
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident.visible[data-workspace-id="history-a"]'));
+    expect(new URL(page.url()).pathname).toBe("/workspaces/history-a");
+    expect(await page.locator('[data-workspace-entry-id="history-a"]').getAttribute("aria-current")).toBe("page");
+
+    await page.goForward();
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident.visible[data-workspace-id="history-b"]'));
+    expect(new URL(page.url()).pathname).toBe("/workspaces/history-b");
+    expect(await page.locator('[data-workspace-entry-id="history-b"]').getAttribute("aria-current")).toBe("page");
+    expect(residentRequests).toBe(0);
     await page.close();
   });
 
@@ -965,7 +2283,7 @@ Comment: I don't think we need these tests`;
     await page.setContent(`<style>${workspaceStyle}</style><div data-workspace-id="demo">
       <section class="fixed-shell-work-pane" style="height: 400px">
         <header><div class="fixed-shell-work-view-selectors"><button type="button" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="browser-1" data-atelier-fullscreen-title-value="Browser">Browser</button></div></header>
-        <div class="fixed-shell-work-bodies"><section class="fixed-shell-live-node is-active" data-workspace-pane-role="work" data-source-work-view-key="browser-1"><button type="button">Preview content</button></section></div>
+        <div class="fixed-shell-work-bodies"><section class="fixed-shell-surface is-active" data-workspace-pane-role="work" data-source-work-view-key="browser-1"><button type="button">Preview content</button></section></div>
       </section>
     </div>`);
     await page.addScriptTag({ url: `http://atelier.test${workspaceClientPath}`, type: "module" });
@@ -986,7 +2304,7 @@ Comment: I don't think we need these tests`;
   test("removes a deleted Workspace resident so its Agent can no longer be used", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "deleted-demo", title: "Delete me" },
-      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<textarea data-agent-input></textarea>' }],
+      agentConversations: [agentConversation("deleted-demo", "agent-1")],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "deleted-demo", title: "Delete me" }] };
@@ -994,11 +2312,12 @@ Comment: I don't think we need these tests`;
     await page.route("http://atelier.test/workspaces/deleted-demo", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.goto("http://atelier.test/workspaces/deleted-demo");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    await page.locator('[data-workspace-pane-id="agent-1"] turbo-frame').waitFor();
 
     await page.evaluate(() => window.Turbo!.renderStreamMessage('<turbo-stream action="remove-workspace-resident" target="fixed_workspace_deleted-demo"></turbo-stream>'));
 
-    await page.waitForFunction(() => !document.querySelector("[data-agent-input]"));
-    expect(await page.locator("[data-agent-input]").count()).toBe(0);
+    await page.waitForFunction(() => !document.querySelector('[data-workspace-id="deleted-demo"]'));
+    expect(await page.locator('[data-workspace-pane-id="agent-1"]').count()).toBe(0);
     expect(await page.locator("[data-workspace-residency-target='empty']").getAttribute("hidden")).toBeNull();
     expect(new URL(page.url()).pathname).toBe("/");
     await page.close();
@@ -1090,7 +2409,7 @@ Comment: I don't think we need these tests`;
   test("parks the current Workspace on mobile without losing global navigation", async () => {
     const current: WorkspacePresentation = {
       workspace: { id: "park-current", title: "Park current" },
-      agentConversations: [{ id: "agent-current", title: "Agent", bodyHtml: "<p>Current Agent</p>" }],
+      agentConversations: [agentConversation("park-current", "agent-current")],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = {
@@ -1135,55 +2454,30 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("keeps live Agent and Work nodes mounted while restoring personal navigation", async () => {
+  test("restores personal Agent and Work navigation without relying on rendered Agent DOM", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "fixed-demo", title: "Fixed shell" },
       agentConversations: [
-        { id: "agent-1", title: "Plan", bodyHtml: '<textarea data-probe="agent">initial</textarea>' },
-        { id: "agent-2", title: "Build", bodyHtml: "<p>Second transcript</p>" },
+        agentConversation("fixed-demo", "agent-1", "Plan"),
+        agentConversation("fixed-demo", "agent-2", "Build"),
       ],
       workViews: [
-        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea><iframe srcdoc="<p>live</p>"></iframe>', close: { action: "/terminal/close", label: "Terminal" } },
+        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Terminal</p>", close: { action: "/terminal/close", label: "Terminal" } },
         { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files" } },
       ],
     };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="${workspaceClientPath}"></script>` }));
-    await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
-    await page.goto("http://atelier.test/");
+    await page.route("http://atelier.test/workspaces/fixed-demo", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/fixed-demo");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
 
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).not.toContain("is-work-pane-open");
-    const terminalClose = page.locator('[data-work-view-key="terminal:1"] + form');
-    const filesClose = page.locator('[data-work-view-key="files:workspace"] + form');
-    expect(await terminalClose.isHidden()).toBe(false);
-    expect(await filesClose.isHidden()).toBe(false);
-    await page.evaluate(() => {
-      const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
-      const terminal = document.querySelector<HTMLElement>('[data-workspace-live-node="work:terminal:1"]')!;
-      const frame = terminal.querySelector<HTMLIFrameElement>("iframe")!;
-      agent.querySelector("textarea")!.value = "unsaved agent draft";
-      terminal.querySelector("textarea")!.value = "unsaved command";
-      // SAFETY: The test fixture controls this value and establishes the asserted shape.
-      (window as typeof window & { fixedProbe?: unknown }).fixedProbe = { agent, terminal, frame, frameWindow: frame.contentWindow };
-    });
-    await page.locator('[data-work-view-key="files:workspace"]').click({ force: true });
-    expect(await terminalClose.isHidden()).toBe(false);
-    expect(await filesClose.isHidden()).toBe(false);
     await page.locator('[data-work-view-key="terminal:1"]').click({ force: true });
     await page.locator('[data-agent-conversation-id="agent-2"]').click();
-    await page.locator('[data-agent-conversation-id="agent-1"]').click();
-
-    expect(await page.evaluate(() => {
-      // SAFETY: The test fixture controls this value and establishes the asserted shape.
-      const probe = (window as typeof window & { fixedProbe: { agent: HTMLElement; terminal: HTMLElement; frame: HTMLIFrameElement; frameWindow: Window | null } }).fixedProbe;
-      const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
-      const terminal = document.querySelector<HTMLElement>('[data-workspace-live-node="work:terminal:1"]')!;
-      const frame = terminal.querySelector<HTMLIFrameElement>("iframe")!;
-      return { agent: agent === probe.agent, terminal: terminal === probe.terminal, frame: frame === probe.frame, frameWindow: frame.contentWindow === probe.frameWindow, agentDraft: agent.querySelector("textarea")!.value, terminalDraft: terminal.querySelector("textarea")!.value };
-    })).toEqual({ agent: true, terminal: true, frame: true, frameWindow: true, agentDraft: "unsaved agent draft", terminalDraft: "unsaved command" });
     await page.reload();
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    expect(await page.locator('[data-agent-conversation-id="agent-2"]').getAttribute("aria-selected")).toBe("true");
     expect(await page.locator('[data-work-view-key="terminal:1"]').getAttribute("aria-selected")).toBe("true");
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-work-pane-open");
     await page.close();
@@ -1192,15 +2486,19 @@ Comment: I don't think we need these tests`;
   test("gives viewport width changes to Work when it is open and Agent when it is closed", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "width-demo", title: "Pane widths" },
-      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      agentConversations: [agentConversation("width-demo", "agent-1")],
       workViews: [{ key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>" }],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "width-demo", title: "Pane widths", active: true }] };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
-    await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
-    await page.goto("http://atelier.test/");
+    await page.addInitScript(() => {
+      sessionStorage.setItem("atelier:workspace-navigation:width-demo", JSON.stringify({ activeAgentId: "agent-1", activeWorkViewKey: "files:workspace", workPaneVisible: true, phoneDestination: "agents", drawers: [] }));
+    });
+    await page.route("http://atelier.test/workspaces/width-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/width-demo");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="width-demo"]')?.classList.contains("visible"));
 
     const widths = () => page.locator(".fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane").evaluateAll((panes) => panes.map((pane) => pane.getBoundingClientRect().width));
     const openBefore = await widths();
@@ -1230,7 +2528,7 @@ Comment: I don't think we need these tests`;
   test("deep links reveal Work only in the visible Workspace and hidden presentations do not acknowledge Attention", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "deep-demo", title: "Deep link" },
-      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      agentConversations: [agentConversation("deep-demo", "agent-1")],
       workViews: [
         { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
         { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" },
@@ -1239,7 +2537,8 @@ Comment: I don't think we need these tests`;
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
     let acknowledgements = 0;
     await page.route("http://atelier.test/workspaces/deep-demo?workView=browser%3A1", (route) => route.fulfill({ contentType: "text/html", body: `<div class="workspace-detail-resident visible">${renderWorkspacePresentation(presentation)}</div><script type="module" src="${workspaceClientPath}"></script>` }));
-    await page.route("**/attention/acknowledge", (route) => { acknowledgements += 1; return route.fulfill({ status: 204 }); });
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/work-views/*/attention/acknowledge*", (route) => { acknowledgements += 1; return route.fulfill({ status: 204 }); });
     await page.goto("http://atelier.test/workspaces/deep-demo?workView=browser%3A1");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-work-pane-open");
@@ -1263,69 +2562,220 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("reveals and focuses an agent-presented Work view when its cached Workspace becomes visible", async () => {
+  test("records an attention-seeking Work view as hidden intent and reveals it only with its Workspace", async () => {
     const pane: WorkspacePanePresentation = { projects: [{ id: "project", title: "Project", workspaces: [
       { id: "visible-demo", title: "Visible", active: true },
       { id: "present-demo", title: "Presented" },
     ] }] };
     const visible: WorkspacePresentation = {
       workspace: { id: "visible-demo", title: "Visible" },
-      agentConversations: [{ id: "agent-visible", title: "Agent", bodyHtml: "<p>Visible Agent</p>" }],
+      agentConversations: [agentConversation("visible-demo", "agent-visible")],
       workViews: [],
     };
     const cached: WorkspacePresentation = {
       workspace: { id: "present-demo", title: "Presented" },
-      agentConversations: [{ id: "agent-present", title: "Agent", bodyHtml: "<p>Presented Agent</p>" }],
+      agentConversations: [agentConversation("present-demo", "agent-present")],
       workViews: [],
     };
-    const presented: WorkspacePresentation = {
-      ...cached,
-      workViews: [
-        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
-        { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 2, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" },
-      ],
-      preserveLiveKeys: new Set(["agent:agent-present"]),
-    };
+    const intendedWork = { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 2, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" } as const;
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
     await page.route("http://atelier.test/workspaces/visible-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(visible, pane, [cached])}<script type="module" src="${workspaceClientPath}"></script>` }));
     let acknowledgements = 0;
-    await page.route("**/attention/acknowledge", (route) => { acknowledgements += 1; return route.fulfill({ status: 204 }); });
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/workspaces/present-demo/work-views/*/attention/acknowledge*", (route) => { acknowledgements += 1; return route.fulfill({ status: 204 }); });
     await page.goto("http://atelier.test/workspaces/visible-demo");
     await page.waitForFunction(() => document.querySelectorAll('[data-navigation-ready="true"]').length === 2);
 
-    const stream = workspacePresentationTurboStream("present-demo", presented);
+    const stream = workViewsTurboStream("present-demo", [intendedWork], { openedKey: "browser:1", selectKey: "browser:1", intendSelection: true });
     await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), stream);
-    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="present-demo"] [data-navigation-ready="true"]'));
     const cachedResident = page.locator('.workspace-detail-resident[data-workspace-id="present-demo"]');
-    expect(await cachedResident.locator('[data-work-view-key] [aria-label="Attention"]').count()).toBe(2);
+    await cachedResident.locator('[data-work-view-key="browser:1"]').waitFor({ state: "attached" });
+    expect(await cachedResident.locator('[data-work-view-key="browser:1"] [aria-label="Attention"]').count()).toBe(1);
+    expect(await cachedResident.locator('[data-workspace-pane-id="browser:1"]').getAttribute("data-workspace-logically-visible")).toBe("false");
+    expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem("atelier:workspace-navigation:present-demo")!))).toMatchObject({
+      activeWorkViewKey: "browser:1",
+      workPaneVisible: true,
+      phoneDestination: "work:browser:1",
+    });
+    expect(acknowledgements).toBe(0);
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('.fixed-shell-workspace-pane [data-workspace-entry-id="present-demo"]').evaluate((button: HTMLButtonElement) => button.click());
     const resident = page.locator('.workspace-detail-resident[data-workspace-id="present-demo"]');
     await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="present-demo"]')?.classList.contains("visible"));
 
     expect(await resident.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-work-pane-open");
     const browserPane = resident.locator('[data-workspace-pane-role="work"][data-workspace-pane-id="browser:1"]');
-    expect(await browserPane.evaluate((pane) => document.activeElement === pane)).toBe(true);
+    expect(await browserPane.getAttribute("data-workspace-logically-visible")).toBe("true");
+    expect(await resident.locator('[data-workspace-pane-role="agent"]').getAttribute("data-workspace-logically-visible")).toBe("false");
+    expect(await resident.locator(".fixed-workspace-presentation").getAttribute("data-phone-destination")).toBe("work:browser:1");
     await page.waitForTimeout(20);
     expect(acknowledgements).toBe(1);
 
-    const acknowledgedBrowser = { ...presented.workViews[1]! };
-    delete acknowledgedBrowser.attentionSequence;
-    const acknowledged = workspacePresentationTurboStream("present-demo", {
-      ...presented,
-      workViews: [presented.workViews[0]!, acknowledgedBrowser],
-      preserveLiveKeys: new Set(["agent:agent-present", "work:files:workspace", "work:browser:1"]),
-    });
+    const acknowledgedBrowser = { key: "browser:1", label: "Browser", kind: "resource" as const, mobileDestination: "direct" as const, availability: { phase: "live" as const }, bodyHtml: "<p>Browser</p>" };
+    const acknowledged = workViewsTurboStream("present-demo", [acknowledgedBrowser]);
+    await browserPane.evaluate((pane) => pane.setAttribute("data-targeted-work-probe", "retained"));
     await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), acknowledged);
     await page.waitForTimeout(20);
     expect(await resident.locator('[data-work-view-key="browser:1"]').getAttribute("aria-selected")).toBe("true");
+    expect(await browserPane.getAttribute("data-targeted-work-probe")).toBe("retained");
     expect(acknowledgements).toBe(1);
+
+    const repeatedAttention = workViewsTurboStream("present-demo", [intendedWork], { selectKey: "browser:1", intendSelection: true });
+    const repeatedAcknowledgement = page.waitForResponse((response) => new URL(response.url()).pathname === "/workspaces/present-demo/work-views/browser%3A1/attention/acknowledge");
+    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), repeatedAttention);
+    expect((await repeatedAcknowledgement).request().method()).toBe("POST");
+    expect(acknowledgements).toBe(2);
+    const attention = resident.locator('[data-work-view-key="browser:1"] [aria-label="Attention"]');
+    expect(await attention.count()).toBe(1);
+
+    // The acknowledge endpoint broadcasts the authoritative attention-free targeted stream.
+    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), acknowledged);
+    await attention.waitFor({ state: "detached" });
+    expect(await resident.locator('[data-work-view-key="browser:1"]').getAttribute("aria-selected")).toBe("true");
+    expect(await browserPane.getAttribute("data-targeted-work-probe")).toBe("retained");
+    await page.close();
+  });
+
+  test("acknowledges a selected Work attention request when the hidden document becomes visible", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "visibility-attention", title: "Visibility attention" },
+      agentConversations: [agentConversation("visibility-attention", "agent-visible")],
+      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "visibility-attention", title: "Visibility attention", active: true }] };
+    const intendedWork = { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" } as const;
+    let acknowledgements = 0;
+    const page = await newTestPage();
+    await page.addInitScript(() => {
+      // SAFETY: This isolated browser fixture owns the numeric event probe on window.
+      const probe = window as typeof window & { preparationAcknowledgements: number };
+      probe.preparationAcknowledgements = 0;
+      document.addEventListener("atelier:workspace-preparation-request-acknowledged", () => {
+        probe.preparationAcknowledgements += 1;
+      });
+    });
+    await page.route("http://atelier.test/workspaces/visibility-attention", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/visibility-attention/work-views/*/attention/acknowledge*", (route) => {
+      acknowledgements += 1;
+      return route.fulfill({ status: 204 });
+    });
+    await page.route("**/workspaces/visibility-attention/agents/*/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/visibility-attention");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), workViewsTurboStream("visibility-attention", [intendedWork], { openedKey: "browser:1", selectKey: "browser:1", intendSelection: true }));
+    await page.waitForFunction(() => document.querySelector('[data-workspace-pane-id="browser:1"]')?.getAttribute("data-workspace-logically-visible") === "true");
+    expect(acknowledgements).toBe(0);
+    // SAFETY: The init script owns this numeric browser-test probe.
+    expect(await page.evaluate(() => (window as typeof window & { preparationAcknowledgements: number }).preparationAcknowledgements)).toBe(0);
+
+    const acknowledgement = page.waitForResponse((response) => new URL(response.url()).pathname === "/workspaces/visibility-attention/work-views/browser%3A1/attention/acknowledge");
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect((await acknowledgement).request().method()).toBe("POST");
+    // SAFETY: The init script owns this numeric browser-test probe.
+    await page.waitForFunction(() => (window as typeof window & { preparationAcknowledgements: number }).preparationAcknowledgements === 1);
+    expect(acknowledgements).toBe(1);
+    await page.close();
+  });
+
+  test("acknowledges the latest Agent and Work attention occurrences while older acknowledgements are delayed", async () => {
+    const initialWork = { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 21, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" } as const;
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "attention-cas", title: "Attention ordering" },
+      agentConversations: [agentConversation("attention-cas", "agent-cas")],
+      workViews: [initialWork],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "attention-cas", title: "Attention ordering", active: true }] };
+    let markFirstAgentAcknowledgement!: () => void;
+    const firstAgentAcknowledgement = new Promise<void>((resolve) => { markFirstAgentAcknowledgement = resolve; });
+    let releaseFirstAgentAcknowledgement!: () => void;
+    const firstAgentAcknowledgementReleased = new Promise<void>((resolve) => { releaseFirstAgentAcknowledgement = resolve; });
+    let markSecondAgentAcknowledgement!: () => void;
+    const secondAgentAcknowledgement = new Promise<void>((resolve) => { markSecondAgentAcknowledgement = resolve; });
+    let markFirstWorkAcknowledgement!: () => void;
+    const firstWorkAcknowledgement = new Promise<void>((resolve) => { markFirstWorkAcknowledgement = resolve; });
+    let releaseFirstWorkAcknowledgement!: () => void;
+    const firstWorkAcknowledgementReleased = new Promise<void>((resolve) => { releaseFirstWorkAcknowledgement = resolve; });
+    let markSecondWorkAcknowledgement!: () => void;
+    const secondWorkAcknowledgement = new Promise<void>((resolve) => { markSecondWorkAcknowledgement = resolve; });
+    const agentTokens: string[] = [];
+    const workTokens: string[] = [];
+    const page = await newTestPage();
+    await page.route("http://atelier.test/workspaces/attention-cas", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `${renderShellFixture(presentation, pane)}<script>window.AtelierCable = { subscribe() {}, unsubscribe() {}, connected() { return true; } };</script><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/attention-cas/agents/agent-cas/body", (route) => route.fulfill({
+      contentType: "text/html",
+      body: renderAgentBodyFrame("attention-cas", "agent-cas", agentPaneBody("attention-cas", "agent-cas")),
+    }));
+    await page.route("**/workspaces/attention-cas/agents/agent-cas/attention/acknowledge*", async (route) => {
+      const token = new URL(route.request().url()).searchParams.get("attentionToken");
+      if (!token) throw new Error("expected Agent attention token");
+      agentTokens.push(token);
+      if (token === "11") {
+        markFirstAgentAcknowledgement();
+        await firstAgentAcknowledgementReleased;
+      } else if (token === "12") markSecondAgentAcknowledgement();
+      await route.fulfill({ status: 204 });
+    });
+    await page.route("**/workspaces/attention-cas/work-views/browser%3A1/attention/acknowledge*", async (route) => {
+      const token = new URL(route.request().url()).searchParams.get("attentionToken");
+      if (!token) throw new Error("expected Work attention token");
+      workTokens.push(token);
+      if (token === "21") {
+        markFirstWorkAcknowledgement();
+        await firstWorkAcknowledgementReleased;
+      } else if (token === "22") markSecondWorkAcknowledgement();
+      await route.fulfill({ status: 204 });
+    });
+    await page.goto("http://atelier.test/workspaces/attention-cas");
+    await page.waitForFunction(() => document.querySelector('[data-workspace-pane-id="agent-cas"]')?.getAttribute("data-workspace-logically-visible") === "true");
+    await page.locator(".agent-pane").waitFor();
+    await page.waitForTimeout(20);
+    expect(agentTokens).toEqual([]);
+
+    await page.locator('[data-workspace-entry-id="attention-cas"]').evaluate((row) => {
+      row.dataset.workspaceUnreadTokens = JSON.stringify({ "agent:agent-cas": 11 });
+      document.dispatchEvent(new CustomEvent("atelier:workspace-pane-changed"));
+    });
+    await firstAgentAcknowledgement;
+    await page.locator('[data-workspace-entry-id="attention-cas"]').evaluate((row) => {
+      row.dataset.workspaceUnreadTokens = JSON.stringify({ "agent:agent-cas": 12 });
+      document.dispatchEvent(new CustomEvent("atelier:workspace-pane-changed"));
+    });
+    await secondAgentAcknowledgement;
+    expect(agentTokens).toEqual(["11", "12"]);
+    const firstAgentResponse = page.waitForResponse((response) => new URL(response.url()).searchParams.get("attentionToken") === "11");
+    releaseFirstAgentAcknowledgement();
+    await firstAgentResponse;
+
+    await page.locator('[data-work-view-key="browser:1"]').evaluate((button: HTMLButtonElement) => button.click());
+    await firstWorkAcknowledgement;
+    const latestWork = { ...initialWork, attentionSequence: 22 };
+    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), workViewsTurboStream("attention-cas", [latestWork], { openedKey: "browser:1", selectKey: "browser:1", intendSelection: true }));
+    await secondWorkAcknowledgement;
+    expect(workTokens).toEqual(["21", "22"]);
+    const firstWorkResponse = page.waitForResponse((response) => new URL(response.url()).searchParams.get("attentionToken") === "21");
+    releaseFirstWorkAcknowledgement();
+    await firstWorkResponse;
     await page.close();
   });
 
   test("expands and collapses the parked Workspace count", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "active", title: "Active" },
-      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent content</p>" }],
+      agentConversations: [agentConversation("active", "agent-1")],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = {
@@ -1339,7 +2789,7 @@ Comment: I don't think we need these tests`;
     };
     const parkedPresentation: WorkspacePresentation = {
       workspace: { id: "parked-1", title: "First parked" },
-      agentConversations: [{ id: "agent-parked", title: "Agent", bodyHtml: "<p>Unparked Agent content</p>" }],
+      agentConversations: [agentConversation("parked-1", "agent-parked")],
       workViews: [],
     };
     let unparkRequests = 0;
@@ -1380,7 +2830,7 @@ Comment: I don't think we need these tests`;
   test("starts the Projects section collapsed and preserves its expanded state across updates", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "used-workspace", title: "Used workspace" },
-      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent content</p>" }],
+      agentConversations: [agentConversation("used-workspace", "agent-1")],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = {
@@ -1432,7 +2882,7 @@ Comment: I don't think we need these tests`;
   test("keeps the Workspace pane open when selecting a cached Workspace", async () => {
     const makePresentation = (id: string): WorkspacePresentation => ({
       workspace: { id, title: `Workspace ${id}` },
-      agentConversations: [{ id: `agent-${id}`, title: "Agent", bodyHtml: `<p>Agent ${id}</p>` }],
+      agentConversations: [agentConversation(id, `agent-${id}`)],
       workViews: [],
     });
     const pane: WorkspacePanePresentation = { projects: [{ id: "project", title: "Project", workspaces: [
@@ -1456,13 +2906,14 @@ Comment: I don't think we need these tests`;
   test("collapses the Workspace pane and restores it from the Agent header", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "workspace-pane-demo", title: "Workspace pane" },
-      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent content</p>" }],
+      agentConversations: [agentConversation("workspace-pane-demo", "agent-1")],
       workViews: [],
     };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="${workspaceClientPath}"></script>` }));
-    await page.goto("http://atelier.test/");
+    await page.route("http://atelier.test/workspaces/workspace-pane-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.goto("http://atelier.test/workspaces/workspace-pane-demo");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="workspace-pane-demo"]')?.classList.contains("visible"));
 
     const collapse = page.getByRole("button", { name: "Collapse Workspace pane" });
     await collapse.evaluate((button: HTMLButtonElement) => button.click());
@@ -1480,13 +2931,14 @@ Comment: I don't think we need these tests`;
   test("reveals and collapses the Work pane", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "motion-demo", title: "Motion" },
-      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: "<p>Agent content</p>" }],
+      agentConversations: [agentConversation("motion-demo", "agent-1")],
       workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
     };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="${workspaceClientPath}"></script>` }));
-    await page.goto("http://atelier.test/");
+    await page.route("http://atelier.test/workspaces/motion-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.goto("http://atelier.test/workspaces/motion-demo");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    await page.waitForFunction(() => document.querySelector('.workspace-detail-resident[data-workspace-id="motion-demo"]')?.classList.contains("visible"));
     expect(await page.getByRole("button", { name: "Show Work pane" }).isVisible()).toBe(true);
 
     await page.getByRole("button", { name: "Show Work pane" }).evaluate((button: HTMLButtonElement) => button.click());
@@ -1499,44 +2951,12 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("transplants editor drafts and iframe identity through a Turbo presentation refresh", async () => {
-    const presentation: WorkspacePresentation = {
-      workspace: { id: "stream-demo", title: "Before" },
-      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<textarea data-probe="draft">draft</textarea>' }],
-      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<iframe srcdoc="<p>live</p>"></iframe>' }],
-    };
-    const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="${workspaceClientPath}"></script>` }));
-    await page.goto("http://atelier.test/");
-    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
-    const stream = workspacePresentationTurboStream("stream-demo", { ...presentation, workspace: { id: "stream-demo", title: "After" }, preserveLiveKeys: new Set(["agent:agent-1", "work:browser:1"]) });
-    await page.evaluate((html) => {
-      const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
-      const work = document.querySelector<HTMLElement>('[data-workspace-live-node="work:browser:1"]')!;
-      const frame = work.querySelector<HTMLIFrameElement>("iframe")!;
-      agent.querySelector("textarea")!.value = "unsaved";
-      // SAFETY: The test fixture controls this value and establishes the asserted shape.
-      (window as typeof window & { streamProbe?: unknown }).streamProbe = { agent, work, frame, frameWindow: frame.contentWindow };
-      window.Turbo!.renderStreamMessage(html);
-    }, stream);
-    await page.waitForFunction(() => document.querySelector(".fixed-shell-workspace-title")?.textContent?.includes("After"));
-    expect(await page.evaluate(() => {
-      // SAFETY: The test fixture controls this value and establishes the asserted shape.
-      const probe = (window as typeof window & { streamProbe: { agent: HTMLElement; work: HTMLElement; frame: HTMLIFrameElement; frameWindow: Window | null } }).streamProbe;
-      const agent = document.querySelector<HTMLElement>('[data-workspace-live-node="agent:agent-1"]')!;
-      const work = document.querySelector<HTMLElement>('[data-workspace-live-node="work:browser:1"]')!;
-      const frame = work.querySelector<HTMLIFrameElement>("iframe")!;
-      return { agent: agent === probe.agent, work: work === probe.work, frame: frame === probe.frame, frameWindow: frame.contentWindow === probe.frameWindow, draft: agent.querySelector("textarea")!.value };
-    })).toEqual({ agent: true, work: true, frame: true, frameWindow: true, draft: "unsaved" });
-    await page.close();
-  });
-
-  test("uses fixed mobile destinations and keeps secondary Work views behind More across responsive transitions", async () => {
+  test("uses fixed mobile destinations, keeps secondary Work views behind More, and does not autofocus Agent composers on phones", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "phone-demo", title: "Phone" },
       agentConversations: [
-        { id: "agent-1", title: "First Agent", bodyHtml: '<textarea data-probe="agent">draft</textarea>' },
-        { id: "agent-2", title: "Second Agent", bodyHtml: "<p>Second agent</p>" },
+        agentConversation("phone-demo", "agent-1", "First Agent"),
+        agentConversation("phone-demo", "agent-2", "Second Agent"),
       ],
       workViews: [
         { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea>', close: { action: "/terminal/close", label: "Terminal Work view" } },
@@ -1545,9 +2965,17 @@ Comment: I don't think we need these tests`;
       commands: [{ id: "files.create", label: "New Files view", scope: "workspace", placement: "work-launcher" }, { id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }],
     };
     const page = await newTestPage({ viewport: { width: 390, height: 844 } });
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="${workspaceClientPath}"></script>` }));
-    await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
-    await page.goto("http://atelier.test/");
+    await page.route("http://atelier.test/workspaces/phone-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script>
+      window.AtelierCable = { subscribe() {}, unsubscribe() {}, connected() { return true; } };
+    </script><script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("**/workspaces/phone-demo/agents/*/body", (route) => {
+      const match = new URL(route.request().url()).pathname.match(/agents\/([^/]+)\/body$/);
+      if (!match) throw new Error("expected Agent body route");
+      const conversationId = decodeURIComponent(match[1]!);
+      return route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("phone-demo", conversationId, agentPaneBody("phone-demo", conversationId)) });
+    });
+    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/phone-demo");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
     const mobileNavigation = page.locator(".fixed-workspace-presentation .fixed-shell-mobile-nav");
     expect(await mobileNavigation.getAttribute("class")).toContain("button-group");
@@ -1588,7 +3016,13 @@ Comment: I don't think we need these tests`;
     expect(await agentHeader.getByRole("button", { name: "Park workspace" }).isVisible()).toBe(true);
     expect(await agentHeader.getByRole("button", { name: "Delete workspace" }).isVisible()).toBe(true);
     expect(await agentHeader.getByRole("button", { name: "Show Work pane" }).isHidden()).toBe(true);
+    const firstComposer = page.locator('[data-workspace-pane-id="agent-1"] textarea[name="text"]');
+    await firstComposer.waitFor();
+    expect(await firstComposer.evaluate((input) => input === document.activeElement)).toBe(false);
     await agentHeader.getByRole("tab", { name: "Second Agent" }).evaluate((button: HTMLButtonElement) => button.click());
+    const secondComposer = page.locator('[data-workspace-pane-id="agent-2"] textarea[name="text"]');
+    await secondComposer.waitFor();
+    expect(await secondComposer.evaluate((input) => input === document.activeElement)).toBe(false);
     expect(await page.locator(".fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane").evaluateAll((panes) => panes.map((pane) => getComputedStyle(pane).visibility))).toEqual(["hidden", "visible", "hidden"]);
     await page.locator("[data-mobile-more]").evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.getByRole("button", { name: "Close current view" }).count()).toBe(0);
@@ -1596,7 +3030,7 @@ Comment: I don't think we need these tests`;
     await page.locator('[data-mobile-destination="work:terminal:1"]').evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.locator(".fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane").evaluateAll((panes) => panes.map((pane) => getComputedStyle(pane).visibility))).toEqual(["hidden", "hidden", "visible"]);
     await agentsDestination.evaluate((button: HTMLButtonElement) => button.click());
-    expect(await page.locator('[data-workspace-live-node="agent:agent-2"]').getAttribute("class")).toContain("is-active");
+    expect(await page.locator('[data-workspace-pane-role="agent"][data-workspace-pane-id="agent-2"]').getAttribute("class")).toContain("is-active");
     await page.locator('[data-mobile-destination="work:terminal:1"]').evaluate((button: HTMLButtonElement) => button.click());
     await page.locator("[data-mobile-more]").evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.getByRole("button", { name: "Close current view" }).count()).toBe(1);
@@ -1607,12 +3041,9 @@ Comment: I don't think we need these tests`;
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("data-phone-destination")).toBe("work:files:workspace");
     expect(await page.locator("[data-mobile-more]").getAttribute("aria-current")).toBe("page");
     expect(await page.locator('[data-mobile-destination="work:files:workspace"]').count()).toBe(0);
-    // SAFETY: The test fixture controls this value and establishes the asserted shape.
-    await page.evaluate(() => (window as typeof window & { filesNode?: Element }).filesNode = document.querySelector('[data-workspace-live-node="work:files:workspace"]')!);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.setViewportSize({ width: 390, height: 844 });
-    // SAFETY: The test fixture controls this value and establishes the asserted shape.
-    expect(await page.evaluate(() => (window as typeof window & { filesNode?: Element }).filesNode === document.querySelector('[data-workspace-live-node="work:files:workspace"]'))).toBe(true);
+    expect(await page.locator('[data-work-view-key="files:workspace"]').getAttribute("aria-selected")).toBe("true");
     await page.close();
   });
 

@@ -1,5 +1,4 @@
 import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
-import { randomUUID } from "node:crypto";
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
@@ -11,6 +10,7 @@ import { renderMarkdown, renderStreamingMarkdownSnapshot } from "@atelier/markdo
 import { highlightCodeHtmlForPath } from "@atelier/syntax";
 import { disclosureIconHtml, domId, escapeHtml } from "./html.ts";
 import type { WorkspaceAgentConversationInfo } from "./session-store.ts";
+import { agentAttachmentDraftId, listStagedAttachments, type StagedAttachment } from "./attachment-drafts.ts";
 import { thinkingBlockRendererFor } from "./thinking-block-renderers.ts";
 import { readInitialPromptDraft } from "./initial-prompt-draft.ts";
 import {
@@ -26,12 +26,12 @@ import {
 
 export interface AgentRenderContext {
   workspaceId: string;
-  label: string;
+  conversationId: string;
   model?: ModelRef;
 }
 
-export function agentConversationKey(label: string): string {
-  return `agent:${label}`;
+export function agentConversationKey(conversationId: string): string {
+  return `agent:${conversationId}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -39,7 +39,7 @@ export function agentConversationKey(label: string): string {
 // ---------------------------------------------------------------------------
 
 function prefix(ctx: AgentRenderContext): string {
-  return domId("ag", ctx.workspaceId, ctx.label);
+  return domId("ag", ctx.workspaceId, ctx.conversationId);
 }
 
 export const ids = {
@@ -59,14 +59,13 @@ export const ids = {
   attachRow: (ctx: AgentRenderContext) => `${prefix(ctx)}_attach`,
   input: (ctx: AgentRenderContext) => `${prefix(ctx)}_input`,
   initialPromptSuggestion: (ctx: AgentRenderContext) => `${prefix(ctx)}_initial_prompt_suggestion`,
-  chip: (ctx: AgentRenderContext, attachmentId: string) => domId(`${prefix(ctx)}_chip`, attachmentId),
   draftAttachRow: (draftId: string) => domId("agent_draft_attach", draftId),
   draftChip: (draftId: string, attachmentId: string) => domId("agent_draft_chip", draftId, attachmentId),
   notices: (ctx: AgentRenderContext) => `${prefix(ctx)}_notices`,
 };
 
 function agentPath(ctx: AgentRenderContext, suffix: string): string {
-  return `/workspaces/${encodeURIComponent(ctx.workspaceId)}/agents/${encodeURIComponent(ctx.label)}${suffix}`;
+  return `/workspaces/${encodeURIComponent(ctx.workspaceId)}/agents/${encodeURIComponent(ctx.conversationId)}${suffix}`;
 }
 
 function initialPromptDraftAction(ctx: AgentRenderContext, decision: "accept" | "decline" | "never", label: string, primary = false): string {
@@ -146,8 +145,6 @@ export interface AgentPaneState {
   transcriptHtml: string;
   busy: boolean;
   stats: AgentStatsView;
-  /** Identifies the last runtime mutation represented by this pane state. */
-  snapshotCursor?: string;
 }
 
 const agentAttachmentDropAction = "dragover->agent-attachments#dragOver dragleave->agent-attachments#dragLeave drop->agent-attachments#drop";
@@ -156,48 +153,30 @@ function agentAttachmentDropAttrs(uploadUrl: string): string {
   return `data-agent-attachments-upload-url-value="${escapeHtml(uploadUrl)}" data-action="${agentAttachmentDropAction}"`;
 }
 
-export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
-  return await renderAgentPaneFrame(ctx, agent, state, options);
+export async function renderAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, state: AgentPaneState): Promise<string> {
+  return await renderAgentPaneFrame(ctx, agent, state);
 }
 
-const pendingAgentStats: AgentStatsView = {
-  contextPercent: null,
-  inputTokens: 0,
-  outputTokens: 0,
-  cost: 0,
-  modelName: undefined,
-  thinkingLevel: "",
-  thinkingLevels: [],
-  models: [],
-};
-
-export async function renderPendingAgentPane(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, options: { visible?: boolean } = {}): Promise<string> {
-  return await renderAgentPaneFrame(ctx, agent, {
-    transcriptHtml: `<div class="agent-starting"><span class="agent-starting-spinner" aria-hidden="true"></span><div><div>Starting ${escapeHtml(ctx.label)}…</div><div>Loading model settings and workspace instructions.</div></div></div>`,
-    busy: false,
-    stats: pendingAgentStats,
-  }, options);
-}
-
-async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, state: AgentPaneState, options: { visible?: boolean } = {}): Promise<string> {
-  const key = agentConversationKey(agent.label);
-  const draftId = randomUUID();
-  const initialPromptDraft = await readInitialPromptDraft(ctx.workspaceId);
+async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAgentConversationInfo, state: AgentPaneState): Promise<string> {
+  const key = agentConversationKey(agent.conversationId);
+  const draftId = agentAttachmentDraftId(ctx.workspaceId, ctx.conversationId);
+  const attachments = await listStagedAttachments(draftId);
+  const initialPromptDraft = await readInitialPromptDraft(ctx.workspaceId, ctx.conversationId);
   const initialText = initialPromptDraft?.accepted ? initialPromptDraft.prompt : undefined;
   const attachRowId = ids.attachRow(ctx);
   const uploadUrl = `/agent-attachment-drafts/${encodeURIComponent(draftId)}/attachments?row=${encodeURIComponent(attachRowId)}`;
-  return `<section id="${domId("agent_pane", ctx.workspaceId, agent.label)}" class="agent-conversation-pane ${options.visible ? "visible" : ""}" data-agent-conversation-source="${escapeHtml(key)}">
+  return `<section id="${domId("agent_pane", ctx.workspaceId, agent.conversationId)}" class="agent-conversation-pane" data-agent-conversation-source="${escapeHtml(key)}">
     <div class="agent-pane" id="${ids.pane(ctx)}"
       data-controller="agent-pane agent-attachments"
       data-agent-pane-workspace-id-value="${escapeHtml(ctx.workspaceId)}"
-      data-agent-pane-label-value="${escapeHtml(ctx.label)}"
-      ${state.snapshotCursor ? `data-agent-pane-snapshot-cursor-value="${escapeHtml(state.snapshotCursor)}"` : ""}
+      data-agent-pane-conversation-id-value="${escapeHtml(ctx.conversationId)}"
       ${agentAttachmentDropAttrs(uploadUrl)}>
       <div class="agent-transcript" id="${ids.transcript(ctx)}" data-agent-pane-target="transcript">${state.transcriptHtml}</div>
       ${await renderAgentPaneComposer({
         ctx,
         action: agentPath(ctx, "/messages"),
         draftId,
+        attachments,
         placeholder: "Write your prompt here",
         initialText,
         suggestionHtml: initialPromptDraft && !initialPromptDraft.accepted ? renderInitialPromptDraftSuggestion(ctx) : undefined,
@@ -221,6 +200,7 @@ interface SharedComposerRenderOptions {
   ctx?: AgentRenderContext;
   action: string;
   draftId: string;
+  attachments?: readonly StagedAttachment[];
   placeholder: string;
   initialText?: string;
   inputId?: string;
@@ -293,7 +273,7 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
           ${options.suggestionHtml ?? ""}
           <form id="${escapeHtml(formId)}" method="post" action="${escapeHtml(options.action)}"${turboAttr}${targetAttrs} data-action="${escapeHtml(formActions)}">
             <input type="hidden" name="attachmentDraft" value="${escapeHtml(draftId)}">
-            <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row"></div>
+            <div class="agent-attach-row" id="${attachRowId}" data-agent-attachments-target="row">${(options.attachments ?? []).map((attachment) => renderAttachmentChip(attachment, draftId)).join("")}</div>
             <div class="composer-input-area">
               ${textarea}
               ${renderTranscriptionComposerControl()}
@@ -451,7 +431,7 @@ export function renderModelContextDetailFrame(ctx: AgentRenderContext, modelCont
 }
 
 function sessionImageUrl(ctx: AgentRenderContext, image: SessionImageRef): string {
-  return `/workspaces/${encodeURIComponent(ctx.workspaceId)}/agents/${encodeURIComponent(ctx.label)}/session-images/${encodeURIComponent(image.entryId)}/${image.contentIndex}`;
+  return `/workspaces/${encodeURIComponent(ctx.workspaceId)}/agents/${encodeURIComponent(ctx.conversationId)}/session-images/${encodeURIComponent(image.entryId)}/${image.contentIndex}`;
 }
 
 function renderUserMessage(ctx: AgentRenderContext, user: { text: string; images: SessionImageRef[] }): string {
@@ -486,11 +466,11 @@ function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscrip
     : section.stoppedAt !== undefined
       ? `Stopped after ${formatDuration(section.stoppedAt - section.startedAt)}`
       : "Working";
-  const items = section.items.map((item) => renderTranscriptItem(ctx, item, { live: section.live, open: section.live })).join("");
   const active = section.completedAt === undefined && section.stoppedAt === undefined;
+  const items = section.items.map((item) => renderTranscriptItem(ctx, item, { live: section.live, open: active })).join("");
   const status = active ? '<i class="status-dot running action-item__status" aria-label="In progress"></i>' : "";
   const summary = disclosureActionItemHtml(`${status}${actionItemLabelHtml(label)}`);
-  return `<details class="agent-working${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${section.completedAt === undefined ? " open" : ""}>${summary}<div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}">${items}</div></details>`;
+  return `<details class="agent-working${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${active ? " open" : ""}>${summary}<div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}">${items}</div></details>`;
 }
 
 function renderThinkingItem(ctx: AgentRenderContext, item: Extract<TranscriptItem, { type: "thinking" }>): string {
@@ -572,7 +552,7 @@ export function renderActiveToolContent(ctx: AgentRenderContext, key: string, or
   const tool = toolForRender(original);
   return {
     summary: toolSummaryContentHtml(tool),
-    detail: tool.name === "edit" ? undefined : renderToolDetail(ctx, key, tool, 100),
+    detail: renderToolDetail(ctx, key, tool, 100),
   };
 }
 
@@ -584,7 +564,6 @@ function renderToolCard(ctx: AgentRenderContext, key: string, original: ToolView
   const tool = toolForRender(original);
   const summary = `${statusHtml(tool.status)}${actionItemLabelHtml(toolSummaryContentHtml(tool), ids.itemSummaryContent(ctx, key))}`;
   const active = tool.status === "streaming" || tool.status === "running";
-  if (active && tool.name === "edit") return `<div class="agent-tool ${toolClass(tool.name)}"><div class="agent-tool-head">${summary}</div></div>`;
   const open = Boolean(options.open || active);
   const summaryHtml = disclosureActionItemHtml(summary);
   if (!options.live && !active) {
@@ -1074,8 +1053,8 @@ function parseStreamedArgs(argsStream: string): JsonValue | undefined {
 // Attachments / notices
 // ---------------------------------------------------------------------------
 
-export function renderAttachmentChip(ctx: AgentRenderContext | undefined, attachment: { id: string; name: string; size: number; isImage: boolean }, options: { draftId?: string } = {}): string {
-  const chipId = ctx ? ids.chip(ctx, attachment.id) : ids.draftChip(options.draftId ?? "draft", attachment.id);
+export function renderAttachmentChip(attachment: { id: string; name: string; size: number; isImage: boolean }, draftId: string): string {
+  const chipId = ids.draftChip(draftId, attachment.id);
   return `<span class="agent-chip" id="${chipId}">
     <input type="hidden" name="attachment" value="${escapeHtml(attachment.id)}">
     <span class="agent-chip-ico">${attachment.isImage ? "🖼" : "📄"}</span>

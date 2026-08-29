@@ -78,6 +78,42 @@ describe("recordsFromSessionEntries", () => {
     expect(records[0]).toMatchObject({ kind: "user", rewindable: true });
   });
 
+  test("preserves per-text phases and reconstructs commentary inside Working before the final answer", () => {
+    const commentarySignature = JSON.stringify({ v: 1, id: "message-1", phase: "commentary" });
+    const finalSignature = JSON.stringify({ v: 1, id: "message-1", phase: "final_answer" });
+    const records = recordsFromSessionEntries([
+      { type: "message", id: "user", parentId: null, message: { role: "user", content: "go", timestamp: 1_000 } },
+      {
+        type: "message",
+        id: "assistant",
+        parentId: "user",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "text", text: "I’m checking that now.", textSignature: commentarySignature },
+            { type: "text", text: "Everything is ready.", textSignature: finalSignature },
+          ],
+          stopReason: "stop",
+          timestamp: 2_000,
+        },
+      },
+    ]);
+
+    expect(records[1]).toMatchObject({
+      kind: "assistant",
+      parts: [
+        { type: "text", text: "I’m checking that now.", textSignature: commentarySignature },
+        { type: "text", text: "Everything is ready.", textSignature: finalSignature },
+      ],
+    });
+    const items = buildTranscript(records);
+    const working = items.find((item) => item.type === "working");
+    expect(working?.type === "working" && working.items).toMatchObject([
+      { type: "text", text: "I’m checking that now.", final: false },
+    ]);
+    expect(items.at(-1)).toMatchObject({ type: "text", text: "Everything is ready.", final: true });
+  });
+
   test("narrows malformed image metadata before adding it to transcript records", () => {
     const records = recordsFromSessionEntries([
       {

@@ -1,12 +1,37 @@
 import { describe, expect, test } from "bun:test";
-import { openWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderWorkspacePane, renderWorkspacePresentation, workspacePresentationTurboStream, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
+import {
+  agentActionsDomId,
+  agentBodiesDomId,
+  agentBodyFrameId,
+  agentNavigationDomId,
+  agentPaneSlotDomId,
+  agentTabDomId,
+  agentTabsTurboStream,
+  openWorkViewTurboStream,
+  removeWorkspaceResidentTurboStream,
+  renderAgentBodyFrame,
+  renderWorkspacePane,
+  renderWorkspacePresentation,
+  renderWorkViewBodyFrame,
+  workViewActionsDomId,
+  workViewAvailabilityDomId,
+  workViewBodyFrameId,
+  workViewPaneDomId,
+  workViewSelectorDomId,
+  workViewsTurboStream,
+  type WorkspacePresentation,
+} from "../src/server/workspace-presentation.ts";
+
+const firstConversationId = "53fc77b7-dc19-42d5-b200-2e134ec67529";
+const secondConversationId = "268604ac-d16a-4a4a-ab1e-1ed3ca54687d";
+const agentBodyUrl = (conversationId: string): string => `/workspaces/workspace-1/agents/${conversationId}/body`;
 
 function fixture(overrides: Partial<WorkspacePresentation> = {}): WorkspacePresentation {
   return {
     workspace: { id: "workspace-1", title: "Typed shell" },
     agentConversations: [
-      { id: "agent-a", title: "First", bodyHtml: '<textarea data-probe="agent-a">draft</textarea>' },
-      { id: "agent-b", title: "Second", bodyHtml: '<div data-probe="agent-b">Transcript</div>' },
+      { id: firstConversationId, title: "First", bodyUrl: agentBodyUrl(firstConversationId) },
+      { id: secondConversationId, title: "Second", bodyUrl: agentBodyUrl(secondConversationId) },
     ],
     workViews: [
       { key: "terminal:one", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<div data-probe="terminal">Terminal</div>' },
@@ -37,7 +62,7 @@ describe("role-fixed Workspace presentation", () => {
 
   test("server-renders the Workspace pane once at the shell seam", () => {
     const html = renderWorkspacePane({ projects: [{ id: "project-1", title: "Atelier", workspaces: [
-      { id: "workspace-1", title: "Typed shell", active: true, unreadAt: 123 },
+      { id: "workspace-1", title: "Typed shell", active: true, unreadAt: 123, agentReadyAt: 456 },
       { id: "workspace-2", title: "Working", busy: true },
     ] }], emptyProjects: [{ id: "project-2", title: "Empty" }], projectlessWorkspaces: [{ id: "workspace-3", title: "Scratch" }] }, '<button data-update-probe>Restart to update</button>');
 
@@ -76,24 +101,32 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('class="fixed-shell-workspace-row action-item action-item__primary active"');
     expect(html).not.toContain("fixed-shell-workspace-color");
     expect(html).toContain('data-workspace-unread-at="123"');
+    expect(html).toContain('data-workspace-agent-ready-at="456"');
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('class="status-spinner sm fixed-shell-workspace-busy action-item__status" aria-label="Workspace busy"');
     expect(html).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
   });
 
-  test("shows the outdated-image warning only when no higher-priority status is present", () => {
-    const row = (status: { busy?: boolean; unreadAt?: number }) => renderWorkspacePane({
+  test("keeps busy and unread independent while distinguishing Agent readiness from other Attention", () => {
+    const row = (status: { busy?: boolean; unreadAt?: number; agentReadyAt?: number }) => renderWorkspacePane({
       projects: [],
       projectlessWorkspaces: [{ id: "workspace", title: "Workspace", outdated: true, ...status }],
     });
 
     const busy = row({ busy: true });
-    const unread = row({ unreadAt: 123 });
+    const attention = row({ unreadAt: 123 });
+    const unread = row({ unreadAt: 123, agentReadyAt: 123 });
+    const busyUnread = row({ busy: true, unreadAt: 123, agentReadyAt: 123 });
     expect(row({})).toContain("fixed-shell-workspace-warning");
     expect(busy).toContain("fixed-shell-workspace-busy");
     expect(busy).not.toContain("fixed-shell-workspace-warning");
+    expect(attention).toContain('aria-label="Attention"');
+    expect(attention).not.toContain('aria-label="Agent ready"');
     expect(unread).toContain('aria-label="Agent ready"');
     expect(unread).not.toContain("fixed-shell-workspace-warning");
+    expect(busyUnread).toContain("fixed-shell-workspace-busy");
+    expect(busyUnread).toContain('aria-label="Agent ready"');
+    expect(busyUnread).not.toContain("fixed-shell-workspace-warning");
   });
 
   test("renders a parked disclosure only inside Projects that have parked Workspaces", () => {
@@ -152,7 +185,7 @@ describe("role-fixed Workspace presentation", () => {
 
   test("shows the workspace name and delete action in a single-conversation Agent header", () => {
     const html = renderWorkspacePresentation(fixture({
-      agentConversations: [{ id: "agent-a", title: "Agent", bodyHtml: "<p>Agent</p>" }],
+      agentConversations: [{ id: firstConversationId, title: "Agent", bodyUrl: agentBodyUrl(firstConversationId) }],
       commands: [
         { id: "agent.create", label: "New Agent", scope: "workspace", placement: "agent-action" },
         { id: "browser.create", label: "New Browser", scope: "workspace", placement: "work-launcher" },
@@ -181,7 +214,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(agentTabs.match(/class="fixed-shell-agent-icon"/g)).toHaveLength(2);
     expect(agentTabs.indexOf('class="fixed-shell-agent-icon"')).toBeLessThan(agentTabs.indexOf('class="action-item__label-text">First'));
 
-    const single = renderWorkspacePresentation(fixture({ agentConversations: [{ id: "agent-a", title: "Agent", bodyHtml: "<p>Agent</p>" }] }));
+    const single = renderWorkspacePresentation(fixture({ agentConversations: [{ id: firstConversationId, title: "Agent", bodyUrl: agentBodyUrl(firstConversationId) }] }));
     const singleHeader = single.slice(single.indexOf('<section class="fixed-shell-agent-pane"'), single.indexOf('</header>', single.indexOf('<section class="fixed-shell-agent-pane"')));
     expect(singleHeader.match(/class="fixed-shell-agent-icon"/g)).toHaveLength(1);
     expect(singleHeader.indexOf('class="fixed-shell-agent-icon"')).toBeLessThan(singleHeader.indexOf("Typed shell"));
@@ -206,8 +239,8 @@ describe("role-fixed Workspace presentation", () => {
     const close = { action: "/close", label: "view" };
     const html = renderWorkspacePresentation(fixture({
       agentConversations: [
-        { id: "agent-a", title: "First", bodyHtml: "<p>First</p>", close },
-        { id: "agent-b", title: "Second", bodyHtml: "<p>Second</p>", close },
+        { id: firstConversationId, title: "First", bodyUrl: agentBodyUrl(firstConversationId), close },
+        { id: secondConversationId, title: "Second", bodyUrl: agentBodyUrl(secondConversationId), close },
       ],
       workViews: [
         { key: "terminal:one", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Terminal</p>", close },
@@ -240,13 +273,18 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).not.toContain("review-body");
   });
 
-  test("keeps adapter HTML inside stable type-native live nodes", () => {    const html = renderWorkspacePresentation(fixture());
+  test("renders Agent summaries as stable lazy body slots keyed by conversation identity", () => {
+    const html = renderWorkspacePresentation(fixture());
 
-    expect(html).toContain('data-workspace-live-node="agent:agent-a"');
-    expect(html).toContain('data-workspace-live-node="work:terminal:one"');
-    expect(html).toContain('data-work-view-key="terminal:one"');
-    expect(html).toContain('data-probe="agent-a"');
-    expect(html).toContain('data-probe="terminal"');
+    expect(html).toContain(`id="${agentNavigationDomId("workspace-1")}"`);
+    expect(html).toContain(`id="${agentActionsDomId("workspace-1")}"`);
+    expect(html).toContain(`id="${agentBodiesDomId("workspace-1")}"`);
+    expect(html).toContain(`id="${agentPaneSlotDomId("workspace-1", firstConversationId)}"`);
+    expect(html).toContain(`id="${agentBodyFrameId("workspace-1", firstConversationId)}" src="${agentBodyUrl(firstConversationId)}" loading="lazy" data-agent-body-hydration`);
+    expect(html).toContain(`id="${agentBodyFrameId("workspace-1", secondConversationId)}" src="${agentBodyUrl(secondConversationId)}" loading="lazy" data-agent-body-hydration`);
+    expect(html).not.toContain("Transcript");
+    expect(html).not.toContain("data-workspace-live-node");
+    expect(html).not.toContain("data-workspace-live-slot");
   });
 
   test("renders availability independently from Attention and visibility", () => {
@@ -317,15 +355,60 @@ describe("role-fixed Workspace presentation", () => {
     expect(removeWorkspaceResidentTurboStream("workspace-1")).toBe('<turbo-stream action="remove-workspace-resident" target="fixed_workspace_workspace-1"></turbo-stream>');
   });
 
-  test("renders transplant slots only for explicitly preserved live nodes", () => {
-    const presentation = fixture({ preserveLiveKeys: new Set(["agent:agent-a", "work:terminal:one"]) });
-    const html = workspacePresentationTurboStream("workspace-1", presentation);
+  test("Agent add and close streams target only navigation, actions, and identified pane slots", () => {
+    const added = agentTabsTurboStream(fixture(), { addedConversationId: secondConversationId, selectConversationId: secondConversationId });
 
-    expect(html).toContain('action="replace-workspace-presentation"');
-    expect(html).toContain('data-workspace-live-slot="agent:agent-a"');
-    expect(html).toContain('data-workspace-live-slot="work:terminal:one"');
-    expect(html).not.toContain('data-probe="agent-a"');
-    expect(html).toContain('data-probe="agent-b"');
+    expect(added).toContain(`action="update" target="${agentNavigationDomId("workspace-1")}"`);
+    expect(added).toContain(`action="update" target="${agentActionsDomId("workspace-1")}"`);
+    expect(added).toContain(`action="append" target="${agentBodiesDomId("workspace-1")}"`);
+    expect(added).toContain(`id="${agentPaneSlotDomId("workspace-1", secondConversationId)}"`);
+    expect(added).toContain('action="select-agent"');
+    expect(added).toContain(`data-conversation-id="${secondConversationId}"`);
+    expect(added).toContain('action="invalidate-workspace-preparation"');
+    expect(added).not.toContain('action="replace" target="fixed_workspace_workspace-1"');
+    expect(added).not.toContain("replace-workspace-presentation");
+
+    const closed = agentTabsTurboStream(fixture({ agentConversations: [fixture().agentConversations[1]!] }), {
+      removedConversationId: firstConversationId,
+      successorConversationId: secondConversationId,
+    });
+    expect(closed).toContain(`action="update" target="${agentNavigationDomId("workspace-1")}"`);
+    expect(closed).not.toContain(`id="${agentTabDomId("workspace-1", firstConversationId)}"`);
+    expect(closed).toContain(`action="remove" target="${agentPaneSlotDomId("workspace-1", firstConversationId)}"`);
+    expect(closed).toContain('action="select-agent-successor"');
+    expect(closed).toContain(`data-closed-conversation-id="${firstConversationId}"`);
+    expect(closed).toContain(`data-successor-conversation-id="${secondConversationId}"`);
+    expect(closed).not.toContain(`src="${agentBodyUrl(secondConversationId)}"`);
+  });
+
+  test("Work reorder, attention, availability, and close streams preserve existing bodies", () => {
+    const reordered = [...fixture().workViews].reverse();
+    const updated = workViewsTurboStream("workspace-1", reordered, { selectKey: "files:workspace", intendSelection: true });
+
+    expect(updated).toContain('action="update" target="fixed_workspace_workspace-1_selectors"');
+    expect(updated.indexOf(`id="${workViewSelectorDomId("workspace-1", "browser:preview")}"`)).toBeLessThan(updated.indexOf(`id="${workViewSelectorDomId("workspace-1", "terminal:one")}"`));
+    expect(updated).toContain(`action="update" target="${workViewAvailabilityDomId("workspace-1", "files:workspace")}"`);
+    expect(updated).toContain(`action="update" target="${workViewActionsDomId("workspace-1", "files:workspace")}"`);
+    expect(updated).toContain('action="intend-work-view"');
+    expect(updated).toContain('data-work-view-key="files:workspace"');
+    expect(updated).not.toContain('action="replace" target="fixed_workspace_workspace-1"');
+    expect(updated).not.toContain('data-probe="terminal"');
+
+    const remaining = fixture().workViews.filter((view) => view.key !== "files:workspace");
+    const closed = workViewsTurboStream("workspace-1", remaining, { removedKey: "files:workspace", successorKey: "terminal:one" });
+    expect(closed).toContain(`action="remove" target="${workViewPaneDomId("workspace-1", "files:workspace")}"`);
+    expect(closed).toContain('action="select-work-view-successor"');
+    expect(closed).toContain('data-successor-work-view-key="terminal:one"');
+    expect(closed).not.toContain(`action="replace" target="${workViewPaneDomId("workspace-1", "terminal:one")}"`);
+  });
+
+  test("authoritative body endpoints return only their stable Turbo Frame contracts", () => {
+    expect(renderAgentBodyFrame("workspace-1", firstConversationId, "<article>Agent body</article>")).toBe(
+      `<turbo-frame id="${agentBodyFrameId("workspace-1", firstConversationId)}"><article>Agent body</article></turbo-frame>`,
+    );
+    expect(renderWorkViewBodyFrame("workspace-1", "terminal:one", "<article>Terminal body</article>")).toBe(
+      `<turbo-frame id="${workViewBodyFrameId("workspace-1", "terminal:one")}"><article>Terminal body</article></turbo-frame>`,
+    );
   });
 
   test("requires the Workspace invariant of at least one Agent conversation", () => {

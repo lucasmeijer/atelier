@@ -96,19 +96,22 @@ describe("Workspace presentation", () => {
     const context = { type: "file", path: "/work/CONTEXT.md" } as const;
     await presentation.initialize("workspace-1", [terminal, context]);
 
-    await presentation.requestAttention("workspace-1", terminal);
+    const firstAttention = await presentation.requestAttention("workspace-1", terminal);
     expect(await presentation.listWorkViews("workspace-1")).toEqual([
       { reference: terminal, attention: true, attentionSequence: 1 },
       { reference: context, attention: false },
     ]);
 
-    await presentation.acknowledgeAttention("workspace-1", terminal);
+    const secondAttention = await presentation.requestAttention("workspace-1", terminal);
+    expect(await presentation.acknowledgeAttention("workspace-1", terminal, firstAttention)).toBe(false);
+    expect((await presentation.listWorkViews("workspace-1"))[0]?.attentionSequence).toBe(secondAttention);
+    expect(await presentation.acknowledgeAttention("workspace-1", terminal, secondAttention)).toBe(true);
     await presentation.requestAttention("workspace-1", terminal);
 
     expect((await createWorkspacePresentationStore({ dataDir, workViewContributions }).listWorkViews("workspace-1"))[0]).toEqual({
       reference: terminal,
       attention: true,
-      attentionSequence: 2,
+      attentionSequence: 3,
     });
   });
 
@@ -159,7 +162,7 @@ describe("Workspace presentation", () => {
     await presentation.initialize("workspace-1", [context]);
 
     expect(presentation.openWorkView("workspace-1", { type: "unknown" })).rejects.toMatchObject({ code: "work_view_reference_invalid" });
-    await expect(presentation.acknowledgeAttention("workspace-1", context)).resolves.toBeUndefined();
+    await expect(presentation.acknowledgeAttention("workspace-1", context, 1)).resolves.toBe(false);
     expect(presentation.reorderWorkView("workspace-1", { type: "file", path: "/work/missing.md" }, 0)).rejects.toMatchObject({ code: "work_view_not_found" });
   });
 
@@ -172,28 +175,4 @@ describe("Workspace presentation", () => {
     expect((await presentation.listWorkViews("workspace-1")).map((view) => view.reference)).toEqual([context]);
   });
 
-  test("Agent conversation close archives the identified conversation and preserves the last conversation", async () => {
-    const archived: string[] = [];
-    const conversations = [
-      { id: "53fc77b7-dc19-42d5-b200-2e134ec67529", title: "Investigate persistence" },
-      { id: "268604ac-d16a-4a4a-ab1e-1ed3ca54687d", title: "Untitled" },
-    ];
-    const agentPresentation = createWorkspacePresentationStore({
-      dataDir,
-      workViewContributions,
-      agentConversations: async () => conversations.map((conversation) => ({
-        ...conversation,
-        archive: async () => {
-          archived.push(conversation.id);
-          conversations.splice(conversations.findIndex((candidate) => candidate.id === conversation.id), 1);
-        },
-      })),
-    });
-
-    expect(await agentPresentation.listAgentConversations("workspace-1")).toEqual(conversations);
-    await agentPresentation.closeAgentConversation("workspace-1", conversations[1]!.id);
-
-    expect(archived).toEqual(["268604ac-d16a-4a4a-ab1e-1ed3ca54687d"]);
-    expect(agentPresentation.closeAgentConversation("workspace-1", conversations[0]!.id)).rejects.toMatchObject({ code: "last_agent_conversation" });
-  });
 });

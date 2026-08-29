@@ -40,7 +40,7 @@ describe("Files Work view integration", () => {
     // SAFETY: The test fixture supplies the module initialization fields exercised by this test.
     await atelierServerModule.initialize!({ events, broadcastWorkspace: (_workspaceId: string, html: string) => broadcasts.push(html), onWorkspaceRemoved: () => {} } as never);
     setFilesViewFile("workspace-events", "workspace", "/work/example.ts");
-    await events.emit("workspace_agent_turn_finished", { workspaceId: "workspace-events", agentLabel: "Agent 1" });
+    await events.emit("workspace_agent_turn_finished", { workspaceId: "workspace-events", conversationId: "conversation-1" });
     expect(broadcasts).toHaveLength(1);
     expect(broadcasts[0]).toContain("files_refresh_signal_workspace-events");
     deleteFilesViewState("workspace-events");

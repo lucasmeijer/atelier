@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildTranscript, findTranscriptItem, formatDuration, formatTokens, isFinalAssistantMessage, isToolViewDetails, toolDetailsIndicateError, type TranscriptRecord } from "../../src/server/transcript.ts";
+import { buildTranscript, finalAssistantText, findTranscriptItem, formatDuration, formatTokens, isFinalAssistantMessage, isToolViewDetails, toolDetailsIndicateError, type TranscriptRecord } from "../../src/server/transcript.ts";
 
 describe("transcript", () => {
   test("preserves record order and joins tool results", () => {
@@ -54,6 +54,12 @@ describe("transcript", () => {
     expect(isFinalAssistantMessage(text, "aborted")).toBe(false);
     expect(isFinalAssistantMessage([...text, { type: "toolCall" }], "stop")).toBe(false);
     expect(isFinalAssistantMessage([{ type: "text", text: " " }], "stop")).toBe(false);
+
+    const commentary = { type: "text", text: "Progress", textSignature: JSON.stringify({ v: 1, phase: "commentary" }) };
+    const final = { type: "text", text: "Done", textSignature: JSON.stringify({ v: 1, phase: "final_answer" }) };
+    expect(isFinalAssistantMessage([commentary], "stop")).toBe(false);
+    expect(isFinalAssistantMessage([commentary, final], "stop")).toBe(true);
+    expect(finalAssistantText([commentary, final])).toBe("Done");
   });
 
   test("gives id-less notes stable distinct keys inside a working section", () => {

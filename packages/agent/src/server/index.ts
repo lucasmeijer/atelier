@@ -9,12 +9,14 @@ export {
   sessionShareMountPath,
   setWorkspaceAgentConversationTitle,
   type WorkspaceAgentConversationInfo,
-  workspaceAgentConversationContributions,
 } from "./session-store.ts";
 export {
   getWorkspaceAgentRuntime,
+  removeWorkspaceAgentRuntime,
   removeWorkspaceAgentRuntimes,
   subscribeWorkspaceViewBusy,
+  type AgentLivePresentationSubscription,
+  type WorkspaceAgentRuntime,
 } from "./runtime.ts";
 export {
   handleAgentRequest,
@@ -23,7 +25,7 @@ export {
   workspaceFileEndpoint,
 } from "./routes.ts";
 export { agentConversationKey, renderAgentPane, renderAgentPaneComposer, renderLaunchComposer, renderLaunchComposerSettings } from "./render.ts";
-export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule } from "./web.ts";
+export { agentWorkspaceModule, agentWorkspaceModule as atelierServerModule, workspaceAgentTabProvider } from "./web.ts";
 export { rememberNewWorkspaceAgentSettings } from "./model-state.ts";
 export {
   applyExactEdits,

@@ -20,31 +20,19 @@ export interface WorkspaceWorkViewState<Reference extends WorkspaceWorkViewRefer
   attentionSequence?: number;
 }
 
-export interface WorkspaceAgentConversation {
-  id: string;
-  title: string;
-}
-
-export interface WorkspaceAgentConversationContribution extends WorkspaceAgentConversation {
-  archive(): Promise<void> | void;
-}
-
 export interface WorkspacePresentationStore {
   initialize(workspaceId: string, initialWorkViews?: WorkspaceWorkViewReference[]): Promise<void>;
   listWorkViews(workspaceId: string): Promise<WorkspaceWorkViewState[]>;
   openWorkView(workspaceId: string, reference: WorkspaceWorkViewReference, options?: { after?: WorkspaceWorkViewReference }): Promise<{ opened: boolean }>;
   reorderWorkView(workspaceId: string, reference: WorkspaceWorkViewReference, index: number): Promise<void>;
-  requestAttention(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
-  acknowledgeAttention(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
+  requestAttention(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<number>;
+  acknowledgeAttention(workspaceId: string, reference: WorkspaceWorkViewReference, attentionSequence: number): Promise<boolean>;
   closeWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
-  listAgentConversations(workspaceId: string): Promise<WorkspaceAgentConversation[]>;
-  closeAgentConversation(workspaceId: string, conversationId: string): Promise<void>;
 }
 
 export interface WorkspacePresentationStoreOptions {
   dataDir?: string;
   workViewContributions: readonly WorkspaceWorkViewContribution[];
-  agentConversations?(workspaceId: string): Promise<readonly WorkspaceAgentConversationContribution[]> | readonly WorkspaceAgentConversationContribution[];
 }
 
 interface StoredWorkView {
@@ -75,20 +63,6 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
   const workspaceQueues = new Map<string, Promise<void>>();
 
   if (adapters.size !== options.workViewContributions.length) throw new AtelierCoreError("invalid_arguments", "Work view contribution types must be unique");
-
-  async function agentConversations(workspaceId: string): Promise<readonly WorkspaceAgentConversationContribution[]> {
-    const conversations = await options.agentConversations?.(workspaceId) ?? [];
-    const ids = new Set<string>();
-    for (const conversation of conversations) {
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversation.id)) {
-        throw new AtelierCoreError("agent_conversation_invalid", `Agent conversation has invalid immutable identity: ${conversation.id}`);
-      }
-      if (!conversation.title.trim()) throw new AtelierCoreError("agent_conversation_invalid", `Agent conversation ${conversation.id} has an empty title`);
-      if (ids.has(conversation.id)) throw new AtelierCoreError("agent_conversation_invalid", `Duplicate Agent conversation identity: ${conversation.id}`);
-      ids.add(conversation.id);
-    }
-    return conversations;
-  }
 
   function pathFor(workspaceId: string): string {
     assertWorkspaceId(workspaceId);
@@ -239,7 +213,7 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
     },
 
     async requestAttention(workspaceId, inputReference) {
-      await serialized(workspaceId, async () => {
+      return await serialized(workspaceId, async () => {
         const state = await requiredState(workspaceId);
         const reference = parseReference(workspaceId, inputReference);
         const view = state.workViews.find((candidate) => identity(candidate.reference) === identity(reference));
@@ -247,18 +221,20 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
         view.attentionSequence = state.nextAttentionSequence;
         state.nextAttentionSequence += 1;
         await write(workspaceId, state);
+        return view.attentionSequence;
       });
     },
 
-    async acknowledgeAttention(workspaceId, inputReference) {
-      await serialized(workspaceId, async () => {
+    async acknowledgeAttention(workspaceId, inputReference, attentionSequence) {
+      return await serialized(workspaceId, async () => {
         const state = await requiredState(workspaceId);
         const reference = parseReference(workspaceId, inputReference);
         const view = state.workViews.find((candidate) => identity(candidate.reference) === identity(reference));
         if (!view) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${identity(reference)}`);
-        if (view.attentionSequence === undefined) return;
+        if (view.attentionSequence !== attentionSequence) return false;
         delete view.attentionSequence;
         await write(workspaceId, state);
+        return true;
       });
     },
 
@@ -270,20 +246,6 @@ export function createWorkspacePresentationStore(options: WorkspacePresentationS
         if (index < 0) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${identity(reference)}`);
         state.workViews.splice(index, 1);
         await write(workspaceId, state);
-      });
-    },
-
-    async listAgentConversations(workspaceId) {
-      return await serialized(workspaceId, async () => (await agentConversations(workspaceId)).map(({ id, title }) => ({ id, title })));
-    },
-
-    async closeAgentConversation(workspaceId, conversationId) {
-      await serialized(workspaceId, async () => {
-        const conversations = await agentConversations(workspaceId);
-        const conversation = conversations.find((candidate) => candidate.id === conversationId);
-        if (!conversation) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
-        if (conversations.length === 1) throw new AtelierCoreError("last_agent_conversation", "The last Agent conversation cannot be closed");
-        await conversation.archive();
       });
     },
   };

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { getAtelierRuntimeContext } from "@atelier/core";
 import type { GitProjectInitInstruction } from "@atelier/projects";
 import { isGitProjectInit } from "@atelier/projects";
-import type { WorkspaceAgentConversationContribution, WorkspaceInitInstruction } from "@atelier/workspace";
+import type { WorkspaceInitInstruction } from "@atelier/workspace";
 
 export interface WorkspaceAgentConversationInfo {
   workspaceId: string;
@@ -19,9 +19,20 @@ export interface WorkspaceAgentConversationCreateOptions {
 }
 
 const sharedAgentFilePattern = /^([a-z0-9][a-z0-9-]*)--([a-zA-Z0-9][a-zA-Z0-9_.-]*)--agent-([1-9]\d*)--([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.jsonl$/;
-const legacySharedAgentFilePattern = /^([a-z0-9][a-z0-9-]*)--([a-zA-Z0-9][a-zA-Z0-9_.-]*)--agent-([1-9]\d*)--[a-f0-9]{6}\.jsonl$/;
 export const projectlessSessionShareKey = "projectless";
 export const sessionShareMountPath = "/atelier/session-share";
+const conversationOperationQueues = new Map<string, Promise<void>>();
+
+async function serializeConversationOperation<Result>(workspaceId: string, operation: () => Promise<Result>): Promise<Result> {
+  const previous = conversationOperationQueues.get(workspaceId) ?? Promise.resolve();
+  const result = previous.then(operation);
+  const settled = result.then(() => undefined, () => undefined);
+  conversationOperationQueues.set(workspaceId, settled);
+  void settled.then(() => {
+    if (conversationOperationQueues.get(workspaceId) === settled) conversationOperationQueues.delete(workspaceId);
+  });
+  return await result;
+}
 
 function workspaceMetadataInitPath(workspaceId: string, dataDir = getAtelierRuntimeContext().atelierDataDir): string {
   return join(dataDir, "workspaces", workspaceId, "metadata", "init.json");
@@ -109,62 +120,25 @@ async function sessionDirForWorkspace(workspaceId: string, dataDir = getAtelierR
   return { shareKey, dir: sessionShareDir(shareKey, dataDir) };
 }
 
-function recoveredConversationTitle(topic: string, agentNumber: number): string {
-  if (topic === "agent-session") return `Recovered Agent ${agentNumber}`;
-  const words = topic.replaceAll("-", " ");
-  return words[0]!.toUpperCase() + words.slice(1);
-}
-
-// Remove this legacy short-ID migration after 2026-08-26, once upgraded installs have had a week to recover their sessions.
-const legacyMigrationByWorkspace = new Map<string, Promise<void>>();
-
-async function migrateLegacyWorkspaceAgentSessions(dir: string, workspaceId: string, entries: string[]): Promise<void> {
-  const usedNumbers = new Set(entries.flatMap((entry) => {
-    const parsed = parseWorkspaceAgentFilename(entry, workspaceId);
-    return parsed ? [parsed.number] : [];
-  }));
-  const legacy = entries.flatMap((entry) => {
-    const match = entry.match(legacySharedAgentFilePattern);
-    if (!match || match[2] !== workspaceId) return [];
-    return [{ name: entry, topic: match[1]!, number: Number(match[3]) }];
-  }).sort((a, b) => a.number - b.number || a.name.localeCompare(b.name));
-
-  for (const session of legacy) {
-    let number = session.number;
-    while (usedNumbers.has(number)) number += 1;
-    usedNumbers.add(number);
-
-    const conversationId = randomUUID();
-    const migratedPath = join(dir, sharedAgentSessionFilename(workspaceId, `Agent ${number}`, session.topic, conversationId));
-    await writeConversationTitle(migratedPath, recoveredConversationTitle(session.topic, session.number));
-    await rename(join(dir, session.name), migratedPath);
-  }
-}
-
-async function ensureLegacyWorkspaceAgentSessionsMigrated(dir: string, workspaceId: string, entries: string[]): Promise<void> {
-  const key = `${dir}\0${workspaceId}`;
-  const current = legacyMigrationByWorkspace.get(key);
-  if (current) return await current;
-  const migration = migrateLegacyWorkspaceAgentSessions(dir, workspaceId, entries);
-  legacyMigrationByWorkspace.set(key, migration);
-  await migration;
-}
-
 async function createWorkspaceAgentConversation(workspaceId: string, label: string, topic = "agent-session", conversationId = randomUUID()): Promise<WorkspaceAgentConversationInfo> {
   const store = await sessionDirForWorkspace(workspaceId);
   await mkdir(store.dir, { recursive: true });
   const path = sharedAgentSessionPath(store.shareKey, workspaceId, label, topic, conversationId);
-  await touch(path);
   await writeConversationTitle(path, "Untitled");
+  // Listing discovers only .jsonl files, so publish the session after its title
+  // is durable. Readers can never observe a conversation without metadata.
+  await touch(path);
   return { workspaceId, conversationId, label, title: "Untitled", path };
 }
 
 export async function ensureDefaultWorkspaceAgentConversation(workspaceId: string, options: WorkspaceAgentConversationCreateOptions = {}): Promise<WorkspaceAgentConversationInfo> {
-  const current = (await listWorkspaceAgentConversations(workspaceId)).find((agent) => agent.label === "Agent 1");
-  return current ?? await createWorkspaceAgentConversation(workspaceId, "Agent 1", options.topic);
+  return await serializeConversationOperation(workspaceId, async () => {
+    const current = (await listWorkspaceAgentConversationsUnlocked(workspaceId)).find((agent) => agent.label === "Agent 1");
+    return current ?? await createWorkspaceAgentConversation(workspaceId, "Agent 1", options.topic);
+  });
 }
 
-export async function listWorkspaceAgentConversations(workspaceId: string): Promise<WorkspaceAgentConversationInfo[]> {
+async function listWorkspaceAgentConversationsUnlocked(workspaceId: string): Promise<WorkspaceAgentConversationInfo[]> {
   const store = await sessionDirForWorkspace(workspaceId);
   let entries: string[];
   try {
@@ -174,8 +148,6 @@ export async function listWorkspaceAgentConversations(workspaceId: string): Prom
     if (code === "ENOENT") return [];
     throw error;
   }
-  await ensureLegacyWorkspaceAgentSessionsMigrated(store.dir, workspaceId, entries);
-  entries = await readdir(store.dir);
   const conversations = entries
     .map((entry) => ({ name: entry, parsed: parseWorkspaceAgentFilename(entry, workspaceId) }))
     .filter((entry): entry is { name: string; parsed: { conversationId: string; label: string; number: number } } => Boolean(entry.parsed))
@@ -188,36 +160,40 @@ export async function listWorkspaceAgentConversations(workspaceId: string): Prom
   }));
 }
 
+export async function listWorkspaceAgentConversations(workspaceId: string): Promise<WorkspaceAgentConversationInfo[]> {
+  return await serializeConversationOperation(workspaceId, async () => await listWorkspaceAgentConversationsUnlocked(workspaceId));
+}
+
 export async function createNextWorkspaceAgentConversation(workspaceId: string, options: WorkspaceAgentConversationCreateOptions = {}): Promise<WorkspaceAgentConversationInfo> {
-  const used = new Set((await listWorkspaceAgentConversations(workspaceId)).map((agent) => Number(agent.label.slice("Agent ".length))));
-  let next = 1;
-  while (used.has(next)) next += 1;
-  return await createWorkspaceAgentConversation(workspaceId, `Agent ${next}`, options.topic);
+  return await serializeConversationOperation(workspaceId, async () => {
+    const used = new Set((await listWorkspaceAgentConversationsUnlocked(workspaceId)).map((agent) => Number(agent.label.slice("Agent ".length))));
+    let next = 1;
+    while (used.has(next)) next += 1;
+    return await createWorkspaceAgentConversation(workspaceId, `Agent ${next}`, options.topic);
+  });
 }
 
 /** Archive an Agent conversation's current session and create a fresh session for the same display label. */
 export async function replaceWorkspaceAgentSession(agent: WorkspaceAgentConversationInfo): Promise<WorkspaceAgentConversationInfo> {
-  await rename(agent.path, agent.path.replace(/\.jsonl$/, ".archived.jsonl"));
-  await touch(agent.path);
-  return agent;
+  return await serializeConversationOperation(agent.workspaceId, async () => {
+    await rename(agent.path, agent.path.replace(/\.jsonl$/, ".archived.jsonl"));
+    await touch(agent.path);
+    return agent;
+  });
 }
 
 export async function setWorkspaceAgentConversationTitle(agent: WorkspaceAgentConversationInfo, title: string): Promise<WorkspaceAgentConversationInfo> {
   if (!title.trim()) throw new Error("Agent conversation title must not be empty");
-  await writeConversationTitle(agent.path, title);
-  return { ...agent, title };
+  return await serializeConversationOperation(agent.workspaceId, async () => {
+    await writeConversationTitle(agent.path, title);
+    return { ...agent, title };
+  });
 }
 
 export async function archiveWorkspaceAgentConversation(agent: WorkspaceAgentConversationInfo): Promise<void> {
-  await rename(agent.path, agent.path.replace(/\.jsonl$/, ".archived.jsonl"));
-  const titlePath = conversationTitlePath(agent.path);
-  await rename(titlePath, titlePath.replace(/\.title$/, ".archived.title"));
-}
-
-export async function workspaceAgentConversationContributions(workspaceId: string): Promise<WorkspaceAgentConversationContribution[]> {
-  return (await listWorkspaceAgentConversations(workspaceId)).map((agent) => ({
-    id: agent.conversationId,
-    title: agent.title,
-    archive: async () => await archiveWorkspaceAgentConversation(agent),
-  }));
+  await serializeConversationOperation(agent.workspaceId, async () => {
+    await rename(agent.path, agent.path.replace(/\.jsonl$/, ".archived.jsonl"));
+    const titlePath = conversationTitlePath(agent.path);
+    await rename(titlePath, titlePath.replace(/\.title$/, ".archived.title"));
+  });
 }

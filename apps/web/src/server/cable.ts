@@ -1,5 +1,9 @@
 import { AtelierCoreError, type AtelierEventBus } from "@atelier/core";
-import { getWorkspaceAgentRuntime, listWorkspaceAgentConversations } from "@atelier/agent/server";
+import {
+  getWorkspaceAgentRuntime,
+  listWorkspaceAgentConversations,
+  type AgentLivePresentationSubscription,
+} from "@atelier/agent/server";
 import {
   decodeCableClientMessage,
   serializeCableIdentifier,
@@ -18,15 +22,26 @@ export interface CableSocket {
   send(message: string): number;
 }
 
-type UpstreamSubscription = {
-  refCount: number;
-  unsubscribe: () => void;
+type SocketSubscriptionAttempt = {
+  ws: CableSocket;
+  identifier: CableIdentifier;
+  key: string;
+  active: boolean;
+  registered: boolean;
+  confirmed: boolean;
+  bufferedHtml: string[];
+  unsubscribe?: () => void;
 };
+
+interface CableAgentRuntime {
+  subscribeLivePresentation(listener: (html: string) => void): AgentLivePresentationSubscription;
+}
 
 export interface CableServerOptions {
   registry: WorkspaceRegistry;
   events: AtelierEventBus;
   shellSnapshot?: () => string | Promise<string>;
+  resolveAgentRuntime?: (workspaceId: string, conversationId: string) => Promise<CableAgentRuntime>;
   logError?: (message: string) => void;
 }
 
@@ -36,12 +51,17 @@ export interface CableConnectionStats {
   upstreams: Record<string, number>;
 }
 
+export interface CableBroadcastOptions {
+  exceptConnectionId?: string;
+  onlyConnectionId?: string;
+}
+
 export interface CableServer {
   validate(request: Request, url: URL): CableSocketData | undefined;
   open(ws: CableSocket, data: CableSocketData): void;
   message(ws: CableSocket, message: string | Buffer): void;
   close(ws: CableSocket): void;
-  broadcast(identifier: CableIdentifier, html: string): void;
+  broadcast(identifier: CableIdentifier, html: string, options?: CableBroadcastOptions): void;
   stats(): CableConnectionStats;
 }
 
@@ -53,114 +73,193 @@ function send(ws: CableSocket, message: CableServerMessage): void {
   ws.send(JSON.stringify(message));
 }
 
-async function requireAgentConversation(workspaceId: string, label: string) {
-  const conversation = (await listWorkspaceAgentConversations(workspaceId)).find((candidate) => candidate.label === label);
-  if (!conversation) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${label}`);
+async function requireAgentConversation(workspaceId: string, conversationId: string) {
+  const conversation = (await listWorkspaceAgentConversations(workspaceId)).find((candidate) => candidate.conversationId === conversationId);
+  if (!conversation) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
   return conversation;
 }
 
 export function createCableServer(options: CableServerOptions): CableServer {
   const logError = options.logError ?? ((message: string) => console.error(message));
   const sockets = new Set<CableSocket>();
-  const socketsByIdentifier = new Map<string, Set<CableSocket>>();
-  const identifiersBySocket = new WeakMap<CableSocket, Set<string>>();
-  const upstreamByIdentifier = new Map<string, UpstreamSubscription>();
+  const connectionIdsBySocket = new WeakMap<CableSocket, string>();
+  const attemptsByIdentifier = new Map<string, Set<SocketSubscriptionAttempt>>();
+  const attemptsBySocket = new WeakMap<CableSocket, Map<string, SocketSubscriptionAttempt>>();
   const heartbeat = setInterval(() => {
     const time = Date.now();
     for (const ws of sockets) send(ws, { type: "ping", time });
   }, 30_000);
   heartbeat.unref?.();
 
-  async function authorize(identifier: CableIdentifier): Promise<void> {
+  function authorize(identifier: CableIdentifier): void {
     if (identifier.channel === "shell") return;
     if (identifier.channel === "workspace") {
       if (!options.registry.get(identifier.workspaceId)) throw new AtelierCoreError("workspace_not_found", `workspace not found: ${identifier.workspaceId}`);
-      return;
     }
-    await requireAgentConversation(identifier.workspaceId, identifier.label);
   }
 
-  async function agentRuntime(identifier: Extract<CableIdentifier, { channel: "agent" }>) {
-    // Cable can initialize the runtime first, so it must provide the events used by agent tools.
-    return await getWorkspaceAgentRuntime(await requireAgentConversation(identifier.workspaceId, identifier.label), { events: options.events });
+  function attemptIsCurrent(attempt: SocketSubscriptionAttempt): boolean {
+    return attempt.active && sockets.has(attempt.ws) && attemptsBySocket.get(attempt.ws)?.get(attempt.key) === attempt;
   }
 
-  async function snapshot(identifier: CableIdentifier, upTo?: string): Promise<{ html: string; cursor?: string }> {
-    if (identifier.channel === "shell") return { html: await options.shellSnapshot?.() ?? "" };
-    if (identifier.channel === "agent") return await (await agentRuntime(identifier)).snapshotStream(upTo);
-    return { html: "" };
+  function registerAttempt(attempt: SocketSubscriptionAttempt): void {
+    if (attempt.registered) return;
+    let attempts = attemptsByIdentifier.get(attempt.key);
+    if (!attempts) attemptsByIdentifier.set(attempt.key, attempts = new Set());
+    attempts.add(attempt);
+    attempt.registered = true;
   }
 
-  async function ensureUpstream(identifier: CableIdentifier): Promise<void> {
-    if (identifier.channel !== "agent") return;
+  function releaseAttempt(attempt: SocketSubscriptionAttempt): void {
+    attempt.active = false;
+    attempt.bufferedHtml.length = 0;
+    const unsubscribe = attempt.unsubscribe;
+    attempt.unsubscribe = undefined;
+    unsubscribe?.();
+
+    if (attempt.registered) {
+      const attempts = attemptsByIdentifier.get(attempt.key)!;
+      attempts.delete(attempt);
+      if (attempts.size === 0) attemptsByIdentifier.delete(attempt.key);
+      attempt.registered = false;
+    }
+
+    const socketAttempts = attemptsBySocket.get(attempt.ws);
+    if (socketAttempts?.get(attempt.key) !== attempt) return;
+    socketAttempts.delete(attempt.key);
+    if (socketAttempts.size === 0) attemptsBySocket.delete(attempt.ws);
+  }
+
+  function confirm(attempt: SocketSubscriptionAttempt, html = ""): void {
+    if (!attemptIsCurrent(attempt)) return;
+    attempt.confirmed = true;
+    const message: Extract<CableServerMessage, { type: "confirm_subscription" }> = { type: "confirm_subscription", identifier: attempt.identifier };
+    if (html) message.html = html;
+    send(attempt.ws, message);
+    for (const buffered of attempt.bufferedHtml.splice(0)) {
+      if (!attemptIsCurrent(attempt)) return;
+      send(attempt.ws, { type: "turbo_stream", identifier: attempt.identifier, html: buffered });
+    }
+  }
+
+  function reject(attempt: SocketSubscriptionAttempt, reason: string): void {
+    if (!attemptIsCurrent(attempt)) return;
+    releaseAttempt(attempt);
+    if (!sockets.has(attempt.ws)) return;
+    send(attempt.ws, { type: "reject_subscription", identifier: attempt.identifier, reason });
+    logError(`cable message failed: ${reason}`);
+  }
+
+  async function initializeNonAgentAttempt(attempt: SocketSubscriptionAttempt): Promise<void> {
+    try {
+      const html = attempt.identifier.channel === "shell" ? await options.shellSnapshot?.() ?? "" : "";
+      confirm(attempt, html);
+    } catch (error) {
+      reject(attempt, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function initializeAgentAttempt(attempt: SocketSubscriptionAttempt): Promise<void> {
+    const identifier = attempt.identifier;
+    if (identifier.channel !== "agent") throw new Error("Agent subscription initializer requires an Agent identifier");
+
+    try {
+      let runtime: CableAgentRuntime;
+      if (options.resolveAgentRuntime) {
+        runtime = await options.resolveAgentRuntime(identifier.workspaceId, identifier.conversationId);
+      } else {
+        const conversation = await requireAgentConversation(identifier.workspaceId, identifier.conversationId);
+        if (!attemptIsCurrent(attempt)) return;
+        // Cable can initialize the runtime first, so it must provide the events used by agent tools.
+        runtime = await getWorkspaceAgentRuntime(conversation, { events: options.events });
+      }
+      if (!attemptIsCurrent(attempt)) return;
+      const subscription = runtime.subscribeLivePresentation((html) => {
+        if (!attemptIsCurrent(attempt)) return;
+        if (!attempt.confirmed) {
+          confirm(attempt, html);
+        } else if (html) {
+          send(attempt.ws, { type: "turbo_stream", identifier, html });
+        }
+      });
+      attempt.unsubscribe = () => subscription.unsubscribe();
+      if (!attemptIsCurrent(attempt)) {
+        attempt.unsubscribe = undefined;
+        subscription.unsubscribe();
+        return;
+      }
+      await subscription.ready;
+    } catch (error) {
+      reject(attempt, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function subscribe(ws: CableSocket, identifier: CableIdentifier): void {
+    if (!sockets.has(ws)) return;
     const key = serializeCableIdentifier(identifier);
-    const existing = upstreamByIdentifier.get(key);
-    if (existing) {
-      existing.refCount += 1;
-      return;
+    let socketAttempts = attemptsBySocket.get(ws);
+    if (!socketAttempts) attemptsBySocket.set(ws, socketAttempts = new Map());
+    const previous = socketAttempts.get(key);
+    if (previous) releaseAttempt(previous);
+    // Releasing the only prior attempt removes this map from the WeakMap. A
+    // direct same-topic resubscribe still owns the same local map instance.
+    if (attemptsBySocket.get(ws) !== socketAttempts) attemptsBySocket.set(ws, socketAttempts);
+    const attempt: SocketSubscriptionAttempt = { ws, identifier, key, active: true, registered: false, confirmed: false, bufferedHtml: [] };
+    socketAttempts.set(key, attempt);
+
+    if (identifier.channel !== "agent") {
+      try {
+        authorize(identifier);
+      } catch (error) {
+        reject(attempt, error instanceof Error ? error.message : String(error));
+        return;
+      }
     }
-    const runtime = await agentRuntime(identifier);
-    const unsubscribe = runtime.subscribe((html, cursor) => broadcast(identifier, html, cursor));
-    upstreamByIdentifier.set(key, { refCount: 1, unsubscribe });
-  }
-
-  function releaseUpstream(key: string): void {
-    const existing = upstreamByIdentifier.get(key);
-    if (!existing) return;
-    existing.refCount -= 1;
-    if (existing.refCount > 0) return;
-    existing.unsubscribe();
-    upstreamByIdentifier.delete(key);
-  }
-
-  async function subscribe(ws: CableSocket, identifier: CableIdentifier, upTo?: string): Promise<void> {
-    const key = serializeCableIdentifier(identifier);
-    await authorize(identifier);
-
-    let socketIdentifiers = identifiersBySocket.get(ws);
-    if (!socketIdentifiers) identifiersBySocket.set(ws, socketIdentifiers = new Set());
-    if (!socketIdentifiers.has(key)) {
-      socketIdentifiers.add(key);
-      let identifierSockets = socketsByIdentifier.get(key);
-      if (!identifierSockets) socketsByIdentifier.set(key, identifierSockets = new Set());
-      identifierSockets.add(ws);
-      await ensureUpstream(identifier);
-    }
-
-    const current = await snapshot(identifier, upTo);
-    const confirmation: Extract<CableServerMessage, { type: "confirm_subscription" }> = { type: "confirm_subscription", identifier };
-    if (current.html) confirmation.html = current.html;
-    if (current.cursor) confirmation.cursor = current.cursor;
-    send(ws, confirmation);
+    registerAttempt(attempt);
+    if (identifier.channel === "agent") void initializeAgentAttempt(attempt);
+    else void initializeNonAgentAttempt(attempt);
   }
 
   function unsubscribe(ws: CableSocket, identifier: CableIdentifier): void {
     const key = serializeCableIdentifier(identifier);
-    const socketIdentifiers = identifiersBySocket.get(ws);
-    if (!socketIdentifiers?.delete(key)) return;
-    const identifierSockets = socketsByIdentifier.get(key);
-    identifierSockets?.delete(ws);
-    releaseUpstream(key);
-    if (identifierSockets?.size === 0) socketsByIdentifier.delete(key);
+    const attempt = attemptsBySocket.get(ws)?.get(key);
+    if (attempt) releaseAttempt(attempt);
   }
 
-  function broadcast(identifier: CableIdentifier, html: string, cursor?: string): void {
+  function broadcast(identifier: CableIdentifier, html: string, options: CableBroadcastOptions = {}): void {
     if (!html) return;
+    if (options.exceptConnectionId && options.onlyConnectionId) throw new Error("Cable broadcast cannot combine exceptConnectionId and onlyConnectionId");
+    if (identifier.channel === "agent") throw new Error("Agent updates must be published through the runtime live-presentation interface");
     const key = serializeCableIdentifier(identifier);
     const message: Extract<CableServerMessage, { type: "turbo_stream" }> = { type: "turbo_stream", identifier, html };
-    if (cursor) message.cursor = cursor;
-    for (const ws of socketsByIdentifier.get(key) ?? []) send(ws, message);
+    for (const attempt of attemptsByIdentifier.get(key) ?? []) {
+      if (!attemptIsCurrent(attempt)) continue;
+      const connectionId = connectionIdsBySocket.get(attempt.ws);
+      if (options.exceptConnectionId && connectionId === options.exceptConnectionId) continue;
+      if (options.onlyConnectionId && connectionId !== options.onlyConnectionId) continue;
+      if (attempt.confirmed) send(attempt.ws, message);
+      else attempt.bufferedHtml.push(html);
+    }
   }
 
   function close(ws: CableSocket): void {
     sockets.delete(ws);
-    for (const key of identifiersBySocket.get(ws) ?? []) {
-      const identifierSockets = socketsByIdentifier.get(key);
-      identifierSockets?.delete(ws);
-      releaseUpstream(key);
-      if (identifierSockets?.size === 0) socketsByIdentifier.delete(key);
+    for (const attempt of [...(attemptsBySocket.get(ws)?.values() ?? [])]) releaseAttempt(attempt);
+    attemptsBySocket.delete(ws);
+  }
+
+  function handleInboundCommand(ws: CableSocket, raw: string | Buffer): void {
+    if (!sockets.has(ws)) return;
+    try {
+      const message: CableClientMessage = decodeCableClientMessage(textMessage(raw));
+      if (message.command === "subscribe") subscribe(ws, message.identifier);
+      else if (message.command === "unsubscribe") unsubscribe(ws, message.identifier);
+    } catch (error) {
+      if (!sockets.has(ws)) return;
+      const reason = error instanceof Error ? error.message : String(error);
+      send(ws, { type: "error", message: reason });
+      logError(`cable message failed: ${reason}`);
     }
-    identifiersBySocket.delete(ws);
   }
 
   return {
@@ -170,33 +269,21 @@ export function createCableServer(options: CableServerOptions): CableServer {
     },
     open(ws, data) {
       sockets.add(ws);
+      connectionIdsBySocket.set(ws, data.connectionId);
       send(ws, { type: "welcome", connectionId: data.connectionId });
     },
     message(ws, raw) {
-      void (async () => {
-        let message: CableClientMessage | undefined;
-        try {
-          message = decodeCableClientMessage(textMessage(raw));
-          if (message.command === "subscribe") await subscribe(ws, message.identifier, message.upTo);
-          else if (message.command === "unsubscribe") unsubscribe(ws, message.identifier);
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
-          if (message?.command === "subscribe") {
-            send(ws, { type: "reject_subscription", identifier: message.identifier, reason });
-          } else {
-            send(ws, { type: "error", message: reason });
-          }
-          logError(`cable message failed: ${reason}`);
-        }
-      })();
+      handleInboundCommand(ws, raw);
     },
     close,
     broadcast,
     stats() {
       const subscriptions: Record<string, number> = {};
-      for (const [key, set] of socketsByIdentifier) subscriptions[key] = set.size;
+      for (const [key, set] of attemptsByIdentifier) subscriptions[key] = set.size;
       const upstreams: Record<string, number> = {};
-      for (const [key, upstream] of upstreamByIdentifier) upstreams[key] = upstream.refCount;
+      for (const [key, attempts] of attemptsByIdentifier) {
+        if (attempts.values().next().value?.identifier.channel === "agent") upstreams[key] = attempts.size;
+      }
       return { sockets: sockets.size, subscriptions, upstreams };
     },
   };

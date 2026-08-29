@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "bun:test";
-import { contextUsagePercent, discardBootstrapOnlySession, getWorkspaceAgentRuntime, removeWorkspaceAgentRuntimes } from "../../src/server/runtime.ts";
+import { contextUsagePercent, discardBootstrapOnlySession, getWorkspaceAgentRuntime, removeWorkspaceAgentRuntime, removeWorkspaceAgentRuntimes } from "../../src/server/runtime.ts";
 
 let dir: string | undefined;
 
@@ -28,6 +28,14 @@ test("removed Workspace runtimes cannot be recreated by stale Agent requests", a
   await removeWorkspaceAgentRuntimes("removed-runtime-test");
 
   expect(() => getWorkspaceAgentRuntime({ workspaceId: "removed-runtime-test", conversationId: "conversation", label: "Agent 1", title: "Agent", path: "/tmp/removed-session.jsonl" })).toThrow("workspace not found");
+});
+
+test("closed conversation runtimes cannot be recreated during the dispose-to-archive gap", async () => {
+  const agent = { workspaceId: "closed-runtime-test", conversationId: "53fc77b7-dc19-42d5-b200-2e134ec67529", label: "Agent 1", title: "Agent", path: "/tmp/closed-session.jsonl" };
+
+  await removeWorkspaceAgentRuntime(agent.workspaceId, agent.conversationId);
+
+  expect(() => getWorkspaceAgentRuntime(agent)).toThrow("Agent conversation not found");
 });
 
 describe("runtime session persistence", () => {

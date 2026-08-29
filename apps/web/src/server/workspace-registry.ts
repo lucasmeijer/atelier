@@ -44,7 +44,22 @@ export interface WorkspaceActivityStore {
   save(activity: Record<string, number>): Promise<void>;
 }
 
-export type WorkspaceUnreadStore = WorkspaceActivityStore;
+export interface WorkspaceUnreadOccurrence {
+  /** First transition to unread; stable across repeated occurrences for oldest-ready ordering. */
+  unreadAt: number;
+  /** Exact occurrence identity used for compare-and-clear acknowledgement. */
+  token: number;
+}
+
+export interface WorkspaceUnreadSnapshot {
+  nextToken: number;
+  views: Record<string, Record<string, WorkspaceUnreadOccurrence>>;
+}
+
+export interface WorkspaceUnreadStore {
+  load(): Promise<WorkspaceUnreadSnapshot>;
+  save(unread: WorkspaceUnreadSnapshot): Promise<void>;
+}
 
 export interface WorkspaceDeletionStore {
   load(): Promise<Record<string, WorkspaceDeletionState>>;
@@ -69,6 +84,14 @@ const allowedTransitions: WorkspacePhaseTransitions = {
 };
 
 const workspaceTimestampsSchema = Type.Record(Type.String(), Type.Number());
+const workspaceUnreadOccurrenceSchema = Type.Object({
+  unreadAt: Type.Number(),
+  token: Type.Integer({ minimum: 1 }),
+}, { additionalProperties: false });
+const workspaceUnreadSchema = Type.Object({
+  nextToken: Type.Integer({ minimum: 1 }),
+  views: Type.Record(Type.String(), Type.Record(Type.String(), workspaceUnreadOccurrenceSchema)),
+}, { additionalProperties: false });
 const deleteSafetyIssueSchema = Type.Object({
   repo: Type.String(),
   uncommittedPaths: Type.Array(Type.String()),
@@ -83,21 +106,21 @@ const workspaceDeletionStateSchema = Type.Union([
 ]);
 const workspaceDeletionsSchema = Type.Record(Type.String(), workspaceDeletionStateSchema);
 
-interface FileRecordStore<T> {
-  load(): Promise<Record<string, T>>;
-  save(values: Record<string, T>): Promise<void>;
+interface FileValueStore<T> {
+  load(): Promise<T>;
+  save(values: T): Promise<void>;
 }
 
-function createFileRecordStore<T>(path: string, schema: TSchema): FileRecordStore<T> {
+function createFileValueStore<T>(path: string, schema: TSchema, empty: () => T): FileValueStore<T> {
   let saveChain = Promise.resolve();
   let tempCounter = 0;
   return {
     async load() {
       try {
-        // SAFETY: The supplied record schema validates every loaded value as T.
-        return Value.Parse(schema, JSON.parse(await readFile(path, "utf8"))) as Record<string, T>;
+        // SAFETY: The supplied schema validates every loaded value as T.
+        return Value.Parse(schema, JSON.parse(await readFile(path, "utf8"))) as T;
       } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") return {};
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return empty();
         throw error;
       }
     },
@@ -115,15 +138,15 @@ function createFileRecordStore<T>(path: string, schema: TSchema): FileRecordStor
 }
 
 export function createFileWorkspaceActivityStore(path: string): WorkspaceActivityStore {
-  return createFileRecordStore(path, workspaceTimestampsSchema);
+  return createFileValueStore(path, workspaceTimestampsSchema, () => ({}));
 }
 
 export function createFileWorkspaceUnreadStore(path: string): WorkspaceUnreadStore {
-  return createFileRecordStore(path, workspaceTimestampsSchema);
+  return createFileValueStore(path, workspaceUnreadSchema, () => ({ nextToken: 1, views: {} }));
 }
 
 export function createFileWorkspaceDeletionStore(path: string): WorkspaceDeletionStore {
-  return createFileRecordStore(path, workspaceDeletionsSchema);
+  return createFileValueStore(path, workspaceDeletionsSchema, () => ({}));
 }
 
 export interface WorkspaceRegistry {
@@ -137,16 +160,21 @@ export interface WorkspaceRegistry {
   setDeletion(id: string, deletion: WorkspaceDeletionState | undefined): void;
   setTitle(id: string, title: string | null): void;
   setParked(id: string, parked: boolean): void;
-  setActiveWorkspace(id: string | undefined): void;
   touch(id: string): void;
   remove(id: string): void;
   setViewBusy(id: string, viewKey: string, busy: boolean): void;
-  setViewUnread(id: string, viewKey: string, unread: boolean): void;
-  setWorkspaceUnread(id: string, unread: boolean): void;
+  markViewUnread(id: string, viewKey: string, token?: number): number | undefined;
+  acknowledgeViewUnread(id: string, viewKey: string, token: number): boolean;
+  clearViewUnread(id: string, viewKey: string): void;
   isViewBusy(id: string, viewKey: string): boolean;
+  isViewUnread(id: string, viewKey: string): boolean;
+  viewUnreadToken(id: string, viewKey: string): number | undefined;
+  unreadTokens(id: string): Record<string, number>;
   isWorkspaceBusy(id: string): boolean;
   isWorkspaceUnread(id: string): boolean;
   workspaceUnreadAt(id: string): number | undefined;
+  /** First unread Agent completion, excluding Work and workspace-level notices. */
+  workspaceAgentReadyAt(id: string): number | undefined;
   workspaceState(id: string): WorkspaceState;
   oldestUnreadWorkspace(): WorkspaceEntry | undefined;
   busyViews(id: string): string[];
@@ -159,10 +187,10 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
   const deletionStore = options.deletionStore;
   const entries = new Map<string, WorkspaceEntry>();
   const busyViewsByWorkspace = new Map<string, Set<string>>();
-  let workspaceUnread: Record<string, number> = {};
+  let unreadViewsByWorkspace: Record<string, Record<string, WorkspaceUnreadOccurrence>> = {};
+  let nextUnreadToken = 1;
   let workspaceDeletions: Record<string, WorkspaceDeletionState> = {};
   let activity: Record<string, number> = {};
-  let activeWorkspaceId: string | undefined;
   let callbacks: WorkspaceRegistryCallbacks = {};
 
   function sorted(): WorkspaceEntry[] {
@@ -180,7 +208,8 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
 
   function persistUnread(): void {
     if (!unreadStore) return;
-    void unreadStore.save(workspaceUnread).catch((error) => console.error("could not persist workspace unread state", error));
+    const snapshot = structuredClone({ nextToken: nextUnreadToken, views: unreadViewsByWorkspace });
+    void unreadStore.save(snapshot).catch((error) => console.error("could not persist workspace unread state", error));
   }
 
   function persistDeletions(): void {
@@ -204,9 +233,10 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       const workspaceIds = new Set(workspaces.map((workspace) => workspace.id));
       activity = Object.fromEntries(Object.entries(loadedActivity).filter(([id]) => workspaceIds.has(id)));
       if (Object.keys(activity).length !== Object.keys(loadedActivity).length) persistActivity();
-      const loadedUnread = unreadStore ? await unreadStore.load() : {};
-      workspaceUnread = Object.fromEntries(Object.entries(loadedUnread).filter(([id]) => workspaceIds.has(id)));
-      if (Object.keys(workspaceUnread).length !== Object.keys(loadedUnread).length) persistUnread();
+      const loadedUnread = unreadStore ? await unreadStore.load() : { nextToken: 1, views: {} };
+      nextUnreadToken = loadedUnread.nextToken;
+      unreadViewsByWorkspace = Object.fromEntries(Object.entries(loadedUnread.views).filter(([id]) => workspaceIds.has(id)));
+      if (Object.keys(unreadViewsByWorkspace).length !== Object.keys(loadedUnread.views).length) persistUnread();
       const loadedDeletions = deletionStore ? await deletionStore.load() : {};
       workspaceDeletions = Object.fromEntries(Object.entries(loadedDeletions).filter(([id]) => workspaceIds.has(id)));
       if (Object.keys(workspaceDeletions).length !== Object.keys(loadedDeletions).length) persistDeletions();
@@ -287,15 +317,6 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       callbacks.listChanged?.(sorted());
     },
 
-    setActiveWorkspace(id) {
-      activeWorkspaceId = id;
-      if (!id || workspaceUnread[id] === undefined) return;
-      delete workspaceUnread[id];
-      persistUnread();
-      const entry = entries.get(id);
-      if (entry) callbacks.rowChanged?.(entry, {});
-    },
-
     touch(id) {
       const entry = entries.get(id);
       if (!entry) return;
@@ -308,14 +329,13 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
 
     remove(id) {
       if (!entries.delete(id)) return;
-      if (activeWorkspaceId === id) activeWorkspaceId = undefined;
       busyViewsByWorkspace.delete(id);
       if (activity[id] !== undefined) {
         delete activity[id];
         persistActivity();
       }
-      if (workspaceUnread[id] !== undefined) {
-        delete workspaceUnread[id];
+      if (unreadViewsByWorkspace[id] !== undefined) {
+        delete unreadViewsByWorkspace[id];
         persistUnread();
       }
       if (workspaceDeletions[id] !== undefined) {
@@ -348,35 +368,62 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       callbacks.rowChanged?.(entry, { viewKey });
     },
 
-    setViewUnread(id, viewKey, unread) {
+    markViewUnread(id, viewKey, suppliedToken) {
       const entry = entries.get(id);
-      if (!entry) return;
-      const unparked = unread && entry.parked;
+      if (!entry) return undefined;
+      const token = suppliedToken ?? nextUnreadToken;
+      if (!Number.isSafeInteger(token) || token < 1) throw new Error(`invalid unread occurrence token: ${token}`);
+      if (suppliedToken === undefined || token >= nextUnreadToken) nextUnreadToken = token + 1;
+      const unparked = entry.parked;
       if (unparked) {
         entry.parked = false;
         callbacks.parkedChanged?.(entry);
       }
-      const wasUnread = workspaceUnread[id] !== undefined;
-      if (unread && id !== activeWorkspaceId) {
-        if (!wasUnread) workspaceUnread[id] = now();
-      } else delete workspaceUnread[id];
-      const isUnread = workspaceUnread[id] !== undefined;
-      if (isUnread !== wasUnread) persistUnread();
-      if (unread || isUnread !== wasUnread) callbacks.rowChanged?.(entry, { viewKey, unread });
+      const views = unreadViewsByWorkspace[id] ?? {};
+      const previous = views[viewKey];
+      if (previous?.token === token) {
+        if (unparked) callbacks.listChanged?.(sorted());
+        return token;
+      }
+      views[viewKey] = { unreadAt: previous?.unreadAt ?? now(), token };
+      unreadViewsByWorkspace[id] = views;
+      persistUnread();
+      callbacks.rowChanged?.(entry, { viewKey, unread: true });
       if (unparked) callbacks.listChanged?.(sorted());
+      return token;
     },
 
-    setWorkspaceUnread(id, unread) {
+    acknowledgeViewUnread(id, viewKey, token) {
+      const occurrence = unreadViewsByWorkspace[id]?.[viewKey];
+      if (occurrence?.token !== token) return false;
+      this.clearViewUnread(id, viewKey);
+      return true;
+    },
+
+    clearViewUnread(id, viewKey) {
       const entry = entries.get(id);
-      if (!entry || (workspaceUnread[id] !== undefined) === unread) return;
-      if (unread) workspaceUnread[id] = now();
-      else delete workspaceUnread[id];
+      const views = unreadViewsByWorkspace[id];
+      if (!entry || !views?.[viewKey]) return;
+      delete views[viewKey];
+      if (Object.keys(views).length === 0) delete unreadViewsByWorkspace[id];
       persistUnread();
-      callbacks.rowChanged?.(entry, { unread });
+      callbacks.rowChanged?.(entry, { viewKey, unread: false });
     },
 
     isViewBusy(id, viewKey) {
       return busyViewsByWorkspace.get(id)?.has(viewKey) ?? false;
+    },
+
+    isViewUnread(id, viewKey) {
+      return unreadViewsByWorkspace[id]?.[viewKey] !== undefined;
+    },
+
+    viewUnreadToken(id, viewKey) {
+      return unreadViewsByWorkspace[id]?.[viewKey]?.token;
+    },
+
+    unreadTokens(id) {
+      return Object.fromEntries(Object.entries(unreadViewsByWorkspace[id] ?? {}).map(([viewKey, occurrence]) => [viewKey, occurrence.token]));
     },
 
     isWorkspaceBusy(id) {
@@ -385,11 +432,19 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
     },
 
     isWorkspaceUnread(id) {
-      return workspaceUnread[id] !== undefined;
+      return unreadViewsByWorkspace[id] !== undefined;
     },
 
     workspaceUnreadAt(id) {
-      return workspaceUnread[id];
+      const timestamps = Object.values(unreadViewsByWorkspace[id] ?? {}).map(({ unreadAt }) => unreadAt);
+      return timestamps.length > 0 ? Math.min(...timestamps) : undefined;
+    },
+
+    workspaceAgentReadyAt(id) {
+      const timestamps = Object.entries(unreadViewsByWorkspace[id] ?? {})
+        .filter(([viewKey]) => viewKey.startsWith("agent:"))
+        .map(([, { unreadAt }]) => unreadAt);
+      return timestamps.length > 0 ? Math.min(...timestamps) : undefined;
     },
 
     workspaceState(id) {
