@@ -827,13 +827,14 @@ class AtelierShortcutsController extends Controller {
       const title = row.title || workspaceId;
       const parked = Boolean(row.closest(".fixed-shell-parked"));
       const visible = row.classList.contains("active");
+      const matchScore = fuzzyScore(`${title} ${workspaceId} ${parked ? "parked" : ""}`);
       return {
         id: `workspace:${workspaceId}`,
         title,
         subtitle: parked ? "Parked workspace" : "Workspace",
         badge: visible ? "open" : undefined,
         keywords: [workspaceId, parked ? "parked" : ""],
-        score: fuzzyScore(`${title} ${workspaceId} ${parked ? "parked" : ""}`) + (visible ? 15 : 0) - (parked ? 8 : 0),
+        score: matchScore > 0 ? matchScore + (visible ? 15 : 0) - (parked ? 8 : 0) : 0,
         run: () => this.openWorkspaceRow(row),
       };
     });
@@ -847,13 +848,14 @@ class AtelierShortcutsController extends Controller {
       const key = destination.dataset.workViewKey ?? destination.dataset.agentConversationId!;
       const label = destination.textContent?.trim() || key;
       const visible = destination.getAttribute("aria-selected") === "true";
+      const matchScore = fuzzyScore(`${label} ${key}`);
       return {
         id: `destination:${workspaceId}:${key}`,
         title: label,
         subtitle: destination.dataset.agentConversationId ? "Agent conversation" : "Work view",
         badge: visible ? "open" : undefined,
         keywords: [key],
-        score: fuzzyScore(`${label} ${key}`) + (visible ? 20 : 0),
+        score: matchScore > 0 ? matchScore + (visible ? 20 : 0) : 0,
         run: () => destination.click(),
       };
     });

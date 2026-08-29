@@ -1,19 +1,17 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium, type Browser, type BrowserContext } from "@playwright/test";
 import { renderTranscriptionComposerControl } from "../../../packages/transcription/src/server/composer.ts";
+import { buildWebTestAssets, type WebTestAssets } from "./support/web-test-assets.ts";
 
 let browser: Browser;
 let browserContext: BrowserContext;
-let workspaceClient: string;
+let testAssets: WebTestAssets;
+let workspaceClientPath: string;
 let composerStyle: string;
 
 beforeAll(async () => {
-  const build = Bun.spawn(["bun", "run", "apps/web/scripts/build-assets.ts"], { cwd: new URL("../../..", import.meta.url).pathname, stdout: "pipe", stderr: "pipe" });
-  const [exitCode, stdout, stderr] = await Promise.all([build.exited, new Response(build.stdout).text(), new Response(build.stderr).text()]);
-  if (exitCode !== 0) throw new Error(`workspace client build failed:\n${stdout}${stderr}`);
-  // SAFETY: The generated asset manifest establishes a string path for the workspace entrypoint.
-  const manifest = await Bun.file(new URL("../public/assets-manifest.json", import.meta.url)).json() as Record<string, string>;
-  workspaceClient = await Bun.file(new URL(`../public${manifest["/workspace.js"]}`, import.meta.url)).text();
+  testAssets = await buildWebTestAssets();
+  workspaceClientPath = testAssets.path("/workspace.js");
   const styles = await Promise.all([
     Bun.file(new URL("../public/design-system.css", import.meta.url)).text(),
     Bun.file(new URL("../../../packages/agent/src/client/style.css", import.meta.url)).text(),
@@ -57,6 +55,7 @@ describe("transcription composer browser behavior", () => {
 
   test("finishes an active transcription before submitting", async () => {
     const page = await browserContext.newPage();
+    await testAssets.serve(page);
     let submissions = 0;
     await page.addInitScript(() => {
       class FakeWebSocket extends EventTarget {
@@ -80,9 +79,8 @@ describe("transcription composer browser behavior", () => {
     });
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<div data-controller="transcription-composer"><form method="post" action="/send" data-action="submit->transcription-composer#submit"><textarea name="text">Existing</textarea>${renderTranscriptionComposerControl()}<button type="submit">Send</button></form></div><script type="module" src="/workspace-test.js"></script>`,
+      body: `<div data-controller="transcription-composer"><form method="post" action="/send" data-action="submit->transcription-composer#submit"><textarea name="text">Existing</textarea>${renderTranscriptionComposerControl()}<button type="submit">Send</button></form></div><script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("http://atelier.test/send", (route) => {
       submissions += 1;
       return route.fulfill({ status: 204 });

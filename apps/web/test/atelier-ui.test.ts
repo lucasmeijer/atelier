@@ -1,16 +1,18 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { renderMarkdown } from "../../../packages/markdown/src/index.ts";
-import { renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkView } from "../../../packages/files/src/server/render.ts";
+import { filesEditorFrameId, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkView } from "../../../packages/files/src/server/render.ts";
 import { renderReviewBody } from "../../../packages/review/src/server/render.ts";
 import type { ReviewComment } from "../../../packages/review/src/server/state.ts";
+import { turboStream } from "../../../packages/shared/src/index.ts";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
 import { removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
+import { buildWebTestAssets, type WebTestAssets } from "./support/web-test-assets.ts";
 
 let browser: Browser;
 let browserContext: BrowserContext;
-let workspaceClient: string;
-let designSystemClient: string;
+let testAssets: WebTestAssets;
+let workspaceClientPath: string;
 let designSystemStyle: string;
 let workspaceStyle: string;
 let filesStyle: string;
@@ -19,6 +21,7 @@ let catalogueHtml: string;
 
 async function newTestPage(options: { viewport?: { width: number; height: number }; reducedMotion?: "reduce" | "no-preference" } = {}): Promise<Page> {
   const page = await browserContext.newPage();
+  await testAssets.serve(page);
   if (options.viewport) await page.setViewportSize(options.viewport);
   if (options.reducedMotion) await page.emulateMedia({ reducedMotion: options.reducedMotion });
   return page;
@@ -46,8 +49,7 @@ async function newShortcutTestPage(ids: readonly string[]): Promise<Page> {
   const shell = renderShellFixture(presentations[0]!, pane, presentations.slice(1))
     .replace('data-controller="workspace-navigation"', 'data-controller="atelier-shortcuts workspace-navigation"');
   const page = await newTestPage();
-  await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${shell}<script type="module" src="/workspace-test.js"></script>` }));
-  await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+  await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${shell}<script type="module" src="${workspaceClientPath}"></script>` }));
   await page.route("**/active", (route) => route.fulfill({ status: 204 }));
   await page.goto("http://atelier.test/");
   await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
@@ -55,13 +57,8 @@ async function newShortcutTestPage(ids: readonly string[]): Promise<Page> {
 }
 
 beforeAll(async () => {
-  const build = Bun.spawn(["bun", "run", "apps/web/scripts/build-assets.ts"], { cwd: new URL("../../..", import.meta.url).pathname, stdout: "pipe", stderr: "pipe" });
-  const [exitCode, stdout, stderr] = await Promise.all([build.exited, new Response(build.stdout).text(), new Response(build.stderr).text()]);
-  if (exitCode !== 0) throw new Error(`workspace client build failed:\n${stdout}${stderr}`);
-  // SAFETY: The test fixture controls this value and establishes the asserted shape.
-  const manifest = await Bun.file(new URL("../public/assets-manifest.json", import.meta.url)).json() as Record<string, string>;
-  workspaceClient = await Bun.file(new URL(`../public${manifest["/workspace.js"]}`, import.meta.url)).text();
-  designSystemClient = await Bun.file(new URL(`../public${manifest["/design-system.js"]}`, import.meta.url)).text();
+  testAssets = await buildWebTestAssets();
+  workspaceClientPath = testAssets.path("/workspace.js");
   designSystemStyle = await Bun.file(new URL("../public/design-system.css", import.meta.url)).text();
   const shellStyle = await Bun.file(new URL("../public/style.css", import.meta.url)).text();
   workspaceStyle = `${designSystemStyle}\n${shellStyle}`;
@@ -111,12 +108,7 @@ describe("Atelier browser behavior", () => {
       <section class="fixed-shell-live-node is-active" data-workspace-pane-role="work" data-workspace-pane-id="review:workspace"><div class="fixed-shell-live-body">${reviewBody}</div></section>
     </div></div>`;
     const page = await newTestPage();
-    await page.route("http://localhost/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="/workspace-test.js"></script>` }));
-    await page.route(/http:\/\/localhost\/workspace-[a-z0-9]+\.js$/, async (route) => {
-      const asset = new URL(`../public/assets/${new URL(route.request().url()).pathname.slice(1)}`, import.meta.url);
-      await route.fulfill({ contentType: "text/javascript", body: await Bun.file(asset).text() });
-    });
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://localhost/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.goto("http://localhost/");
 
     const composer = page.locator('.fixed-shell-live-node[data-workspace-pane-role="agent"].is-active textarea[name="text"]');
@@ -140,7 +132,6 @@ Comment: I don't think we need these tests`;
     const serveCatalogue = async (page: Page) => {
       await page.route("http://catalogue.test/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
       await page.route("http://catalogue.test/design-system.css", (route) => route.fulfill({ contentType: "text/css", body: workspaceStyle }));
-      await page.route("http://catalogue.test/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
       await page.goto("http://catalogue.test/design-system-catalogue.html");
     };
     const desktopPage = await newTestPage({ viewport: { width: 1280, height: 800 } });
@@ -166,7 +157,6 @@ Comment: I don't think we need these tests`;
     const page = await newTestPage();
     await page.route("http://catalogue.test/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
     await page.route("http://catalogue.test/design-system.css", (route) => route.fulfill({ contentType: "text/css", body: workspaceStyle }));
-    await page.route("http://catalogue.test/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
     await page.goto("http://catalogue.test/design-system-catalogue.html?embedded=1");
 
     const buttonToggle = page.locator("[data-catalogue-button-toggle]");
@@ -194,7 +184,6 @@ Comment: I don't think we need these tests`;
     const page = await newTestPage();
     await page.route("http://localhost/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
     await page.route("http://localhost/design-system.css", (route) => route.fulfill({ contentType: "text/css", body: workspaceStyle }));
-    await page.route("http://localhost/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
     await page.goto("http://localhost/design-system-catalogue.html?embedded=1");
 
     const copy = page.locator("[data-catalogue-copy] .copy-button");
@@ -213,7 +202,6 @@ Comment: I don't think we need these tests`;
     const page = await newTestPage();
     await page.route("http://catalogue.test/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
     await page.route("http://catalogue.test/design-system.css", (route) => route.fulfill({ contentType: "text/css", body: workspaceStyle }));
-    await page.route("http://catalogue.test/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
     await page.goto("http://catalogue.test/design-system-catalogue.html?embedded=1");
 
     const list = page.locator("[data-catalogue-managed-list]");
@@ -239,7 +227,6 @@ Comment: I don't think we need these tests`;
     };
     const page = await newTestPage();
     await page.route("http://atelier.test/workspaces/popup", (route) => route.fulfill({ contentType: "text/html", body: `<style>${designSystemStyle}</style><button type="button">Outside</button>${renderWorkspacePresentation(presentation)}<script type="module" src="/design-system.js"></script>` }));
-    await page.route("**/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
     await page.route("**/workspaces/popup/commands/files.create", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/workspaces/popup");
 
@@ -260,7 +247,6 @@ Comment: I don't think we need these tests`;
   test("design-system dialogs auto-show and restore focus", async () => {
     const page = await newTestPage();
     await page.route("http://design-system.test/", (route) => route.fulfill({ contentType: "text/html", body: `<button id="opener">Open</button><script type="module" src="/design-system.js"></script>` }));
-    await page.route("http://design-system.test/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
     await page.goto("http://design-system.test/");
     await page.locator("#opener").focus();
     await page.evaluate(() => document.body.insertAdjacentHTML("beforeend", `<dialog class="dialog" data-dialog-auto-show><input aria-label="Filter" autofocus><form method="dialog"><button>Close</button></form></dialog>`));
@@ -278,7 +264,6 @@ Comment: I don't think we need these tests`;
       contentType: "text/html",
       body: `<dialog class="dialog" data-dialog-auto-show><form id="api-key"><input required></form><div class="dialog__actions"><form method="dialog"><button>Cancel</button></form><button type="submit" form="api-key">Connect</button></div></dialog><script type="module" src="/design-system.js"></script>`,
     }));
-    await page.route("**/design-system.js", (route) => route.fulfill({ contentType: "text/javascript", body: designSystemClient }));
     await page.goto("http://atelier.test/");
     const dialog = page.locator("dialog");
     await dialog.waitFor({ state: "visible" });
@@ -292,9 +277,8 @@ Comment: I don't think we need these tests`;
     const editor = renderFilesWorkView("workspace", { id: "workspace", path: "/work/README.md", line: 1 }).bodyHtml!;
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<style>${workspaceStyle}</style><div class="fixed-workspace-presentation"><div data-work-view-reorder-key="files:workspace"><button data-atelier-fullscreen-title-value="Files"><span class="action-item__label-text">Files</span></button></div><section data-workspace-pane-id="files:workspace">${editor}</section></div><script type="module" src="/workspace-test.js"></script>`,
+      body: `<style>${workspaceStyle}</style><div class="fixed-workspace-presentation"><div data-work-view-reorder-key="files:workspace"><button data-atelier-fullscreen-title-value="Files"><span class="action-item__label-text">Files</span></button></div><section data-workspace-pane-id="files:workspace">${editor}</section></div><script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/files-view/content?**", (route) => route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ path: "/work/README.md", content: "# Rendered", revision: "one", writable: true }),
@@ -335,14 +319,16 @@ Comment: I don't think we need these tests`;
 
   test("collapses the Files pane after selecting a file", async () => {
     const page = await newTestPage();
-    const files = renderFilesWorkView("workspace", { id: "workspace" }).bodyHtml!;
+    const files = renderFilesWorkView("workspace", { id: "workspace" }).bodyHtml!.replace(' loading="lazy"', "");
     const tree = renderFilesTreeFrame("workspace", "workspace", [{ name: "README.md", path: "/work/README.md", kind: "file", size: 20, openable: true }]);
     const editor = renderFilesEditorFrame("workspace", { id: "workspace", path: "/work/README.md" });
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style><div class="fixed-workspace-presentation"><div data-work-view-reorder-key="files:workspace"><button data-atelier-fullscreen-title-value="Files"><span class="action-item__label-text">Files</span></button></div><section data-workspace-pane-id="files:workspace">${files}</section></div><script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
-    await page.route("**/workspaces/workspace/files?**", (route) => route.fulfill({ contentType: "text/html", body: tree }));
-    await page.route("**/workspaces/workspace/files-view/open?**", (route) => route.fulfill({ contentType: "text/html", body: editor }));
-    await page.route("**/workspaces/workspace/files-view/content?**", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ path: "/work/README.md", content: "# Readme", revision: "one", writable: true }) }));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style><div class="fixed-workspace-presentation"><div data-work-view-reorder-key="files:workspace"><button data-atelier-fullscreen-title-value="Files"><span class="action-item__label-text">Files</span></button></div><section data-workspace-pane-id="files:workspace">${files}</section></div><script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route(/\/workspaces\/workspace\/files(?:\?.*)?$/, (route) => route.fulfill({ contentType: "text/html", body: tree }));
+    await page.route(/\/workspaces\/workspace\/files-view\/open(?:\?.*)?$/, (route) => route.fulfill({
+      contentType: "text/vnd.turbo-stream.html",
+      body: turboStream("replace", filesEditorFrameId("workspace", "workspace"), editor),
+    }));
+    await page.route(/\/workspaces\/workspace\/files-view\/content(?:\?.*)?$/, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ path: "/work/README.md", content: "# Readme", revision: "one", writable: true }) }));
     await page.goto("http://atelier.test/");
     await page.getByRole("treeitem", { name: /README.md/ }).click();
     expect(await page.locator(".files-workbench").getAttribute("class")).not.toContain("is-files-pane-open");
@@ -454,9 +440,8 @@ Comment: I don't think we need these tests`;
     const page = await newTestPage();
     await page.route("http://atelier.test/workspaces/force-delete-me", (route) => route.fulfill({
       contentType: "text/html",
-      body: `${shell}<script type="module" src="/workspace-test.js"></script>`,
+      body: `${shell}<script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/workspaces/force-delete-me/delete?force=1", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/workspaces/force-delete-me");
 
@@ -513,9 +498,8 @@ Comment: I don't think we need these tests`;
           unsubscribe() {},
           connected() { return true; },
         };
-      </script><script type="module" src="/workspace-test.js"></script>`,
+      </script><script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/active", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
@@ -559,9 +543,8 @@ Comment: I don't think we need these tests`;
     const page = await newTestPage({ viewport: { width: 360, height: 300 } });
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<style>${workspaceStyle}</style><form style="position:fixed;right:4px;bottom:4px"><select class="popup-select" data-popup-select-opens-above="true" aria-label="Thinking level"><option>low</option><option selected>medium</option><option>high</option></select></form><script type="module" src="/workspace-test.js"></script>`,
+      body: `<style>${workspaceStyle}</style><form style="position:fixed;right:4px;bottom:4px"><select class="popup-select" data-popup-select-opens-above="true" aria-label="Thinking level"><option>low</option><option selected>medium</option><option>high</option></select></form><script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.goto("http://atelier.test/");
 
     const trigger = page.locator(".popup-select-trigger");
@@ -603,9 +586,8 @@ Comment: I don't think we need these tests`;
     const page = await newTestPage({ reducedMotion: "no-preference" });
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<style>${workspaceStyle}</style><style>.fixed-shell-app { --fixed-workspace-width: 150px; width: 700px; height: 500px; }</style>${renderShellFixture(current, pane)}<script type="module" src="/workspace-test.js"></script>`,
+      body: `<style>${workspaceStyle}</style><style>.fixed-shell-app { --fixed-workspace-width: 150px; width: 700px; height: 500px; }</style>${renderShellFixture(current, pane)}<script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/workspaces/short/active", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/");
 
@@ -651,9 +633,8 @@ Comment: I don't think we need these tests`;
     const page = await newTestPage();
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<style>${workspaceStyle}</style>${renderShellFixture(current, pane)}<script type="module" src="/workspace-test.js"></script>`,
+      body: `<style>${workspaceStyle}</style>${renderShellFixture(current, pane)}<script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/workspaces/a/active", (route) => route.fulfill({ status: 204 }));
     await page.route("**/workspaces/b?resident=1", async (route) => {
       await preloadBlocked;
@@ -707,9 +688,8 @@ Comment: I don't think we need these tests`;
           unsubscribe() {},
           connected() { return true; },
         };
-      </script><script type="module" src="/workspace-test.js"></script>`,
+      </script><script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/active", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
@@ -746,8 +726,7 @@ Comment: I don't think we need these tests`;
       { id: "created", title: "Created" },
     ] };
     const page = await newTestPage();
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(first, pane, [created])}<script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(first, pane, [created])}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.route("**/active", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
@@ -796,9 +775,8 @@ Comment: I don't think we need these tests`;
       body: `<div data-controller="agent-completions" data-agent-completions-url-value="/workspaces/demo/agents/Agent%201/completions">
         <div data-agent-completions-target="menu" hidden></div>
         <textarea data-agent-completions-target="input" data-action="input->agent-completions#input"></textarea>
-      </div><script type="module" src="/workspace-test.js"></script>`,
+      </div><script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/workspaces/demo/completion-catalog", (route) => route.fulfill({
       contentType: "text/html",
       body: '<div class="autocomplete-menu"><button class="agent-completion-option" data-completion-kind="prompt-template" data-command-trigger="/review">Review</button><button class="agent-completion-option" data-completion-kind="prompt-template" data-command-trigger="/simplify">Simplify</button></div>',
@@ -823,7 +801,7 @@ Comment: I don't think we need these tests`;
       <button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="server" data-atelier-fullscreen-title-value="Server">Server</button>
       <button class="action-item__action" type="button">Close Server</button>
     </div>`);
-    await page.addScriptTag({ content: workspaceClient, type: "module" });
+    await page.addScriptTag({ url: `http://atelier.test${workspaceClientPath}`, type: "module" });
     await page.waitForFunction(() => Boolean(window.Stimulus));
 
     const agentSurface = page.getByRole("button", { name: "Agent surface" });
@@ -849,7 +827,7 @@ Comment: I don't think we need these tests`;
         <div class="fixed-shell-work-bodies"><section class="fixed-shell-live-node is-active" data-workspace-pane-role="work" data-source-work-view-key="browser-1"><button type="button">Preview content</button></section></div>
       </section>
     </div>`);
-    await page.addScriptTag({ content: workspaceClient, type: "module" });
+    await page.addScriptTag({ url: `http://atelier.test${workspaceClientPath}`, type: "module" });
     await page.waitForFunction(() => Boolean(window.Stimulus));
 
     const fullscreen = await atelierUi.openViewFullscreen(page, { viewKey: "browser-1" });
@@ -872,8 +850,7 @@ Comment: I don't think we need these tests`;
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "deleted-demo", title: "Delete me" }] };
     const page = await newTestPage();
-    await page.route("http://atelier.test/workspaces/deleted-demo", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/workspaces/deleted-demo", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.goto("http://atelier.test/workspaces/deleted-demo");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
 
@@ -890,8 +867,7 @@ Comment: I don't think we need these tests`;
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "starting", title: "Starting", active: true, busy: true }] };
     const shell = renderShellResidents(pane, '<div class="workspace-detail-resident workspace-boot visible" data-workspace-residency-target="resident" data-workspace-id="starting"><p>Preparing workspace…</p></div>');
     const page = await newTestPage({ viewport: { width: 390, height: 844 } });
-    await page.route("http://atelier.test/workspaces/starting", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${shell}<script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/workspaces/starting", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${shell}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.route("**/workspaces/starting/active", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/workspaces/starting");
 
@@ -925,8 +901,7 @@ Comment: I don't think we need these tests`;
     page.on("request", (request) => {
       if (request.isNavigationRequest() && request.resourceType() === "document") documentRequests += 1;
     });
-    await page.route("http://atelier.test/workspaces/park-current", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(current, pane)}<script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/workspaces/park-current", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(current, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.route("**/workspaces/park-current/park", (route) => {
       expect(route.request().method()).toBe("POST");
       parkRequests += 1;
@@ -966,8 +941,7 @@ Comment: I don't think we need these tests`;
       ],
     };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
@@ -1016,8 +990,7 @@ Comment: I don't think we need these tests`;
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "width-demo", title: "Pane widths", active: true }] };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
@@ -1050,8 +1023,7 @@ Comment: I don't think we need these tests`;
     };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
     let acknowledgements = 0;
-    await page.route("http://atelier.test/workspaces/deep-demo?workView=browser%3A1", (route) => route.fulfill({ contentType: "text/html", body: `<div class="workspace-detail-resident visible">${renderWorkspacePresentation(presentation)}</div><script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/workspaces/deep-demo?workView=browser%3A1", (route) => route.fulfill({ contentType: "text/html", body: `<div class="workspace-detail-resident visible">${renderWorkspacePresentation(presentation)}</div><script type="module" src="${workspaceClientPath}"></script>` }));
     await page.route("**/attention/acknowledge", (route) => { acknowledgements += 1; return route.fulfill({ status: 204 }); });
     await page.goto("http://atelier.test/workspaces/deep-demo?workView=browser%3A1");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
@@ -1100,9 +1072,8 @@ Comment: I don't think we need these tests`;
       preserveLiveKeys: new Set(["agent:agent-present"]),
     };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
-    await page.route("http://atelier.test/workspaces/visible-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(visible, pane, [cached])}<script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("http://atelier.test/workspaces/visible-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(visible, pane, [cached])}<script type="module" src="${workspaceClientPath}"></script>` }));
     let acknowledgements = 0;
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("**/attention/acknowledge", (route) => { acknowledgements += 1; return route.fulfill({ status: 204 }); });
     await page.goto("http://atelier.test/workspaces/visible-demo");
     await page.waitForFunction(() => document.querySelectorAll('[data-navigation-ready="true"]').length === 2);
@@ -1159,8 +1130,7 @@ Comment: I don't think we need these tests`;
     let unparkRequests = 0;
     const page = await newTestPage({ viewport: { width: 1000, height: 700 } });
     await page.addInitScript(() => localStorage.removeItem("atelier:workspace-project-disclosures"));
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.route("**/workspaces/parked-1/unpark", (route) => {
       expect(route.request().method()).toBe("POST");
       unparkRequests += 1;
@@ -1209,10 +1179,10 @@ Comment: I don't think we need these tests`;
     };
     const page = await newTestPage({ viewport: { width: 1000, height: 700 } });
     await page.addInitScript(() => localStorage.removeItem("atelier:workspace-project-disclosures"));
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+    await page.evaluate(() => new Promise(requestAnimationFrame));
 
     const drawer = page.locator(".fixed-shell-projects-drawer");
     const disclosure = drawer.locator(":scope > .fixed-shell-project-heading-row .fixed-shell-project-heading");
@@ -1233,6 +1203,7 @@ Comment: I don't think we need these tests`;
 
     await workspaceScroll.evaluate((element) => { element.dataset.identityProbe = "kept"; });
     await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), workspacePaneCollectionsTurboStream(pane));
+    await page.evaluate(() => new Promise(requestAnimationFrame));
     expect(await workspaceScroll.getAttribute("data-identity-probe")).toBe("kept");
     expect(await disclosure.getAttribute("aria-expanded")).toBe("true");
     expect(await usedProject.isVisible()).toBe(true);
@@ -1254,8 +1225,7 @@ Comment: I don't think we need these tests`;
       { id: "b", title: "Workspace b" },
     ] }] };
     const page = await newTestPage({ viewport: { width: 1000, height: 700 } });
-    await page.route("http://atelier.test/workspaces/a", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(makePresentation("a"), pane, [makePresentation("b")])}<script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/workspaces/a", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(makePresentation("a"), pane, [makePresentation("b")])}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.goto("http://atelier.test/workspaces/a");
     await page.waitForFunction(() => document.querySelectorAll('[data-navigation-ready="true"]').length === 2);
     const residentB = page.locator('.workspace-detail-resident[data-workspace-id="b"]');
@@ -1275,8 +1245,7 @@ Comment: I don't think we need these tests`;
       workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
     };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
     expect(await page.getByRole("button", { name: "Show Work pane" }).isVisible()).toBe(true);
@@ -1298,8 +1267,7 @@ Comment: I don't think we need these tests`;
       workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<iframe srcdoc="<p>live</p>"></iframe>' }],
     };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${renderWorkspacePresentation(presentation)}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
     const stream = workspacePresentationTurboStream("stream-demo", { ...presentation, workspace: { id: "stream-demo", title: "After" }, preserveLiveKeys: new Set(["agent:agent-1", "work:browser:1"]) });
@@ -1338,8 +1306,7 @@ Comment: I don't think we need these tests`;
       commands: [{ id: "files.create", label: "New Files view", scope: "workspace", placement: "work-launcher" }, { id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }],
     };
     const page = await newTestPage({ viewport: { width: 390, height: 844 } });
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
@@ -1412,14 +1379,16 @@ Comment: I don't think we need these tests`;
 
   test("recalls LaunchComposer prompts globally across projects", async () => {
     const page = await newTestPage();
-    const composer = (project: string, prompt = "") => `<dialog data-controller="launch-composer-dialog"><h1>${project}</h1><form data-action="submit->launch-composer-dialog#submit"><textarea name="text">${prompt}</textarea></form></dialog>`;
+    const composer = (project: string, prompt = "") => `<dialog data-controller="launch-composer-dialog"><h1>${project}</h1><form data-action="submit->launch-composer-dialog#submit:prevent"><textarea name="text">${prompt}</textarea></form></dialog>`;
     await page.addInitScript(() => localStorage.removeItem("atelier:launch-composer-prompt-history"));
-    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<main id="host">${composer("Project one", "First project's launch prompt")}</main><script type="module" src="/workspace-test.js"></script>` }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<main id="host">${composer("Project one", "First project's launch prompt")}</main><script type="module" src="${workspaceClientPath}"></script>` }));
 
+    const waitForComposer = () => page.locator("dialog[data-controller='launch-composer-dialog'][open]").waitFor();
     await page.goto("http://atelier.test/");
-    await page.locator("form").evaluate((form: HTMLFormElement) => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    await waitForComposer();
+    await page.locator("form").dispatchEvent("submit");
     await page.locator("#host").evaluate((host, nextComposer) => { host.innerHTML = nextComposer; }, composer("Project two"));
+    await waitForComposer();
     const input = page.getByRole("textbox");
     await input.press("ArrowUp");
 
@@ -1436,9 +1405,8 @@ Comment: I don't think we need these tests`;
     let discardRequests = 0;
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
-      body: `<turbo-frame id="launch_composer"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog" data-launch-composer-dialog-discard-url-value="/draft/discard"><form method="post" action="/launch" data-action="submit->launch-composer-dialog#submit"><textarea name="text">Mobile prompt</textarea><button type="submit">Send prompt</button></form></dialog></turbo-frame><script type="module" src="/workspace-test.js"></script>`,
+      body: `<turbo-frame id="launch_composer"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog" data-launch-composer-dialog-discard-url-value="/draft/discard"><form method="post" action="/launch" data-action="submit->launch-composer-dialog#submit"><textarea name="text">Mobile prompt</textarea><button type="submit">Send prompt</button></form></dialog></turbo-frame><script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
     await page.route("http://atelier.test/draft/discard", (route) => {
       discardRequests += 1;
       return route.fulfill({ status: 204 });
