@@ -266,7 +266,7 @@ turbo-frame { display: contents; }
 .fixed-shell-projects-drawer > .fixed-shell-project-workspaces > .fixed-shell-project { margin-bottom: 2px; }
 .fixed-shell-workspace-row { padding-left: 24px; }
 .fixed-shell-workspace-warning { flex: 0 0 auto; color: var(--warning); font-style: normal; }
-.fixed-shell-workspace-row[data-workspace-preloading] > :is(.status-dot.attention, .fixed-shell-workspace-busy) { display: none; }
+.fixed-shell-workspace-row[data-workspace-preloading] > .status-dot.attention { display: none; }
 .fixed-shell-main { min-width: 0; min-height: 0; flex: 1; display: flex; gap: var(--fixed-shell-gap); }
 .workspace-deletion-presentation { display: grid; place-items: center; overflow: auto; padding: 32px; background: var(--fixed-shell-bg); }
 .workspace-deletion-state { width: min(640px, 100%); margin: auto; }
@@ -309,9 +309,9 @@ turbo-frame { display: contents; }
 .fixed-shell-agent-icon svg, .fixed-shell-work-view-icon svg { width: 16px; height: 16px; }
 .fixed-shell-agent-conversation > .action-item__primary { align-self: stretch; padding: 0 12px; font: 400 var(--text-body)/var(--leading-standard) var(--font-sans); }
 .fixed-shell-agent-bodies, .fixed-shell-work-bodies { position: relative; flex: 1; min-height: 0; overflow: hidden; }
-.fixed-shell-live-node { position: absolute; inset: 0; display: none; min-width: 0; min-height: 0; overflow: auto; }
-.fixed-shell-live-node:focus { outline: none; }
-.fixed-shell-live-node.is-active { display: block; }
+.fixed-shell-surface { position: absolute; inset: 0; display: none; min-width: 0; min-height: 0; overflow: auto; }
+.fixed-shell-surface:focus { outline: none; }
+.fixed-shell-surface.is-active { display: block; }
 .fixed-shell-live-body { min-width: 0; min-height: 100%; }
 
 .fixed-shell-work-pane { position: relative; min-width: 360px; flex: 1; background: var(--fixed-shell-raised); }

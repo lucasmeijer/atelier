@@ -77,11 +77,16 @@ export interface WorkspaceAttachContext {
   events?: AtelierEventBus;
 }
 
-export interface WorkspaceAgentConversationPresentation {
+export interface WorkspaceAgentTabSummary {
   id: string;
   title: string;
-  sourceKey: string;
-  bodyHtml?: string;
+}
+
+/** Durable Agent-tab seam: cheap shell metadata plus on-demand body rendering. */
+export interface WorkspaceAgentTabProvider {
+  list(context: { workspaceId: string }): Promise<readonly WorkspaceAgentTabSummary[]>;
+  render(context: { workspaceId: string; conversationId: string }): Promise<string>;
+  close(context: { workspaceId: string; conversationId: string }): Promise<void>;
 }
 
 export interface WorkspaceWorkViewPresentation {
@@ -143,7 +148,6 @@ export interface WorkspaceCommandContribution<Input = Record<string, never>> {
 }
 
 export interface WorkspaceAttachment {
-  agentConversations?: WorkspaceAgentConversationPresentation[];
   workViews?: WorkspaceWorkViewPresentation[];
   commands?: WorkspaceCommandContribution[];
   overlayHtml?: string[];
@@ -292,7 +296,7 @@ export interface WorkspaceServerModuleContext {
   events: AtelierEventBus;
   registry: {
     setViewBusy(workspaceId: string, viewKey: string, busy: boolean): void;
-    setViewUnread(workspaceId: string, viewKey: string, unread: boolean): void;
+    markViewUnread(workspaceId: string, viewKey: string, token?: number): number | undefined;
   };
   globalSidebarContributions: GlobalSidebarContributionRegistry;
   presentWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;
@@ -313,6 +317,7 @@ export interface WorkspaceModule {
   commands?: WorkspaceModuleCommandHandler[];
   routes?: WorkspaceModuleRouteHandler[];
   workViews?: WorkspaceModuleWorkViewAdapter[];
+  agentTabs?: WorkspaceAgentTabProvider;
   initialize?(context: WorkspaceServerModuleContext): Promise<void> | void;
   attachToWorkspace?(context: WorkspaceAttachContext): Promise<WorkspaceAttachment> | WorkspaceAttachment;
 }
@@ -405,7 +410,6 @@ export interface WorkspaceClientHooks {
   onBecomeVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void;
   onNoLongerVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void;
   onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void;
-  onSynchronizeWorkspace(handler: (resident: HTMLElement) => void | Promise<void>): void;
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void;
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void;
   registerPaletteProvider(provider: WorkspacePaletteProvider): void;
@@ -424,6 +428,7 @@ export interface WorkspaceClientModule {
 }
 
 export {
+  atelierCableConnectionHeader,
   CableTopics,
   decodeCableClientMessage,
   decodeCableServerMessage,

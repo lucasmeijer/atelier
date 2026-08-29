@@ -2,7 +2,6 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import {
-  workspaceAgentConversationContributions,
   renderLaunchComposer,
   renderLaunchComposerSettings,
   rememberNewWorkspaceAgentSettings,
@@ -47,6 +46,7 @@ import {
 import { createWorkspacePresentationStore, generateWorkspaceId, listWorkspaces, setWorkspaceParked, setWorkspaceTitle, type WorkspaceCreationContext, type WorkspaceInitInstruction, type WorkspaceWorkViewReference, type WorkspaceWorkViewState } from "@atelier/workspace";
 import { createWorkspaceProvisioningStore } from "@atelier/workspace/server/provisioning";
 import {
+  atelierCableConnectionHeader,
   atelierName,
   CableTopics,
   emptyWorkspaceCommandInputSchema,
@@ -68,7 +68,7 @@ import {
   type WorkspaceModuleRouteHandler,
   type WorkspaceModuleWorkViewAdapter,
   type WorkspaceServerProvisioningHook,
-  type WorkspaceAgentConversationPresentation,
+  type WorkspaceAgentTabProvider,
   type WorkspaceWorkViewPresentation,
 } from "@atelier/shared";
 import type { WorkspaceDeletionState, WorkspaceEntry, WorkspaceRegistry } from "./workspace-registry.ts";
@@ -80,13 +80,22 @@ import { atelierOpenApi } from "./openapi.ts";
 import { parseCloseWorkViewRequest, parseReorderWorkViewRequest } from "./work-view-api.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePresentationTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStream, removeWorkspaceResidentTurboStream, renderAgentBodyFrame, renderGlobalMobileNavigation, renderWorkViewBodyFrame, renderWorkspaceDeletionPresentation, renderWorkspacePane, renderWorkspacePresentation, selectAgentTurboStream, workspacePaneCollectionsTurboStream, workspacePaneOnboardingState, workspacePreparationInvalidatedTurboStream, workspacePresentationDomId, workViewsTurboStream, type AgentPaneContribution, type WorkPaneContribution, type WorkspacePaneEntry, type WorkspacePanePresentation, type WorkspacePresentation as FixedWorkspacePresentation } from "./workspace-presentation.ts";
+import type { CableBroadcastOptions } from "./cable.ts";
 
 const jsonStringSchema = Type.String();
+const attentionTokenSchema = Type.Integer({ minimum: 1 });
+
+function attentionToken(request: Request): number {
+  const raw = new URL(request.url).searchParams.get("attentionToken");
+  const token = raw === null ? NaN : Number(raw);
+  if (!Value.Check(attentionTokenSchema, token)) throw invalidArguments("attentionToken must be a positive integer");
+  return token;
+}
 
 export interface WebAppDeps {
   registry: WorkspaceRegistry;
-  cable?: { broadcast(identifier: CableIdentifier, html: string): void };
+  cable?: { broadcast(identifier: CableIdentifier, html: string, options?: CableBroadcastOptions): void };
   /** Event bus passed through to the agent module routes. */
   events?: AtelierEventBus;
   devReload?: boolean;
@@ -138,7 +147,8 @@ function jsonResponse<Body extends object>(body: Body, init: HtmlResponseInit = 
 function problemJsonResponse(error: Error): Response {
   const status = error instanceof AtelierCoreError && ["invalid_arguments", "invalid_git_url"].includes(error.code) ? 400
     : error instanceof AtelierCoreError && ["project_not_found", "project_environment_variable_not_found", "project_secret_not_found", "workspace_not_found", "command_not_found", "agent_conversation_not_found", "view_not_found", "terminal_not_found"].includes(error.code) ? 404
-      : 500;
+      : error instanceof AtelierCoreError && error.code === "last_agent_conversation" ? 409
+        : 500;
   const message = error.message;
   const code = error instanceof AtelierCoreError ? error.code : "internal_error";
   const details = error instanceof AtelierCoreError ? error.details : undefined;
@@ -216,14 +226,42 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   const versionTooltip = atelierVersionTooltip();
   // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
   const workViewAdapters = workspaceModules.flatMap((module) => module.workViews ?? []) as WorkspaceModuleWorkViewAdapter[];
+  // SAFETY: Workspace modules expose this exact shared Agent-tab provider contract.
+  const agentTabProviders = workspaceModules.flatMap((module) => module.agentTabs ? [module.agentTabs] : []) as WorkspaceAgentTabProvider[];
+  if (agentTabProviders.length !== 1) throw new Error(`Expected exactly one Workspace Agent-tab provider, found ${agentTabProviders.length}`);
+  const agentTabs = agentTabProviders[0]!;
   const presentationStore = createWorkspacePresentationStore({
     workViewContributions: workViewAdapters,
-    agentConversations: workspaceAgentConversationContributions,
   });
+  const presentationMutationQueues = new Map<string, Promise<void>>();
 
-  function broadcastShell(html: string): void {
-    deps.cable?.broadcast(CableTopics.shell(), html);
+  async function serializePresentationMutation<Result>(workspaceId: string, operation: () => Promise<Result>): Promise<Result> {
+    const previous = presentationMutationQueues.get(workspaceId) ?? Promise.resolve();
+    const result = previous.then(operation);
+    const settled = result.then(() => undefined, () => undefined);
+    presentationMutationQueues.set(workspaceId, settled);
+    void settled.then(() => {
+      if (presentationMutationQueues.get(workspaceId) === settled) presentationMutationQueues.delete(workspaceId);
+    });
+    return await result;
   }
+
+  function broadcastShell(html: string, options?: CableBroadcastOptions): void {
+    deps.cable?.broadcast(CableTopics.shell(), html, options);
+  }
+
+  function deliverShellMutation(request: Request, structuralHtml: string, originHtml = ""): string {
+    if (structuralHtml) broadcastShell(structuralHtml);
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return "";
+    const originConnectionId = request.headers.get(atelierCableConnectionHeader);
+    if (!deps.cable || !originConnectionId) return `${structuralHtml}${originHtml}`;
+    if (originHtml) broadcastShell(originHtml, { onlyConnectionId: originConnectionId });
+    return "";
+  }
+
+  deps.events?.on("workspace_agent_view_invalidated", ({ workspaceId, conversationId, exceptConnectionId, html }) => {
+    broadcastShell(`${html ?? ""}${workspacePreparationInvalidatedTurboStream(workspaceId, conversationId)}`, exceptConnectionId ? { exceptConnectionId } : undefined);
+  });
 
   const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId), seedSteps: deps.provisioningHooks });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
@@ -272,8 +310,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   }
 
   registry.setCallbacks({
-    rowChanged() {
+    rowChanged(entry, context) {
       broadcastWorkspacePaneCollections();
+      if (context.viewKey) broadcastShell(workspacePreparationInvalidatedTurboStream(entry.id));
     },
     listChanged() {
       if (suppressParkedStateCallbacks) return;
@@ -568,7 +607,7 @@ ${moduleStylesHtml()}
   }
 
   function agentClose(workspaceId: string, conversationId: string, title: string) {
-    return { action: `/workspaces/${encodeURIComponent(workspaceId)}/agent-conversations/${encodeURIComponent(conversationId)}/close`, label: `${title} Agent conversation` };
+    return { action: `/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(conversationId)}/close`, label: `${title} Agent conversation` };
   }
 
   async function workspacePaneCollections(activeWorkspaceId: string): Promise<WorkspacePanePresentation> {
@@ -592,10 +631,15 @@ ${moduleStylesHtml()}
         title: workspaceTitle(entry),
         active: entry.id === activeWorkspaceId,
         busy: entry.phase === "starting" || registry.isWorkspaceBusy(entry.id),
+        busyViewKeys: registry.busyViews(entry.id),
         outdated: entry.imageOutdated,
       };
       const unreadAt = registry.workspaceUnreadAt(entry.id);
       if (unreadAt !== undefined) pane.unreadAt = unreadAt;
+      const agentReadyAt = registry.workspaceAgentReadyAt(entry.id);
+      if (agentReadyAt !== undefined) pane.agentReadyAt = agentReadyAt;
+      const unreadTokens = registry.unreadTokens(entry.id);
+      if (Object.keys(unreadTokens).length > 0) pane.unreadTokens = unreadTokens;
       return pane;
     };
     const workspaceProjectIds = new Set([...grouped.keys(), ...parkedByProject.keys()]);
@@ -634,10 +678,10 @@ ${moduleStylesHtml()}
     });
   }
 
-  async function fixedWorkspacePresentation(workspaceId: string, options: { preserveLiveKeys?: ReadonlySet<string> } = {}): Promise<FixedWorkspacePresentation> {
+  async function fixedWorkspacePresentation(workspaceId: string): Promise<FixedWorkspacePresentation> {
     const entry = requireWorkspace(workspaceId);
     const attachments = await attachWorkspaceModules(workspaceId);
-    const agentConversations = attachments.flatMap((attachment) => attachment.agentConversations ?? []);
+    const agentConversations = await agentTabs.list({ workspaceId });
     const currentWorkViews = attachments.flatMap((attachment) => attachment.workViews ?? []);
     await presentationStore.initialize(workspaceId, currentWorkViews.map((view) => view.reference));
     const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
@@ -647,14 +691,13 @@ ${moduleStylesHtml()}
     return {
       workspace: { id: entry.id, title: workspaceTitle(entry) },
       agentConversations: agentConversations.map((conversation) => {
-        const presented: AgentPaneContribution = { id: conversation.id, title: conversation.title, bodyHtml: conversation.bodyHtml ?? "" };
+        const presented: AgentPaneContribution = { id: conversation.id, title: conversation.title, bodyUrl: `/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(conversation.id)}/body` };
         if (agentConversations.length > 1) presented.close = agentClose(workspaceId, conversation.id, conversation.title);
         return presented;
       }),
       workViews: workViewPresentations(workspaceId, currentWorkViews, storedWorkViews),
       commands,
       overlayHtml: attachments.flatMap((attachment) => attachment.overlayHtml ?? []),
-      preserveLiveKeys: options.preserveLiveKeys,
     };
   }
 
@@ -1027,7 +1070,7 @@ ${moduleStylesHtml()}
   }
 
   function deletionPresentationStream(entry: WorkspaceEntry, deletion: WorkspaceDeletionState): string {
-    return turboReplaceStream(domId("fixed_workspace", entry.id), renderWorkspaceDeletionPresentation(entry.id, deletion));
+    return `${turboReplaceStream(workspacePresentationDomId(entry.id), renderWorkspaceDeletionPresentation(entry.id, deletion))}${workspacePreparationInvalidatedTurboStream(entry.id)}`;
   }
 
   function broadcastDeletionPresentation(id: string): void {
@@ -1093,8 +1136,13 @@ ${moduleStylesHtml()}
       return { deleted: false, blocked: false };
     }
     if (details.issues.length > 0) {
-      setDeletionState(id, { status: "blocked", issues: details.issues });
-      registry.setWorkspaceUnread(id, true);
+      const deletion: WorkspaceDeletionState = { status: "blocked", issues: details.issues };
+      registry.markViewUnread(id, "workspace");
+      registry.setDeletion(id, deletion);
+      const pane = workspacePaneCollectionsTurboStream(await workspacePaneCollections(""));
+      const entry = requireWorkspace(id);
+      const resident = `<div class="workspace-detail-resident" data-workspace-residency-target="resident" data-workspace-id="${escapeHtml(id)}">${renderWorkspaceDeletionPresentation(entry.id, deletion)}</div>`;
+      broadcastShell(`${pane}${deletionPresentationStream(entry, deletion)}${turboReplaceStream(workspaceBootId(id), resident)}`);
       return { deleted: false, blocked: true, details };
     }
     scheduleWorkspaceDeletion(id, false);
@@ -1135,8 +1183,8 @@ ${moduleStylesHtml()}
     const entry = requireWorkspace(id);
     if (entry.deletion?.status !== "blocked" && entry.deletion?.status !== "failed") return turboStreamResponse("", { status: 409 });
     registry.setDeletion(id, undefined);
-    registry.setWorkspaceUnread(id, false);
-    const stream = workspacePresentationTurboStream(id, await fixedWorkspacePresentation(id));
+    registry.clearViewUnread(id, "workspace");
+    const stream = `${turboReplaceStream(workspacePresentationDomId(id), renderWorkspacePresentation(await fixedWorkspacePresentation(id)))}${workspacePreparationInvalidatedTurboStream(id)}`;
     broadcastShell(stream);
     if (requestAcceptsJson(request)) return jsonResponse({ cancelled: true });
     return turboStreamResponse(stream);
@@ -1454,71 +1502,85 @@ ${moduleStylesHtml()}
     return await command.execute({ workspaceId, events: deps.events, input: await commandInput(request, command) });
   }
 
-  async function openWorkspaceModuleWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<Response> {
+  async function currentWorkPanePresentations(workspaceId: string): Promise<WorkPaneContribution[]> {
     const attachments = await attachWorkspaceModules(workspaceId);
     const currentWorkViews = attachments.flatMap((attachment) => attachment.workViews ?? []);
-    const contribution = currentWorkViews.find((view) => workViewKey(view.reference) === workViewKey(reference));
-    if (!contribution) throw new AtelierCoreError("work_view_not_found", `Work view is not available: ${workViewKey(reference)}`);
-    const { opened } = await presentationStore.openWorkView(workspaceId, contribution.reference);
-    const key = workViewKey(contribution.reference);
-    const insertion = opened
-      ? openWorkViewTurboStream(workspaceId, workViewPresentations(workspaceId, currentWorkViews, await presentationStore.listWorkViews(workspaceId)), key)
-      : "";
-    return turboStreamResponse(`${insertion}${presentWorkViewTurboStream(workspaceId, key)}`);
+    return workViewPresentations(workspaceId, currentWorkViews, await presentationStore.listWorkViews(workspaceId));
+  }
+
+  async function openWorkspaceModuleWorkView(workspaceId: string, reference: WorkspaceWorkViewReference, request: Request): Promise<Response> {
+    return await serializePresentationMutation(workspaceId, async () => {
+      const attachments = await attachWorkspaceModules(workspaceId);
+      const currentWorkViews = attachments.flatMap((attachment) => attachment.workViews ?? []);
+      const contribution = currentWorkViews.find((view) => workViewKey(view.reference) === workViewKey(reference));
+      if (!contribution) throw new AtelierCoreError("work_view_not_found", `Work view is not available: ${workViewKey(reference)}`);
+      const { opened } = await presentationStore.openWorkView(workspaceId, contribution.reference);
+      const key = workViewKey(contribution.reference);
+      const structural = opened ? openWorkViewTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId), key) : "";
+      return turboStreamResponse(deliverShellMutation(request, structural, presentWorkViewTurboStream(workspaceId, key)));
+    });
   }
 
   async function workspaceCommandEndpoint(workspaceId: string, commandId: string, request: Request): Promise<Response> {
-    const before = await fixedWorkspacePresentation(workspaceId);
     const result = await executeWorkspaceCommand(workspaceId, commandId, request);
     let createdWorkView: WorkspaceWorkViewReference | undefined;
+    let openedWorkView = false;
     if (result.createdWorkView) {
       const metadata = await attachWorkspaceModules(workspaceId);
       const contribution = metadata.flatMap((attachment) => attachment.workViews ?? []).find((view) => workViewKey(view.reference) === workViewKey(result.createdWorkView!));
       if (!contribution) throw new AtelierCoreError("work_view_not_found", `Command ${commandId} created an unavailable Work view`);
       createdWorkView = contribution.reference;
-      await presentationStore.openWorkView(workspaceId, createdWorkView);
+      ({ opened: openedWorkView } = await presentationStore.openWorkView(workspaceId, createdWorkView));
     }
+    const presentation = createdWorkView || result.createdAgentConversationId ? await fixedWorkspacePresentation(workspaceId) : undefined;
+    const structural = [
+      result.createdAgentConversationId && presentation ? agentTabsTurboStream(presentation, { addedConversationId: result.createdAgentConversationId }) : "",
+      createdWorkView && presentation ? workViewsTurboStream(workspaceId, presentation.workViews, { openedKey: openedWorkView ? workViewKey(createdWorkView) : undefined }) : "",
+    ].join("");
+    const origin = `${result.createdAgentConversationId ? selectAgentTurboStream(workspaceId, result.createdAgentConversationId) : ""}${createdWorkView ? presentWorkViewTurboStream(workspaceId, workViewKey(createdWorkView)) : ""}${result.streamHtml ?? ""}`;
+    const responseStream = deliverShellMutation(request, structural, origin);
     if (requestAcceptsJson(request) && !wantsTurboStream(request)) {
       const command: WorkspaceCommandResponse = { id: commandId };
       if (createdWorkView) command.workView = createdWorkView;
       if (result.createdAgentConversationId) command.agentConversationId = result.createdAgentConversationId;
       return jsonResponse({ command, workViews: await presentationStore.listWorkViews(workspaceId) });
     }
-    if (!createdWorkView && !result.createdAgentConversationId) return turboStreamResponse(result.streamHtml ?? "");
-    const preserveLiveKeys = new Set([...before.agentConversations.map((agent) => `agent:${agent.id}`), ...before.workViews.map((view) => `work:${view.key}`)]);
-    const presentation = await fixedWorkspacePresentation(workspaceId, { preserveLiveKeys });
-    const reveal = createdWorkView ? presentWorkViewTurboStream(workspaceId, workViewKey(createdWorkView)) : "";
-    return turboStreamResponse(`${workspacePresentationTurboStream(workspaceId, presentation)}${reveal}${result.streamHtml ?? ""}`);
+    return turboStreamResponse(responseStream);
   }
 
   async function closeWorkViewEndpoint(workspaceId: string, encodedReference: string, request: Request): Promise<Response> {
     // SAFETY: This value is validated or constructed by the server boundary immediately surrounding this use.
     const reference = JSON.parse(encodedReference) as WorkspaceWorkViewReference;
-    const before = await fixedWorkspacePresentation(workspaceId);
     const adapter = workViewAdapterByType.get(reference.type);
     if (!adapter) throw new AtelierCoreError("work_view_reference_invalid", `unknown Work view type: ${reference.type}`);
     const parsed = adapter.parseReference(reference);
-    const open = (await presentationStore.listWorkViews(workspaceId)).some((view) => workViewKey(view.reference) === workViewKey(parsed));
+    const before = await presentationStore.listWorkViews(workspaceId);
+    const closedKey = workViewKey(parsed);
+    const closedIndex = before.findIndex((view) => workViewKey(view.reference) === closedKey);
+    const open = closedIndex >= 0;
     if (!open) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${workViewKey(parsed)}`);
     await adapter.close?.({ workspaceId, reference: parsed });
     await presentationStore.closeWorkView(workspaceId, parsed);
-    const preserveLiveKeys = new Set([
-      ...before.agentConversations.map((agent) => `agent:${agent.id}`),
-      ...before.workViews.filter((view) => view.key !== workViewKey(parsed)).map((view) => `work:${view.key}`),
-    ]);
-    if (requestAcceptsJson(request)) return jsonResponse({ closed: parsed, workViews: await presentationStore.listWorkViews(workspaceId) });
-    return turboStreamResponse(workspacePresentationTurboStream(workspaceId, await fixedWorkspacePresentation(workspaceId, { preserveLiveKeys })));
+    registry.clearViewUnread(workspaceId, closedKey);
+    const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
+    const workViews = await currentWorkPanePresentations(workspaceId);
+    const successor = workViews[Math.min(closedIndex, workViews.length - 1)]?.key;
+    const structural = workViewsTurboStream(workspaceId, workViews, { removedKey: closedKey, successorKey: successor });
+    const responseStream = deliverShellMutation(request, structural);
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ closed: parsed, workViews: storedWorkViews });
+    return turboStreamResponse(responseStream);
   }
 
   async function reorderWorkViewEndpoint(workspaceId: string, request: Request): Promise<Response> {
     const body = parseReorderWorkViewRequest(await readJsonObject(request));
-    const before = await fixedWorkspacePresentation(workspaceId);
     const stored = (await presentationStore.listWorkViews(workspaceId)).find((view) => workViewKey(view.reference) === body.key);
     if (!stored) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${body.key}`);
     await presentationStore.reorderWorkView(workspaceId, stored.reference, body.index);
-    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ workViews: await presentationStore.listWorkViews(workspaceId) });
-    const preserveLiveKeys = new Set([...before.agentConversations.map((agent) => `agent:${agent.id}`), ...before.workViews.map((view) => `work:${view.key}`)]);
-    return turboStreamResponse(workspacePresentationTurboStream(workspaceId, await fixedWorkspacePresentation(workspaceId, { preserveLiveKeys })));
+    const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
+    const structural = workViewsTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId));
+    const responseStream = deliverShellMutation(request, structural);
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ workViews: storedWorkViews });
+    return turboStreamResponse(responseStream);
   }
 
   async function closeWorkViewJsonEndpoint(workspaceId: string, request: Request): Promise<Response> {
@@ -1527,17 +1589,18 @@ ${moduleStylesHtml()}
   }
 
   async function presentWorkViewFromAgent(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void> {
-    const before = await fixedWorkspacePresentation(workspaceId);
-    const attachments = await attachWorkspaceModules(workspaceId);
-    const contribution = attachments.flatMap((attachment) => attachment.workViews ?? []).find((view) => workViewKey(view.reference) === workViewKey(reference));
-    if (!contribution) throw new AtelierCoreError("work_view_not_found", `Work view is not available: ${workViewKey(reference)}`);
-    await presentationStore.openWorkView(workspaceId, contribution.reference);
-    registry.setParked(workspaceId, false);
-    await presentationStore.requestAttention(workspaceId, contribution.reference);
-    const preserveLiveKeys = new Set([...before.agentConversations.map((agent) => `agent:${agent.id}`), ...before.workViews.map((view) => `work:${view.key}`)]);
-    const key = workViewKey(contribution.reference);
-    const presentation = await fixedWorkspacePresentation(workspaceId, { preserveLiveKeys });
-    broadcastShell(`${workspacePresentationTurboStream(workspaceId, presentation)}${presentWorkViewTurboStream(workspaceId, key)}`);
+    await serializePresentationMutation(workspaceId, async () => {
+      const attachments = await attachWorkspaceModules(workspaceId);
+      const contribution = attachments.flatMap((attachment) => attachment.workViews ?? []).find((view) => workViewKey(view.reference) === workViewKey(reference));
+      if (!contribution) throw new AtelierCoreError("work_view_not_found", `Work view is not available: ${workViewKey(reference)}`);
+      const { opened } = await presentationStore.openWorkView(workspaceId, contribution.reference);
+      registry.setParked(workspaceId, false);
+      const attentionSequence = await presentationStore.requestAttention(workspaceId, contribution.reference);
+      const key = workViewKey(contribution.reference);
+      registry.markViewUnread(workspaceId, key, attentionSequence);
+      const workViews = await currentWorkPanePresentations(workspaceId);
+      broadcastShell(workViewsTurboStream(workspaceId, workViews, { openedKey: opened ? key : undefined, selectKey: key, intendSelection: true }));
+    });
   }
 
   async function workViewBodyEndpoint(workspaceId: string, key: string): Promise<Response> {
@@ -1546,53 +1609,65 @@ ${moduleStylesHtml()}
     if (!stored) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${key}`);
     const adapter = workViewAdapterByType.get(stored.reference.type)!;
     const bodyHtml = await adapter.render({ workspaceId, reference: stored.reference });
-    return response(renderWorkViewBodyFrame(key, bodyHtml), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+    return response(renderWorkViewBodyFrame(workspaceId, key, bodyHtml), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   }
 
   async function workViewAttentionEndpoint(workspaceId: string, key: string, request: Request, acknowledge: boolean): Promise<Response> {
-    const before = await fixedWorkspacePresentation(workspaceId);
     const stored = (await presentationStore.listWorkViews(workspaceId)).find((view) => workViewKey(view.reference) === key);
     if (!stored) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${key}`);
-    if (acknowledge) await presentationStore.acknowledgeAttention(workspaceId, stored.reference);
-    else {
-      registry.setParked(workspaceId, false);
-      await presentationStore.requestAttention(workspaceId, stored.reference);
-    }
-    const preserveLiveKeys = new Set([
-      ...before.agentConversations.map((agent) => `agent:${agent.id}`),
-      ...before.workViews.map((view) => `work:${view.key}`),
-    ]);
-    const presentationStream = workspacePresentationTurboStream(workspaceId, await fixedWorkspacePresentation(workspaceId, { preserveLiveKeys }));
+    let acknowledged = false;
     if (acknowledge) {
-      broadcastShell(presentationStream);
-      return requestAcceptsJson(request) ? jsonResponse({ acknowledged: stored.reference }) : new Response(null, { status: 204 });
+      const token = attentionToken(request);
+      acknowledged = await presentationStore.acknowledgeAttention(workspaceId, stored.reference, token);
+      if (acknowledged) registry.acknowledgeViewUnread(workspaceId, key, token);
+    } else {
+      registry.setParked(workspaceId, false);
+      const token = await presentationStore.requestAttention(workspaceId, stored.reference);
+      registry.markViewUnread(workspaceId, key, token);
     }
-    const revealStream = presentWorkViewTurboStream(workspaceId, key);
-    return requestAcceptsJson(request) ? jsonResponse({ attention: stored.reference }) : turboStreamResponse(`${presentationStream}${revealStream}`);
+    const presentationStream = workViewsTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId), acknowledge ? {} : { selectKey: key, intendSelection: true });
+    if (acknowledge) broadcastShell(presentationStream);
+    const responseStream = acknowledge ? "" : deliverShellMutation(request, presentationStream);
+    if (acknowledge) {
+      return requestAcceptsJson(request) ? jsonResponse({ acknowledged, attention: stored.reference }) : new Response(null, { status: 204 });
+    }
+    return requestAcceptsJson(request) && !wantsTurboStream(request) ? jsonResponse({ attention: stored.reference }) : turboStreamResponse(responseStream);
   }
 
   async function closeAgentConversationEndpoint(workspaceId: string, conversationId: string, request: Request): Promise<Response> {
-    const before = await fixedWorkspacePresentation(workspaceId);
-    await presentationStore.closeAgentConversation(workspaceId, conversationId);
-    const preserveLiveKeys = new Set([
-      ...before.agentConversations.filter((agent) => agent.id !== conversationId).map((agent) => `agent:${agent.id}`),
-      ...before.workViews.map((view) => `work:${view.key}`),
-    ]);
-    if (requestAcceptsJson(request)) return jsonResponse({ archivedConversationId: conversationId, agentConversations: await presentationStore.listAgentConversations(workspaceId) });
-    return turboStreamResponse(workspacePresentationTurboStream(workspaceId, await fixedWorkspacePresentation(workspaceId, { preserveLiveKeys })));
+    requireWorkspace(workspaceId);
+    const before = await agentTabs.list({ workspaceId });
+    const closedIndex = before.findIndex((agent) => agent.id === conversationId);
+    if (closedIndex < 0) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
+    await agentTabs.close({ workspaceId, conversationId });
+    registry.clearViewUnread(workspaceId, `agent:${conversationId}`);
+    const presentation = await fixedWorkspacePresentation(workspaceId);
+    const successorConversationId = presentation.agentConversations[Math.min(closedIndex, presentation.agentConversations.length - 1)]!.id;
+    const structural = agentTabsTurboStream(presentation, { removedConversationId: conversationId, successorConversationId });
+    const responseStream = deliverShellMutation(request, structural);
+    if (requestAcceptsJson(request) && !wantsTurboStream(request)) return jsonResponse({ archivedConversationId: conversationId, agentConversations: presentation.agentConversations.map(({ id, title }) => ({ id, title })) });
+    return turboStreamResponse(responseStream);
   }
 
-  function activeWorkspaceEndpoint(id: string): Response {
-    requireWorkspace(id);
-    registry.setActiveWorkspace(id);
-    return turboStreamResponse("");
+  async function agentBodyEndpoint(workspaceId: string, conversationId: string): Promise<Response> {
+    requireWorkspace(workspaceId);
+    const bodyHtml = await agentTabs.render({ workspaceId, conversationId });
+    return response(renderAgentBodyFrame(workspaceId, conversationId, bodyHtml), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   }
 
-  function clearActiveWorkspaceEndpoint(): Response {
-    registry.setActiveWorkspace(undefined);
-    return turboStreamResponse("");
+  async function acknowledgeAgentAttentionEndpoint(workspaceId: string, conversationId: string, request: Request): Promise<Response> {
+    requireWorkspace(workspaceId);
+    const exists = (await agentTabs.list({ workspaceId })).some((agent) => agent.id === conversationId);
+    if (!exists) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
+    registry.acknowledgeViewUnread(workspaceId, `agent:${conversationId}`, attentionToken(request));
+    return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
   }
 
+  function acknowledgeWorkspaceAttentionEndpoint(workspaceId: string, request: Request): Response {
+    requireWorkspace(workspaceId);
+    registry.acknowledgeViewUnread(workspaceId, "workspace", attentionToken(request));
+    return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+  }
 
   function openOldestUnreadWorkspaceEndpoint(): Response {
     const entry = registry.oldestUnreadWorkspace();
@@ -1605,7 +1680,10 @@ ${moduleStylesHtml()}
   // ---------------------------------------------------------------------------
 
   function errorPage(error: Error): Response {
-    const status = error instanceof AtelierCoreError && ["workspace_not_found", "project_not_found", "repo_not_found", "terminal_not_found", "agent_conversation_not_found"].includes(error.code) ? 404 : 500;
+    const status = error instanceof AtelierCoreError && ["invalid_arguments", "invalid_git_url"].includes(error.code) ? 400
+      : error instanceof AtelierCoreError && ["workspace_not_found", "project_not_found", "repo_not_found", "terminal_not_found", "agent_conversation_not_found"].includes(error.code) ? 404
+        : error instanceof AtelierCoreError && error.code === "last_agent_conversation" ? 409
+          : 500;
     const message = error.message;
     return response(layout("Error", `<div class="app no-sidebar"><div class="main"><header class="header"><h1>Error</h1></header><div class="body"><p>${escapeHtml(message)}</p><p><a class="button secondary" href="/">Back home</a></p></div></div></div>`), { status });
   }
@@ -1626,7 +1704,6 @@ ${moduleStylesHtml()}
     if (url.pathname === "/workspaces" && request.method === "GET") return workspaceListEndpoint(request, url);
     if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceEndpoint(url, request);
     if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestUnreadWorkspaceEndpoint();
-    if (url.pathname === "/workspaces/active/clear" && request.method === "POST") return clearActiveWorkspaceEndpoint();
     if (url.pathname === "/projects" && request.method === "GET" && requestAcceptsJson(request)) return jsonResponse(await listProjects());
     if (url.pathname === "/projects" && request.method === "POST") return await createProjectEndpoint(request, url);
     if (url.pathname === "/projects/new/editor" && request.method === "GET") return response(newProjectEditorFrame());
@@ -1636,6 +1713,11 @@ ${moduleStylesHtml()}
       const result = url.pathname.match(pattern);
       return result ? result.slice(1).map(decodeURIComponent) : undefined;
     };
+    const routeParam = (values: string[], index: number): string => {
+      const value = values[index];
+      if (value === undefined) throw new Error(`Route parameter ${index} is missing`);
+      return value;
+    };
 
     const settingsResponse = await handleSettingsRequest(request, url, { forceDeleteAllWorkspaces: forceDeleteAllWorkspacesFromSettings });
     if (settingsResponse) return settingsResponse;
@@ -1644,7 +1726,10 @@ ${moduleStylesHtml()}
     if (onboardingResponse) return onboardingResponse;
 
     for (const moduleRoute of workspaceModuleRoutes()) {
-      const moduleResponse = await moduleRoute.handle(request, url, { events: deps.events, openWorkView: openWorkspaceModuleWorkView });
+      const moduleResponse = await moduleRoute.handle(request, url, {
+        events: deps.events,
+        openWorkView: async (workspaceId, reference) => await openWorkspaceModuleWorkView(workspaceId, reference, request),
+      });
       if (moduleResponse) return moduleResponse;
     }
 
@@ -1668,15 +1753,43 @@ ${moduleStylesHtml()}
     if ((params = match(/^\/project-agent-workspaces\/([^/]+)$/)) && request.method === "POST") return await createProjectAgentWorkspaceEndpoint(params[0], request);
 
     if ((params = match(/^\/workspaces\/([^/]+)\/sidebar-title$/)) && request.method === "POST") return await updateWorkspaceSidebarTitle(params[0], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/active$/)) && request.method === "POST") return activeWorkspaceEndpoint(params[0]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") return await workspaceCommandEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/close$/)) && request.method === "POST") return await closeWorkViewJsonEndpoint(params[0], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/commands\/([^/]+)$/)) && request.method === "POST") {
+      const workspaceId = routeParam(params, 0);
+      const commandId = routeParam(params, 1);
+      return await serializePresentationMutation(workspaceId, async () => await workspaceCommandEndpoint(workspaceId, commandId, request));
+    }
+    if ((params = match(/^\/workspaces\/([^/]+)\/attention\/acknowledge$/)) && request.method === "POST") return acknowledgeWorkspaceAttentionEndpoint(params[0], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/)) && request.method === "GET") return await agentBodyEndpoint(params[0], params[1]);
+    if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/attention\/acknowledge$/)) && request.method === "POST") return await acknowledgeAgentAttentionEndpoint(params[0], params[1], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/close$/)) && request.method === "POST") {
+      const workspaceId = routeParam(params, 0);
+      const conversationId = routeParam(params, 1);
+      return await serializePresentationMutation(workspaceId, async () => await closeAgentConversationEndpoint(workspaceId, conversationId, request));
+    }
+    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/close$/)) && request.method === "POST") {
+      const workspaceId = routeParam(params, 0);
+      return await serializePresentationMutation(workspaceId, async () => await closeWorkViewJsonEndpoint(workspaceId, request));
+    }
     if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/([^/]+)\/body$/)) && request.method === "GET") return await workViewBodyEndpoint(params[0], params[1]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/attention\/request$/)) && request.method === "POST") return await workViewAttentionEndpoint(params[0], params[1], request, false);
-    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/attention\/acknowledge$/)) && request.method === "POST") return await workViewAttentionEndpoint(params[0], params[1], request, true);
-    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/close$/)) && request.method === "POST") return await closeWorkViewEndpoint(params[0], params[1], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/reorder$/)) && request.method === "POST") return await reorderWorkViewEndpoint(params[0], request);
-    if ((params = match(/^\/workspaces\/([^/]+)\/agent-conversations\/([^/]+)\/close$/)) && request.method === "POST") return await closeAgentConversationEndpoint(params[0], params[1], request);
+    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/attention\/request$/)) && request.method === "POST") {
+      const workspaceId = routeParam(params, 0);
+      const key = routeParam(params, 1);
+      return await serializePresentationMutation(workspaceId, async () => await workViewAttentionEndpoint(workspaceId, key, request, false));
+    }
+    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/attention\/acknowledge$/)) && request.method === "POST") {
+      const workspaceId = routeParam(params, 0);
+      const key = routeParam(params, 1);
+      return await serializePresentationMutation(workspaceId, async () => await workViewAttentionEndpoint(workspaceId, key, request, true));
+    }
+    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/close$/)) && request.method === "POST") {
+      const workspaceId = routeParam(params, 0);
+      const reference = routeParam(params, 1);
+      return await serializePresentationMutation(workspaceId, async () => await closeWorkViewEndpoint(workspaceId, reference, request));
+    }
+    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/reorder$/)) && request.method === "POST") {
+      const workspaceId = routeParam(params, 0);
+      return await serializePresentationMutation(workspaceId, async () => await reorderWorkViewEndpoint(workspaceId, request));
+    }
     if ((params = match(/^\/workspaces\/([^/]+)\/park$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], true, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/unpark$/)) && request.method === "POST") return parkWorkspaceEndpoint(params[0], false, request);
     if ((params = match(/^\/workspaces\/([^/]+)\/delete\/cancel$/)) && request.method === "POST") return await cancelWorkspaceDeletionEndpoint(params[0], request);

@@ -8,6 +8,7 @@ import { Value } from "typebox/value";
 import * as Turbo from "@hotwired/turbo";
 import { createHtmlAutocompleteController, PromptHistoryNavigator } from "@atelier/agent/client";
 import {
+  atelierCableConnectionHeader,
   CableTopics,
   copyTextToClipboard,
   escapeHtml,
@@ -34,7 +35,7 @@ import { createAtelierCableClient } from "./cable.ts";
 import { createCloseButton, registerDesignSystemControllers } from "./design-system.ts";
 import { SelectPopupController } from "./popup-select.ts";
 import { createWorkspacePresentationController, installWorkspacePresentationTurboStream, markActiveWorkspaceRow } from "./workspace-presentation.ts";
-import { hydrateWorkViewFrames } from "./work-view-hydration.ts";
+import { oldestReadyFirst, retainedWorkspaceIds, type WorkspaceRetentionCandidate } from "./workspace-residency-policy.ts";
 
 declare global {
   interface Window {
@@ -56,12 +57,12 @@ window.Stimulus = {
 window.Turbo = Turbo;
 
 const { Application, Controller } = window.Stimulus;
+const workspaceBusyViewsSchema = Type.Array(Type.String());
 
 class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   private readonly becomeVisibleHandlers: Array<(context: WorkspaceClientSurfaceVisibilityContext) => void> = [];
   private readonly noLongerVisibleHandlers: Array<(context: WorkspaceClientSurfaceVisibilityContext) => void> = [];
   private readonly focusGroupHandlers: Array<(context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>> = [];
-  private readonly synchronizeWorkspaceHandlers: Array<(resident: HTMLElement) => void | Promise<void>> = [];
   private readonly workspaceAppFrameUrlHandlers: Array<(context: WorkspaceClientWorkspaceAppFrameContext) => void> = [];
   private readonly workspaceAppFrameRefreshHandlers: Array<(context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void> = [];
   private readonly paletteProviders = new Map<string, WorkspacePaletteProvider>();
@@ -70,7 +71,6 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
   onBecomeVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void { this.becomeVisibleHandlers.push(handler); }
   onNoLongerVisible(handler: (context: WorkspaceClientSurfaceVisibilityContext) => void): void { this.noLongerVisibleHandlers.push(handler); }
   onFocusGroup(handler: (context: WorkspaceClientFocusContext) => boolean | void | Promise<boolean | void>): void { this.focusGroupHandlers.push(handler); }
-  onSynchronizeWorkspace(handler: (resident: HTMLElement) => void | Promise<void>): void { this.synchronizeWorkspaceHandlers.push(handler); }
   onWorkspaceAppFrameUrl(handler: (context: WorkspaceClientWorkspaceAppFrameContext) => void): void { this.workspaceAppFrameUrlHandlers.push(handler); }
   onWorkspaceAppFrameRefresh(handler: (context: { appKey: string; frame: HTMLIFrameElement; load(): void }) => void): void { this.workspaceAppFrameRefreshHandlers.push(handler); }
   registerPaletteProvider(provider: WorkspacePaletteProvider): void { this.paletteProviders.set(provider.id, provider); }
@@ -90,10 +90,6 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
       if (await handler(context)) return true;
     }
     return false;
-  }
-
-  async synchronizeWorkspace(resident: HTMLElement): Promise<void> {
-    await Promise.all(this.synchronizeWorkspaceHandlers.map((handler) => handler(resident)));
   }
 
   workspaceAppFrameUrl(context: WorkspaceClientWorkspaceAppFrameContext): void {
@@ -124,8 +120,6 @@ class WorkspaceClientHookRegistry implements WorkspaceClientHooks {
 type PaletteResult = WorkspacePaletteItem & { score: number };
 
 const clientHooks = new WorkspaceClientHookRegistry();
-
-clientHooks.onSynchronizeWorkspace(hydrateWorkViewFrames);
 
 function fuzzyScore(query: string, candidate: string): number {
   const q = query.trim().toLowerCase();
@@ -918,7 +912,7 @@ class AtelierShortcutsController extends Controller {
     try {
       const response = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/commands/${encodeURIComponent(commandId)}`, {
         method: "POST",
-        headers: { "Accept": "text/vnd.turbo-stream.html" },
+        headers: cableRequestHeaders({ "Accept": "text/vnd.turbo-stream.html" }),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const html = await response.text();
@@ -1165,6 +1159,7 @@ class WorkspaceNavigationController extends Controller {
   connect(): void {
     this.scrollTarget.addEventListener("scroll", this.scrolled, { passive: true });
     this.element.addEventListener("atelier:mobile-resident-destination-selected", this.mobileResidentDestinationSelected);
+    document.addEventListener("atelier:workspace-pane-changed", this.workspacePaneChanged);
     const scroll = Number(localStorage.getItem("atelier:workspace-pane-scroll"));
     if (Number.isFinite(scroll)) this.scrollTarget.scrollTop = scroll;
     this.restoreProjectDisclosures();
@@ -1175,6 +1170,7 @@ class WorkspaceNavigationController extends Controller {
   disconnect(): void {
     this.scrollTarget.removeEventListener("scroll", this.scrolled);
     this.element.removeEventListener("atelier:mobile-resident-destination-selected", this.mobileResidentDestinationSelected);
+    document.removeEventListener("atelier:workspace-pane-changed", this.workspacePaneChanged);
     if (this.scrollTimer) clearTimeout(this.scrollTimer);
   }
 
@@ -1213,6 +1209,11 @@ class WorkspaceNavigationController extends Controller {
   }
 
   private readonly mobileResidentDestinationSelected = (): void => this.setWorkspacePaneOpen(false);
+  private readonly workspacePaneChanged = (): void => {
+    this.restoreProjectDisclosures();
+    const workspaceId = residencyController()?.visibleWorkspaceId();
+    if (workspaceId) this.setActiveWorkspace(workspaceId);
+  };
 
   async selectWorkspace(event: Event): Promise<void> {
     // SAFETY: This action is attached only to server-rendered Workspace entry elements.
@@ -1224,10 +1225,6 @@ class WorkspaceNavigationController extends Controller {
     this.setWorkspacePaneOpen(false);
     this.setActiveWorkspace(workspaceId);
     await residencyController()?.selectWorkspace(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}`);
-    if (window.matchMedia(phoneViewportMediaQuery).matches) {
-      const visible = document.querySelector<HTMLElement>(`.workspace-detail-resident.visible[data-workspace-id="${CSS.escape(workspaceId)}"]`);
-      visible?.querySelector<HTMLButtonElement>("[data-mobile-destination='agents']")?.click();
-    }
   }
 
   async parkWorkspace(event: Event): Promise<void> {
@@ -1251,7 +1248,7 @@ class WorkspaceNavigationController extends Controller {
     button.disabled = true;
     const response = await fetch(form.action, {
       method: "POST",
-      headers: { Accept: "text/vnd.turbo-stream.html" },
+      headers: cableRequestHeaders({ Accept: "text/vnd.turbo-stream.html" }),
     });
     if (!response.ok) throw new Error(`Could not update parked workspace: HTTP ${response.status}`);
     const html = await response.text();
@@ -1299,6 +1296,26 @@ class WorkspaceNavigationController extends Controller {
   };
 }
 
+interface WorkspaceSurfacePreparationController {
+  prepareIntendedSurfaces(options?: { authoritativeReload?: boolean }): Promise<void>;
+  selectedAgentId(): string;
+}
+
+type WorkspacePreparationPriority = "background" | "foreground" | "obsolete";
+
+interface WorkspacePreparationResult {
+  resident: HTMLElement;
+  prepared: boolean;
+}
+
+interface WorkspacePreparationOperation {
+  workspaceId: string;
+  priority: WorkspacePreparationPriority;
+  generation: number;
+  abort: AbortController;
+  promise: Promise<WorkspacePreparationResult>;
+}
+
 class WorkspaceResidencyController extends Controller {
   static targets = ["resident", "empty", "loading"];
   static values = { maxResident: Number };
@@ -1308,159 +1325,238 @@ class WorkspaceResidencyController extends Controller {
   declare readonly loadingTargets: HTMLElement[];
   declare readonly maxResidentValue: number;
   private selectionSeq = 0;
-  private readonly residentLoads = new Map<string, Promise<HTMLElement>>();
+  private foregroundInFlight = 0;
+  private intendedWorkspaceId?: string;
+  private readonly prepared = new Set<string>();
+  private readonly requestedPreparationAt = new Map<string, number>();
+  private readonly generations = new Map<string, number>();
+  private readonly operations = new Map<string, WorkspacePreparationOperation>();
+  private readonly preparationOwnedResidents = new WeakSet<HTMLElement>();
+  private backgroundPump?: Promise<void>;
+  private backgroundWakeRequested = false;
+  private backgroundPreparationWorkspaceId?: string;
+  private residencyConnected = false;
 
   connect(): void {
-    document.addEventListener("visibilitychange", this.visibilityChanged);
+    this.residencyConnected = true;
     document.addEventListener("atelier:workspace-removed", this.workspaceRemoved);
     document.addEventListener("atelier:workspace-pane-changed", this.workspacePaneChanged);
-    window.addEventListener("pagehide", this.pageHidden);
-    const workspaceId = location.pathname.match(/^\/workspaces\/([^/]+)$/)?.[1];
-    const visibleResident = this.residentTargets.find((resident) => resident.classList.contains("visible"))
-      ?? (workspaceId ? this.residentTargets.find((resident) => resident.dataset.workspaceId === decodeURIComponent(workspaceId)) : undefined);
-    if (visibleResident) this.showResident(visibleResident);
-    this.reconcileResidents();
+    document.addEventListener("atelier:workspace-preparation-invalidated", this.workspacePreparationInvalidated);
+    document.addEventListener("atelier:workspace-preparation-requested", this.workspacePreparationRequested);
+    document.addEventListener("atelier:workspace-preparation-request-acknowledged", this.workspacePreparationRequestAcknowledged);
+    document.addEventListener("visibilitychange", this.documentVisibilityChanged);
+    window.addEventListener("popstate", this.historyChanged);
+    const workspaceId = this.workspaceIdFromLocation();
+    if (workspaceId) {
+      workspaceNavigationController()?.setActiveWorkspace(workspaceId);
+      void this.selectWorkspace(workspaceId, location.href, "none");
+    } else {
+      this.showEmpty();
+      this.reconcileResidents();
+    }
   }
 
   disconnect(): void {
-    document.removeEventListener("visibilitychange", this.visibilityChanged);
+    this.residencyConnected = false;
     document.removeEventListener("atelier:workspace-removed", this.workspaceRemoved);
     document.removeEventListener("atelier:workspace-pane-changed", this.workspacePaneChanged);
-    window.removeEventListener("pagehide", this.pageHidden);
+    document.removeEventListener("atelier:workspace-preparation-invalidated", this.workspacePreparationInvalidated);
+    document.removeEventListener("atelier:workspace-preparation-requested", this.workspacePreparationRequested);
+    document.removeEventListener("atelier:workspace-preparation-request-acknowledged", this.workspacePreparationRequestAcknowledged);
+    document.removeEventListener("visibilitychange", this.documentVisibilityChanged);
+    window.removeEventListener("popstate", this.historyChanged);
+    for (const operation of this.operations.values()) operation.abort.abort();
   }
 
-  async selectWorkspace(workspaceId: string, href: string): Promise<void> {
-    // Update the URL first: selection state is derived from it, and stream
-    // broadcasts arriving while the resident loads must not flip selection back.
+  async selectWorkspace(workspaceId: string, href: string, historyMode: "push" | "none" = "push"): Promise<void> {
     const seq = ++this.selectionSeq;
-    history.pushState({}, "", href);
-    const existing = this.residentTargets.find((resident) => resident.dataset.workspaceId === workspaceId);
-    if (existing) {
+    this.intendedWorkspaceId = workspaceId;
+    if (historyMode === "push" && `${location.pathname}${location.search}` !== new URL(href, location.href).pathname + new URL(href, location.href).search) history.pushState({}, "", href);
+    workspaceNavigationController()?.setActiveWorkspace(workspaceId);
+
+    const existing = this.resident(workspaceId);
+    if (existing && this.prepared.has(workspaceId)) {
       this.showResident(existing);
+      this.reconcileResidents();
       return;
     }
 
-    // Hide the previous workspace immediately: it must not keep receiving
-    // input (e.g. typing into its agent field) while the new one loads.
-    this.showLoading();
+    this.showLoading(workspaceId);
+    for (const operation of this.operations.values()) {
+      if (operation.workspaceId === workspaceId) continue;
+      operation.priority = "obsolete";
+      operation.abort.abort();
+    }
 
-    let resident: HTMLElement;
+    this.foregroundInFlight += 1;
     try {
-      resident = await this.ensureResident(workspaceId);
+      const result = await this.prepareWorkspace(workspaceId, "foreground");
+      if (seq === this.selectionSeq) this.showResident(result.resident);
     } catch (error) {
-      if (seq !== this.selectionSeq) return;
-      this.showLoadError(error instanceof Error ? error.message : String(error));
-      return;
+      if (seq === this.selectionSeq) this.showLoadError(workspaceId, error instanceof Error ? error.message : String(error));
+    } finally {
+      this.foregroundInFlight -= 1;
+      this.evictIfNeeded();
+      this.reconcileResidents();
+      window.setTimeout(() => this.reconcileResidents(), 0);
     }
-    // Only show it if no newer selection happened while we were fetching;
-    // the resident stays cached either way.
-    if (seq === this.selectionSeq) this.showResident(resident);
-    this.evictIfNeeded();
   }
-
-  private reconcileResidents(): void {
-    void this.preloadUnreadResidents().catch((error) => console.error("Could not preload unread workspaces", error));
-  }
-
-  private readonly workspacePaneChanged = (): void => this.reconcileResidents();
 
   residentTargetConnected(resident: HTMLElement): void {
-    // Broadcast residents (e.g. the boot placeholder being replaced by the real
-    // detail) arrive without a "visible" class; show them only if this client
-    // is currently looking at that workspace.
-    if (resident.classList.contains("visible")) return;
     const workspaceId = resident.dataset.workspaceId;
     if (!workspaceId) return;
-    if (location.pathname === `/workspaces/${encodeURIComponent(workspaceId)}`) this.showResident(resident);
+    if (this.preparationOwnedResidents.delete(resident)) return;
+    const preparationCleared = this.prepared.delete(workspaceId);
+    if (!this.operations.has(workspaceId) && this.workspaceIdFromLocation() === workspaceId && this.intendedWorkspaceId === workspaceId && !resident.classList.contains("visible")) {
+      void this.selectWorkspace(workspaceId, location.href, "none");
+    }
+    if (this.residencyConnected && preparationCleared) this.reconcileResidents();
   }
 
   removeWorkspace(workspaceId: string): void {
-    const resident = this.residentTargets.find((candidate) => candidate.dataset.workspaceId === workspaceId);
-    if (!resident) return;
-    const wasVisible = resident.classList.contains("visible");
-    resident.remove();
-    if (wasVisible) {
-      if (location.pathname === `/workspaces/${encodeURIComponent(workspaceId)}`) history.replaceState({}, "", "/");
+    this.operations.get(workspaceId)?.abort.abort();
+    this.prepared.delete(workspaceId);
+    const resident = this.resident(workspaceId);
+    const wasVisible = resident?.classList.contains("visible") ?? false;
+    resident?.remove();
+    if (wasVisible || this.intendedWorkspaceId === workspaceId) {
+      ++this.selectionSeq;
+      this.intendedWorkspaceId = undefined;
+      if (this.workspaceIdFromLocation() === workspaceId) history.replaceState({}, "", "/");
       this.showEmpty();
       workspaceNavigationController()?.showWorkspacePane();
     }
+    this.reconcileResidents();
   }
-
-  private readonly workspaceRemoved = (event: Event): void => {
-    // SAFETY: remove-workspace-resident streams construct this event detail.
-    const { workspaceId } = (event as CustomEvent<{ workspaceId: string }>).detail;
-    this.removeWorkspace(workspaceId);
-  };
 
   visibleWorkspaceId(): string | undefined {
     return this.residentTargets.find((resident) => resident.classList.contains("visible"))?.dataset.workspaceId;
   }
 
-  private hideResidents(): void {
-    this.residentTargets.forEach((resident) => {
-      const wasVisible = resident.classList.contains("visible");
-      resident.classList.remove("visible");
-      if (wasVisible) resident.querySelector<HTMLElement>(".fixed-workspace-presentation")?.dispatchEvent(new CustomEvent("atelier:workspace-residency-hidden"));
+  private workspaceIdFromLocation(): string | undefined {
+    const match = location.pathname.match(/^\/workspaces\/([^/]+)$/);
+    return match ? decodeURIComponent(match[1]!) : undefined;
+  }
+
+  private resident(workspaceId: string): HTMLElement | undefined {
+    return this.residentTargets.find((candidate) => candidate.dataset.workspaceId === workspaceId);
+  }
+
+  private presentationController(resident: HTMLElement): WorkspaceSurfacePreparationController | null {
+    const presentation = resident.querySelector<HTMLElement>("[data-controller~='workspace-presentation']");
+    // SAFETY: The server-rendered presentation element uses the registered controller implementing this preparation seam.
+    return presentation ? application.getControllerForElementAndIdentifier(presentation, "workspace-presentation") as WorkspaceSurfacePreparationController | null : null;
+  }
+
+  private async connectedPresentationController(resident: HTMLElement): Promise<WorkspaceSurfacePreparationController | null> {
+    let controller = this.presentationController(resident);
+    if (controller || !resident.querySelector("[data-controller~='workspace-presentation']")) return controller;
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    controller = this.presentationController(resident);
+    if (!controller) throw new Error("Workspace presentation did not connect");
+    return controller;
+  }
+
+  private async prepareWorkspace(workspaceId: string, priority: Exclude<WorkspacePreparationPriority, "obsolete">): Promise<WorkspacePreparationResult> {
+    const resident = this.resident(workspaceId);
+    if (resident && this.prepared.has(workspaceId)) return { resident, prepared: true };
+    const existing = this.operations.get(workspaceId);
+    if (existing) {
+      if (existing.priority === "obsolete" || existing.abort.signal.aborted) {
+        await existing.promise.then(() => undefined, () => undefined);
+        return this.prepareWorkspace(workspaceId, priority);
+      }
+      if (priority === "foreground") existing.priority = "foreground";
+      const result = await existing.promise;
+      return priority === "foreground" && !result.prepared && this.intendedWorkspaceId === workspaceId
+        ? await this.prepareWorkspace(workspaceId, priority)
+        : result;
+    }
+    if (!this.makeCapacityFor(workspaceId, priority)) throw new Error("Workspace is waiting for residency capacity");
+
+    // SAFETY: The promise is assigned synchronously before the operation is published in the operations map.
+    const operation = {
+      workspaceId,
+      priority,
+      generation: this.generations.get(workspaceId) ?? 0,
+      abort: new AbortController(),
+    } as WorkspacePreparationOperation;
+    operation.promise = this.runPreparation(operation).finally(() => {
+      if (this.operations.get(workspaceId) === operation) this.operations.delete(workspaceId);
     });
-    this.clearActiveWorkspace();
+    this.operations.set(workspaceId, operation);
+    const result = await operation.promise;
+    const changedDuringPreparation = operation.generation !== (this.generations.get(workspaceId) ?? 0);
+    return !result.prepared && operation.priority !== "obsolete" && changedDuringPreparation
+      ? await this.prepareWorkspace(workspaceId, priority)
+      : result;
   }
 
-  private showEmpty(): void {
-    this.setSwitchingWorkspace(false);
-    this.hideResidents();
-    this.loadingTargets.forEach((loading) => { loading.hidden = true; });
-    this.emptyTargets.forEach((empty) => { empty.hidden = false; });
+  private async runPreparation(operation: WorkspacePreparationOperation): Promise<WorkspacePreparationResult> {
+    const resident = this.resident(operation.workspaceId) ?? await this.fetchAndConnectResident(operation);
+    if (!this.preparationIsCurrent(operation)) return { resident, prepared: false };
+    const controller = await this.connectedPresentationController(resident);
+    if (!this.preparationIsCurrent(operation)) return { resident, prepared: false };
+    if (operation.priority === "background" && controller && this.selectedAgentIsWorking(operation.workspaceId, controller.selectedAgentId())) {
+      return { resident, prepared: false };
+    }
+    await controller?.prepareIntendedSurfaces({ authoritativeReload: operation.generation > 0 });
+    const prepared = this.preparationIsCurrent(operation);
+    if (prepared) this.prepared.add(operation.workspaceId);
+    return { resident, prepared };
   }
 
-  private showLoading(): void {
-    this.setSwitchingWorkspace(true);
-    this.hideResidents();
-    this.emptyTargets.forEach((empty) => { empty.hidden = true; });
-    this.loadingTargets.forEach((loading) => {
-      loading.hidden = false;
-      const pad = loading.querySelector<HTMLElement>(".pad");
-      if (pad) pad.innerHTML = `<span class="status-spinner"></span> Loading workspace…`;
-    });
+  private preparationIsActive(operation: WorkspacePreparationOperation): boolean {
+    return operation.priority !== "obsolete";
   }
 
-  private showLoadError(message: string): void {
-    this.setSwitchingWorkspace(false);
-    this.hideResidents();
-    this.emptyTargets.forEach((empty) => { empty.hidden = true; });
-    this.loadingTargets.forEach((loading) => {
-      loading.hidden = false;
-      const pad = loading.querySelector<HTMLElement>(".pad");
-      if (pad) pad.textContent = `Could not load workspace: ${message}`;
-    });
+  private preparationIsCurrent(operation: WorkspacePreparationOperation): boolean {
+    return this.preparationIsActive(operation) && operation.generation === (this.generations.get(operation.workspaceId) ?? 0);
   }
 
-  private async ensureResident(workspaceId: string): Promise<HTMLElement> {
-    const existing = this.residentTargets.find((resident) => resident.dataset.workspaceId === workspaceId);
+  private selectedAgentIsWorking(workspaceId: string, conversationId: string): boolean {
+    return this.busyViews(workspaceId).includes(`agent:${conversationId}`);
+  }
+
+  private busyViews(workspaceId: string): string[] {
+    const row = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    return row?.dataset.workspaceBusyViews ? Value.Parse(workspaceBusyViewsSchema, JSON.parse(row.dataset.workspaceBusyViews)) : [];
+  }
+
+  private async fetchAndConnectResident(operation: WorkspacePreparationOperation): Promise<HTMLElement> {
+    const { workspaceId } = operation;
+    const existing = this.resident(workspaceId);
     if (existing) return existing;
-    const loading = this.residentLoads.get(workspaceId);
-    if (loading) return await loading;
-    const promise = this.fetchResident(workspaceId).then((resident) => {
-      const connected = this.residentTargets.find((candidate) => candidate.dataset.workspaceId === workspaceId);
-      if (connected) return connected;
-      this.element.appendChild(resident);
-      return resident;
-    }).finally(() => this.residentLoads.delete(workspaceId));
-    this.residentLoads.set(workspaceId, promise);
-    return await promise;
+    const resident = await this.fetchResident(workspaceId, operation.abort.signal);
+    if (!this.preparationIsCurrent(operation)) return resident;
+    const connected = this.resident(workspaceId);
+    if (connected) return connected;
+    this.preparationOwnedResidents.add(resident);
+    this.element.appendChild(resident);
+    return resident;
   }
 
-  private async fetchResident(workspaceId: string): Promise<HTMLElement> {
+  private async fetchResident(workspaceId: string, signal: AbortSignal): Promise<HTMLElement> {
     const url = new URL(`/workspaces/${encodeURIComponent(workspaceId)}`, location.href);
     url.searchParams.set("resident", "1");
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 30_000);
-    const html = await fetch(url, { headers: { "Accept": "text/html" }, cache: "no-store", signal: controller.signal }).then((response) => {
+    const timeoutController = new AbortController();
+    const abortForCaller = (): void => timeoutController.abort();
+    signal.addEventListener("abort", abortForCaller, { once: true });
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      timeoutController.abort();
+    }, 30_000);
+    const html = await fetch(url, { headers: { "Accept": "text/html" }, cache: "no-store", signal: timeoutController.signal }).then((response) => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return response.text();
     }).catch((error) => {
-      if (error instanceof DOMException && error.name === "AbortError") throw new Error("Timed out loading workspace");
+      if (timedOut && error instanceof DOMException && error.name === "AbortError") throw new Error("Timed out loading workspace");
       throw error;
-    }).finally(() => window.clearTimeout(timeout));
+    }).finally(() => {
+      window.clearTimeout(timeout);
+      signal.removeEventListener("abort", abortForCaller);
+    });
     const template = document.createElement("template");
     template.innerHTML = html.trim();
     const resident = template.content.firstElementChild;
@@ -1469,24 +1565,48 @@ class WorkspaceResidencyController extends Controller {
     return resident;
   }
 
-  private async preloadUnreadResidents(): Promise<void> {
-    const visibleWorkspaceId = this.visibleWorkspaceId();
-    const available = this.maxResidentValue - (visibleWorkspaceId ? 1 : 0);
-    const candidates = this.unreadWorkspaces()
-      .filter(({ workspaceId }) => workspaceId !== visibleWorkspaceId)
-      .slice(0, available);
-    await Promise.all(candidates.map(({ workspaceId }) => this.preloadResident(workspaceId)));
+  private reconcileResidents(): void {
     this.evictIfNeeded();
+    this.backgroundWakeRequested = true;
+    this.startBackgroundPump();
   }
 
-  private async preloadResident(workspaceId: string): Promise<void> {
-    this.setWorkspacePreloading(workspaceId, true);
-    try {
-      const resident = this.residentTargets.find((candidate) => candidate.dataset.workspaceId === workspaceId)
-        ?? await this.ensureResident(workspaceId);
-      await clientHooks.synchronizeWorkspace(resident);
-    } finally {
-      this.setWorkspacePreloading(workspaceId, false);
+  private startBackgroundPump(): void {
+    if (!this.residencyConnected || this.backgroundPump || this.foregroundInFlight !== 0) return;
+    const pump = this.drainBackgroundWakeups();
+    this.backgroundPump = pump;
+    void pump.finally(() => {
+      if (this.backgroundPump !== pump) return;
+      this.backgroundPump = undefined;
+      if (this.backgroundWakeRequested) this.startBackgroundPump();
+    });
+  }
+
+  private async drainBackgroundWakeups(): Promise<void> {
+    while (this.residencyConnected && this.foregroundInFlight === 0 && this.backgroundWakeRequested) {
+      this.backgroundWakeRequested = false;
+      await this.prepareReadyWorkspaces();
+    }
+  }
+
+  private async prepareReadyWorkspaces(): Promise<void> {
+    const attempted = new Set<string>();
+    while (this.foregroundInFlight === 0) {
+      const candidate = this.preparationCandidates().find(({ workspaceId }) => workspaceId !== this.visibleWorkspaceId() && !this.prepared.has(workspaceId) && !attempted.has(workspaceId));
+      if (!candidate || !this.makeCapacityFor(candidate.workspaceId, "background")) return;
+      attempted.add(candidate.workspaceId);
+      this.backgroundPreparationWorkspaceId = candidate.workspaceId;
+      this.setWorkspacePreloading(candidate.workspaceId, true);
+      try {
+        const result = await this.prepareWorkspace(candidate.workspaceId, "background");
+        if (!result.prepared && !result.resident.classList.contains("visible")) result.resident.remove();
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) console.error(`Could not prepare Workspace ${candidate.workspaceId}`, error);
+      } finally {
+        this.setWorkspacePreloading(candidate.workspaceId, false);
+        if (this.backgroundPreparationWorkspaceId === candidate.workspaceId) this.backgroundPreparationWorkspaceId = undefined;
+      }
+      this.evictIfNeeded();
     }
   }
 
@@ -1495,17 +1615,130 @@ class WorkspaceResidencyController extends Controller {
     if (!entry) return;
     entry.toggleAttribute("data-workspace-preloading", preloading);
     const spinner = entry.querySelector(":scope > .workspace-preload-spinner");
-    if (preloading && !spinner) entry.insertAdjacentHTML("beforeend", `<i class="status-spinner sm workspace-preload-spinner" aria-label="Preloading workspace" title="Preloading workspace"></i>`);
+    if (preloading && !spinner) entry.insertAdjacentHTML("beforeend", '<i class="status-spinner sm workspace-preload-spinner" aria-label="Preparing workspace" title="Preparing workspace"></i>');
     if (!preloading) spinner?.remove();
   }
 
-  private unreadWorkspaces(): Array<{ workspaceId: string; unreadAt: number }> {
-    return [...document.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row[data-workspace-unread-at]")]
-      .map((entry) => ({
-        workspaceId: entry.dataset.workspaceEntryId!,
-        unreadAt: Number(entry.dataset.workspaceUnreadAt),
-      }))
-      .sort((a, b) => a.unreadAt - b.unreadAt || a.workspaceId.localeCompare(b.workspaceId));
+  private agentReadyWorkspaces(): Array<{ workspaceId: string; unreadAt: number }> {
+    return oldestReadyFirst([...document.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row[data-workspace-agent-ready-at]")].map((entry) => ({
+      workspaceId: entry.dataset.workspaceEntryId!,
+      unreadAt: Number(entry.dataset.workspaceAgentReadyAt),
+    })));
+  }
+
+  private preparationCandidates(): Array<{ workspaceId: string; unreadAt: number }> {
+    const candidates = new Map(this.agentReadyWorkspaces().map((workspace) => [workspace.workspaceId, workspace]));
+    for (const [workspaceId, unreadAt] of this.requestedPreparationAt) {
+      if (!candidates.has(workspaceId)) candidates.set(workspaceId, { workspaceId, unreadAt });
+    }
+    return oldestReadyFirst([...candidates.values()]);
+  }
+
+  private retentionCandidates(extraWorkspaceId?: string, protectExtra = false): WorkspaceRetentionCandidate[] {
+    const unreadAt = new Map(this.agentReadyWorkspaces().map((workspace) => [workspace.workspaceId, workspace.unreadAt]));
+    for (const [workspaceId, requestedAt] of this.requestedPreparationAt) {
+      if (!unreadAt.has(workspaceId)) unreadAt.set(workspaceId, requestedAt);
+    }
+    const candidates = this.residentTargets.map((resident) => {
+      const workspaceId = resident.dataset.workspaceId!;
+      const operation = this.operations.get(workspaceId);
+      return {
+        workspaceId,
+        visible: resident.classList.contains("visible"),
+        prepared: this.prepared.has(workspaceId),
+        preparing: operation ? this.preparationIsCurrent(operation) : false,
+        unreadAt: unreadAt.get(workspaceId),
+        lastActivatedAt: Number(resident.dataset.lastActivatedAt ?? 0),
+        protected: operation?.priority === "foreground",
+      };
+    });
+    if (extraWorkspaceId && !candidates.some((candidate) => candidate.workspaceId === extraWorkspaceId)) {
+      candidates.push({ workspaceId: extraWorkspaceId, visible: false, prepared: false, preparing: true, unreadAt: unreadAt.get(extraWorkspaceId), lastActivatedAt: 0, protected: protectExtra });
+    }
+    return candidates;
+  }
+
+  private makeCapacityFor(workspaceId: string, priority: "background" | "foreground"): boolean {
+    const candidates = this.retentionCandidates(workspaceId, priority === "foreground");
+    const retained = retainedWorkspaceIds(candidates, this.maxResidentValue);
+    if (!retained.has(workspaceId)) return false;
+    for (const resident of this.residentTargets) {
+      const id = resident.dataset.workspaceId!;
+      if (!retained.has(id)) this.evictResident(resident);
+    }
+    return true;
+  }
+
+  private evictIfNeeded(): void {
+    const retained = retainedWorkspaceIds(this.retentionCandidates(), this.maxResidentValue);
+    for (const resident of this.residentTargets) {
+      if (!retained.has(resident.dataset.workspaceId!)) this.evictResident(resident);
+    }
+  }
+
+  private evictResident(resident: HTMLElement): void {
+    const workspaceId = resident.dataset.workspaceId!;
+    if (resident.classList.contains("visible")) throw new Error(`Cannot evict visible Workspace ${workspaceId}`);
+    this.prepared.delete(workspaceId);
+    resident.remove();
+  }
+
+  private hideResidents(): void {
+    for (const resident of this.residentTargets) {
+      const wasVisible = resident.classList.contains("visible");
+      resident.classList.remove("visible");
+      if (wasVisible) {
+        const presentation = resident.querySelector<HTMLElement>(".fixed-workspace-presentation");
+        presentation?.dispatchEvent(new CustomEvent("atelier:workspace-residency-hidden"));
+        const workspaceId = resident.dataset.workspaceId!;
+        if (workspaceId !== this.intendedWorkspaceId) void this.capturePreparedResident(workspaceId, resident).catch((error) => console.error(`Could not retain prepared Workspace ${workspaceId}`, error));
+      }
+    }
+  }
+
+  private async capturePreparedResident(workspaceId: string, resident: HTMLElement): Promise<void> {
+    const generation = this.generations.get(workspaceId) ?? 0;
+    const controller = await this.connectedPresentationController(resident);
+    if (!controller || this.selectedAgentIsWorking(workspaceId, controller.selectedAgentId())) return;
+    await controller.prepareIntendedSurfaces();
+    if (!resident.isConnected || this.resident(workspaceId) !== resident || generation !== (this.generations.get(workspaceId) ?? 0)) return;
+    this.prepared.add(workspaceId);
+    this.evictIfNeeded();
+  }
+
+  private showEmpty(): void {
+    this.setSwitchingWorkspace(false);
+    this.hideResidents();
+    document.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row.active").forEach((row) => {
+      row.classList.remove("active");
+      row.removeAttribute("aria-current");
+    });
+    this.loadingTargets.forEach((loading) => { loading.hidden = true; });
+    this.emptyTargets.forEach((empty) => { empty.hidden = false; });
+  }
+
+  private showLoading(workspaceId: string): void {
+    this.setSwitchingWorkspace(true);
+    this.hideResidents();
+    this.emptyTargets.forEach((empty) => { empty.hidden = true; });
+    const row = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    const title = row?.getAttribute("title") ?? workspaceId;
+    this.loadingTargets.forEach((loading) => {
+      loading.hidden = false;
+      const pad = loading.querySelector<HTMLElement>(".pad");
+      if (pad) pad.innerHTML = `<span class="status-spinner"></span> Loading ${escapeHtml(title)}…`;
+    });
+  }
+
+  private showLoadError(workspaceId: string, message: string): void {
+    this.setSwitchingWorkspace(false);
+    this.hideResidents();
+    this.emptyTargets.forEach((empty) => { empty.hidden = true; });
+    this.loadingTargets.forEach((loading) => {
+      loading.hidden = false;
+      const pad = loading.querySelector<HTMLElement>(".pad");
+      if (pad) pad.innerHTML = `<p>Could not load workspace: ${escapeHtml(message)}</p><button class="button primary" type="button" data-action="click->workspace-navigation#selectWorkspace" data-workspace-entry-id="${escapeHtml(workspaceId)}">Retry</button>`;
+    });
   }
 
   private showResident(resident: HTMLElement): void {
@@ -1513,64 +1746,86 @@ class WorkspaceResidencyController extends Controller {
     this.emptyTargets.forEach((empty) => { empty.hidden = true; });
     this.loadingTargets.forEach((loading) => { loading.hidden = true; });
     resident.dataset.lastActivatedAt = String(Date.now());
-    this.residentTargets.forEach((candidate) => {
-      if (candidate !== resident && candidate.classList.contains("visible")) candidate.querySelector<HTMLElement>(".fixed-workspace-presentation")?.dispatchEvent(new CustomEvent("atelier:workspace-residency-hidden"));
+    for (const candidate of this.residentTargets) {
+      if (candidate !== resident && candidate.classList.contains("visible")) {
+        candidate.querySelector<HTMLElement>(".fixed-workspace-presentation")?.dispatchEvent(new CustomEvent("atelier:workspace-residency-hidden"));
+        const hiddenWorkspaceId = candidate.dataset.workspaceId!;
+        void this.capturePreparedResident(hiddenWorkspaceId, candidate).catch((error) => console.error(`Could not retain prepared Workspace ${hiddenWorkspaceId}`, error));
+      }
       candidate.classList.toggle("visible", candidate === resident);
-    });
-    resident.querySelector<HTMLElement>(".fixed-workspace-presentation")?.dispatchEvent(new CustomEvent("atelier:workspace-residency-visible"));
-    const workspaceId = resident.dataset.workspaceId;
-    if (workspaceId) {
-      workspaceNavigationController()?.setActiveWorkspace(workspaceId);
-      void this.markActiveWorkspace(workspaceId);
     }
+    resident.querySelector<HTMLElement>(".fixed-workspace-presentation")?.dispatchEvent(new CustomEvent("atelier:workspace-residency-visible"));
+    const workspaceId = resident.dataset.workspaceId!;
+    workspaceNavigationController()?.setActiveWorkspace(workspaceId);
+    this.acknowledgeVisibleWorkspace();
+  }
+
+  private acknowledgeVisibleWorkspace(): void {
+    if (document.visibilityState !== "visible") return;
+    const workspaceId = this.visibleWorkspaceId();
+    if (!workspaceId || workspaceId !== this.intendedWorkspaceId) return;
+    const row = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
+    const serializedTokens = row?.dataset.workspaceUnreadTokens;
+    if (!serializedTokens) return;
+    // SAFETY: Workspace rows serialize this server-owned field as a number-valued view-key map.
+    const token = (JSON.parse(serializedTokens) as Record<string, number>).workspace;
+    if (token === undefined) return;
+    void fetch(`/workspaces/${encodeURIComponent(workspaceId)}/attention/acknowledge?attentionToken=${encodeURIComponent(token)}`, { method: "POST" });
   }
 
   private setSwitchingWorkspace(switching: boolean): void {
     this.element.closest(".fixed-shell-app")?.classList.toggle("is-switching-workspace", switching);
   }
 
-  private async markActiveWorkspace(workspaceId: string): Promise<void> {
-    if (document.visibilityState !== "visible") return;
-    const html = await fetch(`/workspaces/${encodeURIComponent(workspaceId)}/active`, {
-      method: "POST",
-      headers: { "Accept": "text/vnd.turbo-stream.html" },
-    }).then((response) => response.text());
-    if (html) window.Turbo?.renderStreamMessage(html);
-  }
-
-  private clearActiveWorkspace(): void {
-    void fetch("/workspaces/active/clear", { method: "POST", headers: { "Accept": "text/vnd.turbo-stream.html" }, keepalive: true });
-  }
-
-  private readonly visibilityChanged = (): void => {
-    if (document.visibilityState !== "visible") {
-      this.clearActiveWorkspace();
-      return;
-    }
-    const workspaceId = this.visibleWorkspaceId();
-    if (workspaceId) void this.markActiveWorkspace(workspaceId);
+  private readonly workspaceRemoved = (event: Event): void => {
+    // SAFETY: remove-workspace-resident is the sole producer and supplies this detail contract.
+    const { workspaceId } = (event as CustomEvent<{ workspaceId: string }>).detail;
+    this.removeWorkspace(workspaceId);
   };
 
-  private readonly pageHidden = (): void => this.clearActiveWorkspace();
+  private readonly workspacePaneChanged = (): void => {
+    if (this.backgroundPreparationWorkspaceId) this.setWorkspacePreloading(this.backgroundPreparationWorkspaceId, true);
+    this.reconcileResidents();
+    this.acknowledgeVisibleWorkspace();
+  };
 
-  private evictIfNeeded(): void {
-    const unreadAt = new Map(this.unreadWorkspaces().map((workspace) => [workspace.workspaceId, workspace.unreadAt]));
-    const residents = [...this.residentTargets];
-    if (residents.length <= this.maxResidentValue) return;
-    residents
-      .sort((a, b) => {
-        const visible = Number(b.classList.contains("visible")) - Number(a.classList.contains("visible"));
-        if (visible !== 0) return visible;
-        const aUnreadAt = unreadAt.get(a.dataset.workspaceId ?? "");
-        const bUnreadAt = unreadAt.get(b.dataset.workspaceId ?? "");
-        if (aUnreadAt !== undefined && bUnreadAt !== undefined) return aUnreadAt - bUnreadAt;
-        if (aUnreadAt !== undefined) return -1;
-        if (bUnreadAt !== undefined) return 1;
-        return Number(b.dataset.lastActivatedAt ?? 0) - Number(a.dataset.lastActivatedAt ?? 0);
-      })
-      .slice(this.maxResidentValue)
-      .forEach((resident) => resident.remove());
-  }
+  private readonly documentVisibilityChanged = (): void => {
+    this.acknowledgeVisibleWorkspace();
+  };
+
+  private readonly workspacePreparationInvalidated = (event: Event): void => {
+    // SAFETY: invalidate-workspace-preparation is the sole producer and supplies this detail contract.
+    const { workspaceId } = (event as CustomEvent<{ workspaceId: string }>).detail;
+    this.prepared.delete(workspaceId);
+    this.generations.set(workspaceId, (this.generations.get(workspaceId) ?? 0) + 1);
+    this.reconcileResidents();
+  };
+
+  private readonly workspacePreparationRequested = (event: Event): void => {
+    // SAFETY: intend-work-view is the sole producer and supplies this detail contract.
+    const { workspaceId } = (event as CustomEvent<{ workspaceId: string }>).detail;
+    if (!this.requestedPreparationAt.has(workspaceId)) this.requestedPreparationAt.set(workspaceId, Date.now());
+    this.reconcileResidents();
+  };
+
+  private readonly workspacePreparationRequestAcknowledged = (event: Event): void => {
+    // SAFETY: Workspace presentation visibility is the sole producer and supplies this detail contract.
+    const { workspaceId } = (event as CustomEvent<{ workspaceId: string }>).detail;
+    this.requestedPreparationAt.delete(workspaceId);
+    this.reconcileResidents();
+  };
+
+  private readonly historyChanged = (): void => {
+    const workspaceId = this.workspaceIdFromLocation();
+    if (workspaceId) {
+      workspaceNavigationController()?.setActiveWorkspace(workspaceId);
+      void this.selectWorkspace(workspaceId, location.href, "none");
+    } else {
+      ++this.selectionSeq;
+      this.intendedWorkspaceId = undefined;
+      this.showEmpty();
+    }
+  };
 }
 
 function workspaceNavigationController(): WorkspaceNavigationController | null {
@@ -1592,6 +1847,8 @@ class WorkspaceAppFrameController extends Controller {
   declare readonly appKeyValue: string;
   declare readonly initialPathValue: string;
   declare readonly hasInitialPathValue: boolean;
+  private loadedUrl?: string;
+  private pendingLoad?: { url: string; promise: Promise<void> };
 
   connect(): void {
     document.addEventListener("atelier:theme-change", this.themeChanged);
@@ -1607,8 +1864,27 @@ class WorkspaceAppFrameController extends Controller {
   }
 
   load(): void {
+    void this.loadAndWait();
+  }
+
+  loadAndWait(): Promise<void> {
     const src = this.frameSrc();
-    if (this.element.src !== src) this.element.src = src;
+    if (this.loadedUrl === src) return Promise.resolve();
+    if (this.pendingLoad?.url === src) return this.pendingLoad.promise;
+    if (this.element.src === src && this.element.contentDocument?.readyState === "complete") {
+      this.loadedUrl = src;
+      return Promise.resolve();
+    }
+    const promise = new Promise<void>((resolve) => {
+      this.element.addEventListener("load", () => {
+        this.loadedUrl = src;
+        this.pendingLoad = undefined;
+        resolve();
+      }, { once: true });
+      if (this.element.src !== src) this.element.src = src;
+    });
+    this.pendingLoad = { url: src, promise };
+    return promise;
   }
 
   private frameSrc(): string {
@@ -2056,6 +2332,19 @@ const ProjectGithubSearchController = createHtmlAutocompleteController(Controlle
 });
 
 window.AtelierCable ??= createAtelierCableClient();
+
+function cableRequestHeaders(initial: HeadersInit = {}): Headers {
+  const headers = new Headers(initial);
+  const connectionId = window.AtelierCable?.connectionId();
+  if (connectionId) headers.set(atelierCableConnectionHeader, connectionId);
+  return headers;
+}
+
+document.addEventListener("turbo:before-fetch-request", (event) => {
+  // SAFETY: Turbo is the sole producer of this event and provides mutable fetch options.
+  const detail = (event as CustomEvent<{ fetchOptions: RequestInit }>).detail;
+  detail.fetchOptions.headers = cableRequestHeaders(detail.fetchOptions.headers);
+});
 
 class CableShellController extends Controller {
   connect(): void {

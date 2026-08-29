@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getAtelierRuntimeContext, shellQuote } from "@atelier/core";
@@ -46,6 +47,12 @@ export function attachmentDraftDir(draftId: string): string {
 
 export function validDraftId(draftId: string): boolean {
   return /^[a-zA-Z0-9_-]{8,80}$/.test(draftId);
+}
+
+/** Stable composer draft identity for one immutable Workspace/Agent pair. */
+export function agentAttachmentDraftId(workspaceId: string, conversationId: string): string {
+  const digest = createHash("sha256").update(JSON.stringify([workspaceId, conversationId])).digest("hex");
+  return `agent-${digest}`;
 }
 
 export function validAttachmentId(attachmentId: string): boolean {
@@ -106,6 +113,10 @@ export async function removeStagedAttachment(draftId: string, attachmentId: stri
   await rm(join(attachmentDraftDir(draftId), attachmentId), { recursive: true, force: true });
 }
 
+export async function removeStagedAttachments(draftId: string, attachmentIds: readonly string[]): Promise<void> {
+  await Promise.all(attachmentIds.map(async (attachmentId) => await removeStagedAttachment(draftId, attachmentId)));
+}
+
 export async function removeAttachmentDraft(draftId: string): Promise<void> {
   if (!validDraftId(draftId)) throw new Error(`invalid attachment draft id: ${draftId}`);
   await rm(attachmentDraftDir(draftId), { recursive: true, force: true });
@@ -130,7 +141,6 @@ export async function deliverAttachmentDraft(workspaceId: string, draftId: strin
       attachmentNotes.push(await deliverFileAttachment(workspaceId, attachment));
     }
   }
-  if (validDraftId(draftId)) await removeAttachmentDraft(draftId);
   return { images, attachmentNotes };
 }
 

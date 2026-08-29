@@ -27,7 +27,15 @@ export interface WorkspaceTitleChangedEvent {
 
 export interface WorkspaceAgentTurnFinishedEvent {
   workspaceId: string;
-  agentLabel: string;
+  conversationId: string;
+}
+
+export interface WorkspaceAgentViewInvalidatedEvent {
+  workspaceId: string;
+  conversationId: string;
+  exceptConnectionId?: string;
+  /** Narrow authoritative mutation for retained visible panes. */
+  html?: string;
 }
 
 export interface WorkspaceAgentPromptPreparingEvent {
@@ -69,6 +77,7 @@ declare module "@atelier/core" {
     workspace_user_activity: WorkspaceUserActivityEvent;
     workspace_title_changed: WorkspaceTitleChangedEvent;
     workspace_agent_turn_finished: WorkspaceAgentTurnFinishedEvent;
+    workspace_agent_view_invalidated: WorkspaceAgentViewInvalidatedEvent;
     workspace_agent_prompt_preparing: WorkspaceAgentPromptPreparingEvent;
     workspace_agent_prompt_submitted: WorkspaceAgentPromptSubmittedEvent;
     workspace_view_unread: WorkspaceViewUnreadEvent;

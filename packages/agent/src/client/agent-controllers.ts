@@ -1,11 +1,11 @@
 /// <reference lib="dom" />
 
 import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalTheme, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import { CableTopics, copyTextToClipboard, isWorkspacePaneVisible, notifyInputListeners, phoneViewportMediaQuery, recentWorkspaceProjectStorageKey, setTextInputValue, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientController, type WorkspaceClientModule, type WorkspacePaletteItem } from "@atelier/shared";
+import { CableTopics, copyTextToClipboard, notifyInputListeners, phoneViewportMediaQuery, recentWorkspaceProjectStorageKey, setTextInputValue, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientController, type WorkspaceClientModule } from "@atelier/shared";
 import { agentTreeOwnsMenu, handleAgentTreeKeydown, handleAgentTreeMenuEvent, selectAgentTreeOption } from "./session-tree.ts";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
-type TurboSubmitEndEvent = CustomEvent<{ success: boolean }>;
+type TurboSubmitEndEvent = CustomEvent<{ success: boolean; fetchResponse?: { response: Response } }>;
 
 interface ScrollTranscript {
   scrollTop: number;
@@ -63,13 +63,13 @@ declare global {
 
 interface AgentPaneControllerInstance {
   becomeVisible(): void;
-  synchronize(): Promise<void>;
-  stop(): void;
+  noLongerVisible(): void;
+  terminalConnected(terminal: AgentTermControllerInstance): void;
 }
 
 interface AgentTermControllerInstance {
   start(): void;
-  disconnect(): void;
+  stop(): void;
 }
 
 function agentTermController(application: StimulusApplication, terminal: HTMLElement): AgentTermControllerInstance | null {
@@ -117,6 +117,23 @@ export function transcriptFollowingAfterScroll(wasFollowing: boolean, previousEn
   return atNextEnd || (wasFollowing && endMovedAway && remainedAtPreviousEnd);
 }
 
+export function agentConnectionShouldRun(logicallyVisible: boolean, documentVisibility: DocumentVisibilityState): boolean {
+  return logicallyVisible && documentVisibility === "visible";
+}
+
+export function agentComposerTextStorageKey(workspaceId: string, conversationId: string): string {
+  return `atelier.agentComposerText:${JSON.stringify([workspaceId, conversationId])}`;
+}
+
+export function shouldPositionTranscriptAfterSnapshot(hasBeenReady: boolean, selectedSinceLastReady: boolean): boolean {
+  return !hasBeenReady || selectedSinceLastReady;
+}
+
+export function agentComposerPrimaryAction(busy: boolean, text: string, attachmentCount: number): "abort" | "send" | "steer" {
+  if (!busy) return "send";
+  return text.trim().length > 0 || attachmentCount > 0 ? "steer" : "abort";
+}
+
 export type PromptHistoryState = { prompts: string[]; draft: string; index: number };
 
 export function navigatePromptHistory(state: PromptHistoryState | undefined, direction: "up" | "down", draft: string, prompts: string[]): { state: PromptHistoryState | undefined; value: string } | undefined {
@@ -161,58 +178,62 @@ export class PromptHistoryNavigator {
 
 function createAgentPaneController(Controller: StimulusControllerConstructor) {
   return class AgentPaneController extends Controller implements AgentPaneControllerInstance {
-    static values = { workspaceId: String, label: String, snapshotCursor: String };
+    static values = { workspaceId: String, conversationId: String };
     static targets = ["transcript", "transcriptNav", "input", "form", "sendStop"];
     declare readonly element: HTMLElement;
     declare readonly application: StimulusApplication;
     declare readonly workspaceIdValue: string;
-    declare readonly labelValue: string;
-    declare readonly snapshotCursorValue: string;
-    declare readonly hasSnapshotCursorValue: boolean;
+    declare readonly conversationIdValue: string;
     declare readonly transcriptTarget: HTMLElement;
     declare readonly transcriptNavTarget: HTMLButtonElement;
     declare readonly inputTarget: HTMLTextAreaElement;
     declare readonly formTarget: HTMLFormElement;
 
     private stuck = true;
+    private logicallyVisible = false;
     private subscribed = false;
-    private hasSubscribed = false;
-    private synchronization?: { promise: Promise<void>; resolve(): void; reject(error: Error): void };
+    private hasBeenReady = false;
+    private selectionAwaitingReady = false;
+    private transcriptNavigationSuspendsFollowing = false;
     private transcriptMutationObserver?: MutationObserver;
     private transcriptLayoutObserver?: ResizeObserver;
+    private composerMutationObserver?: MutationObserver;
+    private reconnectingStatus?: HTMLElement;
     private transcriptLayoutFrame = 0;
     private transcriptEnd = 0;
     private selectionPosition?: { busy: boolean };
+    private connected = false;
+    private composerRevision = 0;
+    private submittedComposer?: { revision: number; attachmentIds: string[] };
     private readonly promptHistory = new PromptHistoryNavigator();
-    private historicalOpenItemIds = new Set<string>();
-    private restoreHistoricalOpenItems(): void {
-      for (const id of this.historicalOpenItemIds) this.transcriptTarget.querySelector<HTMLElement>(`#${CSS.escape(id)} details[data-agent-historical-detail]`)?.setAttribute("open", "");
-    }
-    private rememberHistoricalOpenItems(): void {
-      this.historicalOpenItemIds = new Set([...this.transcriptTarget.querySelectorAll<HTMLDetailsElement>("details[data-agent-historical-detail][open]")].map((details) => details.closest<HTMLElement>(".agent-item")?.id).filter((id): id is string => Boolean(id)));
-    }
     private readonly onScroll = (): void => {
       const el = this.transcriptTarget;
       const nextEnd = scrollEnd(el);
-      this.stuck = transcriptFollowingAfterScroll(this.stuck, this.transcriptEnd, el.scrollTop, nextEnd);
+      this.stuck = this.transcriptNavigationSuspendsFollowing
+        ? false
+        : transcriptFollowingAfterScroll(this.stuck, this.transcriptEnd, el.scrollTop, nextEnd);
       this.transcriptEnd = nextEnd;
       this.updateTranscriptNavigation();
     };
-    private latestTranscriptItem(selector = ".agent-item"): HTMLElement | null {
-      const matches = this.transcriptTarget.querySelectorAll<HTMLElement>(selector);
+    private readonly userStartedTranscriptNavigation = (): void => {
+      this.transcriptNavigationSuspendsFollowing = false;
+    };
+    private latestUserTranscriptItem(): HTMLElement | null {
+      const matches = this.transcriptTarget.querySelectorAll<HTMLElement>(".agent-user");
       return matches.item(matches.length - 1)?.closest<HTMLElement>(".agent-item") ?? null;
     }
     private updateTranscriptNavigation(): void {
-      const latest = this.latestTranscriptItem();
+      const latest = this.latestUserTranscriptItem();
       const direction = latest ? messageNavigationDirection(this.transcriptTarget, latest) : undefined;
       if (direction) this.transcriptNavTarget.dataset.direction = direction;
+      else delete this.transcriptNavTarget.dataset.direction;
       this.transcriptNavTarget.disabled = !direction;
       this.transcriptNavTarget.setAttribute("aria-hidden", String(!direction));
     }
     private updateTranscriptPosition(): void {
-      if (!isWorkspacePaneVisible(this.element)) return;
+      if (!this.logicallyVisible) return;
       if (this.selectionPosition) {
-        this.transcriptTarget.scrollTop = workspaceSelectionScrollTop(this.transcriptTarget, this.latestTranscriptItem(".agent-user"), this.selectionPosition.busy);
+        this.transcriptTarget.scrollTop = workspaceSelectionScrollTop(this.transcriptTarget, this.latestUserTranscriptItem(), this.selectionPosition.busy);
         this.selectionPosition = undefined;
       } else if (this.stuck) {
         this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
@@ -227,109 +248,159 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptLayoutFrame = requestAnimationFrame(() => this.updateTranscriptPosition());
     };
     private readonly onVisibilityChange = (): void => {
-      if (document.visibilityState === "visible" && isWorkspacePaneVisible(this.element)) this.start();
-      else this.stop();
+      this.reconcileConnection();
+      if (this.connectionShouldRun()) this.acknowledgeAttention();
+    };
+    private readonly workspacePaneChanged = (): void => {
+      if (this.connectionShouldRun()) this.acknowledgeAttention();
     };
     private readonly positionForSelection = (): void => {
       const busy = this.element.querySelector<HTMLElement>(".agent-sendstop")!.dataset.agentBusy === "true";
       this.stuck = busy;
+      this.transcriptNavigationSuspendsFollowing = false;
       this.selectionPosition = { busy };
       this.transcriptLayoutChanged();
+    };
+    private readonly cableReady = (): void => {
+      const positionForSelection = shouldPositionTranscriptAfterSnapshot(this.hasBeenReady, this.selectionAwaitingReady);
+      this.hasBeenReady = true;
+      this.selectionAwaitingReady = false;
+      this.setReconnecting(false);
+      this.startAgentTerminals();
+      if (positionForSelection) this.positionForSelection();
+      else this.transcriptLayoutChanged();
+    };
+    private readonly cableDisconnected = (): void => {
+      if (this.subscribed) this.setReconnecting(true);
+    };
+    private readonly submitting = (): void => {
+      this.submittedComposer = {
+        revision: this.composerRevision,
+        attachmentIds: new FormData(this.formTarget).getAll("attachment").map(String),
+      };
     };
     connect(): void {
       this.transcriptLayoutObserver = new ResizeObserver(this.transcriptLayoutChanged);
       this.observeTranscriptItems();
       this.transcriptMutationObserver = new MutationObserver(() => {
-        this.restoreHistoricalOpenItems();
         this.observeTranscriptItems();
       });
       this.transcriptMutationObserver.observe(this.transcriptTarget, { childList: true, subtree: true });
       this.transcriptLayoutObserver.observe(this.element.querySelector<HTMLElement>(".composer")!);
       this.transcriptEnd = scrollEnd(this.transcriptTarget);
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
+      this.transcriptTarget.addEventListener("wheel", this.userStartedTranscriptNavigation, { capture: true, passive: true });
+      this.transcriptTarget.addEventListener("touchstart", this.userStartedTranscriptNavigation);
+      this.transcriptTarget.addEventListener("pointerdown", this.userStartedTranscriptNavigation);
+      this.transcriptTarget.addEventListener("keydown", this.userStartedTranscriptNavigation);
       this.updateTranscriptNavigation();
       document.addEventListener("visibilitychange", this.onVisibilityChange);
-      const promptDraft = sessionStorage.getItem(this.promptDraftStorageKey);
+      document.addEventListener("atelier:workspace-pane-changed", this.workspacePaneChanged);
+      this.formTarget.addEventListener("submit", this.submitting);
+      this.composerMutationObserver = new MutationObserver(() => this.updateSendStopButton());
+      this.composerMutationObserver.observe(this.formTarget, { childList: true, subtree: true });
+      const promptDraft = localStorage.getItem(this.composerTextStorageKey);
       if (promptDraft !== null) this.inputTarget.value = promptDraft;
       this.updateSendStopButton();
-      // The pane may connect after the visibility lifecycle already ran, such
-      // as when a loading frame is replaced with the real transcript.
-      if (isWorkspacePaneVisible(this.element)) this.becomeVisible();
+      this.connected = true;
     }
 
     disconnect(): void {
+      this.connected = false;
       this.transcriptMutationObserver?.disconnect();
       this.transcriptLayoutObserver?.disconnect();
+      this.composerMutationObserver?.disconnect();
       cancelAnimationFrame(this.transcriptLayoutFrame);
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
+      this.transcriptTarget.removeEventListener("wheel", this.userStartedTranscriptNavigation, { capture: true });
+      this.transcriptTarget.removeEventListener("touchstart", this.userStartedTranscriptNavigation);
+      this.transcriptTarget.removeEventListener("pointerdown", this.userStartedTranscriptNavigation);
+      this.transcriptTarget.removeEventListener("keydown", this.userStartedTranscriptNavigation);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
-      this.stop();
+      document.removeEventListener("atelier:workspace-pane-changed", this.workspacePaneChanged);
+      this.formTarget.removeEventListener("submit", this.submitting);
+      this.logicallyVisible = false;
+      this.stopConnection();
+      this.reconnectingStatus?.remove();
+      this.reconnectingStatus = undefined;
     }
 
     inputTargetConnected(input: HTMLTextAreaElement): void {
+      if (this.connected) {
+        this.composerRevision += 1;
+        this.promptHistory.inputChanged();
+        localStorage.setItem(this.composerTextStorageKey, input.value);
+      }
       requestAnimationFrame(() => {
         if (input.isConnected && this.inputTarget === input) this.autosize();
       });
     }
 
     becomeVisible(): void {
-      this.start();
+      this.logicallyVisible = true;
+      this.selectionAwaitingReady = true;
+      this.reconcileConnection();
       this.positionForSelection();
+      if (this.connectionShouldRun()) this.acknowledgeAttention();
     }
 
-    private start(): void {
+    noLongerVisible(): void {
+      this.logicallyVisible = false;
+      this.reconcileConnection();
+    }
+
+    terminalConnected(terminal: AgentTermControllerInstance): void {
+      if (this.connectionShouldRun()) terminal.start();
+    }
+
+    private connectionShouldRun(): boolean {
+      return agentConnectionShouldRun(this.logicallyVisible, document.visibilityState);
+    }
+
+    private reconcileConnection(): void {
       requestAnimationFrame(() => {
         this.autosize();
         this.updateTranscriptPosition();
       });
-      if (document.visibilityState !== "visible" || !isWorkspacePaneVisible(this.element) || this.subscribed) return;
+      if (!this.connectionShouldRun()) {
+        this.stopConnection();
+        return;
+      }
       this.startAgentTerminals();
-      this.subscribe(this.positionForSelection);
+      if (!this.subscribed) this.subscribe();
     }
 
-    synchronize(): Promise<void> {
-      if (this.synchronization) return this.synchronization.promise;
-      if (this.subscribed) return Promise.resolve();
-      let resolve!: () => void;
-      let reject!: (error: Error) => void;
-      const promise = new Promise<void>((promiseResolve, promiseReject) => {
-        resolve = promiseResolve;
-        reject = promiseReject;
-      });
-      this.synchronization = { promise, resolve, reject };
-      this.subscribe(() => {
-        const synchronization = this.synchronization!;
-        this.synchronization = undefined;
-        synchronization.resolve();
-        if (isWorkspacePaneVisible(this.element)) {
-          this.startAgentTerminals();
-          this.positionForSelection();
-        } else {
-          this.stop();
-        }
-      });
-      return promise;
-    }
-
-    private subscribe(onSynchronized: () => void): void {
-      const options: CableSubscriptionOptions = { onSynchronized };
-      if (!this.hasSubscribed) options.upTo = this.hasSnapshotCursorValue ? this.snapshotCursorValue : undefined;
+    private subscribe(): void {
+      if (this.hasBeenReady) this.setReconnecting(true);
+      const options: CableSubscriptionOptions = { onReady: this.cableReady, onDisconnected: this.cableDisconnected };
       window.AtelierCable?.subscribe(this.cableIdentifier(), options);
       this.subscribed = true;
-      this.hasSubscribed = true;
     }
 
-    stop(): void {
-      this.rememberHistoricalOpenItems();
-      if (this.synchronization) {
-        const synchronization = this.synchronization;
-        this.synchronization = undefined;
-        synchronization.reject(new Error("Agent synchronization stopped before completion"));
+    private stopConnection(): void {
+      this.setReconnecting(false);
+      if (this.subscribed) {
+        window.AtelierCable?.unsubscribe(this.cableIdentifier());
+        this.subscribed = false;
       }
-      if (!this.subscribed) return;
-      window.AtelierCable?.unsubscribe(this.cableIdentifier());
-      this.subscribed = false;
-      this.disposeAgentTerminals();
+      this.stopAgentTerminals();
+    }
+
+    private setReconnecting(reconnecting: boolean): void {
+      this.element.classList.toggle("agent-pane-reconnecting", reconnecting);
+      this.transcriptTarget.setAttribute("aria-busy", String(reconnecting));
+      if (!reconnecting) {
+        this.reconnectingStatus?.remove();
+        this.reconnectingStatus = undefined;
+        return;
+      }
+      if (this.reconnectingStatus) return;
+      const status = document.createElement("div");
+      status.className = "agent-reconnecting-status";
+      status.role = "status";
+      status.textContent = "Reconnecting…";
+      this.element.append(status);
+      this.reconnectingStatus = status;
     }
 
     private startAgentTerminals(): void {
@@ -338,26 +409,34 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       });
     }
 
-    private path(suffix: string): string {
-      return `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agents/${encodeURIComponent(this.labelValue)}${suffix}`;
-    }
-
     private cableIdentifier(): CableIdentifier {
-      return CableTopics.agent(this.workspaceIdValue, this.labelValue);
+      return CableTopics.agent(this.workspaceIdValue, this.conversationIdValue);
     }
 
-    private disposeAgentTerminals(): void {
+    private acknowledgeAttention(): void {
+      const row = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(this.workspaceIdValue)}"]`);
+      const serializedTokens = row?.dataset.workspaceUnreadTokens;
+      if (!serializedTokens) return;
+      // SAFETY: Workspace rows serialize this server-owned field as a number-valued view-key map.
+      const token = (JSON.parse(serializedTokens) as Record<string, number>)[`agent:${this.conversationIdValue}`];
+      if (token === undefined) return;
+      void fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agents/${encodeURIComponent(this.conversationIdValue)}/attention/acknowledge?attentionToken=${encodeURIComponent(token)}`, { method: "POST" });
+    }
+
+    private stopAgentTerminals(): void {
       this.element.querySelectorAll<HTMLElement>('[data-controller~="agent-term"]').forEach((terminal) => {
-        agentTermController(this.application, terminal)?.disconnect();
-        terminal.remove();
+        agentTermController(this.application, terminal)?.stop();
       });
     }
 
     // ---- transcript navigation ----
 
     jumpToLatestMessage(): void {
-      const latest = this.latestTranscriptItem();
-      if (latest) scrollMessageToTop(this.transcriptTarget, latest);
+      const latest = this.latestUserTranscriptItem();
+      if (!latest) return;
+      this.stuck = false;
+      this.transcriptNavigationSuspendsFollowing = true;
+      scrollMessageToTop(this.transcriptTarget, latest);
     }
 
     // ---- AgentPaneComposer ----
@@ -393,15 +472,14 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     }
 
     promptChanged(): void {
+      this.composerRevision += 1;
       this.promptHistory.inputChanged();
-      const value = this.inputTarget.value;
-      if (value) sessionStorage.setItem(this.promptDraftStorageKey, value);
-      else sessionStorage.removeItem(this.promptDraftStorageKey);
+      localStorage.setItem(this.composerTextStorageKey, this.inputTarget.value);
       this.autosize();
     }
 
-    private get promptDraftStorageKey(): string {
-      return `atelier.agentPromptDraft:${JSON.stringify([this.workspaceIdValue, this.labelValue])}`;
+    private get composerTextStorageKey(): string {
+      return agentComposerTextStorageKey(this.workspaceIdValue, this.conversationIdValue);
     }
 
     autosize(): void {
@@ -418,14 +496,16 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     sendStopTargetConnected(): void {
       this.updateSendStopButton();
+      const button = this.formTarget.querySelector<HTMLButtonElement>(".agent-sendstop");
+      if (button?.dataset.agentBusy === "false" && this.connectionShouldRun()) this.acknowledgeAttention();
     }
 
     updateSendStopButton(): void {
       const button = this.formTarget.querySelector<HTMLButtonElement>(".agent-sendstop");
       if (!button) return;
       const busy = button.dataset.agentBusy === "true";
-      const empty = this.inputTarget.value.trim().length === 0;
-      if (busy && empty) {
+      const action = agentComposerPrimaryAction(busy, this.inputTarget.value, this.formTarget.querySelectorAll('input[name="attachment"]').length);
+      if (action === "abort") {
         button.dataset.activityState = "active";
         button.type = "submit";
         button.removeAttribute("name");
@@ -439,7 +519,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       button.dataset.activityState = "initial";
       button.type = "submit";
       button.name = "mode";
-      button.value = busy ? "steer" : "send";
+      button.value = action;
       button.removeAttribute("form");
       button.removeAttribute("aria-busy");
       button.title = busy ? "Deliver a steering note while the agent keeps working" : "Send prompt";
@@ -447,13 +527,20 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     }
 
     submitted(event: TurboSubmitEndEvent): void {
+      const submission = this.submittedComposer;
+      this.submittedComposer = undefined;
       if (!event.detail.success) return;
-      this.setInputValue("");
-      // Attachments were delivered with the message; clear the chips.
-      this.formTarget.querySelectorAll(".agent-chip").forEach((chip) => chip.remove());
-      this.stuck = true;
-      this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
-      this.inputTarget.focus();
+      if (submission && this.composerRevision === submission.revision) {
+        this.setInputValue("");
+        localStorage.removeItem(this.composerTextStorageKey);
+      }
+      if (event.detail.fetchResponse?.response.headers.get("x-atelier-attachment-draft-consumed") === "true") {
+        const consumed = new Set(submission?.attachmentIds ?? []);
+        this.formTarget.querySelectorAll<HTMLInputElement>('input[name="attachment"]').forEach((input) => {
+          if (consumed.has(input.value)) input.closest(".agent-chip")!.remove();
+        });
+      }
+      focusAgentPaneComposerOnWideViewport(this.element);
     }
   };
 }
@@ -1430,13 +1517,14 @@ export function terminalOutputHasPrintableText(text: string): boolean {
 }
 
 function createAgentTermController(Controller: StimulusControllerConstructor) {
-  return class AgentTermController extends Controller {
+  return class AgentTermController extends Controller implements AgentTermControllerInstance {
     static values = { workspaceId: String, session: String };
     declare readonly element: HTMLElement;
+    declare readonly application: StimulusApplication;
     declare readonly workspaceIdValue: string;
     declare readonly sessionValue: string;
     private viewer?: ObservableTerminalViewer;
-    private disposed = false;
+    private running = false;
     private starting = false;
 
     private theme(): ObservableTerminalTheme {
@@ -1457,15 +1545,14 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
     };
 
     connect(): void {
-      this.disposed = false;
       document.addEventListener("atelier:theme-change", this.themeChanged);
       this.element.addEventListener("wheel", this.wheel, { capture: true, passive: false });
-      if (isWorkspacePaneVisible(this.element)) this.start();
+      agentPaneController(this.application, this.element)?.terminalConnected(this);
     }
 
     start(): void {
+      this.running = true;
       if (this.viewer || this.starting) return;
-      this.disposed = false;
       this.starting = true;
       const style = getComputedStyle(this.element);
       const region = this.element.closest<HTMLElement>(".agent-bash-output")!;
@@ -1485,7 +1572,7 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
         },
       })
         .then((viewer) => {
-          if (this.disposed) viewer.dispose();
+          if (!this.running) viewer.dispose();
           else this.viewer = viewer;
         })
         // Terminal startup crosses browser and extension APIs that may reject with
@@ -1499,12 +1586,16 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
         });
     }
 
-    disconnect(): void {
-      this.disposed = true;
-      document.removeEventListener("atelier:theme-change", this.themeChanged);
-      this.element.removeEventListener("wheel", this.wheel, { capture: true });
+    stop(): void {
+      this.running = false;
       this.viewer?.dispose();
       this.viewer = undefined;
+    }
+
+    disconnect(): void {
+      this.stop();
+      document.removeEventListener("atelier:theme-change", this.themeChanged);
+      this.element.removeEventListener("wheel", this.wheel, { capture: true });
     }
   };
 }
@@ -1514,7 +1605,9 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
 // ---------------------------------------------------------------------------
 
 function agentPaneController(application: StimulusApplication, pane: HTMLElement): AgentPaneControllerInstance | null {
-  const agentPane = pane.matches('[data-controller~="agent-pane"]') ? pane : pane.querySelector<HTMLElement>('[data-controller~="agent-pane"]');
+  const agentPane = pane.matches('[data-controller~="agent-pane"]')
+    ? pane
+    : pane.closest<HTMLElement>('[data-controller~="agent-pane"]') ?? pane.querySelector<HTMLElement>('[data-controller~="agent-pane"]');
   // SAFETY: This module registers AgentPaneController under "agent-pane"; Stimulus
   // returns that registered controller for this exact element-and-identifier pair.
   return agentPane ? application.getControllerForElementAndIdentifier(agentPane, "agent-pane") as AgentPaneControllerInstance | null : null;
@@ -1543,33 +1636,7 @@ function agentConversationBecameVisible(application: StimulusApplication, pane: 
 }
 
 function agentConversationNoLongerVisible(application: StimulusApplication, pane: HTMLElement): void {
-  agentPaneController(application, pane)?.stop();
-}
-
-async function synchronizeAgentResident(application: StimulusApplication, resident: HTMLElement): Promise<void> {
-  const panes = [...resident.querySelectorAll<HTMLElement>('[data-controller~="agent-pane"]')];
-  await Promise.all(panes.map((pane) => agentPaneController(application, pane)?.synchronize()));
-}
-
-async function waitForAgentResident(workspaceId: string): Promise<HTMLElement> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const resident = document.querySelector<HTMLElement>(`.workspace-detail-resident.visible[data-workspace-id="${CSS.escape(workspaceId)}"]`);
-    if (resident) return resident;
-    await new Promise((resolve) => setTimeout(resolve, 30));
-  }
-  throw new Error(`Workspace ${workspaceId} did not become visible`);
-}
-
-async function openAgentConversation(workspaceId: string, conversationId: string): Promise<void> {
-  const visible = document.querySelector<HTMLElement>(`.workspace-detail-resident.visible[data-workspace-id="${CSS.escape(workspaceId)}"]`);
-  if (!visible) {
-    const row = document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"]`);
-    row?.querySelector<HTMLAnchorElement>("a.row-main")?.click();
-  }
-  const resident = await waitForAgentResident(workspaceId);
-  resident.querySelector<HTMLButtonElement>(`[data-agent-conversation-id="${CSS.escape(conversationId)}"]`)?.click();
-  const pane = resident.querySelector<HTMLElement>(`[data-workspace-pane-role="agent"][data-workspace-pane-id="${CSS.escape(conversationId)}"]`);
-  focusAgentPaneComposerOnWideViewport(pane);
+  agentPaneController(application, pane)?.noLongerVisible();
 }
 
 function createAgentEditDiffController(Controller: StimulusControllerConstructor) {
@@ -1600,30 +1667,6 @@ function createAgentEditDiffController(Controller: StimulusControllerConstructor
   };
 }
 
-function agentPaletteItems(fuzzyScore: (candidate: string) => number): WorkspacePaletteItem[] {
-  return [...document.querySelectorAll<HTMLElement>(".agent-pane")].map((pane) => {
-    const workspaceId = pane.dataset.agentPaneWorkspaceIdValue!;
-    const label = pane.dataset.agentPaneLabelValue!;
-    const resident = pane.closest<HTMLElement>(".workspace-detail-resident[data-workspace-id]");
-    const workspaceTitle = document.querySelector<HTMLElement>(`.workspace-row[data-workspace-id="${CSS.escape(workspaceId)}"] .r-title`)?.textContent?.trim() ?? workspaceId;
-    const conversationId = pane.closest<HTMLElement>("[data-workspace-pane-role='agent'][data-workspace-pane-id]")!.dataset.workspacePaneId!;
-    const busy = pane.querySelector<HTMLElement>(".agent-sendstop[data-agent-busy='true']") ? "busy" : "idle";
-    const transcript = pane.querySelector<HTMLElement>(".agent-transcript")?.textContent?.trim().replace(/\s+/g, " ") ?? "";
-    const tail = transcript.slice(-600);
-    const score = fuzzyScore([label, workspaceTitle, busy, tail].join(" ")) + (resident?.classList.contains("visible") ? 20 : 0) + (busy === "busy" ? 12 : 0);
-    return {
-      id: `agent:${workspaceId}:${label}`,
-      title: label,
-      subtitle: workspaceTitle,
-      detail: tail.length > 140 ? `…${tail.slice(-140)}` : tail,
-      badge: busy,
-      keywords: [workspaceId, conversationId, busy],
-      score,
-      run: () => openAgentConversation(workspaceId, conversationId),
-    };
-  });
-}
-
 export const agentClientModule: WorkspaceClientModule = {
   id: "agent",
   install({ application, Controller, hooks }) {
@@ -1642,14 +1685,9 @@ export const agentClientModule: WorkspaceClientModule = {
     application.register("agent-proxy", createAgentProxyController(Controller));
     application.register("agent-term", createAgentTermController(Controller));
 
-    hooks.registerPaletteProvider({
-      id: "agent.sessions",
-      search: ({ fuzzyScore }) => agentPaletteItems(fuzzyScore),
-    });
     hooks.onBecomeVisible(({ pane }) => agentConversationBecameVisible(application, pane));
     hooks.onNoLongerVisible(({ pane }) => agentConversationNoLongerVisible(application, pane));
-    hooks.onSynchronizeWorkspace((resident) => synchronizeAgentResident(application, resident));
-    hooks.onFocusGroup(({ pane }) => focusAgentPaneComposer(pane));
+    hooks.onFocusGroup(({ pane }) => focusAgentPaneComposerOnWideViewport(pane));
     const openLaunchComposer = (): void => {
       const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
       const projectId = resident ? resident.dataset.projectId : localStorage.getItem(recentWorkspaceProjectStorageKey);

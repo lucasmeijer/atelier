@@ -20,8 +20,21 @@ export interface SessionImageRef {
 
 type AssistantPart =
   | { type: "thinking"; text: string }
-  | { type: "text"; text: string }
+  | { type: "text"; text: string; textSignature?: string }
   | { type: "toolCall"; callId: string; name: string; args: unknown };
+
+export type AssistantTextPhase = "commentary" | "final_answer";
+
+export function assistantTextPhase(textSignature?: string): AssistantTextPhase | undefined {
+  if (!textSignature?.startsWith("{")) return undefined;
+  try {
+    const parsed = JSON.parse(textSignature);
+    if (!isJsonObject(parsed) || parsed.v !== 1) return undefined;
+    return parsed.phase === "commentary" || parsed.phase === "final_answer" ? parsed.phase : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export type TranscriptRecord =
   | { kind: "user"; id: string; text: string; images: SessionImageRef[]; timestamp: number; rewindable?: boolean }
@@ -106,10 +119,23 @@ export function isFinalAssistantStopReason(reason: StopReason): boolean {
   return reason === "stop" || reason === "length" || reason === "deferred";
 }
 
-export function isFinalAssistantMessage(parts: ReadonlyArray<{ type: string; text?: string }>, stopReason: StopReason): boolean {
+export function isFinalAssistantMessage(parts: ReadonlyArray<{ type: string; text?: string; textSignature?: string }>, stopReason: StopReason): boolean {
+  const textParts = parts.filter((part) => part.type === "text");
+  const hasPhasedText = textParts.some((part) => assistantTextPhase(part.textSignature) !== undefined);
+  const hasFinalText = textParts.some((part) => Boolean(part.text?.trim())
+    && (!hasPhasedText || assistantTextPhase(part.textSignature) === "final_answer"));
   return isFinalAssistantStopReason(stopReason)
-    && parts.some((part) => part.type === "text" && Boolean(part.text?.trim()))
+    && hasFinalText
     && !parts.some((part) => part.type === "toolCall");
+}
+
+export function finalAssistantText(parts: ReadonlyArray<{ type: string; text?: string; textSignature?: string }>): string {
+  const textParts = parts.filter((part) => part.type === "text");
+  const hasPhasedText = textParts.some((part) => assistantTextPhase(part.textSignature) !== undefined);
+  return textParts
+    .filter((part) => !hasPhasedText || assistantTextPhase(part.textSignature) === "final_answer")
+    .map((part) => part.text ?? "")
+    .join("");
 }
 
 /** Convert persisted records into user turns with synthetic working sections. */
@@ -143,6 +169,7 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
 
     if (record.kind === "assistant") {
       const final = isFinalAssistantMessage(record.parts, record.stopReason);
+      const hasPhasedText = record.parts.some((part) => part.type === "text" && assistantTextPhase(part.textSignature) !== undefined);
       let first = true;
       record.parts.forEach((part, index) => {
         const rewindEntryId = first ? record.id : undefined;
@@ -150,8 +177,9 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
           activityItems().push({ type: "thinking", key: `${record.id}:thinking:${index}`, rewindEntryId, text: part.text });
           first = false;
         } else if (part.type === "text" && part.text.trim()) {
-          const destination = final ? items : activityItems();
-          destination.push({ type: "text", key: `${record.id}:text:${index}`, rewindEntryId, text: part.text, final });
+          const finalPart = final && (!hasPhasedText || assistantTextPhase(part.textSignature) === "final_answer");
+          const destination = finalPart ? items : activityItems();
+          destination.push({ type: "text", key: `${record.id}:text:${index}`, rewindEntryId, text: part.text, final: finalPart });
           first = false;
         } else if (part.type === "toolCall") {
           const tool: ToolView = { callId: part.callId, name: part.name, args: part.args, status: "ok", issuedAt: record.timestamp };

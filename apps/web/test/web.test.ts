@@ -1,11 +1,12 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { JsonObject } from "@atelier/core";
 import { createWebApp } from "../src/server/app.ts";
+import { workViewBodyFrameId } from "../src/server/workspace-presentation.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
 import { createPiModelRuntime, getConfiguredAgentModels, setPickerAgentModels } from "@atelier/agent/server";
 import { setWorkspaceGitHubToken } from "@atelier/proxy-egress";
@@ -22,7 +23,31 @@ function deferred<T = void>() {
 type ProvisionWorkspace = Parameters<typeof createWebApp>[0]["provisionWorkspace"];
 type ProvisionWorkspaceOptions = Parameters<ProvisionWorkspace>[1];
 
-const openApiDocumentSchema = Type.Object({ paths: Type.Object({}) });
+const openApiJsonReferenceResponseSchema = Type.Object({
+  content: Type.Object({ "application/json": Type.Object({ schema: Type.Object({ $ref: Type.String() }) }) }),
+});
+const openApiDocumentSchema = Type.Object({
+  paths: Type.Object({
+    "/workspaces/{id}/attention/acknowledge": Type.Object({ post: Type.Object({ parameters: Type.Array(Type.Unknown()), responses: Type.Object({
+      "204": Type.Object({ description: Type.String() }),
+    }) }) }),
+    "/workspaces/{id}/agents/{conversationId}/attention/acknowledge": Type.Object({ post: Type.Object({ parameters: Type.Array(Type.Unknown()), responses: Type.Object({
+      "204": Type.Object({ description: Type.String() }),
+    }) }) }),
+    "/workspaces/{id}/work-views/{key}/attention/acknowledge": Type.Object({ post: Type.Object({ parameters: Type.Array(Type.Unknown()) }) }),
+    "/workspaces/{id}/agents/{conversationId}/close": Type.Object({ post: Type.Object({ responses: Type.Object({
+      "200": openApiJsonReferenceResponseSchema,
+      "409": openApiJsonReferenceResponseSchema,
+    }) }) }),
+    "/workspaces/{id}/agents/{conversationId}/messages": Type.Object({ post: Type.Object({ responses: Type.Object({
+      "200": openApiJsonReferenceResponseSchema,
+      "202": openApiJsonReferenceResponseSchema,
+    }) }) }),
+  }),
+  components: Type.Object({ schemas: Type.Object({ CommandResult: Type.Object({ properties: Type.Object({ command: Type.Object({ properties: Type.Object({
+    agentConversationId: Type.Object({ type: Type.Literal("string"), format: Type.Literal("uuid") }),
+  }) }) }) }) }) }),
+});
 const workspaceCreatedResponseSchema = Type.Object({
   workspace: Type.Object({
     id: Type.String(),
@@ -141,6 +166,12 @@ function postJson(path: string, body: JsonObject): Request {
   });
 }
 
+function updatesWorkspacePaneCollections(html: string): boolean {
+  return html.includes('action="update" target="fixed_shell_workspace_scroll"')
+    && html.includes('action="replace" target="fixed_shell_projects_drawer"')
+    && html.includes('action="workspace-pane-changed" targets="[data-workspace-pane-collections]"');
+}
+
 async function withTempDataDir<T>(fn: () => Promise<T>): Promise<T> {
   const previousDataDir = process.env.ATELIER_DATA_DIR;
   const previousGitHubToken = process.env.GH_TOKEN;
@@ -163,6 +194,23 @@ async function withTempDataDir<T>(fn: () => Promise<T>): Promise<T> {
 const blockedDetails = (id: string): WorkspaceDeleteBlockedDetails => ({
   workspaceId: id,
   issues: [{ repo: "demo", uncommittedPaths: ["a.txt"], outgoingCommits: [{ hash: "abc123", subject: "wip" }] }],
+});
+
+let previousTestDataDir: string | undefined;
+let testDataDir: string | undefined;
+
+beforeEach(async () => {
+  previousTestDataDir = process.env.ATELIER_DATA_DIR;
+  testDataDir = await mkdtemp(join(tmpdir(), "atelier-web-contract-"));
+  process.env.ATELIER_DATA_DIR = testDataDir;
+});
+
+afterEach(async () => {
+  if (previousTestDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
+  else process.env.ATELIER_DATA_DIR = previousTestDataDir;
+  if (testDataDir) await rm(testDataDir, { recursive: true, force: true });
+  previousTestDataDir = undefined;
+  testDataDir = undefined;
 });
 
 describe("web app contracts", () => {
@@ -338,18 +386,19 @@ describe("web app contracts", () => {
     expect(registry.get(id)?.phase).toBe("starting");
 
     const body = await response.text();
-    expect(body).toContain('action="replace-workspace-pane-collections"');
+    expect(updatesWorkspacePaneCollections(body)).toBe(true);
     expect(body).toContain(`data-workspace-entry-id="${id}"`);
     expect(body).toContain('class="status-spinner sm fixed-shell-workspace-busy action-item__status"');
 
     await Bun.sleep(10);
-    const startingPaneBroadcast = broadcasts.find((html) => html.includes('action="replace-workspace-pane-collections"') && html.includes(`data-workspace-entry-id="${id}"`));
+    const startingPaneBroadcast = broadcasts.find((html) => updatesWorkspacePaneCollections(html) && html.includes(`data-workspace-entry-id="${id}"`));
     expect(startingPaneBroadcast).toContain('class="status-spinner sm fixed-shell-workspace-busy action-item__status"');
 
     broadcasts.length = 0;
     provision.resolve();
     await Bun.sleep(20);
     expect(registry.get(id)?.phase).toBe("ready");
+    expect(registry.isWorkspaceUnread(id)).toBe(false);
     expect(broadcasts.some((html) => html.includes(`data-workspace-entry-id="${id}"`) && !html.includes('fixed-shell-workspace-busy'))).toBe(true);
   });
 
@@ -388,7 +437,7 @@ describe("web app contracts", () => {
     expect(inspected).toEqual([]);
     expect(destroyed).toEqual(["abc"]);
     expect(registry.get("abc")).toBeUndefined();
-    expect(broadcasts.some((item) => item.includes('action="replace-workspace-pane-collections"') && !item.includes('data-workspace-entry-id="abc"'))).toBe(true);
+    expect(broadcasts.some((item) => updatesWorkspacePaneCollections(item) && !item.includes('data-workspace-entry-id="abc"'))).toBe(true);
   });
 
   test("POST /workspaces negotiates asynchronous JSON creation and GET reports readiness", async () => {
@@ -557,7 +606,7 @@ describe("web app contracts", () => {
     const hydrated = await app.fetch(new Request("http://test.local/workspaces/abc/work-views/review%3Aworkspace/body"));
     const body = await hydrated.text();
     expect(hydrated.status).toBe(200);
-    expect(body).toContain('<turbo-frame id="work_view_body_review_workspace"');
+    expect(body).toContain(`<turbo-frame id="${workViewBodyFrameId("abc", "review:workspace")}"`);
     expect(body).toContain('class="review-body');
   });
 
@@ -635,7 +684,8 @@ describe("web app contracts", () => {
 
     const removed = await app.fetch(postJson("/api/workspaces", {}));
     const openapi = await app.fetch(new Request("http://test.local/openapi.json"));
-    const specification = Value.Parse(openApiDocumentSchema, await openapi.json());
+    const openapiDocument = await openapi.json();
+    const specification = Value.Parse(openApiDocumentSchema, openapiDocument);
     const pathNames = Object.keys(specification.paths);
 
     expect(removed.status).toBe(404);
@@ -647,6 +697,24 @@ describe("web app contracts", () => {
     expect(pathNames).toContain("/projects/{projectId}/environment/{variableId}/delete");
     expect(pathNames).toContain("/projects/{projectId}/secrets/{secretId}/delete");
     expect(pathNames).toContain("/projects/{projectId}/delete");
+    expect(pathNames).toContain("/workspaces/{id}/agents/{conversationId}/close");
+    expect(pathNames).not.toContain("/workspaces/{id}/agent-conversations/{conversationId}/close");
+    expect(specification.paths["/workspaces/{id}/attention/acknowledge"].post.parameters).toContainEqual(expect.objectContaining({ name: "attentionToken", in: "query", required: true }));
+    expect(specification.paths["/workspaces/{id}/attention/acknowledge"].post.responses["204"].description).toContain("stale");
+    expect(specification.paths["/workspaces/{id}/agents/{conversationId}/attention/acknowledge"].post.parameters).toContainEqual(expect.objectContaining({ name: "attentionToken", in: "query", required: true }));
+    expect(specification.paths["/workspaces/{id}/agents/{conversationId}/attention/acknowledge"].post.responses["204"].description).toContain("stale");
+    expect(specification.paths["/workspaces/{id}/work-views/{key}/attention/acknowledge"].post.parameters).toContainEqual(expect.objectContaining({ name: "attentionToken", in: "query", required: true }));
+    expect(specification.paths["/workspaces/{id}/agents/{conversationId}/close"].post.responses).toMatchObject({
+      "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/AgentConversationCloseResult" } } } },
+      "409": { content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+    });
+    expect(specification.paths["/workspaces/{id}/agents/{conversationId}/messages"].post.responses).toMatchObject({
+      "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/AgentStateEnvelope" } } } },
+      "202": { content: { "application/json": { schema: { $ref: "#/components/schemas/AgentStateEnvelope" } } } },
+    });
+    expect(specification.components.schemas.CommandResult).toMatchObject({
+      properties: { command: { properties: { agentConversationId: { type: "string", format: "uuid" } } } },
+    });
     expect(pathNames).not.toContain("/projects/picker");
     expect(pathNames).not.toContain("/api/workspaces");
   });
@@ -762,7 +830,7 @@ describe("web app contracts", () => {
       expect((await listProjects()).projects).toHaveLength(1);
       expect(body).toContain('target="project_editor_frame"');
       expect(body).toContain('target="project_modals"');
-      expect(body).toContain('action="replace-workspace-pane-collections"');
+      expect(updatesWorkspacePaneCollections(body)).toBe(true);
       expect(body).toContain("sample-project");
       expect(repeatedBody).toContain('target="project_editor_frame"');
       expect(repeatedBody).not.toContain("project already exists");
@@ -900,6 +968,9 @@ describe("web app contracts", () => {
     expect(registry.get("abc")?.deletion).toMatchObject({ status: "blocked" });
     expect(registry.isWorkspaceUnread("abc")).toBe(true);
     expect(broadcasts.some((html) => html.includes("Checking if it’s safe to delete"))).toBe(true);
+    const token = registry.viewUnreadToken("abc", "workspace")!;
+    const blockedPresentation = broadcasts.find((html) => html.includes("Please confirm it's okay to delete the workspace with these outstanding changes."));
+    expect(blockedPresentation).toContain(`data-workspace-unread-tokens="{&quot;workspace&quot;:${token}}"`);
   });
 
   test("allowed delete keeps its row and status page until destruction finishes", async () => {
@@ -912,8 +983,8 @@ describe("web app contracts", () => {
     expect(response.status).toBe(200);
     expect(registry.get("abc")?.phase).toBe("deleting");
     expect(registry.get("abc")?.deletion).toEqual({ status: "deleting", forced: false });
-    while (!broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"') && html.includes('data-workspace-entry-id="abc"'))) await Bun.sleep(1);
-    const deletingPane = broadcasts.find((html) => html.includes('action="replace-workspace-pane-collections"') && html.includes('data-workspace-entry-id="abc"'))!;
+    while (!broadcasts.some((html) => updatesWorkspacePaneCollections(html) && html.includes('data-workspace-entry-id="abc"'))) await Bun.sleep(1);
+    const deletingPane = broadcasts.find((html) => updatesWorkspacePaneCollections(html) && html.includes('data-workspace-entry-id="abc"'))!;
     expect(deletingPane).toContain("fixed-shell-workspace-busy");
     expect(broadcasts.some((html) => html.includes("Deleting workspace…"))).toBe(true);
     expect(broadcasts).not.toContain('<turbo-stream action="remove-workspace-resident" target="fixed_workspace_abc"></turbo-stream>');
@@ -922,7 +993,7 @@ describe("web app contracts", () => {
     await Bun.sleep(20);
     expect(registry.get("abc")).toBeUndefined();
     expect(broadcasts).toContain('<turbo-stream action="remove-workspace-resident" target="fixed_workspace_abc"></turbo-stream>');
-    expect(broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"') && !html.includes('data-workspace-entry-id="abc"'))).toBe(true);
+    expect(broadcasts.some((html) => updatesWorkspacePaneCollections(html) && !html.includes('data-workspace-entry-id="abc"'))).toBe(true);
   });
 
   test("deletion failures remain as an actionable workspace state", async () => {
@@ -959,7 +1030,7 @@ describe("web app contracts", () => {
     const parkBody = await parkResponse.text();
     expect(registry.get("a")?.parked).toBe(true);
     expect(parked.at(-1)).toEqual({ id: "a", parked: true });
-    expect(parkBody).toContain('action="replace-workspace-pane-collections"');
+    expect(updatesWorkspacePaneCollections(parkBody)).toBe(true);
     expect(parkBody).toContain("2 parked");
     expect(parkBody).toContain('aria-label="Unpark and open A"');
     expect(parkBody).toContain('action="remove-workspace-resident" target="fixed_workspace_a"');
@@ -1007,18 +1078,19 @@ describe("web app contracts", () => {
 
     broadcasts.length = 0;
     registry.setViewBusy("abc", "agent:Agent 1", true);
-    while (!broadcasts.some((item) => item.includes('action="replace-workspace-pane-collections"'))) await Bun.sleep(1);
-    const busyBroadcast = broadcasts.find((item) => item.includes('action="replace-workspace-pane-collections"')) ?? "";
+    while (!broadcasts.some(updatesWorkspacePaneCollections)) await Bun.sleep(1);
+    const busyBroadcast = broadcasts.find(updatesWorkspacePaneCollections) ?? "";
     expect(busyBroadcast).toContain("fixed-shell-workspace-busy");
     expect(busyBroadcast).toContain("Workspace busy");
 
     broadcasts.length = 0;
     registry.setViewBusy("abc", "agent:Agent 1", false);
-    registry.setViewUnread("abc", "agent:Agent 1", true);
+    const token = registry.markViewUnread("abc", "agent:Agent 1")!;
     while (!broadcasts.some((item) => item.includes("data-workspace-unread-at"))) await Bun.sleep(1);
-    const unreadBroadcast = broadcasts.findLast((item) => item.includes('action="replace-workspace-pane-collections"')) ?? "";
+    const unreadBroadcast = broadcasts.findLast(updatesWorkspacePaneCollections) ?? "";
     expect(unreadBroadcast).toContain('aria-label="Agent ready"');
     expect(unreadBroadcast).toMatch(/data-workspace-unread-at="\d+"/);
+    expect(unreadBroadcast).toContain(`data-workspace-unread-tokens="{&quot;agent:Agent 1&quot;:${token}}"`);
   });
 
   test("broadcast HTML never contains per-client state (visible rows, selection inputs)", async () => {
@@ -1067,8 +1139,8 @@ describe("web app contracts", () => {
 
     registry.touch("b");
 
-    while (!broadcasts.some((html) => html.includes('action="replace-workspace-pane-collections"'))) await Bun.sleep(1);
-    const reorder = broadcasts.find((html) => html.includes('action="replace-workspace-pane-collections"'));
+    while (!broadcasts.some(updatesWorkspacePaneCollections)) await Bun.sleep(1);
+    const reorder = broadcasts.find(updatesWorkspacePaneCollections);
     expect(reorder).toBeDefined();
     // "b" now renders before "a".
     expect(reorder!.indexOf('data-workspace-entry-id="b"')).toBeLessThan(reorder!.indexOf('data-workspace-entry-id="a"'));

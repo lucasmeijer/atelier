@@ -39,10 +39,11 @@ import { collectCacheMisses, detectCacheMiss, significantCacheMissNotice, type C
 import { AgentServiceTierState, modelRuntimeWithServiceTiers, supportsFastMode, type AgentServiceTier } from "./service-tier.ts";
 import { createWorkspaceAgentTools, workspaceAgentToolNames } from "./tools.ts";
 import {
+  assistantTextPhase,
   buildTranscript,
+  finalAssistantText,
   findTranscriptItem,
   isFinalAssistantMessage,
-  isFinalAssistantStopReason,
   isToolViewDetails,
   toolDetailsIndicateError,
   type ImageRef,
@@ -58,7 +59,13 @@ import {
 // Public surface
 // ---------------------------------------------------------------------------
 
-type AgentSubscriber = (streamHtml: string, cursor: string) => void;
+type AgentLivePresentationListener = (streamHtml: string) => void;
+export interface AgentLivePresentationSubscription {
+  /** Resolves after the authoritative snapshot has been delivered, or after cancellation. */
+  readonly ready: Promise<void>;
+  /** Immediately removes the subscriber, including while its snapshot is still rendering. */
+  unsubscribe(): void;
+}
 type WorkspaceViewBusyListener = (event: { workspaceId: string; viewKey: string; busy: boolean }) => void;
 type InitialSessionSettings = Pick<NonNullable<Parameters<typeof createAgentSession>[0]>, "model" | "thinkingLevel"> & { serviceTier?: AgentServiceTier };
 
@@ -80,21 +87,21 @@ interface SubmitOptions {
 
 type RewindMode = "discard" | "summary";
 
-interface WorkspaceAgentRuntime {
+export interface WorkspaceAgentRuntime {
   workspaceId: string;
   conversationId: string;
   label: string;
   sessionFile: string;
   readonly isStreaming: boolean;
-  subscribe(listener: AgentSubscriber): () => void;
-  /** Turbo-stream HTML bringing a fresh client fully up to date, unless it already has this snapshot. */
-  snapshotStream(upTo?: string): Promise<{ html: string; cursor: string }>;
+  /** First delivers one complete authoritative update, then every incremental update in order. */
+  subscribeLivePresentation(listener: AgentLivePresentationListener): AgentLivePresentationSubscription;
   /** Server-rendered state for initial pane HTML. */
   paneState(): Promise<AgentPaneState>;
   userMessages(): string[];
   submit(text: string, options: SubmitOptions): Promise<void>;
   compact(customInstructions?: string): Promise<void>;
   abort(): Promise<void>;
+  dispose(): Promise<void>;
   currentModel(): { provider: string; id: string } | undefined;
   currentThinkingLevel(): string;
   availableThinkingLevels(): string[];
@@ -112,37 +119,87 @@ interface WorkspaceAgentRuntime {
 const runtimes = new Map<string, Promise<WorkspaceAgentRuntime>>();
 const readyRuntimeKeys = new Set<string>();
 const removedWorkspaceIds = new Set<string>();
+const closedConversationKeys = new Set<string>();
 
-function runtimeKey(workspaceId: string, label: string): string {
-  return `${workspaceId}\u0000${label}`;
+function runtimeKey(workspaceId: string, conversationId: string): string {
+  return `${workspaceId}\u0000${conversationId}`;
 }
 
 interface WorkspaceAgentRuntimeOptions {
   events?: AtelierEventBus;
 }
 
+interface AssistantTextEventView {
+  type: "text_start" | "text_delta";
+  contentIndex: number;
+  delta?: string;
+  partial: {
+    stopReason?: string;
+    content?: Array<{ type: string; text?: string; textSignature?: string }>;
+  };
+}
+
+interface AgentPromptPreflightOptions {
+  images?: Array<{ type: "image"; data: string; mimeType: string }>;
+  preflightResult(success: boolean): void;
+}
+
+// Promise rejections from Pi extensions and background presentation work are
+// external JavaScript values. Normalize them once at that boundary.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- This is the normalization boundary.
+function normalizedPromiseError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+/** True at the earliest Pi event that identifies streamed text as the final answer. */
+export function isFinalAssistantTextEvent(event: AssistantTextEventView): boolean {
+  const partial = event.partial;
+  const part = partial.content?.[event.contentIndex];
+  if (part?.type !== "text") return false;
+  const phase = assistantTextPhase(part.textSignature);
+  if (phase !== undefined) return phase === "final_answer";
+  return partial.stopReason === "stop" || partial.stopReason === "length" || partial.stopReason === "deferred";
+}
+
 export function isWorkspaceAgentRuntimeReady(agent: WorkspaceAgentConversationInfo): boolean {
-  return readyRuntimeKeys.has(runtimeKey(agent.workspaceId, agent.label));
+  return readyRuntimeKeys.has(runtimeKey(agent.workspaceId, agent.conversationId));
+}
+
+export async function removeWorkspaceAgentRuntime(workspaceId: string, conversationId: string): Promise<void> {
+  const key = runtimeKey(workspaceId, conversationId);
+  closedConversationKeys.add(key);
+  const runtime = runtimes.get(key);
+  if (!runtime) return;
+  runtimes.delete(key);
+  readyRuntimeKeys.delete(key);
+  await (await runtime).dispose();
+}
+
+/** Roll back a failed close after the durable session remained published. */
+export function restoreWorkspaceAgentRuntime(workspaceId: string, conversationId: string): void {
+  closedConversationKeys.delete(runtimeKey(workspaceId, conversationId));
 }
 
 export async function removeWorkspaceAgentRuntimes(workspaceId: string): Promise<void> {
   removedWorkspaceIds.add(workspaceId);
   const matching = [...runtimes.entries()].filter(([key]) => key.startsWith(`${workspaceId}\u0000`));
   for (const [key] of matching) {
+    closedConversationKeys.add(key);
     runtimes.delete(key);
     readyRuntimeKeys.delete(key);
   }
   const settled = await Promise.allSettled(matching.map(([, runtime]) => runtime));
-  await Promise.all(settled.flatMap((result) => result.status === "fulfilled" ? [result.value.abort()] : []));
+  await Promise.all(settled.flatMap((result) => result.status === "fulfilled" ? [result.value.dispose()] : []));
 }
 
 export function getWorkspaceAgentRuntime(agent: WorkspaceAgentConversationInfo, options: WorkspaceAgentRuntimeOptions = {}): Promise<WorkspaceAgentRuntime> {
   if (removedWorkspaceIds.has(agent.workspaceId)) throw new AtelierCoreError("workspace_not_found", `workspace not found: ${agent.workspaceId}`);
-  const key = runtimeKey(agent.workspaceId, agent.label);
+  const key = runtimeKey(agent.workspaceId, agent.conversationId);
+  if (closedConversationKeys.has(key)) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${agent.conversationId}`);
   let runtime = runtimes.get(key);
   if (!runtime) {
     runtime = createRealRuntime(agent, options).then((created) => {
-      readyRuntimeKeys.add(key);
+      if (runtimes.get(key) === runtime) readyRuntimeKeys.add(key);
       return created;
     }, (error) => {
       runtimes.delete(key);
@@ -171,7 +228,7 @@ interface LiveState {
   working: Omit<WorkingTranscriptItem, "items">;
   finalIndex?: number;
   userEntryId?: string;
-  open?: { index: number; kind: "text" | "thinking" | "toolargs" };
+  open?: { index: number; kind: "text"; contentIndex: number } | { index: number; kind: "thinking" | "toolargs" };
   textStream?: LiveTextStream;
   toolIndexByCallId: Map<string, number>;
   terminalTimers: Map<string, ReturnType<typeof setTimeout>>;
@@ -198,6 +255,168 @@ const assistantTextCharactersPerFlush = 24;
 // /compact to summarize medium-length conversations.
 const compactionKeepRecentTokens = 6000;
 
+type LivePresentationSubscriber = {
+  active: boolean;
+  live: boolean;
+  listener: AgentLivePresentationListener;
+  absorbedLiveThrough?: number;
+  absorbedTextThrough?: number;
+};
+
+type LivePresentationChange = {
+  complete: boolean;
+  kind: "live" | "text" | "ephemeral" | "rendered" | "snapshot";
+  resolveDelivered(): void;
+  html?: string;
+  subscriber?: LivePresentationSubscriber;
+};
+
+interface BegunLivePresentationChange {
+  sequence: number;
+  predecessors: Promise<void>;
+  delivered: Promise<void>;
+}
+
+interface SnapshotFirstLivePresentation {
+  subscribe(listener: AgentLivePresentationListener): AgentLivePresentationSubscription;
+  publish(streamHtml?: string, options?: { kind?: "snapshot-represented" | "paced-text" | "ephemeral" }): void;
+  publishRendered(render: () => Promise<string>): Promise<void>;
+}
+
+/**
+ * Serializes the authoritative-update-to-live-update handoff behind one subscription interface.
+ * A subscription reserves one ordered snapshot boundary. Its capture function must synchronously
+ * freeze all mutable presentation state before returning an async completion function. Live
+ * changes absorbed before that capture are skipped for the joining subscriber; later changes are
+ * buffered and delivered after its snapshot. Rendered changes retain invocation order globally.
+ */
+export function createSnapshotFirstLivePresentation(captureAuthoritativeUpdate: (publishToExisting: (html: string) => void) => () => Promise<string>): SnapshotFirstLivePresentation {
+  const subscribers = new Set<LivePresentationSubscriber>();
+  const changes = new Map<number, LivePresentationChange>();
+  let nextChange = 0;
+  let nextDelivery = 0;
+  let deliveredTail = Promise.resolve();
+
+  function unsubscribe(subscriber: LivePresentationSubscriber): void {
+    subscriber.active = false;
+    subscribers.delete(subscriber);
+  }
+
+  function beginChange(kind: LivePresentationChange["kind"], subscriber?: LivePresentationSubscriber): BegunLivePresentationChange {
+    const sequence = nextChange++;
+    const predecessors = deliveredTail;
+    let resolveDelivered!: () => void;
+    const delivered = new Promise<void>((resolve) => {
+      resolveDelivered = resolve;
+    });
+    deliveredTail = delivered;
+    changes.set(sequence, { complete: false, kind, resolveDelivered, subscriber });
+    return { sequence, predecessors, delivered };
+  }
+
+  function completeChange(sequence: number, html?: string): void {
+    const change = changes.get(sequence)!;
+    change.complete = true;
+    change.html = html;
+    while (changes.get(nextDelivery)?.complete) {
+      const sequenceToDeliver = nextDelivery++;
+      const delivery = changes.get(sequenceToDeliver)!;
+      changes.delete(sequenceToDeliver);
+      if (delivery.subscriber) {
+        if (delivery.subscriber.active) {
+          delivery.subscriber.live = true;
+          delivery.subscriber.listener(delivery.html ?? "");
+        }
+      } else if (delivery.html) {
+        for (const subscriber of subscribers) {
+          const absorbed = (delivery.kind === "live" && sequenceToDeliver <= (subscriber.absorbedLiveThrough ?? -1))
+            || (delivery.kind === "text" && sequenceToDeliver <= Math.max(subscriber.absorbedLiveThrough ?? -1, subscriber.absorbedTextThrough ?? -1));
+          if (subscriber.live && !absorbed) subscriber.listener(delivery.html);
+        }
+      }
+      delivery.resolveDelivered();
+    }
+  }
+
+  async function publishRendered(render: () => Promise<string>): Promise<void> {
+    const { sequence } = beginChange("rendered");
+    let html: string;
+    try {
+      html = await render();
+    } catch (error) {
+      completeChange(sequence);
+      throw error;
+    }
+    completeChange(sequence, html);
+  }
+
+  return {
+    subscribe(listener) {
+      const subscriber: LivePresentationSubscriber = { active: true, live: false, listener };
+      subscribers.add(subscriber);
+      const { sequence, predecessors, delivered } = beginChange("snapshot", subscriber);
+      let changeCompleted = false;
+      let resolveCancelled!: () => void;
+      const cancelled = new Promise<void>((resolve) => {
+        resolveCancelled = resolve;
+      });
+      const completeSubscriptionChange = (html?: string): void => {
+        if (changeCompleted) return;
+        changeCompleted = true;
+        completeChange(sequence, html);
+      };
+      const unsubscribeSubscription = (): void => {
+        if (!subscriber.active) return;
+        unsubscribe(subscriber);
+        completeSubscriptionChange();
+        resolveCancelled();
+      };
+      const ready = (async () => {
+        let snapshot: string | undefined;
+        try {
+          await Promise.race([predecessors, cancelled]);
+          if (!subscriber.active) return;
+          const completeSnapshot = captureAuthoritativeUpdate((html) => {
+            const absorbedTextThrough = nextChange - 1;
+            for (const existing of subscribers) {
+              if (existing === subscriber || !existing.live) continue;
+              existing.listener(html);
+              existing.absorbedTextThrough = Math.max(existing.absorbedTextThrough ?? -1, absorbedTextThrough);
+            }
+          });
+          subscriber.absorbedLiveThrough = nextChange - 1;
+          subscriber.absorbedTextThrough = subscriber.absorbedLiveThrough;
+          const result = await Promise.race([
+            completeSnapshot().then((html) => ({ cancelled: false as const, html })),
+            cancelled.then(() => ({ cancelled: true as const })),
+          ]);
+          if (result.cancelled || !subscriber.active) return;
+          snapshot = result.html;
+        } catch (error) {
+          unsubscribe(subscriber);
+          completeSubscriptionChange();
+          throw error;
+        }
+        completeSubscriptionChange(snapshot);
+        await Promise.race([delivered, cancelled]);
+      })();
+      return { ready, unsubscribe: unsubscribeSubscription };
+    },
+
+    publish(streamHtml, options) {
+      const kind = options?.kind === "ephemeral"
+        ? "ephemeral"
+        : options?.kind === "paced-text"
+          ? "text"
+          : "live";
+      const { sequence } = beginChange(kind);
+      completeChange(sequence, streamHtml);
+    },
+
+    publishRendered,
+  };
+}
+
 export function contextUsagePercent(measured: number | null | undefined, estimatedTokens: number | undefined, contextWindow: number | undefined): number | null {
   return measured ?? (estimatedTokens !== undefined && contextWindow ? estimatedTokens / contextWindow * 100 : null);
 }
@@ -211,9 +430,12 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected ctx: AgentRenderContext;
   protected live?: LiveState;
   private announcedBusy = false;
-  private subscribers = new Set<AgentSubscriber>();
-  private readonly snapshotGeneration = crypto.randomUUID();
-  private snapshotRevision = 0;
+  private disposed = false;
+  protected liveSubscriberCount = 0;
+  private readonly livePresentation = createSnapshotFirstLivePresentation((publishToExisting) => {
+    this.alignTextStreamForSnapshot(publishToExisting);
+    return this.captureAuthoritativePresentationUpdate();
+  });
 
   constructor(agent: WorkspaceAgentConversationInfo, protected readonly options: WorkspaceAgentRuntimeOptions = {}) {
     this.workspaceId = agent.workspaceId;
@@ -221,50 +443,75 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.title = agent.title;
     this.label = agent.label;
     this.sessionFile = agent.path;
-    this.ctx = { workspaceId: agent.workspaceId, label: agent.label };
+    this.ctx = { workspaceId: agent.workspaceId, conversationId: agent.conversationId };
   }
 
   protected async emitTurnFinished(): Promise<void> {
-    await this.options.events?.emit("workspace_agent_turn_finished", { workspaceId: this.workspaceId, agentLabel: this.label });
+    if (this.disposed) return;
+    await this.options.events?.emit("workspace_agent_turn_finished", { workspaceId: this.workspaceId, conversationId: this.conversationId });
+    // Re-announce terminal actions after unread state is recorded. A connected,
+    // logically visible pane uses this targeted update to acknowledge that exact
+    // conversation without affecting sibling Agents.
+    this.stream(turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, this.isStreaming)));
   }
 
   get isStreaming(): boolean {
     return this.announcedBusy;
   }
 
-  subscribe(listener: AgentSubscriber): () => void {
-    const wasEmpty = this.subscribers.size === 0;
-    this.subscribers.add(listener);
-    if (wasEmpty) this.alignTextStreamWithAuthoritativeSnapshot();
-    return () => {
-      this.subscribers.delete(listener);
-      if (this.subscribers.size === 0) this.cancelTextFlush();
+  subscribeLivePresentation(listener: AgentLivePresentationListener): AgentLivePresentationSubscription {
+    this.assertActive();
+    this.liveSubscriberCount += 1;
+    const subscription = this.livePresentation.subscribe(listener);
+    let active = true;
+    const unsubscribe = (): void => {
+      if (!active) return;
+      active = false;
+      subscription.unsubscribe();
+      this.liveSubscriberCount -= 1;
+      if (this.liveSubscriberCount === 0) this.cancelTextFlush();
     };
-  }
-
-  private snapshotCursor(): string {
-    return `${this.snapshotGeneration}:${this.snapshotRevision}`;
-  }
-
-  private markSnapshotMutation(): void {
-    this.snapshotRevision += 1;
+    const ready = subscription.ready.catch((error) => {
+      unsubscribe();
+      throw error;
+    });
+    return { ready, unsubscribe };
   }
 
   protected stream(html: string): void {
-    this.markSnapshotMutation();
-    const cursor = this.snapshotCursor();
-    for (const subscriber of this.subscribers) subscriber(html, cursor);
+    if (this.disposed) return;
+    this.livePresentation.publish(html);
+  }
+
+  private streamText(html?: string): void {
+    if (this.disposed) return;
+    this.livePresentation.publish(html, { kind: "paced-text" });
+  }
+
+  protected async streamRendered(render: () => Promise<string>): Promise<void> {
+    if (this.disposed) return;
+    await this.livePresentation.publishRendered(render);
+  }
+
+  protected assertActive(): void {
+    if (this.disposed) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${this.conversationId}`);
+  }
+
+  protected markDisposed(): boolean {
+    if (this.disposed) return false;
+    this.disposed = true;
+    return true;
   }
 
   protected setBusy(busy: boolean): void {
     if (this.announcedBusy === busy) return;
     this.announcedBusy = busy;
-    for (const listener of workspaceViewBusyListeners) listener({ workspaceId: this.workspaceId, viewKey: `agent:${this.label}`, busy });
+    for (const listener of workspaceViewBusyListeners) listener({ workspaceId: this.workspaceId, viewKey: `agent:${this.conversationId}`, busy });
     this.stream(turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, busy)));
   }
 
   protected notice(level: "info" | "error", message: string): void {
-    this.stream(turboStream("append", ids.notices(this.ctx), renderNotice(level, message)));
+    this.livePresentation.publish(turboStream("append", ids.notices(this.ctx), renderNotice(level, message)), { kind: "ephemeral" });
   }
 
   // ---- live transcript streaming ----------------------------------------
@@ -330,18 +577,24 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (streamState) streamState.timer = undefined;
   }
 
-  private alignTextStreamWithAuthoritativeSnapshot(): void {
+  /** Bring existing listeners to the exact full-text boundary captured for a joining subscriber. */
+  private alignTextStreamForSnapshot(publishToExisting: (html: string) => void): void {
     const item = this.openTextItem();
     const streamState = this.live?.textStream;
     if (!item || !streamState) return;
     this.cancelTextFlush();
+    // Always replace for existing listeners. A paced update can already have
+    // advanced the shared renderer while its ordered delivery is still queued
+    // behind this snapshot, so displayedLength alone cannot prove that every
+    // listener has observed it.
+    publishToExisting(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true })));
     streamState.renderer.sync(item.text);
     streamState.displayedLength = item.text.length;
   }
 
   private scheduleTextFlush(): void {
     const streamState = this.live?.textStream;
-    if (!streamState || streamState.timer || this.subscribers.size === 0) return;
+    if (!streamState || streamState.timer || this.liveSubscriberCount === 0) return;
     streamState.timer = setTimeout(() => {
       streamState.timer = undefined;
       this.flushTextChunk();
@@ -359,7 +612,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const stable = update.stableHtmlAddition
       ? turboStream("append", ids.itemTextStable(this.ctx, item.key), update.stableHtmlAddition)
       : "";
-    this.stream(stable + turboStream("update", ids.itemTextTail(this.ctx, item.key), update.tailHtml));
+    this.streamText(stable + turboStream("update", ids.itemTextTail(this.ctx, item.key), update.tailHtml));
     if (streamState.displayedLength < item.text.length) this.scheduleTextFlush();
   }
 
@@ -368,7 +621,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (this.live) this.live.textStream = undefined;
   }
 
-  private streamActiveToolContent(item: Extract<TranscriptItem, { type: "tool" }>): void {
+  protected streamActiveToolContent(item: Extract<TranscriptItem, { type: "tool" }>): void {
     const content = renderActiveToolContent(this.ctx, item.key, item.tool);
     const summary = turboStream("update", ids.itemSummaryContent(this.ctx, item.key), content.summary);
     const detail = content.detail === undefined ? "" : turboStream("update", ids.detailFrame(this.ctx, item.key), content.detail);
@@ -426,26 +679,40 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.stream(working + final);
   }
 
-  protected liveTextDelta(text: string): void {
+  protected liveTextStart(contentIndex: number, final: boolean): void {
     const live = this.liveEnsure();
     if (live.open?.kind === "thinking") this.finishOpenThinking();
+    if (live.open?.kind === "text" && live.open.contentIndex !== contentIndex) this.finishOpenText(false);
+    if (final) this.liveFinalStart();
+  }
+
+  protected liveTextDelta(text: string, contentIndex: number, final: boolean): void {
+    this.liveTextStart(contentIndex, final);
+    const live = this.liveEnsure();
     if (!live.open || live.open.kind !== "text") {
       const index = live.items.length;
-      const final = live.working.completedAt !== undefined;
-      const item: TranscriptItem = { type: "text", key: this.liveKey(live, index, "text"), text: "", final, live: true };
-      if (final) live.finalIndex = index;
+      const finalItem = live.working.completedAt !== undefined;
+      const item: TranscriptItem = { type: "text", key: this.liveKey(live, index, "text"), text: "", final: finalItem, live: true };
+      if (finalItem) live.finalIndex = index;
       live.items.push(item);
-      live.open = { index, kind: "text" };
+      live.open = { index, kind: "text", contentIndex };
       live.textStream = { displayedLength: 0, renderer: new StreamingMarkdownRenderer(this.workspaceId) };
       this.appendLiveItem(item, { live: true });
     }
     const item = live.items[live.open.index];
     if (item?.type !== "text") return;
     item.text += text;
-    // Authoritative text changes immediately even though its visible update is
-    // paced. Reconnect cursors must therefore advance before the next flush.
-    this.markSnapshotMutation();
+    // Authoritative text changes immediately even though its visible update is paced.
+    // Invalidate any in-flight snapshot so it cannot straddle this change.
+    this.streamText();
     this.scheduleTextFlush();
+  }
+
+  protected liveTextEnd(contentIndex: number): void {
+    const live = this.live;
+    if (!live || live.open?.kind !== "text" || live.open.contentIndex !== contentIndex) return;
+    const item = live.items[live.open.index];
+    this.finishOpenText(item?.type === "text" && item.final);
   }
 
   protected liveThinkingDelta(text: string): void {
@@ -514,7 +781,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (streamedIndex !== undefined) {
       this.streamActiveToolContent(item);
     } else {
-      this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
+      this.appendLiveItem(item, { live: true, open: true });
     }
   }
 
@@ -536,12 +803,13 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
         const revisit = current?.items[index];
         if (!current || revisit?.type !== "tool" || revisit.tool.status !== "running") return;
         revisit.tool.terminalVisible = true;
-        this.stream(turboStream("replace", ids.item(this.ctx, revisit.key), renderTranscriptItem(this.ctx, revisit, { live: true, open: true })));
+        this.streamActiveToolContent(revisit);
       }, terminalRevealMs);
       live.terminalTimers.set(callId, timer);
     }
     if (update.outputText !== undefined) item.tool.resultText = update.outputText;
     if (update.details !== undefined) item.tool.details = update.details;
+    this.livePresentation.publish();
   }
 
   protected liveToolEnd(callId: string, resultText: string, isError: boolean, details?: ToolViewDetails): void {
@@ -559,7 +827,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     item.tool.details = details;
     item.tool.tmuxSession = undefined;
     item.tool.terminalVisible = undefined;
-    this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
+    this.streamActiveToolContent(item);
   }
 
   protected liveNote(text: string, tone: "system" | "summary" | "error"): void {
@@ -601,11 +869,11 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const live = this.liveEnsure();
     const item: TranscriptItem = { type: "note", key: `${live.id}:cache-miss:${live.cacheMissNotices.length}`, text, tone: "warning" };
     live.cacheMissNotices.push(item);
-    this.stream(turboStream("replace", ids.item(this.ctx, live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(live))));
+    this.stream(turboStream("append", ids.workingItems(this.ctx, live.working.key), renderTranscriptItem(this.ctx, item, { live: true })));
   }
 
-  /** End the live model. */
-  protected async liveEnd(): Promise<void> {
+  /** End the live model synchronously; terminal lifecycle must not wait on stats I/O. */
+  protected finishLivePresentation(): void {
     // Supersede any paced tail with one canonical full-source render before the
     // live state (and its renderer session) is discarded.
     this.finishOpenText(false);
@@ -618,11 +886,16 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       }
     }
     this.live = undefined;
+  }
+
+  /** End the live model and refresh secondary composer statistics. */
+  protected async liveEnd(): Promise<void> {
+    this.finishLivePresentation();
     await this.refreshStats();
   }
 
-  private async itemsForDisplay(): Promise<TranscriptItem[]> {
-    let items = await this.canonicalItems();
+  private itemsForDisplay(): TranscriptItem[] {
+    let items = this.canonicalItems();
     const live = this.live;
     if (!live) return items;
     if (live.userEntryId) {
@@ -633,42 +906,56 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   }
 
   protected async refreshTranscript(): Promise<void> {
-    this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, await this.itemsForDisplay(), this.modelContext())));
+    await this.streamRendered(async () => turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, this.itemsForDisplay(), this.modelContext())));
   }
 
   protected async refreshStats(): Promise<void> {
-    this.stream(turboStream("update", ids.stats(this.ctx), renderAgentPaneComposerFooter(this.ctx, await this.statsView())));
+    await this.streamRendered(async () => turboStream("update", ids.stats(this.ctx), renderAgentPaneComposerFooter(this.ctx, await this.statsView())));
   }
 
-  async snapshotStream(upTo?: string): Promise<{ html: string; cursor: string }> {
-    const cursor = this.snapshotCursor();
-    if (upTo === cursor) return { html: "", cursor };
-    const state = await this.paneState();
-    const html = turboStream("update", ids.transcript(this.ctx), state.transcriptHtml) + turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, state.busy)) + turboStream("update", ids.stats(this.ctx), renderAgentPaneComposerFooter(this.ctx, state.stats));
-    return { html, cursor: state.snapshotCursor! };
+  private capturePaneState(): () => Promise<AgentPaneState> {
+    // The transcript and busy flag are the mutable live boundary. Capture both
+    // synchronously before stats performs any configuration or provider I/O.
+    const transcriptHtml = renderTranscript(this.ctx, this.itemsForDisplay(), this.modelContext());
+    const busy = this.isStreaming;
+    const stats = this.statsView();
+    return async () => ({ transcriptHtml, busy, stats: await stats });
+  }
+
+  private captureAuthoritativePresentationUpdate(): () => Promise<string> {
+    const completeState = this.capturePaneState();
+    return async () => {
+      const state = await completeState();
+      return turboStream("update", ids.transcript(this.ctx), state.transcriptHtml)
+        + turboStream("update", ids.actions(this.ctx), renderPromptActions(this.ctx, state.busy))
+        + turboStream("update", ids.stats(this.ctx), renderAgentPaneComposerFooter(this.ctx, state.stats));
+    };
+  }
+
+  protected async authoritativePresentationUpdate(): Promise<string> {
+    return await this.captureAuthoritativePresentationUpdate()();
   }
 
   async paneState(): Promise<AgentPaneState> {
-    // A pane snapshot is authoritative and must never be followed by an older
-    // paced update from this runtime.
-    this.alignTextStreamWithAuthoritativeSnapshot();
-    const snapshotCursor = this.snapshotCursor();
-    return { transcriptHtml: renderTranscript(this.ctx, await this.itemsForDisplay(), this.modelContext()), busy: this.isStreaming, stats: await this.statsView(), snapshotCursor };
+    this.assertActive();
+    return await this.capturePaneState()();
   }
 
   async detailHtml(key: string, count = 100): Promise<string> {
+    this.assertActive();
     if (key === "model-context") return renderModelContextDetailFrame(this.ctx, this.modelContext());
-    const item = findTranscriptItem(await this.itemsForDisplay(), key);
+    const item = findTranscriptItem(this.itemsForDisplay(), key);
     return item ? renderTranscriptItemDetailFrame(this.ctx, item, { count }) : "";
   }
 
   protected abstract modelContext(): AgentModelContextView;
   abstract userMessages(): string[];
-  protected abstract canonicalItems(leafId?: string): Promise<TranscriptItem[]>;
+  protected abstract canonicalItems(leafId?: string): TranscriptItem[];
   protected abstract statsView(): Promise<AgentStatsView>;
   abstract submit(text: string, options: SubmitOptions): Promise<void>;
   abstract compact(customInstructions?: string): Promise<void>;
   abstract abort(): Promise<void>;
+  abstract dispose(): Promise<void>;
   abstract currentModel(): { provider: string; id: string } | undefined;
   abstract currentThinkingLevel(): string;
   abstract availableThinkingLevels(): string[];
@@ -722,6 +1009,13 @@ const sessionImagePartSchema = Type.Object({
 });
 const sessionImageStringSchema = Type.String();
 const sessionTimestampSchema = Type.Number();
+const sessionTextSignatureSchema = Type.String();
+
+interface SessionAssistantTextPart {
+  type: "text";
+  text: string;
+  textSignature?: string;
+}
 
 function sessionContentImages(entry: { id: string; message?: { content?: unknown } }): SessionImageRef[] {
   if (!Array.isArray(entry.message?.content)) return [];
@@ -760,7 +1054,11 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
         const parts: any[] = [];
         for (const part of message.content ?? []) {
           if (part.type === "thinking") parts.push({ type: "thinking", text: part.thinking ?? "" });
-          else if (part.type === "text") parts.push({ type: "text", text: part.text ?? "" });
+          else if (part.type === "text") {
+            const textPart: SessionAssistantTextPart = { type: "text", text: part.text ?? "" };
+            if (Value.Check(sessionTextSignatureSchema, part.textSignature)) textPart.textSignature = part.textSignature;
+            parts.push(textPart);
+          }
           else if (part.type === "toolCall") parts.push({ type: "toolCall", callId: part.id, name: part.name, args: part.arguments });
         }
         records.push({
@@ -813,10 +1111,13 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
   return records;
 }
 
-class RealAgentRuntime extends BaseAgentRuntime {
+export class RealAgentRuntime extends BaseAgentRuntime {
   private summarizing = false;
   private unsubscribeSession?: () => void;
   private postCompactionEstimate?: { entryId: string; tokens: number };
+  private pendingAcceptedPrompt?: { text: string; images: SessionImageRef[] };
+  private readonly terminalSessionOperations = new Set<Promise<void>>();
+  private disposal?: Promise<void>;
 
   constructor(agent: WorkspaceAgentConversationInfo, private session: any, private toolsForModel: AgentToolDefinitionView[], private serviceTiers: AgentServiceTierState, options: WorkspaceAgentRuntimeOptions = {}) {
     super(agent, options);
@@ -828,6 +1129,21 @@ class RealAgentRuntime extends BaseAgentRuntime {
     this.unsubscribeSession = this.session.subscribe((event: any) => {
       void this.handleEvent(event);
     });
+  }
+
+  private trackTerminalSessionOperation<Result>(operation: Promise<Result>): Promise<Result> {
+    const terminal = operation.then(() => undefined, () => undefined);
+    this.terminalSessionOperations.add(terminal);
+    void terminal.then(() => {
+      this.terminalSessionOperations.delete(terminal);
+    });
+    return operation;
+  }
+
+  private async awaitTerminalSessionOperations(): Promise<void> {
+    while (this.terminalSessionOperations.size > 0) {
+      await Promise.all(this.terminalSessionOperations);
+    }
   }
 
   override get isStreaming(): boolean {
@@ -870,12 +1186,13 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   userMessages(): string[] {
+    this.assertActive();
     return recordsFromSessionEntries(this.session.sessionManager.getBranch())
       .filter((record) => record.kind === "user")
       .map((record) => record.text);
   }
 
-  protected async canonicalItems(leafId?: string): Promise<TranscriptItem[]> {
+  protected canonicalItems(leafId?: string): TranscriptItem[] {
     const entries = this.session.sessionManager.getBranch(leafId);
     const cacheMisses = collectCacheMisses(entries, this.session.modelRuntime);
     return buildTranscript(recordsFromSessionEntries(entries, cacheMisses));
@@ -886,12 +1203,15 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   protected async statsView(): Promise<AgentStatsView> {
-    const configuredModels = await this.configuredModelOptions();
     const stats = this.session.getSessionStats?.();
     const context = this.session.getContextUsage?.();
     const model = this.session.model;
     const estimate = this.postCompactionEstimate;
-    const estimatedTokens = this.latestCompactionEntry()?.id === estimate?.entryId ? estimate?.tokens : undefined;
+    const latestCompactionEntryId = this.latestCompactionEntry()?.id;
+    const thinkingLevel = this.currentThinkingLevel();
+    const thinkingLevels = this.availableThinkingLevels();
+    const configuredModels = await this.configuredModelOptions();
+    const estimatedTokens = latestCompactionEntryId === estimate?.entryId ? estimate?.tokens : undefined;
     const contextPercent = contextUsagePercent(context?.percent, estimatedTokens, model?.contextWindow);
     const models = configuredModels.map((option) => ({
       provider: option.provider,
@@ -913,8 +1233,8 @@ class RealAgentRuntime extends BaseAgentRuntime {
       outputTokens: stats?.tokens?.output ?? 0,
       cost: stats?.cost ?? 0,
       modelName: model?.name ?? model?.id,
-      thinkingLevel: this.currentThinkingLevel(),
-      thinkingLevels: this.availableThinkingLevels(),
+      thinkingLevel,
+      thinkingLevels,
       models,
     };
   }
@@ -944,21 +1264,22 @@ class RealAgentRuntime extends BaseAgentRuntime {
     const entry = this.latestSessionMessage((message) => message?.role === "toolResult" && message.toolCallId === callId);
     if (!entry) return;
     item.tool.resultImages = sessionContentImages(entry);
-    this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { live: true, open: true })));
+    this.streamActiveToolContent(item);
   }
 
   private async handleEvent(event: any): Promise<void> {
     switch (event.type) {
       case "agent_start":
-        this.liveEnsure();
+        this.liveBegin(this.pendingAcceptedPrompt);
+        this.pendingAcceptedPrompt = undefined;
         this.setBusy(true);
         break;
       case "message_update": {
         const inner = event.assistantMessageEvent;
         if (!inner) break;
-        const stopReason = inner.partial?.stopReason ?? inner.reason;
-        if (isFinalAssistantStopReason(stopReason)) this.liveFinalStart();
-        if (inner.type === "text_delta") this.liveTextDelta(inner.delta ?? "");
+        if (inner.type === "text_start") this.liveTextStart(inner.contentIndex, isFinalAssistantTextEvent(inner));
+        else if (inner.type === "text_delta") this.liveTextDelta(inner.delta ?? "", inner.contentIndex, isFinalAssistantTextEvent(inner));
+        else if (inner.type === "text_end") this.liveTextEnd(inner.contentIndex);
         else if (inner.type === "thinking_delta") this.liveThinkingDelta(inner.delta ?? "");
         else if (inner.type === "toolcall_start") {
           const part = inner.partial?.content?.[inner.contentIndex];
@@ -995,9 +1316,8 @@ class RealAgentRuntime extends BaseAgentRuntime {
         if (message?.role === "user") setTimeout(() => this.syncLiveUserEntry(), 0);
         if (message?.role === "toolResult") setTimeout(() => this.syncLiveToolResult(message.toolCallId), 0);
         if (message?.role === "assistant") {
-          const text = contentText(message.content);
           if (isFinalAssistantMessage(message.content, message.stopReason)) {
-            this.liveFinal(text);
+            this.liveFinal(finalAssistantText(message.content));
           } else {
             this.closeOpenItem();
           }
@@ -1010,9 +1330,17 @@ class RealAgentRuntime extends BaseAgentRuntime {
         break;
       }
       case "agent_end":
-        await this.liveEnd();
-        this.setBusy(false);
-        await this.emitTurnFinished();
+        // End state and readiness are one synchronous lifecycle boundary. Stats
+        // are secondary presentation data and cannot delay, suppress, or race a
+        // newer agent_start into being marked idle.
+        this.finishLivePresentation();
+        if (!event.willRetry) {
+          this.setBusy(false);
+          await this.emitTurnFinished();
+        }
+        void this.refreshStats().catch((error) => {
+          console.error("Could not refresh Agent stats after turn completion", normalizedPromiseError(error));
+        });
         break;
       case "compaction_start":
         this.setBusy(true);
@@ -1021,14 +1349,14 @@ class RealAgentRuntime extends BaseAgentRuntime {
       case "compaction_end": {
         const entry = event.result && this.latestCompactionEntry();
         if (entry) this.postCompactionEstimate = { entryId: entry.id, tokens: event.result.estimatedTokensAfter };
+        if (!event.willRetry) this.setBusy(false);
+        if (event.reason === "manual" && !event.willRetry) await this.emitTurnFinished();
         await this.refreshTranscript();
         await this.refreshStats();
         this.notice(
           event.errorMessage ? "error" : "info",
           event.errorMessage ?? (event.aborted ? "Compaction cancelled" : "Context compacted"),
         );
-        if (!event.willRetry) this.setBusy(false);
-        if (event.reason === "manual") await this.emitTurnFinished();
         break;
       }
       case "auto_retry_start":
@@ -1040,11 +1368,13 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   async submit(text: string, options: SubmitOptions): Promise<void> {
+    this.assertActive();
     const trimmed = text.trim();
-    if (!trimmed && (options.images?.length ?? 0) === 0) return;
     const noteLines = options.attachmentNotes ?? [];
     const fullText = noteLines.length > 0 ? `${trimmed}\n\n${noteLines.join("\n")}` : trimmed;
     const images = (options.images ?? []).map((image) => ({ type: "image" as const, data: image.data, mimeType: image.mimeType }));
+    if (!fullText.trim() && images.length === 0) return;
+    if (this.summarizing) throw new Error("Wait for branch summarization to finish before sending another prompt.");
 
     if (this.session.isStreaming) {
       await this.session.steer(fullText, images.length > 0 ? images : undefined);
@@ -1052,22 +1382,61 @@ class RealAgentRuntime extends BaseAgentRuntime {
       return;
     }
 
-    this.liveBegin({ text: trimmed, images: [] });
-    this.setBusy(true);
+    let accepted = false;
+    let acceptedPrompt: { text: string; images: SessionImageRef[] } | undefined;
+    let resolveAcceptance!: () => void;
+    let rejectAcceptance!: (error: Error) => void;
+    const acceptance = new Promise<void>((resolve, reject) => {
+      resolveAcceptance = resolve;
+      rejectAcceptance = reject;
+    });
+    const thisRuntime = this;
+    const promptOptions: AgentPromptPreflightOptions = {
+      preflightResult(success) {
+        if (!success) return;
+        accepted = true;
+        // Pi invokes this immediately before starting the agent loop. Keep the
+        // accepted prompt pending until agent_start so immediately handled
+        // extension commands never create a speculative user/Working section or
+        // leave the Agent busy without a matching agent_end.
+        acceptedPrompt = { text: trimmed, images: [] };
+        thisRuntime.pendingAcceptedPrompt = acceptedPrompt;
+        resolveAcceptance();
+      },
+    };
+    if (images.length > 0) promptOptions.images = images;
     void this.session
-      .prompt(fullText, images.length > 0 ? { images } : undefined)
-      // Pi extensions can reject with arbitrary JavaScript values. This final
-      // boundary renders the reason safely, then restores agent lifecycle state.
-      // oxlint-disable-next-line anti-slop/no-unknown-parameters -- The rejection is normalized here.
-      .catch(async (error: unknown) => {
-        this.notice("error", error instanceof Error ? error.message : String(error));
-        await this.liveEnd();
-        this.setBusy(false);
-        await this.emitTurnFinished();
+      .prompt(fullText, promptOptions)
+      .then(() => {
+        // An accepted extension/input handler may complete without starting an
+        // agent loop. Its direct mutations are authoritative, while the pending
+        // prompt was never presented and must not keep lifecycle state alive.
+        if (thisRuntime.pendingAcceptedPrompt === acceptedPrompt) {
+          thisRuntime.pendingAcceptedPrompt = undefined;
+          void thisRuntime.streamRendered(async () => await thisRuntime.authoritativePresentationUpdate()).catch((error) => {
+            console.error("Could not refresh Agent after handled prompt", normalizedPromiseError(error));
+          });
+        }
+      })
+      // Pi extensions can reject with arbitrary JavaScript values. Before
+      // acceptance the original value is propagated to the route; after
+      // acceptance Pi's event stream owns the terminal lifecycle.
+      // oxlint-disable-next-line anti-slop/no-unknown-parameters -- normalizedPromiseError owns this external boundary.
+      .catch((error: unknown) => {
+        if (!accepted) {
+          if (this.pendingAcceptedPrompt === acceptedPrompt) this.pendingAcceptedPrompt = undefined;
+          rejectAcceptance(normalizedPromiseError(error));
+          return;
+        }
+        // Accepted agent runs report failures and terminal lifecycle through Pi's
+        // event stream. Rendering a second terminal path here would duplicate
+        // readiness and can race a newer run.
+        console.error("Accepted Agent prompt failed outside its event lifecycle", normalizedPromiseError(error));
       });
+    await acceptance;
   }
 
-  async compact(customInstructions?: string): Promise<void> {
+  private async compactSession(customInstructions?: string): Promise<void> {
     try {
       await this.session.compact(customInstructions?.trim() || undefined);
     } catch {
@@ -1076,21 +1445,48 @@ class RealAgentRuntime extends BaseAgentRuntime {
     }
   }
 
+  async compact(customInstructions?: string): Promise<void> {
+    this.assertActive();
+    await this.trackTerminalSessionOperation(this.compactSession(customInstructions));
+  }
+
   async abort(): Promise<void> {
-    if (this.session.isCompacting) {
-      this.session.abortCompaction();
-      return;
-    }
     if (this.summarizing) {
       this.session.abortBranchSummary?.();
-      return;
+    } else if (this.session.isCompacting) {
+      this.session.abortCompaction();
+      await this.session.waitForIdle();
+    } else {
+      await this.session.abort();
     }
-    await this.session.abort();
-    await this.liveEnd();
+    await this.awaitTerminalSessionOperations();
+    this.finishLivePresentation();
     this.setBusy(false);
+    void this.refreshStats().catch((error) => {
+      console.error("Could not refresh Agent stats after abort", normalizedPromiseError(error));
+    });
+  }
+
+  private async finishDisposal(): Promise<void> {
+    const unsubscribe = this.unsubscribeSession;
+    this.unsubscribeSession = undefined;
+    unsubscribe?.();
+    try {
+      await this.abort();
+    } finally {
+      this.setBusy(false);
+    }
+  }
+
+  dispose(): Promise<void> {
+    if (this.disposal) return this.disposal;
+    if (!this.markDisposed()) return Promise.resolve();
+    this.disposal = this.finishDisposal();
+    return this.disposal;
   }
 
   async setModel(provider: string, modelId: string): Promise<void> {
+    this.assertActive();
     const model = this.session.modelRuntime.getModel(provider, modelId);
     if (!model) throw new Error(`Model not available: ${provider}/${modelId}`);
     await this.session.setModel(model);
@@ -1101,11 +1497,13 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   async setThinkingLevel(level: string): Promise<void> {
+    this.assertActive();
     this.session.setThinkingLevel(level);
     await this.refreshStats();
   }
 
   async setServiceTier(serviceTier: AgentServiceTier): Promise<void> {
+    this.assertActive();
     const provider = this.currentModel()?.provider;
     if (!provider || !supportsFastMode(provider)) return;
     await this.serviceTiers.set(provider, serviceTier);
@@ -1113,83 +1511,150 @@ class RealAgentRuntime extends BaseAgentRuntime {
   }
 
   async newSession(): Promise<void> {
+    this.assertActive();
     if (this.isStreaming) throw new Error("Stop the agent before starting a new session.");
     const model = this.session.model;
     const thinkingLevel = this.session.thinkingLevel;
     const serviceTier = await this.currentServiceTier();
     const agent = await replaceWorkspaceAgentSession({ workspaceId: this.workspaceId, conversationId: this.conversationId, label: this.label, title: this.title, path: this.sessionFile });
     const created = await createPiSession(agent, this.options, { model, thinkingLevel, serviceTier });
+    try {
+      this.assertActive();
+    } catch (error) {
+      await created.session.abort();
+      throw error;
+    }
     this.unsubscribeSession?.();
     this.session = created.session;
     this.toolsForModel = created.toolViews;
     this.serviceTiers = created.serviceTiers;
     this.sessionFile = agent.path;
     this.subscribeToSession();
-    this.stream((await this.snapshotStream()).html);
+    await this.streamRendered(async () => await this.authoritativePresentationUpdate());
   }
 
   treeHtml(options: { filter: TreeFilterMode; query: string }): string {
+    this.assertActive();
     return renderAgentSessionTree(this.session.sessionManager, options);
   }
 
   labelTreeEntry(entryId: string, label: string, operation: "add" | "remove"): void {
+    this.assertActive();
     updateAgentSessionTreeLabel(this.session.sessionManager, entryId, label, operation);
   }
 
-  async navigateTree(entryId: string, options: { summarize: boolean; customInstructions?: string }): Promise<string> {
-    if (this.isStreaming) throw new Error("Stop the agent before navigating the session tree.");
-    if (options.summarize) {
-      this.summarizing = true;
-      this.setBusy(true);
-    }
+  private async navigateSessionTree(entryId: string, options: { summarize: boolean; customInstructions?: string }): Promise<string> {
+    if (options.summarize) this.beginBranchSummary();
     try {
       const result = await this.session.navigateTree(entryId, {
         summarize: options.summarize,
         customInstructions: options.customInstructions?.trim() || undefined,
       });
       this.serviceTiers.reload();
+      if (options.summarize) {
+        await this.finishBranchSummary();
+        void (async () => {
+          await this.refreshTranscript();
+          await this.refreshStats();
+        })().catch((error) => {
+          console.error("Could not refresh Agent after tree summarization", normalizedPromiseError(error));
+        });
+        return result.editorText ?? "";
+      }
       await this.refreshTranscript();
       await this.refreshStats();
       return result.editorText ?? "";
     } finally {
-      if (options.summarize) {
-        this.summarizing = false;
-        this.setBusy(false);
-      }
+      if (options.summarize) await this.finishBranchSummary();
     }
   }
 
+  async navigateTree(entryId: string, options: { summarize: boolean; customInstructions?: string }): Promise<string> {
+    this.assertActive();
+    if (this.isStreaming) throw new Error("Stop the agent before navigating the session tree.");
+    return await this.trackTerminalSessionOperation(this.navigateSessionTree(entryId, options));
+  }
+
+  private startDetachedRewindSummary(target: string, customInstructions?: string): Promise<void> {
+    let started = false;
+    let resolveStarted!: () => void;
+    let rejectStarted!: (error: Error) => void;
+    const startedOperation = new Promise<void>((resolve, reject) => {
+      resolveStarted = resolve;
+      rejectStarted = reject;
+    });
+    const lifecycle = (async () => {
+      this.beginBranchSummary();
+      try {
+        this.liveBegin();
+        this.liveNote("Summarizing the abandoned branch…", "system");
+        await this.streamRendered(async () => {
+          const truncated = this.canonicalItems(target);
+          if (this.live) truncated.push(...this.liveItemsForDisplay(this.live));
+          return turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, truncated, this.modelContext()));
+        });
+        this.assertActive();
+        const navigation = this.session.navigateTree(target, { summarize: true, customInstructions: customInstructions?.trim() || undefined });
+        started = true;
+        resolveStarted();
+        await navigation;
+      // The summarizer may reject with any JavaScript value. Before the
+      // detached operation starts, reject the route; afterward render the error.
+      // oxlint-disable-next-line anti-slop/no-unknown-parameters -- normalizedPromiseError owns this external boundary.
+      } catch (error: unknown) {
+        const normalized = normalizedPromiseError(error);
+        if (!started) rejectStarted(normalized);
+        else this.notice("error", normalized.message);
+      } finally {
+        try {
+          this.serviceTiers.reload();
+        } finally {
+          this.finishLivePresentation();
+          await this.finishBranchSummary();
+        }
+        void (async () => {
+          await this.refreshTranscript();
+          await this.refreshStats();
+        })().catch((error) => {
+          console.error("Could not refresh Agent after rewind summarization", normalizedPromiseError(error));
+        });
+      }
+    })();
+    this.trackTerminalSessionOperation(lifecycle);
+    return startedOperation;
+  }
+
   async rewind(entryId: string, mode: RewindMode, customInstructions?: string): Promise<void> {
-    if (this.session.isStreaming) throw new Error("Stop the agent before rewinding.");
+    this.assertActive();
+    if (this.isStreaming) throw new Error("Stop the agent before rewinding.");
     const entry = this.session.sessionManager.getEntry(entryId);
     if (!entry) throw new Error("Rewind target no longer exists.");
     const target = entry.parentId;
     if (!target) throw new Error("Cannot rewind past the first message.");
     if (mode === "summary") {
-      // Show the truncated transcript immediately and treat the summarizer like
-      // any other busy agent: a live transcript item with a stop button.
-      this.summarizing = true;
-      this.liveBegin();
-      this.liveNote("Summarizing the abandoned branch…", "system");
-      const truncated = await this.canonicalItems(target);
-      if (this.live) truncated.push(...this.liveItemsForDisplay(this.live));
-      this.stream(turboStream("update", ids.transcript(this.ctx), renderTranscript(this.ctx, truncated, this.modelContext())));
-      void this.session
-        .navigateTree(target, { summarize: true, customInstructions: customInstructions?.trim() || undefined })
-        // The summarizer may reject with any JavaScript value. This detached task
-        // owns that boundary: catch renders the reason and finally performs cleanup.
-        // oxlint-disable-next-line anti-slop/no-unknown-parameters -- The rejection is normalized here.
-        .catch((error: unknown) => this.notice("error", error instanceof Error ? error.message : String(error)))
-        .finally(async () => {
-          this.summarizing = false;
-          await this.liveEnd();
-        });
+      // Return once Pi owns the summarization, while retaining its terminal
+      // lifecycle so abort/dispose can join it before the session is archived.
+      await this.startDetachedRewindSummary(target, customInstructions);
       return;
     }
-    await this.session.navigateTree(target, { summarize: false });
-    this.serviceTiers.reload();
-    await this.refreshTranscript();
-    await this.refreshStats();
+    await this.trackTerminalSessionOperation((async () => {
+      await this.session.navigateTree(target, { summarize: false });
+      this.serviceTiers.reload();
+      await this.refreshTranscript();
+      await this.refreshStats();
+    })());
+  }
+
+  private beginBranchSummary(): void {
+    this.summarizing = true;
+    this.setBusy(true);
+  }
+
+  private async finishBranchSummary(): Promise<void> {
+    if (!this.summarizing) return;
+    this.summarizing = false;
+    this.setBusy(false);
+    await this.emitTurnFinished();
   }
 }
 

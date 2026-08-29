@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { createWorkspaceRegistry, type WorkspaceActivityStore, type WorkspaceEntry } from "../src/server/workspace-registry.ts";
+import { createWorkspaceRegistry, type WorkspaceActivityStore, type WorkspaceEntry, type WorkspaceUnreadSnapshot, type WorkspaceUnreadStore } from "../src/server/workspace-registry.ts";
 
 interface Captured {
-  rows: Array<{ entry: WorkspaceEntry; viewKey?: string }>;
+  rows: Array<{ entry: WorkspaceEntry; viewKey?: string; unread?: boolean }>;
   lists: WorkspaceEntry[][];
   removed: string[];
   parked: WorkspaceEntry[];
@@ -21,13 +21,26 @@ function memoryStore(initial: Record<string, number> = {}): WorkspaceActivitySto
   };
 }
 
-function setup(options: { activity?: Record<string, number>; unread?: Record<string, number>; now?: () => number } = {}) {
+function memoryUnreadStore(initial: WorkspaceUnreadSnapshot = { nextToken: 1, views: {} }): WorkspaceUnreadStore & { saved: WorkspaceUnreadSnapshot[] } {
+  const saved: WorkspaceUnreadSnapshot[] = [];
+  return {
+    saved,
+    async load() {
+      return structuredClone(saved.at(-1) ?? initial);
+    },
+    async save(unread) {
+      saved.push(structuredClone(unread));
+    },
+  };
+}
+
+function setup(options: { activity?: Record<string, number>; unread?: WorkspaceUnreadSnapshot; now?: () => number } = {}) {
   const store = memoryStore(options.activity);
-  const unreadStore = memoryStore(options.unread);
+  const unreadStore = memoryUnreadStore(options.unread);
   const registry = createWorkspaceRegistry({ activityStore: store, unreadStore, now: options.now });
   const captured: Captured = { rows: [], lists: [], removed: [], parked: [] };
   registry.setCallbacks({
-    rowChanged: (entry, { viewKey }) => captured.rows.push({ entry: { ...entry }, viewKey }),
+    rowChanged: (entry, { viewKey, unread }) => captured.rows.push({ entry: { ...entry }, viewKey, unread }),
     parkedChanged: (entry) => captured.parked.push({ ...entry }),
     listChanged: (entries) => captured.lists.push(entries.map((entry) => ({ ...entry }))),
     removed: (id) => captured.removed.push(id),
@@ -94,11 +107,11 @@ describe("workspace registry", () => {
     ]);
     captured.lists.length = 0;
 
-    registry.setViewBusy("parked", "agent:1", true);
+    registry.setViewBusy("parked", "agent:53fc77b7-dc19-42d5-b200-2e134ec67529", true);
 
     expect(registry.get("parked")?.parked).toBe(false);
     expect(captured.parked.at(-1)?.id).toBe("parked");
-    expect(captured.rows.map((row) => row.viewKey)).toEqual(["agent:1"]);
+    expect(captured.rows.map((row) => row.viewKey)).toEqual(["agent:53fc77b7-dc19-42d5-b200-2e134ec67529"]);
     expect(captured.lists).toHaveLength(1);
     expect(registry.list().map((entry) => entry.id)).toEqual(["parked", "active"]);
   });
@@ -111,12 +124,12 @@ describe("workspace registry", () => {
     ]);
     captured.lists.length = 0;
 
-    registry.setViewUnread("parked", "agent:1", true);
+    registry.markViewUnread("parked", "agent:53fc77b7-dc19-42d5-b200-2e134ec67529");
 
     expect(registry.get("parked")?.parked).toBe(false);
     expect(registry.isWorkspaceUnread("parked")).toBe(true);
     expect(captured.parked.at(-1)?.id).toBe("parked");
-    expect(captured.rows.map((row) => row.viewKey)).toEqual(["agent:1"]);
+    expect(captured.rows.map((row) => row.viewKey)).toEqual(["agent:53fc77b7-dc19-42d5-b200-2e134ec67529"]);
     expect(captured.lists).toHaveLength(1);
   });
 
@@ -195,7 +208,7 @@ describe("workspace registry", () => {
     expect(store.saved.at(-1)?.b).toBeGreaterThan(300);
   });
 
-  test("view busy and workspace unread aggregate with busy taking precedence, never reordering", async () => {
+  test("view busy and per-Agent unread aggregate with busy taking precedence, never reordering", async () => {
     const { registry, captured } = setup({ activity: { a: 200, b: 100 } });
     await registry.seed([
       { id: "a", title: null },
@@ -204,8 +217,8 @@ describe("workspace registry", () => {
     captured.lists.length = 0;
     captured.rows.length = 0;
 
-    registry.setViewUnread("b", "agent:1", true);
-    registry.setViewUnread("b", "agent:1", true);
+    const agentKey = "agent:53fc77b7-dc19-42d5-b200-2e134ec67529";
+    registry.markViewUnread("b", agentKey);
     expect(registry.isWorkspaceUnread("b")).toBe(true);
     expect(registry.workspaceUnreadAt("b")).toBeDefined();
     expect(registry.workspaceState("b")).toBe("unread");
@@ -215,37 +228,112 @@ describe("workspace registry", () => {
     expect(registry.isViewBusy("b", "terminal:1")).toBe(true);
     expect(registry.workspaceState("b")).toBe("busy");
     expect(registry.busyViews("b")).toEqual(["terminal:1"]);
-    expect(captured.rows.map((row) => row.viewKey)).toEqual(["agent:1", "agent:1", "terminal:1"]);
+    expect(captured.rows.map((row) => row.viewKey)).toEqual([agentKey, "terminal:1"]);
     expect(captured.lists).toHaveLength(0);
 
     registry.setViewBusy("b", "terminal:1", false);
     expect(registry.workspaceState("b")).toBe("unread");
-    registry.setActiveWorkspace("b");
+    registry.clearViewUnread("b", agentKey);
     expect(registry.isWorkspaceUnread("b")).toBe(false);
     expect(registry.workspaceState("b")).toBe("idle");
   });
 
-  test("active workspace does not become unread", async () => {
-    const { registry, unreadStore } = setup();
-    await registry.seed([{ id: "a", title: null }, { id: "b", title: null }]);
+  test("repeated completion preserves first-unread ordering and stale acknowledgement cannot clear the newer occurrence", async () => {
+    let clock = 100;
+    const { registry } = setup({ now: () => ++clock });
+    await registry.seed([{ id: "a", title: null }]);
+    const agentKey = "agent:53fc77b7-dc19-42d5-b200-2e134ec67529";
 
-    registry.setActiveWorkspace("a");
-    registry.setViewUnread("a", "agent:1", true);
-    registry.setViewUnread("b", "agent:1", true);
+    const firstToken = registry.markViewUnread("a", agentKey)!;
+    const firstUnreadAt = registry.workspaceUnreadAt("a");
+    const secondToken = registry.markViewUnread("a", agentKey)!;
 
+    expect(secondToken).toBeGreaterThan(firstToken);
+    expect(registry.workspaceUnreadAt("a")).toBe(firstUnreadAt);
+    expect(registry.unreadTokens("a")).toEqual({ [agentKey]: secondToken });
+    expect(registry.acknowledgeViewUnread("a", agentKey, firstToken)).toBe(false);
+    expect(registry.isViewUnread("a", agentKey)).toBe(true);
+    expect(registry.acknowledgeViewUnread("a", agentKey, secondToken)).toBe(true);
+    expect(registry.isViewUnread("a", agentKey)).toBe(false);
+  });
+
+  test("Agent-ready ordering excludes older Work and workspace-level unread occurrences", async () => {
+    let clock = 100;
+    const { registry } = setup({ now: () => ++clock });
+    await registry.seed([{ id: "a", title: null }]);
+
+    registry.markViewUnread("a", "workspace");
+    registry.markViewUnread("a", "files:workspace");
+    const aggregateUnreadAt = registry.workspaceUnreadAt("a");
+    registry.markViewUnread("a", "agent:conversation-a");
+
+    expect(registry.workspaceUnreadAt("a")).toBe(aggregateUnreadAt);
+    expect(registry.workspaceAgentReadyAt("a")).toBeGreaterThan(aggregateUnreadAt!);
+    registry.clearViewUnread("a", "agent:conversation-a");
+    expect(registry.workspaceAgentReadyAt("a")).toBeUndefined();
+    expect(registry.isWorkspaceUnread("a")).toBe(true);
+  });
+
+  test("per-Agent unread state persists until that exact view is acknowledged", async () => {
+    const { registry, unreadStore, captured } = setup();
+    await registry.seed([{ id: "a", title: null }]);
+    const firstAgent = "agent:53fc77b7-dc19-42d5-b200-2e134ec67529";
+    const secondAgent = "agent:268604ac-d16a-4a4a-ab1e-1ed3ca54687d";
+
+    const firstToken = registry.markViewUnread("a", firstAgent)!;
+    const secondToken = registry.markViewUnread("a", secondAgent)!;
+
+    expect(registry.isViewUnread("a", firstAgent)).toBe(true);
+    expect(registry.isViewUnread("a", secondAgent)).toBe(true);
+    expect(registry.isWorkspaceUnread("a")).toBe(true);
+
+    expect(registry.acknowledgeViewUnread("a", firstAgent, firstToken)).toBe(true);
+    expect(registry.isViewUnread("a", firstAgent)).toBe(false);
+    expect(registry.isViewUnread("a", secondAgent)).toBe(true);
+    expect(registry.isWorkspaceUnread("a")).toBe(true);
+    expect(unreadStore.saved.at(-1)).toEqual({
+      nextToken: 3,
+      views: { a: { [secondAgent]: { unreadAt: expect.any(Number), token: secondToken } } },
+    });
+
+    expect(registry.acknowledgeViewUnread("a", secondAgent, secondToken)).toBe(true);
     expect(registry.isWorkspaceUnread("a")).toBe(false);
-    expect(registry.isWorkspaceUnread("b")).toBe(true);
-    registry.setActiveWorkspace("b");
-    expect(registry.isWorkspaceUnread("b")).toBe(false);
-    expect(unreadStore.saved.at(-1)).toEqual({});
+    expect(unreadStore.saved.at(-1)).toEqual({ nextToken: 3, views: {} });
+    expect(captured.rows.map(({ viewKey, unread }) => ({ viewKey, unread }))).toEqual([
+      { viewKey: firstAgent, unread: true },
+      { viewKey: secondAgent, unread: true },
+      { viewKey: firstAgent, unread: false },
+      { viewKey: secondAgent, unread: false },
+    ]);
   });
 
   test("persisted workspace unread state is loaded and pruned on seed", async () => {
-    const { registry, unreadStore } = setup({ unread: { a: 123, deleted: 456 } });
+    const agentKey = "agent:53fc77b7-dc19-42d5-b200-2e134ec67529";
+    const { registry, unreadStore } = setup({ unread: { nextToken: 8, views: {
+      a: { [agentKey]: { unreadAt: 123, token: 6 } },
+      deleted: { workspace: { unreadAt: 456, token: 7 } },
+    } } });
     await registry.seed([{ id: "a", title: null }]);
     expect(registry.isWorkspaceUnread("a")).toBe(true);
+    expect(registry.isViewUnread("a", agentKey)).toBe(true);
     expect(registry.workspaceUnreadAt("a")).toBe(123);
-    expect(unreadStore.saved.at(-1)).toEqual({ a: 123 });
+    expect(unreadStore.saved.at(-1)).toEqual({ nextToken: 8, views: { a: { [agentKey]: { unreadAt: 123, token: 6 } } } });
+  });
+
+  test("persisted exact Work-view unread state remains ready after registry restart", async () => {
+    const unreadStore = memoryUnreadStore();
+    const original = createWorkspaceRegistry({ unreadStore, now: () => 321 });
+    await original.seed([{ id: "a", title: null }]);
+    original.markViewUnread("a", "browser:preview", 7);
+    await Bun.sleep(0);
+
+    const restarted = createWorkspaceRegistry({ unreadStore });
+    await restarted.seed([{ id: "a", title: null }]);
+
+    expect(restarted.isViewUnread("a", "browser:preview")).toBe(true);
+    expect(restarted.isWorkspaceUnread("a")).toBe(true);
+    expect(restarted.workspaceUnreadAt("a")).toBe(321);
+    expect(restarted.oldestUnreadWorkspace()?.id).toBe("a");
   });
 
   test("oldestUnreadWorkspace returns the ready workspace with earliest unread timestamp", async () => {
@@ -257,14 +345,15 @@ describe("workspace registry", () => {
       { id: "c", title: null },
     ]);
 
-    registry.setViewUnread("b", "agent:1", true);
-    registry.setViewUnread("a", "agent:1", true);
+    const agentKey = "agent:53fc77b7-dc19-42d5-b200-2e134ec67529";
+    registry.markViewUnread("b", agentKey);
+    registry.markViewUnread("a", agentKey);
     expect(registry.oldestUnreadWorkspace()?.id).toBe("b");
 
-    registry.setActiveWorkspace("b");
+    registry.clearViewUnread("b", agentKey);
     expect(registry.oldestUnreadWorkspace()?.id).toBe("a");
 
-    registry.setActiveWorkspace("a");
+    registry.clearViewUnread("a", agentKey);
     expect(registry.oldestUnreadWorkspace()).toBeUndefined();
   });
 

@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { type AgentCompletionInput, agentCompletionRequest, fileCompletionPrefix, focusAgentPaneComposerOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, scrollMessageToTop, terminalOutputHasPrintableText, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
+import { type AgentCompletionInput, agentCompletionRequest, agentComposerPrimaryAction, agentComposerTextStorageKey, agentConnectionShouldRun, fileCompletionPrefix, focusAgentPaneComposerOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, scrollMessageToTop, shouldPositionTranscriptAfterSnapshot, terminalOutputHasPrintableText, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): AgentCompletionInput {
   return {
@@ -36,6 +36,33 @@ describe("AgentPaneComposer focus", () => {
 
     expect(focusAgentPaneComposerOnWideViewport(pane, false, false)).toBe(false);
     expect(focus).not.toHaveBeenCalled();
+  });
+});
+
+describe("Agent pane residency", () => {
+  test("runs live connections only while logically visible in a visible document", () => {
+    expect(agentConnectionShouldRun(true, "visible")).toBe(true);
+    expect(agentConnectionShouldRun(false, "visible")).toBe(false);
+    expect(agentConnectionShouldRun(true, "hidden")).toBe(false);
+  });
+
+  test("keys durable composer text by immutable conversation identity", () => {
+    expect(agentComposerTextStorageKey("workspace-1", "conversation-1")).toBe('atelier.agentComposerText:["workspace-1","conversation-1"]');
+    expect(agentComposerTextStorageKey("workspace-1", "conversation-2")).not.toBe(agentComposerTextStorageKey("workspace-1", "conversation-1"));
+    expect(agentComposerTextStorageKey("workspace-2", "conversation-1")).not.toBe(agentComposerTextStorageKey("workspace-1", "conversation-1"));
+  });
+
+  test("uses attachments as message content when choosing the busy primary action", () => {
+    expect(agentComposerPrimaryAction(true, "", 0)).toBe("abort");
+    expect(agentComposerPrimaryAction(true, "", 1)).toBe("steer");
+    expect(agentComposerPrimaryAction(true, "Follow up", 0)).toBe("steer");
+    expect(agentComposerPrimaryAction(false, "", 0)).toBe("send");
+  });
+
+  test("repositions snapshots for a selection but preserves manual history on an in-place reconnect", () => {
+    expect(shouldPositionTranscriptAfterSnapshot(false, false)).toBe(true);
+    expect(shouldPositionTranscriptAfterSnapshot(true, true)).toBe(true);
+    expect(shouldPositionTranscriptAfterSnapshot(true, false)).toBe(false);
   });
 });
 

@@ -2,7 +2,6 @@ import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "bun:test";
-import { createWorkspacePresentationStore } from "@atelier/workspace";
 import {
   archiveWorkspaceAgentConversation,
   createNextWorkspaceAgentConversation,
@@ -14,7 +13,6 @@ import {
   sessionShareDir,
   sessionShareKeySlug,
   sessionTopicSlug,
-  workspaceAgentConversationContributions,
 } from "../../src/server/session-store.ts";
 
 let dir: string | undefined;
@@ -40,6 +38,7 @@ afterEach(async () => {
 describe("Workspace Agent conversation store", () => {
   test("parses and ignores filenames", () => {
     expect(parseWorkspaceAgentFilename("Agent 1.jsonl")).toBeUndefined();
+    expect(parseWorkspaceAgentFilename("fix-auth-flow--ws1--agent-2--a1b2c3.jsonl", "ws1")).toBeUndefined();
     expect(parseWorkspaceAgentFilename("fix-auth-flow--ws1--agent-2--53fc77b7-dc19-42d5-b200-2e134ec67529.jsonl", "ws1")).toEqual({
       conversationId: "53fc77b7-dc19-42d5-b200-2e134ec67529",
       label: "Agent 2",
@@ -102,44 +101,29 @@ describe("Workspace Agent conversation store", () => {
     expect(agents.map((agent) => agent.label)).toEqual(["Agent 1", "Agent 2", "Agent 10"]);
   });
 
-  test("migrates legacy short-id sessions to titled immutable conversations", async () => {
-    const root = await dataDir();
-    const share = join(root, "session-shares", "projectless");
-    await mkdir(share, { recursive: true });
-    const legacyPath = join(share, "investigate-persistence--ws1--agent-1--a1b2c3.jsonl");
-    await writeFile(legacyPath, '{"type":"message"}\n');
+  test("concurrent Agent creation assigns unique ordered labels", async () => {
+    await dataDir();
 
-    const [firstListing, secondListing] = await Promise.all([listWorkspaceAgentConversations("ws1"), listWorkspaceAgentConversations("ws1")]);
-    const [agent] = firstListing;
+    const [defaultA, defaultB] = await Promise.all([
+      ensureDefaultWorkspaceAgentConversation("ws1"),
+      ensureDefaultWorkspaceAgentConversation("ws1"),
+    ]);
+    const created = await Promise.all(Array.from({ length: 4 }, () => createNextWorkspaceAgentConversation("ws1")));
 
-    expect(secondListing).toEqual(firstListing);
-    expect(agent).toMatchObject({ label: "Agent 1", title: "Investigate persistence" });
-    expect(agent!.conversationId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(await Bun.file(agent!.path).text()).toBe('{"type":"message"}\n');
-    expect(await Bun.file(agent!.path.replace(/\.jsonl$/, ".title")).text()).toBe("Investigate persistence\n");
-    expect(await Bun.file(legacyPath).exists()).toBe(false);
+    expect(defaultA.conversationId).toBe(defaultB.conversationId);
+    expect(created.map((agent) => agent.label)).toEqual(["Agent 2", "Agent 3", "Agent 4", "Agent 5"]);
+    expect(new Set(created.map((agent) => agent.conversationId)).size).toBe(4);
+    expect((await listWorkspaceAgentConversations("ws1")).map((agent) => agent.label)).toEqual(["Agent 1", "Agent 2", "Agent 3", "Agent 4", "Agent 5"]);
   });
 
-  test("preserves new sessions while renumbering recovered legacy label collisions", async () => {
-    const root = await dataDir();
-    const current = await ensureDefaultWorkspaceAgentConversation("ws1");
-    await writeFile(current.path, '{"type":"current"}\n');
-    const share = join(root, "session-shares", "projectless");
-    await writeFile(join(share, "agent-session--ws1--agent-1--a1b2c3.jsonl"), '{"type":"legacy-one"}\n');
-    await writeFile(join(share, "older-work--ws1--agent-2--d4e5f6.jsonl"), '{"type":"legacy-two"}\n');
+  test("concurrent list readers observe a newly published conversation with its title", async () => {
+    await dataDir();
 
-    const agents = await listWorkspaceAgentConversations("ws1");
+    const creation = ensureDefaultWorkspaceAgentConversation("ws1");
+    const readers = Array.from({ length: 8 }, () => listWorkspaceAgentConversations("ws1"));
+    const [created, ...snapshots] = await Promise.all([creation, ...readers]);
 
-    expect(agents.map((agent) => [agent.label, agent.title])).toEqual([
-      ["Agent 1", "Untitled"],
-      ["Agent 2", "Recovered Agent 1"],
-      ["Agent 3", "Older work"],
-    ]);
-    expect(await Promise.all(agents.map((agent) => Bun.file(agent.path).text()))).toEqual([
-      '{"type":"current"}\n',
-      '{"type":"legacy-one"}\n',
-      '{"type":"legacy-two"}\n',
-    ]);
+    for (const snapshot of snapshots) expect(snapshot).toEqual([created]);
   });
 
   test("Agent conversations have immutable identities and mutable titles", async () => {
@@ -166,21 +150,6 @@ describe("Workspace Agent conversation store", () => {
     expect(await Bun.file(second.path.replace(/\.jsonl$/, ".archived.title")).text()).toBe("Untitled\n");
   });
 
-  test("Agent conversation contributions integrate archive-on-close with Workspace presentation", async () => {
-    const root = await dataDir();
-    const first = await ensureDefaultWorkspaceAgentConversation("ws1");
-    const second = await createNextWorkspaceAgentConversation("ws1");
-    const presentation = createWorkspacePresentationStore({
-      dataDir: root,
-      workViewContributions: [],
-      agentConversations: workspaceAgentConversationContributions,
-    });
-
-    await presentation.closeAgentConversation("ws1", second.conversationId);
-
-    expect(await presentation.listAgentConversations("ws1")).toEqual([{ id: first.conversationId, title: "Untitled" }]);
-  });
-
   test("replaces the Agent session behind an existing Agent conversation and archives the old session", async () => {
     await dataDir();
     const original = await ensureDefaultWorkspaceAgentConversation("ws1");
@@ -194,6 +163,18 @@ describe("Workspace Agent conversation store", () => {
     expect(await Bun.file(replacement.path).text()).toBe("");
     expect(await Bun.file(original.path.replace(/\.jsonl$/, ".archived.jsonl")).text()).toBe('{"type":"message"}\n');
     expect(await listWorkspaceAgentConversations("ws1")).toEqual([replacement]);
+  });
+
+  test("concurrent list readers never observe the replacement gap used by /new", async () => {
+    await dataDir();
+    const original = await ensureDefaultWorkspaceAgentConversation("ws1");
+    await writeFile(original.path, '{"type":"message"}\n');
+
+    const replacement = replaceWorkspaceAgentSession(original);
+    const readers = Array.from({ length: 8 }, () => listWorkspaceAgentConversations("ws1"));
+    const [replaced, ...snapshots] = await Promise.all([replacement, ...readers]);
+
+    for (const snapshot of snapshots) expect(snapshot).toEqual([replaced]);
   });
 
   test("slugs are filesystem friendly", () => {

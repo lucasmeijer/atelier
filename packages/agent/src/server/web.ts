@@ -1,4 +1,4 @@
-import type { WorkspaceAgentConversationPresentation, WorkspaceCommandContribution, WorkspaceModule } from "@atelier/shared";
+import type { WorkspaceAgentTabProvider, WorkspaceCommandContribution, WorkspaceModule } from "@atelier/shared";
 import {
   createDeleteCurrentWorkspaceTool,
   // createForkCurrentWorkspaceTool,
@@ -6,15 +6,15 @@ import {
   registerWorkspaceAgentTool,
 } from "./tools.ts";
 import { createAgentTermSocketSession } from "./bash-tmux.ts";
-import { getWorkspaceAgentRuntime, isWorkspaceAgentRuntimeReady, removeWorkspaceAgentRuntimes, subscribeWorkspaceViewBusy } from "./runtime.ts";
+import { getWorkspaceAgentRuntime, removeWorkspaceAgentRuntime, removeWorkspaceAgentRuntimes, restoreWorkspaceAgentRuntime, subscribeWorkspaceViewBusy } from "./runtime.ts";
 import { handleAgentRequest, registerAgentEvents, resolveWorkspacePortProxyTarget, workspaceFileEndpoint } from "./routes.ts";
-import { createNextWorkspaceAgentConversation, ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentConversationInfo } from "./session-store.ts";
-import { agentConversationKey, renderAgentPane, renderPendingAgentPane } from "./render.ts";
+import { archiveWorkspaceAgentConversation, createNextWorkspaceAgentConversation, ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations, sessionShareDir, sessionShareKeyForInit, sessionShareMountPath, type WorkspaceAgentConversationInfo } from "./session-store.ts";
+import { agentConversationKey, renderAgentPane } from "./render.ts";
 import { preferredNewWorkspaceAgentModel } from "./model-state.ts";
 import { dockerHostAtelierDataPath, getAtelierRuntimeContext, AtelierCoreError, type AtelierEventBus } from "@atelier/core";
 import { agentStaticFiles } from "./static.ts";
 import { mkdir } from "node:fs/promises";
-import { removeInitialPromptDraft } from "./initial-prompt-draft.ts";
+import { removeWorkspaceInitialPromptDrafts } from "./initial-prompt-draft.ts";
 import type { WorkspaceDockerMount, WorkspaceInitInstruction } from "@atelier/workspace";
 
 async function listOrCreateWorkspaceAgentConversations(workspaceId: string): Promise<WorkspaceAgentConversationInfo[]> {
@@ -27,15 +27,71 @@ async function listOrCreateWorkspaceAgentConversations(workspaceId: string): Pro
   }
 }
 
-async function renderWorkspaceAgentConversations(workspaceId: string, conversations: WorkspaceAgentConversationInfo[], events?: AtelierEventBus): Promise<WorkspaceAgentConversationPresentation[]> {
-  return await Promise.all(conversations.map(async (conversation, index) => {
-    const ctx = { workspaceId, label: conversation.label };
-    const bodyHtml = isWorkspaceAgentRuntimeReady(conversation)
-      ? await renderAgentPane(ctx, conversation, await (await getWorkspaceAgentRuntime(conversation, { events })).paneState(), { visible: index === 0 })
-      : await renderPendingAgentPane(ctx, conversation, { visible: index === 0 });
-    return { id: conversation.conversationId, title: conversation.title, sourceKey: agentConversationKey(conversation.label), bodyHtml };
-  }));
+let agentEvents: AtelierEventBus | undefined;
+
+export function createWorkspaceAgentTabProvider(dependencies: {
+  list(workspaceId: string): Promise<readonly WorkspaceAgentConversationInfo[]>;
+  render(conversation: WorkspaceAgentConversationInfo): Promise<string>;
+  dispose(workspaceId: string, conversationId: string): Promise<void>;
+  restore(workspaceId: string, conversationId: string): void;
+  archive(conversation: WorkspaceAgentConversationInfo): Promise<void>;
+}): WorkspaceAgentTabProvider {
+  const closeQueues = new Map<string, Promise<void>>();
+
+  async function serializedClose<Result>(workspaceId: string, operation: () => Promise<Result>): Promise<Result> {
+    const previous = closeQueues.get(workspaceId) ?? Promise.resolve();
+    const result = previous.then(operation);
+    const settled = result.then(() => undefined, () => undefined);
+    closeQueues.set(workspaceId, settled);
+    void settled.then(() => {
+      if (closeQueues.get(workspaceId) === settled) closeQueues.delete(workspaceId);
+    });
+    return await result;
+  }
+
+  return {
+    async list({ workspaceId }) {
+      return (await dependencies.list(workspaceId)).map(({ conversationId, title }) => ({ id: conversationId, title }));
+    },
+
+    async render({ workspaceId, conversationId }) {
+      const conversation = (await dependencies.list(workspaceId)).find((candidate) => candidate.conversationId === conversationId);
+      if (!conversation) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
+      return await dependencies.render(conversation);
+    },
+
+    async close({ workspaceId, conversationId }) {
+      await serializedClose(workspaceId, async () => {
+        const conversations = await dependencies.list(workspaceId);
+        const conversation = conversations.find((candidate) => candidate.conversationId === conversationId);
+        if (!conversation) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
+        if (conversations.length === 1) throw new AtelierCoreError("last_agent_conversation", "The last Agent conversation cannot be closed");
+        try {
+          await dependencies.dispose(workspaceId, conversationId);
+          await dependencies.archive(conversation);
+        } catch (error) {
+          dependencies.restore(workspaceId, conversationId);
+          throw error;
+        }
+      });
+    },
+  };
 }
+
+export const workspaceAgentTabProvider = createWorkspaceAgentTabProvider({
+  list: listOrCreateWorkspaceAgentConversations,
+  async render(conversation) {
+    const runtime = await getWorkspaceAgentRuntime(conversation, { events: agentEvents });
+    return await renderAgentPane(
+      { workspaceId: conversation.workspaceId, conversationId: conversation.conversationId },
+      conversation,
+      await runtime.paneState(),
+    );
+  },
+  dispose: removeWorkspaceAgentRuntime,
+  restore: restoreWorkspaceAgentRuntime,
+  archive: archiveWorkspaceAgentConversation,
+});
 
 export const agentWorkspaceCommands: WorkspaceCommandContribution[] = [
   {
@@ -78,6 +134,7 @@ async function applyNewAgentSettings(agent: WorkspaceAgentConversationInfo, sour
   const targetRuntime = await getWorkspaceAgentRuntime(agent, runtimeOptions);
   if (model) await targetRuntime.setModel(model.provider, model.id);
   if (sourceRuntime) await targetRuntime.setThinkingLevel(sourceRuntime.currentThinkingLevel());
+  await events?.emit("workspace_agent_view_invalidated", { workspaceId: agent.workspaceId, conversationId: agent.conversationId });
 }
 
 export const agentWorkspaceModule: WorkspaceModule = {
@@ -102,13 +159,15 @@ export const agentWorkspaceModule: WorkspaceModule = {
       return handleAgentRequest(request, url, { events: context.events as AtelierEventBus | undefined });
     },
   }],
+  agentTabs: workspaceAgentTabProvider,
   initialize(context) {
     // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
     const events = context.events as AtelierEventBus;
+    agentEvents = events;
     registerAgentEvents(events);
     registerSessionShareMountEvents(events);
-    events.on("workspace_agent_turn_finished", ({ workspaceId, agentLabel }) => {
-      context.registry.setViewUnread(workspaceId, agentConversationKey(agentLabel), true);
+    events.on("workspace_agent_turn_finished", ({ workspaceId, conversationId }) => {
+      context.registry.markViewUnread(workspaceId, agentConversationKey(conversationId));
     });
     context.registerProvisioningHook({
       id: "workspace.agent",
@@ -134,23 +193,13 @@ export const agentWorkspaceModule: WorkspaceModule = {
     });
     subscribeWorkspaceViewBusy(({ workspaceId, viewKey, busy }) => context.registry.setViewBusy(workspaceId, viewKey, busy));
     context.onWorkspaceRemoved(removeWorkspaceAgentRuntimes);
-    context.onWorkspaceRemoved(removeInitialPromptDraft);
+    context.onWorkspaceRemoved(removeWorkspaceInitialPromptDrafts);
     registerWorkspaceAgentTool("delete_current_workspace", (workspaceId) => createDeleteCurrentWorkspaceTool(workspaceId, async (force) => await context.deleteCurrentWorkspace(workspaceId, force)));
     registerWorkspaceAgentTool("create_workspace", (workspaceId) => createWorkspaceTool((request) => context.createWorkspaceFromAgent(workspaceId, request)));
     // Temporarily keep workspace forking unavailable to agents; they invoke it too readily.
     // registerWorkspaceAgentTool("fork_current_workspace", (workspaceId) => createForkCurrentWorkspaceTool((request) => context.forkCurrentWorkspaceFromAgent(workspaceId, request)));
   },
-  async attachToWorkspace({ workspaceId, events }) {
-    try {
-      const agents = await listOrCreateWorkspaceAgentConversations(workspaceId);
-      return {
-        // SAFETY: The module boundary validates or constructs this value with the asserted domain shape.
-        agentConversations: await renderWorkspaceAgentConversations(workspaceId, agents, events as AtelierEventBus | undefined),
-        commands: [...agentWorkspaceCommands, projectAgentWorkspaceCommand],
-      };
-    } catch (error) {
-      if (error instanceof AtelierCoreError && error.code === "workspace_not_found") return { agentConversations: [], commands: [...agentWorkspaceCommands, projectAgentWorkspaceCommand] };
-      throw error;
-    }
+  attachToWorkspace() {
+    return { commands: [...agentWorkspaceCommands, projectAgentWorkspaceCommand] };
   },
 };

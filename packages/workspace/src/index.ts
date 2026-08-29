@@ -15,6 +15,7 @@ export type {
   WorkspaceAgentPromptPreparingEvent,
   WorkspaceAgentPromptSubmittedEvent,
   WorkspaceAgentTurnFinishedEvent,
+  WorkspaceAgentViewInvalidatedEvent,
   WorkspaceCreatedEvent,
   WorkspaceDeletedEvent,
   WorkspaceDeleteInspectEvent,
@@ -28,8 +29,6 @@ export { createWorkspaceMetadataState, type WorkspaceMetadataState } from "./met
 
 export {
   createWorkspacePresentationStore,
-  type WorkspaceAgentConversation,
-  type WorkspaceAgentConversationContribution,
   type WorkspacePresentationStore,
   type WorkspacePresentationStoreOptions,
   type WorkspaceWorkViewContribution,

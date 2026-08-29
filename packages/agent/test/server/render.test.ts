@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { renderAgentPane, renderAgentPaneComposer, renderAgentPaneComposerFooter, renderPromptActions, renderTranscript, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../src/server/render.ts";
 import type { ToolView, TranscriptItem } from "../../src/server/transcript.ts";
 
-const ctx: AgentRenderContext = { workspaceId: "ws", label: "agent" };
+const ctx: AgentRenderContext = { workspaceId: "ws", conversationId: "00000000-0000-4000-8000-000000000001" };
 const agent = { workspaceId: "ws", conversationId: "00000000-0000-4000-8000-000000000001", label: "agent", title: "Agent", path: "/tmp/agent.jsonl" };
+const ctxPrefix = `ag_ws_${agent.conversationId}`;
 const tool = (overrides: Partial<ToolView>): ToolView => ({ callId: "call", name: "read", args: {}, status: "ok", ...overrides });
 const renderBash = (command: string, overrides: Partial<ToolView> = {}): string => renderTranscriptItemDetailFrame(ctx, { type: "tool", key: "bash", tool: tool({ name: "bash", args: { command }, ...overrides }) });
 const renderedText = (html: string): string => html.replace(/<script[^>]*>[\s\S]*?<\/script>/g, "").replace(/<[^>]+>/g, "");
@@ -13,10 +14,12 @@ const firstEditModel = (html: string): Array<{ name: string; hunks: Array<{ coll
 };
 
 describe("transcript rendering", () => {
-  test("server-rendered panes expose their snapshot cursor", async () => {
+  test("server-rendered panes and routes use immutable conversation identity", async () => {
     const stats = { contextPercent: null, inputTokens: 0, outputTokens: 0, cost: 0, modelName: undefined, thinkingLevel: "off", thinkingLevels: [], models: [] };
-    const html = await renderAgentPane(ctx, agent, { transcriptHtml: "ready", busy: false, stats, snapshotCursor: "generation:4" });
-    expect(html).toContain('data-agent-pane-snapshot-cursor-value="generation:4"');
+    const html = await renderAgentPane(ctx, agent, { transcriptHtml: "ready", busy: false, stats });
+    expect(html).toContain(`data-agent-pane-conversation-id-value="${agent.conversationId}"`);
+    expect(html).toContain(`/agents/${agent.conversationId}/messages`);
+    expect(html).not.toContain("data-agent-pane-label-value");
   });
 
   test("AgentPaneComposer runs completion shortcuts before prompt submission", async () => {
@@ -58,13 +61,13 @@ describe("transcript rendering", () => {
       { name: "active turn", item: { type: "working" as const, key: "active", startedAt: 1000, items: [{ type: "thinking" as const, key: "thought", text: "Checking files" }] }, label: "Working", open: true, active: true },
       { name: "empty active turn", item: { type: "working" as const, key: "waiting", startedAt: 1000, items: [] }, label: "Working", open: true, active: true },
       { name: "completed turn", item: { type: "working" as const, key: "worked", startedAt: 1000, completedAt: 3500, items: [{ type: "thinking" as const, key: "thought", text: "Checking files" }] }, label: "Worked for 3s", open: false, active: false },
-      { name: "interrupted turn", item: { type: "working" as const, key: "stopped", startedAt: 1000, stoppedAt: 3500, items: [] }, label: "Stopped after 3s", open: true, active: false },
+      { name: "interrupted turn", item: { type: "working" as const, key: "stopped", startedAt: 1000, stoppedAt: 3500, items: [] }, label: "Stopped after 3s", open: false, active: false },
     ];
 
     for (const example of cases) {
       const html = renderTranscriptItem(ctx, example.item);
       expect(html, example.name).toContain(example.label);
-      expect(html.includes(`id="ag_ws_agent_item_${example.item.key}" open`), example.name).toBe(example.open);
+      expect(html.includes(`id="${ctxPrefix}_item_${example.item.key}" open`), example.name).toBe(example.open);
       expect(html.includes('class="agent-working active"'), example.name).toBe(example.active);
     }
   });
@@ -76,8 +79,8 @@ describe("transcript rendering", () => {
 
   test("live assistant text uses stable and mutable server-rendered Markdown targets", () => {
     const html = renderTranscriptItem(ctx, { type: "text", key: "stream", text: "First **bold** paragraph.\n\nTrailing *emphasis*", final: false, live: true });
-    expect(html).toContain('id="ag_ws_agent_itemtext_stable_stream"');
-    expect(html).toContain('id="ag_ws_agent_itemtext_tail_stream"');
+    expect(html).toContain(`id="${ctxPrefix}_itemtext_stable_stream"`);
+    expect(html).toContain(`id="${ctxPrefix}_itemtext_tail_stream"`);
     expect(html).toContain("<strong>bold</strong>");
     expect(html).toContain("<em>emphasis</em>");
   });
@@ -91,8 +94,8 @@ describe("transcript rendering", () => {
 
   test("places transient notices after transcript items", () => {
     const html = renderTranscript(ctx, [{ type: "user", key: "user", text: "question", images: [] }], { systemPrompt: "", tools: [] });
-    const itemIndex = html.indexOf('id="ag_ws_agent_item_user"');
-    const noticesIndex = html.indexOf('id="ag_ws_agent_notices"');
+    const itemIndex = html.indexOf(`id="${ctxPrefix}_item_user"`);
+    const noticesIndex = html.indexOf(`id="${ctxPrefix}_notices"`);
     expect(itemIndex).toBeGreaterThan(-1);
     expect(noticesIndex).toBeGreaterThan(itemIndex);
   });
@@ -133,7 +136,7 @@ describe("transcript rendering", () => {
     const item: TranscriptItem = { type: "tool", key: "stream-write", tool: tool({ name: "write", status: "streaming", argsStream: '{"path":"a.ts","content":"x"' }) };
     const html = renderTranscriptItem(ctx, item, { live: true, open: true });
     const status = html.indexOf('aria-label="In progress"');
-    const summaryContent = html.indexOf('id="ag_ws_agent_summary_content_stream-write"');
+    const summaryContent = html.indexOf(`id="${ctxPrefix}_summary_content_stream-write"`);
     expect(status).toBeGreaterThan(-1);
     expect(summaryContent).toBeGreaterThan(status);
     expect(html).toContain("agent-tool-detail-host");
@@ -143,8 +146,8 @@ describe("transcript rendering", () => {
     const content = Array.from({ length: 700 }, (_, index) => `line ${index + 1}`).join("\n");
     const item: TranscriptItem = { type: "tool", key: "live-write", tool: tool({ name: "write", args: { path: "a.ts", content } }) };
     const html = renderTranscriptItem(ctx, item, { live: true, open: true });
-    expect(html).toContain('<turbo-frame id="ag_ws_agent_detail_live-write"');
-    expect(html).toContain('data-turbo-frame="ag_ws_agent_detail_live-write"');
+    expect(html).toContain(`<turbo-frame id="${ctxPrefix}_detail_live-write"`);
+    expect(html).toContain(`data-turbo-frame="${ctxPrefix}_detail_live-write"`);
     expect(html).toContain("?count=600");
     expect(html).toContain("show 500 more lines");
   });
@@ -173,11 +176,12 @@ describe("transcript rendering", () => {
     expect(bash.indexOf('class="agent-tool-result', bashWindow)).toBeGreaterThan(bash.indexOf('class="agent-more-lines"', bashWindow));
   });
 
-  test("running edit has summary only", () => {
+  test("running edits are open disclosures with live detail", () => {
     const item: TranscriptItem = { type: "tool", key: "edit-live", tool: tool({ name: "edit", status: "running", args: { path: "a.ts", oldText: "old", newText: "new" } }) };
     const html = renderTranscriptItem(ctx, item, { live: true });
-    expect(html).not.toContain("<details");
-    expect(html).not.toContain("agent-tool-detail");
+    expect(html).toContain('<details class="agent-tool tool-edit active" open>');
+    expect(html).toContain("agent-tool-detail");
+    expect(html).toContain('data-controller="agent-edit-diff"');
   });
 
   test("completed edits distinguish removals and additions", () => {
