@@ -1424,6 +1424,11 @@ export function forwardAgentTerminalWheel<T extends Pick<HTMLElement, "scrollTop
   return true;
 }
 
+export function terminalOutputHasPrintableText(text: string): boolean {
+  const withoutEscapeSequences = text.replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[ -/]*[0-~])/g, "");
+  return Boolean(withoutEscapeSequences.replace(/[\x00-\x1f\x7f]/g, "").trim());
+}
+
 function createAgentTermController(Controller: StimulusControllerConstructor) {
   return class AgentTermController extends Controller {
     static values = { workspaceId: String, session: String };
@@ -1462,8 +1467,8 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
       if (this.viewer || this.starting) return;
       this.disposed = false;
       this.starting = true;
-      let hasVisibleOutput = false;
       const style = getComputedStyle(this.element);
+      const region = this.element.closest<HTMLElement>(".agent-bash-output")!;
       void createObservableTerminalViewer({
         host: this.element,
         mode: "fixed-readonly",
@@ -1474,11 +1479,9 @@ function createAgentTermController(Controller: StimulusControllerConstructor) {
         fontSize: Number.parseFloat(style.getPropertyValue("--text-body")),
         theme: this.theme(),
         onOutput: (text) => {
-          if (hasVisibleOutput) return;
-          const printable = text.replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g, "").replace(/[\x00-\x1f\x7f]/g, "").trim();
-          if (!printable) return;
-          hasVisibleOutput = true;
-          this.element.classList.remove("agent-terminal-awaiting-output");
+          if (region.classList.contains("agent-terminal-awaiting-output") && terminalOutputHasPrintableText(text)) {
+            region.classList.remove("agent-terminal-awaiting-output");
+          }
         },
       })
         .then((viewer) => {

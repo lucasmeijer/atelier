@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { type AgentCompletionInput, agentCompletionRequest, fileCompletionPrefix, focusAgentPaneComposerOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, scrollMessageToTop, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
+import { type AgentCompletionInput, agentCompletionRequest, fileCompletionPrefix, focusAgentPaneComposerOnWideViewport, forwardAgentTerminalWheel, insertSlashCommand, messageNavigationDirection, navigatePromptHistory, scrollMessageToTop, terminalOutputHasPrintableText, transcriptFollowingAfterScroll, workspaceSelectionScrollTop } from "../../src/client/agent-controllers.ts";
 
 function input(value: string, cursor = value.length): AgentCompletionInput {
   return {
@@ -97,6 +97,12 @@ describe("agent transcript navigation", () => {
   test("resumes following when the user returns within the end threshold", () => {
     expect(transcriptFollowingAfterScroll(false, 580, 525, 580)).toBe(true);
     expect(transcriptFollowingAfterScroll(false, 580, 519, 580)).toBe(false);
+  });
+
+  test("does not treat terminal initialization escapes as visible output", () => {
+    const initialization = "\x1b[?1049h\x1b[H\x1b[2J\x1b=\x1b(B\x1b[m\r\n";
+    expect(terminalOutputHasPrintableText(initialization)).toBe(false);
+    expect(terminalOutputHasPrintableText(`${initialization}ready\r\n`)).toBe(true);
   });
 
   test("forwards live terminal wheel input to the agent transcript", () => {

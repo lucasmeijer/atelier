@@ -225,6 +225,11 @@ describe("transcript rendering", () => {
     expect(hunk.hunkContent.at(-1)).toMatchObject({ type: "context", lines: 3 });
   });
 
+  test("running bash starts its live terminal hidden until output is visible", () => {
+    const html = renderBash("sleep 5", { status: "running", tmuxSession: "bash-session", terminalVisible: true });
+    expect(html).toContain("agent-bash-output agent-terminal-awaiting-output");
+  });
+
   test("bash has separate command and differing model result", () => {
     const html = renderBash("echo one\necho two", { resultText: "plain", details: { exitCode: 0, displayAnsi: "\u001b[31mred\u001b[0m" }, durationMs: 2000 });
     expect(html).toContain("Command");
