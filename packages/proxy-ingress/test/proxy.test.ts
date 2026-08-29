@@ -11,6 +11,7 @@ import {
   type OriginPublisher,
   type TailscaleServeConfig,
 } from "@atelier/proxy-ingress/server";
+import { closeWebSocket } from "../src/ingress/websocket.ts";
 
 async function freePort(): Promise<number> {
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("probe") });
@@ -35,6 +36,16 @@ function recordingPublisher() {
 }
 
 describe("workspace ingress", () => {
+  test("does not forward reserved WebSocket close codes", () => {
+    const calls: Array<[number?, string?]> = [];
+    const socket = { close: (code?: number, reason?: string) => { calls.push([code, reason]); } };
+
+    closeWebSocket(socket, 1005, "No Status Received");
+    closeWebSocket(socket, 4001, "upstream done");
+
+    expect(calls).toEqual([[undefined, undefined], [4001, "upstream done"]]);
+  });
+
   test("keeps canonical identity stable while origin leases are ephemeral", async () => {
     const port = await freePort();
     const published = recordingPublisher();

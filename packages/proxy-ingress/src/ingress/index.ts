@@ -1,6 +1,7 @@
 import type { ServerWebSocket } from "bun";
 import { stripHopByHopHeaders, workspaceProxyUrl, type WorkspaceAppBackend, type WorkspaceAppRef } from "@atelier/shared";
 import { createMemoryOriginIdentityStore, type OriginIdentityStore } from "./origin-identity.ts";
+import { closeWebSocket } from "./websocket.ts";
 import {
   defaultPublicOriginPortRange,
   publicOriginPortRangeFromEnv,
@@ -490,7 +491,7 @@ function openAppSocket(ws: ServerWebSocket<AppSocketData>): void {
   ws.data.lease.activeConnections += 1;
   ws.data.lease.lastUsedAt = Date.now();
   ws.data.upstream.addEventListener("message", (event: MessageEvent<string | ArrayBuffer>) => ws.send(event.data));
-  ws.data.upstream.addEventListener("close", (event: CloseEvent) => ws.close(event.code, event.reason));
+  ws.data.upstream.addEventListener("close", (event: CloseEvent) => closeWebSocket(ws, event.code, event.reason));
   ws.data.upstream.addEventListener("error", () => ws.close(1011, "Upstream WebSocket failed"));
 }
 
@@ -500,7 +501,7 @@ function handleAppSocketMessage(ws: ServerWebSocket<AppSocketData>, message: str
 }
 
 function closeAppSocket(ws: ServerWebSocket<AppSocketData>, code: number, reason: string): void {
-  if (ws.data.upstream.readyState <= WebSocket.OPEN) ws.data.upstream.close(code, reason);
+  if (ws.data.upstream.readyState <= WebSocket.OPEN) closeWebSocket(ws.data.upstream, code, reason);
   ws.data.lease.activeConnections -= 1;
   ws.data.lease.lastUsedAt = Date.now();
 }
