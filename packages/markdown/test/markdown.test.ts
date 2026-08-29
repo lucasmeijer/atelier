@@ -91,12 +91,24 @@ describe("renderMarkdown", () => {
     expect(html).toContain("<code>&lt;tag&gt;&amp;&quot;</code>");
   });
 
+  test("routes eligible workspace-local links through their canonical preview", () => {
+    const html = renderMarkdown("work-1", "[app](http://localhost:3004/path?x=1#top)");
+    expect(html).toContain(`href="/workspaces/work-1/ports/3004/path?x=1#top"`);
+    expect(html).toContain(`target="_blank"`);
+  });
+
   test("opens HTTP links in a new tab and rejects unsafe links", () => {
     const html = renderMarkdown("work 1", "[x](https://example.com)");
     expect(html).toContain('href="https://example.com"');
     expect(html).toContain('target="_blank"');
     expect(html).toContain('rel="noopener noreferrer"');
     expect(renderMarkdown("work 1", "[x](javascript:alert(1))")).not.toContain("href");
+  });
+
+  test("accepts 0.0.0.0 as an explicit local preview embed alias", () => {
+    const html = renderMarkdown("work-1", "![](atelier-embed:http://0.0.0.0:3000/demo)");
+    expect(html).toContain(`data-agent-proxy-app-key-value="port-3000"`);
+    expect(html).toContain(`data-agent-proxy-path-value="/demo"`);
   });
 
   test("renders Atelier embeds from the custom image URL anywhere in text", () => {

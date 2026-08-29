@@ -198,13 +198,30 @@ export type WorkspaceServerSocketHandler = (
   url: URL,
 ) => Promise<WorkspaceServerSocketSession | undefined> | WorkspaceServerSocketSession | undefined;
 
-export interface WorkspaceServerAppHandler {
-  matches(app: { appKey: string; workspaceId: string }): boolean;
-  handleRequest?(app: { appKey: string; workspaceId: string }, request: Request, url: URL): Promise<Response | undefined> | Response | undefined;
-  resolveTarget?(app: { appKey: string; workspaceId: string }, requestUrl: URL): Promise<URL | undefined> | URL | undefined;
-  transformRequestHeaders?(app: { appKey: string; workspaceId: string }, headers: Headers, target: URL, request: Request): Promise<Headers> | Headers;
-  transformResponse?(app: { appKey: string; workspaceId: string }, response: Response, request: Request): Promise<Response> | Response;
+export interface WorkspaceAppRef {
+  appKey: string;
+  workspaceId: string;
 }
+
+export interface WorkspaceHttpAppBackend {
+  kind: "http";
+  target: URL;
+  adaptRequestHeaders?(headers: Headers, request: Request): Promise<Headers> | Headers;
+  adaptResponse?(response: Response, request: Request): Promise<Response> | Response;
+}
+
+export interface WorkspaceFetchAppBackend {
+  kind: "fetch";
+  fetch(request: Request): Promise<Response> | Response;
+}
+
+export type WorkspaceAppBackend = WorkspaceHttpAppBackend | WorkspaceFetchAppBackend;
+
+/** Resolve one durable workspace-app identity to its backend for this request. */
+export type WorkspaceServerAppResolver = (
+  app: WorkspaceAppRef,
+  requestUrl: URL,
+) => Promise<WorkspaceAppBackend | undefined> | WorkspaceAppBackend | undefined;
 
 export interface WorkspaceServerProvisioningHook {
   id: string;
@@ -282,7 +299,7 @@ export interface WorkspaceServerModuleContext {
   createWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceCreateRequest): Promise<AgentWorkspaceCreateResult>;
   forkCurrentWorkspaceFromAgent(workspaceId: string, request: AgentWorkspaceForkRequest): Promise<AgentWorkspaceCreateResult>;
   registerSocketHandler(handler: WorkspaceServerSocketHandler): void;
-  registerWorkspaceAppHandler(handler: WorkspaceServerAppHandler): void;
+  registerWorkspaceAppResolver(resolver: WorkspaceServerAppResolver): void;
   registerProvisioningHook(hook: WorkspaceServerProvisioningHook): void;
   onWorkspaceRemoved(handler: (workspaceId: string) => void | Promise<void>): void;
 }

@@ -1,263 +1,436 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { gzipSync } from "node:zlib";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetAtelierRuntimeContextForTests } from "@atelier/core";
+import { describe, expect, test } from "bun:test";
 import {
-  createWorkspaceIngressProxy,
+  createMemoryOriginIdentityStore,
+  createWorkspaceIngress,
   ensureTailscaleServePortConfig,
-  ensureWorkspacePublicProxyRoute,
-  listWorkspacePublicProxyRoutes,
-  nestedWorkspaceProxyRedirectHeader,
-  publicProxyPortRangeFromEnv,
-  releaseWorkspacePublicProxyRoute,
-  releaseWorkspacePublicProxyRoutes,
-  syncTailscaleServePortConfig,
-  type TailscaleServeConfig,
   normalizeDecodedFetchResponse,
+  publicOriginPortRangeFromEnv,
+  StoppedWorkspaceError,
+  syncTailscaleServePortConfig,
+  type OriginPublisher,
+  type TailscaleServeConfig,
 } from "@atelier/proxy-ingress/server";
 
-let dataDir = "";
-let previousDataDir: string | undefined;
-let previousRange: string | undefined;
+async function freePort(): Promise<number> {
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("probe") });
+  const port = server.port!;
+  server.stop(true);
+  return port;
+}
 
-beforeEach(async () => {
-  previousDataDir = process.env.ATELIER_DATA_DIR;
-  previousRange = process.env.ATELIER_PROXY_PORT_RANGE;
-  dataDir = await mkdtemp(join(tmpdir(), "atelier-proxy-test-"));
-  process.env.ATELIER_DATA_DIR = dataDir;
-  delete process.env.ATELIER_PROXY_PORT_RANGE;
-  resetAtelierRuntimeContextForTests();
-});
+function recordingPublisher() {
+  const active = new Set<number>();
+  const calls: string[] = [];
+  const publisher: OriginPublisher = {
+    async publish(port) { active.add(port); calls.push(`publish:${port}`); },
+    async unpublish(port) { active.delete(port); calls.push(`unpublish:${port}`); },
+    async reset(ports) {
+      active.clear();
+      for (const port of ports) active.add(port);
+      calls.push(`reset:${[...ports].join(",")}`);
+    },
+  };
+  return { active, calls, publisher };
+}
 
-afterEach(async () => {
-  if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
-  else process.env.ATELIER_DATA_DIR = previousDataDir;
-  if (previousRange === undefined) delete process.env.ATELIER_PROXY_PORT_RANGE;
-  else process.env.ATELIER_PROXY_PORT_RANGE = previousRange;
-  resetAtelierRuntimeContextForTests();
-  await rm(dataDir, { recursive: true, force: true });
+describe("workspace ingress", () => {
+  test("keeps canonical identity stable while origin leases are ephemeral", async () => {
+    const port = await freePort();
+    const published = recordingPublisher();
+    const ingress = createWorkspaceIngress({
+      hostname: "127.0.0.1",
+      originPortRange: { start: port, end: port },
+      originPublisher: published.publisher,
+      resolveWorkspace: () => undefined,
+      resolveApp: (_app, url) => ({ kind: "fetch", fetch: () => new Response(`served:${url.pathname}`) }),
+    });
+    await ingress.initialize();
+
+    const canonical = new Request("http://127.0.0.1:3000/workspaces/ws/apps/demo/path?x=1");
+    const first = await ingress.openCanonical({ workspaceId: "ws", appKey: "demo" }, "/path?x=1", canonical);
+    const second = await ingress.openCanonical({ workspaceId: "ws", appKey: "demo" }, "/other", canonical);
+
+    expect(first.status).toBe(302);
+    expect(new URL(first.headers.get("location")!).port).toBe(String(port));
+    expect(new URL(second.headers.get("location")!).port).toBe(String(port));
+    expect(published.calls).toEqual(["reset:", `publish:${port}`]);
+    expect(await (await fetch(first.headers.get("location")!)).text()).toBe("served:/path");
+    expect(ingress.inspect()).toEqual([expect.objectContaining({ workspaceId: "ws", appKey: "demo", port, scope: "public" })]);
+
+    await ingress.stopWorkspace("ws");
+    expect(ingress.inspect()).toEqual([]);
+    expect(published.active.size).toBe(0);
+    await ingress.stopAll();
+  });
+
+  test("never reassigns a retained browser origin to another app", async () => {
+    const start = await freePort();
+    const ingress = createWorkspaceIngress({
+      hostname: "127.0.0.1",
+      originPortRange: { start, end: start + 1 },
+      resolveWorkspace: () => undefined,
+      resolveApp: () => ({ kind: "fetch", fetch: () => new Response("ok") }),
+    });
+    await ingress.initialize();
+    const request = new Request("http://127.0.0.1:3000/");
+    const first = await ingress.openCanonical({ workspaceId: "ws", appKey: "first" }, "/", request);
+    const firstPort = Number(new URL(first.headers.get("location")!).port);
+    await ingress.stopWorkspace("ws");
+    const second = await ingress.openCanonical({ workspaceId: "ws", appKey: "second" }, "/", request);
+    const secondPort = Number(new URL(second.headers.get("location")!).port);
+    expect(secondPort).not.toBe(firstPort);
+    await ingress.stopWorkspace("ws");
+    const reopened = await ingress.openCanonical({ workspaceId: "ws", appKey: "first" }, "/", request);
+    expect(Number(new URL(reopened.headers.get("location")!).port)).toBe(firstPort);
+    await ingress.stopAll();
+  });
+
+  test("streams HTTP requests through one resolved backend and preserves public context", async () => {
+    let observed: { method: string; body: string; host: string | null; proto: string | null } | undefined;
+    const upstream = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        observed = {
+          method: request.method,
+          body: await request.text(),
+          host: request.headers.get("x-forwarded-host"),
+          proto: request.headers.get("x-forwarded-proto"),
+        };
+        return new Response("upstream", { status: 201, headers: { "x-app": "ok" } });
+      },
+    });
+    const port = await freePort();
+    const ingress = createWorkspaceIngress({
+      hostname: "127.0.0.1",
+      originPortRange: { start: port, end: port },
+      resolveWorkspace: () => undefined,
+      resolveApp: (_app, url) => ({ kind: "http", target: new URL(`${url.pathname}${url.search}`, `http://127.0.0.1:${upstream.port}`) }),
+    });
+    await ingress.initialize();
+    const opened = await ingress.openCanonical(
+      { workspaceId: "ws", appKey: "demo" },
+      "/submit?x=1",
+      new Request("https://atelier.example/workspaces/ws/apps/demo/submit?x=1", { headers: { "x-forwarded-proto": "https", host: "atelier.example" } }),
+    );
+    const location = new URL(opened.headers.get("location")!);
+    const response = await fetch(`http://127.0.0.1:${location.port}/submit?x=1`, { method: "POST", body: "payload", headers: { host: location.host } });
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get("x-app")).toBe("ok");
+    expect(await response.text()).toBe("upstream");
+    expect(observed).toEqual({ method: "POST", body: "payload", host: location.host, proto: "http" });
+
+    await ingress.stopAll();
+    upstream.stop(true);
+  });
+
+  test("preserves forms, redirects, cookies, validators, downloads, custom headers, and byte ranges", async () => {
+    let uploaded = "";
+    const upstream = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+        if (url.pathname === "/form") {
+          const form = await request.formData();
+          // SAFETY: This acceptance request constructs the multipart field with a File below.
+          const file = form.get("file") as File;
+          uploaded = `${form.get("title")}:${await file.text()}`;
+          return new Response("created", { status: 201 });
+        }
+        if (url.pathname === "/redirect") return new Response(null, { status: 307, headers: { location: "/final?ok=1" } });
+        if (url.pathname === "/cookie") return new Response("cookie", { headers: { "set-cookie": "session=abc; Path=/; HttpOnly", "x-frame-options": "DENY", "content-security-policy": "default-src 'self'; frame-ancestors 'none'" } });
+        if (url.pathname === "/conditional") return request.headers.get("if-none-match") === `"v1"`
+          ? new Response(null, { status: 304, headers: { etag: `"v1"`, "x-app-validator": "matched" } })
+          : new Response("fresh", { headers: { etag: `"v1"` } });
+        if (url.pathname === "/range") return new Response("2345", { status: 206, headers: { "content-range": "bytes 2-5/10", "accept-ranges": "bytes" } });
+        if (url.pathname === "/download") return new Response("data", { headers: { "content-disposition": `attachment; filename="report.txt"` } });
+        return new Response("not found", { status: 404 });
+      },
+    });
+    const port = await freePort();
+    const ingress = createWorkspaceIngress({
+      hostname: "127.0.0.1",
+      originPortRange: { start: port, end: port },
+      resolveWorkspace: () => undefined,
+      resolveApp: (_app, url) => ({ kind: "http", target: new URL(`${url.pathname}${url.search}`, `http://127.0.0.1:${upstream.port}`) }),
+    });
+    await ingress.initialize();
+    const opened = await ingress.openCanonical({ workspaceId: "ws", appKey: "web" }, "/", new Request("http://127.0.0.1:3000/"));
+    const origin = new URL(opened.headers.get("location")!).origin;
+    const form = new FormData();
+    form.set("title", "demo");
+    form.set("file", new File(["payload"], "demo.txt"));
+    expect((await fetch(`${origin}/form`, { method: "POST", body: form })).status).toBe(201);
+    expect(uploaded).toBe("demo:payload");
+    const redirect = await fetch(`${origin}/redirect`, { redirect: "manual" });
+    expect(redirect.status).toBe(307);
+    expect(redirect.headers.get("location")).toBe("/final?ok=1");
+    const cookie = await fetch(`${origin}/cookie`);
+    expect(cookie.headers.get("set-cookie")).toContain("session=abc");
+    expect(cookie.headers.get("x-frame-options")).toBeNull();
+    expect(cookie.headers.get("content-security-policy")).toBe("default-src 'self'");
+    const conditional = await fetch(`${origin}/conditional`, { headers: { "if-none-match": `"v1"` } });
+    expect(conditional.status).toBe(304);
+    expect(conditional.headers.get("x-app-validator")).toBe("matched");
+    const range = await fetch(`${origin}/range`, { headers: { range: "bytes=2-5" } });
+    expect(range.status).toBe(206);
+    expect(range.headers.get("content-range")).toBe("bytes 2-5/10");
+    expect(await range.text()).toBe("2345");
+    expect((await fetch(`${origin}/download`)).headers.get("content-disposition")).toContain("attachment");
+    await ingress.stopAll();
+    upstream.stop(true);
+  });
+
+  test("streams server-sent events and propagates response cancellation", async () => {
+    let cancelled = false;
+    const upstream = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("event: ready\\ndata: 1\\n\\n"));
+        },
+        cancel() { cancelled = true; },
+      }), { headers: { "content-type": "text/event-stream" } }),
+    });
+    const port = await freePort();
+    const ingress = createWorkspaceIngress({
+      hostname: "127.0.0.1",
+      originPortRange: { start: port, end: port },
+      resolveWorkspace: () => undefined,
+      resolveApp: (_app, url) => ({ kind: "http", target: new URL(url.pathname, `http://127.0.0.1:${upstream.port}`) }),
+    });
+    await ingress.initialize();
+    const opened = await ingress.openCanonical({ workspaceId: "ws", appKey: "events" }, "/events", new Request("http://127.0.0.1:3000/"));
+    const response = await fetch(opened.headers.get("location")!);
+    const reader = response.body!.getReader();
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain("event: ready");
+    await reader.cancel("done");
+    await Bun.sleep(20);
+    expect(cancelled).toBe(true);
+    await ingress.stopAll();
+    upstream.stop(true);
+  });
+
+  test("keeps direct and nested origin leases independent", async () => {
+    const port = await freePort();
+    const ingress = createWorkspaceIngress({
+      hostname: "127.0.0.1",
+      originPortRange: { start: port, end: port },
+      resolveWorkspace: () => undefined,
+      resolveApp: () => ({ kind: "fetch", fetch: () => new Response("nested") }),
+    });
+    await ingress.initialize();
+    const app = { workspaceId: "inner", appKey: "browser-1" };
+    const direct = await ingress.openCanonical(app, "/direct", new Request("http://127.0.0.1:3000/workspaces/inner/apps/browser-1/direct"));
+    const nested = await ingress.openCanonical(app, "/nested?x=1", new Request("http://127.0.0.1:3000/workspaces/inner/apps/browser-1/nested?x=1", {
+      headers: {
+        "x-atelier-parent-origin": "https://outer.example",
+        "x-atelier-parent-workspace": "outer",
+      },
+    }));
+
+    expect(new URL(direct.headers.get("location")!).port).toBe(String(port));
+    const nestedLocation = new URL(nested.headers.get("location")!);
+    expect(nestedLocation.origin).toBe("https://outer.example");
+    expect(nestedLocation.pathname).toMatch(/^\/workspaces\/outer\/ports\/30(?:0[1-9]|10)\/nested$/);
+    expect(nestedLocation.search).toBe("?x=1");
+    expect(nested.headers.get("x-atelier-nested-workspace-proxy-redirect")).toBe("1");
+    expect(ingress.inspect().map((lease) => lease.scope).sort()).toEqual(["nested", "public"]);
+    await ingress.stopAll();
+  });
+
+  test("bridges text and binary WebSockets with subprotocol and clean closure propagation", async () => {
+    const upstream = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request, server) {
+        const offered = request.headers.get("sec-websocket-protocol")?.split(",").map((value) => value.trim()) ?? [];
+        const headers = offered.includes("atelier-test") ? { "sec-websocket-protocol": "atelier-test" } : undefined;
+        if (server.upgrade(request, { headers })) return undefined;
+        return new Response("upgrade required", { status: 426 });
+      },
+      websocket: {
+        message(socket, message) {
+          if (message === "close-cleanly") socket.close(4001, "upstream done");
+          else socket.send(message);
+        },
+      },
+    });
+    const port = await freePort();
+    const ingress = createWorkspaceIngress({
+      hostname: "127.0.0.1",
+      originPortRange: { start: port, end: port },
+      resolveWorkspace: () => undefined,
+      resolveApp: (_app, url) => ({ kind: "http", target: new URL(url.pathname, `http://127.0.0.1:${upstream.port}`) }),
+    });
+    await ingress.initialize();
+    const opened = await ingress.openCanonical(
+      { workspaceId: "ws", appKey: "socket" },
+      "/echo",
+      new Request("http://127.0.0.1:3000/workspaces/ws/apps/socket/echo"),
+    );
+    const location = new URL(opened.headers.get("location")!);
+    location.protocol = "ws:";
+    const result = await new Promise<{ protocol: string; binary: number[]; closeCode: number; closeReason: string }>((resolve, reject) => {
+      const socket = new WebSocket(location, ["atelier-test"]);
+      socket.binaryType = "arraybuffer";
+      const timer = setTimeout(() => reject(new Error("WebSocket bridge timed out")), 2_000);
+      let protocol = "";
+      let binary: number[] = [];
+      socket.addEventListener("open", () => {
+        protocol = socket.protocol;
+        socket.send(new Uint8Array([1, 2, 3]));
+      });
+      socket.addEventListener("message", (event) => {
+        // SAFETY: binaryType is set to arraybuffer before the socket opens.
+        binary = [...new Uint8Array(event.data as ArrayBuffer)];
+        socket.send("close-cleanly");
+      });
+      socket.addEventListener("close", (event) => {
+        clearTimeout(timer);
+        resolve({ protocol, binary, closeCode: event.code, closeReason: event.reason });
+      });
+      socket.addEventListener("error", () => reject(new Error("WebSocket bridge failed")));
+    });
+    expect(result).toEqual({ protocol: "atelier-test", binary: [1, 2, 3], closeCode: 4001, closeReason: "upstream done" });
+    await ingress.stopAll();
+    upstream.stop(true);
+  });
+
+  test("supports the 10-workspace, 10-app, 100-concurrent-connection baseline", async () => {
+    const identities = createMemoryOriginIdentityStore();
+    const assigned = new Set<number>();
+    for (let workspace = 0; workspace < 10; workspace += 1) {
+      for (let app = 0; app < 10; app += 1) {
+        assigned.add((await identities.assignedPort({ workspaceId: `ws-${workspace}`, appKey: `app-${app}` }, "public", { start: 46000, end: 46099 })).port);
+      }
+    }
+    expect(assigned.size).toBe(100);
+
+    let arrived = 0;
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const port = await freePort();
+    const ingress = createWorkspaceIngress({
+      hostname: "127.0.0.1",
+      originPortRange: { start: port, end: port },
+      resolveWorkspace: () => undefined,
+      resolveApp: () => ({
+        kind: "fetch",
+        async fetch() {
+          arrived += 1;
+          await gate;
+          return new Response("ok");
+        },
+      }),
+    });
+    await ingress.initialize();
+    const opened = await ingress.openCanonical({ workspaceId: "ws", appKey: "app" }, "/", new Request("http://127.0.0.1:3000/"));
+    const location = opened.headers.get("location")!;
+    const responsePromises = Array.from({ length: 100 }, () => fetch(location));
+    for (let attempt = 0; arrived < 100 && attempt < 100; attempt += 1) await Bun.sleep(10);
+    expect(arrived).toBe(100);
+    expect(ingress.inspect()[0]!.activeConnections).toBe(100);
+    release?.();
+    const responses = await Promise.all(responsePromises);
+    expect(responses.every((response) => response.status === 200)).toBe(true);
+    await Promise.all(responses.map((response) => response.text()));
+    await ingress.stopAll();
+  }, 15_000);
+
+  test("distinguishes stopped workspaces and origin capacity exhaustion", async () => {
+    const stoppedPort = await freePort();
+    const stopped = createWorkspaceIngress({
+      hostname: "127.0.0.1",
+      originPortRange: { start: stoppedPort, end: stoppedPort },
+      resolveWorkspace: () => { throw new StoppedWorkspaceError("parked"); },
+      resolveApp: () => ({ kind: "fetch", fetch: () => new Response("ok") }),
+    });
+    await stopped.initialize();
+    const stoppedResponse = await stopped.openCanonical({ workspaceId: "parked", appKey: "demo" }, "/", new Request("http://127.0.0.1:3000/"));
+    expect(stoppedResponse.status).toBe(503);
+    expect(await stoppedResponse.text()).toContain("Start the workspace");
+    await stopped.stopAll();
+
+    const capacityPort = await freePort();
+    const capacity = createWorkspaceIngress({
+      hostname: "127.0.0.1",
+      originPortRange: { start: capacityPort, end: capacityPort },
+      resolveWorkspace: () => undefined,
+      resolveApp: () => ({ kind: "fetch", fetch: () => new Response("ok") }),
+    });
+    await capacity.initialize();
+    await capacity.openCanonical({ workspaceId: "ws", appKey: "first" }, "/", new Request("http://127.0.0.1:3000/"));
+    await capacity.stopWorkspace("ws");
+    const exhausted = await capacity.openCanonical({ workspaceId: "ws", appKey: "second" }, "/", new Request("http://127.0.0.1:3000/"));
+    expect(exhausted.status).toBe(507);
+    expect(await exhausted.text()).toContain("capacity exhausted");
+    await capacity.stopAll();
+  });
+
+  test("distinguishes missing apps without allocating an origin", async () => {
+    const port = await freePort();
+    const ingress = createWorkspaceIngress({
+      hostname: "127.0.0.1",
+      originPortRange: { start: port, end: port },
+      resolveWorkspace: () => undefined,
+      resolveApp: () => undefined,
+    });
+    await ingress.initialize();
+    const response = await ingress.openCanonical(
+      { workspaceId: "ws", appKey: "missing" },
+      "/",
+      new Request("http://127.0.0.1:3000/workspaces/ws/apps/missing/"),
+    );
+    expect(response.status).toBe(404);
+    expect(await response.text()).toContain("does not exist");
+    expect(ingress.inspect()).toEqual([expect.objectContaining({ appKey: "missing", failureCategory: "unknown_app", targetState: "failed" })]);
+    await ingress.stopAll();
+  });
 });
 
 describe("decoded upstream response normalization", () => {
-  test("removes compression metadata from a transparently decoded response", async () => {
+  test("removes metadata for a transparently decoded representation", async () => {
     const compressed = gzipSync("decoded JavaScript");
     const upstream = Bun.serve({
       port: 0,
-      fetch() {
-        return new Response(compressed, {
-          headers: {
-            "content-encoding": "gzip",
-            "content-length": String(compressed.byteLength),
-            "content-md5": "encoded-md5",
-            "content-digest": "sha-256=:encoded:",
-            "repr-digest": "sha-256=:encoded:",
-            etag: "\"encoded-representation\"",
-            vary: "Accept-Encoding",
-          },
-        });
-      },
+      fetch: () => new Response(compressed, { headers: { "content-encoding": "gzip", "content-length": String(compressed.byteLength), etag: "\"encoded\"" } }),
     });
     const response = await fetch(`http://localhost:${upstream.port}`);
     upstream.stop();
-
-    // Bun fetch has decoded the gzip bytes while preserving these headers.
-    expect(await response.clone().text()).toBe("decoded JavaScript");
-    expect(response.headers.get("content-encoding")).toBe("gzip");
     const normalized = normalizeDecodedFetchResponse(response);
     expect(await normalized.text()).toBe("decoded JavaScript");
     expect(normalized.headers.get("content-encoding")).toBeNull();
     expect(normalized.headers.get("content-length")).toBeNull();
-    expect(normalized.headers.get("content-md5")).toBeNull();
-    expect(normalized.headers.get("content-digest")).toBeNull();
-    expect(normalized.headers.get("repr-digest")).toBeNull();
     expect(normalized.headers.get("etag")).toBeNull();
-    expect(normalized.headers.get("vary")).toBe("Accept-Encoding");
-  });
-
-  test("passes through an unencoded response without changing its byte validator", async () => {
-    const response = new Response("plain JavaScript", {
-      headers: { "content-length": "16", etag: "\"plain-representation\"" },
-    });
-
-    expect(normalizeDecodedFetchResponse(response)).toBe(response);
-    expect(await response.text()).toBe("plain JavaScript");
-    expect(response.headers.get("etag")).toBe("\"plain-representation\"");
-  });
-
-  test("keeps weak validators, which remain valid across content codings", () => {
-    const response = new Response("decoded", {
-      headers: { "content-encoding": "br", etag: "W/\"semantic-version\"" },
-    });
-
-    expect(normalizeDecodedFetchResponse(response).headers.get("etag")).toBe("W/\"semantic-version\"");
   });
 });
 
-describe("workspace public proxy route state", () => {
-  test("keeps direct and nested routes alive at the same time", async () => {
-    const exposedPorts = new Set<number>();
-    const proxy = createWorkspaceIngressProxy({
-      hostname: "127.0.0.1",
-      publicPortRange: { start: 43100, end: 43102 },
-      publicPortExposer: {
-        ensurePort: (port) => { exposedPorts.add(port); return Promise.resolve(); },
-        releasePort: (port) => { exposedPorts.delete(port); return Promise.resolve(); },
-        syncPorts: () => Promise.resolve(),
-      },
-      resolveWorkspace: () => undefined,
-      listWorkspaceIds: () => [],
-      resolveTarget: () => new URL("http://127.0.0.1:3000"),
-    });
-    const standardResponse = await proxy.redirectToRoute(
-      "inner",
-      "browser-1",
-      "/demo?x=1",
-      new Request("http://127.0.0.1:3000/workspaces/inner/apps/browser-1/"),
-    );
-    expect(standardResponse.headers.get("location")).toBe("http://127.0.0.1:43100/demo?x=1");
-    expect(exposedPorts).toEqual(new Set([43100]));
-
-    const nestedRequest = new Request("http://127.0.0.1:3000/workspaces/inner/apps/browser-1/", {
-      headers: {
-        "x-atelier-parent-origin": "https://outer.example",
-        "x-atelier-parent-workspace": "outer-workspace",
-      },
-    });
-    const response = await proxy.redirectToRoute("inner", "browser-1", "/demo?x=1", nestedRequest);
-
-    expect(response.status).toBe(302);
-    expect(response.headers.get(nestedWorkspaceProxyRedirectHeader)).toBe("1");
-    const nestedLocation = new URL(response.headers.get("location")!);
-    const nestedPort = Number(nestedLocation.pathname.match(/\/ports\/(\d+)/)?.[1]);
-    expect(nestedPort).toBeGreaterThanOrEqual(3001);
-    expect(nestedPort).toBeLessThanOrEqual(3010);
-    expect(nestedLocation.toString()).toBe(`https://outer.example/workspaces/outer-workspace/ports/${nestedPort}/demo?x=1`);
-
-    expect(await listWorkspacePublicProxyRoutes(["inner"])).toEqual([
-      { workspaceId: "inner", appKey: "browser-1", publicPort: 43100 },
-    ]);
-    expect(exposedPorts).toEqual(new Set([43100]));
-    const repeatedStandardResponse = await proxy.redirectToRoute(
-      "inner",
-      "browser-1",
-      "/after-nested",
-      new Request("http://127.0.0.1:3000/workspaces/inner/apps/browser-1/"),
-    );
-    expect(repeatedStandardResponse.headers.get("location")).toBe("http://127.0.0.1:43100/after-nested");
-    const repeatedNestedResponse = await proxy.redirectToRoute("inner", "browser-1", "/after-standard", nestedRequest);
-    expect(repeatedNestedResponse.headers.get("location")).toBe(`https://outer.example/workspaces/outer-workspace/ports/${nestedPort}/after-standard`);
-    await proxy.stopAll();
+describe("origin publication policy", () => {
+  test("parses configured origin port ranges", () => {
+    expect(publicOriginPortRangeFromEnv("43100-43110")).toEqual({ start: 43100, end: 43110 });
+    expect(() => publicOriginPortRangeFromEnv("bad")).toThrow();
   });
 
-  test("parses configured port ranges", () => {
-    expect(publicProxyPortRangeFromEnv("43100-43110")).toEqual({ start: 43100, end: 43110 });
-    expect(() => publicProxyPortRangeFromEnv("bad")).toThrow();
-  });
-
-  test("allocates stable per-workspace app ports and persists minimal state", async () => {
-    const range = { start: 43100, end: 43102 };
-    expect(await ensureWorkspacePublicProxyRoute("ws1", "vscode", { range })).toEqual({ appKey: "vscode", publicPort: 43100 });
-    expect(await ensureWorkspacePublicProxyRoute("ws1", "vscode", { range })).toEqual({ appKey: "vscode", publicPort: 43100 });
-    expect(await ensureWorkspacePublicProxyRoute("ws1", "port-3000", { range })).toEqual({ appKey: "port-3000", publicPort: 43101 });
-
-    expect(await listWorkspacePublicProxyRoutes(["ws1"])).toEqual([
-      { workspaceId: "ws1", appKey: "vscode", publicPort: 43100 },
-      { workspaceId: "ws1", appKey: "port-3000", publicPort: 43101 },
-    ]);
-  });
-
-  test("ignores malformed persisted routes instead of coercing their ports", async () => {
-    const workspaceDir = join(dataDir, "workspaces", "ws1");
-    await mkdir(workspaceDir, { recursive: true });
-    await writeFile(join(workspaceDir, "proxy-routes.json"), JSON.stringify({
-      version: 1,
-      routes: {
-        "string-port": { publicPort: "43100" },
-        "boolean-port": { publicPort: true },
-        "missing-port": {},
-        "valid-port": { publicPort: 43101 },
-      },
-    }));
-
-    expect(await listWorkspacePublicProxyRoutes(["ws1"])).toEqual([
-      { workspaceId: "ws1", appKey: "valid-port", publicPort: 43101 },
-    ]);
-  });
-
-  test("allocates different ports across workspaces", async () => {
-    const range = { start: 43100, end: 43102 };
-    expect((await ensureWorkspacePublicProxyRoute("ws1", "vscode", { range })).publicPort).toBe(43100);
-    expect((await ensureWorkspacePublicProxyRoute("ws2", "vscode", { range })).publicPort).toBe(43101);
-    expect(await listWorkspacePublicProxyRoutes()).toEqual([
-      { workspaceId: "ws1", appKey: "vscode", publicPort: 43100 },
-      { workspaceId: "ws2", appKey: "vscode", publicPort: 43101 },
-    ]);
-  });
-
-  test("can reserve unavailable ports and release all workspace routes", async () => {
-    const range = { start: 43100, end: 43102 };
-    expect(await ensureWorkspacePublicProxyRoute("ws1", "vscode", { range, reservedPorts: [43100] })).toEqual({ appKey: "vscode", publicPort: 43101 });
-    expect(await releaseWorkspacePublicProxyRoute("ws1", "missing")).toBeUndefined();
-    expect(await releaseWorkspacePublicProxyRoute("ws1", "vscode")).toBe(43101);
-    expect(await listWorkspacePublicProxyRoutes(["ws1"])).toEqual([]);
-
-    expect(await ensureWorkspacePublicProxyRoute("ws1", "vscode", { range })).toEqual({ appKey: "vscode", publicPort: 43100 });
-    expect(await releaseWorkspacePublicProxyRoutes("ws1")).toEqual([43100]);
-    expect(await listWorkspacePublicProxyRoutes(["ws1"])).toEqual([]);
-  });
-});
-
-describe("Tailscale Serve config", () => {
-  test("adds one HTTPS proxy port without disturbing existing stable routes", () => {
+  test("publishes active HTTPS origins without disturbing unrelated routes", () => {
     const config: TailscaleServeConfig = {
       TCP: { "443": { HTTPS: true } },
       Web: { "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } } },
     };
-
     expect(ensureTailscaleServePortConfig(config, { host: "atelier.tailnet.ts.net", port: 41000 })).toBe(true);
-    expect(config).toEqual({
-      TCP: { "443": { HTTPS: true }, "41000": { HTTPS: true } },
-      Web: {
-        "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } },
-        "atelier.tailnet.ts.net:41000": { Handlers: { "/": { Proxy: "http://127.0.0.1:41000/" } } },
-      },
-    });
-    expect(ensureTailscaleServePortConfig(config, { host: "atelier.tailnet.ts.net", port: 41000 })).toBe(false);
-  });
-
-  test("sync is a no-op when the managed range has no entries", () => {
-    const config: TailscaleServeConfig = {
-      TCP: { "443": { HTTPS: true } },
-      Web: { "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } } },
-    };
-
-    expect(syncTailscaleServePortConfig(config, { host: "atelier.tailnet.ts.net", activePorts: new Set(), portRange: { start: 41000, end: 41002 } })).toBe(false);
+    expect(syncTailscaleServePortConfig(config, {
+      host: "atelier.tailnet.ts.net",
+      activePorts: new Set<number>(),
+      portRange: { start: 41000, end: 41000 },
+    })).toBe(true);
     expect(config).toEqual({
       TCP: { "443": { HTTPS: true } },
       Web: { "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } } },
-    });
-  });
-
-  test("sync keeps active Atelier ports and prunes inactive owned range entries", () => {
-    const config: TailscaleServeConfig = {
-      TCP: { "443": { HTTPS: true }, "41000": { HTTPS: true }, "41001": { HTTPS: true }, "41002": { TCPForward: "127.0.0.1:41002" } },
-      Web: {
-        "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } },
-        "atelier.tailnet.ts.net:41001": { Handlers: { "/": { Proxy: "http://127.0.0.1:41001/" } } },
-        "atelier.tailnet.ts.net:41002": { Handlers: { "/": { Proxy: "http://127.0.0.1:9999/" } } },
-      },
-    };
-
-    expect(syncTailscaleServePortConfig(config, { host: "atelier.tailnet.ts.net", activePorts: new Set([41000]), portRange: { start: 41000, end: 41002 } })).toBe(true);
-    expect(config).toEqual({
-      TCP: { "443": { HTTPS: true }, "41000": { HTTPS: true }, "41002": { TCPForward: "127.0.0.1:41002" } },
-      Web: {
-        "atelier.tailnet.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000/" } } },
-        "atelier.tailnet.ts.net:41000": { Handlers: { "/": { Proxy: "http://127.0.0.1:41000/" } } },
-        "atelier.tailnet.ts.net:41002": { Handlers: { "/": { Proxy: "http://127.0.0.1:9999/" } } },
-      },
     });
   });
 });

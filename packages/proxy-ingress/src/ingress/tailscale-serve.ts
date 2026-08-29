@@ -1,21 +1,37 @@
 import { spawn } from "node:child_process";
 import { request as httpRequest } from "node:http";
 import { atelierDataPath, createProcessFileLock, getAtelierRuntimeContext, isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
-import { defaultPublicProxyPortRange, type PublicProxyPortRange } from "./route-state.ts";
+
+export interface PortRange {
+  start: number;
+  end: number;
+}
+
+export const defaultPublicOriginPortRange: PortRange = { start: 41000, end: 41999 };
+
+export function publicOriginPortRangeFromEnv(value = process.env.ATELIER_PROXY_PORT_RANGE): PortRange {
+  if (!value?.trim()) return defaultPublicOriginPortRange;
+  const match = value.trim().match(/^(\d+)\s*-\s*(\d+)$/);
+  if (!match) throw new Error(`invalid ATELIER_PROXY_PORT_RANGE: ${value}`);
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start <= 0 || end > 65535 || start > end) throw new Error(`invalid ATELIER_PROXY_PORT_RANGE: ${value}`);
+  return { start, end };
+}
 
 export const defaultTailscaleLocalApiSocketPath = "/var/run/tailscale/tailscaled.sock";
 export const defaultTailscaleServeHelperPath = "/usr/local/bin/atelier-tailscale-serve-helper";
 
-export interface PublicProxyPortExposer {
-  ensurePort(port: number): Promise<void>;
-  releasePort(port: number): Promise<void>;
-  syncPorts(ports: Iterable<number>): Promise<void>;
+export interface OriginPublisher {
+  publish(port: number): Promise<void>;
+  unpublish(port: number): Promise<void>;
+  reset(ports: Iterable<number>): Promise<void>;
 }
 
-export interface TailscaleServePortExposerOptions {
+export interface TailscaleOriginPublisherOptions {
   host: string;
   socketPath?: string;
-  portRange?: PublicProxyPortRange;
+  portRange?: PortRange;
   targetHost?: string;
 }
 
@@ -28,53 +44,53 @@ const withTailscaleServeLock = createProcessFileLock({
   lockDir: () => atelierDataPath(getAtelierRuntimeContext(), "proxy", "tailscale-serve.lock"),
 });
 
-export function createTailscaleServePortExposer(options: TailscaleServePortExposerOptions): PublicProxyPortExposer {
+export function createTailscaleOriginPublisher(options: TailscaleOriginPublisherOptions): OriginPublisher {
   const host = normalizeServeHost(options.host);
   const socketPath = options.socketPath ?? defaultTailscaleLocalApiSocketPath;
-  const portRange = options.portRange ?? defaultPublicProxyPortRange;
+  const portRange = options.portRange ?? defaultPublicOriginPortRange;
   const targetHost = options.targetHost ?? "127.0.0.1";
 
-  if (shouldUseSudoTailscaleServeHelper(socketPath, portRange, targetHost)) return createSudoTailscaleServePortExposer({ host });
+  if (shouldUseSudoTailscaleServeHelper(socketPath, portRange, targetHost)) return createSudoTailscaleOriginPublisher({ host });
 
   return {
-    async ensurePort(port) {
+    async publish(port) {
       validateManagedPort(port, portRange);
       await mutateTailscaleServeConfig(socketPath, (config) => ensureTailscaleServePortConfig(config, { host, port, targetHost }));
     },
-    async releasePort(port) {
+    async unpublish(port) {
       validateManagedPort(port, portRange);
       await mutateTailscaleServeConfig(socketPath, (config) => pruneTailscaleServePortConfig(config, { host, port, targetHost }));
     },
-    async syncPorts(ports) {
+    async reset(ports) {
       await mutateTailscaleServeConfig(socketPath, (config) => syncTailscaleServePortConfig(config, { host, activePorts: managedPortSet(ports, portRange), portRange, targetHost }));
     },
   };
 }
 
-function shouldUseSudoTailscaleServeHelper(socketPath: string, portRange: PublicProxyPortRange, targetHost: string): boolean {
+function shouldUseSudoTailscaleServeHelper(socketPath: string, portRange: PortRange, targetHost: string): boolean {
   return process.getuid?.() !== 0
     && socketPath === defaultTailscaleLocalApiSocketPath
     && targetHost === "127.0.0.1"
-    && samePortRange(portRange, defaultPublicProxyPortRange);
+    && samePortRange(portRange, defaultPublicOriginPortRange);
 }
 
-function createSudoTailscaleServePortExposer(options: { host: string }): PublicProxyPortExposer {
+function createSudoTailscaleOriginPublisher(options: { host: string }): OriginPublisher {
   return {
-    async ensurePort(port) {
-      validateManagedPort(port, defaultPublicProxyPortRange);
+    async publish(port) {
+      validateManagedPort(port, defaultPublicOriginPortRange);
       await runSudoTailscaleServeHelper(["ensure", options.host, String(port)]);
     },
-    async releasePort(port) {
-      validateManagedPort(port, defaultPublicProxyPortRange);
+    async unpublish(port) {
+      validateManagedPort(port, defaultPublicOriginPortRange);
       await runSudoTailscaleServeHelper(["release", options.host, String(port)]);
     },
-    async syncPorts(ports) {
-      await runSudoTailscaleServeHelper(["sync", options.host, ...[...managedPortSet(ports, defaultPublicProxyPortRange)].map((port) => String(port))]);
+    async reset(ports) {
+      await runSudoTailscaleServeHelper(["sync", options.host, ...[...managedPortSet(ports, defaultPublicOriginPortRange)].map((port) => String(port))]);
     },
   };
 }
 
-function managedPortSet(ports: Iterable<number>, range: PublicProxyPortRange): Set<number> {
+function managedPortSet(ports: Iterable<number>, range: PortRange): Set<number> {
   const result = new Set<number>();
   for (const port of ports) {
     validateManagedPort(port, range);
@@ -83,7 +99,7 @@ function managedPortSet(ports: Iterable<number>, range: PublicProxyPortRange): S
   return result;
 }
 
-function samePortRange(a: PublicProxyPortRange, b: PublicProxyPortRange): boolean {
+function samePortRange(a: PortRange, b: PortRange): boolean {
   return a.start === b.start && a.end === b.end;
 }
 
@@ -131,9 +147,9 @@ export function pruneTailscaleServePortConfig(config: TailscaleServeConfig, opti
   return pruneManagedPort(config, options.port, { desiredHost: host, active: false, targetHost });
 }
 
-export function syncTailscaleServePortConfig(config: TailscaleServeConfig, options: { host: string; activePorts: Set<number>; portRange?: PublicProxyPortRange; targetHost?: string }): boolean {
+export function syncTailscaleServePortConfig(config: TailscaleServeConfig, options: { host: string; activePorts: Set<number>; portRange?: PortRange; targetHost?: string }): boolean {
   const host = normalizeServeHost(options.host);
-  const portRange = options.portRange ?? defaultPublicProxyPortRange;
+  const portRange = options.portRange ?? defaultPublicOriginPortRange;
   const targetHost = options.targetHost ?? "127.0.0.1";
   let changed = false;
   for (let port = portRange.start; port <= portRange.end; port++) {
@@ -268,7 +284,7 @@ function ensureRecord(config: TailscaleServeConfig, key: "TCP" | "Web"): JsonObj
   return value;
 }
 
-export function validateManagedPort(port: number, range: PublicProxyPortRange): void {
+export function validateManagedPort(port: number, range: PortRange): void {
   if (!Number.isInteger(port) || port < range.start || port > range.end) throw new Error(`Tailscale Serve port ${port} is outside the managed proxy range ${range.start}-${range.end}`);
 }
 

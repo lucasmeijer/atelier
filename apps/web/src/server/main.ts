@@ -5,20 +5,16 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { createAtelierEventBus, getAtelierRuntimeContext } from "@atelier/core";
 import { attachHostObservableTerminal, observableTerminalCols, observableTerminalRows, type IPty } from "@atelier/observable-terminal/server";
-import { createWorkspace, deleteWorkspace, listWorkspaces, resolveWorkspace, setWorkspaceContainerRunning, workspaceSetupProvisioningHook } from "@atelier/workspace";
+import { createWorkspace, deleteWorkspace, isWorkspaceRunning, listWorkspaces, resolveWorkspace, setWorkspaceContainerRunning, workspaceSetupProvisioningHook } from "@atelier/workspace";
 import type { WorkspaceDeleteSafetyIssue } from "@atelier/projects";
-import { atelierName, CableTopics, escapeHtml, type WorkspaceServerAppHandler, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler, type WorkspaceServerSocketSession } from "@atelier/shared";
+import { atelierName, CableTopics, escapeHtml, type WorkspaceAppBackend, type WorkspaceAppRef, type WorkspaceServerAppResolver, type WorkspaceServerProvisioningHook, type WorkspaceServerSocketHandler, type WorkspaceServerSocketSession } from "@atelier/shared";
 import {
-  createTailscaleServePortExposer,
-  createWorkspaceIngressProxy,
-  publicProxyPortRangeFromEnv,
-  releaseWorkspacePublicProxyRoutes,
-  UnknownWorkspaceAppError,
-  type PublicProxyPortExposer,
-  type WorkspaceAppHost,
-  type WorkspaceAppRequestHeaderTransformer,
-  type WorkspaceAppResponseTransformer,
-  type WorkspaceAppTargetResolver,
+  createFileOriginIdentityStore,
+  createTailscaleOriginPublisher,
+  createWorkspaceIngress,
+  publicOriginPortRangeFromEnv,
+  StoppedWorkspaceError,
+  type OriginPublisher,
 } from "@atelier/proxy-ingress/server";
 import { createWebApp, type WebApp } from "./app.ts";
 import { parseAssetManifest } from "./asset-manifest.ts";
@@ -205,24 +201,24 @@ async function authResponse(request: Request): Promise<Response | undefined> {
 
 const atelierEvents = createAtelierEventBus();
 const socketHandlers: WorkspaceServerSocketHandler[] = [];
-const workspaceAppHandlers: WorkspaceServerAppHandler[] = [];
+const workspaceAppResolvers: WorkspaceServerAppResolver[] = [];
 const provisioningHooks: WorkspaceServerProvisioningHook[] = [workspaceSetupProvisioningHook];
 const workspaceRemovedHandlers: Array<(workspaceId: string) => void | Promise<void>> = [];
 
 const runtimeContext = getAtelierRuntimeContext();
 
-const publicProxyPortRange = publicProxyPortRangeFromEnv();
+const publicOriginPortRange = publicOriginPortRangeFromEnv();
 
-function createPublicPortExposer(): PublicProxyPortExposer | undefined {
+function createOriginPublisher(): OriginPublisher | undefined {
   if (process.env.ATELIER_TAILSCALE_SERVE !== "1") return undefined;
   const publicUrl = process.env.ATELIER_PUBLIC_URL;
   if (!publicUrl) throw new Error("ATELIER_TAILSCALE_SERVE=1 requires ATELIER_PUBLIC_URL");
   const url = new URL(publicUrl);
   if (url.protocol !== "https:") throw new Error("ATELIER_TAILSCALE_SERVE=1 requires an https ATELIER_PUBLIC_URL");
-  return createTailscaleServePortExposer({ host: url.hostname, portRange: publicProxyPortRange });
+  return createTailscaleOriginPublisher({ host: url.hostname, portRange: publicOriginPortRange });
 }
 
-const publicPortExposer = createPublicPortExposer();
+const originPublisher = createOriginPublisher();
 
 const registry = createWorkspaceRegistry({
   activityStore: createFileWorkspaceActivityStore(join(runtimeContext.atelierDataDir, "view-state", "workspace-activity.json")),
@@ -261,9 +257,7 @@ app = createWebApp({
     return { workspaceId: id, issues };
   },
   destroyWorkspace: async (id) => {
-    const stoppedPorts = new Set(await publicWorkspaceAppProxy.stopWorkspace(id));
-    const publicPorts = (await releaseWorkspacePublicProxyRoutes(id)).filter((port) => !stoppedPorts.has(port));
-    await Promise.all(publicPorts.map((port) => publicPortExposer?.releasePort(port)));
+    await workspaceIngress.stopWorkspace(id);
     await deleteWorkspace(id, { force: true, events: atelierEvents });
   },
 });
@@ -289,7 +283,7 @@ for (const module of workspaceModules) {
     createWorkspaceFromAgent: (workspaceId, request) => app.createWorkspaceFromAgent(workspaceId, request),
     forkCurrentWorkspaceFromAgent: (workspaceId, request) => app.forkCurrentWorkspaceFromAgent(workspaceId, request),
     registerSocketHandler: (handler) => socketHandlers.push(handler),
-    registerWorkspaceAppHandler: (handler) => workspaceAppHandlers.push(handler),
+    registerWorkspaceAppResolver: (resolver) => workspaceAppResolvers.push(resolver),
     registerProvisioningHook: (hook) => provisioningHooks.push(hook),
     onWorkspaceRemoved: (handler) => workspaceRemovedHandlers.push(handler),
   });
@@ -373,51 +367,25 @@ type ProvisionTermSocket = Pick<ServerWebSocket<undefined>, "send" | "close">;
 type WorkspaceModuleSocketData = WorkspaceServerSocketSession & { kind: "workspace-module" };
 type SocketData = WorkspaceModuleSocketData | ProvisionTermSocketData | CableSocketData;
 
-const resolveWorkspaceAppTarget: WorkspaceAppTargetResolver = async (app, requestUrl) => {
-  for (const handler of workspaceAppHandlers) {
-    if (!handler.matches(app) || !handler.resolveTarget) continue;
-    const target = await handler.resolveTarget(app, requestUrl);
-    if (target) return target;
-  }
-  throw new UnknownWorkspaceAppError(app);
-};
-
-const patchWorkspaceAppRequestHeaders: WorkspaceAppRequestHeaderTransformer = async (app, headers, target, request) => {
-  let next = headers;
-  for (const handler of workspaceAppHandlers) {
-    if (handler.matches(app) && handler.transformRequestHeaders) next = await handler.transformRequestHeaders(app, next, target, request);
-  }
-  return next;
-};
-
-const patchWorkspaceAppResponse: WorkspaceAppResponseTransformer = async (app, response, request) => {
-  let next = response;
-  for (const handler of workspaceAppHandlers) {
-    if (handler.matches(app) && handler.transformResponse) next = await handler.transformResponse(app, next, request);
-  }
-  return next;
-};
-
-const publicWorkspaceAppProxy = createWorkspaceIngressProxy({
-  hostname,
-  authResponse,
-  resolveWorkspace: async (workspaceId) => { await resolveWorkspace(workspaceId); },
-  listWorkspaceIds: async () => (await listWorkspaces()).workspaces.map((workspace) => workspace.id),
-  resolveTarget: resolveWorkspaceAppTarget,
-  transformRequestHeaders: patchWorkspaceAppRequestHeaders,
-  transformResponse: patchWorkspaceAppResponse,
-  publicPortRange: publicProxyPortRange,
-  publicPortExposer,
-});
-
-async function handleWorkspaceAppRequest(app: WorkspaceAppHost, request: Request, url: URL): Promise<Response | undefined> {
-  for (const handler of workspaceAppHandlers) {
-    if (!handler.matches(app) || !handler.handleRequest) continue;
-    const response = await handler.handleRequest(app, request, url);
-    if (response) return response;
+async function resolveWorkspaceApp(app: WorkspaceAppRef, requestUrl: URL): Promise<WorkspaceAppBackend | undefined> {
+  for (const resolver of workspaceAppResolvers) {
+    const backend = await resolver(app, requestUrl);
+    if (backend) return backend;
   }
   return undefined;
 }
+
+const workspaceIngress = createWorkspaceIngress({
+  hostname,
+  resolveWorkspace: async (workspaceId) => {
+    await resolveWorkspace(workspaceId);
+    if (!await isWorkspaceRunning(workspaceId)) throw new StoppedWorkspaceError(workspaceId);
+  },
+  resolveApp: resolveWorkspaceApp,
+  originPortRange: publicOriginPortRange,
+  originPublisher,
+  originIdentityStore: createFileOriginIdentityStore(),
+});
 
 async function handleCanonicalProxyRequest(url: URL, request: Request): Promise<Response | undefined> {
   const appMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/apps\/([^/]+)(\/.*)?$/);
@@ -425,7 +393,7 @@ async function handleCanonicalProxyRequest(url: URL, request: Request): Promise<
     const workspaceId = decodeURIComponent(appMatch[1] ?? "");
     const appKey = decodeURIComponent(appMatch[2] ?? "");
     const path = `${appMatch[3] || "/"}${url.search}`;
-    return await publicWorkspaceAppProxy.redirectToRoute(workspaceId, appKey, path, request);
+    return await workspaceIngress.openCanonical({ workspaceId, appKey }, path, request);
   }
 
   const portMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/ports\/(\d+)(\/.*)?$/);
@@ -433,16 +401,14 @@ async function handleCanonicalProxyRequest(url: URL, request: Request): Promise<
     const workspaceId = decodeURIComponent(portMatch[1] ?? "");
     const port = Number(portMatch[2]);
     const path = `${portMatch[3] || "/"}${url.search}`;
-    return await publicWorkspaceAppProxy.redirectToRoute(workspaceId, `port-${port}`, path, request);
+    return await workspaceIngress.openCanonical({ workspaceId, appKey: `port-${port}` }, path, request);
   }
 
   const fileMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/files(\/.*)$/);
   if (fileMatch) {
     const workspaceId = decodeURIComponent(fileMatch[1] ?? "");
-    const path = decodeURIComponent(fileMatch[2] ?? "/");
-    const fileUrl = new URL(request.url);
-    fileUrl.pathname = path;
-    return await handleWorkspaceAppRequest({ workspaceId, appKey: "file" }, request, fileUrl);
+    const path = `${decodeURIComponent(fileMatch[2] ?? "/")}${url.search}`;
+    return await workspaceIngress.openCanonical({ workspaceId, appKey: "file" }, path, request);
   }
 
   return undefined;
@@ -490,7 +456,7 @@ function closeProvisionTermSocket(data: ProvisionTermSocketData): void {
   data.pty?.kill();
 }
 
-await publicWorkspaceAppProxy.startPersistedRoutes();
+await workspaceIngress.initialize();
 const maxPortAttempts = allowPortFallback ? 100 : 1;
 let serverPort = 0;
 
@@ -506,6 +472,9 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
       idleTimeout: 255,
       async fetch(request, server) {
         const url = new URL(request.url);
+        const canonical = await handleCanonicalProxyRequest(url, request);
+        if (canonical) return canonical;
+
         const auth = await authResponse(request);
         if (auth) return auth;
 
@@ -517,15 +486,12 @@ for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
         }
 
         if (url.pathname === "/debug/connections" && request.method === "GET") {
-          return new Response(JSON.stringify({ cable: cableServer.stats() }, null, 2), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+          return new Response(JSON.stringify({ cable: cableServer.stats(), ingress: workspaceIngress.inspect() }, null, 2), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
         }
 
         if (devReloadFile && url.pathname === "/__atelier_dev_reload" && request.method === "GET") {
           return new Response(Bun.file(devReloadFile), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
         }
-
-        const canonical = await handleCanonicalProxyRequest(url, request);
-        if (canonical) return canonical;
 
         const staticResponse = await serveStatic(url.pathname, request);
         if (staticResponse) return staticResponse;

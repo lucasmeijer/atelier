@@ -1,5 +1,9 @@
 # Workspace networking
 
+## Security boundary
+
+Atelier is a single-user application intended to run inside a trusted network, such as a Tailnet. Workspace-app links are not secrets and do not have independent authentication: anyone who can reach one through the deployment network boundary can use it. Operators are responsible for ensuring that Atelier and its managed app-origin range are not unintentionally public.
+
 Atelier uses one networking model for workspace app ports:
 
 ```text
@@ -43,7 +47,13 @@ Do not run the Atelier container on Docker's default bridge network for this mod
 
 An Atelier development server in a workspace uses that workspace's nested Docker daemon. Its inner workspace ports are still published on the surrounding workspace's loopback interface, so the inner server can reach them normally.
 
-The browser-facing origin needs one additional rule. A workspace app normally redirects from its canonical route to a dedicated public proxy port in the `41000-41999` range. That inner port is not independently exposed through the outer Atelier. The outer app proxy therefore identifies its public origin and workspace to the inner Atelier. The inner Atelier listens for its app on an available outer preview port (`3001-3010`) and redirects through the outer workspace's canonical port route. The outer Atelier then supplies the browser-reachable isolated origin, preserving root-relative URLs and WebSockets.
+Browser-facing app identity is independent from an active listener. A stable canonical app link retains a logical browser-origin assignment while listeners and external publication are leased only while the app is active. Origin assignments are never transferred to another app, preventing stale addresses and browser storage from crossing app identities. In a nested Atelier, the inner ingress leases an origin already published by the surrounding workspace and redirects through that workspace's canonical app route. The outer ingress then supplies the browser-reachable origin. This preserves root-relative URLs and WebSockets without keeping inactive listeners or externally published resources alive.
+
+## Eligible preview ports and remote HTTPS
+
+Raw workspace development servers may be exposed on TCP ports **3000 through 3010**, using HTTP inside the workspace. Attempts to use other raw ports are rejected with the eligible range.
+
+When Atelier is reached over HTTPS, every active browser-origin port must also be reachable with a trusted HTTPS certificate. The supported automatic configuration uses `ATELIER_TAILSCALE_SERVE=1` with an HTTPS `ATELIER_PUBLIC_URL`; Atelier publishes and retracts active origins through Tailscale Serve. An operator using another trusted-network reverse proxy must equivalently terminate HTTPS and forward the managed origin range (41000–41999 by default) to the same local ports. Publishing only Atelier's main port is insufficient because each app origin intentionally has a separate browser origin.
 
 ## Why not container IPs?
 

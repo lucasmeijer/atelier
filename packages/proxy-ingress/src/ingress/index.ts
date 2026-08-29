@@ -1,407 +1,588 @@
 import type { ServerWebSocket } from "bun";
-import { stripHopByHopHeaders, workspaceProxyUrl } from "@atelier/shared";
+import { stripHopByHopHeaders, workspaceProxyUrl, type WorkspaceAppBackend, type WorkspaceAppRef } from "@atelier/shared";
+import { createMemoryOriginIdentityStore, type OriginIdentityStore } from "./origin-identity.ts";
 import {
-  defaultPublicProxyPortRange,
-  ensureWorkspacePublicProxyRoute,
-  listWorkspacePublicProxyRoutes,
-  publicProxyPortRangeFromEnv,
-  releaseWorkspacePublicProxyRoute,
-  releaseWorkspacePublicProxyRoutes,
-  type PublicProxyPortRange,
-  type WorkspacePublicProxyRoute,
-} from "./route-state.ts";
-import type { PublicProxyPortExposer } from "./tailscale-serve.ts";
-
-export interface WorkspaceAppHost {
-  appKey: string;
-  workspaceId: string;
-}
+  defaultPublicOriginPortRange,
+  publicOriginPortRangeFromEnv,
+  type OriginPublisher,
+  type PortRange,
+} from "./tailscale-serve.ts";
 
 export class UnknownWorkspaceAppError extends Error {
-  constructor(public readonly app: WorkspaceAppHost) {
+  constructor(public readonly app: WorkspaceAppRef) {
     super(`unknown workspace app: ${app.appKey}`);
     this.name = "UnknownWorkspaceAppError";
   }
 }
 
-export type WorkspaceAppTargetResolver = (app: WorkspaceAppHost, requestUrl: URL) => Promise<URL> | URL;
-export type WorkspaceAppRequestHeaderTransformer = (app: WorkspaceAppHost, headers: Headers, target: URL, request: Request) => Promise<Headers> | Headers;
-export type WorkspaceAppResponseTransformer = (app: WorkspaceAppHost, response: Response, request: Request) => Promise<Response> | Response;
-export type WorkspaceIngressAuthHandler = (request: Request) => Promise<Response | undefined> | Response | undefined;
+export class StoppedWorkspaceError extends Error {
+  constructor(public readonly workspaceId: string) {
+    super(`Workspace ${workspaceId} is stopped. Start the workspace and try again.`);
+    this.name = "StoppedWorkspaceError";
+  }
+}
 
-export interface WorkspaceIngressProxyOptions {
+export type WorkspaceAppHost = WorkspaceAppRef;
+export type WorkspaceAppResolver = (app: WorkspaceAppRef, requestUrl: URL) => Promise<WorkspaceAppBackend | undefined> | WorkspaceAppBackend | undefined;
+
+export interface WorkspaceIngressOptions {
   hostname: string;
-  authResponse?: WorkspaceIngressAuthHandler;
   resolveWorkspace(workspaceId: string): Promise<void> | void;
-  listWorkspaceIds(): Promise<string[]> | string[];
-  resolveTarget: WorkspaceAppTargetResolver;
-  transformRequestHeaders?: WorkspaceAppRequestHeaderTransformer;
-  transformResponse?: WorkspaceAppResponseTransformer;
-  publicPortRange?: PublicProxyPortRange;
-  publicPortExposer?: PublicProxyPortExposer;
+  resolveApp: WorkspaceAppResolver;
+  originPortRange?: PortRange;
+  originPublisher?: OriginPublisher;
+  originIdentityStore?: OriginIdentityStore;
+  leaseIdleMs?: number;
 }
 
-export interface WorkspaceIngressProxyService {
-  startPersistedRoutes(): Promise<void>;
-  redirectToRoute(workspaceId: string, appKey: string, path: string, request: Request): Promise<Response>;
-  ensureRoute(workspaceId: string, appKey: string): Promise<WorkspaceAppHost & WorkspacePublicProxyRoute>;
-  stopWorkspace(workspaceId: string): Promise<number[]>;
-  stopAll(): Promise<number[]>;
+export interface IngressStatus {
+  workspaceId: string;
+  appKey: string;
+  port?: number;
+  scope?: "public" | "nested";
+  activeConnections: number;
+  lastUsedAt: number;
+  lastFailure?: string;
+  failureCategory?: string;
+  target?: string;
+  targetState: "active" | "inactive" | "failed";
 }
 
-interface WorkspaceAppProxySocketData {
-  kind: "workspace-app-proxy";
-  target: string;
+export interface WorkspaceIngress {
+  initialize(): Promise<void>;
+  openCanonical(app: WorkspaceAppRef, pathAndSearch: string, request: Request): Promise<Response>;
+  stopWorkspace(workspaceId: string): Promise<void>;
+  stopAll(): Promise<void>;
+  inspect(app?: WorkspaceAppRef): IngressStatus[];
+}
+
+interface AppSocketData {
+  lease: OriginLease;
+  upstream: WebSocket;
+}
+
+interface PublicRequestContext {
+  protocol: string;
   host: string;
-  protocols: string[];
-  upstream?: WebSocket;
-  pending?: Array<string | ArrayBuffer>;
+  port: string;
 }
 
-interface HostedWorkspaceApp extends WorkspaceAppHost {
-  parentOrigin?: string;
-  persisted: boolean;
+interface IngressLogDetails {
+  port?: number;
+  scope?: "public" | "nested";
+  error?: string;
+  category?: string;
 }
 
-const nestedPublicProxyPortRange: PublicProxyPortRange = { start: 3001, end: 3010 };
+interface RecentFailure {
+  app: WorkspaceAppRef;
+  message: string;
+  category: string;
+  at: number;
+}
+
+interface ParentAtelier {
+  origin: string;
+  workspaceId: string;
+}
+
+interface OriginLease {
+  key: string;
+  app: WorkspaceAppRef;
+  port: number;
+  scope: "public" | "nested";
+  server: ReturnType<typeof Bun.serve<AppSocketData>>;
+  parentContext?: ParentAtelier;
+  activeConnections: number;
+  lastUsedAt: number;
+  lastFailure?: string;
+  target?: string;
+}
+
+const nestedOriginPortRange: PortRange = { start: 3001, end: 3010 };
 const parentOriginHeader = "x-atelier-parent-origin";
 const parentWorkspaceHeader = "x-atelier-parent-workspace";
 export const nestedWorkspaceProxyRedirectHeader = "x-atelier-nested-workspace-proxy-redirect";
 
-export {
-  defaultPublicProxyPortRange,
-  ensureWorkspacePublicProxyRoute,
-  listWorkspacePublicProxyRoutes,
-  publicProxyPortRangeFromEnv,
-  releaseWorkspacePublicProxyRoute,
-  releaseWorkspacePublicProxyRoutes,
-  type PublicProxyPortRange,
-  type WorkspacePublicProxyRoute,
-};
 export * from "./tailscale-serve.ts";
+export { createFileOriginIdentityStore, createMemoryOriginIdentityStore, type OriginIdentityStore } from "./origin-identity.ts";
 
-export function createWorkspaceIngressProxy(options: WorkspaceIngressProxyOptions): WorkspaceIngressProxyService {
-  const publicPortRange = options.publicPortRange ?? publicProxyPortRangeFromEnv();
-  const proxyServers = new Map<number, ReturnType<typeof Bun.serve<WorkspaceAppProxySocketData>>>();
-  const hostedAppsByPort = new Map<number, HostedWorkspaceApp>();
+export function createWorkspaceIngress(options: WorkspaceIngressOptions): WorkspaceIngress {
+  const publicRange = options.originPortRange ?? publicOriginPortRangeFromEnv();
+  const leaseIdleMs = options.leaseIdleMs ?? 10 * 60_000;
+  const identityStore = options.originIdentityStore ?? createMemoryOriginIdentityStore();
+  const leases = new Map<string, OriginLease>();
+  const pendingLeases = new Map<string, Promise<OriginLease>>();
+  const recentFailures = new Map<string, RecentFailure>();
 
-  async function retireUnknownAppRoute(publicPort: number, app: HostedWorkspaceApp): Promise<Response> {
-    if (app.persisted) {
-      await releaseWorkspacePublicProxyRoute(app.workspaceId, app.appKey);
-      await options.publicPortExposer?.releasePort(publicPort);
-    }
-    hostedAppsByPort.delete(publicPort);
-    const staleServer = proxyServers.get(publicPort);
-    proxyServers.delete(publicPort);
-    setTimeout(() => staleServer?.stop(true), 0);
-    return textResponse(`Workspace app is gone: ${app.appKey}`, 410);
+  function recordFailure(app: WorkspaceAppRef, error: Error): void {
+    recentFailures.set(appIdentity(app), { app, message: error.message, category: errorCategory(error), at: Date.now() });
+    while (recentFailures.size > 200) recentFailures.delete(recentFailures.keys().next().value!);
   }
 
-  function ensureProxyListener(route: HostedWorkspaceApp & { publicPort: number }): void {
-    const existing = hostedAppsByPort.get(route.publicPort);
-    if (existing) {
-      if (existing.workspaceId === route.workspaceId && existing.appKey === route.appKey && proxyServers.has(route.publicPort)) return;
-      throw new Error(`public proxy port ${route.publicPort} is already assigned`);
+  const sweepTimer = setInterval(() => {
+    const cutoff = Date.now() - leaseIdleMs;
+    for (const lease of leases.values()) {
+      if (lease.activeConnections === 0 && lease.lastUsedAt < cutoff) void releaseLease(lease);
     }
-    if (proxyServers.has(route.publicPort)) throw new Error(`public proxy port ${route.publicPort} is already listening`);
-    hostedAppsByPort.set(route.publicPort, { workspaceId: route.workspaceId, appKey: route.appKey, persisted: route.persisted });
+  }, Math.min(60_000, Math.max(100, Math.floor(leaseIdleMs / 2))));
+  sweepTimer.unref?.();
+
+  async function resolveBackend(app: WorkspaceAppRef, requestUrl: URL): Promise<WorkspaceAppBackend> {
+    const backend = await options.resolveApp(app, requestUrl);
+    if (!backend) throw new UnknownWorkspaceAppError(app);
+    return backend;
+  }
+
+  async function ensureLease(app: WorkspaceAppRef, scope: "public" | "nested", parentContext?: ParentAtelier): Promise<OriginLease> {
+    const key = leaseKey(app, scope, parentContext);
+    const existing = leases.get(key);
+    if (existing) {
+      existing.lastUsedAt = Date.now();
+      if (parentContext) existing.parentContext = parentContext;
+      return existing;
+    }
+    const pending = pendingLeases.get(key);
+    if (pending) {
+      const lease = await pending;
+      if (parentContext) lease.parentContext = parentContext;
+      return lease;
+    }
+
+    const created = startLease(key, app, scope, parentContext).finally(() => pendingLeases.delete(key));
+    pendingLeases.set(key, created);
+    return await created;
+  }
+
+  async function startLease(key: string, app: WorkspaceAppRef, scope: "public" | "nested", parentContext?: ParentAtelier): Promise<OriginLease> {
+    const range = scope === "public" ? publicRange : nestedOriginPortRange;
+    const assignment = await identityStore.assignedPort(app, scope, range);
+    const port = assignment.port;
+    let lease: OriginLease;
     try {
-      const server = Bun.serve<WorkspaceAppProxySocketData>({
-        hostname: options.hostname,
-        port: route.publicPort,
-        idleTimeout: 255,
-        async fetch(request, server) {
-          const auth = await options.authResponse?.(request);
-          if (auth) return auth;
-          const url = new URL(request.url);
-          const app = hostedAppsByPort.get(route.publicPort);
-          if (!app) return textResponse("not found", 404);
-          if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
-            try {
-              const protocols = websocketProtocols(request);
-              const target = await workspaceAppWebSocketTarget(app, url.pathname, url.search, options.resolveTarget);
-              if (server.upgrade(request, { data: { kind: "workspace-app-proxy", target, host: request.headers.get("host") ?? url.host, protocols } })) return undefined;
-              return textResponse("websocket upgrade failed", 400);
-            } catch (error) {
-              if (error instanceof UnknownWorkspaceAppError) return await retireUnknownAppRoute(route.publicPort, app);
-              throw error;
+      const server = Bun.serve<AppSocketData>({
+          hostname: options.hostname,
+          port,
+          idleTimeout: 255,
+          async fetch(request, server) {
+            lease.lastUsedAt = Date.now();
+            if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+              try {
+                const backend = await resolveBackend(lease.app, new URL(request.url));
+                if (backend.kind !== "http") return textResponse("This workspace app does not support WebSockets", 400);
+                lease.target = backend.target.toString();
+                const upstream = await openUpstreamSocket(websocketTarget(backend.target), publicRequestHost(request), websocketProtocols(request));
+                const headers = upstream.protocol ? { "sec-websocket-protocol": upstream.protocol } : undefined;
+                if (server.upgrade(request, { data: { upstream, lease }, headers })) return undefined;
+                upstream.close(1011, "Downstream WebSocket upgrade failed");
+                return textResponse("WebSocket upgrade failed", 400);
+              } catch (thrown) {
+                const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+                lease.lastFailure = error.message;
+                recordFailure(lease.app, error);
+                logIngress("websocket_failed", lease.app, { port: lease.port, error: lease.lastFailure, category: errorCategory(error) });
+                return ingressError(error);
+              }
             }
-          }
-          return await proxyWorkspaceAppRequest(app, request, options.resolveTarget, options.transformRequestHeaders, options.transformResponse, () => retireUnknownAppRoute(route.publicPort, app));
-        },
-        websocket: {
-          open: openWorkspaceAppProxySocket,
-          message: handleWorkspaceAppProxySocketMessage,
-          close: closeWorkspaceAppProxySocket,
-        },
-      });
-      proxyServers.set(route.publicPort, server);
-    } catch (error) {
-      hostedAppsByPort.delete(route.publicPort);
+            return await dispatchRequest(lease, request);
+          },
+          websocket: {
+            open: openAppSocket,
+            message: handleAppSocketMessage,
+            close: closeAppSocket,
+          },
+        });
+        lease = {
+          key,
+          app,
+          port,
+          scope,
+          server,
+          parentContext,
+          activeConnections: 0,
+          lastUsedAt: Date.now(),
+        };
+      leases.set(key, lease);
+      if (scope === "public") await options.originPublisher?.publish(port);
+      logIngress("lease_started", app, { port, scope });
+      return lease;
+    } catch (thrown) {
+      const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+      const started = leases.get(key);
+      if (started?.port === port) {
+        leases.delete(key);
+        started.server.stop(true);
+      }
+      if (isAddressInUse(error) && assignment.fresh) {
+        await identityStore.rejectFreshPort(app, scope, port);
+        return await startLease(key, app, scope, parentContext);
+      }
+      if (isAddressInUse(error)) throw new Error(`Retained browser origin ${port} for ${app.appKey} is currently unavailable because another process is using it`);
       throw error;
     }
   }
 
-  async function releaseExposedPorts(ports: Iterable<number>): Promise<void> {
-    await Promise.all([...ports].filter((port) => portInRange(port, publicPortRange)).map((port) => options.publicPortExposer?.releasePort(port)));
-  }
-
-  function stopProxyListeners(predicate: (route: HostedWorkspaceApp, port: number) => boolean): number[] {
-    const ports: number[] = [];
-    for (const [port, route] of [...hostedAppsByPort]) {
-      if (!predicate(route, port)) continue;
-      proxyServers.get(port)?.stop(true);
-      proxyServers.delete(port);
-      hostedAppsByPort.delete(port);
-      ports.push(port);
-    }
-    return ports;
-  }
-
-  function ensureNestedPort(workspaceId: string, appKey: string): number {
-    for (const [port, app] of hostedAppsByPort) {
-      if (!app.persisted && app.workspaceId === workspaceId && app.appKey === appKey) return port;
-    }
-    for (let port = nestedPublicProxyPortRange.start; port <= nestedPublicProxyPortRange.end; port++) {
-      try {
-        ensureProxyListener({ workspaceId, appKey, publicPort: port, persisted: false });
-        return port;
-      } catch { /* occupied preview ports are tried in order */ }
-    }
-    throw new Error(`no nested proxy ports available in range ${nestedPublicProxyPortRange.start}-${nestedPublicProxyPortRange.end}`);
-  }
-
-  async function ensureRoute(workspaceId: string, appKey: string): Promise<WorkspaceAppHost & WorkspacePublicProxyRoute> {
-    const unavailable = new Set<number>();
-    for (;;) {
-      const route = await ensureWorkspacePublicProxyRoute(workspaceId, appKey, { range: publicPortRange, reservedPorts: unavailable });
-      try {
-        ensureProxyListener({ workspaceId, appKey, publicPort: route.publicPort, persisted: true });
-      } catch {
-        unavailable.add(route.publicPort);
-        await releaseWorkspacePublicProxyRoute(workspaceId, appKey);
-        if (unavailable.size > publicPortRange.end - publicPortRange.start + 1) throw new Error(`no public proxy ports available in range ${publicPortRange.start}-${publicPortRange.end}`);
-        continue;
+  async function dispatchRequest(lease: OriginLease, request: Request): Promise<Response> {
+    lease.activeConnections += 1;
+    try {
+      const backend = await resolveBackend(lease.app, new URL(request.url));
+      if (backend.kind === "fetch") {
+        const response = adaptWorkspaceEmbedding(await backend.fetch(request));
+        lease.lastFailure = undefined;
+        recentFailures.delete(appIdentity(lease.app));
+        return trackResponse(lease, response);
       }
-      await options.publicPortExposer?.ensurePort(route.publicPort);
-      return { workspaceId, appKey, publicPort: route.publicPort };
+
+      lease.target = backend.target.toString();
+      let headers = stripHopByHopHeaders(request.headers, ["host"]);
+      const publicContext = publicRequestContext(request);
+      headers.set("host", publicContext.host);
+      headers.set("x-forwarded-host", publicContext.host);
+      headers.set("x-forwarded-proto", publicContext.protocol);
+      headers.set("x-forwarded-port", publicContext.port);
+      headers.delete(parentOriginHeader);
+      headers.delete(parentWorkspaceHeader);
+      if (lease.parentContext) {
+        headers.set(parentOriginHeader, lease.parentContext.origin);
+        headers.set(parentWorkspaceHeader, lease.parentContext.workspaceId);
+      }
+      if (backend.adaptRequestHeaders) headers = await backend.adaptRequestHeaders(headers, request);
+
+      const method = request.method.toUpperCase();
+      const init: RequestInit & { duplex?: "half" } = {
+        method,
+        headers,
+        body: method === "GET" || method === "HEAD" ? undefined : request.body,
+        redirect: "manual",
+      };
+      if (init.body) init.duplex = "half";
+      let response = normalizeDecodedFetchResponse(await fetchWithStartupRetry(backend.target, init));
+      if (backend.adaptResponse) response = await backend.adaptResponse(response, request);
+      response = adaptWorkspaceEmbedding(response);
+      lease.lastFailure = undefined;
+      recentFailures.delete(appIdentity(lease.app));
+      return trackResponse(lease, response);
+    } catch (thrown) {
+      finishRequest(lease);
+      const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+      lease.lastFailure = error.message;
+      recordFailure(lease.app, error);
+      logIngress("request_failed", lease.app, { port: lease.port, error: lease.lastFailure, category: errorCategory(error) });
+      if (error instanceof UnknownWorkspaceAppError) void releaseLease(lease);
+      return ingressError(error);
     }
+  }
+
+  async function releaseLease(lease: OriginLease): Promise<void> {
+    if (leases.get(lease.key) !== lease) return;
+    leases.delete(lease.key);
+    lease.server.stop(true);
+    if (lease.scope === "public") await options.originPublisher?.unpublish(lease.port);
+    logIngress("lease_released", lease.app, { port: lease.port, scope: lease.scope });
   }
 
   return {
-    async startPersistedRoutes() {
-      const ids = await options.listWorkspaceIds();
-      const startedPorts: number[] = [];
-      for (const route of await listWorkspacePublicProxyRoutes(ids)) {
-        if (!portInRange(route.publicPort, publicPortRange)) continue;
-        try {
-          ensureProxyListener({ ...route, persisted: true });
-          startedPorts.push(route.publicPort);
-        } catch { /* stale/unavailable route will be reallocated on next canonical request */ }
-      }
-      await options.publicPortExposer?.syncPorts(startedPorts);
+    async initialize() {
+      await options.originPublisher?.reset([]);
     },
-    async redirectToRoute(workspaceId, appKey, path, request) {
-      await options.resolveWorkspace(workspaceId);
-      const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-      const parent = parentAtelier(request);
-      if (parent) {
-        const port = ensureNestedPort(workspaceId, appKey);
-        const response = Response.redirect(`${parent.origin}${workspaceProxyUrl(parent.workspaceId, `port-${port}`, normalizedPath)}`, 302);
-        response.headers.set(nestedWorkspaceProxyRedirectHeader, "1");
-        return response;
+
+    async openCanonical(app, pathAndSearch, request) {
+      try {
+        await options.resolveWorkspace(app.workspaceId);
+        const normalizedPath = pathAndSearch.startsWith("/") ? pathAndSearch : `/${pathAndSearch}`;
+        const requestUrl = new URL(normalizedPath, request.url);
+        await resolveBackend(app, requestUrl);
+
+        const parent = parentAtelier(request);
+        if (parent) {
+          const lease = await ensureLease(app, "nested");
+          const location = `${parent.origin}${workspaceProxyUrl(parent.workspaceId, `port-${lease.port}`, normalizedPath)}`;
+          const response = Response.redirect(location, 302);
+          response.headers.set(nestedWorkspaceProxyRedirectHeader, "1");
+          return response;
+        }
+
+        const parentContext = { origin: publicAtelierOrigin(request), workspaceId: app.workspaceId };
+        const lease = await ensureLease(app, "public", parentContext);
+        return Response.redirect(`${publicLeaseOrigin(request, lease.port)}${normalizedPath}`, 302);
+      } catch (thrown) {
+        const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+        recordFailure(app, error);
+        logIngress("canonical_failed", app, { error: error.message, category: errorCategory(error) });
+        return ingressError(error);
       }
-      const route = await ensureRoute(workspaceId, appKey);
-      hostedAppsByPort.get(route.publicPort)!.parentOrigin = publicWorkspaceAppOrigin(request);
-      return Response.redirect(`${publicProxyOrigin(request, route.publicPort)}${normalizedPath}`, 302);
     },
-    ensureRoute,
+
     async stopWorkspace(workspaceId) {
-      const ports = stopProxyListeners((route) => route.workspaceId === workspaceId);
-      await releaseExposedPorts(ports);
-      return ports;
+      await Promise.all([...leases.values()].filter((lease) => lease.app.workspaceId === workspaceId).map(releaseLease));
     },
+
     async stopAll() {
-      const ports = stopProxyListeners(() => true);
-      await releaseExposedPorts(ports);
-      return ports;
+      clearInterval(sweepTimer);
+      await Promise.all([...leases.values()].map(releaseLease));
+      await options.originPublisher?.reset([]);
+    },
+
+    inspect(app) {
+      const statuses: IngressStatus[] = [...leases.values()]
+        .filter((lease) => !app || sameApp(lease.app, app))
+        .map((lease) => ({
+          workspaceId: lease.app.workspaceId,
+          appKey: lease.app.appKey,
+          port: lease.port,
+          scope: lease.scope,
+          activeConnections: lease.activeConnections,
+          lastUsedAt: lease.lastUsedAt,
+          lastFailure: lease.lastFailure,
+          failureCategory: lease.lastFailure ? recentFailures.get(appIdentity(lease.app))?.category : undefined,
+          target: lease.target,
+          targetState: lease.lastFailure ? "failed" : "active",
+        }));
+      for (const failure of recentFailures.values()) {
+        if ((app && !sameApp(failure.app, app)) || statuses.some((status) => status.workspaceId === failure.app.workspaceId && status.appKey === failure.app.appKey)) continue;
+        statuses.push({ workspaceId: failure.app.workspaceId, appKey: failure.app.appKey, activeConnections: 0, lastUsedAt: failure.at, lastFailure: failure.message, failureCategory: failure.category, targetState: "failed" });
+      }
+      return statuses;
     },
   };
 }
 
-export function publicWorkspaceAppOrigin(request: Request): string {
-  const url = new URL(request.url);
-  return `${publicWorkspaceAppProtocol(request, url)}://${publicWorkspaceAppHost(request, url)}`;
-}
-
-function publicWorkspaceAppProtocol(request: Request, url = new URL(request.url)): string {
-  return request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || url.protocol.replace(/:$/, "");
-}
-
-function publicWorkspaceAppHost(request: Request, url = new URL(request.url)): string {
-  return request.headers.get("host") ?? url.host;
-}
-
-function publicWorkspaceAppPort(host: string, protocol: string): string {
-  try {
-    return new URL(`${protocol}://${host}`).port || (protocol === "https" ? "443" : "80");
-  } catch {
-    return protocol === "https" ? "443" : "80";
+async function fetchWithStartupRetry(target: URL, init: RequestInit): Promise<Response> {
+  const retryable = init.method === "GET" || init.method === "HEAD";
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fetch(target, init);
+    } catch (error) {
+      if (!retryable || attempt >= 2) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+    }
   }
 }
 
-function publicProxyOrigin(request: Request, publicPort: number): string {
-  const url = new URL(request.url);
-  const proto = publicWorkspaceAppProtocol(request, url);
-  return `${proto}://${hostForOrigin(publicProxyHostFor(request, url))}:${publicPort}`;
+function trackResponse(lease: OriginLease, response: Response): Response {
+  if (!response.body) {
+    finishRequest(lease);
+    return response;
+  }
+  const reader = response.body.getReader();
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    finishRequest(lease);
+  };
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          finish();
+          controller.close();
+        } else {
+          controller.enqueue(chunk.value);
+        }
+      } catch (thrown) {
+        finish();
+        controller.error(thrown);
+      }
+    },
+    async cancel(reason) {
+      finish();
+      await reader.cancel(reason);
+    },
+  });
+  return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
 }
 
-function portInRange(port: number, range: PublicProxyPortRange): boolean {
-  return port >= range.start && port <= range.end;
+function finishRequest(lease: OriginLease): void {
+  lease.activeConnections -= 1;
+  lease.lastUsedAt = Date.now();
 }
 
-function parentAtelier(request: Request): { origin: string; workspaceId: string } | undefined {
+function leaseKey(app: WorkspaceAppRef, scope: "public" | "nested", parent?: ParentAtelier): string {
+  return `${scope}\0${parent?.origin ?? ""}\0${parent?.workspaceId ?? ""}\0${app.workspaceId}\0${app.appKey}`;
+}
+
+function parentAtelier(request: Request): ParentAtelier | undefined {
   const origin = request.headers.get(parentOriginHeader);
   const workspaceId = request.headers.get(parentWorkspaceHeader);
   if (!origin || !workspaceId) return undefined;
   const parsed = new URL(origin);
-  if (parsed.origin !== origin || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(workspaceId)) throw new Error("invalid parent Atelier proxy headers");
+  if (parsed.origin !== origin || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(workspaceId)) throw new Error("invalid parent Atelier routing context");
   return { origin, workspaceId };
 }
 
-function hostForOrigin(host: string): string {
-  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+export function publicWorkspaceAppOrigin(request: Request): string {
+  return publicAtelierOrigin(request);
 }
 
-function publicProxyHostFor(request: Request, url = new URL(request.url)): string {
-  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const host = hostnameWithoutPort(forwardedHost || url.host) || url.hostname;
-  return host === "0.0.0.0" ? "127.0.0.1" : host;
+function publicAtelierOrigin(request: Request): string {
+  const context = publicRequestContext(request);
+  return `${context.protocol}://${context.host}`;
 }
 
-function hostnameWithoutPort(host: string): string | undefined {
+function publicLeaseOrigin(request: Request, port: number): string {
+  const context = publicRequestContext(request);
+  const hostname = hostnameWithoutPort(request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() || new URL(request.url).host);
+  return `${context.protocol}://${hostForOrigin(hostname)}:${port}`;
+}
+
+function publicRequestHost(request: Request): string {
+  return request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() || request.headers.get("host") || new URL(request.url).host;
+}
+
+function publicRequestContext(request: Request): PublicRequestContext {
+  const url = new URL(request.url);
+  const protocol = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || url.protocol.replace(/:$/, "");
+  const host = publicRequestHost(request);
+  const port = new URL(`${protocol}://${host}`).port || (protocol === "https" ? "443" : "80");
+  return { protocol, host, port };
+}
+
+function hostnameWithoutPort(host: string): string {
   try {
     return new URL(`http://${host}`).hostname;
   } catch {
     if (host.startsWith("[") && host.includes("]")) return host.slice(1, host.indexOf("]"));
-    const colonCount = [...host].filter((char) => char === ":").length;
-    if (colonCount === 0) return host;
-    if (colonCount === 1) return host.split(":")[0];
-    return host;
+    const parts = host.split(":");
+    return parts.length === 2 ? parts[0]! : host;
   }
 }
 
-async function proxyWorkspaceAppRequest(
-  app: HostedWorkspaceApp,
-  request: Request,
-  resolveTarget: WorkspaceAppTargetResolver,
-  transformRequestHeaders?: WorkspaceAppRequestHeaderTransformer,
-  transformResponse?: WorkspaceAppResponseTransformer,
-  retireUnknownAppRoute?: () => Promise<Response>,
-): Promise<Response> {
-  try {
-    const source = new URL(request.url);
-    const target = await resolveTarget(app, source);
-    let headers = stripHopByHopHeaders(request.headers, ["host"]);
-    const sourceProto = publicWorkspaceAppProtocol(request, source);
-    const sourceHost = publicWorkspaceAppHost(request, source);
-    headers.set("host", sourceHost);
-    headers.set("x-forwarded-host", sourceHost);
-    headers.set("x-forwarded-proto", sourceProto);
-    const sourcePort = publicWorkspaceAppPort(sourceHost, sourceProto);
-    if (sourcePort) headers.set("x-forwarded-port", sourcePort);
-    headers.delete(parentOriginHeader);
-    headers.delete(parentWorkspaceHeader);
-    if (app.parentOrigin) {
-      headers.set(parentOriginHeader, app.parentOrigin);
-      headers.set(parentWorkspaceHeader, app.workspaceId);
-    }
-    if (transformRequestHeaders) headers = await transformRequestHeaders(app, headers, target, request);
-    const response = normalizeDecodedFetchResponse(await fetch(target, {
-      method: request.method,
-      headers,
-      body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
-      redirect: "manual",
-    }));
-    return transformResponse ? await transformResponse(app, response, request) : response;
-  } catch (error) {
-    if (error instanceof UnknownWorkspaceAppError && retireUnknownAppRoute) return await retireUnknownAppRoute();
-    const message = error instanceof Error ? error.message : String(error);
-    return textResponse(`Workspace app proxy error: ${message}`, 502);
+function hostForOrigin(host: string): string {
+  const normalized = host === "0.0.0.0" ? "127.0.0.1" : host;
+  return normalized.includes(":") && !normalized.startsWith("[") ? `[${normalized}]` : normalized;
+}
+
+function websocketTarget(target: URL): string {
+  const url = new URL(target);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+}
+
+function websocketProtocols(request: Request): string[] {
+  return (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+}
+
+async function openUpstreamSocket(target: string, host: string, protocols: string[]): Promise<WebSocket> {
+  // SAFETY: Bun supports the options constructor at runtime although DOM declarations omit it.
+  const WebSocketWithOptions = WebSocket as typeof WebSocket & (new (url: string | URL, options: Bun.WebSocketOptions) => WebSocket);
+  const upstream = new WebSocketWithOptions(target, { headers: { Host: host }, protocols });
+  upstream.binaryType = "arraybuffer";
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      upstream.close();
+      reject(new Error("Workspace app WebSocket connection timed out"));
+    }, 5_000);
+    upstream.addEventListener("open", () => {
+      clearTimeout(timer);
+      resolve();
+    }, { once: true });
+    upstream.addEventListener("error", () => {
+      clearTimeout(timer);
+      reject(new Error("Workspace app WebSocket connection failed"));
+    }, { once: true });
+  });
+  return upstream;
+}
+
+function openAppSocket(ws: ServerWebSocket<AppSocketData>): void {
+  ws.data.lease.activeConnections += 1;
+  ws.data.lease.lastUsedAt = Date.now();
+  ws.data.upstream.addEventListener("message", (event: MessageEvent<string | ArrayBuffer>) => ws.send(event.data));
+  ws.data.upstream.addEventListener("close", (event: CloseEvent) => ws.close(event.code, event.reason));
+  ws.data.upstream.addEventListener("error", () => ws.close(1011, "Upstream WebSocket failed"));
+}
+
+function handleAppSocketMessage(ws: ServerWebSocket<AppSocketData>, message: string | Buffer): void {
+  const payload = Buffer.isBuffer(message) ? new Uint8Array(message).slice().buffer : message;
+  ws.data.upstream.send(payload);
+}
+
+function closeAppSocket(ws: ServerWebSocket<AppSocketData>, code: number, reason: string): void {
+  if (ws.data.upstream.readyState <= WebSocket.OPEN) ws.data.upstream.close(code, reason);
+  ws.data.lease.activeConnections -= 1;
+  ws.data.lease.lastUsedAt = Date.now();
+}
+
+function adaptWorkspaceEmbedding(response: Response): Response {
+  const headers = new Headers(response.headers);
+  let changed = headers.has("x-frame-options");
+  headers.delete("x-frame-options");
+  for (const name of ["content-security-policy", "content-security-policy-report-only"]) {
+    const policy = headers.get(name);
+    if (!policy) continue;
+    const directives = policy.split(";").map((directive) => directive.trim()).filter((directive) => directive && !directive.toLowerCase().startsWith("frame-ancestors"));
+    if (directives.length) headers.set(name, directives.join("; "));
+    else headers.delete(name);
+    changed = true;
   }
+  return changed ? new Response(response.body, { status: response.status, statusText: response.statusText, headers }) : response;
 }
 
-async function workspaceAppWebSocketTarget(app: WorkspaceAppHost, pathname: string, search: string, resolveTarget: WorkspaceAppTargetResolver): Promise<string> {
-  const target = await resolveTarget(app, new URL(`${pathname}${search}`, "http://workspace-app.localhost"));
-  target.protocol = target.protocol === "https:" ? "wss:" : "ws:";
-  return target.toString();
-}
-
-/**
- * Bun's fetch transparently decodes content codings, but retains the upstream
- * Content-Encoding header. Returning that response directly makes clients try
- * to decode the already-decoded stream a second time.
- *
- * Keep the metadata aligned with the body that fetch gives us. A weak ETag is
- * still valid because it identifies semantic equivalence; a strong ETag is a
- * byte-for-byte representation validator and must not describe the decoded
- * representation.
- */
 export function normalizeDecodedFetchResponse(response: Response): Response {
   const contentEncoding = response.headers.get("content-encoding");
   if (!contentEncoding || contentEncoding.toLowerCase() === "identity") return response;
-
   const headers = new Headers(response.headers);
   headers.delete("content-encoding");
   headers.delete("content-length");
   headers.delete("content-md5");
   headers.delete("content-digest");
   headers.delete("repr-digest");
-
   const etag = headers.get("etag");
   if (etag && !etag.trimStart().startsWith("W/")) headers.delete("etag");
-
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
-function websocketProtocols(request: Request): string[] {
-  return (request.headers.get("sec-websocket-protocol") ?? "").split(",").map((protocol) => protocol.trim()).filter(Boolean);
+function ingressError(error: Error): Response {
+  const category = errorCategory(error);
+  const message = errorMessage(error);
+  if (error instanceof UnknownWorkspaceAppError) return textResponse(`Workspace app does not exist: ${error.app.appKey}. Check or recreate the app.`, 404);
+  if (category === "unknown_workspace") return textResponse(`${message}. Check whether the workspace was deleted.`, 404);
+  if (category === "stopped_workspace") return textResponse(message, 503);
+  if (category === "ineligible_port") return textResponse(`${message}. Choose a documented preview port.`, 400);
+  if (category === "capacity_exhausted") return textResponse(message, 507);
+  if (category === "connection_refused") return textResponse(`Workspace app connection was refused: ${message}. Verify that the service is listening.`, 503);
+  if (category === "connection_timeout") return textResponse(`Workspace app connection timed out: ${message}. Check the service and workspace networking.`, 504);
+  if (category === "unsupported_target") return textResponse(message, 422);
+  if (category === "malformed_upstream") return textResponse(`Workspace app returned malformed HTTP behavior: ${message}`, 502);
+  return textResponse(`Workspace app could not be reached: ${message}`, 502);
 }
 
-function openWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocketData>): void {
-  // SAFETY: With DOM types loaded, TypeScript omits Bun's runtime-supported
-  // WebSocket options overload. Ingress needs it to preserve Host and subprotocols.
-  const WebSocketWithOptions = WebSocket as typeof WebSocket & (new (url: string | URL, options: Bun.WebSocketOptions) => WebSocket);
-  const upstream = new WebSocketWithOptions(ws.data.target, { headers: { Host: ws.data.host }, protocols: ws.data.protocols });
-  upstream.binaryType = "arraybuffer";
-  const pending: Array<string | ArrayBuffer> = [];
-  ws.data.upstream = upstream;
-  ws.data.pending = pending;
-  upstream.addEventListener("open", () => {
-    for (const message of pending.splice(0)) upstream.send(message);
-  });
-  upstream.addEventListener("message", (event: MessageEvent<string | ArrayBuffer>) => {
-    ws.send(event.data);
-  });
-  upstream.addEventListener("close", () => ws.close());
-  upstream.addEventListener("error", () => ws.close());
+function errorCategory(error: Error): string {
+  if (error instanceof UnknownWorkspaceAppError) return "unknown_app";
+  if (error instanceof StoppedWorkspaceError) return "stopped_workspace";
+  const message = errorMessage(error);
+  if (/workspace.*not found|no such container/i.test(message)) return "unknown_workspace";
+  if (/unsupported workspace preview port|ineligible port|not published for browser previews/i.test(message)) return "ineligible_port";
+  if (/capacity exhausted|no browser origins available/i.test(message)) return "capacity_exhausted";
+  if (/ECONNREFUSED|connection refused|Unable to connect|connection failed/i.test(message)) return "connection_refused";
+  if (/timeout|timed out/i.test(message)) return "connection_timeout";
+  if (/does not support WebSockets|unsupported target/i.test(message)) return "unsupported_target";
+  if (/fetch failed|invalid HTTP|malformed/i.test(message)) return "malformed_upstream";
+  return "routing_failure";
 }
 
-function handleWorkspaceAppProxySocketMessage(ws: ServerWebSocket<WorkspaceAppProxySocketData>, message: string | Buffer): void {
-  const payload = Buffer.isBuffer(message) ? new Uint8Array(message).slice().buffer : message;
-  if (ws.data.upstream?.readyState === WebSocket.OPEN) ws.data.upstream.send(payload);
-  else ws.data.pending?.push(payload);
+function textResponse(message: string, status: number): Response {
+  return new Response(`${message}\n`, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
 }
 
-function closeWorkspaceAppProxySocket(ws: ServerWebSocket<WorkspaceAppProxySocketData>): void {
-  const upstream = ws.data.upstream;
-  if (upstream && upstream.readyState <= WebSocket.OPEN) upstream.close();
+function errorMessage(error: Error): string {
+  return error.message;
 }
 
-function textResponse(text: string, status: number): Response {
-  return new Response(`${text}\n`, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
+function appIdentity(app: WorkspaceAppRef): string {
+  return `${app.workspaceId}\0${app.appKey}`;
+}
+
+function sameApp(left: WorkspaceAppRef, right: WorkspaceAppRef): boolean {
+  return left.workspaceId === right.workspaceId && left.appKey === right.appKey;
+}
+
+function logIngress(event: string, app: WorkspaceAppRef, details: IngressLogDetails): void {
+  console.info(JSON.stringify({ subsystem: "workspace-ingress", event, workspaceId: app.workspaceId, appKey: app.appKey, ...details }));
+}
+
+function isAddressInUse(error: Error): boolean {
+  return error instanceof Error && "code" in error && error.code === "EADDRINUSE";
 }

@@ -31,10 +31,9 @@ export const desktopWorkspaceModule: WorkspaceModule = {
     context.events.on("workspace_plan_prepare", ({ plan }) => {
       plan.initScripts.push(`if command -v dbus-daemon >/dev/null 2>&1 && [ -f /usr/share/dbus-1/system.conf ]; then mkdir -p /run/dbus; dbus-daemon --system --fork 2>/dev/null || true; fi`);
     });
-    context.registerWorkspaceAppHandler({
-      matches: (app) => app.appKey === desktopAppKey,
-      resolveTarget: (app, requestUrl) => resolveDesktopWorkspaceAppTarget(app, requestUrl),
-    });
+    context.registerWorkspaceAppResolver(async (app, requestUrl) => app.appKey === desktopAppKey
+      ? { kind: "http", target: await resolveDesktopWorkspaceAppTarget(app, requestUrl) }
+      : undefined);
     context.onWorkspaceRemoved((workspaceId) => { enabledWorkspaces.delete(workspaceId); });
   },
   commands: [{

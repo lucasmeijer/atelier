@@ -142,7 +142,7 @@ function addAtelierThemeParams(url: URL): void {
 }
 
 function isBrowserAppKey(appKey: string): boolean {
-  return /^browser-\d+$/.test(appKey);
+  return /^browser-[a-zA-Z0-9-]+$/.test(appKey);
 }
 
 const browserClientModule: WorkspaceClientModule = {

@@ -21,11 +21,14 @@ export function renderBrowserPane(workspaceId: string, view: WorkspaceBrowserVie
 
 export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserView): string {
   const target = view.targetUrl ? new URL(view.targetUrl) : undefined;
-  const proxy = target ? browserProxyUrl(target, "http://atelier.browser") : undefined;
+  const workspaceLocal = target ? isWorkspaceLoopbackHost(target.hostname) : false;
+  const proxy = target && workspaceLocal ? browserProxyUrl(target, "http://atelier.browser") : undefined;
   const initialPath = proxy ? `${proxy.pathname}${proxy.search}${proxy.hash}` : "";
   const appKey = view.key;
-  const frameControllerAttributes = target ? ` data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-app-frame-app-key-value="${escapeHtml(appKey)}" data-workspace-app-frame-initial-path-value="${escapeHtml(initialPath)}"` : "";
-  const externalLinkAttributes = target ? ` href="#"` : ` aria-disabled="true"`;
+  const frameControllerAttributes = target && workspaceLocal
+    ? ` data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="${escapeHtml(workspaceId)}" data-workspace-app-frame-app-key-value="${escapeHtml(appKey)}" data-workspace-app-frame-initial-path-value="${escapeHtml(initialPath)}"`
+    : target ? ` src="${escapeHtml(target.toString())}"` : "";
+  const externalLinkAttributes = target ? ` href="${escapeHtml(target.toString())}"` : ` aria-disabled="true"`;
   return `<turbo-frame id="${browserFrameId(workspaceId, appKey)}" class="browser-frame">
     <div class="browser-shell">
       <form class="browser-toolbar work-view-toolbar" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/browser/${encodeURIComponent(appKey)}/navigate" data-turbo-frame="${browserFrameId(workspaceId, appKey)}" data-controller="browser-address" data-action="submit->browser-address#submit">
@@ -43,4 +46,9 @@ export function renderBrowserFrame(workspaceId: string, view: WorkspaceBrowserVi
       </div>
     </div>
   </turbo-frame>`;
+}
+
+function isWorkspaceLoopbackHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]" || normalized === "0.0.0.0";
 }

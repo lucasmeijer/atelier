@@ -52,11 +52,13 @@ export const vscodeWorkspaceModule: WorkspaceModule = {
   }],
   staticFiles: vscodeStaticFiles,
   initialize(context) {
-    context.registerWorkspaceAppHandler({
-      matches: (app) => app.appKey === vscodeAppKey,
-      resolveTarget: (app, requestUrl) => resolveVSCodeWorkspaceAppTarget(app, requestUrl),
-      transformResponse: (app, response, request) => patchVSCodeWorkspaceAppResponse(app, response, request),
-    });
+    context.registerWorkspaceAppResolver(async (app, requestUrl) => app.appKey === vscodeAppKey
+      ? {
+          kind: "http",
+          target: await resolveVSCodeWorkspaceAppTarget(app, requestUrl),
+          adaptResponse: (response, request) => patchVSCodeWorkspaceAppResponse(app, response, request),
+        }
+      : undefined);
     context.onWorkspaceRemoved((workspaceId) => {
       deleteWorkspaceVSCodeState(workspaceId);
       deleteWorkspaceVSCodeProxyState(workspaceId);

@@ -1,7 +1,7 @@
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
-import { join } from "node:path";
-import { AtelierCoreError, atelierDataPath, dockerHostAtelierDataPath, getAtelierRuntimeContext, gitHubCredentialHelperShellBody, invalidArguments, isJsonObject, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput, type JsonObject } from "@atelier/core";
+import { dirname, join } from "node:path";
+import { AtelierCoreError, atelierDataPath, createProcessFileLock, dockerHostAtelierDataPath, getAtelierRuntimeContext, gitHubCredentialHelperShellBody, invalidArguments, isJsonObject, requireDocker, runDocker, runDockerBuffer, shellQuote, type AtelierEventBus, type CommandInput, type JsonObject } from "@atelier/core";
 import { runHostObservableCommand, stripTerminalControls, tailTerminalText } from "@atelier/observable-terminal/server";
 import type { WorkspaceServerProvisioningHook } from "@atelier/shared";
 import { ensureDefaultWorkspaceImage, inspectWorkspaceImage, nativeLinuxDockerPlatform, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
@@ -46,6 +46,10 @@ const parkedPath = "parked";
 const initPath = "init.json";
 const workspaceManifestPath = ".atelier/workspace.json";
 const workspaceStartupTimeoutMs = 5 * 60_000;
+const withWorkspaceIdentityLock = createProcessFileLock({
+  label: "workspace identity tombstone",
+  lockDir: () => atelierDataPath(getAtelierRuntimeContext(), "workspaces", "identity-tombstones.lock"),
+});
 const dockerLabelsSchema = Type.Record(Type.String(), Type.String());
 const booleanSchema = Type.Boolean();
 const nonBlankStringSchema = Type.String({ pattern: "\\S" });
@@ -151,8 +155,49 @@ export async function resolveWorkspace(id: string): Promise<string> {
   return id;
 }
 
+export async function isWorkspaceRunning(id: string): Promise<boolean> {
+  await validateWorkspaceContainer(id);
+  const result = await runDocker(["inspect", "--format", "{{.State.Running}}", workspaceContainerName(id)]);
+  if (result.exitCode !== 0) throw new AtelierCoreError("workspace_not_found", `workspace not found: ${id}`);
+  return result.stdout.trim() === "true";
+}
+
 function assertValidWorkspaceId(id: string): void {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id)) throw invalidArguments(`invalid workspace id: ${id}`);
+}
+
+function workspaceIdentityTombstonePath(): string {
+  return atelierDataPath(getAtelierRuntimeContext(), "workspaces", "identity-tombstones.json");
+}
+
+async function readRetiredWorkspaceIds(): Promise<Set<string>> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(workspaceIdentityTombstonePath(), "utf8"));
+    return new Set(Value.Parse(stringArraySchema, parsed));
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return new Set();
+    throw error;
+  }
+}
+
+function workspaceIdentityKey(id: string): string {
+  return `${namespace()}\0${id}`;
+}
+
+async function isRetiredWorkspaceId(id: string): Promise<boolean> {
+  return await withWorkspaceIdentityLock(async () => (await readRetiredWorkspaceIds()).has(workspaceIdentityKey(id)));
+}
+
+async function retireWorkspaceId(id: string): Promise<void> {
+  await withWorkspaceIdentityLock(async () => {
+    const retired = await readRetiredWorkspaceIds();
+    retired.add(workspaceIdentityKey(id));
+    const path = workspaceIdentityTombstonePath();
+    await mkdir(dirname(path), { recursive: true });
+    const temporary = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    await writeFile(temporary, `${JSON.stringify([...retired].sort(), null, 2)}\n`);
+    await rename(temporary, path);
+  });
 }
 
 export function workspaceWorkHostPath(id: string): string {
@@ -470,6 +515,7 @@ function workspaceInitScript(plan: WorkspaceDockerPlan): string {
 export async function createWorkspace(options: CreateWorkspaceOptions = {}): Promise<WorkspaceNewResult> {
   const id = options.id ?? generateWorkspaceId();
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id)) throw invalidArguments(`invalid workspace id: ${id}`);
+  if (await isRetiredWorkspaceId(id)) throw invalidArguments(`workspace id has been permanently retired and cannot be reused: ${id}`);
   const context = options.context && Object.keys(options.context).length ? options.context : undefined;
   const init = options.init;
   const source = await provisionStep(options.events, id, "workspace.workdir", "Create workspace directory", () => createWorkspaceWorkDir(id));
@@ -632,6 +678,7 @@ export async function deleteWorkspace(id: string, options: DeleteWorkspaceOption
     if (issues.length > 0) throw new AtelierCoreError("workspace_delete_blocked", formatDeleteBlockedMessage(id, issues), { workspaceId: id, issues });
   }
   if (containerExists) await requireDocker(["rm", "-f", workspaceContainerName(id)]);
+  await retireWorkspaceId(id);
   clearWorkspacePublishedEndpointCache(id);
   await options.events?.emit("workspace_deleted", { workspaceId: id });
   await deleteWorkspaceWorkDir(id);

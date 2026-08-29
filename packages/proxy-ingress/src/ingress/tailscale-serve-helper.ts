@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { defaultPublicProxyPortRange } from "./route-state.ts";
 import {
+  defaultPublicOriginPortRange,
   defaultTailscaleLocalApiSocketPath,
   ensureTailscaleServePortConfig,
   mutateTailscaleServeConfig,
@@ -56,7 +56,7 @@ function parseSinglePort(args: string[]): number {
 function parsePort(value: string): number {
   if (!/^\d+$/.test(value)) throw new Error(`invalid Tailscale Serve port: ${value}`);
   const port = Number(value);
-  validateManagedPort(port, defaultPublicProxyPortRange);
+  validateManagedPort(port, defaultPublicOriginPortRange);
   return port;
 }
 

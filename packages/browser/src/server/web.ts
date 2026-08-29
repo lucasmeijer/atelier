@@ -2,7 +2,7 @@ import { turboStream, type WorkspaceCommandContribution, type WorkspaceModule, t
 import { renderBrowserFrame, renderBrowserWorkView } from "./render.ts";
 import { browserFrameId, createWorkspaceBrowserView, deleteWorkspaceBrowserState, deleteWorkspaceBrowserView, listWorkspaceBrowserViews, setWorkspaceBrowserTarget } from "./state.ts";
 import { browserStaticFiles } from "./static.ts";
-import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppRequestHeaders, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "./proxy.ts";
+import { isBrowserWorkspaceApp, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "./proxy.ts";
 import { invalidArguments, readJsonObject, requestAcceptsJson, type JsonObject, type JsonValue } from "@atelier/core";
 import { createBrowserPresenter } from "./agent-tool.ts";
 import { registerWorkspacePresenter } from "@atelier/agent/server";
@@ -25,7 +25,7 @@ const browserCreateCommand: WorkspaceModuleCommandHandler<Static<typeof browserC
 
 const browserWorkViewReferenceSchema = Type.Object({
   type: Type.Literal("browser"),
-  browserId: Type.String({ pattern: "^browser-\\d+$" }),
+  browserId: Type.String({ pattern: "^browser-[a-zA-Z0-9-]+$" }),
 });
 
 type BrowserWorkViewReference = Static<typeof browserWorkViewReferenceSchema>;
@@ -66,11 +66,14 @@ export const browserWorkspaceModule: WorkspaceModule = {
     },
   }],
   initialize(context) {
-    context.registerWorkspaceAppHandler({
-      matches: (app) => isBrowserWorkspaceApp(app.workspaceId, app.appKey),
-      resolveTarget: (app, requestUrl) => resolveBrowserWorkspaceAppTarget(app, requestUrl),
-      transformRequestHeaders: (app, headers, target, request) => patchBrowserWorkspaceAppRequestHeaders(app, headers, target, request),
-      transformResponse: (app, response, request) => patchBrowserWorkspaceAppResponse(app, response, request),
+    context.registerWorkspaceAppResolver(async (app, requestUrl) => {
+      if (!isBrowserWorkspaceApp(app.workspaceId, app.appKey)) return undefined;
+      const target = await resolveBrowserWorkspaceAppTarget(app, requestUrl);
+      return {
+        kind: "http",
+        target,
+        adaptResponse: (response, request) => patchBrowserWorkspaceAppResponse(app, response, request),
+      };
     });
     context.onWorkspaceRemoved((workspaceId) => deleteWorkspaceBrowserState(workspaceId));
     registerWorkspacePresenter("browser", (workspaceId) => createBrowserPresenter(workspaceId, {

@@ -7,11 +7,6 @@ export function isBrowserWorkspaceApp(workspaceId: string, appKey: string): bool
   return Boolean(getWorkspaceBrowserView(workspaceId, appKey));
 }
 
-export async function patchBrowserWorkspaceAppRequestHeaders(_app: WorkspaceAppHost, headers: Headers, target: URL, _request: Request): Promise<Headers> {
-  if (!isLoopbackHost(target.hostname)) headers.set("host", target.host);
-  return headers;
-}
-
 export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, response: Response, request: Request): Promise<Response> {
   const browserView = getWorkspaceBrowserView(app.workspaceId, app.appKey);
   if (!browserView) return response;
@@ -32,14 +27,13 @@ export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, re
     return location ? new Response(response.body, { status: response.status, statusText: response.statusText, headers }) : response;
   }
 
-  const text = await response.text();
-  const rewritten = patchBrowserHtml(rewriteContainerLocalUrlsInHtml(text, publicOrigin), request, requestTarget.origin);
+  const additions = `${browserBridgeElement(requestTarget.origin)}${browserThemeElement(request)}`;
   headers.delete("content-length");
   headers.delete("content-encoding");
   headers.delete("content-security-policy");
   headers.delete("content-security-policy-report-only");
   headers.delete("x-frame-options");
-  return new Response(rewritten, { status: response.status, statusText: response.statusText, headers });
+  return new Response(injectIntoHtmlStream(response.body!, additions), { status: response.status, statusText: response.statusText, headers });
 }
 
 export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {
@@ -47,8 +41,7 @@ export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, re
   if (!browserView) throw new Error(`unknown workspace app: ${app.appKey}`);
   if (!browserView.targetUrl) throw new Error(`Browser view has no target URL: ${app.appKey}`);
   const target = browserRequestTarget(browserView, requestUrl);
-
-  if (!isLoopbackHost(target.hostname)) return target;
+  if (!isLoopbackHost(target.hostname)) throw new Error("External browser targets load directly and do not have a workspace proxy");
 
   const containerPort = Number(target.port || defaultPortForProtocol(target.protocol));
   if (!isWorkspacePreviewPort(containerPort)) {
@@ -65,7 +58,7 @@ function defaultPortForProtocol(protocol: string): number {
 
 function isLoopbackHost(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
-  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]" || normalized === "0.0.0.0";
 }
 
 function rewriteBrowserRedirect(app: WorkspaceAppHost, requestUrl: URL, requestTarget: URL, location: string, publicOrigin: string): string {
@@ -78,6 +71,7 @@ function rewriteBrowserRedirect(app: WorkspaceAppHost, requestUrl: URL, requestT
   if (redirectTarget.protocol !== "http:" && redirectTarget.protocol !== "https:") return location;
 
   setWorkspaceBrowserTarget(app.workspaceId, app.appKey, redirectTarget.toString());
+  if (!isLoopbackHost(redirectTarget.hostname)) return redirectTarget.toString();
   const proxyTarget = browserProxyUrl(redirectTarget, publicOrigin);
   const colorScheme = requestUrl.searchParams.get(browserColorSchemeParam);
   if (colorScheme) proxyTarget.searchParams.set(browserColorSchemeParam, colorScheme);
@@ -103,42 +97,50 @@ function parseBrowserOrigin(value: string | null): string | undefined {
   }
 }
 
-function rewriteContainerLocalUrlsInHtml(html: string, publicOrigin: string): string {
-  return html.replace(/https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::(\d+))?([^\s"'<>)]*)/gi, (raw) => rewriteContainerLocalUrl(raw, publicOrigin));
+function browserBridgeElement(targetOrigin: string): string {
+  return `<script>${browserBridgeScript(targetOrigin)}</script>`;
 }
 
-function rewriteContainerLocalUrl(raw: string, publicOrigin: string): string {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return raw;
-  }
-  if (!isLoopbackHost(url.hostname)) return raw;
-  const port = Number(url.port || defaultPortForProtocol(url.protocol));
-  if (!isWorkspacePreviewPort(port)) return raw;
-  return new URL(`${url.pathname}${url.search}${url.hash}`, publicOrigin).toString();
-}
-
-function patchBrowserHtml(html: string, request: Request, targetOrigin: string): string {
-  return injectBrowserThemeStyle(injectBrowserBridgeScript(html, targetOrigin), request);
-}
-
-function injectBrowserBridgeScript(html: string, targetOrigin: string): string {
-  if (html.includes("atelier:browser-location")) return html;
-  return injectIntoHtml(html, `<script>${browserBridgeScript(targetOrigin)}</script>`);
-}
-
-function injectBrowserThemeStyle(html: string, request: Request): string {
-  if (html.includes("data-atelier-browser-theme")) return html;
+function browserThemeElement(request: Request): string {
   const scheme = new URL(request.url).searchParams.get(browserColorSchemeParam) === "light" ? "light" : "dark";
-  return injectIntoHtml(html, `<style data-atelier-browser-theme>html{color-scheme:${scheme};}</style>`);
+  return `<style data-atelier-browser-theme>html{color-scheme:${scheme};}</style>`;
 }
 
-function injectIntoHtml(html: string, addition: string): string {
-  if (/<\/head\s*>/i.test(html)) return html.replace(/<\/head\s*>/i, `${addition}</head>`);
-  if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, `${addition}</body>`);
-  return `${html}${addition}`;
+function injectIntoHtmlStream(body: ReadableStream<Uint8Array>, addition: string): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let prefix = "";
+  let injected = false;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        if (!injected) controller.enqueue(encoder.encode(`${prefix}${addition}`));
+        else {
+          const tail = decoder.decode();
+          if (tail) controller.enqueue(encoder.encode(tail));
+        }
+        controller.close();
+        return;
+      }
+      if (injected) {
+        const text = decoder.decode(chunk.value, { stream: true });
+        if (text) controller.enqueue(encoder.encode(text));
+        return;
+      }
+      prefix += decoder.decode(chunk.value, { stream: true });
+      const match = /<\/head\s*>/i.exec(prefix) ?? /<\/body\s*>/i.exec(prefix);
+      if (!match && prefix.length < 64 * 1024) return;
+      const offset = match?.index ?? prefix.length;
+      controller.enqueue(encoder.encode(`${prefix.slice(0, offset)}${addition}${prefix.slice(offset)}`));
+      prefix = "";
+      injected = true;
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+    },
+  });
 }
 
 function browserBridgeScript(targetOrigin: string): string {
@@ -147,6 +149,41 @@ function browserBridgeScript(targetOrigin: string): string {
   window.__atelierBrowserBridgeInstalled = true;
   const locationChanged = () => {
     parent.postMessage({ type: "atelier:browser-location", href: location.href, targetOrigin: ${JSON.stringify(targetOrigin)} }, "*");
+  };
+  const localPreviewUrl = (raw) => {
+    let target;
+    try { target = new URL(raw, ${JSON.stringify(targetOrigin)}); } catch { return undefined; }
+    const host = target.hostname.toLowerCase();
+    if (!["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"].includes(host)) return undefined;
+    const proxy = new URL(target.pathname + target.search + target.hash, location.origin);
+    proxy.searchParams.set("atelierBrowserOrigin", target.origin);
+    const scheme = new URL(location.href).searchParams.get("atelierColorScheme");
+    if (scheme) proxy.searchParams.set("atelierColorScheme", scheme);
+    return proxy;
+  };
+  addEventListener("click", (event) => {
+    if (!event.isTrusted || event.defaultPrevented || event.button !== 0) return;
+    const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!anchor) return;
+    const proxy = localPreviewUrl(anchor.href);
+    if (!proxy) return;
+    if (anchor.target && anchor.target !== "_self") {
+      anchor.href = proxy.toString();
+      return;
+    }
+    event.preventDefault();
+    location.assign(proxy);
+  });
+  addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    const proxy = localPreviewUrl(form.action);
+    if (proxy) form.action = proxy.toString();
+  }, true);
+  const open = window.open;
+  window.open = function(raw, target, features) {
+    const proxy = typeof raw === "string" || raw instanceof URL ? localPreviewUrl(raw) : undefined;
+    return open.call(window, proxy?.toString() ?? raw, target, features);
   };
   const pushState = history.pushState;
   history.pushState = function(...args) {

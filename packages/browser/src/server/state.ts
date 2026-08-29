@@ -5,7 +5,7 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
 const workspaceBrowserViewSchema = Type.Object({
-  key: Type.String({ pattern: "^browser-\\d+$" }),
+  key: Type.String({ pattern: "^browser-[a-zA-Z0-9-]+$" }),
   label: Type.String(),
   targetUrl: Type.String(),
 });
@@ -34,14 +34,8 @@ export function getWorkspaceBrowserView(workspaceId: string, appKey: string): Wo
 
 export function createWorkspaceBrowserView(workspaceId: string): WorkspaceBrowserView {
   const existing = listWorkspaceBrowserViews(workspaceId);
-  const used = new Set(existing.map((view) => view.key));
-  let index = existing.length + 1;
-  let key = `browser-${index}`;
-  while (used.has(key)) {
-    index += 1;
-    key = `browser-${index}`;
-  }
-  const view = { key, label: `Browser ${index}`, targetUrl: "" };
+  const index = existing.length + 1;
+  const view = { key: `browser-${crypto.randomUUID()}`, label: `Browser ${index}`, targetUrl: "" };
   existing.push(view);
   browserViews.write(workspaceId, existing);
   return view;

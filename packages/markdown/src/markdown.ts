@@ -1,6 +1,6 @@
 import MarkdownIt from "markdown-it";
 import { atelierFileHref, renderAtelierEmbed } from "./atelier-markdown.ts";
-import { escapeHtml } from "@atelier/shared";
+import { escapeHtml, workspaceProxyUrl } from "@atelier/shared";
 import { highlightCodeHtml } from "@atelier/syntax";
 
 export interface MarkdownRenderOptions {
@@ -44,6 +44,8 @@ markdown.renderer.rules.link_open = (tokens, index, options, environment: Markdo
     return defaultLinkOpen(tokens, index, options, environment, renderer);
   }
 
+  const workspaceLocalHref = workspaceLocalPreviewHref(environment.workspaceId, href);
+  if (workspaceLocalHref) token.attrSet("href", workspaceLocalHref);
   if (href.startsWith("http://") || href.startsWith("https://")) {
     token.attrSet("target", "_blank");
     token.attrSet("rel", "noopener noreferrer");
@@ -59,6 +61,16 @@ markdown.renderer.rules.image = (tokens, index, options, environment: MarkdownEn
   }
   return defaultImage(tokens, index, options, environment, renderer);
 };
+
+function workspaceLocalPreviewHref(workspaceId: string, href: string): string | undefined {
+  let url: URL;
+  try { url = new URL(href); } catch { return undefined; }
+  const hostname = url.hostname.toLowerCase();
+  if (!["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"].includes(hostname)) return undefined;
+  const port = Number(url.port || (url.protocol === "https:" ? 443 : 80));
+  if (!Number.isInteger(port) || port < 3000 || port > 3010 || url.protocol !== "http:") return undefined;
+  return workspaceProxyUrl(workspaceId, `port-${port}`, `${url.pathname}${url.search}${url.hash}`);
+}
 
 export function renderMarkdown(workspaceId: string, text: string, options: MarkdownRenderOptions = {}): string {
   return markdown.render(text, { workspaceId, ...options } satisfies MarkdownEnvironment).trim();

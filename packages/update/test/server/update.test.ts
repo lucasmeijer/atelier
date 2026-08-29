@@ -102,7 +102,7 @@ function context() {
       createWorkspaceFromAgent: async () => ({ id: "workspace-id", url: "/workspaces/workspace-id", phase: "starting" as const }),
       forkCurrentWorkspaceFromAgent: async () => ({ id: "workspace-id", url: "/workspaces/workspace-id", phase: "starting" as const }),
       registerSocketHandler: () => {},
-      registerWorkspaceAppHandler: () => {},
+      registerWorkspaceAppResolver: () => {},
       registerProvisioningHook: () => {},
       onWorkspaceRemoved: () => {},
     },

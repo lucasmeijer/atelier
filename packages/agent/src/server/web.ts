@@ -118,13 +118,19 @@ export const agentWorkspaceModule: WorkspaceModule = {
       },
     });
     context.registerSocketHandler(createAgentTermSocketSession);
-    context.registerWorkspaceAppHandler({
-      matches: (app) => app.appKey === "file" || /^port-(\d+)$/.test(app.appKey),
-      handleRequest: (app, request, url) => app.appKey === "file" ? workspaceFileEndpoint(app.workspaceId, decodeURIComponent(url.pathname), request) : undefined,
-      resolveTarget: (app, requestUrl) => {
-        const portMatch = app.appKey.match(/^port-(\d+)$/);
-        return portMatch ? resolveWorkspacePortProxyTarget(app.workspaceId, Number(portMatch[1]), requestUrl.pathname, requestUrl.search) : undefined;
-      },
+    context.registerWorkspaceAppResolver(async (app, requestUrl) => {
+      if (app.appKey === "file") {
+        return {
+          kind: "fetch",
+          fetch: (request) => workspaceFileEndpoint(app.workspaceId, decodeURIComponent(new URL(request.url).pathname), request),
+        };
+      }
+      const portMatch = app.appKey.match(/^port-(\d+)$/);
+      if (!portMatch) return undefined;
+      return {
+        kind: "http",
+        target: await resolveWorkspacePortProxyTarget(app.workspaceId, Number(portMatch[1]), requestUrl.pathname, requestUrl.search),
+      };
     });
     subscribeWorkspaceViewBusy(({ workspaceId, viewKey, busy }) => context.registry.setViewBusy(workspaceId, viewKey, busy));
     context.onWorkspaceRemoved(removeWorkspaceAgentRuntimes);
