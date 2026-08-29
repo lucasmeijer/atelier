@@ -118,28 +118,30 @@ function injectIntoHtmlStream(body: ReadableStream<Uint8Array>, addition: string
   let injected = false;
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
-      const chunk = await reader.read();
-      if (chunk.done) {
-        if (!injected) controller.enqueue(encoder.encode(`${prefix}${addition}`));
-        else {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) {
           const tail = decoder.decode();
-          if (tail) controller.enqueue(encoder.encode(tail));
+          if (!injected) controller.enqueue(encoder.encode(`${prefix}${tail}${addition}`));
+          else if (tail) controller.enqueue(encoder.encode(tail));
+          controller.close();
+          return;
         }
-        controller.close();
-        return;
-      }
-      if (injected) {
         const text = decoder.decode(chunk.value, { stream: true });
-        if (text) controller.enqueue(encoder.encode(text));
+        if (injected) {
+          if (!text) continue;
+          controller.enqueue(encoder.encode(text));
+          return;
+        }
+        prefix += text;
+        const match = /<\/head\s*>/i.exec(prefix) ?? /<\/body\s*>/i.exec(prefix);
+        if (!match && prefix.length < 64 * 1024) continue;
+        const offset = match?.index ?? prefix.length;
+        controller.enqueue(encoder.encode(`${prefix.slice(0, offset)}${addition}${prefix.slice(offset)}`));
+        prefix = "";
+        injected = true;
         return;
       }
-      prefix += decoder.decode(chunk.value, { stream: true });
-      const match = /<\/head\s*>/i.exec(prefix) ?? /<\/body\s*>/i.exec(prefix);
-      if (!match && prefix.length < 64 * 1024) return;
-      const offset = match?.index ?? prefix.length;
-      controller.enqueue(encoder.encode(`${prefix.slice(0, offset)}${addition}${prefix.slice(offset)}`));
-      prefix = "";
-      injected = true;
     },
     async cancel(reason) {
       await reader.cancel(reason);

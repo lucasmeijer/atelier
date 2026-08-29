@@ -72,6 +72,24 @@ describe("browser proxy response patching", () => {
     await reader.read();
   });
 
+  test("completes HTML fragments without document closing tags", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('<div data-workspace-id="workspace-1">Workspace</div>'));
+        controller.close();
+      },
+    });
+    const patched = await patchBrowserWorkspaceAppResponse(
+      browserApp("fragment_response_work"),
+      new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } }),
+      new Request("https://browser--fragment-response.localhost/workspaces/workspace-1?resident=1"),
+    );
+
+    const html = await patched.text();
+    expect(html).toStartWith('<div data-workspace-id="workspace-1">Workspace</div>');
+    expect(html).toContain("atelier:browser-location");
+  });
+
   test("passes Turbo Frame fragments through without document-level injection", async () => {
     const response = new Response('<turbo-frame id="review">diff</turbo-frame>', {
       headers: { "content-type": "text/html; charset=utf-8" },
