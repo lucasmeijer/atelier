@@ -127,8 +127,9 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       const path = host.dataset.reviewPath!;
       this.models.set(path, model);
       const container = host.querySelector<HTMLElement>("diffs-container")!;
-      const prerenderedHTML = container.innerHTML;
-      container.replaceChildren();
+      const shadowTemplate = container.querySelector<HTMLTemplateElement>(":scope > template[shadowrootmode]");
+      const prerenderedHTML = shadowTemplate?.innerHTML;
+      shadowTemplate?.remove();
       let instance: FileDiff<AnnotationMetadata>;
       instance = new FileDiffClass<AnnotationMetadata>({
         ...reviewDiffOptions,

@@ -134,6 +134,17 @@ describe("Review presentation", () => {
     expect(notGit).toContain("Not a git repository");
   });
 
+  test("encapsulates server-rendered diff styles in a declarative shadow root", async () => {
+    const root = await repository();
+    await writeFile(join(root, "changed.ts"), "const after = true;\n");
+    const snapshot = await collectReviewSnapshot(root);
+    if (snapshot.phase !== "ready") throw new Error("expected ready review");
+
+    const html = await renderReviewBody("workspace 1", snapshot, []);
+
+    expect(html).toMatch(/<diffs-container><template shadowrootmode="open">[\s\S]*<style data-core-css="">[\s\S]*<\/template><\/diffs-container>/);
+  });
+
   test("renders file grouping and explicit review comment actions", async () => {
     const comment: ReviewComment = { id: "comment-1", path: "src/example.ts", side: "additions", startLine: 2, endLine: 2, body: "Keep this lazy", snippet: "target" };
     const file: ReviewFile = { path: "src/example.ts", kind: "binary", additions: 1, deletions: 0, detail: "Binary file changed" };
