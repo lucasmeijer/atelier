@@ -36,28 +36,42 @@ async function renderTextFile(file: ReviewFile, comments: ReviewComment[]): Prom
 }
 
 function renderSpecialFile(file: ReviewFile): string {
-  return `<div class="review-special-file"><strong>${escapeHtml(file.detail ?? "This change cannot be rendered as text.")}</strong></div>`;
+  const description = file.kind === "binary"
+    ? "Content preview isn’t available for binary files."
+    : "This change doesn’t have a text diff to display.";
+  return `<div class="review-special-file" role="note"><span class="review-special-file__visual" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3.5h6l4 4V20.5H7zM13 3.5v4h4M9.5 15.5l2-2 1.5 1.5 1.5-1.5"/></svg></span><div class="review-special-file__content"><strong>${escapeHtml(file.detail ?? "Preview unavailable")}</strong><span>${description}</span></div></div>`;
+}
+
+function renderCommentCount(count: number): string {
+  if (!count) return "";
+  return `<span class="review-comment-count" aria-label="${count} comment${count === 1 ? "" : "s"}">${count}</span>`;
 }
 
 async function renderFile(file: ReviewFile, comments: ReviewComment[]): Promise<string> {
   const fileComments = comments.filter((comment) => comment.path === file.path);
   const body = file.kind === "text" ? await renderTextFile(file, fileComments) : renderSpecialFile(file);
-  const commentCount = fileComments.length ? `<span class="review-comment-count">${fileComments.length} comment${fileComments.length === 1 ? "" : "s"}</span>` : "";
   return `<details class="review-file" data-review-target="file" data-review-path="${escapeHtml(file.path)}" data-review-comments="${fileComments.length}">
-    <summary class="action-item action-item__primary"><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg><span class="action-item__label review-file-path" title="${escapeHtml(file.path)}"><span class="action-item__label-text">${file.previousPath ? `<span>${escapeHtml(file.previousPath)}</span><b aria-label="renamed to">→</b>` : ""}<span>${escapeHtml(file.path)}</span></span></span><span class="action-item__status review-file-meta">${commentCount}<span class="review-additions">+${file.additions}</span><span class="review-deletions">−${file.deletions}</span></span></summary>
+    <summary class="action-item action-item__primary"><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg><span class="action-item__label review-file-path" title="${escapeHtml(file.path)}"><span class="action-item__label-text">${file.previousPath ? `<span>${escapeHtml(file.previousPath)}</span><b aria-label="renamed to">→</b>` : ""}<span>${escapeHtml(file.path)}</span></span></span><span class="action-item__status review-file-meta">${renderCommentCount(fileComments.length)}<span class="review-additions">+${file.additions}</span><span class="review-deletions">−${file.deletions}</span></span></summary>
     <div class="review-file-diff">${body}</div>
   </details>`;
 }
 
-function renderOutdatedComment(workspaceId: string, comment: ReviewComment): string {
-  return `<article class="review-outdated-comment" data-review-comment-id="${escapeHtml(comment.id)}" data-review-comment="${escapeHtml(jsonForHtml(commentModel(comment)))}"><form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/${encodeURIComponent(comment.id)}/delete" data-turbo="true"><button class="button secondary icon-only review-comment-close" type="submit" aria-label="Delete review comment" title="Delete review comment"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></form><div class="review-comment-content"><strong>${escapeHtml(comment.path)}</strong><pre>${escapeHtml(comment.snippet)}</pre><p>${escapeHtml(comment.body)}</p></div></article>`;
+function renderUnanchoredComment(workspaceId: string, comment: ReviewComment): string {
+  return `<div class="review-unanchored-entry"><div class="review-unanchored-context"><strong>${escapeHtml(comment.path)}</strong><pre>${escapeHtml(comment.snippet)}</pre></div><article class="review-inline-comment"><form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/${encodeURIComponent(comment.id)}/delete" data-turbo="true"><button class="button secondary icon-only review-comment-close" type="submit" aria-label="Delete review comment" title="Delete review comment"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></form><div class="review-comment-content"><p>${escapeHtml(comment.body)}</p></div></article></div>`;
+}
+
+function renderUnanchoredFile(workspaceId: string, comments: ReviewComment[]): string {
+  return `<details class="review-file" data-review-target="file" data-review-path="comments-without-anchors" data-review-comments="${comments.length}" open>
+    <summary class="action-item action-item__primary"><svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg><span class="action-item__label review-file-path"><span class="action-item__label-text">Comments without anchors</span></span><span class="action-item__status review-file-meta">${renderCommentCount(comments.length)}</span></summary>
+    <div class="review-file-diff review-unanchored-comments">${comments.map((comment) => renderUnanchoredComment(workspaceId, comment)).join("")}</div>
+  </details>`;
 }
 
 function iconButton(label: string, action: string, path: string): string {
   return `<button class="button secondary icon-only" type="button" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" data-action="${escapeHtml(action)}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="${escapeHtml(path)}"/></svg></button>`;
 }
 
-function summaryBar(workspaceId: string, snapshot: Extract<ReviewSnapshot, { phase: "ready" }>, comments: ReviewComment[]): string {
+function toolbar(workspaceId: string, comments: ReviewComment[]): string {
   const commentsDisabled = comments.length === 0 ? " disabled" : "";
   const collapse = iconButton("Collapse all files", "review#collapseAll", "M7 4l5 5 5-5M7 20l5-5 5 5");
   const expand = iconButton("Expand all files", "review#expandAll", "M7 9l5-5 5 5M7 15l5 5 5-5");
@@ -70,8 +84,11 @@ function summaryBar(workspaceId: string, snapshot: Extract<ReviewSnapshot, { pha
       ${collapse}${expand}
       <span data-copy-source hidden>${escapeHtml(reviewCommentsPrompt(comments))}</span>
     </div>
-    <div class="review-summary"><span>${snapshot.files.length} file${snapshot.files.length === 1 ? "" : "s"}</span><span class="review-additions">+${snapshot.additions}</span><span class="review-deletions">−${snapshot.deletions}</span></div>
   </header>`;
+}
+
+function totalsBar(snapshot: Extract<ReviewSnapshot, { phase: "ready" }>): string {
+  return `<div class="review-total-summary" aria-label="Review totals"><span>${snapshot.files.length} file${snapshot.files.length === 1 ? "" : "s"}</span><span class="review-additions">+${snapshot.additions}</span><span class="review-deletions">−${snapshot.deletions}</span></div>`;
 }
 
 export async function renderReviewBody(workspaceId: string, snapshot: ReviewSnapshot, comments: ReviewComment[]): Promise<string> {
@@ -79,15 +96,15 @@ export async function renderReviewBody(workspaceId: string, snapshot: ReviewSnap
     return `<section id="${reviewBodyId(workspaceId)}" class="review-body review-empty" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}"><div><h2>Not a git repository</h2><p>Review becomes available when this Workspace contains a Git repository.</p><form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/refresh" data-turbo="true"><button class="button secondary" type="submit">Refresh</button></form></div></section>`;
   }
 
-  const currentComments = comments.filter((comment) => !comment.outdated);
-  const outdated = comments.filter((comment) => comment.outdated);
-  const files = await Promise.all(snapshot.files.map((file) => renderFile(file, currentComments)));
-  const content = snapshot.files.length
-    ? `<div class="review-files action-list">${files.join("")}</div>`
+  const anchoredComments = comments.filter((comment) => !comment.outdated);
+  const unanchoredComments = comments.filter((comment) => comment.outdated);
+  const renderedFiles = await Promise.all(snapshot.files.map((file) => renderFile(file, anchoredComments)));
+  if (unanchoredComments.length) renderedFiles.push(renderUnanchoredFile(workspaceId, unanchoredComments));
+  const content = renderedFiles.length
+    ? `<div class="review-files action-list">${renderedFiles.join("")}</div>`
     : `<div class="review-no-changes"><h2>No changes to review</h2><p>The working tree matches HEAD.</p></div>`;
-  const outdatedHtml = outdated.length ? `<section class="review-outdated"><h2>Outdated comments</h2><p>These locations are no longer present in the current diff.</p>${outdated.map((comment) => renderOutdatedComment(workspaceId, comment)).join("")}</section>` : "";
   const commentModels = comments.map(commentModel);
-  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}">${summaryBar(workspaceId, snapshot, comments)}${content}${outdatedHtml}<script type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></section>`;
+  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}">${toolbar(workspaceId, comments)}${totalsBar(snapshot)}${content}<script type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></section>`;
 }
 
 export const reviewWorkViewPresentation: WorkspaceWorkViewPresentation = {

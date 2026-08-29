@@ -188,11 +188,29 @@ describe("Review presentation", () => {
     expect(html).toContain('aria-label="Refresh review"');
     expect(html).toContain('aria-label="Collapse all files"');
     expect(html).toContain('aria-label="Expand all files"');
-    expect(html).toContain('<span class="review-comment-count">1 comment</span>');
+    expect(html).toContain('<span class="review-comment-count" aria-label="1 comment">1</span>');
+    expect(html).toContain('role="note"');
+    expect(html).toContain("Binary file changed");
+    expect(html).toContain("Content preview isn’t available for binary files.");
     expect(html.indexOf("Copy into composer")).toBeLessThan(html.indexOf('aria-label="Copy review comments to clipboard"'));
     expect(html.indexOf('aria-label="Copy review comments to clipboard"')).toBeLessThan(html.indexOf('aria-label="Delete all review comments"'));
     expect(html.indexOf('aria-label="Delete all review comments"')).toBeLessThan(html.indexOf('aria-label="Refresh review"'));
-    expect(html.indexOf('aria-label="Refresh review"')).toBeLessThan(html.indexOf('<div class="review-summary">'));
+    expect(html.indexOf('aria-label="Refresh review"')).toBeLessThan(html.indexOf('<div class="review-total-summary" aria-label="Review totals">'));
+    expect(html.indexOf("</header>")).toBeLessThan(html.indexOf('aria-label="Review totals"'));
     expect(html).not.toContain('name="reviewComment"');
+  });
+
+  test("groups comments whose anchors disappeared in an open pseudo-file", async () => {
+    const comment: ReviewComment = { id: "comment-1", path: "src/removed.ts", side: "deletions", startLine: 4, endLine: 4, body: "Keep this behavior", snippet: "removed()", outdated: true };
+    const html = await renderReviewBody("workspace 1", { phase: "ready", files: [], additions: 0, deletions: 0 }, [comment]);
+
+    expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="comments-without-anchors" data-review-comments="1" open>');
+    expect(html).toContain("Comments without anchors");
+    expect(html).toContain("src/removed.ts");
+    expect(html).toContain("removed()");
+    expect(html).toContain("Keep this behavior");
+    expect(html).not.toContain("No changes to review");
+    expect(html).toContain('action="/workspaces/workspace%201/review/comments/comment-1/delete"');
+    expect(html).toContain('aria-label="Delete review comment"');
   });
 });
