@@ -71,6 +71,15 @@ function iconButton(label: string, action: string, path: string): string {
   return `<button class="button secondary icon-only" type="button" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" data-action="${escapeHtml(action)}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="${escapeHtml(path)}"/></svg></button>`;
 }
 
+function refreshForm(workspaceId: string, caption = ""): string {
+  const refreshIcon = '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>';
+  return `<form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/refresh" data-turbo="true" data-action="submit->review#updateRefreshState turbo:submit-end->review#updateRefreshState"><button class="button secondary activity-button${caption ? "" : " icon-only"}" type="submit" data-activity-state="initial" aria-label="Refresh review" title="Refresh review">
+    <svg class="activity-button__indicator" aria-hidden="true"><rect pathLength="100"/></svg>
+    <span class="activity-button__content" data-activity-content="initial">${refreshIcon}${caption}</span>
+    <span class="activity-button__content" data-activity-content="active">${refreshIcon}${caption ? "Refreshing…" : ""}</span>
+  </button></form>`;
+}
+
 function toolbar(workspaceId: string, comments: ReviewComment[]): string {
   const commentsDisabled = comments.length === 0 ? " disabled" : "";
   const collapse = iconButton("Collapse all files", "review#collapseAll", "M7 4l5 5 5-5M7 20l5-5 5 5");
@@ -80,7 +89,7 @@ function toolbar(workspaceId: string, comments: ReviewComment[]): string {
       <button class="button secondary" type="button" title="Copy review comments into composer" data-action="click->review#copyCommentsToComposer"${commentsDisabled}>Copy into composer</button>
       <button class="button secondary icon-only copy-button" type="button" data-copy-label="Copy review comments to clipboard" aria-label="Copy review comments to clipboard" title="Copy review comments to clipboard"${commentsDisabled}><span class="copy-button__icon" aria-hidden="true">⧉</span></button>
       <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true"><button class="button danger icon-only" type="submit" aria-label="Delete all review comments" title="Delete all review comments"${commentsDisabled}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></button></form>
-      <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/refresh" data-turbo="true" data-action="submit->review#rememberPosition"><button class="button secondary icon-only" type="submit" aria-label="Refresh review" title="Refresh review"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg></button></form>
+      ${refreshForm(workspaceId)}
       ${collapse}${expand}
       <button class="button secondary review-word-diff-toggle" type="button" title="Toggle per-word diff highlighting" aria-pressed="false" data-action="click->review#toggleWordDiff">Word diff</button>
       <span data-copy-source hidden>${escapeHtml(reviewCommentsPrompt(comments))}</span>
@@ -90,7 +99,7 @@ function toolbar(workspaceId: string, comments: ReviewComment[]): string {
 
 export async function renderReviewBody(workspaceId: string, snapshot: ReviewSnapshot, comments: ReviewComment[]): Promise<string> {
   if (snapshot.phase === "not-git") {
-    return `<section id="${reviewBodyId(workspaceId)}" class="review-body review-empty" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}"><div><h2>Not a git repository</h2><p>Review becomes available when this Workspace contains a Git repository.</p><form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/refresh" data-turbo="true"><button class="button secondary" type="submit">Refresh</button></form></div></section>`;
+    return `<section id="${reviewBodyId(workspaceId)}" class="review-body review-empty" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}"><div><h2>Not a git repository</h2><p>Review becomes available when this Workspace contains a Git repository.</p>${refreshForm(workspaceId, "Refresh")}</div></section>`;
   }
 
   const anchoredComments = comments.filter((comment) => !comment.outdated);

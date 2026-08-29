@@ -384,6 +384,16 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       return JSON.parse(script.textContent ?? "") as ReviewCommentModel[];
     }
 
+    updateRefreshState(event: Event): void {
+      if (!(event.currentTarget instanceof HTMLFormElement)) throw new Error("Review refresh requires a form");
+      const button = event.currentTarget.querySelector<HTMLButtonElement>(".activity-button")!;
+      const active = event.type === "submit";
+      if (active) this.rememberPosition();
+      button.dataset.activityState = active ? "active" : "initial";
+      if (active) button.setAttribute("aria-busy", "true");
+      else button.removeAttribute("aria-busy");
+    }
+
     rememberPosition(): void {
       const scroller = this.element;
       const scrollerTop = scroller.getBoundingClientRect().top;
