@@ -72,6 +72,19 @@ describe("browser proxy response patching", () => {
     await reader.read();
   });
 
+  test("passes Turbo Frame fragments through without document-level injection", async () => {
+    const response = new Response('<turbo-frame id="review">diff</turbo-frame>', {
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+    const patched = await patchBrowserWorkspaceAppResponse(
+      browserApp("fragment_work"),
+      response,
+      new Request("https://browser--fragment.localhost/review", { headers: { "turbo-frame": "review" } }),
+    );
+
+    expect(await patched.text()).toBe('<turbo-frame id="review">diff</turbo-frame>');
+  });
+
   test("injects the current Atelier color scheme into preview html", async () => {
     const response = new Response(`<html><head></head><body>Preview</body></html>`, {
       headers: { "content-type": "text/html; charset=utf-8" },

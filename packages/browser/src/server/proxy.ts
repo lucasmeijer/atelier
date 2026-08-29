@@ -27,12 +27,16 @@ export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, re
     return location ? new Response(response.body, { status: response.status, statusText: response.statusText, headers }) : response;
   }
 
-  const additions = `${browserBridgeElement(requestTarget.origin)}${browserThemeElement(request)}`;
-  headers.delete("content-length");
-  headers.delete("content-encoding");
   headers.delete("content-security-policy");
   headers.delete("content-security-policy-report-only");
   headers.delete("x-frame-options");
+  if (request.headers.has("turbo-frame")) {
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  }
+
+  const additions = `${browserBridgeElement(requestTarget.origin)}${browserThemeElement(request)}`;
+  headers.delete("content-length");
+  headers.delete("content-encoding");
   return new Response(injectIntoHtmlStream(response.body!, additions), { status: response.status, statusText: response.statusText, headers });
 }
 
