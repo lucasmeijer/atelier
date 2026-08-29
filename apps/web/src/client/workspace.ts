@@ -2064,6 +2064,7 @@ class CableShellController extends Controller {
 }
 
 const devReloadResponseSchema = Type.Object({ revision: Type.Integer({ minimum: 0 }) });
+const devReloadRevisionParam = "__atelier_dev_reload";
 
 class DevReloadController extends Controller {
   static values = { url: String };
@@ -2076,6 +2077,11 @@ class DevReloadController extends Controller {
 
   connect(): void {
     this.connected = true;
+    const url = new URL(window.location.href);
+    if (url.searchParams.has(devReloadRevisionParam)) {
+      url.searchParams.delete(devReloadRevisionParam);
+      window.history.replaceState(window.history.state, "", url);
+    }
     void this.poll();
   }
 
@@ -2091,7 +2097,12 @@ class DevReloadController extends Controller {
         const value: unknown = await response.json();
         if (!Value.Check(devReloadResponseSchema, value)) throw new Error("invalid dev reload response");
         if (this.revision !== undefined && value.revision !== this.revision) {
-          window.location.reload();
+          // A reload cannot participate in a cross-document View Transition, but
+          // a same-origin replacement can. The throwaway query makes this a real
+          // replacement navigation even though it returns to the same page.
+          const url = new URL(window.location.href);
+          url.searchParams.set(devReloadRevisionParam, String(value.revision));
+          window.location.replace(url);
           return;
         }
         this.revision = value.revision;

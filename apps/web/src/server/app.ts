@@ -317,7 +317,11 @@ html[data-theme="cappuccino"] { background: #2b2018; color-scheme: dark; }
 html[data-theme="tokyo-night"] { background: #1a1b26; color-scheme: dark; }
 html[data-theme="midnight"] { background: #0d1117; color-scheme: dark; }
 html[data-theme="nord"] { background: #2e3440; color-scheme: dark; }
-</style>
+${deps.devReload ? `
+/* Keep the previous page painted while a rebuilt development page loads. */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 120ms; }
+` : ""}</style>
 <script>try { const theme = localStorage.getItem("atelier.theme"); if (theme) document.documentElement.dataset.theme = theme; } catch {}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="turbo-cache-control" content="no-cache">
