@@ -9,6 +9,7 @@ type StimulusControllerConstructor = new (...args: never[]) => { element: Elemen
 
 type DraftModel = {
   kind: "draft";
+  commentId?: string;
   path: string;
   side: ReviewCommentModel["side"];
   startLine: number;
@@ -57,6 +58,11 @@ function closeButton(label: string, action: () => void): HTMLButtonElement {
   return button;
 }
 
+function fitTextarea(textarea: HTMLTextAreaElement): void {
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
+}
+
 function createReviewController(Controller: StimulusControllerConstructor) {
   return class ReviewController extends Controller {
     static values = { workspaceId: String };
@@ -66,6 +72,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     declare readonly fileTargets: HTMLDetailsElement[];
     declare readonly diffTargets: HTMLElement[];
     private instances: FileDiff<AnnotationMetadata>[] = [];
+    private containers = new Map<FileDiff<AnnotationMetadata>, HTMLElement>();
     private models = new Map<string, DiffModel>();
     private draft?: DraftModel;
     private hydrated = false;
@@ -86,6 +93,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       this.pane.removeEventListener("atelier:workspace-pane-visible", this.becameVisible);
       for (const instance of this.instances) instance.cleanUp();
       this.instances = [];
+      this.containers.clear();
       this.models.clear();
       this.hydrated = false;
     }
@@ -136,6 +144,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
         renderAnnotation: (item) => this.renderAnnotation(item.metadata!, instance),
         onPostRender: () => this.decorateExpansionControls(container),
       });
+      this.containers.set(instance, container);
       const draft = this.draft?.path === path ? this.draft : undefined;
       const lineAnnotations = this.annotations(path);
       instance.hydrate({ fileContainer: container, fileDiff: model.fileDiff, lineAnnotations, prerenderedHTML });
@@ -146,7 +155,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     }
 
     private annotations(path: string): DiffLineAnnotation<AnnotationMetadata>[] {
-      const annotations = this.models.get(path)!.comments.map(annotation);
+      const annotations = this.models.get(path)!.comments.filter((comment) => comment.id !== this.draft?.commentId).map(annotation);
       if (this.draft?.path === path) annotations.push({ side: this.draft.side, lineNumber: this.draft.startLine, metadata: this.draft });
       return annotations;
     }
@@ -154,6 +163,17 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private decorateExpansionControls(container: HTMLElement): void {
       const root = container.shadowRoot;
       if (!root) return;
+      if (!root.querySelector("style[data-review-anchor-style]")) {
+        const style = document.createElement("style");
+        style.dataset.reviewAnchorStyle = "";
+        style.textContent = `[data-line][data-review-anchor] {
+          box-shadow: inset 3px 0 var(--accent), inset 0 0 0 999px color-mix(in srgb, var(--accent) 13%, transparent);
+          transition: box-shadow 160ms ease;
+        }`;
+        root.append(style);
+      }
+      const path = container.closest<HTMLElement>("[data-review-path]")!.dataset.reviewPath!;
+      if (this.draft?.path === path) this.highlightAnchor(container, this.draft);
       root.querySelectorAll<HTMLElement>("[data-expand-button]:not([data-expand-all-button])").forEach((control) => {
         const direction = control.hasAttribute("data-expand-up") ? "above" : control.hasAttribute("data-expand-down") ? "below" : "around this change";
         const label = `Show 40 more lines ${direction}`;
@@ -179,6 +199,17 @@ function createReviewController(Controller: StimulusControllerConstructor) {
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         control.click();
+      });
+    }
+
+    private highlightAnchor(container: HTMLElement, comment?: Pick<ReviewCommentModel, "side" | "startLine" | "endLine">): void {
+      const root = container.shadowRoot!;
+      root.querySelectorAll<HTMLElement>("[data-review-anchor]").forEach((line) => line.removeAttribute("data-review-anchor"));
+      if (!comment) return;
+      root.querySelectorAll<HTMLElement>("[data-content] > [data-line]").forEach((line) => {
+        const number = Number(line.dataset.line);
+        if (number < comment.startLine || number > comment.endLine || sideForLine(line) !== comment.side) return;
+        line.dataset.reviewAnchor = "";
       });
     }
 
@@ -220,14 +251,34 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       const card = document.createElement("article");
       card.className = "review-inline-comment";
       card.dataset.reviewCommentId = metadata.id;
+      const container = this.containers.get(instance)!;
+      const showAnchor = (): void => this.highlightAnchor(container, metadata);
+      const hideAnchor = (): void => this.highlightAnchor(container, this.draft?.path === metadata.path ? this.draft : undefined);
+      card.addEventListener("pointerenter", showAnchor);
+      card.addEventListener("pointerleave", hideAnchor);
+      card.addEventListener("focusin", showAnchor);
+      card.addEventListener("focusout", (event) => {
+        if (!(event.relatedTarget instanceof Node) || !card.contains(event.relatedTarget)) hideAnchor();
+      });
       card.append(closeButton("Delete review comment", () => void this.deleteComment(metadata.id)));
-      const body = document.createElement("div");
+      const body = document.createElement("button");
+      body.type = "button";
       body.className = "review-comment-content";
+      body.setAttribute("aria-label", "Edit review comment");
+      body.addEventListener("click", () => this.editComment(metadata, instance));
       const copy = document.createElement("p");
       copy.textContent = metadata.body;
       body.append(copy);
       card.append(body);
       return card;
+    }
+
+    private editComment(comment: ReviewCommentModel, instance: FileDiff<AnnotationMetadata>): void {
+      if (this.draft) return;
+      this.draft = { kind: "draft", commentId: comment.id, path: comment.path, side: comment.side, startLine: comment.startLine, endLine: comment.endLine, body: comment.body };
+      this.persistDraft();
+      const model = this.models.get(comment.path)!;
+      instance.render({ fileDiff: model.fileDiff, lineAnnotations: this.annotations(comment.path) });
     }
 
     private renderEditor(draft: DraftModel, instance: FileDiff<AnnotationMetadata>): HTMLElement {
@@ -240,12 +291,14 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       body.className = "review-comment-content";
       const textarea = document.createElement("textarea");
       textarea.className = "textarea";
+      textarea.rows = 1;
       textarea.placeholder = "Leave a review comment";
       textarea.setAttribute("aria-label", "Review comment");
       textarea.setAttribute("aria-keyshortcuts", "Meta+Enter");
       textarea.value = draft.body;
       textarea.addEventListener("input", () => {
         draft.body = textarea.value;
+        fitTextarea(textarea);
         this.persistDraft();
       });
       textarea.addEventListener("keydown", (event) => {
@@ -260,7 +313,11 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       actions.append(save);
       body.append(textarea);
       editor.append(body, actions);
-      requestAnimationFrame(() => textarea.focus());
+      requestAnimationFrame(() => {
+        fitTextarea(textarea);
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      });
       return editor;
     }
 
@@ -283,7 +340,10 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       data.set("endLine", String(draft.endLine));
       data.set("body", body);
       this.rememberPosition();
-      const response = await fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments`, { method: "POST", body: data, headers: { Accept: "text/vnd.turbo-stream.html" } });
+      const endpoint = draft.commentId
+        ? `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments/${encodeURIComponent(draft.commentId)}/update`
+        : `/workspaces/${encodeURIComponent(this.workspaceIdValue)}/review/comments`;
+      const response = await fetch(endpoint, { method: "POST", body: data, headers: { Accept: "text/vnd.turbo-stream.html" } });
       if (!response.ok) throw new Error(await response.text());
       this.clearDraft();
       window.Turbo?.renderStreamMessage(await response.text());

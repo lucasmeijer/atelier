@@ -6,7 +6,7 @@ import { Value } from "typebox/value";
 import { reviewCommentsPrompt, type ReviewSide } from "../model.ts";
 import { collectReviewSnapshot, reviewSnippet, type ReviewSnapshot } from "./diff.ts";
 import { renderReviewBody, reviewBodyId, reviewReference, reviewWorkViewPresentation } from "./render.ts";
-import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewComments, remapReviewComments, reviewCommentsForPrompt, type ReviewComment } from "./state.ts";
+import { addReviewComment, deleteReviewComments, deleteReviewState, listReviewComments, remapReviewComments, reviewCommentsForPrompt, updateReviewComment, type ReviewComment } from "./state.ts";
 
 const reviewReferenceSchema = Type.Object({ type: Type.Literal("review") });
 type ReviewReference = Static<typeof reviewReferenceSchema>;
@@ -59,6 +59,14 @@ async function createComment(workspaceId: string, request: Request): Promise<Res
   return turboStreamResponse(await bodyStream(workspaceId, snapshot, listReviewComments(workspaceId)));
 }
 
+async function updateComment(workspaceId: string, id: string, request: Request): Promise<Response> {
+  const body = String((await request.formData()).get("body") ?? "").trim();
+  if (!body || body.length > 20_000) return textResponse("Invalid review comment", 422);
+  const { snapshot } = await current(workspaceId);
+  if (!updateReviewComment(workspaceId, id, body)) return textResponse("Review comment not found", 404);
+  return turboStreamResponse(await bodyStream(workspaceId, snapshot, listReviewComments(workspaceId)));
+}
+
 export const reviewWorkspaceModule: WorkspaceModule = {
   id: "review",
   workViews: [{
@@ -89,6 +97,8 @@ export const reviewWorkspaceModule: WorkspaceModule = {
         deleteReviewComments(workspaceId, comments.map((comment) => comment.id));
         return turboStreamResponse(await bodyStream(workspaceId, snapshot, []));
       }
+      match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/comments\/([^/]+)\/update$/);
+      if (match) return request.method === "POST" ? await updateComment(decodeURIComponent(match[1]!), decodeURIComponent(match[2]!), request) : textResponse("Method not allowed", 405);
       match = url.pathname.match(/^\/workspaces\/([^/]+)\/review\/comments\/([^/]+)\/delete$/);
       if (!match) return undefined;
       if (request.method !== "POST") return textResponse("Method not allowed", 405);

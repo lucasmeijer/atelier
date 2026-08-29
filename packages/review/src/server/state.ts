@@ -41,6 +41,15 @@ export function addReviewComment(workspaceId: string, input: { path: string; sid
   states.write(workspaceId, state);
 }
 
+export function updateReviewComment(workspaceId: string, id: string, body: string): boolean {
+  const state = states.read(workspaceId);
+  const comment = state.comments.find((candidate) => candidate.id === id);
+  if (!comment) return false;
+  comment.body = body;
+  states.write(workspaceId, state);
+  return true;
+}
+
 export function deleteReviewComments(workspaceId: string, ids: readonly string[]): void {
   const selected = new Set(ids);
   const state = states.read(workspaceId);

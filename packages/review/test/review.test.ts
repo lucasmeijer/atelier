@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { reviewCommentsPrompt, type ReviewCommentModel } from "../src/model.ts";
 import { collectReviewSnapshot, type ReviewFile } from "../src/server/diff.ts";
 import { renderReviewBody, reviewWorkViewPresentation } from "../src/server/render.ts";
-import { remapReviewComment, type ReviewComment } from "../src/server/state.ts";
+import { addReviewComment, deleteReviewState, listReviewComments, remapReviewComment, updateReviewComment, type ReviewComment } from "../src/server/state.ts";
 
 const roots: string[] = [];
 
@@ -83,6 +83,22 @@ describe("Review snapshot", () => {
     const snapshot = await collectReviewSnapshot(root);
     if (snapshot.phase !== "ready") throw new Error("expected ready review");
     expect(snapshot.files[0]!.kind).toBe("binary");
+  });
+});
+
+describe("Review comment state", () => {
+  test("updates the body without changing the comment anchor or identity", () => {
+    const workspaceId = `review-edit-${crypto.randomUUID()}`;
+    try {
+      addReviewComment(workspaceId, { path: "src/example.ts", side: "additions", startLine: 2, endLine: 3, body: "Before", snippet: "one\ntwo" });
+      const original = listReviewComments(workspaceId)[0]!;
+
+      expect(updateReviewComment(workspaceId, original.id, "After")).toBe(true);
+      expect(listReviewComments(workspaceId)).toEqual([{ ...original, body: "After" }]);
+      expect(updateReviewComment(workspaceId, "missing", "Ignored")).toBe(false);
+    } finally {
+      deleteReviewState(workspaceId);
+    }
   });
 });
 
