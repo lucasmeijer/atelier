@@ -174,6 +174,31 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('class="button secondary icon-only" title="Collapse Work pane" aria-label="Collapse Work pane"');
   });
 
+  test("shows robot icons on Agent tabs only when there are multiple conversations", () => {
+    const multiple = renderWorkspacePresentation(fixture());
+    const agentTabs = multiple.slice(multiple.indexOf('aria-label="Agent conversations"'), multiple.indexOf('</header>', multiple.indexOf('aria-label="Agent conversations"')));
+    expect(agentTabs.match(/class="fixed-shell-agent-icon"/g)).toHaveLength(2);
+    expect(agentTabs.indexOf('class="fixed-shell-agent-icon"')).toBeLessThan(agentTabs.indexOf('class="action-item__label-text">First'));
+
+    const single = renderWorkspacePresentation(fixture({ agentConversations: [{ id: "agent-a", title: "Agent", bodyHtml: "<p>Agent</p>" }] }));
+    expect(single).not.toContain('class="fixed-shell-agent-icon"');
+  });
+
+  test("shows each Work view type icon before its tab title", () => {
+    const base = fixture();
+    const html = renderWorkspacePresentation(fixture({ workViews: [
+      ...base.workViews,
+      { key: "review:workspace", label: "Review", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyHtml: "<p>Review</p>" },
+    ] }));
+    const selectors = html.slice(html.indexOf('aria-label="Work views"'), html.indexOf('</header>', html.indexOf('aria-label="Work views"')));
+
+    for (const [type, label] of [["terminal", "Terminal"], ["files", "Files"], ["browser", "Preview"], ["review", "Review"]]) {
+      const tab = selectors.slice(selectors.indexOf(`data-work-view-key="${type}:`));
+      expect(tab).toContain(`class="fixed-shell-work-view-icon" data-icon="${type}"`);
+      expect(tab.indexOf(`data-icon="${type}"`)).toBeLessThan(tab.indexOf(`class="action-item__label-text">${label}`));
+    }
+  });
+
   test("uses Action Items for closable Agent and Work tabs", () => {
     const close = { action: "/close", label: "view" };
     const html = renderWorkspacePresentation(fixture({
