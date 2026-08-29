@@ -1410,6 +1410,25 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("recalls LaunchComposer prompts globally across projects", async () => {
+    const page = await newTestPage();
+    const composer = (project: string, prompt = "") => `<dialog data-controller="launch-composer-dialog"><h1>${project}</h1><form data-action="submit->launch-composer-dialog#submit"><textarea name="text">${prompt}</textarea></form></dialog>`;
+    await page.addInitScript(() => localStorage.removeItem("atelier:launch-composer-prompt-history"));
+    await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `<main id="host">${composer("Project one", "First project's launch prompt")}</main><script type="module" src="/workspace-test.js"></script>` }));
+    await page.route("**/workspace-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: workspaceClient }));
+
+    await page.goto("http://atelier.test/");
+    await page.locator("form").evaluate((form: HTMLFormElement) => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    await page.locator("#host").evaluate((host, nextComposer) => { host.innerHTML = nextComposer; }, composer("Project two"));
+    const input = page.getByRole("textbox");
+    await input.press("ArrowUp");
+
+    expect(await input.inputValue()).toBe("First project's launch prompt");
+    await input.press("ArrowDown");
+    expect(await input.inputValue()).toBe("");
+    await page.close();
+  });
+
   test("closes the LaunchComposer as soon as its prompt is submitted", async () => {
     const page = await newTestPage({ viewport: { width: 390, height: 844 } });
     let finishRequest!: () => void;

@@ -6,7 +6,7 @@ import { Value } from "typebox/value";
 // Turbo does not publish TypeScript declarations, but Bun resolves and bundles its browser module.
 // @ts-expect-error No declaration file is included in @hotwired/turbo.
 import * as Turbo from "@hotwired/turbo";
-import { createHtmlAutocompleteController } from "@atelier/agent/client";
+import { createHtmlAutocompleteController, PromptHistoryNavigator } from "@atelier/agent/client";
 import {
   CableTopics,
   copyTextToClipboard,
@@ -1017,15 +1017,21 @@ class ModalController extends Controller {
   }
 }
 
+const launchComposerPromptHistoryStorageKey = "atelier:launch-composer-prompt-history";
+const launchComposerPromptHistorySchema = Type.Array(Type.String());
+
 class LaunchComposerDialogController extends Controller {
   static values = { discardUrl: String };
   declare readonly element: HTMLDialogElement;
   declare readonly discardUrlValue: string;
   private submitted = false;
+  private readonly promptHistoryNavigator = new PromptHistoryNavigator();
 
   connect(): void {
     this.element.addEventListener("click", this.clicked);
     this.element.addEventListener("close", this.closed);
+    this.input.addEventListener("keydown", this.inputKeydown);
+    this.input.addEventListener("input", this.inputChanged);
     this.element.showModal();
     focusDialogPromptEnd(this.element);
   }
@@ -1033,7 +1039,26 @@ class LaunchComposerDialogController extends Controller {
   disconnect(): void {
     this.element.removeEventListener("click", this.clicked);
     this.element.removeEventListener("close", this.closed);
+    this.input.removeEventListener("keydown", this.inputKeydown);
+    this.input.removeEventListener("input", this.inputChanged);
   }
+
+  private get input(): HTMLTextAreaElement {
+    return this.element.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!;
+  }
+
+  private promptHistory(): string[] {
+    const value = localStorage.getItem(launchComposerPromptHistoryStorageKey);
+    return value ? Value.Parse(launchComposerPromptHistorySchema, JSON.parse(value)) : [];
+  }
+
+  private readonly inputKeydown = (event: KeyboardEvent): void => {
+    this.promptHistoryNavigator.keydown(event, this.input, () => this.promptHistory());
+  };
+
+  private readonly inputChanged = (): void => {
+    this.promptHistoryNavigator.inputChanged();
+  };
 
   private readonly clicked = (event: MouseEvent): void => {
     if (!window.matchMedia(phoneViewportMediaQuery).matches || event.target !== this.element) return;
@@ -1043,6 +1068,8 @@ class LaunchComposerDialogController extends Controller {
   };
 
   submit(): void {
+    const prompt = this.input.value;
+    if (prompt.trim()) localStorage.setItem(launchComposerPromptHistoryStorageKey, JSON.stringify([...this.promptHistory(), prompt]));
     // Intentionally only dismiss the LaunchComposer here: do not select or wait for the launched Workspace.
     this.submitted = true;
     this.element.close();
