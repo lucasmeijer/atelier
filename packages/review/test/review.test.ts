@@ -161,6 +161,8 @@ describe("Review presentation", () => {
     const html = await renderReviewBody("workspace 1", { phase: "ready", files: [file], additions: 1, deletions: 0 }, [comment]);
 
     expect(html).toContain('class="review-files action-list"');
+    expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="src/example.ts" data-review-comments="1">');
+    expect(html).not.toContain('data-review-comments="1" open');
     expect(html).toContain("Copy into composer");
     expect(html).toContain('data-action="click->review#copyCommentsToComposer"');
     expect(html).toContain('class="button secondary icon-only copy-button"');
