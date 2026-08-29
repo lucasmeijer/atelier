@@ -7,6 +7,7 @@ import type { WorkspaceServerProvisioningHook } from "@atelier/shared";
 import { ensureDefaultWorkspaceImage, inspectWorkspaceImage, nativeLinuxDockerPlatform, prepareWorkspaceImageCarrier, resolveDockerImagePreload, resolveWorkspaceImageResolution, type WorkspaceImageResolution } from "@atelier/workspace-image";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { seedConfigInstallScript } from "./startup-scripts.ts";
 import type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction } from "./types.ts";
 export type { WorkspaceCreationContext, WorkspaceDockerMount, WorkspaceDockerPlan, WorkspaceInitInstruction, WorkspaceInitInstructionMap } from "./types.ts";
 
@@ -273,10 +274,6 @@ export function parseRepoWorkspaceManifest(text: string, path = workspaceManifes
     if (projectsJson) manifest.seedAtelierConfig.projectsJson = projectsJson;
   }
   return manifest;
-}
-
-function seedConfigInstallScript(source: string, target: string): string {
-  return `seed_src=${shellQuote(source)}; seed_dst=${shellQuote(target)}; seed_dir="$(dirname "$seed_dst")"; su atelier -s /bin/sh -c 'mkdir -p "$1"' sh "$seed_dir"; install -o atelier -g atelier -m 600 "$seed_src" "$seed_dst"; rm -f "$seed_src"`;
 }
 
 function applySeedConfigManifest(manifest: RepoWorkspaceManifest, plan: WorkspaceDockerPlan): void {

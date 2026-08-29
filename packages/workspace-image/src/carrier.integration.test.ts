@@ -10,8 +10,12 @@ setDefaultTimeout(15 * 60_000);
 // Deliberately opt-in: this builds a nested-Docker base and a carrier.
 const carrierIntegrationTest = process.env.ATELIER_RUN_CARRIER_INTEGRATION === "1" ? test : test.skip;
 
-test("nested Docker serializes registry uploads", () => {
-  expect(nestedDockerDaemonInitScript()).toContain("--max-concurrent-uploads=1");
+test("nested Docker startup preserves a live daemon and removes stale runtime state", () => {
+  const script = nestedDockerDaemonInitScript();
+  expect(script).toContain("--max-concurrent-uploads=1");
+  expect(script).toContain("kill -0 \"$docker_pid\"");
+  expect(script).toContain("/proc/$docker_pid/comm");
+  expect(script).toContain("rm -f /var/run/docker.pid /var/run/docker.sock");
 });
 
 test("Docker image preload specs must contain an image reference", async () => {
@@ -42,9 +46,26 @@ carrierIntegrationTest("native Linux carriers are reusable and give workspaces i
     for (const container of containers) {
       await requireDocker(["run", "--detach", "--name", container, "--privileged", first.image, "sh", "-lc", "sleep infinity"]);
       await requireDocker(["exec", container, "sh", "-lc", nestedDockerDaemonInitScript()]);
+      await requireDocker(["exec", container, "sh", "-lc", `set -eu
+first_pid="$(cat /var/run/docker.pid)"
+${nestedDockerDaemonInitScript()}
+test "$(cat /var/run/docker.pid)" = "$first_pid"
+${nestedDockerDaemonInitScript()}
+test "$(cat /var/run/docker.pid)" = "$first_pid"`]);
       await requireDocker(["exec", container, "docker", "image", "inspect", "ubuntu:24.04"]);
       await requireDocker(["exec", container, "docker", "run", "--rm", "--entrypoint", "/bin/true", "ubuntu:24.04"]);
     }
+    await requireDocker(["exec", containers[0]!, "sh", "-lc", `set -eu
+kill -TERM "$(cat /var/run/docker.pid)"
+for i in $(seq 1 300); do docker info >/dev/null 2>&1 || break; sleep .1; done
+sleep 300 & stale_pid=$!
+echo "$stale_pid" > /var/run/docker.pid
+rm -f /var/run/docker.sock
+touch /var/run/docker.sock
+${nestedDockerDaemonInitScript()}
+kill -0 "$stale_pid"
+test "$(cat /var/run/docker.pid)" != "$stale_pid"
+kill "$stale_pid"`]);
     await requireDocker(["exec", containers[0]!, "docker", "pull", "alpine:3.22"]);
     const absent = await runDocker(["exec", containers[1]!, "docker", "image", "inspect", "alpine:3.22"]);
     expect(absent.exitCode).not.toBe(0);
