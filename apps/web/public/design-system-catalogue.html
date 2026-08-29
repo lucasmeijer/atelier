@@ -29,6 +29,7 @@
     .catalogue-preview[data-platform="mobile"] .button.icon-only { width: 44px; padding: 0; }
     .catalogue-preview[data-platform="mobile"] .button svg { width: 20px; height: 20px; }
     .catalogue-preview[data-platform="mobile"] .button-toggle__option { height: 44px; padding-inline: 16px; }
+    .catalogue-preview[data-platform="mobile"] .destructive-confirmation { --destructive-confirmation-control-size: 44px; }
     .catalogue-preview[data-platform="mobile"] .progress-button:not(.icon-only) .progress-button__content,
     .catalogue-preview[data-platform="mobile"] .activity-button:not(.icon-only) .activity-button__content { padding-inline: 16px; }
     .catalogue-preview[data-platform="mobile"] .button :is(.progress-button__perimeter, .activity-button__indicator) rect { rx: 22px; }
@@ -99,7 +100,10 @@
     .button-layout.vertical { flex-direction: column; }
     .button-layout-label { display: block; margin-bottom: 8px; color: var(--text-muted); font: var(--text-body)/var(--leading-standard) var(--font-mono); }
     .progress-button-demo { display: grid; justify-items: center; gap: 12px; }
-    .progress-button-demo__status { color: var(--text-muted); font: var(--text-body)/var(--leading-standard) var(--font-mono); }
+    .button-demo__status { color: var(--text-muted); font: var(--text-body)/var(--leading-standard) var(--font-mono); text-align: center; }
+    .destructive-confirmation-demo { min-height: 180px; display: grid; place-items: center; align-content: center; gap: 12px; }
+    .destructive-confirmation-toolbar { width: min(620px, 100%); min-height: 45px; display: flex; align-items: center; gap: 8px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--radius-surface); background: var(--panel); }
+    .destructive-confirmation-toolbar__title { min-width: 0; flex: 1; overflow: hidden; color: var(--text-bright); text-overflow: ellipsis; white-space: nowrap; }
 
     .toggle-demo { min-height: 140px; display: grid; place-items: center; gap: 12px; align-content: center; }
     .text-toggle-demo-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
@@ -169,6 +173,7 @@
         <a href="#toggles">Toggles</a>
         <a href="#copy-button">Copy button</a>
         <a href="#buttons">Buttons</a>
+        <a href="#destructive-confirmation">Destructive confirmation</a>
         <a href="#status-dots">Status dots</a>
         <a href="#text-entry">Text entry</a>
         <a href="#dialog">Dialog</a>
@@ -395,7 +400,7 @@ bun test</pre></div>
                   <span class="activity-button__content" data-activity-content="initial"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg>Start background sync</span>
                   <span class="activity-button__content" data-activity-content="active"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none"/></svg>Stop sync</span>
                 </button>
-                <span class="progress-button-demo__status" id="activity-button-demo-status" aria-live="polite">Click to start · click again to stop</span>
+                <span class="button-demo__status" id="activity-button-demo-status" aria-live="polite">Click to start · click again to stop</span>
               </div>
               <pre class="button-code">&lt;button class="button primary activity-button"
   data-activity-state="active" aria-busy="true"&gt;
@@ -416,7 +421,7 @@ bun test</pre></div>
                   <span class="progress-button__content" data-progress-content="in-progress"><i class="activity-spinner" aria-hidden="true"></i>Downloading workspace…</span>
                   <span class="progress-button__content" data-progress-content="finish"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>Download complete</span>
                 </button>
-                <span class="progress-button-demo__status" id="progress-button-demo-status" aria-live="polite">Click to run · width remains fixed across every caption</span>
+                <span class="button-demo__status" id="progress-button-demo-status" aria-live="polite">Click to run · width remains fixed across every caption</span>
               </div>
               <p class="catalogue-note">All state contents occupy the same grid cell, so the widest supplied caption establishes a stable width. Finished state keeps the normal button colors.</p>
             </article>
@@ -462,6 +467,47 @@ bun test</pre></div>
 
 &lt;div class="button-group vertical"&gt;…&lt;/div&gt;</pre>
 
+            </article>
+          </div>
+        </section>
+
+        <section class="catalogue-section" id="destructive-confirmation">
+          <div class="catalogue-section-head">
+            <h2>Destructive confirmation</h2>
+            <p>A pointer-safe inline confirmation for compact destructive actions. The trigger grows toward inline-start, Cancel takes its exact pointer position, and the destructive action unlocks only after deliberate pointer travel.</p>
+          </div>
+          <div class="catalogue-grid">
+            <article class="catalogue-card wide">
+              <div class="catalogue-card-title"><span>Trash grows into Cancel · interactive</span><code>.destructive-confirmation</code></div>
+              <div class="catalogue-demo destructive-confirmation-demo">
+                <div class="destructive-confirmation-toolbar">
+                  <span class="destructive-confirmation-toolbar__title">confirmation-lab</span>
+                  <button class="button secondary icon-only" type="button" aria-label="Park workspace" title="Park workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.5 15.5A7 7 0 0 1 8.5 6.5a7 7 0 1 0 9 9z"/></svg></button>
+                  <div class="destructive-confirmation" data-catalogue-destructive-confirmation>
+                    <div class="destructive-confirmation__trigger">
+                      <button class="button danger icon-only" type="button" aria-label="Delete workspace" title="Delete workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/></svg></button>
+                    </div>
+                    <div class="destructive-confirmation__decision" inert>
+                      <button class="button danger destructive-confirmation__action" type="button">Delete workspace</button>
+                      <button class="button secondary destructive-confirmation__cancel" type="button">Keep workspace</button>
+                    </div>
+                  </div>
+                </div>
+                <span class="button-demo__status">A stationary second click cancels · move 14px to unlock Delete</span>
+              </div>
+              <p class="catalogue-note">The danger action uses the shipped <code>.button.danger</code> treatment unchanged. Keyboard activation focuses Cancel and makes Delete available through deliberate focus navigation.</p>
+            </article>
+            <article class="catalogue-card wide">
+              <div class="catalogue-card-title"><span>Interface</span><code>automatic behavior</code></div>
+              <pre class="button-code">destructiveConfirmationHtml({
+  buttonHtml: `&lt;button class="button danger icon-only" type="button"
+    aria-label="Delete workspace" title="Delete workspace"&gt;
+    &lt;svg aria-hidden="true"&gt;…&lt;/svg&gt;
+  &lt;/button&gt;`,
+  confirmCaption: "Delete workspace",
+  cancelCaption: "Keep workspace",
+})</pre>
+              <p class="catalogue-note">The caller supplies the complete trigger button and both decision captions. The trigger must be a <code>type="button"</code> button. The controller owns action availability, pointer travel, Escape, sizing, and focus restoration while preserving the confirmation action’s native form submission.</p>
             </article>
           </div>
         </section>

@@ -603,6 +603,52 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 }
 @keyframes activity-spinner-spin { to { transform: rotate(1turn); } }
 
+/* A pointer-safe destructive action that expands toward inline-start. */
+.destructive-confirmation {
+  --destructive-confirmation-control-size: 26px;
+  position: relative;
+  z-index: 1;
+  width: var(--destructive-confirmation-initial-width, var(--destructive-confirmation-control-size));
+  height: var(--destructive-confirmation-control-height, var(--destructive-confirmation-control-size));
+  flex: none;
+  transition: width 220ms cubic-bezier(.2, .8, .2, 1);
+}
+.destructive-confirmation__trigger,
+.destructive-confirmation__decision {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+.destructive-confirmation__trigger {
+  transition: opacity 100ms ease, transform 180ms cubic-bezier(.2, .8, .2, 1);
+}
+.destructive-confirmation__decision {
+  height: var(--destructive-confirmation-control-height, var(--destructive-confirmation-control-size));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  transform: translateX(8px);
+  pointer-events: none;
+  transition: opacity 130ms ease, transform 220ms cubic-bezier(.2, .8, .2, 1);
+}
+.destructive-confirmation[data-destructive-confirmation-state="confirming"] {
+  width: var(--destructive-confirmation-expanded-width);
+}
+.destructive-confirmation[data-destructive-confirmation-state="confirming"] .destructive-confirmation__trigger {
+  opacity: 0;
+  transform: scale(.78);
+  pointer-events: none;
+}
+.destructive-confirmation[data-destructive-confirmation-state="confirming"] .destructive-confirmation__decision {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+@media (max-width: 700px) {
+  .destructive-confirmation { --destructive-confirmation-control-size: 44px; }
+}
+
 /* A compact semantic state marker for captions, controls, and standalone status. */
 .status-dot {
   width: 8px;
@@ -813,6 +859,9 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
   .button,
   .button .progress-button__perimeter rect,
   .button-toggle__option,
+  .destructive-confirmation,
+  .destructive-confirmation__trigger,
+  .destructive-confirmation__decision,
   .text-field,
   .textarea,
   .disclosure-icon { transition-duration: 1ms; }

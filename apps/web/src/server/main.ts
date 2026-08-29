@@ -336,7 +336,7 @@ async function serveStatic(pathname: string, request: Request): Promise<Response
   const file = Bun.file(entry.url);
   if (!(await file.exists())) return new Response("not found", { status: 404, headers: { "content-type": "text/plain" } });
   const headers = new Headers({ "content-type": entry.contentType });
-  if (pathname === "/workspace.js" || pathname === "/service-worker.js" || pathname === "/manifest.webmanifest") headers.set("cache-control", "no-store");
+  if (["/workspace.js", "/service-worker.js", "/manifest.webmanifest", "/design-system-catalogue.html", "/design-system.css"].includes(pathname)) headers.set("cache-control", "no-store");
   return new Response(file, { headers });
 }
 
