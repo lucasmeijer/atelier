@@ -1,9 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { renderMarkdown } from "../../../packages/markdown/src/index.ts";
 import { filesEditorFrameId, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkViewBody } from "../../../packages/files/src/server/render.ts";
+import { collectReviewSnapshot } from "../../../packages/review/src/server/diff.ts";
 import { renderReviewBody } from "../../../packages/review/src/server/render.ts";
 import type { ReviewComment } from "../../../packages/review/src/server/state.ts";
+import { createReviewRepository } from "../../../packages/review/test/support/repository.ts";
 import { turboStream } from "../../../packages/shared/src/index.ts";
 import { atelierUi } from "../smoke/support/atelier-ui.ts";
 import { removeWorkspaceResidentTurboStream, renderGlobalMobileNavigation, renderWorkViewBodyFrame, renderWorkspacePane, renderWorkspacePresentation, workspacePaneCollectionsTurboStream, workspacePresentationTurboStream, type WorkspacePanePresentation, type WorkspacePresentation } from "../src/server/workspace-presentation.ts";
@@ -102,7 +106,7 @@ describe("Atelier browser behavior", () => {
       { id: "one", path: "apps/web/web.ts", side: "additions", startLine: 14, endLine: 14, snippet: "the selection the user made gets written here", body: "Why are we doing it like this over here" },
       { id: "two", path: "apps/web/web.tests.ts", side: "additions", startLine: 18, endLine: 18, snippet: "the test snippet here", body: "I don't think we need these tests" },
     ];
-    const reviewBody = await renderReviewBody("review-copy", { phase: "ready", files: [], additions: 0, deletions: 0 }, comments);
+    const reviewBody = await renderReviewBody("review-copy", { phase: "ready", files: [] }, comments);
     const fixture = `<div class="workspace-detail-resident visible"><div class="fixed-workspace-presentation is-work-pane-open">
       <section class="fixed-shell-live-node is-active" data-workspace-pane-role="agent" data-workspace-pane-id="agent-review"><textarea name="text">Existing prompt</textarea></section>
       <section class="fixed-shell-live-node is-active" data-workspace-pane-role="work" data-workspace-pane-id="review:workspace"><div class="fixed-shell-live-body">${reviewBody}</div></section>
@@ -126,6 +130,37 @@ Comment: I don't think we need these tests`;
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(generated);
     await page.close();
     await browserContext.clearPermissions();
+  });
+
+  test("toggles per-word highlighting in review diffs from an off default", async () => {
+    const root = await createReviewRepository();
+    try {
+      await writeFile(join(root, "changed.ts"), "const after = true;\n");
+      const snapshot = await collectReviewSnapshot(root);
+      if (snapshot.phase !== "ready") throw new Error("expected ready review");
+      const reviewBody = await renderReviewBody("word-diff", snapshot, []);
+      const fixture = `<div class="workspace-detail-resident visible"><section class="fixed-shell-live-node is-active" data-workspace-pane-role="work">${reviewBody}</section></div>`;
+      const page = await newTestPage();
+      await page.route("http://atelier.test/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="${workspaceClientPath}"></script>` }));
+      await page.goto("http://atelier.test/");
+
+      const toggle = page.getByRole("button", { name: "Word diff", exact: true });
+      const wordHighlights = page.locator("diffs-container").locator("[data-diff-span]");
+      expect(await toggle.getAttribute("aria-pressed")).toBe("false");
+      expect(await wordHighlights.count()).toBe(0);
+
+      await toggle.click();
+      expect(await toggle.getAttribute("aria-pressed")).toBe("true");
+      await wordHighlights.first().waitFor({ state: "attached" });
+      expect(await wordHighlights.first().evaluate((highlight) => getComputedStyle(highlight).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+
+      await toggle.click();
+      expect(await toggle.getAttribute("aria-pressed")).toBe("false");
+      await page.waitForFunction(() => document.querySelector("diffs-container")?.shadowRoot?.querySelectorAll("[data-diff-span]").length === 0);
+      await page.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("switches the design catalogue between responsive preview platforms", async () => {

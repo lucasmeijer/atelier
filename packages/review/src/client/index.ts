@@ -76,6 +76,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
     private models = new Map<string, DiffModel>();
     private draft?: DraftModel;
     private hydrated = false;
+    private wordDiffEnabled = false;
     private pane!: HTMLElement;
     private resident!: HTMLElement;
     private readonly becameVisible = (): void => { void this.becomeVisible(); };
@@ -128,6 +129,16 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       this.saveCollapseState();
     }
 
+    toggleWordDiff(event: Event): void {
+      if (!(event.currentTarget instanceof HTMLButtonElement)) throw new Error("Word diff toggle requires a button");
+      this.wordDiffEnabled = !this.wordDiffEnabled;
+      event.currentTarget.setAttribute("aria-pressed", String(this.wordDiffEnabled));
+      for (const instance of this.instances) {
+        instance.setOptions({ ...instance.options, lineDiffType: this.wordDiffEnabled ? "word-alt" : reviewDiffOptions.lineDiffType });
+        instance.rerender();
+      }
+    }
+
     private hydrateDiff(host: HTMLElement, FileDiffClass: FileDiffConstructor): void {
       const script = host.querySelector<HTMLScriptElement>("script[data-review-model]")!;
       // SAFETY: The server emits this private JSON script from a DiffModel and no external input can write it.
@@ -141,6 +152,7 @@ function createReviewController(Controller: StimulusControllerConstructor) {
       let instance: FileDiff<AnnotationMetadata>;
       instance = new FileDiffClass<AnnotationMetadata>({
         ...reviewDiffOptions,
+        lineDiffType: this.wordDiffEnabled ? "word-alt" : reviewDiffOptions.lineDiffType,
         renderAnnotation: (item) => this.renderAnnotation(item.metadata!, instance),
         onPostRender: () => this.decorateExpansionControls(container),
       });

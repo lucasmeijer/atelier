@@ -77,18 +77,15 @@ function toolbar(workspaceId: string, comments: ReviewComment[]): string {
   const expand = iconButton("Expand all files", "review#expandAll", "M7 9l5-5 5 5M7 15l5 5 5-5");
   return `<header class="review-toolbar">
     <div class="review-toolbar-actions button-group copy-region">
-      <button class="button secondary" type="button" data-action="click->review#copyCommentsToComposer"${commentsDisabled}>Copy into composer</button>
+      <button class="button secondary" type="button" title="Copy review comments into composer" data-action="click->review#copyCommentsToComposer"${commentsDisabled}>Copy into composer</button>
       <button class="button secondary icon-only copy-button" type="button" data-copy-label="Copy review comments to clipboard" aria-label="Copy review comments to clipboard" title="Copy review comments to clipboard"${commentsDisabled}><span class="copy-button__icon" aria-hidden="true">⧉</span></button>
       <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true"><button class="button danger icon-only" type="submit" aria-label="Delete all review comments" title="Delete all review comments"${commentsDisabled}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></button></form>
       <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/refresh" data-turbo="true" data-action="submit->review#rememberPosition"><button class="button secondary icon-only" type="submit" aria-label="Refresh review" title="Refresh review"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg></button></form>
       ${collapse}${expand}
+      <button class="button secondary review-word-diff-toggle" type="button" title="Toggle per-word diff highlighting" aria-pressed="false" data-action="click->review#toggleWordDiff">Word diff</button>
       <span data-copy-source hidden>${escapeHtml(reviewCommentsPrompt(comments))}</span>
     </div>
   </header>`;
-}
-
-function totalsBar(snapshot: Extract<ReviewSnapshot, { phase: "ready" }>): string {
-  return `<div class="review-total-summary" aria-label="Review totals"><span>${snapshot.files.length} file${snapshot.files.length === 1 ? "" : "s"}</span><span class="review-additions">+${snapshot.additions}</span><span class="review-deletions">−${snapshot.deletions}</span></div>`;
 }
 
 export async function renderReviewBody(workspaceId: string, snapshot: ReviewSnapshot, comments: ReviewComment[]): Promise<string> {
@@ -104,7 +101,7 @@ export async function renderReviewBody(workspaceId: string, snapshot: ReviewSnap
     ? `<div class="review-files action-list">${renderedFiles.join("")}</div>`
     : `<div class="review-no-changes"><h2>No changes to review</h2><p>The working tree matches HEAD.</p></div>`;
   const commentModels = comments.map(commentModel);
-  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}">${toolbar(workspaceId, comments)}${totalsBar(snapshot)}${content}<script type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></section>`;
+  return `<section id="${reviewBodyId(workspaceId)}" class="review-body" data-controller="review" data-review-workspace-id-value="${escapeHtml(workspaceId)}">${toolbar(workspaceId, comments)}${content}<script type="application/json" data-review-comments>${jsonForHtml(commentModels)}</script></section>`;
 }
 
 export const reviewWorkViewPresentation: WorkspaceWorkViewPresentation = {

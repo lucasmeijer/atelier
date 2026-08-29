@@ -6,6 +6,7 @@ import { reviewCommentsPrompt, type ReviewCommentModel } from "../src/model.ts";
 import { collectReviewSnapshot, type ReviewFile } from "../src/server/diff.ts";
 import { renderReviewBody, reviewWorkViewPresentation } from "../src/server/render.ts";
 import { addReviewComment, deleteReviewState, listReviewComments, remapReviewComment, updateReviewComment, type ReviewComment } from "../src/server/state.ts";
+import { command, createReviewRepository } from "./support/repository.ts";
 
 const roots: string[] = [];
 
@@ -13,23 +14,9 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-async function command(root: string, ...args: string[]): Promise<void> {
-  const process = Bun.spawn(args, { cwd: root, stdout: "pipe", stderr: "pipe" });
-  const [exitCode, stderr] = await Promise.all([process.exited, new Response(process.stderr).text()]);
-  if (exitCode !== 0) throw new Error(stderr);
-}
-
 async function repository(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "atelier-review-"));
+  const root = await createReviewRepository();
   roots.push(root);
-  await command(root, "git", "init", "-q");
-  await command(root, "git", "config", "user.email", "review@example.test");
-  await command(root, "git", "config", "user.name", "Review Test");
-  await writeFile(join(root, "changed.ts"), "const before = true;\n");
-  await writeFile(join(root, "empty.txt"), "");
-  await writeFile(join(root, ".gitignore"), "ignored.txt\n");
-  await command(root, "git", "add", ".");
-  await command(root, "git", "commit", "-qm", "initial");
   return root;
 }
 
@@ -152,7 +139,7 @@ describe("Review presentation", () => {
   });
 
   test("renders explicit empty and not-git states", async () => {
-    const empty = await renderReviewBody("workspace 1", { phase: "ready", files: [], additions: 0, deletions: 0 }, []);
+    const empty = await renderReviewBody("workspace 1", { phase: "ready", files: [] }, []);
     expect(empty).toContain("No changes to review");
     expect(empty).toContain("/workspaces/workspace%201/review/refresh");
 
@@ -174,7 +161,7 @@ describe("Review presentation", () => {
   test("renders file grouping and explicit review comment actions", async () => {
     const comment: ReviewComment = { id: "comment-1", path: "src/example.ts", side: "additions", startLine: 2, endLine: 2, body: "Keep this lazy", snippet: "target" };
     const file: ReviewFile = { path: "src/example.ts", kind: "binary", additions: 1, deletions: 0, detail: "Binary file changed" };
-    const html = await renderReviewBody("workspace 1", { phase: "ready", files: [file], additions: 1, deletions: 0 }, [comment]);
+    const html = await renderReviewBody("workspace 1", { phase: "ready", files: [file] }, [comment]);
 
     expect(html).toContain('class="review-files action-list"');
     expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="src/example.ts" data-review-comments="1">');
@@ -188,6 +175,7 @@ describe("Review presentation", () => {
     expect(html).toContain('aria-label="Refresh review"');
     expect(html).toContain('aria-label="Collapse all files"');
     expect(html).toContain('aria-label="Expand all files"');
+    expect(html).toContain('title="Toggle per-word diff highlighting" aria-pressed="false" data-action="click->review#toggleWordDiff">Word diff</button>');
     expect(html).toContain('<span class="review-comment-count" aria-label="1 comment">1</span>');
     expect(html).toContain('role="note"');
     expect(html).toContain("Binary file changed");
@@ -195,14 +183,15 @@ describe("Review presentation", () => {
     expect(html.indexOf("Copy into composer")).toBeLessThan(html.indexOf('aria-label="Copy review comments to clipboard"'));
     expect(html.indexOf('aria-label="Copy review comments to clipboard"')).toBeLessThan(html.indexOf('aria-label="Delete all review comments"'));
     expect(html.indexOf('aria-label="Delete all review comments"')).toBeLessThan(html.indexOf('aria-label="Refresh review"'));
-    expect(html.indexOf('aria-label="Refresh review"')).toBeLessThan(html.indexOf('<div class="review-total-summary" aria-label="Review totals">'));
-    expect(html.indexOf("</header>")).toBeLessThan(html.indexOf('aria-label="Review totals"'));
+    const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+    expect([...header.matchAll(/<button\b[^>]*>/g)].every(([button]) => button.includes('title="'))).toBe(true);
+    expect(html).not.toContain('aria-label="Review totals"');
     expect(html).not.toContain('name="reviewComment"');
   });
 
   test("groups comments whose anchors disappeared in an open pseudo-file", async () => {
     const comment: ReviewComment = { id: "comment-1", path: "src/removed.ts", side: "deletions", startLine: 4, endLine: 4, body: "Keep this behavior", snippet: "removed()", outdated: true };
-    const html = await renderReviewBody("workspace 1", { phase: "ready", files: [], additions: 0, deletions: 0 }, [comment]);
+    const html = await renderReviewBody("workspace 1", { phase: "ready", files: [] }, [comment]);
 
     expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="comments-without-anchors" data-review-comments="1" open>');
     expect(html).toContain("Comments without anchors");

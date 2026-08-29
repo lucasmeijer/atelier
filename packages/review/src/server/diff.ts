@@ -23,7 +23,7 @@ export interface ReviewFile {
 
 export type ReviewSnapshot =
   | { phase: "not-git" }
-  | { phase: "ready"; files: ReviewFile[]; additions: number; deletions: number };
+  | { phase: "ready"; files: ReviewFile[] };
 
 interface StatusEntry {
   code: string;
@@ -176,12 +176,7 @@ export async function collectReviewSnapshot(root: string): Promise<ReviewSnapsho
   const entries = parseStatus(await git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]));
   const reviewed = await Promise.all(entries.map((entry) => reviewFile(root, entry)));
   const files = reviewed.filter((file): file is ReviewFile => file !== undefined).sort((a, b) => a.path.localeCompare(b.path));
-  return {
-    phase: "ready",
-    files,
-    additions: files.reduce((total, file) => total + file.additions, 0),
-    deletions: files.reduce((total, file) => total + file.deletions, 0),
-  };
+  return { phase: "ready", files };
 }
 
 export function reviewSnippet(file: ReviewFile, side: ReviewSide, startLine: number, endLine: number): string {

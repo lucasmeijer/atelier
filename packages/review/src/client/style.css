@@ -19,23 +19,18 @@
   background: var(--bg);
 }
 
-.review-total-summary,
 .review-file-meta {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.review-total-summary {
-  justify-content: flex-end;
-  padding: 8px 20px;
-  border-bottom: 1px solid var(--line);
-  color: var(--text);
-  white-space: nowrap;
-  font: 400 var(--text-body)/var(--leading-standard) var(--font-sans);
-}
-.review-total-summary :is(.review-additions, .review-deletions) { font: inherit; }
 .review-toolbar-actions > .copy-button { position: static; }
+.review-word-diff-toggle[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: var(--accent-soft);
+  color: var(--text-bright);
+}
 
 .review-files { padding: 16px; }
 
