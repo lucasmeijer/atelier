@@ -9,6 +9,7 @@ import {
   ensureTailscaleServePortConfig,
   ensureWorkspacePublicProxyRoute,
   listWorkspacePublicProxyRoutes,
+  nestedWorkspaceProxyRedirectHeader,
   publicProxyPortRangeFromEnv,
   releaseWorkspacePublicProxyRoute,
   releaseWorkspacePublicProxyRoutes,
@@ -127,6 +128,7 @@ describe("workspace public proxy route state", () => {
     const response = await proxy.redirectToRoute("inner", "browser-1", "/demo?x=1", nestedRequest);
 
     expect(response.status).toBe(302);
+    expect(response.headers.get(nestedWorkspaceProxyRedirectHeader)).toBe("1");
     const nestedLocation = new URL(response.headers.get("location")!);
     const nestedPort = Number(nestedLocation.pathname.match(/\/ports\/(\d+)/)?.[1]);
     expect(nestedPort).toBeGreaterThanOrEqual(3001);

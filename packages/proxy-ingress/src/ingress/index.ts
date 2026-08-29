@@ -66,6 +66,7 @@ interface HostedWorkspaceApp extends WorkspaceAppHost {
 const nestedPublicProxyPortRange: PublicProxyPortRange = { start: 3001, end: 3010 };
 const parentOriginHeader = "x-atelier-parent-origin";
 const parentWorkspaceHeader = "x-atelier-parent-workspace";
+export const nestedWorkspaceProxyRedirectHeader = "x-atelier-nested-workspace-proxy-redirect";
 
 export {
   defaultPublicProxyPortRange,
@@ -206,7 +207,9 @@ export function createWorkspaceIngressProxy(options: WorkspaceIngressProxyOption
       const parent = parentAtelier(request);
       if (parent) {
         const port = ensureNestedPort(workspaceId, appKey);
-        return Response.redirect(`${parent.origin}${workspaceProxyUrl(parent.workspaceId, `port-${port}`, normalizedPath)}`, 302);
+        const response = Response.redirect(`${parent.origin}${workspaceProxyUrl(parent.workspaceId, `port-${port}`, normalizedPath)}`, 302);
+        response.headers.set(nestedWorkspaceProxyRedirectHeader, "1");
+        return response;
       }
       const route = await ensureRoute(workspaceId, appKey);
       hostedAppsByPort.get(route.publicPort)!.parentOrigin = publicWorkspaceAppOrigin(request);

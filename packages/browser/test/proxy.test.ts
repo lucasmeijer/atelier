@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { nestedWorkspaceProxyRedirectHeader } from "@atelier/proxy-ingress/server";
 import { patchBrowserWorkspaceAppRequestHeaders, patchBrowserWorkspaceAppResponse, resolveBrowserWorkspaceAppTarget } from "../src/server/proxy.ts";
 import { renderBrowserFrame } from "../src/server/render.ts";
 import { createWorkspaceBrowserView, listWorkspaceBrowserViews, normalizeBrowserUrl, setWorkspaceBrowserTarget } from "../src/server/state.ts";
@@ -14,11 +15,11 @@ function browserApp(workspaceId: string): BrowserApp {
   return { appKey: view.key, workspaceId };
 }
 
-async function patchRedirect(targetUrl: string, location: string, requestUrl: string, status = 302, body: string | null = null) {
+async function patchRedirect(targetUrl: string, location: string, requestUrl: string, status = 302, body: string | null = null, headers: Record<string, string> = {}) {
   const workspaceId = `redirect_${crypto.randomUUID()}`;
   const view = createWorkspaceBrowserView(workspaceId);
   setWorkspaceBrowserTarget(workspaceId, view.key, targetUrl);
-  const response = new Response(body, { status, headers: { location } });
+  const response = new Response(body, { status, headers: { location, ...headers } });
   const patched = await patchBrowserWorkspaceAppResponse({ appKey: view.key, workspaceId }, response, new Request(requestUrl));
   return { patched, targetUrl: () => listWorkspaceBrowserViews(workspaceId)[0]!.targetUrl };
 }
@@ -141,6 +142,22 @@ describe("browser proxy response patching", () => {
     const result = await patchRedirect("https://example.com/start", "https://login.example.org/session?next=%2Fhome", "https://browser--redirect.localhost/start?atelierBrowserOrigin=https%3A%2F%2Fexample.com&atelierColorScheme=light");
     expect(result.patched.headers.get("location")).toBe("https://browser--redirect.localhost/session?next=%2Fhome&atelierBrowserOrigin=https%3A%2F%2Flogin.example.org&atelierColorScheme=light");
     expect(result.targetUrl()).toBe("https://login.example.org/session?next=%2Fhome");
+  });
+
+  test("lets nested Atelier proxy redirects escape to the parent Atelier", async () => {
+    const location = "https://parent.example/workspaces/outer/ports/3001/";
+    const result = await patchRedirect(
+      "http://localhost:3000/",
+      location,
+      "https://browser--redirect.localhost/workspaces/inner/apps/browser-1/",
+      302,
+      null,
+      { [nestedWorkspaceProxyRedirectHeader]: "1" },
+    );
+
+    expect(result.patched.headers.get("location")).toBe(location);
+    expect(result.patched.headers.has(nestedWorkspaceProxyRedirectHeader)).toBe(false);
+    expect(result.targetUrl()).toBe("http://localhost:3000/");
   });
 
   test("leaves malformed redirect locations for the browser to handle", async () => {

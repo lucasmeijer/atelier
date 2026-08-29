@@ -1,5 +1,5 @@
 import { isWorkspacePreviewPort, workspacePreviewPortUrl, workspacePreviewPorts } from "@atelier/workspace";
-import { publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/proxy-ingress/server";
+import { nestedWorkspaceProxyRedirectHeader, publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/proxy-ingress/server";
 import { getWorkspaceBrowserView, setWorkspaceBrowserTarget, type WorkspaceBrowserView } from "./state.ts";
 import { browserColorSchemeParam, browserOriginParam, browserProxyUrl, stripBrowserProxyParams } from "../shared.ts";
 
@@ -15,10 +15,15 @@ export async function patchBrowserWorkspaceAppRequestHeaders(_app: WorkspaceAppH
 export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, response: Response, request: Request): Promise<Response> {
   const browserView = getWorkspaceBrowserView(app.workspaceId, app.appKey);
   if (!browserView) return response;
+  const headers = new Headers(response.headers);
+  if (headers.has(nestedWorkspaceProxyRedirectHeader)) {
+    headers.delete(nestedWorkspaceProxyRedirectHeader);
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  }
+
   const requestUrl = new URL(request.url);
   const requestTarget = browserRequestTarget(browserView, requestUrl);
   const publicOrigin = publicWorkspaceAppOrigin(request);
-  const headers = new Headers(response.headers);
   const location = headers.get("location");
   if (location) headers.set("location", rewriteBrowserRedirect(app, requestUrl, requestTarget, location, publicOrigin));
 
