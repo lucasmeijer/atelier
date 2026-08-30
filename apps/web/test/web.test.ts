@@ -1066,7 +1066,7 @@ describe("web app contracts", () => {
     expect(row).toContain("Workspace created with an older version of Atelier");
   });
 
-  test("ready workspace rows keep Agent activity out of status while exposing Attention preparation metadata", async () => {
+  test("ready workspace rows show Agent activity while exposing Attention preparation metadata", async () => {
     const { app, registry, broadcasts } = createTestApp();
     const html = await (await app.fetch(new Request("http://test.local/"))).text();
     expect(html).toContain('data-workspace-residency-max-resident-value="5"');
@@ -1078,7 +1078,7 @@ describe("web app contracts", () => {
     while (!broadcasts.some(updatesWorkspacePaneCollections)) await Bun.sleep(1);
     const busyBroadcast = broadcasts.find(updatesWorkspacePaneCollections) ?? "";
     expect(busyBroadcast).toContain('data-workspace-busy-views="[&quot;agent:Agent 1&quot;]"');
-    expect(busyBroadcast).not.toContain("fixed-shell-workspace-busy");
+    expect(busyBroadcast).toContain('aria-label="Workspace busy"');
 
     broadcasts.length = 0;
     registry.setViewBusy("abc", "agent:Agent 1", false);

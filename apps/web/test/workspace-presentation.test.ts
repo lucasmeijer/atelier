@@ -106,20 +106,23 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
   });
 
-  test("renders one Workspace status using lifecycle, Attention, then outdated-image precedence", () => {
-    const row = (status: { state?: "starting" | "deleting" | "requires_delete_confirmation" | "idle"; attention?: boolean }) => renderWorkspacePane({
+  test("renders one Workspace status using lifecycle, busy activity, Attention, then outdated-image precedence", () => {
+    const row = (status: { state?: "starting" | "deleting" | "requires_delete_confirmation" | "idle"; attention?: boolean; busyViewKeys?: readonly string[] }) => renderWorkspacePane({
       projects: [],
       projectlessWorkspaces: [{ id: "workspace", title: "Workspace", outdated: true, ...status }],
     });
 
-    const starting = row({ state: "starting", attention: true });
-    const deleting = row({ state: "deleting", attention: true });
+    const starting = row({ state: "starting", attention: true, busyViewKeys: ["agent:one"] });
+    const deleting = row({ state: "deleting", attention: true, busyViewKeys: ["agent:one"] });
+    const busy = row({ state: "idle", attention: true, busyViewKeys: ["agent:one"] });
     const attention = row({ state: "requires_delete_confirmation", attention: true });
     expect(row({ state: "idle" })).toContain("fixed-shell-workspace-warning");
     expect(starting).toContain('aria-label="Workspace starting"');
-    expect(starting).not.toContain('aria-label="Attention"');
+    expect(starting).not.toContain('aria-label="Workspace busy"');
     expect(deleting).toContain('aria-label="Workspace deleting"');
-    expect(deleting).not.toContain('aria-label="Attention"');
+    expect(deleting).not.toContain('aria-label="Workspace busy"');
+    expect(busy).toContain('aria-label="Workspace busy"');
+    expect(busy).not.toContain('aria-label="Attention"');
     expect(attention).toContain('aria-label="Attention"');
     expect(attention).not.toContain("fixed-shell-workspace-warning");
   });

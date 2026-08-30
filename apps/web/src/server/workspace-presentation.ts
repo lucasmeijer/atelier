@@ -132,6 +132,9 @@ function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
     const label = workspace.state === "starting" ? "Workspace starting" : "Workspace deleting";
     return `<i class="status-spinner sm fixed-shell-workspace-busy action-item__status" aria-label="${label}" title="${label}"></i>`;
   }
+  if (workspace.busyViewKeys?.length) {
+    return '<i class="status-spinner sm fixed-shell-workspace-busy action-item__status" aria-label="Workspace busy" title="Workspace busy"></i>';
+  }
   if (workspace.attention) {
     return '<span class="workspace-attention-status action-item__status" aria-label="Attention"><i class="status-dot attention at-edge" aria-hidden="true"></i></span>';
   }
