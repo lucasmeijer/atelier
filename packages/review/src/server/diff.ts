@@ -12,6 +12,7 @@ type ReviewFileKind = "text" | "binary" | "large" | "mode";
 export interface ReviewFile {
   path: string;
   previousPath?: string;
+  untracked?: true;
   kind: ReviewFileKind;
   oldContents?: string;
   newContents?: string;
@@ -131,8 +132,9 @@ async function reviewFile(root: string, entry: StatusEntry): Promise<ReviewFile 
   ]);
   const oldText = decodeText(oldBuffer);
   const newText = decodeText(newBuffer);
-  const base: Pick<ReviewFile, "path" | "previousPath"> = { path: entry.path };
+  const base: Pick<ReviewFile, "path" | "previousPath" | "untracked"> = { path: entry.path };
   if (entry.previousPath) base.previousPath = entry.previousPath;
+  if (entry.code === "??") base.untracked = true;
   if (oldBuffer === undefined && newBuffer === undefined) {
     if (fileModes.oldMode === "160000" || fileModes.newMode === "160000") return { ...base, kind: "mode", additions: 0, deletions: 0, detail: "Submodule changed" };
     return undefined;

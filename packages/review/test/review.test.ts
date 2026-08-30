@@ -39,6 +39,7 @@ describe("Review snapshot", () => {
     expect(snapshot.files.map((file) => file.path)).toEqual(["changed.ts", "untracked.ts"]);
     expect(snapshot.files[0]!.additions).toBe(2);
     expect(snapshot.files[0]!.deletions).toBe(1);
+    expect(snapshot.files[1]!.untracked).toBe(true);
     expect(snapshot.files[1]!.kind).toBe("text");
   });
 
@@ -187,6 +188,21 @@ describe("Review presentation", () => {
     expect([...header.matchAll(/<button\b[^>]*>/g)].every(([button]) => button.includes('title="'))).toBe(true);
     expect(html).not.toContain('aria-label="Review totals"');
     expect(html).not.toContain('name="reviewComment"');
+  });
+
+  test("omits deletion stats for untracked files", async () => {
+    const files: ReviewFile[] = [
+      { path: "changed.ts", kind: "binary", additions: 1, deletions: 1 },
+      { path: "new.ts", untracked: true, kind: "binary", additions: 1, deletions: 0 },
+    ];
+
+    const html = await renderReviewBody("workspace 1", { phase: "ready", files }, []);
+    const modifiedFile = html.match(/<details[^>]+data-review-path="changed\.ts"[\s\S]*?<\/details>/)?.[0];
+    const untrackedFile = html.match(/<details[^>]+data-review-path="new\.ts"[\s\S]*?<\/details>/)?.[0];
+
+    expect(modifiedFile).toContain('<span class="review-deletions">−1</span>');
+    expect(untrackedFile).toContain('<span class="review-additions">+1</span>');
+    expect(untrackedFile).not.toContain("review-deletions");
   });
 
   test("groups comments whose anchors disappeared in an open pseudo-file", async () => {
