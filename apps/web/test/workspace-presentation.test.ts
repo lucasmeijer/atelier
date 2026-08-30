@@ -43,7 +43,8 @@ describe("role-fixed Workspace presentation", () => {
 
     expect(html).toContain('class="fixed-shell-workspace-pane"');
     const workspaceHeader = html.slice(html.indexOf("<header>"), html.indexOf("</header>"));
-    expect(workspaceHeader).toContain("<strong>Atelier</strong>");
+    expect(workspaceHeader).toContain('<strong><svg aria-hidden="true"');
+    expect(workspaceHeader.indexOf("<svg")).toBeLessThan(workspaceHeader.indexOf("Atelier"));
     expect(workspaceHeader).toContain('href="/settings"');
     expect(workspaceHeader).toContain('aria-label="Settings"');
     expect(workspaceHeader).toContain('aria-label="Collapse Workspace pane"');
@@ -174,14 +175,16 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('class="button secondary icon-only" title="Collapse Work pane" aria-label="Collapse Work pane"');
   });
 
-  test("shows robot icons on Agent tabs only when there are multiple conversations", () => {
+  test("shows robot icons in single- and multiple-conversation Agent headers", () => {
     const multiple = renderWorkspacePresentation(fixture());
     const agentTabs = multiple.slice(multiple.indexOf('aria-label="Agent conversations"'), multiple.indexOf('</header>', multiple.indexOf('aria-label="Agent conversations"')));
     expect(agentTabs.match(/class="fixed-shell-agent-icon"/g)).toHaveLength(2);
     expect(agentTabs.indexOf('class="fixed-shell-agent-icon"')).toBeLessThan(agentTabs.indexOf('class="action-item__label-text">First'));
 
     const single = renderWorkspacePresentation(fixture({ agentConversations: [{ id: "agent-a", title: "Agent", bodyHtml: "<p>Agent</p>" }] }));
-    expect(single).not.toContain('class="fixed-shell-agent-icon"');
+    const singleHeader = single.slice(single.indexOf('<section class="fixed-shell-agent-pane"'), single.indexOf('</header>', single.indexOf('<section class="fixed-shell-agent-pane"')));
+    expect(singleHeader.match(/class="fixed-shell-agent-icon"/g)).toHaveLength(1);
+    expect(singleHeader.indexOf('class="fixed-shell-agent-icon"')).toBeLessThan(singleHeader.indexOf("Typed shell"));
   });
 
   test("shows each Work view type icon before its tab title", () => {

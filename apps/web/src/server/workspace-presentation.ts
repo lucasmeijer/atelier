@@ -78,11 +78,12 @@ export interface WorkspacePresentation {
   preserveLiveKeys?: ReadonlySet<string>;
 }
 
-type IconName = "agent" | "browser" | "close" | "code" | "desktop" | "file" | "files" | "more" | "panel" | "park" | "plus" | "review" | "settings" | "terminal" | "trash" | "workspace" | "x";
+type IconName = "agent" | "atelier" | "browser" | "close" | "code" | "desktop" | "file" | "files" | "more" | "panel" | "park" | "plus" | "review" | "settings" | "terminal" | "trash" | "workspace" | "x";
 
 function icon(name: IconName): string {
   const paths = {
     agent: '<path d="M9 4h6M12 4V2M6 8h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/>',
+    atelier: '<path d="M12 3v4M7.5 21 12 7l4.5 14M6 18h12M4 13c4 1.5 7.5 1.8 11 .8 2-.6 3.7-.6 5-.2"/>',
     browser: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>',
     close: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
     code: '<path d="m9 7-5 5 5 5m6-10 5 5-5 5"/>',
@@ -218,7 +219,7 @@ export function renderWorkspacePaneCollections(presentation: WorkspacePanePresen
 export function renderWorkspacePane(presentation: WorkspacePanePresentation, sidebarContributionsHtml = ""): string {
   const settings = `<a class="button secondary icon-only" href="/settings" title="Settings" aria-label="Settings" data-controller="settings-prefetch" data-action="pointerenter->settings-prefetch#prefetch focus->settings-prefetch#prefetch click->settings-prefetch#open">${icon("settings")}</a>`;
   return `<aside class="fixed-shell-workspace-pane" aria-label="Workspaces">
-    <header><strong>Atelier</strong><div class="button-group">${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", "panel", "data-collapse-workspace-pane")}</div></header>
+    <header><strong>${icon("atelier")}Atelier</strong><div class="button-group">${settings}${topBarButton("Collapse Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", "panel", "data-collapse-workspace-pane")}</div></header>
     ${renderWorkspacePaneCollections(presentation, sidebarContributionsHtml)}
   </aside>`;
 }
@@ -233,9 +234,10 @@ export function renderGlobalMobileNavigation(): string {
 
 function renderAgentPane(presentation: WorkspacePresentation): string {
   const multiple = presentation.agentConversations.length > 1;
+  const agentIcon = `<span class="fixed-shell-agent-icon">${icon("agent")}</span>`;
   const title = multiple
-    ? `<div class="fixed-shell-agent-conversations" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => `<div class="fixed-shell-agent-conversation action-item"><button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-agent-conversation-id="${escapeHtml(agent.id)}" data-action="click->workspace-presentation#selectAgent"><span class="fixed-shell-agent-icon">${icon("agent")}</span>${actionItemLabel(agent.title)}</button>${agent.close ? selectorCloseForm(agent.close) : ""}</div>`).join("")}</div>`
-    : `<div class="fixed-shell-workspace-title"><strong>${escapeHtml(presentation.workspace.title)}</strong></div>`;
+    ? `<div class="fixed-shell-agent-conversations" role="tablist" aria-label="Agent conversations">${presentation.agentConversations.map((agent) => `<div class="fixed-shell-agent-conversation action-item"><button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-agent-conversation-id="${escapeHtml(agent.id)}" data-action="click->workspace-presentation#selectAgent">${agentIcon}${actionItemLabel(agent.title)}</button>${agent.close ? selectorCloseForm(agent.close) : ""}</div>`).join("")}</div>`
+    : `<div class="fixed-shell-workspace-title">${agentIcon}<strong>${escapeHtml(presentation.workspace.title)}</strong></div>`;
   const panes = presentation.agentConversations.map((agent) => renderLiveNode(`agent:${agent.id}`, "agent", agent.id, agent.bodyHtml, presentation.preserveLiveKeys)).join("");
   const agentActions = (presentation.commands ?? []).filter((command) => command.placement === "agent-action").map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button class="button secondary icon-only" type="submit" title="${escapeHtml(command.label)}" aria-label="${escapeHtml(command.label)}">${icon("plus")}</button></form>`).join("");
   const parkWorkspace = `<form class="fixed-shell-park-workspace" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/park" data-action="submit->workspace-navigation#parkWorkspace"><button class="button secondary icon-only" type="submit" title="Park workspace" aria-label="Park workspace">${icon("park")}</button></form>`;
