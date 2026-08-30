@@ -969,7 +969,7 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("applies a reconnect snapshot and continued stream without losing a working-history position or composer draft", async () => {
+  test("preserves working history through reconnect and follows the tail after sending", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "reconnect-agent", title: "Reconnect Agent" },
       agentConversations: [agentConversation("reconnect-agent", "agent-live")],
@@ -1014,10 +1014,11 @@ Comment: I don't think we need these tests`;
     }, turboStream("update", "reconnect-agent_agent-live_transcript", transcriptHtml("Snapshot")));
 
     const transcript = page.locator("#reconnect-agent_agent-live_transcript");
-    await page.waitForFunction(() => {
-      const element = document.querySelector<HTMLElement>("#reconnect-agent_agent-live_transcript");
-      return element ? Math.abs(element.scrollTop - (element.scrollHeight - element.clientHeight)) < 2 : false;
+    const waitForTranscriptTail = () => page.waitForFunction(() => {
+      const element = document.querySelector<HTMLElement>("#reconnect-agent_agent-live_transcript")!;
+      return Math.abs(element.scrollTop - (element.scrollHeight - element.clientHeight)) < 2;
     });
+    await waitForTranscriptTail();
     const input = page.locator('[data-workspace-pane-id="agent-live"] textarea[name="text"]');
     await input.fill("Draft survives reconnect");
     await transcript.evaluate((element) => {
@@ -1044,6 +1045,12 @@ Comment: I don't think we need these tests`;
     await page.getByText("Continued live update").waitFor();
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     expect(await transcript.evaluate((element) => element.scrollTop)).toBe(120);
+
+    await page.locator(".agent-pane form").evaluate((form) => form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true })));
+    await waitForTranscriptTail();
+    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), turboStream("append", "reconnect-agent_agent-live_transcript", '<div class="agent-item" style="height: 240px">Continued after sending</div>'));
+    await page.getByText("Continued after sending").waitFor();
+    await waitForTranscriptTail();
     expect(await input.inputValue()).toBe("Draft survives reconnect");
     expect(await page.evaluate(() => localStorage.getItem('atelier.agentComposerText:["reconnect-agent","agent-live"]'))).toBe("Draft survives reconnect");
     // SAFETY: The controlled Cable fixture initializes this numeric counter before application startup.

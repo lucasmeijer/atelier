@@ -230,7 +230,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptEnd = nextEnd;
       this.updateTranscriptNavigation();
     };
-    private readonly userStartedTranscriptNavigation = (): void => {
+    private readonly clearTranscriptFollowingSuspension = (): void => {
       this.transcriptNavigationSuspendsFollowing = false;
     };
     private latestUserTranscriptItem(): HTMLElement | null {
@@ -268,7 +268,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private readonly positionForSelection = (): void => {
       const busy = this.element.querySelector<HTMLElement>(".agent-sendstop")!.dataset.agentBusy === "true";
       this.stuck = busy;
-      this.transcriptNavigationSuspendsFollowing = false;
+      this.clearTranscriptFollowingSuspension();
       this.selectionPosition = { busy };
       this.transcriptLayoutChanged();
     };
@@ -289,6 +289,9 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
         revision: this.composerRevision,
         attachmentIds: new FormData(this.formTarget).getAll("attachment").map(String),
       };
+      this.stuck = true;
+      this.clearTranscriptFollowingSuspension();
+      this.transcriptLayoutChanged();
     };
     connect(): void {
       this.transcriptLayoutObserver = new ResizeObserver(this.transcriptLayoutChanged);
@@ -300,10 +303,10 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptLayoutObserver.observe(this.element.querySelector<HTMLElement>(".composer")!);
       this.transcriptEnd = scrollEnd(this.transcriptTarget);
       this.transcriptTarget.addEventListener("scroll", this.onScroll);
-      this.transcriptTarget.addEventListener("wheel", this.userStartedTranscriptNavigation, { capture: true, passive: true });
-      this.transcriptTarget.addEventListener("touchstart", this.userStartedTranscriptNavigation);
-      this.transcriptTarget.addEventListener("pointerdown", this.userStartedTranscriptNavigation);
-      this.transcriptTarget.addEventListener("keydown", this.userStartedTranscriptNavigation);
+      this.transcriptTarget.addEventListener("wheel", this.clearTranscriptFollowingSuspension, { capture: true, passive: true });
+      this.transcriptTarget.addEventListener("touchstart", this.clearTranscriptFollowingSuspension);
+      this.transcriptTarget.addEventListener("pointerdown", this.clearTranscriptFollowingSuspension);
+      this.transcriptTarget.addEventListener("keydown", this.clearTranscriptFollowingSuspension);
       this.updateTranscriptNavigation();
       document.addEventListener("visibilitychange", this.onVisibilityChange);
       this.formTarget.addEventListener("submit", this.submitting);
@@ -322,10 +325,10 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.composerMutationObserver?.disconnect();
       cancelAnimationFrame(this.transcriptLayoutFrame);
       this.transcriptTarget.removeEventListener("scroll", this.onScroll);
-      this.transcriptTarget.removeEventListener("wheel", this.userStartedTranscriptNavigation, { capture: true });
-      this.transcriptTarget.removeEventListener("touchstart", this.userStartedTranscriptNavigation);
-      this.transcriptTarget.removeEventListener("pointerdown", this.userStartedTranscriptNavigation);
-      this.transcriptTarget.removeEventListener("keydown", this.userStartedTranscriptNavigation);
+      this.transcriptTarget.removeEventListener("wheel", this.clearTranscriptFollowingSuspension, { capture: true });
+      this.transcriptTarget.removeEventListener("touchstart", this.clearTranscriptFollowingSuspension);
+      this.transcriptTarget.removeEventListener("pointerdown", this.clearTranscriptFollowingSuspension);
+      this.transcriptTarget.removeEventListener("keydown", this.clearTranscriptFollowingSuspension);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
       this.formTarget.removeEventListener("submit", this.submitting);
       this.logicallyVisible = false;
