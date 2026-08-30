@@ -45,7 +45,6 @@ export interface WorkPaneContribution {
   key: string;
   label: string;
   kind: "resource" | "contextual";
-  mobileDestination: "direct" | "more";
   attentionSequence?: number;
   availability: WorkViewAvailability;
   /** Inline bodies are reserved for shell-level fixtures; module attachments use bodyUrl. */
@@ -81,17 +80,15 @@ export interface WorkspacePresentation {
   overlayHtml?: readonly string[];
 }
 
-type IconName = "agent" | "atelier" | "browser" | "close" | "code" | "desktop" | "file" | "files" | "more" | "panel" | "park" | "plus" | "review" | "settings" | "terminal" | "trash" | "workspace" | "x";
+type IconName = "agent" | "atelier" | "browser" | "code" | "desktop" | "files" | "more" | "panel" | "park" | "plus" | "review" | "settings" | "terminal" | "trash" | "workspace" | "x";
 
 function icon(name: IconName): string {
   const paths = {
     agent: '<path d="M9 4h6M12 4V2M6 8h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/>',
     atelier: '<path d="M12 3v4M7.5 21 12 7l4.5 14M6 18h12M4 13c4 1.5 7.5 1.8 11 .8 2-.6 3.7-.6 5-.2"/>',
     browser: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>',
-    close: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
     code: '<path d="m9 7-5 5 5 5m6-10 5 5-5 5"/>',
     desktop: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
-    file: '<path d="M7 3h7l4 4v14H7zM14 3v5h4"/>',
     files: '<path d="M4 5h6l2 2h8v12H4z"/>',
     panel: '<path d="M4 4h16v16H4zM15 4v16"/>',
     more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
@@ -344,7 +341,7 @@ function renderAvailability(view: WorkPaneContribution): string {
 }
 
 function renderWorkViewSelector(workspaceId: string, view: WorkPaneContribution): string {
-  const iconName = workViewTypeIcon(view.key.slice(0, view.key.indexOf(":")));
+  const iconName = workViewIcon(view);
   return `<div id="${workViewSelectorDomId(workspaceId, view.key)}" class="fixed-shell-work-view-selector action-item" draggable="true" data-work-view-reorder-key="${escapeHtml(view.key)}" data-action="dragstart->workspace-presentation#beginWorkReorder dragover->workspace-presentation#allowWorkReorder drop->workspace-presentation#finishWorkReorder">
     <button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}"${view.attentionSequence === undefined ? "" : ` data-attention-sequence="${view.attentionSequence}"`} ${fullscreenViewAttributes(view.sourceKey ?? view.key, view.label)} data-action="click->workspace-presentation#selectWorkView"><span class="fixed-shell-work-view-icon" data-icon="${iconName}">${icon(iconName)}</span>${actionItemLabel(view.label)}${view.attentionSequence === undefined ? "" : '<i class="status-dot attention action-item__status" aria-label="Attention"></i>'}</button>${view.close ? selectorCloseForm(view.close) : ""}
   </div>`;
@@ -390,6 +387,14 @@ export function workViewActionsDomId(workspaceId: string, key: string): string {
   return domId("work_view_actions", workspaceId, key);
 }
 
+function workViewType(view: WorkPaneContribution): string {
+  return view.key.slice(0, view.key.indexOf(":"));
+}
+
+function workViewIcon(view: WorkPaneContribution): IconName {
+  return workViewTypeIcon(workViewType(view));
+}
+
 function workViewTypeIcon(type: string): IconName {
   switch (type) {
     case "browser": return "browser";
@@ -423,51 +428,57 @@ function renderWorkPane(presentation: WorkspacePresentation): string {
   </section>`;
 }
 
-function mobileWorkIcon(view: WorkPaneContribution): IconName {
-  if (view.key.startsWith("browser:")) return "browser";
-  if (view.key.startsWith("terminal:")) return "terminal";
-  return "file";
-}
-
-function renderMobileDestination(label: string, destination: string, iconName: IconName, attention = false): string {
+function renderMobileDestination(label: string, destination: string, iconName: IconName, attention = false, workKey?: string): string {
   const escapedLabel = escapeHtml(label);
   const attentionHtml = attention ? '<i class="status-dot attention" aria-label="Attention"></i>' : "";
-  return `<button class="${mobileActionItemClasses}" type="button" aria-label="${escapedLabel}" title="${escapedLabel}" data-mobile-destination="${escapeHtml(destination)}" data-action="click->workspace-presentation#selectMobileDestination">${icon(iconName)}${attentionHtml}</button>`;
+  const workKeyAttribute = workKey === undefined ? "" : ` data-mobile-work-key="${escapeHtml(workKey)}"`;
+  return `<button class="${mobileActionItemClasses}" type="button" aria-label="${escapedLabel}" title="${escapedLabel}"${workKeyAttribute} data-mobile-destination="${escapeHtml(destination)}" data-action="click->workspace-presentation#selectMobileDestination">${icon(iconName)}${attentionHtml}</button>`;
 }
 
-function renderMobileDirectWorkViews(views: readonly WorkPaneContribution[]): string {
-  return views.filter((view) => view.mobileDestination === "direct").map((view) => renderMobileDestination(view.label, `work:${view.key}`, mobileWorkIcon(view), view.attentionSequence !== undefined)).join("");
+function mobileNavigationPriority(view: WorkPaneContribution): number {
+  const type = workViewType(view);
+  if (type === "browser") return 0;
+  if (type === "review") return 1;
+  return 2;
 }
 
-function renderMobileSecondaryWorkViews(views: readonly WorkPaneContribution[]): string {
-  return views.filter((view) => view.mobileDestination === "more").map((view) => `<button type="button" data-more-work-key="${escapeHtml(view.key)}" data-action="click->workspace-presentation#selectMoreWorkView">${escapeHtml(view.label)}${view.attentionSequence === undefined ? "" : '<i class="status-dot attention at-edge" aria-label="Attention"></i>'}</button>`).join("") || "<p>No secondary views are available.</p>";
+function renderMobileWorkViews(views: readonly WorkPaneContribution[]) {
+  const ordered = [...views].sort((left, right) => mobileNavigationPriority(left) - mobileNavigationPriority(right));
+  return {
+    destinations: ordered.map((view) => renderMobileDestination(view.label, `work:${view.key}`, workViewIcon(view), view.attentionSequence !== undefined, view.key)).join(""),
+    overflowItems: ordered.map((view) => {
+      const iconName = workViewIcon(view);
+      const attention = view.attentionSequence === undefined ? "" : '<i class="status-dot attention action-item__status" aria-label="Attention"></i>';
+      return `<button class="action-item action-item__primary" type="button" role="menuitemradio" aria-checked="false" hidden data-more-work-key="${escapeHtml(view.key)}" data-more-work-kind="${view.kind}" data-action="click->workspace-presentation#selectMoreWorkView"><span class="fixed-shell-work-view-icon" data-icon="${iconName}">${icon(iconName)}</span>${actionItemLabel(view.label)}${attention}</button>`;
+    }).join(""),
+  };
 }
 
 function renderMobileCloser(destination: string, close: ViewCloseAction): string {
-  return `<div data-more-close-destination="${escapeHtml(destination)}" hidden>${closeForm(close, '<button class="fixed-shell-more-close-current" type="submit">Close current view</button>')}</div>`;
+  return `<div data-more-close-destination="${escapeHtml(destination)}" hidden>${closeForm(close, `<button class="action-item action-item__primary is-danger" type="submit" role="menuitem"><span class="popup-menu__icon">${icon("x")}</span>${actionItemLabel("Close current view")}</button>`)}</div>`;
 }
 
 function renderMobileWorkViewCloser(view: WorkPaneContribution): string {
   return view.close ? renderMobileCloser(`work:${view.key}`, view.close) : "";
 }
 
+const mobileLauncherCommandIds = new Set(["files.create", "terminal.create", "terminal.attach", "browser.create", "vscode.open", "desktop.start"]);
+const mobileMoreAttentionHtml = '<i class="status-dot attention" aria-label="Hidden Attention" data-mobile-overflow-attention hidden></i>';
+
 function renderMobileNavigation(presentation: WorkspacePresentation): string {
   const agentsDestination = renderMobileDestination("Agents", "agents", "agent");
-  const direct = renderMobileDirectWorkViews(presentation.workViews);
-  const openSecondary = renderMobileSecondaryWorkViews(presentation.workViews);
-  const launcherCommands = new Set(["files.create", "terminal.create", "terminal.attach", "browser.create", "vscode.open", "desktop.open"]);
-  const launchers = (presentation.commands ?? []).filter((command) => launcherCommands.has(command.id)).map((command) => `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(presentation.workspace.id)}/commands/${encodeURIComponent(command.id)}"><button type="submit">${escapeHtml(command.label)}</button></form>`).join("");
+  const workViews = renderMobileWorkViews(presentation.workViews);
+  const launchers = (presentation.commands ?? []).filter((command) => mobileLauncherCommandIds.has(command.id)).map((command) => renderWorkLauncherCommand(command, presentation.workspace.id)).join("");
   const closers = presentation.workViews.map(renderMobileWorkViewCloser).join("");
-  const hiddenAttention = presentation.workViews.some((view) => view.mobileDestination === "more" && view.attentionSequence !== undefined);
+  const moreMenuId = workViewDomId(presentation.workspace.id, "mobile_more_menu");
   return `<nav class="fixed-shell-mobile-nav fixed-shell-resident-mobile-nav button-group" aria-label="Current workspace destinations">
-    <div class="fixed-shell-mobile-scroll button-group">${agentsDestination}<span id="${workViewDomId(presentation.workspace.id, "mobile_direct")}" class="fixed-shell-mobile-work-items button-group">${direct}</span></div>
-    <button class="fixed-shell-mobile-fixed ${mobileActionItemClasses}" type="button" aria-label="More" title="More" data-mobile-more data-action="click->workspace-presentation#toggleMore">${icon("more")}<span id="${workViewDomId(presentation.workspace.id, "mobile_more_attention")}">${hiddenAttention ? '<i class="status-dot attention" aria-label="Hidden Attention"></i>' : ""}</span></button>
-    <section class="fixed-shell-more-menu" data-workspace-presentation-target="moreMenu" aria-label="More" hidden>
-      <header><button type="button" class="fixed-shell-more-close" aria-label="Close More" data-action="click->workspace-presentation#toggleMore">${icon("close")}</button></header>
-      <div class="fixed-shell-more-section"><span id="${workViewDomId(presentation.workspace.id, "mobile_secondary")}" class="fixed-shell-mobile-work-items">${openSecondary}</span></div>
-      <div class="fixed-shell-more-section"><h2>Open or create</h2>${launchers}</div>
-      <div id="${workViewDomId(presentation.workspace.id, "mobile_closers")}" class="fixed-shell-more-section fixed-shell-more-close-section">${closers}</div>
-    </section>
+    <div class="fixed-shell-mobile-scroll button-group" data-mobile-overflow-container>${agentsDestination}<span id="${workViewDomId(presentation.workspace.id, "mobile_destinations")}" class="fixed-shell-mobile-work-items button-group">${workViews.destinations}</span></div>
+    <button class="fixed-shell-mobile-fixed ${mobileActionItemClasses}" type="button" aria-label="More" title="More" aria-haspopup="menu" aria-controls="${moreMenuId}" data-mobile-more data-action="click->workspace-presentation#toggleMore">${icon("more")}<span id="${workViewDomId(presentation.workspace.id, "mobile_more_attention")}">${mobileMoreAttentionHtml}</span></button>
+    <div id="${moreMenuId}" class="fixed-shell-more-menu popup-menu action-list" data-workspace-presentation-target="moreMenu" role="menu" aria-label="More" hidden>
+      <span id="${workViewDomId(presentation.workspace.id, "mobile_overflow")}" class="fixed-shell-mobile-work-items action-list">${workViews.overflowItems}</span>
+      ${launchers ? `<hr class="popup-menu__separator" data-mobile-overflow-separator hidden>${launchers}` : ""}
+      <div id="${workViewDomId(presentation.workspace.id, "mobile_closers")}" class="fixed-shell-more-close-section">${closers}</div>
+    </div>
   </nav>`;
 }
 
@@ -563,12 +574,6 @@ export function agentTabsTurboStream(presentation: WorkspacePresentation, option
   return streams.join("");
 }
 
-function renderMobileMoreAttention(views: readonly WorkPaneContribution[]): string {
-  return views.some((view) => view.mobileDestination === "more" && view.attentionSequence !== undefined)
-    ? '<i class="status-dot attention" aria-label="Hidden Attention"></i>'
-    : "";
-}
-
 export interface WorkViewsTurboStreamOptions {
   openedKey?: string;
   removedKey?: string;
@@ -580,12 +585,13 @@ export interface WorkViewsTurboStreamOptions {
 export function workViewsTurboStream(workspaceId: string, workViews: readonly WorkPaneContribution[], options: WorkViewsTurboStreamOptions = {}): string {
   const opened = options.openedKey === undefined ? undefined : workViews.find((view) => view.key === options.openedKey);
   if (options.openedKey !== undefined && !opened) throw new Error(`Opened Work view is missing from the presentation: ${options.openedKey}`);
+  const mobileWorkViews = renderMobileWorkViews(workViews);
   const streams = [
     turboStream("update", workViewDomId(workspaceId, "selectors"), renderWorkViewSelectors(workspaceId, workViews)),
-    turboStream("update", workViewDomId(workspaceId, "mobile_direct"), renderMobileDirectWorkViews(workViews)),
-    turboStream("update", workViewDomId(workspaceId, "mobile_secondary"), renderMobileSecondaryWorkViews(workViews)),
+    turboStream("update", workViewDomId(workspaceId, "mobile_destinations"), mobileWorkViews.destinations),
+    turboStream("update", workViewDomId(workspaceId, "mobile_overflow"), mobileWorkViews.overflowItems),
     turboStream("update", workViewDomId(workspaceId, "mobile_closers"), workViews.map(renderMobileWorkViewCloser).join("")),
-    turboStream("update", workViewDomId(workspaceId, "mobile_more_attention"), renderMobileMoreAttention(workViews)),
+    turboStream("update", workViewDomId(workspaceId, "mobile_more_attention"), mobileMoreAttentionHtml),
     ...workViews.flatMap((view) => [
       turboStream("update", workViewAvailabilityDomId(workspaceId, view.key), renderAvailability(view)),
       turboStream("update", workViewActionsDomId(workspaceId, view.key), view.actionsHtml ?? ""),

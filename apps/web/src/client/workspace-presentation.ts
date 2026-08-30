@@ -169,6 +169,7 @@ export function createWorkspacePresentationController(
     private preferredAgentWidth?: number;
     private resize?: { startX: number; startAgentWidth: number };
     private moreOpen = false;
+    private mobileNavigationLayoutFrame?: number;
     private draggedWorkKey?: string;
     private readonly invalidatedAgentGenerations = new Map<string, number>();
     private readonly invalidatedAgentReloads = new Map<string, Promise<void>>();
@@ -182,7 +183,10 @@ export function createWorkspacePresentationController(
       this.element.addEventListener("atelier:workspace-residency-hidden", this.residencyHidden);
       document.addEventListener("visibilitychange", this.documentVisibilityChanged);
       this.restorePreferences();
-      this.sizeObserver = new ResizeObserver(() => this.restorePreferences());
+      this.sizeObserver = new ResizeObserver(() => {
+        this.restorePreferences();
+        this.scheduleMobileNavigationLayout();
+      });
       this.sizeObserver.observe(this.element);
       this.normalizeState();
       this.applyDeepLink();
@@ -196,6 +200,7 @@ export function createWorkspacePresentationController(
       this.element.removeEventListener("atelier:workspace-residency-hidden", this.residencyHidden);
       document.removeEventListener("visibilitychange", this.documentVisibilityChanged);
       this.sizeObserver?.disconnect();
+      if (this.mobileNavigationLayoutFrame !== undefined) cancelAnimationFrame(this.mobileNavigationLayoutFrame);
       this.visiblePanes().forEach((pane) => this.emitHidden(pane));
     }
 
@@ -335,10 +340,11 @@ export function createWorkspacePresentationController(
 
     selectMoreWorkView(event: Event): void {
       // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
-      const key = (event.currentTarget as HTMLElement).dataset.moreWorkKey;
+      const item = event.currentTarget as HTMLElement;
+      const key = item.dataset.moreWorkKey;
       if (!key) return;
       this.moreOpen = false;
-      this.activateWorkView(key, true);
+      this.activateWorkView(key, item.dataset.moreWorkKind === "contextual");
     }
 
     toggleMore(): void {
@@ -511,12 +517,14 @@ export function createWorkspacePresentationController(
         const selected = destination.dataset.mobileDestination === this.state.phoneDestination;
         destination.setAttribute("aria-current", selected ? "page" : "false");
       });
-      const secondarySelected = this.state.phoneDestination.startsWith("work:") && !this.element.querySelector(`[data-mobile-destination="${CSS.escape(this.state.phoneDestination)}"]`);
+      this.element.querySelectorAll<HTMLElement>("[data-more-work-key]").forEach((item) => {
+        item.setAttribute("aria-checked", String(`work:${item.dataset.moreWorkKey}` === this.state.phoneDestination));
+      });
       const moreButton = this.element.querySelector<HTMLElement>("[data-mobile-more]");
-      moreButton?.setAttribute("aria-current", secondarySelected ? "page" : "false");
       moreButton?.setAttribute("aria-expanded", String(this.moreOpen));
       const moreMenu = this.element.querySelector<HTMLElement>("[data-workspace-presentation-target='moreMenu']");
       if (moreMenu) moreMenu.hidden = !this.moreOpen;
+      this.scheduleMobileNavigationLayout();
       this.element.querySelectorAll<HTMLElement>("[data-more-close-destination]").forEach((closer) => {
         closer.hidden = closer.dataset.moreCloseDestination !== this.state.phoneDestination;
       });
@@ -529,6 +537,40 @@ export function createWorkspacePresentationController(
       });
       if (options.emit) this.emitVisibilityChanges(before, after);
       if (options.focus && document.hasFocus()) this.focusActiveSurface();
+    }
+
+    private scheduleMobileNavigationLayout(): void {
+      if (this.mobileNavigationLayoutFrame !== undefined) cancelAnimationFrame(this.mobileNavigationLayoutFrame);
+      this.mobileNavigationLayoutFrame = requestAnimationFrame(() => {
+        this.mobileNavigationLayoutFrame = undefined;
+        this.layoutMobileNavigation();
+      });
+    }
+
+    private layoutMobileNavigation(): void {
+      if (!this.isPhone) return;
+      const container = this.element.querySelector<HTMLElement>("[data-mobile-overflow-container]");
+      if (!container) return;
+      const destinations = [...container.querySelectorAll<HTMLElement>("[data-mobile-work-key]")];
+      const overflowItems = new Map([...this.element.querySelectorAll<HTMLElement>("[data-more-work-key]")].map((item) => [item.dataset.moreWorkKey!, item]));
+      destinations.forEach((destination) => { destination.hidden = false; });
+      overflowItems.forEach((item) => { item.hidden = true; });
+
+      const overflowed: HTMLElement[] = [];
+      for (let index = destinations.length - 1; container.scrollWidth > container.clientWidth && index >= 0; index -= 1) {
+        const destination = destinations[index]!;
+        destination.hidden = true;
+        overflowed.push(destination);
+        overflowItems.get(destination.dataset.mobileWorkKey!)!.hidden = false;
+      }
+
+      const separator = this.element.querySelector<HTMLElement>("[data-mobile-overflow-separator]");
+      if (separator) separator.hidden = overflowed.length === 0;
+      const attention = this.element.querySelector<HTMLElement>("[data-mobile-overflow-attention]");
+      if (attention) attention.hidden = !overflowed.some((destination) => destination.querySelector(".status-dot.attention"));
+      const selectedDestination = destinations.find((destination) => destination.dataset.mobileDestination === this.state.phoneDestination);
+      const secondarySelected = selectedDestination?.hidden === true;
+      this.element.querySelector<HTMLElement>("[data-mobile-more]")?.setAttribute("aria-current", secondarySelected ? "page" : "false");
     }
 
     private visiblePanes(): PresentationPane[] {
@@ -626,7 +668,7 @@ export function createWorkspacePresentationController(
 
     private focusActiveSurface(): void {
       if (this.isPhone && this.moreOpen) {
-        this.element.querySelector<HTMLElement>("[data-more-work-key], .fixed-shell-more-section button")?.focus();
+        this.element.querySelector<HTMLElement>(".fixed-shell-more-menu [role='menuitem']:not([hidden]), .fixed-shell-more-menu [role='menuitemradio']:not([hidden])")?.focus();
         return;
       }
       const surface = this.visiblePanes().at(-1);

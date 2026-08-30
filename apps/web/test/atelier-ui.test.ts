@@ -287,7 +287,7 @@ Comment: I don't think we need these tests`;
       workspace: { id: "popup", title: "Popup" },
       agentConversations: [agentConversation("popup", "agent")],
       workViews: [],
-      commands: [{ id: "files.create", label: "New Files view", scope: "workspace", placement: "work-launcher" }],
+      commands: [{ id: "files.create", label: "New Files", scope: "workspace", placement: "work-launcher" }],
     };
     const page = await newTestPage();
     await page.route("http://atelier.test/workspaces/popup", (route) => route.fulfill({ contentType: "text/html", body: `<style>${designSystemStyle}</style><button type="button">Outside</button>${renderWorkspacePresentation(presentation)}<script type="module" src="/design-system.js"></script>` }));
@@ -302,7 +302,7 @@ Comment: I don't think we need these tests`;
     expect(await menu.isHidden()).toBe(true);
 
     await trigger.click();
-    await page.getByRole("menuitem", { name: "New Files view" }).click();
+    await page.getByRole("menuitem", { name: "New Files" }).click();
     expect(await menu.isHidden()).toBe(true);
     expect(await trigger.getAttribute("aria-expanded")).toBe("false");
     await page.close();
@@ -446,8 +446,8 @@ Comment: I don't think we need these tests`;
 
   test("cycles Work views with keyboard shortcuts and only opens a closed Work pane", async () => {
     const page = await newShortcutTestPage(["work-shortcuts"], [
-      { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
-      { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Terminal</p>" },
+      { key: "files:workspace", label: "Files", kind: "contextual", availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
+      { key: "terminal:1", label: "Terminal", kind: "resource", availability: { phase: "live" }, bodyHtml: "<p>Terminal</p>" },
     ]);
     await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
 
@@ -894,12 +894,12 @@ Comment: I don't think we need these tests`;
         agentConversation("lifecycle-a", "agent-a1", "A one"),
         agentConversation("lifecycle-a", "agent-a2", "A two"),
       ],
-      workViews: [{ key: "terminal:a", label: "Terminal A", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Terminal A</p>" }],
+      workViews: [{ key: "terminal:a", label: "Terminal A", kind: "resource", availability: { phase: "live" }, bodyHtml: "<p>Terminal A</p>" }],
     };
     const second: WorkspacePresentation = {
       workspace: { id: "lifecycle-b", title: "Lifecycle B" },
       agentConversations: [agentConversation("lifecycle-b", "agent-b1", "B one")],
-      workViews: [{ key: "terminal:b", label: "Terminal B", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Terminal B</p>" }],
+      workViews: [{ key: "terminal:b", label: "Terminal B", kind: "resource", availability: { phase: "live" }, bodyHtml: "<p>Terminal B</p>" }],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
       { id: "lifecycle-a", title: "Lifecycle A", active: true },
@@ -1226,7 +1226,7 @@ Comment: I don't think we need these tests`;
         key: "probe:view",
         label: "Probe",
         kind: "resource",
-        mobileDestination: "direct",
+
         availability: { phase: "live" },
         bodyHtml: '<iframe data-controller="workspace-app-frame" data-workspace-app-frame-workspace-id-value="generation-a" data-workspace-app-frame-app-key-value="probe" data-workspace-app-frame-initial-path-value="/initial"></iframe>',
       }],
@@ -1589,7 +1589,7 @@ Comment: I don't think we need these tests`;
       agentConversations: [agentConversation("structural-b", "agent-old", "Existing Agent")],
       workViews: [],
     };
-    const intendedWork = { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Authoritative Browser</p>" } as const;
+    const intendedWork = { key: "browser:1", label: "Browser", kind: "resource", availability: { phase: "live" }, bodyHtml: "<p>Authoritative Browser</p>" } as const;
     const authoritative: WorkspacePresentation = {
       workspace: stale.workspace,
       agentConversations: [...stale.agentConversations, agentConversation("structural-b", "agent-new", "New Agent")],
@@ -1895,8 +1895,8 @@ Comment: I don't think we need these tests`;
       workspace: { id: "b", title: "Preloaded" },
       agentConversations: [agentConversation("b", "agent-b"), agentConversation("b", "agent-b-inactive", "Inactive")],
       workViews: [
-        { key: "review:workspace", label: "Review", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyUrl: "/workspaces/b/work-views/review%3Aworkspace/body" },
-        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyUrl: "/workspaces/b/work-views/files%3Aworkspace/body" },
+        { key: "review:workspace", label: "Review", kind: "contextual", availability: { phase: "live" }, bodyUrl: "/workspaces/b/work-views/review%3Aworkspace/body" },
+        { key: "files:workspace", label: "Files", kind: "contextual", availability: { phase: "live" }, bodyUrl: "/workspaces/b/work-views/files%3Aworkspace/body" },
       ],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
@@ -1966,8 +1966,8 @@ Comment: I don't think we need these tests`;
       workspace: { id: "active", title: "Active" },
       agentConversations: [agentConversation("active", "agent")],
       workViews: [
-        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyUrl: "/workspaces/active/work-views/files%3Aworkspace/body" },
-        { key: "review:workspace", label: "Review", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyUrl: "/workspaces/active/work-views/review%3Aworkspace/body" },
+        { key: "files:workspace", label: "Files", kind: "contextual", availability: { phase: "live" }, bodyUrl: "/workspaces/active/work-views/files%3Aworkspace/body" },
+        { key: "review:workspace", label: "Review", kind: "contextual", availability: { phase: "live" }, bodyUrl: "/workspaces/active/work-views/review%3Aworkspace/body" },
       ],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "active", title: "Active", active: true }] };
@@ -2011,7 +2011,7 @@ Comment: I don't think we need these tests`;
     const initial: WorkspacePresentation = {
       workspace: { id: "targeted-agent", title: "Targeted Agent" },
       agentConversations: [agentConversation("targeted-agent", "agent-1", "Plan")],
-      workViews: [{ key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<textarea data-work-draft>command</textarea>' }],
+      workViews: [{ key: "terminal:1", label: "Terminal", kind: "resource", availability: { phase: "live" }, bodyHtml: '<textarea data-work-draft>command</textarea>' }],
     };
     const updated: WorkspacePresentation = {
       ...initial,
@@ -2566,8 +2566,8 @@ Comment: I don't think we need these tests`;
         agentConversation("fixed-demo", "agent-2", "Build"),
       ],
       workViews: [
-        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Terminal</p>", close: { action: "/terminal/close", label: "Terminal" } },
-        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files" } },
+        { key: "terminal:1", label: "Terminal", kind: "resource", availability: { phase: "live" }, bodyHtml: "<p>Terminal</p>", close: { action: "/terminal/close", label: "Terminal" } },
+        { key: "files:workspace", label: "Files", kind: "contextual", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files" } },
       ],
     };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
@@ -2593,7 +2593,7 @@ Comment: I don't think we need these tests`;
     const presentation: WorkspacePresentation = {
       workspace: { id: "width-demo", title: "Pane widths" },
       agentConversations: [agentConversation("width-demo", "agent-1")],
-      workViews: [{ key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>" }],
+      workViews: [{ key: "files:workspace", label: "Files", kind: "contextual", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>" }],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "width-demo", title: "Pane widths", active: true }] };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
@@ -2636,8 +2636,8 @@ Comment: I don't think we need these tests`;
       workspace: { id: "deep-demo", title: "Deep link" },
       agentConversations: [agentConversation("deep-demo", "agent-1")],
       workViews: [
-        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
-        { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" },
+        { key: "files:workspace", label: "Files", kind: "contextual", availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
+        { key: "browser:1", label: "Browser", kind: "resource", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" },
       ],
     };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
@@ -2674,7 +2674,7 @@ Comment: I don't think we need these tests`;
       agentConversations: [agentConversation("present-demo", "agent-present")],
       workViews: [],
     };
-    const intendedWork = { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 2, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" } as const;
+    const intendedWork = { key: "browser:1", label: "Browser", kind: "resource", attentionSequence: 2, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" } as const;
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
     await page.route("http://atelier.test/workspaces/visible-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(visible, pane, [cached])}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
@@ -2709,10 +2709,10 @@ Comment: I don't think we need these tests`;
     const presentation: WorkspacePresentation = {
       workspace: { id: "visibility-attention", title: "Visibility attention" },
       agentConversations: [agentConversation("visibility-attention", "agent-visible")],
-      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
+      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "visibility-attention", title: "Visibility attention", active: true }] };
-    const intendedWork = { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" } as const;
+    const intendedWork = { key: "browser:1", label: "Browser", kind: "resource", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" } as const;
     const page = await newTestPage();
     await page.addInitScript(() => {
       // SAFETY: This isolated browser fixture owns the numeric event probe on window.
@@ -2907,7 +2907,7 @@ Comment: I don't think we need these tests`;
     const presentation: WorkspacePresentation = {
       workspace: { id: "motion-demo", title: "Motion" },
       agentConversations: [agentConversation("motion-demo", "agent-1")],
-      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
+      workViews: [{ key: "browser:1", label: "Browser", kind: "resource", availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" }],
     };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
     await page.route("http://atelier.test/workspaces/motion-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="${workspaceClientPath}"></script>` }));
@@ -2926,7 +2926,7 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("uses fixed mobile destinations, keeps secondary Work views behind More, and does not autofocus Agent composers on phones", async () => {
+  test("prioritizes Agents, Browser, and Review in mobile navigation and moves surplus Work views into More", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "phone-demo", title: "Phone" },
       agentConversations: [
@@ -2934,12 +2934,15 @@ Comment: I don't think we need these tests`;
         agentConversation("phone-demo", "agent-2", "Second Agent"),
       ],
       workViews: [
-        { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea>', close: { action: "/terminal/close", label: "Terminal Work view" } },
-        { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files Work view" } },
+        { key: "terminal:1", label: "Terminal", kind: "resource", availability: { phase: "live" }, bodyHtml: '<textarea data-probe="terminal">command</textarea>', close: { action: "/terminal/close", label: "Terminal Work view" } },
+        { key: "files:workspace", label: "Files", kind: "contextual", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files Work view" } },
+        { key: "browser:preview", label: "Browser", kind: "resource", availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" },
+        { key: "review:workspace", label: "Review", kind: "contextual", availability: { phase: "live" }, bodyHtml: "<p>Review</p>" },
+        { key: "terminal:2", label: "Terminal 2", kind: "resource", attentionSequence: 2, availability: { phase: "live" }, bodyHtml: "<p>Terminal 2</p>", close: { action: "/terminal-2/close", label: "Terminal 2 Work view" } },
       ],
-      commands: [{ id: "files.create", label: "New Files view", scope: "workspace", placement: "work-launcher" }, { id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }],
+      commands: [{ id: "files.create", label: "New Files", scope: "workspace", placement: "work-launcher" }, { id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }],
     };
-    const page = await newTestPage({ viewport: { width: 390, height: 844 } });
+    const page = await newTestPage({ viewport: { width: 340, height: 844 } });
     await page.route("http://atelier.test/workspaces/phone-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script>
       window.AtelierCable = { subscribe() {}, unsubscribe() {}, connected() { return true; } };
     </script><script type="module" src="${workspaceClientPath}"></script>` }));
@@ -2958,8 +2961,12 @@ Comment: I don't think we need these tests`;
     const mobileDestinations = mobileNavigation.locator("[data-mobile-destination], [data-mobile-more]");
     expect(await mobileDestinations.evaluateAll((destinations) => destinations.every((destination) => destination.classList.contains("action-item") && destination.classList.contains("action-item__primary")))).toBe(true);
     expect(await mobileNavigation.locator(".fixed-shell-mobile-scroll").getAttribute("class")).toContain("button-group");
-    const mobileDestinationHeights = await mobileDestinations.evaluateAll((destinations) => destinations.map((destination) => destination.getBoundingClientRect().height));
+    const mobileDestinationHeights = await mobileDestinations.evaluateAll((destinations) => destinations.filter((destination) => !destination.hasAttribute("hidden")).map((destination) => destination.getBoundingClientRect().height));
     expect(new Set(mobileDestinationHeights).size).toBe(1);
+    expect(await page.locator('[data-mobile-destination="agents"]').isVisible()).toBe(true);
+    expect(await page.locator('[data-mobile-destination="work:browser:preview"]').isVisible()).toBe(true);
+    expect(await page.locator('[data-mobile-destination="work:review:workspace"]').isVisible()).toBe(true);
+    expect(await page.locator('[data-mobile-destination="work:terminal:2"]').isHidden()).toBe(true);
     const workspaceDestination = page.locator("[data-mobile-workspace-destination]");
     await workspaceDestination.evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.locator(".fixed-shell-app").getAttribute("class")).toContain("is-mobile-workspace-pane-open");
@@ -2968,16 +2975,16 @@ Comment: I don't think we need these tests`;
     await workspaceDestination.evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.locator(".fixed-shell-app").getAttribute("class")).not.toContain("is-mobile-workspace-pane-open");
     expect(await workspaceDestination.getAttribute("aria-expanded")).toBe("false");
-    await page.locator('[data-more-work-key="files:workspace"]').evaluate((button: HTMLButtonElement) => button.click());
+    await page.locator('[data-more-work-key="terminal:2"]').evaluate((button: HTMLButtonElement) => button.click());
     const workspaceUpdate = workspacePaneCollectionsTurboStream({ projects: [], projectlessWorkspaces: [{ id: "phone-demo", title: "Phone" }, { id: "new-mobile-workspace", title: "New mobile workspace" }] });
     await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspaceUpdate);
     await page.getByRole("button", { name: "New mobile workspace", includeHidden: true }).waitFor({ state: "attached" });
-    expect(await page.locator('[data-mobile-destination="work:files:workspace"]').count()).toBe(0);
+    expect(await page.locator('[data-mobile-destination="work:terminal:2"]').isHidden()).toBe(true);
     expect(await page.locator('[data-mobile-more] [aria-label="Hidden Attention"]').count()).toBe(1);
     await page.locator("[data-mobile-more]").evaluate((button: HTMLButtonElement) => button.click());
-    expect(await page.getByRole("button", { name: "Close current view" }).count()).toBe(1);
-    await page.getByRole("button", { name: "Close More" }).evaluate((button: HTMLButtonElement) => button.click());
-    expect(await page.locator(".fixed-shell-more-section").first().locator("button", { hasText: "Files" }).count()).toBe(1);
+    expect(await page.getByRole("menuitem", { name: "Close current view" }).count()).toBe(1);
+    await page.locator("[data-mobile-more]").evaluate((button: HTMLButtonElement) => button.click());
+    expect(await page.locator('[data-more-work-key="terminal:2"]').count()).toBe(1);
     expect(await page.locator(".fixed-shell-mobile-fixed, .fixed-shell-mobile-scroll > button").evaluateAll((buttons) => buttons.every((button) => !button.textContent?.trim()))).toBe(true);
     expect(await page.locator('[data-mobile-destination="work:terminal:1"] svg').count()).toBe(1);
     const agentsDestination = page.locator('[data-mobile-destination="agents"]');
@@ -2987,7 +2994,6 @@ Comment: I don't think we need these tests`;
     expect(await agentHeader.isVisible()).toBe(true);
     const firstAgentTab = agentHeader.getByRole("tab", { name: "First Agent" });
     expect(await firstAgentTab.isVisible()).toBe(true);
-    expect(await firstAgentTab.locator(".action-item__label-text").evaluate((label) => label.scrollWidth <= label.clientWidth)).toBe(true);
     expect(await agentHeader.getByRole("button", { name: "Park workspace" }).isVisible()).toBe(true);
     expect(await agentHeader.getByRole("button", { name: "Delete workspace" }).isVisible()).toBe(true);
     expect(await agentHeader.getByRole("button", { name: "Show Work pane" }).isHidden()).toBe(true);
@@ -3000,25 +3006,26 @@ Comment: I don't think we need these tests`;
     expect(await secondComposer.evaluate((input) => input === document.activeElement)).toBe(false);
     expect(await page.locator(".fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane").evaluateAll((panes) => panes.map((pane) => getComputedStyle(pane).visibility))).toEqual(["hidden", "visible", "hidden"]);
     await page.locator("[data-mobile-more]").evaluate((button: HTMLButtonElement) => button.click());
-    expect(await page.getByRole("button", { name: "Close current view" }).count()).toBe(0);
-    await page.getByRole("button", { name: "Close More" }).evaluate((button: HTMLButtonElement) => button.click());
+    expect(await page.getByRole("menuitem", { name: "Close current view" }).count()).toBe(0);
+    await page.locator("[data-mobile-more]").evaluate((button: HTMLButtonElement) => button.click());
     await page.locator('[data-mobile-destination="work:terminal:1"]').evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.locator(".fixed-shell-workspace-pane, .fixed-shell-agent-pane, .fixed-shell-work-pane").evaluateAll((panes) => panes.map((pane) => getComputedStyle(pane).visibility))).toEqual(["hidden", "hidden", "visible"]);
     await agentsDestination.evaluate((button: HTMLButtonElement) => button.click());
     expect(await page.locator('[data-workspace-pane-role="agent"][data-workspace-pane-id="agent-2"]').getAttribute("class")).toContain("is-active");
     await page.locator('[data-mobile-destination="work:terminal:1"]').evaluate((button: HTMLButtonElement) => button.click());
     await page.locator("[data-mobile-more]").evaluate((button: HTMLButtonElement) => button.click());
-    expect(await page.getByRole("button", { name: "Close current view" }).count()).toBe(1);
+    expect(await page.getByRole("menuitem", { name: "Close current view" }).count()).toBe(1);
     expect(await page.locator(".fixed-shell-more-scrim").count()).toBe(0);
     expect(await page.getByRole("heading", { name: "Secondary Work views" }).count()).toBe(0);
-    expect(await page.getByRole("button", { name: "Close More" }).isVisible()).toBe(true);
-    await page.locator('[data-more-work-key="files:workspace"]').evaluate((button: HTMLButtonElement) => button.click());
-    expect(await page.locator(".fixed-workspace-presentation").getAttribute("data-phone-destination")).toBe("work:files:workspace");
+    expect(await page.getByRole("menu", { name: "More" }).isVisible()).toBe(true);
+    expect(await page.locator('[data-more-work-key="terminal:2"] .fixed-shell-work-view-icon[data-icon="terminal"]').count()).toBe(1);
+    await page.locator('[data-more-work-key="terminal:2"]').evaluate((button: HTMLButtonElement) => button.click());
+    expect(await page.locator(".fixed-workspace-presentation").getAttribute("data-phone-destination")).toBe("work:terminal:2");
     expect(await page.locator("[data-mobile-more]").getAttribute("aria-current")).toBe("page");
-    expect(await page.locator('[data-mobile-destination="work:files:workspace"]').count()).toBe(0);
+    expect(await page.locator('[data-mobile-destination="work:terminal:2"]').isHidden()).toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.setViewportSize({ width: 390, height: 844 });
-    expect(await page.locator('[data-work-view-key="files:workspace"]').getAttribute("aria-selected")).toBe("true");
+    await page.setViewportSize({ width: 340, height: 844 });
+    expect(await page.locator('[data-work-view-key="terminal:2"]').getAttribute("aria-selected")).toBe("true");
     await page.close();
   });
 

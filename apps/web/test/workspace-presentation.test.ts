@@ -34,9 +34,9 @@ function fixture(overrides: Partial<WorkspacePresentation> = {}): WorkspacePrese
       { id: secondConversationId, title: "Second", bodyUrl: agentBodyUrl(secondConversationId) },
     ],
     workViews: [
-      { key: "terminal:one", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: '<div data-probe="terminal">Terminal</div>' },
-      { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", attentionSequence: 7, availability: { phase: "reconnecting", detail: "Reconnecting without replacing the listing." }, bodyHtml: '<div data-probe="files">Listing</div>' },
-      { key: "browser:preview", label: "Preview", kind: "resource", mobileDestination: "direct", availability: { phase: "unavailable", detail: "Preview exited.", recoveryHtml: "<button>Retry</button>" }, bodyHtml: "<iframe></iframe>" },
+      { key: "terminal:one", label: "Terminal", kind: "resource", availability: { phase: "live" }, bodyHtml: '<div data-probe="terminal">Terminal</div>' },
+      { key: "files:workspace", label: "Files", kind: "contextual", attentionSequence: 7, availability: { phase: "reconnecting", detail: "Reconnecting without replacing the listing." }, bodyHtml: '<div data-probe="files">Listing</div>' },
+      { key: "browser:preview", label: "Preview", kind: "resource", availability: { phase: "unavailable", detail: "Preview exited.", recoveryHtml: "<button>Retry</button>" }, bodyHtml: "<iframe></iframe>" },
     ],
     ...overrides,
   };
@@ -211,7 +211,7 @@ describe("role-fixed Workspace presentation", () => {
     const base = fixture();
     const html = renderWorkspacePresentation(fixture({ workViews: [
       ...base.workViews,
-      { key: "review:workspace", label: "Review", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyHtml: "<p>Review</p>" },
+      { key: "review:workspace", label: "Review", kind: "contextual", availability: { phase: "live" }, bodyHtml: "<p>Review</p>" },
     ] }));
     const selectors = html.slice(html.indexOf('aria-label="Work views"'), html.indexOf('</header>', html.indexOf('aria-label="Work views"')));
 
@@ -230,17 +230,17 @@ describe("role-fixed Workspace presentation", () => {
         { id: secondConversationId, title: "Second", bodyUrl: agentBodyUrl(secondConversationId), close },
       ],
       workViews: [
-        { key: "terminal:one", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Terminal</p>", close },
+        { key: "terminal:one", label: "Terminal", kind: "resource", availability: { phase: "live" }, bodyHtml: "<p>Terminal</p>", close },
       ],
     }));
 
-    expect(html.match(/fixed-shell-agent-conversation action-item/g)).toHaveLength(2);
-    expect(html).toContain('class="fixed-shell-work-view-selector action-item"');
-    expect(html.match(/class="action-item__label-text"/g)).toHaveLength(3);
-    expect(html.match(/class="fixed-shell-view-close action-item__action button danger icon-only"/g)).toHaveLength(3);
-    expect(html.match(/M6 6l12 12M18 6L6 18/g)).toHaveLength(3);
-    const mobileMore = html.slice(html.indexOf('class="fixed-shell-more-menu"'));
-    expect(mobileMore.match(/class="fixed-shell-more-close-current"/g)).toHaveLength(1);
+    const desktop = html.slice(0, html.indexOf('aria-label="Current workspace destinations"'));
+    expect(desktop.match(/fixed-shell-agent-conversation action-item/g)).toHaveLength(2);
+    expect(desktop).toContain('class="fixed-shell-work-view-selector action-item"');
+    expect(desktop.match(/class="fixed-shell-view-close action-item__action button danger icon-only"/g)).toHaveLength(3);
+    const mobileMore = html.slice(html.indexOf('role="menu" aria-label="More"'));
+    expect(mobileMore).toContain('role="menuitem"');
+    expect(mobileMore).toContain('Close current view');
   });
 
   test("renders expensive Work bodies as lazy hydration frames", () => {
@@ -248,7 +248,7 @@ describe("role-fixed Workspace presentation", () => {
       key: "review:workspace",
       label: "Review",
       kind: "contextual",
-      mobileDestination: "more",
+
       availability: { phase: "live" },
       bodyUrl: "/workspaces/workspace-1/work-views/review%3Aworkspace/body",
     }] }));
@@ -286,44 +286,47 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('data-attention-sequence="7"');
   });
 
-  test("renders phone Resource destinations and discovers Contextual views through More", () => {
-    const html = renderWorkspacePresentation(fixture());
+  test("renders every existing Work view for responsive mobile navigation with Browser and Review first", () => {
+    const base = fixture();
+    const html = renderWorkspacePresentation(fixture({ workViews: [
+      ...base.workViews,
+      { key: "review:workspace", label: "Review", kind: "contextual", availability: { phase: "live" }, bodyHtml: "<p>Review</p>" },
+    ] }));
 
-    expect(html).toContain('class="fixed-shell-mobile-nav fixed-shell-resident-mobile-nav button-group"');
-    expect(html).toContain('class="fixed-shell-mobile-scroll button-group"');
-    expect(html).toContain('class="fixed-shell-mobile-work-items button-group"');
-    expect(html).toContain('class="fixed-shell-mobile-fixed action-item action-item__primary"');
     expect(html).not.toContain('data-mobile-destination="workspace"');
-    expect(html).toContain('class="action-item action-item__primary" type="button" aria-label="Agents"');
-    expect(html).toContain('class="action-item action-item__primary" type="button" aria-label="Terminal"');
-    expect(html).toContain('data-mobile-destination="work:terminal:one"');
-    expect(html).toContain('data-mobile-destination="work:browser:preview"');
-    expect(html).not.toContain('data-mobile-destination="work:files:workspace"');
-    expect(html).toContain('aria-label="Terminal" title="Terminal" data-mobile-destination="work:terminal:one"');
-    expect(html).toContain('aria-label="Preview" title="Preview" data-mobile-destination="work:browser:preview"');
-    expect(html).toContain('aria-label="Agents" title="Agents" data-mobile-destination="agents"');
+    for (const destination of ["agents", "work:terminal:one", "work:browser:preview", "work:files:workspace", "work:review:workspace"]) {
+      expect(html).toContain(`data-mobile-destination="${destination}"`);
+    }
     expect(html.match(/data-mobile-destination="agents"/g)).toHaveLength(1);
     expect(html).not.toContain('data-mobile-destination="agent:');
-    expect(html).toContain('data-more-work-key="files:workspace"');
-    expect(html).toContain('aria-label="Hidden Attention"');
+    expect(html).toContain('role="menu" aria-label="More"');
+    expect(html).toContain('role="menuitemradio" aria-checked="false" hidden data-more-work-key="files:workspace"');
+    expect(html).toContain('aria-haspopup="menu"');
+    expect(html).toContain('aria-label="Hidden Attention" data-mobile-overflow-attention hidden');
+    const mobileDestinations = html.slice(html.indexOf('data-mobile-overflow-container'), html.indexOf('</div>', html.indexOf('data-mobile-overflow-container')));
+    expect(mobileDestinations.indexOf('data-mobile-destination="work:browser:preview"')).toBeLessThan(mobileDestinations.indexOf('data-mobile-destination="work:review:workspace"'));
+    expect(mobileDestinations.indexOf('data-mobile-destination="work:review:workspace"')).toBeLessThan(mobileDestinations.indexOf('data-mobile-destination="work:terminal:one"'));
+    expect(mobileDestinations.indexOf('data-mobile-destination="work:terminal:one"')).toBeLessThan(mobileDestinations.indexOf('data-mobile-destination="work:files:workspace"'));
     expect(html).not.toContain("fixed-shell-more-scrim");
   });
 
-  test("keeps the Files launcher available with secondary Work views", () => {
+  test("renders creation actions below the Work-view overflow candidates", () => {
     const html = renderWorkspacePresentation(fixture({
       workViews: fixture().workViews.filter((view) => view.key !== "files:workspace"),
       commands: [
-        { id: "files.create", label: "New Files view", scope: "workspace", placement: "work-launcher" },
+        { id: "files.create", label: "New Files", scope: "workspace", placement: "work-launcher" },
         { id: "browser.create", label: "New Browser", scope: "workspace", placement: "work-launcher" },
       ],
     }));
 
-    const more = html.slice(html.indexOf('class="fixed-shell-more-menu"'));
-    expect(more).not.toContain("Secondary Work views");
-    expect(more).toContain('aria-label="Close More"');
+    const more = html.slice(html.indexOf('class="fixed-shell-more-menu popup-menu action-list"'));
+    expect(more).toContain('role="menu" aria-label="More"');
+    expect(more).not.toContain("Open or create");
+    expect(more.indexOf('data-more-work-key="terminal:one"')).toBeLessThan(more.indexOf('/commands/files.create'));
     expect(more).toContain('/commands/files.create');
-    expect(more.indexOf('/commands/files.create')).toBeGreaterThan(more.indexOf("Open or create"));
-    expect(more.indexOf('/commands/browser.create')).toBeGreaterThan(more.indexOf("Open or create"));
+    expect(more).toContain('class="action-item__label-text">New Files</span>');
+    expect(more).toContain('/commands/browser.create');
+    expect(more).toContain('class="action-item__label-text">New Browser</span>');
   });
 
   test("inserts one newly opened Work view without replacing the Workspace presentation", () => {
@@ -335,7 +338,7 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('action="append" target="fixed_workspace_workspace-1_bodies"');
     expect(html).toContain('data-workspace-pane-id="browser:preview"');
     expect(html).not.toContain('data-probe="terminal"');
-    expect(html).toContain('target="fixed_workspace_workspace-1_mobile_direct"');
+    expect(html).toContain('target="fixed_workspace_workspace-1_mobile_destinations"');
   });
 
   test("targets the deleted Workspace's resident presentation", () => {
