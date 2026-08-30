@@ -24,6 +24,8 @@ describe("transcript rendering", () => {
     expect(html).toContain("agent-completions");
     expect(html).toContain('data-action="submit-&gt;transcription-composer#submit turbo:submit-end-&gt;agent-pane#submitted click-&gt;agent-pane#focusInput"');
     expect(html).toContain('data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged"');
+    expect(html).toContain('enterkeyhint="send"');
+    expect(html).toContain("data-mobile-editing-region");
     expect(html).toContain('aria-label="Jump to beginning of latest message"');
     expect(html).toContain('data-agent-pane-target="sendStop"');
   });

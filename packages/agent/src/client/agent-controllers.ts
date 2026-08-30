@@ -50,6 +50,20 @@ function isSubmitShortcut(event: KeyboardEvent): boolean {
   return event.key === "Enter" && (event.metaKey || event.ctrlKey);
 }
 
+function isPhoneViewport(): boolean {
+  return window.matchMedia(phoneViewportMediaQuery).matches;
+}
+
+function isPhoneKeyboardSubmit(event: KeyboardEvent): boolean {
+  return event.key === "Enter"
+    && !event.metaKey
+    && !event.ctrlKey
+    && !event.altKey
+    && !event.shiftKey
+    && !event.isComposing
+    && isPhoneViewport();
+}
+
 type StimulusApplication = {
   getControllerForElementAndIdentifier(element: Element, identifier: string): WorkspaceClientController | null;
 };
@@ -370,8 +384,9 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       const completionMenuOpen = Boolean(this.element.querySelector(".agent-completion-menu-host:not([hidden])"));
       if (!completionMenuOpen && this.promptHistory.keydown(event, this.inputTarget, () => this.userPrompts())) return;
 
-      // Enter inserts a newline; ⌘/Ctrl+Enter sends (or follow-ups when busy).
-      if (isSubmitShortcut(event)) {
+      // Desktop Enter inserts a newline and ⌘/Ctrl+Enter sends. On phones,
+      // the keyboard's unmodified Send key submits; Shift+Enter still inserts a newline.
+      if (isSubmitShortcut(event) || (!completionMenuOpen && isPhoneKeyboardSubmit(event))) {
         event.preventDefault();
         if (this.inputTarget.value.trim() || this.formTarget.querySelector(".agent-chip")) {
           const submitter = this.formTarget.querySelector<HTMLButtonElement>('button[value="send"], button[value="steer"]');
@@ -453,7 +468,8 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.formTarget.querySelectorAll(".agent-chip").forEach((chip) => chip.remove());
       this.stuck = true;
       this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
-      this.inputTarget.focus();
+      if (isPhoneViewport()) this.inputTarget.blur();
+      else this.inputTarget.focus();
     }
   };
 }
@@ -1531,7 +1547,7 @@ function focusAgentPaneComposer(pane?: AgentPaneComposerContainer | null): boole
 
 export function focusAgentPaneComposerOnWideViewport(
   pane?: AgentPaneComposerContainer | null,
-  isPhone = window.matchMedia(phoneViewportMediaQuery).matches,
+  isPhone = isPhoneViewport(),
   documentFocused = document.hasFocus(),
 ): boolean {
   return documentFocused && !isPhone && focusAgentPaneComposer(pane);

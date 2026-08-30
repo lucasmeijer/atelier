@@ -213,7 +213,7 @@ async function renderAgentPaneFrame(ctx: AgentRenderContext, agent: WorkspaceAge
 
 export function renderAgentPanePromptInput(ctx: AgentRenderContext, initialText = ""): string {
   const placeholder = "Write your prompt here";
-  return `<textarea id="${ids.input(ctx)}" class="composer-input" name="text" rows="2" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(placeholder)}" data-agent-pane-target="input" data-agent-completions-target="input" data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged">${escapeHtml(initialText)}</textarea>`;
+  return `<textarea id="${ids.input(ctx)}" class="composer-input" name="text" rows="2" enterkeyhint="send" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(placeholder)}" data-agent-pane-target="input" data-agent-completions-target="input" data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged">${escapeHtml(initialText)}</textarea>`;
 }
 
 interface SharedComposerRenderOptions {
@@ -286,7 +286,8 @@ async function renderSharedComposer(options: SharedComposerRenderOptions): Promi
   const textarea = options.ctx && options.formTarget
     ? renderAgentPanePromptInput(options.ctx, options.initialText ?? "")
     : `<textarea${options.inputId ? ` id="${escapeHtml(options.inputId)}"` : ""} class="composer-input" name="text" rows="${options.rows ?? 2}" placeholder="${escapeHtml(options.placeholder)}" aria-label="${escapeHtml(options.placeholder)}"${inputTarget ? ` ${inputTarget}` : ""}${inputActions}>${escapeHtml(options.initialText ?? "")}</textarea>`;
-  return `<div class="composer ${options.kind === "agent-pane" ? "agent-pane-composer" : "launch-composer"}"${promptAttrs ? ` ${promptAttrs}` : ""}>
+  const mobileEditingRegion = options.kind === "agent-pane" ? " data-mobile-editing-region" : "";
+  return `<div class="composer ${options.kind === "agent-pane" ? "agent-pane-composer" : "launch-composer"}"${mobileEditingRegion}${promptAttrs ? ` ${promptAttrs}` : ""}>
         ${composerOverlays ? `<div class="agent-pane-composer-overlays">${composerOverlays}</div>` : ""}
         <div class="composer-surface">
           ${options.suggestionHtml ?? ""}

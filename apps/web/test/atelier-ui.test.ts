@@ -974,6 +974,72 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("hides mobile navigation while the Agent composer is focused", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "mobile-compose", title: "Mobile compose" },
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<div data-mobile-editing-region><textarea aria-label="Agent prompt"></textarea></div>' }],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "mobile-compose", title: "Mobile compose", active: true }] };
+    const page = await newTestPage({ viewport: { width: 390, height: 844 } });
+    await page.route("http://atelier.test/workspaces/mobile-compose", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("**/workspaces/mobile-compose/active", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/mobile-compose");
+
+    const input = page.getByRole("textbox", { name: "Agent prompt" });
+    const globalNavigation = page.locator(".fixed-shell-global-mobile-nav");
+    expect(await globalNavigation.isVisible()).toBe(true);
+
+    await input.focus();
+    expect(await globalNavigation.isVisible()).toBe(false);
+
+    await input.evaluate((textarea: HTMLTextAreaElement) => textarea.blur());
+    expect(await globalNavigation.isVisible()).toBe(true);
+    await page.close();
+  });
+
+  test("uses the phone keyboard Send key to submit the Agent composer", async () => {
+    const agentBody = `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="phone-send" data-agent-pane-label-value="Agent">
+      <div class="agent-transcript" data-agent-pane-target="transcript"></div>
+      <div class="composer agent-pane-composer" data-mobile-editing-region>
+        <form method="post" action="/send" data-agent-pane-target="form" data-action="turbo:submit-end->agent-pane#submitted">
+          <textarea class="composer-input" aria-label="Agent prompt" enterkeyhint="send" data-agent-pane-target="input" data-action="keydown->agent-pane#inputKeydown input->agent-pane#promptChanged"></textarea>
+          <button class="agent-sendstop" type="submit" name="mode" value="send" data-agent-pane-target="sendStop" data-agent-busy="false">Send</button>
+        </form>
+      </div>
+    </div>`;
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "phone-send", title: "Phone send" },
+      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: agentBody }],
+      workViews: [],
+    };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "phone-send", title: "Phone send", active: true }] };
+    const page = await newTestPage({ viewport: { width: 900, height: 844 } });
+    await page.route("http://atelier.test/workspaces/phone-send", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("**/workspaces/phone-send/active", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/send", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/workspaces/phone-send");
+
+    const input = page.locator(".composer-input");
+    await input.fill("Desktop line");
+    await input.press("Enter");
+    await input.pressSequentially("Desktop continuation");
+    expect(await input.inputValue()).toBe("Desktop line\nDesktop continuation");
+
+    await input.fill("First line");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await input.press("Shift+Enter");
+    await input.pressSequentially("Second line");
+    expect(await input.inputValue()).toBe("First line\nSecond line");
+
+    const send = page.waitForResponse((response) => new URL(response.url()).pathname === "/send");
+    await input.press("Enter");
+    const response = await send;
+    expect(response.request().postData()).toContain("mode=send");
+    await page.waitForFunction(() => !document.activeElement?.classList.contains("composer-input"));
+    await page.close();
+  });
+
   test("keeps global mobile navigation available for a provisioning resident", async () => {
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "starting", title: "Starting", active: true, busy: true }] };
     const shell = renderShellResidents(pane, '<div class="workspace-detail-resident workspace-boot visible" data-workspace-residency-target="resident" data-workspace-id="starting"><p>Preparing workspace…</p></div>');
