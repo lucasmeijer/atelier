@@ -1,10 +1,8 @@
-import { escapeHtml, progressButtonHtml, turboStream, turboStreamResponse, type SettingsContribution, type WorkspaceModule, type WorkspaceServerModuleContext } from "@atelier/shared";
+import { activityButtonHtml, destructiveConfirmationHtml, escapeHtml, progressButtonHtml, turboStream, turboStreamResponse, type SettingsContribution, type WorkspaceModule, type WorkspaceServerModuleContext } from "@atelier/shared";
 import { pollIntervalMs, updaterPort, updateSidebarContributionId } from "./constants.ts";
-import { isReleaseChannel, targetImageForChannel, type ReleaseChannel } from "./channels.ts";
+import { targetImageForChannel, type ReleaseChannel } from "./channels.ts";
 import { detectSelfUpdateRuntime, dockerExec, pullChannelImage, type DockerExec, type PullProgress, type SelfUpdateRuntime } from "./docker.ts";
 import { fetchChannelImageMetadata, type ImageMetadata } from "./registry.ts";
-import { fetchReleaseNotes } from "./release-notes.ts";
-import { readStoredReleaseChannel, writeStoredReleaseChannel } from "./settings-store.ts";
 
 export type UpdateState = "idle" | "checking" | "available" | "incompatible" | "pulling" | "ready_to_restart" | "failed" | "restarting";
 
@@ -13,7 +11,6 @@ export interface StateSnapshot {
   percent?: number;
   error?: string;
   selfUpdatable: boolean;
-  currentRevision?: string;
   target?: ImageMetadata;
   releaseChannel: ReleaseChannel;
   compatibilityMismatch: boolean;
@@ -23,7 +20,6 @@ export interface UpdateManagerDeps {
   detectRuntime?: () => Promise<SelfUpdateRuntime | undefined>;
   fetchMetadata?: (channel: ReleaseChannel) => Promise<ImageMetadata>;
   pullImage?: (channel: ReleaseChannel, onProgress: (progress: PullProgress) => void) => Promise<void>;
-  fetchNotes?: (currentSha: string | undefined, stableSha: string | undefined) => Promise<string>;
   docker?: DockerExec;
   checkUpdaterPortAvailable?: () => Promise<void>;
   waitForUpdater?: (url: string) => Promise<void>;
@@ -41,14 +37,13 @@ export class UpdateManager {
   private pullPromise: Promise<void> | undefined;
   private pulledDigest: string | undefined;
   private restarting = false;
-  private releaseNotesHtml: string | undefined;
 
   constructor(private readonly deps: UpdateManagerDeps = {}) {}
 
   async initialize(context: WorkspaceServerModuleContext): Promise<void> {
     this.context = context;
     this.runtime = await (this.deps.detectRuntime ?? detectSelfUpdateRuntime)();
-    if (this.runtime) this.releaseChannel = await readStoredReleaseChannel() ?? this.runtime.releaseChannel;
+    if (this.runtime) this.releaseChannel = this.runtime.releaseChannel;
     this.updateSidebar();
     if (!this.runtime) return;
     await this.checkNow();
@@ -62,15 +57,12 @@ export class UpdateManager {
   }
 
   snapshot(): StateSnapshot {
-    return { state: this.state, percent: this.percent, error: this.error, selfUpdatable: Boolean(this.runtime), currentRevision: this.runtime?.currentRevision, target: this.target, releaseChannel: this.releaseChannel, compatibilityMismatch: this.hasCompatibilityMismatch() };
-  }
-
-  private visible(): boolean {
-    return Boolean(this.runtime) && this.state !== "idle" && this.state !== "checking";
+    return { state: this.state, percent: this.percent, error: this.error, selfUpdatable: Boolean(this.runtime), target: this.target, releaseChannel: this.releaseChannel, compatibilityMismatch: this.hasCompatibilityMismatch() };
   }
 
   private updateSidebar(): void {
-    this.context?.globalSidebarContributions.set(updateSidebarContributionId, this.visible() ? renderSidebarRow(this.snapshot()) : undefined, {
+    const sidebarHtml = renderSidebarRow(this.snapshot());
+    this.context?.globalSidebarContributions.set(updateSidebarContributionId, sidebarHtml || undefined, {
       broadcastHtml: updateSettingsStream(this),
     });
   }
@@ -96,7 +88,6 @@ export class UpdateManager {
     if (this.state === "idle") this.setState("checking");
     const target = await (this.deps.fetchMetadata ?? fetchChannelImageMetadata)(channel);
     this.target = target;
-    this.releaseNotesHtml = undefined;
     const current = this.runtime.currentRevision ?? this.runtime.currentDigest;
     const remote = target.revision ?? target.digest;
     const available = Boolean(remote && current && remote !== current);
@@ -104,20 +95,8 @@ export class UpdateManager {
     if (!available) this.setState("idle");
     else if (incompatible) this.setState("incompatible");
     else if (this.state === "idle" || this.state === "checking" || this.state === "incompatible") this.setState("available");
-    else if (this.state === "ready_to_restart" && this.pulledDigest !== target.digest) await this.startPull();
+    else if (this.state === "ready_to_restart" && this.pulledDigest !== target.digest) this.setState("available");
     else this.updateSidebar();
-  }
-
-  async setReleaseChannel(channel: ReleaseChannel): Promise<void> {
-    if (!this.runtime) throw new Error("Atelier is not running in a self-updatable Docker container");
-    if (this.pullPromise || this.restarting) throw new Error("Cannot switch release channels while an update is in progress");
-    if (this.releaseChannel === channel) return await this.checkNow();
-    await writeStoredReleaseChannel(channel);
-    this.releaseChannel = channel;
-    this.target = undefined;
-    this.releaseNotesHtml = undefined;
-    this.setState("checking");
-    await this.checkNow();
   }
 
   async startPull(): Promise<void> {
@@ -152,12 +131,6 @@ export class UpdateManager {
         return;
       }
     }
-  }
-
-  async releaseNotes(): Promise<string> {
-    if (this.releaseNotesHtml) return this.releaseNotesHtml;
-    this.releaseNotesHtml = await (this.deps.fetchNotes ?? fetchReleaseNotes)(this.runtime?.currentRevision, this.target?.revision);
-    return this.releaseNotesHtml;
   }
 
   async launchUpdater(url: URL): Promise<Response> {
@@ -230,63 +203,51 @@ async function waitForUpdater(url: string): Promise<void> {
 
 const manager = new UpdateManager();
 
-const updateSpinnerHtml = `<i class="activity-spinner" aria-hidden="true"></i>`;
-
-interface UpdateStatusText {
-  label: string;
-  detail: string;
+function renderCheckForm(hidden = false): string {
+  return `<form class="update-check-result__check" method="post" action="/update/check-now" data-turbo="true"${hidden ? " hidden" : ""}><button class="button secondary" type="submit">Check now</button></form>`;
 }
 
-function updateStatusText(snapshot: StateSnapshot): UpdateStatusText {
-  if (!snapshot.selfUpdatable) return { label: "Self-update unavailable", detail: "Atelier is not running in a managed Docker install." };
-  if (snapshot.state === "checking") return { label: "Checking for updates…", detail: `Checking the ${snapshot.releaseChannel} channel.` };
-  if (snapshot.state === "idle") return { label: "Up to date", detail: `Atelier is up to date on the ${snapshot.releaseChannel} channel.` };
-  if (snapshot.state === "available") return { label: "Update available", detail: `A newer ${snapshot.releaseChannel} build is available.` };
-  if (snapshot.state === "incompatible") return { label: "Installer required", detail: "This release changes how Atelier is hosted and needs the installer to be run again." };
-  if (snapshot.state === "pulling") return { label: "Pulling update…", detail: snapshot.percent === undefined ? "Downloading the update." : `Downloading the update (${snapshot.percent}%).` };
-  if (snapshot.state === "ready_to_restart") return { label: "Restart required", detail: "The update has been downloaded and is ready to install." };
-  if (snapshot.state === "failed") return { label: "Update failed", detail: snapshot.error ?? "The update failed." };
-  return { label: "Restarting", detail: "Atelier is restarting to finish the update." };
-}
-
-function renderUpdateDownloadButton(snapshot: StateSnapshot): string {
+function renderDownloadControl(snapshot: StateSnapshot): string {
+  if (snapshot.state !== "pulling") return '<form method="post" action="/update/start" data-turbo="true"><button class="button primary" type="submit">Download Update</button></form>';
   return progressButtonHtml({
-    initialHtml: snapshot.state === "failed" ? "Retry update" : "Update Atelier",
-    inProgressHtml: `${updateSpinnerHtml}Updating Atelier…`,
-    state: snapshot.state === "pulling" ? "in-progress" : "initial",
-    progress: snapshot.state === "pulling" ? snapshot.percent ?? 1 : 0,
-    variant: snapshot.state === "failed" ? "danger" : "primary",
-    type: "submit",
+    initialHtml: "Download Update",
+    inProgressHtml: "Download Update",
+    state: "in-progress",
+    progress: snapshot.percent ?? 1,
+    variant: "primary",
   });
 }
 
-function renderUpdateSettings(updateManager: UpdateManager): string {
+function renderRestartForm(): string {
+  const confirmation = destructiveConfirmationHtml({
+    buttonHtml: '<button class="button primary" type="button">Restart to update</button>',
+    confirmCaption: "Restart to update",
+    cancelCaption: "Cancel",
+    variant: "primary",
+  });
+  return `<form class="update-restart-form" method="post" action="/update/restart" data-turbo="false" data-controller="update-restart" data-action="submit->update-restart#submit">${confirmation}</form>`;
+}
+
+function renderCurrentCheckResult(): string {
+  return `<div class="update-check-result" data-controller="update-check-result"><span class="button secondary update-check-result__result is-arriving" role="status">You're up to date</span>${renderCheckForm(true)}</div>`;
+}
+
+function renderUpdateControl(snapshot: StateSnapshot): string {
+  if (snapshot.state === "checking") return activityButtonHtml({ initialHtml: "Check now", activeHtml: "Check now", state: "active", variant: "secondary", disabled: true });
+  if (!snapshot.selfUpdatable || snapshot.state === "idle") return renderCheckForm();
+  if (snapshot.state === "available" || snapshot.state === "failed" || snapshot.state === "incompatible" || snapshot.state === "pulling") return renderDownloadControl(snapshot);
+  if (snapshot.state === "ready_to_restart") return renderRestartForm();
+  return activityButtonHtml({ initialHtml: "Restart to update", activeHtml: "Restart to update", state: "active", variant: "primary", disabled: true });
+}
+
+function renderUpdateSettings(updateManager: UpdateManager, checked = false): string {
   const snapshot = updateManager.snapshot();
-  const status = updateStatusText(snapshot);
-  const controlsDisabled = !snapshot.selfUpdatable || snapshot.state === "pulling" || snapshot.state === "restarting";
-  const channelToggle = `<form class="button-toggle" role="group" aria-label="Update channel" method="post" action="/settings/update-channel" data-turbo="true">${(["stable", "latest"] as const).map((channel) => `<button class="button-toggle__option" type="submit" name="channel" value="${channel}" aria-pressed="${snapshot.releaseChannel === channel}"${controlsDisabled ? " disabled" : ""}>${channel === "stable" ? "Stable" : "Latest"}</button>`).join("")}</form>`;
-  const checkButton = progressButtonHtml({
-    initialHtml: "Check now",
-    inProgressHtml: `${updateSpinnerHtml}Checking…`,
-    state: snapshot.state === "checking" ? "in-progress" : "initial",
-    progress: snapshot.state === "checking" ? 1 : 0,
-    variant: "secondary",
-    type: "submit",
-    disabled: controlsDisabled,
-  });
-  const checkNow = `<form method="post" action="/update/check-now" data-turbo="true">${checkButton}</form>`;
-  const updateAction = snapshot.state === "available" || snapshot.state === "failed" || snapshot.state === "pulling"
-    ? `<form method="post" action="/update/start" data-turbo="true">${renderUpdateDownloadButton(snapshot)}</form>`
-    : snapshot.state === "incompatible"
-      ? `<form method="get" action="/update/installer-required" data-turbo="true"><button class="button primary" type="submit">Show installer command</button></form>`
-      : snapshot.state === "ready_to_restart"
-        ? `<form method="get" action="/update/restart-confirm" data-turbo="true"><button class="button primary" type="submit">Restart to update</button></form>`
-        : "";
-  return `<section class="settings-sec settings-sec-inline update-settings-row" id="settings-sec-update"><div><h2>Updates</h2><p class="settings-sub">${escapeHtml(status.label)} — ${escapeHtml(status.detail)}</p></div><div class="settings-provider-actions">${checkNow}${channelToggle}${updateAction}</div></section>`;
+  const control = checked && snapshot.selfUpdatable && snapshot.state === "idle" ? renderCurrentCheckResult() : renderUpdateControl(snapshot);
+  return `<section class="settings-sec update-settings-control" id="settings-sec-update"><h2>Updates</h2>${control}</section>`;
 }
 
-function updateSettingsStream(updateManager: UpdateManager): string {
-  return turboStream("replace", "settings-sec-update", renderUpdateSettings(updateManager), { method: "morph" });
+function updateSettingsStream(updateManager: UpdateManager, checked = false): string {
+  return turboStream("replace", "settings-sec-update", renderUpdateSettings(updateManager, checked), { method: "morph" });
 }
 
 const updateSettingsContribution: SettingsContribution = {
@@ -294,58 +255,11 @@ const updateSettingsContribution: SettingsContribution = {
   label: "Updates",
   order: 15,
   render: async () => renderUpdateSettings(manager),
-  async handleAction({ request, url }) {
-    if (url.pathname !== "/settings/update-channel" || request.method !== "POST") return undefined;
-    if (!manager.snapshot().selfUpdatable) return turboStreamResponse(updateSettingsStream(manager));
-    const form = await request.formData();
-    const channel = String(form.get("channel") ?? "");
-    if (!isReleaseChannel(channel)) throw new Error(`unsupported release channel: ${channel}`);
-    await manager.setReleaseChannel(channel);
-    return turboStreamResponse(updateSettingsStream(manager));
-  },
 };
 
 export function renderSidebarRow(snapshot: StateSnapshot): string {
-  const whatsNew = `<span title="Release notes are not yet implemented"><button class="button secondary" type="button" disabled>What’s new</button></span>`;
-  const left = snapshot.state === "incompatible"
-    ? `<form method="get" action="/update/installer-required" data-turbo="true"><button class="button secondary" type="submit">Installer required</button></form>`
-    : snapshot.state === "ready_to_restart"
-      ? `<form method="get" action="/update/restart-confirm" data-turbo="true"><button class="button primary" type="submit">Restart to update</button></form>`
-      : snapshot.state === "restarting"
-        ? progressButtonHtml({ initialHtml: "Restart Atelier", inProgressHtml: `${updateSpinnerHtml}Restarting Atelier…`, state: "in-progress", progress: 1, variant: "primary" })
-        : `<form method="post" action="/update/start" data-turbo="true">${renderUpdateDownloadButton(snapshot)}</form>`;
-  return `<section class="update-sidebar-section"><div id="update_sidebar_row" class="update-sidebar-row"><div class="update-sidebar-primary">${left}</div>${whatsNew}</div></section>`;
-}
-
-function renderWhatsNewModal(autoShow = true): string {
-  return `<dialog id="whats-new-modal" class="dialog dialog--sheet settings-dialog update-whats-new-dialog" data-controller="modal"${autoShow ? ` data-modal-auto-show-value="true"` : ""}>
-  <div class="settings-sheet"><main class="settings-main">
-    <button class="settings-close button secondary icon-only" type="button" title="Close what’s new" aria-label="Close what’s new" data-action="modal#close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-    <div class="settings-title">Changes since your current version</div>
-    <section class="settings-sec update-notes-sec">
-      <turbo-frame id="update_whats_new_notes" src="/update/whats-new/notes">
-        <div class="update-notes-loading" role="status" aria-live="polite">
-          <i class="activity-spinner" aria-hidden="true"></i>
-          <div><b>Preparing what’s new…</b><p>Comparing releases can take a moment. The notes will appear here when they’re ready.</p></div>
-        </div>
-      </turbo-frame>
-    </section>
-  </main></div>
-</dialog>`;
-}
-
-async function renderWhatsNewNotes(updateManager: UpdateManager): Promise<string> {
-  return `<turbo-frame id="update_whats_new_notes">${await updateManager.releaseNotes()}</turbo-frame>`;
-}
-
-function renderRestartModal(): string {
-  return `<dialog id="restart-update-modal" class="dialog dialog--compact update-restart-modal" data-controller="modal" data-modal-auto-show-value="true">
-  <form class="dialog__form" method="post" action="/update/restart" data-turbo="false" data-controller="update-restart" data-action="submit->update-restart#submit">
-    <header class="dialog__header"><h2 class="title">Restart Atelier to finish updating?</h2></header>
-    <div class="dialog__body"><p>Active agent sessions and terminal connections will be interrupted. Your projects, workspaces, and containers will remain in place.</p><p data-update-restart-status role="status" aria-live="polite">Atelier should be back in a few seconds.</p></div>
-    <footer class="dialog__actions button-group"><button class="button secondary" type="button" data-update-restart-cancel data-action="modal#close">Cancel</button>${progressButtonHtml({ initialHtml: "Restart Atelier", inProgressHtml: `${updateSpinnerHtml}Preparing restart…`, state: "initial", variant: "primary", type: "submit", id: "update_restart_submit" })}</footer>
-  </form>
-</dialog>`;
+  if (!snapshot.selfUpdatable || snapshot.state === "idle" || snapshot.state === "checking") return "";
+  return `<section class="update-sidebar-section"><div id="update_sidebar_row" class="update-sidebar-row">${renderUpdateControl(snapshot)}</div></section>`;
 }
 
 function renderRestartErrorModal(message: string): string {
@@ -390,12 +304,8 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
     }
     if (url.pathname === "/update/check-now" && request.method === "POST") {
       await updateManager.checkNow();
-      return turboStreamResponse(updateSettingsStream(updateManager));
+      return turboStreamResponse(updateSettingsStream(updateManager, true));
     }
-    if (url.pathname === "/update/whats-new" && request.method === "GET") return modalStream(renderWhatsNewModal());
-    if (url.pathname === "/update/whats-new/notes" && request.method === "GET") return new Response(await renderWhatsNewNotes(updateManager), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
-    if (url.pathname === "/update/installer-required" && request.method === "GET") return modalStream(renderInstallerRequiredModal(updateManager));
-    if (url.pathname === "/update/restart-confirm" && request.method === "GET") return modalStream(renderRestartModal());
     if (url.pathname === "/update/restart" && request.method === "POST") {
       if (!wantsTurboStream(request)) return await updateManager.launchUpdater(url);
       try {

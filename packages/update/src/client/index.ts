@@ -9,6 +9,24 @@ declare global {
 export const atelierClientModule: WorkspaceClientModule = {
   id: "atelier-update",
   install({ application, Controller }) {
+    class UpdateCheckResultController extends Controller {
+      declare readonly element: HTMLElement;
+      private timer?: ReturnType<typeof setTimeout>;
+
+      connect(): void {
+        const result = this.element.querySelector<HTMLElement>(".update-check-result__result")!;
+        const check = this.element.querySelector<HTMLFormElement>(".update-check-result__check")!;
+        this.timer = setTimeout(() => {
+          result.hidden = true;
+          check.hidden = false;
+        }, 3_000);
+      }
+
+      disconnect(): void {
+        clearTimeout(this.timer);
+      }
+    }
+
     class UpdateRestartController extends Controller {
       declare readonly element: HTMLFormElement;
       async submit(event: SubmitEvent): Promise<void> {
@@ -16,15 +34,14 @@ export const atelierClientModule: WorkspaceClientModule = {
         const theme = document.documentElement.dataset.theme ?? localStorage.getItem("atelier.theme") ?? "";
         const action = new URL(this.element.action, window.location.href);
         if (theme) action.searchParams.set("theme", theme);
-        const submit = this.element.querySelector<HTMLButtonElement>("#update_restart_submit")!;
-        const cancel = this.element.querySelector<HTMLButtonElement>("[data-update-restart-cancel]")!;
-        const status = this.element.querySelector<HTMLElement>("[data-update-restart-status]")!;
-        submit.dataset.progressState = "in-progress";
-        submit.style.setProperty("--button-progress", "1");
+        const submit = this.element.querySelector<HTMLButtonElement>(".destructive-confirmation__action")!;
+        const cancel = this.element.querySelector<HTMLButtonElement>(".destructive-confirmation__cancel")!;
+        const spinner = document.createElement("i");
+        spinner.className = "activity-spinner";
+        submit.prepend(spinner);
         submit.setAttribute("aria-busy", "true");
         submit.disabled = true;
         cancel.disabled = true;
-        status.textContent = "Starting the update helper. This can take a few seconds…";
 
         try {
           const response = await fetch(action, { method: "POST", headers: { Accept: "text/vnd.turbo-stream.html" }, credentials: "same-origin" });
@@ -35,16 +52,15 @@ export const atelierClientModule: WorkspaceClientModule = {
           }
           window.Turbo!.renderStreamMessage(await response.text());
         } catch {
-          submit.dataset.progressState = "initial";
-          submit.style.setProperty("--button-progress", "0");
+          spinner.remove();
           submit.removeAttribute("aria-busy");
           submit.disabled = false;
           cancel.disabled = false;
-          status.textContent = "The connection was interrupted. Atelier may still be restarting; wait a few seconds, then try restarting again or refresh this page.";
         }
       }
     }
 
+    application.register("update-check-result", UpdateCheckResultController);
     application.register("update-restart", UpdateRestartController);
   },
 };

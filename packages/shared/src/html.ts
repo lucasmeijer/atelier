@@ -15,13 +15,15 @@ interface DestructiveConfirmationOptions {
   buttonHtml: string;
   confirmCaption: string;
   cancelCaption: string;
+  variant?: "primary" | "danger";
   formAction?: string;
 }
 
-/** Adds a pointer-safe destructive confirmation to a caller-owned button inside a caller-owned form. */
+/** Adds a pointer-safe consequential-action confirmation to a caller-owned button inside a caller-owned form. */
 export function destructiveConfirmationHtml(options: DestructiveConfirmationOptions): string {
   const formAction = options.formAction ? ` formaction="${escapeHtml(options.formAction)}"` : "";
-  return `<div class="destructive-confirmation"><div class="destructive-confirmation__trigger">${options.buttonHtml}</div><div class="destructive-confirmation__decision" inert><button class="button danger destructive-confirmation__action" type="submit"${formAction}>${escapeHtml(options.confirmCaption)}</button><button class="button secondary destructive-confirmation__cancel" type="button">${escapeHtml(options.cancelCaption)}</button></div></div>`;
+  const variant = options.variant ?? "danger";
+  return `<div class="destructive-confirmation"><div class="destructive-confirmation__trigger">${options.buttonHtml}</div><div class="destructive-confirmation__decision" inert><button class="button ${variant} destructive-confirmation__action" type="submit"${formAction}>${escapeHtml(options.confirmCaption)}</button><button class="button secondary destructive-confirmation__cancel" type="button">${escapeHtml(options.cancelCaption)}</button></div></div>`;
 }
 
 interface ProgressButtonBase {

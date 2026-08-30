@@ -1,12 +1,8 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { createAtelierEventBus } from "@atelier/core";
 import { dockerContainerInspect, dockerImageInspect, parseContainerIdFromCgroup, parseContainerIdFromMountInfo, parseDockerPullEventLine, replacementCreateArgs, serverHealthUrlFromInspect, type DockerInspect, type SelfUpdateRuntime } from "../../src/server/docker.ts";
 import { createUpdateRouteHandler, renderSidebarRow, UpdateManager } from "../../src/server/index.ts";
 import { parseWwwAuthenticate, selectManifestFromIndex, fetchChannelImageMetadata } from "../../src/server/registry.ts";
-import { fetchReleaseNotes, releaseNoteFilenames, renderMarkdown } from "../../src/server/release-notes.ts";
 
 describe("self container parsing", () => {
   test("preserves container config needed to detect a managed install", async () => {
@@ -216,46 +212,35 @@ describe("registry helpers", () => {
   });
 });
 
-describe("release notes", () => {
-  test("includes only added markdown release notes in filename order", () => {
-    expect(releaseNoteFilenames([
-      { filename: "release_notes/assets/demo.mp4", status: "added" },
-      { filename: "release_notes/002.md", status: "modified" },
-      { filename: "release_notes/003.md", status: "added" },
-      { filename: "release_notes/001.md", status: "added" },
-      { filename: "docs/release_notes/000.md", status: "added" },
-    ])).toEqual(["release_notes/001.md", "release_notes/003.md"]);
-  });
-
-  test("fetches added release notes from compare API and raw GitHub", async () => {
-    const fetcher = async (input: URL | RequestInfo) => {
-      const url = String(input);
-      if (url.includes("/compare/old...new")) return Response.json({ files: [
-        { filename: "release_notes/002.md", status: "added" },
-        { filename: "release_notes/assets/demo.mp4", status: "added" },
-        { filename: "release_notes/001.md", status: "added" },
-        { filename: "release_notes/changed.md", status: "modified" },
-      ] });
-      if (url.endsWith("/release_notes/001.md")) return new Response("# One");
-      if (url.endsWith("/release_notes/002.md")) return new Response("# Two");
-      throw new Error(`unexpected fetch ${url}`);
-    };
-    const html = await fetchReleaseNotes("old", "new", fetcher);
-    expect(html.indexOf("<h1>One</h1>")).toBeLessThan(html.indexOf("<h1>Two</h1>"));
-    expect(html).not.toContain("changed");
-  });
-
-  test("renders safe markdown and rewrites relative video media", () => {
-    const html = renderMarkdown(`# Hello\n\n<script>x</script>\n\n- one\n- ![Demo](./assets/demo.mp4)\n\n[site](https://example.com) [unsafe](javascript:alert)`, "release_notes/001.md", "abc123");
-    expect(html).toContain("<h1>Hello</h1>");
-    expect(html).toContain("&lt;script&gt;x&lt;/script&gt;");
-    expect(html).toContain("<ul><li>one</li><li><video controls playsinline src=\"https://raw.githubusercontent.com/lucasmeijer/atelier/abc123/release_notes/assets/demo.mp4\"");
-    expect(html).toContain('<a href="https://example.com"');
-    expect(html).not.toContain("javascript:");
-  });
-});
-
 describe("update state machine", () => {
+  test("keeps Check now available in Settings while hiding the unmanaged Workspace contribution", async () => {
+    const { ctx, sidebar, broadcasts } = context();
+    const manager = new UpdateManager({ detectRuntime: async () => undefined, setInterval: noInterval() });
+    await manager.initialize(ctx);
+    expect(sidebar.at(-1)).toBe("");
+    expect(broadcasts.at(-1)).toContain("<h2>Updates</h2>");
+    expect(broadcasts.at(-1)).toContain(">Check now</button>");
+  });
+
+  test("checking and current settings use the same compact check button", async () => {
+    const { ctx, sidebar, broadcasts } = context();
+    const gate = deferred<{ digest: string; revision: string }>();
+    let checks = 0;
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime("old"),
+      fetchMetadata: async () => checks++ === 0 ? { digest: "sha256:old-digest", revision: "old" } : await gate.promise,
+      setInterval: noInterval(),
+    });
+    await manager.initialize(ctx);
+    expect(broadcasts.at(-1)).toContain(">Check now</button>");
+    const checking = manager.checkNow();
+    expect(broadcasts.at(-1)).toContain('class="button secondary activity-button"');
+    expect(broadcasts.at(-1)).toContain('data-activity-content="active">Check now');
+    expect(sidebar.at(-1)).toBe("");
+    gate.resolve({ digest: "sha256:new", revision: "new" });
+    await checking;
+  });
+
   test("idle -> available -> pulling -> ready", async () => {
     const { ctx, sidebar } = context();
     const manager = new UpdateManager({
@@ -282,7 +267,7 @@ describe("update state machine", () => {
     });
     await manager.initialize(ctx);
     expect(manager.snapshot()).toMatchObject({ state: "incompatible", compatibilityMismatch: true });
-    expect(sidebar.join("\n")).toContain("Installer required");
+    expect(sidebar.join("\n")).toContain("Download Update");
     await expect(manager.startPull()).rejects.toThrow("installer");
     const response = await createUpdateRouteHandler(manager)(new Request("http://atelier.test/update/start", { method: "POST" }), new URL("http://atelier.test/update/start"));
     expect(await response!.text()).toContain("curl -fsSL https://lucasmeijer.com/get-atelier | sudo bash");
@@ -331,8 +316,8 @@ describe("update state machine", () => {
     expect(pulls).toBe(1);
   });
 
-  test("ready state auto-pulls a newer stable digest", async () => {
-    const { ctx } = context();
+  test("a newer digest discovered after downloading becomes available for an explicit download", async () => {
+    const { ctx, sidebar } = context();
     const metadata = [{ digest: "sha256:new1", revision: "new1" }, { digest: "sha256:new2", revision: "new2" }];
     let pulls = 0;
     const manager = new UpdateManager({
@@ -344,8 +329,9 @@ describe("update state machine", () => {
     await manager.initialize(ctx);
     await manager.startPull();
     await manager.checkNow();
-    expect(pulls).toBe(2);
-    expect(manager.snapshot().state).toBe("ready_to_restart");
+    expect(pulls).toBe(1);
+    expect(manager.snapshot()).toMatchObject({ state: "available", target: { digest: "sha256:new2" } });
+    expect(sidebar.at(-1)).toContain("Download Update");
   });
 
   test("pulls a newer digest discovered while the previous digest is downloading", async () => {
@@ -369,34 +355,6 @@ describe("update state machine", () => {
     await pulling;
     expect(pulls).toBe(2);
     expect(manager.snapshot()).toMatchObject({ state: "ready_to_restart", target: { digest: "sha256:new2" } });
-  });
-
-  test("switching release channels invalidates status and persists the selected target", async () => {
-    const previousDataDir = process.env.ATELIER_DATA_DIR;
-    const dataDir = await mkdtemp(join(tmpdir(), "atelier-update-test-"));
-    process.env.ATELIER_DATA_DIR = dataDir;
-    try {
-      const { ctx } = context();
-      const channels: string[] = [];
-      const manager = new UpdateManager({
-        detectRuntime: async () => runtime("old"),
-        fetchMetadata: async (channel) => {
-          channels.push(channel);
-          return channel === "stable" ? { digest: "sha256:old-digest", revision: "old" } : { digest: "sha256:new", revision: "new" };
-        },
-        setInterval: noInterval(),
-      });
-      await manager.initialize(ctx);
-      expect(manager.snapshot()).toMatchObject({ state: "idle", releaseChannel: "stable" });
-      await manager.setReleaseChannel("latest");
-      expect(channels).toEqual(["stable", "latest"]);
-      expect(manager.snapshot()).toMatchObject({ state: "available", releaseChannel: "latest" });
-      expect(await readFile(join(dataDir, "update.json"), "utf8")).toContain('"releaseChannel": "latest"');
-    } finally {
-      if (previousDataDir === undefined) delete process.env.ATELIER_DATA_DIR;
-      else process.env.ATELIER_DATA_DIR = previousDataDir;
-      await rm(dataDir, { recursive: true, force: true });
-    }
   });
 
   test("restart launches updater once and redirects to https port 81 with theme", async () => {
@@ -444,40 +402,15 @@ describe("update state machine", () => {
 });
 
 describe("update routes", () => {
-  test("disables the what's new button until release notes are implemented", () => {
-    const html = renderSidebarRow({ state: "idle", selfUpdatable: true, releaseChannel: "stable", compatibilityMismatch: false });
-
-    expect(html).toContain('<span title="Release notes are not yet implemented">');
-    expect(html).toContain('<button class="button secondary" type="button" disabled>What’s new</button>');
-  });
-
-  test("renders what-new and restart modal turbo streams", async () => {
-    const { ctx } = context();
-    const manager = new UpdateManager({
-      detectRuntime: async () => runtime("old"),
-      fetchMetadata: async () => ({ digest: "sha256:new", revision: "new" }),
-      fetchNotes: async () => "<section>notes</section>",
-      setInterval: noInterval(),
-    });
-    await manager.initialize(ctx);
-    const route = createUpdateRouteHandler(manager);
-    const whatsNew = await route(new Request("http://test/update/whats-new"), new URL("http://test/update/whats-new"));
-    const whatsNewText = await whatsNew!.text();
-    expect(whatsNewText).toContain("Changes since your current version");
-    expect(whatsNewText).toContain("Preparing what’s new…");
-    expect(whatsNewText).toContain("src=\"/update/whats-new/notes\"");
-    expect(whatsNewText).not.toContain("<section>notes</section>");
-    const notes = await route(new Request("http://test/update/whats-new/notes"), new URL("http://test/update/whats-new/notes"));
-    expect(await notes!.text()).toContain("<section>notes</section>");
-    const restart = await route(new Request("http://test/update/restart-confirm"), new URL("http://test/update/restart-confirm"));
-    const text = await restart!.text();
-    expect(text).toContain("Restart Atelier to finish updating?");
-    expect(text).toContain("Active agent sessions and terminal connections will be interrupted");
-    expect(text).toContain("data-update-restart-status");
-    expect(text).toContain('id="update_restart_submit"');
-    expect(text).toContain('data-progress-content="initial">Restart Atelier');
-    expect(text).toContain('data-progress-content="in-progress"><i class="activity-spinner"');
-    expect(text).not.toContain("<section>notes</section>");
+  test("renders a Workspace pane button only while an update needs action", () => {
+    const snapshot = { selfUpdatable: true, releaseChannel: "stable" as const, compatibilityMismatch: false };
+    expect(renderSidebarRow({ ...snapshot, state: "idle" })).toBe("");
+    expect(renderSidebarRow({ ...snapshot, state: "checking" })).toBe("");
+    expect(renderSidebarRow({ ...snapshot, state: "available" })).toContain(">Download Update</button>");
+    const restart = renderSidebarRow({ ...snapshot, state: "ready_to_restart" });
+    expect(restart).toContain('method="post" action="/update/restart"');
+    expect(restart).toContain('class="destructive-confirmation"');
+    expect(restart).toContain(">Restart to update</button>");
   });
 
   test("restart route returns a turbo redirect target after launching the helper", async () => {
@@ -539,6 +472,22 @@ describe("update routes", () => {
     expect(manager.snapshot().state).toBe("ready_to_restart");
   });
 
+  test("check-now route briefly renders an inert current result beside a hidden Check now action", async () => {
+    const { ctx } = context();
+    const manager = new UpdateManager({
+      detectRuntime: async () => runtime("old"),
+      fetchMetadata: async () => ({ digest: "sha256:old-digest", revision: "old" }),
+      setInterval: noInterval(),
+    });
+    await manager.initialize(ctx);
+    const route = createUpdateRouteHandler(manager);
+    const response = await route(new Request("http://test/update/check-now", { method: "POST" }), new URL("http://test/update/check-now"));
+    const html = await response!.text();
+    expect(html).toContain('data-controller="update-check-result"');
+    expect(html).toContain('role="status">You\'re up to date</span>');
+    expect(html).toContain('action="/update/check-now" data-turbo="true" hidden');
+  });
+
   test("check-now route refreshes update status", async () => {
     const { ctx } = context();
     const metadata = [{ digest: "sha256:old-digest", revision: "old" }, { digest: "sha256:new", revision: "new" }];
@@ -553,12 +502,9 @@ describe("update routes", () => {
     const response = await route(new Request("http://test/update/check-now", { method: "POST" }), new URL("http://test/update/check-now"));
     expect(response!.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
     const html = await response!.text();
-    expect(html).toContain("Update available");
-    expect(html).toContain('role="group" aria-label="Update channel"');
-    expect(html).toContain('name="channel" value="stable" aria-pressed="true"');
-    expect(html).toContain('name="channel" value="latest" aria-pressed="false"');
-    expect(html).toContain('class="button secondary progress-button"');
-    expect(html).toContain('class="button primary progress-button"');
+    expect(html).toContain(">Download Update</button>");
+    expect(html).not.toContain("Update available");
+    expect(html).not.toContain("Update channel");
     expect(manager.snapshot().state).toBe("available");
   });
 
