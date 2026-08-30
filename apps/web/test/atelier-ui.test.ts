@@ -1127,6 +1127,48 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("shrinks Agent tabs before header actions and scrolls clipped names on hover", async () => {
+    const close = { action: "/agents/close", label: "agent" };
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "agent-tabs", title: "Agent tabs" },
+      agentConversations: [
+        { ...agentConversation("agent-tabs", "agent-one", "First agent with a deliberately long name"), close },
+        { ...agentConversation("agent-tabs", "agent-two", "Second agent with another deliberately long name"), close },
+        { ...agentConversation("agent-tabs", "agent-three", "Third agent with an exceptionally long name"), close },
+        { ...agentConversation("agent-tabs", "agent-four", "Fourth agent with one more deliberately long name"), close },
+      ],
+      workViews: [],
+      commands: [{ id: "agent.create", label: "New agent", scope: "workspace", placement: "agent-action" }],
+    };
+    const page = await newTestPage({ viewport: { width: 760, height: 500 }, reducedMotion: "no-preference" });
+    await page.route("http://atelier.test/workspaces/agent-tabs", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<style>${workspaceStyle}</style><style>.fixed-shell-app { --fixed-workspace-width: 150px; }</style>${renderShellFixture(presentation, { projects: [], projectlessWorkspaces: [{ id: "agent-tabs", title: "Agent tabs", active: true }] })}<script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.goto("http://atelier.test/workspaces/agent-tabs");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+
+    const header = page.locator(".fixed-shell-agent-pane > header");
+    const tabs = header.locator(".fixed-shell-agent-conversation");
+    const geometry = await header.evaluate((element) => {
+      const headerBox = element.getBoundingClientRect();
+      const navigationBox = element.querySelector(".fixed-shell-agent-navigation")!.getBoundingClientRect();
+      const actionBox = element.querySelector(".fixed-shell-agent-actions")!.getBoundingClientRect();
+      return { actionsFit: actionBox.right <= headerBox.right, tabsStopBeforeActions: navigationBox.right <= actionBox.left };
+    });
+    expect(geometry).toEqual({ actionsFit: true, tabsStopBeforeActions: true });
+    expect(await tabs.evaluateAll((items) => items.every((item) => {
+      const label = item.querySelector<HTMLElement>(".action-item__label")!;
+      const text = item.querySelector<HTMLElement>(".action-item__label-text")!;
+      return text.scrollWidth > label.clientWidth;
+    }))).toBe(true);
+
+    const firstTab = tabs.first();
+    await firstTab.hover();
+    expect(await firstTab.evaluate((item) => item.classList.contains("is-label-scrolling"))).toBe(true);
+    await page.close();
+  });
+
   test("renders active preparation as a modifier on Workspace Attention across sidebar replacement", async () => {
     const current: WorkspacePresentation = {
       workspace: { id: "a", title: "Current" },

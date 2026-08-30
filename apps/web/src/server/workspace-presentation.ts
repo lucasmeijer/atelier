@@ -328,7 +328,7 @@ function renderAgentActions(presentation: WorkspacePresentation): string {
 function renderAgentPane(presentation: WorkspacePresentation): string {
   const panes = presentation.agentConversations.map((agent) => renderAgentPaneSlot(presentation.workspace.id, agent)).join("");
   return `<section class="fixed-shell-agent-pane" data-workspace-role-region="agent" data-workspace-presentation-target="agentPane" aria-label="Agent">
-    <header>${topBarButton("Show Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", "panel", "data-show-workspace-pane")}<div id="${agentNavigationDomId(presentation.workspace.id)}">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions button-group">${renderAgentActions(presentation)}</div></header>
+    <header>${topBarButton("Show Workspace pane", "click->workspace-navigation#toggleDesktopWorkspacePane", "panel", "data-show-workspace-pane")}<div id="${agentNavigationDomId(presentation.workspace.id)}" class="fixed-shell-agent-navigation">${renderAgentNavigation(presentation)}</div><div id="${agentActionsDomId(presentation.workspace.id)}" class="fixed-shell-agent-actions button-group">${renderAgentActions(presentation)}</div></header>
     <div id="${agentBodiesDomId(presentation.workspace.id)}" class="fixed-shell-agent-bodies">${panes}</div>
   </section>`;
 }
