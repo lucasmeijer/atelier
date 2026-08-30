@@ -194,6 +194,7 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
 
     private renderTranscript(): void {
       setTextInputValue(this.input, joinedTranscript(this.prefix, this.committed, this.partial));
+      this.input.scrollTop = this.input.scrollHeight;
     }
 
     private animateWaveform(): void {

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { chromium, type Browser, type BrowserContext } from "@playwright/test";
+import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { renderTranscriptionComposerControl } from "../../../packages/transcription/src/server/composer.ts";
 import { buildWebTestAssets, type WebTestAssets } from "./support/web-test-assets.ts";
 
@@ -28,6 +28,29 @@ afterAll(async () => {
   await browser?.close();
 });
 
+async function installFakeTranscriptionSocket(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      readonly readyState = FakeWebSocket.OPEN;
+
+      constructor(_url: string) {
+        super();
+        window.addEventListener("fake-transcription-message", () => {
+          this.dispatchEvent(new MessageEvent("message", { data: document.body.dataset.transcriptionEvent }));
+        });
+      }
+
+      send(): void {}
+
+      close(): void {
+        this.dispatchEvent(new CloseEvent("close"));
+      }
+    }
+    Object.defineProperty(window, "WebSocket", { value: FakeWebSocket });
+  });
+}
+
 describe("transcription composer browser behavior", () => {
   test("shows transcription errors outside the Composer without clipping them", async () => {
     const page = await browserContext.newPage();
@@ -53,30 +76,39 @@ describe("transcription composer browser behavior", () => {
     await page.close();
   });
 
+  test("keeps the latest transcribed words visible as the Composer fills", async () => {
+    const page = await browserContext.newPage();
+    await testAssets.serve(page);
+    await installFakeTranscriptionSocket(page);
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<div data-controller="transcription-composer"><textarea aria-label="Message" style="box-sizing:border-box;width:220px;height:60px;overflow-y:auto"></textarea>${renderTranscriptionComposerControl()}</div><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.goto("http://atelier.test/");
+
+    await page.getByRole("button", { name: "Dictate with microphone" }).click();
+    await page.evaluate(() => {
+      document.body.dataset.transcriptionEvent = JSON.stringify({
+        type: "conversation.item.input_audio_transcription.delta",
+        delta: Array.from({ length: 80 }, (_, index) => `word${index}`).join(" "),
+      });
+      window.dispatchEvent(new Event("fake-transcription-message"));
+    });
+
+    const scroll = await page.getByRole("textbox", { name: "Message" }).evaluate((input: HTMLTextAreaElement) => ({
+      top: input.scrollTop,
+      maximum: input.scrollHeight - input.clientHeight,
+    }));
+    expect(scroll.maximum).toBeGreaterThan(0);
+    expect(Math.abs(scroll.top - scroll.maximum)).toBeLessThanOrEqual(1);
+    await page.close();
+  });
+
   test("finishes an active transcription before submitting", async () => {
     const page = await browserContext.newPage();
     await testAssets.serve(page);
+    await installFakeTranscriptionSocket(page);
     let submissions = 0;
-    await page.addInitScript(() => {
-      class FakeWebSocket extends EventTarget {
-        static readonly OPEN = 1;
-        readonly readyState = FakeWebSocket.OPEN;
-
-        constructor(_url: string) {
-          super();
-          window.addEventListener("fake-transcription-message", () => {
-            this.dispatchEvent(new MessageEvent("message", { data: document.body.dataset.transcriptionEvent }));
-          });
-        }
-
-        send(): void {}
-
-        close(): void {
-          this.dispatchEvent(new CloseEvent("close"));
-        }
-      }
-      Object.defineProperty(window, "WebSocket", { value: FakeWebSocket });
-    });
     await page.route("http://atelier.test/", (route) => route.fulfill({
       contentType: "text/html",
       body: `<div data-controller="transcription-composer"><form method="post" action="/send" data-action="submit->transcription-composer#submit"><textarea name="text">Existing</textarea>${renderTranscriptionComposerControl()}<button type="submit">Send</button></form></div><script type="module" src="${workspaceClientPath}"></script>`,
