@@ -1049,6 +1049,8 @@ Comment: I don't think we need these tests`;
 
     await page.locator(".agent-pane form").evaluate((form) => form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true })));
     await waitForTranscriptTail();
+    await transcript.evaluate((element) => { element.style.height = "120px"; });
+    await waitForTranscriptTail();
     await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), turboStream("append", "reconnect-agent_agent-live_transcript", '<div class="agent-item" style="height: 240px">Continued after sending</div>'));
     await page.getByText("Continued after sending").waitFor();
     await waitForTranscriptTail();

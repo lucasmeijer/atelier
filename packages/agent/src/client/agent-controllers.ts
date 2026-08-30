@@ -285,6 +285,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     };
     connect(): void {
       this.transcriptLayoutObserver = new ResizeObserver(this.transcriptLayoutChanged);
+      this.transcriptLayoutObserver.observe(this.transcriptTarget);
       this.observeTranscriptItems();
       this.transcriptMutationObserver = new MutationObserver(() => {
         this.observeTranscriptItems();
