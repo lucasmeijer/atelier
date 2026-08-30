@@ -31,10 +31,6 @@ const openApiDocumentSchema = Type.Object({
     "/workspaces/{id}/attention/acknowledge": Type.Object({ post: Type.Object({ parameters: Type.Array(Type.Unknown()), responses: Type.Object({
       "204": Type.Object({ description: Type.String() }),
     }) }) }),
-    "/workspaces/{id}/agents/{conversationId}/attention/acknowledge": Type.Object({ post: Type.Object({ parameters: Type.Array(Type.Unknown()), responses: Type.Object({
-      "204": Type.Object({ description: Type.String() }),
-    }) }) }),
-    "/workspaces/{id}/work-views/{key}/attention/acknowledge": Type.Object({ post: Type.Object({ parameters: Type.Array(Type.Unknown()) }) }),
     "/workspaces/{id}/agents/{conversationId}/close": Type.Object({ post: Type.Object({ responses: Type.Object({
       "200": openApiJsonReferenceResponseSchema,
       "409": openApiJsonReferenceResponseSchema,
@@ -398,7 +394,7 @@ describe("web app contracts", () => {
     provision.resolve();
     await Bun.sleep(20);
     expect(registry.get(id)?.phase).toBe("ready");
-    expect(registry.isWorkspaceUnread(id)).toBe(false);
+    expect(registry.hasAttention(id)).toBe(false);
     expect(broadcasts.some((html) => html.includes(`data-workspace-entry-id="${id}"`) && !html.includes('fixed-shell-workspace-busy'))).toBe(true);
   });
 
@@ -412,6 +408,7 @@ describe("web app contracts", () => {
 
     expect(registry.get(id)?.phase).toBe("failed");
     expect(registry.get(id)?.error).toContain("docker exploded");
+    expect(registry.hasAttention(id)).toBe(true);
   });
 
   test("failed workspaces can be deleted", async () => {
@@ -699,11 +696,10 @@ describe("web app contracts", () => {
     expect(pathNames).toContain("/projects/{projectId}/delete");
     expect(pathNames).toContain("/workspaces/{id}/agents/{conversationId}/close");
     expect(pathNames).not.toContain("/workspaces/{id}/agent-conversations/{conversationId}/close");
-    expect(specification.paths["/workspaces/{id}/attention/acknowledge"].post.parameters).toContainEqual(expect.objectContaining({ name: "attentionToken", in: "query", required: true }));
-    expect(specification.paths["/workspaces/{id}/attention/acknowledge"].post.responses["204"].description).toContain("stale");
-    expect(specification.paths["/workspaces/{id}/agents/{conversationId}/attention/acknowledge"].post.parameters).toContainEqual(expect.objectContaining({ name: "attentionToken", in: "query", required: true }));
-    expect(specification.paths["/workspaces/{id}/agents/{conversationId}/attention/acknowledge"].post.responses["204"].description).toContain("stale");
-    expect(specification.paths["/workspaces/{id}/work-views/{key}/attention/acknowledge"].post.parameters).toContainEqual(expect.objectContaining({ name: "attentionToken", in: "query", required: true }));
+    expect(specification.paths["/workspaces/{id}/attention/acknowledge"].post.parameters).toContainEqual(expect.objectContaining({ name: "attentionTokens", in: "query", required: true }));
+    expect(specification.paths["/workspaces/{id}/attention/acknowledge"].post.responses["204"].description).toContain("newer occurrences preserved");
+    expect(pathNames).not.toContain("/workspaces/{id}/agents/{conversationId}/attention/acknowledge");
+    expect(pathNames).not.toContain("/workspaces/{id}/work-views/{key}/attention/acknowledge");
     expect(specification.paths["/workspaces/{id}/agents/{conversationId}/close"].post.responses).toMatchObject({
       "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/AgentConversationCloseResult" } } } },
       "409": { content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
@@ -966,11 +962,12 @@ describe("web app contracts", () => {
     expect(body).toContain("a.txt");
     expect(registry.get("abc")?.phase).toBe("checking_delete");
     expect(registry.get("abc")?.deletion).toMatchObject({ status: "blocked" });
-    expect(registry.isWorkspaceUnread("abc")).toBe(true);
+    expect(registry.hasAttention("abc")).toBe(true);
     expect(broadcasts.some((html) => html.includes("Checking if it’s safe to delete"))).toBe(true);
-    const token = registry.viewUnreadToken("abc", "workspace")!;
+    const token = registry.attentionTokens("abc").workspace!;
     const blockedPresentation = broadcasts.find((html) => html.includes("Please confirm it's okay to delete the workspace with these outstanding changes."));
-    expect(blockedPresentation).toContain(`data-workspace-unread-tokens="{&quot;workspace&quot;:${token}}"`);
+    expect(blockedPresentation).toContain('aria-label="Attention"');
+    expect(blockedPresentation).toContain(`data-workspace-attention-tokens="{&quot;workspace&quot;:${token}}"`);
   });
 
   test("allowed delete keeps its row and status page until destruction finishes", async () => {
@@ -1069,7 +1066,7 @@ describe("web app contracts", () => {
     expect(row).toContain("Workspace created with an older version of Atelier");
   });
 
-  test("ready workspace rows include status and unread preload metadata", async () => {
+  test("ready workspace rows keep Agent activity out of status while exposing Attention preparation metadata", async () => {
     const { app, registry, broadcasts } = createTestApp();
     const html = await (await app.fetch(new Request("http://test.local/"))).text();
     expect(html).toContain('data-workspace-residency-max-resident-value="5"');
@@ -1080,17 +1077,17 @@ describe("web app contracts", () => {
     registry.setViewBusy("abc", "agent:Agent 1", true);
     while (!broadcasts.some(updatesWorkspacePaneCollections)) await Bun.sleep(1);
     const busyBroadcast = broadcasts.find(updatesWorkspacePaneCollections) ?? "";
-    expect(busyBroadcast).toContain("fixed-shell-workspace-busy");
-    expect(busyBroadcast).toContain("Workspace busy");
+    expect(busyBroadcast).toContain('data-workspace-busy-views="[&quot;agent:Agent 1&quot;]"');
+    expect(busyBroadcast).not.toContain("fixed-shell-workspace-busy");
 
     broadcasts.length = 0;
     registry.setViewBusy("abc", "agent:Agent 1", false);
-    const token = registry.markViewUnread("abc", "agent:Agent 1")!;
-    while (!broadcasts.some((item) => item.includes("data-workspace-unread-at"))) await Bun.sleep(1);
+    const token = registry.markViewAttention("abc", "agent:Agent 1")!;
+    while (!broadcasts.some((item) => item.includes("data-workspace-attention-at"))) await Bun.sleep(1);
     const unreadBroadcast = broadcasts.findLast(updatesWorkspacePaneCollections) ?? "";
-    expect(unreadBroadcast).toContain('aria-label="Agent ready"');
-    expect(unreadBroadcast).toMatch(/data-workspace-unread-at="\d+"/);
-    expect(unreadBroadcast).toContain(`data-workspace-unread-tokens="{&quot;agent:Agent 1&quot;:${token}}"`);
+    expect(unreadBroadcast).toContain('aria-label="Attention"');
+    expect(unreadBroadcast).toMatch(/data-workspace-attention-at="\d+"/);
+    expect(unreadBroadcast).toContain(`data-workspace-attention-tokens="{&quot;agent:Agent 1&quot;:${token}}"`);
   });
 
   test("broadcast HTML never contains per-client state (visible rows, selection inputs)", async () => {

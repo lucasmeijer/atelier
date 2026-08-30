@@ -3,13 +3,13 @@ export interface WorkspaceRetentionCandidate {
   visible: boolean;
   prepared: boolean;
   preparing?: boolean;
-  unreadAt?: number;
+  attentionAt?: number;
   lastActivatedAt: number;
   protected?: boolean;
 }
 
-function preparedUnreadAt(candidate: WorkspaceRetentionCandidate): number | undefined {
-  return candidate.prepared || candidate.preparing ? candidate.unreadAt : undefined;
+function preparedAttentionAt(candidate: WorkspaceRetentionCandidate): number | undefined {
+  return candidate.prepared || candidate.preparing ? candidate.attentionAt : undefined;
 }
 
 export function retainedWorkspaceIds(candidates: readonly WorkspaceRetentionCandidate[], maximum: number): Set<string> {
@@ -19,21 +19,21 @@ export function retainedWorkspaceIds(candidates: readonly WorkspaceRetentionCand
     if (visibleDifference !== 0) return visibleDifference;
     const protectedDifference = Number(right.protected ?? false) - Number(left.protected ?? false);
     if (protectedDifference !== 0) return protectedDifference;
-    const leftPreparedUnreadAt = preparedUnreadAt(left);
-    const rightPreparedUnreadAt = preparedUnreadAt(right);
-    if (leftPreparedUnreadAt !== undefined && rightPreparedUnreadAt !== undefined) return leftPreparedUnreadAt - rightPreparedUnreadAt || left.workspaceId.localeCompare(right.workspaceId);
-    if (leftPreparedUnreadAt !== undefined) return -1;
-    if (rightPreparedUnreadAt !== undefined) return 1;
+    const leftAttentionAt = preparedAttentionAt(left);
+    const rightAttentionAt = preparedAttentionAt(right);
+    if (leftAttentionAt !== undefined && rightAttentionAt !== undefined) return leftAttentionAt - rightAttentionAt || left.workspaceId.localeCompare(right.workspaceId);
+    if (leftAttentionAt !== undefined) return -1;
+    if (rightAttentionAt !== undefined) return 1;
     return right.lastActivatedAt - left.lastActivatedAt || left.workspaceId.localeCompare(right.workspaceId);
   });
   return new Set(ranked.slice(0, maximum).map((candidate) => candidate.workspaceId));
 }
 
-export interface ReadyWorkspace {
+export interface AttentionWorkspace {
   workspaceId: string;
-  unreadAt: number;
+  attentionAt: number;
 }
 
-export function oldestReadyFirst(workspaces: readonly ReadyWorkspace[]): ReadyWorkspace[] {
-  return [...workspaces].sort((left, right) => left.unreadAt - right.unreadAt || left.workspaceId.localeCompare(right.workspaceId));
+export function oldestAttentionFirst(workspaces: readonly AttentionWorkspace[]): AttentionWorkspace[] {
+  return [...workspaces].sort((left, right) => left.attentionAt - right.attentionAt || left.workspaceId.localeCompare(right.workspaceId));
 }

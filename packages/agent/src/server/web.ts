@@ -167,7 +167,7 @@ export const agentWorkspaceModule: WorkspaceModule = {
     registerAgentEvents(events);
     registerSessionShareMountEvents(events);
     events.on("workspace_agent_turn_finished", ({ workspaceId, conversationId }) => {
-      context.registry.markViewUnread(workspaceId, agentConversationKey(conversationId));
+      context.registry.markViewAttention(workspaceId, agentConversationKey(conversationId));
     });
     context.registerProvisioningHook({
       id: "workspace.agent",

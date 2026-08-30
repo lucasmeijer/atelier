@@ -84,13 +84,18 @@ import { agentTabsTurboStream, openWorkViewTurboStream, presentWorkViewTurboStre
 import type { CableBroadcastOptions } from "./cable.ts";
 
 const jsonStringSchema = Type.String();
-const attentionTokenSchema = Type.Integer({ minimum: 1 });
+const attentionTokensSchema = Type.Record(Type.String(), Type.Integer({ minimum: 1 }));
 
-function attentionToken(request: Request): number {
-  const raw = new URL(request.url).searchParams.get("attentionToken");
-  const token = raw === null ? NaN : Number(raw);
-  if (!Value.Check(attentionTokenSchema, token)) throw invalidArguments("attentionToken must be a positive integer");
-  return token;
+function attentionTokens(request: Request): Record<string, number> {
+  const raw = new URL(request.url).searchParams.get("attentionTokens");
+  let parsed: unknown;
+  try {
+    parsed = raw === null ? undefined : JSON.parse(raw);
+  } catch {
+    throw invalidArguments("attentionTokens must be a valid view-token map");
+  }
+  if (!Value.Check(attentionTokensSchema, parsed)) throw invalidArguments("attentionTokens must be a valid view-token map");
+  return parsed;
 }
 
 export interface WebAppDeps {
@@ -261,6 +266,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
 
   deps.events?.on("workspace_agent_view_invalidated", ({ workspaceId, conversationId, exceptConnectionId, html }) => {
     broadcastShell(`${html ?? ""}${workspacePreparationInvalidatedTurboStream(workspaceId, conversationId)}`, exceptConnectionId ? { exceptConnectionId } : undefined);
+  });
+  deps.events?.on("workspace_agent_turn_finished", ({ workspaceId, conversationId }) => {
+    broadcastShell(selectAgentTurboStream(workspaceId, conversationId));
   });
 
   const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId), seedSteps: deps.provisioningHooks });
@@ -630,20 +638,26 @@ ${moduleStylesHtml()}
       destination.set(entry.init.projectId, [...(destination.get(entry.init.projectId) ?? []), entry]);
     }
     const paneEntry = (entry: WorkspaceEntry): WorkspacePaneEntry => {
+      const deletionStatus = entry.deletion?.status;
       const pane: WorkspacePaneEntry = {
         id: entry.id,
         title: workspaceTitle(entry),
         active: entry.id === activeWorkspaceId,
-        busy: entry.phase === "starting" || registry.isWorkspaceBusy(entry.id),
+        state: entry.phase === "starting"
+          ? "starting"
+          : deletionStatus === "checking" || deletionStatus === "deleting"
+            ? "deleting"
+            : deletionStatus === "blocked"
+              ? "requires_delete_confirmation"
+              : "idle",
+        attention: registry.hasAttention(entry.id),
         busyViewKeys: registry.busyViews(entry.id),
         outdated: entry.imageOutdated,
       };
-      const unreadAt = registry.workspaceUnreadAt(entry.id);
-      if (unreadAt !== undefined) pane.unreadAt = unreadAt;
-      const agentReadyAt = registry.workspaceAgentReadyAt(entry.id);
-      if (agentReadyAt !== undefined) pane.agentReadyAt = agentReadyAt;
-      const unreadTokens = registry.unreadTokens(entry.id);
-      if (Object.keys(unreadTokens).length > 0) pane.unreadTokens = unreadTokens;
+      const attentionAt = registry.workspaceAttentionAt(entry.id);
+      if (attentionAt !== undefined) pane.attentionAt = attentionAt;
+      const tokens = registry.attentionTokens(entry.id);
+      if (Object.keys(tokens).length > 0) pane.attentionTokens = tokens;
       return pane;
     };
     const workspaceProjectIds = new Set([...grouped.keys(), ...parkedByProject.keys()]);
@@ -873,6 +887,7 @@ ${moduleStylesHtml()}
         const message = error instanceof Error ? error.message : String(error);
         logError(`could not provision workspace ${id}: ${message}`);
         registry.setPhase(id, "failed", message);
+        registry.markViewAttention(id, "workspace");
         provisioning.apply({ workspaceId: id, id: "workspace.failed", label: "Workspace creation failed", status: "failed", error: message });
         const entry = registry.get(id);
         // No "visible" class in broadcasts: each client shows the resident
@@ -1091,6 +1106,7 @@ ${moduleStylesHtml()}
 
   function setDeletionState(id: string, deletion: WorkspaceDeletionState): void {
     registry.setDeletion(id, deletion);
+    if (deletion.status === "failed") registry.markViewAttention(id, "workspace");
     broadcastDeletionPresentation(id);
   }
 
@@ -1141,7 +1157,7 @@ ${moduleStylesHtml()}
     }
     if (details.issues.length > 0) {
       const deletion: WorkspaceDeletionState = { status: "blocked", issues: details.issues };
-      registry.markViewUnread(id, "workspace");
+      registry.markViewAttention(id, "workspace");
       registry.setDeletion(id, deletion);
       const pane = workspacePaneCollectionsTurboStream(await workspacePaneCollections(""));
       const entry = requireWorkspace(id);
@@ -1187,7 +1203,7 @@ ${moduleStylesHtml()}
     const entry = requireWorkspace(id);
     if (entry.deletion?.status !== "blocked" && entry.deletion?.status !== "failed") return turboStreamResponse("", { status: 409 });
     registry.setDeletion(id, undefined);
-    registry.clearViewUnread(id, "workspace");
+    registry.clearViewAttention(id, "workspace");
     const stream = `${turboReplaceStream(workspacePresentationDomId(id), renderWorkspacePresentation(await fixedWorkspacePresentation(id)))}${workspacePreparationInvalidatedTurboStream(id)}`;
     broadcastShell(stream);
     if (requestAcceptsJson(request)) return jsonResponse({ cancelled: true });
@@ -1565,7 +1581,7 @@ ${moduleStylesHtml()}
     if (!open) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${workViewKey(parsed)}`);
     await adapter.close?.({ workspaceId, reference: parsed });
     await presentationStore.closeWorkView(workspaceId, parsed);
-    registry.clearViewUnread(workspaceId, closedKey);
+    registry.clearViewAttention(workspaceId, closedKey);
     const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
     const workViews = await currentWorkPanePresentations(workspaceId);
     const successor = workViews[Math.min(closedIndex, workViews.length - 1)]?.key;
@@ -1601,7 +1617,7 @@ ${moduleStylesHtml()}
       registry.setParked(workspaceId, false);
       const attentionSequence = await presentationStore.requestAttention(workspaceId, contribution.reference);
       const key = workViewKey(contribution.reference);
-      registry.markViewUnread(workspaceId, key, attentionSequence);
+      registry.markViewAttention(workspaceId, key, attentionSequence);
       const workViews = await currentWorkPanePresentations(workspaceId);
       broadcastShell(workViewsTurboStream(workspaceId, workViews, { openedKey: opened ? key : undefined, selectKey: key, intendSelection: true }));
     });
@@ -1616,25 +1632,14 @@ ${moduleStylesHtml()}
     return response(renderWorkViewBodyFrame(workspaceId, key, bodyHtml), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   }
 
-  async function workViewAttentionEndpoint(workspaceId: string, key: string, request: Request, acknowledge: boolean): Promise<Response> {
+  async function requestWorkViewAttentionEndpoint(workspaceId: string, key: string, request: Request): Promise<Response> {
     const stored = (await presentationStore.listWorkViews(workspaceId)).find((view) => workViewKey(view.reference) === key);
     if (!stored) throw new AtelierCoreError("work_view_not_found", `Work view is not open: ${key}`);
-    let acknowledged = false;
-    if (acknowledge) {
-      const token = attentionToken(request);
-      acknowledged = await presentationStore.acknowledgeAttention(workspaceId, stored.reference, token);
-      if (acknowledged) registry.acknowledgeViewUnread(workspaceId, key, token);
-    } else {
-      registry.setParked(workspaceId, false);
-      const token = await presentationStore.requestAttention(workspaceId, stored.reference);
-      registry.markViewUnread(workspaceId, key, token);
-    }
-    const presentationStream = workViewsTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId), acknowledge ? {} : { selectKey: key, intendSelection: true });
-    if (acknowledge) broadcastShell(presentationStream);
-    const responseStream = acknowledge ? "" : deliverShellMutation(request, presentationStream);
-    if (acknowledge) {
-      return requestAcceptsJson(request) ? jsonResponse({ acknowledged, attention: stored.reference }) : new Response(null, { status: 204 });
-    }
+    registry.setParked(workspaceId, false);
+    const token = await presentationStore.requestAttention(workspaceId, stored.reference);
+    registry.markViewAttention(workspaceId, key, token);
+    const presentationStream = workViewsTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId), { selectKey: key, intendSelection: true });
+    const responseStream = deliverShellMutation(request, presentationStream);
     return requestAcceptsJson(request) && !wantsTurboStream(request) ? jsonResponse({ attention: stored.reference }) : turboStreamResponse(responseStream);
   }
 
@@ -1644,7 +1649,7 @@ ${moduleStylesHtml()}
     const closedIndex = before.findIndex((agent) => agent.id === conversationId);
     if (closedIndex < 0) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
     await agentTabs.close({ workspaceId, conversationId });
-    registry.clearViewUnread(workspaceId, `agent:${conversationId}`);
+    registry.clearViewAttention(workspaceId, `agent:${conversationId}`);
     const presentation = await fixedWorkspacePresentation(workspaceId);
     const successorConversationId = presentation.agentConversations[Math.min(closedIndex, presentation.agentConversations.length - 1)]!.id;
     const structural = agentTabsTurboStream(presentation, { removedConversationId: conversationId, successorConversationId });
@@ -1659,22 +1664,30 @@ ${moduleStylesHtml()}
     return response(renderAgentBodyFrame(workspaceId, conversationId, bodyHtml), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   }
 
-  async function acknowledgeAgentAttentionEndpoint(workspaceId: string, conversationId: string, request: Request): Promise<Response> {
+  async function acknowledgeWorkspaceAttentionEndpoint(workspaceId: string, request: Request): Promise<Response> {
     requireWorkspace(workspaceId);
-    const exists = (await agentTabs.list({ workspaceId })).some((agent) => agent.id === conversationId);
-    if (!exists) throw new AtelierCoreError("agent_conversation_not_found", `Agent conversation not found: ${conversationId}`);
-    registry.acknowledgeViewUnread(workspaceId, `agent:${conversationId}`, attentionToken(request));
+    const capturedTokens = attentionTokens(request);
+    const workViewTokens = Object.entries(capturedTokens).filter(([viewKey]) => viewKey !== "workspace" && !viewKey.startsWith("agent:"));
+    const acceptedTokens = { ...capturedTokens };
+    let workAttentionChanged = false;
+
+    if (workViewTokens.length > 0) {
+      const workViewsByKey = new Map((await presentationStore.listWorkViews(workspaceId)).map((view) => [workViewKey(view.reference), view]));
+      for (const [viewKey, token] of workViewTokens) {
+        const workView = workViewsByKey.get(viewKey);
+        if (!workView) continue;
+        if (!await presentationStore.acknowledgeAttention(workspaceId, workView.reference, token)) delete acceptedTokens[viewKey];
+        else workAttentionChanged = true;
+      }
+    }
+
+    registry.acknowledgeAttention(workspaceId, acceptedTokens);
+    if (workAttentionChanged) broadcastShell(workViewsTurboStream(workspaceId, await currentWorkPanePresentations(workspaceId)));
     return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
   }
 
-  function acknowledgeWorkspaceAttentionEndpoint(workspaceId: string, request: Request): Response {
-    requireWorkspace(workspaceId);
-    registry.acknowledgeViewUnread(workspaceId, "workspace", attentionToken(request));
-    return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
-  }
-
-  function openOldestUnreadWorkspaceEndpoint(): Response {
-    const entry = registry.oldestUnreadWorkspace();
+  function openOldestAttentionWorkspaceEndpoint(): Response {
+    const entry = registry.oldestAttentionWorkspace();
     if (!entry) return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
     return turboStreamResponse("", { headers: { location: `/workspaces/${encodeURIComponent(entry.id)}` } });
   }
@@ -1707,7 +1720,7 @@ ${moduleStylesHtml()}
     if (url.pathname === "/launch-composer/settings" && request.method === "GET") return response(await launchComposerSettingsFrame(url.searchParams.get("model") ?? undefined));
     if (url.pathname === "/workspaces" && request.method === "GET") return workspaceListEndpoint(request, url);
     if (url.pathname === "/workspaces" && request.method === "POST") return await createWorkspaceEndpoint(url, request);
-    if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestUnreadWorkspaceEndpoint();
+    if (url.pathname === "/workspaces/open-oldest-unread" && request.method === "POST") return openOldestAttentionWorkspaceEndpoint();
     if (url.pathname === "/projects" && request.method === "GET" && requestAcceptsJson(request)) return jsonResponse(await listProjects());
     if (url.pathname === "/projects" && request.method === "POST") return await createProjectEndpoint(request, url);
     if (url.pathname === "/projects/new/editor" && request.method === "GET") return response(newProjectEditorFrame());
@@ -1764,7 +1777,6 @@ ${moduleStylesHtml()}
     }
     if ((params = match(/^\/workspaces\/([^/]+)\/attention\/acknowledge$/)) && request.method === "POST") return acknowledgeWorkspaceAttentionEndpoint(params[0], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/)) && request.method === "GET") return await agentBodyEndpoint(params[0], params[1]);
-    if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/attention\/acknowledge$/)) && request.method === "POST") return await acknowledgeAgentAttentionEndpoint(params[0], params[1], request);
     if ((params = match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/close$/)) && request.method === "POST") {
       const workspaceId = routeParam(params, 0);
       const conversationId = routeParam(params, 1);
@@ -1778,12 +1790,7 @@ ${moduleStylesHtml()}
     if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/attention\/request$/)) && request.method === "POST") {
       const workspaceId = routeParam(params, 0);
       const key = routeParam(params, 1);
-      return await serializePresentationMutation(workspaceId, async () => await workViewAttentionEndpoint(workspaceId, key, request, false));
-    }
-    if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/attention\/acknowledge$/)) && request.method === "POST") {
-      const workspaceId = routeParam(params, 0);
-      const key = routeParam(params, 1);
-      return await serializePresentationMutation(workspaceId, async () => await workViewAttentionEndpoint(workspaceId, key, request, true));
+      return await serializePresentationMutation(workspaceId, async () => await requestWorkViewAttentionEndpoint(workspaceId, key, request));
     }
     if ((params = match(/^\/workspaces\/([^/]+)\/work-views\/(.+)\/close$/)) && request.method === "POST") {
       const workspaceId = routeParam(params, 0);

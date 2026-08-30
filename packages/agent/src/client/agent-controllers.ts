@@ -263,10 +263,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     };
     private readonly onVisibilityChange = (): void => {
       this.reconcileConnection();
-      if (this.connectionShouldRun()) this.acknowledgeAttention();
-    };
-    private readonly workspacePaneChanged = (): void => {
-      if (this.connectionShouldRun()) this.acknowledgeAttention();
     };
     private readonly positionForSelection = (): void => {
       const busy = this.element.querySelector<HTMLElement>(".agent-sendstop")!.dataset.agentBusy === "true";
@@ -309,7 +305,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptTarget.addEventListener("keydown", this.userStartedTranscriptNavigation);
       this.updateTranscriptNavigation();
       document.addEventListener("visibilitychange", this.onVisibilityChange);
-      document.addEventListener("atelier:workspace-pane-changed", this.workspacePaneChanged);
       this.formTarget.addEventListener("submit", this.submitting);
       this.composerMutationObserver = new MutationObserver(() => this.updateSendStopButton());
       this.composerMutationObserver.observe(this.formTarget, { childList: true, subtree: true });
@@ -331,7 +326,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.transcriptTarget.removeEventListener("pointerdown", this.userStartedTranscriptNavigation);
       this.transcriptTarget.removeEventListener("keydown", this.userStartedTranscriptNavigation);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
-      document.removeEventListener("atelier:workspace-pane-changed", this.workspacePaneChanged);
       this.formTarget.removeEventListener("submit", this.submitting);
       this.logicallyVisible = false;
       this.stopConnection();
@@ -355,7 +349,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.selectionAwaitingReady = true;
       this.reconcileConnection();
       this.positionForSelection();
-      if (this.connectionShouldRun()) this.acknowledgeAttention();
     }
 
     noLongerVisible(): void {
@@ -425,16 +418,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     private cableIdentifier(): CableIdentifier {
       return CableTopics.agent(this.workspaceIdValue, this.conversationIdValue);
-    }
-
-    private acknowledgeAttention(): void {
-      const row = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(this.workspaceIdValue)}"]`);
-      const serializedTokens = row?.dataset.workspaceUnreadTokens;
-      if (!serializedTokens) return;
-      // SAFETY: Workspace rows serialize this server-owned field as a number-valued view-key map.
-      const token = (JSON.parse(serializedTokens) as Record<string, number>)[`agent:${this.conversationIdValue}`];
-      if (token === undefined) return;
-      void fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/agents/${encodeURIComponent(this.conversationIdValue)}/attention/acknowledge?attentionToken=${encodeURIComponent(token)}`, { method: "POST" });
     }
 
     private stopAgentTerminals(): void {
@@ -511,8 +494,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
     sendStopTargetConnected(): void {
       this.updateSendStopButton();
-      const button = this.formTarget.querySelector<HTMLButtonElement>(".agent-sendstop");
-      if (button?.dataset.agentBusy === "false" && this.connectionShouldRun()) this.acknowledgeAttention();
     }
 
     updateSendStopButton(): void {
@@ -555,9 +536,8 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
           if (consumed.has(input.value)) input.closest(".agent-chip")!.remove();
         });
       }
-      this.stuck = true;
-      this.transcriptTarget.scrollTop = this.transcriptTarget.scrollHeight;
-      focusAgentPaneComposerOnWideViewport(this.element);
+      if (isPhoneViewport()) this.inputTarget.blur();
+      else focusAgentPaneComposerOnWideViewport(this.element);
     }
   };
 }

@@ -121,6 +121,12 @@ function persistIntendedWorkView(workspaceId: string, key: string): void {
   sessionStorage.setItem(storageKey, JSON.stringify({ ...state, activeWorkViewKey: key, workPaneVisible: true, phoneDestination: `work:${key}` } satisfies StoredPersonalNavigation));
 }
 
+function persistIntendedAgent(workspaceId: string, conversationId: string): void {
+  const storageKey = workspaceNavigationStorageKey(workspaceId);
+  const state = storedNavigation(sessionStorage, storageKey) ?? {};
+  sessionStorage.setItem(storageKey, JSON.stringify({ ...state, activeAgentId: conversationId, phoneDestination: "agents" } satisfies StoredPersonalNavigation));
+}
+
 function persistAgentSuccessor(workspaceId: string, closedConversationId: string, successorConversationId: string): void {
   const storageKey = workspaceNavigationStorageKey(workspaceId);
   const state = storedNavigation(sessionStorage, storageKey);
@@ -241,12 +247,12 @@ export function createWorkspacePresentationController(
     intendWorkView(key: string): void {
       const selector = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(key)}"]`);
       if (!selector) return;
-      const alreadyVisible = this.visiblePanes().find((pane) => pane.dataset.workspacePaneRole === "work" && pane.dataset.workspacePaneId === key);
+      const alreadyVisible = this.visiblePanes().some((pane) => pane.dataset.workspacePaneRole === "work" && pane.dataset.workspacePaneId === key);
       this.selectWorkViewState(key, selector.dataset.workViewKind === "contextual");
       this.state.phoneDestination = `work:${key}`;
       this.persist();
       if (this.element.closest(".workspace-detail-resident.visible")) this.applyState({ emit: true, focus: true });
-      if (alreadyVisible) this.acknowledgeVisibleWorkView(alreadyVisible);
+      if (alreadyVisible) this.finishVisibleWorkViewPreparation();
     }
 
     presentWorkView(key: string): void {
@@ -579,7 +585,7 @@ export function createWorkspacePresentationController(
         controller?.becomeVisible?.();
       });
       lifecycle.becomeVisible(this.lifecycleContext(pane));
-      if (pane.dataset.workspacePaneRole === "work") this.acknowledgeVisibleWorkView(pane);
+      if (pane.dataset.workspacePaneRole === "work") this.finishVisibleWorkViewPreparation();
       pane.dispatchEvent(new CustomEvent("atelier:workspace-pane-visible", { bubbles: true, detail: { role: pane.dataset.workspacePaneRole, id: pane.dataset.workspacePaneId } }));
     }
 
@@ -604,11 +610,8 @@ export function createWorkspacePresentationController(
         .catch((error) => console.error("Could not reload invalidated Agent", error));
     }
 
-    private acknowledgeVisibleWorkView(pane: PresentationPane): void {
+    private finishVisibleWorkViewPreparation(): void {
       if (document.visibilityState !== "visible") return;
-      const key = pane.dataset.workspacePaneId!;
-      const token = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(key)}"]`)?.dataset.attentionSequence;
-      if (token !== undefined) void fetch(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}/work-views/${encodeURIComponent(key)}/attention/acknowledge?attentionToken=${encodeURIComponent(token)}`, { method: "POST" });
       document.dispatchEvent(new CustomEvent("atelier:workspace-preparation-request-acknowledged", { detail: { workspaceId: this.workspaceIdValue } }));
     }
 
@@ -693,8 +696,7 @@ export function createWorkspacePresentationController(
     };
     private documentVisibilityChanged = (): void => {
       if (document.visibilityState !== "visible") return;
-      const workPane = this.visiblePanes().find((pane) => pane.dataset.workspacePaneRole === "work");
-      if (workPane) this.acknowledgeVisibleWorkView(workPane);
+      if (this.visiblePanes().some((pane) => pane.dataset.workspacePaneRole === "work")) this.finishVisibleWorkViewPreparation();
     };
 
     private keydown = (event: KeyboardEvent): void => {
@@ -768,6 +770,7 @@ export function installWorkspacePresentationTurboStream(Turbo: TurboLike, applic
     const conversationId = this.dataset.conversationId;
     if (!conversationId) throw new Error("select-agent requires a conversation ID");
     const workspaceId = behaviorWorkspaceId(this);
+    persistIntendedAgent(workspaceId, conversationId);
     for (const target of this.targetElements) controllerFor(target, workspaceId)?.selectAgentById(conversationId);
   };
   Turbo.StreamActions["select-agent-successor"] = function selectAgentSuccessor(this: StreamElement): void {

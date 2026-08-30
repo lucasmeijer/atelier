@@ -296,7 +296,7 @@ export interface WorkspaceServerModuleContext {
   events: AtelierEventBus;
   registry: {
     setViewBusy(workspaceId: string, viewKey: string, busy: boolean): void;
-    markViewUnread(workspaceId: string, viewKey: string, token?: number): number | undefined;
+    markViewAttention(workspaceId: string, viewKey: string, token?: number): number | undefined;
   };
   globalSidebarContributions: GlobalSidebarContributionRegistry;
   presentWorkView(workspaceId: string, reference: WorkspaceWorkViewReference): Promise<void>;

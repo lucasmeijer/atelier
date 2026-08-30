@@ -76,6 +76,10 @@ async function newShortcutTestPage(ids: readonly string[], workViews: WorkspaceP
   const shell = renderShellFixture(presentations[0]!, pane, presentations.slice(1))
     .replace('data-controller="workspace-navigation"', 'data-controller="atelier-shortcuts workspace-navigation"');
   const page = await newTestPage();
+  await page.addInitScript(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
   const url = `http://atelier.test/workspaces/${encodeURIComponent(ids[0]!)}`;
   await page.route(url, (route) => route.fulfill({ contentType: "text/html", body: `${shell}<script type="module" src="${workspaceClientPath}"></script>` }));
   await page.route("**/active", (route) => route.fulfill({ status: 204 }));
@@ -452,21 +456,21 @@ Comment: I don't think we need these tests`;
     expect(await presentationElement.getAttribute("class")).not.toContain("is-work-pane-open");
     expect(await selectedView()).toBe("files:workspace");
     await pressCommandOptionShortcut(page, "]", "BracketRight");
-    expect(await presentationElement.getAttribute("class")).toContain("is-work-pane-open");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.classList.contains("is-work-pane-open"));
     expect(await selectedView()).toBe("files:workspace");
 
     await pressCommandOptionShortcut(page, "]", "BracketRight");
-    expect(await selectedView()).toBe("terminal:1");
+    await page.waitForFunction(() => document.querySelector('[data-work-view-key="terminal:1"]')?.getAttribute("aria-selected") === "true");
     await page.getByRole("button", { name: "Collapse Work pane", exact: true }).evaluate((button: HTMLButtonElement) => button.click());
     expect(await presentationElement.getAttribute("class")).not.toContain("is-work-pane-open");
     await pressCommandOptionShortcut(page, "[", "BracketLeft");
-    expect(await presentationElement.getAttribute("class")).toContain("is-work-pane-open");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.classList.contains("is-work-pane-open"));
     expect(await selectedView()).toBe("terminal:1");
 
     await pressCommandOptionShortcut(page, "[", "BracketLeft");
-    expect(await selectedView()).toBe("files:workspace");
+    await page.waitForFunction(() => document.querySelector('[data-work-view-key="files:workspace"]')?.getAttribute("aria-selected") === "true");
     await page.close();
-  });
+  }, 10_000);
 
   test("runs a shortcut popup action after the modifier keys are released", async () => {
     const page = await newShortcutTestPage(["first", "second"]);
@@ -1123,7 +1127,7 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("keeps active preparation feedback across sidebar replacement and restores unread afterward", async () => {
+  test("renders active preparation as a modifier on Workspace Attention across sidebar replacement", async () => {
     const current: WorkspacePresentation = {
       workspace: { id: "a", title: "Current" },
       agentConversations: [agentConversation("a", "agent-a")],
@@ -1133,7 +1137,7 @@ Comment: I don't think we need these tests`;
       projects: [],
       projectlessWorkspaces: [
         { id: "a", title: "Current", active: true },
-        { id: "b", title: "Unread", unreadAt: 123, agentReadyAt: 123 },
+        { id: "b", title: "Unread", attention: true, attentionAt: 123 },
       ],
     };
     let finishPreload!: () => void;
@@ -1151,16 +1155,15 @@ Comment: I don't think we need these tests`;
     await page.goto("http://atelier.test/");
 
     const unread = page.locator('[data-workspace-entry-id="b"]');
-    await unread.locator(".workspace-preload-spinner").waitFor();
-    expect(await unread.locator('[aria-label="Agent ready"]').isVisible()).toBe(false);
+    await page.waitForFunction(() => document.querySelector('[data-workspace-entry-id="b"]')?.hasAttribute("data-workspace-preloading"));
+    await unread.locator('[aria-label="Attention; preparing workspace"]').waitFor();
 
     await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), workspacePaneCollectionsTurboStream(pane));
-    await unread.locator(".workspace-preload-spinner").waitFor();
-    expect(await unread.locator('[aria-label="Agent ready"]').isVisible()).toBe(false);
+    await unread.locator('[aria-label="Attention; preparing workspace"]').waitFor();
 
     finishPreload();
     await page.waitForFunction(() => Boolean(document.querySelector('.workspace-detail-resident[data-workspace-id="b"]')));
-    await unread.locator('[aria-label="Agent ready"]').waitFor({ state: "visible" });
+    await unread.locator('[aria-label="Attention"]').waitFor({ state: "visible" });
     expect(await unread.getAttribute("data-workspace-preloading")).toBeNull();
     await page.close();
   });
@@ -1415,7 +1418,7 @@ Comment: I don't think we need these tests`;
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
       { id: "a", title: "Current A", active: true },
-      { id: "b", title: "Preloading B", unreadAt: 1, agentReadyAt: 1 },
+      { id: "b", title: "Preloading B", attention: true, attentionAt: 1 },
       { id: "c", title: "Slow C" },
       { id: "d", title: "Latest D" },
     ] };
@@ -1455,6 +1458,7 @@ Comment: I don't think we need these tests`;
     await page.waitForFunction(() => document.querySelector('[data-workspace-entry-id="b"]')?.hasAttribute("data-workspace-preloading"));
     await page.locator('[data-workspace-entry-id="b"]').evaluate((button: HTMLButtonElement) => button.click());
     expect(new URL(page.url()).pathname).toBe("/workspaces/b");
+    expect(await page.locator('[data-workspace-entry-id="b"]').getAttribute("data-workspace-preloading")).toBeNull();
     expect(bRequests).toBe(1);
     releaseB();
     await page.waitForFunction(() => document.querySelector('.workspace-detail-resident.visible[data-workspace-id="b"]'));
@@ -1609,8 +1613,8 @@ Comment: I don't think we need these tests`;
       id,
       title: `Workspace ${id}`,
       active: index === 0,
-      unreadAt: index === 0 ? undefined : index,
-      agentReadyAt: index === 0 ? undefined : index,
+      attention: index !== 0,
+      attentionAt: index === 0 ? undefined : index,
     })) };
     const requested: string[] = [];
     let activeRequests = 0;
@@ -1651,13 +1655,13 @@ Comment: I don't think we need these tests`;
     };
     const initialPane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
       { id: "pump-a", title: "Workspace A", active: true },
-      { id: "pump-b", title: "Workspace B", unreadAt: 1, agentReadyAt: 1, busyViewKeys: ["agent:agent-b"] },
-      { id: "pump-c", title: "Workspace C", unreadAt: 2, agentReadyAt: 2 },
+      { id: "pump-b", title: "Workspace B", attention: true, attentionAt: 1, busyViewKeys: ["agent:agent-b"] },
+      { id: "pump-c", title: "Workspace C", attention: true, attentionAt: 2 },
     ] };
     const readyPane: WorkspacePanePresentation = { ...initialPane, projectlessWorkspaces: [
       { id: "pump-a", title: "Workspace A", active: true },
-      { id: "pump-b", title: "Workspace B", unreadAt: 1, agentReadyAt: 1 },
-      { id: "pump-c", title: "Workspace C", unreadAt: 2, agentReadyAt: 2 },
+      { id: "pump-b", title: "Workspace B", attention: true, attentionAt: 1 },
+      { id: "pump-c", title: "Workspace C", attention: true, attentionAt: 2 },
     ] };
     let markCRequestStarted!: () => void;
     const cRequestStarted = new Promise<void>((resolve) => { markCRequestStarted = resolve; });
@@ -1737,7 +1741,7 @@ Comment: I don't think we need these tests`;
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
       { id: "target-a", title: "Workspace A", active: true },
-      { id: "target-b", title: "Workspace B", unreadAt: 1, agentReadyAt: 1 },
+      { id: "target-b", title: "Workspace B", attention: true, attentionAt: 1 },
     ] };
     let residentRequests = 0;
     let agentBodyRequests = 0;
@@ -1780,14 +1784,14 @@ Comment: I don't think we need these tests`;
     };
     const initialPane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
       { id: "ack-a", title: "Workspace A", active: true },
-      { id: "ack-b", title: "Workspace B", unreadAt: 2, agentReadyAt: 2, unreadTokens: { workspace: 71 } },
+      { id: "ack-b", title: "Workspace B", attention: true, attentionAt: 2, attentionTokens: { workspace: 71 } },
     ] };
     const firstAttentionPane: WorkspacePanePresentation = { ...initialPane, projectlessWorkspaces: [
-      { id: "ack-a", title: "Workspace A", active: true, unreadTokens: { workspace: 41 } },
+      { id: "ack-a", title: "Workspace A", active: true, attentionTokens: { workspace: 41 } },
       initialPane.projectlessWorkspaces![1]!,
     ] };
     const secondAttentionPane: WorkspacePanePresentation = { ...initialPane, projectlessWorkspaces: [
-      { id: "ack-a", title: "Workspace A", active: true, unreadTokens: { workspace: 42 } },
+      { id: "ack-a", title: "Workspace A", active: true, attentionTokens: { workspace: 42 } },
       initialPane.projectlessWorkspaces![1]!,
     ] };
     const acknowledgementUrls: string[] = [];
@@ -1819,15 +1823,15 @@ Comment: I don't think we need these tests`;
       Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
       document.dispatchEvent(new Event("visibilitychange"));
     });
-    await page.waitForFunction(() => performance.getEntriesByType("resource").some((entry) => entry.name.includes("/workspaces/ack-a/attention/acknowledge?attentionToken=41")));
+    await page.waitForFunction(() => performance.getEntriesByType("resource").some((entry) => new URL(entry.name).searchParams.get("attentionTokens") === '{"workspace":41}'));
     await page.evaluate((stream) => window.Turbo!.renderStreamMessage(stream), workspacePaneCollectionsTurboStream(secondAttentionPane));
-    await page.waitForFunction(() => performance.getEntriesByType("resource").some((entry) => entry.name.includes("/workspaces/ack-a/attention/acknowledge?attentionToken=42")));
+    await page.waitForFunction(() => performance.getEntriesByType("resource").some((entry) => new URL(entry.name).searchParams.get("attentionTokens") === '{"workspace":42}'));
 
     expect(acknowledgementUrls.map((url) => new URL(url).pathname)).toEqual([
       "/workspaces/ack-a/attention/acknowledge",
       "/workspaces/ack-a/attention/acknowledge",
     ]);
-    expect(acknowledgementUrls.map((url) => new URL(url).searchParams.get("attentionToken"))).toEqual(["41", "42"]);
+    expect(acknowledgementUrls.map((url) => JSON.parse(new URL(url).searchParams.get("attentionTokens")!))).toEqual([{ workspace: 41 }, { workspace: 42 }]);
     await page.close();
   });
 
@@ -1847,11 +1851,10 @@ Comment: I don't think we need these tests`;
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [
       { id: "a", title: "Current", active: true },
-      { id: "b", title: "Preloaded", unreadAt: 123, agentReadyAt: 123, unreadTokens: { "agent:agent-b": 7 } },
+      { id: "b", title: "Preloaded", attention: true, attentionAt: 123, attentionTokens: { "agent:agent-b": 7 } },
     ] };
     const agentBodyRequests: string[] = [];
     const workBodyRequests: string[] = [];
-    const acknowledgementTokens: string[] = [];
     const page = await newTestPage();
     await page.addInitScript(() => {
       sessionStorage.setItem("atelier:workspace-navigation:b", JSON.stringify({ activeAgentId: "agent-b", activeWorkViewKey: "review:workspace", workPaneVisible: true, phoneDestination: "agents", drawers: [] }));
@@ -1885,13 +1888,7 @@ Comment: I don't think we need these tests`;
       await Bun.sleep(100);
       await route.fulfill({ contentType: "text/html", body: renderWorkViewBodyFrame("b", key, `<p>Hydrated ${key}</p>`) });
     });
-    await page.route("**/workspaces/b/agents/*/attention/acknowledge*", (route) => {
-      const token = new URL(route.request().url()).searchParams.get("attentionToken");
-      if (!token) throw new Error("expected Agent attention token");
-      acknowledgementTokens.push(token);
-      return route.fulfill({ status: 204 });
-    });
-    await page.route("**/workspaces/b/work-views/*/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/workspaces/b/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/workspaces/a");
 
     const row = page.locator('[data-workspace-entry-id="b"]');
@@ -1903,7 +1900,6 @@ Comment: I don't think we need these tests`;
     expect(workBodyRequests).toEqual(["review:workspace"]);
     // SAFETY: The page fixture initializes agentSubscriptions as an array before the application module loads.
     expect(await page.evaluate(() => (window as typeof window & { agentSubscriptions: string[] }).agentSubscriptions)).toEqual([]);
-    expect(acknowledgementTokens).toEqual([]);
     expect(await page.locator('[data-workspace-id="b"] [data-workspace-pane-id="agent-b"]').getAttribute("data-workspace-logically-visible")).toBe("false");
     await row.click();
     await page.getByText("Hydrated review:workspace").waitFor({ state: "visible" });
@@ -1912,7 +1908,6 @@ Comment: I don't think we need these tests`;
     await page.waitForFunction(() => document.querySelector('[data-workspace-id="b"] [data-workspace-pane-id="agent-b"]')?.getAttribute("data-workspace-logically-visible") === "true");
     expect(agentBodyRequests).toEqual(["agent-b"]);
     expect(workBodyRequests).toEqual(["review:workspace"]);
-    expect(acknowledgementTokens).toEqual(["7"]);
     await page.close();
   });
 
@@ -2326,12 +2321,13 @@ Comment: I don't think we need these tests`;
   test("hides mobile navigation while the Agent composer is focused", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "mobile-compose", title: "Mobile compose" },
-      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: '<div data-mobile-editing-region><textarea aria-label="Agent prompt"></textarea></div>' }],
+      agentConversations: [agentConversation("mobile-compose", "agent-1")],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "mobile-compose", title: "Mobile compose", active: true }] };
     const page = await newTestPage({ viewport: { width: 390, height: 844 } });
     await page.route("http://atelier.test/workspaces/mobile-compose", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("**/workspaces/mobile-compose/agents/agent-1/body", (route) => route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("mobile-compose", "agent-1", '<div data-mobile-editing-region><textarea aria-label="Agent prompt"></textarea></div>') }));
     await page.route("**/workspaces/mobile-compose/active", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/workspaces/mobile-compose");
 
@@ -2359,12 +2355,13 @@ Comment: I don't think we need these tests`;
     </div>`;
     const presentation: WorkspacePresentation = {
       workspace: { id: "phone-send", title: "Phone send" },
-      agentConversations: [{ id: "agent-1", title: "Agent", bodyHtml: agentBody }],
+      agentConversations: [agentConversation("phone-send", "agent-1")],
       workViews: [],
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "phone-send", title: "Phone send", active: true }] };
     const page = await newTestPage({ viewport: { width: 900, height: 844 } });
     await page.route("http://atelier.test/workspaces/phone-send", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("**/workspaces/phone-send/agents/agent-1/body", (route) => route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("phone-send", "agent-1", agentBody) }));
     await page.route("**/workspaces/phone-send/active", (route) => route.fulfill({ status: 204 }));
     await page.route("**/send", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/workspaces/phone-send");
@@ -2390,7 +2387,7 @@ Comment: I don't think we need these tests`;
   });
 
   test("keeps global mobile navigation available for a provisioning resident", async () => {
-    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "starting", title: "Starting", active: true, busy: true }] };
+    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "starting", title: "Starting", active: true, state: "starting" }] };
     const shell = renderShellResidents(pane, '<div class="workspace-detail-resident workspace-boot visible" data-workspace-residency-target="resident" data-workspace-id="starting"><p>Preparing workspace…</p></div>');
     const page = await newTestPage({ viewport: { width: 390, height: 844 } });
     await page.route("http://atelier.test/workspaces/starting", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${shell}<script type="module" src="${workspaceClientPath}"></script>` }));
@@ -2525,7 +2522,7 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("deep links reveal Work only in the visible Workspace and hidden presentations do not acknowledge Attention", async () => {
+  test("deep links reveal Work only in the visible Workspace", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "deep-demo", title: "Deep link" },
       agentConversations: [agentConversation("deep-demo", "agent-1")],
@@ -2535,30 +2532,21 @@ Comment: I don't think we need these tests`;
       ],
     };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
-    let acknowledgements = 0;
     await page.route("http://atelier.test/workspaces/deep-demo?workView=browser%3A1", (route) => route.fulfill({ contentType: "text/html", body: `<div class="workspace-detail-resident visible">${renderWorkspacePresentation(presentation)}</div><script type="module" src="${workspaceClientPath}"></script>` }));
-    await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
-    await page.route("**/work-views/*/attention/acknowledge*", (route) => { acknowledgements += 1; return route.fulfill({ status: 204 }); });
     await page.goto("http://atelier.test/workspaces/deep-demo?workView=browser%3A1");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-work-pane-open");
     expect(await page.locator('[data-work-view-key="browser:1"]').getAttribute("aria-selected")).toBe("true");
-    await page.waitForTimeout(20);
-    expect(acknowledgements).toBe(1);
 
     await page.getByRole("tab", { name: "Files" }).click();
     expect(new URL(page.url()).searchParams.has("workView")).toBe(false);
     expect(await page.locator('[data-work-view-key="files:workspace"]').getAttribute("aria-selected")).toBe("true");
-    await page.waitForTimeout(20);
-    const acknowledgementsBeforeHiding = acknowledgements;
-
     await page.locator(".workspace-detail-resident").evaluate((resident) => resident.classList.remove("visible"));
     await page.evaluate(() => {
       const target = document.querySelector<HTMLElement>(".fixed-workspace-presentation")!;
       window.Turbo!.renderStreamMessage(`<turbo-stream action="present-work-view" target="${target.id}" data-work-view-key="browser:1"></turbo-stream>`);
     });
-    await page.waitForTimeout(20);
-    expect(acknowledgements).toBe(acknowledgementsBeforeHiding);
+    expect(await page.locator('[data-work-view-key="files:workspace"]').getAttribute("aria-selected")).toBe("true");
     await page.close();
   });
 
@@ -2580,9 +2568,7 @@ Comment: I don't think we need these tests`;
     const intendedWork = { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 2, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" } as const;
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
     await page.route("http://atelier.test/workspaces/visible-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(visible, pane, [cached])}<script type="module" src="${workspaceClientPath}"></script>` }));
-    let acknowledgements = 0;
     await page.route("**/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
-    await page.route("**/workspaces/present-demo/work-views/*/attention/acknowledge*", (route) => { acknowledgements += 1; return route.fulfill({ status: 204 }); });
     await page.goto("http://atelier.test/workspaces/visible-demo");
     await page.waitForFunction(() => document.querySelectorAll('[data-navigation-ready="true"]').length === 2);
 
@@ -2597,7 +2583,6 @@ Comment: I don't think we need these tests`;
       workPaneVisible: true,
       phoneDestination: "work:browser:1",
     });
-    expect(acknowledgements).toBe(0);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('.fixed-shell-workspace-pane [data-workspace-entry-id="present-demo"]').evaluate((button: HTMLButtonElement) => button.click());
     const resident = page.locator('.workspace-detail-resident[data-workspace-id="present-demo"]');
@@ -2608,35 +2593,10 @@ Comment: I don't think we need these tests`;
     expect(await browserPane.getAttribute("data-workspace-logically-visible")).toBe("true");
     expect(await resident.locator('[data-workspace-pane-role="agent"]').getAttribute("data-workspace-logically-visible")).toBe("false");
     expect(await resident.locator(".fixed-workspace-presentation").getAttribute("data-phone-destination")).toBe("work:browser:1");
-    await page.waitForTimeout(20);
-    expect(acknowledgements).toBe(1);
-
-    const acknowledgedBrowser = { key: "browser:1", label: "Browser", kind: "resource" as const, mobileDestination: "direct" as const, availability: { phase: "live" as const }, bodyHtml: "<p>Browser</p>" };
-    const acknowledged = workViewsTurboStream("present-demo", [acknowledgedBrowser]);
-    await browserPane.evaluate((pane) => pane.setAttribute("data-targeted-work-probe", "retained"));
-    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), acknowledged);
-    await page.waitForTimeout(20);
-    expect(await resident.locator('[data-work-view-key="browser:1"]').getAttribute("aria-selected")).toBe("true");
-    expect(await browserPane.getAttribute("data-targeted-work-probe")).toBe("retained");
-    expect(acknowledgements).toBe(1);
-
-    const repeatedAttention = workViewsTurboStream("present-demo", [intendedWork], { selectKey: "browser:1", intendSelection: true });
-    const repeatedAcknowledgement = page.waitForResponse((response) => new URL(response.url()).pathname === "/workspaces/present-demo/work-views/browser%3A1/attention/acknowledge");
-    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), repeatedAttention);
-    expect((await repeatedAcknowledgement).request().method()).toBe("POST");
-    expect(acknowledgements).toBe(2);
-    const attention = resident.locator('[data-work-view-key="browser:1"] [aria-label="Attention"]');
-    expect(await attention.count()).toBe(1);
-
-    // The acknowledge endpoint broadcasts the authoritative attention-free targeted stream.
-    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), acknowledged);
-    await attention.waitFor({ state: "detached" });
-    expect(await resident.locator('[data-work-view-key="browser:1"]').getAttribute("aria-selected")).toBe("true");
-    expect(await browserPane.getAttribute("data-targeted-work-probe")).toBe("retained");
     await page.close();
   });
 
-  test("acknowledges a selected Work attention request when the hidden document becomes visible", async () => {
+  test("finishes a visible Work preparation request only when the document is visible", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "visibility-attention", title: "Visibility attention" },
       agentConversations: [agentConversation("visibility-attention", "agent-visible")],
@@ -2644,7 +2604,6 @@ Comment: I don't think we need these tests`;
     };
     const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "visibility-attention", title: "Visibility attention", active: true }] };
     const intendedWork = { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" } as const;
-    let acknowledgements = 0;
     const page = await newTestPage();
     await page.addInitScript(() => {
       // SAFETY: This isolated browser fixture owns the numeric event probe on window.
@@ -2658,11 +2617,6 @@ Comment: I don't think we need these tests`;
       contentType: "text/html",
       body: `${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>`,
     }));
-    await page.route("**/workspaces/visibility-attention/work-views/*/attention/acknowledge*", (route) => {
-      acknowledgements += 1;
-      return route.fulfill({ status: 204 });
-    });
-    await page.route("**/workspaces/visibility-attention/agents/*/attention/acknowledge*", (route) => route.fulfill({ status: 204 }));
     await page.goto("http://atelier.test/workspaces/visibility-attention");
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
     await page.evaluate(() => {
@@ -2672,103 +2626,15 @@ Comment: I don't think we need these tests`;
 
     await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), workViewsTurboStream("visibility-attention", [intendedWork], { openedKey: "browser:1", selectKey: "browser:1", intendSelection: true }));
     await page.waitForFunction(() => document.querySelector('[data-workspace-pane-id="browser:1"]')?.getAttribute("data-workspace-logically-visible") === "true");
-    expect(acknowledgements).toBe(0);
     // SAFETY: The init script owns this numeric browser-test probe.
     expect(await page.evaluate(() => (window as typeof window & { preparationAcknowledgements: number }).preparationAcknowledgements)).toBe(0);
 
-    const acknowledgement = page.waitForResponse((response) => new URL(response.url()).pathname === "/workspaces/visibility-attention/work-views/browser%3A1/attention/acknowledge");
     await page.evaluate(() => {
       Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
       document.dispatchEvent(new Event("visibilitychange"));
     });
-    expect((await acknowledgement).request().method()).toBe("POST");
     // SAFETY: The init script owns this numeric browser-test probe.
     await page.waitForFunction(() => (window as typeof window & { preparationAcknowledgements: number }).preparationAcknowledgements === 1);
-    expect(acknowledgements).toBe(1);
-    await page.close();
-  });
-
-  test("acknowledges the latest Agent and Work attention occurrences while older acknowledgements are delayed", async () => {
-    const initialWork = { key: "browser:1", label: "Browser", kind: "resource", mobileDestination: "direct", attentionSequence: 21, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" } as const;
-    const presentation: WorkspacePresentation = {
-      workspace: { id: "attention-cas", title: "Attention ordering" },
-      agentConversations: [agentConversation("attention-cas", "agent-cas")],
-      workViews: [initialWork],
-    };
-    const pane: WorkspacePanePresentation = { projects: [], projectlessWorkspaces: [{ id: "attention-cas", title: "Attention ordering", active: true }] };
-    let markFirstAgentAcknowledgement!: () => void;
-    const firstAgentAcknowledgement = new Promise<void>((resolve) => { markFirstAgentAcknowledgement = resolve; });
-    let releaseFirstAgentAcknowledgement!: () => void;
-    const firstAgentAcknowledgementReleased = new Promise<void>((resolve) => { releaseFirstAgentAcknowledgement = resolve; });
-    let markSecondAgentAcknowledgement!: () => void;
-    const secondAgentAcknowledgement = new Promise<void>((resolve) => { markSecondAgentAcknowledgement = resolve; });
-    let markFirstWorkAcknowledgement!: () => void;
-    const firstWorkAcknowledgement = new Promise<void>((resolve) => { markFirstWorkAcknowledgement = resolve; });
-    let releaseFirstWorkAcknowledgement!: () => void;
-    const firstWorkAcknowledgementReleased = new Promise<void>((resolve) => { releaseFirstWorkAcknowledgement = resolve; });
-    let markSecondWorkAcknowledgement!: () => void;
-    const secondWorkAcknowledgement = new Promise<void>((resolve) => { markSecondWorkAcknowledgement = resolve; });
-    const agentTokens: string[] = [];
-    const workTokens: string[] = [];
-    const page = await newTestPage();
-    await page.route("http://atelier.test/workspaces/attention-cas", (route) => route.fulfill({
-      contentType: "text/html",
-      body: `${renderShellFixture(presentation, pane)}<script>window.AtelierCable = { subscribe() {}, unsubscribe() {}, connected() { return true; } };</script><script type="module" src="${workspaceClientPath}"></script>`,
-    }));
-    await page.route("**/workspaces/attention-cas/agents/agent-cas/body", (route) => route.fulfill({
-      contentType: "text/html",
-      body: renderAgentBodyFrame("attention-cas", "agent-cas", agentPaneBody("attention-cas", "agent-cas")),
-    }));
-    await page.route("**/workspaces/attention-cas/agents/agent-cas/attention/acknowledge*", async (route) => {
-      const token = new URL(route.request().url()).searchParams.get("attentionToken");
-      if (!token) throw new Error("expected Agent attention token");
-      agentTokens.push(token);
-      if (token === "11") {
-        markFirstAgentAcknowledgement();
-        await firstAgentAcknowledgementReleased;
-      } else if (token === "12") markSecondAgentAcknowledgement();
-      await route.fulfill({ status: 204 });
-    });
-    await page.route("**/workspaces/attention-cas/work-views/browser%3A1/attention/acknowledge*", async (route) => {
-      const token = new URL(route.request().url()).searchParams.get("attentionToken");
-      if (!token) throw new Error("expected Work attention token");
-      workTokens.push(token);
-      if (token === "21") {
-        markFirstWorkAcknowledgement();
-        await firstWorkAcknowledgementReleased;
-      } else if (token === "22") markSecondWorkAcknowledgement();
-      await route.fulfill({ status: 204 });
-    });
-    await page.goto("http://atelier.test/workspaces/attention-cas");
-    await page.waitForFunction(() => document.querySelector('[data-workspace-pane-id="agent-cas"]')?.getAttribute("data-workspace-logically-visible") === "true");
-    await page.locator(".agent-pane").waitFor();
-    await page.waitForTimeout(20);
-    expect(agentTokens).toEqual([]);
-
-    await page.locator('[data-workspace-entry-id="attention-cas"]').evaluate((row) => {
-      row.dataset.workspaceUnreadTokens = JSON.stringify({ "agent:agent-cas": 11 });
-      document.dispatchEvent(new CustomEvent("atelier:workspace-pane-changed"));
-    });
-    await firstAgentAcknowledgement;
-    await page.locator('[data-workspace-entry-id="attention-cas"]').evaluate((row) => {
-      row.dataset.workspaceUnreadTokens = JSON.stringify({ "agent:agent-cas": 12 });
-      document.dispatchEvent(new CustomEvent("atelier:workspace-pane-changed"));
-    });
-    await secondAgentAcknowledgement;
-    expect(agentTokens).toEqual(["11", "12"]);
-    const firstAgentResponse = page.waitForResponse((response) => new URL(response.url()).searchParams.get("attentionToken") === "11");
-    releaseFirstAgentAcknowledgement();
-    await firstAgentResponse;
-
-    await page.locator('[data-work-view-key="browser:1"]').evaluate((button: HTMLButtonElement) => button.click());
-    await firstWorkAcknowledgement;
-    const latestWork = { ...initialWork, attentionSequence: 22 };
-    await page.evaluate((html) => window.Turbo!.renderStreamMessage(html), workViewsTurboStream("attention-cas", [latestWork], { openedKey: "browser:1", selectKey: "browser:1", intendSelection: true }));
-    await secondWorkAcknowledgement;
-    expect(workTokens).toEqual(["21", "22"]);
-    const firstWorkResponse = page.waitForResponse((response) => new URL(response.url()).searchParams.get("attentionToken") === "21");
-    releaseFirstWorkAcknowledgement();
-    await firstWorkResponse;
     await page.close();
   });
 

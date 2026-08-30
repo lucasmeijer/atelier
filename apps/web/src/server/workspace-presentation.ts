@@ -7,15 +7,17 @@ export type WorkViewAvailability =
   | { phase: "reconnecting"; detail?: string }
   | { phase: "unavailable"; detail: string; recoveryHtml?: string };
 
+export type WorkspaceActionState = "starting" | "deleting" | "requires_delete_confirmation" | "idle";
+
 export interface WorkspacePaneEntry {
   id: string;
   title: string;
   active?: boolean;
-  busy?: boolean;
+  state?: WorkspaceActionState;
+  attention?: boolean;
+  attentionAt?: number;
+  attentionTokens?: Record<string, number>;
   busyViewKeys?: readonly string[];
-  unreadAt?: number;
-  agentReadyAt?: number;
-  unreadTokens?: Record<string, number>;
   outdated?: boolean;
 }
 
@@ -126,11 +128,14 @@ function selectorCloseForm(close: ViewCloseAction): string {
 }
 
 function renderWorkspaceRowStatus(workspace: WorkspacePaneEntry): string {
-  const busy = workspace.busy ? '<i class="status-spinner sm fixed-shell-workspace-busy action-item__status" aria-label="Workspace busy" title="Workspace busy"></i>' : "";
-  const unreadLabel = workspace.agentReadyAt !== undefined ? "Agent ready" : "Attention";
-  const unread = workspace.unreadAt !== undefined ? `<i class="status-dot attention at-edge action-item__status" aria-label="${unreadLabel}"></i>` : "";
-  const outdated = !busy && !unread && workspace.outdated ? '<i class="fixed-shell-workspace-warning action-item__status" aria-label="Workspace created with an older version of Atelier" title="Some newer features may require a new workspace">⚠︎</i>' : "";
-  return `${busy}${unread}${outdated}`;
+  if (workspace.state === "starting" || workspace.state === "deleting") {
+    const label = workspace.state === "starting" ? "Workspace starting" : "Workspace deleting";
+    return `<i class="status-spinner sm fixed-shell-workspace-busy action-item__status" aria-label="${label}" title="${label}"></i>`;
+  }
+  if (workspace.attention) {
+    return '<span class="workspace-attention-status action-item__status" aria-label="Attention"><i class="status-dot attention at-edge" aria-hidden="true"></i></span>';
+  }
+  return workspace.outdated ? '<i class="fixed-shell-workspace-warning action-item__status" aria-label="Workspace created with an older version of Atelier" title="Some newer features may require a new workspace">⚠︎</i>' : "";
 }
 
 function renderWorkspaceRowContent(workspace: WorkspacePaneEntry): string {
@@ -138,12 +143,11 @@ function renderWorkspaceRowContent(workspace: WorkspacePaneEntry): string {
 }
 
 function renderWorkspaceRow(workspace: WorkspacePaneEntry, projectId?: string): string {
-  const unreadAt = workspace.unreadAt === undefined ? "" : ` data-workspace-unread-at="${workspace.unreadAt}"`;
-  const agentReadyAt = workspace.agentReadyAt === undefined ? "" : ` data-workspace-agent-ready-at="${workspace.agentReadyAt}"`;
-  const unreadTokens = workspace.unreadTokens === undefined ? "" : ` data-workspace-unread-tokens="${escapeHtml(JSON.stringify(workspace.unreadTokens))}"`;
+  const attentionAt = workspace.attentionAt === undefined ? "" : ` data-workspace-attention-at="${workspace.attentionAt}"`;
+  const attentionTokens = workspace.attentionTokens === undefined ? "" : ` data-workspace-attention-tokens="${escapeHtml(JSON.stringify(workspace.attentionTokens))}"`;
   const project = projectId ? ` data-project-id="${escapeHtml(projectId)}"` : "";
   const busyViews = workspace.busyViewKeys?.length ? ` data-workspace-busy-views="${escapeHtml(JSON.stringify(workspace.busyViewKeys))}"` : "";
-  return `<button type="button" class="fixed-shell-workspace-row action-item action-item__primary${workspace.active ? " active" : ""}" title="${escapeHtml(workspace.title)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}"${unreadAt}${agentReadyAt}${unreadTokens}${busyViews}${project} data-action="click->workspace-navigation#selectWorkspace">${renderWorkspaceRowContent(workspace)}</button>`;
+  return `<button type="button" class="fixed-shell-workspace-row action-item action-item__primary${workspace.active ? " active" : ""}" title="${escapeHtml(workspace.title)}"${workspace.active ? ' aria-current="page"' : ""} data-workspace-entry-id="${escapeHtml(workspace.id)}"${attentionAt}${attentionTokens}${busyViews}${project} data-action="click->workspace-navigation#selectWorkspace">${renderWorkspaceRowContent(workspace)}</button>`;
 }
 
 const projectlessWorkspaceGroupId = "__projectless__";

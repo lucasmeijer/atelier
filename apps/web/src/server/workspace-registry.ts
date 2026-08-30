@@ -26,11 +26,9 @@ export interface WorkspaceEntry {
   error?: string;
 }
 
-export type WorkspaceState = "busy" | "unread" | "idle";
-
 export interface WorkspaceRegistryCallbacks {
-  /** A single workspace changed (phase, title, busy, unread). viewKey is set when a view status change triggered it. */
-  rowChanged?(entry: WorkspaceEntry, context: { viewKey?: string; unread?: boolean }): void;
+  /** A single workspace changed. viewKey is set when one view triggered the change. */
+  rowChanged?(entry: WorkspaceEntry, context: { viewKey?: string }): void;
   /** A workspace's parked state changed and should be persisted. */
   parkedChanged?(entry: WorkspaceEntry): void;
   /** List membership or ordering changed. */
@@ -163,20 +161,14 @@ export interface WorkspaceRegistry {
   touch(id: string): void;
   remove(id: string): void;
   setViewBusy(id: string, viewKey: string, busy: boolean): void;
-  markViewUnread(id: string, viewKey: string, token?: number): number | undefined;
-  acknowledgeViewUnread(id: string, viewKey: string, token: number): boolean;
-  clearViewUnread(id: string, viewKey: string): void;
-  isViewBusy(id: string, viewKey: string): boolean;
-  isViewUnread(id: string, viewKey: string): boolean;
-  viewUnreadToken(id: string, viewKey: string): number | undefined;
-  unreadTokens(id: string): Record<string, number>;
-  isWorkspaceBusy(id: string): boolean;
-  isWorkspaceUnread(id: string): boolean;
-  workspaceUnreadAt(id: string): number | undefined;
-  /** First unread Agent completion, excluding Work and workspace-level notices. */
-  workspaceAgentReadyAt(id: string): number | undefined;
-  workspaceState(id: string): WorkspaceState;
-  oldestUnreadWorkspace(): WorkspaceEntry | undefined;
+  markViewAttention(id: string, viewKey: string, token?: number): number | undefined;
+  /** Clears only captured occurrences; Attention arriving after capture survives. */
+  acknowledgeAttention(id: string, capturedTokens: Readonly<Record<string, number>>): string[];
+  clearViewAttention(id: string, viewKey: string): void;
+  attentionTokens(id: string): Record<string, number>;
+  hasAttention(id: string): boolean;
+  workspaceAttentionAt(id: string): number | undefined;
+  oldestAttentionWorkspace(): WorkspaceEntry | undefined;
   busyViews(id: string): string[];
 }
 
@@ -368,7 +360,7 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       callbacks.rowChanged?.(entry, { viewKey });
     },
 
-    markViewUnread(id, viewKey, suppliedToken) {
+    markViewAttention(id, viewKey, suppliedToken) {
       const entry = entries.get(id);
       if (!entry) return undefined;
       const token = suppliedToken ?? nextUnreadToken;
@@ -388,75 +380,53 @@ export function createWorkspaceRegistry(options: WorkspaceRegistryOptions = {}):
       views[viewKey] = { unreadAt: previous?.unreadAt ?? now(), token };
       unreadViewsByWorkspace[id] = views;
       persistUnread();
-      callbacks.rowChanged?.(entry, { viewKey, unread: true });
+      callbacks.rowChanged?.(entry, { viewKey });
       if (unparked) callbacks.listChanged?.(sorted());
       return token;
     },
 
-    acknowledgeViewUnread(id, viewKey, token) {
-      const occurrence = unreadViewsByWorkspace[id]?.[viewKey];
-      if (occurrence?.token !== token) return false;
-      this.clearViewUnread(id, viewKey);
-      return true;
+    acknowledgeAttention(id, capturedTokens) {
+      const entry = entries.get(id);
+      const views = unreadViewsByWorkspace[id];
+      if (!entry || !views) return [];
+      const acknowledged = Object.entries(capturedTokens)
+        .filter(([viewKey, token]) => views[viewKey]?.token === token)
+        .map(([viewKey]) => viewKey);
+      if (acknowledged.length === 0) return acknowledged;
+      for (const viewKey of acknowledged) delete views[viewKey];
+      if (Object.keys(views).length === 0) delete unreadViewsByWorkspace[id];
+      persistUnread();
+      callbacks.rowChanged?.(entry, {});
+      return acknowledged;
     },
 
-    clearViewUnread(id, viewKey) {
+    clearViewAttention(id, viewKey) {
       const entry = entries.get(id);
       const views = unreadViewsByWorkspace[id];
       if (!entry || !views?.[viewKey]) return;
       delete views[viewKey];
       if (Object.keys(views).length === 0) delete unreadViewsByWorkspace[id];
       persistUnread();
-      callbacks.rowChanged?.(entry, { viewKey, unread: false });
+      callbacks.rowChanged?.(entry, { viewKey });
     },
 
-    isViewBusy(id, viewKey) {
-      return busyViewsByWorkspace.get(id)?.has(viewKey) ?? false;
-    },
-
-    isViewUnread(id, viewKey) {
-      return unreadViewsByWorkspace[id]?.[viewKey] !== undefined;
-    },
-
-    viewUnreadToken(id, viewKey) {
-      return unreadViewsByWorkspace[id]?.[viewKey]?.token;
-    },
-
-    unreadTokens(id) {
+    attentionTokens(id) {
       return Object.fromEntries(Object.entries(unreadViewsByWorkspace[id] ?? {}).map(([viewKey, occurrence]) => [viewKey, occurrence.token]));
     },
 
-    isWorkspaceBusy(id) {
-      const deletion = entries.get(id)?.deletion;
-      return deletion?.status === "checking" || deletion?.status === "deleting" || (busyViewsByWorkspace.get(id)?.size ?? 0) > 0;
-    },
-
-    isWorkspaceUnread(id) {
+    hasAttention(id) {
       return unreadViewsByWorkspace[id] !== undefined;
     },
 
-    workspaceUnreadAt(id) {
+    workspaceAttentionAt(id) {
       const timestamps = Object.values(unreadViewsByWorkspace[id] ?? {}).map(({ unreadAt }) => unreadAt);
       return timestamps.length > 0 ? Math.min(...timestamps) : undefined;
     },
 
-    workspaceAgentReadyAt(id) {
-      const timestamps = Object.entries(unreadViewsByWorkspace[id] ?? {})
-        .filter(([viewKey]) => viewKey.startsWith("agent:"))
-        .map(([, { unreadAt }]) => unreadAt);
-      return timestamps.length > 0 ? Math.min(...timestamps) : undefined;
-    },
-
-    workspaceState(id) {
-      if (this.isWorkspaceBusy(id)) return "busy";
-      if (this.isWorkspaceUnread(id)) return "unread";
-      return "idle";
-    },
-
-    oldestUnreadWorkspace() {
+    oldestAttentionWorkspace() {
       return [...entries.values()]
-        .filter((entry) => entry.phase === "ready" && this.isWorkspaceUnread(entry.id))
-        .sort((a, b) => (this.workspaceUnreadAt(a.id)! - this.workspaceUnreadAt(b.id)!) || a.id.localeCompare(b.id))[0];
+        .filter((entry) => this.hasAttention(entry.id))
+        .sort((a, b) => (this.workspaceAttentionAt(a.id)! - this.workspaceAttentionAt(b.id)!) || a.id.localeCompare(b.id))[0];
     },
 
     busyViews(id) {

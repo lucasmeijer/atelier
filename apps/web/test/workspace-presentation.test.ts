@@ -62,8 +62,8 @@ describe("role-fixed Workspace presentation", () => {
 
   test("server-renders the Workspace pane once at the shell seam", () => {
     const html = renderWorkspacePane({ projects: [{ id: "project-1", title: "Atelier", workspaces: [
-      { id: "workspace-1", title: "Typed shell", active: true, unreadAt: 123, agentReadyAt: 456 },
-      { id: "workspace-2", title: "Working", busy: true },
+      { id: "workspace-1", title: "Typed shell", active: true, attention: true, attentionAt: 123 },
+      { id: "workspace-2", title: "Working", state: "deleting" },
     ] }], emptyProjects: [{ id: "project-2", title: "Empty" }], projectlessWorkspaces: [{ id: "workspace-3", title: "Scratch" }] }, '<button data-update-probe>Restart to update</button>');
 
     expect(html).toContain('class="fixed-shell-workspace-pane"');
@@ -100,33 +100,28 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).not.toContain("New Project");
     expect(html).toContain('class="fixed-shell-workspace-row action-item action-item__primary active"');
     expect(html).not.toContain("fixed-shell-workspace-color");
-    expect(html).toContain('data-workspace-unread-at="123"');
-    expect(html).toContain('data-workspace-agent-ready-at="456"');
+    expect(html).toContain('data-workspace-attention-at="123"');
     expect(html).toContain('aria-current="page"');
-    expect(html).toContain('class="status-spinner sm fixed-shell-workspace-busy action-item__status" aria-label="Workspace busy"');
+    expect(html).toContain('class="status-spinner sm fixed-shell-workspace-busy action-item__status" aria-label="Workspace deleting"');
     expect(html).toContain('<section id="global_sidebar_contributions"><button data-update-probe>Restart to update</button></section>');
   });
 
-  test("keeps busy and unread independent while distinguishing Agent readiness from other Attention", () => {
-    const row = (status: { busy?: boolean; unreadAt?: number; agentReadyAt?: number }) => renderWorkspacePane({
+  test("renders one Workspace status using lifecycle, Attention, then outdated-image precedence", () => {
+    const row = (status: { state?: "starting" | "deleting" | "requires_delete_confirmation" | "idle"; attention?: boolean }) => renderWorkspacePane({
       projects: [],
       projectlessWorkspaces: [{ id: "workspace", title: "Workspace", outdated: true, ...status }],
     });
 
-    const busy = row({ busy: true });
-    const attention = row({ unreadAt: 123 });
-    const unread = row({ unreadAt: 123, agentReadyAt: 123 });
-    const busyUnread = row({ busy: true, unreadAt: 123, agentReadyAt: 123 });
-    expect(row({})).toContain("fixed-shell-workspace-warning");
-    expect(busy).toContain("fixed-shell-workspace-busy");
-    expect(busy).not.toContain("fixed-shell-workspace-warning");
+    const starting = row({ state: "starting", attention: true });
+    const deleting = row({ state: "deleting", attention: true });
+    const attention = row({ state: "requires_delete_confirmation", attention: true });
+    expect(row({ state: "idle" })).toContain("fixed-shell-workspace-warning");
+    expect(starting).toContain('aria-label="Workspace starting"');
+    expect(starting).not.toContain('aria-label="Attention"');
+    expect(deleting).toContain('aria-label="Workspace deleting"');
+    expect(deleting).not.toContain('aria-label="Attention"');
     expect(attention).toContain('aria-label="Attention"');
-    expect(attention).not.toContain('aria-label="Agent ready"');
-    expect(unread).toContain('aria-label="Agent ready"');
-    expect(unread).not.toContain("fixed-shell-workspace-warning");
-    expect(busyUnread).toContain("fixed-shell-workspace-busy");
-    expect(busyUnread).toContain('aria-label="Agent ready"');
-    expect(busyUnread).not.toContain("fixed-shell-workspace-warning");
+    expect(attention).not.toContain("fixed-shell-workspace-warning");
   });
 
   test("renders a parked disclosure only inside Projects that have parked Workspaces", () => {

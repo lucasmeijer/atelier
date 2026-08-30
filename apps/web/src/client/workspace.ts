@@ -35,7 +35,7 @@ import { createAtelierCableClient } from "./cable.ts";
 import { createCloseButton, registerDesignSystemControllers } from "./design-system.ts";
 import { SelectPopupController } from "./popup-select.ts";
 import { createWorkspacePresentationController, installWorkspacePresentationTurboStream, markActiveWorkspaceRow } from "./workspace-presentation.ts";
-import { oldestReadyFirst, retainedWorkspaceIds, type WorkspaceRetentionCandidate } from "./workspace-residency-policy.ts";
+import { oldestAttentionFirst, retainedWorkspaceIds, type AttentionWorkspace, type WorkspaceRetentionCandidate } from "./workspace-residency-policy.ts";
 
 declare global {
   interface Window {
@@ -492,10 +492,10 @@ class AtelierShortcutsController extends Controller {
     });
     this.registerCommand({
       id: "workspace.open-oldest-unread",
-      label: "Open oldest unread workspace",
+      label: "Open oldest workspace needing attention",
       scope: "global",
       binding: "Meta+Alt+Slash",
-      run: () => this.openOldestUnreadWorkspace(),
+      run: () => this.openOldestAttentionWorkspace(),
     });
     this.registerCommand({
       id: "work-view.open-previous",
@@ -914,7 +914,7 @@ class AtelierShortcutsController extends Controller {
       ?? residencyController()?.visibleWorkspaceId();
   }
 
-  private async openOldestUnreadWorkspace(): Promise<void> {
+  private async openOldestAttentionWorkspace(): Promise<void> {
     const response = await fetch("/workspaces/open-oldest-unread", {
       method: "POST",
       headers: { "Accept": "text/vnd.turbo-stream.html" },
@@ -1406,6 +1406,10 @@ class WorkspaceResidencyController extends Controller {
   async selectWorkspace(workspaceId: string, href: string, historyMode: "push" | "none" = "push"): Promise<void> {
     const seq = ++this.selectionSeq;
     this.intendedWorkspaceId = workspaceId;
+    if (this.backgroundPreparationWorkspaceId === workspaceId) {
+      this.setWorkspacePreloading(workspaceId, false);
+      this.backgroundPreparationWorkspaceId = undefined;
+    }
     if (historyMode === "push" && `${location.pathname}${location.search}` !== new URL(href, location.href).pathname + new URL(href, location.href).search) history.pushState({}, "", href);
     workspaceNavigationController()?.setActiveWorkspace(workspaceId);
 
@@ -1649,30 +1653,32 @@ class WorkspaceResidencyController extends Controller {
     const entry = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
     if (!entry) return;
     entry.toggleAttribute("data-workspace-preloading", preloading);
-    const spinner = entry.querySelector(":scope > .workspace-preload-spinner");
-    if (preloading && !spinner) entry.insertAdjacentHTML("beforeend", '<i class="status-spinner sm workspace-preload-spinner" aria-label="Preparing workspace" title="Preparing workspace"></i>');
-    if (!preloading) spinner?.remove();
+    const attention = entry.querySelector<HTMLElement>(":scope > .workspace-attention-status");
+    if (!attention) return;
+    attention.setAttribute("aria-label", preloading ? "Attention; preparing workspace" : "Attention");
+    attention.toggleAttribute("title", preloading);
+    if (preloading) attention.title = "Preparing workspace";
   }
 
-  private agentReadyWorkspaces(): Array<{ workspaceId: string; unreadAt: number }> {
-    return oldestReadyFirst([...document.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row[data-workspace-agent-ready-at]")].map((entry) => ({
+  private attentionWorkspaces(): AttentionWorkspace[] {
+    return oldestAttentionFirst([...document.querySelectorAll<HTMLElement>(".fixed-shell-workspace-row[data-workspace-attention-at]")].map((entry) => ({
       workspaceId: entry.dataset.workspaceEntryId!,
-      unreadAt: Number(entry.dataset.workspaceAgentReadyAt),
+      attentionAt: Number(entry.dataset.workspaceAttentionAt),
     })));
   }
 
-  private preparationCandidates(): Array<{ workspaceId: string; unreadAt: number }> {
-    const candidates = new Map(this.agentReadyWorkspaces().map((workspace) => [workspace.workspaceId, workspace]));
-    for (const [workspaceId, unreadAt] of this.requestedPreparationAt) {
-      if (!candidates.has(workspaceId)) candidates.set(workspaceId, { workspaceId, unreadAt });
+  private preparationCandidates(): AttentionWorkspace[] {
+    const candidates = new Map(this.attentionWorkspaces().map((workspace) => [workspace.workspaceId, workspace]));
+    for (const [workspaceId, attentionAt] of this.requestedPreparationAt) {
+      if (!candidates.has(workspaceId)) candidates.set(workspaceId, { workspaceId, attentionAt });
     }
-    return oldestReadyFirst([...candidates.values()]);
+    return oldestAttentionFirst([...candidates.values()]);
   }
 
   private retentionCandidates(extraWorkspaceId?: string, protectExtra = false): WorkspaceRetentionCandidate[] {
-    const unreadAt = new Map(this.agentReadyWorkspaces().map((workspace) => [workspace.workspaceId, workspace.unreadAt]));
+    const attentionAt = new Map(this.attentionWorkspaces().map((workspace) => [workspace.workspaceId, workspace.attentionAt]));
     for (const [workspaceId, requestedAt] of this.requestedPreparationAt) {
-      if (!unreadAt.has(workspaceId)) unreadAt.set(workspaceId, requestedAt);
+      if (!attentionAt.has(workspaceId)) attentionAt.set(workspaceId, requestedAt);
     }
     const candidates = this.residentTargets.map((resident) => {
       const workspaceId = resident.dataset.workspaceId!;
@@ -1682,13 +1688,13 @@ class WorkspaceResidencyController extends Controller {
         visible: resident.classList.contains("visible"),
         prepared: this.prepared.has(workspaceId),
         preparing: operation ? this.preparationIsCurrent(operation) : false,
-        unreadAt: unreadAt.get(workspaceId),
+        attentionAt: attentionAt.get(workspaceId),
         lastActivatedAt: Number(resident.dataset.lastActivatedAt ?? 0),
         protected: operation?.priority === "foreground",
       };
     });
     if (extraWorkspaceId && !candidates.some((candidate) => candidate.workspaceId === extraWorkspaceId)) {
-      candidates.push({ workspaceId: extraWorkspaceId, visible: false, prepared: false, preparing: true, unreadAt: unreadAt.get(extraWorkspaceId), lastActivatedAt: 0, protected: protectExtra });
+      candidates.push({ workspaceId: extraWorkspaceId, visible: false, prepared: false, preparing: true, attentionAt: attentionAt.get(extraWorkspaceId), lastActivatedAt: 0, protected: protectExtra });
     }
     return candidates;
   }
@@ -1800,12 +1806,10 @@ class WorkspaceResidencyController extends Controller {
     const workspaceId = this.visibleWorkspaceId();
     if (!workspaceId || workspaceId !== this.intendedWorkspaceId) return;
     const row = document.querySelector<HTMLElement>(`.fixed-shell-workspace-row[data-workspace-entry-id="${CSS.escape(workspaceId)}"]`);
-    const serializedTokens = row?.dataset.workspaceUnreadTokens;
+    const serializedTokens = row?.dataset.workspaceAttentionTokens;
     if (!serializedTokens) return;
-    // SAFETY: Workspace rows serialize this server-owned field as a number-valued view-key map.
-    const token = (JSON.parse(serializedTokens) as Record<string, number>).workspace;
-    if (token === undefined) return;
-    void fetch(`/workspaces/${encodeURIComponent(workspaceId)}/attention/acknowledge?attentionToken=${encodeURIComponent(token)}`, { method: "POST" });
+    // The server acknowledges only these exact occurrences, so newer Attention survives a delayed request.
+    void fetch(`/workspaces/${encodeURIComponent(workspaceId)}/attention/acknowledge?attentionTokens=${encodeURIComponent(serializedTokens)}`, { method: "POST" });
   }
 
   private setSwitchingWorkspace(switching: boolean): void {

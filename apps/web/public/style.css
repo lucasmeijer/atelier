@@ -266,7 +266,18 @@ turbo-frame { display: contents; }
 .fixed-shell-projects-drawer > .fixed-shell-project-workspaces > .fixed-shell-project { margin-bottom: 2px; }
 .fixed-shell-workspace-row { padding-left: 24px; }
 .fixed-shell-workspace-warning { flex: 0 0 auto; color: var(--warning); font-style: normal; }
-.fixed-shell-workspace-row[data-workspace-preloading] > .status-dot.attention { display: none; }
+.workspace-attention-status { position: relative; display: inline-grid; width: 10px; height: 10px; place-items: center; overflow: visible; }
+.workspace-attention-status > .status-dot { position: static; }
+.fixed-shell-workspace-row[data-workspace-preloading] > .workspace-attention-status::after {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  content: "";
+  animation: spin .8s linear infinite;
+}
 .fixed-shell-main { min-width: 0; min-height: 0; flex: 1; display: flex; gap: var(--fixed-shell-gap); }
 .workspace-deletion-presentation { display: grid; place-items: center; overflow: auto; padding: 32px; background: var(--fixed-shell-bg); }
 .workspace-deletion-state { width: min(640px, 100%); margin: auto; }

@@ -49,12 +49,6 @@ export interface WorkspaceAgentPromptSubmittedEvent {
   reviewCommentIds: string[];
 }
 
-export interface WorkspaceViewUnreadEvent {
-  workspaceId: string;
-  viewKey: string;
-  unread: boolean;
-}
-
 export interface WorkspaceSourcePrepareEvent {
   workspaceId: string;
   init?: WorkspaceInitInstruction;
@@ -80,6 +74,5 @@ declare module "@atelier/core" {
     workspace_agent_view_invalidated: WorkspaceAgentViewInvalidatedEvent;
     workspace_agent_prompt_preparing: WorkspaceAgentPromptPreparingEvent;
     workspace_agent_prompt_submitted: WorkspaceAgentPromptSubmittedEvent;
-    workspace_view_unread: WorkspaceViewUnreadEvent;
   }
 }
