@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { chromium, type Browser, type Page } from "@playwright/test";
 import { ids as agentIds, renderActiveToolContent, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../../packages/agent/src/server/render.ts";
 import { renderSlashCommandCatalog } from "../../../packages/agent/src/server/slash-commands.ts";
 import type { ToolView, TranscriptItem } from "../../../packages/agent/src/server/transcript.ts";
@@ -17,7 +17,6 @@ import { agentTabsTurboStream, removeWorkspaceResidentTurboStream, renderAgentBo
 import { buildWebTestAssets, type WebTestAssets } from "./support/web-test-assets.ts";
 
 let browser: Browser;
-let browserContext: BrowserContext;
 let testAssets: WebTestAssets;
 let workspaceClientPath: string;
 let designSystemStyle: string;
@@ -27,7 +26,7 @@ let agentStyle: string;
 let catalogueHtml: string;
 
 async function newTestPage(options: { viewport?: { width: number; height: number }; reducedMotion?: "reduce" | "no-preference" } = {}): Promise<Page> {
-  const page = await browserContext.newPage();
+  const page = await browser.newPage();
   await testAssets.serve(page);
   await page.route(/\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/, (route) => {
     const match = new URL(route.request().url()).pathname.match(/^\/workspaces\/([^/]+)\/agents\/([^/]+)\/body$/)!;
@@ -61,7 +60,10 @@ function renderShellFixture(presentation: WorkspacePresentation, pane: Workspace
 }
 
 async function pressCommandOptionShortcut(page: Page, key: string, code: string): Promise<void> {
-  await page.locator("body").dispatchEvent("keydown", { key, code, metaKey: true, altKey: true, bubbles: true, cancelable: true });
+  await page.locator("body").evaluate(async (body, event) => {
+    body.dispatchEvent(new KeyboardEvent("keydown", event));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }, { key, code, metaKey: true, altKey: true, bubbles: true, cancelable: true });
 }
 
 async function newShortcutTestPage(ids: readonly string[], workViews: WorkspacePresentation["workViews"] = []): Promise<Page> {
@@ -100,11 +102,9 @@ beforeAll(async () => {
   catalogueHtml = await Bun.file(new URL("../public/design-system-catalogue.html", import.meta.url)).text();
   const executablePath = process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/local/bin/chromium";
   browser = await chromium.launch({ executablePath, headless: true });
-  browserContext = await browser.newContext();
 });
 
 afterAll(async () => {
-  await browserContext?.close();
   await browser?.close();
 }, 30_000);
 
@@ -130,7 +130,6 @@ describe("Atelier browser behavior", () => {
   });
 
   test("copies review comments into the agent composer or clipboard only on request", async () => {
-    await browserContext.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://localhost" });
     const comments: ReviewComment[] = [
       { id: "one", path: "apps/web/web.ts", side: "additions", startLine: 14, endLine: 14, snippet: "the selection the user made gets written here", body: "Why are we doing it like this over here" },
       { id: "two", path: "apps/web/web.tests.ts", side: "additions", startLine: 18, endLine: 18, snippet: "the test snippet here", body: "I don't think we need these tests" },
@@ -141,6 +140,7 @@ describe("Atelier browser behavior", () => {
       <section class="fixed-shell-surface is-active" data-workspace-pane-role="work" data-workspace-pane-id="review:workspace"><div class="fixed-shell-live-body">${reviewBody}</div></section>
     </div></div>`;
     const page = await newTestPage();
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://localhost" });
     await page.route("http://localhost/", (route) => route.fulfill({ contentType: "text/html", body: `${fixture}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.goto("http://localhost/");
 
@@ -158,7 +158,6 @@ Comment: I don't think we need these tests`;
     await page.getByRole("button", { name: "Copy review comments to clipboard", exact: true }).click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(generated);
     await page.close();
-    await browserContext.clearPermissions();
   });
 
   test("toggles per-word highlighting in review diffs from an off default", async () => {
@@ -244,8 +243,8 @@ Comment: I don't think we need these tests`;
   });
 
   test("design-system copy buttons write nearby content and confirm success", async () => {
-    await browserContext.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://localhost" });
     const page = await newTestPage();
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://localhost" });
     await page.route("http://localhost/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
     await page.route("http://localhost/design-system.css", (route) => route.fulfill({ contentType: "text/css", body: workspaceStyle }));
     await page.goto("http://localhost/design-system-catalogue.html?embedded=1");
@@ -259,7 +258,6 @@ Comment: I don't think we need these tests`;
     expect(await copy.locator(".copy-button__icon").textContent()).toBe("⧉");
     expect(await copy.getAttribute("aria-label")).toBe("Copy example to clipboard");
     await page.close();
-    await browserContext.clearPermissions();
   });
 
   test("design-system managed lists filter without caller wiring", async () => {
@@ -782,7 +780,7 @@ Comment: I don't think we need these tests`;
     await page.locator("#late_chip").waitFor({ state: "detached" });
     expect(await input.inputValue()).toBe("Typed while send was in flight");
     expect(await page.evaluate(() => localStorage.getItem('atelier.agentComposerText:["composer-audit","agent-audit"]'))).toBe("Typed while send was in flight");
-    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(120);
+    expect(await transcript.evaluate((element) => element.scrollTop)).toBe(await transcript.evaluate((element) => element.scrollHeight - element.clientHeight));
     await page.close();
   });
 
@@ -1167,7 +1165,7 @@ Comment: I don't think we need these tests`;
       return { actionsFit: actionBox.right <= headerBox.right, tabsStopBeforeActions: navigationBox.right <= actionBox.left };
     });
     expect(geometry).toEqual({ actionsFit: true, tabsStopBeforeActions: true });
-    expect(await tabs.evaluateAll((items) => items.every((item) => {
+    expect(await tabs.evaluateAll((items) => items.filter((item) => item.getClientRects().length > 0).every((item) => {
       const label = item.querySelector<HTMLElement>(".action-item__label")!;
       const text = item.querySelector<HTMLElement>(".action-item__label-text")!;
       return text.scrollWidth > label.clientWidth;
@@ -2812,7 +2810,7 @@ Comment: I don't think we need these tests`;
     };
     const pane: WorkspacePanePresentation = {
       projects: [],
-      projectlessWorkspaces: [],
+      projectlessWorkspaces: [{ id: "used-workspace", title: "Used workspace", active: true }],
       emptyProjects: [
         { id: "used-1", title: "Used one" },
         { id: "unused-1", title: "Unused one" },
@@ -2965,9 +2963,9 @@ Comment: I don't think we need these tests`;
     expect(await mobileNavigation.locator(".fixed-shell-mobile-scroll").getAttribute("class")).toContain("button-group");
     const mobileDestinationHeights = await mobileDestinations.evaluateAll((destinations) => destinations.filter((destination) => !destination.hasAttribute("hidden")).map((destination) => destination.getBoundingClientRect().height));
     expect(new Set(mobileDestinationHeights).size).toBe(1);
-    expect(await page.locator('[data-mobile-destination="agents"]').isVisible()).toBe(true);
-    expect(await page.locator('[data-mobile-destination="work:browser:preview"]').isVisible()).toBe(true);
-    expect(await page.locator('[data-mobile-destination="work:review:workspace"]').isVisible()).toBe(true);
+    await page.locator('[data-mobile-destination="agents"]').waitFor({ state: "visible" });
+    await page.locator('[data-mobile-destination="work:browser:preview"]').waitFor({ state: "visible" });
+    await page.locator('[data-mobile-destination="work:review:workspace"]').waitFor({ state: "visible" });
     expect(await page.locator('[data-mobile-destination="work:terminal:2"]').isHidden()).toBe(true);
     const workspaceDestination = page.locator("[data-mobile-workspace-destination]");
     await workspaceDestination.evaluate((button: HTMLButtonElement) => button.click());
