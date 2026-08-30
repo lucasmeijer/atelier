@@ -219,8 +219,8 @@ function renderWorkspacePaneCollectionRegions(presentation: WorkspacePanePresent
   const onboardingState = workspacePaneOnboardingState(presentation);
   const needsFirstProject = onboardingState === "first-project";
   const needsFirstWorkspace = onboardingState === "first-workspace";
-  const projectsDrawerHtml = `<section id="${workspaceProjectsDrawerDomId}" class="fixed-shell-project action-list fixed-shell-projects-drawer is-collapsed" data-project-id="${projectsDrawerGroupId}">
-    ${renderWorkspaceGroupHeading(projectsDrawerGroupId, "Projects", { href: "/projects/new/editor", frame: "project_editor_frame", label: "New project" }, { expanded: false, onboardingDestination: needsFirstProject ? "first-project" : undefined })}
+  const projectsDrawerHtml = `<section id="${workspaceProjectsDrawerDomId}" class="fixed-shell-project action-list fixed-shell-projects-drawer${needsFirstWorkspace ? "" : " is-collapsed"}" data-project-id="${projectsDrawerGroupId}">
+    ${renderWorkspaceGroupHeading(projectsDrawerGroupId, "Projects", { href: "/projects/new/editor", frame: "project_editor_frame", label: "New project" }, { expanded: needsFirstWorkspace, onboardingDestination: needsFirstProject ? "first-project" : undefined })}
     <div class="fixed-shell-project-workspaces action-list">${drawerProjects.map((project, index) => `<section class="fixed-shell-project action-list">${renderProjectHeading(project, "launcher", needsFirstWorkspace && index === 0 ? "first-workspace" : undefined)}</section>`).join("")}</div>
   </section>`;
   return { scrollHtml: `${projects}${projectless}`, projectsDrawerHtml };

@@ -1313,10 +1313,12 @@ class WorkspaceNavigationController extends Controller {
   private restoreProjectDisclosures(): void {
     const disclosures = this.projectDisclosures();
     this.element.querySelectorAll<HTMLElement>(".fixed-shell-project[data-project-id]").forEach((project) => {
+      const onboardingTarget = project.querySelector('[data-empty-workspace-onboarding-destination="first-workspace"]');
       const id = project.dataset.projectId!;
-      if (!(id in disclosures)) return;
-      project.classList.toggle("is-collapsed", !disclosures[id]);
-      project.querySelector<HTMLElement>(".fixed-shell-project-heading")?.setAttribute("aria-expanded", String(disclosures[id]));
+      if (!(id in disclosures) && !onboardingTarget) return;
+      const expanded = onboardingTarget ? true : disclosures[id]!;
+      project.classList.toggle("is-collapsed", !expanded);
+      project.querySelector<HTMLElement>(".fixed-shell-project-heading")?.setAttribute("aria-expanded", String(expanded));
     });
   }
 

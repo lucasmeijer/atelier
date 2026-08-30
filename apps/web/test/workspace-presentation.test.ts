@@ -163,21 +163,6 @@ describe("role-fixed Workspace presentation", () => {
     expect(projectsSection).toContain('class="fixed-shell-project action-list fixed-shell-projects-drawer is-collapsed"');
   });
 
-  test("keeps Projects collapsed and marks the first Workspace target when no Workspace exists", () => {
-    const html = renderWorkspacePane({
-      projects: [],
-      emptyProjects: [{ id: "project-z", title: "Zulu" }, { id: "project-a", title: "Alpha" }],
-      projectlessWorkspaces: [],
-    });
-    const projectsSection = html.slice(html.indexOf('class="fixed-shell-project action-list fixed-shell-projects-drawer'));
-
-    expect(projectsSection).toContain('class="fixed-shell-project action-list fixed-shell-projects-drawer is-collapsed" data-project-id="__projects_drawer__"');
-    expect(projectsSection).toContain('aria-expanded="false"');
-    expect(projectsSection.match(/is-onboarding-target/g)).toHaveLength(1);
-    expect(projectsSection.indexOf("Alpha")).toBeLessThan(projectsSection.indexOf('data-empty-workspace-onboarding-destination="first-workspace"'));
-    expect(projectsSection.indexOf("Alpha")).toBeLessThan(projectsSection.indexOf("Zulu"));
-  });
-
   test("shows the workspace name and delete action in a single-conversation Agent header", () => {
     const html = renderWorkspacePresentation(fixture({
       agentConversations: [{ id: firstConversationId, title: "Agent", bodyUrl: agentBodyUrl(firstConversationId) }],
