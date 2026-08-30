@@ -592,12 +592,13 @@ describe("web app contracts", () => {
     expect(browser.headers.get("location")).toBe("http://test.local/");
   });
 
-  test("Workspace shells defer Review rendering to its hydration endpoint", async () => {
+  test("new Workspace shells open Review without creating a Files view", async () => {
     const { app, registry } = createTestApp();
     await registry.seed([{ id: "abc", title: "A" }]);
 
     const shell = await (await app.fetch(new Request("http://test.local/workspaces/abc?resident=1"))).text();
     expect(shell).toContain('src="/workspaces/abc/work-views/review%3Aworkspace/body"');
+    expect(shell).not.toContain("/work-views/files%3A");
     expect(shell).not.toContain('class="review-body');
 
     const hydrated = await app.fetch(new Request("http://test.local/workspaces/abc/work-views/review%3Aworkspace/body"));

@@ -95,6 +95,8 @@ export interface WorkspaceWorkViewPresentation {
   sourceKey: string;
   label: string;
   kind: "resource" | "contextual";
+  /** Whether this view joins the initial presentation when the Workspace has no saved view layout. */
+  initiallyOpen?: boolean;
   availability?: WorkspaceWorkViewAvailability;
   actionsHtml?: string;
 }

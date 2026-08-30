@@ -703,7 +703,7 @@ ${moduleStylesHtml()}
     const attachments = await attachWorkspaceModules(workspaceId);
     const agentConversations = await agentTabs.list({ workspaceId });
     const currentWorkViews = attachments.flatMap((attachment) => attachment.workViews ?? []);
-    await presentationStore.initialize(workspaceId, currentWorkViews.map((view) => view.reference));
+    await presentationStore.initialize(workspaceId, currentWorkViews.filter((view) => view.initiallyOpen !== false).map((view) => view.reference));
     const storedWorkViews = await presentationStore.listWorkViews(workspaceId);
     const commands = attachments.flatMap((attachment) => attachment.commands ?? []).map((command) => ({
       id: command.id, label: command.surfaces?.ui?.label ?? command.label, description: command.description, scope: command.scope, placement: command.surfaces?.ui?.placement, binding: command.surfaces?.shortcut?.defaultBinding,

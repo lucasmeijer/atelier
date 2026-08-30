@@ -2,7 +2,7 @@ import { posix } from "node:path";
 import { disclosureIconHtml, domId, escapeHtml, workspaceFileOpenUrl, workspaceProxyUrl, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { workspaceRoot } from "@atelier/workspace";
 import type { FileEntry } from "./files.ts";
-import type { FilesView } from "./state.ts";
+import { defaultFilesViewId, type FilesView } from "./state.ts";
 
 export function filesTreeFrameId(workspaceId: string, viewId: string): string {
   return domId("workspace", workspaceId, "files", viewId, "tree");
@@ -141,6 +141,7 @@ export function filesWorkViewPresentation(view: FilesView): WorkspaceWorkViewPre
     label: view.path ? posix.basename(view.path) : "Files",
     reference: { type: "files", id: view.id },
     kind: "contextual",
+    initiallyOpen: view.id !== defaultFilesViewId,
     availability: { phase: "live" },
   };
 }

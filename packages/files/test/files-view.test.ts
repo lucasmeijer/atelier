@@ -53,6 +53,7 @@ describe("Files Work view integration", () => {
     const attachment = await atelierServerModule.attachToWorkspace!({ workspaceId: "workspace-attach" } as never);
     expect(attachment.workViews).toHaveLength(2);
     expect(attachment.workViews?.map((view) => view.reference.type)).toEqual(["files", "files"]);
+    expect(attachment.workViews?.map((view) => view.initiallyOpen)).toEqual([false, true]);
     deleteFilesViewState("workspace-attach");
   });
 });
