@@ -70,8 +70,14 @@
 .agent-md li { margin-bottom: 2px; }
 .agent-md code { font-family: var(--font-mono); }
 .agent-code-block { position: relative; margin: 6px 0 8px; }
+.agent-code-block-header {
+  min-height: 34px; display: flex; align-items: center; min-width: 0; overflow: hidden; padding: 6px 38px 6px 10px;
+  border: 1px solid var(--line); border-bottom: 0; border-radius: var(--radius-control) var(--radius-control) 0 0;
+  background: var(--panel); color: var(--text-bright); font-family: var(--font-mono); font-size: var(--text-body); text-overflow: ellipsis; white-space: nowrap;
+}
 .agent-md pre, .agent-code-block pre { background: color-mix(in srgb, var(--bg) 72%, #000 8%); color: var(--text-bright); border-radius: var(--radius-control); padding: 8px 8px; overflow-x: auto; margin: 6px 0 8px; }
 .agent-code-block pre { margin: 0; }
+.agent-code-block .agent-code-block-header + pre { border-radius: 0 0 var(--radius-control) var(--radius-control); }
 .agent-md pre code, .agent-code-block pre code { background: none; padding: 0; color: inherit; font-size: var(--text-body); line-height: var(--leading-standard); }
 .agent-code-copy {
   position: absolute; top: 6px; right: 6px; z-index: 1; display: inline-grid; place-items: center; width: 24px; height: 24px;

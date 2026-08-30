@@ -15,14 +15,32 @@ describe("renderMarkdown", () => {
     expect(html).not.toContain("<script>");
   });
 
-  test("fenced code blocks are highlighted and copyable but Markdown is not formatted", () => {
+  test("fenced code blocks are highlighted, copyable, and fullscreenable but Markdown is not formatted", () => {
     const html = renderMarkdown("work 1", "```bash\nls **/work**\n```");
-    expect(html.startsWith(`<div class="agent-code-block" data-controller="agent-code-copy">`)).toBe(true);
+    expect(html.startsWith(`<div class="agent-code-block" data-controller="agent-code-copy atelier-fullscreen"`)).toBe(true);
+    expect(html).toContain(`data-atelier-fullscreen-mode-value="template"`);
+    expect(html).toContain(`data-atelier-fullscreen-title-value="bash code"`);
     expect(html).toContain(`data-action="agent-code-copy#copy"`);
     expect(html).toContain(`<pre data-lang="bash" class="language-bash"><code data-agent-code-copy-target="code">`);
+    expect(html).toContain(`<template data-atelier-fullscreen-target="content"><div class="agent-code-block"><pre data-lang="bash" class="language-bash"><code>`);
     expect(html).toContain("/work");
     expect(html).not.toContain("<strong>");
-    expect(html).not.toContain("<strong>");
+  });
+
+  test("fenced code blocks show filenames and use them as fullscreen titles", () => {
+    const html = renderMarkdown("work 1", "```typescript src/hello.ts\nexport const hello = 'world';\n```");
+    expect(html.startsWith(`<div class="agent-code-block"`)).toBe(true);
+    expect(html).toContain(`data-atelier-fullscreen-title-value="src/hello.ts"`);
+    expect(html).toContain(`<div class="agent-code-block-header" title="src/hello.ts">src/hello.ts</div>`);
+    expect(html).toContain(`<template data-atelier-fullscreen-target="content"><div class="agent-code-block"><pre data-lang="typescript" class="language-typescript"><code>`);
+    expect(html).not.toContain(`<template data-atelier-fullscreen-target="content"><div class="agent-code-block-header"`);
+  });
+
+  test("escapes filenames in fenced code blocks", () => {
+    const html = renderMarkdown("work 1", "```html <demo>.html\n<p>Hello</p>\n```");
+    expect(html).toContain(`data-atelier-fullscreen-title-value="&lt;demo&gt;.html"`);
+    expect(html).toContain(`title="&lt;demo&gt;.html"`);
+    expect(html).not.toContain(`<demo>`);
   });
 
   test("fenced code highlighting supports C# aliases", () => {
