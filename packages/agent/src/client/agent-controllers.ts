@@ -284,6 +284,9 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private readonly cableDisconnected = (): void => {
       if (this.subscribed) this.setReconnecting(true);
     };
+    private relinquishPhoneComposerFocus(): void {
+      if (isPhoneViewport() && document.activeElement === this.inputTarget) this.inputTarget.blur();
+    }
     private readonly submitting = (): void => {
       this.submittedComposer = {
         revision: this.composerRevision,
@@ -292,6 +295,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.stuck = true;
       this.clearTranscriptFollowingSuspension();
       this.transcriptLayoutChanged();
+      this.relinquishPhoneComposerFocus();
     };
     connect(): void {
       this.transcriptLayoutObserver = new ResizeObserver(this.transcriptLayoutChanged);
@@ -455,9 +459,12 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
       // Desktop Enter inserts a newline and ⌘/Ctrl+Enter sends. On phones,
       // the keyboard's unmodified Send key submits; Shift+Enter still inserts a newline.
-      if (isSubmitShortcut(event) || (!completionMenuOpen && isPhoneKeyboardSubmit(event))) {
+      const phoneKeyboardSubmit = !completionMenuOpen && isPhoneKeyboardSubmit(event);
+      if (isSubmitShortcut(event) || phoneKeyboardSubmit) {
         event.preventDefault();
         if (this.inputTarget.value.trim() || this.formTarget.querySelector(".agent-chip")) {
+          // Relinquish focus before requestSubmit so Turbo records the unfocused state before rendering the response.
+          if (phoneKeyboardSubmit) this.relinquishPhoneComposerFocus();
           const submitter = this.formTarget.querySelector<HTMLButtonElement>('button[value="send"], button[value="steer"]');
           this.formTarget.requestSubmit(submitter ?? undefined);
         }
@@ -543,8 +550,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
           if (consumed.has(input.value)) input.closest(".agent-chip")!.remove();
         });
       }
-      if (isPhoneViewport()) this.inputTarget.blur();
-      else focusAgentPaneComposerOnWideViewport(this.element);
+      focusAgentPaneComposerOnWideViewport(this.element);
     }
   };
 }

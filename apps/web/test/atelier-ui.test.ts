@@ -3,6 +3,7 @@ import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { ids as agentIds, renderActiveToolContent, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../../packages/agent/src/server/render.ts";
+import { renderSlashCommandCatalog } from "../../../packages/agent/src/server/slash-commands.ts";
 import type { ToolView, TranscriptItem } from "../../../packages/agent/src/server/transcript.ts";
 import { renderMarkdown } from "../../../packages/markdown/src/index.ts";
 import { filesEditorFrameId, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkViewBody } from "../../../packages/files/src/server/render.ts";
@@ -2429,14 +2430,15 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
-  test("uses the phone keyboard Send key to submit the Agent composer", async () => {
-    const agentBody = `<div class="agent-pane" data-controller="agent-pane" data-agent-pane-workspace-id-value="phone-send" data-agent-pane-label-value="Agent">
+  test("uses the phone keyboard Send key to submit a completed slash command without restoring composer focus", async () => {
+    const agentBody = `<div class="agent-pane" data-controller="agent-pane agent-completions" data-agent-pane-workspace-id-value="phone-send" data-agent-pane-label-value="Agent" data-agent-completions-url-value="/workspaces/phone-send/agents/agent-1/completions">
       <div class="agent-transcript" data-agent-pane-target="transcript"></div>
       <div class="composer agent-pane-composer" data-mobile-editing-region>
         <form method="post" action="/send" data-agent-pane-target="form" data-action="turbo:submit-end->agent-pane#submitted">
-          <textarea class="composer-input" aria-label="Agent prompt" enterkeyhint="send" data-agent-pane-target="input" data-action="keydown->agent-pane#inputKeydown input->agent-pane#promptChanged"></textarea>
+          <textarea class="composer-input" aria-label="Agent prompt" enterkeyhint="send" data-agent-pane-target="input" data-agent-completions-target="input" data-action="keydown->agent-completions#keydown input->agent-completions#input keydown->agent-pane#inputKeydown input->agent-pane#promptChanged"></textarea>
           <button class="agent-sendstop" type="submit" name="mode" value="send" data-agent-pane-target="sendStop" data-agent-busy="false">Send</button>
         </form>
+        <div class="agent-completion-menu-host" data-agent-completions-target="menu" hidden></div>
       </div>
     </div>`;
     const presentation: WorkspacePresentation = {
@@ -2449,7 +2451,16 @@ Comment: I don't think we need these tests`;
     await page.route("http://atelier.test/workspaces/phone-send", (route) => route.fulfill({ contentType: "text/html", body: `${renderShellFixture(presentation, pane)}<script type="module" src="${workspaceClientPath}"></script>` }));
     await page.route("**/workspaces/phone-send/agents/agent-1/body", (route) => route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("phone-send", "agent-1", agentBody) }));
     await page.route("**/workspaces/phone-send/active", (route) => route.fulfill({ status: 204 }));
-    await page.route("**/send", (route) => route.fulfill({ status: 204 }));
+    await page.route("**/workspaces/phone-send/completion-catalog", (route) => route.fulfill({
+      contentType: "text/html",
+      body: renderSlashCommandCatalog([{ name: "repro", trigger: "/repro", description: "Reproduce mobile focus", prompt: "Expanded reproduction prompt" }], []),
+    }));
+    let releaseSendResponse!: () => void;
+    const sendResponseReleased = new Promise<void>((resolve) => { releaseSendResponse = resolve; });
+    await page.route("**/send", async (route) => {
+      await sendResponseReleased;
+      await route.fulfill({ status: 204 });
+    });
     await page.goto("http://atelier.test/workspaces/phone-send");
 
     const input = page.locator(".composer-input");
@@ -2464,11 +2475,21 @@ Comment: I don't think we need these tests`;
     await input.pressSequentially("Second line");
     expect(await input.inputValue()).toBe("First line\nSecond line");
 
-    const send = page.waitForResponse((response) => new URL(response.url()).pathname === "/send");
+    await input.fill("/rep");
+    await page.getByRole("option", { name: /\/repro/ }).waitFor();
     await input.press("Enter");
-    const response = await send;
-    expect(response.request().postData()).toContain("mode=send");
-    await page.waitForFunction(() => !document.activeElement?.classList.contains("composer-input"));
+    expect(await input.inputValue()).toBe("/repro ");
+
+    const sendRequest = page.waitForRequest((request) => new URL(request.url()).pathname === "/send");
+    const sendResponseReceived = page.waitForResponse((response) => new URL(response.url()).pathname === "/send");
+    await input.press("Enter");
+    const request = await sendRequest;
+    expect(request.postData()).toContain("mode=send");
+    expect(await input.evaluate((element) => element !== document.activeElement)).toBe(true);
+
+    releaseSendResponse();
+    await sendResponseReceived;
+    expect(await input.evaluate((element) => element !== document.activeElement)).toBe(true);
     await page.close();
   });
 
