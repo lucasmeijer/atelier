@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { atelierObservableTerminalTheme, createObservableTerminalViewer, observableWebSocketUrl, type ObservableTerminalTheme, type ObservableTerminalViewer } from "@atelier/observable-terminal/client";
-import { CableTopics, copyTextToClipboard, notifyInputListeners, phoneViewportMediaQuery, recentWorkspaceProjectStorageKey, setTextInputValue, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientController, type WorkspaceClientModule } from "@atelier/shared";
+import { CableTopics, composerSubmitKey, copyTextToClipboard, notifyInputListeners, phoneViewportMediaQuery, recentWorkspaceProjectStorageKey, setTextInputValue, workspaceProxyUrl, type AtelierCableClient, type CableIdentifier, type CableSubscriptionOptions, type WorkspaceClientController, type WorkspaceClientModule } from "@atelier/shared";
 import { agentTreeOwnsMenu, handleAgentTreeKeydown, handleAgentTreeMenuEvent, selectAgentTreeOption } from "./session-tree.ts";
 
 type StimulusControllerConstructor = new (...args: never[]) => { element: Element };
@@ -46,22 +46,8 @@ type HtmlAutocompleteActions = {
   refresh(force?: boolean): void;
 };
 
-function isSubmitShortcut(event: KeyboardEvent): boolean {
-  return event.key === "Enter" && (event.metaKey || event.ctrlKey);
-}
-
 function isPhoneViewport(): boolean {
   return window.matchMedia(phoneViewportMediaQuery).matches;
-}
-
-function isPhoneKeyboardSubmit(event: KeyboardEvent): boolean {
-  return event.key === "Enter"
-    && !event.metaKey
-    && !event.ctrlKey
-    && !event.altKey
-    && !event.shiftKey
-    && !event.isComposing
-    && isPhoneViewport();
 }
 
 type StimulusApplication = {
@@ -459,8 +445,9 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
 
       // Desktop Enter inserts a newline and ⌘/Ctrl+Enter sends. On phones,
       // the keyboard's unmodified Send key submits; Shift+Enter still inserts a newline.
-      const phoneKeyboardSubmit = !completionMenuOpen && isPhoneKeyboardSubmit(event);
-      if (isSubmitShortcut(event) || phoneKeyboardSubmit) {
+      const submitKey = composerSubmitKey(event);
+      const phoneKeyboardSubmit = !completionMenuOpen && submitKey === "phone-keyboard";
+      if (submitKey === "shortcut" || phoneKeyboardSubmit) {
         event.preventDefault();
         if (this.inputTarget.value.trim() || this.formTarget.querySelector(".agent-chip")) {
           // Relinquish focus before requestSubmit so Turbo records the unfocused state before rendering the response.
@@ -1197,7 +1184,7 @@ function createAgentCompletionsController(Controller: StimulusControllerConstruc
       else if (option.dataset.completionKind === "file") insertFileCompletion(option, input);
     },
     keydown(event, input, url, actions) {
-      const send = isSubmitShortcut(event);
+      const send = composerSubmitKey(event) === "shortcut";
       const expand = event.key === "Enter" && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
       if (handleAgentTreeKeydown(event, input, actions)) return true;
       if (send || expand) {

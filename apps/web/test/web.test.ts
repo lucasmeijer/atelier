@@ -786,6 +786,7 @@ describe("web app contracts", () => {
       expect(first).toContain('<turbo-frame id="launch_composer_settings">');
       expect(first).toContain(`action="/project-agent-workspaces/${project.id}"`);
       expect(first).toContain('aria-label="Describe what you want the agent to do… (optional)"');
+      expect(first).toContain('enterkeyhint="send"');
       const sendButtonContent = first.match(/<button[^>]+aria-label="Send prompt"[^>]*>([\s\S]*?)<\/button>/)?.[1];
       expect(sendButtonContent).toBeTruthy();
       expect(sendButtonContent).not.toContain("Create workspace");

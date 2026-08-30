@@ -353,6 +353,18 @@ export interface WorkspaceClientFocusContext {
 
 export const phoneViewportMediaQuery = "(max-width: 700px)";
 
+export type ComposerSubmitKey = "shortcut" | "phone-keyboard";
+
+export function composerSubmitKey(
+  event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "isComposing">,
+  phoneViewport = window.matchMedia(phoneViewportMediaQuery).matches,
+): ComposerSubmitKey | undefined {
+  if (event.key !== "Enter") return undefined;
+  if (event.metaKey || event.ctrlKey) return "shortcut";
+  if (phoneViewport && !event.altKey && !event.shiftKey && !event.isComposing) return "phone-keyboard";
+  return undefined;
+}
+
 export function isWorkspacePaneVisible(element: Element): boolean {
   const resident = element.closest(".workspace-detail-resident");
   if (resident && !resident.classList.contains("visible")) return false;

@@ -10,6 +10,7 @@ import { createHtmlAutocompleteController, PromptHistoryNavigator } from "@ateli
 import {
   atelierCableConnectionHeader,
   CableTopics,
+  composerSubmitKey,
   copyTextToClipboard,
   escapeHtml,
   looksLikeProjectSpec,
@@ -975,7 +976,7 @@ class SubmitShortcutController extends Controller {
   private submitting = false;
 
   keydown(event: KeyboardEvent): void {
-    if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
+    if (!composerSubmitKey(event)) return;
     event.preventDefault();
     if (this.submitting) return;
     // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.

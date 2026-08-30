@@ -3050,6 +3050,34 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("uses the phone keyboard Send key to submit the LaunchComposer", async () => {
+    const page = await newTestPage({ viewport: { width: 900, height: 844 } });
+    await page.route("http://atelier.test/", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<turbo-frame id="launch_composer"><dialog class="launch-composer-dialog" data-controller="launch-composer-dialog submit-shortcut" data-launch-composer-dialog-discard-url-value="/draft/discard"><form method="post" action="/launch" data-action="keydown->submit-shortcut#keydown submit->submit-shortcut#submit submit->launch-composer-dialog#submit turbo:submit-end->submit-shortcut#submitted"><textarea name="text" enterkeyhint="send"></textarea><button type="submit">Send prompt</button></form></dialog></turbo-frame><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("http://atelier.test/launch", (route) => route.fulfill({ status: 204 }));
+    await page.goto("http://atelier.test/");
+
+    const input = page.getByRole("textbox");
+    await input.fill("Desktop line");
+    await input.press("Enter");
+    await input.pressSequentially("Desktop continuation");
+    expect(await input.inputValue()).toBe("Desktop line\nDesktop continuation");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await input.fill("First line");
+    await input.press("Shift+Enter");
+    await input.pressSequentially("Second line");
+    expect(await input.inputValue()).toBe("First line\nSecond line");
+
+    const launchRequest = page.waitForRequest((request) => new URL(request.url()).pathname === "/launch");
+    await input.press("Enter");
+    expect((await launchRequest).postData()).toContain("text=First+line%0ASecond+line");
+    expect(await page.locator(".launch-composer-dialog").evaluate((dialog: HTMLDialogElement) => dialog.open)).toBe(false);
+    await page.close();
+  });
+
   test("closes the LaunchComposer as soon as its prompt is submitted", async () => {
     const page = await newTestPage({ viewport: { width: 390, height: 844 } });
     let finishRequest!: () => void;
