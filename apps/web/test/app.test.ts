@@ -241,6 +241,22 @@ describe("Agent provider app integration", () => {
     });
   });
 
+  test("an Agent session title change refreshes every tab label without replacing Agent bodies", async () => {
+    await withTestApp([
+      { id: "conversation-a", title: "Alpha" },
+      { id: "conversation-b", title: "Untitled" },
+    ], async ({ events, broadcasts, agent, workspaceId }) => {
+      agent.conversations[1]!.title = "selected-agent-tabs";
+      await events.emit("workspace_agent_conversation_title_changed", { workspaceId, conversationId: "conversation-b", title: "selected-agent-tabs" });
+
+      const titleBroadcasts = broadcasts.filter(({ html }) => html.includes(`target="${agentNavigationDomId(workspaceId)}"`));
+      expect(titleBroadcasts).toHaveLength(1);
+      expect(titleBroadcasts[0]!.html).toContain("selected-agent-tabs");
+      expect(titleBroadcasts[0]!.html).not.toContain(`target="${agentBodiesDomId(workspaceId)}"`);
+      expect(agent.rendered).toEqual([]);
+    });
+  });
+
   test("creating an Agent broadcasts structure before targeting selection on the origin Cable connection", async () => {
     await withTestApp(
       [{ id: "conversation-a", title: "Alpha" }],

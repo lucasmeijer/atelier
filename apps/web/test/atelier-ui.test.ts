@@ -2275,10 +2275,10 @@ Comment: I don't think we need these tests`;
 
   test("opens and closes a live Browser view with Atelier's fullscreen implementation", async () => {
     const page = await newTestPage();
-    await page.setContent(`<style>${workspaceStyle}</style><div data-workspace-id="demo">
+    await page.setContent(`<style>${workspaceStyle}</style><div class="fixed-workspace-presentation is-work-pane-open" data-workspace-id="demo">
       <section class="fixed-shell-work-pane" style="height: 400px">
         <header><div class="fixed-shell-work-view-selectors"><button type="button" data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="browser-1" data-atelier-fullscreen-title-value="Browser">Browser</button></div></header>
-        <div class="fixed-shell-work-bodies"><section class="fixed-shell-surface is-active" data-workspace-pane-role="work" data-source-work-view-key="browser-1"><button type="button">Preview content</button></section></div>
+        <div class="fixed-shell-work-bodies"><section class="fixed-shell-surface is-active" data-workspace-pane-role="work" data-source-work-view-key="browser-1" data-atelier-fullscreen-view-key="browser-1"><button type="button">Preview content</button></section></div>
       </section>
     </div>`);
     await page.addScriptTag({ url: `http://atelier.test${workspaceClientPath}`, type: "module" });
@@ -2475,6 +2475,8 @@ Comment: I don't think we need these tests`;
     await page.reload();
     await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
     expect(await page.locator('[data-agent-conversation-id="agent-2"]').getAttribute("aria-selected")).toBe("true");
+    expect(await page.locator('[data-agent-conversation-id="agent-2"]').locator("..").getAttribute("class")).toContain("active");
+    expect(await page.locator('[data-agent-conversation-id="agent-1"]').locator("..").getAttribute("class")).not.toContain("active");
     expect(await page.locator('[data-work-view-key="terminal:1"]').getAttribute("aria-selected")).toBe("true");
     expect(await page.locator(".fixed-workspace-presentation").getAttribute("class")).toContain("is-work-pane-open");
     await page.close();

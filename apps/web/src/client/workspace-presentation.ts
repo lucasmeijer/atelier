@@ -495,6 +495,7 @@ export function createWorkspacePresentationController(
 
       this.element.querySelectorAll<HTMLElement>("[data-agent-conversation-id]").forEach((selector) => {
         const active = selector.dataset.agentConversationId === this.state.activeAgentId;
+        selector.closest(".action-item")!.classList.toggle("active", active);
         selector.setAttribute("aria-selected", String(active));
         selector.tabIndex = active ? 0 : -1;
       });

@@ -30,6 +30,12 @@ export interface WorkspaceAgentTurnFinishedEvent {
   conversationId: string;
 }
 
+export interface WorkspaceAgentConversationTitleChangedEvent {
+  workspaceId: string;
+  conversationId: string;
+  title: string;
+}
+
 export interface WorkspaceAgentViewInvalidatedEvent {
   workspaceId: string;
   conversationId: string;
@@ -71,6 +77,7 @@ declare module "@atelier/core" {
     workspace_user_activity: WorkspaceUserActivityEvent;
     workspace_title_changed: WorkspaceTitleChangedEvent;
     workspace_agent_turn_finished: WorkspaceAgentTurnFinishedEvent;
+    workspace_agent_conversation_title_changed: WorkspaceAgentConversationTitleChangedEvent;
     workspace_agent_view_invalidated: WorkspaceAgentViewInvalidatedEvent;
     workspace_agent_prompt_preparing: WorkspaceAgentPromptPreparingEvent;
     workspace_agent_prompt_submitted: WorkspaceAgentPromptSubmittedEvent;

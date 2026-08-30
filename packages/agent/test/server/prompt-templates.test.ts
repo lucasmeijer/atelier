@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
-import { expandPromptTemplateText, loadPromptTemplatesFromRoot, parseCompactCommand, parseWorkspaceNameCommand } from "../../src/server/prompt-templates.ts";
+import { expandPromptTemplateText, loadPromptTemplatesFromRoot, parseCompactCommand, parseAgentSessionNameCommand } from "../../src/server/prompt-templates.ts";
 
 describe("prompt templates", () => {
   test("loads .atelier and .pi prompt templates", async () => {
@@ -18,7 +18,7 @@ describe("prompt templates", () => {
     const nameCommand = templates.find((template) => template.name === "name");
     expect(nameCommand).toMatchObject({
       trigger: "/name",
-      argumentHint: "[workspace-name]",
+      argumentHint: "[session-name]",
       prompt: "/name",
     });
     expect(expandPromptTemplateText("/name my-custom-name", templates)).toBe("/name my-custom-name");
@@ -31,7 +31,7 @@ describe("prompt templates", () => {
     expect(templates.map((template) => template.trigger)).toEqual(["/compact", "/land", "/name", "/new"]);
     expect(templates[0]).toMatchObject({ trigger: "/compact", argumentHint: "[instructions]", prompt: "/compact", preserveArguments: true });
     expect(templates[1]?.prompt).toBe("Commit and push your work, rebasing when necessary. When successful, delete this workspace.");
-    expect(templates[2]).toMatchObject({ trigger: "/name", description: "Rename this workspace, using AI when no name is provided.", prompt: "/name" });
+    expect(templates[2]).toMatchObject({ trigger: "/name", description: "Rename this Agent session, using AI when no name is provided.", prompt: "/name" });
     expect(templates[3]).toMatchObject({ trigger: "/new", description: "Start a new Agent conversation.", prompt: "/new" });
   });
 
@@ -47,10 +47,10 @@ describe("prompt templates", () => {
     expect(parseCompactCommand("/compactness")).toBeUndefined();
   });
 
-  test("parses AI and manual workspace name commands", () => {
-    expect(parseWorkspaceNameCommand("/name")).toEqual({});
-    expect(parseWorkspaceNameCommand(" /name   my-custom-name ")).toEqual({ title: "my-custom-name" });
-    expect(parseWorkspaceNameCommand("/names")).toBeUndefined();
+  test("parses AI and manual Agent session name commands", () => {
+    expect(parseAgentSessionNameCommand("/name")).toEqual({});
+    expect(parseAgentSessionNameCommand(" /name   my-custom-name ")).toEqual({ title: "my-custom-name" });
+    expect(parseAgentSessionNameCommand("/names")).toBeUndefined();
   });
 
   test("leaves normal prompts unchanged", () => {

@@ -191,10 +191,14 @@ describe("role-fixed Workspace presentation", () => {
     expect(html).toContain('class="button secondary icon-only" title="Collapse Work pane" aria-label="Collapse Work pane"');
   });
 
-  test("shows robot icons in single- and multiple-conversation Agent headers", () => {
+  test("shows robot icons and fullscreen wiring on Agent tabs", () => {
     const multiple = renderWorkspacePresentation(fixture());
     const agentTabs = multiple.slice(multiple.indexOf('aria-label="Agent conversations"'), multiple.indexOf('</header>', multiple.indexOf('aria-label="Agent conversations"')));
     expect(agentTabs.match(/class="fixed-shell-agent-icon"/g)).toHaveLength(2);
+    expect(agentTabs.match(/data-controller="atelier-fullscreen"/g)).toHaveLength(2);
+    expect(agentTabs).toContain(`data-atelier-fullscreen-view-key-value="${firstConversationId}"`);
+    expect(agentTabs).toContain('data-atelier-fullscreen-title-value="First"');
+    expect(multiple).toContain(`data-atelier-fullscreen-view-key="${firstConversationId}"`);
     expect(agentTabs.indexOf('class="fixed-shell-agent-icon"')).toBeLessThan(agentTabs.indexOf('class="action-item__label-text">First'));
 
     const single = renderWorkspacePresentation(fixture({ agentConversations: [{ id: firstConversationId, title: "Agent", bodyUrl: agentBodyUrl(firstConversationId) }] }));

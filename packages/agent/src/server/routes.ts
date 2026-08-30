@@ -5,7 +5,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { getModelThinkingLevel, setModelThinkingLevel } from "./pi-config-models.ts";
 import { parseModelRef } from "./model-state.ts";
-import { getWorkspaceInit, setWorkspaceTitle, workspaceContainerName, workspacePreviewPortUrl, type WorkspaceAgentViewInvalidatedEvent } from "@atelier/workspace";
+import { getWorkspaceInit, workspaceContainerName, workspacePreviewPortUrl, type WorkspaceAgentViewInvalidatedEvent } from "@atelier/workspace";
 import { isGitProjectInit, neverOfferProjectPreparation } from "@atelier/projects";
 import {
   deliverAttachmentDraft,
@@ -21,21 +21,21 @@ import {
 } from "./attachment-drafts.ts";
 import { ids, renderAgentPanePromptInput, renderAttachmentChip } from "./render.ts";
 import { turboStream, turboStreamResponse } from "./html.ts";
-import { expandPromptTemplate, listPromptTemplates, parseCompactCommand, parseWorkspaceNameCommand } from "./prompt-templates.ts";
+import { expandPromptTemplate, listPromptTemplates, parseCompactCommand, parseAgentSessionNameCommand } from "./prompt-templates.ts";
 import { listFileCompletions, renderFileCompletionMenu } from "./file-completions.ts";
 import { loadWorkspaceSkills } from "./skills.ts";
 import { renderSlashCommandCatalog } from "./slash-commands.ts";
 import { getWorkspaceAgentRuntime, type SubmitMode } from "./runtime.ts";
 import { handleAgentTreeRequest } from "./session-tree.ts";
 import { ensureDefaultWorkspaceAgentConversation, listWorkspaceAgentConversations, type WorkspaceAgentConversationInfo } from "./session-store.ts";
-import { maybeNameWorkspaceFromAgentPrompt, renameWorkspaceFromAgentContext } from "./workspace-title-suggestion.ts";
+import { maybeNameAgentFromPrompt, renameAgentFromContext, setAgentSessionTitle } from "./agent-title-suggestion.ts";
 import { parseAgentServiceTier } from "./service-tier.ts";
 import { acceptInitialPromptDraft, removeInitialPromptDraft, writeInitialPromptDraft } from "./initial-prompt-draft.ts";
 
 interface AgentRouteOptions {
   events?: AtelierEventBus;
   getRuntime?: typeof getWorkspaceAgentRuntime;
-  suggestTitleFromPrompt?: typeof maybeNameWorkspaceFromAgentPrompt;
+  suggestTitleFromPrompt?: typeof maybeNameAgentFromPrompt;
 }
 
 async function invalidateAgentView(options: AgentRouteOptions, workspaceId: string, conversationId: string, exceptConnectionId?: string, html?: string): Promise<void> {
@@ -271,14 +271,13 @@ async function agentMessagesEndpoint(workspaceId: string, conversationId: string
     const promptRemoved = await removeInitialPromptAfterAcceptedAction(request, options, workspaceId, conversationId);
     return json ? Response.json({ agent: { conversationId, state: "idle", compacted: true } }) : turboStreamResponse(promptRemoved);
   }
-  const nameCommand = parseWorkspaceNameCommand(text);
+  const nameCommand = parseAgentSessionNameCommand(text);
   if (nameCommand) {
-    const runtime = await resolveAgentRuntime(agent, options);
     if (nameCommand.title) {
-      await setWorkspaceTitle(workspaceId, nameCommand.title);
-      await options.events?.emit("workspace_title_changed", { workspaceId, title: nameCommand.title });
+      await setAgentSessionTitle(agent, nameCommand.title, { events: options.events });
     } else {
-      renameWorkspaceFromAgentContext(workspaceId, runtime.userMessages(), { events: options.events, agentModel: runtime.currentModel() });
+      const runtime = await resolveAgentRuntime(agent, options);
+      renameAgentFromContext(agent, runtime.userMessages(), { events: options.events, agentModel: runtime.currentModel() });
     }
     const promptRemoved = await removeInitialPromptAfterAcceptedAction(request, options, workspaceId, conversationId);
     return json ? Response.json({ agent: { conversationId, state: "idle" } }) : turboStreamResponse(promptRemoved);
@@ -309,7 +308,7 @@ async function agentMessagesEndpoint(workspaceId: string, conversationId: string
   await runtime.submit(expandedText, { mode, images, attachmentNotes });
   if (namingContext) {
     await options.events?.emit("workspace_user_activity", { workspaceId });
-    (options.suggestTitleFromPrompt ?? maybeNameWorkspaceFromAgentPrompt)(workspaceId, namingContext.messages, { events: options.events, agentModel: namingContext.agentModel });
+    (options.suggestTitleFromPrompt ?? maybeNameAgentFromPrompt)(agent, namingContext.messages, { events: options.events, agentModel: namingContext.agentModel });
   }
   await removeStagedAttachments(attachmentDraft, attachmentIds);
   if (reviewCommentIds.length) await options.events?.emit("workspace_agent_prompt_submitted", { workspaceId, reviewCommentIds });
@@ -342,7 +341,7 @@ async function initializeWorkspaceAgent(workspaceId: string, context: AgentWorks
   if (!prompt.trim() && images.length === 0 && attachmentNotes.length === 0) return;
 
   await options.events?.emit("workspace_user_activity", { workspaceId });
-  maybeNameWorkspaceFromAgentPrompt(workspaceId, [...runtime.userMessages(), prompt.trim()], { events: options.events, agentModel: runtime.currentModel() });
+  maybeNameAgentFromPrompt(agent, [...runtime.userMessages(), prompt.trim()], { events: options.events, agentModel: runtime.currentModel() });
   await runtime.submit(prompt, { mode: "send", images, attachmentNotes });
   if (validDraftId(draftId)) await removeAttachmentDraft(draftId);
 }

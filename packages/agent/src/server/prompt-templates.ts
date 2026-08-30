@@ -34,8 +34,8 @@ const builtinApplicationCommands: PromptTemplate[] = [{
 }, {
   name: "name",
   trigger: "/name",
-  description: "Rename this workspace, using AI when no name is provided.",
-  argumentHint: "[workspace-name]",
+  description: "Rename this Agent session, using AI when no name is provided.",
+  argumentHint: "[session-name]",
   prompt: "/name",
   preserveArguments: true,
 }, {
@@ -178,7 +178,7 @@ export function parseCompactCommand(text: string): { customInstructions?: string
   return customInstructions ? { customInstructions } : {};
 }
 
-export function parseWorkspaceNameCommand(text: string): { title?: string } | undefined {
+export function parseAgentSessionNameCommand(text: string): { title?: string } | undefined {
   const match = text.trim().match(/^\/name(?:\s+([\s\S]+))?$/);
   if (!match) return undefined;
   const title = match[1]?.trim();

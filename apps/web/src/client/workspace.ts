@@ -292,7 +292,7 @@ class AtelierFullscreenController extends Controller {
   }
 
   private liveViewTarget(): HTMLElement {
-    return this.element.closest<HTMLElement>(".fixed-shell-work-pane")!.querySelector<HTMLElement>(`[data-workspace-pane-role="work"][data-source-work-view-key="${CSS.escape(this.viewKeyValue)}"]`)!;
+    return this.element.closest<HTMLElement>(".fixed-workspace-presentation")!.querySelector<HTMLElement>(`[data-atelier-fullscreen-view-key="${CSS.escape(this.viewKeyValue)}"]`)!;
   }
 
   private showView(): void {

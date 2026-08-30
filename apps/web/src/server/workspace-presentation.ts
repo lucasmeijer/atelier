@@ -119,6 +119,10 @@ function actionItemLabel(text: string): string {
   return `<span class="action-item__label"><span class="action-item__label-text">${escapeHtml(text)}</span></span>`;
 }
 
+function fullscreenViewAttributes(key: string, title: string): string {
+  return `data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(key)}" data-atelier-fullscreen-title-value="${escapeHtml(title)}"`;
+}
+
 function selectorCloseButton(close: ViewCloseAction): string {
   return `<button class="fixed-shell-view-close action-item__action button danger icon-only" type="submit" title="Close ${escapeHtml(close.label)}" aria-label="Close ${escapeHtml(close.label)}">${icon("x")}</button>`;
 }
@@ -298,7 +302,7 @@ export function renderAgentBodyFrame(workspaceId: string, conversationId: string
 }
 
 function renderAgentTab(workspaceId: string, agent: AgentPaneContribution): string {
-  return `<div id="${agentTabDomId(workspaceId, agent.id)}" class="fixed-shell-agent-conversation action-item"><button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-agent-conversation-id="${escapeHtml(agent.id)}" data-action="click->workspace-presentation#selectAgent"><span class="fixed-shell-agent-icon">${icon("agent")}</span>${actionItemLabel(agent.title)}</button>${agent.close ? selectorCloseForm(agent.close) : ""}</div>`;
+  return `<div id="${agentTabDomId(workspaceId, agent.id)}" class="fixed-shell-agent-conversation action-item"><button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-agent-conversation-id="${escapeHtml(agent.id)}" ${fullscreenViewAttributes(agent.id, agent.title)} data-action="click->workspace-presentation#selectAgent"><span class="fixed-shell-agent-icon">${icon("agent")}</span>${actionItemLabel(agent.title)}</button>${agent.close ? selectorCloseForm(agent.close) : ""}</div>`;
 }
 
 function renderAgentNavigation(presentation: WorkspacePresentation): string {
@@ -311,7 +315,7 @@ function renderAgentNavigation(presentation: WorkspacePresentation): string {
 function renderAgentPaneSlot(workspaceId: string, agent: AgentPaneContribution): string {
   const loading = `<div class="agent-body-loading" role="status" aria-label="Loading ${escapeHtml(agent.title)}"><span class="status-spinner" aria-hidden="true"></span></div>`;
   const frame = `<turbo-frame id="${agentBodyFrameId(workspaceId, agent.id)}" src="${escapeHtml(agent.bodyUrl)}" loading="lazy" data-agent-body-hydration data-action="turbo:frame-load->workspace-presentation#agentBodyLoaded">${loading}</turbo-frame>`;
-  return `<section id="${agentPaneSlotDomId(workspaceId, agent.id)}" class="fixed-shell-surface" data-workspace-pane-role="agent" data-workspace-pane-id="${escapeHtml(agent.id)}" data-workspace-logically-visible="false" tabindex="-1"><div class="fixed-shell-live-body">${frame}</div></section>`;
+  return `<section id="${agentPaneSlotDomId(workspaceId, agent.id)}" class="fixed-shell-surface" data-workspace-pane-role="agent" data-workspace-pane-id="${escapeHtml(agent.id)}" data-atelier-fullscreen-view-key="${escapeHtml(agent.id)}" data-workspace-logically-visible="false" tabindex="-1"><div class="fixed-shell-live-body">${frame}</div></section>`;
 }
 
 function renderAgentActions(presentation: WorkspacePresentation): string {
@@ -342,7 +346,7 @@ function renderAvailability(view: WorkPaneContribution): string {
 function renderWorkViewSelector(workspaceId: string, view: WorkPaneContribution): string {
   const iconName = workViewTypeIcon(view.key.slice(0, view.key.indexOf(":")));
   return `<div id="${workViewSelectorDomId(workspaceId, view.key)}" class="fixed-shell-work-view-selector action-item" draggable="true" data-work-view-reorder-key="${escapeHtml(view.key)}" data-action="dragstart->workspace-presentation#beginWorkReorder dragover->workspace-presentation#allowWorkReorder drop->workspace-presentation#finishWorkReorder">
-    <button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}"${view.attentionSequence === undefined ? "" : ` data-attention-sequence="${view.attentionSequence}"`} data-controller="atelier-fullscreen" data-atelier-fullscreen-mode-value="view" data-atelier-fullscreen-view-key-value="${escapeHtml(view.sourceKey ?? view.key)}" data-atelier-fullscreen-title-value="${escapeHtml(view.label)}" data-action="click->workspace-presentation#selectWorkView"><span class="fixed-shell-work-view-icon" data-icon="${iconName}">${icon(iconName)}</span>${actionItemLabel(view.label)}${view.attentionSequence === undefined ? "" : '<i class="status-dot attention action-item__status" aria-label="Attention"></i>'}</button>${view.close ? selectorCloseForm(view.close) : ""}
+    <button class="action-item__primary" type="button" role="tab" aria-selected="false" tabindex="-1" data-work-view-key="${escapeHtml(view.key)}" data-work-view-kind="${view.kind}"${view.attentionSequence === undefined ? "" : ` data-attention-sequence="${view.attentionSequence}"`} ${fullscreenViewAttributes(view.sourceKey ?? view.key, view.label)} data-action="click->workspace-presentation#selectWorkView"><span class="fixed-shell-work-view-icon" data-icon="${iconName}">${icon(iconName)}</span>${actionItemLabel(view.label)}${view.attentionSequence === undefined ? "" : '<i class="status-dot attention action-item__status" aria-label="Attention"></i>'}</button>${view.close ? selectorCloseForm(view.close) : ""}
   </div>`;
 }
 
@@ -355,7 +359,7 @@ function renderWorkViewPane(workspaceId: string, view: WorkPaneContribution): st
     ? `<turbo-frame id="${workViewBodyFrameId(workspaceId, view.key)}" src="${escapeHtml(view.bodyUrl)}" loading="lazy" data-work-view-hydration data-action="turbo:before-frame-render->workspace-presentation#workBodyWillRender turbo:frame-load->workspace-presentation#workBodyLoaded"><div class="work-view-hydration-loading" role="status" aria-label="Loading ${escapeHtml(view.label)}"><span class="status-spinner" aria-hidden="true"></span></div></turbo-frame>`
     : "");
   const source = view.sourceKey ? ` data-source-work-view-key="${escapeHtml(view.sourceKey)}"` : "";
-  return `<section id="${workViewPaneDomId(workspaceId, view.key)}" class="fixed-shell-surface" data-workspace-pane-role="work" data-workspace-pane-id="${escapeHtml(view.key)}" data-workspace-logically-visible="false"${source} tabindex="-1"><div id="${workViewAvailabilityDomId(workspaceId, view.key)}">${renderAvailability(view)}</div><div id="${workViewActionsDomId(workspaceId, view.key)}" class="fixed-shell-work-actions">${view.actionsHtml ?? ""}</div><div class="fixed-shell-live-body">${body}</div></section>`;
+  return `<section id="${workViewPaneDomId(workspaceId, view.key)}" class="fixed-shell-surface" data-workspace-pane-role="work" data-workspace-pane-id="${escapeHtml(view.key)}" data-atelier-fullscreen-view-key="${escapeHtml(view.sourceKey ?? view.key)}" data-workspace-logically-visible="false"${source} tabindex="-1"><div id="${workViewAvailabilityDomId(workspaceId, view.key)}">${renderAvailability(view)}</div><div id="${workViewActionsDomId(workspaceId, view.key)}" class="fixed-shell-work-actions">${view.actionsHtml ?? ""}</div><div class="fixed-shell-live-body">${body}</div></section>`;
 }
 
 export function workViewBodyFrameId(workspaceId: string, key: string): string {

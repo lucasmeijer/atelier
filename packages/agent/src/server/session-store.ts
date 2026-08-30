@@ -21,6 +21,7 @@ export interface WorkspaceAgentConversationCreateOptions {
 const sharedAgentFilePattern = /^([a-z0-9][a-z0-9-]*)--([a-zA-Z0-9][a-zA-Z0-9_.-]*)--agent-([1-9]\d*)--([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.jsonl$/;
 export const projectlessSessionShareKey = "projectless";
 export const sessionShareMountPath = "/atelier/session-share";
+export const untitledAgentConversationTitle = "Untitled";
 const conversationOperationQueues = new Map<string, Promise<void>>();
 
 async function serializeConversationOperation<Result>(workspaceId: string, operation: () => Promise<Result>): Promise<Result> {
@@ -124,11 +125,11 @@ async function createWorkspaceAgentConversation(workspaceId: string, label: stri
   const store = await sessionDirForWorkspace(workspaceId);
   await mkdir(store.dir, { recursive: true });
   const path = sharedAgentSessionPath(store.shareKey, workspaceId, label, topic, conversationId);
-  await writeConversationTitle(path, "Untitled");
+  await writeConversationTitle(path, untitledAgentConversationTitle);
   // Listing discovers only .jsonl files, so publish the session after its title
   // is durable. Readers can never observe a conversation without metadata.
   await touch(path);
-  return { workspaceId, conversationId, label, title: "Untitled", path };
+  return { workspaceId, conversationId, label, title: untitledAgentConversationTitle, path };
 }
 
 export async function ensureDefaultWorkspaceAgentConversation(workspaceId: string, options: WorkspaceAgentConversationCreateOptions = {}): Promise<WorkspaceAgentConversationInfo> {

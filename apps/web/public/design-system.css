@@ -826,6 +826,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 .action-item.action-item__primary { width: 100%; }
 .action-item:not(:disabled):not([aria-disabled="true"]):focus-visible,
 .action-item:not([aria-disabled="true"]):has(:focus-visible),
+.action-item.active,
 .action-item:has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"])),
 .action-item.action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]) { outline: none; background: var(--accent-soft); color: var(--text-bright); }
 @media (hover: hover) {
@@ -844,7 +845,7 @@ details:not([open]) > summary .disclosure-icon { transform: rotate(-90deg); }
 }
 .action-item__status { flex: 0 0 auto; }
 .action-item__action { flex: 0 0 auto; opacity: 0; pointer-events: none; }
-.action-item:is(:hover, :has(:focus-visible), :has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]))) .action-item__action { opacity: 1; pointer-events: auto; }
+.action-item:is(.active, :hover, :has(:focus-visible), :has(> .action-item__primary:is([aria-current="page"], [aria-selected="true"], [aria-checked="true"]))) .action-item__action { opacity: 1; pointer-events: auto; }
 @media (hover: none) {
   .action-item__action { opacity: 1; pointer-events: auto; }
 }

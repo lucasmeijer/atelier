@@ -270,6 +270,9 @@ export function createWebApp(deps: WebAppDeps): WebApp {
   deps.events?.on("workspace_agent_turn_finished", ({ workspaceId, conversationId }) => {
     broadcastShell(selectAgentTurboStream(workspaceId, conversationId));
   });
+  deps.events?.on("workspace_agent_conversation_title_changed", async ({ workspaceId }) => {
+    broadcastShell(agentTabsTurboStream(await fixedWorkspacePresentation(workspaceId)));
+  });
 
   const provisioning = createWorkspaceProvisioningStore({ onChange: (workspaceId) => broadcastWorkspaceBoot(workspaceId), seedSteps: deps.provisioningHooks });
   const workspaceCommandModalHostId = "workspace_command_modal_host";
