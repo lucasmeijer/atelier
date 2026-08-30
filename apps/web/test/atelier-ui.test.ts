@@ -40,11 +40,15 @@ function renderShellFixture(presentation: WorkspacePresentation, pane: Workspace
   return renderShellResidents(pane, residents);
 }
 
-async function newShortcutTestPage(ids: readonly string[]): Promise<Page> {
+async function pressCommandOptionShortcut(page: Page, key: string, code: string): Promise<void> {
+  await page.locator("body").dispatchEvent("keydown", { key, code, metaKey: true, altKey: true, bubbles: true, cancelable: true });
+}
+
+async function newShortcutTestPage(ids: readonly string[], workViews: WorkspacePresentation["workViews"] = []): Promise<Page> {
   const presentations: WorkspacePresentation[] = ids.map((id) => ({
     workspace: { id, title: id },
     agentConversations: [{ id: `agent-${id}`, title: "Agent", bodyHtml: "<p>Agent</p>" }],
-    workViews: [],
+    workViews,
   }));
   const pane: WorkspacePanePresentation = {
     projects: [],
@@ -408,13 +412,39 @@ Comment: I don't think we need these tests`;
   test("opens the next and previous workspace with keyboard shortcuts", async () => {
     const page = await newShortcutTestPage(["first", "second", "third"]);
 
-    const pressShortcut = async (key: string, code: string) => {
-      await page.locator("body").dispatchEvent("keydown", { key, code, metaKey: true, altKey: true, bubbles: true, cancelable: true });
-    };
-    await pressShortcut(".", "Period");
+    await pressCommandOptionShortcut(page, ".", "Period");
     await page.waitForFunction(() => document.querySelector('[data-workspace-entry-id="second"]')?.classList.contains("active"));
-    await pressShortcut(",", "Comma");
+    await pressCommandOptionShortcut(page, ",", "Comma");
     await page.waitForFunction(() => document.querySelector('[data-workspace-entry-id="first"]')?.classList.contains("active"));
+    await page.close();
+  });
+
+  test("cycles Work views with keyboard shortcuts and only opens a closed Work pane", async () => {
+    const page = await newShortcutTestPage(["work-shortcuts"], [
+      { key: "files:workspace", label: "Files", kind: "contextual", mobileDestination: "more", availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
+      { key: "terminal:1", label: "Terminal", kind: "resource", mobileDestination: "direct", availability: { phase: "live" }, bodyHtml: "<p>Terminal</p>" },
+    ]);
+    await page.route("**/attention/acknowledge", (route) => route.fulfill({ status: 204 }));
+
+    const presentationElement = page.locator(".fixed-workspace-presentation");
+    const selectedView = () => page.locator('[data-work-view-key][aria-selected="true"]').getAttribute("data-work-view-key");
+
+    expect(await presentationElement.getAttribute("class")).not.toContain("is-work-pane-open");
+    expect(await selectedView()).toBe("files:workspace");
+    await pressCommandOptionShortcut(page, "]", "BracketRight");
+    expect(await presentationElement.getAttribute("class")).toContain("is-work-pane-open");
+    expect(await selectedView()).toBe("files:workspace");
+
+    await pressCommandOptionShortcut(page, "]", "BracketRight");
+    expect(await selectedView()).toBe("terminal:1");
+    await page.getByRole("button", { name: "Collapse Work pane", exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+    expect(await presentationElement.getAttribute("class")).not.toContain("is-work-pane-open");
+    await pressCommandOptionShortcut(page, "[", "BracketLeft");
+    expect(await presentationElement.getAttribute("class")).toContain("is-work-pane-open");
+    expect(await selectedView()).toBe("terminal:1");
+
+    await pressCommandOptionShortcut(page, "[", "BracketLeft");
+    expect(await selectedView()).toBe("files:workspace");
     await page.close();
   });
 

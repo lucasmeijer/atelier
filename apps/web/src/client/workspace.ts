@@ -504,6 +504,20 @@ class AtelierShortcutsController extends Controller {
       run: () => this.openOldestUnreadWorkspace(),
     });
     this.registerCommand({
+      id: "work-view.open-previous",
+      label: "Open previous Work view",
+      scope: "workspace",
+      binding: "Meta+Alt+BracketLeft",
+      run: () => this.openAdjacentWorkView(-1),
+    });
+    this.registerCommand({
+      id: "work-view.open-next",
+      label: "Open next Work view",
+      scope: "workspace",
+      binding: "Meta+Alt+BracketRight",
+      run: () => this.openAdjacentWorkView(1),
+    });
+    this.registerCommand({
       id: "atelier.open-palette",
       label: "Open palette",
       scope: "global",
@@ -580,14 +594,31 @@ class AtelierShortcutsController extends Controller {
     submitter.remove();
   }
 
+  private visibleWorkspacePresentation(): HTMLElement | null {
+    return document.querySelector(".workspace-detail-resident.visible .fixed-workspace-presentation");
+  }
+
   private workspaceCommands(): WorkspaceCommandRegistration[] {
-    const resident = document.querySelector<HTMLElement>(".workspace-detail-resident.visible");
-    const presentation = resident?.querySelector<HTMLElement>(".fixed-workspace-presentation[data-workspace-commands]");
+    const presentation = this.visibleWorkspacePresentation();
     if (presentation) {
       // SAFETY: The server renders this dataset from WorkspaceCommandRegistration values.
       return JSON.parse(presentation.dataset.workspaceCommands!) as WorkspaceCommandRegistration[];
     }
     return [];
+  }
+
+  private openAdjacentWorkView(direction: -1 | 1): void {
+    const presentation = this.visibleWorkspacePresentation();
+    if (!presentation) return;
+    if (!presentation.classList.contains("is-work-pane-open")) {
+      presentation.querySelector<HTMLButtonElement>("[data-show-work-pane]")?.click();
+      return;
+    }
+
+    const selectors = [...presentation.querySelectorAll<HTMLButtonElement>("[data-work-view-key]")];
+    const activeIndex = selectors.findIndex((selector) => selector.getAttribute("aria-selected") === "true");
+    if (activeIndex < 0 || selectors.length < 2) return;
+    selectors[(activeIndex + direction + selectors.length) % selectors.length]!.click();
   }
 
   private scheduleShortcutOverlay(): void {
@@ -672,6 +703,8 @@ class AtelierShortcutsController extends Controller {
         case "Quote": return "'";
         case "Semicolon": return ";";
         case "Backspace": return "⌫";
+        case "BracketLeft": return "[";
+        case "BracketRight": return "]";
         default: return part.replace(/^Key/, "");
       }
     }).join("");
@@ -696,6 +729,8 @@ class AtelierShortcutsController extends Controller {
       case "Period": return event.key === ".";
       case "Slash": return event.key === "/" || event.key === "?";
       case "Semicolon": return event.key === ";" || event.key === ":";
+      case "BracketLeft": return event.key === "[";
+      case "BracketRight": return event.key === "]";
       default: return false;
     }
   }
