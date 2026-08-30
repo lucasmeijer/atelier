@@ -1,7 +1,7 @@
 import { isWorkspacePreviewPort, workspacePreviewPortUrl, workspacePreviewPorts } from "@atelier/workspace";
 import { nestedWorkspaceProxyRedirectHeader, publicWorkspaceAppOrigin, type WorkspaceAppHost } from "@atelier/proxy-ingress/server";
 import { getWorkspaceBrowserView, setWorkspaceBrowserTarget, type WorkspaceBrowserView } from "./state.ts";
-import { browserColorSchemeParam, browserOriginParam, browserProxyUrl, stripBrowserProxyParams } from "../shared.ts";
+import { browserOriginParam, browserProxyUrl, stripBrowserProxyParams } from "../shared.ts";
 
 export function isBrowserWorkspaceApp(workspaceId: string, appKey: string): boolean {
   return Boolean(getWorkspaceBrowserView(workspaceId, appKey));
@@ -30,14 +30,7 @@ export async function patchBrowserWorkspaceAppResponse(app: WorkspaceAppHost, re
   headers.delete("content-security-policy");
   headers.delete("content-security-policy-report-only");
   headers.delete("x-frame-options");
-  if (request.headers.has("turbo-frame")) {
-    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
-  }
-
-  const additions = `${browserBridgeElement(requestTarget.origin)}${browserThemeElement(request)}`;
-  headers.delete("content-length");
-  headers.delete("content-encoding");
-  return new Response(injectIntoHtmlStream(response.body!, additions), { status: response.status, statusText: response.statusText, headers });
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 export async function resolveBrowserWorkspaceAppTarget(app: WorkspaceAppHost, requestUrl: URL): Promise<URL> {
@@ -76,10 +69,7 @@ function rewriteBrowserRedirect(app: WorkspaceAppHost, requestUrl: URL, requestT
 
   setWorkspaceBrowserTarget(app.workspaceId, app.appKey, redirectTarget.toString());
   if (!isLoopbackHost(redirectTarget.hostname)) return redirectTarget.toString();
-  const proxyTarget = browserProxyUrl(redirectTarget, publicOrigin);
-  const colorScheme = requestUrl.searchParams.get(browserColorSchemeParam);
-  if (colorScheme) proxyTarget.searchParams.set(browserColorSchemeParam, colorScheme);
-  return proxyTarget.toString();
+  return browserProxyUrl(redirectTarget, publicOrigin).toString();
 }
 
 function browserRequestTarget(view: WorkspaceBrowserView, requestUrl: URL): URL {
@@ -99,118 +89,4 @@ function parseBrowserOrigin(value: string | null): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function browserBridgeElement(targetOrigin: string): string {
-  return `<script>${browserBridgeScript(targetOrigin)}</script>`;
-}
-
-function browserThemeElement(request: Request): string {
-  const scheme = new URL(request.url).searchParams.get(browserColorSchemeParam) === "light" ? "light" : "dark";
-  return `<style data-atelier-browser-theme>html{color-scheme:${scheme};}</style>`;
-}
-
-function injectIntoHtmlStream(body: ReadableStream<Uint8Array>, addition: string): ReadableStream<Uint8Array> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
-  let prefix = "";
-  let injected = false;
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      while (true) {
-        const chunk = await reader.read();
-        if (chunk.done) {
-          const tail = decoder.decode();
-          if (!injected) controller.enqueue(encoder.encode(`${prefix}${tail}${addition}`));
-          else if (tail) controller.enqueue(encoder.encode(tail));
-          controller.close();
-          return;
-        }
-        const text = decoder.decode(chunk.value, { stream: true });
-        if (injected) {
-          if (!text) continue;
-          controller.enqueue(encoder.encode(text));
-          return;
-        }
-        prefix += text;
-        const match = /<\/head\s*>/i.exec(prefix) ?? /<\/body\s*>/i.exec(prefix);
-        if (!match && prefix.length < 64 * 1024) continue;
-        const offset = match?.index ?? prefix.length;
-        controller.enqueue(encoder.encode(`${prefix.slice(0, offset)}${addition}${prefix.slice(offset)}`));
-        prefix = "";
-        injected = true;
-        return;
-      }
-    },
-    async cancel(reason) {
-      await reader.cancel(reason);
-    },
-  });
-}
-
-function browserBridgeScript(targetOrigin: string): string {
-  return `(() => {
-  if (window.__atelierBrowserBridgeInstalled) return;
-  window.__atelierBrowserBridgeInstalled = true;
-  const locationChanged = () => {
-    parent.postMessage({ type: "atelier:browser-location", href: location.href, targetOrigin: ${JSON.stringify(targetOrigin)} }, "*");
-  };
-  const localPreviewUrl = (raw) => {
-    let target;
-    try { target = new URL(raw, ${JSON.stringify(targetOrigin)}); } catch { return undefined; }
-    const host = target.hostname.toLowerCase();
-    if (!["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"].includes(host)) return undefined;
-    const proxy = new URL(target.pathname + target.search + target.hash, location.origin);
-    proxy.searchParams.set("atelierBrowserOrigin", target.origin);
-    const scheme = new URL(location.href).searchParams.get("atelierColorScheme");
-    if (scheme) proxy.searchParams.set("atelierColorScheme", scheme);
-    return proxy;
-  };
-  addEventListener("click", (event) => {
-    if (!event.isTrusted || event.defaultPrevented || event.button !== 0) return;
-    const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
-    if (!anchor) return;
-    const proxy = localPreviewUrl(anchor.href);
-    if (!proxy) return;
-    if (anchor.target && anchor.target !== "_self") {
-      anchor.href = proxy.toString();
-      return;
-    }
-    event.preventDefault();
-    location.assign(proxy);
-  });
-  addEventListener("submit", (event) => {
-    const form = event.target;
-    if (!(form instanceof HTMLFormElement)) return;
-    const proxy = localPreviewUrl(form.action);
-    if (proxy) form.action = proxy.toString();
-  }, true);
-  const open = window.open;
-  window.open = function(raw, target, features) {
-    const proxy = typeof raw === "string" || raw instanceof URL ? localPreviewUrl(raw) : undefined;
-    return open.call(window, proxy?.toString() ?? raw, target, features);
-  };
-  const pushState = history.pushState;
-  history.pushState = function(...args) {
-    const result = pushState.apply(this, args);
-    locationChanged();
-    return result;
-  };
-  const replaceState = history.replaceState;
-  history.replaceState = function(...args) {
-    const result = replaceState.apply(this, args);
-    locationChanged();
-    return result;
-  };
-  addEventListener("popstate", locationChanged);
-  addEventListener("hashchange", locationChanged);
-  addEventListener("message", (event) => {
-    if (event.source !== parent || !event.data || event.data.type !== "atelier:browser-command") return;
-    if (event.data.command === "back") history.back();
-    if (event.data.command === "forward") history.forward();
-    if (event.data.command === "reload") location.reload();
-  });
-  locationChanged();
-})();`;
 }

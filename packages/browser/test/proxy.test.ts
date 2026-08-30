@@ -25,14 +25,16 @@ async function patchRedirect(targetUrl: string, location: string, requestUrl: st
 }
 
 describe("browser proxy response patching", () => {
-  test("leaves links declarative and injects the user-navigation bridge", async () => {
-    const response = new Response(`<html><head></head><body><a href="http://localhost:3000/page?x=1#top">page</a></body></html>`, {
+  test("passes HTML through unchanged while allowing it to be embedded", async () => {
+    const html = `<html><head></head><body><a href="http://localhost:3000/page?x=1#top">page</a></body></html>`;
+    const response = new Response(html, {
       headers: {
         "content-type": "text/html; charset=utf-8",
         "content-security-policy": "script-src 'self'",
         "x-frame-options": "DENY",
       },
     });
+    const contentLength = response.headers.get("content-length");
 
     const patched = await patchBrowserWorkspaceAppResponse(
       browserApp("work_1"),
@@ -40,83 +42,10 @@ describe("browser proxy response patching", () => {
       new Request("https://browser--work_1.localhost/start"),
     );
 
-    const html = await patched.text();
-    expect(html).toContain(`href="http://localhost:3000/page?x=1#top"`);
-    expect(html).toContain("atelier:browser-location");
-    expect(html).toContain(`addEventListener("click"`);
-    expect(html).toContain(`anchor.href = proxy.toString()`);
-    expect(html).toContain(`window.open = function`);
-    expect(html).toContain(`targetOrigin: "http://localhost:3000"`);
-    expect(html).toContain("data-atelier-browser-theme");
+    expect(await patched.text()).toBe(html);
+    expect(patched.headers.get("content-length")).toBe(contentLength);
     expect(patched.headers.has("content-security-policy")).toBe(false);
     expect(patched.headers.has("x-frame-options")).toBe(false);
-  });
-
-  test("injects the preview bridge without waiting for the complete HTML body", async () => {
-    let source: ReadableStreamDefaultController<Uint8Array> | undefined;
-    const body = new ReadableStream<Uint8Array>({ start(controller) { source = controller; } });
-    const patchedPromise = patchBrowserWorkspaceAppResponse(
-      browserApp("streaming_work"),
-      new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } }),
-      new Request("https://browser--streaming.localhost/start"),
-    );
-    source!.enqueue(new TextEncoder().encode("<html><head></head><body>first"));
-    const patched = await patchedPromise;
-    const reader = patched.body!.getReader();
-    const first = await reader.read();
-    expect(new TextDecoder().decode(first.value)).toContain("atelier:browser-location");
-    source!.enqueue(new TextEncoder().encode(" second</body></html>"));
-    source!.close();
-    const second = await reader.read();
-    expect(new TextDecoder().decode(second.value)).toContain("second");
-    await reader.read();
-  });
-
-  test("completes HTML fragments without document closing tags", async () => {
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode('<div data-workspace-id="workspace-1">Workspace</div>'));
-        controller.close();
-      },
-    });
-    const patched = await patchBrowserWorkspaceAppResponse(
-      browserApp("fragment_response_work"),
-      new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } }),
-      new Request("https://browser--fragment-response.localhost/workspaces/workspace-1?resident=1"),
-    );
-
-    const html = await patched.text();
-    expect(html).toStartWith('<div data-workspace-id="workspace-1">Workspace</div>');
-    expect(html).toContain("atelier:browser-location");
-  });
-
-  test("passes Turbo Frame fragments through without document-level injection", async () => {
-    const response = new Response('<turbo-frame id="review">diff</turbo-frame>', {
-      headers: { "content-type": "text/html; charset=utf-8" },
-    });
-    const patched = await patchBrowserWorkspaceAppResponse(
-      browserApp("fragment_work"),
-      response,
-      new Request("https://browser--fragment.localhost/review", { headers: { "turbo-frame": "review" } }),
-    );
-
-    expect(await patched.text()).toBe('<turbo-frame id="review">diff</turbo-frame>');
-  });
-
-  test("injects the current Atelier color scheme into preview html", async () => {
-    const response = new Response(`<html><head></head><body>Preview</body></html>`, {
-      headers: { "content-type": "text/html; charset=utf-8" },
-    });
-
-    const patched = await patchBrowserWorkspaceAppResponse(
-      browserApp("theme_work"),
-      response,
-      new Request("https://browser--theme.localhost/start?atelierColorScheme=light"),
-    );
-
-    const html = await patched.text();
-    expect(html).toContain("data-atelier-browser-theme");
-    expect(html).toContain("color-scheme:light");
   });
 
   test("loads external sites directly rather than proxying them", () => {
@@ -192,7 +121,7 @@ describe("browser proxy response patching", () => {
   });
 
   test("sends cross-host redirects directly to the external site", async () => {
-    const result = await patchRedirect("https://example.com/start", "https://login.example.org/session?next=%2Fhome", "https://browser--redirect.localhost/start?atelierBrowserOrigin=https%3A%2F%2Fexample.com&atelierColorScheme=light");
+    const result = await patchRedirect("https://example.com/start", "https://login.example.org/session?next=%2Fhome", "https://browser--redirect.localhost/start?atelierBrowserOrigin=https%3A%2F%2Fexample.com");
     expect(result.patched.headers.get("location")).toBe("https://login.example.org/session?next=%2Fhome");
     expect(result.targetUrl()).toBe("https://login.example.org/session?next=%2Fhome");
   });

@@ -9,4 +9,6 @@ test("browser navigation uses the shared Button Group interface", () => {
 
   expect(navigation).toContain('class="browser-navigation button-group" role="group" aria-label="Browser navigation"');
   expect(navigation.match(/class="browser-nav-button button secondary icon-only"/g)).toHaveLength(3);
+  expect(navigation.match(/aria-label="(Back|Forward)" disabled/g)).toHaveLength(2);
+  expect(navigation).toContain('data-action="browser-address#reload"');
 });

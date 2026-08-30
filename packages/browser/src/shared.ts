@@ -1,4 +1,3 @@
-export const browserColorSchemeParam = "atelierColorScheme";
 export const browserOriginParam = "atelierBrowserOrigin";
 
 export function browserProxyUrl(target: URL, base: string): URL {
@@ -8,6 +7,5 @@ export function browserProxyUrl(target: URL, base: string): URL {
 }
 
 export function stripBrowserProxyParams(url: URL): void {
-  url.searchParams.delete(browserColorSchemeParam);
   url.searchParams.delete(browserOriginParam);
 }
