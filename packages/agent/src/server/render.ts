@@ -411,6 +411,11 @@ function transcriptItemPath(ctx: AgentRenderContext, key: string, query = ""): s
   return `${agentPath(ctx, `/transcript-items/${encodeURIComponent(key)}`)}${query}`;
 }
 
+function lazyTranscriptItemFrame(ctx: AgentRenderContext, key: string, tail = false): string {
+  const attributes = tail ? tailFrameAttributes(ctx, key) : `id="${ids.detailFrame(ctx, key)}"`;
+  return `<turbo-frame ${attributes} data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame>`;
+}
+
 export function renderTranscript(ctx: AgentRenderContext, items: TranscriptItem[], modelContext: AgentModelContextView): string {
   return `${renderModelContextCard(ctx, modelContext)}${items.map((item) => renderTranscriptItem(ctx, item)).join("")}<div class="agent-notices" id="${ids.notices(ctx)}"></div>`;
 }
@@ -421,7 +426,7 @@ function renderModelContextCard(ctx: AgentRenderContext, modelContext: AgentMode
   if (!prompt && tools.length === 0) return "";
   const meta = [prompt ? "system-prompt.md" : undefined, tools.length ? `tools.json (${tools.length})` : undefined].filter(Boolean).join(" · ");
   const content = `${statusHtml("ok")}${actionItemLabelHtml(`<span class="agent-tool-name">model_context</span><span class="agent-tool-args">${escapeHtml(meta)}</span>`)}`;
-  return transcriptRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${disclosureActionItemHtml(content)}<turbo-frame id="${ids.detailFrame(ctx, "model-context")}" data-agent-lazy-detail-target="frame" data-controller="agent-tail-frame" data-action="turbo:frame-load->agent-tail-frame#loaded" data-src="${escapeHtml(transcriptItemPath(ctx, "model-context"))}"></turbo-frame></details>`);
+  return transcriptRow(`<details class="agent-tool tool-model-context" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${disclosureActionItemHtml(content)}${lazyTranscriptItemFrame(ctx, "model-context", true)}</details>`);
 }
 
 export function renderModelContextDetailFrame(ctx: AgentRenderContext, modelContext: AgentModelContextView): string {
@@ -459,6 +464,11 @@ export function renderTranscriptItem(ctx: AgentRenderContext, item: TranscriptIt
   return `<div class="agent-item" id="${id}">${body}</div>`;
 }
 
+function renderWorkingItems(ctx: AgentRenderContext, section: WorkingTranscriptItem, options: { live?: boolean; open?: boolean } = {}): string {
+  const items = section.items.map((item) => renderTranscriptItem(ctx, item, options)).join("");
+  return `<div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}">${items}</div>`;
+}
+
 function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscriptItem): string {
   if (section.completedAt !== undefined && section.items.length === 0) return "";
   const label = section.completedAt !== undefined
@@ -467,10 +477,12 @@ function renderWorkingSection(ctx: AgentRenderContext, section: WorkingTranscrip
       ? `Stopped after ${formatDuration(section.stoppedAt - section.startedAt)}`
       : "Working";
   const active = section.completedAt === undefined && section.stoppedAt === undefined;
-  const items = section.items.map((item) => renderTranscriptItem(ctx, item, { live: section.live, open: active })).join("");
   const status = active ? '<i class="status-dot running action-item__status" aria-label="In progress"></i>' : "";
   const summary = disclosureActionItemHtml(`${status}${actionItemLabelHtml(label)}`);
-  return `<details class="agent-working${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${active ? " open" : ""}>${summary}<div class="agent-working-items" id="${ids.workingItems(ctx, section.key)}">${items}</div></details>`;
+  if (!active && !section.live) {
+    return `<details class="agent-working" id="${ids.item(ctx, section.key)}" data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load mouseenter->agent-lazy-detail#load">${summary}${lazyTranscriptItemFrame(ctx, section.key)}</details>`;
+  }
+  return `<details class="agent-working${active ? " active" : ""}" id="${ids.item(ctx, section.key)}"${active ? " open" : ""}>${summary}${renderWorkingItems(ctx, section, { live: section.live, open: active })}</details>`;
 }
 
 function renderThinkingItem(ctx: AgentRenderContext, item: Extract<TranscriptItem, { type: "thinking" }>): string {
@@ -481,9 +493,8 @@ function renderThinkingItem(ctx: AgentRenderContext, item: Extract<TranscriptIte
 export function renderTranscriptItemDetailFrame(ctx: AgentRenderContext, item: TranscriptItem, options: { count?: number } = {}): string {
   const frameId = ids.detailFrame(ctx, item.key);
   let html = "";
-  if (item.type === "tool") {
-    html = renderToolDetail(ctx, item.key, item.tool, options.count ?? 100);
-  }
+  if (item.type === "working") html = renderWorkingItems(ctx, item);
+  else if (item.type === "tool") html = renderToolDetail(ctx, item.key, item.tool, options.count ?? 100);
   return `<turbo-frame id="${frameId}">${html}</turbo-frame>`;
 }
 
@@ -567,7 +578,7 @@ function renderToolCard(ctx: AgentRenderContext, key: string, original: ToolView
   const open = Boolean(options.open || active);
   const summaryHtml = disclosureActionItemHtml(summary);
   if (!options.live && !active) {
-    return `<details class="agent-tool ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${summaryHtml}<turbo-frame ${tailFrameAttributes(ctx, key)} data-agent-lazy-detail-target="frame" data-src="${escapeHtml(transcriptItemPath(ctx, key))}"></turbo-frame></details>`;
+    return `<details class="agent-tool ${toolClass(tool.name)}${tool.status === "error" ? " error" : ""}" data-agent-historical-detail data-controller="agent-lazy-detail" data-action="toggle->agent-lazy-detail#load">${summaryHtml}${lazyTranscriptItemFrame(ctx, key, true)}</details>`;
   }
   return `<details class="agent-tool ${toolClass(tool.name)}${active ? " active" : ""}${tool.status === "error" ? " error" : ""}"${open ? " open" : ""}>${summaryHtml}<turbo-frame ${tailFrameAttributes(ctx, key)} class="agent-tool-detail-host">${renderToolDetail(ctx, key, tool, 100)}</turbo-frame></details>`;
 }

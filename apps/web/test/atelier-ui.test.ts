@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ids as agentIds, renderActiveToolContent, renderTranscriptItem, type AgentRenderContext } from "../../../packages/agent/src/server/render.ts";
+import { ids as agentIds, renderActiveToolContent, renderTranscriptItem, renderTranscriptItemDetailFrame, type AgentRenderContext } from "../../../packages/agent/src/server/render.ts";
 import type { ToolView, TranscriptItem } from "../../../packages/agent/src/server/transcript.ts";
 import { renderMarkdown } from "../../../packages/markdown/src/index.ts";
 import { filesEditorFrameId, renderFilesEditorFrame, renderFilesTreeFrame, renderFilesWorkViewBody } from "../../../packages/files/src/server/render.ts";
@@ -2106,6 +2106,43 @@ Comment: I don't think we need these tests`;
       })).toEqual({ retained: true, cableEvents: [] });
       await page.close();
     }
+  });
+
+  test("preloads a closed working section when it is hovered", async () => {
+    const ctx: AgentRenderContext = { workspaceId: "lazy-working", conversationId: "agent-lazy" };
+    const historical: TranscriptItem = {
+      type: "working",
+      key: "worked",
+      startedAt: 1_000,
+      completedAt: 181_000,
+      items: [{ type: "note", key: "activity", text: "Deferred historical activity", tone: "system" }],
+    };
+    const page = await newTestPage();
+    let detailRequests = 0;
+    await page.route("http://atelier.test/lazy-working", (route) => route.fulfill({
+      contentType: "text/html",
+      body: `<div>${renderTranscriptItem(ctx, historical)}</div><script type="module" src="${workspaceClientPath}"></script>`,
+    }));
+    await page.route("**/workspaces/lazy-working/agents/agent-lazy/transcript-items/worked", (route) => {
+      detailRequests += 1;
+      return route.fulfill({ contentType: "text/html", body: renderTranscriptItemDetailFrame(ctx, historical) });
+    });
+    await page.goto("http://atelier.test/lazy-working");
+
+    const working = page.locator(`#${agentIds.item(ctx, "worked")}`);
+    expect(await working.getAttribute("open")).toBeNull();
+    expect(await page.getByText("Deferred historical activity").count()).toBe(0);
+    expect(detailRequests).toBe(0);
+
+    await working.hover();
+    await page.getByText("Deferred historical activity").waitFor({ state: "attached" });
+    expect(await working.getAttribute("open")).toBeNull();
+    expect(detailRequests).toBe(1);
+
+    await working.locator(":scope > summary").click();
+    await page.getByText("Deferred historical activity").waitFor();
+    expect(detailRequests).toBe(1);
+    await page.close();
   });
 
   test("preserves manual active Working and tool disclosure choices until the final answer", async () => {

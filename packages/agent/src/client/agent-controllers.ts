@@ -1482,7 +1482,7 @@ function createAgentLazyDetailController(Controller: StimulusControllerConstruct
 
     connect(): void { if (this.element.open) this.load(); }
     load(): void {
-      if (!this.element.open || this.frameTarget.getAttribute("src")) return;
+      if (this.frameTarget.getAttribute("src")) return;
       this.frameTarget.setAttribute("src", this.frameTarget.dataset.src!);
     }
   };
