@@ -213,6 +213,7 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
     private transcriptLayoutObserver?: ResizeObserver;
     private composerMutationObserver?: MutationObserver;
     private reconnectingStatus?: HTMLElement;
+    private reconnectingStatusTimer?: ReturnType<typeof setTimeout>;
     private transcriptLayoutFrame = 0;
     private transcriptEnd = 0;
     private selectionPosition?: { busy: boolean };
@@ -329,8 +330,6 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.formTarget.removeEventListener("submit", this.submitting);
       this.logicallyVisible = false;
       this.stopConnection();
-      this.reconnectingStatus?.remove();
-      this.reconnectingStatus = undefined;
     }
 
     inputTargetConnected(input: HTMLTextAreaElement): void {
@@ -397,17 +396,22 @@ function createAgentPaneController(Controller: StimulusControllerConstructor) {
       this.element.classList.toggle("agent-pane-reconnecting", reconnecting);
       this.transcriptTarget.setAttribute("aria-busy", String(reconnecting));
       if (!reconnecting) {
+        clearTimeout(this.reconnectingStatusTimer);
+        this.reconnectingStatusTimer = undefined;
         this.reconnectingStatus?.remove();
         this.reconnectingStatus = undefined;
         return;
       }
-      if (this.reconnectingStatus) return;
-      const status = document.createElement("div");
-      status.className = "agent-reconnecting-status";
-      status.role = "status";
-      status.textContent = "Reconnecting…";
-      this.element.append(status);
-      this.reconnectingStatus = status;
+      if (this.reconnectingStatus || this.reconnectingStatusTimer) return;
+      this.reconnectingStatusTimer = setTimeout(() => {
+        this.reconnectingStatusTimer = undefined;
+        const status = document.createElement("div");
+        status.className = "agent-reconnecting-status";
+        status.role = "status";
+        status.textContent = "Reconnecting…";
+        this.element.append(status);
+        this.reconnectingStatus = status;
+      }, 500);
     }
 
     private startAgentTerminals(): void {
