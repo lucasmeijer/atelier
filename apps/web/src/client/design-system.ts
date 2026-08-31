@@ -6,6 +6,7 @@ import { CopyButtonController } from "@atelier/design-system/copy-button/client"
 import { DestructiveConfirmationController } from "@atelier/design-system/destructive-confirmation/client";
 import { Icons } from "@atelier/design-system/icons";
 import { TransientFeedbackController } from "@atelier/design-system/transient-feedback/client";
+import { ToggleController } from "@atelier/design-system/toggle/client";
 import { PopupSelectController } from "./popup-select.ts";
 
 export function createCloseButton(label: string): HTMLButtonElement {
@@ -66,65 +67,6 @@ class ManagedListController extends Controller<HTMLElement> {
     }
     const empty = this.element.querySelector<HTMLElement>(".managed-list__empty");
     if (empty) empty.hidden = matches > 0;
-  };
-}
-
-class ToggleController extends Controller<HTMLElement> {
-  private resizeObserver?: ResizeObserver;
-  private selectionObserver?: MutationObserver;
-  private readyFrame?: number;
-
-  connect(): void {
-    this.element.addEventListener("click", this.selectFromClick);
-    this.element.addEventListener("keydown", this.selectFromKeyboard);
-    if (!this.element.classList.contains("text-toggle")) return;
-    this.positionIndicator();
-    this.resizeObserver = new ResizeObserver(() => this.positionIndicator());
-    this.resizeObserver.observe(this.element);
-    this.selectionObserver = new MutationObserver(() => this.positionIndicator());
-    this.selectionObserver.observe(this.element, { attributes: true, attributeFilter: ["aria-pressed"], subtree: true });
-    this.readyFrame = requestAnimationFrame(() => this.element.setAttribute("data-text-toggle-ready", ""));
-  }
-
-  disconnect(): void {
-    this.element.removeEventListener("click", this.selectFromClick);
-    this.element.removeEventListener("keydown", this.selectFromKeyboard);
-    this.resizeObserver?.disconnect();
-    this.selectionObserver?.disconnect();
-    if (this.readyFrame !== undefined) cancelAnimationFrame(this.readyFrame);
-  }
-
-  private options(): HTMLButtonElement[] {
-    return Array.from(this.element.querySelectorAll<HTMLButtonElement>("button[aria-pressed]:not(:disabled)"));
-  }
-
-  private select(option: HTMLButtonElement): void {
-    for (const candidate of this.options()) candidate.setAttribute("aria-pressed", String(candidate === option));
-    if (this.resizeObserver) this.positionIndicator(option);
-    option.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-
-  private readonly positionIndicator = (selected = this.element.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')): void => {
-    if (!selected) return;
-    this.element.style.setProperty("--text-toggle-indicator-left", `${selected.offsetLeft}px`);
-    this.element.style.setProperty("--text-toggle-indicator-width", `${selected.offsetWidth}px`);
-  };
-
-  private readonly selectFromClick = (event: MouseEvent): void => {
-    const option = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button[aria-pressed]:not(:disabled)") : null;
-    if (option && this.element.contains(option)) this.select(option);
-  };
-
-  private readonly selectFromKeyboard = (event: KeyboardEvent): void => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    const options = this.options();
-    const current = event.target instanceof HTMLButtonElement ? options.indexOf(event.target) : -1;
-    if (current < 0) return;
-    event.preventDefault();
-    const direction = event.key === "ArrowRight" ? 1 : -1;
-    const next = options[(current + direction + options.length) % options.length]!;
-    this.select(next);
-    next.focus();
   };
 }
 
@@ -221,8 +163,6 @@ const automaticBehaviors = [
   [".managed-list", "managed-list"],
   [".popup-menu-anchor", "popup-menu"],
   [".popup-select", "popup-select"],
-  [".button-toggle", "button-toggle"],
-  [".text-toggle", "text-toggle"],
 ] as const;
 
 function attachAutomaticBehaviors(root: ParentNode): void {
@@ -252,8 +192,7 @@ export function registerDesignSystemControllers(application: Pick<Application, "
   application.register("managed-list", ManagedListController);
   application.register("popup-menu", PopupMenuController);
   application.register("popup-select", PopupSelectController);
-  application.register("button-toggle", ToggleController);
-  application.register("text-toggle", ToggleController);
+  application.register("toggle", ToggleController);
   application.register("transient-feedback", TransientFeedbackController);
   attachAutomaticBehaviors(document);
   new MutationObserver((records) => {

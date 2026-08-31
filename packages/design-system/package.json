@@ -12,7 +12,9 @@
     "./icons": "./src/icons/icons-html.ts",
     "./progress-button": "./src/progress-button/progress-button-html.ts",
     "./transient-feedback": "./src/transient-feedback/transient-feedback-html.ts",
-    "./transient-feedback/client": "./src/transient-feedback/transient-feedback-controller.ts"
+    "./transient-feedback/client": "./src/transient-feedback/transient-feedback-controller.ts",
+    "./toggle": "./src/toggle/toggle-html.ts",
+    "./toggle/client": "./src/toggle/toggle-controller.ts"
   },
   "dependencies": {
     "@atelier/shared": "workspace:*",

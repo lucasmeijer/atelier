@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { defaultDataDir, isJsonObject } from "@atelier/core";
+import { toggleHtml } from "@atelier/design-system/toggle";
 import { turboStream, turboStreamResponse, type SettingsContribution, type WorkspaceModule } from "@atelier/shared";
 
 const settingsPath = "/settings/keypress-probe";
@@ -36,7 +37,21 @@ function renderKeypressProbe(): string {
 
 async function renderKeypressProbeSettings(): Promise<string> {
   const enabled = await isKeypressProbeEnabled();
-  return `<section class="settings-sec settings-sec-keypress-probe" id="${settingsSectionId}"><h2>Shortcut probe</h2><div class="settings-field"><div><b>Keylogging probe</b><p>Shows a local, visible keyboard-event overlay in workspaces so you can debug why shortcuts are not firing. Events are not stored; browser, OS, and iframe-reserved shortcuts may never reach Atelier.</p></div><form id="settings_keypress_probe" class="button-toggle" role="group" aria-label="Keylogging probe" method="post" action="${settingsPath}" data-turbo="true"><button class="button-toggle__option" type="submit" name="enabled" value="false" aria-pressed="${!enabled}">Off</button><button class="button-toggle__option" type="submit" name="enabled" value="true" aria-pressed="${enabled}">On</button></form></div></section>`;
+  const toggle = toggleHtml({
+    variant: "button",
+    label: "Keylogging probe",
+    name: "enabled",
+    value: String(enabled),
+    form: {
+      id: "settings_keypress_probe",
+      action: settingsPath,
+    },
+    options: [
+      { label: "Off", value: "false" },
+      { label: "On", value: "true" },
+    ],
+  });
+  return `<section class="settings-sec settings-sec-keypress-probe" id="${settingsSectionId}"><h2>Shortcut probe</h2><div class="settings-field"><div><b>Keylogging probe</b><p>Shows a local, visible keyboard-event overlay in workspaces so you can debug why shortcuts are not firing. Events are not stored; browser, OS, and iframe-reserved shortcuts may never reach Atelier.</p></div>${toggle}</div></section>`;
 }
 
 const keypressProbeSettingsContribution: SettingsContribution = {

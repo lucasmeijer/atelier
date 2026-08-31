@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@atelier/core": "workspace:*",
+    "@atelier/design-system": "workspace:*",
     "@atelier/shared": "workspace:*"
   }
 }

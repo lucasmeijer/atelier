@@ -24,8 +24,8 @@ describe("keypress probe settings", () => {
     const settings = atelierServerModule.settingsContributions![0]!;
     const initial = await settings.render();
     expect(initial).toContain('role="group" aria-label="Keylogging probe"');
-    expect(initial).toContain('value="false" aria-pressed="true">Off</button>');
-    expect(initial).toContain('value="true" aria-pressed="false">On</button>');
+    expect(initial).toMatch(/<button(?=[^>]*value="false")(?=[^>]*aria-pressed="true")[^>]*>Off<\/button>/);
+    expect(initial).toMatch(/<button(?=[^>]*value="true")(?=[^>]*aria-pressed="false")[^>]*>On<\/button>/);
 
     const enabledBody = new FormData();
     enabledBody.set("enabled", "true");
@@ -33,7 +33,7 @@ describe("keypress probe settings", () => {
       request: new Request("http://test/settings/keypress-probe", { method: "POST", body: enabledBody }),
       url: new URL("http://test/settings/keypress-probe"),
     });
-    expect(await enabledResponse!.text()).toContain('value="true" aria-pressed="true">On</button>');
+    expect(await enabledResponse!.text()).toMatch(/<button(?=[^>]*value="true")(?=[^>]*aria-pressed="true")[^>]*>On<\/button>/);
 
     const disabledBody = new FormData();
     disabledBody.set("enabled", "false");
@@ -41,6 +41,6 @@ describe("keypress probe settings", () => {
       request: new Request("http://test/settings/keypress-probe", { method: "POST", body: disabledBody }),
       url: new URL("http://test/settings/keypress-probe"),
     });
-    expect(await disabledResponse!.text()).toContain('value="false" aria-pressed="true">Off</button>');
+    expect(await disabledResponse!.text()).toMatch(/<button(?=[^>]*value="false")(?=[^>]*aria-pressed="true")[^>]*>Off<\/button>/);
   });
 });

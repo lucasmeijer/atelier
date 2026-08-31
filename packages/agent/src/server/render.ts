@@ -1,6 +1,7 @@
 import { actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
 import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { Icons } from "@atelier/design-system/icons";
+import { toggleHtml } from "@atelier/design-system/toggle";
 import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
 import { Type, type Static, type TSchema } from "typebox";
@@ -646,7 +647,17 @@ function copyableToolBody(body: string, label: string): string {
 }
 
 function comparisonHeader(title: string, primaryLabel: string, secondaryLabel = "As seen by model"): string {
-  return `<div class="agent-region-header agent-region-tabs"><span>${title}</span><div class="text-toggle subtle" role="group" aria-label="${title} view"><button class="text-toggle__option" type="button" data-agent-region-view="primary" aria-pressed="true">${primaryLabel}</button><button class="text-toggle__option" type="button" data-agent-region-view="model" aria-pressed="false">${secondaryLabel}</button></div></div>`;
+  const toggle = toggleHtml({
+    variant: "text-subtle",
+    label: `${title} view`,
+    name: "agent-region-view",
+    value: "primary",
+    options: [
+      { label: primaryLabel, value: "primary" },
+      { label: secondaryLabel, value: "model" },
+    ],
+  });
+  return `<div class="agent-region-header agent-region-tabs"><span>${escapeHtml(title)}</span>${toggle}</div>`;
 }
 
 function renderBashResultViews(ctx: AgentRenderContext, key: string, tool: ToolView, count: number): string {

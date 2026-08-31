@@ -19,6 +19,7 @@ import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
+import { setToggleValue, type ToggleChangeEvent } from "@atelier/design-system/toggle/client";
 import { CableTopics, type WorkspaceClientApplication, type WorkspaceClientControllerConstructor } from "@atelier/shared";
 import { parseEditableFileResponse, parseFileSaveResponse, type EditableFileResponse } from "../protocol.ts";
 
@@ -55,12 +56,11 @@ function languageExtension(path: string): Extension {
 }
 
 type EditorRefreshDetail = { workspaceId: string };
-type PreviewModeEvent = Event & { readonly currentTarget: HTMLButtonElement };
 
 function createFileEditorController(Controller: WorkspaceClientControllerConstructor): WorkspaceClientControllerConstructor {
   return class FileEditorController extends Controller {
     static values = { workspaceId: String, path: String, contentUrl: String, line: Number, column: Number };
-    static targets = ["host", "loading", "status", "conflict", "preview", "previewOption", "copyButton"];
+    static targets = ["host", "loading", "status", "conflict", "preview", "previewOptions", "copyButton"];
 
     declare readonly element: HTMLElement;
     declare readonly workspaceIdValue: string;
@@ -73,7 +73,7 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     declare readonly statusTarget: HTMLElement;
     declare readonly conflictTarget: HTMLDialogElement;
     declare readonly previewTarget: HTMLElement;
-    declare readonly previewOptionTargets: HTMLButtonElement[];
+    declare readonly previewOptionsTarget: HTMLElement;
     declare readonly copyButtonTarget: HTMLButtonElement;
     declare readonly hasPreviewTarget: boolean;
 
@@ -105,8 +105,8 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
       await this.save(true);
     }
 
-    async selectPreviewMode(event: PreviewModeEvent): Promise<void> {
-      if (event.currentTarget.dataset.previewMode === "preview") {
+    async selectPreviewMode(event: ToggleChangeEvent): Promise<void> {
+      if (event.detail.value === "preview") {
         if (this.previewTarget.hidden) await this.showPreview();
       } else {
         this.showRaw();
@@ -276,15 +276,13 @@ function createFileEditorController(Controller: WorkspaceClientControllerConstru
     }
 
     private setPreviewBusy(busy: boolean): void {
-      this.previewOptionTargets[0]!.parentElement!.setAttribute("aria-busy", String(busy));
+      this.previewOptionsTarget.setAttribute("aria-busy", String(busy));
     }
 
     private setPreviewVisible(visible: boolean): void {
       this.previewTarget.hidden = !visible;
       this.hostTarget.hidden = visible;
-      this.previewOptionTargets.forEach((option) => {
-        option.setAttribute("aria-pressed", String(option.dataset.previewMode === (visible ? "preview" : "edit")));
-      });
+      setToggleValue(this.previewOptionsTarget, visible ? "preview" : "edit");
     }
 
     private refreshVisiblePreview(): void {

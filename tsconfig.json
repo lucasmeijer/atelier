@@ -13,6 +13,8 @@
       "@atelier/design-system/destructive-confirmation": ["./packages/design-system/src/destructive-confirmation/destructive-confirmation-html.ts"],
       "@atelier/design-system/destructive-confirmation/client": ["./packages/design-system/src/destructive-confirmation/destructive-confirmation-controller.ts"],
       "@atelier/design-system/icons": ["./packages/design-system/src/icons/icons-html.ts"],
+      "@atelier/design-system/toggle": ["./packages/design-system/src/toggle/toggle-html.ts"],
+      "@atelier/design-system/toggle/client": ["./packages/design-system/src/toggle/toggle-controller.ts"],
       "@atelier/browser/server": ["./packages/browser/src/server/index.ts"],
       "@atelier/browser/client": ["./packages/browser/src/client/index.ts"],
       "@atelier/browser": ["./packages/browser/src/server/index.ts"],

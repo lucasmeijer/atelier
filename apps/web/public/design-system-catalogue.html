@@ -246,10 +246,10 @@
                     <span class="toggle-specimen-label">default</span>
                     <div class="text-toggle-demo-row">
                       <span>Workspace view</span>
-                      <div class="text-toggle" role="group" aria-label="Workspace view" data-catalogue-text-toggle>
-                        <button class="text-toggle__option" type="button" aria-pressed="true">Overview</button>
-                        <button class="text-toggle__option" type="button" aria-pressed="false">Recent activity</button>
-                        <button class="text-toggle__option" type="button" aria-pressed="false">Settings</button>
+                      <div class="text-toggle" role="group" aria-label="Workspace view" data-controller="toggle" data-catalogue-text-toggle>
+                        <button class="text-toggle__option" type="button" name="workspace-view" value="overview" aria-pressed="true">Overview</button>
+                        <button class="text-toggle__option" type="button" name="workspace-view" value="activity" aria-pressed="false">Recent activity</button>
+                        <button class="text-toggle__option" type="button" name="workspace-view" value="settings" aria-pressed="false">Settings</button>
                       </div>
                     </div>
                   </div>
@@ -257,9 +257,9 @@
                     <span class="toggle-specimen-label">subtle</span>
                     <div class="text-toggle-demo-row">
                       <span>Result view</span>
-                      <div class="text-toggle subtle" role="group" aria-label="Result view">
-                        <button class="text-toggle__option" type="button" aria-pressed="true">Output</button>
-                        <button class="text-toggle__option" type="button" aria-pressed="false">Model</button>
+                      <div class="text-toggle subtle" role="group" aria-label="Result view" data-controller="toggle">
+                        <button class="text-toggle__option" type="button" name="result-view" value="output" aria-pressed="true">Output</button>
+                        <button class="text-toggle__option" type="button" name="result-view" value="model" aria-pressed="false">Model</button>
                       </div>
                     </div>
                   </div>
@@ -270,10 +270,14 @@
             <article class="catalogue-card wide">
               <div class="catalogue-card-title"><span>Button toggle · interactive</span><code>.button-toggle + .button-toggle__option</code></div>
               <div class="catalogue-demo toggle-demo">
-                <div class="button-toggle" role="group" aria-label="Editor display" data-catalogue-button-toggle>
-                  <button class="button-toggle__option" type="button" aria-pressed="true">Edit</button>
-                  <button class="button-toggle__option" type="button" aria-pressed="false">Preview</button>
+                <div class="button-toggle" role="group" aria-label="Editor display" data-controller="toggle" data-catalogue-button-toggle>
+                  <button class="button-toggle__option" type="button" name="editor-display" value="edit" aria-pressed="true">Edit</button>
+                  <button class="button-toggle__option" type="button" name="editor-display" value="preview" aria-pressed="false">Preview</button>
                 </div>
+                <form class="button-toggle" role="group" aria-label="Submit-backed setting" data-controller="toggle" data-catalogue-submit-toggle method="get" action="/design-system-catalogue.html">
+                  <button class="button-toggle__option" type="submit" name="enabled" value="false" aria-pressed="true">Off</button>
+                  <button class="button-toggle__option" type="submit" name="enabled" value="true" aria-pressed="false">On</button>
+                </form>
               </div>
               <p class="catalogue-note">Formerly named <code>toggle</code>, the button toggle retains the compact filled-and-outlined treatment for operational controls.</p>
             </article>
@@ -298,22 +302,31 @@
               <p class="catalogue-note">Disable every option when the choice is unavailable.</p>
             </article>
             <article class="catalogue-card wide">
-              <div class="catalogue-card-title"><span>Interfaces</span><code>native buttons + automatic behavior</code></div>
-              <pre class="button-code">&lt;div class="text-toggle" role="group" aria-label="Workspace view"&gt;
-  &lt;button class="text-toggle__option" type="button" aria-pressed="true"&gt;Overview&lt;/button&gt;
-  &lt;button class="text-toggle__option" type="button" aria-pressed="false"&gt;Activity&lt;/button&gt;
-&lt;/div&gt;
+              <div class="catalogue-card-title"><span>Interface</span><code>toggleHtml({ variant, value, options })</code></div>
+              <pre class="button-code">toggleHtml({
+  variant: "text-subtle",
+  label: "Result view",
+  name: "result-view",
+  value: "output",
+  options: [
+    { label: "Output", value: "output" },
+    { label: "Model", value: "model" },
+  ],
+});
 
-&lt;div class="text-toggle subtle" role="group" aria-label="Result view"&gt;
-  &lt;button class="text-toggle__option" type="button" aria-pressed="true"&gt;Output&lt;/button&gt;
-  &lt;button class="text-toggle__option" type="button" aria-pressed="false"&gt;Model&lt;/button&gt;
-&lt;/div&gt;
-
-&lt;div class="button-toggle" role="group" aria-label="Editor display"&gt;
-  &lt;button class="button-toggle__option" type="button" aria-pressed="true"&gt;Edit&lt;/button&gt;
-  &lt;button class="button-toggle__option" type="button" aria-pressed="false"&gt;Preview&lt;/button&gt;
-&lt;/div&gt;</pre>
-              <p class="catalogue-note">Keep exactly one option pressed and give the group an accessible name. Add <code>subtle</code> when the toggle should sit below normal body text in the visual hierarchy. Click and arrow-key behavior is attached automatically; no caller-owned JavaScript is required.</p>
+// A form infers submit buttons, POST, and Turbo.
+toggleHtml({
+  variant: "button",
+  label: "Editor display",
+  name: "display",
+  value: "edit",
+  form: { action: "/settings/display" },
+  options: [
+    { label: "Edit", value: "edit" },
+    { label: "Preview", value: "preview" },
+  ],
+});</pre>
+              <p class="catalogue-note">The renderer guarantees exactly one selected option, owns semantic markup and controller attachment, and supports click and arrow-key behavior without caller-owned JavaScript. Use <code>setToggleValue</code> for programmatic synchronization.</p>
             </article>
           </div>
         </section>

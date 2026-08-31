@@ -32,6 +32,7 @@ export const fingerprintedStaticFiles: StaticFileRegistry = {
   "/icons.css": { url: new URL("../../../../packages/design-system/src/icons/icons.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/progress-button.css": { url: new URL("../../../../packages/design-system/src/progress-button/progress-button.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/transient-feedback.css": { url: new URL("../../../../packages/design-system/src/transient-feedback/transient-feedback.css", import.meta.url), contentType: "text/css; charset=utf-8" },
+  "/toggle.css": { url: new URL("../../../../packages/design-system/src/toggle/toggle.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   "/fonts/jetbrains-mono-latin-400-normal.woff2": { url: new URL(import.meta.resolve("@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2")), contentType: "font/woff2" },
   "/style.css": { url: new URL("../../public/style.css", import.meta.url), contentType: "text/css; charset=utf-8" },
   ...workspaceProvisioningStaticFiles,

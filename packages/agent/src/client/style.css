@@ -327,8 +327,8 @@ summary > .agent-tool-head { width: 100%; }
 .agent-tail-output { max-height: 330px; overflow: auto; background: color-mix(in srgb, var(--bg) 58%, #000 12%); }
 .agent-tail-output > .agent-tool-result, .agent-tail-output > .agent-tool-code { max-height: none; overflow: visible; }
 .agent-region-pane { display: none; }
-.agent-region-tabs:has([data-agent-region-view="primary"][aria-pressed="true"]) ~ .region-primary-pane { display: block; }
-.agent-region-tabs:has([data-agent-region-view="model"][aria-pressed="true"]) ~ .region-model-pane { display: block; }
+.agent-region-tabs:has([name="agent-region-view"][value="primary"][aria-pressed="true"]) ~ .region-primary-pane { display: block; }
+.agent-region-tabs:has([name="agent-region-view"][value="model"][aria-pressed="true"]) ~ .region-model-pane { display: block; }
 .agent-more-lines { height: 23px; padding: 0 8px; display: flex; align-items: center; background: color-mix(in srgb, var(--bg) 58%, #000 12%); }
 .agent-more-lines a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
 .agent-more-lines a:hover { color: var(--text); }

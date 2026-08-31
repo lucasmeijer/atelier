@@ -101,7 +101,8 @@ beforeAll(async () => {
   const destructiveConfirmationStyle = await Bun.file(new URL("../../../packages/design-system/src/destructive-confirmation/destructive-confirmation.css", import.meta.url)).text();
   const progressButtonStyle = await Bun.file(new URL("../../../packages/design-system/src/progress-button/progress-button.css", import.meta.url)).text();
   const transientFeedbackStyle = await Bun.file(new URL("../../../packages/design-system/src/transient-feedback/transient-feedback.css", import.meta.url)).text();
-  designSystemStyle = `${actionItemStyle}\n${copyButtonStyle}\n${destructiveConfirmationStyle}\n${progressButtonStyle}\n${transientFeedbackStyle}\n${await Bun.file(new URL("../public/design-system.css", import.meta.url)).text()}`;
+  const toggleStyle = await Bun.file(new URL("../../../packages/design-system/src/toggle/toggle.css", import.meta.url)).text();
+  designSystemStyle = `${actionItemStyle}\n${copyButtonStyle}\n${destructiveConfirmationStyle}\n${progressButtonStyle}\n${transientFeedbackStyle}\n${toggleStyle}\n${await Bun.file(new URL("../public/design-system.css", import.meta.url)).text()}`;
   const shellStyle = await Bun.file(new URL("../public/style.css", import.meta.url)).text();
   workspaceStyle = `${designSystemStyle}\n${shellStyle}`;
   filesStyle = await Bun.file(new URL("../../../packages/files/src/client/style.css", import.meta.url)).text();
@@ -317,6 +318,15 @@ Comment: I don't think we need these tests`;
     expect(await edit.getAttribute("aria-pressed")).toBe("false");
     expect(await preview.getAttribute("aria-pressed")).toBe("true");
 
+    await edit.evaluate((element) => {
+      element.setAttribute("aria-pressed", "true");
+      element.setAttribute("disabled", "");
+    });
+    await preview.evaluate((element) => element.setAttribute("aria-pressed", "false"));
+    await preview.click();
+    expect(await edit.getAttribute("aria-pressed")).toBe("false");
+    expect(await preview.getAttribute("aria-pressed")).toBe("true");
+
     const textToggle = page.locator("[data-catalogue-text-toggle]");
     const overview = textToggle.getByRole("button", { name: "Overview" });
     const activity = textToggle.getByRole("button", { name: "Recent activity" });
@@ -326,6 +336,12 @@ Comment: I don't think we need these tests`;
     expect(await activity.getAttribute("aria-pressed")).toBe("true");
     expect(await activity.evaluate((element) => element === document.activeElement)).toBe(true);
     expect(Number.parseFloat(await textToggle.evaluate((element) => element.style.getPropertyValue("--text-toggle-indicator-width")))).toBeGreaterThan(0);
+
+    const submitToggle = page.locator("[data-catalogue-submit-toggle]");
+    await submitToggle.getByRole("button", { name: "Off" }).focus();
+    const submission = page.waitForRequest("http://catalogue.test/design-system-catalogue.html?enabled=true");
+    await page.keyboard.press("ArrowRight");
+    expect((await submission).method()).toBe("GET");
     await page.close();
   });
 
