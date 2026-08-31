@@ -36,6 +36,8 @@
 
 .review-file { scroll-margin-top: 54px; }
 .review-file > summary { box-sizing: border-box; list-style: none; }
+.review-file[data-review-change="added"] > summary { background: var(--success-soft); }
+.review-file[data-review-change="removed"] > summary { background: var(--danger-soft); }
 .review-file > summary::-webkit-details-marker { display: none; }
 .review-file-path { font-family: var(--font-mono); }
 .review-file-path .action-item__label-text { display: flex; align-items: center; gap: 8px; }

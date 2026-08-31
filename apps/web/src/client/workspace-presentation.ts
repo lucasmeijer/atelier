@@ -189,6 +189,7 @@ export function createWorkspacePresentationController(
       });
       this.sizeObserver.observe(this.element);
       this.normalizeState();
+      this.applyInitialAttentionIntent();
       this.applyDeepLink();
       this.applyState({ emit: true });
     }
@@ -254,7 +255,6 @@ export function createWorkspacePresentationController(
       if (!selector) return;
       const alreadyVisible = this.visiblePanes().some((pane) => pane.dataset.workspacePaneRole === "work" && pane.dataset.workspacePaneId === key);
       this.selectWorkViewState(key, selector.dataset.workViewKind === "contextual");
-      this.state.phoneDestination = `work:${key}`;
       this.persist();
       if (this.element.closest(".workspace-detail-resident.visible")) this.applyState({ emit: true, focus: true });
       if (alreadyVisible) this.finishVisibleWorkViewPreparation();
@@ -446,7 +446,7 @@ export function createWorkspacePresentationController(
     private selectWorkViewState(key: string, contextual: boolean): void {
       this.state.activeWorkViewKey = key;
       this.state.workPaneVisible = true;
-      if (this.isPhone) this.state.phoneDestination = `work:${key}`;
+      this.state.phoneDestination = `work:${key}`;
       if (contextual) this.element.dataset.activeContextualWork = key;
     }
 
@@ -474,18 +474,25 @@ export function createWorkspacePresentationController(
       this.persist();
     }
 
-    private applyDeepLink(): boolean {
+    private applyInitialAttentionIntent(): void {
+      const selectors = [...this.element.querySelectorAll<HTMLElement>("[data-work-view-key][data-attention-sequence]")];
+      if (!selectors.length) return;
+      const latest = selectors.reduce((current, candidate) => Number(candidate.dataset.attentionSequence) > Number(current.dataset.attentionSequence) ? candidate : current);
+      this.selectWorkViewState(latest.dataset.workViewKey!, latest.dataset.workViewKind === "contextual");
+      this.persist();
+    }
+
+    private applyDeepLink(): void {
       const url = new URL(window.location.href);
-      if (!url.pathname.endsWith(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}`)) return false;
+      if (!url.pathname.endsWith(`/workspaces/${encodeURIComponent(this.workspaceIdValue)}`)) return;
       const key = url.searchParams.get("workView");
-      if (!key) return false;
+      if (!key) return;
       const selector = this.element.querySelector<HTMLElement>(`[data-work-view-key="${CSS.escape(key)}"]`);
-      if (!selector) return false;
+      if (!selector) return;
       this.selectWorkViewState(key, selector.dataset.workViewKind === "contextual");
       url.searchParams.delete("workView");
       window.history.replaceState(window.history.state, "", url);
       this.persist();
-      return true;
     }
 
     private persist(): void {

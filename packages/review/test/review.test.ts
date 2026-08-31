@@ -39,8 +39,20 @@ describe("Review snapshot", () => {
     expect(snapshot.files.map((file) => file.path)).toEqual(["changed.ts", "untracked.ts"]);
     expect(snapshot.files[0]!.additions).toBe(2);
     expect(snapshot.files[0]!.deletions).toBe(1);
-    expect(snapshot.files[1]!.untracked).toBe(true);
     expect(snapshot.files[1]!.kind).toBe("text");
+  });
+
+  test("classifies whole-file additions and removals", async () => {
+    const root = await repository();
+    await writeFile(join(root, "added.ts"), "export const added = true;\n");
+    await rm(join(root, "changed.ts"));
+
+    const snapshot = await collectReviewSnapshot(root);
+    if (snapshot.phase !== "ready") throw new Error("expected ready review");
+    expect(snapshot.files.map(({ path, change }) => ({ path, change }))).toEqual([
+      { path: "added.ts", change: "added" },
+      { path: "changed.ts", change: "removed" },
+    ]);
   });
 
   test("keeps empty files and rename metadata", async () => {
@@ -102,7 +114,7 @@ describe("Review comment anchors", () => {
   };
 
   function file(contents: string): ReviewFile {
-    return { path: comment.path, kind: "text", newContents: contents, additions: 1, deletions: 1 };
+    return { path: comment.path, change: "modified", kind: "text", newContents: contents, additions: 1, deletions: 1 };
   }
 
   test("keeps exact anchors, remaps one exact match, and marks ambiguous matches outdated", () => {
@@ -161,11 +173,11 @@ describe("Review presentation", () => {
 
   test("renders file grouping and explicit review comment actions", async () => {
     const comment: ReviewComment = { id: "comment-1", path: "src/example.ts", side: "additions", startLine: 2, endLine: 2, body: "Keep this lazy", snippet: "target" };
-    const file: ReviewFile = { path: "src/example.ts", kind: "binary", additions: 1, deletions: 0, detail: "Binary file changed" };
+    const file: ReviewFile = { path: "src/example.ts", change: "modified", kind: "binary", additions: 1, deletions: 0, detail: "Binary file changed" };
     const html = await renderReviewBody("workspace 1", { phase: "ready", files: [file] }, [comment]);
 
     expect(html).toContain('class="review-files action-list"');
-    expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="src/example.ts" data-review-comments="1">');
+    expect(html).toContain('<details class="review-file" data-review-target="file" data-review-path="src/example.ts" data-review-change="modified" data-review-comments="1">');
     expect(html).not.toContain('data-review-comments="1" open');
     expect(html).toContain("Copy into composer");
     expect(html).toContain('data-action="click->review#copyCommentsToComposer"');
@@ -192,19 +204,12 @@ describe("Review presentation", () => {
     expect(html).not.toContain('name="reviewComment"');
   });
 
-  test("omits deletion stats for untracked files", async () => {
-    const files: ReviewFile[] = [
-      { path: "changed.ts", kind: "binary", additions: 1, deletions: 1 },
-      { path: "new.ts", untracked: true, kind: "binary", additions: 1, deletions: 0 },
-    ];
+  test("renders zero deletion stats for added files", async () => {
+    const file: ReviewFile = { path: "new.ts", change: "added", kind: "binary", additions: 1, deletions: 0 };
+    const html = await renderReviewBody("workspace 1", { phase: "ready", files: [file] }, []);
 
-    const html = await renderReviewBody("workspace 1", { phase: "ready", files }, []);
-    const modifiedFile = html.match(/<details[^>]+data-review-path="changed\.ts"[\s\S]*?<\/details>/)?.[0];
-    const untrackedFile = html.match(/<details[^>]+data-review-path="new\.ts"[\s\S]*?<\/details>/)?.[0];
-
-    expect(modifiedFile).toContain('<span class="review-deletions">−1</span>');
-    expect(untrackedFile).toContain('<span class="review-additions">+1</span>');
-    expect(untrackedFile).not.toContain("review-deletions");
+    expect(html).toContain('<span class="review-additions">+1</span>');
+    expect(html).toContain('<span class="review-deletions">−0</span>');
   });
 
   test("groups comments whose anchors disappeared in an open pseudo-file", async () => {

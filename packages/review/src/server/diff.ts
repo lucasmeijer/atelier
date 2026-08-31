@@ -8,11 +8,12 @@ const maxRenderedBytes = 1_000_000;
 const maxRenderedLines = 5_000;
 
 type ReviewFileKind = "text" | "binary" | "large" | "mode";
+type ReviewFileChange = "added" | "modified" | "removed";
 
 export interface ReviewFile {
   path: string;
   previousPath?: string;
-  untracked?: true;
+  change: ReviewFileChange;
   kind: ReviewFileKind;
   oldContents?: string;
   newContents?: string;
@@ -132,9 +133,13 @@ async function reviewFile(root: string, entry: StatusEntry): Promise<ReviewFile 
   ]);
   const oldText = decodeText(oldBuffer);
   const newText = decodeText(newBuffer);
-  const base: Pick<ReviewFile, "path" | "previousPath" | "untracked"> = { path: entry.path };
+  const change: ReviewFileChange = oldBuffer === undefined && newBuffer !== undefined
+    ? "added"
+    : oldBuffer !== undefined && newBuffer === undefined
+      ? "removed"
+      : "modified";
+  const base: Pick<ReviewFile, "path" | "previousPath" | "change"> = { path: entry.path, change };
   if (entry.previousPath) base.previousPath = entry.previousPath;
-  if (entry.code === "??") base.untracked = true;
   if (oldBuffer === undefined && newBuffer === undefined) {
     if (fileModes.oldMode === "160000" || fileModes.newMode === "160000") return { ...base, kind: "mode", additions: 0, deletions: 0, detail: "Submodule changed" };
     return undefined;

@@ -2589,6 +2589,25 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("opens the Work pane on the newest view requesting Attention during initial hydration", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "attention-demo", title: "Attention" },
+      agentConversations: [agentConversation("attention-demo", "agent-1")],
+      workViews: [
+        { key: "files:workspace", label: "Files", kind: "contextual", attentionSequence: 3, availability: { phase: "live" }, bodyHtml: "<p>Files</p>" },
+        { key: "browser:1", label: "Browser", kind: "resource", attentionSequence: 7, availability: { phase: "live" }, bodyHtml: "<p>Browser</p>" },
+      ],
+    };
+    const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
+    await page.route("http://atelier.test/workspaces/attention-demo", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style><div class="workspace-detail-resident visible">${renderWorkspacePresentation(presentation)}</div><script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.goto("http://atelier.test/workspaces/attention-demo");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+
+    expect(await page.getByRole("region", { name: "Work" }).isVisible()).toBe(true);
+    expect(await page.locator('[data-work-view-key="browser:1"]').getAttribute("aria-selected")).toBe("true");
+    await page.close();
+  });
+
   test("restores personal Agent and Work navigation without relying on rendered Agent DOM", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "fixed-demo", title: "Fixed shell" },
@@ -2598,7 +2617,7 @@ Comment: I don't think we need these tests`;
       ],
       workViews: [
         { key: "terminal:1", label: "Terminal", kind: "resource", availability: { phase: "live" }, bodyHtml: "<p>Terminal</p>", close: { action: "/terminal/close", label: "Terminal" } },
-        { key: "files:workspace", label: "Files", kind: "contextual", attentionSequence: 1, availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files" } },
+        { key: "files:workspace", label: "Files", kind: "contextual", availability: { phase: "live" }, bodyHtml: "<p>Files</p>", close: { action: "/files/close", label: "Files" } },
       ],
     };
     const page = await newTestPage({ viewport: { width: 1440, height: 900 } });
