@@ -88,7 +88,7 @@ export function renderFileCompletionMenu(completions: readonly FileCompletion[])
     const path = completion.directory ? `${completion.path}/` : completion.path;
     return actionItemHtml({
       kind: "single",
-      label: { kind: "html", html: escapeHtml(path), className: "agent-file-path" },
+      label: { kind: "text", text: path, className: "agent-file-path" },
       element: {
         tag: "button",
         className: `agent-completion-option${index === 0 ? " active" : ""}`,

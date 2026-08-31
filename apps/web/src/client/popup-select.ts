@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { actionItemElement } from "@atelier/design-system/action-item";
+import { actionItemElement, type ActionItemLabel } from "@atelier/design-system/action-item";
 import { Controller } from "@hotwired/stimulus";
 
 let menuSequence = 0;
@@ -86,27 +86,15 @@ export abstract class SelectPopupController extends Controller<HTMLSelectElement
   protected renderOption(option: HTMLOptionElement): HTMLButtonElement {
     const item = actionItemElement<HTMLButtonElement>({
       kind: "single",
-      contentHtml: this.renderOptionLabel(option).outerHTML,
+      label: this.renderOptionLabel(option),
       element: { tag: "button", attributesHtml: `type="button" role="menuitemradio" aria-checked="${option.selected}"${option.disabled ? " disabled" : ""}` },
     });
     item.addEventListener("click", () => this.select(option));
     return item;
   }
 
-  protected renderOptionLabel(option: HTMLOptionElement): HTMLElement {
-    return this.actionItemLabel(option.textContent ?? option.value);
-  }
-
-  protected actionItemLabel(text: string): HTMLElement {
-    const item = actionItemElement({ kind: "single", label: { kind: "text", text }, element: { tag: "span" } });
-    return item.querySelector<HTMLElement>(".action-item__label")!;
-  }
-
-  protected description(text: string): HTMLElement {
-    const description = document.createElement("span");
-    description.className = "popup-menu__description";
-    description.textContent = text;
-    return description;
+  protected renderOptionLabel(option: HTMLOptionElement): ActionItemLabel {
+    return { kind: "text", text: option.textContent ?? option.value };
   }
 
   protected select(option: HTMLOptionElement): void {

@@ -1,4 +1,4 @@
-import { actionItemHtml } from "@atelier/design-system/action-item";
+import { actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
 import { preloadDiffHTML } from "@pierre/diffs/ssr";
 import { domId, escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import type { ReviewFile, ReviewFileStats, ReviewFileSummary, ReviewIndex } from "./diff.ts";
@@ -48,13 +48,12 @@ function renderCommentCount(count: number): string {
   return `<span class="review-comment-count" aria-label="${count} comment${count === 1 ? "" : "s"}">${count}</span>`;
 }
 
-function renderFileSummary(labelHtml: string, metaHtml: string, title?: string): string {
+function renderFileSummary(label: ActionItemLabel, metaHtml: string, title?: string): string {
   return actionItemHtml({
     kind: "single",
     leadingHtml: '<svg class="disclosure-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg>',
     label: {
-      kind: "html",
-      html: labelHtml,
+      ...label,
       className: "review-file-path",
       attributesHtml: title ? `title="${escapeHtml(title)}"` : undefined,
     },
@@ -96,7 +95,7 @@ function renderFile(workspaceId: string, file: ReviewFileSummary, comments: Revi
   const frameId = reviewFileFrameId(workspaceId, file.path);
   const detailUrl = `/workspaces/${encodeURIComponent(workspaceId)}/review/files/${encodeURIComponent(file.path)}`;
   const label = `${file.previousPath ? `<span>${escapeHtml(file.previousPath)}</span><b aria-label="renamed to">→</b>` : ""}<span>${escapeHtml(file.path)}</span>`;
-  const summary = renderFileSummary(label, `${renderCommentCount(fileComments.length)}${renderGitStats(workspaceId, file)}`, file.path);
+  const summary = renderFileSummary({ kind: "html", html: label }, `${renderCommentCount(fileComments.length)}${renderGitStats(workspaceId, file)}`, file.path);
   return `<details class="review-file" data-review-target="file" data-review-path="${escapeHtml(file.path)}" data-review-change="${file.change}" data-review-comments="${fileComments.length}" data-action="pointerenter->review#requestFile pointerdown->review#requestFile focusin->review#requestFile toggle->review#requestFile">
     ${summary}
     <turbo-frame id="${frameId}" data-src="${escapeHtml(detailUrl)}"><div class="review-file-loading" role="status"><span class="status-spinner" aria-hidden="true"></span> Loading changes…</div></turbo-frame>
@@ -124,7 +123,7 @@ function reviewCommentsModelId(workspaceId: string): string {
 }
 
 function renderUnanchoredSlot(workspaceId: string, comments: ReviewComment[]): string {
-  const summary = renderFileSummary("Comments without anchors", renderCommentCount(comments.length));
+  const summary = renderFileSummary({ kind: "text", text: "Comments without anchors" }, renderCommentCount(comments.length));
   const file = comments.length ? `<details class="review-file" data-review-target="file" data-review-path="comments-without-anchors" data-review-comments="${comments.length}" open>
     ${summary}
     <div class="review-file-diff review-unanchored-comments">${comments.map((comment) => renderUnanchoredComment(workspaceId, comment)).join("")}</div>

@@ -31,7 +31,7 @@ export function renderSlashCommandCatalog(templates: readonly PromptTemplate[], 
     const template = command.prompt !== undefined;
     return actionItemHtml({
       kind: "single",
-      label: { kind: "html", html: `${escapeHtml(command.trigger)}${command.argumentHint ? ` ${escapeHtml(command.argumentHint)}` : ""} — ${escapeHtml(command.description)}` },
+      label: { kind: "text", text: `${command.trigger}${command.argumentHint ? ` ${command.argumentHint}` : ""} — ${command.description}` },
       trailingHtml: command.prompt === undefined ? "" : `<template data-atelier-fullscreen-target="content"><pre class="agent-template-preview">${escapeHtml(command.prompt)}</pre></template>`,
       element: {
         tag: "button",

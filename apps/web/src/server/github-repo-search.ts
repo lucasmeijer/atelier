@@ -110,7 +110,7 @@ export function renderGitHubRepositorySearchMenu(repositories: readonly GitHubRe
     const visibility = repo.private ? " — Private repository" : "";
     return actionItemHtml({
       kind: "single",
-      label: { kind: "html", html: `${escapeHtml(repo.fullName)} — ${escapeHtml(description)}${visibility}` },
+      label: { kind: "text", text: `${repo.fullName} — ${description}${visibility}` },
       element: {
         tag: "button",
         className: `agent-completion-option${index === 0 ? " active" : ""}`,

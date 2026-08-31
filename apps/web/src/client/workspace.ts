@@ -7,7 +7,7 @@ import { Value } from "typebox/value";
 // @ts-expect-error No declaration file is included in @hotwired/turbo.
 import * as Turbo from "@hotwired/turbo";
 import { createHtmlAutocompleteController, PromptHistoryNavigator } from "@atelier/agent/client";
-import { actionItemElement, actionItemHtml } from "@atelier/design-system/action-item";
+import { actionItemElement, actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
 import {
   atelierCableConnectionHeader,
   CableTopics,
@@ -2304,15 +2304,16 @@ class AgentModelMenuController extends SelectPopupController {
     return [configure, separator, ...super.renderMenu()];
   }
 
-  protected override renderOptionLabel(option: HTMLOptionElement): HTMLElement {
-    const item = actionItemElement({
-      kind: "single",
-      label: { kind: "html", html: agentModelLabelHtml(option.dataset.provider ?? "", option.textContent ?? option.value), className: "agent-model-option-label" },
-      element: { tag: "span" },
-    });
-    const label = item.querySelector<HTMLElement>(".action-item__label")!;
-    if (option.dataset.unavailableReason && option.dataset.unavailableReason !== "Provider disconnected") label.appendChild(this.description(option.dataset.unavailableReason));
-    return label;
+  protected override renderOptionLabel(option: HTMLOptionElement): ActionItemLabel {
+    const unavailableReason = option.dataset.unavailableReason;
+    const description = unavailableReason && unavailableReason !== "Provider disconnected"
+      ? `<span class="popup-menu__description">${escapeHtml(unavailableReason)}</span>`
+      : "";
+    return {
+      kind: "html",
+      html: `${agentModelLabelHtml(option.dataset.provider ?? "", option.textContent ?? option.value)}${description}`,
+      className: "agent-model-option-label",
+    };
   }
 
   protected override canOpen(): boolean {
