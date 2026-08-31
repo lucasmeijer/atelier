@@ -113,6 +113,7 @@ Bun.serve({
     if (url.pathname === "/action-item.css") return new Response(Bun.file("/app/packages/design-system/src/action-item/action-item.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (url.pathname === "/destructive-confirmation.css") return new Response(Bun.file("/app/packages/design-system/src/destructive-confirmation/destructive-confirmation.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (url.pathname === "/icons.css") return new Response(Bun.file("/app/packages/design-system/src/icons/icons.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
+    if (url.pathname === "/progress-button.css") return new Response(Bun.file("/app/packages/design-system/src/progress-button/progress-button.css"), { headers: { "content-type": "text/css; charset=utf-8" } });
     if (url.pathname === "/fonts/jetbrains-mono-latin-400-normal.woff2") return new Response(Bun.file("/app/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2"), { headers: { "content-type": "font/woff2" } });
     if (url.pathname === "/") startUpdate();
     return new Response(page(url.searchParams.get("theme") ?? ""), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });

@@ -410,23 +410,27 @@ bun test</pre></div>
   &lt;span class="activity-button__content" data-activity-content="initial"&gt;Start&lt;/span&gt;
   &lt;span class="activity-button__content" data-activity-content="active"&gt;■ Stop&lt;/span&gt;
 &lt;/button&gt;</pre>
-              <p class="catalogue-note">Use this when progress cannot be measured. Unlike a progress button, the active control stays enabled so its second action can stop or cancel the work. Both contents share one grid cell, preserving a stable width.</p>
+              <p class="catalogue-note">Use this when the active control must stay enabled so its second action can stop or cancel the work. A progress button—determinate or indeterminate—is inert while work runs. Both patterns preserve a stable width across captions.</p>
             </article>
             <article class="catalogue-card wide">
-              <div class="catalogue-card-title"><span>Determinate action</span><code>.progress-button</code></div>
+              <div class="catalogue-card-title"><span>Progress action</span><code>.progress-button</code></div>
               <div class="catalogue-demo progress-button-demo">
+                <button class="button secondary progress-button" type="button" data-progress-state="in-progress" data-progress-kind="indeterminate" disabled aria-busy="true">
+                  <svg class="progress-button__perimeter" aria-hidden="true"><rect pathLength="100"/></svg>
+                  <span class="progress-button__content" data-progress-content="initial">Check now</span>
+                  <span class="progress-button__content" data-progress-content="in-progress">Checking…</span>
+                </button>
                 <button class="button primary progress-button" id="progress-button-demo" type="button" data-progress-state="initial" style="--button-progress:0">
                   <svg class="progress-button__perimeter" aria-hidden="true"><rect pathLength="100"/></svg>
                   <span class="progress-button__content" data-progress-content="initial"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download files</span>
                   <span class="progress-button__content" data-progress-content="in-progress"><i class="activity-spinner" aria-hidden="true"></i>Downloading workspace…</span>
-                  <span class="progress-button__content" data-progress-content="finish"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>Download complete</span>
                 </button>
                 <span class="button-demo__status" id="progress-button-demo-status" aria-live="polite">Click to run · width remains fixed across every caption</span>
               </div>
-              <p class="catalogue-note">All state contents occupy the same grid cell, so the widest supplied caption establishes a stable width. Finished state keeps the normal button colors.</p>
+              <p class="catalogue-note">Omit a numeric value for an indeterminate perimeter, as in “Checking…”. Supply 0–100 for determinate work. The initial and progress captions share one grid cell, so starting the action does not shift the control.</p>
             </article>
             <article class="catalogue-card wide">
-              <div class="catalogue-card-title"><span>Long-running interface</span><code>initial + in-progress required; finish optional</code></div>
+              <div class="catalogue-card-title"><span>Long-running interface</span><code>initial + in-progress</code></div>
               <pre class="button-code">&lt;button class="button primary progress-button"
   data-progress-state="initial"
   style="--button-progress: 0"&gt;
@@ -442,13 +446,8 @@ bun test</pre></div>
     &lt;i class="activity-spinner" aria-hidden="true"&gt;&lt;/i&gt;
     Downloading…
   &lt;/span&gt;
-
-  &lt;!-- Optional. Omit when replacing the button immediately at completion. --&gt;
-  &lt;span class="progress-button__content" data-progress-content="finish"&gt;
-    Downloaded
-  &lt;/span&gt;
 &lt;/button&gt;</pre>
-              <p class="catalogue-note">The owner sets <code>data-progress-state</code> to <code>initial</code>, <code>in-progress</code>, or <code>finish</code>, disables the button and sets <code>aria-busy</code> while it runs, and supplies a numeric <code>--button-progress</code> from 0–100. If finish content is omitted, replace the button instead of entering <code>finish</code>.</p>
+              <p class="catalogue-note"><code>progressButtonHtml</code> owns disabled and busy semantics while work runs. A missing progress value selects the indeterminate perimeter; a value from 0–100 selects determinate progress. Completion feedback belongs beside the control or in the server-rendered replacement that follows it.</p>
             </article>
             <article class="catalogue-card wide">
               <div class="catalogue-card-title"><span>Groups</span><code>.button-group + optional .vertical</code></div>
@@ -818,7 +817,7 @@ bun test</pre></div>
           clearInterval(progressButtonDemoTimer);
           progressButtonDemo.removeAttribute("aria-busy");
           progressButtonDemo.disabled = false;
-          progressButtonDemo.dataset.progressState = "finish";
+          progressButtonDemo.dataset.progressState = "initial";
           progressButtonDemoStatus.textContent = "Finished · click to run again";
         }
       }, 100);

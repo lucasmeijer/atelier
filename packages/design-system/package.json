@@ -7,7 +7,8 @@
     "./action-item/client": "./src/action-item/action-item-controller.ts",
     "./destructive-confirmation": "./src/destructive-confirmation/destructive-confirmation-html.ts",
     "./destructive-confirmation/client": "./src/destructive-confirmation/destructive-confirmation-controller.ts",
-    "./icons": "./src/icons/icons-html.ts"
+    "./icons": "./src/icons/icons-html.ts",
+    "./progress-button": "./src/progress-button/progress-button-html.ts"
   },
   "dependencies": {
     "@atelier/shared": "workspace:*",

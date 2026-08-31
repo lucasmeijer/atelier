@@ -5,8 +5,6 @@
 .update-check-result__result[hidden], .update-check-result__check[hidden] { display: none; }
 .update-check-result__result.is-arriving { animation: update-check-result-arrive 180ms ease-out; }
 @keyframes update-check-result-arrive { from { opacity: 0; transform: translateY(2px); } }
-.update-sidebar-row .activity-button:disabled,
-.update-settings-control .activity-button:disabled { opacity: 1; cursor: progress; }
 .update-restart-form { margin-left: auto; }
 @media (prefers-reduced-motion: reduce) {
   .update-check-result__result.is-arriving { animation: none; }

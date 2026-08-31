@@ -219,7 +219,7 @@ describe("update state machine", () => {
     await manager.initialize(ctx);
     expect(sidebar.at(-1)).toBe("");
     expect(broadcasts.at(-1)).toContain("<h2>Updates</h2>");
-    expect(broadcasts.at(-1)).toContain(">Check now</button>");
+    expect(broadcasts.at(-1)).toContain(">Check now</span>");
   });
 
   test("checking and current settings use the same compact check button", async () => {
@@ -232,10 +232,11 @@ describe("update state machine", () => {
       setInterval: noInterval(),
     });
     await manager.initialize(ctx);
-    expect(broadcasts.at(-1)).toContain(">Check now</button>");
+    expect(broadcasts.at(-1)).toContain(">Check now</span>");
     const checking = manager.checkNow();
-    expect(broadcasts.at(-1)).toContain('class="button secondary activity-button"');
-    expect(broadcasts.at(-1)).toContain('data-activity-content="active">Check now');
+    expect(broadcasts.at(-1)).toContain('class="button secondary progress-button"');
+    expect(broadcasts.at(-1)).toContain('data-progress-kind="indeterminate"');
+    expect(broadcasts.at(-1)).toContain('data-progress-content="in-progress">Checking…');
     expect(sidebar.at(-1)).toBe("");
     gate.resolve({ digest: "sha256:new", revision: "new" });
     await checking;
@@ -406,7 +407,7 @@ describe("update routes", () => {
     const snapshot = { selfUpdatable: true, releaseChannel: "stable" as const, compatibilityMismatch: false };
     expect(renderSidebarRow({ ...snapshot, state: "idle" })).toBe("");
     expect(renderSidebarRow({ ...snapshot, state: "checking" })).toBe("");
-    expect(renderSidebarRow({ ...snapshot, state: "available" })).toContain(">Download Update</button>");
+    expect(renderSidebarRow({ ...snapshot, state: "available" })).toContain(">Download Update</span>");
     const restart = renderSidebarRow({ ...snapshot, state: "ready_to_restart" });
     expect(restart).toContain('method="post" action="/update/restart"');
     expect(restart).toContain('class="destructive-confirmation"');
@@ -502,7 +503,7 @@ describe("update routes", () => {
     const response = await route(new Request("http://test/update/check-now", { method: "POST" }), new URL("http://test/update/check-now"));
     expect(response!.headers.get("content-type")).toContain("text/vnd.turbo-stream.html");
     const html = await response!.text();
-    expect(html).toContain(">Download Update</button>");
+    expect(html).toContain(">Download Update</span>");
     expect(html).not.toContain("Update available");
     expect(html).not.toContain("Update channel");
     expect(manager.snapshot().state).toBe("available");

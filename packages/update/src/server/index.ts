@@ -1,5 +1,6 @@
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
-import { activityButtonHtml, escapeHtml, progressButtonHtml, turboStream, turboStreamResponse, type SettingsContribution, type WorkspaceModule, type WorkspaceServerModuleContext } from "@atelier/shared";
+import { progressButtonHtml } from "@atelier/design-system/progress-button";
+import { escapeHtml, turboStream, turboStreamResponse, type SettingsContribution, type WorkspaceModule, type WorkspaceServerModuleContext } from "@atelier/shared";
 import { pollIntervalMs, updaterPort, updateSidebarContributionId } from "./constants.ts";
 import { targetImageForChannel, type ReleaseChannel } from "./channels.ts";
 import { detectSelfUpdateRuntime, dockerExec, pullChannelImage, type DockerExec, type PullProgress, type SelfUpdateRuntime } from "./docker.ts";
@@ -204,19 +205,30 @@ async function waitForUpdater(url: string): Promise<void> {
 
 const manager = new UpdateManager();
 
+function renderCheckButton(state: "initial" | "in-progress"): string {
+  return progressButtonHtml({
+    initialContent: { kind: "text", text: "Check now" },
+    progressContent: { kind: "text", text: "Checking…" },
+    state,
+    className: "secondary",
+    type: "submit",
+  });
+}
+
 function renderCheckForm(hidden = false): string {
-  return `<form class="update-check-result__check" method="post" action="/update/check-now" data-turbo="true"${hidden ? " hidden" : ""}><button class="button secondary" type="submit">Check now</button></form>`;
+  return `<form class="update-check-result__check" method="post" action="/update/check-now" data-turbo="true"${hidden ? " hidden" : ""}>${renderCheckButton("initial")}</form>`;
 }
 
 function renderDownloadControl(snapshot: StateSnapshot): string {
-  if (snapshot.state !== "pulling") return '<form method="post" action="/update/start" data-turbo="true"><button class="button primary" type="submit">Download Update</button></form>';
-  return progressButtonHtml({
-    initialHtml: "Download Update",
-    inProgressHtml: "Download Update",
-    state: "in-progress",
-    progress: snapshot.percent ?? 1,
-    variant: "primary",
-  });
+  const content = {
+    initialContent: { kind: "text" as const, text: "Download Update" },
+    progressContent: { kind: "text" as const, text: "Downloading…" },
+    className: "primary",
+    type: "submit" as const,
+  };
+  if (snapshot.state === "pulling") return progressButtonHtml({ ...content, state: "in-progress", progress: snapshot.percent ?? 1 });
+  const button = progressButtonHtml({ ...content, state: "initial" });
+  return `<form method="post" action="/update/start" data-turbo="true">${button}</form>`;
 }
 
 function renderRestartForm(): string {
@@ -234,11 +246,16 @@ function renderCurrentCheckResult(): string {
 }
 
 function renderUpdateControl(snapshot: StateSnapshot): string {
-  if (snapshot.state === "checking") return activityButtonHtml({ initialHtml: "Check now", activeHtml: "Check now", state: "active", variant: "secondary", disabled: true });
+  if (snapshot.state === "checking") return renderCheckButton("in-progress");
   if (!snapshot.selfUpdatable || snapshot.state === "idle") return renderCheckForm();
   if (snapshot.state === "available" || snapshot.state === "failed" || snapshot.state === "incompatible" || snapshot.state === "pulling") return renderDownloadControl(snapshot);
   if (snapshot.state === "ready_to_restart") return renderRestartForm();
-  return activityButtonHtml({ initialHtml: "Restart to update", activeHtml: "Restart to update", state: "active", variant: "primary", disabled: true });
+  return progressButtonHtml({
+    initialContent: { kind: "text", text: "Restart to update" },
+    progressContent: { kind: "text", text: "Restarting…" },
+    state: "in-progress",
+    className: "primary",
+  });
 }
 
 function renderUpdateSettings(updateManager: UpdateManager, checked = false): string {

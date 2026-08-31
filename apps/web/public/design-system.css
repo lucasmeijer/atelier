@@ -1,6 +1,7 @@
 @import "/icons.css";
 @import "/action-item.css";
 @import "/destructive-confirmation.css";
+@import "/progress-button.css";
 
 @font-face {
   font-family: "JetBrains Mono";
@@ -460,73 +461,6 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .text-toggle[data-text-toggle-ready]::after { transition: none; }
-}
-
-/* A long-running button sizes itself to its widest state and traces determinate progress around its perimeter. */
-.progress-button {
-  --button-progress: 0;
-  position: relative;
-  display: inline-grid;
-  grid-template-areas: "content";
-  padding-inline: 0;
-  pointer-events: none;
-}
-.progress-button__content {
-  grid-area: content;
-  justify-self: center;
-  height: 100%;
-  padding-inline: 12px;
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  visibility: hidden;
-  pointer-events: none;
-}
-.progress-button[data-progress-state="initial"] .progress-button__content[data-progress-content="initial"],
-.progress-button[data-progress-state="in-progress"] .progress-button__content[data-progress-content="in-progress"],
-.progress-button[data-progress-state="finish"] .progress-button__content[data-progress-content="finish"] {
-  visibility: visible;
-  pointer-events: auto;
-}
-.progress-button.icon-only .progress-button__content { padding-inline: 0; }
-@media (max-width: 700px) {
-  .progress-button:not(.icon-only) .progress-button__content { padding-inline: 16px; }
-}
-.progress-button[data-progress-state="in-progress"],
-.progress-button[data-progress-state="in-progress"]:disabled,
-.progress-button[data-progress-state="in-progress"][aria-disabled="true"] { opacity: 1; cursor: progress; }
-.progress-button[data-progress-state="in-progress"]:disabled,
-.progress-button[data-progress-state="in-progress"][aria-disabled="true"],
-.progress-button[data-progress-state="in-progress"]:disabled .progress-button__content,
-.progress-button[data-progress-state="in-progress"][aria-disabled="true"] .progress-button__content { pointer-events: none; }
-.button .progress-button__perimeter {
-  position: absolute;
-  z-index: 1;
-  inset: -1px;
-  width: calc(100% + 2px);
-  height: calc(100% + 2px);
-  overflow: visible;
-  pointer-events: none;
-}
-.progress-button[data-progress-state="initial"] .progress-button__perimeter { opacity: 0; }
-.button .progress-button__perimeter rect {
-  x: 1px;
-  y: 1px;
-  width: calc(100% - 2px);
-  height: calc(100% - 2px);
-  rx: 13px;
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 1.5;
-  stroke-dasharray: var(--button-progress) 100;
-  stroke-linecap: round;
-  vector-effect: non-scaling-stroke;
-  transition: stroke-dasharray 150ms linear;
-}
-@media (max-width: 700px) {
-  .button .progress-button__perimeter rect { rx: 22px; }
 }
 
 /* An indeterminate long-running button stays actionable so its active content can cancel the work. */

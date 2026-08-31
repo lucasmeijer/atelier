@@ -98,7 +98,8 @@ beforeAll(async () => {
   workspaceClientPath = testAssets.path("/workspace.js");
   const actionItemStyle = await Bun.file(new URL("../../../packages/design-system/src/action-item/action-item.css", import.meta.url)).text();
   const destructiveConfirmationStyle = await Bun.file(new URL("../../../packages/design-system/src/destructive-confirmation/destructive-confirmation.css", import.meta.url)).text();
-  designSystemStyle = `${actionItemStyle}\n${destructiveConfirmationStyle}\n${await Bun.file(new URL("../public/design-system.css", import.meta.url)).text()}`;
+  const progressButtonStyle = await Bun.file(new URL("../../../packages/design-system/src/progress-button/progress-button.css", import.meta.url)).text();
+  designSystemStyle = `${actionItemStyle}\n${destructiveConfirmationStyle}\n${progressButtonStyle}\n${await Bun.file(new URL("../public/design-system.css", import.meta.url)).text()}`;
   const shellStyle = await Bun.file(new URL("../public/style.css", import.meta.url)).text();
   workspaceStyle = `${designSystemStyle}\n${shellStyle}`;
   filesStyle = await Bun.file(new URL("../../../packages/files/src/client/style.css", import.meta.url)).text();
@@ -521,18 +522,14 @@ Comment: I don't think we need these tests`;
         <svg class="progress-button__perimeter" aria-hidden="true"><rect pathLength="100"/></svg>
         <span class="progress-button__content" data-progress-content="initial">Download</span>
         <span class="progress-button__content" data-progress-content="in-progress"><i class="progress-button__spinner"></i>Downloading workspace…</span>
-        <span class="progress-button__content" data-progress-content="finish">Downloaded</span>
       </button>`);
     const button = page.locator("#progress");
     const initial = await button.boundingBox();
 
     await button.evaluate((element) => { element.setAttribute("data-progress-state", "in-progress"); });
     const inProgress = await button.boundingBox();
-    await button.evaluate((element) => { element.setAttribute("data-progress-state", "finish"); });
-    const finish = await button.boundingBox();
 
     expect({ width: inProgress?.width, height: inProgress?.height }).toEqual({ width: initial?.width, height: initial?.height });
-    expect({ width: finish?.width, height: finish?.height }).toEqual({ width: initial?.width, height: initial?.height });
     await page.close();
   });
 
