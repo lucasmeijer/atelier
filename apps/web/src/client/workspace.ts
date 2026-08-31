@@ -697,6 +697,7 @@ class AtelierShortcutsController extends Controller {
         case "Slash": return "/";
         case "Quote": return "'";
         case "Semicolon": return ";";
+        case "Backslash": return "\\";
         case "Backspace": return "⌫";
         case "BracketLeft": return "[";
         case "BracketRight": return "]";

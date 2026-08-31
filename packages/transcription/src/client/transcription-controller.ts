@@ -75,6 +75,8 @@ export function createTranscriptionComposerController(Controller: WorkspaceClien
     }
 
     private start(): void {
+      this.input.focus();
+      this.input.setSelectionRange(this.input.value.length, this.input.value.length);
       this.prefix = this.input.value;
       this.committed = "";
       this.partial = "";
