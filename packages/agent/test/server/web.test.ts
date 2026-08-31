@@ -203,6 +203,28 @@ describe("Workspace Agent-tab provider", () => {
     expect(response?.headers.get("x-atelier-attachment-draft-consumed")).toBeNull();
   });
 
+  test("requests parking the current Workspace when /park is submitted", async () => {
+    await dataDir();
+    const conversation = await ensureDefaultWorkspaceAgentConversation("workspace-1");
+    const events = createAtelierEventBus();
+    const parked: string[] = [];
+    events.on("workspace_park_requested", ({ workspaceId }) => { parked.push(workspaceId); });
+    const request = new Request(`http://atelier.test/workspaces/workspace-1/agents/${conversation.conversationId}/messages`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ text: "/park" }),
+    });
+
+    const response = await handleAgentRequest(request, new URL(request.url), { events });
+
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual({
+      agent: { conversationId: conversation.conversationId, state: "idle" },
+      workspace: { id: "workspace-1", parked: true },
+    });
+    expect(parked).toEqual(["workspace-1"]);
+  });
+
   test("accepts a message with the exact Agent draft and removes the prompt suggestion in the response", async () => {
     await dataDir();
     const conversation = await ensureDefaultWorkspaceAgentConversation("workspace-1");

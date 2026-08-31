@@ -1230,11 +1230,9 @@ ${moduleStylesHtml()}
     }
   }
 
-  async function parkWorkspaceEndpoint(id: string, parked: boolean, request: Request): Promise<Response> {
+  async function updateWorkspaceParkedState(id: string, parked: boolean): Promise<string> {
     const entry = requireWorkspace(id);
-    if (entry.phase !== "ready") return requestAcceptsJson(request)
-      ? jsonResponse({ error: { code: "workspace_not_ready", message: `workspace ${id} is not ready` } }, { status: 409 })
-      : wantsTurboStream(request) ? turboStreamResponse("", { status: 409 }) : response("Workspace is not ready", { status: 409 });
+    if (entry.phase !== "ready") throw new AtelierCoreError("workspace_not_ready", `workspace ${id} is not ready`);
     if (entry.parked !== parked) {
       await persistWorkspaceParked(id, parked);
       suppressParkedStateCallbacks = true;
@@ -1244,6 +1242,19 @@ ${moduleStylesHtml()}
     const parkedResident = parked ? removeWorkspaceResidentTurboStream(id) : "";
     const stateStream = `${workspacePaneCollectionsTurboStream(await workspacePaneCollections(""))}${parkedResident}`;
     broadcastShell(stateStream);
+    return stateStream;
+  }
+
+  deps.events?.on("workspace_park_requested", async ({ workspaceId }) => {
+    await updateWorkspaceParkedState(workspaceId, true);
+  });
+
+  async function parkWorkspaceEndpoint(id: string, parked: boolean, request: Request): Promise<Response> {
+    const entry = requireWorkspace(id);
+    if (entry.phase !== "ready") return requestAcceptsJson(request)
+      ? jsonResponse({ error: { code: "workspace_not_ready", message: `workspace ${id} is not ready` } }, { status: 409 })
+      : wantsTurboStream(request) ? turboStreamResponse("", { status: 409 }) : response("Workspace is not ready", { status: 409 });
+    const stateStream = await updateWorkspaceParkedState(id, parked);
     if (requestAcceptsJson(request)) return jsonResponse({ workspace: { id, parked } });
     if (wantsTurboStream(request)) return turboStreamResponse(stateStream);
     return Response.redirect(request.headers.get("referer") ?? "/", 303);

@@ -13,7 +13,7 @@ describe("prompt templates", () => {
     await writeFile(join(root, ".pi/prompts/review.md"), "Review $ARGUMENTS");
 
     const templates = await loadPromptTemplatesFromRoot(root);
-    expect(templates.map((template) => template.trigger)).toEqual(["/compact", "/land", "/name", "/new", "/review"]);
+    expect(templates.map((template) => template.trigger)).toEqual(["/compact", "/land", "/name", "/new", "/park", "/review"]);
     expect(templates.find((template) => template.name === "land")?.argumentHint).toBe("[branch]");
     const nameCommand = templates.find((template) => template.name === "name");
     expect(nameCommand).toMatchObject({
@@ -28,11 +28,12 @@ describe("prompt templates", () => {
     const root = await mkdtemp(join(tmpdir(), "atelier-prompts-"));
 
     const templates = await loadPromptTemplatesFromRoot(root);
-    expect(templates.map((template) => template.trigger)).toEqual(["/compact", "/land", "/name", "/new"]);
+    expect(templates.map((template) => template.trigger)).toEqual(["/compact", "/land", "/name", "/new", "/park"]);
     expect(templates[0]).toMatchObject({ trigger: "/compact", argumentHint: "[instructions]", prompt: "/compact", preserveArguments: true });
     expect(templates[1]?.prompt).toBe("Commit and push your work, rebasing when necessary. When successful, delete this workspace.");
     expect(templates[2]).toMatchObject({ trigger: "/name", description: "Rename this Agent session, using AI when no name is provided.", prompt: "/name" });
     expect(templates[3]).toMatchObject({ trigger: "/new", description: "Start a new Agent conversation.", prompt: "/new" });
+    expect(templates[4]).toMatchObject({ trigger: "/park", description: "Park this workspace.", prompt: "/park" });
   });
 
   test("expands triggers with arguments", () => {

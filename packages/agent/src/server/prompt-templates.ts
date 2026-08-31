@@ -43,6 +43,11 @@ const builtinApplicationCommands: PromptTemplate[] = [{
   trigger: "/new",
   description: "Start a new Agent conversation.",
   prompt: "/new",
+}, {
+  name: "park",
+  trigger: "/park",
+  description: "Park this workspace.",
+  prompt: "/park",
 }];
 
 function parseFrontmatter(markdown: string): ParsedPromptFrontmatter {

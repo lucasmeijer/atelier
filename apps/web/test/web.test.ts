@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { JsonObject } from "@atelier/core";
+import { createAtelierEventBus, type AtelierEventBus, type JsonObject } from "@atelier/core";
 import { createWebApp } from "../src/server/app.ts";
 import { workViewBodyFrameId } from "../src/server/workspace-presentation.ts";
 import { createWorkspaceRegistry } from "../src/server/workspace-registry.ts";
@@ -120,6 +120,7 @@ interface TestAppOptions {
   inspect?: (id: string) => Promise<WorkspaceDeleteBlockedDetails>;
   destroy?: (id: string) => Promise<void>;
   persistParked?: (id: string, parked: boolean) => Promise<void>;
+  events?: AtelierEventBus;
   devReload?: boolean;
 }
 
@@ -131,6 +132,7 @@ function createTestApp(options: TestAppOptions = {}) {
   const app = createWebApp({
     registry,
     cable: { broadcast: (_identifier, html) => broadcasts.push(html) },
+    events: options.events,
     devReload: options.devReload,
     provisionWorkspace: options.provision ?? (async () => {}),
     provisioningHooks: [],
@@ -1055,6 +1057,23 @@ describe("web app contracts", () => {
     expect(homeBody).not.toContain('class="workspace-empty-onboarding-arrow"');
     expect(homeBody).not.toContain('href="/workspaces/a"');
     expect(homeBody).not.toContain('href="/workspaces/b"');
+  });
+
+  test("parks a Workspace requested through the application event bus", async () => {
+    const events = createAtelierEventBus();
+    const parked: Array<{ id: string; parked: boolean }> = [];
+    const { registry, broadcasts } = createTestApp({
+      events,
+      persistParked: async (id, value) => { parked.push({ id, parked: value }); },
+    });
+    await registry.seed([{ id: "event-park", title: "Park from slash command", parked: false }]);
+
+    await events.emit("workspace_park_requested", { workspaceId: "event-park" });
+
+    expect(registry.get("event-park")?.parked).toBe(true);
+    expect(parked).toEqual([{ id: "event-park", parked: true }]);
+    expect(broadcasts.at(-1)).toContain('action="remove-workspace-resident" target="fixed_workspace_event-park"');
+    expect(broadcasts.at(-1)).toContain("1 parked");
   });
 
   test("workspace rows warn when the workspace image is outdated", async () => {

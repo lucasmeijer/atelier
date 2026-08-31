@@ -263,6 +263,11 @@ async function agentMessagesEndpoint(workspaceId: string, conversationId: string
     const promptRemoved = await removeInitialPromptAfterAcceptedAction(request, options, workspaceId, conversationId);
     return json ? Response.json({ agent: { conversationId, state: "idle" } }) : turboStreamResponse(promptRemoved);
   }
+  if (text.trim() === "/park") {
+    await options.events?.emit("workspace_park_requested", { workspaceId });
+    const promptRemoved = await removeInitialPromptAfterAcceptedAction(request, options, workspaceId, conversationId);
+    return json ? Response.json({ agent: { conversationId, state: "idle" }, workspace: { id: workspaceId, parked: true } }) : turboStreamResponse(promptRemoved);
+  }
   const compactCommand = parseCompactCommand(text);
   if (compactCommand) {
     const runtime = await resolveAgentRuntime(agent, options);

@@ -25,6 +25,10 @@ export interface WorkspaceTitleChangedEvent {
   title: string;
 }
 
+export interface WorkspaceParkRequestedEvent {
+  workspaceId: string;
+}
+
 export interface WorkspaceAgentTurnFinishedEvent {
   workspaceId: string;
   conversationId: string;
@@ -76,6 +80,7 @@ declare module "@atelier/core" {
     workspace_delete_inspect: WorkspaceDeleteInspectEvent;
     workspace_user_activity: WorkspaceUserActivityEvent;
     workspace_title_changed: WorkspaceTitleChangedEvent;
+    workspace_park_requested: WorkspaceParkRequestedEvent;
     workspace_agent_turn_finished: WorkspaceAgentTurnFinishedEvent;
     workspace_agent_conversation_title_changed: WorkspaceAgentConversationTitleChangedEvent;
     workspace_agent_view_invalidated: WorkspaceAgentViewInvalidatedEvent;
