@@ -10,6 +10,18 @@ describe("Atelier syntax highlighting", () => {
     expect(result.html).toContain("syntax-keyword");
     expect(highlightCodeHtml({ code: "// meaning", language: "typescript" }).html).toContain("syntax-comment");
   });
+  test("highlights Ruby embedded in HTML templates", () => {
+    expect(languageFromPath("app/views/users/show.html.erb")).toBe("erb");
+    expect(languageFromPath("app/views/users/show.rhtml")).toBe("erb");
+    const result = highlightCodeHtml({
+      code: "<% if user.admin? %><strong><%= user.name %></strong><% end %>",
+      language: "erb",
+    });
+    expect(result.language).toBe("erb");
+    expect(result.html).toContain("syntax-keyword");
+    expect(result.html).toContain("syntax-tag");
+  });
+
   test("safely escapes unsupported and incomplete input", () => {
     expect(highlightCodeHtml({ code: '<script>&', language: "unknown" })).toEqual({ html: "&lt;script&gt;&amp;" });
     expect(() => highlightCodeHtml({ code: 'const value = "', language: "ts" })).not.toThrow();

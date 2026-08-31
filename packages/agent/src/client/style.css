@@ -73,7 +73,7 @@
 .agent-code-block-header {
   min-height: 34px; display: flex; align-items: center; min-width: 0; overflow: hidden; padding: 6px 38px 6px 10px;
   border: 1px solid var(--line); border-bottom: 0; border-radius: var(--radius-control) var(--radius-control) 0 0;
-  background: var(--panel); color: var(--text-bright); font-family: var(--font-mono); font-size: var(--text-body); text-overflow: ellipsis; white-space: nowrap;
+  background: var(--panel); color: var(--text-muted); font-family: var(--font-mono); font-size: var(--text-body); text-overflow: ellipsis; white-space: nowrap;
 }
 .agent-md pre, .agent-code-block pre { background: color-mix(in srgb, var(--bg) 72%, #000 8%); color: var(--text-bright); border-radius: var(--radius-control); padding: 8px 8px; overflow-x: auto; margin: 6px 0 8px; }
 .agent-code-block pre { margin: 0; }

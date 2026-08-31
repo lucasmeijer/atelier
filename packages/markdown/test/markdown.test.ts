@@ -21,6 +21,7 @@ describe("renderMarkdown", () => {
     expect(html).toContain(`data-atelier-fullscreen-mode-value="template"`);
     expect(html).toContain(`data-atelier-fullscreen-title-value="bash code"`);
     expect(html).toContain(`data-action="agent-code-copy#copy"`);
+    expect(html).toContain(`<div class="agent-code-block-header">bash</div>`);
     expect(html).toContain(`<pre data-lang="bash" class="language-bash"><code data-agent-code-copy-target="code">`);
     expect(html).toContain(`<template data-atelier-fullscreen-target="content"><div class="agent-code-block"><pre data-lang="bash" class="language-bash"><code>`);
     expect(html).toContain("/work");
@@ -32,8 +33,15 @@ describe("renderMarkdown", () => {
     expect(html.startsWith(`<div class="agent-code-block"`)).toBe(true);
     expect(html).toContain(`data-atelier-fullscreen-title-value="src/hello.ts"`);
     expect(html).toContain(`<div class="agent-code-block-header" title="src/hello.ts">src/hello.ts</div>`);
+    expect(html).not.toContain(`>typescript</div>`);
     expect(html).toContain(`<template data-atelier-fullscreen-target="content"><div class="agent-code-block"><pre data-lang="typescript" class="language-typescript"><code>`);
     expect(html).not.toContain(`<template data-atelier-fullscreen-target="content"><div class="agent-code-block-header"`);
+  });
+
+  test("accepts an explicit filename attribute without displaying its syntax", () => {
+    const html = renderMarkdown("work 1", "```typescript filename=\"src/hello.ts\"\nexport const hello = 'world';\n```");
+    expect(html).toContain(`<div class="agent-code-block-header" title="src/hello.ts">src/hello.ts</div>`);
+    expect(html).not.toContain("filename=&quot;");
   });
 
   test("escapes filenames in fenced code blocks", () => {
@@ -41,6 +49,11 @@ describe("renderMarkdown", () => {
     expect(html).toContain(`data-atelier-fullscreen-title-value="&lt;demo&gt;.html"`);
     expect(html).toContain(`title="&lt;demo&gt;.html"`);
     expect(html).not.toContain(`<demo>`);
+  });
+
+  test("plain fenced code has no metadata header", () => {
+    const html = renderMarkdown("work 1", "```\nhello world\n```");
+    expect(html).not.toContain("agent-code-block-header");
   });
 
   test("fenced code highlighting supports C# aliases", () => {

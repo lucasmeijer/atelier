@@ -4,6 +4,7 @@ import { createJavaScriptRegexEngine } from "@shikijs/engine-javascript";
 import bash from "@shikijs/langs/bash";
 import csharp from "@shikijs/langs/csharp";
 import css from "@shikijs/langs/css";
+import erb from "@shikijs/langs/erb";
 import go from "@shikijs/langs/go";
 import html from "@shikijs/langs/html";
 import java from "@shikijs/langs/java";
@@ -31,12 +32,12 @@ theme.tokenColors?.push(
 const highlighter = createHighlighterCoreSync({
   engine: createJavaScriptRegexEngine(),
   themes: [theme],
-  langs: [bash, csharp, css, go, html, java, javascript, json, jsonc, markdown, python, regex, ruby, rust, typescript, xml],
+  langs: [bash, csharp, css, erb, go, html, java, javascript, json, jsonc, markdown, python, regex, ruby, rust, typescript, xml],
 });
 
 const extensionLanguages = new Map(Object.entries({
   ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript",
-  html: "html", htm: "html", xml: "xml", svg: "xml", css: "css", cs: "csharp", csx: "csharp",
+  html: "html", htm: "html", erb: "erb", rhtml: "erb", xml: "xml", svg: "xml", css: "css", cs: "csharp", csx: "csharp",
   json: "json", jsonc: "jsonc", md: "markdown", markdown: "markdown", sh: "bash", bash: "bash", zsh: "bash",
   py: "python", rb: "ruby", rs: "rust", go: "go", java: "java", regex: "regex",
 }));

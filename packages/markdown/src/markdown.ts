@@ -24,7 +24,9 @@ markdown.renderer.rules.fence = (tokens, index) => {
   const token = tokens[index]!;
   const [language, ...filenameParts] = token.info.trim().split(/\s+/);
   const rawLang = language || undefined;
-  const filename = filenameParts.join(" ") || undefined;
+  const filenameInfo = filenameParts.join(" ") || undefined;
+  const filenameMatch = filenameInfo?.match(/^filename=(?:"([^"]*)"|'([^']*)'|(\S+))$/);
+  const filename = filenameMatch ? (filenameMatch[1] ?? filenameMatch[2] ?? filenameMatch[3]) : filenameInfo;
   const codeText = token.content.replace(/\n$/, "");
   const highlighted = highlightCodeHtml({ code: codeText, language: rawLang });
   const attrs = [
@@ -33,12 +35,14 @@ markdown.renderer.rules.fence = (tokens, index) => {
   ].filter(Boolean).join(" ");
   const label = rawLang ? `Copy ${escapeHtml(rawLang)} code to clipboard` : "Copy code to clipboard";
   const title = filename ?? (rawLang ? `${rawLang} code` : "Code");
-  const escapedFilename = filename ? escapeHtml(filename) : "";
-  const filenameHeader = filename ? `<div class="agent-code-block-header" title="${escapedFilename}">${escapedFilename}</div>` : "";
+  const headerLabel = filename ?? rawLang;
+  const header = headerLabel
+    ? `<div class="agent-code-block-header"${filename ? ` title="${escapeHtml(filename)}"` : ""}>${escapeHtml(headerLabel)}</div>`
+    : "";
   const preOpen = `<pre${attrs ? ` ${attrs}` : ""}>`;
   const inlineCode = `${preOpen}<code data-agent-code-copy-target="code">${highlighted.html}</code></pre>`;
   const fullscreenCode = `${preOpen}<code>${highlighted.html}</code></pre>`;
-  return `<div class="agent-code-block" data-controller="agent-code-copy atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(title)}"><button type="button" class="agent-code-copy" data-agent-code-copy-target="button" data-action="agent-code-copy#copy" aria-label="${label}" title="Copy code"><span class="agent-code-copy-icon" aria-hidden="true">⧉</span></button>${filenameHeader}${inlineCode}<template data-atelier-fullscreen-target="content"><div class="agent-code-block">${fullscreenCode}</div></template></div>`;
+  return `<div class="agent-code-block" data-controller="agent-code-copy atelier-fullscreen" data-atelier-fullscreen-mode-value="template" data-atelier-fullscreen-title-value="${escapeHtml(title)}"><button type="button" class="agent-code-copy" data-agent-code-copy-target="button" data-action="agent-code-copy#copy" aria-label="${label}" title="Copy code"><span class="agent-code-copy-icon" aria-hidden="true">⧉</span></button>${header}${inlineCode}<template data-atelier-fullscreen-target="content"><div class="agent-code-block">${fullscreenCode}</div></template></div>`;
 };
 
 const defaultLinkOpen = markdown.renderer.rules.link_open ?? ((tokens, index, options, _environment, renderer) => renderer.renderToken(tokens, index, options));
