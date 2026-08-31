@@ -353,6 +353,11 @@ export function createWorkspacePresentationController(
       this.applyState({ emit: false, focus: this.moreOpen });
     }
 
+    closeMore(): void {
+      this.moreOpen = false;
+      this.applyState({ emit: false });
+    }
+
     selectMobileDestination(event: Event): void {
       // SAFETY: The server-rendered DOM and connected controller contract establish this element shape.
       const destination = (event.currentTarget as HTMLElement).dataset.mobileDestination as PhoneDestination | undefined;

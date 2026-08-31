@@ -425,9 +425,10 @@ function workLauncherIcon(commandId: string): WorkViewIconName {
   return workViewTypeIcon(commandId.slice(0, commandId.indexOf(".")));
 }
 
-function renderWorkLauncherCommand(command: NonNullable<WorkspacePresentation["commands"]>[number], workspaceId: string): string {
+function renderWorkLauncherCommand(command: NonNullable<WorkspacePresentation["commands"]>[number], workspaceId: string, action = ""): string {
   const item = actionItemHtml({ kind: "single", label: { kind: "text", text: command.label }, leadingHtml: `<span class="popup-menu__icon">${Icons[workLauncherIcon(command.id)]}</span>`, element: { tag: "button", attributesHtml: 'type="submit" role="menuitem"' } });
-  return `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/commands/${encodeURIComponent(command.id)}">${item}</form>`;
+  const actionAttribute = action ? ` data-action="${action}"` : "";
+  return `<form data-turbo="true" method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/commands/${encodeURIComponent(command.id)}"${actionAttribute}>${item}</form>`;
 }
 
 function renderWorkPane(presentation: WorkspacePresentation): string {
@@ -493,7 +494,7 @@ const mobileMoreAttentionHtml = '<i class="status-dot attention" aria-label="Hid
 function renderMobileNavigation(presentation: WorkspacePresentation): string {
   const agentsDestination = renderMobileDestination("Agents", "agents", Icons.Agent);
   const workViews = renderMobileWorkViews(presentation.workViews);
-  const launchers = (presentation.commands ?? []).filter((command) => mobileLauncherCommandIds.has(command.id)).map((command) => renderWorkLauncherCommand(command, presentation.workspace.id)).join("");
+  const launchers = (presentation.commands ?? []).filter((command) => mobileLauncherCommandIds.has(command.id)).map((command) => renderWorkLauncherCommand(command, presentation.workspace.id, "submit->workspace-presentation#closeMore")).join("");
   const closers = presentation.workViews.map(renderMobileWorkViewCloser).join("");
   const moreMenuId = workViewDomId(presentation.workspace.id, "mobile_more_menu");
   const more = actionItemHtml({

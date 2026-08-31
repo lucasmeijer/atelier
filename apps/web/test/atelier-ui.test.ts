@@ -3137,6 +3137,30 @@ Comment: I don't think we need these tests`;
     await page.close();
   });
 
+  test("closes the mobile More menu after launching a new terminal", async () => {
+    const presentation: WorkspacePresentation = {
+      workspace: { id: "mobile-launcher", title: "Mobile launcher" },
+      agentConversations: [agentConversation("mobile-launcher", "agent-1")],
+      workViews: [],
+      commands: [{ id: "terminal.create", label: "New Terminal", scope: "workspace", placement: "work-launcher" }],
+    };
+    const page = await newTestPage({ viewport: { width: 340, height: 844 } });
+    await page.route("http://atelier.test/workspaces/mobile-launcher", (route) => route.fulfill({ contentType: "text/html", body: `<style>${workspaceStyle}</style>${renderShellFixture(presentation, { projects: [] })}<script type="module" src="${workspaceClientPath}"></script>` }));
+    await page.route("**/workspaces/mobile-launcher/agents/agent-1/body", (route) => route.fulfill({ contentType: "text/html", body: renderAgentBodyFrame("mobile-launcher", "agent-1", agentPaneBody("mobile-launcher", "agent-1")) }));
+    await page.route("**/workspaces/mobile-launcher/commands/terminal.create", (route) => route.fulfill({ contentType: "text/vnd.turbo-stream.html", body: "" }));
+    await page.goto("http://atelier.test/workspaces/mobile-launcher");
+    await page.waitForFunction(() => document.querySelector(".fixed-workspace-presentation")?.getAttribute("data-navigation-ready") === "true");
+
+    const moreButton = page.getByRole("button", { name: "More" });
+    const moreMenu = page.getByRole("menu", { name: "More" });
+    await moreButton.click();
+    await moreMenu.getByRole("menuitem", { name: "New Terminal" }).click();
+
+    expect(await moreMenu.isHidden()).toBe(true);
+    expect(await moreButton.getAttribute("aria-expanded")).toBe("false");
+    await page.close();
+  });
+
   test("prioritizes Agents, Browser, and Review in mobile navigation and moves surplus Work views into More", async () => {
     const presentation: WorkspacePresentation = {
       workspace: { id: "phone-demo", title: "Phone" },
