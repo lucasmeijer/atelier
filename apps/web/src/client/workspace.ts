@@ -9,6 +9,7 @@ import * as Turbo from "@hotwired/turbo";
 import { createHtmlAutocompleteController, PromptHistoryNavigator } from "@atelier/agent/client";
 import { actionItemElement, actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
 import { Icons } from "@atelier/design-system/icons";
+import { showTransientFeedback } from "@atelier/design-system/transient-feedback/client";
 import {
   atelierCableConnectionHeader,
   CableTopics,
@@ -2040,9 +2041,7 @@ class OAuthFlowController extends Controller {
     dialog.dataset.oauthCodeCopied = "true";
     deviceAuth.hidden = false;
     const copyButton = dialog.querySelector<HTMLButtonElement>('[data-oauth-copy-button="true"]')!;
-    copyButton.dataset.copyState = "copied";
-    copyButton.setAttribute("aria-label", "Copied to clipboard");
-    copyButton.querySelector<HTMLElement>(".copy-button__icon")!.textContent = "✓";
+    showTransientFeedback(copyButton);
   }
 }
 

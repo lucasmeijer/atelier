@@ -328,7 +328,7 @@
               <div class="catalogue-card-title"><span>Interactive</span><code>.copy-region + .copy-button</code></div>
               <div class="catalogue-demo">
                 <div class="copy-region" data-catalogue-copy>
-                  <button class="button secondary icon-only copy-button" type="button" data-copy-label="Copy example to clipboard" title="Copy example to clipboard" aria-label="Copy example to clipboard"><span class="copy-button__icon" aria-hidden="true">⧉</span></button>
+                  <button class="button secondary icon-only copy-button transient-feedback" type="button" title="Copy example to clipboard" aria-label="Copy example to clipboard" data-controller="transient-feedback" data-transient-feedback-state-value="initial" data-transient-feedback-initial-label="Copy example to clipboard" data-transient-feedback-feedback-label="Copied to clipboard"><span class="transient-feedback__content" data-transient-feedback-content="initial"><span class="copy-button__icon" aria-hidden="true">⧉</span></span><span class="transient-feedback__content" data-transient-feedback-content="feedback" role="status" hidden><span class="copy-button__icon" aria-hidden="true">✓</span></span></button>
                   <div class="copy-source" data-copy-source><pre class="button-code" style="margin:0">bun run check
 bun test</pre></div>
                 </div>
@@ -338,15 +338,17 @@ bun test</pre></div>
             <article class="catalogue-card wide">
               <div class="catalogue-card-title"><span>Interface</span><code>automatic clipboard behavior</code></div>
               <pre class="button-code">&lt;div class="copy-region"&gt;
-  &lt;button class="button secondary icon-only copy-button"
-    type="button"
-    data-copy-label="Copy command to clipboard"
-    aria-label="Copy command to clipboard"&gt;
-    &lt;span class="copy-button__icon" aria-hidden="true"&gt;⧉&lt;/span&gt;
+  &lt;button class="button secondary icon-only copy-button transient-feedback"
+    type="button" aria-label="Copy command to clipboard"
+    data-transient-feedback-state-value="initial"
+    data-transient-feedback-initial-label="Copy command to clipboard"
+    data-transient-feedback-feedback-label="Copied to clipboard"&gt;
+    &lt;span class="transient-feedback__content" data-transient-feedback-content="initial"&gt;⧉&lt;/span&gt;
+    &lt;span class="transient-feedback__content" data-transient-feedback-content="feedback" role="status" hidden&gt;✓&lt;/span&gt;
   &lt;/button&gt;
   &lt;div class="copy-source" data-copy-source&gt;Content to copy&lt;/div&gt;
 &lt;/div&gt;</pre>
-              <p class="catalogue-note">No caller-owned JavaScript is required. Keep the source and button in the same copy region.</p>
+              <p class="catalogue-note">No caller-owned JavaScript is required. The copy behavior triggers the shared transient-feedback pattern only after the clipboard write succeeds.</p>
             </article>
           </div>
         </section>
@@ -448,6 +450,17 @@ bun test</pre></div>
   &lt;/span&gt;
 &lt;/button&gt;</pre>
               <p class="catalogue-note"><code>progressButtonHtml</code> owns disabled and busy semantics while work runs. A missing progress value selects the indeterminate perimeter; a value from 0–100 selects determinate progress. Completion feedback belongs beside the control or in the server-rendered replacement that follows it.</p>
+            </article>
+            <article class="catalogue-card wide">
+              <div class="catalogue-card-title"><span>Transient feedback</span><code>.transient-feedback</code></div>
+              <div class="catalogue-demo progress-button-demo">
+                <div class="transient-feedback" id="transient-feedback-demo" data-controller="transient-feedback" data-transient-feedback-state-value="initial">
+                  <div class="transient-feedback__content" data-transient-feedback-content="initial"><button class="button secondary" id="transient-feedback-demo-action" type="button">Check now</button></div>
+                  <div class="transient-feedback__content" data-transient-feedback-content="feedback" role="status" hidden><span class="button secondary">You’re up to date!</span></div>
+                </div>
+                <span class="button-demo__status">Only the visible state contributes to natural layout</span>
+              </div>
+              <p class="catalogue-note">Use this after an action succeeds. The shared two-second timer restores the initial content. Server responses may arrive in the feedback state; browser-only actions such as Copy trigger the same pattern after their work succeeds.</p>
             </article>
             <article class="catalogue-card wide">
               <div class="catalogue-card-title"><span>Groups</span><code>.button-group + optional .vertical</code></div>
@@ -795,6 +808,10 @@ bun test</pre></div>
       else activityButtonDemo.setAttribute("aria-busy", "true");
       activityButtonDemo.setAttribute("aria-label", active ? "Start background sync" : "Stop background sync");
       activityButtonDemoStatus.textContent = active ? "Stopped · click to start again" : "Syncing · duration unknown · click to stop";
+    });
+    const transientFeedbackDemo = document.querySelector("#transient-feedback-demo");
+    document.querySelector("#transient-feedback-demo-action").addEventListener("click", () => {
+      transientFeedbackDemo.dispatchEvent(new CustomEvent("transient-feedback:show"));
     });
     const progressButtonDemo = document.querySelector("#progress-button-demo");
     const progressButtonDemoStatus = document.querySelector("#progress-button-demo-status");

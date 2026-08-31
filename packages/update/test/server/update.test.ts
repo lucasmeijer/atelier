@@ -403,6 +403,15 @@ describe("update state machine", () => {
 });
 
 describe("update routes", () => {
+  test("acknowledges an explicit check when the development runtime cannot self-update", async () => {
+    const { ctx } = context();
+    const manager = new UpdateManager({ detectRuntime: async () => undefined, setInterval: noInterval() });
+    await manager.initialize(ctx);
+    const route = createUpdateRouteHandler(manager);
+    const response = await route(new Request("http://test/update/check-now", { method: "POST" }), new URL("http://test/update/check-now"));
+    expect(await response!.text()).toContain('data-transient-feedback-state-value="feedback"');
+  });
+
   test("renders a Workspace pane button only while an update needs action", () => {
     const snapshot = { selfUpdatable: true, releaseChannel: "stable" as const, compatibilityMismatch: false };
     expect(renderSidebarRow({ ...snapshot, state: "idle" })).toBe("");
@@ -473,8 +482,8 @@ describe("update routes", () => {
     expect(manager.snapshot().state).toBe("ready_to_restart");
   });
 
-  test("check-now route briefly renders an inert current result beside a hidden Check now action", async () => {
-    const { ctx } = context();
+  test("check-now route briefly renders a transient current result after the canonical broadcast", async () => {
+    const { ctx, broadcasts } = context();
     const manager = new UpdateManager({
       detectRuntime: async () => runtime("old"),
       fetchMetadata: async () => ({ digest: "sha256:old-digest", revision: "old" }),
@@ -484,9 +493,10 @@ describe("update routes", () => {
     const route = createUpdateRouteHandler(manager);
     const response = await route(new Request("http://test/update/check-now", { method: "POST" }), new URL("http://test/update/check-now"));
     const html = await response!.text();
-    expect(html).toContain('data-controller="update-check-result"');
-    expect(html).toContain('role="status">You\'re up to date</span>');
-    expect(html).toContain('action="/update/check-now" data-turbo="true" hidden');
+    expect(html).toContain('data-controller="transient-feedback" data-transient-feedback-state-value="feedback"');
+    expect(html).toContain('role="status"><span class="button secondary">You\'re up to date!</span>');
+    expect(html).toContain('data-transient-feedback-content="initial" hidden><form method="post" action="/update/check-now"');
+    expect(broadcasts.at(-1)).toContain('data-transient-feedback-state-value="feedback"');
   });
 
   test("check-now route refreshes update status", async () => {

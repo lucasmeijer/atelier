@@ -1,3 +1,4 @@
+import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { Icons } from "@atelier/design-system/icons";
 import { clearWorkspaceGitHubToken, hasWorkspaceGitHubToken, setWorkspaceGitHubToken } from "@atelier/proxy-egress";
 import {
@@ -490,9 +491,14 @@ function oauthAuthenticationAction(flow: PendingOAuthFlow, url: string, descript
 
 function oauthDeviceCodeBody(flow: PendingOAuthFlow): string {
   const code = escapeHtml(flow.userCode ?? "");
+  const copyButton = copyButtonHtml({
+    label: "Copy code",
+    caption: "Copy code",
+    attributesHtml: 'data-oauth-copy-button="true" data-action="oauth-flow#showDeviceAuth"',
+  });
   return `<div class="settings-oauth-card">
     <div class="settings-oauth-code-label">Copy this code into your clipboard</div>
-    <div class="settings-oauth-code copy-region"><code data-copy-source>${code}</code><button class="button secondary copy-button" type="button" data-copy-label="Copy code" aria-label="Copy code" data-oauth-copy-button="true" data-action="oauth-flow#showDeviceAuth"><span class="copy-button__icon" aria-hidden="true">⧉</span><span>Copy code</span></button></div>
+    <div class="settings-oauth-code copy-region"><code data-copy-source>${code}</code>${copyButton}</div>
     ${oauthAuthenticationAction(flow, flow.verificationUri ?? "#", "The next page will ask for your copied code.", true)}
     ${oauthStatus("pending", `Waiting for ${flow.label} approval`, "Checking whether the code has been accepted.")}
   </div>`;

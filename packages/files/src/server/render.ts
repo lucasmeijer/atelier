@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import { actionItemHtml } from "@atelier/design-system/action-item";
+import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { Icons } from "@atelier/design-system/icons";
 import { domId, escapeHtml, workspaceFileOpenUrl, workspaceProxyUrl, type WorkspaceWorkViewPresentation } from "@atelier/shared";
 import { workspaceRoot } from "@atelier/workspace";
@@ -51,8 +52,14 @@ function selectedFileActions(workspaceId: string, view: FilesView): string {
   const path = view.path!;
   const name = posix.basename(path);
   const contentUrl = workspaceProxyUrl(workspaceId, "file", path);
+  const copyButton = copyButtonHtml({
+    label: "Copy file contents",
+    copyText: "",
+    disabled: true,
+    attributesHtml: 'data-file-editor-target="copyButton"',
+  });
   return `<span class="button-group" role="group" aria-label="Actions for selected file">
-    <button class="button secondary icon-only copy-button" type="button" title="Copy file contents" aria-label="Copy file contents" data-copy-label="Copy file contents" data-copy-text="" data-file-editor-target="copyButton" disabled><span class="copy-button__icon" aria-hidden="true">⧉</span></button>
+    ${copyButton}
     <a class="button secondary icon-only" href="${escapeHtml(contentUrl)}" download="${escapeHtml(name)}" data-turbo="false" title="Download file" aria-label="Download file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></a>
     <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/file-browser/delete" data-turbo-stream="true" data-turbo-confirm="Delete ${escapeHtml(name)}? This cannot be undone.">
       <input type="hidden" name="path" value="${escapeHtml(path)}"><input type="hidden" name="filesView" value="${escapeHtml(view.id)}">

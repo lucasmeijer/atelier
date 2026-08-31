@@ -3,7 +3,7 @@ import type { TSchema } from "typebox";
 import { escapeHtml } from "./html.ts";
 
 export { providerBrandColor, providerBrandIconHtml } from "./brand-icons.ts";
-export { activityButtonHtml, escapeHtml } from "./html.ts";
+export { escapeHtml } from "./html.ts";
 export { hopByHopHeaderNames, isHopByHopHeader, stripHopByHopHeaders } from "./proxy-headers.ts";
 
 export const atelierName = "Atelier" as const;

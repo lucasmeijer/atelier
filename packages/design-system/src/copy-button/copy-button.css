@@ -1,0 +1,6 @@
+/* Clipboard actions discover and copy the source in their nearest copy region. */
+.copy-region { position: relative; }
+.copy-source { display: contents; }
+.copy-region > .copy-button { position: absolute; z-index: 2; top: 6px; right: 6px; }
+.copy-button__icon { display: grid; place-items: center; }
+.copy-button[data-transient-feedback-state-value="feedback"] { color: var(--success); }

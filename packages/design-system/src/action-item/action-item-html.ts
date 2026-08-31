@@ -1,4 +1,5 @@
 import { escapeHtml } from "@atelier/shared";
+import { attributesHtml, classNames, htmlContent } from "../html.ts";
 
 export interface ActionItemElement {
   tag: "a" | "button" | "div" | "span" | "summary";
@@ -48,22 +49,12 @@ interface CompoundActionItemOptions extends ActionItemContent {
 
 export type ActionItemOptions = SingleActionItemOptions | CompoundActionItemOptions;
 
-function classes(...values: Array<string | undefined | false>): string {
-  return values.filter(Boolean).join(" ");
-}
-
-function attributesHtml(value?: string): string {
-  const attributes = value?.trim();
-  return attributes ? ` ${attributes}` : "";
-}
-
 function elementHtml(element: ActionItemElement, className: string, content: string): string {
-  return `<${element.tag} class="${escapeHtml(classes(element.className, className))}"${attributesHtml(element.attributesHtml)}>${content}</${element.tag}>`;
+  return `<${element.tag} class="${escapeHtml(classNames(element.className, className))}"${attributesHtml(element.attributesHtml)}>${content}</${element.tag}>`;
 }
 
 function labelHtml(label: ActionItemLabel): string {
-  const value = label.kind === "text" ? escapeHtml(label.text) : label.html;
-  return `<span class="${escapeHtml(classes("action-item__label", label.className))}"${attributesHtml(label.attributesHtml)}><span class="action-item__label-text"${attributesHtml(label.textAttributesHtml)}>${value}</span></span>`;
+  return `<span class="${escapeHtml(classNames("action-item__label", label.className))}"${attributesHtml(label.attributesHtml)}><span class="action-item__label-text"${attributesHtml(label.textAttributesHtml)}>${htmlContent(label)}</span></span>`;
 }
 
 function contentHtml(options: ActionItemContent): string {
@@ -76,13 +67,13 @@ function contentHtml(options: ActionItemContent): string {
 export function actionItemHtml(options: ActionItemOptions): string {
   const content = contentHtml(options);
   if (options.kind === "single") {
-    return elementHtml(options.element, classes("action-item", options.primary === false ? undefined : "action-item__primary"), content);
+    return elementHtml(options.element, classNames("action-item", options.primary === false ? undefined : "action-item__primary"), content);
   }
 
   const primary = elementHtml(options.primary, "action-item__primary", content);
   const actions = options.engagedActionsHtml ? `<div class="action-item__actions action-item__actions--engaged">${options.engagedActionsHtml}</div>` : "";
   const container = options.container ?? {};
-  return `<div class="${escapeHtml(classes(container.className, "action-item"))}"${attributesHtml(container.attributesHtml)}>${primary}${actions}</div>`;
+  return `<div class="${escapeHtml(classNames(container.className, "action-item"))}"${attributesHtml(container.attributesHtml)}>${primary}${actions}</div>`;
 }
 
 /** Parses an action item for browser-only UI that needs to attach imperative listeners. */

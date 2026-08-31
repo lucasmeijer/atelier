@@ -97,9 +97,11 @@ beforeAll(async () => {
   testAssets = await buildWebTestAssets();
   workspaceClientPath = testAssets.path("/workspace.js");
   const actionItemStyle = await Bun.file(new URL("../../../packages/design-system/src/action-item/action-item.css", import.meta.url)).text();
+  const copyButtonStyle = await Bun.file(new URL("../../../packages/design-system/src/copy-button/copy-button.css", import.meta.url)).text();
   const destructiveConfirmationStyle = await Bun.file(new URL("../../../packages/design-system/src/destructive-confirmation/destructive-confirmation.css", import.meta.url)).text();
   const progressButtonStyle = await Bun.file(new URL("../../../packages/design-system/src/progress-button/progress-button.css", import.meta.url)).text();
-  designSystemStyle = `${actionItemStyle}\n${destructiveConfirmationStyle}\n${progressButtonStyle}\n${await Bun.file(new URL("../public/design-system.css", import.meta.url)).text()}`;
+  const transientFeedbackStyle = await Bun.file(new URL("../../../packages/design-system/src/transient-feedback/transient-feedback.css", import.meta.url)).text();
+  designSystemStyle = `${actionItemStyle}\n${copyButtonStyle}\n${destructiveConfirmationStyle}\n${progressButtonStyle}\n${transientFeedbackStyle}\n${await Bun.file(new URL("../public/design-system.css", import.meta.url)).text()}`;
   const shellStyle = await Bun.file(new URL("../public/style.css", import.meta.url)).text();
   workspaceStyle = `${designSystemStyle}\n${shellStyle}`;
   filesStyle = await Bun.file(new URL("../../../packages/files/src/client/style.css", import.meta.url)).text();
@@ -337,11 +339,26 @@ Comment: I don't think we need these tests`;
     const copy = page.locator("[data-catalogue-copy] .copy-button");
     await copy.click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("bun run check\nbun test");
-    expect(await copy.locator(".copy-button__icon").textContent()).toBe("✓");
+    expect(await copy.locator('[data-transient-feedback-content="feedback"] .copy-button__icon').textContent()).toBe("✓");
     expect(await copy.getAttribute("aria-label")).toBe("Copied to clipboard");
-    await page.waitForTimeout(1100);
-    expect(await copy.locator(".copy-button__icon").textContent()).toBe("⧉");
+    await page.waitForTimeout(2100);
+    expect(await copy.locator('[data-transient-feedback-content="initial"] .copy-button__icon').textContent()).toBe("⧉");
     expect(await copy.getAttribute("aria-label")).toBe("Copy example to clipboard");
+    await page.close();
+  });
+
+  test("server-rendered transient feedback resets when Turbo preserves its controller", async () => {
+    const page = await newTestPage();
+    await page.route("http://catalogue.test/design-system-catalogue.html**", (route) => route.fulfill({ contentType: "text/html", body: catalogueHtml }));
+    await page.route("http://catalogue.test/design-system.css", (route) => route.fulfill({ contentType: "text/css", body: workspaceStyle }));
+    await page.goto("http://catalogue.test/design-system-catalogue.html?embedded=1#buttons");
+
+    const feedback = page.locator("#transient-feedback-demo");
+    await feedback.evaluate((element) => element.setAttribute("data-transient-feedback-state-value", "feedback"));
+    expect(await feedback.getByRole("status").isVisible()).toBe(true);
+    await page.waitForTimeout(2100);
+    expect(await feedback.getAttribute("data-transient-feedback-state-value")).toBe("initial");
+    expect(await feedback.getByRole("button", { name: "Check now" }).isVisible()).toBe(true);
     await page.close();
   });
 

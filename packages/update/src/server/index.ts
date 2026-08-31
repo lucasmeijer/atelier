@@ -1,5 +1,6 @@
 import { destructiveConfirmationHtml } from "@atelier/design-system/destructive-confirmation";
 import { progressButtonHtml } from "@atelier/design-system/progress-button";
+import { transientFeedbackHtml } from "@atelier/design-system/transient-feedback";
 import { escapeHtml, turboStream, turboStreamResponse, type SettingsContribution, type WorkspaceModule, type WorkspaceServerModuleContext } from "@atelier/shared";
 import { pollIntervalMs, updaterPort, updateSidebarContributionId } from "./constants.ts";
 import { targetImageForChannel, type ReleaseChannel } from "./channels.ts";
@@ -62,18 +63,18 @@ export class UpdateManager {
     return { state: this.state, percent: this.percent, error: this.error, selfUpdatable: Boolean(this.runtime), target: this.target, releaseChannel: this.releaseChannel, compatibilityMismatch: this.hasCompatibilityMismatch() };
   }
 
-  private updateSidebar(): void {
+  private updateSidebar(checked = false): void {
     const sidebarHtml = renderSidebarRow(this.snapshot());
     this.context?.globalSidebarContributions.set(updateSidebarContributionId, sidebarHtml || undefined, {
-      broadcastHtml: updateSettingsStream(this),
+      broadcastHtml: updateSettingsStream(this, checked),
     });
   }
 
-  private setState(state: UpdateState, options: { percent?: number; error?: string } = {}): void {
+  private setState(state: UpdateState, options: { percent?: number; error?: string } = {}, checked = false): void {
     this.state = state;
     this.percent = options.percent;
     this.error = options.error;
-    this.updateSidebar();
+    this.updateSidebar(checked);
   }
 
   private fail(message: string): void {
@@ -84,7 +85,7 @@ export class UpdateManager {
     return Boolean(this.runtime?.selfUpdateCompatibility && this.target?.selfUpdateCompatibility && this.runtime.selfUpdateCompatibility !== this.target.selfUpdateCompatibility);
   }
 
-  async checkNow(): Promise<void> {
+  async checkNow(options: { announceCurrent?: boolean } = {}): Promise<void> {
     if (!this.runtime) return;
     const channel = this.releaseChannel;
     if (this.state === "idle") this.setState("checking");
@@ -94,7 +95,7 @@ export class UpdateManager {
     const remote = target.revision ?? target.digest;
     const available = Boolean(remote && current && remote !== current);
     const incompatible = this.hasCompatibilityMismatch();
-    if (!available) this.setState("idle");
+    if (!available) this.setState("idle", {}, options.announceCurrent ?? false);
     else if (incompatible) this.setState("incompatible");
     else if (this.state === "idle" || this.state === "checking" || this.state === "incompatible") this.setState("available");
     else if (this.state === "ready_to_restart" && this.pulledDigest !== target.digest) this.setState("available");
@@ -215,8 +216,8 @@ function renderCheckButton(state: "initial" | "in-progress"): string {
   });
 }
 
-function renderCheckForm(hidden = false): string {
-  return `<form class="update-check-result__check" method="post" action="/update/check-now" data-turbo="true"${hidden ? " hidden" : ""}>${renderCheckButton("initial")}</form>`;
+function renderCheckForm(): string {
+  return `<form method="post" action="/update/check-now" data-turbo="true">${renderCheckButton("initial")}</form>`;
 }
 
 function renderDownloadControl(snapshot: StateSnapshot): string {
@@ -241,13 +242,18 @@ function renderRestartForm(): string {
   return `<form class="update-restart-form" method="post" action="/update/restart" data-turbo="false" data-controller="update-restart" data-action="submit->update-restart#submit">${confirmation}</form>`;
 }
 
-function renderCurrentCheckResult(): string {
-  return `<div class="update-check-result" data-controller="update-check-result"><span class="button secondary update-check-result__result is-arriving" role="status">You're up to date</span>${renderCheckForm(true)}</div>`;
+function renderCheckFeedback(state: "initial" | "in-progress", feedback = false): string {
+  return transientFeedbackHtml({
+    element: { tag: "div" },
+    initialContent: { kind: "html", html: state === "initial" ? renderCheckForm() : renderCheckButton("in-progress") },
+    feedbackContent: { kind: "html", html: '<span class="button secondary">You\'re up to date!</span>' },
+    state: feedback ? "feedback" : "initial",
+  });
 }
 
 function renderUpdateControl(snapshot: StateSnapshot): string {
-  if (snapshot.state === "checking") return renderCheckButton("in-progress");
-  if (!snapshot.selfUpdatable || snapshot.state === "idle") return renderCheckForm();
+  if (snapshot.state === "checking") return renderCheckFeedback("in-progress");
+  if (!snapshot.selfUpdatable || snapshot.state === "idle") return renderCheckFeedback("initial");
   if (snapshot.state === "available" || snapshot.state === "failed" || snapshot.state === "incompatible" || snapshot.state === "pulling") return renderDownloadControl(snapshot);
   if (snapshot.state === "ready_to_restart") return renderRestartForm();
   return progressButtonHtml({
@@ -260,7 +266,7 @@ function renderUpdateControl(snapshot: StateSnapshot): string {
 
 function renderUpdateSettings(updateManager: UpdateManager, checked = false): string {
   const snapshot = updateManager.snapshot();
-  const control = checked && snapshot.selfUpdatable && snapshot.state === "idle" ? renderCurrentCheckResult() : renderUpdateControl(snapshot);
+  const control = checked && snapshot.state === "idle" ? renderCheckFeedback("initial", true) : renderUpdateControl(snapshot);
   return `<section class="settings-sec update-settings-control" id="settings-sec-update"><h2>Updates</h2>${control}</section>`;
 }
 
@@ -321,7 +327,7 @@ export function createUpdateRouteHandler(updateManager: UpdateManager): (request
       return turboStreamResponse(updateSettingsStream(updateManager));
     }
     if (url.pathname === "/update/check-now" && request.method === "POST") {
-      await updateManager.checkNow();
+      await updateManager.checkNow({ announceCurrent: true });
       return turboStreamResponse(updateSettingsStream(updateManager, true));
     }
     if (url.pathname === "/update/restart" && request.method === "POST") {

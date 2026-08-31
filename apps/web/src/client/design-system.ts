@@ -1,10 +1,11 @@
 /// <reference lib="dom" />
 
 import { Application, Controller } from "@hotwired/stimulus";
-import { copyTextToClipboard } from "@atelier/shared";
 import { ActionItemController } from "@atelier/design-system/action-item/client";
+import { CopyButtonController } from "@atelier/design-system/copy-button/client";
 import { DestructiveConfirmationController } from "@atelier/design-system/destructive-confirmation/client";
 import { Icons } from "@atelier/design-system/icons";
+import { TransientFeedbackController } from "@atelier/design-system/transient-feedback/client";
 import { PopupSelectController } from "./popup-select.ts";
 
 export function createCloseButton(label: string): HTMLButtonElement {
@@ -66,34 +67,6 @@ class ManagedListController extends Controller<HTMLElement> {
     const empty = this.element.querySelector<HTMLElement>(".managed-list__empty");
     if (empty) empty.hidden = matches > 0;
   };
-}
-
-class CopyButtonController extends Controller<HTMLButtonElement> {
-  private timer?: ReturnType<typeof setTimeout>;
-
-  disconnect(): void {
-    if (this.timer) clearTimeout(this.timer);
-  }
-
-  async copy(event: MouseEvent): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
-    const source = this.element.closest(".copy-region")?.querySelector<HTMLElement>("[data-copy-source]");
-    const text = this.element.hasAttribute("data-copy-text") ? this.element.dataset.copyText! : source?.innerText;
-    if (text === undefined || (source && !text)) return;
-    if (this.timer) clearTimeout(this.timer);
-    const icon = this.element.querySelector<HTMLElement>(".copy-button__icon")!;
-    const label = this.element.dataset.copyLabel!;
-    this.element.dataset.copyState = "copied";
-    this.element.setAttribute("aria-label", "Copied to clipboard");
-    icon.textContent = "✓";
-    this.timer = setTimeout(() => {
-      delete this.element.dataset.copyState;
-      this.element.setAttribute("aria-label", label);
-      icon.textContent = "⧉";
-    }, 1000);
-    await copyTextToClipboard(text);
-  }
 }
 
 class ToggleController extends Controller<HTMLElement> {
@@ -281,6 +254,7 @@ export function registerDesignSystemControllers(application: Pick<Application, "
   application.register("popup-select", PopupSelectController);
   application.register("button-toggle", ToggleController);
   application.register("text-toggle", ToggleController);
+  application.register("transient-feedback", TransientFeedbackController);
   attachAutomaticBehaviors(document);
   new MutationObserver((records) => {
     for (const record of records) for (const node of record.addedNodes) if (node instanceof Element) attachAutomaticBehaviors(node);

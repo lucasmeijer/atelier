@@ -1,4 +1,5 @@
 import { actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
+import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { Icons } from "@atelier/design-system/icons";
 import { preloadDiffHTML } from "@pierre/diffs/ssr";
 import { domId, escapeHtml, type WorkspaceWorkViewPresentation } from "@atelier/shared";
@@ -148,10 +149,14 @@ function toolbar(workspaceId: string, comments: ReviewComment[]): string {
   const commentsDisabled = comments.length === 0 ? " disabled" : "";
   const collapse = iconButton("Collapse all files", "review#collapseAll", Icons.CollapseAll);
   const expand = iconButton("Expand all files", "review#expandAll", Icons.ExpandAll);
+  const copyButton = copyButtonHtml({
+    label: "Copy review comments to clipboard",
+    disabled: comments.length === 0,
+  });
   return `<header class="review-toolbar">
     <div class="review-toolbar-actions button-group copy-region">
       <button class="button secondary" type="button" title="Copy review comments into composer" data-action="click->review#copyCommentsToComposer"${commentsDisabled}>Copy into composer</button>
-      <button class="button secondary icon-only copy-button" type="button" data-copy-label="Copy review comments to clipboard" aria-label="Copy review comments to clipboard" title="Copy review comments to clipboard"${commentsDisabled}><span class="copy-button__icon" aria-hidden="true">⧉</span></button>
+      ${copyButton}
       <form method="post" action="/workspaces/${encodeURIComponent(workspaceId)}/review/comments/delete" data-turbo="true"><button class="button danger icon-only" type="submit" aria-label="Delete all review comments" title="Delete all review comments"${commentsDisabled}>${Icons.Trash}</button></form>
       ${refreshForm(workspaceId)}
       ${collapse}${expand}

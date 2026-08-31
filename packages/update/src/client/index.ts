@@ -9,24 +9,6 @@ declare global {
 export const atelierClientModule: WorkspaceClientModule = {
   id: "atelier-update",
   install({ application, Controller }) {
-    class UpdateCheckResultController extends Controller {
-      declare readonly element: HTMLElement;
-      private timer?: ReturnType<typeof setTimeout>;
-
-      connect(): void {
-        const result = this.element.querySelector<HTMLElement>(".update-check-result__result")!;
-        const check = this.element.querySelector<HTMLFormElement>(".update-check-result__check")!;
-        this.timer = setTimeout(() => {
-          result.hidden = true;
-          check.hidden = false;
-        }, 3_000);
-      }
-
-      disconnect(): void {
-        clearTimeout(this.timer);
-      }
-    }
-
     class UpdateRestartController extends Controller {
       declare readonly element: HTMLFormElement;
       async submit(event: SubmitEvent): Promise<void> {
@@ -60,7 +42,6 @@ export const atelierClientModule: WorkspaceClientModule = {
       }
     }
 
-    application.register("update-check-result", UpdateCheckResultController);
     application.register("update-restart", UpdateRestartController);
   },
 };

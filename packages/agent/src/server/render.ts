@@ -1,4 +1,5 @@
 import { actionItemHtml, type ActionItemLabel } from "@atelier/design-system/action-item";
+import { copyButtonHtml } from "@atelier/design-system/copy-button";
 import { Icons } from "@atelier/design-system/icons";
 import { renderTranscriptionComposerControl, transcriptionComposerController } from "@atelier/transcription/server";
 import { isJsonObject, type JsonObject, type JsonValue } from "@atelier/core";
@@ -637,8 +638,7 @@ function bashViews(tool: ToolView, count: number): BashViews {
 }
 
 function toolCopyButton(label: string): string {
-  const copyLabel = `Copy ${label} to clipboard`;
-  return `<button type="button" class="button secondary icon-only copy-button" data-copy-label="${escapeHtml(copyLabel)}" title="${escapeHtml(copyLabel)}" aria-label="${escapeHtml(copyLabel)}"><span class="copy-button__icon" aria-hidden="true">⧉</span></button>`;
+  return copyButtonHtml({ label: `Copy ${label} to clipboard` });
 }
 
 function copyableToolBody(body: string, label: string): string {

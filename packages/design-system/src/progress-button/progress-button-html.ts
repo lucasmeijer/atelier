@@ -1,9 +1,7 @@
 import { escapeHtml } from "@atelier/shared";
+import { attributesHtml, classNames, htmlContent, type HtmlContent } from "../html.ts";
 
-export type ProgressButtonContent =
-  | { kind: "text"; text: string }
-  /** Trusted, already-escaped HTML rendered inside the button. */
-  | { kind: "html"; html: string };
+export type ProgressButtonContent = HtmlContent;
 
 interface ProgressButtonBase {
   initialContent: ProgressButtonContent;
@@ -21,17 +19,8 @@ export type ProgressButtonOptions =
   | (ProgressButtonBase & { state: "initial" })
   | (ProgressButtonBase & { state: "in-progress"; progress?: number });
 
-function contentValue(content: ProgressButtonContent): string {
-  return content.kind === "text" ? escapeHtml(content.text) : content.html;
-}
-
-function attributesHtml(value?: string): string {
-  const attributes = value?.trim();
-  return attributes ? ` ${attributes}` : "";
-}
-
 function stateContent(kind: "initial" | "in-progress", content: ProgressButtonContent): string {
-  return `<span class="progress-button__content" data-progress-content="${kind}">${contentValue(content)}</span>`;
+  return `<span class="progress-button__content" data-progress-content="${kind}">${htmlContent(content)}</span>`;
 }
 
 /**
@@ -46,7 +35,7 @@ export function progressButtonHtml(options: ProgressButtonOptions): string {
     throw new RangeError("Progress button progress must be between 0 and 100");
   }
 
-  const className = escapeHtml(["button", options.className, "progress-button"].filter(Boolean).join(" "));
+  const className = escapeHtml(classNames("button", options.className, "progress-button"));
   const id = options.id ? ` id="${escapeHtml(options.id)}"` : "";
   const inProgress = options.state === "in-progress";
   const disabled = options.disabled || inProgress ? " disabled" : "";

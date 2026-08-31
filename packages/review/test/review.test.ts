@@ -216,7 +216,8 @@ describe("Review presentation", () => {
     expect(html).not.toContain("Binary file changed");
     expect(html).toContain("Copy into composer");
     expect(html).toContain('data-action="click->review#copyCommentsToComposer"');
-    expect(html).toContain('class="button secondary icon-only copy-button"');
+    expect(html).toContain('class="button secondary icon-only copy-button transient-feedback"');
+    expect(html).toContain('data-transient-feedback-feedback-label="Copied to clipboard"');
     expect(html).toContain('aria-label="Copy review comments to clipboard"');
     expect(html).toContain('action="/workspaces/workspace%201/review/comments/delete"');
     expect(html).toContain('aria-label="Delete all review comments"');

@@ -1,7 +1,9 @@
 @import "/icons.css";
 @import "/action-item.css";
+@import "/copy-button.css";
 @import "/destructive-confirmation.css";
 @import "/progress-button.css";
+@import "/transient-feedback.css";
 
 @font-face {
   font-family: "JetBrains Mono";
@@ -349,12 +351,6 @@
 .button svg circle { fill: currentColor; stroke: none; }
 
 /* A copy button owns clipboard behavior and transient confirmation inside a copy region. */
-.copy-region { position: relative; }
-.copy-source { display: contents; }
-.copy-region > .copy-button { position: absolute; z-index: 2; top: 6px; right: 6px; }
-.copy-button__icon { display: grid; place-items: center; }
-.copy-button[data-copy-state="copied"] { color: var(--success); }
-
 /* Give compact controls a larger touch target on narrow screens without changing desktop density. */
 @media (max-width: 700px) {
   .button { height: 44px; padding-inline: 16px; }
@@ -708,7 +704,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .button,
-  .button .progress-button__perimeter rect,
   .button-toggle__option,
   .text-field,
   .textarea { transition-duration: 1ms; }

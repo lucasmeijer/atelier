@@ -5,10 +5,14 @@
   "exports": {
     "./action-item": "./src/action-item/action-item-html.ts",
     "./action-item/client": "./src/action-item/action-item-controller.ts",
+    "./copy-button": "./src/copy-button/copy-button-html.ts",
+    "./copy-button/client": "./src/copy-button/copy-button-controller.ts",
     "./destructive-confirmation": "./src/destructive-confirmation/destructive-confirmation-html.ts",
     "./destructive-confirmation/client": "./src/destructive-confirmation/destructive-confirmation-controller.ts",
     "./icons": "./src/icons/icons-html.ts",
-    "./progress-button": "./src/progress-button/progress-button-html.ts"
+    "./progress-button": "./src/progress-button/progress-button-html.ts",
+    "./transient-feedback": "./src/transient-feedback/transient-feedback-html.ts",
+    "./transient-feedback/client": "./src/transient-feedback/transient-feedback-controller.ts"
   },
   "dependencies": {
     "@atelier/shared": "workspace:*",

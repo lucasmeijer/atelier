@@ -2,12 +2,5 @@
 .update-sidebar-row { width: 100%; min-height: 32px; display: flex; align-items: center; }
 .update-sidebar-row form, .update-settings-control form { display: flex; margin: 0; }
 .update-settings-control { min-height: 55px; display: flex; align-items: center; justify-content: space-between; padding-block: 14px; }
-.update-check-result__result[hidden], .update-check-result__check[hidden] { display: none; }
-.update-check-result__result.is-arriving { animation: update-check-result-arrive 180ms ease-out; }
-@keyframes update-check-result-arrive { from { opacity: 0; transform: translateY(2px); } }
 .update-restart-form { margin-left: auto; }
-@media (prefers-reduced-motion: reduce) {
-  .update-check-result__result.is-arriving { animation: none; }
-}
-
 .update-restart-modal { width: min(760px, calc(100vw - 40px)); }
