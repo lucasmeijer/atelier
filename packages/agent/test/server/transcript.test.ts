@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildTranscript, finalAssistantText, findTranscriptItem, formatDuration, formatTokens, isFinalAssistantMessage, isToolViewDetails, toolDetailsIndicateError, type TranscriptRecord } from "../../src/server/transcript.ts";
 
 describe("transcript", () => {
-  test("preserves record order and joins tool results", () => {
+  test("preserves record order, joins tool results, and ends Working at the last activity", () => {
     const records: TranscriptRecord[] = [
       { kind: "user", id: "u1", text: "go", images: [], timestamp: 1000 },
       { kind: "assistant", id: "a1", parts: [{ type: "thinking", text: "hmm" }, { type: "toolCall", callId: "c1", name: "bash", args: { command: "ls" } }], stopReason: "toolUse", timestamp: 2000 },
@@ -16,7 +16,7 @@ describe("transcript", () => {
     const tool = findTranscriptItem(items, "tool:c1");
     expect(tool?.type === "tool" && tool.tool.resultText).toBe("file.txt");
     expect(tool?.type === "tool" && tool.tool.durationMs).toBe(1000);
-    expect(working?.type === "working" && working.completedAt).toBe(4000);
+    expect(working?.type === "working" && working.completedAt).toBe(3000);
     const text = items.at(-1);
     expect(text?.type === "text" && text.final).toBe(true);
   });

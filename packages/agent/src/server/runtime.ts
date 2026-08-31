@@ -226,6 +226,7 @@ interface LiveState {
   items: TranscriptItem[];
   cacheMissNotices: TranscriptItem[];
   working: Omit<WorkingTranscriptItem, "items">;
+  lastActivityAt: number;
   finalIndex?: number;
   userEntryId?: string;
   open?: { index: number; kind: "text"; contentIndex: number } | { index: number; kind: "thinking" | "toolargs" };
@@ -529,6 +530,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       items: [],
       cacheMissNotices: [],
       working: { type: "working", key: `${id}:working`, startedAt: now, live: true },
+      lastActivityAt: now,
       toolIndexByCallId: new Map(),
       terminalTimers: new Map(),
     };
@@ -636,6 +638,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     if (item?.type === "text") {
       item.live = false;
       item.final = final;
+      if (!final) live.lastActivityAt = Date.now();
       this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item)));
     }
     live.open = undefined;
@@ -647,6 +650,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     const item = live.items[live.open.index];
     if (item?.type === "thinking") {
       item.live = false;
+      live.lastActivityAt = Date.now();
       this.stream(turboStream("replace", ids.item(this.ctx, item.key), renderTranscriptItem(this.ctx, item, { open: true })));
     }
     live.open = undefined;
@@ -661,7 +665,6 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
   protected liveFinalStart(): void {
     const live = this.liveEnsure();
     if (live.working.completedAt !== undefined) return;
-    live.working.completedAt = Date.now();
     if (live.open?.kind === "thinking") this.finishOpenThinking();
     if (live.open?.kind === "text") {
       const index = live.open.index;
@@ -674,6 +677,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
       }
       live.open = undefined;
     }
+    live.working.completedAt = live.lastActivityAt;
     const working = turboStream("replace", ids.item(this.ctx, live.working.key), renderTranscriptItem(this.ctx, this.liveWorkingSection(live)));
     const final = live.finalIndex === undefined ? "" : turboStream("append", ids.transcript(this.ctx), renderTranscriptItem(this.ctx, live.items[live.finalIndex]!));
     this.stream(working + final);
@@ -821,7 +825,9 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     live.terminalTimers.delete(callId);
     const item = live.items[index];
     if (item?.type !== "tool") return;
-    item.tool.durationMs = item.tool.startedAt ? Date.now() - item.tool.startedAt : undefined;
+    const completedAt = Date.now();
+    item.tool.durationMs = item.tool.startedAt ? completedAt - item.tool.startedAt : undefined;
+    live.lastActivityAt = completedAt;
     item.tool.status = isError || toolDetailsIndicateError(details) ? "error" : "ok";
     item.tool.resultText = resultText;
     item.tool.details = details;
@@ -835,6 +841,7 @@ abstract class BaseAgentRuntime implements WorkspaceAgentRuntime {
     this.closeOpenItem();
     const item: TranscriptItem = { type: "note", key: this.liveKey(live, live.items.length, "note"), text, tone };
     live.items.push(item);
+    live.lastActivityAt = Date.now();
     this.appendLiveItem(item, { live: true });
   }
 
@@ -1008,7 +1015,6 @@ const sessionImagePartSchema = Type.Object({
   data: Type.Optional(Type.Unknown()),
 });
 const sessionImageStringSchema = Type.String();
-const sessionTimestampSchema = Type.Number();
 const sessionTextSignatureSchema = Type.String();
 
 interface SessionAssistantTextPart {
@@ -1030,11 +1036,7 @@ function sessionContentImages(entry: { id: string; message?: { content?: unknown
   return images;
 }
 
-function entryTimestamp(entry: { timestamp?: string }, message?: { timestamp?: unknown }): number {
-  if (Value.Check(sessionTimestampSchema, message?.timestamp)) {
-    // pi stores seconds or ms depending on producer; normalize to ms.
-    return message.timestamp > 10_000_000_000 ? message.timestamp : message.timestamp * 1000;
-  }
+function entryTimestamp(entry: { timestamp?: string }): number {
   const parsed = entry.timestamp ? Date.parse(entry.timestamp) : NaN;
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -1048,7 +1050,7 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
       const message = entry.message;
       if (!message) continue;
       if (message.role === "user") {
-        records.push({ kind: "user", id: entry.id, text: contentText(message.content), images: sessionContentImages(entry), timestamp: entryTimestamp(entry, message), rewindable: entry.parentId !== null && entry.parentId !== undefined });
+        records.push({ kind: "user", id: entry.id, text: contentText(message.content), images: sessionContentImages(entry), timestamp: entryTimestamp(entry), rewindable: entry.parentId !== null && entry.parentId !== undefined });
         cacheNoticeInsertIndex = records.length;
       } else if (message.role === "assistant") {
         const parts: any[] = [];
@@ -1067,23 +1069,23 @@ export function recordsFromSessionEntries(entries: any[], cacheMisses = new Map<
           parts,
           stopReason: message.stopReason ?? "stop",
           errorMessage: message.errorMessage,
-          timestamp: entryTimestamp(entry, message),
+          timestamp: entryTimestamp(entry),
         });
         const notice = significantCacheMissNotice(cacheMisses.get(message));
         if (notice && message.stopReason !== "aborted" && message.stopReason !== "error") {
-          const record: TranscriptRecord = { kind: "note", text: notice, tone: "warning", timestamp: entryTimestamp(entry, message) };
+          const record: TranscriptRecord = { kind: "note", text: notice, tone: "warning", timestamp: entryTimestamp(entry) };
           if (cacheNoticeInsertIndex === undefined) records.push(record);
           else records.splice(cacheNoticeInsertIndex++, 0, record);
         }
       } else if (message.role === "toolResult") {
         const details = isToolViewDetails(message.details) ? message.details : undefined;
-        records.push({ kind: "toolResult", callId: message.toolCallId, text: contentText(message.content), images: sessionContentImages(entry), isError: Boolean(message.isError), timestamp: entryTimestamp(entry, message), details });
+        records.push({ kind: "toolResult", callId: message.toolCallId, text: contentText(message.content), images: sessionContentImages(entry), isError: Boolean(message.isError), timestamp: entryTimestamp(entry), details });
       } else if (message.role === "bashExecution") {
-        records.push({ kind: "note", id: entry.id, text: `\`$ ${message.command}\`\n\n\`\`\`\n${message.output ?? ""}\n\`\`\``, tone: "system", timestamp: entryTimestamp(entry, message) });
+        records.push({ kind: "note", id: entry.id, text: `\`$ ${message.command}\`\n\n\`\`\`\n${message.output ?? ""}\n\`\`\``, tone: "system", timestamp: entryTimestamp(entry) });
       } else if (message.role === "custom" && message.display) {
-        records.push({ kind: "note", id: entry.id, text: contentText(message.content), tone: "summary", timestamp: entryTimestamp(entry, message) });
+        records.push({ kind: "note", id: entry.id, text: contentText(message.content), tone: "summary", timestamp: entryTimestamp(entry) });
       } else if (message.role === "branchSummary") {
-        records.push({ kind: "note", id: entry.id, text: `**Rewound** — summary of the abandoned branch:\n\n${message.summary ?? ""}`, tone: "summary", timestamp: entryTimestamp(entry, message) });
+        records.push({ kind: "note", id: entry.id, text: `**Rewound** — summary of the abandoned branch:\n\n${message.summary ?? ""}`, tone: "summary", timestamp: entryTimestamp(entry) });
       }
       continue;
     }

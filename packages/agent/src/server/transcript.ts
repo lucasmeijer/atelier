@@ -144,8 +144,15 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
   const tools = new Map<string, ToolView>();
   let working: WorkingTranscriptItem | undefined;
   let lastTimestamp = 0;
+  let lastWorkingActivityAt = 0;
 
-  const activityItems = (): TranscriptItem[] => working?.items ?? items;
+  const recordWorkingActivity = (timestamp: number): void => {
+    if (working) lastWorkingActivityAt = Math.max(working.startedAt, timestamp);
+  };
+  const appendActivity = (item: TranscriptItem, timestamp: number): void => {
+    (working?.items ?? items).push(item);
+    recordWorkingActivity(timestamp);
+  };
   const stopWorking = (timestamp: number): void => {
     if (working && working.completedAt === undefined) working.stoppedAt = Math.max(working.startedAt, timestamp);
     working = undefined;
@@ -163,6 +170,7 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
         images: record.images,
       });
       working = { type: "working", key: `${record.id}:working`, startedAt: record.timestamp, items: [] };
+      lastWorkingActivityAt = record.timestamp;
       items.push(working);
       continue;
     }
@@ -174,26 +182,27 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
       record.parts.forEach((part, index) => {
         const rewindEntryId = first ? record.id : undefined;
         if (part.type === "thinking" && part.text.trim()) {
-          activityItems().push({ type: "thinking", key: `${record.id}:thinking:${index}`, rewindEntryId, text: part.text });
+          appendActivity({ type: "thinking", key: `${record.id}:thinking:${index}`, rewindEntryId, text: part.text }, record.timestamp);
           first = false;
         } else if (part.type === "text" && part.text.trim()) {
           const finalPart = final && (!hasPhasedText || assistantTextPhase(part.textSignature) === "final_answer");
-          const destination = finalPart ? items : activityItems();
-          destination.push({ type: "text", key: `${record.id}:text:${index}`, rewindEntryId, text: part.text, final: finalPart });
+          const item: TranscriptItem = { type: "text", key: `${record.id}:text:${index}`, rewindEntryId, text: part.text, final: finalPart };
+          if (finalPart) items.push(item);
+          else appendActivity(item, record.timestamp);
           first = false;
         } else if (part.type === "toolCall") {
           const tool: ToolView = { callId: part.callId, name: part.name, args: part.args, status: "ok", issuedAt: record.timestamp };
           tools.set(part.callId, tool);
-          activityItems().push({ type: "tool", key: `tool:${part.callId}`, rewindEntryId, tool });
+          appendActivity({ type: "tool", key: `tool:${part.callId}`, rewindEntryId, tool }, record.timestamp);
           first = false;
         }
       });
       if (final) {
-        if (working) working.completedAt = Math.max(working.startedAt, record.timestamp);
+        if (working) working.completedAt = lastWorkingActivityAt;
         working = undefined;
       } else {
-        if (record.errorMessage) activityItems().push({ type: "error", key: `${record.id}:error`, text: record.errorMessage });
-        else if (record.stopReason === "aborted") activityItems().push({ type: "error", key: `${record.id}:aborted`, text: "Run aborted" });
+        if (record.errorMessage) appendActivity({ type: "error", key: `${record.id}:error`, text: record.errorMessage }, record.timestamp);
+        else if (record.stopReason === "aborted") appendActivity({ type: "error", key: `${record.id}:aborted`, text: "Run aborted" }, record.timestamp);
         if (record.stopReason === "error" || record.stopReason === "aborted") stopWorking(record.timestamp);
       }
       continue;
@@ -207,17 +216,18 @@ export function buildTranscript(records: TranscriptRecord[]): TranscriptItem[] {
         tool.details = record.details;
         tool.status = record.isError || toolDetailsIndicateError(record.details) ? "error" : "ok";
         if (tool.issuedAt && record.timestamp) tool.durationMs = Math.max(0, record.timestamp - tool.issuedAt);
+        recordWorkingActivity(record.timestamp);
       }
       continue;
     }
 
-    activityItems().push({
+    appendActivity({
       type: "note",
       key: record.id ?? `note:${recordIndex}`,
       rewindEntryId: record.id,
       text: record.text,
       tone: record.tone,
-    });
+    }, lastTimestamp);
   }
   stopWorking(lastTimestamp);
   return items;

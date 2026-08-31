@@ -25,6 +25,11 @@ describe("recordsFromSessionEntries", () => {
     ];
     const records = recordsFromSessionEntries(entries);
     expect(records.length).toBe(5);
+    expect(records.slice(0, 3).map((record) => record.timestamp)).toEqual([
+      Date.parse(entries[0].timestamp),
+      Date.parse(entries[1].timestamp),
+      Date.parse(entries[2].timestamp),
+    ]);
     expect(records[0]).toMatchObject({ kind: "user", text: "hello", rewindable: false });
     const assistant = records[1];
     expect(assistant).toMatchObject({ kind: "assistant", stopReason: "toolUse" });
